@@ -7,9 +7,9 @@ Last Updated: 2026-03-30
 
 ## Current Active Item
 
-- Step 2/4: reduce the new first surviving libc++ frontier at
-  `__vector/vector_bool.h:737`, now that the direct `std::vector` repro gets
-  past `__utility/pair.h`
+- Step 2/4: reduce the still-live `std::vector` libc++ frontier after landing
+  the attributed out-of-class special-member parser fix; the forcing repro
+  still first reports `__vector/vector_bool.h:737`
 
 ## Todo
 
@@ -67,6 +67,14 @@ Last Updated: 2026-03-30
 - [x] Validate the completed `pair.h` slice with targeted parser coverage plus
       a monotonic full-suite comparison (`before: 711/736`, `after: 712/737`,
       zero new failures)
+- [x] Add a focused internal regression for attributed out-of-class templated
+      special-member definitions
+- [x] Teach the top-level special-member probe to skip leading GNU/C++11
+      attributes plus post-attribute `inline` / `constexpr` / `consteval`
+      specifiers before matching qualified constructors/operators
+- [x] Validate the attributed special-member parser improvement with targeted
+      coverage plus a monotonic full-suite comparison (`before: 712/737`,
+      `after: 713/738`, zero new failures)
 
 ## Completed
 
@@ -194,14 +202,17 @@ Last Updated: 2026-03-30
 
 ## Next Intended Slice
 
-- Reproduce and reduce the new first surviving libc++ frontier at
-  `__vector/vector_bool.h:737:235`, where the parser now reaches a later
-  libc++ spelling that fails with `expected=RPAREN got='&&'`.
-- Keep the next reduction scoped to the `vector_bool` / `tuple` follow-on
-  headers that became visible only after clearing `__utility/pair.h`.
-- Re-run the forcing `std::vector` repro after the next parser fix and confirm
-  whether the `tuple` and `polymorphic_allocator` follow-ons stay in the same
-  order once the new lead blocker is reduced.
+- Reproduce the remaining `__vector/vector_bool.h:737:235` failure with a
+  higher-fidelity reduced testcase; the current synthetic attributed
+  move-constructor testcase now parses as `Vec::Vec`, so it was only a partial
+  match for the live libc++ repro.
+- Use parser-debug traces from the forcing repro to determine whether the live
+  `vector_bool` failure is local to that constructor spelling or still a
+  consequence of earlier top-level parse-state loss in nearby `tuple` /
+  special-member code.
+- Re-run the forcing `std::vector` repro after the next reduction and confirm
+  whether `tuple:512`, `tuple:1044`, and `tuple:1171` remain the immediate
+  follow-ons once `vector_bool.h:737` is genuinely cleared.
 
 ## Blockers
 
@@ -211,6 +222,15 @@ Last Updated: 2026-03-30
 - The latest direct repro now first fails at `__vector/vector_bool.h:737:235`
   with `expected=RPAREN got='&&'`, followed by `tuple` failures at `:512`,
   `:1044`, and `:1171`, plus later `typename` expression follow-ons.
+- The new reduced testcase
+  `tests/cpp/internal/postive_case/libcxx_vector_bool_move_ctor_parse.cpp`
+  now exercises one real parser gap around attributed out-of-class
+  special-member definitions, but it does not yet reproduce the full live
+  `vector_bool.h:737` failure from the forcing repro.
+- `--parser-debug` on the forcing repro now highlights `tuple:512` and nearby
+  top-level / qualified-type failures as the best-ranked parse stack, which may
+  mean the still-reported `vector_bool.h:737` error is downstream of earlier
+  state loss rather than the first root cause.
 - The current full-suite run still contains unrelated environment/path failures
   such as missing `/workspaces/c4c/...` fixtures and unavailable GNU
   `bits/...` headers, so those results are not attributable to this patch.
@@ -254,6 +274,10 @@ Last Updated: 2026-03-30
   now covers the reduced `synth_three_way` generic-lambda spelling directly.
 - `tests/cpp/internal/postive_case/if_init_statement_decl_parse.cpp` now
   covers the reduced `pair.h` C++20 `if (init; condition)` spelling directly.
+- `tests/cpp/internal/postive_case/libcxx_vector_bool_move_ctor_parse.cpp` now
+  covers attributed out-of-class templated special-member definitions, and the
+  parser now correctly keeps that reduced case on the `Vec::Vec` constructor
+  path instead of misclassifying it as a free function.
 - A direct parse of `#include <__utility/integer_sequence.h>` now succeeds; the
   remaining libc++ failures are later headers surfaced by the forcing
   `std::vector` include stack.

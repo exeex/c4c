@@ -1541,6 +1541,83 @@ Node* Parser::parse_top_level() {
     // There is no explicit return type, so handle these before parse_base_type().
     if (is_cpp_mode() && !is_typedef) {
         const int saved_special_member_pos = pos_;
+        auto probe_skip_decl_attrs = [&](int* probe_pos) -> bool {
+            if (!probe_pos) return false;
+
+            while (*probe_pos < static_cast<int>(tokens_.size())) {
+                if (tokens_[*probe_pos].kind == TokenKind::KwAttribute) {
+                    ++(*probe_pos);
+                    for (int paren_groups = 0;
+                         paren_groups < 2 &&
+                         *probe_pos < static_cast<int>(tokens_.size()) &&
+                         tokens_[*probe_pos].kind == TokenKind::LParen;
+                         ++paren_groups) {
+                        int depth = 1;
+                        ++(*probe_pos);
+                        while (*probe_pos < static_cast<int>(tokens_.size()) &&
+                               depth > 0) {
+                            if (tokens_[*probe_pos].kind == TokenKind::LParen) {
+                                ++depth;
+                            } else if (tokens_[*probe_pos].kind ==
+                                       TokenKind::RParen) {
+                                --depth;
+                            }
+                            ++(*probe_pos);
+                        }
+                        if (depth != 0) return false;
+                    }
+                    continue;
+                }
+
+                if (*probe_pos + 1 < static_cast<int>(tokens_.size()) &&
+                    tokens_[*probe_pos].kind == TokenKind::LBracket &&
+                    tokens_[*probe_pos + 1].kind == TokenKind::LBracket) {
+                    *probe_pos += 2;
+                    int depth = 1;
+                    while (*probe_pos < static_cast<int>(tokens_.size()) &&
+                           depth > 0) {
+                        if (*probe_pos + 1 < static_cast<int>(tokens_.size()) &&
+                            tokens_[*probe_pos].kind == TokenKind::LBracket &&
+                            tokens_[*probe_pos + 1].kind == TokenKind::LBracket) {
+                            *probe_pos += 2;
+                            ++depth;
+                            continue;
+                        }
+                        if (*probe_pos + 1 < static_cast<int>(tokens_.size()) &&
+                            tokens_[*probe_pos].kind == TokenKind::RBracket &&
+                            tokens_[*probe_pos + 1].kind == TokenKind::RBracket) {
+                            *probe_pos += 2;
+                            --depth;
+                            continue;
+                        }
+                        ++(*probe_pos);
+                    }
+                    if (depth != 0) return false;
+                    continue;
+                }
+
+                if (tokens_[*probe_pos].kind == TokenKind::KwExtension ||
+                    tokens_[*probe_pos].kind == TokenKind::KwNoreturn ||
+                    tokens_[*probe_pos].kind == TokenKind::KwInline ||
+                    tokens_[*probe_pos].kind == TokenKind::KwConstexpr ||
+                    tokens_[*probe_pos].kind == TokenKind::KwConsteval) {
+                    ++(*probe_pos);
+                    continue;
+                }
+
+                break;
+            }
+
+            return true;
+        };
+
+        auto consume_decl_attrs = [&]() -> bool {
+            int probe = pos_;
+            if (!probe_skip_decl_attrs(&probe)) return false;
+            pos_ = probe;
+            return true;
+        };
+
         auto consume_optional_template_id = [&]() -> bool {
             if (!check(TokenKind::Less)) return true;
             int depth = 1;
@@ -1610,6 +1687,9 @@ Node* Parser::parse_top_level() {
                 if (out_is_ctor) *out_is_ctor = false;
 
                 int probe = saved_special_member_pos;
+                if (!probe_skip_decl_attrs(&probe)) {
+                    return false;
+                }
                 if (probe < static_cast<int>(tokens_.size()) &&
                     tokens_[probe].kind == TokenKind::ColonColon) {
                     ++probe;
@@ -1667,6 +1747,7 @@ Node* Parser::parse_top_level() {
         auto consume_special_member_owner =
             [&](bool stop_before_operator, bool stop_before_ctor) -> bool {
                 pos_ = saved_special_member_pos;
+                if (!consume_decl_attrs()) return false;
                 if (check(TokenKind::ColonColon)) consume();
                 if (!check(TokenKind::Identifier)) return false;
 

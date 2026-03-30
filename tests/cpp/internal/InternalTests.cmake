@@ -155,6 +155,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     libcxx_synth_three_way_generic_lambda_parse
     libcxx_common_comparison_category_array_param_parse
     libcxx_ordering_hidden_consteval_ctor_parse
+    libcxx_vector_bool_move_ctor_parse
     qualified_type_spelling_shared_parse
     qualified_type_resolution_dispatch_parse
     qualified_type_start_shared_probe_parse
