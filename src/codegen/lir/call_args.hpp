@@ -479,6 +479,17 @@ inline void collect_lir_value_names_from_call_args(std::string_view args_str,
   });
 }
 
+inline void collect_lir_value_names_from_call(std::string_view callee,
+                                              std::string_view args_str,
+                                              std::vector<std::string>& values) {
+  if (is_lir_value_name(callee)) {
+    append_unique_lir_value_name(values, std::string(callee));
+  } else {
+    collect_lir_value_names_from_text(callee, values);
+  }
+  collect_lir_value_names_from_call_args(args_str, values);
+}
+
 template <typename Fn>
 inline std::string rewrite_lir_call_args(std::string_view args_str, Fn&& rewrite_operand) {
   std::vector<std::string> rewritten_args;
@@ -520,6 +531,17 @@ inline std::string rewrite_lir_call_args(std::string_view args_str, Fn&& rewrite
     rewritten += rewritten_args[index];
   }
   return rewritten;
+}
+
+template <typename Fn>
+inline void rewrite_lir_call_operands(std::string& callee,
+                                      std::string& args_str,
+                                      Fn&& rewrite_operand) {
+  if (const auto rewritten_callee = rewrite_operand(callee);
+      rewritten_callee.has_value()) {
+    callee = std::string(*rewritten_callee);
+  }
+  args_str = rewrite_lir_call_args(args_str, std::forward<Fn>(rewrite_operand));
 }
 
 }  // namespace c4c::codegen::lir

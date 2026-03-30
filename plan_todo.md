@@ -8,16 +8,16 @@ Source Plan: plan.md
 
 - Step 4: Migrate high-friction instruction families and consumers.
 - Exact target for the next iteration: continue Step 4 past
-  the landed backend-owned call-structure cleanup into the remaining shared
-  backend analysis/state-tracking consumers that still read `LirCallOp`
-  compatibility text directly instead of consuming one shared typed call view.
+  the landed backend-owned shared call operand migration into the remaining
+  LIR-side construction/printing seams that still stitch together call
+  compatibility text directly instead of consuming one shared structured call
+  view end to end.
 - Iteration focus: continue Step 4 in
-  `src/backend/liveness.cpp`,
-  `src/backend/stack_layout/analysis.cpp`,
-  `src/backend/stack_layout/alloca_coalescing.cpp`, and
-  `src/backend/stack_layout/slot_assignment.cpp` so the remaining backend
-  call-adjacent state tracking can stop depending on raw call compatibility
-  fields as its primary ingestion surface.
+  `src/codegen/lir/stmt_emitter.cpp`,
+  `src/codegen/lir/lir_printer.cpp`, and any adjacent LIR-side call helpers so
+  structured typed call metadata, including indirect callees and rewritten
+  operands, can flow through one shared formatter/parser seam without each site
+  rebuilding `callee_type_suffix` / `args_str` handling.
 - Exact target for the next iteration after this slice: continue Step 4 into
   the remaining LIR-side call paths that still stitch together callee,
   parameter, and argument text instead of consuming one shared structured call
@@ -190,6 +190,16 @@ Source Plan: plan.md
   callee-only and typed-argument helpers, and added focused helper regression
   coverage in `tests/backend/backend_lir_adapter_tests.cpp` for zero-arg and
   single-operand call-crossing direct-call parsing.
+- Completed the next Step 4 shared backend analysis/state-tracking call slice
+  by adding `collect_lir_value_names_from_call(...)` and
+  `rewrite_lir_call_operands(...)` to `src/codegen/lir/call_args.hpp`, routing
+  `src/backend/liveness.cpp`,
+  `src/backend/stack_layout/analysis.cpp`,
+  `src/backend/stack_layout/alloca_coalescing.cpp`, and
+  `src/backend/stack_layout/slot_assignment.cpp` through that shared full-call
+  seam instead of open-coding `callee` plus `args_str` handling, and adding
+  focused regression coverage in `tests/backend/backend_lir_adapter_tests.cpp`
+  for indirect-callee call value collection and full-call operand rewriting.
 
 ## Notes
 
@@ -258,6 +268,15 @@ Source Plan: plan.md
 - `src/codegen/lir/call_args.hpp` now also exposes structured typed-call views
   for parameter lists and decoded argument `(type, operand)` pairs, so backend
   consumers can prove typed-call compatibility without reimplementing
+  parsing, plus shared full-call collection/rewrite helpers for the residual
+  backend analysis/state-tracking sites that still had to touch `callee` and
+  `args_str` together.
+- Regression status for this slice:
+  `backend_lir_adapter_tests` passes, the current full `ctest --test-dir build
+  -j8 --output-on-failure` run still ends in the repo's known x86 backend
+  fallback cluster, and the checked failure logs remain monotonic
+  (`test_fail_before.log`: 189 failing tests, `test_fail_after.log`: 188
+  failing tests).
   ad hoc suffix/argument parsing or exact-text comparisons.
 - `src/codegen/lir/call_args.hpp` now also exposes shared helper entry points
   for owning parsed typed-call arguments and canonicalizing parameter-list

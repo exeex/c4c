@@ -119,9 +119,10 @@ void rewrite_inst_alloca_refs(c4c::codegen::lir::LirInst& inst, const Map& canon
         } else if constexpr (std::is_same_v<Op, c4c::codegen::lir::LirVaArgOp>) {
           rewrite_value_name(op.ap_ptr, canonical_names);
         } else if constexpr (std::is_same_v<Op, c4c::codegen::lir::LirCallOp>) {
-          rewrite_value_name(op.callee, canonical_names);
-          op.args_str = c4c::codegen::lir::rewrite_lir_call_args(
-              op.args_str, [&](std::string_view operand) -> std::optional<std::string_view> {
+          c4c::codegen::lir::rewrite_lir_call_operands(
+              op.callee.str(),
+              op.args_str,
+              [&](std::string_view operand) -> std::optional<std::string_view> {
                 const auto it = canonical_names.find(std::string(operand));
                 if (it == canonical_names.end()) {
                   return std::nullopt;

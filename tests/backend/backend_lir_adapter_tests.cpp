@@ -155,6 +155,43 @@ void test_lir_call_arg_helpers_collect_value_names() {
               "typed call-arg value collection should keep direct operands and nested expression operands");
 }
 
+void test_lir_call_arg_helpers_collect_full_call_value_names() {
+  using namespace c4c::codegen::lir;
+
+  std::vector<std::string> values;
+  collect_lir_value_names_from_call(
+      "%fp",
+      "ptr byval({ i32, i32 }) align 8 %agg, ptr getelementptr inbounds "
+      "([2 x i32], ptr %lv.buf, i64 0, i64 1), i32 %t0",
+      values);
+
+  expect_true(values.size() == 4 && values[0] == "%fp" && values[1] == "%agg" &&
+                  values[2] == "%lv.buf" && values[3] == "%t0",
+              "shared full-call value collection should preserve indirect callees and typed argument operands");
+}
+
+void test_lir_call_arg_helpers_rewrite_full_call_operands() {
+  using namespace c4c::codegen::lir;
+
+  std::string callee = "%fp";
+  std::string args = "ptr %lv.buf, i32 %t0";
+  rewrite_lir_call_operands(
+      callee, args, [](std::string_view operand) -> std::optional<std::string_view> {
+        if (operand == "%fp") {
+          return std::string_view("%fp.coalesced");
+        }
+        if (operand == "%lv.buf") {
+          return std::string_view("%lv.buf.coalesced");
+        }
+        return std::nullopt;
+      });
+
+  expect_true(callee == "%fp.coalesced",
+              "shared full-call rewrite should rewrite indirect call operands through one helper");
+  expect_true(args == "ptr %lv.buf.coalesced, i32 %t0",
+              "shared full-call rewrite should rewrite typed call arguments without reimplementing arg parsing");
+}
+
 void test_lir_call_arg_helpers_decode_single_typed_operand() {
   using namespace c4c::codegen::lir;
 
@@ -8270,6 +8307,8 @@ int main() {
   test_lir_typed_wrappers_classify_basic_types();
   test_lir_call_arg_helpers_split_nested_typed_args();
   test_lir_call_arg_helpers_collect_value_names();
+  test_lir_call_arg_helpers_collect_full_call_value_names();
+  test_lir_call_arg_helpers_rewrite_full_call_operands();
   test_lir_call_arg_helpers_decode_single_typed_operand();
   test_lir_call_arg_helpers_decode_two_typed_operands();
   test_lir_call_arg_helpers_classify_call_callee_shape();

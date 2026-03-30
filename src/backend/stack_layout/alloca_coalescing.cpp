@@ -94,9 +94,11 @@ struct AllocaEscapeAnalysis {
     }
   }
 
-  void mark_escaped_call_args(std::string_view args_str, std::size_t block_index) {
+  void mark_escaped_call(std::string_view callee,
+                         std::string_view args_str,
+                         std::size_t block_index) {
     std::vector<std::string> values;
-    c4c::codegen::lir::collect_lir_value_names_from_call_args(args_str, values);
+    c4c::codegen::lir::collect_lir_value_names_from_call(callee, args_str, values);
     for (const auto& value_name : values) {
       mark_escaped(value_name, block_index);
     }
@@ -121,10 +123,7 @@ struct AllocaEscapeAnalysis {
           using T = std::decay_t<decltype(op)>;
 
           if constexpr (std::is_same_v<T, LirCallOp>) {
-            if (is_value_name(op.callee)) {
-              mark_escaped(op.callee, block_index);
-            }
-            mark_escaped_call_args(op.args_str, block_index);
+            mark_escaped_call(op.callee, op.args_str, block_index);
           } else if constexpr (std::is_same_v<T, LirStoreOp>) {
             mark_escaped(op.val, block_index);
             record_use(op.ptr, block_index);

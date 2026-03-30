@@ -161,8 +161,8 @@ std::vector<std::string> used_names_for_inst(const LirInst& inst) {
             add_text(index);
           }
         } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirCallOp>) {
-          add_text(op.callee);
-          c4c::codegen::lir::collect_lir_value_names_from_call_args(op.args_str, values);
+          c4c::codegen::lir::collect_lir_value_names_from_call(op.callee, op.args_str,
+                                                               values);
         } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirBinOp>) {
           add_text(op.lhs);
           add_text(op.rhs);
