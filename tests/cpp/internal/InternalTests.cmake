@@ -109,6 +109,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     friend_relational_operator_parse
     friend_spaceship_operator_parse
     if_condition_decl_parse
+    if_init_statement_decl_parse
     free_function_record_ref_param_parse
     iterator_concepts_following_hash_base_parse
     stl_iterator_then_max_size_type_parse

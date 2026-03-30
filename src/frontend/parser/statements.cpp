@@ -256,7 +256,10 @@ Node* Parser::parse_stmt() {
             auto can_start_if_condition_decl = [&]() -> bool {
                 if (!is_cpp_mode()) return false;
                 TokenKind k = cur().kind;
-                if (is_type_kw(k) || is_qualifier(k) || is_storage_class(k)) return true;
+                if (is_type_kw(k) || is_qualifier(k) || is_storage_class(k) ||
+                    k == TokenKind::KwAuto) {
+                    return true;
+                }
                 if (k == TokenKind::KwConstexpr || k == TokenKind::KwConsteval ||
                     k == TokenKind::KwAttribute || k == TokenKind::KwAlignas) {
                     return true;
@@ -268,7 +271,8 @@ Node* Parser::parse_stmt() {
                 return typedef_types_.count(resolve_visible_type_name(cur().lexeme)) > 0;
             };
 
-            auto parse_if_condition_decl = [&]() -> Node* {
+            auto parse_if_condition_decl = [&](Node** out_condition) -> Node* {
+                if (out_condition) *out_condition = nullptr;
                 if (!can_start_if_condition_decl()) return nullptr;
 
                 const int saved_pos = pos_;
@@ -297,6 +301,16 @@ Node* Parser::parse_stmt() {
                         init_node = parse_initializer();
                     }
 
+                    Node* cond_expr = nullptr;
+                    if (is_cpp_mode() && match(TokenKind::Semi)) {
+                        if (check(TokenKind::RParen)) {
+                            pos_ = saved_pos;
+                            var_types_ = saved_var_types;
+                            return nullptr;
+                        }
+                        cond_expr = parse_expr();
+                    }
+
                     if (!check(TokenKind::RParen)) {
                         pos_ = saved_pos;
                         var_types_ = saved_var_types;
@@ -308,6 +322,7 @@ Node* Parser::parse_stmt() {
                     decl->name = vname;
                     decl->init = init_node;
                     var_types_[vname] = ts;
+                    if (out_condition) *out_condition = cond_expr;
                     return decl;
                 } catch (const std::exception&) {
                     pos_ = saved_pos;
@@ -316,10 +331,11 @@ Node* Parser::parse_stmt() {
                 }
             };
 
-            Node* cond_decl = parse_if_condition_decl();
+            Node* cond_expr = nullptr;
+            Node* cond_decl = parse_if_condition_decl(&cond_expr);
             Node* cnd = nullptr;
             if (cond_decl) {
-                cnd = make_var(cond_decl->name, cond_decl->line);
+                cnd = cond_expr ? cond_expr : make_var(cond_decl->name, cond_decl->line);
             } else {
                 cnd = parse_expr();
             }
