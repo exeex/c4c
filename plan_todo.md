@@ -8,11 +8,21 @@ Source Plan: plan.md
 
 - Step 2: Define the backend-owned IR model.
 - Exact target for the next iteration: extend `src/backend/ir.*` past the
-  current single-block global/string/memory subset into the first explicit
-  multi-block control-flow slice, so backend-owned IR can cover another
-  still-fallback-only branch/label pattern now that the bounded scalar
-  store-reload memory seam is lowered directly.
+  current bounded compare-and-branch return slice into the next explicit
+  multi-block control-flow seam with a join or loop backedge, so backend-owned
+  IR can move beyond terminal two-way returns and start retiring another
+  still-fallback-only branch/label pattern.
 - Resume notes:
+  - backend-owned IR now carries an explicit compare instruction plus
+    conditional-branch terminator, and the bounded three-block
+    compare/branch/return slice lowers directly into backend-owned IR instead
+    of remaining legacy-LIR-only in backend emitters
+  - both x86 and AArch64 now accept that lowered conditional-return slice
+    directly from explicit backend IR inputs instead of routing through legacy
+    LIR fallback
+  - the next highest-value control-flow seam is no longer terminal compare and
+    return; the follow-on slice should introduce an explicit join or loop
+    branch pattern that still depends on legacy block wiring today
   - backend-owned scalar global stores now have an explicit instruction form in
     `src/backend/ir.hpp`, and the bounded `store @global; load @global; ret`
     slice lowers directly into backend-owned IR instead of preserving raw LIR
@@ -178,3 +188,23 @@ Source Plan: plan.md
   `test_after.log`: `93% tests passed`, `183 tests failed out of 2560`
   (2377 passing), matching the current recorded runbook baseline with no
   pass-count regression.
+- Completed an additional Step 2 multi-block control-flow slice:
+  - extended `src/backend/ir.hpp` with a backend-owned compare instruction and
+    conditional-branch terminator contract so backend IR can represent the
+    bounded three-block compare/branch/return seam directly
+  - updated `src/backend/ir_printer.cpp` and `src/backend/ir_validate.cpp` to
+    render and validate explicit backend-owned conditional control flow
+  - taught `src/backend/lir_adapter.cpp` to lower the bounded
+    compare/branch/return shape into backend-owned IR instead of leaving it on
+    legacy LIR-only emitter pattern matching
+  - updated `src/backend/x86/codegen/emit.cpp` and
+    `src/backend/aarch64/codegen/emit.cpp` so explicit backend IR inputs can
+    emit the lowered conditional-return slice directly
+  - added focused backend tests covering lowered conditional-return printing,
+    validation, x86 explicit-backend-IR emission, and AArch64
+    explicit-backend-IR emission
+- Verified the current post-change full-suite regression status in
+  `test_fail_after.log`: `93% tests passed`, `183 tests failed out of 2560`
+  (2377 passing), improving the checked `test_fail_before.log` baseline
+  (`189` failing / `2371` passing) by 6 passing tests with no newly failing
+  tests.

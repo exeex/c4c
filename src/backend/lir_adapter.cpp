@@ -285,6 +285,23 @@ bool has_cmp_predicate(const LirCmpOp& cmp, LirCmpPredicate predicate) {
   return cmp.predicate.typed() == predicate;
 }
 
+std::optional<BackendComparePredicate> adapt_compare_predicate(
+    const LirCmpPredicate predicate) {
+  switch (predicate) {
+    case LirCmpPredicate::Slt: return BackendComparePredicate::Slt;
+    case LirCmpPredicate::Sle: return BackendComparePredicate::Sle;
+    case LirCmpPredicate::Sgt: return BackendComparePredicate::Sgt;
+    case LirCmpPredicate::Sge: return BackendComparePredicate::Sge;
+    case LirCmpPredicate::Eq: return BackendComparePredicate::Eq;
+    case LirCmpPredicate::Ne: return BackendComparePredicate::Ne;
+    case LirCmpPredicate::Ult: return BackendComparePredicate::Ult;
+    case LirCmpPredicate::Ule: return BackendComparePredicate::Ule;
+    case LirCmpPredicate::Ugt: return BackendComparePredicate::Ugt;
+    case LirCmpPredicate::Uge: return BackendComparePredicate::Uge;
+  }
+  return std::nullopt;
+}
+
 std::vector<std::string> own_backend_call_param_types(
     const c4c::codegen::lir::ParsedLirTypedCallView& parsed) {
   std::vector<std::string> param_types;
@@ -427,10 +444,91 @@ std::optional<BackendFunction> adapt_string_literal_char_function(
   return out;
 }
 
-BackendReturn adapt_terminator(const c4c::codegen::lir::LirTerminator& terminator) {
+BackendTerminator adapt_terminator(const c4c::codegen::lir::LirTerminator& terminator) {
   const auto* ret = std::get_if<c4c::codegen::lir::LirRet>(&terminator);
   if (!ret) fail_unsupported("non-return terminators");
   return BackendReturn{ret->value_str, ret->type_str};
+}
+
+std::optional<BackendFunction> adapt_conditional_return_function(
+    const c4c::codegen::lir::LirFunction& function,
+    const BackendFunctionSignature& signature) {
+  using namespace c4c::codegen::lir;
+
+  if (function.is_declaration || signature.linkage != "define" ||
+      signature.return_type != "i32" || signature.name != "main" ||
+      !signature.params.empty() || signature.is_vararg || function.entry.value != 0 ||
+      function.blocks.size() != 3 || !function.alloca_insts.empty() ||
+      !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks[0];
+  const auto& true_block = function.blocks[1];
+  const auto& false_block = function.blocks[2];
+  if (entry.label != "entry" || entry.insts.size() != 3 || !true_block.insts.empty() ||
+      !false_block.insts.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* cmp0 = std::get_if<LirCmpOp>(&entry.insts[0]);
+  const auto* cast = std::get_if<LirCastOp>(&entry.insts[1]);
+  const auto* cmp1 = std::get_if<LirCmpOp>(&entry.insts[2]);
+  const auto* condbr = std::get_if<LirCondBr>(&entry.terminator);
+  const auto cmp0_predicate = cmp0 == nullptr ? std::nullopt : cmp0->predicate.typed();
+  const auto cmp1_predicate = cmp1 == nullptr ? std::nullopt : cmp1->predicate.typed();
+  if (cmp0 == nullptr || cast == nullptr || cmp1 == nullptr || condbr == nullptr ||
+      cmp0->is_float || !cmp0_predicate.has_value() ||
+      !adapt_compare_predicate(*cmp0_predicate).has_value() || cmp0->type_str != "i32" ||
+      cast->kind != LirCastKind::ZExt || cast->from_type != "i1" ||
+      cast->operand != cmp0->result || cast->to_type != "i32" || cmp1->is_float ||
+      cmp1_predicate != LirCmpPredicate::Ne || cmp1->type_str != "i32" ||
+      cmp1->lhs != cast->result || cmp1->rhs != "0" || condbr->cond_name != cmp1->result ||
+      true_block.label != condbr->true_label || false_block.label != condbr->false_label) {
+    return std::nullopt;
+  }
+
+  const auto* true_ret = std::get_if<LirRet>(&true_block.terminator);
+  const auto* false_ret = std::get_if<LirRet>(&false_block.terminator);
+  if (true_ret == nullptr || false_ret == nullptr || !true_ret->value_str.has_value() ||
+      !false_ret->value_str.has_value() || true_ret->type_str != "i32" ||
+      false_ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  if (!parse_i64(cmp0->lhs).has_value() || !parse_i64(cmp0->rhs).has_value() ||
+      !parse_i64(*true_ret->value_str).has_value() ||
+      !parse_i64(*false_ret->value_str).has_value()) {
+    return std::nullopt;
+  }
+
+  BackendFunction out;
+  out.signature = signature;
+
+  BackendBlock out_entry;
+  out_entry.label = entry.label;
+  out_entry.insts.push_back(BackendCompareInst{
+      *adapt_compare_predicate(*cmp0_predicate),
+      cmp0->result,
+      "i32",
+      cmp0->lhs,
+      cmp0->rhs,
+  });
+  out_entry.terminator =
+      BackendTerminator::make_cond_branch(cmp0->result, true_block.label, false_block.label);
+  out.blocks.push_back(std::move(out_entry));
+
+  BackendBlock out_true;
+  out_true.label = true_block.label;
+  out_true.terminator = BackendReturn{*true_ret->value_str, "i32"};
+  out.blocks.push_back(std::move(out_true));
+
+  BackendBlock out_false;
+  out_false.label = false_block.label;
+  out_false.terminator = BackendReturn{*false_ret->value_str, "i32"};
+  out.blocks.push_back(std::move(out_false));
+
+  return out;
 }
 
 std::optional<BackendFunction> adapt_single_param_add_function(
@@ -2169,6 +2267,10 @@ BackendFunction adapt_function(const c4c::codegen::lir::LirFunction& function,
     return *normalized;
   }
   if (const auto normalized = adapt_local_pointer_temp_return_function(function, signature);
+      normalized.has_value()) {
+    return *normalized;
+  }
+  if (const auto normalized = adapt_conditional_return_function(function, signature);
       normalized.has_value()) {
     return *normalized;
   }

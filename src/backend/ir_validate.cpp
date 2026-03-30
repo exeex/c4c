@@ -84,6 +84,19 @@ bool validate_inst(const BackendInst& inst, std::string* error, std::string_view
     return true;
   }
 
+  if (const auto* cmp = std::get_if<BackendCompareInst>(&inst)) {
+    if (cmp->result.empty()) {
+      return fail(error, std::string(context) + ": compare result must not be empty");
+    }
+    if (cmp->type_str.empty()) {
+      return fail(error, std::string(context) + ": compare type must not be empty");
+    }
+    if (cmp->lhs.empty() || cmp->rhs.empty()) {
+      return fail(error, std::string(context) + ": compare operands must not be empty");
+    }
+    return true;
+  }
+
   if (const auto* call = std::get_if<BackendCallInst>(&inst)) {
     if (call->return_type.empty()) {
       return fail(error, std::string(context) + ": call return type must not be empty");
@@ -163,16 +176,35 @@ bool validate_block(const BackendBlock& block, std::string* error, std::string_v
   if (block.label.empty()) {
     return fail(error, std::string(context) + ": block label must not be empty");
   }
-  if (block.terminator.type_str.empty()) {
-    return fail(error, std::string(context) + ": block terminator type must not be empty");
-  }
-  if (!block.terminator.value.has_value() && block.terminator.type_str != "void") {
-    return fail(error,
-                std::string(context) + ": void terminators must use type 'void'");
-  }
-  if (block.terminator.value.has_value() && block.terminator.type_str == "void") {
-    return fail(error,
-                std::string(context) + ": non-void terminators must not use type 'void'");
+  switch (block.terminator.kind) {
+    case BackendTerminatorKind::Return:
+      if (block.terminator.type_str.empty()) {
+        return fail(error, std::string(context) + ": block terminator type must not be empty");
+      }
+      if (!block.terminator.value.has_value() && block.terminator.type_str != "void") {
+        return fail(error,
+                    std::string(context) + ": void terminators must use type 'void'");
+      }
+      if (block.terminator.value.has_value() && block.terminator.type_str == "void") {
+        return fail(error,
+                    std::string(context) + ": non-void terminators must not use type 'void'");
+      }
+      break;
+    case BackendTerminatorKind::Branch:
+      if (block.terminator.target_label.empty()) {
+        return fail(error, std::string(context) + ": branch target label must not be empty");
+      }
+      break;
+    case BackendTerminatorKind::CondBranch:
+      if (block.terminator.cond_name.empty()) {
+        return fail(error, std::string(context) + ": conditional branch value must not be empty");
+      }
+      if (block.terminator.true_label.empty() || block.terminator.false_label.empty()) {
+        return fail(error,
+                    std::string(context) +
+                        ": conditional branch target labels must not be empty");
+      }
+      break;
   }
   for (std::size_t index = 0; index < block.insts.size(); ++index) {
     if (!validate_inst(block.insts[index],
@@ -211,6 +243,28 @@ bool validate_function(const BackendFunction& function,
                         error,
                         std::string(context) + ": block " + std::to_string(index))) {
       return false;
+    }
+  }
+
+  for (std::size_t index = 0; index < function.blocks.size(); ++index) {
+    const auto& terminator = function.blocks[index].terminator;
+    if (terminator.kind == BackendTerminatorKind::Branch &&
+        labels.find(terminator.target_label) == labels.end()) {
+      return fail(error,
+                  std::string(context) + ": block " + std::to_string(index) +
+                      " branches to unknown label '" + terminator.target_label + "'");
+    }
+    if (terminator.kind == BackendTerminatorKind::CondBranch) {
+      if (labels.find(terminator.true_label) == labels.end()) {
+        return fail(error,
+                    std::string(context) + ": block " + std::to_string(index) +
+                        " branches to unknown true label '" + terminator.true_label + "'");
+      }
+      if (labels.find(terminator.false_label) == labels.end()) {
+        return fail(error,
+                    std::string(context) + ": block " + std::to_string(index) +
+                        " branches to unknown false label '" + terminator.false_label + "'");
+      }
     }
   }
   return true;

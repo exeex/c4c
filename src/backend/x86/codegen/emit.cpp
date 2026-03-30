@@ -400,6 +400,74 @@ std::optional<std::int64_t> parse_minimal_return_sub_imm(
 }
 
 std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_slice(
+    const c4c::backend::BackendModule& module) {
+  if (module.functions.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration || function.signature.linkage != "define" ||
+      function.signature.return_type != "i32" || function.signature.name != "main" ||
+      !function.signature.params.empty() || function.signature.is_vararg ||
+      function.blocks.size() != 3) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks[0];
+  const auto& true_block = function.blocks[1];
+  const auto& false_block = function.blocks[2];
+  if (entry.label != "entry" || entry.insts.size() != 1 ||
+      entry.terminator.kind != c4c::backend::BackendTerminatorKind::CondBranch ||
+      true_block.label != entry.terminator.true_label ||
+      false_block.label != entry.terminator.false_label ||
+      !true_block.insts.empty() || !false_block.insts.empty() ||
+      true_block.terminator.kind != c4c::backend::BackendTerminatorKind::Return ||
+      false_block.terminator.kind != c4c::backend::BackendTerminatorKind::Return ||
+      !true_block.terminator.value.has_value() || !false_block.terminator.value.has_value() ||
+      true_block.terminator.type_str != "i32" || false_block.terminator.type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto* cmp = std::get_if<c4c::backend::BackendCompareInst>(&entry.insts.front());
+  if (cmp == nullptr || cmp->result != entry.terminator.cond_name || cmp->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto lhs_imm = parse_i64(cmp->lhs);
+  const auto rhs_imm = parse_i64(cmp->rhs);
+  const auto true_return_imm = parse_i64(*true_block.terminator.value);
+  const auto false_return_imm = parse_i64(*false_block.terminator.value);
+  if (!lhs_imm.has_value() || !rhs_imm.has_value() || !true_return_imm.has_value() ||
+      !false_return_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  using BackendPred = c4c::backend::BackendComparePredicate;
+  using LirPred = c4c::codegen::lir::LirCmpPredicate;
+  LirPred predicate = LirPred::Eq;
+  switch (cmp->predicate) {
+    case BackendPred::Slt: predicate = LirPred::Slt; break;
+    case BackendPred::Sle: predicate = LirPred::Sle; break;
+    case BackendPred::Sgt: predicate = LirPred::Sgt; break;
+    case BackendPred::Sge: predicate = LirPred::Sge; break;
+    case BackendPred::Eq: predicate = LirPred::Eq; break;
+    case BackendPred::Ne: predicate = LirPred::Ne; break;
+    case BackendPred::Ult: predicate = LirPred::Ult; break;
+    case BackendPred::Ule: predicate = LirPred::Ule; break;
+    case BackendPred::Ugt: predicate = LirPred::Ugt; break;
+    case BackendPred::Uge: predicate = LirPred::Uge; break;
+  }
+
+  return MinimalConditionalReturnSlice{predicate,
+                                       *lhs_imm,
+                                       *rhs_imm,
+                                       true_block.label,
+                                       false_block.label,
+                                       *true_return_imm,
+                                       *false_return_imm};
+}
+
+std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_slice(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
 
@@ -2675,6 +2743,10 @@ std::string emit_module(const c4c::backend::BackendModule& module,
       c4c::codegen::lir::LirModule scaffold_module;
       scaffold_module.target_triple = module.target_triple;
       return emit_minimal_string_literal_char_asm(scaffold_module, *slice);
+    }
+    if (const auto slice = parse_minimal_conditional_return_slice(module);
+        slice.has_value()) {
+      return emit_minimal_conditional_return_asm(module, *slice);
     }
     if (const auto slice = parse_minimal_direct_call_slice(module);
         slice.has_value()) {

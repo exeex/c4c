@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -48,8 +49,29 @@ enum class BackendBinaryOpcode {
   SRem,
 };
 
+enum class BackendComparePredicate {
+  Slt,
+  Sle,
+  Sgt,
+  Sge,
+  Eq,
+  Ne,
+  Ult,
+  Ule,
+  Ugt,
+  Uge,
+};
+
 struct BackendBinaryInst {
   BackendBinaryOpcode opcode = BackendBinaryOpcode::Add;
+  std::string result;
+  std::string type_str;
+  std::string lhs;
+  std::string rhs;
+};
+
+struct BackendCompareInst {
+  BackendComparePredicate predicate = BackendComparePredicate::Eq;
   std::string result;
   std::string type_str;
   std::string lhs;
@@ -102,6 +124,7 @@ struct BackendPtrDiffEqInst {
 };
 
 using BackendInst = std::variant<BackendBinaryInst,
+                                 BackendCompareInst,
                                  BackendCallInst,
                                  BackendLoadInst,
                                  BackendStoreInst,
@@ -112,10 +135,72 @@ struct BackendReturn {
   std::string type_str;
 };
 
+enum class BackendTerminatorKind {
+  Return,
+  Branch,
+  CondBranch,
+};
+
+struct BackendTerminator : BackendReturn {
+  BackendTerminatorKind kind = BackendTerminatorKind::Return;
+  std::string cond_name;
+  std::string true_label;
+  std::string false_label;
+  std::string target_label;
+
+  BackendTerminator() = default;
+
+  BackendTerminator(const BackendReturn& ret)
+      : BackendReturn(ret), kind(BackendTerminatorKind::Return) {}
+
+  BackendTerminator(BackendReturn&& ret)
+      : BackendReturn(std::move(ret)), kind(BackendTerminatorKind::Return) {}
+
+  BackendTerminator& operator=(const BackendReturn& ret) {
+    static_cast<BackendReturn&>(*this) = ret;
+    kind = BackendTerminatorKind::Return;
+    cond_name.clear();
+    true_label.clear();
+    false_label.clear();
+    target_label.clear();
+    return *this;
+  }
+
+  BackendTerminator& operator=(BackendReturn&& ret) {
+    static_cast<BackendReturn&>(*this) = std::move(ret);
+    kind = BackendTerminatorKind::Return;
+    cond_name.clear();
+    true_label.clear();
+    false_label.clear();
+    target_label.clear();
+    return *this;
+  }
+
+  static BackendTerminator make_branch(std::string target) {
+    BackendTerminator terminator;
+    terminator.kind = BackendTerminatorKind::Branch;
+    terminator.type_str = "void";
+    terminator.target_label = std::move(target);
+    return terminator;
+  }
+
+  static BackendTerminator make_cond_branch(std::string cond,
+                                            std::string true_target,
+                                            std::string false_target) {
+    BackendTerminator terminator;
+    terminator.kind = BackendTerminatorKind::CondBranch;
+    terminator.type_str = "void";
+    terminator.cond_name = std::move(cond);
+    terminator.true_label = std::move(true_target);
+    terminator.false_label = std::move(false_target);
+    return terminator;
+  }
+};
+
 struct BackendBlock {
   std::string label;
   std::vector<BackendInst> insts;
-  BackendReturn terminator;
+  BackendTerminator terminator;
 };
 
 struct BackendFunction {
@@ -134,5 +219,6 @@ struct BackendModule {
 };
 
 const char* backend_binary_opcode_name(BackendBinaryOpcode opcode);
+const char* backend_compare_predicate_name(BackendComparePredicate predicate);
 
 }  // namespace c4c::backend

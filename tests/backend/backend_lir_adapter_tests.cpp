@@ -4671,6 +4671,30 @@ void test_backend_ir_validator_accepts_lowered_global_store_reload_slice() {
               "backend IR validator should not report an error for valid lowered scalar global stores");
 }
 
+void test_backend_ir_printer_renders_lowered_conditional_return_slice() {
+  const auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_return_module());
+  const auto rendered = c4c::backend::print_backend_ir(lowered);
+
+  expect_contains(rendered, "%t0 = icmp slt i32 2, 3",
+                  "backend IR printer should render the lowered compare for the conditional-return slice");
+  expect_contains(rendered, "br i1 %t0, label %then, label %else",
+                  "backend IR printer should render the lowered conditional branch");
+  expect_contains(rendered, "then:\n  ret i32 0",
+                  "backend IR printer should preserve the lowered then return block");
+  expect_contains(rendered, "else:\n  ret i32 1",
+                  "backend IR printer should preserve the lowered else return block");
+}
+
+void test_backend_ir_validator_accepts_lowered_conditional_return_slice() {
+  const auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_return_module());
+  std::string error;
+
+  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should accept lowered conditional-return control-flow slices");
+  expect_true(error.empty(),
+              "backend IR validator should not report an error for valid lowered conditional-return slices");
+}
+
 void test_backend_ir_printer_renders_lowered_string_literal_char_slice() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_string_literal_char_module());
   const auto rendered = c4c::backend::print_backend_ir(lowered);
@@ -5381,6 +5405,22 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_global_int_pointer_diff_
                   "x86 backend seam should lower the explicit backend-IR int pointer-difference scaling directly");
   expect_not_contains(rendered, "target triple =",
                       "x86 backend seam should not fall back to backend IR text for lowered int pointer differences");
+}
+
+void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_return_ir_input() {
+  auto module = make_conditional_return_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, "  cmp eax, 3\n",
+                  "x86 backend seam should lower explicit backend-IR conditional compares directly");
+  expect_contains(rendered, "  jge .Lelse\n",
+                  "x86 backend seam should branch on the explicit backend-IR conditional terminator");
+  expect_not_contains(rendered, "br i1",
+                      "x86 backend seam should not fall back to backend IR text for lowered conditional branches");
 }
 
 void test_x86_backend_scaffold_renders_direct_return_immediate_slice() {
@@ -7353,6 +7393,20 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_global_int_pointer_d
                   "aarch64 backend seam should lower the explicit backend-IR int pointer-difference scaling directly");
   expect_not_contains(rendered, "target triple =",
                       "aarch64 backend seam should not fall back to backend IR text for lowered int pointer differences");
+}
+
+void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_return_ir_input() {
+  const auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_return_module());
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  expect_contains(rendered, "  cmp w8, #3\n",
+                  "aarch64 backend seam should lower explicit backend-IR conditional compares directly");
+  expect_contains(rendered, "  b.ge .Lelse\n",
+                  "aarch64 backend seam should branch on the explicit backend-IR conditional terminator");
+  expect_not_contains(rendered, "br i1",
+                      "aarch64 backend seam should not fall back to backend IR text for lowered conditional branches");
 }
 
 void test_aarch64_backend_renders_extern_global_array_slice() {
@@ -9343,11 +9397,14 @@ int main() {
   test_x86_backend_scaffold_accepts_explicit_lowered_extern_decl_ir_input();
   test_x86_backend_scaffold_accepts_explicit_lowered_global_load_ir_input();
   test_x86_backend_scaffold_accepts_explicit_lowered_global_store_reload_ir_input();
+  test_backend_ir_printer_renders_lowered_conditional_return_slice();
+  test_backend_ir_validator_accepts_lowered_conditional_return_slice();
   test_x86_backend_scaffold_accepts_explicit_lowered_string_literal_ir_input();
   test_x86_backend_scaffold_accepts_explicit_lowered_extern_global_array_ir_input();
   test_x86_backend_scaffold_accepts_explicit_lowered_global_int_pointer_roundtrip_ir_input();
   test_x86_backend_scaffold_accepts_explicit_lowered_global_char_pointer_diff_ir_input();
   test_x86_backend_scaffold_accepts_explicit_lowered_global_int_pointer_diff_ir_input();
+  test_x86_backend_scaffold_accepts_explicit_lowered_conditional_return_ir_input();
   test_x86_backend_scaffold_renders_direct_return_immediate_slice();
   test_x86_backend_scaffold_renders_direct_return_sub_immediate_slice();
   test_x86_backend_renders_local_temp_sub_slice();
@@ -9454,6 +9511,7 @@ int main() {
   test_aarch64_backend_scaffold_accepts_explicit_lowered_global_int_pointer_roundtrip_ir_input();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_global_char_pointer_diff_ir_input();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_global_int_pointer_diff_ir_input();
+  test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_return_ir_input();
   test_aarch64_backend_renders_extern_global_array_slice();
   test_aarch64_backend_renders_global_char_pointer_diff_slice();
   test_aarch64_backend_renders_global_char_pointer_diff_slice_from_typed_ops();

@@ -75,6 +75,13 @@ void render_inst(std::ostringstream& out, const BackendInst& inst) {
     return;
   }
 
+  if (const auto* cmp = std::get_if<BackendCompareInst>(&inst)) {
+    out << "  " << cmp->result << " = icmp "
+        << backend_compare_predicate_name(cmp->predicate) << " "
+        << cmp->type_str << " " << cmp->lhs << ", " << cmp->rhs << "\n";
+    return;
+  }
+
   const auto* call = std::get_if<BackendCallInst>(&inst);
   if (call == nullptr) {
     const auto* load = std::get_if<BackendLoadInst>(&inst);
@@ -155,11 +162,23 @@ void render_function(std::ostringstream& out, const BackendFunction& function) {
     for (const auto& inst : block.insts) {
       render_inst(out, inst);
     }
-    if (block.terminator.value.has_value()) {
-      out << "  ret " << block.terminator.type_str << " "
-          << *block.terminator.value << "\n";
-    } else {
-      out << "  ret void\n";
+    switch (block.terminator.kind) {
+      case BackendTerminatorKind::Return:
+        if (block.terminator.value.has_value()) {
+          out << "  ret " << block.terminator.type_str << " "
+              << *block.terminator.value << "\n";
+        } else {
+          out << "  ret void\n";
+        }
+        break;
+      case BackendTerminatorKind::Branch:
+        out << "  br label %" << block.terminator.target_label << "\n";
+        break;
+      case BackendTerminatorKind::CondBranch:
+        out << "  br i1 " << block.terminator.cond_name << ", label %"
+            << block.terminator.true_label << ", label %"
+            << block.terminator.false_label << "\n";
+        break;
     }
   }
   out << "}\n\n";
