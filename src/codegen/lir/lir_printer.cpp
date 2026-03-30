@@ -1,4 +1,5 @@
 #include "lir_printer.hpp"
+#include "call_args.hpp"
 #include "verify.hpp"
 #include "../shared/llvm_helpers.hpp"
 
@@ -220,12 +221,12 @@ void render_inst(std::ostringstream& os, const LirInst& inst) {
          << " = ";
     }
     os << "call " << require_type_ref(op->return_type, "LirCallOp.return_type", true) << " ";
-    if (!op->callee_type_suffix.empty()) {
-      os << op->callee_type_suffix << " ";
-    }
-    os << require_operand_kind(op->callee, "LirCallOp.callee",
-                               {LirOperandKind::SsaValue, LirOperandKind::Global})
-       << "(" << op->args_str << ")\n";
+    os << format_lir_call_site(
+              require_operand_kind(op->callee, "LirCallOp.callee",
+                                   {LirOperandKind::SsaValue, LirOperandKind::Global}),
+              op->callee_type_suffix,
+              op->args_str)
+       << "\n";
   } else if (const auto* op = std::get_if<LirBinOp>(&inst)) {
     os << "  "
        << require_operand_kind(op->result, "LirBinOp.result",

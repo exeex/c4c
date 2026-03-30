@@ -34,6 +34,11 @@ struct OwnedLirTypedCallArg {
   std::string operand;
 };
 
+struct FormattedLirTypedCall {
+  std::string callee_type_suffix;
+  std::string args_str;
+};
+
 struct ParsedLirTypedCallView {
   std::vector<std::string_view> param_types;
   std::vector<LirTypedCallArgView> args;
@@ -301,6 +306,19 @@ inline std::string format_lir_call_param_types(
   return formatted;
 }
 
+inline FormattedLirTypedCall format_lir_typed_call(
+    const std::vector<OwnedLirTypedCallArg>& args) {
+  std::vector<std::string_view> param_types;
+  param_types.reserve(args.size());
+  for (const auto& arg : args) {
+    param_types.push_back(arg.type);
+  }
+  return {
+      format_lir_call_param_types(param_types),
+      format_lir_typed_call_args(args),
+  };
+}
+
 inline std::optional<ParsedLirTypedCallView> parse_lir_typed_call(
     std::string_view callee_type_suffix,
     std::string_view args_str) {
@@ -542,6 +560,46 @@ inline void rewrite_lir_call_operands(std::string& callee,
     callee = std::string(*rewritten_callee);
   }
   args_str = rewrite_lir_call_args(args_str, std::forward<Fn>(rewrite_operand));
+}
+
+inline std::string format_lir_call_site(std::string_view callee,
+                                        std::string_view callee_type_suffix,
+                                        std::string_view args_str) {
+  std::string formatted;
+  const auto trimmed_callee = trim_lir_arg_text(callee);
+
+  if (const auto parsed = parse_lir_typed_call(callee_type_suffix, args_str);
+      parsed.has_value()) {
+    const auto typed_call = format_lir_typed_call(own_lir_typed_call_args(*parsed));
+    if (!typed_call.callee_type_suffix.empty()) {
+      formatted += typed_call.callee_type_suffix;
+      formatted.push_back(' ');
+    }
+    formatted += trimmed_callee;
+    formatted.push_back('(');
+    formatted += typed_call.args_str;
+    formatted.push_back(')');
+    return formatted;
+  }
+
+  const auto trimmed_suffix = trim_lir_arg_text(callee_type_suffix);
+  if (!trimmed_suffix.empty()) {
+    formatted += trimmed_suffix;
+    formatted.push_back(' ');
+  }
+  formatted += trimmed_callee;
+  formatted.push_back('(');
+
+  if (const auto parsed_args = parse_lir_typed_call_args(args_str);
+      parsed_args.has_value()) {
+    formatted += format_lir_typed_call_args(own_lir_typed_call_args(
+        ParsedLirTypedCallView{{}, *parsed_args}));
+  } else {
+    formatted += args_str;
+  }
+
+  formatted.push_back(')');
+  return formatted;
 }
 
 }  // namespace c4c::codegen::lir

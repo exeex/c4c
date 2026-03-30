@@ -306,6 +306,23 @@ void test_lir_call_arg_helpers_format_typed_call_round_trip() {
               "shared typed-call formatting should preserve the original operands");
 }
 
+void test_lir_call_arg_helpers_format_full_call_site_round_trip() {
+  using namespace c4c::codegen::lir;
+
+  const std::vector<OwnedLirTypedCallArg> args{
+      {"ptr", "%base"},
+      {"i32", "%idx"},
+  };
+  const auto typed_call = format_lir_typed_call(args);
+  const auto formatted = format_lir_call_site(
+      " %fn.ptr ",
+      std::string("  ") + typed_call.callee_type_suffix + " ",
+      std::string("  ") + typed_call.args_str + " ");
+
+  expect_true(formatted == "(ptr, i32) %fn.ptr(ptr %base, i32 %idx)",
+              "shared full-call formatter should canonicalize typed indirect-call suffix and args");
+}
+
 void test_backend_call_helpers_decode_structured_direct_global_call() {
   c4c::backend::BackendCallInst call{
       "%t0",
@@ -371,6 +388,29 @@ void test_lir_printer_renders_verified_typed_ops() {
                   "printer should render typed binary opcodes through verifier-backed helpers");
   expect_contains(rendered, "%t1 = icmp slt i32 %t0, 9",
                   "printer should render typed cmp predicates through verifier-backed helpers");
+}
+
+void test_lir_printer_canonicalizes_typed_call_surface() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{"%t0", "i32", "%fn.ptr", " ( ptr , i32 ) ",
+                                  "  ptr   %base ,   i32 %idx  "});
+  entry.terminator = LirRet{std::string("%t0"), "i32"};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  const auto rendered = print_llvm(module);
+  expect_contains(rendered, "%t0 = call i32 (ptr, i32) %fn.ptr(ptr %base, i32 %idx)",
+                  "printer should route typed call rendering through the shared full-call formatter");
 }
 
 void test_lir_printer_rejects_malformed_typed_binary_surface() {
@@ -8315,10 +8355,12 @@ int main() {
   test_lir_call_arg_helpers_decode_direct_global_typed_call();
   test_lir_call_arg_helpers_decode_zero_arg_and_call_crossing_direct_calls();
   test_lir_call_arg_helpers_format_typed_call_round_trip();
+  test_lir_call_arg_helpers_format_full_call_site_round_trip();
   test_backend_call_helpers_decode_structured_direct_global_call();
   test_lir_typed_wrappers_preserve_legacy_opcode_and_predicate_strings();
   test_lir_typed_wrappers_leave_unknown_opcode_text_compatible();
   test_lir_printer_renders_verified_typed_ops();
+  test_lir_printer_canonicalizes_typed_call_surface();
   test_lir_printer_rejects_malformed_typed_binary_surface();
   test_adapts_direct_return();
   test_renders_return_add();

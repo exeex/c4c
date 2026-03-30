@@ -19,13 +19,23 @@ Source Plan: plan.md
   operands, can flow through one shared formatter/parser seam without each site
   rebuilding `callee_type_suffix` / `args_str` handling.
 - Exact target for the next iteration after this slice: continue Step 4 into
-  the remaining LIR-side call paths that still stitch together callee,
-  parameter, and argument text instead of consuming one shared structured call
-  view end to end, especially any residual printer or serialization seams that
-  still treat typed call metadata as ad hoc text.
+  the remaining LIR-side call and serialization paths that still treat typed
+  call metadata as ad hoc text, especially any residual `LirCallOp`
+  construction or persistence seams outside the shared formatter/parser helper
+  layer.
 
 ## Completed Items
 
+- Completed the next Step 4 LIR-side shared call-formatting slice by adding
+  `FormattedLirTypedCall`, `format_lir_typed_call(...)`, and
+  `format_lir_call_site(...)` to `src/codegen/lir/call_args.hpp`, routing
+  `src/codegen/lir/lir_printer.cpp` through the shared full-call formatter for
+  canonical typed indirect-call rendering, replacing the remaining builtin and
+  intrinsic typed-call argument string stitching in
+  `src/codegen/lir/stmt_emitter.cpp` with shared structured call formatting,
+  and adding focused regression coverage in
+  `tests/backend/backend_lir_adapter_tests.cpp` for full-call helper
+  round-tripping plus canonical printer output.
 - Completed the next Step 4 backend-owned call representation cleanup slice by
   replacing `src/backend/lir_adapter.hpp`'s raw `BackendCallInst`
   `callee_type_suffix` / `args_str` storage with structured owned parameter and

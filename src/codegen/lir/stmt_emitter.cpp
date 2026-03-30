@@ -3539,8 +3539,9 @@ std::string StmtEmitter::narrow_builtin_int_result(FnCtx& ctx,
 std::string StmtEmitter::emit_builtin_ffs_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id) {
     const PreparedBuiltinIntArg arg = prepare_builtin_int_arg(ctx, arg_id, builtin_id);
     const std::string cttz = fresh_tmp(ctx);
+    const auto cttz_call = format_lir_typed_call({{arg.llvm_ty, arg.value}, {"i1", "false"}});
     emit_lir_op(ctx, lir::LirCallOp{cttz, arg.llvm_ty, "@llvm.cttz." + arg.llvm_ty, "",
-                                    arg.llvm_ty + " " + arg.value + ", i1 false"});
+                                    cttz_call.args_str});
     const std::string plus1 = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirBinOp{plus1, "add", arg.llvm_ty, cttz, "1"});
     const std::string is_zero = fresh_tmp(ctx);
@@ -3553,16 +3554,18 @@ std::string StmtEmitter::emit_builtin_ffs_call(FnCtx& ctx, ExprId arg_id, Builti
 std::string StmtEmitter::emit_builtin_ctz_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id) {
     const PreparedBuiltinIntArg arg = prepare_builtin_int_arg(ctx, arg_id, builtin_id);
     const std::string tmp = fresh_tmp(ctx);
+    const auto typed_call = format_lir_typed_call({{arg.llvm_ty, arg.value}, {"i1", "true"}});
     emit_lir_op(ctx, lir::LirCallOp{tmp, arg.llvm_ty, "@llvm.cttz." + arg.llvm_ty, "",
-                                    arg.llvm_ty + " " + arg.value + ", i1 true"});
+                                    typed_call.args_str});
     return narrow_builtin_int_result(ctx, arg, tmp);
   }
 
 std::string StmtEmitter::emit_builtin_clz_call(FnCtx& ctx, ExprId arg_id, BuiltinId builtin_id) {
     const PreparedBuiltinIntArg arg = prepare_builtin_int_arg(ctx, arg_id, builtin_id);
     const std::string tmp = fresh_tmp(ctx);
+    const auto typed_call = format_lir_typed_call({{arg.llvm_ty, arg.value}, {"i1", "true"}});
     emit_lir_op(ctx, lir::LirCallOp{tmp, arg.llvm_ty, "@llvm.ctlz." + arg.llvm_ty, "",
-                                    arg.llvm_ty + " " + arg.value + ", i1 true"});
+                                    typed_call.args_str});
     return narrow_builtin_int_result(ctx, arg, tmp);
   }
 
@@ -3570,8 +3573,9 @@ std::string StmtEmitter::emit_builtin_popcount_call(FnCtx& ctx, ExprId arg_id,
                                                     BuiltinId builtin_id) {
     const PreparedBuiltinIntArg arg = prepare_builtin_int_arg(ctx, arg_id, builtin_id);
     const std::string tmp = fresh_tmp(ctx);
+    const auto typed_call = format_lir_typed_call({{arg.llvm_ty, arg.value}});
     emit_lir_op(ctx, lir::LirCallOp{tmp, arg.llvm_ty, "@llvm.ctpop." + arg.llvm_ty, "",
-                                    arg.llvm_ty + " " + arg.value});
+                                    typed_call.args_str});
     return narrow_builtin_int_result(ctx, arg, tmp);
   }
 
@@ -3579,8 +3583,9 @@ std::string StmtEmitter::emit_builtin_parity_call(FnCtx& ctx, ExprId arg_id,
                                                   BuiltinId builtin_id) {
     const PreparedBuiltinIntArg arg = prepare_builtin_int_arg(ctx, arg_id, builtin_id);
     const std::string pop = fresh_tmp(ctx);
+    const auto typed_call = format_lir_typed_call({{arg.llvm_ty, arg.value}});
     emit_lir_op(ctx, lir::LirCallOp{pop, arg.llvm_ty, "@llvm.ctpop." + arg.llvm_ty, "",
-                                    arg.llvm_ty + " " + arg.value});
+                                    typed_call.args_str});
     const std::string parity = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirBinOp{parity, "and", arg.llvm_ty, pop, "1"});
     return narrow_builtin_int_result(ctx, arg, parity);
@@ -3596,8 +3601,9 @@ std::string StmtEmitter::emit_builtin_clrsb_call(FnCtx& ctx, ExprId arg_id,
     const std::string xored = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirBinOp{xored, "xor", arg.llvm_ty, arg.value, shift});
     const std::string clz = fresh_tmp(ctx);
+    const auto clz_call = format_lir_typed_call({{arg.llvm_ty, xored}, {"i1", "false"}});
     emit_lir_op(ctx, lir::LirCallOp{clz, arg.llvm_ty, "@llvm.ctlz." + arg.llvm_ty, "",
-                                    arg.llvm_ty + " " + xored + ", i1 false"});
+                                    clz_call.args_str});
     const std::string sub1 = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirBinOp{sub1, "sub", arg.llvm_ty, clz, "1"});
     return narrow_builtin_int_result(ctx, arg, sub1);
@@ -3659,8 +3665,9 @@ std::string StmtEmitter::emit_builtin_isinf_call(FnCtx& ctx, ExprId arg_id) {
     const std::string fp_ty = llvm_ty(arg_ts);
     const std::string inf_val = fp_literal(arg_ts.base, std::numeric_limits<double>::infinity());
     const std::string abs_value = fresh_tmp(ctx);
+    const auto fabs_call = format_lir_typed_call({{fp_ty, arg}});
     emit_lir_op(ctx, lir::LirCallOp{abs_value, fp_ty, "@llvm.fabs." + fp_ty, "",
-                                    fp_ty + " " + arg});
+                                    fabs_call.args_str});
     return emit_builtin_fp_predicate_result(ctx, "oeq", fp_ty, abs_value, inf_val);
   }
 
@@ -3671,8 +3678,9 @@ std::string StmtEmitter::emit_builtin_isfinite_call(FnCtx& ctx, ExprId arg_id) {
     const std::string fp_ty = llvm_ty(arg_ts);
     const std::string inf_val = fp_literal(arg_ts.base, std::numeric_limits<double>::infinity());
     const std::string abs_value = fresh_tmp(ctx);
+    const auto fabs_call = format_lir_typed_call({{fp_ty, arg}});
     emit_lir_op(ctx, lir::LirCallOp{abs_value, fp_ty, "@llvm.fabs." + fp_ty, "",
-                                    fp_ty + " " + arg});
+                                    fabs_call.args_str});
     return emit_builtin_fp_predicate_result(ctx, "olt", fp_ty, abs_value, inf_val);
   }
 
@@ -3737,8 +3745,9 @@ std::string StmtEmitter::emit_builtin_copysign_call(FnCtx& ctx, const CallExpr& 
     }
 
     const std::string tmp = fresh_tmp(ctx);
+    const auto typed_call = format_lir_typed_call({{fp_ty, lhs}, {fp_ty, rhs}});
     emit_lir_op(ctx, lir::LirCallOp{tmp, fp_ty, intrinsic, "",
-                                    fp_ty + " " + lhs + ", " + fp_ty + " " + rhs});
+                                    typed_call.args_str});
     return tmp;
   }
 
@@ -3750,8 +3759,9 @@ std::string StmtEmitter::emit_builtin_fabs_call(FnCtx& ctx, ExprId arg_id,
 
     const std::string fp_ty = llvm_ty(arg_ts);
     const std::string tmp = fresh_tmp(ctx);
+    const auto typed_call = format_lir_typed_call({{fp_ty, arg}});
     emit_lir_op(ctx, lir::LirCallOp{tmp, fp_ty, "@llvm.fabs." + fp_ty, "",
-                                    fp_ty + " " + arg});
+                                    typed_call.args_str});
     return tmp;
   }
 
@@ -3971,8 +3981,9 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, con
         else op = is_signed ? "smul" : "umul";
         const std::string intrinsic = "@llvm." + op + ".with.overflow." + res_ty;
         const std::string pair = fresh_tmp(ctx);
+        const auto typed_call = format_lir_typed_call({{res_ty, a}, {res_ty, b}});
         emit_lir_op(ctx, lir::LirCallOp{pair, "{ " + res_ty + ", i1 }", intrinsic, "",
-                        res_ty + " " + a + ", " + res_ty + " " + b});
+                        typed_call.args_str});
         const std::string ovf_agg_ty = "{ " + res_ty + ", i1 }";
         const std::string val = fresh_tmp(ctx);
         emit_lir_op(ctx, lir::LirExtractValueOp{val, ovf_agg_ty, pair, 0});
@@ -3991,7 +4002,9 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const CallExpr& call, con
           const std::string aty = llvm_ty(arg_ts);
           const std::string intrinsic = "@llvm.bswap." + aty;
           const std::string tmp = fresh_tmp(ctx);
-          emit_lir_op(ctx, lir::LirCallOp{tmp, aty, intrinsic, "", aty + " " + arg});
+          const auto intrinsic_call = format_lir_typed_call({{aty, arg}});
+          emit_lir_op(ctx, lir::LirCallOp{tmp, aty, intrinsic, "",
+                                          intrinsic_call.args_str});
           return tmp;
         }
       }
