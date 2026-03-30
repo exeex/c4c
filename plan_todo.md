@@ -7,8 +7,9 @@ Last Updated: 2026-03-30
 
 ## Current Active Item
 
-- Step 4: stage the next `libc++` frontier after teaching builtin transform
-  traits such as `__remove_cv(...)` to participate in type parsing
+- Step 4: re-run the direct `libc++` `std::vector` repro after merging
+  `origin/main`, then reduce the first surviving parser frontier beyond
+  `__type_traits/common_reference.h`
 
 ## Todo
 
@@ -26,6 +27,14 @@ Last Updated: 2026-03-30
 - [x] Re-run the direct repro to confirm the next `libc++` frontier
 - [x] Validate the completed slice with targeted tests plus a monotonic
       full-suite comparison
+- [x] Reduce the contextual `max_size_type.h:564` failure to the smallest
+      committed internal testcase
+- [x] Implement the narrowest parser fix for the reduced `max_size_type`
+      frontier
+- [x] Re-run the direct `std::vector` repro to confirm the next post-
+      `max_size_type` frontier
+- [x] Validate the completed `max_size_type` slice with targeted tests plus a
+      monotonic full-suite comparison
 
 ## Completed
 
@@ -76,19 +85,26 @@ Last Updated: 2026-03-30
       confirmed the old `__type_traits/is_void.h:26` failure disappeared,
       leaving `/usr/include/c++/v1/__type_traits/common_reference.h:155` as the
       first surviving libc++ parser error
+- [x] Merged the latest `origin/main` parser work into this branch so the next
+      libc++ reduction happens on top of the current upstream baseline
 
 ## Next Intended Slice
 
-- Reduce the new first surviving parser failure in
-  `/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__type_traits/common_reference.h:155:59`
-  (`parse_top_level expected=LESS got='__apply'`) into one internal parse
-  testcase before changing parser code.
+- Re-run the direct `std::vector` repro on top of the merged tree and confirm
+  whether `/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__type_traits/common_reference.h:155:59`
+  (`parse_top_level expected=LESS got='__apply'`) is still the first surviving
+  parser failure.
+- If it is, reduce that frontier into one internal parse testcase before
+  changing parser code.
 
 ## Blockers
 
 - The next live frontier is now in later libc++ parser surfaces such as
   `__type_traits/common_reference.h`, `__ranges/size.h`, and
   `__algorithm/comp_ref_type.h`, but they are not reduced yet.
+- The fresh `origin/main` merge may have shifted the exact first surviving
+  libc++ failure, so the repro ordering needs to be reconfirmed before the next
+  parser edit.
 - Older GNU `libstdc++` blocker ordering in the source idea remains useful as
   history, but it is not the active execution frontier for this branch.
 
@@ -108,6 +124,9 @@ Last Updated: 2026-03-30
 - Builtin transform traits now work in `__is_same(...)` type-argument
   positions, which was enough to clear the `is_void.h` blocker and advance the
   libc++ path to `common_reference.h`.
+- `origin/main` brought in additional parser fixes and regressions from the GNU
+  bring-up branch; keep them as upstream baseline improvements, but do not let
+  them widen this branch's active plan beyond the current libc++ frontier.
 - Prefer shared parser or preprocessor compatibility fixes over libc++-specific
   hacks.
 - Do not reactivate backend umbrella work while this parser bring-up is active.

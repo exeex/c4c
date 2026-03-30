@@ -162,6 +162,7 @@ enum class TokenKind {
   BangEqual,             // !=
   LessEqual,             // <=
   GreaterEqual,          // >=
+  Spaceship,             // <=>
   AmpAmp,                // &&
   PipePipe,              // ||
   HashHash,              // ##

@@ -253,6 +253,7 @@ const char *token_kind_name(TokenKind kind) {
     case TokenKind::BangEqual:            return "BANG_EQUAL";
     case TokenKind::LessEqual:            return "LESS_EQUAL";
     case TokenKind::GreaterEqual:         return "GREATER_EQUAL";
+    case TokenKind::Spaceship:            return "SPACESHIP";
     case TokenKind::AmpAmp:               return "AMP_AMP";
     case TokenKind::PipePipe:             return "PIPE_PIPE";
     case TokenKind::HashHash:             return "HASH_HASH";

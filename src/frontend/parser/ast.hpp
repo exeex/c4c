@@ -128,6 +128,7 @@ enum OperatorKind {
     OP_GT,          // operator>
     OP_LE,          // operator<=
     OP_GE,          // operator>=
+    OP_SPACESHIP,   // operator<=>
 };
 
 // Return a canonical mangled suffix for an operator kind (e.g. "operator_subscript").

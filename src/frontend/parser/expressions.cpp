@@ -79,6 +79,7 @@ int Parser::bin_prec(TokenKind k) {
         case TokenKind::BangEqual:      return 9;
         case TokenKind::Less:
         case TokenKind::LessEqual:
+        case TokenKind::Spaceship:
         case TokenKind::Greater:
         case TokenKind::GreaterEqual:   return 10;
         case TokenKind::LessLess:
@@ -186,6 +187,7 @@ Node* Parser::parse_binary(int min_prec) {
             case TokenKind::BangEqual:        op = "!="; break;
             case TokenKind::Less:             op = "<";  break;
             case TokenKind::LessEqual:        op = "<="; break;
+            case TokenKind::Spaceship:        op = "<=>"; break;
             case TokenKind::Greater:          op = ">";  break;
             case TokenKind::GreaterEqual:     op = ">="; break;
             case TokenKind::AmpAmp:           op = "&&"; break;
@@ -671,6 +673,7 @@ bool Parser::try_parse_operator_function_id(std::string& out_name) {
     else if (match(TokenKind::Minus))          out_name = "operator_minus";
     else if (match(TokenKind::Assign))         out_name = "operator_assign";
     else if (match(TokenKind::LessEqual))      out_name = "operator_le";
+    else if (match(TokenKind::Spaceship))      out_name = "operator_spaceship";
     else if (match(TokenKind::GreaterEqual))   out_name = "operator_ge";
     else if (match(TokenKind::Less))           out_name = "operator_lt";
     else if (match(TokenKind::Greater))        out_name = "operator_gt";
@@ -1091,6 +1094,7 @@ Node* Parser::parse_primary() {
         // Check for cast: (type-name)expr
         if (is_type_start() && has_balanced_template_id_ahead()) {
             int save_pos = pos_;
+            std::vector<Token> saved_tokens = tokens_;
             TypeSpec cast_ts = parse_type_name();
             if (check(TokenKind::RParen)) {
                 // In C++ mode, check if this is really a cast or a parenthesized
@@ -1114,6 +1118,7 @@ Node* Parser::parse_primary() {
                             ak == TokenKind::Pipe || ak == TokenKind::Caret) {
                             // Not a cast — restore and parse as paren expression.
                             pos_ = save_pos;
+                            tokens_ = saved_tokens;
                             goto not_a_cast;
                         }
                     }
@@ -1145,6 +1150,7 @@ Node* Parser::parse_primary() {
             } else {
                 // Not a type name after all — restore and parse as expression
                 pos_ = save_pos;
+                tokens_ = saved_tokens;
             }
         }
 
@@ -1235,6 +1241,7 @@ Node* Parser::parse_primary() {
             if (!candidate_type_name.empty() &&
                 typedef_types_.count(candidate_type_name) > 0) {
                 pos_ = ident_start;
+                std::vector<Token> saved_tokens = tokens_;
                 std::string saved_typedef = last_resolved_typedef_;
                 TypeSpec cast_ts = parse_base_type();
                 while (check(TokenKind::Star)) {
@@ -1287,6 +1294,7 @@ Node* Parser::parse_primary() {
                     return parse_postfix(n);
                 }
                 pos_ = ident_start;
+                tokens_ = saved_tokens;
                 last_resolved_typedef_ = saved_typedef;
                 qn = parse_qualified_name(false);
             }
@@ -1531,7 +1539,9 @@ Node* Parser::parse_primary() {
                     if (is_cpp_mode() && check(TokenKind::Identifier) &&
                         pos_ + 2 < static_cast<int>(tokens_.size()) &&
                         tokens_[pos_ + 1].kind == TokenKind::ColonColon &&
-                        tokens_[pos_ + 2].kind == TokenKind::Identifier) {
+                        tokens_[pos_ + 2].kind == TokenKind::Identifier &&
+                        !(pos_ + 3 < static_cast<int>(tokens_.size()) &&
+                          tokens_[pos_ + 3].kind == TokenKind::Less)) {
                         QualifiedNameRef operand_name = parse_qualified_name(false);
                         std::string qualified_name;
                         int context_id = resolve_namespace_context(operand_name);

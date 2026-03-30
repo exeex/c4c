@@ -1299,6 +1299,7 @@ const char* operator_kind_mangled_name(OperatorKind ok) {
         case OP_GT:        return "operator_gt";
         case OP_LE:        return "operator_le";
         case OP_GE:        return "operator_ge";
+        case OP_SPACESHIP: return "operator_spaceship";
     }
     return nullptr;
 }
