@@ -308,60 +308,43 @@ std::optional<std::vector<BackendBinaryInst>> adapt_conditional_phi_join_predece
   if (block.insts.empty()) {
     return std::vector<BackendBinaryInst>{};
   }
-  if (block.insts.size() > 2) {
-    return std::nullopt;
-  }
 
   std::vector<BackendBinaryInst> out;
   out.reserve(block.insts.size());
 
-  const auto* first = std::get_if<LirBinOp>(&block.insts.front());
-  if (first == nullptr || first->type_str != "i32" || !parse_i64(first->lhs).has_value() ||
-      !parse_i64(first->rhs).has_value()) {
-    return std::nullopt;
-  }
-
-  const auto opcode = adapt_binary_opcode(first->opcode);
-  if (!opcode.has_value() ||
-      (*opcode != BackendBinaryOpcode::Add && *opcode != BackendBinaryOpcode::Sub)) {
-    return std::nullopt;
-  }
-
-  out.push_back(BackendBinaryInst{
-      *opcode,
-      first->result,
-      first->type_str,
-      first->lhs,
-      first->rhs,
-  });
-
-  if (block.insts.size() == 1) {
-    if (first->result != expected_result) {
+  std::string previous_result;
+  for (std::size_t index = 0; index < block.insts.size(); ++index) {
+    const auto* bin = std::get_if<LirBinOp>(&block.insts[index]);
+    if (bin == nullptr || bin->type_str != "i32" || !parse_i64(bin->rhs).has_value()) {
       return std::nullopt;
     }
-    return out;
+    if (index == 0) {
+      if (!parse_i64(bin->lhs).has_value()) {
+        return std::nullopt;
+      }
+    } else if (bin->lhs != previous_result) {
+      return std::nullopt;
+    }
+
+    const auto opcode = adapt_binary_opcode(bin->opcode);
+    if (!opcode.has_value() ||
+        (*opcode != BackendBinaryOpcode::Add && *opcode != BackendBinaryOpcode::Sub)) {
+      return std::nullopt;
+    }
+
+    out.push_back(BackendBinaryInst{
+        *opcode,
+        bin->result,
+        bin->type_str,
+        bin->lhs,
+        bin->rhs,
+    });
+    previous_result = bin->result;
   }
 
-  const auto* second = std::get_if<LirBinOp>(&block.insts[1]);
-  if (second == nullptr || second->type_str != "i32" || second->result != expected_result ||
-      second->lhs != first->result || !parse_i64(second->rhs).has_value()) {
+  if (previous_result != expected_result) {
     return std::nullopt;
   }
-
-  const auto second_opcode = adapt_binary_opcode(second->opcode);
-  if (!second_opcode.has_value() ||
-      (*second_opcode != BackendBinaryOpcode::Add &&
-       *second_opcode != BackendBinaryOpcode::Sub)) {
-    return std::nullopt;
-  }
-
-  out.push_back(BackendBinaryInst{
-      *second_opcode,
-      second->result,
-      second->type_str,
-      second->lhs,
-      second->rhs,
-  });
   return out;
 }
 
@@ -612,7 +595,6 @@ std::optional<BackendFunction> adapt_conditional_phi_join_function(
   const auto& false_block = function.blocks[2];
   const auto& join_block = function.blocks[3];
   if (entry.label != "entry" || entry.insts.size() != 3 ||
-      true_block.insts.size() > 2 || false_block.insts.size() > 2 ||
       (join_block.insts.size() != 1 && join_block.insts.size() != 2)) {
     return std::nullopt;
   }

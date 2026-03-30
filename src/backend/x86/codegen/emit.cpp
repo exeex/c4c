@@ -653,53 +653,40 @@ std::optional<MinimalConditionalPhiJoinSlice> parse_minimal_conditional_phi_join
       }
       return MinimalConditionalPhiJoinSlice::IncomingValue{*imm, {}};
     }
-    if (block.insts.size() > 2) {
-      return std::nullopt;
-    }
-
-    const auto* first = std::get_if<c4c::backend::BackendBinaryInst>(&block.insts.front());
-    if (first == nullptr || first->type_str != "i32" ||
-        (first->opcode != c4c::backend::BackendBinaryOpcode::Add &&
-         first->opcode != c4c::backend::BackendBinaryOpcode::Sub)) {
-      return std::nullopt;
-    }
-
-    const auto base_imm = parse_i64(first->lhs);
-    const auto first_imm = parse_i64(first->rhs);
-    if (!base_imm.has_value() || !first_imm.has_value()) {
-      return std::nullopt;
-    }
-
     MinimalConditionalPhiJoinSlice::IncomingValue value;
-    value.base_imm = *base_imm;
-    value.steps.push_back({first->opcode, *first_imm});
-
-    if (block.insts.size() == 1) {
-      if (first->result != expected_result) {
+    std::string previous_result;
+    for (std::size_t index = 0; index < block.insts.size(); ++index) {
+      const auto* inst = std::get_if<c4c::backend::BackendBinaryInst>(&block.insts[index]);
+      if (inst == nullptr || inst->type_str != "i32" ||
+          (inst->opcode != c4c::backend::BackendBinaryOpcode::Add &&
+           inst->opcode != c4c::backend::BackendBinaryOpcode::Sub)) {
         return std::nullopt;
       }
-      return value;
+      const auto rhs_imm = parse_i64(inst->rhs);
+      if (!rhs_imm.has_value()) {
+        return std::nullopt;
+      }
+      if (index == 0) {
+        const auto base_imm = parse_i64(inst->lhs);
+        if (!base_imm.has_value()) {
+          return std::nullopt;
+        }
+        value.base_imm = *base_imm;
+      } else if (inst->lhs != previous_result) {
+        return std::nullopt;
+      }
+      value.steps.push_back({inst->opcode, *rhs_imm});
+      previous_result = inst->result;
     }
-
-    const auto* second = std::get_if<c4c::backend::BackendBinaryInst>(&block.insts[1]);
-    if (second == nullptr || second->type_str != "i32" || second->result != expected_result ||
-        second->lhs != first->result ||
-        (second->opcode != c4c::backend::BackendBinaryOpcode::Add &&
-         second->opcode != c4c::backend::BackendBinaryOpcode::Sub)) {
+    if (previous_result != expected_result) {
       return std::nullopt;
     }
-    const auto second_imm = parse_i64(second->rhs);
-    if (!second_imm.has_value()) {
-      return std::nullopt;
-    }
-    value.steps.push_back({second->opcode, *second_imm});
     return value;
   };
   if (entry.label != "entry" || entry.insts.size() != 1 ||
       entry.terminator.kind != c4c::backend::BackendTerminatorKind::CondBranch ||
       true_block.label != entry.terminator.true_label ||
       false_block.label != entry.terminator.false_label ||
-      true_block.insts.size() > 2 || false_block.insts.size() > 2 ||
       true_block.terminator.kind != c4c::backend::BackendTerminatorKind::Branch ||
       false_block.terminator.kind != c4c::backend::BackendTerminatorKind::Branch ||
       true_block.terminator.target_label != join_block.label ||
