@@ -7,25 +7,42 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 4: Migrate high-friction instruction families and consumers.
-- Exact target for the next iteration: continue Step 4 past the landed
-  LIR-side call-op helper cleanup into the residual non-backend consumers that
-  still thread `LirCallOp::{callee,callee_type_suffix,args_str}` manually.
-- Iteration focus: audit the remaining stack-layout and liveness call
-  consumers, plus any uncovered LIR-side helper seams, and route them through
-  `src/codegen/lir/call_args.hpp` call-op-level helpers where that removes
-  duplicated call-field threading without widening scope beyond Step 4.
-- Next iteration's slice: replace the residual
-  `src/backend/stack_layout/{analysis.cpp,alloca_coalescing.cpp,slot_assignment.cpp}`
-  and `src/backend/liveness.cpp` manual `(callee, args_str)` call threading
-  with shared `LirCallOp`-aware collection/rewrite helpers, and add focused
-  regression coverage for call-op rewrite/analysis tolerance on non-canonical
-  typed call text.
-- Exact target for the next iteration after this slice: continue Step 4 into
-  any remaining non-backend storage/render surfaces that still treat typed call
-  metadata as ad hoc text instead of shared typed views.
+- Exact target for the next iteration: continue Step 4 from the landed
+  backend-owned direct-global typed-call helper cleanup into the remaining
+  LIR-side backend emitter slices that still hand-check parsed direct-call
+  argument shapes after `parse_backend_direct_global_typed_call(...)`.
+- Iteration focus: inspect the residual x86 LIR-only direct-call recognizers,
+  especially the local-arg/two-arg slices, and collapse any remaining repeated
+  direct-global typed-call symbol/arity/type checks onto shared helpers
+  without widening the runbook into broader `LirCallOp` storage changes.
+- Next iteration's slice: route the remaining LIR-side x86 direct-call
+  fast paths that still unpack `ParsedLirDirectGlobalTypedCallView` manually
+  through the new shared direct-global single/two-operand helper seams, and
+  add focused regression coverage where spacing-tolerant typed direct-call
+  operands still require bespoke assertions.
+- Exact target for the next iteration after this slice: inspect whether the
+  zero-arg and non-direct backend emitter paths still keep backend-private
+  typed-call shape checks that should move onto the same shared helper layer.
 
 ## Completed Items
 
+- Completed the next Step 4 backend-owned direct-global typed-call helper
+  cleanup slice by adding spacing-tolerant shared backend helper entry points
+  in `src/backend/lir_adapter.hpp` for matching direct-global single-arg and
+  two-arg typed-call shapes, routing the backend-module x86/AArch64 single-arg
+  direct-call and call-crossing fast paths plus AArch64's backend-module
+  two-argument direct-call slice through those helpers instead of open-coding
+  symbol/type/operand checks after parsing, and adding focused regression
+  coverage in `tests/backend/backend_lir_adapter_tests.cpp` for backend-owned
+  direct-global single-operand and two-operand helper decoding.
+- Verified this slice with `cmake --build build -j8 --target
+  backend_lir_adapter_tests`, `./build/backend_lir_adapter_tests`,
+  `cmake --build build -j8`, `ctest --test-dir build -j8 --output-on-failure >
+  test_after.log`, and the regression guard
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
+  --before test_fail_before.log --after test_after.log`, which passed at
+  `2371 -> 2372` passes with zero new failing tests and one resolved failing
+  test (`c_testsuite_x86_backend_src_00100_c`).
 - Completed the next Step 4 stack-layout/liveness call-op helper cleanup slice
   by routing
   `src/backend/stack_layout/{analysis.cpp,alloca_coalescing.cpp,slot_assignment.cpp}`

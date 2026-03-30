@@ -494,6 +494,45 @@ void test_backend_call_helpers_decode_structured_direct_global_call() {
               "backend-owned call helper should expose structured direct-call metadata without reparsing raw adapter text");
 }
 
+void test_backend_call_helpers_decode_direct_global_single_typed_operand() {
+  c4c::backend::BackendCallInst call{
+      "%t0",
+      "i32",
+      "@add_one",
+      {" i32 "},
+      {{" i32 ", " %arg "}},
+  };
+
+  const auto operand = c4c::backend::parse_backend_direct_global_single_typed_call_operand(
+      call, "add_one", "i32");
+  expect_true(operand.has_value() && *operand == " %arg ",
+              "backend-owned direct-global single-operand helper should preserve the borrowed typed operand");
+  expect_true(!c4c::backend::parse_backend_direct_global_single_typed_call_operand(
+                   call, "add_pair", "i32")
+                   .has_value(),
+              "backend-owned direct-global single-operand helper should reject mismatched callees");
+}
+
+void test_backend_call_helpers_decode_direct_global_two_typed_operands() {
+  c4c::backend::BackendCallInst call{
+      "%t1",
+      "i32",
+      "@add_pair",
+      {"i32", "i32"},
+      {{"i32", "%lhs"}, {"i32", "%rhs"}},
+  };
+
+  const auto operands = c4c::backend::parse_backend_direct_global_two_typed_call_operands(
+      call, "add_pair", "i32", "i32");
+  expect_true(operands.has_value() && operands->first == "%lhs" &&
+                  operands->second == "%rhs",
+              "backend-owned direct-global two-operand helper should expose the shared typed operands in order");
+  expect_true(!c4c::backend::parse_backend_direct_global_two_typed_call_operands(
+                   call, "add_pair", "i32", "ptr")
+                   .has_value(),
+              "backend-owned direct-global two-operand helper should reject mismatched typed signatures");
+}
+
 void test_backend_call_helpers_borrow_structured_typed_call_view() {
   c4c::backend::BackendCallInst call{
       "%t2",
@@ -8553,6 +8592,8 @@ int main() {
   test_lir_call_arg_helpers_parse_and_format_call_op_views();
   test_lir_call_arg_helpers_collect_call_op_global_refs();
   test_backend_call_helpers_decode_structured_direct_global_call();
+  test_backend_call_helpers_decode_direct_global_single_typed_operand();
+  test_backend_call_helpers_decode_direct_global_two_typed_operands();
   test_backend_call_helpers_borrow_structured_typed_call_view();
   test_lir_typed_wrappers_preserve_legacy_opcode_and_predicate_strings();
   test_lir_typed_wrappers_leave_unknown_opcode_text_compatible();

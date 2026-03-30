@@ -1244,22 +1244,21 @@ std::optional<MinimalDirectCallAddImmSlice> parse_minimal_direct_call_add_imm_sl
   }
 
   const auto* call = std::get_if<c4c::backend::BackendCallInst>(&main_block.insts.front());
-  const auto direct_call =
+  const auto call_operand =
       call == nullptr ? std::nullopt
-                      : c4c::backend::parse_backend_direct_global_typed_call(*call);
+                      : c4c::backend::parse_backend_direct_global_single_typed_call_operand(
+                            *call, "add_one", "i32");
   if (call == nullptr || call->return_type != "i32" || call->result.empty() ||
-      *main_block.terminator.value != call->result || !direct_call.has_value() ||
-      !c4c::backend::backend_typed_call_has_param_types(
-          direct_call->typed_call, std::array<std::string_view, 1>{"i32"})) {
+      *main_block.terminator.value != call->result || !call_operand.has_value()) {
     return std::nullopt;
   }
 
-  const auto arg_imm = parse_i64(direct_call->typed_call.args.front().operand);
-  if (direct_call->symbol_name == "main" || !arg_imm.has_value()) {
+  const auto arg_imm = parse_i64(*call_operand);
+  if (!arg_imm.has_value()) {
     return std::nullopt;
   }
 
-  const auto* callee_fn = find_function(module, direct_call->symbol_name);
+  const auto* callee_fn = find_function(module, "add_one");
   if (callee_fn == nullptr || callee_fn->is_declaration ||
       callee_fn->signature.linkage != "define" ||
       callee_fn->signature.return_type != "i32" ||
@@ -1290,7 +1289,7 @@ std::optional<MinimalDirectCallAddImmSlice> parse_minimal_direct_call_add_imm_sl
   }
 
   return MinimalDirectCallAddImmSlice{
-      std::string(direct_call->symbol_name),
+      "add_one",
       *arg_imm,
       *add_imm,
   };
@@ -1317,23 +1316,22 @@ parse_minimal_direct_call_two_arg_add_slice(const c4c::backend::BackendModule& m
   }
 
   const auto* call = std::get_if<c4c::backend::BackendCallInst>(&main_block.insts.front());
-  const auto direct_call =
+  const auto call_operands =
       call == nullptr ? std::nullopt
-                      : c4c::backend::parse_backend_direct_global_typed_call(*call);
+                      : c4c::backend::parse_backend_direct_global_two_typed_call_operands(
+                            *call, "add_pair", "i32", "i32");
   if (call == nullptr || call->return_type != "i32" || call->result.empty() ||
-      *main_block.terminator.value != call->result || !direct_call.has_value() ||
-      !c4c::backend::backend_typed_call_has_param_types(
-          direct_call->typed_call, std::array<std::string_view, 2>{"i32", "i32"})) {
+      *main_block.terminator.value != call->result || !call_operands.has_value()) {
     return std::nullopt;
   }
 
-  const auto arg0_imm = parse_i64(direct_call->typed_call.args[0].operand);
-  const auto arg1_imm = parse_i64(direct_call->typed_call.args[1].operand);
-  if (direct_call->symbol_name == "main" || !arg0_imm.has_value() || !arg1_imm.has_value()) {
+  const auto arg0_imm = parse_i64(call_operands->first);
+  const auto arg1_imm = parse_i64(call_operands->second);
+  if (!arg0_imm.has_value() || !arg1_imm.has_value()) {
     return std::nullopt;
   }
 
-  const auto* callee_fn = find_function(module, direct_call->symbol_name);
+  const auto* callee_fn = find_function(module, "add_pair");
   if (callee_fn == nullptr || callee_fn->is_declaration ||
       callee_fn->signature.linkage != "define" ||
       callee_fn->signature.return_type != "i32" ||
@@ -1362,7 +1360,7 @@ parse_minimal_direct_call_two_arg_add_slice(const c4c::backend::BackendModule& m
   }
 
   return MinimalDirectCallTwoArgAddSlice{
-      std::string(direct_call->symbol_name),
+      "add_pair",
       *arg0_imm,
       *arg1_imm,
   };
@@ -1423,16 +1421,14 @@ parse_minimal_call_crossing_direct_call_slice(
   const auto* call = std::get_if<c4c::backend::BackendCallInst>(&main_block.insts[1]);
   const auto* final_add =
       std::get_if<c4c::backend::BackendBinaryInst>(&main_block.insts[2]);
-  const auto direct_call =
+  const auto call_operand =
       call == nullptr ? std::nullopt
-                      : c4c::backend::parse_backend_direct_global_typed_call(*call);
+                      : c4c::backend::parse_backend_direct_global_single_typed_call_operand(
+                            *call, "add_one", "i32");
   if (source_add == nullptr || call == nullptr || final_add == nullptr ||
       source_add->opcode != c4c::backend::BackendBinaryOpcode::Add ||
       source_add->type_str != "i32" || call->return_type != "i32" ||
-      !direct_call.has_value() || direct_call->symbol_name != "add_one" ||
-      !c4c::backend::backend_typed_call_has_param_types(
-          direct_call->typed_call, std::array<std::string_view, 1>{"i32"}) ||
-      direct_call->typed_call.args.front().operand != source_add->result ||
+      !call_operand.has_value() || *call_operand != source_add->result ||
       final_add->opcode != c4c::backend::BackendBinaryOpcode::Add ||
       final_add->type_str != "i32" || final_add->lhs != source_add->result ||
       final_add->rhs != call->result ||

@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -103,6 +104,13 @@ struct ParsedBackendDirectGlobalTypedCallView {
   ParsedBackendTypedCallView typed_call;
 };
 
+std::optional<c4c::codegen::lir::ParsedLirDirectGlobalTypedCallView>
+parse_backend_direct_global_typed_call(const c4c::codegen::lir::LirCallOp& call);
+std::optional<ParsedBackendTypedCallView> parse_backend_typed_call(
+    const BackendCallInst& call);
+std::optional<ParsedBackendDirectGlobalTypedCallView> parse_backend_direct_global_typed_call(
+    const BackendCallInst& call);
+
 template <std::size_t N>
 inline bool backend_typed_call_has_param_types(
     const ParsedBackendTypedCallView& parsed,
@@ -118,13 +126,60 @@ inline bool backend_typed_call_has_param_types(
   return true;
 }
 
+template <typename DirectCallView, std::size_t N>
+inline bool backend_direct_global_typed_call_matches(
+    const DirectCallView& parsed,
+    std::string_view expected_symbol_name,
+    const std::array<std::string_view, N>& expected_types) {
+  if (parsed.symbol_name != expected_symbol_name ||
+      parsed.typed_call.param_types.size() != expected_types.size()) {
+    return false;
+  }
+  for (std::size_t index = 0; index < expected_types.size(); ++index) {
+    if (c4c::codegen::lir::trim_lir_arg_text(parsed.typed_call.param_types[index]) !=
+        c4c::codegen::lir::trim_lir_arg_text(expected_types[index])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+template <typename Call>
+inline std::optional<std::string_view> parse_backend_direct_global_single_typed_call_operand(
+    const Call& call,
+    std::string_view expected_symbol_name,
+    std::string_view expected_type) {
+  const auto parsed = parse_backend_direct_global_typed_call(call);
+  if (!parsed.has_value() ||
+      !backend_direct_global_typed_call_matches(
+          *parsed, expected_symbol_name, std::array<std::string_view, 1>{expected_type})) {
+    return std::nullopt;
+  }
+  return parsed->typed_call.args.front().operand;
+}
+
+template <typename Call>
+inline std::optional<std::pair<std::string_view, std::string_view>>
+parse_backend_direct_global_two_typed_call_operands(
+    const Call& call,
+    std::string_view expected_symbol_name,
+    std::string_view expected_type0,
+    std::string_view expected_type1) {
+  const auto parsed = parse_backend_direct_global_typed_call(call);
+  if (!parsed.has_value() ||
+      !backend_direct_global_typed_call_matches(
+          *parsed,
+          expected_symbol_name,
+          std::array<std::string_view, 2>{expected_type0, expected_type1})) {
+    return std::nullopt;
+  }
+  return std::pair<std::string_view, std::string_view>{
+      parsed->typed_call.args[0].operand,
+      parsed->typed_call.args[1].operand,
+  };
+}
+
 BackendModule adapt_minimal_module(const c4c::codegen::lir::LirModule& module);
 std::string render_module(const BackendModule& module);
-std::optional<c4c::codegen::lir::ParsedLirDirectGlobalTypedCallView>
-parse_backend_direct_global_typed_call(const c4c::codegen::lir::LirCallOp& call);
-std::optional<ParsedBackendTypedCallView> parse_backend_typed_call(
-    const BackendCallInst& call);
-std::optional<ParsedBackendDirectGlobalTypedCallView> parse_backend_direct_global_typed_call(
-    const BackendCallInst& call);
 
 }  // namespace c4c::backend
