@@ -8,8 +8,8 @@ Last Updated: 2026-03-30
 ## Current Active Item
 
 - Step 2/4: reduce the new first surviving libc++ frontier at
-  `__compare/common_comparison_category.h:42`, now that the direct
-  `std::vector` repro gets past `__compare/ordering.h`
+  `__compare/synth_three_way.h:28`, now that the direct `std::vector` repro
+  gets past `__compare/common_comparison_category.h`
 
 ## Todo
 
@@ -132,28 +132,42 @@ Last Updated: 2026-03-30
 - [x] Validated the completed `ordering.h` slice with targeted parser coverage
       plus a monotonic full-suite comparison (`before: 707/733`, `after:
       709/734`, zero new failures)
+- [x] Reduced the `__compare/common_comparison_category.h:42` failure to a
+      focused internal parser testcase covering a top-level array-reference
+      parameter of an injected enum type
+- [x] Registered C++ enum definitions as injected type names so later
+      declarators treat `E` as a type head instead of a parameter name
+- [x] Re-ran the direct `std::vector` repro and confirmed the
+      `__compare/common_comparison_category.h:42` frontier disappeared,
+      exposing `__compare/synth_three_way.h:28` as the new first surviving
+      libc++ parser error
+- [x] Validated the completed `common_comparison_category` slice with targeted
+      parser coverage and a fresh full-suite snapshot that matches the last
+      recorded branch baseline (`709/734` passing)
 
 ## Next Intended Slice
 
 - Reproduce and reduce the new first surviving libc++ frontier at
--  `__compare/common_comparison_category.h:42:59`, where top-level parameter
-  parsing now stops at `[` inside the `_ClassifyCompCategory (&__types)[_Size]`
-  array-reference parameter.
-- Keep the next reduction scoped to the comparison-category headers that became
-  visible only after clearing `ordering.h`.
+-  `__compare/synth_three_way.h:28:224`, where the parser now reaches the
+  generic lambda spelling `[]<class _Tp, class _Up>(...) requires ...`.
+- Keep the next reduction scoped to the comparison-category / synth-three-way
+  headers that became visible only after clearing
+  `common_comparison_category.h`.
 - Re-run the forcing `std::vector` repro after the next parser fix and confirm
-  whether `__compare/synth_three_way.h:28` or `__utility/pair.h:463` becomes
-  the next lead blocker.
+  whether `__utility/pair.h:463` becomes the next lead blocker.
 
 ## Blockers
 
 - The latest direct repro no longer leads with either
   `common_reference.h:155`, `integer_sequence.h:82`, or
   `__compare/ordering.h:44`; it now first fails in the `__compare` headers at
-  `__compare/common_comparison_category.h:42`.
+  `__compare/synth_three_way.h:28`.
 - The current full-suite run still contains unrelated environment/path failures
   such as missing `/workspaces/c4c/...` fixtures and unavailable GNU
   `bits/...` headers, so those results are not attributable to this patch.
+- This slice used the previous recorded `709/734` suite result as the branch
+  baseline reference; a fresh pre-patch failure-set diff was not captured
+  before the code edit.
 - Older GNU `libstdc++` blocker ordering in the source idea remains useful as
   history, but it is not the active execution frontier for this branch.
 
@@ -181,10 +195,15 @@ Last Updated: 2026-03-30
 - The isolated reduced testcase for `__xref<T>::template apply` still passes,
   and the subsequent `integer_sequence.h` dependent-member-template frontier is
   now cleared.
+- Named C++ enums are now registered as injected type names, which lets
+  top-level declarators parse `const E (&param)[N]` the same way record members
+  already handled equivalent array-reference parameters.
 - `tests/cpp/internal/postive_case/dependent_member_template_operator_call_parse.cpp`
   now covers the reduced `integer_sequence` spelling directly.
 - `tests/cpp/internal/postive_case/libcxx_ordering_hidden_consteval_ctor_parse.cpp`
   now covers the reduced `ordering.h` spelling directly.
+- `tests/cpp/internal/postive_case/libcxx_common_comparison_category_array_param_parse.cpp`
+  now covers the reduced `common_comparison_category` spelling directly.
 - A direct parse of `#include <__utility/integer_sequence.h>` now succeeds; the
   remaining libc++ failures are later headers surfaced by the forcing
   `std::vector` include stack.

@@ -6636,6 +6636,22 @@ Node* Parser::parse_enum() {
     }
     skip_attributes();
 
+    auto register_enum_injected_type = [&](const char* source_tag,
+                                           const char* canonical_name) {
+        if (!is_cpp_mode() || !canonical_name || !canonical_name[0]) return;
+
+        TypeSpec injected_ts{};
+        injected_ts.array_size = -1;
+        injected_ts.array_rank = 0;
+        injected_ts.base = TB_ENUM;
+        injected_ts.tag = canonical_name;
+        typedef_types_[canonical_name] = injected_ts;
+        if (source_tag && source_tag[0] &&
+            std::strcmp(source_tag, canonical_name) != 0) {
+            typedef_types_[source_tag] = injected_ts;
+        }
+    };
+
     if (!check(TokenKind::LBrace)) {
         if (!tag) {
             char buf[32];
@@ -6647,6 +6663,7 @@ Node* Parser::parse_enum() {
             current_namespace_context_id(), tag).c_str());
         apply_decl_namespace(ref, current_namespace_context_id(), tag);
         ref->n_enum_variants = -1;
+        register_enum_injected_type(tag, ref->name);
         return ref;
     }
 
@@ -6714,6 +6731,7 @@ Node* Parser::parse_enum() {
         }
     }
     if (parsing_top_level_context_) struct_defs_.push_back(ed);
+    register_enum_injected_type(tag, ed->name);
     return ed;
 }
 
