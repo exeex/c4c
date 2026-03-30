@@ -533,6 +533,33 @@ void test_backend_call_helpers_decode_direct_global_two_typed_operands() {
               "backend-owned direct-global two-operand helper should reject mismatched typed signatures");
 }
 
+void test_backend_call_helpers_decode_lir_direct_global_typed_operands() {
+  c4c::codegen::lir::LirCallOp single{
+      "%t0",
+      "i32",
+      "@add_one",
+      "( i32 )",
+      " i32 %arg ",
+  };
+  const auto single_operand = c4c::backend::parse_backend_direct_global_single_typed_call_operand(
+      single, "add_one", "i32");
+  expect_true(single_operand.has_value() && *single_operand == "%arg",
+              "shared direct-global single-operand helper should decode spacing-tolerant LIR call operands");
+
+  c4c::codegen::lir::LirCallOp two{
+      "%t1",
+      "i32",
+      "@add_pair",
+      "( i32 , i32 )",
+      " i32 %lhs , i32 %rhs ",
+  };
+  const auto two_operands = c4c::backend::parse_backend_direct_global_two_typed_call_operands(
+      two, "add_pair", "i32", "i32");
+  expect_true(two_operands.has_value() && two_operands->first == "%lhs" &&
+                  two_operands->second == "%rhs",
+              "shared direct-global two-operand helper should decode spacing-tolerant LIR call operands");
+}
+
 void test_backend_call_helpers_borrow_structured_typed_call_view() {
   c4c::backend::BackendCallInst call{
       "%t2",
@@ -8594,6 +8621,7 @@ int main() {
   test_backend_call_helpers_decode_structured_direct_global_call();
   test_backend_call_helpers_decode_direct_global_single_typed_operand();
   test_backend_call_helpers_decode_direct_global_two_typed_operands();
+  test_backend_call_helpers_decode_lir_direct_global_typed_operands();
   test_backend_call_helpers_borrow_structured_typed_call_view();
   test_lir_typed_wrappers_preserve_legacy_opcode_and_predicate_strings();
   test_lir_typed_wrappers_leave_unknown_opcode_text_compatible();
