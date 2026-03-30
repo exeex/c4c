@@ -709,14 +709,12 @@ std::optional<MinimalExternDeclCallSlice> parse_minimal_extern_decl_call_slice(
   }
 
   const auto* call = std::get_if<LirCallOp>(&entry.insts.front());
-  const auto direct_call =
+  const auto callee_name =
       call == nullptr ? std::nullopt
-                      : c4c::backend::parse_backend_direct_global_typed_call(*call);
+                      : c4c::backend::parse_backend_zero_arg_direct_global_typed_call(*call);
   if (call == nullptr || call->return_type != "i32" || call->result.empty() ||
-      *ret->value_str != call->result || !direct_call.has_value() ||
-      direct_call->symbol_name != extern_decl.name ||
-      !direct_call->typed_call.param_types.empty() ||
-      !direct_call->typed_call.args.empty()) {
+      *ret->value_str != call->result || !callee_name.has_value() ||
+      *callee_name != extern_decl.name) {
     return std::nullopt;
   }
 

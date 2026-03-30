@@ -8,20 +8,40 @@ Source Plan: plan.md
 
 - Step 4: Migrate high-friction instruction families and consumers.
 - Exact target for the next iteration: audit whether any backend-adjacent
-  analysis helpers still special-case typed call-shape text instead of
-  reusing the shared `LirCallOp` / direct-global helper layer.
-- Iteration focus: inspect stack-layout, liveness, and remaining backend-owned
-  normalization seams for residual call-shape branching that still depends on
-  direct text inspection instead of the shared typed-call helpers.
-- Next iteration's slice: if no backend-adjacent analysis helpers remain,
-  inspect backend-owned indirect-call normalization paths for parsed
-  typed-call shape checks that should move behind one shared helper seam.
+  backend-owned indirect/local-call normalization paths in
+  `src/backend/lir_adapter.cpp` still repeat parsed typed-call shape matching
+  that should move behind one shared helper seam before Step 4 handoff.
+- Iteration focus: compare the adapter's local/indirect-call normalization
+  slices against the shared backend direct-global and typed-call helpers,
+  and only factor a new helper if it removes repeated parsed
+  `param_types`/`args` shape checks without obscuring the normalization logic.
+- Next iteration's slice: if no reusable helper seam emerges for those
+  backend-owned indirect/local-call paths, record that Step 4's backend
+  consumers are effectively on shared typed-call helpers already and shift the
+  remaining work toward Step 5 handoff notes.
 - Exact target for the next iteration after this slice: record any remaining
-  call-shape-specific helper gaps that still block Step 4 from handing off a
-  clean typed-call consumer surface to the follow-on backend-ready IR plans.
+  call-shape-specific helper gaps, or mark Step 4 ready to hand off a clean
+  typed-call consumer surface to the follow-on backend-ready IR plans.
 
 ## Completed Items
 
+- Completed the next Step 4 x86 zero-arg direct-call helper cleanup slice by
+  routing `src/backend/x86/codegen/emit.cpp`'s residual LIR-side extern-decl
+  direct-call recognizer through
+  `src/backend/lir_adapter.hpp`'s shared
+  `parse_backend_zero_arg_direct_global_typed_call(...)` seam instead of
+  manually inspecting `parse_backend_direct_global_typed_call(...)`'s parsed
+  empty `param_types` / `args` shape, keeping that fast path aligned with the
+  existing shared zero-arg direct-global helper layer already used by the
+  backend-owned call paths.
+- Verified this slice with `cmake --build build -j8 --target
+  backend_lir_adapter_tests`, `./build/backend_lir_adapter_tests`,
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log`, and
+  the regression guard
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
+  --before test_fail_before.log --after test_fail_after.log`, which passed at
+  `2371 -> 2372` passes with zero new failing tests and one resolved failing
+  test (`c_testsuite_x86_backend_src_00100_c`).
 - Completed the next Step 4 backend emitter zero-arg direct-call helper
   cleanup slice by adding
   `src/backend/lir_adapter.hpp`'s shared
