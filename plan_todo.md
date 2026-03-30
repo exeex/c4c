@@ -8,8 +8,8 @@ Last Updated: 2026-03-30
 ## Current Active Item
 
 - Step 2/4: reduce the still-live `std::vector` libc++ frontier after landing
-  the attributed out-of-class special-member parser fix; the forcing repro
-  still first reports `__vector/vector_bool.h:737`
+  the `tuple:512` constructor-initializer parser fix; the forcing repro now
+  first reports `tuple:1044`
 
 ## Todo
 
@@ -75,6 +75,17 @@ Last Updated: 2026-03-30
 - [x] Validate the attributed special-member parser improvement with targeted
       coverage plus a monotonic full-suite comparison (`before: 712/737`,
       `after: 713/738`, zero new failures)
+- [x] Reduce the live `tuple:512` frontier to a focused internal parser
+      testcase covering constructor initializer lists with template-id base
+      names and pack-expanded calls
+- [x] Teach constructor initializer list parsing to accept template-id
+      initializer targets such as `leaf<I, Ts>(...)...` in both record-scope
+      and top-level constructor definitions
+- [x] Re-run the direct `std::vector` repro to confirm the post-`tuple:512`
+      frontier moved forward to `tuple:1044`
+- [x] Validate the completed `tuple:512` slice with targeted libc++ parser
+      coverage plus a monotonic full-suite comparison (`before: 707/733`,
+      `after: 714/739`, zero new failures)
 
 ## Completed
 
@@ -202,35 +213,33 @@ Last Updated: 2026-03-30
 
 ## Next Intended Slice
 
-- Reproduce the remaining `__vector/vector_bool.h:737:235` failure with a
-  higher-fidelity reduced testcase; the current synthetic attributed
-  move-constructor testcase now parses as `Vec::Vec`, so it was only a partial
-  match for the live libc++ repro.
-- Use parser-debug traces from the forcing repro to determine whether the live
-  `vector_bool` failure is local to that constructor spelling or still a
-  consequence of earlier top-level parse-state loss in nearby `tuple` /
-  special-member code.
+- Reduce the new first surviving `tuple:1044:11` failure to a focused internal
+  parser testcase; the surrounding source lines are libc++ tuple deduction
+  guides, but simple synthetic deduction-guide spellings already parse, so the
+  reduced case must preserve whatever nearby context still triggers the `<`
+  failure.
+- Use parser-debug traces around `tuple:1044` to determine whether the live
+  failure is a deduction-guide-local gap or residual parse-state loss from
+  earlier tuple declarations.
 - Re-run the forcing `std::vector` repro after the next reduction and confirm
-  whether `tuple:512`, `tuple:1044`, and `tuple:1171` remain the immediate
-  follow-ons once `vector_bool.h:737` is genuinely cleared.
+  whether `tuple:1171`, `variant:538`, and `variant:679` remain the immediate
+  follow-ons once `tuple:1044` is genuinely cleared.
 
 ## Blockers
 
 - The latest direct repro no longer leads with either
   `common_reference.h:155`, `integer_sequence.h:82`, or
   `__compare/ordering.h:44`; it no longer first fails in `__utility/pair.h`.
-- The latest direct repro now first fails at `__vector/vector_bool.h:737:235`
-  with `expected=RPAREN got='&&'`, followed by `tuple` failures at `:512`,
-  `:1044`, and `:1171`, plus later `typename` expression follow-ons.
+- The latest direct repro no longer fails first at `tuple:512`; it now first
+  fails at `tuple:1044:11` with `expected=RPAREN got='<'`, followed by
+  `tuple:1171`, `variant:538`, `variant:679`, `variant:681`, and `variant:683`
+  parser failures plus later `typename` expression follow-ons.
 - The new reduced testcase
-  `tests/cpp/internal/postive_case/libcxx_vector_bool_move_ctor_parse.cpp`
-  now exercises one real parser gap around attributed out-of-class
-  special-member definitions, but it does not yet reproduce the full live
-  `vector_bool.h:737` failure from the forcing repro.
-- `--parser-debug` on the forcing repro now highlights `tuple:512` and nearby
-  top-level / qualified-type failures as the best-ranked parse stack, which may
-  mean the still-reported `vector_bool.h:737` error is downstream of earlier
-  state loss rather than the first root cause.
+  `tests/cpp/internal/postive_case/libcxx_tuple_ctor_base_template_init_parse.cpp`
+  covers the cleared `tuple:512` constructor-initializer gap directly.
+- Simple standalone tuple deduction-guide spellings now parse, so the live
+  `tuple:1044` failure likely depends on more surrounding libc++ context than a
+  bare `tuple(Ts...) -> tuple<Ts...>;` probe.
 - The current full-suite run still contains unrelated environment/path failures
   such as missing `/workspaces/c4c/...` fixtures and unavailable GNU
   `bits/...` headers, so those results are not attributable to this patch.
@@ -258,6 +267,8 @@ Last Updated: 2026-03-30
   them widen this branch's active plan beyond the current libc++ frontier.
 - Attributed `using` aliases now parse in both top-level and record scope when
   `[[...]]` appears between the alias name and `=`.
+- Constructor initializer lists now accept template-id initializer targets with
+  pack expansion, which was enough to clear the libc++ `tuple:512` frontier.
 - The isolated reduced testcase for `__xref<T>::template apply` still passes,
   and the subsequent `integer_sequence.h` dependent-member-template frontier is
   now cleared.

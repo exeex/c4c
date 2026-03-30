@@ -109,6 +109,76 @@ std::function<void(const char*)> make_record_field_duplicate_checker(
     };
 }
 
+bool parse_ctor_initializer_entry(Parser* parser,
+                                  const std::function<Node*()>& parse_expr,
+                                  const char** out_name,
+                                  std::vector<Node*>* out_args) {
+    if (!parser || !out_name || !out_args) return false;
+    if (!parser->check(TokenKind::Identifier) &&
+        !parser->check(TokenKind::ColonColon)) {
+        return false;
+    }
+
+    const int start = parser->pos_;
+    std::string name;
+    int angle_depth = 0;
+    while (!parser->at_end()) {
+        if (angle_depth == 0 && parser->check(TokenKind::LParen)) break;
+
+        const TokenKind kind = parser->cur().kind;
+        switch (kind) {
+            case TokenKind::Identifier:
+            case TokenKind::ColonColon:
+            case TokenKind::Less:
+            case TokenKind::Greater:
+            case TokenKind::Comma:
+                name += parser->cur().lexeme;
+                if (kind == TokenKind::Less) {
+                    ++angle_depth;
+                } else if (kind == TokenKind::Greater) {
+                    if (angle_depth == 0) {
+                        parser->pos_ = start;
+                        return false;
+                    }
+                    --angle_depth;
+                }
+                parser->consume();
+                continue;
+            case TokenKind::GreaterGreater:
+                if (angle_depth == 0) {
+                    parser->pos_ = start;
+                    return false;
+                }
+                name += parser->cur().lexeme;
+                angle_depth = std::max(0, angle_depth - 2);
+                parser->consume();
+                continue;
+            default:
+                parser->pos_ = start;
+                return false;
+        }
+    }
+
+    if (name.empty() || angle_depth != 0 || !parser->check(TokenKind::LParen)) {
+        parser->pos_ = start;
+        return false;
+    }
+
+    parser->consume();
+    out_args->clear();
+    if (!parser->check(TokenKind::RParen)) {
+        while (true) {
+            Node* arg = parse_expr();
+            if (arg) out_args->push_back(arg);
+            if (!parser->match(TokenKind::Comma)) break;
+        }
+    }
+    parser->expect(TokenKind::RParen);
+    if (parser->check(TokenKind::Ellipsis)) parser->consume();
+    *out_name = parser->arena_.strdup(name.c_str());
+    return true;
+}
+
 bool parse_alignas_specifier(Parser* parser, TypeSpec* ts, int line) {
     if (!parser->check(TokenKind::KwAlignas)) return false;
     parser->consume();
@@ -5469,19 +5539,13 @@ bool Parser::try_parse_record_constructor_member(
         std::vector<const char*> init_names;
         std::vector<std::vector<Node*>> init_args_list;
         while (!at_end() && !check(TokenKind::LBrace)) {
-            if (!check(TokenKind::Identifier)) break;
-            const char* mem_name = arena_.strdup(cur().lexeme);
-            consume();  // member name
-            expect(TokenKind::LParen);
             std::vector<Node*> args;
-            if (!check(TokenKind::RParen)) {
-                while (true) {
-                    Node* arg = parse_assign_expr();
-                    if (arg) args.push_back(arg);
-                    if (!match(TokenKind::Comma)) break;
-                }
+            const char* mem_name = nullptr;
+            if (!parse_ctor_initializer_entry(
+                    this, [this]() { return parse_assign_expr(); }, &mem_name,
+                    &args)) {
+                break;
             }
-            expect(TokenKind::RParen);
             init_names.push_back(mem_name);
             init_args_list.push_back(std::move(args));
             if (!match(TokenKind::Comma)) break;
