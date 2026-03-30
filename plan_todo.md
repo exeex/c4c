@@ -8,11 +8,21 @@ Source Plan: plan.md
 
 - Step 2: Define the backend-owned IR model.
 - Exact target for the next iteration: extend `src/backend/ir.*` past the
-  newly lowered while-loop backedge slice into the next explicit join-form
-  control-flow seam, so backend-owned IR can represent both loop-carried state
-  and a bounded merge point instead of stopping at branch-to-return or
-  countdown-only patterns.
+  newly lowered constant-phi join slice into the next explicit join-form
+  control-flow seam that merges computed scalar values instead of only
+  immediate predecessor values, so backend-owned IR can represent a bounded
+  merge point beyond branch-to-return, countdown-only loops, and constant-phi
+  joins.
 - Resume notes:
+  - backend-owned IR now lowers the bounded four-block
+    compare/branch/join/return shape into an explicit join block with a typed
+    `phi` result instead of stopping at branch-to-return control flow
+  - both x86 and AArch64 now accept that lowered conditional-join slice
+    directly from explicit backend IR inputs instead of routing through legacy
+    LIR fallback or backend-IR text
+  - the next highest-value control-flow seam is a join that merges computed
+    scalar state instead of immediate constants; broader general CFG lowering
+    still remains deferred
   - bounded while-countdown loops with a single loop-carried scalar now lower
     into explicit backend-owned loop IR with a `phi` state, compare, backedge,
     and exit block instead of being evaluated away into a constant return
@@ -232,6 +242,21 @@ Source Plan: plan.md
     explicit-backend-IR emission, and the x86 direct asm path
 - Verified the current post-change full-suite regression status in
   `test_fail_after_step5_countdown_loop.log`: `93% tests passed`, `183 tests
+  failed out of 2560` (2377 passing), matching the current recorded runbook
+  baseline from `test_fail_after.log` with an identical failing-test set and
+  no newly failing tests.
+- Completed an additional Step 2 explicit join-form control-flow slice:
+  - taught `src/backend/lir_adapter.cpp` to lower the bounded
+    compare/branch/join/return shape into explicit backend-owned IR with
+    predecessor branches plus a typed join-block `phi`
+  - updated `src/backend/x86/codegen/emit.cpp` and
+    `src/backend/aarch64/codegen/emit.cpp` so explicit backend IR inputs can
+    emit the lowered conditional-join slice directly
+  - added focused backend tests covering lowered conditional-join printing,
+    validation, x86 explicit-backend-IR emission, and AArch64
+    explicit-backend-IR emission
+- Verified the current post-change full-suite regression status in
+  `test_fail_after_conditional_phi_join.log`: `93% tests passed`, `183 tests
   failed out of 2560` (2377 passing), matching the current recorded runbook
   baseline from `test_fail_after.log` with an identical failing-test set and
   no newly failing tests.

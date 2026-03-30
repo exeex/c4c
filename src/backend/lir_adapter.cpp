@@ -531,6 +531,106 @@ std::optional<BackendFunction> adapt_conditional_return_function(
   return out;
 }
 
+std::optional<BackendFunction> adapt_conditional_phi_join_function(
+    const c4c::codegen::lir::LirFunction& function,
+    const BackendFunctionSignature& signature) {
+  using namespace c4c::codegen::lir;
+
+  if (function.is_declaration || signature.linkage != "define" ||
+      signature.return_type != "i32" || signature.name != "main" ||
+      !signature.params.empty() || signature.is_vararg || function.entry.value != 0 ||
+      function.blocks.size() != 4 || !function.alloca_insts.empty() ||
+      !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks[0];
+  const auto& true_block = function.blocks[1];
+  const auto& false_block = function.blocks[2];
+  const auto& join_block = function.blocks[3];
+  if (entry.label != "entry" || entry.insts.size() != 3 || !true_block.insts.empty() ||
+      !false_block.insts.empty() || join_block.insts.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto* cmp0 = std::get_if<LirCmpOp>(&entry.insts[0]);
+  const auto* cast = std::get_if<LirCastOp>(&entry.insts[1]);
+  const auto* cmp1 = std::get_if<LirCmpOp>(&entry.insts[2]);
+  const auto* condbr = std::get_if<LirCondBr>(&entry.terminator);
+  const auto cmp0_predicate = cmp0 == nullptr ? std::nullopt : cmp0->predicate.typed();
+  const auto cmp1_predicate = cmp1 == nullptr ? std::nullopt : cmp1->predicate.typed();
+  if (cmp0 == nullptr || cast == nullptr || cmp1 == nullptr || condbr == nullptr ||
+      cmp0->is_float || !cmp0_predicate.has_value() ||
+      !adapt_compare_predicate(*cmp0_predicate).has_value() || cmp0->type_str != "i32" ||
+      cast->kind != LirCastKind::ZExt || cast->from_type != "i1" ||
+      cast->operand != cmp0->result || cast->to_type != "i32" || cmp1->is_float ||
+      cmp1_predicate != LirCmpPredicate::Ne || cmp1->type_str != "i32" ||
+      cmp1->lhs != cast->result || cmp1->rhs != "0" || condbr->cond_name != cmp1->result ||
+      true_block.label != condbr->true_label || false_block.label != condbr->false_label) {
+    return std::nullopt;
+  }
+
+  const auto* true_br = std::get_if<LirBr>(&true_block.terminator);
+  const auto* false_br = std::get_if<LirBr>(&false_block.terminator);
+  const auto* phi = std::get_if<LirPhiOp>(&join_block.insts.front());
+  const auto* ret = std::get_if<LirRet>(&join_block.terminator);
+  if (true_br == nullptr || false_br == nullptr || phi == nullptr || ret == nullptr ||
+      true_br->target_label != join_block.label ||
+      false_br->target_label != join_block.label || phi->type_str != "i32" ||
+      phi->incoming.size() != 2 || !ret->value_str.has_value() ||
+      ret->type_str != "i32" || *ret->value_str != phi->result) {
+    return std::nullopt;
+  }
+
+  if (phi->incoming[0].second != true_block.label ||
+      phi->incoming[1].second != false_block.label ||
+      !parse_i64(phi->incoming[0].first).has_value() ||
+      !parse_i64(phi->incoming[1].first).has_value()) {
+    return std::nullopt;
+  }
+
+  BackendFunction out;
+  out.signature = signature;
+
+  BackendBlock out_entry;
+  out_entry.label = entry.label;
+  out_entry.insts.push_back(BackendCompareInst{
+      *adapt_compare_predicate(*cmp0_predicate),
+      cmp0->result,
+      "i32",
+      cmp0->lhs,
+      cmp0->rhs,
+  });
+  out_entry.terminator =
+      BackendTerminator::make_cond_branch(cmp0->result, true_block.label, false_block.label);
+  out.blocks.push_back(std::move(out_entry));
+
+  BackendBlock out_true;
+  out_true.label = true_block.label;
+  out_true.terminator = BackendTerminator::make_branch(join_block.label);
+  out.blocks.push_back(std::move(out_true));
+
+  BackendBlock out_false;
+  out_false.label = false_block.label;
+  out_false.terminator = BackendTerminator::make_branch(join_block.label);
+  out.blocks.push_back(std::move(out_false));
+
+  BackendBlock out_join;
+  out_join.label = join_block.label;
+  out_join.insts.push_back(BackendPhiInst{
+      "%t.join",
+      "i32",
+      {
+          BackendPhiIncoming{phi->incoming[0].first, true_block.label},
+          BackendPhiIncoming{phi->incoming[1].first, false_block.label},
+      },
+  });
+  out_join.terminator = BackendReturn{"%t.join", "i32"};
+  out.blocks.push_back(std::move(out_join));
+
+  return out;
+}
+
 std::optional<BackendFunction> adapt_single_param_add_function(
     const c4c::codegen::lir::LirFunction& function,
     const BackendFunctionSignature& signature) {
@@ -2397,6 +2497,10 @@ BackendFunction adapt_function(const c4c::codegen::lir::LirFunction& function,
     return *normalized;
   }
   if (const auto normalized = adapt_conditional_return_function(function, signature);
+      normalized.has_value()) {
+    return *normalized;
+  }
+  if (const auto normalized = adapt_conditional_phi_join_function(function, signature);
       normalized.has_value()) {
     return *normalized;
   }

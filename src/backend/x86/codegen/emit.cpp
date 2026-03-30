@@ -64,6 +64,17 @@ struct MinimalConditionalReturnSlice {
   std::int64_t false_return_imm = 0;
 };
 
+struct MinimalConditionalPhiJoinSlice {
+  c4c::codegen::lir::LirCmpPredicate predicate = c4c::codegen::lir::LirCmpPredicate::Eq;
+  std::int64_t lhs_imm = 0;
+  std::int64_t rhs_imm = 0;
+  std::string true_label;
+  std::string false_label;
+  std::string join_label;
+  std::int64_t true_value_imm = 0;
+  std::int64_t false_value_imm = 0;
+};
+
 struct MinimalCountdownLoopSlice {
   std::int64_t initial_imm = 0;
   std::string loop_label;
@@ -600,6 +611,84 @@ std::optional<MinimalCountdownLoopSlice> parse_minimal_countdown_loop_slice(
   }
 
   return MinimalCountdownLoopSlice{*initial_imm, loop.label, body.label, exit.label};
+}
+
+std::optional<MinimalConditionalPhiJoinSlice> parse_minimal_conditional_phi_join_slice(
+    const c4c::backend::BackendModule& module) {
+  if (module.functions.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration || function.signature.linkage != "define" ||
+      function.signature.return_type != "i32" || function.signature.name != "main" ||
+      !function.signature.params.empty() || function.signature.is_vararg ||
+      function.blocks.size() != 4) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks[0];
+  const auto& true_block = function.blocks[1];
+  const auto& false_block = function.blocks[2];
+  const auto& join_block = function.blocks[3];
+  if (entry.label != "entry" || entry.insts.size() != 1 ||
+      entry.terminator.kind != c4c::backend::BackendTerminatorKind::CondBranch ||
+      true_block.label != entry.terminator.true_label ||
+      false_block.label != entry.terminator.false_label ||
+      !true_block.insts.empty() || !false_block.insts.empty() ||
+      true_block.terminator.kind != c4c::backend::BackendTerminatorKind::Branch ||
+      false_block.terminator.kind != c4c::backend::BackendTerminatorKind::Branch ||
+      true_block.terminator.target_label != join_block.label ||
+      false_block.terminator.target_label != join_block.label ||
+      join_block.insts.size() != 1 ||
+      join_block.terminator.kind != c4c::backend::BackendTerminatorKind::Return ||
+      !join_block.terminator.value.has_value() || join_block.terminator.type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto* cmp = std::get_if<c4c::backend::BackendCompareInst>(&entry.insts.front());
+  const auto* phi = std::get_if<c4c::backend::BackendPhiInst>(&join_block.insts.front());
+  if (cmp == nullptr || phi == nullptr || cmp->result != entry.terminator.cond_name ||
+      cmp->type_str != "i32" || phi->type_str != "i32" || phi->incoming.size() != 2 ||
+      phi->incoming[0].label != true_block.label ||
+      phi->incoming[1].label != false_block.label ||
+      *join_block.terminator.value != phi->result) {
+    return std::nullopt;
+  }
+
+  const auto lhs_imm = parse_i64(cmp->lhs);
+  const auto rhs_imm = parse_i64(cmp->rhs);
+  const auto true_value_imm = parse_i64(phi->incoming[0].value);
+  const auto false_value_imm = parse_i64(phi->incoming[1].value);
+  if (!lhs_imm.has_value() || !rhs_imm.has_value() || !true_value_imm.has_value() ||
+      !false_value_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  using BackendPred = c4c::backend::BackendComparePredicate;
+  using LirPred = c4c::codegen::lir::LirCmpPredicate;
+  LirPred predicate = LirPred::Eq;
+  switch (cmp->predicate) {
+    case BackendPred::Slt: predicate = LirPred::Slt; break;
+    case BackendPred::Sle: predicate = LirPred::Sle; break;
+    case BackendPred::Sgt: predicate = LirPred::Sgt; break;
+    case BackendPred::Sge: predicate = LirPred::Sge; break;
+    case BackendPred::Eq: predicate = LirPred::Eq; break;
+    case BackendPred::Ne: predicate = LirPred::Ne; break;
+    case BackendPred::Ult: predicate = LirPred::Ult; break;
+    case BackendPred::Ule: predicate = LirPred::Ule; break;
+    case BackendPred::Ugt: predicate = LirPred::Ugt; break;
+    case BackendPred::Uge: predicate = LirPred::Uge; break;
+  }
+
+  return MinimalConditionalPhiJoinSlice{predicate,
+                                        *lhs_imm,
+                                        *rhs_imm,
+                                        true_block.label,
+                                        false_block.label,
+                                        join_block.label,
+                                        *true_value_imm,
+                                        *false_value_imm};
 }
 
 std::optional<MinimalLocalArraySlice> parse_minimal_local_array_slice(
@@ -2504,6 +2593,47 @@ std::string emit_minimal_countdown_loop_asm(const c4c::backend::BackendModule& m
   return out.str();
 }
 
+std::string emit_minimal_conditional_phi_join_asm(
+    const c4c::backend::BackendModule& module,
+    const MinimalConditionalPhiJoinSlice& slice) {
+  const std::string symbol = asm_symbol_name(module, "main");
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n";
+  out << ".text\n";
+  out << ".globl " << symbol << "\n";
+  out << symbol << ":\n";
+
+  const char* fail_branch = nullptr;
+  switch (slice.predicate) {
+    case c4c::codegen::lir::LirCmpPredicate::Slt: fail_branch = "jge"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Sle: fail_branch = "jg"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Sgt: fail_branch = "jle"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Sge: fail_branch = "jl"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Eq: fail_branch = "jne"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Ne: fail_branch = "je"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Ult: fail_branch = "jae"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Ule: fail_branch = "ja"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Ugt: fail_branch = "jbe"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Uge: fail_branch = "jb"; break;
+    default:
+      throw c4c::backend::LirAdapterError(
+          c4c::backend::LirAdapterErrorKind::Unsupported,
+          "conditional-phi-join predicates outside the current compare-and-branch x86 slice");
+  }
+
+  out << "  mov eax, " << slice.lhs_imm << "\n";
+  out << "  cmp eax, " << slice.rhs_imm << "\n";
+  out << "  " << fail_branch << " .L" << slice.false_label << "\n";
+  out << ".L" << slice.true_label << ":\n";
+  out << "  mov eax, " << slice.true_value_imm << "\n";
+  out << "  jmp .L" << slice.join_label << "\n";
+  out << ".L" << slice.false_label << ":\n";
+  out << "  mov eax, " << slice.false_value_imm << "\n";
+  out << ".L" << slice.join_label << ":\n";
+  out << "  ret\n";
+  return out.str();
+}
+
 std::string emit_minimal_local_array_asm(const c4c::backend::BackendModule& module,
                                          const MinimalLocalArraySlice& slice) {
   if (slice.store0_imm < std::numeric_limits<std::int32_t>::min() ||
@@ -2828,6 +2958,10 @@ std::string emit_module(const c4c::backend::BackendModule& module,
         slice.has_value()) {
       return emit_minimal_conditional_return_asm(module, *slice);
     }
+    if (const auto slice = parse_minimal_conditional_phi_join_slice(module);
+        slice.has_value()) {
+      return emit_minimal_conditional_phi_join_asm(module, *slice);
+    }
     if (const auto slice = parse_minimal_countdown_loop_slice(module);
         slice.has_value()) {
       return emit_minimal_countdown_loop_asm(module, *slice);
@@ -2973,6 +3107,10 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
     if (const auto slice = parse_minimal_countdown_loop_slice(adapted);
         slice.has_value()) {
       return emit_minimal_countdown_loop_asm(adapted, *slice);
+    }
+    if (const auto slice = parse_minimal_conditional_phi_join_slice(adapted);
+        slice.has_value()) {
+      return emit_minimal_conditional_phi_join_asm(adapted, *slice);
     }
     if (const auto imm = parse_minimal_return_imm(adapted); imm.has_value()) {
       return emit_minimal_return_asm(adapted, *imm);
