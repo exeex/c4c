@@ -5391,6 +5391,22 @@ void test_x86_backend_renders_extern_decl_object_slice() {
                       "x86 backend should no longer fall back to LLVM text for the bounded extern-decl object slice");
 }
 
+void test_x86_backend_renders_extern_decl_object_slice_with_typed_zero_arg_spacing() {
+  auto module = make_x86_extern_decl_object_module();
+  auto& call = std::get<c4c::codegen::lir::LirCallOp>(
+      module.functions.front().blocks.front().insts.front());
+  call.callee_type_suffix = " ( ) ";
+  call.args_str = "  ";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, "call helper_ext\n",
+                  "x86 backend should keep spacing-tolerant typed zero-arg extern calls on the direct-call asm path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should not fall back for spacing-tolerant typed zero-arg extern calls");
+}
+
 void test_x86_backend_renders_string_literal_char_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_x86_string_literal_char_module()},
@@ -8311,6 +8327,7 @@ int main() {
   test_x86_backend_renders_compare_and_branch_uge_slice();
   test_x86_backend_renders_extern_global_array_slice();
   test_x86_backend_renders_extern_decl_object_slice();
+  test_x86_backend_renders_extern_decl_object_slice_with_typed_zero_arg_spacing();
   test_x86_backend_renders_string_literal_char_slice();
   test_x86_backend_renders_global_char_pointer_diff_slice();
   test_x86_backend_renders_global_char_pointer_diff_slice_from_typed_ops();

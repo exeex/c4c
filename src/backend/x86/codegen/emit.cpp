@@ -123,13 +123,6 @@ std::optional<std::string_view> strip_typed_operand_prefix(std::string_view oper
   return operand.substr(type_prefix.size() + 1);
 }
 
-std::optional<std::pair<std::string_view, std::string_view>>
-parse_typed_i32_call_operand_pair(std::string_view callee_type_suffix,
-                                  std::string_view args_str) {
-  return c4c::codegen::lir::parse_lir_two_typed_call_operands(
-      callee_type_suffix, args_str, "i32", "i32");
-}
-
 std::string asm_symbol_name(const c4c::backend::BackendModule& module,
                             std::string_view logical_name) {
   const bool is_darwin =
@@ -716,14 +709,15 @@ std::optional<MinimalExternDeclCallSlice> parse_minimal_extern_decl_call_slice(
   }
 
   const auto* call = std::get_if<LirCallOp>(&entry.insts.front());
-  const bool is_direct_extern_call =
-      call != nullptr &&
-      c4c::codegen::lir::lir_call_has_direct_global_callee(
-          std::string_view(call->callee), extern_decl.name);
+  const auto direct_call =
+      call == nullptr ? std::nullopt
+                      : c4c::codegen::lir::parse_lir_direct_global_typed_call(
+                            call->callee, call->callee_type_suffix, call->args_str);
   if (call == nullptr || call->return_type != "i32" || call->result.empty() ||
-      *ret->value_str != call->result || !is_direct_extern_call ||
-      !c4c::codegen::lir::lir_call_has_no_args(call->callee_type_suffix,
-                                               call->args_str)) {
+      *ret->value_str != call->result || !direct_call.has_value() ||
+      direct_call->symbol_name != extern_decl.name ||
+      !direct_call->typed_call.param_types.empty() ||
+      !direct_call->typed_call.args.empty()) {
     return std::nullopt;
   }
 
@@ -754,19 +748,18 @@ std::optional<MinimalExternDeclCallSlice> parse_minimal_declared_direct_call_sli
 
   const auto* call =
       std::get_if<c4c::backend::BackendCallInst>(&main_block.insts.front());
+  const auto direct_call =
+      call == nullptr ? std::nullopt
+                      : c4c::codegen::lir::parse_lir_direct_global_typed_call(
+                            call->callee, call->callee_type_suffix, call->args_str);
   if (call == nullptr || call->return_type != "i32" || call->result.empty() ||
-      *main_block.terminator.value != call->result ||
-      !c4c::codegen::lir::lir_call_has_no_args(call->callee_type_suffix,
-                                               call->args_str) ||
-      !c4c::codegen::lir::parse_lir_direct_global_callee(
-          std::string_view(call->callee))
-           .has_value()) {
+      *main_block.terminator.value != call->result || !direct_call.has_value() ||
+      !direct_call->typed_call.param_types.empty() ||
+      !direct_call->typed_call.args.empty()) {
     return std::nullopt;
   }
 
-  const std::string callee_name =
-      std::string(*c4c::codegen::lir::parse_lir_direct_global_callee(
-          std::string_view(call->callee)));
+  const std::string callee_name = std::string(direct_call->symbol_name);
   if (callee_name == "main") {
     return std::nullopt;
   }
@@ -1571,17 +1564,6 @@ std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_sl
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
 
-  auto parse_call_args = [](const LirCallOp& call)
-      -> std::optional<std::pair<std::string, std::string>> {
-    const auto args =
-        parse_typed_i32_call_operand_pair(call.callee_type_suffix, call.args_str);
-    if (!args.has_value()) {
-      return std::nullopt;
-    }
-    return std::pair<std::string, std::string>{std::string(args->first),
-                                               std::string(args->second)};
-  };
-
   if (module.functions.size() != 2 || !module.globals.empty() ||
       !module.string_pool.empty() || !module.extern_decls.empty()) {
     return std::nullopt;
@@ -1665,18 +1647,15 @@ std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_sl
     }
 
     const auto* call = std::get_if<LirCallOp>(&main_block.insts.back());
-    const auto callee_name =
-        call == nullptr
-            ? std::nullopt
-            : c4c::codegen::lir::parse_lir_direct_global_callee(
-                  std::string_view(call->callee));
-    if (call == nullptr || call->result.empty() || callee_name != std::string_view("add_pair") ||
+    const auto direct_call =
+        call == nullptr ? std::nullopt
+                        : c4c::codegen::lir::parse_lir_direct_global_typed_call(
+                              call->callee, call->callee_type_suffix, call->args_str);
+    if (call == nullptr || call->result.empty() || !direct_call.has_value() ||
+        direct_call->symbol_name != "add_pair" ||
+        !c4c::codegen::lir::lir_typed_call_has_param_types(
+            direct_call->typed_call, std::array<std::string_view, 2>{"i32", "i32"}) ||
         *main_ret->value_str != call->result) {
-      return std::nullopt;
-    }
-
-    const auto call_args = parse_call_args(*call);
-    if (!call_args.has_value()) {
       return std::nullopt;
     }
 
@@ -1764,13 +1743,13 @@ std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_sl
       return std::nullopt;
     }
 
-    if (call_args->first != lhs_slot.last_load_result ||
-        call_args->second != rhs_slot.last_load_result) {
+    if (direct_call->typed_call.args[0].operand != lhs_slot.last_load_result ||
+        direct_call->typed_call.args[1].operand != rhs_slot.last_load_result) {
       return std::nullopt;
     }
 
     return MinimalTwoArgDirectCallSlice{
-        std::string(*callee_name),
+        std::string(direct_call->symbol_name),
         lhs_slot.stored_imm,
         rhs_slot.stored_imm,
     };
@@ -1785,39 +1764,37 @@ std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_sl
   const auto* store = std::get_if<LirStoreOp>(&main_block.insts[0]);
   const auto* load = std::get_if<LirLoadOp>(&main_block.insts[1]);
   const auto* call = std::get_if<LirCallOp>(&main_block.insts[2]);
-  const auto callee_name = call == nullptr
-                               ? std::nullopt
-                               : c4c::codegen::lir::parse_lir_direct_global_callee(
-                                     std::string_view(call->callee));
+  const auto direct_call =
+      call == nullptr ? std::nullopt
+                      : c4c::codegen::lir::parse_lir_direct_global_typed_call(
+                            call->callee, call->callee_type_suffix, call->args_str);
   if (store == nullptr || load == nullptr || call == nullptr || store->type_str != "i32" ||
       load->type_str != "i32" || store->ptr != alloca->result ||
-      load->ptr != alloca->result || call->result.empty() || callee_name != std::string_view("add_pair") ||
+      load->ptr != alloca->result || call->result.empty() || !direct_call.has_value() ||
+      direct_call->symbol_name != "add_pair" ||
+      !c4c::codegen::lir::lir_typed_call_has_param_types(
+          direct_call->typed_call, std::array<std::string_view, 2>{"i32", "i32"}) ||
       *main_ret->value_str != call->result) {
     return std::nullopt;
   }
-
-    const auto call_args = parse_call_args(*call);
-    if (!call_args.has_value()) {
-      return std::nullopt;
-    }
     const auto stored_imm = parse_i64(store->val);
     if (!stored_imm.has_value()) {
       return std::nullopt;
     }
-    if (call_args->first == load->result) {
-      const auto rhs_call_arg_imm = parse_i64(call_args->second);
+    if (direct_call->typed_call.args[0].operand == load->result) {
+      const auto rhs_call_arg_imm = parse_i64(direct_call->typed_call.args[1].operand);
       if (!rhs_call_arg_imm.has_value()) {
         return std::nullopt;
       }
-      return MinimalTwoArgDirectCallSlice{std::string(*callee_name), *stored_imm,
+      return MinimalTwoArgDirectCallSlice{std::string(direct_call->symbol_name), *stored_imm,
                                           *rhs_call_arg_imm};
     }
-    if (call_args->second == load->result) {
-      const auto lhs_call_arg_imm = parse_i64(call_args->first);
+    if (direct_call->typed_call.args[1].operand == load->result) {
+      const auto lhs_call_arg_imm = parse_i64(direct_call->typed_call.args[0].operand);
       if (!lhs_call_arg_imm.has_value()) {
         return std::nullopt;
       }
-      return MinimalTwoArgDirectCallSlice{std::string(*callee_name), *lhs_call_arg_imm,
+      return MinimalTwoArgDirectCallSlice{std::string(direct_call->symbol_name), *lhs_call_arg_imm,
                                           *stored_imm};
     }
     return std::nullopt;
@@ -1833,10 +1810,10 @@ std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_sl
   const auto* store1 = std::get_if<LirStoreOp>(&main_block.insts[3]);
   const auto* load1 = std::get_if<LirLoadOp>(&main_block.insts[4]);
   const auto* call = std::get_if<LirCallOp>(&main_block.insts[5]);
-  const auto callee_name = call == nullptr
-                               ? std::nullopt
-                               : c4c::codegen::lir::parse_lir_direct_global_callee(
-                                     std::string_view(call->callee));
+  const auto direct_call =
+      call == nullptr ? std::nullopt
+                      : c4c::codegen::lir::parse_lir_direct_global_typed_call(
+                            call->callee, call->callee_type_suffix, call->args_str);
   const auto rewrite_opcode = rewrite == nullptr ? std::nullopt : rewrite->opcode.typed();
   if (store0 == nullptr || load0 == nullptr || rewrite == nullptr || store1 == nullptr ||
       load1 == nullptr || call == nullptr || store0->type_str != "i32" ||
@@ -1846,13 +1823,11 @@ std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_sl
       store0->ptr != alloca->result || load0->ptr != alloca->result ||
       store1->ptr != alloca->result || load1->ptr != alloca->result ||
       rewrite->lhs != load0->result || rewrite->rhs != "0" || store1->val != rewrite->result ||
-      call->result.empty() || callee_name != std::string_view("add_pair") ||
+      call->result.empty() || !direct_call.has_value() ||
+      direct_call->symbol_name != "add_pair" ||
+      !c4c::codegen::lir::lir_typed_call_has_param_types(
+          direct_call->typed_call, std::array<std::string_view, 2>{"i32", "i32"}) ||
       *main_ret->value_str != call->result) {
-    return std::nullopt;
-  }
-
-  const auto call_args = parse_call_args(*call);
-  if (!call_args.has_value()) {
     return std::nullopt;
   }
 
@@ -1861,20 +1836,20 @@ std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_sl
     return std::nullopt;
   }
 
-  if (call_args->first == load1->result) {
-    const auto rhs_call_arg_imm = parse_i64(call_args->second);
+  if (direct_call->typed_call.args[0].operand == load1->result) {
+    const auto rhs_call_arg_imm = parse_i64(direct_call->typed_call.args[1].operand);
     if (!rhs_call_arg_imm.has_value()) {
       return std::nullopt;
     }
-    return MinimalTwoArgDirectCallSlice{std::string(*callee_name), *stored_imm,
+    return MinimalTwoArgDirectCallSlice{std::string(direct_call->symbol_name), *stored_imm,
                                         *rhs_call_arg_imm};
   }
-  if (call_args->second == load1->result) {
-    const auto lhs_call_arg_imm = parse_i64(call_args->first);
+  if (direct_call->typed_call.args[1].operand == load1->result) {
+    const auto lhs_call_arg_imm = parse_i64(direct_call->typed_call.args[0].operand);
     if (!lhs_call_arg_imm.has_value()) {
       return std::nullopt;
     }
-    return MinimalTwoArgDirectCallSlice{std::string(*callee_name), *lhs_call_arg_imm,
+    return MinimalTwoArgDirectCallSlice{std::string(direct_call->symbol_name), *lhs_call_arg_imm,
                                         *stored_imm};
   }
   return std::nullopt;

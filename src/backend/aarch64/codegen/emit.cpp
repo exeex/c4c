@@ -298,22 +298,6 @@ std::optional<std::string_view> strip_typed_operand_prefix(std::string_view oper
   return operand.substr(type_prefix.size() + 1);
 }
 
-std::optional<std::pair<std::int64_t, std::int64_t>> parse_typed_i32_call_pair_imms(
-    std::string_view callee_type_suffix,
-    std::string_view args_str) {
-  const auto operands = c4c::codegen::lir::parse_lir_two_typed_call_operands(
-      callee_type_suffix, args_str, "i32", "i32");
-  if (!operands.has_value()) {
-    return std::nullopt;
-  }
-  const auto arg0 = parse_i64(operands->first);
-  const auto arg1 = parse_i64(operands->second);
-  if (!arg0.has_value() || !arg1.has_value()) {
-    return std::nullopt;
-  }
-  return std::pair<std::int64_t, std::int64_t>{*arg0, *arg1};
-}
-
 std::string escape_asm_string(std::string_view raw_bytes) {
   std::string escaped;
   escaped.reserve(raw_bytes.size());

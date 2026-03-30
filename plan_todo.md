@@ -8,15 +8,13 @@ Source Plan: plan.md
 
 - Step 4: Migrate high-friction instruction families and consumers.
 - Exact target for the next iteration: continue Step 4 past
-  the landed adapter-side shared typed-call metadata cleanup into the residual
-  backend direct-call fast paths that still compose zero-arg or call-crossing
-  typed direct-call validation out of separate helper calls instead of
-  consuming one richer shared direct-call view end to end.
-- Iteration focus: collapse the residual x86/AArch64 zero-arg and
-  call-crossing direct-call recognizers onto
-  `parse_lir_direct_global_typed_call(...)` so those backend fast paths consume
-  one shared structured direct-call view for callee classification plus typed
-  argument shape instead of composing separate helper checks.
+  the landed x86 residual zero-arg / two-arg direct-call cleanup into the
+  remaining backend call-adjacent consumers that still decode typed call
+  metadata from compatibility text instead of one shared structured view.
+- Iteration focus: continue Step 4 into the remaining backend or LIR-side
+  call-family recognizers that still branch on raw `LirCallOp` storage
+  compatibility instead of consuming `ParsedLirTypedCallView` or
+  `ParsedLirDirectGlobalTypedCallView` end to end.
 - Exact target for the next iteration after this slice: continue Step 4 into
   the remaining backend call-adjacent consumers that still decode typed call
   argument/result shape from compatibility text, especially any residual
@@ -25,6 +23,13 @@ Source Plan: plan.md
 
 ## Completed Items
 
+- Completed the next Step 4 residual direct-call recognizer cleanup slice by
+  routing the remaining x86 zero-arg extern/declared direct-call recognizers
+  and the x86 two-arg direct-call shape decoders through
+  `parse_lir_direct_global_typed_call(...)` instead of composing separate
+  zero-arg/callee/typed-operand helpers, deleting the now-unused local x86 and
+  AArch64 pair-decoder helpers, and adding spacing-tolerant x86 extern direct
+  call regression coverage in `tests/backend/backend_lir_adapter_tests.cpp`.
 - Switched the active plan from
   `ideas/open/35_backend_ready_ir_contract_plan.md` to
   `ideas/open/38_lir_de_stringify_legacy_safe_refactor_plan.md`.
@@ -267,6 +272,12 @@ Source Plan: plan.md
   out of the set.
 - The latest full-suite regression check for the shared direct-call view
   cleanup slice also remained monotonic against the checked-in
+  `test_fail_before.log` baseline: `test_fail_after.log` improved from 189
+  failing tests to 188 with no newly failing tests, and
+  `c_testsuite_x86_backend_src_00100_c` is still the only failure that dropped
+  out of the set.
+- The latest full-suite regression check for the residual direct-call
+  recognizer cleanup slice also remained monotonic against the checked-in
   `test_fail_before.log` baseline: `test_fail_after.log` improved from 189
   failing tests to 188 with no newly failing tests, and
   `c_testsuite_x86_backend_src_00100_c` is still the only failure that dropped
