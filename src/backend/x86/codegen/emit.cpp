@@ -861,6 +861,120 @@ std::optional<MinimalScalarGlobalLoadSlice> parse_minimal_scalar_global_load_sli
 }
 
 std::optional<MinimalGlobalCharPointerDiffSlice> parse_minimal_global_char_pointer_diff_slice(
+    const c4c::backend::BackendModule& module) {
+  if (module.functions.size() != 1 || module.globals.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto* global = find_global(module, module.globals.front().name);
+  if (global == nullptr || global->is_extern_decl || global->qualifier != "global ") {
+    return std::nullopt;
+  }
+  const std::string array_prefix = "[";
+  const std::string array_suffix = " x i8]";
+  if (global->llvm_type.size() <= array_prefix.size() + array_suffix.size() ||
+      global->llvm_type.substr(0, array_prefix.size()) != array_prefix ||
+      global->llvm_type.substr(global->llvm_type.size() - array_suffix.size()) !=
+          array_suffix) {
+    return std::nullopt;
+  }
+  const auto global_size_text = global->llvm_type.substr(
+      array_prefix.size(),
+      global->llvm_type.size() - array_prefix.size() - array_suffix.size());
+  const auto global_size = parse_i64(global_size_text);
+  if (!global_size.has_value() || *global_size < 2) {
+    return std::nullopt;
+  }
+
+  const auto* main_fn = find_function(module, "main");
+  if (main_fn == nullptr || main_fn->is_declaration ||
+      main_fn->signature.linkage != "define" ||
+      main_fn->signature.return_type != "i32" ||
+      !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
+      main_fn->blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& block = main_fn->blocks.front();
+  if (block.label != "entry" || block.insts.size() != 1 ||
+      !block.terminator.value.has_value() || block.terminator.type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto* ptrdiff = std::get_if<c4c::backend::BackendPtrDiffEqInst>(&block.insts.front());
+  if (ptrdiff == nullptr || ptrdiff->type_str != "i32" ||
+      ptrdiff->lhs_address.base_symbol != global->name ||
+      ptrdiff->rhs_address.base_symbol != global->name ||
+      ptrdiff->rhs_address.byte_offset != 0 || ptrdiff->element_size != 1 ||
+      ptrdiff->expected_diff != ptrdiff->lhs_address.byte_offset ||
+      ptrdiff->lhs_address.byte_offset <= 0 ||
+      ptrdiff->lhs_address.byte_offset >= *global_size ||
+      *block.terminator.value != ptrdiff->result) {
+    return std::nullopt;
+  }
+
+  return MinimalGlobalCharPointerDiffSlice{
+      global->name,
+      *global_size,
+      ptrdiff->lhs_address.byte_offset,
+  };
+}
+
+std::optional<MinimalGlobalIntPointerDiffSlice> parse_minimal_global_int_pointer_diff_slice(
+    const c4c::backend::BackendModule& module) {
+  if (module.functions.size() != 1 || module.globals.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto* global = find_global(module, module.globals.front().name);
+  if (global == nullptr || global->is_extern_decl || global->qualifier != "global ") {
+    return std::nullopt;
+  }
+  const std::string array_prefix = "[";
+  const std::string array_suffix = " x i32]";
+  if (global->llvm_type.size() <= array_prefix.size() + array_suffix.size() ||
+      global->llvm_type.substr(0, array_prefix.size()) != array_prefix ||
+      global->llvm_type.substr(global->llvm_type.size() - array_suffix.size()) !=
+          array_suffix) {
+    return std::nullopt;
+  }
+  const auto global_size_text = global->llvm_type.substr(
+      array_prefix.size(),
+      global->llvm_type.size() - array_prefix.size() - array_suffix.size());
+  const auto global_size = parse_i64(global_size_text);
+  if (!global_size.has_value() || *global_size < 2) {
+    return std::nullopt;
+  }
+
+  const auto* main_fn = find_function(module, "main");
+  if (main_fn == nullptr || main_fn->is_declaration ||
+      main_fn->signature.linkage != "define" ||
+      main_fn->signature.return_type != "i32" ||
+      !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
+      main_fn->blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& block = main_fn->blocks.front();
+  if (block.label != "entry" || block.insts.size() != 1 ||
+      !block.terminator.value.has_value() || block.terminator.type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto* ptrdiff = std::get_if<c4c::backend::BackendPtrDiffEqInst>(&block.insts.front());
+  if (ptrdiff == nullptr || ptrdiff->type_str != "i32" ||
+      ptrdiff->lhs_address.base_symbol != global->name ||
+      ptrdiff->rhs_address.base_symbol != global->name ||
+      ptrdiff->rhs_address.byte_offset != 0 || ptrdiff->expected_diff != 1 ||
+      ptrdiff->lhs_address.byte_offset != ptrdiff->element_size ||
+      ptrdiff->element_size != 4 || *block.terminator.value != ptrdiff->result) {
+    return std::nullopt;
+  }
+
+  return MinimalGlobalIntPointerDiffSlice{global->name, *global_size, 4, 2};
+}
+
+std::optional<MinimalGlobalCharPointerDiffSlice> parse_minimal_global_char_pointer_diff_slice(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
 
@@ -2362,6 +2476,14 @@ std::string emit_module(const c4c::backend::BackendModule& module,
     if (const auto slice = parse_minimal_scalar_global_load_slice(module);
         slice.has_value()) {
       return emit_minimal_scalar_global_load_asm(module, *slice);
+    }
+    if (const auto slice = parse_minimal_global_char_pointer_diff_slice(module);
+        slice.has_value()) {
+      return emit_minimal_global_char_pointer_diff_asm(module, *slice);
+    }
+    if (const auto slice = parse_minimal_global_int_pointer_diff_slice(module);
+        slice.has_value()) {
+      return emit_minimal_global_int_pointer_diff_asm(module, *slice);
     }
     if (const auto slice = parse_minimal_direct_call_slice(module);
         slice.has_value()) {

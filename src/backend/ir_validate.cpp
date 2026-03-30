@@ -85,17 +85,35 @@ bool validate_inst(const BackendInst& inst, std::string* error, std::string_view
   }
 
   const auto* load = std::get_if<BackendLoadInst>(&inst);
-  if (load == nullptr) {
+  if (load != nullptr) {
+    if (load->result.empty()) {
+      return fail(error, std::string(context) + ": load result must not be empty");
+    }
+    if (load->type_str.empty()) {
+      return fail(error, std::string(context) + ": load type must not be empty");
+    }
+    if (load->address.base_symbol.empty()) {
+      return fail(error, std::string(context) + ": load base symbol must not be empty");
+    }
+    return true;
+  }
+
+  const auto* ptrdiff = std::get_if<BackendPtrDiffEqInst>(&inst);
+  if (ptrdiff == nullptr) {
     return fail(error, std::string(context) + ": unknown instruction variant");
   }
-  if (load->result.empty()) {
-    return fail(error, std::string(context) + ": load result must not be empty");
+  if (ptrdiff->result.empty()) {
+    return fail(error, std::string(context) + ": ptrdiff result must not be empty");
   }
-  if (load->type_str.empty()) {
-    return fail(error, std::string(context) + ": load type must not be empty");
+  if (ptrdiff->type_str.empty()) {
+    return fail(error, std::string(context) + ": ptrdiff type must not be empty");
   }
-  if (load->address.base_symbol.empty()) {
-    return fail(error, std::string(context) + ": load base symbol must not be empty");
+  if (ptrdiff->lhs_address.base_symbol.empty() ||
+      ptrdiff->rhs_address.base_symbol.empty()) {
+    return fail(error, std::string(context) + ": ptrdiff base symbols must not be empty");
+  }
+  if (ptrdiff->element_size <= 0) {
+    return fail(error, std::string(context) + ": ptrdiff element size must be positive");
   }
   return true;
 }

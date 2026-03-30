@@ -71,7 +71,19 @@ struct BackendLoadInst {
   BackendAddress address;
 };
 
-using BackendInst = std::variant<BackendBinaryInst, BackendCallInst, BackendLoadInst>;
+struct BackendPtrDiffEqInst {
+  std::string result;
+  std::string type_str;
+  BackendAddress lhs_address;
+  BackendAddress rhs_address;
+  std::int64_t element_size = 1;
+  std::int64_t expected_diff = 0;
+};
+
+using BackendInst = std::variant<BackendBinaryInst,
+                                 BackendCallInst,
+                                 BackendLoadInst,
+                                 BackendPtrDiffEqInst>;
 
 struct BackendReturn {
   std::optional<std::string> value;

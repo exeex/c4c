@@ -54,15 +54,31 @@ void render_inst(std::ostringstream& out, const BackendInst& inst) {
   const auto* call = std::get_if<BackendCallInst>(&inst);
   if (call == nullptr) {
     const auto* load = std::get_if<BackendLoadInst>(&inst);
-    if (load == nullptr) {
+    if (load != nullptr) {
+      out << "  " << load->result << " = load " << load->type_str << ", ptr @"
+          << load->address.base_symbol;
+      if (load->address.byte_offset != 0) {
+        out << " + " << load->address.byte_offset;
+      }
+      out << "\n";
       return;
     }
-    out << "  " << load->result << " = load " << load->type_str << ", ptr @"
-        << load->address.base_symbol;
-    if (load->address.byte_offset != 0) {
-      out << " + " << load->address.byte_offset;
+
+    const auto* ptrdiff = std::get_if<BackendPtrDiffEqInst>(&inst);
+    if (ptrdiff == nullptr) {
+      return;
     }
-    out << "\n";
+    out << "  " << ptrdiff->result << " = ptrdiff_eq " << ptrdiff->type_str
+        << ", ptr @" << ptrdiff->lhs_address.base_symbol;
+    if (ptrdiff->lhs_address.byte_offset != 0) {
+      out << " + " << ptrdiff->lhs_address.byte_offset;
+    }
+    out << ", ptr @" << ptrdiff->rhs_address.base_symbol;
+    if (ptrdiff->rhs_address.byte_offset != 0) {
+      out << " + " << ptrdiff->rhs_address.byte_offset;
+    }
+    out << ", elem_size " << ptrdiff->element_size << ", expected "
+        << ptrdiff->expected_diff << "\n";
     return;
   }
 

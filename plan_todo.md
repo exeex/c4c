@@ -10,8 +10,9 @@ Source Plan: plan.md
 - Exact target for the next iteration: extend `src/backend/ir.*` past the
   current global-capable subset so more global-address consumers can be emitted
   from lowered backend IR without relying on the optional legacy `LirModule`
-  fallback, continuing with bounded pointer-difference slices after landing the
-  scalar global pointer round-trip canonicalization.
+  fallback, continuing from the newly lowered bounded global char/int
+  pointer-difference slices into the remaining string-pool, broader memory-op,
+  and multi-block seams that still require legacy fallback.
 - Resume notes:
   - canonical emitter-facing IR ownership now lives in `src/backend/ir.hpp`
     and is shared by the new printer/validator layers
@@ -29,9 +30,11 @@ Source Plan: plan.md
   - bounded scalar global pointer round-trips now lower directly into
     backend-owned global-load IR, so explicit backend IR inputs can emit that
     slice without `ptrtoint` / `inttoptr` / alloca fallback text
-  - bounded global pointer-difference slices, string-pool entities, broader
-    memory ops, and multi-block control-flow still remain outside the current
-    backend-owned IR model
+  - bounded global char/int pointer-difference slices now lower into a
+    backend-owned `ptrdiff_eq` compare form that both x86 and AArch64 can emit
+    directly from explicit backend IR inputs without legacy LIR fallback
+  - string-pool entities, broader memory ops, and multi-block control-flow
+    still remain outside the current backend-owned IR model
 
 ## Completed Items
 
@@ -104,6 +107,22 @@ Source Plan: plan.md
     round-trip into backend-owned `BackendLoadInst`
   - added focused backend tests covering lowered round-trip IR printing,
     validation, and explicit backend-IR emission on x86 and AArch64
+- Verified the current post-change full-suite regression status in
+  `test_after.log`: `93% tests passed`, `183 tests failed out of 2560`
+  (2377 passing), matching the current recorded runbook baseline with no
+  pass-count regression.
+- Completed an additional Step 2 global pointer-difference slice:
+  - extended `src/backend/ir.hpp` with a backend-owned `BackendPtrDiffEqInst`
+    contract plus printer/validator coverage in `src/backend/ir_printer.cpp`
+    and `src/backend/ir_validate.cpp`
+  - taught `src/backend/lir_adapter.cpp` to canonicalize the bounded global
+    char/int pointer-difference slices into the backend-owned compare form
+    instead of preserving `ptrtoint` / subtraction / scaling text
+  - updated `src/backend/x86/codegen/emit.cpp` and
+    `src/backend/aarch64/codegen/emit.cpp` so explicit backend IR inputs can
+    emit the lowered char/int pointer-difference slices directly
+  - added focused backend tests covering lowered pointer-difference IR
+    printing, validation, and explicit backend-IR emission on x86 and AArch64
 - Verified the current post-change full-suite regression status in
   `test_after.log`: `93% tests passed`, `183 tests failed out of 2560`
   (2377 passing), matching the current recorded runbook baseline with no

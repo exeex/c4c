@@ -4628,6 +4628,62 @@ void test_backend_ir_validator_accepts_lowered_global_int_pointer_roundtrip_slic
               "backend IR validator should not report an error for valid lowered round-trip globals");
 }
 
+void test_backend_ir_printer_renders_lowered_global_char_pointer_diff_slice() {
+  const auto lowered =
+      c4c::backend::lower_to_backend_ir(make_global_char_pointer_diff_module());
+  const auto rendered = c4c::backend::print_backend_ir(lowered);
+
+  expect_contains(rendered, "@g_bytes = global [2 x i8] zeroinitializer\n",
+                  "backend IR printer should keep the bounded char pointer-difference global definition");
+  expect_contains(rendered,
+                  "%t11 = ptrdiff_eq i32, ptr @g_bytes + 1, ptr @g_bytes, elem_size 1, expected 1\n",
+                  "backend IR printer should collapse the bounded char pointer-difference slice into a backend-owned compare");
+  expect_not_contains(rendered, "ptrtoint",
+                      "backend IR printer should not preserve ptrtoint once the bounded char pointer-difference slice is lowered");
+  expect_contains(rendered, "ret i32 %t11",
+                  "backend IR printer should preserve the bounded char pointer-difference return");
+}
+
+void test_backend_ir_validator_accepts_lowered_global_char_pointer_diff_slice() {
+  const auto lowered =
+      c4c::backend::lower_to_backend_ir(make_global_char_pointer_diff_module());
+  std::string error;
+
+  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should accept lowered global char pointer-difference slices");
+  expect_true(error.empty(),
+              "backend IR validator should not report an error for valid lowered char pointer-difference globals");
+}
+
+void test_backend_ir_printer_renders_lowered_global_int_pointer_diff_slice() {
+  const auto lowered =
+      c4c::backend::lower_to_backend_ir(make_global_int_pointer_diff_module());
+  const auto rendered = c4c::backend::print_backend_ir(lowered);
+
+  expect_contains(rendered, "@g_words = global [2 x i32] zeroinitializer, align 4\n",
+                  "backend IR printer should keep the bounded int pointer-difference global definition");
+  expect_contains(rendered,
+                  "%t12 = ptrdiff_eq i32, ptr @g_words + 4, ptr @g_words, elem_size 4, expected 1\n",
+                  "backend IR printer should collapse the bounded int pointer-difference slice into a backend-owned compare");
+  expect_not_contains(rendered, "ptrtoint",
+                      "backend IR printer should not preserve ptrtoint once the bounded int pointer-difference slice is lowered");
+  expect_not_contains(rendered, "sdiv",
+                      "backend IR printer should not preserve integer scaling once the bounded int pointer-difference slice is lowered");
+  expect_contains(rendered, "ret i32 %t12",
+                  "backend IR printer should preserve the bounded int pointer-difference return");
+}
+
+void test_backend_ir_validator_accepts_lowered_global_int_pointer_diff_slice() {
+  const auto lowered =
+      c4c::backend::lower_to_backend_ir(make_global_int_pointer_diff_module());
+  std::string error;
+
+  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should accept lowered global int pointer-difference slices");
+  expect_true(error.empty(),
+              "backend IR validator should not report an error for valid lowered int pointer-difference globals");
+}
+
 void test_backend_ir_printer_renders_lowered_extern_global_array_load_slice() {
   const auto lowered =
       c4c::backend::lower_to_backend_ir(make_extern_global_array_load_module());
@@ -5161,6 +5217,40 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_global_int_pointer_round
                   "x86 backend seam should lower explicit backend-IR round-trip loads directly");
   expect_not_contains(rendered, "target triple =",
                       "x86 backend seam should not fall back to backend IR text for lowered round-trip globals");
+}
+
+void test_x86_backend_scaffold_accepts_explicit_lowered_global_char_pointer_diff_ir_input() {
+  const auto lowered =
+      c4c::backend::lower_to_backend_ir(make_x86_global_char_pointer_diff_module());
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, "lea rax, g_bytes[rip]\n",
+                  "x86 backend seam should materialize the lowered char pointer-difference base directly");
+  expect_contains(rendered, "lea rcx, [rax + 1]\n",
+                  "x86 backend seam should preserve the lowered byte offset for char pointer differences");
+  expect_contains(rendered, "cmp rcx, 1\n",
+                  "x86 backend seam should lower the explicit backend-IR char pointer-difference compare directly");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back to backend IR text for lowered char pointer differences");
+}
+
+void test_x86_backend_scaffold_accepts_explicit_lowered_global_int_pointer_diff_ir_input() {
+  const auto lowered =
+      c4c::backend::lower_to_backend_ir(make_x86_global_int_pointer_diff_module());
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, "lea rax, g_words[rip]\n",
+                  "x86 backend seam should materialize the lowered int pointer-difference base directly");
+  expect_contains(rendered, "lea rcx, [rax + 4]\n",
+                  "x86 backend seam should preserve the lowered one-element byte offset for int pointer differences");
+  expect_contains(rendered, "sar rcx, 2\n",
+                  "x86 backend seam should lower the explicit backend-IR int pointer-difference scaling directly");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back to backend IR text for lowered int pointer differences");
 }
 
 void test_x86_backend_scaffold_renders_direct_return_immediate_slice() {
@@ -7022,6 +7112,40 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_global_int_pointer_r
                   "aarch64 backend seam should lower explicit backend-IR round-trip loads directly");
   expect_not_contains(rendered, "target triple =",
                       "aarch64 backend seam should not fall back to backend IR text for lowered round-trip globals");
+}
+
+void test_aarch64_backend_scaffold_accepts_explicit_lowered_global_char_pointer_diff_ir_input() {
+  const auto lowered =
+      c4c::backend::lower_to_backend_ir(make_global_char_pointer_diff_module());
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  expect_contains(rendered, "adrp x8, g_bytes\n",
+                  "aarch64 backend seam should materialize the lowered char pointer-difference base directly");
+  expect_contains(rendered, "add x9, x8, #1\n",
+                  "aarch64 backend seam should preserve the lowered byte offset for char pointer differences");
+  expect_contains(rendered, "cmp x8, #1\n",
+                  "aarch64 backend seam should lower the explicit backend-IR char pointer-difference compare directly");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should not fall back to backend IR text for lowered char pointer differences");
+}
+
+void test_aarch64_backend_scaffold_accepts_explicit_lowered_global_int_pointer_diff_ir_input() {
+  const auto lowered =
+      c4c::backend::lower_to_backend_ir(make_global_int_pointer_diff_module());
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  expect_contains(rendered, "adrp x8, g_words\n",
+                  "aarch64 backend seam should materialize the lowered int pointer-difference base directly");
+  expect_contains(rendered, "add x9, x8, #4\n",
+                  "aarch64 backend seam should preserve the lowered one-element byte offset for int pointer differences");
+  expect_contains(rendered, "lsr x8, x8, #2\n",
+                  "aarch64 backend seam should lower the explicit backend-IR int pointer-difference scaling directly");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should not fall back to backend IR text for lowered int pointer differences");
 }
 
 void test_aarch64_backend_renders_extern_global_array_slice() {
@@ -8965,6 +9089,10 @@ int main() {
   test_backend_ir_validator_accepts_lowered_global_load_slice();
   test_backend_ir_printer_renders_lowered_global_int_pointer_roundtrip_slice();
   test_backend_ir_validator_accepts_lowered_global_int_pointer_roundtrip_slice();
+  test_backend_ir_printer_renders_lowered_global_char_pointer_diff_slice();
+  test_backend_ir_validator_accepts_lowered_global_char_pointer_diff_slice();
+  test_backend_ir_printer_renders_lowered_global_int_pointer_diff_slice();
+  test_backend_ir_validator_accepts_lowered_global_int_pointer_diff_slice();
   test_backend_ir_printer_renders_lowered_extern_global_array_load_slice();
   test_adapter_normalizes_typed_direct_call_helper_slice();
   test_adapter_normalizes_local_temp_return_slice();
@@ -9005,6 +9133,8 @@ int main() {
   test_x86_backend_scaffold_accepts_explicit_lowered_global_load_ir_input();
   test_x86_backend_scaffold_accepts_explicit_lowered_extern_global_array_ir_input();
   test_x86_backend_scaffold_accepts_explicit_lowered_global_int_pointer_roundtrip_ir_input();
+  test_x86_backend_scaffold_accepts_explicit_lowered_global_char_pointer_diff_ir_input();
+  test_x86_backend_scaffold_accepts_explicit_lowered_global_int_pointer_diff_ir_input();
   test_x86_backend_scaffold_renders_direct_return_immediate_slice();
   test_x86_backend_scaffold_renders_direct_return_sub_immediate_slice();
   test_x86_backend_renders_local_temp_sub_slice();
@@ -9105,6 +9235,8 @@ int main() {
   test_aarch64_backend_scaffold_accepts_explicit_lowered_extern_global_load_ir_input();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_extern_global_array_ir_input();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_global_int_pointer_roundtrip_ir_input();
+  test_aarch64_backend_scaffold_accepts_explicit_lowered_global_char_pointer_diff_ir_input();
+  test_aarch64_backend_scaffold_accepts_explicit_lowered_global_int_pointer_diff_ir_input();
   test_aarch64_backend_renders_extern_global_array_slice();
   test_aarch64_backend_renders_global_char_pointer_diff_slice();
   test_aarch64_backend_renders_global_char_pointer_diff_slice_from_typed_ops();

@@ -1713,6 +1713,271 @@ std::optional<BackendFunction> adapt_indexed_global_array_load_function(
   return out;
 }
 
+std::optional<BackendFunction> adapt_global_char_pointer_diff_function(
+    const c4c::codegen::lir::LirFunction& function,
+    const c4c::codegen::lir::LirModule& module,
+    const BackendFunctionSignature& signature) {
+  using namespace c4c::codegen::lir;
+
+  if (function.is_declaration || signature.linkage != "define" ||
+      signature.return_type != "i32" || signature.name != "main" ||
+      !signature.params.empty() || signature.is_vararg || function.blocks.size() != 1 ||
+      !function.alloca_insts.empty() || !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  if (module.globals.size() != 1 || !module.string_pool.empty() ||
+      !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& global = module.globals.front();
+  if (global.is_internal || global.is_const || global.is_extern_decl ||
+      global.linkage_vis != "" || global.qualifier != "global ") {
+    return std::nullopt;
+  }
+
+  const std::string array_prefix = "[";
+  const std::string array_suffix = " x i8]";
+  if (global.llvm_type.size() <= array_prefix.size() + array_suffix.size() ||
+      global.llvm_type.substr(0, array_prefix.size()) != array_prefix ||
+      global.llvm_type.substr(global.llvm_type.size() - array_suffix.size()) !=
+          array_suffix) {
+    return std::nullopt;
+  }
+  const auto global_size_text = global.llvm_type.substr(
+      array_prefix.size(),
+      global.llvm_type.size() - array_prefix.size() - array_suffix.size());
+  const auto global_size = parse_i64(global_size_text);
+  if (!global_size.has_value() || *global_size < 2) {
+    return std::nullopt;
+  }
+
+  const auto& block = function.blocks.front();
+  if (block.label != "entry" || block.insts.size() != 12) {
+    return std::nullopt;
+  }
+
+  const auto* base_gep1 = std::get_if<LirGepOp>(&block.insts[0]);
+  const auto* index1 = std::get_if<LirCastOp>(&block.insts[1]);
+  const auto* byte_gep1 = std::get_if<LirGepOp>(&block.insts[2]);
+  const auto* base_gep0 = std::get_if<LirGepOp>(&block.insts[3]);
+  const auto* index0 = std::get_if<LirCastOp>(&block.insts[4]);
+  const auto* byte_gep0 = std::get_if<LirGepOp>(&block.insts[5]);
+  const auto* ptrtoint1 = std::get_if<LirCastOp>(&block.insts[6]);
+  const auto* ptrtoint0 = std::get_if<LirCastOp>(&block.insts[7]);
+  const auto* diff = std::get_if<LirBinOp>(&block.insts[8]);
+  const auto* expected_diff = std::get_if<LirCastOp>(&block.insts[9]);
+  const auto* cmp = std::get_if<LirCmpOp>(&block.insts[10]);
+  const auto* extend = std::get_if<LirCastOp>(&block.insts[11]);
+  const auto* ret = std::get_if<LirRet>(&block.terminator);
+  if (base_gep1 == nullptr || index1 == nullptr || byte_gep1 == nullptr ||
+      base_gep0 == nullptr || index0 == nullptr || byte_gep0 == nullptr ||
+      ptrtoint1 == nullptr || ptrtoint0 == nullptr || diff == nullptr ||
+      expected_diff == nullptr || cmp == nullptr || extend == nullptr ||
+      ret == nullptr || !ret->value_str.has_value()) {
+    return std::nullopt;
+  }
+
+  const std::string global_ptr = "@" + global.name;
+  if (base_gep1->element_type != global.llvm_type || base_gep1->ptr != global_ptr ||
+      base_gep1->indices.size() != 2 || base_gep1->indices[0] != "i64 0" ||
+      base_gep1->indices[1] != "i64 0" || base_gep0->element_type != global.llvm_type ||
+      base_gep0->ptr != global_ptr || base_gep0->indices.size() != 2 ||
+      base_gep0->indices[0] != "i64 0" || base_gep0->indices[1] != "i64 0") {
+    return std::nullopt;
+  }
+
+  const auto byte_offset = parse_i64(index1->operand);
+  const auto zero_offset = parse_i64(index0->operand);
+  const auto expected_value = parse_i64(expected_diff->operand);
+  if (!byte_offset.has_value() || !zero_offset.has_value() ||
+      !expected_value.has_value() || *byte_offset <= 0 || *zero_offset != 0 ||
+      *byte_offset >= *global_size || *expected_value != *byte_offset) {
+    return std::nullopt;
+  }
+
+  if (index1->kind != LirCastKind::SExt || index1->from_type != "i32" ||
+      index1->to_type != "i64" || index0->kind != LirCastKind::SExt ||
+      index0->from_type != "i32" || index0->to_type != "i64" ||
+      byte_gep1->element_type != "i8" || byte_gep1->ptr != base_gep1->result ||
+      byte_gep1->indices.size() != 1 ||
+      byte_gep1->indices[0] != ("i64 " + index1->result) ||
+      byte_gep0->element_type != "i8" || byte_gep0->ptr != base_gep0->result ||
+      byte_gep0->indices.size() != 1 ||
+      byte_gep0->indices[0] != ("i64 " + index0->result) ||
+      ptrtoint1->kind != LirCastKind::PtrToInt || ptrtoint1->from_type != "ptr" ||
+      ptrtoint1->operand != byte_gep1->result || ptrtoint1->to_type != "i64" ||
+      ptrtoint0->kind != LirCastKind::PtrToInt || ptrtoint0->from_type != "ptr" ||
+      ptrtoint0->operand != byte_gep0->result || ptrtoint0->to_type != "i64") {
+    return std::nullopt;
+  }
+
+  if (diff->opcode.typed() != LirBinaryOpcode::Sub || diff->type_str != "i64" ||
+      diff->lhs != ptrtoint1->result || diff->rhs != ptrtoint0->result ||
+      expected_diff->kind != LirCastKind::SExt || expected_diff->from_type != "i32" ||
+      expected_diff->to_type != "i64" ||
+      cmp->predicate.typed() != LirCmpPredicate::Eq || cmp->is_float ||
+      cmp->type_str != "i64" || cmp->lhs != diff->result ||
+      cmp->rhs != expected_diff->result || extend->kind != LirCastKind::ZExt ||
+      extend->from_type != "i1" || extend->operand != cmp->result ||
+      extend->to_type != "i32" || *ret->value_str != extend->result ||
+      ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  BackendFunction out;
+  out.signature = signature;
+  BackendBlock out_block;
+  out_block.label = block.label;
+  out_block.insts.push_back(BackendPtrDiffEqInst{
+      extend->result,
+      "i32",
+      BackendAddress{global.name, *byte_offset},
+      BackendAddress{global.name, 0},
+      1,
+      *expected_value,
+  });
+  out_block.terminator = BackendReturn{*ret->value_str, "i32"};
+  out.blocks.push_back(std::move(out_block));
+  return out;
+}
+
+std::optional<BackendFunction> adapt_global_int_pointer_diff_function(
+    const c4c::codegen::lir::LirFunction& function,
+    const c4c::codegen::lir::LirModule& module,
+    const BackendFunctionSignature& signature) {
+  using namespace c4c::codegen::lir;
+
+  if (function.is_declaration || signature.linkage != "define" ||
+      signature.return_type != "i32" || signature.name != "main" ||
+      !signature.params.empty() || signature.is_vararg || function.blocks.size() != 1 ||
+      !function.alloca_insts.empty() || !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  if (module.globals.size() != 1 || !module.string_pool.empty() ||
+      !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& global = module.globals.front();
+  if (global.is_internal || global.is_const || global.is_extern_decl ||
+      global.linkage_vis != "" || global.qualifier != "global ") {
+    return std::nullopt;
+  }
+
+  const std::string array_prefix = "[";
+  const std::string array_suffix = " x i32]";
+  if (global.llvm_type.size() <= array_prefix.size() + array_suffix.size() ||
+      global.llvm_type.substr(0, array_prefix.size()) != array_prefix ||
+      global.llvm_type.substr(global.llvm_type.size() - array_suffix.size()) !=
+          array_suffix) {
+    return std::nullopt;
+  }
+  const auto global_size_text = global.llvm_type.substr(
+      array_prefix.size(),
+      global.llvm_type.size() - array_prefix.size() - array_suffix.size());
+  const auto global_size = parse_i64(global_size_text);
+  if (!global_size.has_value() || *global_size < 2) {
+    return std::nullopt;
+  }
+
+  const auto& block = function.blocks.front();
+  if (block.label != "entry" || block.insts.size() != 13) {
+    return std::nullopt;
+  }
+
+  const auto* base_gep1 = std::get_if<LirGepOp>(&block.insts[0]);
+  const auto* index1 = std::get_if<LirCastOp>(&block.insts[1]);
+  const auto* elem_gep1 = std::get_if<LirGepOp>(&block.insts[2]);
+  const auto* base_gep0 = std::get_if<LirGepOp>(&block.insts[3]);
+  const auto* index0 = std::get_if<LirCastOp>(&block.insts[4]);
+  const auto* elem_gep0 = std::get_if<LirGepOp>(&block.insts[5]);
+  const auto* ptrtoint1 = std::get_if<LirCastOp>(&block.insts[6]);
+  const auto* ptrtoint0 = std::get_if<LirCastOp>(&block.insts[7]);
+  const auto* diff = std::get_if<LirBinOp>(&block.insts[8]);
+  const auto* scaled_diff = std::get_if<LirBinOp>(&block.insts[9]);
+  const auto* expected_diff = std::get_if<LirCastOp>(&block.insts[10]);
+  const auto* cmp = std::get_if<LirCmpOp>(&block.insts[11]);
+  const auto* extend = std::get_if<LirCastOp>(&block.insts[12]);
+  const auto* ret = std::get_if<LirRet>(&block.terminator);
+  if (base_gep1 == nullptr || index1 == nullptr || elem_gep1 == nullptr ||
+      base_gep0 == nullptr || index0 == nullptr || elem_gep0 == nullptr ||
+      ptrtoint1 == nullptr || ptrtoint0 == nullptr || diff == nullptr ||
+      scaled_diff == nullptr || expected_diff == nullptr || cmp == nullptr ||
+      extend == nullptr || ret == nullptr || !ret->value_str.has_value()) {
+    return std::nullopt;
+  }
+
+  const std::string global_ptr = "@" + global.name;
+  if (base_gep1->element_type != global.llvm_type || base_gep1->ptr != global_ptr ||
+      base_gep1->indices.size() != 2 || base_gep1->indices[0] != "i64 0" ||
+      base_gep1->indices[1] != "i64 0" || base_gep0->element_type != global.llvm_type ||
+      base_gep0->ptr != global_ptr || base_gep0->indices.size() != 2 ||
+      base_gep0->indices[0] != "i64 0" || base_gep0->indices[1] != "i64 0") {
+    return std::nullopt;
+  }
+
+  const auto element_index = parse_i64(index1->operand);
+  const auto zero_index = parse_i64(index0->operand);
+  const auto element_size = parse_i64(scaled_diff->rhs);
+  const auto expected_value = parse_i64(expected_diff->operand);
+  if (!element_index.has_value() || !zero_index.has_value() ||
+      !element_size.has_value() || !expected_value.has_value() ||
+      *element_index <= 0 || *zero_index != 0 || *element_size <= 0 ||
+      *expected_value != *element_index) {
+    return std::nullopt;
+  }
+
+  if (index1->kind != LirCastKind::SExt || index1->from_type != "i32" ||
+      index1->to_type != "i64" || index0->kind != LirCastKind::SExt ||
+      index0->from_type != "i32" || index0->to_type != "i64" ||
+      elem_gep1->element_type != "i32" || elem_gep1->ptr != base_gep1->result ||
+      elem_gep1->indices.size() != 1 ||
+      elem_gep1->indices[0] != ("i64 " + index1->result) ||
+      elem_gep0->element_type != "i32" || elem_gep0->ptr != base_gep0->result ||
+      elem_gep0->indices.size() != 1 ||
+      elem_gep0->indices[0] != ("i64 " + index0->result) ||
+      ptrtoint1->kind != LirCastKind::PtrToInt || ptrtoint1->from_type != "ptr" ||
+      ptrtoint1->operand != elem_gep1->result || ptrtoint1->to_type != "i64" ||
+      ptrtoint0->kind != LirCastKind::PtrToInt || ptrtoint0->from_type != "ptr" ||
+      ptrtoint0->operand != elem_gep0->result || ptrtoint0->to_type != "i64") {
+    return std::nullopt;
+  }
+
+  if (diff->opcode.typed() != LirBinaryOpcode::Sub || diff->type_str != "i64" ||
+      diff->lhs != ptrtoint1->result || diff->rhs != ptrtoint0->result ||
+      scaled_diff->opcode.typed() != LirBinaryOpcode::SDiv ||
+      scaled_diff->type_str != "i64" || scaled_diff->lhs != diff->result ||
+      expected_diff->kind != LirCastKind::SExt || expected_diff->from_type != "i32" ||
+      expected_diff->to_type != "i64" ||
+      cmp->predicate.typed() != LirCmpPredicate::Eq || cmp->is_float ||
+      cmp->type_str != "i64" || cmp->lhs != scaled_diff->result ||
+      cmp->rhs != expected_diff->result || extend->kind != LirCastKind::ZExt ||
+      extend->from_type != "i1" || extend->operand != cmp->result ||
+      extend->to_type != "i32" || *ret->value_str != extend->result ||
+      ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  BackendFunction out;
+  out.signature = signature;
+  BackendBlock out_block;
+  out_block.label = block.label;
+  out_block.insts.push_back(BackendPtrDiffEqInst{
+      extend->result,
+      "i32",
+      BackendAddress{global.name, *element_index * *element_size},
+      BackendAddress{global.name, 0},
+      *element_size,
+      *expected_value,
+  });
+  out_block.terminator = BackendReturn{*ret->value_str, "i32"};
+  out.blocks.push_back(std::move(out_block));
+  return out;
+}
+
 BackendFunction adapt_function(const c4c::codegen::lir::LirFunction& function,
                                const c4c::codegen::lir::LirModule& module) {
   const auto signature = parse_signature(function.signature_text);
@@ -1770,6 +2035,16 @@ BackendFunction adapt_function(const c4c::codegen::lir::LirFunction& function,
   }
   if (const auto normalized =
           adapt_global_int_pointer_roundtrip_function(function, module, signature);
+      normalized.has_value()) {
+    return *normalized;
+  }
+  if (const auto normalized =
+          adapt_global_char_pointer_diff_function(function, module, signature);
+      normalized.has_value()) {
+    return *normalized;
+  }
+  if (const auto normalized =
+          adapt_global_int_pointer_diff_function(function, module, signature);
       normalized.has_value()) {
     return *normalized;
   }
