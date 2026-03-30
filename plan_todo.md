@@ -8,11 +8,20 @@ Source Plan: plan.md
 
 - Step 2: Define the backend-owned IR model.
 - Exact target for the next iteration: extend `src/backend/ir.*` past the
-  current bounded compare-and-branch return slice into the next explicit
-  multi-block control-flow seam with a join or loop backedge, so backend-owned
-  IR can move beyond terminal two-way returns and start retiring another
-  still-fallback-only branch/label pattern.
+  newly lowered while-loop backedge slice into the next explicit join-form
+  control-flow seam, so backend-owned IR can represent both loop-carried state
+  and a bounded merge point instead of stopping at branch-to-return or
+  countdown-only patterns.
 - Resume notes:
+  - bounded while-countdown loops with a single loop-carried scalar now lower
+    into explicit backend-owned loop IR with a `phi` state, compare, backedge,
+    and exit block instead of being evaluated away into a constant return
+  - both x86 and AArch64 now accept that lowered explicit backend-IR countdown
+    loop directly at the emitter seam instead of falling back to backend-IR
+    text or legacy LIR for the supported while-loop slice
+  - the next highest-value control-flow seam is an explicit join/merge shape;
+    do-while countdowns and other branch merges still remain outside the
+    lowered backend-owned control-flow slice
   - backend-owned IR now carries an explicit compare instruction plus
     conditional-branch terminator, and the bounded three-block
     compare/branch/return slice lowers directly into backend-owned IR instead
@@ -208,3 +217,21 @@ Source Plan: plan.md
   (2377 passing), improving the checked `test_fail_before.log` baseline
   (`189` failing / `2371` passing) by 6 passing tests with no newly failing
   tests.
+- Completed an additional Step 2 explicit loop-backedge slice:
+  - extended `src/backend/ir.hpp` with a backend-owned `phi` instruction so
+    loop-carried backend IR state can be represented explicitly instead of
+    being hidden behind adapter evaluation
+  - taught `src/backend/lir_adapter.cpp` to lower the bounded
+    while-countdown local-scalar shape into explicit backend-owned loop IR
+    with entry, loop header, body, and exit blocks
+  - updated `src/backend/x86/codegen/emit.cpp` and
+    `src/backend/aarch64/codegen/emit.cpp` so explicit backend IR inputs can
+    emit the lowered countdown-loop backedge slice directly
+  - added focused backend tests covering lowered countdown-loop printing,
+    validation, x86 explicit-backend-IR emission, AArch64
+    explicit-backend-IR emission, and the x86 direct asm path
+- Verified the current post-change full-suite regression status in
+  `test_fail_after_step5_countdown_loop.log`: `93% tests passed`, `183 tests
+  failed out of 2560` (2377 passing), matching the current recorded runbook
+  baseline from `test_fail_after.log` with an identical failing-test set and
+  no newly failing tests.

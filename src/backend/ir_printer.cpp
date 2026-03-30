@@ -69,6 +69,16 @@ void render_signature(std::ostringstream& out,
 }
 
 void render_inst(std::ostringstream& out, const BackendInst& inst) {
+  if (const auto* phi = std::get_if<BackendPhiInst>(&inst)) {
+    out << "  " << phi->result << " = phi " << phi->type_str;
+    for (std::size_t index = 0; index < phi->incoming.size(); ++index) {
+      out << (index == 0 ? " " : ", ") << "[ " << phi->incoming[index].value
+          << ", %" << phi->incoming[index].label << " ]";
+    }
+    out << "\n";
+    return;
+  }
+
   if (const auto* bin = std::get_if<BackendBinaryInst>(&inst)) {
     out << "  " << bin->result << " = " << backend_binary_opcode_name(bin->opcode)
         << " " << bin->type_str << " " << bin->lhs << ", " << bin->rhs << "\n";

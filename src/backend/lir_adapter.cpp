@@ -1409,6 +1409,132 @@ std::optional<BackendFunction> adapt_single_local_countdown_loop_function(
   return std::nullopt;
 }
 
+std::optional<BackendFunction> adapt_countdown_while_loop_function(
+    const c4c::codegen::lir::LirFunction& function,
+    const BackendFunctionSignature& signature) {
+  using namespace c4c::codegen::lir;
+
+  if (function.is_declaration || signature.linkage != "define" ||
+      signature.return_type != "i32" || signature.name != "main" ||
+      !signature.params.empty() || signature.is_vararg || function.blocks.size() != 4 ||
+      function.alloca_insts.size() != 1 || !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* scalar_alloca = std::get_if<LirAllocaOp>(&function.alloca_insts.front());
+  if (scalar_alloca == nullptr || scalar_alloca->type_str != "i32" ||
+      scalar_alloca->result.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks[0];
+  const auto& loop = function.blocks[1];
+  const auto& body = function.blocks[2];
+  const auto& exit = function.blocks[3];
+
+  const auto* entry_store =
+      entry.insts.size() == 1 ? std::get_if<LirStoreOp>(&entry.insts.front()) : nullptr;
+  const auto* entry_br = std::get_if<LirBr>(&entry.terminator);
+  if (entry.label != "entry" || entry_store == nullptr || entry_br == nullptr ||
+      entry_store->type_str != "i32" || entry_store->ptr != scalar_alloca->result ||
+      entry_br->target_label != loop.label) {
+    return std::nullopt;
+  }
+  const auto initial_value = parse_i64(entry_store->val);
+  if (!initial_value.has_value() || *initial_value < 0) {
+    return std::nullopt;
+  }
+
+  const auto* loop_load =
+      loop.insts.size() == 2 ? std::get_if<LirLoadOp>(&loop.insts[0]) : nullptr;
+  const auto* loop_cmp =
+      loop.insts.size() == 2 ? std::get_if<LirCmpOp>(&loop.insts[1]) : nullptr;
+  const auto* loop_condbr = std::get_if<LirCondBr>(&loop.terminator);
+  const auto loop_predicate = loop_cmp == nullptr ? std::nullopt : loop_cmp->predicate.typed();
+  if (loop_load == nullptr || loop_cmp == nullptr || loop_condbr == nullptr ||
+      loop_load->type_str != "i32" || loop_load->ptr != scalar_alloca->result ||
+      loop_cmp->is_float || loop_predicate != LirCmpPredicate::Ne ||
+      loop_cmp->type_str != "i32" || loop_cmp->lhs != loop_load->result ||
+      loop_cmp->rhs != "0" || loop_condbr->cond_name != loop_cmp->result ||
+      loop_condbr->true_label != body.label || loop_condbr->false_label != exit.label) {
+    return std::nullopt;
+  }
+
+  const auto* body_load =
+      body.insts.size() == 3 ? std::get_if<LirLoadOp>(&body.insts[0]) : nullptr;
+  const auto* body_sub =
+      body.insts.size() == 3 ? std::get_if<LirBinOp>(&body.insts[1]) : nullptr;
+  const auto* body_store =
+      body.insts.size() == 3 ? std::get_if<LirStoreOp>(&body.insts[2]) : nullptr;
+  const auto* body_br = std::get_if<LirBr>(&body.terminator);
+  if (body_load == nullptr || body_sub == nullptr || body_store == nullptr ||
+      body_br == nullptr || body_load->type_str != "i32" ||
+      body_load->ptr != scalar_alloca->result ||
+      !has_binary_opcode(*body_sub, LirBinaryOpcode::Sub) || body_sub->type_str != "i32" ||
+      body_sub->lhs != body_load->result || body_sub->rhs != "1" ||
+      body_store->type_str != "i32" || body_store->ptr != scalar_alloca->result ||
+      body_store->val != body_sub->result || body_br->target_label != loop.label) {
+    return std::nullopt;
+  }
+
+  const auto* exit_load =
+      exit.insts.size() == 1 ? std::get_if<LirLoadOp>(&exit.insts.front()) : nullptr;
+  const auto* exit_ret = std::get_if<LirRet>(&exit.terminator);
+  if (exit_load == nullptr || exit_ret == nullptr || exit_load->type_str != "i32" ||
+      exit_load->ptr != scalar_alloca->result || !exit_ret->value_str.has_value() ||
+      *exit_ret->value_str != exit_load->result || exit_ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  BackendFunction out;
+  out.signature = signature;
+
+  BackendBlock out_entry;
+  out_entry.label = entry.label;
+  out_entry.terminator = BackendTerminator::make_branch(loop.label);
+
+  BackendBlock out_loop;
+  out_loop.label = loop.label;
+  out_loop.insts.push_back(BackendPhiInst{
+      "%t.iter",
+      "i32",
+      {
+          BackendPhiIncoming{entry_store->val, entry.label},
+          BackendPhiIncoming{"%t.dec", body.label},
+      },
+  });
+  out_loop.insts.push_back(BackendCompareInst{
+      BackendComparePredicate::Ne,
+      "%t.keep_going",
+      "i32",
+      "%t.iter",
+      "0",
+  });
+  out_loop.terminator =
+      BackendTerminator::make_cond_branch("%t.keep_going", body.label, exit.label);
+
+  BackendBlock out_body;
+  out_body.label = body.label;
+  out_body.insts.push_back(BackendBinaryInst{
+      BackendBinaryOpcode::Sub,
+      "%t.dec",
+      "i32",
+      "%t.iter",
+      "1",
+  });
+  out_body.terminator = BackendTerminator::make_branch(loop.label);
+
+  BackendBlock out_exit;
+  out_exit.label = exit.label;
+  out_exit.terminator = BackendReturn{"%t.iter", "i32"};
+
+  out.blocks.push_back(std::move(out_entry));
+  out.blocks.push_back(std::move(out_loop));
+  out.blocks.push_back(std::move(out_body));
+  out.blocks.push_back(std::move(out_exit));
+  return out;
+}
+
 std::optional<BackendFunction> adapt_local_single_arg_call_function(
     const c4c::codegen::lir::LirFunction& function,
     const BackendFunctionSignature& signature) {
@@ -2280,6 +2406,10 @@ BackendFunction adapt_function(const c4c::codegen::lir::LirFunction& function,
     return *normalized;
   }
   if (const auto normalized = adapt_goto_only_constant_return_function(function, signature);
+      normalized.has_value()) {
+    return *normalized;
+  }
+  if (const auto normalized = adapt_countdown_while_loop_function(function, signature);
       normalized.has_value()) {
     return *normalized;
   }

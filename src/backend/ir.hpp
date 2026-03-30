@@ -78,6 +78,17 @@ struct BackendCompareInst {
   std::string rhs;
 };
 
+struct BackendPhiIncoming {
+  std::string value;
+  std::string label;
+};
+
+struct BackendPhiInst {
+  std::string result;
+  std::string type_str;
+  std::vector<BackendPhiIncoming> incoming;
+};
+
 using BackendCallArg = c4c::codegen::lir::OwnedLirTypedCallArg;
 
 struct BackendCallInst {
@@ -123,7 +134,8 @@ struct BackendPtrDiffEqInst {
   std::int64_t expected_diff = 0;
 };
 
-using BackendInst = std::variant<BackendBinaryInst,
+using BackendInst = std::variant<BackendPhiInst,
+                                 BackendBinaryInst,
                                  BackendCompareInst,
                                  BackendCallInst,
                                  BackendLoadInst,

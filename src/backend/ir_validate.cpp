@@ -71,6 +71,31 @@ bool validate_string_constant(const BackendStringConstant& string_constant,
 }
 
 bool validate_inst(const BackendInst& inst, std::string* error, std::string_view context) {
+  if (const auto* phi = std::get_if<BackendPhiInst>(&inst)) {
+    if (phi->result.empty()) {
+      return fail(error, std::string(context) + ": phi result must not be empty");
+    }
+    if (phi->type_str.empty()) {
+      return fail(error, std::string(context) + ": phi type must not be empty");
+    }
+    if (phi->incoming.empty()) {
+      return fail(error, std::string(context) + ": phi must have at least one incoming edge");
+    }
+    for (std::size_t index = 0; index < phi->incoming.size(); ++index) {
+      if (phi->incoming[index].value.empty()) {
+        return fail(error,
+                    std::string(context) + ": phi incoming " + std::to_string(index) +
+                        " value must not be empty");
+      }
+      if (phi->incoming[index].label.empty()) {
+        return fail(error,
+                    std::string(context) + ": phi incoming " + std::to_string(index) +
+                        " label must not be empty");
+      }
+    }
+    return true;
+  }
+
   if (const auto* bin = std::get_if<BackendBinaryInst>(&inst)) {
     if (bin->result.empty()) {
       return fail(error, std::string(context) + ": binary result must not be empty");
@@ -248,6 +273,19 @@ bool validate_function(const BackendFunction& function,
 
   for (std::size_t index = 0; index < function.blocks.size(); ++index) {
     const auto& terminator = function.blocks[index].terminator;
+    for (const auto& inst : function.blocks[index].insts) {
+      const auto* phi = std::get_if<BackendPhiInst>(&inst);
+      if (phi == nullptr) {
+        continue;
+      }
+      for (const auto& incoming : phi->incoming) {
+        if (labels.find(incoming.label) == labels.end()) {
+          return fail(error,
+                      std::string(context) + ": block " + std::to_string(index) +
+                          " phi references unknown label '" + incoming.label + "'");
+        }
+      }
+    }
     if (terminator.kind == BackendTerminatorKind::Branch &&
         labels.find(terminator.target_label) == labels.end()) {
       return fail(error,

@@ -4695,6 +4695,34 @@ void test_backend_ir_validator_accepts_lowered_conditional_return_slice() {
               "backend IR validator should not report an error for valid lowered conditional-return slices");
 }
 
+void test_backend_ir_printer_renders_lowered_countdown_while_slice() {
+  const auto lowered = c4c::backend::lower_to_backend_ir(make_countdown_while_return_module());
+  const auto rendered = c4c::backend::print_backend_ir(lowered);
+
+  expect_contains(rendered, "entry:\n  br label %block_1",
+                  "backend IR printer should preserve the explicit countdown-loop entry branch");
+  expect_contains(rendered, "%t.iter = phi i32 [ 50, %entry ], [ %t.dec, %block_2 ]",
+                  "backend IR printer should render the lowered loop-carried phi state");
+  expect_contains(rendered, "%t.keep_going = icmp ne i32 %t.iter, 0",
+                  "backend IR printer should render the lowered countdown compare");
+  expect_contains(rendered, "br i1 %t.keep_going, label %block_2, label %block_3",
+                  "backend IR printer should render the lowered loop backedge split");
+  expect_contains(rendered, "block_2:\n  %t.dec = sub i32 %t.iter, 1\n  br label %block_1",
+                  "backend IR printer should render the lowered loop body decrement and backedge");
+  expect_contains(rendered, "block_3:\n  ret i32 %t.iter",
+                  "backend IR printer should preserve the lowered loop exit return");
+}
+
+void test_backend_ir_validator_accepts_lowered_countdown_while_slice() {
+  const auto lowered = c4c::backend::lower_to_backend_ir(make_countdown_while_return_module());
+  std::string error;
+
+  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should accept lowered countdown-loop backedge slices");
+  expect_true(error.empty(),
+              "backend IR validator should not report an error for valid lowered countdown loops");
+}
+
 void test_backend_ir_printer_renders_lowered_string_literal_char_slice() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_string_literal_char_module());
   const auto rendered = c4c::backend::print_backend_ir(lowered);
@@ -4892,8 +4920,10 @@ void test_adapter_normalizes_countdown_while_return_slice() {
   const auto rendered = c4c::backend::render_module(adapted);
   expect_contains(rendered, "define i32 @main()",
                   "adapter should preserve the while-countdown function signature");
-  expect_contains(rendered, "ret i32 0",
-                  "adapter should collapse the bounded while-countdown loop into a direct return");
+  expect_contains(rendered, "%t.iter = phi i32 [ 50, %entry ], [ %t.dec, %block_2 ]",
+                  "adapter should lower the bounded while-countdown loop into explicit loop-carried IR");
+  expect_contains(rendered, "br i1 %t.keep_going, label %block_2, label %block_3",
+                  "adapter should preserve the explicit countdown loop backedge split");
 }
 
 void test_adapter_normalizes_typed_countdown_while_return_slice() {
@@ -4902,8 +4932,10 @@ void test_adapter_normalizes_typed_countdown_while_return_slice() {
   const auto rendered = c4c::backend::render_module(adapted);
   expect_contains(rendered, "define i32 @main()",
                   "adapter should preserve the typed while-countdown function signature");
-  expect_contains(rendered, "ret i32 0",
-                  "adapter should collapse typed cmp/sub while-countdown loops into a direct return");
+  expect_contains(rendered, "%t.iter = phi i32 [ 50, %entry ], [ %t.dec, %block_2 ]",
+                  "adapter should lower typed cmp/sub while-countdown loops into explicit loop-carried IR");
+  expect_contains(rendered, "%t.dec = sub i32 %t.iter, 1",
+                  "adapter should preserve the typed countdown decrement in backend-owned IR");
 }
 
 void test_adapter_normalizes_countdown_do_while_return_slice() {
@@ -5423,6 +5455,24 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_return_ir_in
                       "x86 backend seam should not fall back to backend IR text for lowered conditional branches");
 }
 
+void test_x86_backend_scaffold_accepts_explicit_lowered_countdown_while_ir_input() {
+  auto module = make_countdown_while_return_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, ".Lblock_1:",
+                  "x86 backend seam should emit the explicit lowered countdown loop header label");
+  expect_contains(rendered, "  sub eax, 1\n",
+                  "x86 backend seam should lower the explicit backend-IR countdown decrement directly");
+  expect_contains(rendered, "  jmp .Lblock_1\n",
+                  "x86 backend seam should preserve the explicit backend-IR loop backedge");
+  expect_not_contains(rendered, "phi i32",
+                      "x86 backend seam should not fall back to backend IR text for lowered countdown loops");
+}
+
 void test_x86_backend_scaffold_renders_direct_return_immediate_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_return_zero_module()},
@@ -5538,8 +5588,12 @@ void test_x86_backend_renders_countdown_while_return_slice() {
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
   expect_contains(rendered, ".globl main",
                   "x86 backend should emit a real entry symbol for the bounded while-countdown slice");
-  expect_contains(rendered, "mov eax, 0",
-                  "x86 backend should fold the normalized while-countdown loop into the final immediate return");
+  expect_contains(rendered, ".Lblock_1:",
+                  "x86 backend should emit the explicit lowered countdown loop header label");
+  expect_contains(rendered, "sub eax, 1",
+                  "x86 backend should emit the explicit lowered countdown decrement");
+  expect_contains(rendered, "jmp .Lblock_1",
+                  "x86 backend should emit the explicit lowered countdown backedge");
   expect_not_contains(rendered, "target triple =",
                       "x86 backend should stop falling back to LLVM text for the supported while-countdown slice");
 }
@@ -7407,6 +7461,22 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_return_i
                   "aarch64 backend seam should branch on the explicit backend-IR conditional terminator");
   expect_not_contains(rendered, "br i1",
                       "aarch64 backend seam should not fall back to backend IR text for lowered conditional branches");
+}
+
+void test_aarch64_backend_scaffold_accepts_explicit_lowered_countdown_while_ir_input() {
+  const auto lowered = c4c::backend::lower_to_backend_ir(make_countdown_while_return_module());
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  expect_contains(rendered, ".Lblock_1:",
+                  "aarch64 backend seam should emit the explicit lowered countdown loop header label");
+  expect_contains(rendered, "  cmp w0, #0\n",
+                  "aarch64 backend seam should compare the lowered loop-carried counter directly");
+  expect_contains(rendered, "  sub w0, w0, #1\n",
+                  "aarch64 backend seam should emit the explicit lowered countdown decrement");
+  expect_not_contains(rendered, "phi i32",
+                      "aarch64 backend seam should not fall back to backend IR text for lowered countdown loops");
 }
 
 void test_aarch64_backend_renders_extern_global_array_slice() {
@@ -9399,12 +9469,15 @@ int main() {
   test_x86_backend_scaffold_accepts_explicit_lowered_global_store_reload_ir_input();
   test_backend_ir_printer_renders_lowered_conditional_return_slice();
   test_backend_ir_validator_accepts_lowered_conditional_return_slice();
+  test_backend_ir_printer_renders_lowered_countdown_while_slice();
+  test_backend_ir_validator_accepts_lowered_countdown_while_slice();
   test_x86_backend_scaffold_accepts_explicit_lowered_string_literal_ir_input();
   test_x86_backend_scaffold_accepts_explicit_lowered_extern_global_array_ir_input();
   test_x86_backend_scaffold_accepts_explicit_lowered_global_int_pointer_roundtrip_ir_input();
   test_x86_backend_scaffold_accepts_explicit_lowered_global_char_pointer_diff_ir_input();
   test_x86_backend_scaffold_accepts_explicit_lowered_global_int_pointer_diff_ir_input();
   test_x86_backend_scaffold_accepts_explicit_lowered_conditional_return_ir_input();
+  test_x86_backend_scaffold_accepts_explicit_lowered_countdown_while_ir_input();
   test_x86_backend_scaffold_renders_direct_return_immediate_slice();
   test_x86_backend_scaffold_renders_direct_return_sub_immediate_slice();
   test_x86_backend_renders_local_temp_sub_slice();
@@ -9512,6 +9585,7 @@ int main() {
   test_aarch64_backend_scaffold_accepts_explicit_lowered_global_char_pointer_diff_ir_input();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_global_int_pointer_diff_ir_input();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_return_ir_input();
+  test_aarch64_backend_scaffold_accepts_explicit_lowered_countdown_while_ir_input();
   test_aarch64_backend_renders_extern_global_array_slice();
   test_aarch64_backend_renders_global_char_pointer_diff_slice();
   test_aarch64_backend_renders_global_char_pointer_diff_slice_from_typed_ops();

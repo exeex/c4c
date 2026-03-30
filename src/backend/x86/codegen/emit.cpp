@@ -64,6 +64,13 @@ struct MinimalConditionalReturnSlice {
   std::int64_t false_return_imm = 0;
 };
 
+struct MinimalCountdownLoopSlice {
+  std::int64_t initial_imm = 0;
+  std::string loop_label;
+  std::string body_label;
+  std::string exit_label;
+};
+
 struct MinimalLocalArraySlice {
   std::int64_t store0_imm = 0;
   std::int64_t store1_imm = 0;
@@ -540,6 +547,59 @@ std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_sl
                                        condbr->false_label,
                                        *true_return_imm,
                                        *false_return_imm};
+}
+
+std::optional<MinimalCountdownLoopSlice> parse_minimal_countdown_loop_slice(
+    const c4c::backend::BackendModule& module) {
+  if (module.functions.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration || function.signature.linkage != "define" ||
+      function.signature.return_type != "i32" || function.signature.name != "main" ||
+      !function.signature.params.empty() || function.signature.is_vararg ||
+      function.blocks.size() != 4) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks[0];
+  const auto& loop = function.blocks[1];
+  const auto& body = function.blocks[2];
+  const auto& exit = function.blocks[3];
+  if (entry.label != "entry" || !entry.insts.empty() ||
+      entry.terminator.kind != c4c::backend::BackendTerminatorKind::Branch ||
+      entry.terminator.target_label != loop.label || loop.insts.size() != 2 ||
+      loop.terminator.kind != c4c::backend::BackendTerminatorKind::CondBranch ||
+      loop.terminator.true_label != body.label ||
+      loop.terminator.false_label != exit.label || body.insts.size() != 1 ||
+      body.terminator.kind != c4c::backend::BackendTerminatorKind::Branch ||
+      body.terminator.target_label != loop.label || !exit.insts.empty() ||
+      exit.terminator.kind != c4c::backend::BackendTerminatorKind::Return ||
+      !exit.terminator.value.has_value() || exit.terminator.type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto* phi = std::get_if<c4c::backend::BackendPhiInst>(&loop.insts[0]);
+  const auto* cmp = std::get_if<c4c::backend::BackendCompareInst>(&loop.insts[1]);
+  const auto* dec = std::get_if<c4c::backend::BackendBinaryInst>(&body.insts.front());
+  if (phi == nullptr || cmp == nullptr || dec == nullptr || phi->type_str != "i32" ||
+      phi->incoming.size() != 2 || phi->incoming[0].label != entry.label ||
+      phi->incoming[1].label != body.label || cmp->predicate != c4c::backend::BackendComparePredicate::Ne ||
+      cmp->result != loop.terminator.cond_name || cmp->type_str != "i32" ||
+      cmp->lhs != phi->result || cmp->rhs != "0" ||
+      dec->opcode != c4c::backend::BackendBinaryOpcode::Sub || dec->type_str != "i32" ||
+      dec->lhs != phi->result || dec->rhs != "1" || dec->result != phi->incoming[1].value ||
+      *exit.terminator.value != phi->result) {
+    return std::nullopt;
+  }
+
+  const auto initial_imm = parse_i64(phi->incoming[0].value);
+  if (!initial_imm.has_value() || *initial_imm < 0) {
+    return std::nullopt;
+  }
+
+  return MinimalCountdownLoopSlice{*initial_imm, loop.label, body.label, exit.label};
 }
 
 std::optional<MinimalLocalArraySlice> parse_minimal_local_array_slice(
@@ -2424,6 +2484,26 @@ std::string emit_minimal_conditional_return_asm(
   return out.str();
 }
 
+std::string emit_minimal_countdown_loop_asm(const c4c::backend::BackendModule& module,
+                                            const MinimalCountdownLoopSlice& slice) {
+  const std::string symbol = asm_symbol_name(module, "main");
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n";
+  out << ".text\n";
+  out << ".globl " << symbol << "\n";
+  out << symbol << ":\n";
+  out << "  mov eax, " << slice.initial_imm << "\n";
+  out << ".L" << slice.loop_label << ":\n";
+  out << "  cmp eax, 0\n";
+  out << "  je .L" << slice.exit_label << "\n";
+  out << ".L" << slice.body_label << ":\n";
+  out << "  sub eax, 1\n";
+  out << "  jmp .L" << slice.loop_label << "\n";
+  out << ".L" << slice.exit_label << ":\n";
+  out << "  ret\n";
+  return out.str();
+}
+
 std::string emit_minimal_local_array_asm(const c4c::backend::BackendModule& module,
                                          const MinimalLocalArraySlice& slice) {
   if (slice.store0_imm < std::numeric_limits<std::int32_t>::min() ||
@@ -2748,6 +2828,10 @@ std::string emit_module(const c4c::backend::BackendModule& module,
         slice.has_value()) {
       return emit_minimal_conditional_return_asm(module, *slice);
     }
+    if (const auto slice = parse_minimal_countdown_loop_slice(module);
+        slice.has_value()) {
+      return emit_minimal_countdown_loop_asm(module, *slice);
+    }
     if (const auto slice = parse_minimal_direct_call_slice(module);
         slice.has_value()) {
       return emit_minimal_direct_call_asm(module, *slice);
@@ -2885,6 +2969,10 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
       }
       return remove_redundant_self_moves(emit_minimal_call_crossing_direct_call_asm(
           adapted, run_shared_x86_regalloc(*main_fn), *slice));
+    }
+    if (const auto slice = parse_minimal_countdown_loop_slice(adapted);
+        slice.has_value()) {
+      return emit_minimal_countdown_loop_asm(adapted, *slice);
     }
     if (const auto imm = parse_minimal_return_imm(adapted); imm.has_value()) {
       return emit_minimal_return_asm(adapted, *imm);
