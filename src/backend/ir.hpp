@@ -2,6 +2,7 @@
 
 #include "../codegen/lir/call_args.hpp"
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <variant>
@@ -20,6 +21,16 @@ struct BackendFunctionSignature {
   std::string name;
   std::vector<BackendParam> params;
   bool is_vararg = false;
+};
+
+struct BackendGlobal {
+  std::string name;
+  std::string linkage;
+  std::string qualifier;
+  std::string llvm_type;
+  std::string init_text;
+  int align_bytes = 0;
+  bool is_extern_decl = false;
 };
 
 enum class BackendBinaryOpcode {
@@ -49,7 +60,18 @@ struct BackendCallInst {
   bool render_callee_type_suffix = false;
 };
 
-using BackendInst = std::variant<BackendBinaryInst, BackendCallInst>;
+struct BackendAddress {
+  std::string base_symbol;
+  std::int64_t byte_offset = 0;
+};
+
+struct BackendLoadInst {
+  std::string result;
+  std::string type_str;
+  BackendAddress address;
+};
+
+using BackendInst = std::variant<BackendBinaryInst, BackendCallInst, BackendLoadInst>;
 
 struct BackendReturn {
   std::optional<std::string> value;
@@ -72,6 +94,7 @@ struct BackendModule {
   std::string target_triple;
   std::string data_layout;
   std::vector<std::string> type_decls;
+  std::vector<BackendGlobal> globals;
   std::vector<BackendFunction> functions;
 };
 

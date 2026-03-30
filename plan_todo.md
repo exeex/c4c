@@ -8,9 +8,10 @@ Source Plan: plan.md
 
 - Step 2: Define the backend-owned IR model.
 - Exact target for the next iteration: extend `src/backend/ir.*` past the
-  current function-only subset so global definitions and extern global loads
-  can be emitted from lowered backend IR without using the optional legacy
-  `LirModule` fallback.
+  current global-capable subset so more global-address consumers can be emitted
+  from lowered backend IR without relying on the optional legacy `LirModule`
+  fallback, starting with bounded pointer-difference / round-trip slices that
+  still parse raw LIR in the target emitters.
 - Resume notes:
   - canonical emitter-facing IR ownership now lives in `src/backend/ir.hpp`
     and is shared by the new printer/validator layers
@@ -79,3 +80,17 @@ Source Plan: plan.md
   `test_after.log`: `93% tests passed`, `188 tests failed out of 2560`
   (2372 passing), matching the previously recorded runbook baseline with no
   pass-count regression.
+- Completed an additional Step 2 backend-global slice:
+  - extended `src/backend/ir.hpp` with backend-owned global entities plus a
+    narrow load/address form and taught the printer/validator to cover them
+  - taught `src/backend/lir_adapter.cpp` to lower scalar global loads, extern
+    scalar global loads, and extern global-array element loads into backend IR
+  - updated `src/backend/x86/codegen/emit.cpp` and
+    `src/backend/aarch64/codegen/emit.cpp` so explicit backend IR inputs can
+    emit the lowered global-load slices without falling back to raw LIR text
+  - added focused backend tests covering lowered global rendering/validation
+    plus explicit backend-IR emission for x86 and AArch64 global-load seams
+- Verified the current post-change full-suite regression status in
+  `test_after.log`: `93% tests passed`, `183 tests failed out of 2560`
+  (2377 passing), improving the recorded baseline by 5 passing tests with no
+  newly failing tests.

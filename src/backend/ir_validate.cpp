@@ -35,6 +35,27 @@ bool validate_function_signature(const BackendFunctionSignature& signature,
   return true;
 }
 
+bool validate_global(const BackendGlobal& global,
+                     std::string* error,
+                     std::string_view context) {
+  if (global.name.empty()) {
+    return fail(error, std::string(context) + ": global name must not be empty");
+  }
+  if (global.qualifier.empty()) {
+    return fail(error, std::string(context) + ": global qualifier must not be empty");
+  }
+  if (global.llvm_type.empty()) {
+    return fail(error, std::string(context) + ": global type must not be empty");
+  }
+  if (!global.is_extern_decl && global.init_text.empty()) {
+    return fail(error, std::string(context) + ": defined globals must have an initializer");
+  }
+  if (global.is_extern_decl && !global.init_text.empty()) {
+    return fail(error, std::string(context) + ": extern globals must not have an initializer");
+  }
+  return true;
+}
+
 bool validate_inst(const BackendInst& inst, std::string* error, std::string_view context) {
   if (const auto* bin = std::get_if<BackendBinaryInst>(&inst)) {
     if (bin->result.empty()) {
@@ -49,19 +70,32 @@ bool validate_inst(const BackendInst& inst, std::string* error, std::string_view
     return true;
   }
 
-  const auto* call = std::get_if<BackendCallInst>(&inst);
-  if (call == nullptr) {
+  if (const auto* call = std::get_if<BackendCallInst>(&inst)) {
+    if (call->return_type.empty()) {
+      return fail(error, std::string(context) + ": call return type must not be empty");
+    }
+    if (call->callee.empty()) {
+      return fail(error, std::string(context) + ": call callee must not be empty");
+    }
+    if (call->param_types.size() != call->args.size()) {
+      return fail(error,
+                  std::string(context) + ": call param type count must match arg count");
+    }
+    return true;
+  }
+
+  const auto* load = std::get_if<BackendLoadInst>(&inst);
+  if (load == nullptr) {
     return fail(error, std::string(context) + ": unknown instruction variant");
   }
-  if (call->return_type.empty()) {
-    return fail(error, std::string(context) + ": call return type must not be empty");
+  if (load->result.empty()) {
+    return fail(error, std::string(context) + ": load result must not be empty");
   }
-  if (call->callee.empty()) {
-    return fail(error, std::string(context) + ": call callee must not be empty");
+  if (load->type_str.empty()) {
+    return fail(error, std::string(context) + ": load type must not be empty");
   }
-  if (call->param_types.size() != call->args.size()) {
-    return fail(error,
-                std::string(context) + ": call param type count must match arg count");
+  if (load->address.base_symbol.empty()) {
+    return fail(error, std::string(context) + ": load base symbol must not be empty");
   }
   return true;
 }
@@ -126,6 +160,17 @@ bool validate_function(const BackendFunction& function,
 }  // namespace
 
 bool validate_backend_ir(const BackendModule& module, std::string* error) {
+  std::unordered_set<std::string> globals;
+  for (std::size_t index = 0; index < module.globals.size(); ++index) {
+    const auto& global = module.globals[index];
+    if (!validate_global(global, error, std::string("global ") + std::to_string(index))) {
+      return false;
+    }
+    if (!globals.insert(global.name).second) {
+      return fail(error, "duplicate global '" + global.name + "'");
+    }
+  }
+
   for (std::size_t index = 0; index < module.functions.size(); ++index) {
     if (!validate_function(module.functions[index],
                            error,

@@ -8,6 +8,18 @@ namespace c4c::backend {
 
 namespace {
 
+void render_global(std::ostringstream& out, const BackendGlobal& global) {
+  out << "@" << global.name << " = " << global.linkage << global.qualifier
+      << global.llvm_type;
+  if (!global.is_extern_decl) {
+    out << " " << global.init_text;
+  }
+  if (global.align_bytes > 1) {
+    out << ", align " << global.align_bytes;
+  }
+  out << "\n";
+}
+
 void render_signature(std::ostringstream& out,
                       const BackendFunctionSignature& signature) {
   out << signature.linkage << " " << signature.return_type << " @"
@@ -41,6 +53,16 @@ void render_inst(std::ostringstream& out, const BackendInst& inst) {
 
   const auto* call = std::get_if<BackendCallInst>(&inst);
   if (call == nullptr) {
+    const auto* load = std::get_if<BackendLoadInst>(&inst);
+    if (load == nullptr) {
+      return;
+    }
+    out << "  " << load->result << " = load " << load->type_str << ", ptr @"
+        << load->address.base_symbol;
+    if (load->address.byte_offset != 0) {
+      out << " + " << load->address.byte_offset;
+    }
+    out << "\n";
     return;
   }
 
@@ -99,6 +121,12 @@ std::string print_backend_ir(const BackendModule& module) {
     out << type_decl << "\n";
   }
   if (!module.type_decls.empty()) {
+    out << "\n";
+  }
+  for (const auto& global : module.globals) {
+    render_global(out, global);
+  }
+  if (!module.globals.empty()) {
     out << "\n";
   }
   for (const auto& function : module.functions) {
