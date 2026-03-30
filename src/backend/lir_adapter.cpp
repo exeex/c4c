@@ -1077,6 +1077,15 @@ std::optional<BackendFunction> adapt_local_pointer_temp_return_function(
   std::unordered_map<std::string, std::string> scalar_values;
   std::unordered_map<std::string, std::string> pointer_targets;
   std::unordered_map<std::string, std::string> loaded_values;
+  std::unordered_map<std::string, std::int64_t> integer_values;
+
+  auto parse_typed_operand = [](std::string_view text) -> std::optional<std::int64_t> {
+    const auto space = text.find(' ');
+    if (space == std::string_view::npos) {
+      return parse_i64(text);
+    }
+    return parse_i64(text.substr(space + 1));
+  };
 
   auto resolve_scalar_ptr = [&](std::string_view ptr) -> std::optional<std::string> {
     if (ptr == scalar_alloca->result) {
@@ -1089,7 +1098,51 @@ std::optional<BackendFunction> adapt_local_pointer_temp_return_function(
     return it->second;
   };
 
+  auto resolve_integer_value = [&](std::string_view value)
+      -> std::optional<std::int64_t> {
+    if (const auto imm = parse_typed_operand(value); imm.has_value()) {
+      return imm;
+    }
+    // Strip type prefix (e.g. "i64 %t1" -> "%t1") before map lookup.
+    const auto space = value.find(' ');
+    const auto key = (space != std::string_view::npos) ? value.substr(space + 1) : value;
+    const auto it = integer_values.find(std::string(key));
+    if (it == integer_values.end()) {
+      return std::nullopt;
+    }
+    return it->second;
+  };
+
   for (const auto& inst : block.insts) {
+    if (const auto* cast = std::get_if<LirCastOp>(&inst)) {
+      if (cast->kind != LirCastKind::SExt || cast->from_type != "i32" ||
+          cast->to_type != "i64") {
+        return std::nullopt;
+      }
+      const auto value = resolve_integer_value(cast->operand);
+      if (!value.has_value()) {
+        return std::nullopt;
+      }
+      integer_values[cast->result] = *value;
+      continue;
+    }
+
+    if (const auto* gep = std::get_if<LirGepOp>(&inst)) {
+      if (gep->element_type != "i32" || gep->indices.size() != 1) {
+        return std::nullopt;
+      }
+      const auto target = resolve_scalar_ptr(gep->ptr);
+      if (!target.has_value()) {
+        return std::nullopt;
+      }
+      const auto index = resolve_integer_value(gep->indices.front());
+      if (!index.has_value() || *index != 0) {
+        return std::nullopt;
+      }
+      pointer_targets[gep->result] = *target;
+      continue;
+    }
+
     if (const auto* store = std::get_if<LirStoreOp>(&inst)) {
       if (store->type_str == "i32") {
         const auto target = resolve_scalar_ptr(store->ptr);
@@ -1100,9 +1153,15 @@ std::optional<BackendFunction> adapt_local_pointer_temp_return_function(
         continue;
       }
 
-      if (store->type_str == "ptr" && store->ptr == ptr_alloca->result &&
-          store->val == scalar_alloca->result) {
-        pointer_targets[ptr_alloca->result] = scalar_alloca->result;
+      if (store->type_str == "ptr") {
+        const auto target = (store->ptr == ptr_alloca->result)
+                                ? std::optional<std::string>{std::string(ptr_alloca->result)}
+                                : resolve_scalar_ptr(store->ptr);
+        const auto value = resolve_scalar_ptr(store->val);
+        if (!target.has_value() || !value.has_value()) {
+          return std::nullopt;
+        }
+        pointer_targets[*target] = *value;
         continue;
       }
 
@@ -1439,9 +1498,6 @@ std::optional<BackendFunction> adapt_single_local_countdown_loop_function(
         }
         ++static_store_count;
         if (block.label == "entry") {
-          if (initial_value.has_value()) {
-            return std::nullopt;
-          }
           initial_value = parse_i64(store->val);
           if (!initial_value.has_value()) {
             return std::nullopt;
@@ -1489,8 +1545,8 @@ std::optional<BackendFunction> adapt_single_local_countdown_loop_function(
     return std::nullopt;
   }
 
-  if (!initial_value.has_value() || *initial_value < 0 || static_store_count != 2 ||
-      static_cmp_count != 1 || static_sub_count != 1 || static_ret_count != 1) {
+  if (!initial_value.has_value() || *initial_value < 0 || static_store_count < 2 ||
+      static_cmp_count < 1 || static_sub_count < 1 || static_ret_count != 1) {
     return std::nullopt;
   }
 

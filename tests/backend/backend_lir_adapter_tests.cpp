@@ -8362,6 +8362,72 @@ void test_aarch64_backend_renders_local_temp_memory_slice() {
                   "aarch64 backend should collapse the local-temp literal slot pattern into a direct return");
 }
 
+void test_aarch64_backend_renders_local_temp_sub_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_local_temp_sub_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".globl main",
+                  "aarch64 backend should lower the bounded local-temp subtraction slice to assembly");
+  expect_contains(rendered, "main:\n  mov w0, #1\n  ret\n",
+                  "aarch64 backend should fold the bounded local-temp subtraction into an immediate return");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend should not fall back to LLVM text for this local-temp subtraction slice");
+}
+
+void test_aarch64_backend_renders_local_temp_arithmetic_chain_slice() {
+  auto module = make_local_temp_arithmetic_chain_module();
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".globl main",
+                  "aarch64 backend should lower the bounded local-temp arithmetic chain slice to assembly");
+  expect_contains(rendered, "main:\n  mov w0, #0\n  ret\n",
+                  "aarch64 backend should fold the bounded local-temp arithmetic chain into an immediate return");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend should not fall back to LLVM text for the bounded local-temp arithmetic chain");
+}
+
+void test_aarch64_backend_renders_two_local_temp_return_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_two_local_temp_return_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".globl main",
+                  "aarch64 backend should lower the bounded two-local temp return slice to assembly");
+  expect_contains(rendered, "main:\n  mov w0, #0\n  ret\n",
+                  "aarch64 backend should fold the bounded two-local temp return slice into the immediate result");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend should not fall back to LLVM text for the bounded two-local temp return slice");
+}
+
+void test_aarch64_backend_renders_local_pointer_temp_return_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_local_pointer_temp_return_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".globl main",
+                  "aarch64 backend should lower the bounded local pointer temp slice to assembly");
+  expect_contains(rendered, "main:\n  mov w0, #0\n  ret\n",
+                  "aarch64 backend should fold the bounded local pointer round-trip into a direct immediate return");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend should not fall back to LLVM text for this local-pointer round-trip slice");
+}
+
+void test_aarch64_backend_renders_double_indirect_local_pointer_conditional_return_slice() {
+  auto module = make_double_indirect_local_pointer_conditional_return_module();
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".globl main",
+                  "aarch64 backend should lower the bounded double-indirect local-pointer conditional slice to assembly");
+  expect_contains(rendered, "main:\n  mov w0, #0\n  ret\n",
+                  "aarch64 backend should fold the bounded double-indirect local-pointer conditional slice into the immediate result");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend should not fall back to LLVM text for the bounded double-indirect local-pointer conditional slice");
+}
+
 void test_aarch64_backend_renders_param_slot_memory_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_param_slot_module()},
@@ -11382,6 +11448,11 @@ int main() {
   test_aarch64_backend_rejects_intrinsic_callee_from_direct_call_fast_path();
   test_aarch64_backend_rejects_indirect_callee_from_direct_call_fast_path();
   test_aarch64_backend_renders_local_temp_memory_slice();
+  test_aarch64_backend_renders_local_temp_sub_slice();
+  test_aarch64_backend_renders_local_temp_arithmetic_chain_slice();
+  test_aarch64_backend_renders_two_local_temp_return_slice();
+  test_aarch64_backend_renders_local_pointer_temp_return_slice();
+  test_aarch64_backend_renders_double_indirect_local_pointer_conditional_return_slice();
   test_aarch64_backend_renders_param_slot_memory_slice();
   test_aarch64_backend_renders_typed_direct_call_slice();
   test_aarch64_backend_uses_shared_regalloc_for_call_crossing_direct_call_slice();

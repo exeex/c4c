@@ -14,10 +14,12 @@
 #include <cctype>
 #include <cstdint>
 #include <limits>
+#include <map>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <unordered_map>
+#include <unordered_set>
 #include <string_view>
 #include <vector>
 
@@ -67,6 +69,9 @@ std::optional<std::int64_t> parse_i64(std::string_view text) {
   }
   return value;
 }
+
+std::optional<std::string_view> strip_typed_operand_prefix(std::string_view operand,
+                                                           std::string_view type_prefix);
 
 bool is_minimal_single_function_asm_slice(const c4c::backend::BackendModule& module) {
   if (module.functions.size() != 1) return false;
@@ -172,6 +177,32 @@ std::optional<std::int64_t> parse_minimal_return_add_imm(
   return *lhs + *rhs;
 }
 
+std::optional<std::int64_t> parse_minimal_return_sub_imm(
+    const c4c::backend::BackendModule& module) {
+  if (!is_minimal_single_function_asm_slice(module)) {
+    return std::nullopt;
+  }
+
+  const auto& block = module.functions.front().blocks.front();
+  if (block.insts.size() != 1 ||
+      !block.terminator.value.has_value() || block.terminator.type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto* sub = std::get_if<c4c::backend::BackendBinaryInst>(&block.insts.front());
+  if (sub == nullptr || sub->opcode != c4c::backend::BackendBinaryOpcode::Sub ||
+      sub->type_str != "i32" || *block.terminator.value != sub->result) {
+    return std::nullopt;
+  }
+
+  const auto lhs = parse_i64(sub->lhs);
+  const auto rhs = parse_i64(sub->rhs);
+  if (!lhs.has_value() || !rhs.has_value()) {
+    return std::nullopt;
+  }
+  return *lhs - *rhs;
+}
+
 const c4c::backend::BackendFunction* find_function(
     const c4c::backend::BackendModule& module,
     std::string_view name) {
@@ -214,6 +245,1051 @@ std::optional<std::int64_t> parse_single_block_return_imm(
   }
 
   return parse_i64(*block.terminator.value);
+}
+
+std::optional<std::int64_t> parse_minimal_lir_return_sub_imm(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || !module.globals.empty() ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration || function.signature_text != "define i32 @main()\n" ||
+      function.entry.value != 0 || function.blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  if (entry.label != "entry") {
+    return std::nullopt;
+  }
+
+  const auto* ret = std::get_if<LirRet>(&entry.terminator);
+  if (ret == nullptr || !ret->value_str.has_value() || ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  if (function.alloca_insts.empty()) {
+    if (entry.insts.size() != 1) {
+      return std::nullopt;
+    }
+    const auto* sub = std::get_if<LirBinOp>(&entry.insts.front());
+    const auto sub_opcode = sub == nullptr ? std::nullopt : sub->opcode.typed();
+    if (sub == nullptr || !sub_opcode.has_value() || *sub_opcode != LirBinaryOpcode::Sub ||
+        sub->type_str != "i32" || !ret->value_str.has_value() ||
+        *ret->value_str != sub->result) {
+      return std::nullopt;
+    }
+
+    const auto lhs = parse_i64(sub->lhs);
+    const auto rhs = parse_i64(sub->rhs);
+    if (!lhs.has_value() || !rhs.has_value()) {
+      return std::nullopt;
+    }
+    return *lhs - *rhs;
+  }
+
+  if (function.alloca_insts.size() != 1 ||
+      entry.insts.size() != 3) {
+    return std::nullopt;
+  }
+
+  const auto* alloca = std::get_if<LirAllocaOp>(&function.alloca_insts.front());
+  if (alloca == nullptr || alloca->type_str != "i32" || !alloca->count.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* store = std::get_if<LirStoreOp>(&entry.insts[0]);
+  const auto* load = std::get_if<LirLoadOp>(&entry.insts[1]);
+  const auto* sub = std::get_if<LirBinOp>(&entry.insts[2]);
+  const auto sub_opcode = sub == nullptr ? std::nullopt : sub->opcode.typed();
+  if (store == nullptr || load == nullptr || sub == nullptr ||
+      store->type_str != "i32" || load->type_str != "i32" ||
+      !sub_opcode.has_value() || *sub_opcode != LirBinaryOpcode::Sub ||
+      sub->type_str != "i32" || store->ptr != alloca->result ||
+      load->ptr != alloca->result || sub->lhs != load->result ||
+      !ret->value_str.has_value() || *ret->value_str != sub->result) {
+    return std::nullopt;
+  }
+
+  const auto store_imm = parse_i64(store->val);
+  const auto sub_imm = parse_i64(sub->rhs);
+  if (!store_imm.has_value() || !sub_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  return *store_imm - *sub_imm;
+}
+
+std::optional<std::int64_t> parse_minimal_lir_return_imm(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || !module.globals.empty() ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration || function.signature_text != "define i32 @main()\n" ||
+      function.entry.value != 0 || function.blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  if (entry.label != "entry") {
+    return std::nullopt;
+  }
+
+  const auto* ret = std::get_if<LirRet>(&entry.terminator);
+  if (ret == nullptr || !ret->value_str.has_value() || ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  std::unordered_map<std::string, std::int64_t> values;
+  std::unordered_map<std::string, std::int64_t> slot_values;
+  std::unordered_set<std::string> local_scalar_slots;
+  for (const auto& alloca : function.alloca_insts) {
+    const auto* alloca_inst = std::get_if<LirAllocaOp>(&alloca);
+    if (alloca_inst == nullptr || alloca_inst->type_str != "i32" ||
+        !alloca_inst->count.empty() || alloca_inst->result.empty()) {
+      continue;
+    }
+    if (!local_scalar_slots.insert(alloca_inst->result).second) {
+      return std::nullopt;
+    }
+  }
+
+  auto resolve_value = [&](std::string_view value)
+      -> std::optional<std::int64_t> {
+    if (const auto imm = parse_i64(value); imm.has_value()) {
+      return imm;
+    }
+    const auto it = values.find(std::string(value));
+    if (it == values.end()) {
+      return std::nullopt;
+    }
+    return it->second;
+  };
+
+  for (const auto& inst : entry.insts) {
+    if (const auto* store = std::get_if<LirStoreOp>(&inst)) {
+      if (store->type_str != "i32" ||
+          local_scalar_slots.find(store->ptr) == local_scalar_slots.end()) {
+        return std::nullopt;
+      }
+      const auto value = resolve_value(store->val);
+      if (!value.has_value()) {
+        return std::nullopt;
+      }
+      slot_values[store->ptr] = *value;
+      continue;
+    }
+
+    if (const auto* load = std::get_if<LirLoadOp>(&inst)) {
+      if (load->type_str != "i32" ||
+          local_scalar_slots.find(load->ptr) == local_scalar_slots.end()) {
+        return std::nullopt;
+      }
+      const auto it = slot_values.find(load->ptr);
+      if (it == slot_values.end()) {
+        return std::nullopt;
+      }
+      values[load->result] = it->second;
+      continue;
+    }
+
+    const auto* bin = std::get_if<LirBinOp>(&inst);
+    if (bin == nullptr || bin->type_str != "i32") {
+      return std::nullopt;
+    }
+
+    const auto lhs = resolve_value(bin->lhs);
+    const auto rhs = resolve_value(bin->rhs);
+    if (!lhs.has_value() || !rhs.has_value()) {
+      return std::nullopt;
+    }
+
+    const auto opcode = bin->opcode.typed();
+    if (!opcode.has_value()) {
+      return std::nullopt;
+    }
+
+    std::optional<std::int64_t> result;
+    if (*opcode == LirBinaryOpcode::Add) {
+      result = *lhs + *rhs;
+    } else if (*opcode == LirBinaryOpcode::Sub) {
+      result = *lhs - *rhs;
+    } else if (*opcode == LirBinaryOpcode::Mul) {
+      result = *lhs * *rhs;
+    } else if (*opcode == LirBinaryOpcode::SDiv) {
+      if (*rhs == 0) return std::nullopt;
+      result = *lhs / *rhs;
+    } else if (*opcode == LirBinaryOpcode::SRem) {
+      if (*rhs == 0) return std::nullopt;
+      result = *lhs % *rhs;
+    } else {
+      return std::nullopt;
+    }
+
+    values[bin->result] = *result;
+  }
+
+  return resolve_value(*ret->value_str);
+}
+
+std::optional<std::int64_t> parse_minimal_lir_local_pointer_return_imm(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || !module.globals.empty() ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration || function.name != "main" ||
+      function.signature_text.find("i32 @main(") == std::string::npos ||
+      function.entry.value != 0 || function.blocks.size() != 1 ||
+      function.alloca_insts.size() < 2) {
+    return std::nullopt;
+  }
+
+  std::unordered_set<std::string> scalar_slots;
+  std::unordered_set<std::string> ptr_slots;
+  for (const auto& alloca : function.alloca_insts) {
+    const auto* alloca_inst = std::get_if<LirAllocaOp>(&alloca);
+    if (alloca_inst == nullptr || alloca_inst->result.empty() ||
+        !alloca_inst->count.empty()) {
+      continue;
+    }
+    if (alloca_inst->type_str == "i32") {
+      scalar_slots.insert(alloca_inst->result);
+    } else if (alloca_inst->type_str == "ptr") {
+      ptr_slots.insert(alloca_inst->result);
+    }
+  }
+  if (scalar_slots.empty() || ptr_slots.empty()) {
+    return std::nullopt;
+  }
+
+  const auto find_entry_block = [&]() -> std::optional<
+      std::reference_wrapper<const LirBlock>> {
+    for (const auto& candidate : function.blocks) {
+      if (candidate.id.value == function.entry.value) {
+        return candidate;
+      }
+    }
+    return std::nullopt;
+  }();
+  if (!find_entry_block.has_value()) {
+    return std::nullopt;
+  }
+  const auto& block = find_entry_block->get();
+  if (block.label != "entry") {
+    return std::nullopt;
+  }
+
+  const auto* ret = std::get_if<LirRet>(&block.terminator);
+  if (ret == nullptr || !ret->value_str.has_value() || ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  std::unordered_map<std::string, std::int64_t> scalar_values;
+  std::unordered_map<std::string, std::int64_t> int_cast_values;
+  std::unordered_map<std::string, std::string> ptr_targets;
+  std::unordered_map<std::string, std::string> loaded_values;
+  const auto normalize_name = [](std::string_view text) {
+    return (text.size() > 0 && text.front() == '%') ? std::string(text.substr(1))
+                                                     : std::string(text);
+  };
+
+  auto is_scalar_slot = [&](std::string_view name) {
+    return scalar_slots.find(normalize_name(name)) != scalar_slots.end();
+  };
+
+  auto is_ptr_slot = [&](std::string_view name) {
+    return ptr_slots.find(normalize_name(name)) != ptr_slots.end();
+  };
+
+  auto parse_typed_operand = [](std::string_view text) -> std::optional<std::int64_t> {
+    if (const auto imm = parse_i64(text); imm.has_value()) {
+      return imm;
+    }
+    if (const auto i64 = strip_typed_operand_prefix(text, "i64"); i64.has_value()) {
+      return parse_i64(*i64);
+    }
+    if (const auto i32 = strip_typed_operand_prefix(text, "i32"); i32.has_value()) {
+      return parse_i64(*i32);
+    }
+    return std::nullopt;
+  };
+  
+  auto resolve_scalar_target = [&](std::string_view ptr)
+      -> std::optional<std::string> {
+    const auto key = normalize_name(ptr);
+    if (is_scalar_slot(key)) return key;
+    const auto it = ptr_targets.find(key);
+    if (it == ptr_targets.end()) return std::nullopt;
+    if (is_scalar_slot(it->second)) return it->second;
+    return std::nullopt;
+  };
+
+  auto resolve_ptr_target = [&](std::string_view ptr) -> std::optional<std::string> {
+    const auto key = normalize_name(ptr);
+    const auto it = ptr_targets.find(key);
+    if (it != ptr_targets.end()) {
+      return it->second;
+    }
+    if (is_ptr_slot(key) || is_scalar_slot(key)) {
+      return key;
+    }
+    return std::nullopt;
+  };
+
+  auto strip_type_prefix = [](std::string_view text) -> std::string_view {
+    const auto space = text.find(' ');
+    if (space != std::string_view::npos) {
+      return text.substr(space + 1);
+    }
+    return text;
+  };
+
+  auto resolve_integer = [&](std::string_view value)
+      -> std::optional<std::int64_t> {
+    if (const auto imm = parse_typed_operand(value); imm.has_value()) {
+      return imm;
+    }
+    const auto stripped = strip_type_prefix(value);
+    const auto key = normalize_name(stripped);
+    const auto it = int_cast_values.find(key);
+    if (it != int_cast_values.end()) return it->second;
+    const auto scalar = scalar_values.find(key);
+    if (scalar != scalar_values.end()) return scalar->second;
+    return std::nullopt;
+  };
+
+  for (const auto& inst : block.insts) {
+    if (const auto* cast = std::get_if<LirCastOp>(&inst)) {
+      if (cast->kind != LirCastKind::SExt && cast->kind != LirCastKind::ZExt) {
+        return std::nullopt;
+      }
+      if ((cast->to_type != "i64" && cast->to_type != "i32") ||
+          (cast->from_type != "i32" && cast->from_type != "i64")) {
+        return std::nullopt;
+      }
+      const auto value = resolve_integer(cast->operand);
+      if (!value.has_value()) {
+        return std::nullopt;
+      }
+      int_cast_values[normalize_name(cast->result)] = *value;
+      continue;
+    }
+
+    if (const auto* gep = std::get_if<LirGepOp>(&inst)) {
+      if (gep->element_type != "i32" || gep->indices.size() != 1) {
+        return std::nullopt;
+      }
+      const auto base = resolve_scalar_target(gep->ptr);
+      if (!base.has_value()) {
+        return std::nullopt;
+      }
+      const auto index = resolve_integer(gep->indices.front());
+      if (!index.has_value() || *index != 0) {
+        return std::nullopt;
+      }
+      ptr_targets[normalize_name(gep->result)] = *base;
+      continue;
+    }
+
+    if (const auto* store = std::get_if<LirStoreOp>(&inst)) {
+      if (store->type_str == "i32") {
+        const auto target = resolve_scalar_target(store->ptr);
+        if (!target.has_value()) return std::nullopt;
+        const auto value = resolve_integer(store->val);
+        if (!value.has_value()) return std::nullopt;
+        scalar_values[normalize_name(*target)] = *value;
+        continue;
+      }
+
+      if (store->type_str == "ptr") {
+        const auto target = resolve_ptr_target(store->ptr);
+        if (!target.has_value()) return std::nullopt;
+        const auto value = resolve_ptr_target(store->val);
+        if (!value.has_value()) return std::nullopt;
+        ptr_targets[normalize_name(*target)] = normalize_name(*value);
+        continue;
+      }
+
+      return std::nullopt;
+    }
+
+    if (const auto* load = std::get_if<LirLoadOp>(&inst)) {
+      if (load->type_str == "ptr") {
+        const auto target = resolve_ptr_target(load->ptr);
+        if (!target.has_value()) {
+          return std::nullopt;
+        }
+        ptr_targets[normalize_name(load->result)] = normalize_name(*target);
+        continue;
+      }
+
+      if (load->type_str == "i32") {
+        const auto target = resolve_scalar_target(load->ptr);
+        if (!target.has_value()) return std::nullopt;
+        const auto value = scalar_values.find(normalize_name(*target));
+        if (value == scalar_values.end()) return std::nullopt;
+        loaded_values[normalize_name(load->result)] = normalize_name(*target);
+        continue;
+      }
+
+      return std::nullopt;
+    }
+
+    return std::nullopt;
+  }
+
+  const auto load_it = loaded_values.find(normalize_name(*ret->value_str));
+  if (load_it != loaded_values.end()) {
+    const auto value_it = scalar_values.find(load_it->second);
+    if (value_it == scalar_values.end()) return std::nullopt;
+    return value_it->second;
+  }
+
+  return parse_typed_operand(*ret->value_str);
+}
+
+std::optional<std::int64_t> parse_minimal_lir_single_scalar_countdown_imm(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || !module.globals.empty() ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration || function.signature_text != "define i32 @main()\n" ||
+      function.entry.value != 0 || function.blocks.empty() ||
+      function.alloca_insts.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto* scalar_alloca = std::get_if<LirAllocaOp>(&function.alloca_insts.front());
+  if (scalar_alloca == nullptr || scalar_alloca->type_str != "i32" ||
+      scalar_alloca->result.empty()) {
+    return std::nullopt;
+  }
+
+  std::unordered_map<std::string, const LirBlock*> blocks_by_label;
+  for (const auto& block : function.blocks) {
+    blocks_by_label.emplace(block.label, &block);
+  }
+
+  std::size_t static_store_count = 0;
+  std::size_t static_cmp_count = 0;
+  std::size_t static_sub_count = 0;
+  std::size_t static_ret_count = 0;
+  std::optional<std::int64_t> initial_value;
+  const auto parse_typed_i64 = [](std::string_view value)
+      -> std::optional<std::int64_t> {
+    const auto space = value.find(' ');
+    if (space == std::string_view::npos) {
+      return parse_i64(value);
+    }
+    return parse_i64(value.substr(space + 1));
+  };
+
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      if (const auto* store = std::get_if<LirStoreOp>(&inst)) {
+        if (store->type_str != "i32" || store->ptr != scalar_alloca->result) {
+          return std::nullopt;
+        }
+        if (block.label == "entry") {
+          initial_value = parse_typed_i64(store->val);
+          if (!initial_value.has_value()) {
+            return std::nullopt;
+          }
+        }
+        ++static_store_count;
+        continue;
+      }
+
+      if (const auto* load = std::get_if<LirLoadOp>(&inst)) {
+        if (load->type_str != "i32" || load->ptr != scalar_alloca->result) {
+          return std::nullopt;
+        }
+        continue;
+      }
+
+      if (const auto* bin = std::get_if<LirBinOp>(&inst)) {
+        const auto bin_opcode = bin->opcode.typed();
+        if (!bin_opcode || *bin_opcode != LirBinaryOpcode::Sub || bin->type_str != "i32") {
+          return std::nullopt;
+        }
+        ++static_sub_count;
+        continue;
+      }
+
+      if (const auto* cmp = std::get_if<LirCmpOp>(&inst)) {
+        if (cmp->is_float || cmp->type_str != "i32" ||
+            cmp->predicate.typed() != LirCmpPredicate::Ne) {
+          return std::nullopt;
+        }
+        ++static_cmp_count;
+        continue;
+      }
+
+      return std::nullopt;
+    }
+
+    if (std::holds_alternative<LirRet>(block.terminator)) {
+      ++static_ret_count;
+      continue;
+    }
+    if (std::holds_alternative<LirBr>(block.terminator) ||
+        std::holds_alternative<LirCondBr>(block.terminator)) {
+      continue;
+    }
+    return std::nullopt;
+  }
+
+  if (!initial_value.has_value() || *initial_value < 0 || static_store_count < 2 ||
+      static_cmp_count < 1 || static_sub_count < 1 || static_ret_count == 0 ||
+      static_ret_count > 2) {
+    return std::nullopt;
+  }
+
+  const auto max_steps = (static_cast<std::size_t>(*initial_value) + 1) *
+                         (function.blocks.size() + 1);
+  if (max_steps == 0) {
+    return std::nullopt;
+  }
+
+  const auto resolve_i32 = [&](std::string_view value,
+                               const std::unordered_map<std::string, std::int64_t>& values)
+                              -> std::optional<std::int64_t> {
+    const auto imm = parse_typed_i64(value);
+    if (imm.has_value()) {
+      return imm;
+    }
+    const auto it = values.find(std::string(value));
+    if (it == values.end()) return std::nullopt;
+    return it->second;
+  };
+
+  std::string current_label = function.blocks.front().label;
+  std::int64_t scalar_value = *initial_value;
+  bool initialized = true;
+
+  for (std::size_t step = 0; step < max_steps; ++step) {
+    const auto block_it = blocks_by_label.find(current_label);
+    if (block_it == blocks_by_label.end()) {
+      return std::nullopt;
+    }
+    const auto& block = *block_it->second;
+
+    std::unordered_map<std::string, std::int64_t> integer_values;
+    std::unordered_map<std::string, bool> predicate_values;
+    integer_values.clear();
+    predicate_values.clear();
+
+    for (const auto& inst : block.insts) {
+      if (const auto* store = std::get_if<LirStoreOp>(&inst)) {
+        if (store->type_str != "i32" || store->ptr != scalar_alloca->result) {
+          return std::nullopt;
+        }
+        const auto value = resolve_i32(store->val, integer_values);
+        if (!value.has_value()) return std::nullopt;
+        scalar_value = *value;
+        initialized = true;
+        continue;
+      }
+
+      if (const auto* load = std::get_if<LirLoadOp>(&inst)) {
+        if (load->type_str != "i32" || load->ptr != scalar_alloca->result) {
+          return std::nullopt;
+        }
+        integer_values[load->result] = scalar_value;
+        continue;
+      }
+
+      if (const auto* bin = std::get_if<LirBinOp>(&inst)) {
+        const auto lhs = resolve_i32(bin->lhs, integer_values);
+        const auto rhs = resolve_i32(bin->rhs, integer_values);
+        if (!lhs.has_value() || !rhs.has_value()) {
+          return std::nullopt;
+        }
+
+        integer_values[bin->result] = *lhs - *rhs;
+        continue;
+      }
+
+      if (const auto* cmp = std::get_if<LirCmpOp>(&inst)) {
+        if (cmp->type_str != "i32" || cmp->is_float ||
+            cmp->predicate.typed() != LirCmpPredicate::Ne) {
+          return std::nullopt;
+        }
+
+        const auto lhs = resolve_i32(cmp->lhs, integer_values);
+        const auto rhs = resolve_i32(cmp->rhs, integer_values);
+        if (!lhs.has_value() || !rhs.has_value()) {
+          return std::nullopt;
+        }
+        predicate_values[cmp->result] = *lhs != *rhs;
+        continue;
+      }
+
+      return std::nullopt;
+    }
+
+    if (const auto* ret = std::get_if<LirRet>(&block.terminator)) {
+      if (!ret->value_str.has_value() || ret->type_str != "i32") {
+        return std::nullopt;
+      }
+      if (ret->value_str == scalar_alloca->result) {
+        if (!initialized) return std::nullopt;
+        return scalar_value;
+      }
+      const auto ret_value = resolve_i32(*ret->value_str, integer_values);
+      if (!ret_value.has_value()) {
+        return std::nullopt;
+      }
+      return *ret_value;
+    }
+
+    if (const auto* br = std::get_if<LirBr>(&block.terminator)) {
+      current_label = br->target_label;
+      continue;
+    }
+
+    const auto* condbr = std::get_if<LirCondBr>(&block.terminator);
+    if (condbr == nullptr) {
+      return std::nullopt;
+    }
+
+    const auto pred_it = predicate_values.find(condbr->cond_name);
+    if (pred_it == predicate_values.end()) {
+      return std::nullopt;
+    }
+    current_label = pred_it->second ? condbr->true_label : condbr->false_label;
+  }
+
+  if (!initialized) return std::nullopt;
+  return std::nullopt;
+}
+
+// Generic constant folder / mini-interpreter.
+// Simulates execution of a no-call function by tracking all memory slots
+// (including arrays, structs, globals, string constants) and SSA values.
+// Follows branches (conditional and unconditional) up to a step limit.
+// If the return value can be resolved to a compile-time constant, returns it.
+std::optional<std::int64_t> try_constant_fold_single_block(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration || function.name != "main" ||
+      function.signature_text.find("i32 @main(") == std::string::npos ||
+      function.entry.value != 0 || function.blocks.empty()) {
+    return std::nullopt;
+  }
+
+  // Build block label map.
+  std::unordered_map<std::string, const LirBlock*> block_map;
+  for (const auto& block : function.blocks) {
+    block_map[block.label] = &block;
+  }
+
+  const auto* entry_block = block_map.count("entry") ? block_map["entry"] : nullptr;
+  if (entry_block == nullptr) {
+    return std::nullopt;
+  }
+
+  // Memory model: map from (slot_name, byte_offset) -> i64 value.
+  // Pointer model: SSA name -> (slot_name, byte_offset).
+  struct Pointer { std::string slot; std::int64_t offset = 0; };
+
+  std::unordered_map<std::string, std::int64_t> ssa_ints;       // SSA -> int value
+  std::unordered_map<std::string, Pointer> ssa_ptrs;            // SSA -> pointer
+  std::map<std::pair<std::string, std::int64_t>, std::int64_t> memory;  // (slot, offset) -> int value
+  std::map<std::pair<std::string, std::int64_t>, Pointer> ptr_memory;  // (slot, offset) -> pointer
+
+  // Alloca registry: slot name -> (element_size, total_bytes)
+  struct SlotInfo { int elem_size; int total_bytes; bool is_ptr; };
+  std::unordered_map<std::string, SlotInfo> slots;
+
+  auto parse_array_type = [](const std::string& type_str)
+      -> std::optional<std::pair<int, int>> {
+    // Parse "[N x i32]" -> (N, 4)
+    if (type_str.size() < 7 || type_str.front() != '[') return std::nullopt;
+    auto x_pos = type_str.find(" x ");
+    if (x_pos == std::string::npos) return std::nullopt;
+    auto count = parse_i64(std::string_view(type_str).substr(1, x_pos - 1));
+    if (!count.has_value() || *count <= 0) return std::nullopt;
+    auto elem = std::string_view(type_str).substr(x_pos + 3);
+    if (elem.back() == ']') elem.remove_suffix(1);
+    int elem_size = 0;
+    if (elem == "i32") elem_size = 4;
+    else if (elem == "i64" || elem == "ptr") elem_size = 8;
+    else if (elem == "i16") elem_size = 2;
+    else if (elem == "i8") elem_size = 1;
+    else return std::nullopt;
+    return std::pair<int, int>{static_cast<int>(*count), elem_size};
+  };
+
+  // Parse struct type declarations to get field offsets.
+  // e.g. "%struct.foo = type { i32, i32, ptr }" -> [0, 4, 8]
+  struct StructLayout {
+    std::vector<int> field_offsets;
+    int total_size = 0;
+  };
+  std::unordered_map<std::string, StructLayout> struct_layouts;
+  for (const auto& decl : module.type_decls) {
+    auto eq_pos = decl.find(" = type { ");
+    if (eq_pos == std::string::npos) continue;
+    auto name = decl.substr(0, eq_pos);
+    auto body = std::string_view(decl).substr(eq_pos + 10);
+    if (body.empty() || body.back() != '}') continue;
+    body.remove_suffix(body.size() > 1 && body[body.size()-2] == ' ' ? 2 : 1);
+
+    StructLayout layout;
+    int offset = 0;
+    while (!body.empty()) {
+      auto comma = body.find(',');
+      auto field = (comma != std::string_view::npos) ? body.substr(0, comma) : body;
+      while (!field.empty() && field.front() == ' ') field.remove_prefix(1);
+      while (!field.empty() && field.back() == ' ') field.remove_suffix(1);
+
+      int field_size = 0;
+      int field_align = 1;
+      if (field == "i32") { field_size = 4; field_align = 4; }
+      else if (field == "i64" || field == "ptr") { field_size = 8; field_align = 8; }
+      else if (field == "i16") { field_size = 2; field_align = 2; }
+      else if (field == "i8") { field_size = 1; field_align = 1; }
+      else if (auto arr = parse_array_type(std::string(field)); arr.has_value()) {
+        field_size = arr->first * arr->second;
+        field_align = arr->second;  // element alignment
+      }
+
+      if (field_size == 0) { layout.field_offsets.clear(); break; }
+      offset = (offset + field_align - 1) & ~(field_align - 1);
+      layout.field_offsets.push_back(offset);
+      offset += field_size;
+
+      if (comma == std::string_view::npos) break;
+      body = body.substr(comma + 1);
+    }
+    if (!layout.field_offsets.empty()) {
+      layout.total_size = offset;
+      struct_layouts[name] = std::move(layout);
+    }
+  }
+
+  for (const auto& alloc_var : function.alloca_insts) {
+    const auto* a = std::get_if<LirAllocaOp>(&alloc_var);
+    if (a == nullptr || a->result.empty()) return std::nullopt;
+    if (a->type_str == "i32") {
+      slots[a->result] = {4, 4, false};
+    } else if (a->type_str == "i64") {
+      slots[a->result] = {8, 8, false};
+    } else if (a->type_str == "i8") {
+      slots[a->result] = {1, 1, false};
+    } else if (a->type_str == "i16") {
+      slots[a->result] = {2, 2, false};
+    } else if (a->type_str == "ptr") {
+      slots[a->result] = {8, 8, true};
+    } else if (auto arr = parse_array_type(a->type_str); arr.has_value()) {
+      slots[a->result] = {arr->second, arr->first * arr->second, false};
+    } else if (auto sl = struct_layouts.find(a->type_str); sl != struct_layouts.end()) {
+      slots[a->result] = {sl->second.total_size, sl->second.total_size, false};
+    } else {
+      return std::nullopt;
+    }
+    ssa_ptrs[a->result] = {a->result, 0};
+  }
+
+  // Register string pool entries as read-only memory slots.
+  for (const auto& str_const : module.string_pool) {
+    auto slot_name = str_const.pool_name;
+    int total_bytes = str_const.byte_length;
+    if (total_bytes <= 0) continue;
+    slots[slot_name] = {1, total_bytes, false};
+    ssa_ptrs[slot_name] = {slot_name, 0};
+    // Pre-fill memory with byte values.
+    for (int i = 0; i < total_bytes && i < static_cast<int>(str_const.raw_bytes.size()); ++i) {
+      memory[{slot_name, i}] = static_cast<std::int64_t>(static_cast<unsigned char>(str_const.raw_bytes[i]));
+    }
+  }
+
+  // Register globals as memory slots.
+  for (const auto& global : module.globals) {
+    auto slot_name = "@" + global.name;
+    const auto& ty = global.llvm_type;
+    if (ty == "i32") {
+      slots[slot_name] = {4, 4, false};
+    } else if (ty == "i64") {
+      slots[slot_name] = {8, 8, false};
+    } else if (ty == "ptr") {
+      slots[slot_name] = {8, 8, true};
+    } else if (auto arr = parse_array_type(ty); arr.has_value()) {
+      slots[slot_name] = {arr->second, arr->first * arr->second, false};
+    } else if (auto sl = struct_layouts.find(ty); sl != struct_layouts.end()) {
+      slots[slot_name] = {sl->second.total_size, sl->second.total_size, false};
+    } else {
+      return std::nullopt;
+    }
+    ssa_ptrs[slot_name] = {slot_name, 0};
+    // Initialize with zeroinitializer (all zeros) — default for globals.
+    // TODO: parse non-zero init_text for more coverage.
+  }
+
+  auto strip_type = [](std::string_view text) -> std::string_view {
+    auto sp = text.find(' ');
+    return (sp != std::string_view::npos) ? text.substr(sp + 1) : text;
+  };
+
+  auto resolve_int = [&](std::string_view value) -> std::optional<std::int64_t> {
+    if (auto imm = parse_i64(value); imm.has_value()) return imm;
+    auto stripped = strip_type(value);
+    if (auto imm = parse_i64(stripped); imm.has_value()) return imm;
+    auto it = ssa_ints.find(std::string(stripped));
+    if (it != ssa_ints.end()) return it->second;
+    // try without strip
+    it = ssa_ints.find(std::string(value));
+    if (it != ssa_ints.end()) return it->second;
+    return std::nullopt;
+  };
+
+  auto resolve_ptr = [&](std::string_view value) -> std::optional<Pointer> {
+    auto stripped = strip_type(value);
+    auto it = ssa_ptrs.find(std::string(stripped));
+    if (it != ssa_ptrs.end()) return it->second;
+    it = ssa_ptrs.find(std::string(value));
+    if (it != ssa_ptrs.end()) return it->second;
+    return std::nullopt;
+  };
+
+  auto type_size = [](std::string_view type_str) -> int {
+    if (type_str == "i32") return 4;
+    if (type_str == "i64" || type_str == "ptr") return 8;
+    if (type_str == "i16") return 2;
+    if (type_str == "i8") return 1;
+    return 0;
+  };
+
+  // Instruction interpreter — processes one instruction, returns false on bail.
+  auto exec_inst = [&](const LirInst& inst) -> bool {
+    if (const auto* store = std::get_if<LirStoreOp>(&inst)) {
+      int sz = type_size(store->type_str);
+      if (sz == 0) return false;
+      auto target = resolve_ptr(store->ptr);
+      if (!target.has_value()) return false;
+      if (store->type_str == "ptr") {
+        auto val_ptr = resolve_ptr(store->val);
+        if (!val_ptr.has_value()) return false;
+        ptr_memory[{target->slot, target->offset}] = *val_ptr;
+        return true;
+      }
+      auto val = resolve_int(store->val);
+      if (!val.has_value()) return false;
+      memory[{target->slot, target->offset}] = *val;
+      return true;
+    }
+    if (const auto* load = std::get_if<LirLoadOp>(&inst)) {
+      int sz = type_size(load->type_str);
+      if (sz == 0) return false;
+      if (load->type_str == "ptr") {
+        auto src = resolve_ptr(load->ptr);
+        if (!src.has_value()) return false;
+        auto it = ptr_memory.find({src->slot, src->offset});
+        if (it == ptr_memory.end()) return false;
+        ssa_ptrs[load->result] = it->second;
+        return true;
+      }
+      auto src = resolve_ptr(load->ptr);
+      if (!src.has_value()) return false;
+      auto it = memory.find({src->slot, src->offset});
+      if (it == memory.end()) return false;
+      ssa_ints[load->result] = it->second;
+      return true;
+    }
+    if (const auto* cast = std::get_if<LirCastOp>(&inst)) {
+      if (cast->kind == LirCastKind::SExt || cast->kind == LirCastKind::ZExt ||
+          cast->kind == LirCastKind::Trunc) {
+        auto val = resolve_int(cast->operand);
+        if (!val.has_value()) return false;
+        if (cast->kind == LirCastKind::Trunc) {
+          if (cast->to_type == "i32") *val = static_cast<std::int32_t>(*val);
+          else if (cast->to_type == "i16") *val = static_cast<std::int16_t>(*val);
+          else if (cast->to_type == "i8") *val = static_cast<std::int8_t>(*val);
+        }
+        ssa_ints[cast->result] = *val;
+        return true;
+      }
+      return false;
+    }
+    if (const auto* gep = std::get_if<LirGepOp>(&inst)) {
+      auto base_ptr = resolve_ptr(gep->ptr);
+      if (!base_ptr.has_value()) return false;
+      int64_t current_offset = base_ptr->offset;
+      if (gep->indices.empty()) return false;
+      std::string_view current_type = gep->element_type;
+      if (auto arr = parse_array_type(std::string(current_type)); arr.has_value()) {
+        if (gep->indices.size() != 2) return false;
+        auto idx0 = resolve_int(gep->indices[0]);
+        auto idx1 = resolve_int(gep->indices[1]);
+        if (!idx0.has_value() || !idx1.has_value()) return false;
+        current_offset += *idx0 * (arr->first * arr->second) + *idx1 * arr->second;
+      } else if (auto sl = struct_layouts.find(std::string(current_type));
+                 sl != struct_layouts.end()) {
+        if (gep->indices.size() != 2) return false;
+        auto idx0 = resolve_int(gep->indices[0]);
+        auto idx1 = resolve_int(gep->indices[1]);
+        if (!idx0.has_value() || !idx1.has_value()) return false;
+        if (*idx1 < 0 || static_cast<size_t>(*idx1) >= sl->second.field_offsets.size())
+          return false;
+        current_offset += *idx0 * sl->second.total_size + sl->second.field_offsets[*idx1];
+      } else {
+        if (gep->indices.size() != 1) return false;
+        auto idx = resolve_int(gep->indices[0]);
+        if (!idx.has_value()) return false;
+        int elem_sz = type_size(current_type);
+        if (elem_sz == 0) return false;
+        current_offset += *idx * elem_sz;
+      }
+      ssa_ptrs[gep->result] = {base_ptr->slot, current_offset};
+      return true;
+    }
+    if (const auto* bin = std::get_if<LirBinOp>(&inst)) {
+      if (bin->type_str != "i32" && bin->type_str != "i64" &&
+          bin->type_str != "i8" && bin->type_str != "i16") return false;
+      auto lhs = resolve_int(bin->lhs);
+      auto rhs = resolve_int(bin->rhs);
+      if (!lhs.has_value() || !rhs.has_value()) return false;
+      auto opcode = bin->opcode.typed();
+      if (!opcode.has_value()) return false;
+      std::int64_t result;
+      switch (*opcode) {
+        case LirBinaryOpcode::Add: result = *lhs + *rhs; break;
+        case LirBinaryOpcode::Sub: result = *lhs - *rhs; break;
+        case LirBinaryOpcode::Mul: result = *lhs * *rhs; break;
+        case LirBinaryOpcode::SDiv:
+          if (*rhs == 0) return false;
+          result = *lhs / *rhs; break;
+        case LirBinaryOpcode::UDiv:
+          if (*rhs == 0) return false;
+          result = static_cast<std::int64_t>(
+              static_cast<std::uint64_t>(*lhs) / static_cast<std::uint64_t>(*rhs));
+          break;
+        case LirBinaryOpcode::SRem:
+          if (*rhs == 0) return false;
+          result = *lhs % *rhs; break;
+        case LirBinaryOpcode::URem:
+          if (*rhs == 0) return false;
+          result = static_cast<std::int64_t>(
+              static_cast<std::uint64_t>(*lhs) % static_cast<std::uint64_t>(*rhs));
+          break;
+        case LirBinaryOpcode::And: result = *lhs & *rhs; break;
+        case LirBinaryOpcode::Or: result = *lhs | *rhs; break;
+        case LirBinaryOpcode::Xor: result = *lhs ^ *rhs; break;
+        case LirBinaryOpcode::Shl: result = *lhs << *rhs; break;
+        case LirBinaryOpcode::AShr: result = *lhs >> *rhs; break;
+        case LirBinaryOpcode::LShr:
+          result = static_cast<std::int64_t>(
+              static_cast<std::uint64_t>(*lhs) >> *rhs);
+          break;
+        default: return false;
+      }
+      if (bin->type_str == "i32") result = static_cast<std::int32_t>(result);
+      else if (bin->type_str == "i16") result = static_cast<std::int16_t>(result);
+      else if (bin->type_str == "i8") result = static_cast<std::int8_t>(result);
+      ssa_ints[bin->result] = result;
+      return true;
+    }
+    if (const auto* cmp = std::get_if<LirCmpOp>(&inst)) {
+      if (cmp->is_float) return false;
+      auto lhs = resolve_int(cmp->lhs);
+      auto rhs = resolve_int(cmp->rhs);
+      if (!lhs.has_value() || !rhs.has_value()) return false;
+      bool cmp_result = false;
+      if (cmp->predicate == "eq") cmp_result = (*lhs == *rhs);
+      else if (cmp->predicate == "ne") cmp_result = (*lhs != *rhs);
+      else if (cmp->predicate == "slt") cmp_result = (*lhs < *rhs);
+      else if (cmp->predicate == "sle") cmp_result = (*lhs <= *rhs);
+      else if (cmp->predicate == "sgt") cmp_result = (*lhs > *rhs);
+      else if (cmp->predicate == "sge") cmp_result = (*lhs >= *rhs);
+      else if (cmp->predicate == "ult") cmp_result = (static_cast<uint64_t>(*lhs) < static_cast<uint64_t>(*rhs));
+      else if (cmp->predicate == "ule") cmp_result = (static_cast<uint64_t>(*lhs) <= static_cast<uint64_t>(*rhs));
+      else if (cmp->predicate == "ugt") cmp_result = (static_cast<uint64_t>(*lhs) > static_cast<uint64_t>(*rhs));
+      else if (cmp->predicate == "uge") cmp_result = (static_cast<uint64_t>(*lhs) >= static_cast<uint64_t>(*rhs));
+      else return false;
+      ssa_ints[cmp->result] = cmp_result ? 1 : 0;
+      return true;
+    }
+    if (const auto* select = std::get_if<LirSelectOp>(&inst)) {
+      auto cond = resolve_int(select->cond);
+      if (!cond.has_value()) return false;
+      auto true_val = resolve_int(select->true_val);
+      auto false_val = resolve_int(select->false_val);
+      if (!true_val.has_value() || !false_val.has_value()) return false;
+      ssa_ints[select->result] = (*cond != 0) ? *true_val : *false_val;
+      return true;
+    }
+    return false;
+  };
+
+  // Multi-block interpreter loop.
+  constexpr int kMaxSteps = 10000;
+  int steps = 0;
+  const LirBlock* current_block = entry_block;
+
+  while (steps < kMaxSteps) {
+    // Execute all instructions in the current block.
+    for (const auto& inst : current_block->insts) {
+      if (!exec_inst(inst)) return std::nullopt;
+      ++steps;
+      if (steps >= kMaxSteps) return std::nullopt;
+    }
+
+    // Process terminator.
+    if (const auto* ret = std::get_if<LirRet>(&current_block->terminator)) {
+      if (ret->type_str != "i32" || !ret->value_str.has_value()) return std::nullopt;
+      return resolve_int(*ret->value_str);
+    }
+
+    if (const auto* br = std::get_if<LirBr>(&current_block->terminator)) {
+      auto it = block_map.find(br->target_label);
+      if (it == block_map.end()) return std::nullopt;
+      current_block = it->second;
+      ++steps;
+      continue;
+    }
+
+    if (const auto* condbr = std::get_if<LirCondBr>(&current_block->terminator)) {
+      auto cond = resolve_int(condbr->cond_name);
+      if (!cond.has_value()) return std::nullopt;
+      const auto& target_label = (*cond != 0) ? condbr->true_label : condbr->false_label;
+      auto it = block_map.find(target_label);
+      if (it == block_map.end()) return std::nullopt;
+      current_block = it->second;
+      ++steps;
+      continue;
+    }
+
+    // Switch, unreachable, etc. — bail
+    return std::nullopt;
+  }
+
+  return std::nullopt;  // Step limit exceeded
 }
 
 struct MinimalDirectCallSlice {
@@ -2256,6 +3332,30 @@ std::string emit_minimal_return_imm_asm(const c4c::backend::BackendModule& modul
   return out.str();
 }
 
+std::string emit_minimal_return_sub_imm_asm(const c4c::backend::BackendModule& module,
+                                            std::int64_t imm) {
+  if (imm >= 0 && imm <= std::numeric_limits<std::uint16_t>::max()) {
+    return emit_minimal_return_imm_asm(module, imm);
+  }
+  if (imm >= 0) {
+    fail_unsupported("return immediates outside the minimal mov-supported range");
+  }
+
+  const auto neg_imm = -imm;
+  if (neg_imm < 0 || neg_imm > std::numeric_limits<std::uint16_t>::max()) {
+    fail_unsupported("return immediates outside the minimal sub-supported range");
+  }
+
+  std::ostringstream out;
+  const std::string symbol = asm_symbol_name(module, "main");
+
+  out << ".text\n";
+  emit_function_prelude(out, module, symbol, true);
+  out << "  sub w0, wzr, #" << neg_imm << "\n"
+      << "  ret\n";
+  return out.str();
+}
+
 std::string emit_minimal_direct_call_asm(const c4c::backend::BackendModule& module,
                                          const MinimalDirectCallSlice& slice) {
   if (slice.callee_imm < 0 ||
@@ -2921,6 +4021,9 @@ std::string emit_module(const c4c::backend::BackendModule& module,
     if (const auto imm = parse_minimal_return_add_imm(module); imm.has_value()) {
       return emit_minimal_return_imm_asm(module, *imm);
     }
+    if (const auto imm = parse_minimal_return_sub_imm(module); imm.has_value()) {
+      return emit_minimal_return_sub_imm_asm(module, *imm);
+    }
     if (const auto slice = parse_minimal_direct_call_slice(module); slice.has_value()) {
       return emit_minimal_direct_call_asm(module, *slice);
     }
@@ -2946,6 +4049,36 @@ std::string emit_module(const c4c::backend::BackendModule& module,
 }
 
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {
+  validate_module(module);
+  if (const auto imm = parse_minimal_lir_return_imm(module); imm.has_value()) {
+    c4c::backend::BackendModule scaffold_module;
+    scaffold_module.target_triple = module.target_triple;
+    return emit_minimal_return_imm_asm(scaffold_module, *imm);
+  }
+  if (const auto imm = parse_minimal_lir_return_sub_imm(module); imm.has_value()) {
+    c4c::backend::BackendModule scaffold_module;
+    scaffold_module.target_triple = module.target_triple;
+    return emit_minimal_return_sub_imm_asm(scaffold_module, *imm);
+  }
+  if (const auto imm = parse_minimal_lir_local_pointer_return_imm(module);
+      imm.has_value()) {
+    c4c::backend::BackendModule scaffold_module;
+    scaffold_module.target_triple = module.target_triple;
+    return emit_minimal_return_imm_asm(scaffold_module, *imm);
+  }
+  if (const auto imm = parse_minimal_lir_single_scalar_countdown_imm(module);
+      imm.has_value()) {
+    c4c::backend::BackendModule scaffold_module;
+    scaffold_module.target_triple = module.target_triple;
+    return emit_minimal_return_imm_asm(scaffold_module, *imm);
+  }
+
+  if (const auto imm2 = try_constant_fold_single_block(module); imm2.has_value()) {
+    c4c::backend::BackendModule scaffold_module;
+    scaffold_module.target_triple = module.target_triple;
+    return emit_minimal_return_imm_asm(scaffold_module, *imm2);
+  }
+
   const auto prepared = prepare_module_for_fallback(module);
   validate_module(prepared);
   if (const auto slice = parse_minimal_local_array_slice(prepared);
@@ -3004,6 +4137,9 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
     }
     if (const auto imm = parse_minimal_return_add_imm(adapted); imm.has_value()) {
       return emit_minimal_return_imm_asm(adapted, *imm);
+    }
+    if (const auto imm = parse_minimal_return_sub_imm(adapted); imm.has_value()) {
+      return emit_minimal_return_sub_imm_asm(adapted, *imm);
     }
     if (const auto slice = parse_minimal_direct_call_slice(adapted); slice.has_value()) {
       return emit_minimal_direct_call_asm(adapted, *slice);

@@ -61,6 +61,27 @@ if(CLANG_EXECUTABLE AND C_TESTSUITE_ROOT AND EXISTS "${C_TESTSUITE_ROOT}")
       "Skipping c-testsuite external tests: missing submodule contents under "
       "${C_TESTSUITE_ROOT} (expected allowlist.txt and RunCase.cmake)")
   else()
+    string(TOLOWER "${CMAKE_HOST_SYSTEM_PROCESSOR}" C_TESTSUITE_HOST_CPU)
+    if(C_TESTSUITE_HOST_CPU STREQUAL "x86_64" OR C_TESTSUITE_HOST_CPU STREQUAL "amd64")
+      set(C_TESTSUITE_BACKEND_MODE "backend-x86_64")
+      set(C_TESTSUITE_BACKEND_TRIPLE "x86_64-unknown-linux-gnu")
+      set(C_TESTSUITE_BACKEND_ID "x86")
+      set(C_TESTSUITE_BACKEND_LABEL "x86_backend")
+      set(C_TESTSUITE_BACKEND_DIR "c_testsuite_x86_backend")
+    elseif(C_TESTSUITE_HOST_CPU STREQUAL "aarch64" OR C_TESTSUITE_HOST_CPU STREQUAL "arm64")
+      set(C_TESTSUITE_BACKEND_MODE "backend-aarch64")
+      set(C_TESTSUITE_BACKEND_TRIPLE "aarch64-unknown-linux-gnu")
+      set(C_TESTSUITE_BACKEND_ID "aarch64")
+      set(C_TESTSUITE_BACKEND_LABEL "aarch64_backend")
+      set(C_TESTSUITE_BACKEND_DIR "c_testsuite_aarch64_backend")
+    else()
+      set(C_TESTSUITE_BACKEND_MODE "")
+      set(C_TESTSUITE_BACKEND_TRIPLE "")
+      set(C_TESTSUITE_BACKEND_ID "")
+      set(C_TESTSUITE_BACKEND_LABEL "")
+      set(C_TESTSUITE_BACKEND_DIR "")
+    endif()
+
     file(STRINGS "${C_TESTSUITE_ALLOWLIST}" C_TESTSUITE_ALLOWLIST_RAW)
     foreach(entry IN LISTS C_TESTSUITE_ALLOWLIST_RAW)
       string(STRIP "${entry}" entry)
@@ -90,21 +111,23 @@ if(CLANG_EXECUTABLE AND C_TESTSUITE_ROOT AND EXISTS "${C_TESTSUITE_ROOT}")
       )
       set_tests_properties("${test_name}" PROPERTIES LABELS "c_testsuite")
 
-      set(backend_test_name "c_testsuite_x86_backend_${test_id}")
-      add_test(
-        NAME "${backend_test_name}"
-        COMMAND "${CMAKE_COMMAND}"
-                -DCODEGEN_MODE=backend-x86_64
-                -DCOMPILER=$<TARGET_FILE:c4cll>
-                -DCLANG=${CLANG_EXECUTABLE}
-                -DSRC=${src}
-                -DROOT=${C_TESTSUITE_ROOT}
-                -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
-                -DOUT_LL=${CMAKE_BINARY_DIR}/c_testsuite_x86_backend/${entry}.s
-                -DOUT_BIN=${CMAKE_BINARY_DIR}/c_testsuite_x86_backend/${entry}.bin
-                -P "${C_TESTSUITE_RUN_CASE}"
-      )
-      set_tests_properties("${backend_test_name}" PROPERTIES LABELS "c_testsuite;x86_backend")
+      if(C_TESTSUITE_BACKEND_MODE AND C_TESTSUITE_BACKEND_LABEL AND C_TESTSUITE_BACKEND_TRIPLE)
+        set(backend_test_name "c_testsuite_${C_TESTSUITE_BACKEND_ID}_backend_${test_id}")
+        add_test(
+          NAME "${backend_test_name}"
+          COMMAND "${CMAKE_COMMAND}"
+                  -DCODEGEN_MODE=${C_TESTSUITE_BACKEND_MODE}
+                  -DCOMPILER=$<TARGET_FILE:c4cll>
+                  -DCLANG=${CLANG_EXECUTABLE}
+                  -DSRC=${src}
+                  -DROOT=${C_TESTSUITE_ROOT}
+                  -DTARGET_TRIPLE=${C_TESTSUITE_BACKEND_TRIPLE}
+                  -DOUT_LL=${CMAKE_BINARY_DIR}/${C_TESTSUITE_BACKEND_DIR}/${entry}.s
+                  -DOUT_BIN=${CMAKE_BINARY_DIR}/${C_TESTSUITE_BACKEND_DIR}/${entry}.bin
+                  -P "${C_TESTSUITE_RUN_CASE}"
+        )
+        set_tests_properties("${backend_test_name}" PROPERTIES LABELS "c_testsuite;${C_TESTSUITE_BACKEND_LABEL}")
+      endif()
     endforeach()
   endif()
 endif()
