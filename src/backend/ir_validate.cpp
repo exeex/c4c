@@ -56,6 +56,20 @@ bool validate_global(const BackendGlobal& global,
   return true;
 }
 
+bool validate_string_constant(const BackendStringConstant& string_constant,
+                              std::string* error,
+                              std::string_view context) {
+  if (string_constant.name.empty()) {
+    return fail(error, std::string(context) + ": string constant name must not be empty");
+  }
+  if (string_constant.byte_length != string_constant.raw_bytes.size() + 1) {
+    return fail(error,
+                std::string(context) +
+                    ": string constant byte length must match raw bytes plus trailing nul");
+  }
+  return true;
+}
+
 bool validate_inst(const BackendInst& inst, std::string* error, std::string_view context) {
   if (const auto* bin = std::get_if<BackendBinaryInst>(&inst)) {
     if (bin->result.empty()) {
@@ -91,6 +105,19 @@ bool validate_inst(const BackendInst& inst, std::string* error, std::string_view
     }
     if (load->type_str.empty()) {
       return fail(error, std::string(context) + ": load type must not be empty");
+    }
+    if (!load->memory_type.empty() &&
+        load->extension == BackendLoadExtension::None &&
+        load->memory_type != load->type_str) {
+      return fail(error,
+                  std::string(context) +
+                      ": widened loads must declare an extension kind");
+    }
+    if (load->memory_type.empty() &&
+        load->extension != BackendLoadExtension::None) {
+      return fail(error,
+                  std::string(context) +
+                      ": extended loads must declare a memory type");
     }
     if (load->address.base_symbol.empty()) {
       return fail(error, std::string(context) + ": load base symbol must not be empty");
@@ -186,6 +213,18 @@ bool validate_backend_ir(const BackendModule& module, std::string* error) {
     }
     if (!globals.insert(global.name).second) {
       return fail(error, "duplicate global '" + global.name + "'");
+    }
+  }
+  for (std::size_t index = 0; index < module.string_constants.size(); ++index) {
+    const auto& string_constant = module.string_constants[index];
+    if (!validate_string_constant(string_constant,
+                                  error,
+                                  std::string("string constant ") +
+                                      std::to_string(index))) {
+      return false;
+    }
+    if (!globals.insert(string_constant.name).second) {
+      return fail(error, "duplicate global '" + string_constant.name + "'");
     }
   }
 

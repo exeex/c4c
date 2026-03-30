@@ -8,12 +8,18 @@ Source Plan: plan.md
 
 - Step 2: Define the backend-owned IR model.
 - Exact target for the next iteration: extend `src/backend/ir.*` past the
-  current global-capable subset so more global-address consumers can be emitted
-  from lowered backend IR without relying on the optional legacy `LirModule`
-  fallback, continuing from the newly lowered bounded global char/int
-  pointer-difference slices into the remaining string-pool, broader memory-op,
-  and multi-block seams that still require legacy fallback.
+  current global-capable subset beyond the now-lowered string-pool seam into a
+  bounded broader memory-op slice, so explicit backend IR can cover another
+  still-fallback-only load/store pattern before tackling multi-block control
+  flow.
 - Resume notes:
+  - backend-owned string constants now live alongside globals in
+    `src/backend/ir.hpp`, and widened byte loads can model the minimal
+    string-literal char slice without preserving legacy GEP/cast text
+  - both x86 and AArch64 now accept that lowered string-literal slice directly
+    from explicit backend IR inputs instead of routing through legacy LIR
+  - the next highest-value seam is broader memory-op lowering; multi-block
+    control-flow still remains deferred after that
   - canonical emitter-facing IR ownership now lives in `src/backend/ir.hpp`
     and is shared by the new printer/validator layers
   - `src/backend/lir_adapter.{hpp,cpp}` is now a transition-only lowering shim
@@ -106,6 +112,24 @@ Source Plan: plan.md
     `ptrtoint -> spill/reload -> inttoptr -> spill/reload -> load` global
     round-trip into backend-owned `BackendLoadInst`
   - added focused backend tests covering lowered round-trip IR printing,
+    validation, and explicit backend-IR emission on x86 and AArch64
+- Verified the current post-change full-suite regression status in
+  `test_after.log`: `93% tests passed`, `183 tests failed out of 2560`
+  (2377 passing), matching the current recorded runbook baseline with no
+  pass-count regression.
+- Completed an additional Step 2 string-pool slice:
+  - extended `src/backend/ir.hpp` with backend-owned string constants plus a
+    widened load contract so lowered backend IR can represent the minimal
+    string-literal char path without preserving legacy cast/GEP scaffolding
+  - taught `src/backend/lir_adapter.cpp` to lower `module.string_pool` and the
+    bounded string-literal char function shape into backend-owned string
+    constants plus an explicit widened byte load instead of rejecting string
+    constants outright
+  - updated `src/backend/x86/codegen/emit.cpp` and
+    `src/backend/aarch64/codegen/emit.cpp` so explicit backend IR inputs can
+    emit the lowered string-literal char slice directly without legacy LIR
+    fallback
+  - added focused backend tests covering lowered string-pool printing,
     validation, and explicit backend-IR emission on x86 and AArch64
 - Verified the current post-change full-suite regression status in
   `test_after.log`: `93% tests passed`, `183 tests failed out of 2560`

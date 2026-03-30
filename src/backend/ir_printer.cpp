@@ -3,10 +3,27 @@
 #include "../codegen/lir/call_args.hpp"
 
 #include <sstream>
+#include <string_view>
 
 namespace c4c::backend {
 
 namespace {
+
+std::string escape_ir_bytes(std::string_view bytes) {
+  static constexpr char kHexDigits[] = "0123456789ABCDEF";
+  std::string escaped;
+  escaped.reserve(bytes.size() * 2);
+  for (unsigned char ch : bytes) {
+    if (ch >= 0x20 && ch <= 0x7e && ch != '"' && ch != '\\') {
+      escaped.push_back(static_cast<char>(ch));
+      continue;
+    }
+    escaped.push_back('\\');
+    escaped.push_back(kHexDigits[(ch >> 4) & 0xf]);
+    escaped.push_back(kHexDigits[ch & 0xf]);
+  }
+  return escaped;
+}
 
 void render_global(std::ostringstream& out, const BackendGlobal& global) {
   out << "@" << global.name << " = " << global.linkage << global.qualifier
@@ -18,6 +35,13 @@ void render_global(std::ostringstream& out, const BackendGlobal& global) {
     out << ", align " << global.align_bytes;
   }
   out << "\n";
+}
+
+void render_string_constant(std::ostringstream& out,
+                            const BackendStringConstant& string_constant) {
+  out << "@" << string_constant.name << " = private unnamed_addr constant ["
+      << string_constant.byte_length << " x i8] c\""
+      << escape_ir_bytes(string_constant.raw_bytes) << "\\00\"\n";
 }
 
 void render_signature(std::ostringstream& out,
@@ -55,8 +79,18 @@ void render_inst(std::ostringstream& out, const BackendInst& inst) {
   if (call == nullptr) {
     const auto* load = std::get_if<BackendLoadInst>(&inst);
     if (load != nullptr) {
-      out << "  " << load->result << " = load " << load->type_str << ", ptr @"
-          << load->address.base_symbol;
+      out << "  " << load->result << " = load ";
+      if (!load->memory_type.empty() && load->memory_type != load->type_str) {
+        out << load->type_str << " from " << load->memory_type;
+        if (load->extension == BackendLoadExtension::SignExtend) {
+          out << " sext";
+        } else if (load->extension == BackendLoadExtension::ZeroExtend) {
+          out << " zext";
+        }
+      } else {
+        out << load->type_str;
+      }
+      out << ", ptr @" << load->address.base_symbol;
       if (load->address.byte_offset != 0) {
         out << " + " << load->address.byte_offset;
       }
@@ -142,7 +176,10 @@ std::string print_backend_ir(const BackendModule& module) {
   for (const auto& global : module.globals) {
     render_global(out, global);
   }
-  if (!module.globals.empty()) {
+  for (const auto& string_constant : module.string_constants) {
+    render_string_constant(out, string_constant);
+  }
+  if (!module.globals.empty() || !module.string_constants.empty()) {
     out << "\n";
   }
   for (const auto& function : module.functions) {

@@ -4600,6 +4600,29 @@ void test_backend_ir_validator_accepts_lowered_global_load_slice() {
               "backend IR validator should not report an error for valid lowered globals");
 }
 
+void test_backend_ir_printer_renders_lowered_string_literal_char_slice() {
+  const auto lowered = c4c::backend::lower_to_backend_ir(make_string_literal_char_module());
+  const auto rendered = c4c::backend::print_backend_ir(lowered);
+
+  expect_contains(rendered,
+                  "@.str0 = private unnamed_addr constant [3 x i8] c\"hi\\00\"\n",
+                  "backend IR printer should render lowered string-pool entities");
+  expect_contains(rendered, "%t4 = load i32 from i8 sext, ptr @.str0 + 1\n",
+                  "backend IR printer should render the lowered widened string-literal byte load");
+  expect_contains(rendered, "ret i32 %t4",
+                  "backend IR printer should preserve the lowered string-literal return");
+}
+
+void test_backend_ir_validator_accepts_lowered_string_literal_char_slice() {
+  const auto lowered = c4c::backend::lower_to_backend_ir(make_string_literal_char_module());
+  std::string error;
+
+  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should accept lowered string-literal slices");
+  expect_true(error.empty(),
+              "backend IR validator should not report an error for valid lowered string constants");
+}
+
 void test_backend_ir_printer_renders_lowered_global_int_pointer_roundtrip_slice() {
   const auto lowered =
       c4c::backend::lower_to_backend_ir(make_global_int_pointer_roundtrip_module());
@@ -5185,6 +5208,25 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_global_load_ir_input() {
                   "x86 backend seam should lower explicit backend-IR global loads directly");
   expect_not_contains(rendered, "target triple =",
                       "x86 backend seam should not fall back to backend IR text for lowered global loads");
+}
+
+void test_x86_backend_scaffold_accepts_explicit_lowered_string_literal_ir_input() {
+  const auto lowered =
+      c4c::backend::lower_to_backend_ir(make_x86_string_literal_char_module());
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, ".section .rodata\n",
+                  "x86 backend seam should preserve lowered string-pool entities");
+  expect_contains(rendered, ".L.str0:\n",
+                  "x86 backend seam should keep the lowered local string label");
+  expect_contains(rendered, "lea rax, .L.str0[rip]\n",
+                  "x86 backend seam should materialize the lowered string base directly");
+  expect_contains(rendered, "movsx eax, byte ptr [rax + 1]\n",
+                  "x86 backend seam should lower the explicit backend-IR widened string byte load directly");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back to backend IR text for lowered string literals");
 }
 
 void test_x86_backend_scaffold_accepts_explicit_lowered_extern_global_array_ir_input() {
@@ -7066,6 +7108,26 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_global_load_ir_input
                   "aarch64 backend seam should lower explicit backend-IR scalar global loads directly");
   expect_not_contains(rendered, "target triple =",
                       "aarch64 backend seam should not fall back to backend IR text for lowered scalar global loads");
+}
+
+void test_aarch64_backend_scaffold_accepts_explicit_lowered_string_literal_ir_input() {
+  const auto lowered = c4c::backend::lower_to_backend_ir(make_string_literal_char_module());
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  expect_contains(rendered, ".section .rodata\n",
+                  "aarch64 backend seam should preserve lowered string-pool entities");
+  expect_contains(rendered, ".L.str0:\n",
+                  "aarch64 backend seam should keep the lowered local string label");
+  expect_contains(rendered, "  adrp x8, .L.str0\n",
+                  "aarch64 backend seam should materialize the lowered string page address directly");
+  expect_contains(rendered, "  ldrb w0, [x8, #1]\n",
+                  "aarch64 backend seam should preserve the lowered byte offset for string literals");
+  expect_contains(rendered, "  sxtb w0, w0\n",
+                  "aarch64 backend seam should lower the explicit backend-IR sign-extension directly");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should not fall back to backend IR text for lowered string literals");
 }
 
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_extern_global_load_ir_input() {
@@ -9087,6 +9149,8 @@ int main() {
   test_backend_ir_validator_accepts_lowered_extern_decl_slice();
   test_backend_ir_printer_renders_lowered_global_load_slice();
   test_backend_ir_validator_accepts_lowered_global_load_slice();
+  test_backend_ir_printer_renders_lowered_string_literal_char_slice();
+  test_backend_ir_validator_accepts_lowered_string_literal_char_slice();
   test_backend_ir_printer_renders_lowered_global_int_pointer_roundtrip_slice();
   test_backend_ir_validator_accepts_lowered_global_int_pointer_roundtrip_slice();
   test_backend_ir_printer_renders_lowered_global_char_pointer_diff_slice();
@@ -9131,6 +9195,7 @@ int main() {
   test_x86_backend_scaffold_accepts_explicit_lowered_ir_input();
   test_x86_backend_scaffold_accepts_explicit_lowered_extern_decl_ir_input();
   test_x86_backend_scaffold_accepts_explicit_lowered_global_load_ir_input();
+  test_x86_backend_scaffold_accepts_explicit_lowered_string_literal_ir_input();
   test_x86_backend_scaffold_accepts_explicit_lowered_extern_global_array_ir_input();
   test_x86_backend_scaffold_accepts_explicit_lowered_global_int_pointer_roundtrip_ir_input();
   test_x86_backend_scaffold_accepts_explicit_lowered_global_char_pointer_diff_ir_input();
@@ -9232,6 +9297,7 @@ int main() {
   test_aarch64_backend_renders_extern_decl_slice();
   test_aarch64_backend_renders_extern_global_load_slice();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_global_load_ir_input();
+  test_aarch64_backend_scaffold_accepts_explicit_lowered_string_literal_ir_input();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_extern_global_load_ir_input();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_extern_global_array_ir_input();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_global_int_pointer_roundtrip_ir_input();

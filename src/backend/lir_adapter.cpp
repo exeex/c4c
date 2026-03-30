@@ -103,6 +103,17 @@ const c4c::codegen::lir::LirGlobal* find_lir_global(
   return nullptr;
 }
 
+const c4c::codegen::lir::LirStringConst* find_lir_string_constant(
+    const c4c::codegen::lir::LirModule& module,
+    std::string_view pool_name) {
+  for (const auto& string_const : module.string_pool) {
+    if (string_const.pool_name == pool_name) {
+      return &string_const;
+    }
+  }
+  return nullptr;
+}
+
 std::optional<std::vector<std::string>> infer_extern_param_types(
     const c4c::codegen::lir::LirModule& module,
     const c4c::codegen::lir::LirExternDecl& decl) {
@@ -330,6 +341,90 @@ BackendInst adapt_inst(const c4c::codegen::lir::LirInst& inst) {
   }
 
   fail_unsupported("non-binary/non-call instructions");
+}
+
+std::optional<BackendFunction> adapt_string_literal_char_function(
+    const c4c::codegen::lir::LirFunction& function,
+    const c4c::codegen::lir::LirModule& module,
+    const BackendFunctionSignature& signature) {
+  using namespace c4c::codegen::lir;
+
+  if (function.is_declaration || signature.linkage != "define" ||
+      signature.return_type != "i32" || signature.name != "main" ||
+      !signature.params.empty() || signature.is_vararg || function.blocks.size() != 1 ||
+      !function.alloca_insts.empty() || !function.stack_objects.empty() ||
+      !module.globals.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& block = function.blocks.front();
+  if (block.label != "entry" || block.insts.size() != 5) {
+    return std::nullopt;
+  }
+
+  const auto* base_gep = std::get_if<LirGepOp>(&block.insts[0]);
+  const auto* index_cast = std::get_if<LirCastOp>(&block.insts[1]);
+  const auto* byte_gep = std::get_if<LirGepOp>(&block.insts[2]);
+  const auto* load = std::get_if<LirLoadOp>(&block.insts[3]);
+  const auto* extend = std::get_if<LirCastOp>(&block.insts[4]);
+  const auto* ret = std::get_if<LirRet>(&block.terminator);
+  if (base_gep == nullptr || index_cast == nullptr || byte_gep == nullptr ||
+      load == nullptr || extend == nullptr || ret == nullptr ||
+      !ret->value_str.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto* string_const = find_lir_string_constant(module, base_gep->ptr);
+  if (string_const == nullptr) {
+    return std::nullopt;
+  }
+  const std::string string_array_type =
+      "[" + std::to_string(string_const->byte_length) + " x i8]";
+  if (base_gep->element_type != string_array_type ||
+      base_gep->indices.size() != 2 || base_gep->indices[0] != "i64 0" ||
+      base_gep->indices[1] != "i64 0") {
+    return std::nullopt;
+  }
+
+  if (index_cast->kind != LirCastKind::SExt || index_cast->from_type != "i32" ||
+      index_cast->to_type != "i64") {
+    return std::nullopt;
+  }
+  const auto byte_index = parse_i64(index_cast->operand);
+  if (!byte_index.has_value() || *byte_index < 0 ||
+      *byte_index >= static_cast<std::int64_t>(string_const->byte_length)) {
+    return std::nullopt;
+  }
+
+  if (byte_gep->element_type != "i8" || byte_gep->ptr != base_gep->result ||
+      byte_gep->indices.size() != 1 ||
+      byte_gep->indices[0] != ("i64 " + index_cast->result) ||
+      load->type_str != "i8" || load->ptr != byte_gep->result) {
+    return std::nullopt;
+  }
+
+  if ((extend->kind != LirCastKind::SExt && extend->kind != LirCastKind::ZExt) ||
+      extend->from_type != "i8" || extend->operand != load->result ||
+      extend->to_type != "i32" || *ret->value_str != extend->result ||
+      ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  BackendFunction out;
+  out.signature = signature;
+  BackendBlock out_block;
+  out_block.label = block.label;
+  out_block.insts.push_back(BackendLoadInst{
+      extend->result,
+      "i32",
+      "i8",
+      BackendAddress{string_const->pool_name.substr(1), *byte_index},
+      extend->kind == LirCastKind::SExt ? BackendLoadExtension::SignExtend
+                                        : BackendLoadExtension::ZeroExtend,
+  });
+  out_block.terminator = BackendReturn{*ret->value_str, "i32"};
+  out.blocks.push_back(std::move(out_block));
+  return out;
 }
 
 BackendReturn adapt_terminator(const c4c::codegen::lir::LirTerminator& terminator) {
@@ -1566,7 +1661,12 @@ std::optional<BackendFunction> adapt_direct_global_load_function(
   BackendBlock out_block;
   out_block.label = block.label;
   out_block.insts.push_back(
-      BackendLoadInst{load->result, load->type_str, BackendAddress{global->name, 0}});
+      BackendLoadInst{
+          load->result,
+          load->type_str,
+          load->type_str,
+          BackendAddress{global->name, 0},
+      });
   out_block.terminator = BackendReturn{*ret->value_str, "i32"};
   out.blocks.push_back(std::move(out_block));
   return out;
@@ -1641,7 +1741,12 @@ std::optional<BackendFunction> adapt_global_int_pointer_roundtrip_function(
   BackendBlock out_block;
   out_block.label = block.label;
   out_block.insts.push_back(
-      BackendLoadInst{final_load->result, final_load->type_str, BackendAddress{global->name, 0}});
+      BackendLoadInst{
+          final_load->result,
+          final_load->type_str,
+          final_load->type_str,
+          BackendAddress{global->name, 0},
+      });
   out_block.terminator = BackendReturn{*ret->value_str, "i32"};
   out.blocks.push_back(std::move(out_block));
   return out;
@@ -1705,6 +1810,7 @@ std::optional<BackendFunction> adapt_indexed_global_array_load_function(
   out_block.label = block.label;
   out_block.insts.push_back(BackendLoadInst{
       load->result,
+      load->type_str,
       load->type_str,
       BackendAddress{global->name, *element_index * 4},
   });
@@ -2029,6 +2135,10 @@ BackendFunction adapt_function(const c4c::codegen::lir::LirFunction& function,
       normalized.has_value()) {
     return *normalized;
   }
+  if (const auto normalized = adapt_string_literal_char_function(function, module, signature);
+      normalized.has_value()) {
+    return *normalized;
+  }
   if (const auto normalized = adapt_direct_global_load_function(function, module, signature);
       normalized.has_value()) {
     return *normalized;
@@ -2071,7 +2181,6 @@ BackendFunction adapt_function(const c4c::codegen::lir::LirFunction& function,
 }  // namespace
 
 BackendModule adapt_minimal_module(const c4c::codegen::lir::LirModule& module) {
-  if (!module.string_pool.empty()) fail_unsupported("string constants");
   if (module.need_va_start || module.need_va_end || module.need_va_copy ||
       module.need_memcpy || module.need_stacksave || module.need_stackrestore ||
       module.need_abs) {
@@ -2084,6 +2193,16 @@ BackendModule adapt_minimal_module(const c4c::codegen::lir::LirModule& module) {
   out.type_decls = module.type_decls;
   for (const auto& global : module.globals) {
     out.globals.push_back(adapt_global(global));
+  }
+  for (const auto& string_const : module.string_pool) {
+    if (string_const.pool_name.empty() || string_const.pool_name.front() != '@') {
+      fail_unsupported("string constants without a global-style pool name");
+    }
+    out.string_constants.push_back(BackendStringConstant{
+        string_const.pool_name.substr(1),
+        string_const.raw_bytes,
+        static_cast<std::size_t>(string_const.byte_length),
+    });
   }
   for (const auto& decl : module.extern_decls) {
     out.functions.push_back(adapt_extern_decl(module, decl));

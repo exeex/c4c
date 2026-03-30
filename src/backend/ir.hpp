@@ -2,6 +2,7 @@
 
 #include "../codegen/lir/call_args.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -31,6 +32,12 @@ struct BackendGlobal {
   std::string init_text;
   int align_bytes = 0;
   bool is_extern_decl = false;
+};
+
+struct BackendStringConstant {
+  std::string name;
+  std::string raw_bytes;
+  std::size_t byte_length = 0;
 };
 
 enum class BackendBinaryOpcode {
@@ -65,10 +72,18 @@ struct BackendAddress {
   std::int64_t byte_offset = 0;
 };
 
+enum class BackendLoadExtension {
+  None,
+  SignExtend,
+  ZeroExtend,
+};
+
 struct BackendLoadInst {
   std::string result;
   std::string type_str;
+  std::string memory_type;
   BackendAddress address;
+  BackendLoadExtension extension = BackendLoadExtension::None;
 };
 
 struct BackendPtrDiffEqInst {
@@ -107,6 +122,7 @@ struct BackendModule {
   std::string data_layout;
   std::vector<std::string> type_decls;
   std::vector<BackendGlobal> globals;
+  std::vector<BackendStringConstant> string_constants;
   std::vector<BackendFunction> functions;
 };
 

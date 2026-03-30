@@ -210,6 +210,15 @@ const c4c::backend::BackendGlobal* find_global(
   return nullptr;
 }
 
+const c4c::backend::BackendStringConstant* find_string_constant(
+    const c4c::backend::BackendModule& module,
+    std::string_view name) {
+  for (const auto& string_constant : module.string_constants) {
+    if (string_constant.name == name) return &string_constant;
+  }
+  return nullptr;
+}
+
 std::optional<std::int64_t> parse_single_block_return_imm(
     const c4c::backend::BackendFunction& function) {
   if (function.is_declaration || function.signature.linkage != "define" ||
@@ -1474,6 +1483,52 @@ std::optional<MinimalStringLiteralCharSlice> parse_minimal_string_literal_char_s
   };
 }
 
+std::optional<MinimalStringLiteralCharSlice> parse_minimal_string_literal_char_slice(
+    const c4c::backend::BackendModule& module) {
+  if (module.functions.size() != 1 || module.string_constants.size() != 1 ||
+      !module.globals.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* string_const =
+      find_string_constant(module, module.string_constants.front().name);
+  const auto* main_fn = find_function(module, "main");
+  if (string_const == nullptr || main_fn == nullptr || main_fn->is_declaration ||
+      main_fn->signature.linkage != "define" ||
+      main_fn->signature.return_type != "i32" ||
+      !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
+      main_fn->blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& block = main_fn->blocks.front();
+  if (block.label != "entry" || block.insts.size() != 1 ||
+      !block.terminator.value.has_value() || block.terminator.type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto* load = std::get_if<c4c::backend::BackendLoadInst>(&block.insts.front());
+  if (load == nullptr || load->result != *block.terminator.value ||
+      load->type_str != "i32" || load->memory_type != "i8" ||
+      load->address.base_symbol != string_const->name ||
+      load->address.byte_offset < 0 ||
+      load->address.byte_offset >=
+          static_cast<std::int64_t>(string_const->byte_length)) {
+    return std::nullopt;
+  }
+  if (load->extension != c4c::backend::BackendLoadExtension::SignExtend &&
+      load->extension != c4c::backend::BackendLoadExtension::ZeroExtend) {
+    return std::nullopt;
+  }
+
+  return MinimalStringLiteralCharSlice{
+      "@" + string_const->name,
+      string_const->raw_bytes,
+      load->address.byte_offset,
+      load->extension == c4c::backend::BackendLoadExtension::SignExtend,
+  };
+}
+
 std::optional<MinimalCallCrossingDirectCallSlice> parse_minimal_call_crossing_direct_call_slice(
     const c4c::backend::BackendModule& module) {
   if (module.functions.size() != 2) return std::nullopt;
@@ -2484,6 +2539,12 @@ std::string emit_module(const c4c::backend::BackendModule& module,
     if (const auto slice = parse_minimal_global_int_pointer_diff_slice(module);
         slice.has_value()) {
       return emit_minimal_global_int_pointer_diff_asm(module, *slice);
+    }
+    if (const auto slice = parse_minimal_string_literal_char_slice(module);
+        slice.has_value()) {
+      c4c::codegen::lir::LirModule scaffold_module;
+      scaffold_module.target_triple = module.target_triple;
+      return emit_minimal_string_literal_char_asm(scaffold_module, *slice);
     }
     if (const auto slice = parse_minimal_direct_call_slice(module);
         slice.has_value()) {
