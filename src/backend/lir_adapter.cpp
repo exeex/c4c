@@ -222,27 +222,8 @@ BackendCallInst make_backend_call_inst(std::string result,
 
 std::optional<c4c::codegen::lir::ParsedLirTypedCallView> parse_backend_source_typed_call(
     const c4c::codegen::lir::LirCallOp& call) {
-  if (const auto parsed =
-          c4c::codegen::lir::parse_lir_typed_call(call.callee_type_suffix, call.args_str);
-      parsed.has_value()) {
-    return parsed;
-  }
-
-  if (!c4c::codegen::lir::trim_lir_arg_text(call.callee_type_suffix).empty()) {
-    return std::nullopt;
-  }
-
-  const auto args = c4c::codegen::lir::parse_lir_typed_call_args(call.args_str);
-  if (!args.has_value()) {
-    return std::nullopt;
-  }
-
-  std::vector<std::string_view> param_types;
-  param_types.reserve(args->size());
-  for (const auto& arg : *args) {
-    param_types.push_back(arg.type);
-  }
-  return c4c::codegen::lir::ParsedLirTypedCallView{std::move(param_types), *args};
+  return c4c::codegen::lir::parse_lir_typed_call_or_infer_params(
+      call.callee_type_suffix, call.args_str);
 }
 
 BackendInst adapt_inst(const c4c::codegen::lir::LirInst& inst) {

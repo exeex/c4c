@@ -321,6 +321,24 @@ void test_lir_call_arg_helpers_format_typed_call_round_trip() {
               "shared typed-call formatting should preserve the original operands");
 }
 
+void test_lir_call_arg_helpers_infer_param_types_when_suffix_missing() {
+  using namespace c4c::codegen::lir;
+
+  const auto parsed = parse_lir_typed_call_or_infer_params(
+      "   ", " ptr %base , i32 7 ");
+  expect_true(parsed.has_value() &&
+                  parsed->param_types.size() == 2 &&
+                  parsed->param_types[0] == "ptr" &&
+                  parsed->param_types[1] == "i32" &&
+                  parsed->args.size() == 2 &&
+                  parsed->args[0].operand == "%base" &&
+                  parsed->args[1].operand == "7",
+              "shared typed-call parser should infer param types from typed args when compatibility suffixes are absent");
+
+  expect_true(!parse_lir_typed_call_or_infer_params("(i32)", "ptr %base").has_value(),
+              "shared typed-call parser should not infer param types when a non-empty suffix is malformed");
+}
+
 void test_lir_call_arg_helpers_format_full_call_site_round_trip() {
   using namespace c4c::codegen::lir;
 
@@ -8431,6 +8449,7 @@ int main() {
   test_lir_call_arg_helpers_decode_direct_global_typed_call();
   test_lir_call_arg_helpers_decode_zero_arg_and_call_crossing_direct_calls();
   test_lir_call_arg_helpers_format_typed_call_round_trip();
+  test_lir_call_arg_helpers_infer_param_types_when_suffix_missing();
   test_lir_call_arg_helpers_format_full_call_site_round_trip();
   test_lir_call_arg_helpers_format_call_fields_with_suffix();
   test_lir_call_arg_helpers_make_typed_call_op();

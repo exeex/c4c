@@ -16,6 +16,11 @@ Source Plan: plan.md
   adapter render/local-normalization cleanup, and either route them through
   the shared typed call parser/formatter helpers or record them as explicit
   follow-on debt if they are not worth migrating in this runbook.
+- Next iteration's slice: inspect the remaining backend-owned call persistence
+  and render seams for any call-shape recovery that still lives outside
+  `src/codegen/lir/call_args.hpp`, especially residual indirect/intrinsic
+  compatibility branches that may still be reconstructing typed metadata from
+  backend-owned storage instead of shared parsed views.
 - Exact target for the next iteration after this slice: continue Step 4 into
   the remaining LIR/backend call and serialization paths that still treat
   typed call metadata as ad hoc text, especially residual fallback render or
@@ -24,6 +29,15 @@ Source Plan: plan.md
 
 ## Completed Items
 
+- Completed the next Step 4 backend call fallback cleanup slice by adding
+  `parse_lir_typed_call_or_infer_params(...)` to
+  `src/codegen/lir/call_args.hpp`, routing
+  `src/backend/lir_adapter.cpp`'s remaining no-suffix typed-call param
+  inference through that shared helper instead of open-coding the
+  `callee_type_suffix` / `args_str` fallback locally, and adding focused
+  regression coverage in `tests/backend/backend_lir_adapter_tests.cpp` for
+  suffix-free typed-call param inference plus malformed non-empty suffix
+  rejection.
 - Completed the next Step 4 backend call persistence/render cleanup slice by
   routing `src/backend/lir_adapter.cpp`'s remaining local-call normalization
   helpers through the adapter's shared `parse_backend_source_typed_call(...)`
@@ -355,6 +369,10 @@ Source Plan: plan.md
 - The analysis/liveness stack still uses compatibility-text scanning for GEP
   indices and other non-call textual payloads, but `LirCallOp::args_str` no
   longer has three separate ad hoc scanners with subtly different behavior.
+- `src/codegen/lir/call_args.hpp` now also owns the compatibility-path rule
+  that empty `callee_type_suffix` direct calls may infer param types from
+  typed arguments, so backend materialization no longer keeps a private
+  no-suffix typed-call inference branch.
 - Full-suite regression check for this slice remained monotonic against the
   checked-in `test_fail_before.log` baseline: `test_fail_after.log` improved
   from 189 failing tests to 188 with no newly failing tests, and
@@ -421,6 +439,10 @@ Source Plan: plan.md
   compatibility path for now; the next slice should focus on shrinking the
   remaining call-adjacent protocol surface before attempting broader
   `LirCallOp` storage changes.
+- The next Step 4 slice should inspect whether any backend-owned indirect or
+  intrinsic call persistence/render paths still reconstruct typed metadata
+  outside the shared call parser/formatter layer now that the no-suffix direct
+  call fallback has been centralized.
 
 ## Validation
 
@@ -457,6 +479,22 @@ Source Plan: plan.md
   Step 3 verifier/printer helpers landed.
 - `./build/backend_lir_adapter_tests` passed with new coverage for verified
   typed rendering and malformed typed-LIR rejection.
+- `cmake --build build -j8 --target backend_lir_adapter_tests` passed after
+  centralizing the adapter's no-suffix typed-call param inference in
+  `src/codegen/lir/call_args.hpp`.
+- `./build/backend_lir_adapter_tests` passed with new shared-helper coverage
+  for suffix-free typed-call param inference and malformed non-empty suffix
+  rejection.
+- `cmake --build build -j8` passed after routing
+  `src/backend/lir_adapter.cpp` through
+  `parse_lir_typed_call_or_infer_params(...)`.
+- `ctest --test-dir build -j8 --output-on-failure > test_after.log`
+  recorded `2372/2560` passing and `188` failing tests.
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
+  --before test_fail_after.log --after test_after.log
+  --allow-non-decreasing-passed` passed with zero new failures, zero new
+  suspicious slow tests, and no pass-count regression against the stored
+  `2372/2560` Step 4 baseline.
 - `cmake --build build -j8` passed after wiring `src/codegen/lir/verify.cpp`
   into both `c4cll` and `backend_lir_adapter_tests`.
 - `ctest --test-dir build -j --output-on-failure > test_fail_after_step3.log`
