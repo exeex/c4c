@@ -14,16 +14,34 @@ Source Plan: plan.md
   consumers, plus any uncovered LIR-side helper seams, and route them through
   `src/codegen/lir/call_args.hpp` call-op-level helpers where that removes
   duplicated call-field threading without widening scope beyond Step 4.
-- Next iteration's slice: inspect
+- Next iteration's slice: replace the residual
   `src/backend/stack_layout/{analysis.cpp,alloca_coalescing.cpp,slot_assignment.cpp}`
-  and `src/backend/liveness.cpp` for any remaining manual triple-field call
-  handling that should move to shared `LirCallOp`-aware helpers.
+  and `src/backend/liveness.cpp` manual `(callee, args_str)` call threading
+  with shared `LirCallOp`-aware collection/rewrite helpers, and add focused
+  regression coverage for call-op rewrite/analysis tolerance on non-canonical
+  typed call text.
 - Exact target for the next iteration after this slice: continue Step 4 into
   any remaining non-backend storage/render surfaces that still treat typed call
   metadata as ad hoc text instead of shared typed views.
 
 ## Completed Items
 
+- Completed the next Step 4 stack-layout/liveness call-op helper cleanup slice
+  by routing
+  `src/backend/stack_layout/{analysis.cpp,alloca_coalescing.cpp,slot_assignment.cpp}`
+  and `src/backend/liveness.cpp` through
+  `src/codegen/lir/call_args.hpp`'s shared `LirCallOp`-aware
+  collection/rewrite overloads instead of manually threading
+  `(callee, args_str)` pairs, and adding focused regression coverage in
+  `tests/backend/backend_lir_adapter_tests.cpp` for direct `LirCallOp`
+  value-collection and operand-rewrite helper usage.
+- Verified this slice with `./build/backend_lir_adapter_tests`, then
+  `ctest --test-dir build -j8 --output-on-failure > test_after.log`, and the
+  regression guard
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
+  --before test_fail_before.log --after test_after.log`, which passed at
+  `2371 -> 2372` passes with zero new failing tests and one resolved failing
+  test (`c_testsuite_x86_backend_src_00100_c`).
 - Completed the next Step 4 LIR-side call-op helper cleanup slice by adding
   `LirCallOp`-aware parse/format/rewrite/global-ref helper overloads in
   `src/codegen/lir/call_args.hpp`, routing
