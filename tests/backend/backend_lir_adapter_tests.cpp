@@ -1822,6 +1822,71 @@ c4c::codegen::lir::LirModule make_param_member_array_gep_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_param_member_array_runtime_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128-Fn32";
+  module.type_decls.push_back("%struct.Pair = type { [2 x i32] }");
+
+  LirFunction helper;
+  helper.name = "get_second";
+  helper.signature_text = "define i32 @get_second(%struct.Pair %p.p)\n";
+  helper.entry = LirBlockId{0};
+  helper.alloca_insts.push_back(LirAllocaOp{"%lv.param.p", "%struct.Pair", "", 0});
+  helper.alloca_insts.push_back(LirStoreOp{"%struct.Pair", "%p.p", "%lv.param.p"});
+
+  LirBlock helper_entry;
+  helper_entry.id = LirBlockId{0};
+  helper_entry.label = "entry";
+  helper_entry.insts.push_back(
+      LirGepOp{"%t0", "%struct.Pair", "%lv.param.p", false, {"i32 0", "i32 0"}});
+  helper_entry.insts.push_back(
+      LirGepOp{"%t1", "[2 x i32]", "%t0", false, {"i64 0", "i64 0"}});
+  helper_entry.insts.push_back(
+      LirCastOp{"%t2", LirCastKind::SExt, "i32", "1", "i64"});
+  helper_entry.insts.push_back(LirGepOp{"%t3", "i32", "%t1", false, {"i64 %t2"}});
+  helper_entry.insts.push_back(LirLoadOp{"%t4", "i32", "%t3"});
+  helper_entry.terminator = LirRet{std::string("%t4"), "i32"};
+  helper.blocks.push_back(std::move(helper_entry));
+
+  LirFunction main_fn;
+  main_fn.name = "main";
+  main_fn.signature_text = "define i32 @main()\n";
+  main_fn.entry = LirBlockId{0};
+  main_fn.alloca_insts.push_back(LirAllocaOp{"%lv.p", "%struct.Pair", "", 4});
+
+  LirBlock main_entry;
+  main_entry.id = LirBlockId{0};
+  main_entry.label = "entry";
+  main_entry.insts.push_back(
+      LirGepOp{"%t0", "%struct.Pair", "%lv.p", false, {"i32 0", "i32 0"}});
+  main_entry.insts.push_back(
+      LirGepOp{"%t1", "[2 x i32]", "%t0", false, {"i64 0", "i64 0"}});
+  main_entry.insts.push_back(
+      LirCastOp{"%t2", LirCastKind::SExt, "i32", "0", "i64"});
+  main_entry.insts.push_back(LirGepOp{"%t3", "i32", "%t1", false, {"i64 %t2"}});
+  main_entry.insts.push_back(LirStoreOp{"i32", "4", "%t3"});
+  main_entry.insts.push_back(
+      LirGepOp{"%t4", "%struct.Pair", "%lv.p", false, {"i32 0", "i32 0"}});
+  main_entry.insts.push_back(
+      LirGepOp{"%t5", "[2 x i32]", "%t4", false, {"i64 0", "i64 0"}});
+  main_entry.insts.push_back(
+      LirCastOp{"%t6", LirCastKind::SExt, "i32", "1", "i64"});
+  main_entry.insts.push_back(LirGepOp{"%t7", "i32", "%t5", false, {"i64 %t6"}});
+  main_entry.insts.push_back(LirStoreOp{"i32", "6", "%t7"});
+  main_entry.insts.push_back(LirLoadOp{"%t8", "%struct.Pair", "%lv.p"});
+  main_entry.insts.push_back(
+      LirCallOp{"%t9", "i32", "@get_second", "(%struct.Pair)", "%struct.Pair %t8"});
+  main_entry.terminator = LirRet{std::string("%t9"), "i32"};
+  main_fn.blocks.push_back(std::move(main_entry));
+
+  module.functions.push_back(std::move(helper));
+  module.functions.push_back(std::move(main_fn));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_nested_member_pointer_array_gep_module() {
   using namespace c4c::codegen::lir;
 
@@ -3605,22 +3670,26 @@ void test_aarch64_backend_renders_local_array_gep_slice() {
 
 void test_aarch64_backend_renders_param_member_array_gep_slice() {
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{make_param_member_array_gep_module()},
+      c4c::backend::BackendModuleInput{make_param_member_array_runtime_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-  expect_contains(rendered, "%struct.Pair = type { [2 x i32] }",
-                  "aarch64 backend should preserve struct member array type declarations");
-  expect_contains(rendered, "%lv.param.p = alloca %struct.Pair, align 4",
-                  "aarch64 backend should spill by-value struct parameters into stack slots");
-  expect_contains(rendered, "store %struct.Pair %p.p, ptr %lv.param.p",
-                  "aarch64 backend should store by-value struct parameters into their slots");
-  expect_contains(rendered, "%t0 = getelementptr %struct.Pair, ptr %lv.param.p, i32 0, i32 0",
-                  "aarch64 backend should render the member-addressing GEP");
-  expect_contains(rendered, "%t1 = getelementptr [2 x i32], ptr %t0, i64 0, i64 0",
-                  "aarch64 backend should render array decay from struct members");
-  expect_contains(rendered, "%t3 = getelementptr i32, ptr %t1, i64 %t2",
-                  "aarch64 backend should render indexed member-array addressing");
-  expect_contains(rendered, "ret i32 %t4",
-                  "aarch64 backend should preserve the loaded member-array result");
+  expect_contains(rendered, "get_second:",
+                  "aarch64 backend should emit a helper symbol for the bounded param-member-array slice");
+  expect_contains(rendered, "str x0, [sp, #8]",
+                  "aarch64 backend should spill the by-value struct argument from x0 into the helper stack slot");
+  expect_contains(rendered, "ldr w0, [sp, #12]",
+                  "aarch64 backend should reload the second member-array element from the spilled helper slot");
+  expect_contains(rendered, "main:",
+                  "aarch64 backend should emit a main entry point for the bounded runtime slice");
+  expect_contains(rendered, "str w9, [x8]",
+                  "aarch64 backend should materialize the first local member-array store through the stack base");
+  expect_contains(rendered, "str w9, [x8, #4]",
+                  "aarch64 backend should materialize the second local member-array store through the folded element offset");
+  expect_contains(rendered, "ldr x0, [x8]",
+                  "aarch64 backend should reload the by-value struct argument into x0 before the helper call");
+  expect_contains(rendered, "bl get_second",
+                  "aarch64 backend should call the bounded helper instead of falling back to LLVM-text IR");
+  expect_not_contains(rendered, "getelementptr",
+                      "aarch64 backend should not fall back to LLVM-text GEP rendering for the bounded param-member-array slice");
 }
 
 void test_aarch64_backend_renders_nested_member_pointer_array_gep_slice() {

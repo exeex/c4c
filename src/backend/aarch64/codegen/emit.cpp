@@ -263,6 +263,11 @@ struct MinimalLocalArraySlice {
   std::int64_t store1_imm = 0;
 };
 
+struct MinimalParamMemberArraySlice {
+  std::int64_t store0_imm = 0;
+  std::int64_t store1_imm = 0;
+};
+
 struct MinimalStringLiteralCharSlice {
   std::string pool_name;
   std::string raw_bytes;
@@ -560,6 +565,183 @@ std::optional<MinimalLocalArraySlice> parse_minimal_local_array_slice(
   }
 
   return MinimalLocalArraySlice{stores[0].second, stores[1].second};
+}
+
+std::optional<MinimalParamMemberArraySlice> parse_minimal_param_member_array_slice(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 2 || !module.globals.empty() ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* callee = find_lir_function(module, "get_second");
+  const auto* main_fn = find_lir_function(module, "main");
+  if (callee == nullptr || main_fn == nullptr || callee->is_declaration ||
+      main_fn->is_declaration || !callee->stack_objects.empty() ||
+      !main_fn->stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  if (callee->signature_text != "define i32 @get_second(%struct.Pair %p.p)\n" ||
+      callee->entry.value != 0 || callee->blocks.size() != 1 ||
+      callee->alloca_insts.size() != 2) {
+    return std::nullopt;
+  }
+
+  const auto* param_slot = std::get_if<LirAllocaOp>(&callee->alloca_insts[0]);
+  const auto* param_spill = std::get_if<LirStoreOp>(&callee->alloca_insts[1]);
+  if (param_slot == nullptr || param_spill == nullptr ||
+      param_slot->result != "%lv.param.p" || param_slot->type_str != "%struct.Pair" ||
+      !param_slot->count.empty() || param_spill->type_str != "%struct.Pair" ||
+      param_spill->val != "%p.p" || param_spill->ptr != param_slot->result) {
+    return std::nullopt;
+  }
+
+  const auto& callee_entry = callee->blocks.front();
+  if (callee_entry.label != "entry" || callee_entry.insts.size() != 5) {
+    return std::nullopt;
+  }
+
+  const auto* callee_base_gep = std::get_if<LirGepOp>(&callee_entry.insts[0]);
+  const auto* callee_array_gep = std::get_if<LirGepOp>(&callee_entry.insts[1]);
+  const auto* callee_index = std::get_if<LirCastOp>(&callee_entry.insts[2]);
+  const auto* callee_elem_gep = std::get_if<LirGepOp>(&callee_entry.insts[3]);
+  const auto* callee_load = std::get_if<LirLoadOp>(&callee_entry.insts[4]);
+  const auto* callee_ret = std::get_if<LirRet>(&callee_entry.terminator);
+  if (callee_base_gep == nullptr || callee_array_gep == nullptr ||
+      callee_index == nullptr || callee_elem_gep == nullptr ||
+      callee_load == nullptr || callee_ret == nullptr) {
+    return std::nullopt;
+  }
+
+  if (callee_base_gep->result != "%t0" || callee_base_gep->element_type != "%struct.Pair" ||
+      callee_base_gep->ptr != "%lv.param.p" || callee_base_gep->indices.size() != 2 ||
+      callee_base_gep->indices[0] != "i32 0" || callee_base_gep->indices[1] != "i32 0") {
+    return std::nullopt;
+  }
+  if (callee_array_gep->result != "%t1" || callee_array_gep->element_type != "[2 x i32]" ||
+      callee_array_gep->ptr != "%t0" || callee_array_gep->indices.size() != 2 ||
+      callee_array_gep->indices[0] != "i64 0" || callee_array_gep->indices[1] != "i64 0") {
+    return std::nullopt;
+  }
+  if (callee_index->result != "%t2" || callee_index->kind != LirCastKind::SExt ||
+      callee_index->from_type != "i32" || callee_index->operand != "1" ||
+      callee_index->to_type != "i64") {
+    return std::nullopt;
+  }
+  if (callee_elem_gep->result != "%t3" || callee_elem_gep->element_type != "i32" ||
+      callee_elem_gep->ptr != "%t1" || callee_elem_gep->indices.size() != 1 ||
+      callee_elem_gep->indices[0] != "i64 %t2") {
+    return std::nullopt;
+  }
+  if (callee_load->result != "%t4" || callee_load->type_str != "i32" ||
+      callee_load->ptr != "%t3" || !callee_ret->value_str.has_value() ||
+      *callee_ret->value_str != "%t4" || callee_ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  if (main_fn->signature_text != "define i32 @main()\n" || main_fn->entry.value != 0 ||
+      main_fn->blocks.size() != 1 || main_fn->alloca_insts.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto* main_slot = std::get_if<LirAllocaOp>(&main_fn->alloca_insts[0]);
+  if (main_slot == nullptr || main_slot->result != "%lv.p" ||
+      main_slot->type_str != "%struct.Pair" || !main_slot->count.empty() ||
+      main_slot->align < 4) {
+    return std::nullopt;
+  }
+
+  const auto& main_entry = main_fn->blocks.front();
+  if (main_entry.label != "entry" || main_entry.insts.size() != 12) {
+    return std::nullopt;
+  }
+
+  const auto* main_base_gep0 = std::get_if<LirGepOp>(&main_entry.insts[0]);
+  const auto* main_array_gep0 = std::get_if<LirGepOp>(&main_entry.insts[1]);
+  const auto* main_index0 = std::get_if<LirCastOp>(&main_entry.insts[2]);
+  const auto* main_elem_gep0 = std::get_if<LirGepOp>(&main_entry.insts[3]);
+  const auto* main_store0 = std::get_if<LirStoreOp>(&main_entry.insts[4]);
+  const auto* main_base_gep1 = std::get_if<LirGepOp>(&main_entry.insts[5]);
+  const auto* main_array_gep1 = std::get_if<LirGepOp>(&main_entry.insts[6]);
+  const auto* main_index1 = std::get_if<LirCastOp>(&main_entry.insts[7]);
+  const auto* main_elem_gep1 = std::get_if<LirGepOp>(&main_entry.insts[8]);
+  const auto* main_store1 = std::get_if<LirStoreOp>(&main_entry.insts[9]);
+  const auto* main_load = std::get_if<LirLoadOp>(&main_entry.insts[10]);
+  const auto* main_call = std::get_if<LirCallOp>(&main_entry.insts[11]);
+  const auto* main_ret = std::get_if<LirRet>(&main_entry.terminator);
+  if (main_base_gep0 == nullptr || main_array_gep0 == nullptr ||
+      main_index0 == nullptr || main_elem_gep0 == nullptr ||
+      main_store0 == nullptr || main_base_gep1 == nullptr ||
+      main_array_gep1 == nullptr || main_index1 == nullptr ||
+      main_elem_gep1 == nullptr || main_store1 == nullptr ||
+      main_load == nullptr || main_call == nullptr || main_ret == nullptr) {
+    return std::nullopt;
+  }
+
+  if (main_base_gep0->result != "%t0" || main_base_gep0->element_type != "%struct.Pair" ||
+      main_base_gep0->ptr != "%lv.p" || main_base_gep0->indices.size() != 2 ||
+      main_base_gep0->indices[0] != "i32 0" || main_base_gep0->indices[1] != "i32 0") {
+    return std::nullopt;
+  }
+  if (main_array_gep0->result != "%t1" || main_array_gep0->element_type != "[2 x i32]" ||
+      main_array_gep0->ptr != "%t0" || main_array_gep0->indices.size() != 2 ||
+      main_array_gep0->indices[0] != "i64 0" || main_array_gep0->indices[1] != "i64 0") {
+    return std::nullopt;
+  }
+  if (main_index0->result != "%t2" || main_index0->kind != LirCastKind::SExt ||
+      main_index0->from_type != "i32" || main_index0->operand != "0" ||
+      main_index0->to_type != "i64") {
+    return std::nullopt;
+  }
+  if (main_elem_gep0->result != "%t3" || main_elem_gep0->element_type != "i32" ||
+      main_elem_gep0->ptr != "%t1" || main_elem_gep0->indices.size() != 1 ||
+      main_elem_gep0->indices[0] != "i64 %t2" || main_store0->type_str != "i32" ||
+      main_store0->ptr != "%t3") {
+    return std::nullopt;
+  }
+
+  if (main_base_gep1->result != "%t4" || main_base_gep1->element_type != "%struct.Pair" ||
+      main_base_gep1->ptr != "%lv.p" || main_base_gep1->indices.size() != 2 ||
+      main_base_gep1->indices[0] != "i32 0" || main_base_gep1->indices[1] != "i32 0") {
+    return std::nullopt;
+  }
+  if (main_array_gep1->result != "%t5" || main_array_gep1->element_type != "[2 x i32]" ||
+      main_array_gep1->ptr != "%t4" || main_array_gep1->indices.size() != 2 ||
+      main_array_gep1->indices[0] != "i64 0" || main_array_gep1->indices[1] != "i64 0") {
+    return std::nullopt;
+  }
+  if (main_index1->result != "%t6" || main_index1->kind != LirCastKind::SExt ||
+      main_index1->from_type != "i32" || main_index1->operand != "1" ||
+      main_index1->to_type != "i64") {
+    return std::nullopt;
+  }
+  if (main_elem_gep1->result != "%t7" || main_elem_gep1->element_type != "i32" ||
+      main_elem_gep1->ptr != "%t5" || main_elem_gep1->indices.size() != 1 ||
+      main_elem_gep1->indices[0] != "i64 %t6" || main_store1->type_str != "i32" ||
+      main_store1->ptr != "%t7") {
+    return std::nullopt;
+  }
+
+  const auto store0_imm = parse_i64(main_store0->val);
+  const auto store1_imm = parse_i64(main_store1->val);
+  if (!store0_imm.has_value() || !store1_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  if (main_load->result != "%t8" || main_load->type_str != "%struct.Pair" ||
+      main_load->ptr != "%lv.p" || main_call->result != "%t9" ||
+      main_call->return_type != "i32" || main_call->callee != "@get_second" ||
+      main_call->callee_type_suffix != "(%struct.Pair)" ||
+      main_call->args_str != "%struct.Pair %t8" ||
+      !main_ret->value_str.has_value() || *main_ret->value_str != "%t9" ||
+      main_ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  return MinimalParamMemberArraySlice{*store0_imm, *store1_imm};
 }
 
 std::string gp_reg_name(c4c::backend::PhysReg reg, bool is_32bit) {
@@ -1927,11 +2109,54 @@ std::string emit_minimal_local_array_asm(
   return out.str();
 }
 
+std::string emit_minimal_param_member_array_asm(
+    const c4c::codegen::lir::LirModule& module,
+    const MinimalParamMemberArraySlice& slice) {
+  const auto in_mov_range = [](std::int64_t imm) {
+    return imm >= 0 && imm <= std::numeric_limits<std::uint16_t>::max();
+  };
+  if (!in_mov_range(slice.store0_imm) || !in_mov_range(slice.store1_imm)) {
+    fail_unsupported("param-member-array store immediates outside the minimal mov-supported range");
+  }
+
+  c4c::backend::BackendModule backend_module;
+  backend_module.target_triple = module.target_triple;
+  const std::string helper_symbol = asm_symbol_name(backend_module, "get_second");
+  const std::string main_symbol = asm_symbol_name(backend_module, "main");
+
+  std::ostringstream out;
+  out << ".text\n";
+  emit_function_prelude(out, backend_module, helper_symbol, false);
+  out << "  sub sp, sp, #16\n"
+      << "  str x0, [sp, #8]\n"
+      << "  ldr w0, [sp, #12]\n"
+      << "  add sp, sp, #16\n"
+      << "  ret\n";
+  emit_function_prelude(out, backend_module, main_symbol, true);
+  out << "  sub sp, sp, #32\n"
+      << "  str x30, [sp, #24]\n"
+      << "  add x8, sp, #8\n"
+      << "  mov w9, #" << slice.store0_imm << "\n"
+      << "  str w9, [x8]\n"
+      << "  mov w9, #" << slice.store1_imm << "\n"
+      << "  str w9, [x8, #4]\n"
+      << "  ldr x0, [x8]\n"
+      << "  bl " << helper_symbol << "\n"
+      << "  ldr x30, [sp, #24]\n"
+      << "  add sp, sp, #32\n"
+      << "  ret\n";
+  return out.str();
+}
+
 }  // namespace
 
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {
   const auto prepared = prepare_module_for_fallback(module);
   validate_module(prepared);
+  if (const auto slice = parse_minimal_param_member_array_slice(prepared);
+      slice.has_value()) {
+    return emit_minimal_param_member_array_asm(prepared, *slice);
+  }
   if (const auto slice = parse_minimal_local_array_slice(prepared);
       slice.has_value()) {
     return emit_minimal_local_array_asm(prepared, *slice);

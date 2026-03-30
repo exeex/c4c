@@ -567,6 +567,25 @@ if(CLANG_EXECUTABLE)
     )
     set_tests_properties(backend_contract_aarch64_extern_call_object PROPERTIES
         LABELS "internal;backend")
+
+    add_test(
+      NAME backend_contract_aarch64_param_member_array_object
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DCLANG=${CLANG_EXECUTABLE}
+              -DOBJDUMP=${OBJDUMP_EXECUTABLE}
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_case/param_member_array.c
+              -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
+              -DBACKEND_OUTPUT_KIND=asm
+              -DBACKEND_OUTPUT_PATH=${CMAKE_BINARY_DIR}/internal_backend_contract/param_member_array_aarch64.s
+              -DOUT_ARTIFACT=${CMAKE_BINARY_DIR}/internal_backend_contract/param_member_array_aarch64.o
+              "-DREQUIRED_BACKEND_SNIPPETS=.text|get_second:|str x0, [sp, #8]|ldr w0, [sp, #12]|main:|ldr x0, [x8]|bl get_second"
+              "-DREQUIRED_OBJDUMP_SNIPPETS=file format elf64-littleaarch64|.text|get_second|main"
+              "-DFORBIDDEN_OBJDUMP_SNIPPETS=.rela.text|R_AARCH64_"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_contract_case.cmake"
+    )
+    set_tests_properties(backend_contract_aarch64_param_member_array_object PROPERTIES
+        LABELS "internal;backend")
   endif()
 
   if(BACKEND_RUNTIME_TARGET_TRIPLE)
@@ -688,6 +707,7 @@ if(CLANG_EXECUTABLE)
         set(expect_exit_code 9)
       elseif(stem STREQUAL "param_member_array")
         set(expect_exit_code 6)
+        set(backend_output_kind "asm")
       endif()
 
       add_test(
