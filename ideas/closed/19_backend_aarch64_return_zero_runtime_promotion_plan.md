@@ -2,7 +2,7 @@
 
 ## Status
 
-Open as of 2026-03-30.
+Completed on 2026-03-30 and ready to archive.
 
 ## Relationship To Roadmap
 
@@ -47,3 +47,14 @@ Promote the bounded zero-argument constant-return runtime seam after the recent 
 ## Success Condition
 
 This idea is complete when `backend_runtime_return_zero` passes with `BACKEND_OUTPUT_KIND=asm` and the full regression comparison remains monotonic with zero newly failing tests.
+
+## Completion Notes
+
+- verified the bounded AArch64 runtime shape directly with `./build/c4cll --codegen lir --target aarch64-unknown-linux-gnu tests/c/internal/backend_case/return_zero.c`, which emits the existing minimal asm slice:
+  `.text`, `.globl main`, `.type main, %function`, `mov w0, #0`, `ret`
+- confirmed the runtime harness already runs `return_zero` through `BACKEND_OUTPUT_KIND=asm` in `tests/c/internal/InternalTests.cmake`
+- validated `ctest --test-dir build -R '^backend_runtime_return_zero$' --output-on-failure`
+- validated nearby constant-return coverage with `ctest --test-dir build -R 'backend_contract_aarch64_return_add|backend_runtime_return_add' --output-on-failure`
+- recorded monotonic full-suite results with no new failures:
+  `test_fail_before.log`: 718 passed, 24 failed, 742 total
+  `test_fail_after.log`: 718 passed, 24 failed, 742 total

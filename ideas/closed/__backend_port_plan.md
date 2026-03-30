@@ -2,7 +2,7 @@
 
 ## Status
 
-This file is the umbrella roadmap for the native backend effort.
+Completed on 2026-03-30 and ready to archive as the umbrella roadmap for the native backend effort.
 
 It is intentionally not the best direct activation target for `plan.md`.
 Execution should usually activate one of the narrower backend ideas in `ideas/open/`.
@@ -54,7 +54,7 @@ The backend effort should keep execution focused on one narrow open child at a t
 
 Current open child:
 
-- `19_backend_aarch64_return_zero_runtime_promotion_plan.md`
+- None. The final recorded child `19_backend_aarch64_return_zero_runtime_promotion_plan.md` was completed on 2026-03-30 and archived.
 
 ## Shared Guardrails
 
@@ -94,6 +94,12 @@ The `17_backend_aarch64_nested_member_pointer_array_plan.md` child was completed
 
 The `18_backend_aarch64_nested_param_member_array_plan.md` child was completed and moved to `ideas/closed/` on 2026-03-30 after promoting the bounded nested by-value aggregate member-array seam through the backend-owned asm path.
 
-The next child is `19_backend_aarch64_return_zero_runtime_promotion_plan.md`, which isolates the remaining runtime-harness promotion gap for the already-supported minimal constant-return AArch64 slice.
+The final child `19_backend_aarch64_return_zero_runtime_promotion_plan.md` was completed on 2026-03-30 after confirming the bounded constant-return runtime seam already emitted through the backend-owned asm path and remained monotonic under full-suite regression validation.
 
-The umbrella should remain inactive while that narrow child is the active execution target.
+No further backend child is recorded in this roadmap. The umbrella success condition is now satisfied and this file can move to `ideas/closed/`.
+
+## Completion Notes
+
+- all recorded backend child ideas referenced by this roadmap are now complete or archived
+- the final runtime-harness promotion gap closed with child `19_backend_aarch64_return_zero_runtime_promotion_plan.md`
+- no replacement backend child was identified during closure of `19`, so the umbrella roadmap no longer has an activatable follow-on slice
