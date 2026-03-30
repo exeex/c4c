@@ -533,6 +533,39 @@ void test_backend_call_helpers_decode_direct_global_two_typed_operands() {
               "backend-owned direct-global two-operand helper should reject mismatched typed signatures");
 }
 
+void test_backend_call_helpers_decode_zero_arg_direct_global_calls() {
+  c4c::backend::BackendCallInst backend_call{
+      "%t2",
+      "i32",
+      "@helper",
+      {},
+      {},
+  };
+
+  const auto backend_callee =
+      c4c::backend::parse_backend_zero_arg_direct_global_typed_call(backend_call);
+  expect_true(backend_callee.has_value() && *backend_callee == "helper",
+              "backend-owned zero-arg direct-call helper should expose structured direct callees without repeating empty-shape checks");
+
+  c4c::codegen::lir::LirCallOp lir_call{
+      "%t3",
+      "i32",
+      "@helper",
+      " ( ) ",
+      "  ",
+  };
+  const auto lir_callee =
+      c4c::backend::parse_backend_zero_arg_direct_global_typed_call(lir_call);
+  expect_true(lir_callee.has_value() && *lir_callee == "helper",
+              "shared zero-arg direct-call helper should decode spacing-tolerant LIR call metadata");
+
+  backend_call.param_types = {"i32"};
+  backend_call.args = {{"i32", "%arg"}};
+  expect_true(!c4c::backend::parse_backend_zero_arg_direct_global_typed_call(backend_call)
+                   .has_value(),
+              "backend-owned zero-arg direct-call helper should reject non-empty structured argument shapes");
+}
+
 void test_backend_call_helpers_decode_lir_direct_global_typed_operands() {
   c4c::codegen::lir::LirCallOp single{
       "%t0",
@@ -8621,6 +8654,7 @@ int main() {
   test_backend_call_helpers_decode_structured_direct_global_call();
   test_backend_call_helpers_decode_direct_global_single_typed_operand();
   test_backend_call_helpers_decode_direct_global_two_typed_operands();
+  test_backend_call_helpers_decode_zero_arg_direct_global_calls();
   test_backend_call_helpers_decode_lir_direct_global_typed_operands();
   test_backend_call_helpers_borrow_structured_typed_call_view();
   test_lir_typed_wrappers_preserve_legacy_opcode_and_predicate_strings();

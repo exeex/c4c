@@ -1203,24 +1203,22 @@ std::optional<MinimalDirectCallSlice> parse_minimal_direct_call_slice(
   }
 
   const auto* call = std::get_if<c4c::backend::BackendCallInst>(&main_block.insts.front());
-  const auto direct_call =
+  const auto callee_name =
       call == nullptr ? std::nullopt
-                      : c4c::backend::parse_backend_direct_global_typed_call(*call);
+                      : c4c::backend::parse_backend_zero_arg_direct_global_typed_call(*call);
   if (call == nullptr || call->return_type != "i32" || call->result.empty() ||
-      *main_block.terminator.value != call->result || !direct_call.has_value() ||
-      !direct_call->typed_call.param_types.empty() ||
-      !direct_call->typed_call.args.empty()) {
+      *main_block.terminator.value != call->result || !callee_name.has_value()) {
     return std::nullopt;
   }
 
-  if (direct_call->symbol_name == "main") return std::nullopt;
+  if (*callee_name == "main") return std::nullopt;
 
-  const auto* callee_fn = find_function(module, direct_call->symbol_name);
+  const auto* callee_fn = find_function(module, *callee_name);
   if (callee_fn == nullptr) return std::nullopt;
   const auto callee_imm = parse_single_block_return_imm(*callee_fn);
   if (!callee_imm.has_value()) return std::nullopt;
 
-  return MinimalDirectCallSlice{std::string(direct_call->symbol_name), *callee_imm};
+  return MinimalDirectCallSlice{std::string(*callee_name), *callee_imm};
 }
 
 std::optional<MinimalDirectCallAddImmSlice> parse_minimal_direct_call_add_imm_slice(

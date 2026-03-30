@@ -179,6 +179,17 @@ parse_backend_direct_global_two_typed_call_operands(
   };
 }
 
+template <typename Call>
+inline std::optional<std::string_view> parse_backend_zero_arg_direct_global_typed_call(
+    const Call& call) {
+  const auto parsed = parse_backend_direct_global_typed_call(call);
+  if (!parsed.has_value() || !parsed->typed_call.param_types.empty() ||
+      !parsed->typed_call.args.empty()) {
+    return std::nullopt;
+  }
+  return parsed->symbol_name;
+}
+
 BackendModule adapt_minimal_module(const c4c::codegen::lir::LirModule& module);
 std::string render_module(const BackendModule& module);
 
