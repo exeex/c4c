@@ -191,8 +191,7 @@ set_target_properties(frontend_cxx_preprocessor_tests PROPERTIES
     CXX_STANDARD_REQUIRED ON
 )
 
-add_executable(backend_lir_adapter_tests
-    "${PROJECT_SOURCE_DIR}/tests/backend/backend_lir_adapter_tests.cpp"
+set(BACKEND_TEST_COMMON_SRCS
     "${PROJECT_SOURCE_DIR}/src/backend/aarch64/mod.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/aarch64/assembler/mod.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/aarch64/assembler/encoder/mod.cpp"
@@ -293,11 +292,57 @@ add_executable(backend_lir_adapter_tests
     "${PROJECT_SOURCE_DIR}/src/codegen/lir/lir_printer.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/lir/verify.cpp"
 )
+
+add_executable(backend_lir_adapter_tests
+    "${PROJECT_SOURCE_DIR}/tests/backend/backend_lir_adapter_tests.cpp"
+    ${BACKEND_TEST_COMMON_SRCS}
+)
+add_executable(backend_lir_adapter_aarch64_tests
+    "${PROJECT_SOURCE_DIR}/tests/backend/backend_lir_adapter_aarch64_tests.cpp"
+    ${BACKEND_TEST_COMMON_SRCS}
+)
+add_executable(backend_lir_adapter_x86_64_tests
+    "${PROJECT_SOURCE_DIR}/tests/backend/backend_lir_adapter_x86_64_tests.cpp"
+    ${BACKEND_TEST_COMMON_SRCS}
+)
+add_executable(backend_ir_tests
+    "${PROJECT_SOURCE_DIR}/tests/backend/backend_ir_tests.cpp"
+    ${BACKEND_TEST_COMMON_SRCS}
+)
+add_executable(backend_shared_util_tests
+    "${PROJECT_SOURCE_DIR}/tests/backend/backend_shared_util_tests.cpp"
+    ${BACKEND_TEST_COMMON_SRCS}
+)
+
 target_include_directories(backend_lir_adapter_tests PRIVATE
+    ${FRONTEND_CXX_INCLUDE_DIRS}
+)
+target_include_directories(backend_lir_adapter_aarch64_tests PRIVATE
+    ${FRONTEND_CXX_INCLUDE_DIRS}
+)
+target_include_directories(backend_lir_adapter_x86_64_tests PRIVATE
+    ${FRONTEND_CXX_INCLUDE_DIRS}
+)
+target_include_directories(backend_ir_tests PRIVATE
+    ${FRONTEND_CXX_INCLUDE_DIRS}
+)
+target_include_directories(backend_shared_util_tests PRIVATE
     ${FRONTEND_CXX_INCLUDE_DIRS}
 )
 if(CLANG_EXECUTABLE)
   target_compile_definitions(backend_lir_adapter_tests PRIVATE
+      C4C_TEST_CLANG_PATH="${CLANG_EXECUTABLE}"
+  )
+  target_compile_definitions(backend_lir_adapter_aarch64_tests PRIVATE
+      C4C_TEST_CLANG_PATH="${CLANG_EXECUTABLE}"
+  )
+  target_compile_definitions(backend_lir_adapter_x86_64_tests PRIVATE
+      C4C_TEST_CLANG_PATH="${CLANG_EXECUTABLE}"
+  )
+  target_compile_definitions(backend_ir_tests PRIVATE
+      C4C_TEST_CLANG_PATH="${CLANG_EXECUTABLE}"
+  )
+  target_compile_definitions(backend_shared_util_tests PRIVATE
       C4C_TEST_CLANG_PATH="${CLANG_EXECUTABLE}"
   )
 endif()
@@ -305,8 +350,36 @@ if(OBJDUMP_EXECUTABLE)
   target_compile_definitions(backend_lir_adapter_tests PRIVATE
       C4C_TEST_OBJDUMP_PATH="${OBJDUMP_EXECUTABLE}"
   )
+  target_compile_definitions(backend_lir_adapter_aarch64_tests PRIVATE
+      C4C_TEST_OBJDUMP_PATH="${OBJDUMP_EXECUTABLE}"
+  )
+  target_compile_definitions(backend_lir_adapter_x86_64_tests PRIVATE
+      C4C_TEST_OBJDUMP_PATH="${OBJDUMP_EXECUTABLE}"
+  )
+  target_compile_definitions(backend_ir_tests PRIVATE
+      C4C_TEST_OBJDUMP_PATH="${OBJDUMP_EXECUTABLE}"
+  )
+  target_compile_definitions(backend_shared_util_tests PRIVATE
+      C4C_TEST_OBJDUMP_PATH="${OBJDUMP_EXECUTABLE}"
+  )
 endif()
 set_target_properties(backend_lir_adapter_tests PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+set_target_properties(backend_lir_adapter_aarch64_tests PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+set_target_properties(backend_lir_adapter_x86_64_tests PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+set_target_properties(backend_ir_tests PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+set_target_properties(backend_shared_util_tests PROPERTIES
     CXX_STANDARD 17
     CXX_STANDARD_REQUIRED ON
 )

@@ -1,0 +1,2563 @@
+#include "backend.hpp"
+#include "generation.hpp"
+#include "ir_printer.hpp"
+#include "ir_validate.hpp"
+#include "liveness.hpp"
+#include "lir_adapter.hpp"
+#include "regalloc.hpp"
+#include "stack_layout/analysis.hpp"
+#include "stack_layout/alloca_coalescing.hpp"
+#include "stack_layout/regalloc_helpers.hpp"
+#include "stack_layout/slot_assignment.hpp"
+#include "target.hpp"
+#include "../../src/codegen/lir/call_args.hpp"
+#include "../../src/codegen/lir/lir_printer.hpp"
+#include "../../src/codegen/lir/verify.hpp"
+#include "../../src/backend/elf/mod.hpp"
+#include "../../src/backend/linker_common/mod.hpp"
+#include "../../src/backend/aarch64/assembler/mod.hpp"
+#include "../../src/backend/aarch64/codegen/emit.hpp"
+#include "../../src/backend/aarch64/linker/mod.hpp"
+#include "../../src/backend/aarch64/assembler/parser.hpp"
+#include "../../src/backend/x86/assembler/mod.hpp"
+#include "../../src/backend/x86/assembler/encoder/mod.hpp"
+#include "../../src/backend/x86/assembler/parser.hpp"
+#include "../../src/backend/x86/codegen/emit.hpp"
+#include "../../src/backend/x86/linker/mod.hpp"
+
+#include "backend_test_helper.hpp"
+
+#include <algorithm>
+#include <cstdint>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <iterator>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+#include <sys/mman.h>
+#include <unistd.h>
+#include <vector>
+
+
+c4c::codegen::lir::LirModule make_x86_local_pointer_temp_return_module() {
+  auto module = make_local_pointer_temp_return_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  return module;
+}
+
+
+
+
+
+
+
+std::vector<std::uint8_t> make_minimal_x86_relocation_object_fixture() {
+  using namespace c4c::backend::elf;
+
+  constexpr std::uint32_t kPlt32Reloc = 4;
+  constexpr std::size_t kElfHeaderSize = 64;
+  constexpr std::size_t kSectionHeaderSize = 64;
+
+  std::vector<std::uint8_t> text_bytes = {
+      0xe8, 0x00, 0x00, 0x00, 0x00,
+      0xc3,
+  };
+
+  std::string strtab;
+  strtab.push_back('\0');
+  const auto main_name = static_cast<std::uint32_t>(strtab.size());
+  strtab += "main";
+  strtab.push_back('\0');
+  const auto helper_name = static_cast<std::uint32_t>(strtab.size());
+  strtab += "helper_ext";
+  strtab.push_back('\0');
+
+  std::string shstrtab;
+  shstrtab.push_back('\0');
+  const auto text_name = static_cast<std::uint32_t>(shstrtab.size());
+  shstrtab += ".text";
+  shstrtab.push_back('\0');
+  const auto rela_text_name = static_cast<std::uint32_t>(shstrtab.size());
+  shstrtab += ".rela.text";
+  shstrtab.push_back('\0');
+  const auto symtab_name = static_cast<std::uint32_t>(shstrtab.size());
+  shstrtab += ".symtab";
+  shstrtab.push_back('\0');
+  const auto strtab_name = static_cast<std::uint32_t>(shstrtab.size());
+  shstrtab += ".strtab";
+  shstrtab.push_back('\0');
+  const auto shstrtab_name = static_cast<std::uint32_t>(shstrtab.size());
+  shstrtab += ".shstrtab";
+  shstrtab.push_back('\0');
+
+  std::vector<std::uint8_t> rela_text;
+  append_u64(rela_text, 1);
+  append_u64(rela_text, (static_cast<std::uint64_t>(3) << 32) | kPlt32Reloc);
+  append_i64(rela_text, -4);
+
+  std::vector<std::uint8_t> symtab;
+  append_zeroes(symtab, 24);
+  append_u32(symtab, 0);
+  symtab.push_back(symbol_info(STB_LOCAL, STT_SECTION));
+  symtab.push_back(0);
+  append_u16(symtab, 1);
+  append_u64(symtab, 0);
+  append_u64(symtab, 0);
+  append_u32(symtab, main_name);
+  symtab.push_back(symbol_info(STB_GLOBAL, STT_FUNC));
+  symtab.push_back(0);
+  append_u16(symtab, 1);
+  append_u64(symtab, 0);
+  append_u64(symtab, text_bytes.size());
+  append_u32(symtab, helper_name);
+  symtab.push_back(symbol_info(STB_GLOBAL, STT_NOTYPE));
+  symtab.push_back(0);
+  append_u16(symtab, SHN_UNDEF);
+  append_u64(symtab, 0);
+  append_u64(symtab, 0);
+
+  std::size_t offset = kElfHeaderSize;
+  const auto text_offset = offset;
+  offset += text_bytes.size();
+  offset = align_up(offset, 8);
+
+  const auto rela_text_offset = offset;
+  offset += rela_text.size();
+  offset = align_up(offset, 8);
+
+  const auto symtab_offset = offset;
+  offset += symtab.size();
+
+  const auto strtab_offset = offset;
+  offset += strtab.size();
+
+  const auto shstrtab_offset = offset;
+  offset += shstrtab.size();
+  offset = align_up(offset, 8);
+
+  const auto section_header_offset = offset;
+
+  std::vector<std::uint8_t> out;
+  out.reserve(section_header_offset + 6 * kSectionHeaderSize);
+  out.insert(out.end(), ELF_MAGIC.begin(), ELF_MAGIC.end());
+  out.push_back(ELFCLASS64);
+  out.push_back(ELFDATA2LSB);
+  out.push_back(1);
+  out.push_back(0);
+  out.push_back(0);
+  append_zeroes(out, 7);
+  append_u16(out, ET_REL);
+  append_u16(out, EM_X86_64);
+  append_u32(out, 1);
+  append_u64(out, 0);
+  append_u64(out, 0);
+  append_u64(out, section_header_offset);
+  append_u32(out, 0);
+  append_u16(out, kElfHeaderSize);
+  append_u16(out, 0);
+  append_u16(out, 0);
+  append_u16(out, kSectionHeaderSize);
+  append_u16(out, 6);
+  append_u16(out, 5);
+
+  out.insert(out.end(), text_bytes.begin(), text_bytes.end());
+  append_zeroes(out, align_up(out.size(), 8) - out.size());
+  out.insert(out.end(), rela_text.begin(), rela_text.end());
+  append_zeroes(out, align_up(out.size(), 8) - out.size());
+  out.insert(out.end(), symtab.begin(), symtab.end());
+  out.insert(out.end(), strtab.begin(), strtab.end());
+  out.insert(out.end(), shstrtab.begin(), shstrtab.end());
+  append_zeroes(out, align_up(out.size(), 8) - out.size());
+
+  append_zeroes(out, kSectionHeaderSize);
+
+  append_u32(out, text_name);
+  append_u32(out, SHT_PROGBITS);
+  append_u64(out, SHF_ALLOC | SHF_EXECINSTR);
+  append_u64(out, 0);
+  append_u64(out, text_offset);
+  append_u64(out, text_bytes.size());
+  append_u32(out, 0);
+  append_u32(out, 0);
+  append_u64(out, 1);
+  append_u64(out, 0);
+
+  append_u32(out, rela_text_name);
+  append_u32(out, SHT_RELA);
+  append_u64(out, SHF_INFO_LINK);
+  append_u64(out, 0);
+  append_u64(out, rela_text_offset);
+  append_u64(out, rela_text.size());
+  append_u32(out, 3);
+  append_u32(out, 1);
+  append_u64(out, 8);
+  append_u64(out, 24);
+
+  append_u32(out, symtab_name);
+  append_u32(out, SHT_SYMTAB);
+  append_u64(out, 0);
+  append_u64(out, 0);
+  append_u64(out, symtab_offset);
+  append_u64(out, symtab.size());
+  append_u32(out, 4);
+  append_u32(out, 2);
+  append_u64(out, 8);
+  append_u64(out, 24);
+
+  append_u32(out, strtab_name);
+  append_u32(out, SHT_STRTAB);
+  append_u64(out, 0);
+  append_u64(out, 0);
+  append_u64(out, strtab_offset);
+  append_u64(out, strtab.size());
+  append_u32(out, 0);
+  append_u32(out, 0);
+  append_u64(out, 1);
+  append_u64(out, 0);
+
+  append_u32(out, shstrtab_name);
+  append_u32(out, SHT_STRTAB);
+  append_u64(out, 0);
+  append_u64(out, 0);
+  append_u64(out, shstrtab_offset);
+  append_u64(out, shstrtab.size());
+  append_u32(out, 0);
+  append_u32(out, 0);
+  append_u64(out, 1);
+  append_u64(out, 0);
+
+  return out;
+}
+
+std::vector<std::uint8_t> make_minimal_x86_helper_definition_object_fixture() {
+  using namespace c4c::backend::elf;
+
+  constexpr std::size_t kElfHeaderSize = 64;
+  constexpr std::size_t kSectionHeaderSize = 64;
+
+  std::vector<std::uint8_t> text_bytes = {
+      0xb8, 0x2a, 0x00, 0x00, 0x00,
+      0xc3,
+  };
+
+  std::string strtab;
+  strtab.push_back('\0');
+  const auto helper_name = static_cast<std::uint32_t>(strtab.size());
+  strtab += "helper_ext";
+  strtab.push_back('\0');
+
+  std::string shstrtab;
+  shstrtab.push_back('\0');
+  const auto text_name = static_cast<std::uint32_t>(shstrtab.size());
+  shstrtab += ".text";
+  shstrtab.push_back('\0');
+  const auto symtab_name = static_cast<std::uint32_t>(shstrtab.size());
+  shstrtab += ".symtab";
+  shstrtab.push_back('\0');
+  const auto strtab_name = static_cast<std::uint32_t>(shstrtab.size());
+  shstrtab += ".strtab";
+  shstrtab.push_back('\0');
+  const auto shstrtab_name = static_cast<std::uint32_t>(shstrtab.size());
+  shstrtab += ".shstrtab";
+  shstrtab.push_back('\0');
+
+  std::vector<std::uint8_t> symtab;
+  append_zeroes(symtab, 24);
+  append_u32(symtab, 0);
+  symtab.push_back(symbol_info(STB_LOCAL, STT_SECTION));
+  symtab.push_back(0);
+  append_u16(symtab, 1);
+  append_u64(symtab, 0);
+  append_u64(symtab, 0);
+  append_u32(symtab, helper_name);
+  symtab.push_back(symbol_info(STB_GLOBAL, STT_FUNC));
+  symtab.push_back(0);
+  append_u16(symtab, 1);
+  append_u64(symtab, 0);
+  append_u64(symtab, text_bytes.size());
+
+  std::size_t offset = kElfHeaderSize;
+  const auto text_offset = offset;
+  offset += text_bytes.size();
+  offset = align_up(offset, 8);
+
+  const auto symtab_offset = offset;
+  offset += symtab.size();
+
+  const auto strtab_offset = offset;
+  offset += strtab.size();
+
+  const auto shstrtab_offset = offset;
+  offset += shstrtab.size();
+  offset = align_up(offset, 8);
+
+  const auto section_header_offset = offset;
+
+  std::vector<std::uint8_t> out;
+  out.reserve(section_header_offset + 5 * kSectionHeaderSize);
+  out.insert(out.end(), ELF_MAGIC.begin(), ELF_MAGIC.end());
+  out.push_back(ELFCLASS64);
+  out.push_back(ELFDATA2LSB);
+  out.push_back(1);
+  out.push_back(0);
+  out.push_back(0);
+  append_zeroes(out, 7);
+  append_u16(out, ET_REL);
+  append_u16(out, EM_X86_64);
+  append_u32(out, 1);
+  append_u64(out, 0);
+  append_u64(out, 0);
+  append_u64(out, section_header_offset);
+  append_u32(out, 0);
+  append_u16(out, kElfHeaderSize);
+  append_u16(out, 0);
+  append_u16(out, 0);
+  append_u16(out, kSectionHeaderSize);
+  append_u16(out, 5);
+  append_u16(out, 4);
+
+  out.insert(out.end(), text_bytes.begin(), text_bytes.end());
+  append_zeroes(out, align_up(out.size(), 8) - out.size());
+  out.insert(out.end(), symtab.begin(), symtab.end());
+  out.insert(out.end(), strtab.begin(), strtab.end());
+  out.insert(out.end(), shstrtab.begin(), shstrtab.end());
+  append_zeroes(out, align_up(out.size(), 8) - out.size());
+
+  append_zeroes(out, kSectionHeaderSize);
+
+  append_u32(out, text_name);
+  append_u32(out, SHT_PROGBITS);
+  append_u64(out, SHF_ALLOC | SHF_EXECINSTR);
+  append_u64(out, 0);
+  append_u64(out, text_offset);
+  append_u64(out, text_bytes.size());
+  append_u32(out, 0);
+  append_u32(out, 0);
+  append_u64(out, 1);
+  append_u64(out, 0);
+
+  append_u32(out, symtab_name);
+  append_u32(out, SHT_SYMTAB);
+  append_u64(out, 0);
+  append_u64(out, 0);
+  append_u64(out, symtab_offset);
+  append_u64(out, symtab.size());
+  append_u32(out, 3);
+  append_u32(out, 2);
+  append_u64(out, 8);
+  append_u64(out, 24);
+
+  append_u32(out, strtab_name);
+  append_u32(out, SHT_STRTAB);
+  append_u64(out, 0);
+  append_u64(out, 0);
+  append_u64(out, strtab_offset);
+  append_u64(out, strtab.size());
+  append_u32(out, 0);
+  append_u32(out, 0);
+  append_u64(out, 1);
+  append_u64(out, 0);
+
+  append_u32(out, shstrtab_name);
+  append_u32(out, SHT_STRTAB);
+  append_u64(out, 0);
+  append_u64(out, 0);
+  append_u64(out, shstrtab_offset);
+  append_u64(out, shstrtab.size());
+  append_u32(out, 0);
+  append_u32(out, 0);
+  append_u64(out, 1);
+  append_u64(out, 0);
+
+  return out;
+}
+
+c4c::codegen::lir::LirModule make_x86_global_store_reload_module() {
+  auto module = make_global_store_reload_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_x86_extern_global_array_load_module() {
+  auto module = make_extern_global_array_load_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_x86_string_literal_char_module() {
+  auto module = make_string_literal_char_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_x86_global_char_pointer_diff_module() {
+  auto module = make_global_char_pointer_diff_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_x86_global_int_pointer_diff_module() {
+  auto module = make_global_int_pointer_diff_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_typed_x86_global_char_pointer_diff_module() {
+  auto module = make_typed_global_char_pointer_diff_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_typed_x86_global_int_pointer_diff_module() {
+  auto module = make_typed_global_int_pointer_diff_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  return module;
+}
+
+void test_x86_backend_scaffold_routes_through_explicit_emit_surface() {
+  const auto module = make_return_add_module();
+  const auto direct_rendered = c4c::backend::x86::emit_module(module);
+  const auto backend_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_true(backend_rendered == direct_rendered,
+              "x86 backend selection should route through the explicit x86 emit seam");
+  expect_contains(backend_rendered, ".text",
+                  "x86 backend seam should emit assembly text for the active slice");
+  expect_contains(backend_rendered, ".globl main",
+                  "x86 backend seam should expose the global entry symbol");
+  expect_contains(backend_rendered, "mov eax, 5",
+                  "x86 backend seam should materialize the folded return-add result in eax");
+  expect_contains(backend_rendered, "ret",
+                  "x86 backend seam should terminate the minimal asm slice with ret");
+  expect_not_contains(backend_rendered, "target triple =",
+                      "x86 backend seam should stop falling back to LLVM text for the supported slice");
+}
+
+void test_x86_backend_scaffold_accepts_explicit_lowered_ir_input() {
+  const auto lowered = c4c::backend::lower_to_backend_ir(make_return_add_module());
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, ".text",
+                  "x86 backend seam should accept backend-owned IR directly for the lowered slice");
+  expect_contains(rendered, ".globl main",
+                  "x86 backend seam should still emit the entry symbol from lowered backend IR");
+  expect_contains(rendered, "mov eax, 5",
+                  "x86 backend seam should lower the explicit backend IR input without legacy LIR");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back to backend IR text for the supported lowered slice");
+}
+
+void test_x86_backend_scaffold_accepts_explicit_lowered_extern_decl_ir_input() {
+  const auto lowered =
+      c4c::backend::lower_to_backend_ir(make_x86_extern_decl_object_module());
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, ".intel_syntax noprefix\n",
+                  "x86 backend seam should accept lowered extern-call IR directly");
+  expect_contains(rendered, "call helper_ext\n",
+                  "x86 backend seam should preserve lowered extern helper calls");
+  expect_contains(rendered, "ret\n",
+                  "x86 backend seam should return directly after the lowered extern helper call");
+  expect_not_contains(rendered, "define i32 @main()",
+                      "x86 backend seam should not fall back to backend IR text for lowered extern helper calls");
+}
+
+void test_x86_backend_scaffold_accepts_explicit_lowered_global_load_ir_input() {
+  auto module = make_global_load_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, ".globl g_counter\n",
+                  "x86 backend seam should preserve lowered global definitions");
+  expect_contains(rendered, "mov eax, dword ptr [rax]\n",
+                  "x86 backend seam should lower explicit backend-IR global loads directly");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back to backend IR text for lowered global loads");
+}
+
+void test_x86_backend_scaffold_accepts_explicit_lowered_global_store_reload_ir_input() {
+  const auto lowered =
+      c4c::backend::lower_to_backend_ir(make_x86_global_store_reload_module());
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, ".globl g_counter\n",
+                  "x86 backend seam should preserve lowered scalar global definitions for store-reload slices");
+  expect_contains(rendered, "mov dword ptr [rax], 7\n",
+                  "x86 backend seam should lower explicit backend-IR scalar global stores directly");
+  expect_contains(rendered, "mov eax, dword ptr [rax]\n",
+                  "x86 backend seam should reload the explicit backend-IR scalar global after the store");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back to backend IR text for lowered global store-reload slices");
+}
+
+void test_x86_backend_scaffold_accepts_explicit_lowered_string_literal_ir_input() {
+  const auto lowered =
+      c4c::backend::lower_to_backend_ir(make_x86_string_literal_char_module());
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, ".section .rodata\n",
+                  "x86 backend seam should preserve lowered string-pool entities");
+  expect_contains(rendered, ".L.str0:\n",
+                  "x86 backend seam should keep the lowered local string label");
+  expect_contains(rendered, "lea rax, .L.str0[rip]\n",
+                  "x86 backend seam should materialize the lowered string base directly");
+  expect_contains(rendered, "movsx eax, byte ptr [rax + 1]\n",
+                  "x86 backend seam should lower the explicit backend-IR widened string byte load directly");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back to backend IR text for lowered string literals");
+}
+
+void test_x86_backend_scaffold_accepts_explicit_lowered_extern_global_array_ir_input() {
+  const auto lowered =
+      c4c::backend::lower_to_backend_ir(make_x86_extern_global_array_load_module());
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, "lea rax, ext_arr[rip]\n",
+                  "x86 backend seam should lower explicit backend-IR extern global array bases directly");
+  expect_contains(rendered, "mov eax, dword ptr [rax + 4]\n",
+                  "x86 backend seam should preserve lowered extern global array byte offsets");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back to backend IR text for lowered extern global arrays");
+}
+
+void test_x86_backend_scaffold_accepts_explicit_lowered_global_int_pointer_roundtrip_ir_input() {
+  const auto lowered =
+      c4c::backend::lower_to_backend_ir(make_x86_global_int_pointer_roundtrip_module());
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, ".globl g_value\n",
+                  "x86 backend seam should preserve lowered round-trip globals");
+  expect_contains(rendered, "lea rax, g_value[rip]\n",
+                  "x86 backend seam should materialize the lowered round-trip global base directly");
+  expect_contains(rendered, "mov eax, dword ptr [rax]\n",
+                  "x86 backend seam should lower explicit backend-IR round-trip loads directly");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back to backend IR text for lowered round-trip globals");
+}
+
+void test_x86_backend_scaffold_accepts_explicit_lowered_global_char_pointer_diff_ir_input() {
+  const auto lowered =
+      c4c::backend::lower_to_backend_ir(make_x86_global_char_pointer_diff_module());
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, "lea rax, g_bytes[rip]\n",
+                  "x86 backend seam should materialize the lowered char pointer-difference base directly");
+  expect_contains(rendered, "lea rcx, [rax + 1]\n",
+                  "x86 backend seam should preserve the lowered byte offset for char pointer differences");
+  expect_contains(rendered, "cmp rcx, 1\n",
+                  "x86 backend seam should lower the explicit backend-IR char pointer-difference compare directly");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back to backend IR text for lowered char pointer differences");
+}
+
+void test_x86_backend_scaffold_accepts_explicit_lowered_global_int_pointer_diff_ir_input() {
+  const auto lowered =
+      c4c::backend::lower_to_backend_ir(make_x86_global_int_pointer_diff_module());
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, "lea rax, g_words[rip]\n",
+                  "x86 backend seam should materialize the lowered int pointer-difference base directly");
+  expect_contains(rendered, "lea rcx, [rax + 4]\n",
+                  "x86 backend seam should preserve the lowered one-element byte offset for int pointer differences");
+  expect_contains(rendered, "sar rcx, 2\n",
+                  "x86 backend seam should lower the explicit backend-IR int pointer-difference scaling directly");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back to backend IR text for lowered int pointer differences");
+}
+
+void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_return_ir_input() {
+  auto module = make_conditional_return_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, "  cmp eax, 3\n",
+                  "x86 backend seam should lower explicit backend-IR conditional compares directly");
+  expect_contains(rendered, "  jge .Lelse\n",
+                  "x86 backend seam should branch on the explicit backend-IR conditional terminator");
+  expect_not_contains(rendered, "br i1",
+                      "x86 backend seam should not fall back to backend IR text for lowered conditional branches");
+}
+
+void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_ir_input() {
+  auto module = make_conditional_phi_join_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, "  jge .Lelse\n",
+                  "x86 backend seam should branch to the false predecessor for the lowered conditional-join slice");
+  expect_contains(rendered, ".Lthen:\n  mov eax, 7\n  jmp .Ljoin\n",
+                  "x86 backend seam should materialize the lowered then phi input before the join");
+  expect_contains(rendered, ".Lelse:\n  mov eax, 9\n",
+                  "x86 backend seam should materialize the lowered else phi input before the join");
+  expect_contains(rendered, ".Ljoin:\n  ret\n",
+                  "x86 backend seam should preserve the explicit join label for the lowered phi merge");
+  expect_not_contains(rendered, "phi i32",
+                      "x86 backend seam should not fall back to backend IR text for lowered conditional joins");
+}
+
+void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_add_ir_input() {
+  auto module = make_conditional_phi_join_add_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, ".Lthen:\n  mov eax, 7\n  jmp .Ljoin\n",
+                  "x86 backend seam should still materialize the then phi input before the computed join");
+  expect_contains(rendered, ".Ljoin:\n  add eax, 5\n  ret\n",
+                  "x86 backend seam should lower the phi-fed add directly in the explicit join block");
+  expect_not_contains(rendered, "phi i32",
+                      "x86 backend seam should not fall back to backend IR text for computed conditional joins");
+}
+
+void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_predecessor_add_ir_input() {
+  auto module = make_conditional_phi_join_predecessor_add_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, ".Lthen:\n  mov eax, 7\n  add eax, 5\n  jmp .Ljoin\n",
+                  "x86 backend seam should materialize the predecessor-local then computation before the join");
+  expect_contains(rendered, ".Lelse:\n  mov eax, 9\n  add eax, 4\n",
+                  "x86 backend seam should materialize the predecessor-local else computation before the join");
+  expect_contains(rendered, ".Ljoin:\n  ret\n",
+                  "x86 backend seam should preserve the explicit join label for predecessor-computed phi inputs");
+  expect_not_contains(rendered, "phi i32",
+                      "x86 backend seam should not fall back to backend IR text for predecessor-computed conditional joins");
+}
+
+void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_predecessor_sub_ir_input() {
+  auto module = make_conditional_phi_join_predecessor_sub_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, ".Lthen:\n  mov eax, 12\n  sub eax, 5\n  jmp .Ljoin\n",
+                  "x86 backend seam should materialize the predecessor-local then sub computation before the join");
+  expect_contains(rendered, ".Lelse:\n  mov eax, 15\n  sub eax, 6\n",
+                  "x86 backend seam should materialize the predecessor-local else sub computation before the join");
+  expect_contains(rendered, ".Ljoin:\n  ret\n",
+                  "x86 backend seam should preserve the explicit join label for predecessor-computed sub inputs");
+  expect_not_contains(rendered, "phi i32",
+                      "x86 backend seam should not fall back to backend IR text for predecessor-computed sub joins");
+}
+
+void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_add_ir_input() {
+  auto module = make_conditional_phi_join_mixed_predecessor_add_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, ".Lthen:\n  mov eax, 7\n  add eax, 5\n  jmp .Ljoin\n",
+                  "x86 backend seam should materialize the computed predecessor input before the join");
+  expect_contains(rendered, ".Lelse:\n  mov eax, 9\n",
+                  "x86 backend seam should still materialize the direct immediate predecessor input before the join");
+  expect_contains(rendered, ".Ljoin:\n  ret\n",
+                  "x86 backend seam should preserve the explicit join label for mixed predecessor-computed phi inputs");
+  expect_not_contains(rendered, "phi i32",
+                      "x86 backend seam should not fall back to backend IR text for mixed predecessor/immediate conditional joins");
+}
+
+void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_add_post_join_add_ir_input() {
+  auto module = make_conditional_phi_join_mixed_predecessor_add_post_join_add_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, ".Lthen:\n  mov eax, 7\n  add eax, 5\n  jmp .Ljoin\n",
+                  "x86 backend seam should materialize the computed predecessor input before the asymmetric join");
+  expect_contains(rendered, ".Lelse:\n  mov eax, 9\n",
+                  "x86 backend seam should still materialize the direct immediate predecessor input before the asymmetric join");
+  expect_contains(rendered, ".Ljoin:\n  add eax, 6\n  ret\n",
+                  "x86 backend seam should lower the join-local add for mixed predecessor/immediate phi inputs");
+  expect_not_contains(rendered, "phi i32",
+                      "x86 backend seam should not fall back to backend IR text for mixed predecessor/immediate post-phi joins");
+}
+
+void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_sub_post_join_add_ir_input() {
+  auto module = make_conditional_phi_join_mixed_predecessor_sub_post_join_add_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, ".Lthen:\n  mov eax, 12\n  sub eax, 5\n  jmp .Ljoin\n",
+                  "x86 backend seam should materialize the predecessor-local sub input before the asymmetric join");
+  expect_contains(rendered, ".Lelse:\n  mov eax, 9\n",
+                  "x86 backend seam should still materialize the direct immediate predecessor input before the asymmetric join");
+  expect_contains(rendered, ".Ljoin:\n  add eax, 6\n  ret\n",
+                  "x86 backend seam should lower the join-local add for mixed predecessor-sub/immediate phi inputs");
+  expect_not_contains(rendered, "phi i32",
+                      "x86 backend seam should not fall back to backend IR text for mixed predecessor-sub/immediate post-phi joins");
+}
+
+void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_add_sub_chain_post_join_add_ir_input() {
+  auto module = make_conditional_phi_join_mixed_predecessor_add_sub_chain_post_join_add_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered,
+                  ".Lthen:\n  mov eax, 20\n  add eax, 5\n  sub eax, 3\n  jmp .Ljoin\n",
+                  "x86 backend seam should materialize the bounded predecessor-local add/sub chain before the asymmetric join");
+  expect_contains(rendered, ".Lelse:\n  mov eax, 9\n",
+                  "x86 backend seam should still materialize the direct immediate predecessor input on the alternate edge");
+  expect_contains(rendered, ".Ljoin:\n  add eax, 6\n  ret\n",
+                  "x86 backend seam should lower the join-local add after the chained predecessor input");
+  expect_not_contains(rendered, "phi i32",
+                      "x86 backend seam should not fall back to backend IR text for mixed chained predecessor/immediate post-phi joins");
+}
+
+void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_chain_and_add_post_join_add_ir_input() {
+  auto module = make_conditional_phi_join_mixed_predecessor_chain_and_add_post_join_add_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered,
+                  ".Lthen:\n  mov eax, 20\n  add eax, 5\n  sub eax, 3\n  jmp .Ljoin\n",
+                  "x86 backend seam should materialize the bounded predecessor-local add/sub chain before the asymmetric join");
+  expect_contains(rendered, ".Lelse:\n  mov eax, 9\n  add eax, 4\n",
+                  "x86 backend seam should widen the alternate predecessor edge beyond a direct immediate input");
+  expect_contains(rendered, ".Ljoin:\n  add eax, 6\n  ret\n",
+                  "x86 backend seam should lower the join-local add after the asymmetric chain/add predecessor merge");
+  expect_not_contains(rendered, "phi i32",
+                      "x86 backend seam should not fall back to backend IR text for mixed chained predecessor/computed-edge post-phi joins");
+}
+
+void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_chain_and_chain_post_join_add_ir_input() {
+  auto module = make_conditional_phi_join_mixed_predecessor_chain_and_chain_post_join_add_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered,
+                  ".Lthen:\n  mov eax, 20\n  add eax, 5\n  sub eax, 3\n  jmp .Ljoin\n",
+                  "x86 backend seam should materialize the bounded predecessor-local add/sub chain before the asymmetric join");
+  expect_contains(rendered,
+                  ".Lelse:\n  mov eax, 9\n  add eax, 4\n  sub eax, 2\n",
+                  "x86 backend seam should widen the alternate predecessor edge into its own bounded add/sub chain");
+  expect_contains(rendered, ".Ljoin:\n  add eax, 6\n  ret\n",
+                  "x86 backend seam should lower the join-local add after the asymmetric chain/chain predecessor merge");
+  expect_not_contains(rendered, "phi i32",
+                      "x86 backend seam should not fall back to backend IR text for mixed chained predecessor/two-edge post-phi joins");
+}
+
+void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_deeper_chain_and_chain_post_join_add_ir_input() {
+  auto module = make_conditional_phi_join_mixed_predecessor_deeper_chain_and_chain_post_join_add_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered,
+                  ".Lthen:\n  mov eax, 20\n  add eax, 5\n  sub eax, 3\n  add eax, 8\n  jmp .Ljoin\n",
+                  "x86 backend seam should materialize the widened three-op predecessor-local chain before the asymmetric join");
+  expect_contains(rendered,
+                  ".Lelse:\n  mov eax, 9\n  add eax, 4\n  sub eax, 2\n",
+                  "x86 backend seam should preserve the bounded alternate predecessor-local add/sub chain");
+  expect_contains(rendered, ".Ljoin:\n  add eax, 6\n  ret\n",
+                  "x86 backend seam should lower the join-local add after the asymmetric deeper-chain/chain predecessor merge");
+  expect_not_contains(rendered, "phi i32",
+                      "x86 backend seam should not fall back to backend IR text for mixed deeper chained predecessor/two-edge post-phi joins");
+}
+
+void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_deeper_chain_and_deeper_chain_post_join_add_ir_input() {
+  auto module = make_conditional_phi_join_mixed_predecessor_deeper_chain_and_deeper_chain_post_join_add_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered,
+                  ".Lthen:\n  mov eax, 20\n  add eax, 5\n  sub eax, 3\n  add eax, 8\n  jmp .Ljoin\n",
+                  "x86 backend seam should materialize the widened three-op predecessor-local chain before the asymmetric join");
+  expect_contains(rendered,
+                  ".Lelse:\n  mov eax, 9\n  add eax, 4\n  sub eax, 2\n  add eax, 11\n",
+                  "x86 backend seam should widen the alternate predecessor edge beyond the current two-op chain");
+  expect_contains(rendered, ".Ljoin:\n  add eax, 6\n  ret\n",
+                  "x86 backend seam should lower the join-local add after the asymmetric deeper-chain/deeper-chain predecessor merge");
+  expect_not_contains(rendered, "phi i32",
+                      "x86 backend seam should not fall back to backend IR text for mixed deeper chained predecessor/deeper-edge post-phi joins");
+}
+
+void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_four_op_chain_and_deeper_chain_post_join_add_ir_input() {
+  auto module = make_conditional_phi_join_mixed_predecessor_four_op_chain_and_deeper_chain_post_join_add_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered,
+                  ".Lthen:\n  mov eax, 20\n  add eax, 5\n  sub eax, 3\n  add eax, 8\n  sub eax, 4\n  jmp .Ljoin\n",
+                  "x86 backend seam should materialize the widened four-op predecessor-local chain before the asymmetric join");
+  expect_contains(rendered,
+                  ".Lelse:\n  mov eax, 9\n  add eax, 4\n  sub eax, 2\n  add eax, 11\n",
+                  "x86 backend seam should preserve the existing deeper-chain alternate predecessor-local input");
+  expect_contains(rendered, ".Ljoin:\n  add eax, 6\n  ret\n",
+                  "x86 backend seam should lower the join-local add after the asymmetric four-op-chain/deeper-chain predecessor merge");
+  expect_not_contains(rendered, "phi i32",
+                      "x86 backend seam should not fall back to backend IR text for mixed four-op predecessor/deeper-edge post-phi joins");
+}
+
+
+void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_four_op_chain_and_four_op_chain_post_join_add_ir_input() {
+  auto module = make_conditional_phi_join_mixed_predecessor_four_op_chain_and_four_op_chain_post_join_add_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered,
+                  ".Lthen:\n  mov eax, 20\n  add eax, 5\n  sub eax, 3\n  add eax, 8\n  sub eax, 4\n  jmp .Ljoin\n",
+                  "x86 backend seam should preserve the existing widened four-op predecessor-local chain before the asymmetric join");
+  expect_contains(rendered,
+                  ".Lelse:\n  mov eax, 9\n  add eax, 4\n  sub eax, 2\n  add eax, 11\n  sub eax, 6\n",
+                  "x86 backend seam should widen the alternate predecessor edge to a matching four-op chain");
+  expect_contains(rendered, ".Ljoin:\n  add eax, 6\n  ret\n",
+                  "x86 backend seam should lower the join-local add after the asymmetric four-op-chain/four-op-chain predecessor merge");
+  expect_not_contains(rendered, "phi i32",
+                      "x86 backend seam should not fall back to backend IR text for mixed four-op predecessor/four-op alternate post-phi joins");
+}
+
+void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_five_op_chain_and_four_op_chain_post_join_add_ir_input() {
+  auto module = make_conditional_phi_join_mixed_predecessor_five_op_chain_and_four_op_chain_post_join_add_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered,
+                  ".Lthen:\n  mov eax, 20\n  add eax, 5\n  sub eax, 3\n  add eax, 8\n  sub eax, 4\n  add eax, 10\n  jmp .Ljoin\n",
+                  "x86 backend seam should widen the primary predecessor edge beyond the current four-op chain");
+  expect_contains(rendered,
+                  ".Lelse:\n  mov eax, 9\n  add eax, 4\n  sub eax, 2\n  add eax, 11\n  sub eax, 6\n",
+                  "x86 backend seam should preserve the bounded four-op alternate predecessor-local input");
+  expect_contains(rendered, ".Ljoin:\n  add eax, 6\n  ret\n",
+                  "x86 backend seam should lower the join-local add after the asymmetric five-op-chain/four-op-chain predecessor merge");
+  expect_not_contains(rendered, "phi i32",
+                      "x86 backend seam should not fall back to backend IR text for mixed five-op predecessor/four-op alternate post-phi joins");
+}
+
+void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_five_op_chain_and_five_op_chain_post_join_add_ir_input() {
+  auto module = make_conditional_phi_join_mixed_predecessor_five_op_chain_and_five_op_chain_post_join_add_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered,
+                  ".Lthen:\n  mov eax, 20\n  add eax, 5\n  sub eax, 3\n  add eax, 8\n  sub eax, 4\n  add eax, 10\n  jmp .Ljoin\n",
+                  "x86 backend seam should preserve the bounded five-op primary predecessor-local input");
+  expect_contains(rendered,
+                  ".Lelse:\n  mov eax, 9\n  add eax, 4\n  sub eax, 2\n  add eax, 11\n  sub eax, 6\n  add eax, 13\n",
+                  "x86 backend seam should widen the alternate predecessor edge beyond the current four-op chain");
+  expect_contains(rendered, ".Ljoin:\n  add eax, 6\n  ret\n",
+                  "x86 backend seam should lower the join-local add after the asymmetric five-op-chain/five-op-chain predecessor merge");
+  expect_not_contains(rendered, "phi i32",
+                      "x86 backend seam should not fall back to backend IR text for mixed five-op predecessor/five-op alternate post-phi joins");
+}
+
+void test_x86_backend_scaffold_accepts_explicit_lowered_countdown_while_ir_input() {
+  auto module = make_countdown_while_return_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, ".Lblock_1:",
+                  "x86 backend seam should emit the explicit lowered countdown loop header label");
+  expect_contains(rendered, "  sub eax, 1\n",
+                  "x86 backend seam should lower the explicit backend-IR countdown decrement directly");
+  expect_contains(rendered, "  jmp .Lblock_1\n",
+                  "x86 backend seam should preserve the explicit backend-IR loop backedge");
+  expect_not_contains(rendered, "phi i32",
+                      "x86 backend seam should not fall back to backend IR text for lowered countdown loops");
+}
+
+void test_x86_backend_scaffold_renders_direct_return_immediate_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_return_zero_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".globl main",
+                  "x86 backend should emit a global entry symbol for direct return immediates");
+  expect_contains(rendered, "mov eax, 0",
+                  "x86 backend should materialize direct return immediates in eax");
+  expect_contains(rendered, "ret",
+                  "x86 backend should terminate direct return immediates with ret");
+}
+
+void test_x86_backend_scaffold_renders_direct_return_sub_immediate_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_return_sub_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".globl main",
+                  "x86 backend should emit a global entry symbol for direct return subtraction slices");
+  expect_contains(rendered, "mov eax, 0",
+                  "x86 backend should fold the supported subtraction slice into an immediate return");
+  expect_contains(rendered, "ret",
+                  "x86 backend should terminate direct return subtraction slices with ret");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the supported subtraction slice");
+}
+
+void test_x86_backend_renders_local_temp_sub_slice() {
+  auto module = make_local_temp_sub_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".globl main",
+                  "x86 backend should emit a real entry symbol for the local-slot subtraction slice");
+  expect_contains(rendered, "mov eax, 1",
+                  "x86 backend should fold the normalized local-slot subtraction into the final immediate return");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the supported local-slot subtraction slice");
+}
+
+void test_x86_backend_renders_local_temp_arithmetic_chain_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_local_temp_arithmetic_chain_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".globl main",
+                  "x86 backend should emit a real entry symbol for the bounded local-slot arithmetic slice");
+  expect_contains(rendered, "mov eax, 0",
+                  "x86 backend should fold the bounded mul-sdiv-srem-sub chain into the final immediate return");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the supported local-slot arithmetic slice");
+}
+
+void test_x86_backend_renders_two_local_temp_return_slice() {
+  auto module = make_two_local_temp_return_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".globl main",
+                  "x86 backend should emit a real entry symbol for the bounded two-local return slice");
+  expect_contains(rendered, "mov eax, 0",
+                  "x86 backend should fold the bounded two-local scalar slot slice into the final immediate return");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the supported two-local scalar slot slice");
+}
+
+void test_x86_backend_renders_local_pointer_temp_return_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_x86_local_pointer_temp_return_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".globl main",
+                  "x86 backend should emit a real entry symbol for the bounded local pointer round-trip slice");
+  expect_contains(rendered, "mov eax, 0",
+                  "x86 backend should fold the normalized local pointer round-trip into the final immediate return");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the supported local pointer round-trip slice");
+}
+
+void test_x86_backend_renders_double_indirect_local_pointer_conditional_return_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{
+          make_double_indirect_local_pointer_conditional_return_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".globl main",
+                  "x86 backend should emit a real entry symbol for the bounded double-indirect local-pointer conditional slice");
+  expect_contains(rendered, "mov eax, 0",
+                  "x86 backend should fold the normalized double-indirect local-pointer conditional slice into the final immediate return");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the supported double-indirect local-pointer conditional slice");
+}
+
+void test_x86_backend_renders_goto_only_constant_return_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_goto_only_constant_return_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".globl main",
+                  "x86 backend should emit a real entry symbol for the bounded goto-only slice");
+  expect_contains(rendered, "mov eax, 0",
+                  "x86 backend should fold the normalized goto-only branch chain into the final immediate return");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the supported goto-only slice");
+}
+
+void test_x86_backend_renders_countdown_while_return_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_countdown_while_return_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".globl main",
+                  "x86 backend should emit a real entry symbol for the bounded while-countdown slice");
+  expect_contains(rendered, ".Lblock_1:",
+                  "x86 backend should emit the explicit lowered countdown loop header label");
+  expect_contains(rendered, "sub eax, 1",
+                  "x86 backend should emit the explicit lowered countdown decrement");
+  expect_contains(rendered, "jmp .Lblock_1",
+                  "x86 backend should emit the explicit lowered countdown backedge");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the supported while-countdown slice");
+}
+
+void test_x86_backend_renders_countdown_do_while_return_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_countdown_do_while_return_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".globl main",
+                  "x86 backend should emit a real entry symbol for the bounded do-while countdown slice");
+  expect_contains(rendered, "mov eax, 0",
+                  "x86 backend should fold the normalized do-while countdown loop into the final immediate return");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the supported do-while countdown slice");
+}
+
+void test_x86_backend_renders_direct_call_slice() {
+  auto module = make_direct_call_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".type helper, %function",
+                  "x86 backend should lower the helper definition into a real function symbol");
+  expect_contains(rendered, "helper:\n  mov eax, 7\n  ret\n",
+                  "x86 backend should emit the minimal helper body as assembly");
+  expect_contains(rendered, ".globl main",
+                  "x86 backend should still publish main as the entry symbol");
+  expect_contains(rendered, "call helper",
+                  "x86 backend should keep the zero-arg helper call on the direct-call asm path");
+  expect_contains(rendered, "ret\n",
+                  "x86 backend should return directly after the helper call");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the direct helper-call slice");
+}
+
+void test_x86_backend_renders_zero_arg_typed_direct_call_slice_with_whitespace() {
+  auto module = make_direct_call_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  auto& call = std::get<c4c::codegen::lir::LirCallOp>(
+      module.functions.back().blocks.front().insts.front());
+  call.callee_type_suffix = "( )";
+  call.args_str = "  ";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, "call helper",
+                  "x86 backend should keep zero-arg typed direct calls on the direct-call asm path even when compatibility whitespace remains");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should not fall back to LLVM text for whitespace-tolerant zero-arg typed direct calls");
+}
+
+void test_x86_backend_rejects_intrinsic_callee_from_direct_call_fast_path() {
+  auto module = make_typed_direct_call_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  auto& call = std::get<c4c::codegen::lir::LirCallOp>(
+      module.functions.back().blocks.front().insts.front());
+  call.callee = c4c::codegen::lir::LirOperand(std::string("@llvm.abs.i32"),
+                                              c4c::codegen::lir::LirOperandKind::Global);
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, "target triple = \"x86_64-unknown-linux-gnu\"",
+                  "x86 backend should fall back instead of treating llvm intrinsics as direct helper calls");
+  expect_contains(rendered, "@llvm.abs.i32",
+                  "x86 backend fallback should preserve the intrinsic callee text");
+}
+
+void test_x86_backend_rejects_indirect_callee_from_direct_call_fast_path() {
+  auto module = make_typed_direct_call_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  auto& call = std::get<c4c::codegen::lir::LirCallOp>(
+      module.functions.back().blocks.front().insts.front());
+  call.callee = c4c::codegen::lir::LirOperand(std::string("%fp"),
+                                              c4c::codegen::lir::LirOperandKind::SsaValue);
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, "target triple = \"x86_64-unknown-linux-gnu\"",
+                  "x86 backend should fall back instead of treating indirect callees as direct helper calls");
+  expect_contains(rendered, "call i32 (i32) %fp(i32 5)",
+                  "x86 backend fallback should preserve the indirect callee shape");
+}
+
+void test_x86_backend_renders_param_slot_slice() {
+  auto module = make_param_slot_runtime_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".type main, %function",
+                  "x86 backend should lower the parameter-slot main entry into assembly");
+  expect_contains(rendered, ".type add_one, %function",
+                  "x86 backend should lower the single-argument helper into assembly");
+  expect_contains(rendered, "add_one:\n  mov eax, edi\n  add eax, 1\n  ret\n",
+                  "x86 backend should lower the modified parameter slot helper through the integer argument register");
+  expect_contains(rendered, "mov edi, 5",
+                  "x86 backend should materialize the direct helper argument in the SysV integer argument register");
+  expect_contains(rendered, "call add_one",
+                  "x86 backend should keep the single-argument helper call on the asm path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the parameter-slot slice");
+}
+
+void test_x86_backend_renders_typed_direct_call_local_arg_slice() {
+  auto module = make_typed_direct_call_local_arg_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".type add_one, %function",
+                  "x86 backend should lower the single-argument local-argument helper into a real function symbol");
+  expect_contains(rendered, "add_one:\n  mov eax, edi\n  add eax, 1\n  ret\n",
+                  "x86 backend should keep the normalized single-argument helper on the register add path");
+  expect_contains(rendered, "mov edi, 5",
+                  "x86 backend should materialize the normalized local argument in the first SysV integer register");
+  expect_contains(rendered, "call add_one",
+                  "x86 backend should lower the single-local direct call on the asm path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the single-local direct-call slice");
+}
+
+void test_x86_backend_renders_typed_direct_call_local_arg_spacing_slice() {
+  auto module = make_typed_direct_call_local_arg_with_suffix_spacing_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, "mov edi, 5",
+                  "x86 backend should keep spacing-tolerant typed single-argument direct calls on the asm path");
+  expect_contains(rendered, "call add_one",
+                  "x86 backend should still lower spacing-tolerant typed single-argument calls directly");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should not fall back to LLVM text for spacing-tolerant typed single-argument calls");
+}
+
+void test_x86_backend_renders_typed_two_arg_direct_call_slice() {
+  auto module = make_typed_direct_call_two_arg_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".type add_pair, %function",
+                  "x86 backend should lower the two-argument helper into a real function symbol");
+  expect_contains(rendered, "add_pair:\n  mov eax, edi\n  add eax, esi\n  ret\n",
+                  "x86 backend should lower the register-only two-argument helper add");
+  expect_contains(rendered, "mov edi, 5",
+                  "x86 backend should materialize the first call argument in the first SysV integer register");
+  expect_contains(rendered, "mov esi, 7",
+                  "x86 backend should materialize the second call argument in the second SysV integer register");
+  expect_contains(rendered, "call add_pair",
+                  "x86 backend should lower the typed two-argument direct call on the asm path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the two-argument direct-call slice");
+}
+
+void test_x86_backend_renders_typed_two_arg_direct_call_local_arg_slice() {
+  auto module = make_typed_direct_call_two_arg_local_arg_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".type add_pair, %function",
+                  "x86 backend should lower the two-argument local-argument helper into a real function symbol");
+  expect_contains(rendered, "add_pair:\n  mov eax, edi\n  add eax, esi\n  ret\n",
+                  "x86 backend should keep the local-argument helper on the register-only add path");
+  expect_contains(rendered, "mov edi, 5",
+                  "x86 backend should materialize the normalized local first argument in the first SysV integer register");
+  expect_contains(rendered, "mov esi, 7",
+                  "x86 backend should preserve the immediate second argument in the second SysV integer register");
+  expect_contains(rendered, "call add_pair",
+                  "x86 backend should lower the two-argument local-argument direct call on the asm path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the two-argument local-argument slice");
+}
+
+void test_x86_backend_renders_typed_two_arg_direct_call_second_local_arg_slice() {
+  auto module = make_typed_direct_call_two_arg_second_local_arg_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".type add_pair, %function",
+                  "x86 backend should lower the two-argument second-local helper into a real function symbol");
+  expect_contains(rendered, "add_pair:\n  mov eax, edi\n  add eax, esi\n  ret\n",
+                  "x86 backend should keep the second-local helper on the register-only add path");
+  expect_contains(rendered, "mov edi, 5",
+                  "x86 backend should preserve the immediate first argument in the first SysV integer register");
+  expect_contains(rendered, "mov esi, 7",
+                  "x86 backend should materialize the normalized local second argument in the second SysV integer register");
+  expect_contains(rendered, "call add_pair",
+                  "x86 backend should lower the two-argument second-local direct call on the asm path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the two-argument second-local slice");
+}
+
+void test_x86_backend_renders_typed_two_arg_direct_call_second_local_rewrite_slice() {
+  auto module = make_typed_direct_call_two_arg_second_local_rewrite_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".type add_pair, %function",
+                  "x86 backend should lower the rewritten second-local helper into a real function symbol");
+  expect_contains(rendered, "add_pair:\n  mov eax, edi\n  add eax, esi\n  ret\n",
+                  "x86 backend should keep the rewritten second-local helper on the register-only add path");
+  expect_contains(rendered, "mov edi, 5",
+                  "x86 backend should preserve the immediate first argument in the first SysV integer register for the rewritten second-local slice");
+  expect_contains(rendered, "mov esi, 7",
+                  "x86 backend should materialize the rewritten local second argument in the second SysV integer register");
+  expect_contains(rendered, "call add_pair",
+                  "x86 backend should lower the rewritten second-local direct call on the asm path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the rewritten second-local slice");
+}
+
+void test_x86_backend_renders_typed_two_arg_direct_call_both_local_arg_slice() {
+  auto module = make_typed_direct_call_two_arg_both_local_arg_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".type add_pair, %function",
+                  "x86 backend should lower the both-local helper into a real function symbol");
+  expect_contains(rendered, "add_pair:\n  mov eax, edi\n  add eax, esi\n  ret\n",
+                  "x86 backend should keep the both-local helper on the register-only add path");
+  expect_contains(rendered, "mov edi, 5",
+                  "x86 backend should materialize the normalized first local in the first SysV integer register");
+  expect_contains(rendered, "mov esi, 7",
+                  "x86 backend should materialize the normalized second local in the second SysV integer register");
+  expect_contains(rendered, "call add_pair",
+                  "x86 backend should lower the both-local direct call on the asm path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the both-local slice");
+}
+
+void test_x86_backend_renders_typed_two_arg_direct_call_both_local_first_rewrite_slice() {
+  auto module = make_typed_direct_call_two_arg_both_local_first_rewrite_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".type add_pair, %function",
+                  "x86 backend should lower the rewritten both-local helper into a real function symbol");
+  expect_contains(rendered, "add_pair:\n  mov eax, edi\n  add eax, esi\n  ret\n",
+                  "x86 backend should keep the rewritten both-local helper on the register-only add path");
+  expect_contains(rendered, "mov edi, 5",
+                  "x86 backend should materialize the rewritten first local in the first SysV integer register");
+  expect_contains(rendered, "mov esi, 7",
+                  "x86 backend should preserve the direct second local value in the second SysV integer register");
+  expect_contains(rendered, "call add_pair",
+                  "x86 backend should lower the rewritten first-local plus second-local direct call on the asm path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the rewritten both-local first slice");
+}
+
+void test_x86_backend_renders_typed_two_arg_direct_call_both_local_second_rewrite_slice() {
+  auto module = make_typed_direct_call_two_arg_both_local_second_rewrite_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".type add_pair, %function",
+                  "x86 backend should lower the rewritten both-local helper into a real function symbol");
+  expect_contains(rendered, "add_pair:\n  mov eax, edi\n  add eax, esi\n  ret\n",
+                  "x86 backend should keep the rewritten both-local helper on the register-only add path");
+  expect_contains(rendered, "mov edi, 5",
+                  "x86 backend should preserve the direct first local value in the first SysV integer register");
+  expect_contains(rendered, "mov esi, 7",
+                  "x86 backend should materialize the rewritten second local in the second SysV integer register");
+  expect_contains(rendered, "call add_pair",
+                  "x86 backend should lower the first-local plus rewritten second-local direct call on the asm path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the rewritten both-local second slice");
+}
+
+void test_x86_backend_renders_typed_two_arg_direct_call_both_local_double_rewrite_slice() {
+  auto module = make_typed_direct_call_two_arg_both_local_double_rewrite_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".type add_pair, %function",
+                  "x86 backend should lower the double-rewritten both-local helper into a real function symbol");
+  expect_contains(rendered, "add_pair:\n  mov eax, edi\n  add eax, esi\n  ret\n",
+                  "x86 backend should keep the double-rewritten both-local helper on the register-only add path");
+  expect_contains(rendered, "mov edi, 5",
+                  "x86 backend should materialize the rewritten first local in the first SysV integer register");
+  expect_contains(rendered, "mov esi, 7",
+                  "x86 backend should materialize the rewritten second local in the second SysV integer register");
+  expect_contains(rendered, "call add_pair",
+                  "x86 backend should lower the double-rewritten both-local direct call on the asm path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the double-rewritten both-local slice");
+}
+
+void test_x86_backend_renders_typed_two_arg_direct_call_first_local_rewrite_spacing_slice() {
+  auto module = make_typed_direct_call_two_arg_first_local_rewrite_with_suffix_spacing_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, "mov edi, 5",
+                  "x86 backend should keep spacing-tolerant typed first-local rewrites on the asm path");
+  expect_contains(rendered, "mov esi, 7",
+                  "x86 backend should still recover the second typed argument through structured call parsing");
+  expect_contains(rendered, "call add_pair",
+                  "x86 backend should still lower spacing-tolerant typed two-argument calls directly");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should not fall back to LLVM text for spacing-tolerant typed two-argument calls");
+}
+
+void test_x86_backend_renders_local_array_slice() {
+  auto module = make_local_array_gep_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".globl main",
+                  "x86 backend should lower the bounded local-array slice to assembly");
+  expect_contains(rendered, "sub rsp, 16",
+                  "x86 backend should reserve one bounded local stack frame for the local-array slice");
+  expect_contains(rendered, "lea rcx, [rbp - 8]",
+                  "x86 backend should materialize the local stack-slot base explicitly");
+  expect_contains(rendered, "mov dword ptr [rcx], 4",
+                  "x86 backend should lower the first indexed local store through the backend-owned base address");
+  expect_contains(rendered, "mov dword ptr [rcx + 4], 3",
+                  "x86 backend should lower the second indexed local store through the backend-owned base address");
+  expect_contains(rendered, "mov eax, dword ptr [rcx]",
+                  "x86 backend should lower the first indexed local load through the same backend-owned base address");
+  expect_contains(rendered, "add eax, dword ptr [rcx + 4]",
+                  "x86 backend should fold the second indexed local load into the final add");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the bounded local-array slice");
+}
+
+void test_x86_backend_renders_global_load_slice() {
+  auto module = make_global_load_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".data\n",
+                  "x86 backend should place scalar global definitions in the data section");
+  expect_contains(rendered, ".globl g_counter\n",
+                  "x86 backend should publish the scalar global symbol");
+  expect_contains(rendered, "g_counter:\n  .long 11\n",
+                  "x86 backend should materialize the scalar global initializer");
+  expect_contains(rendered, "lea rax, g_counter[rip]\n",
+                  "x86 backend should form the scalar global address through RIP-relative addressing");
+  expect_contains(rendered, "mov eax, dword ptr [rax]\n",
+                  "x86 backend should load the scalar global value into eax");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the bounded global-load slice");
+}
+
+void test_x86_backend_renders_global_store_reload_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_x86_global_store_reload_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".data\n",
+                  "x86 backend should place scalar store-reload globals in the data section");
+  expect_contains(rendered, "g_counter:\n  .long 11\n",
+                  "x86 backend should materialize the bounded scalar store-reload global initializer");
+  expect_contains(rendered, "lea rax, g_counter[rip]\n",
+                  "x86 backend should materialize the scalar global address for the store-reload slice");
+  expect_contains(rendered, "mov dword ptr [rax], 7\n",
+                  "x86 backend should lower the bounded scalar global store directly");
+  expect_contains(rendered, "mov eax, dword ptr [rax]\n",
+                  "x86 backend should reload the scalar global value after the store");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the bounded global store-reload slice");
+}
+
+void test_x86_backend_uses_shared_regalloc_for_call_crossing_direct_call_slice() {
+  auto module = make_typed_call_crossing_direct_call_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".type add_one, %function",
+                  "x86 backend should lower the typed helper into a real function symbol");
+  expect_contains(rendered, "mov qword ptr [rbp - 16], rbx",
+                  "x86 backend should save the shared call-crossing callee-saved register in the prologue");
+  expect_contains(rendered, "mov ebx, 5",
+                  "x86 backend should materialize the call-crossing source value in the shared assigned register");
+  expect_contains(rendered, "mov edi, ebx",
+                  "x86 backend should pass the shared assigned register through the SysV integer argument register");
+  expect_contains(rendered, "call add_one",
+                  "x86 backend should keep the helper call on the direct-call asm path");
+  expect_contains(rendered, "add eax, ebx",
+                  "x86 backend should reuse the shared call-crossing source register after the call");
+  expect_contains(rendered, "mov rbx, qword ptr [rbp - 16]",
+                  "x86 backend should restore the shared callee-saved register in the epilogue");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the call-crossing direct-call slice");
+}
+
+void test_x86_backend_cleans_up_redundant_self_move_on_call_crossing_slice() {
+  auto module = make_typed_call_crossing_direct_call_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_not_contains(rendered, "mov eax, eax",
+                      "x86 backend should remove the redundant backend-owned self-move after the helper call");
+  expect_contains(rendered, "add eax, ebx",
+                  "x86 backend should still consume the helper result directly from eax after cleanup");
+}
+
+void test_x86_backend_keeps_spacing_tolerant_call_crossing_slice_on_asm_path() {
+  auto module = make_typed_call_crossing_direct_call_with_spacing_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, "mov edi, ebx",
+                  "x86 backend should still decode spacing-tolerant typed call-crossing arguments structurally");
+  expect_contains(rendered, "call add_one",
+                  "x86 backend should keep the spacing-tolerant call-crossing helper call on the asm path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should not fall back to LLVM text for spacing-tolerant typed call-crossing slices");
+}
+
+void test_x86_backend_renders_compare_and_branch_slice() {
+  auto module = make_conditional_return_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".globl main",
+                  "x86 backend should lower the conditional-return slice to assembly");
+  expect_contains(rendered, "  mov eax, 2\n",
+                  "x86 backend should materialize the first compare immediate");
+  expect_contains(rendered, "  cmp eax, 3\n",
+                  "x86 backend should compare the materialized value against the second immediate");
+  expect_contains(rendered, "  jge .Lelse\n",
+                  "x86 backend should branch to the else label when the signed less-than test fails");
+  expect_contains(rendered, ".Lthen:\n  mov eax, 0\n  ret\n",
+                  "x86 backend should lower the then return block directly in assembly");
+  expect_contains(rendered, ".Lelse:\n  mov eax, 1\n  ret\n",
+                  "x86 backend should lower the else return block directly in assembly");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the conditional-return slice");
+}
+
+void test_x86_backend_renders_compare_and_branch_slice_from_typed_predicates() {
+  auto module = make_typed_conditional_return_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".globl main",
+                  "x86 backend should lower the typed conditional-return slice to assembly");
+  expect_contains(rendered, "  mov eax, 2\n",
+                  "x86 backend should still materialize the typed compare lhs immediate");
+  expect_contains(rendered, "  cmp eax, 3\n",
+                  "x86 backend should still compare the typed predicate slice against the rhs immediate");
+  expect_contains(rendered, "  jge .Lelse\n",
+                  "x86 backend should map typed signed less-than predicates onto the same fail branch");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should keep typed compare-and-branch lowering on the asm path");
+}
+
+void test_x86_backend_renders_compare_and_branch_le_slice() {
+  auto module = make_conditional_return_le_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".globl main",
+                  "x86 backend should lower the signed less-or-equal conditional-return slice to assembly");
+  expect_contains(rendered, "  mov eax, 2\n",
+                  "x86 backend should materialize the first signed less-or-equal compare immediate");
+  expect_contains(rendered, "  cmp eax, 3\n",
+                  "x86 backend should compare the materialized less-or-equal lhs against the rhs immediate");
+  expect_contains(rendered, "  jg .Lelse\n",
+                  "x86 backend should branch to the else label when the signed less-or-equal test fails");
+  expect_contains(rendered, ".Lthen:\n  mov eax, 0\n  ret\n",
+                  "x86 backend should lower the signed less-or-equal then block directly in assembly");
+  expect_contains(rendered, ".Lelse:\n  mov eax, 1\n  ret\n",
+                  "x86 backend should lower the signed less-or-equal else block directly in assembly");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the signed less-or-equal slice");
+}
+
+void test_x86_backend_renders_compare_and_branch_gt_slice() {
+  auto module = make_conditional_return_gt_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".globl main",
+                  "x86 backend should lower the signed greater-than conditional-return slice to assembly");
+  expect_contains(rendered, "  mov eax, 3\n",
+                  "x86 backend should materialize the first signed greater-than compare immediate");
+  expect_contains(rendered, "  cmp eax, 2\n",
+                  "x86 backend should compare the materialized greater-than lhs against the rhs immediate");
+  expect_contains(rendered, "  jle .Lelse\n",
+                  "x86 backend should branch to the else label when the signed greater-than test fails");
+  expect_contains(rendered, ".Lthen:\n  mov eax, 0\n  ret\n",
+                  "x86 backend should lower the signed greater-than then block directly in assembly");
+  expect_contains(rendered, ".Lelse:\n  mov eax, 1\n  ret\n",
+                  "x86 backend should lower the signed greater-than else block directly in assembly");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the signed greater-than slice");
+}
+
+void test_x86_backend_renders_compare_and_branch_ge_slice() {
+  auto module = make_conditional_return_ge_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".globl main",
+                  "x86 backend should lower the signed greater-or-equal conditional-return slice to assembly");
+  expect_contains(rendered, "  mov eax, 3\n",
+                  "x86 backend should materialize the first signed greater-or-equal compare immediate");
+  expect_contains(rendered, "  cmp eax, 2\n",
+                  "x86 backend should compare the materialized greater-or-equal lhs against the rhs immediate");
+  expect_contains(rendered, "  jl .Lelse\n",
+                  "x86 backend should branch to the else label when the signed greater-or-equal test fails");
+  expect_contains(rendered, ".Lthen:\n  mov eax, 0\n  ret\n",
+                  "x86 backend should lower the signed greater-or-equal then block directly in assembly");
+  expect_contains(rendered, ".Lelse:\n  mov eax, 1\n  ret\n",
+                  "x86 backend should lower the signed greater-or-equal else block directly in assembly");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the signed greater-or-equal slice");
+}
+
+void test_x86_backend_renders_compare_and_branch_eq_slice() {
+  auto module = make_conditional_return_eq_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".globl main",
+                  "x86 backend should lower the equal conditional-return slice to assembly");
+  expect_contains(rendered, "  mov eax, 2\n",
+                  "x86 backend should materialize the first equal compare immediate");
+  expect_contains(rendered, "  cmp eax, 2\n",
+                  "x86 backend should compare the materialized equal lhs against the rhs immediate");
+  expect_contains(rendered, "  jne .Lelse\n",
+                  "x86 backend should branch to the else label when the equality test fails");
+  expect_contains(rendered, ".Lthen:\n  mov eax, 0\n  ret\n",
+                  "x86 backend should lower the equal then block directly in assembly");
+  expect_contains(rendered, ".Lelse:\n  mov eax, 1\n  ret\n",
+                  "x86 backend should lower the equal else block directly in assembly");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the equal slice");
+}
+
+void test_x86_backend_renders_compare_and_branch_ne_slice() {
+  auto module = make_conditional_return_ne_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".globl main",
+                  "x86 backend should lower the not-equal conditional-return slice to assembly");
+  expect_contains(rendered, "  mov eax, 2\n",
+                  "x86 backend should materialize the first not-equal compare immediate");
+  expect_contains(rendered, "  cmp eax, 3\n",
+                  "x86 backend should compare the materialized not-equal lhs against the rhs immediate");
+  expect_contains(rendered, "  je .Lelse\n",
+                  "x86 backend should branch to the else label when the not-equal test fails");
+  expect_contains(rendered, ".Lthen:\n  mov eax, 0\n  ret\n",
+                  "x86 backend should lower the not-equal then block directly in assembly");
+  expect_contains(rendered, ".Lelse:\n  mov eax, 1\n  ret\n",
+                  "x86 backend should lower the not-equal else block directly in assembly");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the not-equal slice");
+}
+
+void test_x86_backend_renders_compare_and_branch_ult_slice() {
+  auto module = make_conditional_return_ult_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".globl main",
+                  "x86 backend should lower the unsigned less-than conditional-return slice to assembly");
+  expect_contains(rendered, "  mov eax, 2\n",
+                  "x86 backend should materialize the first unsigned less-than compare immediate");
+  expect_contains(rendered, "  cmp eax, 3\n",
+                  "x86 backend should compare the materialized unsigned less-than lhs against the rhs immediate");
+  expect_contains(rendered, "  jae .Lelse\n",
+                  "x86 backend should branch to the else label when the unsigned less-than test fails");
+  expect_contains(rendered, ".Lthen:\n  mov eax, 0\n  ret\n",
+                  "x86 backend should lower the unsigned less-than then block directly in assembly");
+  expect_contains(rendered, ".Lelse:\n  mov eax, 1\n  ret\n",
+                  "x86 backend should lower the unsigned less-than else block directly in assembly");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the unsigned less-than slice");
+}
+
+void test_x86_backend_renders_compare_and_branch_ule_slice() {
+  auto module = make_conditional_return_ule_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".globl main",
+                  "x86 backend should lower the unsigned less-or-equal conditional-return slice to assembly");
+  expect_contains(rendered, "  mov eax, 2\n",
+                  "x86 backend should materialize the first unsigned less-or-equal compare immediate");
+  expect_contains(rendered, "  cmp eax, 3\n",
+                  "x86 backend should compare the materialized unsigned less-or-equal lhs against the rhs immediate");
+  expect_contains(rendered, "  ja .Lelse\n",
+                  "x86 backend should branch to the else label when the unsigned less-or-equal test fails");
+  expect_contains(rendered, ".Lthen:\n  mov eax, 0\n  ret\n",
+                  "x86 backend should lower the unsigned less-or-equal then block directly in assembly");
+  expect_contains(rendered, ".Lelse:\n  mov eax, 1\n  ret\n",
+                  "x86 backend should lower the unsigned less-or-equal else block directly in assembly");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the unsigned less-or-equal slice");
+}
+
+void test_x86_backend_renders_compare_and_branch_ugt_slice() {
+  auto module = make_conditional_return_ugt_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".globl main",
+                  "x86 backend should lower the unsigned greater-than conditional-return slice to assembly");
+  expect_contains(rendered, "  mov eax, 3\n",
+                  "x86 backend should materialize the first unsigned greater-than compare immediate");
+  expect_contains(rendered, "  cmp eax, 2\n",
+                  "x86 backend should compare the materialized unsigned greater-than lhs against the rhs immediate");
+  expect_contains(rendered, "  jbe .Lelse\n",
+                  "x86 backend should branch to the else label when the unsigned greater-than test fails");
+  expect_contains(rendered, ".Lthen:\n  mov eax, 0\n  ret\n",
+                  "x86 backend should lower the unsigned greater-than then block directly in assembly");
+  expect_contains(rendered, ".Lelse:\n  mov eax, 1\n  ret\n",
+                  "x86 backend should lower the unsigned greater-than else block directly in assembly");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the unsigned greater-than slice");
+}
+
+void test_x86_backend_renders_compare_and_branch_uge_slice() {
+  auto module = make_conditional_return_uge_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".globl main",
+                  "x86 backend should lower the unsigned greater-or-equal conditional-return slice to assembly");
+  expect_contains(rendered, "  mov eax, 3\n",
+                  "x86 backend should materialize the first unsigned greater-or-equal compare immediate");
+  expect_contains(rendered, "  cmp eax, 2\n",
+                  "x86 backend should compare the materialized unsigned greater-or-equal lhs against the rhs immediate");
+  expect_contains(rendered, "  jb .Lelse\n",
+                  "x86 backend should branch to the else label when the unsigned greater-or-equal test fails");
+  expect_contains(rendered, ".Lthen:\n  mov eax, 0\n  ret\n",
+                  "x86 backend should lower the unsigned greater-or-equal then block directly in assembly");
+  expect_contains(rendered, ".Lelse:\n  mov eax, 1\n  ret\n",
+                  "x86 backend should lower the unsigned greater-or-equal else block directly in assembly");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the unsigned greater-or-equal slice");
+}
+
+void test_x86_backend_renders_extern_global_array_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_x86_extern_global_array_load_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".intel_syntax noprefix\n",
+                  "x86 backend should lower the extern global array slice to assembly");
+  expect_contains(rendered, ".globl main\n",
+                  "x86 backend should still publish main as the entry symbol");
+  expect_contains(rendered, "lea rax, ext_arr[rip]",
+                  "x86 backend should materialize the extern global array base with RIP-relative addressing");
+  expect_contains(rendered, "mov eax, dword ptr [rax + 4]",
+                  "x86 backend should fold the bounded indexed load into the backend-owned base address");
+  expect_contains(rendered, "ret\n",
+                  "x86 backend should return the extern global array load result");
+  expect_not_contains(rendered, "getelementptr",
+                      "x86 backend should no longer fall back to LLVM text for the extern global array slice");
+}
+
+void test_x86_backend_renders_extern_decl_object_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_x86_extern_decl_object_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".intel_syntax noprefix\n",
+                  "x86 backend should lower the bounded extern-decl call slice to assembly");
+  expect_contains(rendered, ".globl main\n",
+                  "x86 backend should still publish main as the entry symbol for the bounded extern-decl call slice");
+  expect_contains(rendered, "call helper_ext\n",
+                  "x86 backend should preserve the direct undefined helper call in the bounded object slice");
+  expect_contains(rendered, "ret\n",
+                  "x86 backend should return directly after the bounded undefined helper call");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should no longer fall back to LLVM text for the bounded extern-decl object slice");
+}
+
+void test_x86_backend_renders_extern_decl_object_slice_with_typed_zero_arg_spacing() {
+  auto module = make_x86_extern_decl_object_module();
+  auto& call = std::get<c4c::codegen::lir::LirCallOp>(
+      module.functions.front().blocks.front().insts.front());
+  call.callee_type_suffix = " ( ) ";
+  call.args_str = "  ";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, "call helper_ext\n",
+                  "x86 backend should keep spacing-tolerant typed zero-arg extern calls on the direct-call asm path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should not fall back for spacing-tolerant typed zero-arg extern calls");
+}
+
+void test_x86_backend_renders_string_literal_char_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_x86_string_literal_char_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".intel_syntax noprefix\n",
+                  "x86 backend should lower the bounded string-literal char slice to assembly");
+  expect_contains(rendered, ".section .rodata\n",
+                  "x86 backend should place the promoted string literal into read-only data");
+  expect_contains(rendered, ".L.str0:\n",
+                  "x86 backend should emit a local string-pool label for the literal");
+  expect_contains(rendered, "  .asciz \"hi\"\n",
+                  "x86 backend should materialize the promoted string-literal bytes");
+  expect_contains(rendered, ".text\n",
+                  "x86 backend should resume emission in the text section for main");
+  expect_contains(rendered, ".globl main\n",
+                  "x86 backend should still publish main as the entry symbol");
+  expect_contains(rendered, "lea rax, .L.str0[rip]\n",
+                  "x86 backend should materialize the string-literal base with RIP-relative addressing");
+  expect_contains(rendered, "movsx eax, byte ptr [rax + 1]\n",
+                  "x86 backend should load and sign-extend the indexed string-literal byte");
+  expect_contains(rendered, "ret\n",
+                  "x86 backend should return the promoted string-literal result");
+  expect_not_contains(rendered, "getelementptr",
+                      "x86 backend should no longer fall back to LLVM text for the string-literal char slice");
+}
+
+void test_x86_backend_renders_global_char_pointer_diff_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_x86_global_char_pointer_diff_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".intel_syntax noprefix\n",
+                  "x86 backend should lower the bounded global char pointer-difference slice to assembly");
+  expect_contains(rendered, ".bss\n",
+                  "x86 backend should place mutable zero-initialized byte arrays into BSS");
+  expect_contains(rendered, ".globl g_bytes\n",
+                  "x86 backend should publish the bounded byte-array symbol");
+  expect_contains(rendered, "g_bytes:\n  .zero 2\n",
+                  "x86 backend should materialize the bounded byte-array storage");
+  expect_contains(rendered, ".text\n",
+                  "x86 backend should resume emission in the text section for main");
+  expect_contains(rendered, ".globl main\n",
+                  "x86 backend should still publish main as the entry symbol");
+  expect_contains(rendered, "lea rax, g_bytes[rip]\n",
+                  "x86 backend should materialize the global byte-array base with RIP-relative addressing");
+  expect_contains(rendered, "lea rcx, [rax + 1]\n",
+                  "x86 backend should form the bounded byte-offset address from the global base");
+  expect_contains(rendered, "sub rcx, rax\n",
+                  "x86 backend should preserve the byte-granular pointer subtraction");
+  expect_contains(rendered, "cmp rcx, 1\n",
+                  "x86 backend should compare the pointer difference against one byte");
+  expect_contains(rendered, "sete al\n",
+                  "x86 backend should lower the bounded equality result into the low return register");
+  expect_contains(rendered, "movzx eax, al\n",
+                  "x86 backend should zero-extend the boolean result into the return register");
+  expect_contains(rendered, "ret\n",
+                  "x86 backend should return the bounded pointer-difference comparison result");
+  expect_not_contains(rendered, "getelementptr",
+                      "x86 backend should no longer fall back to LLVM text for the bounded global char pointer-difference slice");
+}
+
+void test_x86_backend_renders_global_char_pointer_diff_slice_from_typed_ops() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_typed_x86_global_char_pointer_diff_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, "lea rax, g_bytes[rip]\n",
+                  "x86 backend should keep the typed byte-array pointer-difference slice on the asm path");
+  expect_contains(rendered, "sub rcx, rax\n",
+                  "x86 backend should decode typed subtraction wrappers in the byte pointer-difference slice");
+  expect_contains(rendered, "cmp rcx, 1\n",
+                  "x86 backend should still compare the typed byte pointer difference against one byte");
+  expect_contains(rendered, "sete al\n",
+                  "x86 backend should lower typed equality wrappers for the byte pointer-difference slice");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should not fall back to LLVM text for the typed byte pointer-difference slice");
+}
+
+void test_x86_backend_renders_global_int_pointer_diff_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_x86_global_int_pointer_diff_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".intel_syntax noprefix\n",
+                  "x86 backend should lower the bounded global int pointer-difference slice to assembly");
+  expect_contains(rendered, ".bss\n",
+                  "x86 backend should place mutable zero-initialized int arrays into BSS");
+  expect_contains(rendered, ".globl g_words\n",
+                  "x86 backend should publish the bounded int-array symbol");
+  expect_contains(rendered, "g_words:\n  .zero 8\n",
+                  "x86 backend should materialize the bounded int-array storage");
+  expect_contains(rendered, ".text\n",
+                  "x86 backend should resume emission in the text section for main");
+  expect_contains(rendered, ".globl main\n",
+                  "x86 backend should still publish main as the entry symbol");
+  expect_contains(rendered, "lea rax, g_words[rip]\n",
+                  "x86 backend should materialize the global int-array base with RIP-relative addressing");
+  expect_contains(rendered, "lea rcx, [rax + 4]\n",
+                  "x86 backend should form the one-element int offset in bytes");
+  expect_contains(rendered, "sub rcx, rax\n",
+                  "x86 backend should preserve byte-granular pointer subtraction before scaling");
+  expect_contains(rendered, "sar rcx, 2\n",
+                  "x86 backend should lower the divide-by-four scaling step for the bounded int slice");
+  expect_contains(rendered, "cmp rcx, 1\n",
+                  "x86 backend should compare the scaled pointer difference against one element");
+  expect_contains(rendered, "sete al\n",
+                  "x86 backend should lower the bounded equality result into the low return register");
+  expect_contains(rendered, "movzx eax, al\n",
+                  "x86 backend should zero-extend the boolean result into the return register");
+  expect_contains(rendered, "ret\n",
+                  "x86 backend should return the bounded scaled pointer-difference comparison result");
+  expect_not_contains(rendered, "getelementptr",
+                      "x86 backend should no longer fall back to LLVM text for the bounded global int pointer-difference slice");
+}
+
+void test_x86_backend_renders_global_int_pointer_diff_slice_from_typed_ops() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_typed_x86_global_int_pointer_diff_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, "lea rax, g_words[rip]\n",
+                  "x86 backend should keep the typed int-array pointer-difference slice on the asm path");
+  expect_contains(rendered, "sub rcx, rax\n",
+                  "x86 backend should decode typed subtraction wrappers before scaling int pointer differences");
+  expect_contains(rendered, "sar rcx, 2\n",
+                  "x86 backend should decode typed signed-divide wrappers for the scaled int pointer-difference slice");
+  expect_contains(rendered, "cmp rcx, 1\n",
+                  "x86 backend should still compare the typed scaled pointer difference against one element");
+  expect_contains(rendered, "sete al\n",
+                  "x86 backend should lower typed equality wrappers for the scaled int pointer-difference slice");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should not fall back to LLVM text for the typed int pointer-difference slice");
+}
+
+void test_x86_backend_renders_global_int_pointer_roundtrip_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_x86_global_int_pointer_roundtrip_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".intel_syntax noprefix\n",
+                  "x86 backend should lower the bounded global int pointer round-trip slice to assembly");
+  expect_contains(rendered, ".data\n",
+                  "x86 backend should place the round-trip global definition in the data section");
+  expect_contains(rendered, ".globl g_value\n",
+                  "x86 backend should publish the round-trip global symbol");
+  expect_contains(rendered, "g_value:\n  .long 9\n",
+                  "x86 backend should materialize the round-trip global initializer");
+  expect_contains(rendered, ".text\n",
+                  "x86 backend should resume emission in the text section for main");
+  expect_contains(rendered, ".globl main\n",
+                  "x86 backend should still publish main as the entry symbol");
+  expect_contains(rendered, "lea rax, g_value[rip]\n",
+                  "x86 backend should materialize the bounded round-trip global address with RIP-relative addressing");
+  expect_contains(rendered, "mov eax, dword ptr [rax]\n",
+                  "x86 backend should lower the bounded round-trip back into a direct global load");
+  expect_contains(rendered, "ret\n",
+                  "x86 backend should return the bounded round-trip load result");
+  expect_not_contains(rendered, "ptrtoint",
+                      "x86 backend should no longer fall back to LLVM text ptrtoint for the bounded round-trip slice");
+  expect_not_contains(rendered, "inttoptr",
+                      "x86 backend should no longer fall back to LLVM text inttoptr for the bounded round-trip slice");
+  expect_not_contains(rendered, "alloca",
+                      "x86 backend should no longer fall back to LLVM text allocas for the bounded round-trip slice");
+}
+
+
+
+void test_x86_assembler_parser_accepts_bounded_return_add_slice() {
+  const auto asm_text = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_return_add_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  const auto statements = c4c::backend::x86::assembler::parse_asm(asm_text);
+
+  expect_true(statements.size() == 6,
+              "x86 assembler parser should keep the bounded return-add slice as six structured statements");
+  expect_true(statements[0].text == ".intel_syntax noprefix" &&
+                  statements[1].text == ".text" &&
+                  statements[2].text == ".globl main" &&
+                  statements[3].text == "main:" &&
+                  statements[4].text == "mov eax, 5" &&
+                  statements[5].text == "ret",
+              "x86 assembler parser should preserve the Step 2 directive, label, and instruction surface for the bounded return-add slice");
+  expect_true(statements[4].operands.size() == 2 &&
+                  statements[4].operands[0].text == "eax" &&
+                  statements[4].operands[1].text == "5",
+              "x86 assembler parser should split the bounded mov eax, imm32 instruction into destination and immediate operands");
+}
+
+void test_x86_assembler_parser_rejects_out_of_scope_forms() {
+  try {
+    (void)c4c::backend::x86::assembler::parse_asm(
+        ".intel_syntax noprefix\n.text\n.globl main\nmain:\n  mov eax, dword ptr [rax]\n  ret\n");
+    fail("x86 assembler parser should reject out-of-scope memory operand forms");
+  } catch (const std::runtime_error& ex) {
+    expect_contains(ex.what(), "unsupported x86 immediate",
+                    "x86 assembler parser should explain why Step 2 rejects memory-form mov sources");
+  }
+
+  try {
+    (void)c4c::backend::x86::assembler::parse_asm(
+        ".intel_syntax noprefix\n.text\n.globl main\nmain:\n.Lblock_1:\n  mov eax, 5\n  ret\n");
+    fail("x86 assembler parser should reject local labels outside the first bounded slice");
+  } catch (const std::runtime_error& ex) {
+    expect_contains(ex.what(), "unsupported x86 label",
+                    "x86 assembler parser should keep local labels explicitly unsupported in the Step 2 slice");
+  }
+}
+
+void test_x86_assembler_encoder_emits_bounded_return_add_bytes() {
+  namespace encoder = c4c::backend::x86::assembler::encoder;
+
+  const auto asm_text = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_return_add_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  const auto statements = c4c::backend::x86::assembler::parse_asm(asm_text);
+  const auto encoded = encoder::encode_function(statements);
+
+  expect_true(encoded.encoded,
+              "x86 assembler encoder should accept the bounded return-add Step 3 slice");
+  expect_true(encoded.bytes ==
+                  std::vector<std::uint8_t>{0xB8, 0x05, 0x00, 0x00, 0x00, 0xC3},
+              "x86 assembler encoder should emit mov eax, imm32; ret bytes matching the Step 3 contract");
+}
+
+void test_x86_assembler_encoder_emits_bounded_extern_call_bytes() {
+  namespace encoder = c4c::backend::x86::assembler::encoder;
+
+  const auto asm_text = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_x86_extern_decl_object_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  const auto statements = c4c::backend::x86::assembler::parse_asm(asm_text);
+  const auto encoded = encoder::encode_function(statements);
+
+  expect_true(encoded.encoded,
+              "x86 assembler encoder should accept the bounded extern-call relocation slice");
+  expect_true(encoded.bytes ==
+                  std::vector<std::uint8_t>{0xE8, 0x00, 0x00, 0x00, 0x00, 0xC3},
+              "x86 assembler encoder should emit call rel32; ret bytes for the bounded extern-call slice");
+  expect_true(encoded.relocations.size() == 1,
+              "x86 assembler encoder should record one relocation for the bounded extern-call slice");
+  expect_true(encoded.relocations[0].offset == 1 &&
+                  encoded.relocations[0].symbol == "helper_ext" &&
+                  encoded.relocations[0].reloc_type == 4 &&
+                  encoded.relocations[0].addend == -4,
+              "x86 assembler encoder should preserve the staged PLT32 relocation contract for the bounded extern-call slice");
+}
+
+void test_x86_assembler_encoder_rejects_out_of_scope_instruction_forms() {
+  namespace encoder = c4c::backend::x86::assembler::encoder;
+
+  c4c::backend::x86::assembler::AsmStatement unsupported;
+  unsupported.kind = c4c::backend::x86::assembler::AsmStatementKind::Instruction;
+  unsupported.text = "push rbp";
+  unsupported.op = "push";
+
+  const auto unsupported_result = encoder::encode_instruction(unsupported);
+  expect_true(!unsupported_result.encoded,
+              "x86 assembler encoder should reject instructions outside the first Step 3 slice");
+  expect_contains(unsupported_result.error, "unsupported x86 instruction",
+                  "x86 assembler encoder should explain unsupported instruction rejections");
+
+  c4c::backend::x86::assembler::AsmStatement wrong_mov;
+  wrong_mov.kind = c4c::backend::x86::assembler::AsmStatementKind::Instruction;
+  wrong_mov.text = "mov ebx, 7";
+  wrong_mov.op = "mov";
+  wrong_mov.operands = {
+      c4c::backend::x86::assembler::Operand{"ebx"},
+      c4c::backend::x86::assembler::Operand{"7"},
+  };
+
+  const auto wrong_mov_result = encoder::encode_instruction(wrong_mov);
+  expect_true(!wrong_mov_result.encoded,
+              "x86 assembler encoder should keep register coverage bounded to eax in the first slice");
+  expect_contains(wrong_mov_result.error, "mov eax, imm32",
+                  "x86 assembler encoder should spell out the current bounded mov contract");
+}
+
+void test_x86_builtin_object_matches_external_return_add_surface() {
+#if defined(C4C_TEST_CLANG_PATH) && defined(C4C_TEST_OBJDUMP_PATH)
+  auto module = make_return_add_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-n8:16:32:64-S128";
+
+  const auto asm_text = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  const auto asm_path = make_temp_path("c4c_x86_return_add_surface", ".s");
+  const auto builtin_object_path = make_temp_output_path("c4c_x86_return_add_builtin");
+  const auto external_object_path = make_temp_output_path("c4c_x86_return_add_external");
+
+  write_text_file(asm_path, asm_text);
+  const auto builtin = c4c::backend::x86::assemble_module(module, builtin_object_path);
+  expect_true(builtin.object_emitted,
+              "x86 backend handoff helper should emit an object for the bounded return_add slice");
+  expect_true(builtin.error.empty(),
+              "x86 backend handoff helper should not report an error for the bounded return_add slice");
+
+  run_command_capture(shell_quote(C4C_TEST_CLANG_PATH) +
+                      " --target=x86_64-unknown-linux-gnu -c " +
+                      shell_quote(asm_path) + " -o " +
+                      shell_quote(external_object_path) + " 2>&1");
+
+  const auto builtin_objdump = normalize_objdump_surface(
+      run_command_capture(shell_quote(C4C_TEST_OBJDUMP_PATH) + " -h -r -t " +
+                          shell_quote(builtin_object_path) + " 2>&1"));
+  const auto external_objdump = normalize_objdump_surface(
+      run_command_capture(shell_quote(C4C_TEST_OBJDUMP_PATH) + " -h -r -t " +
+                          shell_quote(external_object_path) + " 2>&1"));
+  expect_contains(builtin_objdump, ".text         00000006",
+                  "x86 built-in assembler should emit the same bounded .text size as the external baseline");
+  expect_contains(external_objdump, ".text         00000006",
+                  "external assembler baseline should keep the bounded .text size for x86 return_add");
+  expect_not_contains(builtin_objdump, "RELOCATION RECORDS",
+                      "x86 built-in assembler should not introduce relocations for the bounded return_add slice");
+  expect_not_contains(external_objdump, "RELOCATION RECORDS",
+                      "external assembler baseline should not need relocations for the bounded x86 return_add slice");
+  expect_contains(builtin_objdump, "g     F .text",
+                  "x86 built-in assembler should expose a global function symbol in .text");
+  expect_contains(builtin_objdump, "main",
+                  "x86 built-in assembler should preserve the main symbol name");
+  expect_contains(external_objdump, "g       .text",
+                  "external assembler baseline should expose a global function symbol in .text");
+  expect_contains(external_objdump, "main",
+                  "external assembler baseline should preserve the main symbol name");
+
+  const auto builtin_disasm = normalize_objdump_disassembly(
+      run_command_capture(shell_quote(C4C_TEST_OBJDUMP_PATH) + " -d " +
+                          shell_quote(builtin_object_path) + " 2>&1"));
+  const auto external_disasm = normalize_objdump_disassembly(
+      run_command_capture(shell_quote(C4C_TEST_OBJDUMP_PATH) + " -d " +
+                          shell_quote(external_object_path) + " 2>&1"));
+  expect_true(builtin_disasm == external_disasm,
+              "x86 built-in assembler disassembly should match the external assembler baseline for return_add\n--- built-in ---\n" +
+                  builtin_disasm + "--- external ---\n" + external_disasm);
+
+  std::filesystem::remove(asm_path);
+  std::filesystem::remove(builtin_object_path);
+  std::filesystem::remove(external_object_path);
+#endif
+}
+
+
+
+
+
+void test_x86_builtin_object_matches_external_extern_call_surface() {
+#if defined(C4C_TEST_CLANG_PATH) && defined(C4C_TEST_OBJDUMP_PATH)
+  const auto module = make_x86_extern_decl_object_module();
+  const auto asm_text = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  const auto asm_path = make_temp_path("c4c_x86_extern_call_surface", ".s");
+  const auto builtin_object_path = make_temp_output_path("c4c_x86_extern_call_builtin");
+  const auto external_object_path = make_temp_output_path("c4c_x86_extern_call_external");
+
+  write_text_file(asm_path, asm_text);
+  const auto builtin = c4c::backend::x86::assemble_module(module, builtin_object_path);
+  expect_true(builtin.object_emitted,
+              "x86 backend handoff helper should emit an object for the bounded extern-call slice");
+  expect_true(builtin.error.empty(),
+              "x86 backend handoff helper should not report an error for the bounded extern-call slice");
+
+  run_command_capture(shell_quote(C4C_TEST_CLANG_PATH) +
+                      " --target=x86_64-unknown-linux-gnu -c " +
+                      shell_quote(asm_path) + " -o " +
+                      shell_quote(external_object_path) + " 2>&1");
+
+  const auto builtin_objdump = normalize_objdump_surface(
+      run_command_capture(shell_quote(C4C_TEST_OBJDUMP_PATH) + " -h -r -t " +
+                          shell_quote(builtin_object_path) + " 2>&1"));
+  const auto external_objdump = normalize_objdump_surface(
+      run_command_capture(shell_quote(C4C_TEST_OBJDUMP_PATH) + " -h -r -t " +
+                          shell_quote(external_object_path) + " 2>&1"));
+  expect_contains(builtin_objdump, ".text         00000006",
+                  "x86 built-in assembler should emit the bounded extern-call .text size");
+  expect_contains(external_objdump, ".text         00000006",
+                  "external assembler baseline should keep the bounded extern-call .text size");
+  expect_contains(builtin_objdump, "RELOCATION RECORDS FOR [.text]:",
+                  "x86 built-in assembler should emit relocation records for the bounded extern-call slice");
+  expect_contains(external_objdump, "RELOCATION RECORDS FOR [.text]:",
+                  "external assembler baseline should emit relocation records for the bounded extern-call slice");
+  expect_contains(builtin_objdump, "R_X86_64_PLT32",
+                  "x86 built-in assembler should emit the staged PLT32 relocation type");
+  expect_contains(external_objdump, "R_X86_64_PLT32",
+                  "external assembler baseline should emit the staged PLT32 relocation type");
+  expect_contains(builtin_objdump, "helper_ext",
+                  "x86 built-in assembler should preserve the bounded undefined helper symbol");
+  expect_contains(external_objdump, "helper_ext",
+                  "external assembler baseline should preserve the bounded undefined helper symbol");
+
+  const auto builtin_disasm = normalize_objdump_disassembly(
+      run_command_capture(shell_quote(C4C_TEST_OBJDUMP_PATH) + " -d " +
+                          shell_quote(builtin_object_path) + " 2>&1"));
+  const auto external_disasm = normalize_objdump_disassembly(
+      run_command_capture(shell_quote(C4C_TEST_OBJDUMP_PATH) + " -d " +
+                          shell_quote(external_object_path) + " 2>&1"));
+  expect_true(builtin_disasm == external_disasm,
+              "x86 built-in assembler disassembly should match the external assembler baseline for the bounded extern-call slice\n--- built-in ---\n" +
+                  builtin_disasm + "--- external ---\n" + external_disasm);
+
+  std::filesystem::remove(asm_path);
+  std::filesystem::remove(builtin_object_path);
+  std::filesystem::remove(external_object_path);
+#endif
+}
+
+
+
+void test_x86_linker_names_first_static_plt32_slice() {
+  const auto caller_path = make_temp_path("c4c_x86_linker_caller", ".o");
+  const auto helper_path = make_temp_path("c4c_x86_linker_helper", ".o");
+  write_binary_file(caller_path, make_minimal_x86_relocation_object_fixture());
+  write_binary_file(helper_path, make_minimal_x86_helper_definition_object_fixture());
+
+  std::string error;
+  const auto slice = c4c::backend::x86::linker::inspect_first_static_link_slice(
+      {caller_path, helper_path}, &error);
+  expect_true(slice.has_value(),
+              "x86 linker should load the first bounded static-link slice through shared object parsing: " +
+                  error);
+
+  expect_true(slice->case_name == "x86_64-static-plt32-two-object",
+              "x86 linker should name the first bounded static-link slice explicitly");
+  expect_true(slice->objects.size() == 2,
+              "x86 linker should keep the first static-link slice scoped to two explicit input objects");
+  expect_true(slice->objects[0].defined_symbols.size() == 1 &&
+                  slice->objects[0].defined_symbols[0] == "main" &&
+                  slice->objects[0].undefined_symbols.size() == 1 &&
+                  slice->objects[0].undefined_symbols[0] == "helper_ext",
+              "x86 linker should record that the caller object defines main and imports helper_ext for the first slice");
+  expect_true(slice->objects[1].defined_symbols.size() == 1 &&
+                  slice->objects[1].defined_symbols[0] == "helper_ext" &&
+                  slice->objects[1].undefined_symbols.empty(),
+              "x86 linker should record that the helper object provides the only external definition needed by the first slice");
+
+  expect_true(slice->relocations.size() == 1,
+              "x86 linker should preserve the single relocation-bearing edge for the first static-link slice");
+  const auto& relocation = slice->relocations.front();
+  expect_true(relocation.object_path == caller_path && relocation.section_name == ".text" &&
+                  relocation.symbol_name == "helper_ext" && relocation.relocation_type == 4 &&
+                  relocation.offset == 1 && relocation.addend == -4 && relocation.resolved &&
+                  relocation.resolved_object_path == helper_path,
+              "x86 linker should record the first slice as one resolved .text PLT32 edge from main to helper_ext");
+
+  expect_true(slice->merged_output_sections.size() == 1 &&
+                  slice->merged_output_sections[0] == ".text",
+              "x86 linker should record that the first static-link slice only needs a merged .text output section");
+  expect_true(slice->unresolved_symbols.empty(),
+              "x86 linker should show no unresolved globals once the helper object is present");
+
+  std::filesystem::remove(caller_path);
+  std::filesystem::remove(helper_path);
+}
+
+void test_x86_linker_loads_first_static_objects_through_shared_input_seam() {
+  const auto caller_path = make_temp_path("c4c_x86_linker_input_caller", ".o");
+  const auto helper_path = make_temp_path("c4c_x86_linker_input_helper", ".o");
+  write_binary_file(caller_path, make_minimal_x86_relocation_object_fixture());
+  write_binary_file(helper_path, make_minimal_x86_helper_definition_object_fixture());
+
+  std::string error;
+  const auto loaded = c4c::backend::x86::linker::load_first_static_input_objects(
+      {caller_path, helper_path}, &error);
+  expect_true(loaded.has_value(),
+              "x86 linker input seam should load the bounded two-object PLT32 slice through shared ELF parsing: " +
+                  error);
+  expect_true(loaded->size() == 2,
+              "x86 linker input seam should preserve the first static-link slice as two ordered object inputs");
+  expect_true((*loaded)[0].path == caller_path &&
+                  (*loaded)[0].object.source_name == caller_path &&
+                  (*loaded)[0].object.symbols.size() >= 3,
+              "x86 linker input seam should preserve caller object path and parsed symbol inventory");
+  expect_true((*loaded)[1].path == helper_path &&
+                  (*loaded)[1].object.source_name == helper_path &&
+                  (*loaded)[1].object.symbols.size() >= 2,
+              "x86 linker input seam should preserve helper object path and parsed symbol inventory");
+
+  const auto caller_text_index = find_section_index((*loaded)[0].object, ".text");
+  expect_true(caller_text_index < (*loaded)[0].object.sections.size() &&
+                  (*loaded)[0].object.relocations[caller_text_index].size() == 1,
+              "x86 linker input seam should preserve the caller .text relocation inventory for the bounded PLT32 slice");
+
+  std::filesystem::remove(caller_path);
+  std::filesystem::remove(helper_path);
+}
+
+void test_x86_linker_loads_first_static_objects_from_archive_through_shared_input_seam() {
+  const auto caller_path = make_temp_path("c4c_x86_linker_archive_caller", ".o");
+  const auto helper_archive_path = make_temp_path("c4c_x86_linker_helper", ".a");
+  write_binary_file(caller_path, make_minimal_x86_relocation_object_fixture());
+  write_binary_file(helper_archive_path,
+                    make_single_member_archive_fixture(
+                        make_minimal_x86_helper_definition_object_fixture(), "helper_def.o/"));
+
+  std::string error;
+  const auto loaded = c4c::backend::x86::linker::load_first_static_input_objects(
+      {caller_path, helper_archive_path}, &error);
+  expect_true(loaded.has_value(),
+              "x86 linker input seam should load the bounded PLT32 slice when the helper definition comes from a shared-parsed archive: " +
+                  error);
+  expect_true(loaded->size() == 2,
+              "x86 linker input seam should resolve the bounded archive-backed slice into the same two loaded object surfaces");
+  expect_true((*loaded)[0].path == caller_path && (*loaded)[0].object.source_name == caller_path,
+              "x86 linker input seam should preserve the caller object identity when archive loading is enabled");
+  expect_true((*loaded)[1].path == helper_archive_path + "(helper_def.o)" &&
+                  (*loaded)[1].object.source_name == helper_archive_path + "(helper_def.o)",
+              "x86 linker input seam should surface the selected archive member as the helper provider");
+
+  const auto caller_text_index = find_section_index((*loaded)[0].object, ".text");
+  expect_true(caller_text_index < (*loaded)[0].object.sections.size() &&
+                  (*loaded)[0].object.relocations[caller_text_index].size() == 1 &&
+                  (*loaded)[0].object.relocations[caller_text_index][0].sym_idx <
+                      (*loaded)[0].object.symbols.size() &&
+                  (*loaded)[0].object.symbols[(*loaded)[0].object.relocations[caller_text_index][0].sym_idx]
+                          .name == "helper_ext",
+              "x86 linker input seam should keep the caller relocation pointed at helper_ext before the archive member is linked");
+  expect_true((*loaded)[1].object.symbols.size() >= 2,
+              "x86 linker input seam should parse the selected helper archive member into the shared object surface");
+
+  std::filesystem::remove(caller_path);
+  std::filesystem::remove(helper_archive_path);
+}
+
+void test_x86_linker_emits_first_static_plt32_executable_slice() {
+  const auto caller_path = make_temp_path("c4c_x86_link_exec_caller", ".o");
+  const auto helper_path = make_temp_path("c4c_x86_link_exec_helper", ".o");
+  write_binary_file(caller_path, make_minimal_x86_relocation_object_fixture());
+  write_binary_file(helper_path, make_minimal_x86_helper_definition_object_fixture());
+
+  std::string error;
+  const auto executable = c4c::backend::x86::linker::link_first_static_executable(
+      {caller_path, helper_path}, &error);
+  expect_true(executable.has_value(),
+              "x86 linker should link the first static PLT32 slice into a bounded executable image: " +
+                  error);
+
+  expect_true(executable->image.size() >= executable->text_file_offset + executable->text_size,
+              "x86 linker should emit enough bytes to cover the merged .text image");
+  expect_true(executable->text_size == 12,
+              "x86 linker should merge the bounded caller/helper .text slices into one 12-byte executable surface");
+  expect_true(executable->entry_address == executable->text_virtual_address,
+              "x86 linker should use the merged main symbol as the executable entry point");
+  expect_true(executable->symbol_addresses.find("main") != executable->symbol_addresses.end() &&
+                  executable->symbol_addresses.find("helper_ext") != executable->symbol_addresses.end() &&
+                  executable->symbol_addresses.at("main") == executable->text_virtual_address &&
+                  executable->symbol_addresses.at("helper_ext") ==
+                      executable->text_virtual_address + 6,
+              "x86 linker should assign stable merged .text addresses to the bounded main/helper symbols");
+
+  const auto& image = executable->image;
+  expect_true(image[0] == 0x7f && image[1] == 'E' && image[2] == 'L' && image[3] == 'F',
+              "x86 linker should emit an ELF header for the first static executable slice");
+  expect_true(read_u16(image, 16) == 2 && read_u16(image, 18) == c4c::backend::elf::EM_X86_64,
+              "x86 linker should mark the first emitted image as an x86-64 ET_EXEC executable");
+  expect_true(read_u64(image, 24) == executable->entry_address,
+              "x86 linker should write the merged main address into the executable entry field");
+  expect_true(read_u64(image, 32) == 64 && read_u16(image, 56) == 1,
+              "x86 linker should emit one bounded program header for the first executable slice");
+
+  expect_true(image[executable->text_file_offset + 0] == 0xe8 &&
+                  read_u32(image, executable->text_file_offset + 1) == 1 &&
+                  image[executable->text_file_offset + 5] == 0xc3 &&
+                  image[executable->text_file_offset + 6] == 0xb8 &&
+                  read_u32(image, executable->text_file_offset + 7) == 42 &&
+                  image[executable->text_file_offset + 11] == 0xc3,
+              "x86 linker should patch the bounded PLT32 call and preserve the merged helper instructions in executable order");
+
+  std::filesystem::remove(caller_path);
+  std::filesystem::remove(helper_path);
+}
+
+void test_x86_linker_matches_external_first_static_executable_slice() {
+#if defined(C4C_TEST_CLANG_PATH)
+  const auto caller_path = make_temp_path("c4c_x86_link_validate_caller", ".o");
+  const auto helper_path = make_temp_path("c4c_x86_link_validate_helper", ".o");
+  const auto external_executable_path = make_temp_path("c4c_x86_link_validate_external", ".out");
+  write_binary_file(caller_path, make_minimal_x86_relocation_object_fixture());
+  write_binary_file(helper_path, make_minimal_x86_helper_definition_object_fixture());
+
+  std::string error;
+  const auto builtin_executable = c4c::backend::x86::linker::link_first_static_executable(
+      {caller_path, helper_path}, &error);
+  expect_true(builtin_executable.has_value(),
+              "x86 linker should produce the bounded built-in executable before external validation: " +
+                  error);
+
+  run_command_capture(shell_quote(C4C_TEST_CLANG_PATH) +
+                      " -nostdlib -static -no-pie -Wl,-e,main -Wl,--build-id=none " +
+                      shell_quote(caller_path) + " " + shell_quote(helper_path) + " -o " +
+                      shell_quote(external_executable_path) + " 2>&1");
+
+  const auto external_image = read_file_bytes(external_executable_path);
+  expect_true(read_u16(external_image, 16) == 2 &&
+                  read_u16(external_image, 18) == c4c::backend::elf::EM_X86_64,
+              "external linker baseline should emit an x86-64 ET_EXEC image for the bounded slice");
+
+  const auto builtin_entry_bytes =
+      read_elf_entry_bytes(builtin_executable->image, builtin_executable->text_size);
+  const auto external_entry_bytes =
+      read_elf_entry_bytes(external_image, builtin_executable->text_size);
+  expect_true(builtin_entry_bytes == external_entry_bytes,
+              "x86 built-in linker entry bytes should match the external linker baseline for the bounded main -> helper_ext slice");
+
+#if defined(__x86_64__)
+  expect_true(execute_x86_64_entry_bytes(builtin_entry_bytes) == 42,
+              "x86 built-in linker entry bytes should execute the bounded main -> helper_ext slice and return 42");
+  expect_true(execute_x86_64_entry_bytes(external_entry_bytes) == 42,
+              "external linker baseline entry bytes should execute the bounded main -> helper_ext slice and return 42");
+#endif
+
+  std::filesystem::remove(caller_path);
+  std::filesystem::remove(helper_path);
+  std::filesystem::remove(external_executable_path);
+#endif
+}
+
+void test_x86_backend_assembler_handoff_helper_stages_emitted_text() {
+  const auto output_path = make_temp_output_path("c4c_x86_handoff");
+  const auto staged = c4c::backend::x86::assemble_module(make_return_add_module(), output_path);
+
+  expect_true(staged.staged_text ==
+                  c4c::backend::emit_module(
+                      c4c::backend::BackendModuleInput{make_return_add_module()},
+                      c4c::backend::BackendOptions{c4c::backend::Target::X86_64}),
+              "x86 backend handoff helper should route production backend text through the staged assembler seam");
+  expect_true(staged.output_path == output_path && staged.object_emitted,
+              "x86 backend handoff helper should preserve output-path metadata and report successful object emission for the minimal backend slice");
+  expect_true(std::filesystem::exists(output_path),
+              "x86 backend handoff helper should write the assembled object to the requested output path");
+  std::filesystem::remove(output_path);
+}
+
+int main() {
+test_x86_backend_scaffold_routes_through_explicit_emit_surface();
+  test_x86_backend_scaffold_accepts_explicit_lowered_ir_input();
+  test_x86_backend_scaffold_accepts_explicit_lowered_extern_decl_ir_input();
+  test_x86_backend_scaffold_accepts_explicit_lowered_global_load_ir_input();
+  test_x86_backend_scaffold_accepts_explicit_lowered_global_store_reload_ir_input();
+ 
+  test_x86_backend_scaffold_accepts_explicit_lowered_string_literal_ir_input();
+  test_x86_backend_scaffold_accepts_explicit_lowered_extern_global_array_ir_input();
+  test_x86_backend_scaffold_accepts_explicit_lowered_global_int_pointer_roundtrip_ir_input();
+  test_x86_backend_scaffold_accepts_explicit_lowered_global_char_pointer_diff_ir_input();
+  test_x86_backend_scaffold_accepts_explicit_lowered_global_int_pointer_diff_ir_input();
+  test_x86_backend_scaffold_accepts_explicit_lowered_conditional_return_ir_input();
+  test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_ir_input();
+  test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_add_ir_input();
+  test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_predecessor_add_ir_input();
+  test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_predecessor_sub_ir_input();
+  test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_add_ir_input();
+  test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_add_post_join_add_ir_input();
+  test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_sub_post_join_add_ir_input();
+  test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_add_sub_chain_post_join_add_ir_input();
+  test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_chain_and_add_post_join_add_ir_input();
+  test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_chain_and_chain_post_join_add_ir_input();
+  test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_deeper_chain_and_chain_post_join_add_ir_input();
+  test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_deeper_chain_and_deeper_chain_post_join_add_ir_input();
+  test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_four_op_chain_and_deeper_chain_post_join_add_ir_input();
+  test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_four_op_chain_and_four_op_chain_post_join_add_ir_input();
+  test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_five_op_chain_and_four_op_chain_post_join_add_ir_input();
+  test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_five_op_chain_and_five_op_chain_post_join_add_ir_input();
+  test_x86_backend_scaffold_accepts_explicit_lowered_countdown_while_ir_input();
+  test_x86_backend_scaffold_renders_direct_return_immediate_slice();
+  test_x86_backend_scaffold_renders_direct_return_sub_immediate_slice();
+  test_x86_backend_renders_local_temp_sub_slice();
+  test_x86_backend_renders_local_temp_arithmetic_chain_slice();
+  test_x86_backend_renders_two_local_temp_return_slice();
+  test_x86_backend_renders_local_pointer_temp_return_slice();
+  test_x86_backend_renders_double_indirect_local_pointer_conditional_return_slice();
+  test_x86_backend_renders_goto_only_constant_return_slice();
+  test_x86_backend_renders_countdown_while_return_slice();
+  test_x86_backend_renders_countdown_do_while_return_slice();
+  test_x86_backend_renders_direct_call_slice();
+  test_x86_backend_renders_zero_arg_typed_direct_call_slice_with_whitespace();
+  test_x86_backend_rejects_intrinsic_callee_from_direct_call_fast_path();
+  test_x86_backend_rejects_indirect_callee_from_direct_call_fast_path();
+  test_x86_backend_renders_param_slot_slice();
+  test_x86_backend_renders_typed_direct_call_local_arg_slice();
+  test_x86_backend_renders_typed_direct_call_local_arg_spacing_slice();
+  test_x86_backend_renders_typed_two_arg_direct_call_slice();
+  test_x86_backend_renders_typed_two_arg_direct_call_local_arg_slice();
+  test_x86_backend_renders_typed_two_arg_direct_call_second_local_arg_slice();
+  test_x86_backend_renders_typed_two_arg_direct_call_second_local_rewrite_slice();
+  test_x86_backend_renders_typed_two_arg_direct_call_first_local_rewrite_spacing_slice();
+  test_x86_backend_renders_typed_two_arg_direct_call_both_local_arg_slice();
+  test_x86_backend_renders_typed_two_arg_direct_call_both_local_first_rewrite_slice();
+  test_x86_backend_renders_typed_two_arg_direct_call_both_local_second_rewrite_slice();
+  test_x86_backend_renders_typed_two_arg_direct_call_both_local_double_rewrite_slice();
+  test_x86_backend_renders_local_array_slice();
+  test_x86_backend_renders_global_load_slice();
+  test_x86_backend_renders_global_store_reload_slice();
+  test_x86_backend_uses_shared_regalloc_for_call_crossing_direct_call_slice();
+  test_x86_backend_cleans_up_redundant_self_move_on_call_crossing_slice();
+  test_x86_backend_keeps_spacing_tolerant_call_crossing_slice_on_asm_path();
+  test_x86_backend_renders_compare_and_branch_slice();
+  test_x86_backend_renders_compare_and_branch_slice_from_typed_predicates();
+  test_x86_backend_renders_compare_and_branch_le_slice();
+  test_x86_backend_renders_compare_and_branch_gt_slice();
+  test_x86_backend_renders_compare_and_branch_ge_slice();
+  test_x86_backend_renders_compare_and_branch_eq_slice();
+  test_x86_backend_renders_compare_and_branch_ne_slice();
+  test_x86_backend_renders_compare_and_branch_ult_slice();
+  test_x86_backend_renders_compare_and_branch_ule_slice();
+  test_x86_backend_renders_compare_and_branch_ugt_slice();
+  test_x86_backend_renders_compare_and_branch_uge_slice();
+  test_x86_backend_renders_extern_global_array_slice();
+  test_x86_backend_renders_extern_decl_object_slice();
+  test_x86_backend_renders_extern_decl_object_slice_with_typed_zero_arg_spacing();
+  test_x86_backend_renders_string_literal_char_slice();
+  test_x86_backend_renders_global_char_pointer_diff_slice();
+  test_x86_backend_renders_global_char_pointer_diff_slice_from_typed_ops();
+  test_x86_backend_renders_global_int_pointer_diff_slice();
+  test_x86_backend_renders_global_int_pointer_diff_slice_from_typed_ops();
+  test_x86_backend_renders_global_int_pointer_roundtrip_slice();
+  test_x86_assembler_parser_accepts_bounded_return_add_slice();
+  test_x86_assembler_parser_rejects_out_of_scope_forms();
+  test_x86_assembler_encoder_emits_bounded_return_add_bytes();
+  test_x86_assembler_encoder_emits_bounded_extern_call_bytes();
+  test_x86_assembler_encoder_rejects_out_of_scope_instruction_forms();
+  test_x86_builtin_object_matches_external_return_add_surface();
+  test_x86_linker_names_first_static_plt32_slice();
+  test_x86_linker_loads_first_static_objects_through_shared_input_seam();
+  test_x86_linker_loads_first_static_objects_from_archive_through_shared_input_seam();
+  test_x86_linker_emits_first_static_plt32_executable_slice();
+  test_x86_linker_matches_external_first_static_executable_slice();
+  test_x86_backend_assembler_handoff_helper_stages_emitted_text();
+  test_x86_builtin_object_matches_external_extern_call_surface();
+
+  return 0;
+}

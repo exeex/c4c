@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include "parser.hpp"
 
 namespace c4c::backend::aarch64::assembler {
@@ -24,5 +25,7 @@ AssembleResult assemble(const AssembleRequest& request);
 
 // Compatibility overload for the pre-existing string-only staging seam.
 std::string assemble(const std::string& asm_text, const std::string& output_path);
+
+bool is_branch_reloc_type(std::uint32_t elf_type);
 
 }  // namespace c4c::backend::aarch64::assembler

@@ -200,6 +200,34 @@ set_tests_properties(backend_lir_adapter_tests PROPERTIES
     LABELS "internal;backend")
 
 add_test(
+    NAME backend_lir_adapter_aarch64_tests
+    COMMAND backend_lir_adapter_aarch64_tests
+)
+set_tests_properties(backend_lir_adapter_aarch64_tests PROPERTIES
+    LABELS "internal;backend")
+
+add_test(
+    NAME backend_lir_adapter_x86_64_tests
+    COMMAND backend_lir_adapter_x86_64_tests
+)
+set_tests_properties(backend_lir_adapter_x86_64_tests PROPERTIES
+    LABELS "internal;backend")
+
+add_test(
+    NAME backend_ir_tests
+    COMMAND backend_ir_tests
+)
+set_tests_properties(backend_ir_tests PROPERTIES
+    LABELS "internal;backend")
+
+add_test(
+    NAME backend_shared_util_tests
+    COMMAND backend_shared_util_tests
+)
+set_tests_properties(backend_shared_util_tests PROPERTIES
+    LABELS "internal;backend")
+
+add_test(
     NAME frontend_cxx_stage1_version
     COMMAND c4cll --version
 )
