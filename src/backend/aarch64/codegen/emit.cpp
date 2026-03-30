@@ -1317,6 +1317,70 @@ struct MinimalCallCrossingDirectCallSlice {
   std::string call_result_value;
 };
 
+std::optional<std::int64_t> fold_minimal_direct_call_two_arg_callee_return(
+    const c4c::backend::BackendFunction& callee_fn,
+    std::int64_t arg0_imm,
+    std::int64_t arg1_imm) {
+  if (callee_fn.signature.params.size() != 2 ||
+      callee_fn.signature.params[0].type_str != "i32" ||
+      callee_fn.signature.params[1].type_str != "i32" ||
+      callee_fn.signature.params[0].name.empty() ||
+      callee_fn.signature.params[1].name.empty() || callee_fn.signature.is_vararg ||
+      callee_fn.blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& block = callee_fn.blocks.front();
+  if (block.label != "entry" || !block.terminator.value.has_value() ||
+      block.terminator.type_str != "i32") {
+    return std::nullopt;
+  }
+
+  std::unordered_map<std::string, std::int64_t> values;
+  values[callee_fn.signature.params[0].name] = arg0_imm;
+  values[callee_fn.signature.params[1].name] = arg1_imm;
+
+  const auto resolve_i32_operand = [&](std::string_view operand)
+      -> std::optional<std::int64_t> {
+    const auto imm = parse_i64(operand);
+    if (imm.has_value()) {
+      return imm;
+    }
+    auto it = values.find(std::string(operand));
+    if (it == values.end()) {
+      return std::nullopt;
+    }
+    return it->second;
+  };
+
+  for (const auto& inst : block.insts) {
+    const auto* bin =
+        std::get_if<c4c::backend::BackendBinaryInst>(&inst);
+    if (bin == nullptr || bin->type_str != "i32" || bin->result.empty()) {
+      return std::nullopt;
+    }
+
+    const auto lhs = resolve_i32_operand(bin->lhs);
+    const auto rhs = resolve_i32_operand(bin->rhs);
+    if (!lhs.has_value() || !rhs.has_value()) {
+      return std::nullopt;
+    }
+
+    std::int64_t value = 0;
+    if (bin->opcode == c4c::backend::BackendBinaryOpcode::Add) {
+      value = *lhs + *rhs;
+    } else if (bin->opcode == c4c::backend::BackendBinaryOpcode::Sub) {
+      value = *lhs - *rhs;
+    } else {
+      return std::nullopt;
+    }
+
+    values[bin->result] = value;
+  }
+
+  return resolve_i32_operand(*block.terminator.value);
+}
+
 struct MinimalConditionalReturnSlice {
   c4c::codegen::lir::LirCmpPredicate predicate = c4c::codegen::lir::LirCmpPredicate::Eq;
   std::int64_t lhs_imm = 0;
@@ -3213,6 +3277,59 @@ parse_minimal_direct_call_two_arg_add_slice(const c4c::backend::BackendModule& m
   };
 }
 
+std::optional<MinimalDirectCallSlice> parse_minimal_direct_call_two_arg_folded_slice(
+    const c4c::backend::BackendModule& module) {
+  if (module.functions.size() != 2) return std::nullopt;
+
+  const auto* main_fn = find_function(module, "main");
+  if (main_fn == nullptr || main_fn->is_declaration ||
+      main_fn->signature.linkage != "define" ||
+      main_fn->signature.return_type != "i32" ||
+      !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
+      main_fn->blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& main_block = main_fn->blocks.front();
+  if (main_block.label != "entry" || main_block.insts.size() != 1 ||
+      !main_block.terminator.value.has_value() ||
+      main_block.terminator.type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto* call = std::get_if<c4c::backend::BackendCallInst>(&main_block.insts.front());
+  const auto parsed_call =
+      call == nullptr ? std::nullopt : c4c::backend::parse_backend_direct_global_typed_call(*call);
+  if (call == nullptr || call->return_type != "i32" || call->result.empty() ||
+      *main_block.terminator.value != call->result || !parsed_call.has_value() ||
+      !c4c::backend::backend_typed_call_matches(
+          parsed_call->typed_call, std::array<std::string_view, 2>{"i32", "i32"})) {
+    return std::nullopt;
+  }
+
+  const auto arg0_imm = parse_i64(parsed_call->typed_call.args[0].operand);
+  const auto arg1_imm = parse_i64(parsed_call->typed_call.args[1].operand);
+  if (!arg0_imm.has_value() || !arg1_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto* callee_fn = find_function(module, parsed_call->symbol_name);
+  if (callee_fn == nullptr || callee_fn->is_declaration ||
+      callee_fn->signature.linkage != "define" ||
+      callee_fn->signature.return_type != "i32" || callee_fn->signature.is_vararg ||
+      callee_fn->blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto callee_imm =
+      fold_minimal_direct_call_two_arg_callee_return(*callee_fn, *arg0_imm, *arg1_imm);
+  if (!callee_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  return MinimalDirectCallSlice{std::string(parsed_call->symbol_name), *callee_imm};
+}
+
 std::optional<MinimalCallCrossingDirectCallSlice>
 parse_minimal_call_crossing_direct_call_slice(
     const c4c::backend::BackendModule& module) {
@@ -4035,6 +4152,10 @@ std::string emit_module(const c4c::backend::BackendModule& module,
         slice.has_value()) {
       return emit_minimal_direct_call_two_arg_add_asm(module, *slice);
     }
+    if (const auto slice = parse_minimal_direct_call_two_arg_folded_slice(module);
+        slice.has_value()) {
+      return emit_minimal_direct_call_asm(module, *slice);
+    }
   } catch (const c4c::backend::LirAdapterError& ex) {
     if (ex.kind() != c4c::backend::LirAdapterErrorKind::Unsupported) {
       throw;
@@ -4151,6 +4272,10 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
     if (const auto slice = parse_minimal_direct_call_two_arg_add_slice(adapted);
         slice.has_value()) {
       return emit_minimal_direct_call_two_arg_add_asm(adapted, *slice);
+    }
+    if (const auto slice = parse_minimal_direct_call_two_arg_folded_slice(adapted);
+        slice.has_value()) {
+      return emit_minimal_direct_call_asm(adapted, *slice);
     }
     if (const auto slice = parse_minimal_countdown_loop_slice(adapted);
         slice.has_value()) {

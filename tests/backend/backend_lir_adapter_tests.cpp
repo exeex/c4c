@@ -3649,6 +3649,46 @@ c4c::codegen::lir::LirModule make_typed_direct_call_two_arg_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_typed_direct_call_two_arg_folded_const_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction helper;
+  helper.name = "foo";
+  helper.signature_text = "define i32 @foo(i32 %p.a, i32 %p.b)\n";
+  helper.entry = LirBlockId{0};
+
+  LirBlock helper_entry;
+  helper_entry.id = LirBlockId{0};
+  helper_entry.label = "entry";
+  helper_entry.insts.push_back(
+      LirBinOp{"%t0", "add", "i32", "2", "%p.a"});
+  helper_entry.insts.push_back(
+      LirBinOp{"%t1", "sub", "i32", "%t0", "%p.b"});
+  helper_entry.terminator = LirRet{std::string("%t1"), "i32"};
+  helper.blocks.push_back(std::move(helper_entry));
+
+  LirFunction main_fn;
+  main_fn.name = "main";
+  main_fn.signature_text = "define i32 @main()\n";
+  main_fn.entry = LirBlockId{0};
+
+  LirBlock main_entry;
+  main_entry.id = LirBlockId{0};
+  main_entry.label = "entry";
+  main_entry.insts.push_back(
+      LirCallOp{"%t0", "i32", "@foo", "(i32, i32)", "i32 1, i32 3"});
+  main_entry.terminator = LirRet{std::string("%t0"), "i32"};
+  main_fn.blocks.push_back(std::move(main_entry));
+
+  module.functions.push_back(std::move(helper));
+  module.functions.push_back(std::move(main_fn));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_typed_direct_call_local_arg_module() {
   using namespace c4c::codegen::lir;
 
@@ -8525,6 +8565,20 @@ void test_aarch64_backend_renders_typed_two_arg_direct_call_slice() {
                   "aarch64 backend should lower the typed two-argument direct call with bl");
 }
 
+void test_aarch64_backend_renders_typed_two_arg_direct_call_folded_const_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_typed_direct_call_two_arg_folded_const_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".type foo, %function",
+                  "aarch64 backend should lower a folded two-argument constant-returning helper into a real function symbol");
+  expect_contains(rendered, "foo:\n  mov w0, #0\n  ret\n",
+                  "aarch64 backend should lower the folded helper return as a direct immediate");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend should keep constant-folded direct calls on the asm path");
+  expect_contains(rendered, "bl foo",
+                  "aarch64 backend should keep the folded two-argument direct call on the asm path");
+}
+
 void test_aarch64_backend_renders_typed_direct_call_local_arg_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_typed_direct_call_local_arg_module()},
@@ -11459,6 +11513,7 @@ int main() {
   test_aarch64_backend_cleans_up_redundant_call_result_traffic_on_call_crossing_slice();
   test_aarch64_backend_keeps_spacing_tolerant_call_crossing_slice_on_asm_path();
   test_aarch64_backend_renders_typed_two_arg_direct_call_slice();
+  test_aarch64_backend_renders_typed_two_arg_direct_call_folded_const_slice();
   test_aarch64_backend_renders_typed_direct_call_local_arg_slice();
   test_aarch64_backend_renders_typed_direct_call_local_arg_spacing_slice();
   test_aarch64_backend_renders_typed_two_arg_direct_call_local_arg_slice();
