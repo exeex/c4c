@@ -9,12 +9,21 @@ Source Plan: plan.md
 - Step 2: Define the backend-owned IR model.
 - Exact target for the next iteration: extend `src/backend/ir.*` past the
   newly covered mixed predecessor/immediate conditional-join slice into the
-  next asymmetric join seam beyond add-only arithmetic, ideally a bounded join
-  where one predecessor stays a direct immediate input, the other contributes
-  predecessor-local typed `sub`, and the join block still applies one bounded
-  typed post-`phi` scalar use so the explicit contract widens without
+  next asymmetric join seam after the bounded mixed predecessor-`sub`
+  plus join-local-add coverage, ideally a bounded join where the
+  predecessor-local side widens beyond single-op immediate arithmetic without
   reopening backend-IR text fallback.
 - Resume notes:
+  - backend-owned IR coverage now proves the bounded
+    compare/branch/join/return slice remains valid when one predecessor
+    computes a typed `i32 sub`, the other contributes a direct immediate `phi`
+    input, and the join block itself applies one bounded typed `i32 add`
+  - both x86 and AArch64 now have focused explicit-backend-IR coverage for
+    that asymmetric predecessor-sub/immediate plus join-local-add shape
+    without falling back to backend-IR text or legacy LIR
+  - the next highest-value asymmetric join seam is widening the
+    predecessor-local side beyond a single immediate arithmetic op while still
+    preserving one bounded join-local scalar use
   - backend-owned IR coverage now proves the bounded
     compare/branch/join/return slice remains valid when one predecessor
     computes a typed `i32 add`, the other contributes a direct immediate `phi`
@@ -114,6 +123,22 @@ Source Plan: plan.md
 
 ## Completed Items
 
+- Verified the current post-change full-suite regression status in
+  `test_fail_after.log`: `93% tests passed`, `183 tests failed out of 2560`
+  (2377 passing), matching the checked `test_fail_before.log` baseline with no
+  newly failing tests.
+- Completed an additional Step 2 mixed predecessor-sub post-`phi` join slice:
+  - added focused backend coverage for the bounded
+    compare/branch/join/return shape where one predecessor computes a typed
+    `i32 sub`, the opposite predecessor contributes a direct immediate `phi`
+    input, and the join block itself applies a bounded typed `i32 add`
+  - verified the existing lowering path preserves that asymmetric
+    predecessor-sub join contract plus the join-local scalar use in backend IR
+    printer/validator coverage instead of only covering add-based predecessor
+    arithmetic
+  - added focused x86 and AArch64 explicit-backend-IR emission tests proving
+    the mixed predecessor-sub/immediate plus join-local-add slice emits
+    directly without backend-IR text fallback
 - Completed an additional Step 2 mixed predecessor/immediate post-`phi` join slice:
   - added focused backend coverage for the bounded
     compare/branch/join/return shape where one predecessor computes a typed
