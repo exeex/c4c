@@ -7,6 +7,11 @@ This file is the umbrella roadmap for the native backend effort.
 It is intentionally not the best direct activation target for `plan.md`.
 Execution should usually activate one of the narrower backend ideas in `ideas/open/`.
 
+Activation note on 2026-03-30:
+
+- a temporary umbrella-backed activation was parked after confirming the previously targeted child `15_backend_aarch64_param_member_array_plan.md` had already been completed and moved to `ideas/closed/`
+- do not recreate or reactivate child `15`; derive the next narrow child from the remaining backend roadmap gaps instead
+
 ## Goal
 
 Port `ref/claudes-c-compiler/src/backend/` to `src/backend/` in C++ and make it consume the existing LIR in `src/codegen/lir/`.
@@ -82,5 +87,7 @@ The broad roadmap ordering above is mostly historical: `01` through `08` already
 The completed `13_backend_aarch64_global_int_pointer_diff_plan.md` child proved bounded scaled pointer subtraction over a mutable global `int` array.
 
 The bounded AArch64 global int-pointer-roundtrip seam from `14_backend_aarch64_global_int_pointer_roundtrip_plan.md` is now closed after promoting that case through the backend-owned asm path.
+
+The `15_backend_aarch64_param_member_array_plan.md` child was already completed and moved to `ideas/closed/` on 2026-03-30.
 
 The next child should be derived from the remaining backend roadmap gaps instead of reactivating the umbrella directly.

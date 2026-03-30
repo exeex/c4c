@@ -2,7 +2,7 @@
 
 ## Status
 
-Open.
+Closed on 2026-03-30.
 
 ## Relationship To Roadmap
 
@@ -49,6 +49,7 @@ Promote the next bounded AArch64 backend-owned runtime seam after the global-add
 
 - Synthetic AArch64 coverage and bounded emission support for the exact `param_member_array` runtime-shaped slice are implemented.
 - `tests/c/internal/backend_case/param_member_array.c` is promoted to `BACKEND_OUTPUT_KIND=asm` and targeted backend/runtime checks passed during execution.
+- The plan was closed after the clean-build regression blocker cleared with no newly failing tests.
 
 ## Current Closure Blocker
 
