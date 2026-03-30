@@ -10,8 +10,8 @@ Source Plan: plan.md
 - Exact target for the next iteration: extend `src/backend/ir.*` past the
   current global-capable subset so more global-address consumers can be emitted
   from lowered backend IR without relying on the optional legacy `LirModule`
-  fallback, starting with bounded pointer-difference / round-trip slices that
-  still parse raw LIR in the target emitters.
+  fallback, continuing with bounded pointer-difference slices after landing the
+  scalar global pointer round-trip canonicalization.
 - Resume notes:
   - canonical emitter-facing IR ownership now lives in `src/backend/ir.hpp`
     and is shared by the new printer/validator layers
@@ -26,8 +26,12 @@ Source Plan: plan.md
     legacy LIR only for still-unlowered target-specific cases
   - lowered backend IR now carries extern declarations as backend declaration
     functions with typed parameter inference from direct call sites
-  - globals, string-pool entities, memory ops, and multi-block control-flow
-    still remain outside the current backend-owned IR model
+  - bounded scalar global pointer round-trips now lower directly into
+    backend-owned global-load IR, so explicit backend IR inputs can emit that
+    slice without `ptrtoint` / `inttoptr` / alloca fallback text
+  - bounded global pointer-difference slices, string-pool entities, broader
+    memory ops, and multi-block control-flow still remain outside the current
+    backend-owned IR model
 
 ## Completed Items
 
@@ -94,3 +98,13 @@ Source Plan: plan.md
   `test_after.log`: `93% tests passed`, `183 tests failed out of 2560`
   (2377 passing), improving the recorded baseline by 5 passing tests with no
   newly failing tests.
+- Completed an additional Step 2 scalar global pointer round-trip slice:
+  - taught `src/backend/lir_adapter.cpp` to canonicalize the bounded
+    `ptrtoint -> spill/reload -> inttoptr -> spill/reload -> load` global
+    round-trip into backend-owned `BackendLoadInst`
+  - added focused backend tests covering lowered round-trip IR printing,
+    validation, and explicit backend-IR emission on x86 and AArch64
+- Verified the current post-change full-suite regression status in
+  `test_after.log`: `93% tests passed`, `183 tests failed out of 2560`
+  (2377 passing), matching the current recorded runbook baseline with no
+  pass-count regression.

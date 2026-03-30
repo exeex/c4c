@@ -1572,6 +1572,81 @@ std::optional<BackendFunction> adapt_direct_global_load_function(
   return out;
 }
 
+std::optional<BackendFunction> adapt_global_int_pointer_roundtrip_function(
+    const c4c::codegen::lir::LirFunction& function,
+    const c4c::codegen::lir::LirModule& module,
+    const BackendFunctionSignature& signature) {
+  using namespace c4c::codegen::lir;
+
+  if (function.is_declaration || signature.linkage != "define" ||
+      signature.return_type != "i32" || signature.name != "main" ||
+      !signature.params.empty() || signature.is_vararg || function.blocks.size() != 1 ||
+      function.alloca_insts.size() != 2 || !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* addr_alloca = std::get_if<LirAllocaOp>(&function.alloca_insts[0]);
+  const auto* ptr_alloca = std::get_if<LirAllocaOp>(&function.alloca_insts[1]);
+  if (addr_alloca == nullptr || ptr_alloca == nullptr ||
+      addr_alloca->result != "%lv.addr" || addr_alloca->type_str != "i64" ||
+      ptr_alloca->result != "%lv.p" || ptr_alloca->type_str != "ptr") {
+    return std::nullopt;
+  }
+
+  const auto& block = function.blocks.front();
+  if (block.label != "entry" || block.insts.size() != 7) {
+    return std::nullopt;
+  }
+
+  const auto* ptrtoint = std::get_if<LirCastOp>(&block.insts[0]);
+  const auto* store_addr = std::get_if<LirStoreOp>(&block.insts[1]);
+  const auto* reload_addr = std::get_if<LirLoadOp>(&block.insts[2]);
+  const auto* inttoptr = std::get_if<LirCastOp>(&block.insts[3]);
+  const auto* store_ptr = std::get_if<LirStoreOp>(&block.insts[4]);
+  const auto* reload_ptr = std::get_if<LirLoadOp>(&block.insts[5]);
+  const auto* final_load = std::get_if<LirLoadOp>(&block.insts[6]);
+  const auto* ret = std::get_if<LirRet>(&block.terminator);
+  if (ptrtoint == nullptr || store_addr == nullptr || reload_addr == nullptr ||
+      inttoptr == nullptr || store_ptr == nullptr || reload_ptr == nullptr ||
+      final_load == nullptr || ret == nullptr || !ret->value_str.has_value() ||
+      *ret->value_str != final_load->result || ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const std::string global_ptr = ptrtoint->operand;
+  if (ptrtoint->kind != LirCastKind::PtrToInt || ptrtoint->from_type != "ptr" ||
+      ptrtoint->to_type != "i64" || global_ptr.size() < 2 || global_ptr.front() != '@') {
+    return std::nullopt;
+  }
+
+  const auto* global = find_lir_global(module, std::string_view(global_ptr).substr(1));
+  if (global == nullptr || global->llvm_type != "i32" || global->is_extern_decl ||
+      final_load->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  if (store_addr->type_str != "i64" || store_addr->val != ptrtoint->result ||
+      store_addr->ptr != addr_alloca->result || reload_addr->type_str != "i64" ||
+      reload_addr->ptr != addr_alloca->result || inttoptr->kind != LirCastKind::IntToPtr ||
+      inttoptr->from_type != "i64" || inttoptr->operand != reload_addr->result ||
+      inttoptr->to_type != "ptr" || store_ptr->type_str != "ptr" ||
+      store_ptr->val != inttoptr->result || store_ptr->ptr != ptr_alloca->result ||
+      reload_ptr->type_str != "ptr" || reload_ptr->ptr != ptr_alloca->result ||
+      final_load->ptr != reload_ptr->result) {
+    return std::nullopt;
+  }
+
+  BackendFunction out;
+  out.signature = signature;
+  BackendBlock out_block;
+  out_block.label = block.label;
+  out_block.insts.push_back(
+      BackendLoadInst{final_load->result, final_load->type_str, BackendAddress{global->name, 0}});
+  out_block.terminator = BackendReturn{*ret->value_str, "i32"};
+  out.blocks.push_back(std::move(out_block));
+  return out;
+}
+
 std::optional<BackendFunction> adapt_indexed_global_array_load_function(
     const c4c::codegen::lir::LirFunction& function,
     const c4c::codegen::lir::LirModule& module,
@@ -1690,6 +1765,11 @@ BackendFunction adapt_function(const c4c::codegen::lir::LirFunction& function,
     return *normalized;
   }
   if (const auto normalized = adapt_direct_global_load_function(function, module, signature);
+      normalized.has_value()) {
+    return *normalized;
+  }
+  if (const auto normalized =
+          adapt_global_int_pointer_roundtrip_function(function, module, signature);
       normalized.has_value()) {
     return *normalized;
   }
