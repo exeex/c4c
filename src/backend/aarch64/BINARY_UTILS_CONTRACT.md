@@ -6,7 +6,7 @@ Status: Active baseline for `ideas/open/04_backend_binary_utils_contract_plan.md
 
 The current C++ port has a narrower active boundary than the reference Rust backend:
 
-1. `src/codegen/llvm/llvm_codegen.cpp` lowers HIR to LIR and routes `--codegen lir` through `backend::emit_module`.
+1. `src/codegen/llvm/llvm_codegen.cpp` lowers HIR to LIR and routes `--codegen asm` through `backend::emit_module`.
 2. `src/backend/backend.cpp` selects the AArch64 backend emitter for `aarch64-*` triples.
 3. `src/backend/aarch64/codegen/emit.cpp` emits GNU-style AArch64 assembly text for the supported fallback slices.
 4. `src/apps/c4cll.cpp` writes that backend output to `-o` or stdout. It does not yet drive `.s -> .o -> executable` inside the app.

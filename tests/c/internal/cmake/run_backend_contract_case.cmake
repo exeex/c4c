@@ -31,7 +31,7 @@ file(MAKE_DIRECTORY "${out_artifact_dir}")
 
 if(has_src)
   execute_process(
-    COMMAND "${COMPILER}" --codegen lir --target "${TARGET_TRIPLE}" "${SRC}" -o "${BACKEND_OUTPUT_PATH}"
+    COMMAND "${COMPILER}" --codegen asm --target "${TARGET_TRIPLE}" "${SRC}" -o "${BACKEND_OUTPUT_PATH}"
     TIMEOUT "${CASE_TIMEOUT_SEC}"
     RESULT_VARIABLE compiler_rc
     OUTPUT_VARIABLE compiler_out

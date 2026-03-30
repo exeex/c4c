@@ -11,13 +11,13 @@ using Module = c4c::hir::Module;
 
 /// Codegen path selection.
 enum class CodegenPath {
-  Legacy,   // HirEmitter (current default)
-  Lir,      // hir_to_lir + lir_printer (stub, under construction)
-  Compare,  // run both, diff output
+  Llvm,     // HirEmitter (current default)
+  Lir,      // hir_to_lir + lir_printer (under construction)
+  Compare,  // run both and compare output
 };
 
 std::string emit_module_native(const Module& mod,
                                std::string_view target_triple,
-                               CodegenPath path = CodegenPath::Legacy);
+                               CodegenPath path = CodegenPath::Llvm);
 
 }  // namespace c4c::codegen::llvm_backend

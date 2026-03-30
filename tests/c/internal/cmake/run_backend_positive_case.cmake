@@ -24,7 +24,7 @@ file(MAKE_DIRECTORY "${out_ll_dir}")
 file(MAKE_DIRECTORY "${out_c2ll_dir}")
 
 execute_process(
-  COMMAND "${COMPILER}" --codegen lir --target "${TARGET_TRIPLE}" "${SRC}" -o "${OUT_LL}"
+  COMMAND "${COMPILER}" --codegen asm --target "${TARGET_TRIPLE}" "${SRC}" -o "${OUT_LL}"
   TIMEOUT "${CASE_TIMEOUT_SEC}"
   RESULT_VARIABLE frontend_rc
   OUTPUT_VARIABLE frontend_out

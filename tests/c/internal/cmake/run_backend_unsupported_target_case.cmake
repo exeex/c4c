@@ -7,7 +7,7 @@ foreach(v COMPILER SRC)
 endforeach()
 
 execute_process(
-  COMMAND "${COMPILER}" --codegen lir --target wasm32-unknown-unknown "${SRC}"
+  COMMAND "${COMPILER}" --codegen asm --target wasm32-unknown-unknown "${SRC}"
   RESULT_VARIABLE rc
   OUTPUT_VARIABLE out
   ERROR_VARIABLE err

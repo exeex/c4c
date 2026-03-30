@@ -36,7 +36,7 @@ std::string emit_module_native(const Module& mod,
                                std::string_view target_triple,
                                CodegenPath path) {
   auto lir_mod = lir::lower(mod);
-  if (path == CodegenPath::Legacy) {
+  if (path == CodegenPath::Llvm) {
     return emit_legacy(lir_mod);
   }
 

@@ -244,7 +244,7 @@ endif()
 if(EXISTS "${EXAMPLE_C}")
   add_test(
       NAME backend_lir_supported_target_entry
-      COMMAND c4cll --codegen lir --target x86_64-unknown-linux-gnu "${EXAMPLE_C}"
+      COMMAND c4cll --codegen asm --target x86_64-unknown-linux-gnu "${EXAMPLE_C}"
   )
   set_tests_properties(backend_lir_supported_target_entry PROPERTIES
       LABELS "internal;backend"

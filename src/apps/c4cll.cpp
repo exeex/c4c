@@ -1,5 +1,6 @@
 #include <cstdio>
 #include <cstdlib>
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -7,6 +8,7 @@
 #include <stdexcept>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <variant>
 
@@ -25,6 +27,110 @@
 
 
 namespace {
+
+bool has_suffix(std::string_view value, std::string_view suffix) {
+  if (value.size() < suffix.size()) return false;
+  return value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+
+bool looks_like_llvm_ir(std::string_view text) {
+  while (!text.empty()) {
+    auto eol = text.find('\n');
+    auto line = (eol == std::string_view::npos) ? text : text.substr(0, eol);
+    while (!line.empty() && std::isspace(static_cast<unsigned char>(line.front()))) {
+      line.remove_prefix(1);
+    }
+
+    if (!line.empty() && line.front() != ';') {
+      if (line.rfind("target datalayout", 0) == 0 ||
+          line.rfind("target triple", 0) == 0 ||
+          line.rfind("source_filename", 0) == 0 ||
+          line.rfind("define ", 0) == 0 ||
+          line.rfind("declare ", 0) == 0 ||
+          line.rfind("attributes ", 0) == 0) {
+        return true;
+      }
+      return false;
+    }
+
+    if (eol == std::string_view::npos) break;
+    text.remove_prefix(eol + 1);
+  }
+  return false;
+}
+
+bool starts_with(std::string_view text, std::string_view prefix) {
+  if (text.size() < prefix.size()) return false;
+  return text.compare(0, prefix.size(), prefix) == 0;
+}
+
+bool reason_already_present(const std::vector<std::string>& reasons,
+                           std::string_view reason) {
+  for (const auto& existing : reasons) {
+    if (existing == reason) return true;
+  }
+  return false;
+}
+
+std::vector<std::string> infer_asm_fallback_reasons(std::string_view ir) {
+  std::vector<std::string> reasons;
+
+  if (ir.find("@llvm.va_start") != std::string_view::npos ||
+      ir.find("@llvm.va_end") != std::string_view::npos ||
+      ir.find(" ...)") != std::string_view::npos) {
+    reasons.push_back("encountered varargs-related lowering pattern");
+  }
+
+  if (ir.find("landingpad") != std::string_view::npos ||
+      ir.find("invoke ") != std::string_view::npos) {
+    reasons.push_back("encountered exception/cleanup constructs");
+  }
+
+  size_t pos = 0;
+  while (true) {
+    auto next = ir.find("declare", pos);
+    if (next == std::string_view::npos) break;
+    auto eol = ir.find('\n', next);
+    auto line = ir.substr(
+        next, eol == std::string_view::npos ? std::string_view::npos : eol - next);
+
+    if (line.find("...") != std::string_view::npos) {
+      auto at = line.find("@");
+      if (at != std::string_view::npos) {
+        auto name_end = line.find('(', at);
+        auto maybe_name = line.substr(at + 1, name_end - (at + 1));
+        if (name_end != std::string_view::npos) {
+          if (starts_with(maybe_name, "llvm.")) {
+            // ignore intrinsic declarations
+          } else {
+            std::string sym = "@" + std::string(maybe_name);
+            if (!reason_already_present(reasons, sym)) {
+              reasons.push_back("declared/used varargs function " + sym +
+                                " may need LLVM-path fallback");
+            }
+          }
+        }
+      }
+    }
+    pos = (eol == std::string_view::npos) ? std::string_view::npos : (eol + 1);
+    if (pos == std::string_view::npos) break;
+  }
+
+  if (reasons.empty()) {
+    reasons.push_back("no specific unsupported pattern was detected in fallback IR");
+  }
+  return reasons;
+}
+
+void print_asm_fallback_hint(std::string_view ir) {
+  auto reasons = infer_asm_fallback_reasons(ir);
+  std::cerr << "error: --codegen asm did not emit assembly for this input and cannot write .s.\n";
+  std::cerr << "       Reason detected in emitted IR:\n";
+  for (const auto& reason : reasons) {
+    std::cerr << "       - " << reason << "\n";
+  }
+  std::cerr << "       Re-run with --codegen llvm if you need IR output.\n";
+}
 
 std::string default_host_target_triple() {
 #if defined(__aarch64__) || defined(_M_ARM64)
@@ -144,7 +250,7 @@ void seed_default_system_include_paths(c4c::SourceProfile source_profile,
 void print_usage(const char *argv0) {
   std::cerr << "usage: " << argv0
             << " [--version] [--pp-only|--lex-only|--parse-only|--dump-hir|--dump-hir-summary|--dump-canonical|--parser-debug]"
-            << " [--target triple] [--codegen legacy|lir|compare]"
+            << " [--codegen llvm|asm|compare]"
             << " [-D macro[=val]] [-U macro] [-I dir] [-iquote dir] [-isystem dir] [-idirafter dir]"
             << " [-O0|-O1|-O2|-O3|-Os] [-fPIC|-fpic] [-fPIE|-fpie]"
             << " [-o output.ll] <input.c>\n";
@@ -198,7 +304,7 @@ int main(int argc, char **argv) {
     bool opt_size  = false; // -Os
     int  pic_level = 0;   // -fPIC=2, -fpic=1
     int  pie_level = 0;   // -fPIE=2, -fpie=1
-    auto codegen_path = c4c::codegen::llvm_backend::CodegenPath::Legacy;
+    auto codegen_path = c4c::codegen::llvm_backend::CodegenPath::Llvm;
 
     for (size_t i = 0; i < args.size(); i++) {
       const std::string& arg = args[i];
@@ -258,15 +364,15 @@ int main(int argc, char **argv) {
         pie_level = 1;
       } else if (arg == "--codegen" && i + 1 < args.size()) {
         const std::string& val = args[++i];
-        if (val == "legacy") {
-          codegen_path = c4c::codegen::llvm_backend::CodegenPath::Legacy;
-        } else if (val == "lir") {
+        if (val == "llvm") {
+          codegen_path = c4c::codegen::llvm_backend::CodegenPath::Llvm;
+        } else if (val == "asm") {
           codegen_path = c4c::codegen::llvm_backend::CodegenPath::Lir;
         } else if (val == "compare") {
           codegen_path = c4c::codegen::llvm_backend::CodegenPath::Compare;
         } else {
           std::cerr << "unknown --codegen value: " << val
-                    << " (expected legacy, lir, or compare)\n";
+                    << " (expected llvm, asm, or compare)\n";
           return 2;
         }
       } else if (!arg.empty() && arg[0] == '-') {
@@ -407,6 +513,13 @@ int main(int argc, char **argv) {
 
     std::string ir = c4c::codegen::llvm_backend::emit_module_native(
         *sema_result.hir_module, target_triple, codegen_path);
+
+    if (codegen_path == c4c::codegen::llvm_backend::CodegenPath::Lir &&
+        looks_like_llvm_ir(ir) &&
+        (output.empty() || has_suffix(output, ".s") || has_suffix(output, ".S"))) {
+      print_asm_fallback_hint(ir);
+      return 2;
+    }
 
     // Write to output file or stdout
     if (!output.empty()) {
