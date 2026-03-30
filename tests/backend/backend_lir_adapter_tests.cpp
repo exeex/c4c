@@ -422,6 +422,28 @@ void test_backend_call_helpers_decode_structured_direct_global_call() {
               "backend-owned call helper should expose structured direct-call metadata without reparsing raw adapter text");
 }
 
+void test_backend_call_helpers_borrow_structured_typed_call_view() {
+  c4c::backend::BackendCallInst call{
+      "%t2",
+      "i32",
+      "%fn.ptr",
+      {" ptr ", " i32 "},
+      {{" ptr ", " %base "}, {" i32 ", " %idx "}},
+      true,
+  };
+
+  const auto parsed = c4c::backend::parse_backend_typed_call(call);
+  expect_true(parsed.has_value() && parsed->param_types.size() == 2 &&
+                  parsed->param_types[0] == " ptr " &&
+                  parsed->param_types[1] == " i32 " &&
+                  parsed->args.size() == 2 &&
+                  parsed->args[0].type == " ptr " &&
+                  parsed->args[0].operand == " %base " &&
+                  parsed->args[1].type == " i32 " &&
+                  parsed->args[1].operand == " %idx ",
+              "backend-owned typed-call view should borrow shared structured metadata directly from owned storage");
+}
+
 void test_lir_typed_wrappers_preserve_legacy_opcode_and_predicate_strings() {
   using namespace c4c::codegen::lir;
 
@@ -8455,6 +8477,7 @@ int main() {
   test_lir_call_arg_helpers_make_typed_call_op();
   test_lir_call_arg_helpers_make_direct_call_op_without_suffix();
   test_backend_call_helpers_decode_structured_direct_global_call();
+  test_backend_call_helpers_borrow_structured_typed_call_view();
   test_lir_typed_wrappers_preserve_legacy_opcode_and_predicate_strings();
   test_lir_typed_wrappers_leave_unknown_opcode_text_compatible();
   test_lir_printer_renders_verified_typed_ops();

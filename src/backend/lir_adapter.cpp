@@ -195,16 +195,6 @@ std::vector<std::string> own_backend_call_param_types(
   return param_types;
 }
 
-std::vector<BackendCallArg> own_backend_call_args(
-    const c4c::codegen::lir::ParsedLirTypedCallView& parsed) {
-  std::vector<BackendCallArg> args;
-  args.reserve(parsed.args.size());
-  for (const auto& arg : parsed.args) {
-    args.push_back({std::string(arg.type), std::string(arg.operand)});
-  }
-  return args;
-}
-
 BackendCallInst make_backend_call_inst(std::string result,
                                        std::string return_type,
                                        std::string callee,
@@ -215,7 +205,7 @@ BackendCallInst make_backend_call_inst(std::string result,
       std::move(return_type),
       std::move(callee),
       own_backend_call_param_types(parsed),
-      own_backend_call_args(parsed),
+      c4c::codegen::lir::own_lir_typed_call_args(parsed),
       render_callee_type_suffix,
   };
 }
@@ -1556,11 +1546,6 @@ void render_inst(std::ostringstream& out, const BackendInst& inst) {
   out << "  ";
   if (!call->result.empty()) out << call->result << " = ";
   out << "call " << call->return_type << " ";
-  std::vector<c4c::codegen::lir::OwnedLirTypedCallArg> args;
-  args.reserve(call->args.size());
-  for (const auto& arg : call->args) {
-    args.push_back({arg.type_str, arg.operand});
-  }
   const auto callee_type_suffix =
       call->render_callee_type_suffix
           ? c4c::codegen::lir::format_lir_call_param_types(call->param_types)
@@ -1568,7 +1553,7 @@ void render_inst(std::ostringstream& out, const BackendInst& inst) {
   out << c4c::codegen::lir::format_lir_call_site(
              call->callee,
              callee_type_suffix,
-             c4c::codegen::lir::format_lir_typed_call_args(args))
+             c4c::codegen::lir::format_lir_typed_call_args(call->args))
       << "\n";
 }
 
@@ -1646,16 +1631,7 @@ parse_backend_direct_global_typed_call(const c4c::codegen::lir::LirCallOp& call)
 
 std::optional<ParsedBackendTypedCallView> parse_backend_typed_call(
     const BackendCallInst& call) {
-  ParsedBackendTypedCallView parsed;
-  parsed.param_types.reserve(call.param_types.size());
-  for (const auto& type : call.param_types) {
-    parsed.param_types.push_back(type);
-  }
-  parsed.args.reserve(call.args.size());
-  for (const auto& arg : call.args) {
-    parsed.args.push_back({arg.type_str, arg.operand});
-  }
-  return parsed;
+  return c4c::codegen::lir::borrow_lir_typed_call(call.param_types, call.args);
 }
 
 std::optional<ParsedBackendDirectGlobalTypedCallView> parse_backend_direct_global_typed_call(

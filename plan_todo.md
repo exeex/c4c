@@ -8,27 +8,38 @@ Source Plan: plan.md
 
 - Step 4: Migrate high-friction instruction families and consumers.
 - Exact target for the next iteration: continue Step 4 past the landed
-  adapter/local-call cleanup into any remaining backend or persistence seams
-  outside the shared formatter/parser helper layer that still retain typed
-  call metadata as open-coded text.
-- Iteration focus: inspect the remaining backend-side fallback and persistence
-  paths that still parse or preserve call-adjacent text directly after the
-  adapter render/local-normalization cleanup, and either route them through
-  the shared typed call parser/formatter helpers or record them as explicit
-  follow-on debt if they are not worth migrating in this runbook.
-- Next iteration's slice: inspect the remaining backend-owned call persistence
-  and render seams for any call-shape recovery that still lives outside
-  `src/codegen/lir/call_args.hpp`, especially residual indirect/intrinsic
-  compatibility branches that may still be reconstructing typed metadata from
-  backend-owned storage instead of shared parsed views.
+  adapter/backend-owned call-view cleanup into the remaining LIR persistence
+  seams that still store typed call metadata only as raw
+  `LirCallOp::{callee_type_suffix,args_str}` text.
+- Iteration focus: inspect the remaining LIR serialization and persistence
+  paths after the backend-owned call-view cleanup, especially
+  `src/codegen/lir/ir.hpp` and `src/codegen/lir/hir_to_lir.cpp`, and either
+  route any reusable typed call ownership/view logic through
+  `src/codegen/lir/call_args.hpp` or record explicit follow-on debt where the
+  raw textual surface must remain temporarily.
+- Next iteration's slice: audit the remaining LIR-side call persistence seams
+  for any duplicated ownership, render, or parse logic that still sits outside
+  `src/codegen/lir/call_args.hpp`, with priority on serialization/deserialization
+  code that may still reconstruct typed call shape from raw text.
 - Exact target for the next iteration after this slice: continue Step 4 into
-  the remaining LIR/backend call and serialization paths that still treat
-  typed call metadata as ad hoc text, especially residual fallback render or
-  persistence seams that have not yet been switched to the shared
-  formatter/parser layer.
+  the residual non-backend call storage/render paths that still treat typed
+  call metadata as ad hoc text instead of shared typed views.
 
 ## Completed Items
 
+- Completed the next Step 4 backend-owned typed-call view cleanup slice by
+  adding `borrow_lir_typed_call(...)` to
+  `src/codegen/lir/call_args.hpp`, collapsing
+  `src/backend/lir_adapter.hpp`'s backend-owned typed-call argument/view layer
+  onto the shared `OwnedLirTypedCallArg` / `ParsedLirTypedCallView` types,
+  routing `src/backend/lir_adapter.cpp`'s backend-owned typed-call parse and
+  render helpers through those shared ownership/view helpers instead of
+  rebuilding a backend-private parsed view, adding focused regression coverage
+  in `tests/backend/backend_lir_adapter_tests.cpp` for borrowed structured
+  backend call metadata, and verifying the slice with
+  `./build/backend_lir_adapter_tests` plus the monotonic regression guard on
+  `test_fail_before.log` vs `test_fail_after.log`, which passed at
+  `2371 -> 2372` passes with zero new failing tests.
 - Completed the next Step 4 backend call fallback cleanup slice by adding
   `parse_lir_typed_call_or_infer_params(...)` to
   `src/codegen/lir/call_args.hpp`, routing

@@ -313,6 +313,21 @@ inline std::vector<OwnedLirTypedCallArg> own_lir_typed_call_args(
   return owned_args;
 }
 
+inline ParsedLirTypedCallView borrow_lir_typed_call(
+    const std::vector<std::string>& param_types,
+    const std::vector<OwnedLirTypedCallArg>& args) {
+  ParsedLirTypedCallView borrowed;
+  borrowed.param_types.reserve(param_types.size());
+  for (const auto& type : param_types) {
+    borrowed.param_types.push_back(type);
+  }
+  borrowed.args.reserve(args.size());
+  for (const auto& arg : args) {
+    borrowed.args.push_back({arg.type, arg.operand});
+  }
+  return borrowed;
+}
+
 inline std::string format_lir_call_param_types(
     const std::vector<std::string>& param_types) {
   std::string formatted("(");

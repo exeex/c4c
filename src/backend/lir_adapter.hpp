@@ -58,10 +58,7 @@ struct BackendBinaryInst {
   std::string rhs;
 };
 
-struct BackendCallArg {
-  std::string type_str;
-  std::string operand;
-};
+using BackendCallArg = c4c::codegen::lir::OwnedLirTypedCallArg;
 
 struct BackendCallInst {
   std::string result;
@@ -98,15 +95,8 @@ struct BackendModule {
   std::vector<BackendFunction> functions;
 };
 
-struct BackendTypedCallArgView {
-  std::string_view type_str;
-  std::string_view operand;
-};
-
-struct ParsedBackendTypedCallView {
-  std::vector<std::string_view> param_types;
-  std::vector<BackendTypedCallArgView> args;
-};
+using BackendTypedCallArgView = c4c::codegen::lir::LirTypedCallArgView;
+using ParsedBackendTypedCallView = c4c::codegen::lir::ParsedLirTypedCallView;
 
 struct ParsedBackendDirectGlobalTypedCallView {
   std::string_view symbol_name;
