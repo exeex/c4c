@@ -78,6 +78,30 @@ Update central dispatch so:
 - delete or quarantine `src/backend/lir_adapter.cpp` once no production path
   depends on it
 
+## Resume Notes After `38`
+
+The emitter migration should assume the typed-LIR cleanup is done enough that
+new emitter work must not add fresh LIR string decoding. The remaining adapter
+helpers are transition seams only:
+
+- x86 and AArch64 still use shared
+  `src/backend/lir_adapter.hpp` direct-global typed-call helpers for residual
+  call fast paths; migrate those call sites to backend-ready IR operands rather
+  than expanding the helper matrix
+- shared typed-call formatting/parsing in `src/codegen/lir/call_args.hpp`
+  defines the canonical legacy-call shape and should be treated as an ingress
+  shim, not a target-emitter contract
+- any emitter-local behavior that still depends on legacy call text rendering
+  should move behind the backend-ready IR lowering boundary before new backend
+  features land
+
+Deletion targets inherited from `38`:
+
+- remove production dependence on `src/backend/lir_adapter.cpp`
+- remove emitter dependence on `parse_backend_*typed_call*` helper seams
+- remove backend-owned call render compatibility flags once emitters consume
+  backend IR call structures directly
+
 ## Reference Files
 
 Use these reference files to shape shared backend-vs-target responsibilities:

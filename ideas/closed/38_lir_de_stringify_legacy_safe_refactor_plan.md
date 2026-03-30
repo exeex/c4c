@@ -2,7 +2,7 @@
 
 ## Status
 
-Open as of 2026-03-29.
+Completed on 2026-03-30 and ready for archive.
 
 ## Relationship To Roadmap
 
@@ -165,3 +165,29 @@ Use local files as migration references for the legacy path:
 This idea is complete when LIR is once again a structured IR instead of a
 mixed text protocol, the legacy LLVM path still works, and follow-on backend IR
 work can build on typed LIR rather than string-heavy shims.
+
+## Completion Notes
+
+Completed work established a typed-LIR compatibility layer without breaking the
+legacy LLVM printer path:
+
+- typed operand/type/opcode/predicate wrappers landed in `src/codegen/lir`
+  and now back the main arithmetic/comparison backend consumers
+- shared typed-call parse/format/rewrite helpers in
+  `src/codegen/lir/call_args.hpp` replaced repeated ad hoc call-string decoding
+  across LIR construction, printing, analysis, and backend adapter code
+- x86/AArch64 residual direct-call fast paths now use the shared
+  `src/backend/lir_adapter.hpp` helper seams rather than emitter-local typed
+  call text decoding
+
+Leftover compatibility debt intentionally deferred to ideas `35`, `36`, and
+`37`:
+
+- `src/codegen/lir/ir.hpp` still carries
+  `LirCallOp::{callee_type_suffix,args_str}` and
+  `LirInlineAsmOp::args_str` for legacy-print/render compatibility
+- `src/backend/lir_adapter.{hpp,cpp}` remains a transition shim and should be
+  retired once backend-ready IR lowering owns production ingestion
+- `BackendCallInst::render_callee_type_suffix` still preserves a legacy backend
+  render shape and should disappear when emitters stop consuming adapter-owned
+  calls

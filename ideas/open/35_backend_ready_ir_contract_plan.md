@@ -53,6 +53,37 @@ surface still leaks too many string-carried semantics into both the legacy LLVM
 printer path and backend ingestion. Resume this idea after `38` has established
 typed LIR operands/types and a legacy-safe migration path.
 
+## Resume Notes After `38`
+
+`38` is now complete enough for this contract work to resume. Treat the
+following helper surface as the stable compatibility boundary coming out of the
+typed-LIR migration:
+
+- `src/codegen/lir/call_args.hpp` owns shared typed-call parsing, formatting,
+  operand rewrite, and direct-global callee classification helpers.
+- `src/backend/lir_adapter.hpp` owns the transition-only shared backend call
+  matcher layer for direct-global zero/single/two-operand and dynamic typed
+  calls.
+- arithmetic and comparison opcode/predicate semantics should continue to flow
+  through the typed LIR wrappers already introduced in `src/codegen/lir/ir.hpp`
+  instead of reopening raw string dispatch.
+
+This idea should not introduce new backend-owned string protocols to work
+around the remaining legacy call text fields. Instead, define the backend-ready
+IR contract so it can ingest the typed helper views directly and make deletion
+of the compatibility seams explicit.
+
+Compatibility debt left by `38` that this idea should plan to retire:
+
+- `src/codegen/lir/ir.hpp` still carries
+  `LirCallOp::{callee_type_suffix,args_str}` for legacy LLVM-printing
+  compatibility.
+- `src/backend/lir_adapter.hpp` and `src/backend/lir_adapter.cpp` remain
+  transition-only ingestion shims, not the long-term backend contract.
+- `BackendCallInst::render_callee_type_suffix` still exists to preserve legacy
+  backend-owned call rendering shape and should not survive the backend-ready
+  IR boundary.
+
 ## Primary Scope
 
 - `src/backend/backend.hpp`

@@ -81,6 +81,27 @@ Expected lowering pipeline inside `lower_to_backend_ir(...)`:
 5. materialize structured calls, branches, compares, and returns
 6. validate the result before emitter entry
 
+## Resume Notes After `38`
+
+`38` left a usable typed-LIR call/operand compatibility layer that this
+lowering work should consume instead of re-parsing raw call text ad hoc:
+
+- prefer `src/codegen/lir/call_args.hpp` for typed-call parse/format/rewrite
+  helpers, direct-global callee detection, and operand/global-ref collection
+  during lowering
+- use the typed opcode/predicate wrappers already attached to LIR ops instead
+  of reintroducing backend-local string dispatch for arithmetic or comparisons
+- treat `src/backend/lir_adapter.hpp`'s `parse_backend_*typed_call*` helpers as
+  temporary reference behavior while the lowering pipeline replaces the adapter
+
+This idea should explicitly delete the remaining compatibility-path seams once
+equivalent backend-ready IR materialization exists:
+
+- `LirCallOp::{callee_type_suffix,args_str}`-driven lowering fallback
+- backend adapter shape recognition that still produces `BackendCallInst`
+- legacy backend-owned call render-shape preservation via
+  `BackendCallInst::render_callee_type_suffix`
+
 ## Required Behavior
 
 The new lowering layer must handle at least:
