@@ -1,5 +1,6 @@
 #include "backend.hpp"
 #include "aarch64/codegen/emit.hpp"
+#include "lir_adapter.hpp"
 #include "x86/codegen/emit.hpp"
 
 #include "../codegen/lir/lir_printer.hpp"
@@ -52,6 +53,10 @@ std::unique_ptr<BackendEmitter> make_backend(Target target) {
 }
 
 }  // namespace
+
+BackendModule lower_to_backend_ir(const c4c::codegen::lir::LirModule& module) {
+  return adapt_minimal_module(module);
+}
 
 std::string emit_module(const BackendModuleInput& input,
                         const BackendOptions& options) {

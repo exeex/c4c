@@ -6,19 +6,21 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 1: Audit the current backend ingress contract.
-- Exact target for the next iteration: inventory the current adapter-owned
-  backend abstractions and record which emitter/backend call paths still depend
-  on transition-only helper seams inherited from `38`.
-- Iteration focus: read `src/backend/lir_adapter.{hpp,cpp}`,
-  `src/backend/backend.cpp`, and the x86/AArch64 emitter entry points, then
-  classify which semantics already have a stable typed-LIR input and which must
-  become backend-owned IR entities.
-- Next iteration's slice: write the audit findings into `plan_todo.md` and
-  identify the minimum backend IR entity set required for the first `ir.hpp`
-  pass.
-- Exact target for the next iteration after this slice: start Step 2 by
-  introducing the narrowest compilable backend IR model plus focused tests.
+- Step 2: Define the backend-owned IR model.
+- Exact target for the next iteration: extend the new `src/backend/ir.*`
+  contract beyond the current minimal binary/call/return subset and start
+  moving backend dispatch toward consuming `lower_to_backend_ir(...)`
+  directly instead of exposing a raw `LirModule` boundary.
+- Resume notes:
+  - canonical emitter-facing IR ownership now lives in `src/backend/ir.hpp`
+    and is shared by the new printer/validator layers
+  - `src/backend/lir_adapter.{hpp,cpp}` is now a transition-only lowering shim
+    plus compatibility alias surface (`render_module(...)`)
+  - `src/backend/backend.hpp` exposes `lower_to_backend_ir(...)`, but
+    `emit_module(...)` still dispatches raw `LirModule` into target emitters
+  - the current backend IR still only models the existing minimal binary/call
+    instruction subset plus return terminators; globals, externs, memory, and
+    multi-block control-flow remain for later slices
 
 ## Completed Items
 
@@ -28,3 +30,19 @@ Source Plan: plan.md
 - Preserved the `38` handoff contract in ideas `35`, `36`, and `37`, including
   the stable typed-LIR helper surface and the remaining adapter compatibility
   seams that the backend-ready IR work must retire.
+- Completed the Step 1 audit of the current backend ingress surface:
+  the public backend entry still takes `LirModule`, but the effective
+  emitter-owned contract is the `Backend*` IR family currently declared in
+  `src/backend/lir_adapter.hpp`.
+- Landed the first Step 2 backend-owned IR slice:
+  - added `src/backend/ir.hpp/.cpp`, `src/backend/ir_printer.hpp/.cpp`, and
+    `src/backend/ir_validate.hpp/.cpp`
+  - moved the emitter-facing `Backend*` IR type ownership out of
+    `src/backend/lir_adapter.hpp`
+  - added the explicit `lower_to_backend_ir(...)` API to
+    `src/backend/backend.hpp`
+  - added focused backend tests covering printer output, validator success, and
+    validator rejection of malformed IR
+- Verified regression status after a clean rebuild:
+  `test_before.log` and `test_after.log` both report `93% tests passed`,
+  `188 tests failed out of 2560` (2372 passing), with no pass-count regression.

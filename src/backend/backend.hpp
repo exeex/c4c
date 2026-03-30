@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ir.hpp"
 #include <string>
 
 #include "target.hpp"
@@ -18,6 +19,7 @@ struct BackendOptions {
   Target target;
 };
 
+BackendModule lower_to_backend_ir(const c4c::codegen::lir::LirModule& module);
 std::string emit_module(const BackendModuleInput& input,
                         const BackendOptions& options);
 

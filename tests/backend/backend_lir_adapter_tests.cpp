@@ -1,5 +1,7 @@
 #include "backend.hpp"
 #include "generation.hpp"
+#include "ir_printer.hpp"
+#include "ir_validate.hpp"
 #include "liveness.hpp"
 #include "lir_adapter.hpp"
 #include "regalloc.hpp"
@@ -4519,6 +4521,39 @@ void test_renders_return_add() {
                   "adapter renderer should emit the adapted return");
 }
 
+void test_backend_ir_printer_renders_return_add() {
+  const auto lowered = c4c::backend::lower_to_backend_ir(make_return_add_module());
+  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  expect_contains(rendered, "%t0 = add i32 2, 3",
+                  "backend IR printer should render the lowered add instruction");
+  expect_contains(rendered, "ret i32 %t0",
+                  "backend IR printer should render the lowered return");
+}
+
+void test_backend_ir_validator_accepts_lowered_slice() {
+  const auto lowered = c4c::backend::lower_to_backend_ir(make_return_add_module());
+  std::string error;
+  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should accept a lowered minimal slice");
+  expect_true(error.empty(),
+              "backend IR validator should not report an error for a valid module");
+}
+
+void test_backend_ir_validator_rejects_definition_without_blocks() {
+  c4c::backend::BackendModule module;
+  c4c::backend::BackendFunction function;
+  function.signature.linkage = "define";
+  function.signature.return_type = "i32";
+  function.signature.name = "main";
+  module.functions.push_back(function);
+
+  std::string error;
+  expect_true(!c4c::backend::validate_backend_ir(module, &error),
+              "backend IR validator should reject definitions without blocks");
+  expect_contains(error, "definitions must have at least one block",
+                  "backend IR validator should explain the malformed definition");
+}
+
 void test_adapter_normalizes_typed_direct_call_helper_slice() {
   const auto adapted = c4c::backend::adapt_minimal_module(make_typed_direct_call_module());
   const auto rendered = c4c::backend::render_module(adapted);
@@ -8691,6 +8726,9 @@ int main() {
   test_lir_printer_rejects_malformed_typed_binary_surface();
   test_adapts_direct_return();
   test_renders_return_add();
+  test_backend_ir_printer_renders_return_add();
+  test_backend_ir_validator_accepts_lowered_slice();
+  test_backend_ir_validator_rejects_definition_without_blocks();
   test_adapter_normalizes_typed_direct_call_helper_slice();
   test_adapter_normalizes_local_temp_return_slice();
   test_adapter_normalizes_local_temp_sub_return_slice();
