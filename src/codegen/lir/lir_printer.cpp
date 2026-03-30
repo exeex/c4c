@@ -221,12 +221,11 @@ void render_inst(std::ostringstream& os, const LirInst& inst) {
          << " = ";
     }
     os << "call " << require_type_ref(op->return_type, "LirCallOp.return_type", true) << " ";
-    os << format_lir_call_site(
-              require_operand_kind(op->callee, "LirCallOp.callee",
-                                   {LirOperandKind::SsaValue, LirOperandKind::Global}),
-              op->callee_type_suffix,
-              op->args_str)
-       << "\n";
+    LirCallOp validated = *op;
+    validated.callee = require_operand_kind(op->callee, "LirCallOp.callee",
+                                            {LirOperandKind::SsaValue,
+                                             LirOperandKind::Global});
+    os << format_lir_call_site(validated) << "\n";
   } else if (const auto* op = std::get_if<LirBinOp>(&inst)) {
     os << "  "
        << require_operand_kind(op->result, "LirBinOp.result",

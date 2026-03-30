@@ -8,25 +8,40 @@ Source Plan: plan.md
 
 - Step 4: Migrate high-friction instruction families and consumers.
 - Exact target for the next iteration: continue Step 4 past the landed
-  adapter/backend-owned call-view cleanup into the remaining LIR persistence
-  seams that still store typed call metadata only as raw
-  `LirCallOp::{callee_type_suffix,args_str}` text.
-- Iteration focus: inspect the remaining LIR serialization and persistence
-  paths after the backend-owned call-view cleanup, especially
-  `src/codegen/lir/ir.hpp` and `src/codegen/lir/hir_to_lir.cpp`, and either
-  route any reusable typed call ownership/view logic through
-  `src/codegen/lir/call_args.hpp` or record explicit follow-on debt where the
-  raw textual surface must remain temporarily.
-- Next iteration's slice: audit the remaining LIR-side call persistence seams
-  for any duplicated ownership, render, or parse logic that still sits outside
-  `src/codegen/lir/call_args.hpp`, with priority on serialization/deserialization
-  code that may still reconstruct typed call shape from raw text.
+  LIR-side call-op helper cleanup into the residual non-backend consumers that
+  still thread `LirCallOp::{callee,callee_type_suffix,args_str}` manually.
+- Iteration focus: audit the remaining stack-layout and liveness call
+  consumers, plus any uncovered LIR-side helper seams, and route them through
+  `src/codegen/lir/call_args.hpp` call-op-level helpers where that removes
+  duplicated call-field threading without widening scope beyond Step 4.
+- Next iteration's slice: inspect
+  `src/backend/stack_layout/{analysis.cpp,alloca_coalescing.cpp,slot_assignment.cpp}`
+  and `src/backend/liveness.cpp` for any remaining manual triple-field call
+  handling that should move to shared `LirCallOp`-aware helpers.
 - Exact target for the next iteration after this slice: continue Step 4 into
-  the residual non-backend call storage/render paths that still treat typed
-  call metadata as ad hoc text instead of shared typed views.
+  any remaining non-backend storage/render surfaces that still treat typed call
+  metadata as ad hoc text instead of shared typed views.
 
 ## Completed Items
 
+- Completed the next Step 4 LIR-side call-op helper cleanup slice by adding
+  `LirCallOp`-aware parse/format/rewrite/global-ref helper overloads in
+  `src/codegen/lir/call_args.hpp`, routing
+  `src/codegen/lir/hir_to_lir.cpp`,
+  `src/codegen/lir/lir_printer.cpp`, and
+  `src/backend/lir_adapter.cpp` through those shared call-op helpers instead
+  of manually threading `(callee, callee_type_suffix, args_str)` triples, and
+  adding focused regression coverage in
+  `tests/backend/backend_lir_adapter_tests.cpp` for direct call-op parsing,
+  canonical call-op formatting, and quoted global-reference collection during
+  LIR persistence scans.
+- Verified this slice with `./build/backend_lir_adapter_tests`, then
+  `ctest --test-dir build -j8 --output-on-failure > test_after.log`, and the
+  regression guard
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
+  --before test_fail_before.log --after test_after.log`, which passed at
+  `2371 -> 2372` passes with zero new failing tests and one resolved failing
+  test (`c_testsuite_x86_backend_src_00100_c`).
 - Completed the next Step 4 backend-owned typed-call view cleanup slice by
   adding `borrow_lir_typed_call(...)` to
   `src/codegen/lir/call_args.hpp`, collapsing

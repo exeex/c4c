@@ -404,6 +404,45 @@ void test_lir_call_arg_helpers_make_direct_call_op_without_suffix() {
               "shared typed-call builder should canonicalize empty-suffix direct-call metadata for special intrinsic call sites");
 }
 
+void test_lir_call_arg_helpers_parse_and_format_call_op_views() {
+  using namespace c4c::codegen::lir;
+
+  const auto call = make_lir_call_op(
+      "%t0",
+      " i32 ",
+      " @add_pair ",
+      " ( i32 , i32 ) ",
+      {{" i32 ", " %lhs "}, {" i32 ", " %rhs "}});
+  const auto parsed = parse_lir_direct_global_typed_call(call);
+
+  expect_true(parsed.has_value() && parsed->symbol_name == "add_pair" &&
+                  parsed->typed_call.args.size() == 2 &&
+                  parsed->typed_call.args[0].operand == "%lhs" &&
+                  parsed->typed_call.args[1].operand == "%rhs",
+              "shared call-op direct-global parser should recover structured call metadata from canonical LIR call storage");
+  expect_true(format_lir_call_site(call) == "(i32, i32) @add_pair(i32 %lhs, i32 %rhs)",
+              "shared call-op formatter should render canonical call text directly from LIR call storage");
+}
+
+void test_lir_call_arg_helpers_collect_call_op_global_refs() {
+  using namespace c4c::codegen::lir;
+
+  const LirCallOp call{
+      "",
+      "void",
+      "@\"helper.func\"",
+      "(ptr)",
+      "ptr @\"global.data\"",
+  };
+  std::vector<std::string> refs;
+  collect_lir_global_symbol_refs_from_call(
+      call, [&](std::string_view ref) { refs.emplace_back(ref); });
+
+  expect_true(refs.size() == 2 && refs[0] == "\"helper.func\"" &&
+                  refs[1] == "\"global.data\"",
+              "shared call-op global-ref collector should preserve quoted callee and argument symbol references for LIR persistence scans");
+}
+
 void test_backend_call_helpers_decode_structured_direct_global_call() {
   c4c::backend::BackendCallInst call{
       "%t0",
@@ -8476,6 +8515,8 @@ int main() {
   test_lir_call_arg_helpers_format_call_fields_with_suffix();
   test_lir_call_arg_helpers_make_typed_call_op();
   test_lir_call_arg_helpers_make_direct_call_op_without_suffix();
+  test_lir_call_arg_helpers_parse_and_format_call_op_views();
+  test_lir_call_arg_helpers_collect_call_op_global_refs();
   test_backend_call_helpers_decode_structured_direct_global_call();
   test_backend_call_helpers_borrow_structured_typed_call_view();
   test_lir_typed_wrappers_preserve_legacy_opcode_and_predicate_strings();

@@ -212,8 +212,7 @@ BackendCallInst make_backend_call_inst(std::string result,
 
 std::optional<c4c::codegen::lir::ParsedLirTypedCallView> parse_backend_source_typed_call(
     const c4c::codegen::lir::LirCallOp& call) {
-  return c4c::codegen::lir::parse_lir_typed_call_or_infer_params(
-      call.callee_type_suffix, call.args_str);
+  return c4c::codegen::lir::parse_lir_typed_call_or_infer_params(call);
 }
 
 BackendInst adapt_inst(const c4c::codegen::lir::LirInst& inst) {
@@ -1617,16 +1616,7 @@ std::string render_module(const BackendModule& module) {
 
 std::optional<c4c::codegen::lir::ParsedLirDirectGlobalTypedCallView>
 parse_backend_direct_global_typed_call(const c4c::codegen::lir::LirCallOp& call) {
-  const auto symbol_name = c4c::codegen::lir::parse_lir_direct_global_callee(call.callee);
-  if (!symbol_name.has_value()) {
-    return std::nullopt;
-  }
-  const auto typed_call = parse_backend_source_typed_call(call);
-  if (!typed_call.has_value()) {
-    return std::nullopt;
-  }
-  return c4c::codegen::lir::ParsedLirDirectGlobalTypedCallView{*symbol_name,
-                                                               std::move(*typed_call)};
+  return c4c::codegen::lir::parse_lir_direct_global_typed_call(call);
 }
 
 std::optional<ParsedBackendTypedCallView> parse_backend_typed_call(
