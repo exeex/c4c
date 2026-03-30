@@ -4416,6 +4416,18 @@ void test_adapter_normalizes_typed_direct_call_local_arg_spacing_slice() {
                   "adapter should normalize local slot direct-call arguments even when compatibility spacing varies");
 }
 
+void test_adapter_normalizes_typed_direct_call_local_arg_without_suffix_slice() {
+  auto module = make_typed_direct_call_local_arg_with_spacing_module();
+  auto& call = std::get<c4c::codegen::lir::LirCallOp>(
+      module.functions.back().blocks.front().insts.back());
+  call.callee_type_suffix.clear();
+
+  const auto adapted = c4c::backend::adapt_minimal_module(module);
+  const auto rendered = c4c::backend::render_module(adapted);
+  expect_contains(rendered, "call i32 (i32) @add_one(i32 5)",
+                  "adapter should infer backend call param types from typed args when local direct-call compatibility suffixes are absent");
+}
+
 void test_adapter_canonicalizes_backend_owned_direct_call_rendering() {
   auto module = make_typed_direct_call_module();
   auto& call = std::get<c4c::codegen::lir::LirCallOp>(
@@ -8444,6 +8456,7 @@ int main() {
   test_adapter_preserves_typed_two_arg_direct_call_helper_slice();
   test_adapter_normalizes_typed_direct_call_local_arg_slice();
   test_adapter_normalizes_typed_direct_call_local_arg_spacing_slice();
+  test_adapter_normalizes_typed_direct_call_local_arg_without_suffix_slice();
   test_adapter_canonicalizes_backend_owned_direct_call_rendering();
   test_adapter_normalizes_typed_two_arg_direct_call_local_arg_slice();
   test_adapter_normalizes_typed_two_arg_direct_call_local_arg_spacing_slice();

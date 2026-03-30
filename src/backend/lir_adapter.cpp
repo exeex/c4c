@@ -1198,8 +1198,7 @@ std::optional<BackendFunction> adapt_local_single_arg_call_function(
     return std::nullopt;
   }
 
-  const auto parsed_call =
-      c4c::codegen::lir::parse_lir_typed_call(call->callee_type_suffix, call->args_str);
+  const auto parsed_call = parse_backend_source_typed_call(*call);
   if (!parsed_call.has_value() || parsed_call->param_types.size() != 1 ||
       parsed_call->param_types.front() != "i32" || parsed_call->args.size() != 1 ||
       parsed_call->args.front().operand != load->result) {
@@ -1298,8 +1297,7 @@ std::optional<BackendFunction> adapt_local_two_arg_call_function(
       return std::nullopt;
     }
 
-    const auto parsed_call =
-        c4c::codegen::lir::parse_lir_typed_call(call->callee_type_suffix, call->args_str);
+    const auto parsed_call = parse_backend_source_typed_call(*call);
     if (!parsed_call.has_value() || parsed_call->param_types.size() != 2 ||
         parsed_call->param_types[0] != "i32" || parsed_call->param_types[1] != "i32" ||
         parsed_call->args.size() != 2) {
@@ -1450,8 +1448,7 @@ std::optional<BackendFunction> adapt_local_two_arg_call_function(
       return std::nullopt;
     }
 
-    const auto parsed_call =
-        c4c::codegen::lir::parse_lir_typed_call(call->callee_type_suffix, call->args_str);
+    const auto parsed_call = parse_backend_source_typed_call(*call);
     if (!parsed_call.has_value() || parsed_call->param_types.size() != 2 ||
         parsed_call->param_types[0] != "i32" || parsed_call->param_types[1] != "i32" ||
         parsed_call->args.size() != 2 ||
@@ -1578,16 +1575,20 @@ void render_inst(std::ostringstream& out, const BackendInst& inst) {
   out << "  ";
   if (!call->result.empty()) out << call->result << " = ";
   out << "call " << call->return_type << " ";
-  if (call->render_callee_type_suffix) {
-    out << c4c::codegen::lir::format_lir_call_param_types(call->param_types) << " ";
-  }
   std::vector<c4c::codegen::lir::OwnedLirTypedCallArg> args;
   args.reserve(call->args.size());
   for (const auto& arg : call->args) {
     args.push_back({arg.type_str, arg.operand});
   }
-  out << call->callee << "(" << c4c::codegen::lir::format_lir_typed_call_args(args)
-      << ")\n";
+  const auto callee_type_suffix =
+      call->render_callee_type_suffix
+          ? c4c::codegen::lir::format_lir_call_param_types(call->param_types)
+          : std::string{};
+  out << c4c::codegen::lir::format_lir_call_site(
+             call->callee,
+             callee_type_suffix,
+             c4c::codegen::lir::format_lir_typed_call_args(args))
+      << "\n";
 }
 
 void render_function(std::ostringstream& out, const BackendFunction& function) {

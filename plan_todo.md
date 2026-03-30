@@ -8,22 +8,34 @@ Source Plan: plan.md
 
 - Step 4: Migrate high-friction instruction families and consumers.
 - Exact target for the next iteration: continue Step 4 past the landed
-  ptrmask/special-call cleanup into any remaining LIR-side call builders or
-  persistence seams outside the generic stmt-emitter helper path that still
-  treat typed call metadata as ad hoc text.
-- Iteration focus: continue inspecting the remaining `LirCallOp` producers and
-  call-adjacent metadata readers outside the generic stmt-emitter path after
-  the dead-internal elimination scan cleanup, and route any still-open
-  construction or preservation path through the shared typed call
-  parser/formatter layer.
+  adapter/local-call cleanup into any remaining backend or persistence seams
+  outside the shared formatter/parser helper layer that still retain typed
+  call metadata as open-coded text.
+- Iteration focus: inspect the remaining backend-side fallback and persistence
+  paths that still parse or preserve call-adjacent text directly after the
+  adapter render/local-normalization cleanup, and either route them through
+  the shared typed call parser/formatter helpers or record them as explicit
+  follow-on debt if they are not worth migrating in this runbook.
 - Exact target for the next iteration after this slice: continue Step 4 into
-  the remaining LIR-side call and serialization paths that still treat typed
-  call metadata as ad hoc text, especially any residual `LirCallOp`
-  construction or persistence seams outside the shared formatter/parser helper
-  layer after the ptrmask/special-call cleanup lands.
+  the remaining LIR/backend call and serialization paths that still treat
+  typed call metadata as ad hoc text, especially residual fallback render or
+  persistence seams that have not yet been switched to the shared
+  formatter/parser layer.
 
 ## Completed Items
 
+- Completed the next Step 4 backend call persistence/render cleanup slice by
+  routing `src/backend/lir_adapter.cpp`'s remaining local-call normalization
+  helpers through the adapter's shared `parse_backend_source_typed_call(...)`
+  seam instead of calling `parse_lir_typed_call(...)` directly, switching
+  backend-owned call rendering onto
+  `src/codegen/lir/call_args.hpp`'s shared `format_lir_call_site(...)`
+  formatter, adding focused regression coverage in
+  `tests/backend/backend_lir_adapter_tests.cpp` for suffix-free local typed
+  calls, and verifying the slice with `./build/backend_lir_adapter_tests` plus
+  a full `ctest --test-dir build -j8 --output-on-failure` run whose monotonic
+  regression guard passed at `2371 -> 2372` passes with zero new failing
+  tests.
 - Completed the next Step 4 LIR persistence seam cleanup slice by adding
   shared call-site global-reference collection helpers in
   `src/codegen/lir/call_args.hpp`, routing
