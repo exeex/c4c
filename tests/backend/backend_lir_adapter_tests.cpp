@@ -4993,6 +4993,22 @@ void test_x86_backend_scaffold_routes_through_explicit_emit_surface() {
                       "x86 backend seam should stop falling back to LLVM text for the supported slice");
 }
 
+void test_x86_backend_scaffold_accepts_explicit_lowered_ir_input() {
+  const auto lowered = c4c::backend::lower_to_backend_ir(make_return_add_module());
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, ".text",
+                  "x86 backend seam should accept backend-owned IR directly for the lowered slice");
+  expect_contains(rendered, ".globl main",
+                  "x86 backend seam should still emit the entry symbol from lowered backend IR");
+  expect_contains(rendered, "mov eax, 5",
+                  "x86 backend seam should lower the explicit backend IR input without legacy LIR");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back to backend IR text for the supported lowered slice");
+}
+
 void test_x86_backend_scaffold_renders_direct_return_immediate_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_return_zero_module()},
@@ -8763,6 +8779,7 @@ int main() {
   test_aarch64_backend_scaffold_renders_supported_slice();
   test_aarch64_backend_scaffold_renders_direct_return_immediate_slice();
   test_x86_backend_scaffold_routes_through_explicit_emit_surface();
+  test_x86_backend_scaffold_accepts_explicit_lowered_ir_input();
   test_x86_backend_scaffold_renders_direct_return_immediate_slice();
   test_x86_backend_scaffold_renders_direct_return_sub_immediate_slice();
   test_x86_backend_renders_local_temp_sub_slice();

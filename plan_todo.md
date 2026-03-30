@@ -7,17 +7,21 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 2: Define the backend-owned IR model.
-- Exact target for the next iteration: extend the new `src/backend/ir.*`
-  contract beyond the current minimal binary/call/return subset and start
-  moving backend dispatch toward consuming `lower_to_backend_ir(...)`
-  directly instead of exposing a raw `LirModule` boundary.
+- Exact target for the next iteration: extend `src/backend/ir.*` past the
+  current binary/call/return subset so more target slices can be emitted from
+  lowered backend IR without using the optional legacy `LirModule` fallback.
 - Resume notes:
   - canonical emitter-facing IR ownership now lives in `src/backend/ir.hpp`
     and is shared by the new printer/validator layers
   - `src/backend/lir_adapter.{hpp,cpp}` is now a transition-only lowering shim
     plus compatibility alias surface (`render_module(...)`)
-  - `src/backend/backend.hpp` exposes `lower_to_backend_ir(...)`, but
-    `emit_module(...)` still dispatches raw `LirModule` into target emitters
+  - `src/backend/backend.hpp` now accepts backend-owned IR at the public emit
+    seam, while the `BackendModuleInput{LirModule}` compatibility path stays
+    lazy and routes unsupported slices through legacy emitters
+  - `src/backend/x86/codegen/emit.cpp` and
+    `src/backend/aarch64/codegen/emit.cpp` now accept lowered backend IR
+    directly for the current minimal return/direct-call slices and fall back to
+    legacy LIR only for still-unlowered target-specific cases
   - the current backend IR still only models the existing minimal binary/call
     instruction subset plus return terminators; globals, externs, memory, and
     multi-block control-flow remain for later slices
@@ -46,3 +50,18 @@ Source Plan: plan.md
 - Verified regression status after a clean rebuild:
   `test_before.log` and `test_after.log` both report `93% tests passed`,
   `188 tests failed out of 2560` (2372 passing), with no pass-count regression.
+- Completed a Step 4 lowering-boundary slice:
+  - changed `src/backend/backend.hpp/.cpp` so `BackendModuleInput` can carry a
+    backend-owned IR module as the primary emit contract, while preserving a
+    lazy `LirModule` compatibility constructor for fallback-only callers
+  - updated `src/codegen/llvm/llvm_codegen.cpp` to attempt explicit
+    `lower_to_backend_ir(...)` before backend emission and fall back cleanly
+    when the current lowering shim reports `Unsupported`
+  - added x86 and AArch64 emitter overloads that accept lowered backend IR
+    directly for the current minimal supported slices and only consult legacy
+    LIR when the target backend still needs transitional parsing/regalloc state
+  - added focused coverage proving the x86 backend seam accepts explicit
+    lowered backend IR without a legacy `LirModule`
+- Verified the post-change full-suite regression status in `test_after.log`:
+  `93% tests passed`, `188 tests failed out of 2560` (2372 passing), matching
+  the prior recorded baseline from this runbook with no newly failing tests.

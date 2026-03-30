@@ -2,6 +2,7 @@
 
 #include "../../lir_adapter.hpp"
 #include "../../generation.hpp"
+#include "../../ir_printer.hpp"
 #include "../../stack_layout/analysis.hpp"
 #include "../../stack_layout/regalloc_helpers.hpp"
 #include "../../stack_layout/slot_assignment.hpp"
@@ -1920,6 +1921,51 @@ std::string emit_minimal_local_array_asm(
 }
 
 }  // namespace
+
+std::string emit_module(const c4c::backend::BackendModule& module,
+                        const c4c::codegen::lir::LirModule* legacy_fallback) {
+  try {
+    if (const auto slice = parse_minimal_call_crossing_direct_call_slice(module);
+        slice.has_value()) {
+      if (legacy_fallback == nullptr) {
+        fail_unsupported("shared call-crossing direct-call slices still require legacy LIR fallback");
+      }
+      const auto* main_fn = find_lir_function(*legacy_fallback, "main");
+      if (main_fn == nullptr) {
+        fail_unsupported("main function for shared call-crossing direct-call slice");
+      }
+      return emit_minimal_call_crossing_direct_call_asm(
+          module, run_shared_aarch64_regalloc(*main_fn), *slice);
+    }
+    if (const auto imm = parse_minimal_return_imm(module); imm.has_value()) {
+      return emit_minimal_return_imm_asm(module, *imm);
+    }
+    if (const auto imm = parse_minimal_return_add_imm(module); imm.has_value()) {
+      return emit_minimal_return_imm_asm(module, *imm);
+    }
+    if (const auto slice = parse_minimal_direct_call_slice(module); slice.has_value()) {
+      return emit_minimal_direct_call_asm(module, *slice);
+    }
+    if (const auto slice = parse_minimal_direct_call_add_imm_slice(module);
+        slice.has_value()) {
+      return emit_minimal_direct_call_add_imm_asm(module, *slice);
+    }
+    if (const auto slice = parse_minimal_direct_call_two_arg_add_slice(module);
+        slice.has_value()) {
+      return emit_minimal_direct_call_two_arg_add_asm(module, *slice);
+    }
+  } catch (const c4c::backend::LirAdapterError& ex) {
+    if (ex.kind() != c4c::backend::LirAdapterErrorKind::Unsupported) {
+      throw;
+    }
+  } catch (const std::invalid_argument&) {
+  }
+
+  if (legacy_fallback != nullptr) {
+    return emit_module(*legacy_fallback);
+  }
+  return c4c::backend::print_backend_ir(module);
+}
 
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {
   const auto prepared = prepare_module_for_fallback(module);
