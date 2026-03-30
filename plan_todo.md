@@ -8,12 +8,25 @@ Source Plan: plan.md
 
 - Step 2: Define the backend-owned IR model.
 - Exact target for the next iteration: extend `src/backend/ir.*` past the
-  newly covered mixed predecessor deeper-chain/deeper-chain conditional-join
-  slice into the next bounded asymmetric join seam, ideally preserving the
-  same four-block compare/branch/join/return shape while widening one or both
-  predecessor-local arithmetic sides beyond the current three-op
-  `add`/`sub`/`add` depth without reopening backend-IR text fallback.
+  newly covered mixed predecessor four-op-chain/deeper-chain
+  conditional-join slice into the next bounded asymmetric join seam by
+  widening the alternate predecessor-local arithmetic side past the current
+  three-op `add`/`sub`/`add` depth while preserving the same four-block
+  compare/branch/join/return shape and explicit backend-IR emitter path.
 - Resume notes:
+  - backend-owned IR coverage now proves the bounded
+    compare/branch/join/return slice remains valid when one predecessor
+    computes the merged `phi` input through a four-op typed `i32 add` then
+    `sub` then `add` then `sub` chain, the opposite predecessor contributes
+    its own three-op typed `i32 add` then `sub` then `add` chain, and the
+    join block itself applies one bounded typed `i32 add`
+  - both x86 and AArch64 now have focused explicit-backend-IR coverage for
+    that asymmetric four-op-chain/deeper-chain plus join-local-add shape
+    without falling back to backend-IR text or legacy LIR
+  - the next highest-value asymmetric join seam is widening the alternate
+    predecessor-local arithmetic side beyond the current three-op
+    `add`/`sub`/`add` chain while preserving the same bounded join-local
+    scalar use
   - backend-owned IR coverage now proves the bounded
     compare/branch/join/return slice remains valid when both predecessors
     compute their merged `phi` inputs through three-op typed `i32 add` then
@@ -181,6 +194,22 @@ Source Plan: plan.md
 
 ## Completed Items
 
+- Completed an additional Step 2 mixed predecessor four-op-chain/deeper-chain
+  join slice:
+  - added focused backend coverage for the bounded
+    compare/branch/join/return shape where one predecessor computes the
+    merged `phi` input through a four-op typed `i32 add` then `sub` then
+    `add` then `sub` chain, the alternate predecessor contributes its own
+    three-op typed `i32 add` then `sub` then `add` chain, and the join block
+    itself applies a bounded typed `i32 add`
+  - verified the existing lowering and explicit-backend-IR emitter paths
+    already preserve that asymmetric four-op-chain/deeper-chain join contract
+    in printer, validator, x86, and AArch64 coverage instead of capping the
+    primary predecessor edge at the current three-op chain
+- Verified the current post-change full-suite regression status in
+  `test_after.log`: `93% tests passed`, `183 tests failed out of 2560`
+  (2377 passing), matching the checked `test_before.log` baseline with no
+  newly failing tests.
 - Completed an additional Step 2 mixed predecessor deeper-chain/deeper-chain join slice:
   - added focused backend coverage for the bounded
     compare/branch/join/return shape where both predecessors compute the
