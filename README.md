@@ -2,8 +2,159 @@
 
 `c4c` is a lightweight C/C++ compiler for NPU and RISC-V-based accelerator systems.
 
-It is built for hardware teams who need a compiler that does exactly what they say —
-not one that tries to be smarter than them.
+---
+
+## Why Another C++ Compiler for xPU
+
+### Cache world vs xPU world
+
+Most compilers assume a cache-driven world: you describe *what* to compute, and hardware decides *when* data arrives. LLVM/MLIR are built around that assumption.
+
+On an xPU, memory is explicit:
+
+* you issue DMA
+* you choose when it happens
+* you decide when to wait
+
+Overlap is not automatic — it is encoded in instruction order.
+
+> On xPU, timing is part of correctness.
+
+`c4c` preserves DMA order instead of abstracting it away.
+
+---
+
+### The instability problem
+
+There is a second, more practical issue: **optimization behavior is not stable**.
+
+* Scalar passes interfere with vector/tensor scheduling
+* Carefully written pipelines get subtly reordered
+* Performance collapses with no obvious root cause
+
+On accelerator workloads, this trade-off is misaligned:
+
+* scalar performance is rarely the bottleneck
+* vector/tensor throughput is what matters
+
+---
+
+### What actually works (in practice)
+
+After years of building and debugging these systems (including time at AMD,
+where approaches like Composable Kernel use C++ with inline asm),
+the conclusion is simple:
+
+> The only reliable way to control performance is to make the schedule explicit.
+
+`c4c` does this with a simple combination:
+
+* `asm` → exact control of instruction order
+* templates → abstraction + reuse + zero-cost specialization
+
+  * encode software pipeline structure (prologue / steady state / epilogue)
+  * express explicit scheduling with a more maintainable syntax
+  * enable compile-time specialization over shapes, depths, and kernels
+
+This gives you a well defined pipeline code:
+
+```cpp
+template <typename F, std::size_t... Is>
+inline void unroll_impl(F&& f, std::index_sequence<Is...>) {
+    (f(std::integral_constant<std::size_t, Is>{}), ...);
+}
+
+template <std::size_t N, typename F>
+inline void unroll(F&& f) {
+    unroll_impl(std::forward<F>(f), std::make_index_sequence<N>{});
+}
+
+template<typename T>
+inline void dma_issue(T* ptr) {
+    asm volatile("dma.issue %0" : : "r"(ptr));
+}
+
+inline void dma_wait() {
+    asm volatile("dma.wait");
+}
+
+template<typename T>
+inline void square_op(T* ptr) {
+    asm volatile("vload v0, %0" : : "r"(ptr));
+    asm volatile("vmul v0, v0, v0");
+    asm volatile("vstore %0, v0" : : "r"(ptr));
+}
+
+// Example: fully template-encoded double-buffer pipeline.
+// The schedule is explicit in the template structure itself.
+template<int Depth, int N, typename T, typename ComputeFn>
+inline void pipeline_static(T** bufs, ComputeFn compute) {
+    // Prologue: fill the pipeline
+    unroll<Depth>([&](auto i) {
+        dma_issue<T>(bufs[i]);
+    });
+
+    // Steady state: issue next, compute current, wait
+    unroll<N - Depth>([&](auto k) {
+        constexpr int i = k + Depth;
+        dma_issue<T>(bufs[i]);
+        compute(bufs[i - Depth]);
+        dma_wait();
+    });
+
+    // Epilogue: drain the pipeline
+    unroll<Depth>([&](auto i) {
+        compute(bufs[N - Depth + i]);
+        dma_wait();
+    });
+}
+
+// Usage: Depth=2, N=4
+pipeline_static<2, 4, float>(bufs, square_op<float>);
+```
+
+Expected expanded instruction shape:
+
+```asm
+// Prologue
+DMA.ISSUE bufs[0]
+DMA.ISSUE bufs[1]
+
+// Steady state, i = 2
+DMA.ISSUE bufs[2]
+VLOAD     v0, bufs[0]
+VMUL      v0, v0, v0
+VSTORE    bufs[0], v0
+DMA.WAIT
+
+// Steady state, i = 3
+DMA.ISSUE bufs[3]
+VLOAD     v0, bufs[1]
+VMUL      v0, v0, v0
+VSTORE    bufs[1], v0
+DMA.WAIT
+
+// Epilogue
+VLOAD     v0, bufs[2]
+VMUL      v0, v0, v0
+VSTORE    bufs[2], v0
+DMA.WAIT
+
+VLOAD     v0, bufs[3]
+VMUL      v0, v0, v0
+VSTORE    bufs[3], v0
+DMA.WAIT
+```
+
+Here, templates are not just abstraction — **they define the execution structure itself**. The whole pipeline can be encoded directly in templates and expanded at compile time.
+
+This gives you both:
+
+* **assembly-level performance**
+* **far lower development cost than MLIR-based stacks**
+
+In practice, this is the only approach we have seen that can consistently push
+accelerator performance to the level required to compete with NVIDIA GPUs.
 
 ---
 
@@ -11,43 +162,11 @@ not one that tries to be smarter than them.
 
 **Faithful over clever.**
 
-The compiler's job is to translate your code into machine instructions without
-reordering, rescheduling, or second-guessing your intent.
+`c4c` translates your code to instructions without reordering or second-guessing.
 
-On accelerator hardware, scalar optimization is not the bottleneck.
-Semantic fidelity is.
+On accelerators, performance depends on preserving timing intent (DMA pipelines, vector sequences, kernel dispatch). “Helpful” reordering can silently break it.
 
-DMA software pipelines, vector instruction sequences, and tensor kernel dispatch
-all depend on the compiler preserving the programmer's timing intent exactly.
-A compiler that "helps" by reordering instructions breaks these patterns silently
-and in ways that are very hard to debug.
-
-`c4c` does not help. It translates.
-
----
-
-## Core Guarantees
-
-### 1. `inline` is a contract, not a hint
-
-Every function marked `inline` is always inlined at every call site.
-No exceptions. No heuristics. No size thresholds.
-
-The call site disappears. The instructions appear there, in order.
-
-This matters because DMA issue points, pipeline synchronization barriers,
-and register setup sequences must appear at precise locations in the instruction stream.
-A function call overhead or a missed inline breaks the timing model.
-
-```cpp
-inline void dma_issue(uint32_t addr, uint32_t size) {
-    asm volatile("dma.issue %0, %1" : : "r"(addr), "r"(size));
-}
-
-// Guaranteed: no call instruction generated.
-// The dma.issue appears exactly here, in the caller's instruction stream.
-dma_issue(src_addr, 256);
-```
+`c4c` keeps what you wrote—exactly as written.
 
 ---
 
@@ -158,234 +277,6 @@ Adding a new instruction means adding a template specialization and a test.
 
 ---
 
-## What c4c Does
-
-- Compiles C/C++ with inline assembly, emitting LLVM IR or direct machine code
-- Guarantees `inline` expansion at every call site
-- Preserves inline asm ordering — no scheduling across asm boundaries
-- Synthesizes asm opcode strings from `consteval` expressions
-- Resolves `if constexpr` branches over compile-time shape and type queries
-- Implements full compile-time evaluation (`consteval`), including shape inference,
-  simple cost modeling, and any arithmetic needed to drive instruction selection
-- Supports full C++ template semantics, enabling explicit loop unrolling
-  and software pipeline structures written directly in template code —
-  the programmer controls the pipeline, not the compiler
-- Provides clean extension points for custom NPU/xPU instructions without touching the compiler core
-- Stays small enough that an AI agent can read, modify, and maintain it
-
----
-
-## Template Software Pipeline
-
-The most important use of C++ templates in `c4c` is not type abstraction —
-it is **explicit control over pipeline structure**.
-
-A DMA software pipeline has three phases: prologue, steady state, epilogue.
-The depth of the pipeline (double buffer = 2, triple buffer = 3) determines
-how many iterations are in flight simultaneously.
-This structure is written once as a template, parameterized over depth and kernel.
-
-The compute kernel is injected at compile time as a template parameter.
-This is compile-time dependency injection: no function pointer, no virtual call,
-no indirect branch. After instantiation the compiler sees the exact asm sequence
-and inlines it directly into the pipeline body.
-
-```cpp
-// pipeline<Depth, T, ComputeFn>
-//
-// Depth     — pipeline depth: 2 = double buffer, 3 = triple buffer
-// T         — element type, propagated to DMA and compute primitives
-// ComputeFn — kernel injected at compile time, always inlined
-//
-// The programmer controls depth, type, and kernel.
-// The compiler controls nothing.
-
-template<int Depth, typename T, typename ComputeFn>
-inline void pipeline(T** bufs, int N, ComputeFn compute) {
-
-    // Prologue: fill the pipeline
-    unroll<Depth>([&](auto i) {
-        dma_issue<T>(bufs[i], N);
-    });
-
-    // Steady state: issue next, compute current, wait
-    for (int i = Depth; i < N; i++) {
-        dma_issue<T>(bufs[i], N);
-        compute(bufs[i - Depth]);   // ComputeFn resolved at compile time
-        dma_wait();
-    }
-
-    // Epilogue: drain the pipeline
-    unroll<Depth>([&](auto i) {
-        compute(bufs[N - Depth + i]);
-        dma_wait();
-    });
-}
-```
-
-Usage — inject different kernels into the same pipeline structure:
-
-```cpp
-// Sigmoid kernel
-auto sigmoid_kernel = [](float* buf) __attribute__((always_inline)) {
-    __sigmoid_long<float>(buf, buf);
-};
-
-// MatMul kernel
-auto matmul_kernel = [](float* buf) __attribute__((always_inline)) {
-    __matmul<float>(buf, weight, buf);
-};
-
-// Double buffer, float, sigmoid
-pipeline<2, float>(bufs, N, sigmoid_kernel);
-
-// Triple buffer, float, matmul
-pipeline<3, float>(bufs, N, matmul_kernel);
-
-// These two calls instantiate completely different asm sequences.
-// The pipeline structure is shared. The compiler core is not touched.
-// The DMA ordering guarantee ensures the prologue / steady state / epilogue
-// asm blocks appear in exactly the written order after template expansion.
-```
-
-`unroll<N>` expands to N consecutive inline calls at compile time.
-Combined with `always_inline` on the kernel lambda, the final output is
-a fully unrolled, fully inlined asm sequence with no branches, no calls,
-and no compiler-inserted reordering.
-
-The pipeline depth is a compile-time constant.
-Changing from double to triple buffer is a one-character edit at the call site.
-
----
-
-## What c4c Does Not Do
-
-- Aggressive scalar optimization — not the bottleneck on accelerator hardware
-- Auto-vectorization — vector patterns are written by the programmer or generated by LLM
-- Instruction scheduling — this would silently corrupt DMA software pipeline timing
-- Ignore `inline` — if you wrote it, it expands, always
-
----
-
-## Adding a New Instruction
-
-Adding a new NPU vector or tensor instruction requires:
-
-1. Add a `consteval` opcode function or extend an existing one
-2. Write the `inline` wrapper function using `asm volatile`
-3. Add a regression test that runs on FPGA and checks correctness and cycle count
-4. Nothing else — no compiler modification required
-
-Example: adding `vload.bf16x8`
-
-```cpp
-// Before: only f32 and f16 supported
-template<typename T>
-consteval const char* vload_opcode() {
-    if constexpr (std::is_same_v<T, float>)   return "vload.f32x8";
-    if constexpr (std::is_same_v<T, __fp16>)  return "vload.f16x16";
-}
-
-// After: add bf16
-template<typename T>
-consteval const char* vload_opcode() {
-    if constexpr (std::is_same_v<T, float>)      return "vload.f32x8";
-    if constexpr (std::is_same_v<T, __fp16>)     return "vload.f16x16";
-    if constexpr (std::is_same_v<T, __bfloat16>) return "vload.bf16x8";  // new
-}
-```
-
-That is the entire change. The compiler is not touched.
-
----
-
-## Build
-
-```bash
-mkdir -p build
-cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-make -j
-```
-
-Notes:
-
-- `clang` is optional for building `c4c` itself.
-- `clang` is required for runtime or execute-style tests and for turning emitted LLVM IR into a runnable binary.
-
----
-
-## Testing
-
-Run the default core suite:
-
-```bash
-cd build
-ctest --output-on-failure
-```
-
-Or use the convenience target:
-
-```bash
-cd build
-cmake --build . --target ctest_core
-```
-
----
-
-## Agent Workflows
-
-The repo keeps four planning locations:
-
-1. `ideas/open/*.md`: open ideas that agents should consider
-2. `ideas/closed/*.md`: closed idea archive
-3. `plan.md`: the single active runbook
-4. `plan_todo.md`: mutable execution state for the active plan
-
-Lifecycle state is determined by file path and file existence:
-
-1. no `plan.md` and no `plan_todo.md`: no active plan
-2. both `plan.md` and `plan_todo.md` exist: active plan exists
-3. only one of them exists: inconsistent state that should be repaired first
-
-The standard lifecycle is:
-
-1. human discussion produces or updates one `ideas/open/*.md`
-2. activate one idea from `ideas/open/` into `plan.md`
-3. run implementation work from `plan.md`, tracking slices in `plan_todo.md`
-4. deactivate, switch, or close the plan as work changes
-
-Closing an idea means:
-
-1. review whether `plan.md`, `plan_todo.md`, and the implementation actually match
-2. delete `plan_todo.md`
-3. delete `plan.md`
-4. update the corresponding file in `ideas/open/` to mark it complete and optionally record leftover issues
-5. move that idea file into `ideas/closed/`
-
-Agents should only scan `ideas/open/` for candidate work. `ideas/closed/` is archive storage.
-
-The active `plan.md` should always identify which `ideas/open/*.md` it comes from.
-
-Agent entry guidance lives in `AGENTS.md`.
-
-The repo keeps a small set of agent-oriented planning prompts under `prompts/`:
-
-- `prompts/AGENT_PROMPT_EXECUTE_PLAN.md`: execute the current `plan.md`
-- `prompts/AGENT_PROMPT_PLAN_FROM_IDEA.md`: convert one `ideas/open/*.md` into a runbook-style `plan.md`
-- `prompts/AGENT_PROMPT_ACTIVATE_PLAN.md`: activate one idea into the current active `plan.md`
-- `prompts/AGENT_PROMPT_DEACTIVATE_PLAN.md`: fold the active runbook back into its source idea without declaring completion
-- `prompts/AGENT_PROMPT_SWITCH_PLAN.md`: deactivate one active plan and activate another
-- `prompts/AGENT_PROMPT_CLOSE_PLAN.md`: close the active plan and linked idea after completion
-
-Example:
-
-```bash
-./scripts/run_agent.sh --cli codex prompts/AGENT_PROMPT_ACTIVATE_PLAN.md
-```
-
----
-
 ## FAQ
 
 **Q: Adding a new instruction requires changing a header. Is that the only way?**
@@ -440,7 +331,7 @@ custom backend for `torch.compile`.
 
 ---
 
-**Q: Can I mix `c4c`-compiled code with GCC or Clang output?**
+**Q: Can I mix ****************************************************************`c4c`****************************************************************-compiled code with GCC or Clang output?**
 
 Yes. `c4c` emits standard `.o` object files that link cleanly with output
 from GCC, Clang, or any other toolchain that follows the target ABI.
@@ -466,14 +357,51 @@ The exact interface is still being designed.
 Yes, under discussion. The working name is `.c4` — a C++ superset that may
 draw from several directions:
 
-- **Circle C++** — compile-time metaprogramming patterns that go beyond what
+* **Circle C++** — compile-time metaprogramming patterns that go beyond what
   standard `consteval` can express cleanly
-- **Full reflection** — enough to replace TableGen entirely, so instruction
+* **Full reflection** — enough to replace TableGen entirely, so instruction
   definitions can be written in the language itself
-- **Rust-style ownership** — borrowing the ownership and lifetime model to
+* **Rust-style ownership** — borrowing the ownership and lifetime model to
   make tensor and buffer aliasing explicit and checkable at compile time
 
 None of this is finalized. Proposals are welcome.
+
+---
+
+**Q: Why not use MLIR?**
+
+xPU and CPU/GPU differ fundamentally in how memory moves.
+
+On a CPU or GPU, memory access goes through a cache hierarchy. The hardware
+decides when to fetch, when to evict, and when data is ready. The programmer
+describes what they want; the hardware figures out how to get it. LLVM and MLIR
+were designed in this world. Their memory model assumes cache — a transparent
+layer that makes "load from address X" work without the programmer thinking
+about timing.
+
+On an xPU, there is no cache. Memory moves through DMA. DMA is explicit:
+the programmer issues a descriptor, specifies source, destination, and size,
+and later explicitly waits for completion. The overlap between DMA and compute
+is not automatic — it is the programmer's responsibility to manage issue timing,
+channel occupancy, and completion detection.
+
+MLIR was built for the CPU/GPU world and carries that assumption throughout.
+`memref.copy` is a cache-world abstraction: "move this memory, somehow, at some point."
+The `async` dialect adds dependency tokens, not timing guarantees.
+Neither concept maps to what DMA actually requires.
+
+Adapting MLIR to an xPU means fighting this assumption at every layer of the
+lowering pipeline. Timing intent expressed at the source level does not survive
+to the backend that generates DMA descriptors, because none of the intermediate
+representations were designed to carry it. The backend scheduler must reconstruct
+the pipeline structure from a dependency graph that no longer contains the
+information needed to do this correctly.
+
+C++ with inline asm does not have this problem. The DMA issue is an instruction.
+The wait is an instruction. Their positions in the code are their positions in
+the instruction stream. There is no intermediate representation to lose the timing.
+
+For a detailed worked example, see [MLIR_vs_cpp.md](MLIR_vs_cpp.md).
 
 ---
 
