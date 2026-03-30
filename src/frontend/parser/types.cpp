@@ -3139,6 +3139,53 @@ TypeSpec Parser::parse_base_type() {
         }
         return false;
     };
+    auto try_parse_builtin_transform_type = [&](TypeSpec* out) -> bool {
+        if (!out || !check(TokenKind::Identifier) ||
+            pos_ + 1 >= static_cast<int>(tokens_.size()) ||
+            tokens_[pos_ + 1].kind != TokenKind::LParen) {
+            return false;
+        }
+
+        const std::string builtin_name = cur().lexeme;
+        const bool is_predicate_trait =
+            builtin_name.rfind("__is_", 0) == 0 ||
+            builtin_name.rfind("__has_", 0) == 0;
+        if (!is_builtin_type_trait_name(builtin_name) ||
+            is_predicate_trait) {
+            return false;
+        }
+
+        const int saved_pos = pos_;
+        consume();
+        consume();
+
+        try {
+            TypeSpec transformed = parse_type_name();
+            expect(TokenKind::RParen);
+
+            if (builtin_name == "__remove_cv" ||
+                builtin_name == "__remove_cvref") {
+                transformed.is_const = false;
+                transformed.is_volatile = false;
+            } else if (builtin_name == "__remove_const") {
+                transformed.is_const = false;
+            } else if (builtin_name == "__remove_volatile") {
+                transformed.is_volatile = false;
+            }
+
+            if (builtin_name == "__remove_reference_t" ||
+                builtin_name == "__remove_cvref") {
+                transformed.is_lvalue_ref = false;
+                transformed.is_rvalue_ref = false;
+            }
+
+            *out = transformed;
+            return true;
+        } catch (...) {
+            pos_ = saved_pos;
+            return false;
+        }
+    };
     while (!done && !at_end()) {
         TokenKind k = cur().kind;
         switch (k) {
@@ -3288,6 +3335,11 @@ TypeSpec Parser::parse_base_type() {
 
             case TokenKind::KwTypename:
             case TokenKind::Identifier:
+                if (is_cpp_mode() && try_parse_builtin_transform_type(&ts)) {
+                    base_set = true;
+                    done = true;
+                    break;
+                }
                 if (is_cpp_mode()) {
                     const bool already_have_base =
                         has_signed || has_unsigned || has_short || long_count > 0 ||

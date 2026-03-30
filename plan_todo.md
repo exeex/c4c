@@ -7,9 +7,8 @@ Last Updated: 2026-03-30
 
 ## Current Active Item
 
-- Step 4: stage the next `libc++` frontier after restoring the
-  `__has_builtin(__is_signed)` preprocessor branch used by
-  `__type_traits/is_signed.h`
+- Step 4: stage the next `libc++` frontier after teaching builtin transform
+  traits such as `__remove_cv(...)` to participate in type parsing
 
 ## Todo
 
@@ -25,7 +24,7 @@ Last Updated: 2026-03-30
       a parse-only libc++ header testcase for `__type_traits/is_unsigned.h`
 - [x] Implement the smallest fix required by that reduced preprocessor blocker
 - [x] Re-run the direct repro to confirm the next `libc++` frontier
-- [ ] Validate the completed slice with targeted tests plus a monotonic
+- [x] Validate the completed slice with targeted tests plus a monotonic
       full-suite comparison
 
 ## Completed
@@ -56,6 +55,11 @@ Last Updated: 2026-03-30
       missed `__has_builtin(__is_signed)`
 - [x] Added direct parse-only and runtime coverage for `__is_signed(T)` plus a
       libc++ header regression for `__type_traits/is_signed.h`
+- [x] Added frontend coverage for builtin transform traits inside
+      `__is_same(...)`, including `__remove_cv`, `__remove_cvref`, and
+      `__remove_reference_t`
+- [x] Taught type parsing to accept builtin transform-trait spellings as
+      type-producing operands in type context
 - [x] Re-ran the direct `std::vector` repro and confirmed the old
       `byte.h` / `construct_at.h` / `is_unsigned` frontier disappeared, exposing
       later parser failures in `__algorithm/unwrap_iter.h`,
@@ -68,19 +72,23 @@ Last Updated: 2026-03-30
       earlier EOF / unbalanced-state failure and instead exposes more localized
       parser frontiers in `__type_traits/is_void.h` and
       `__type_traits/common_reference.h`
+- [x] Re-ran the direct `std::vector` repro after the transform-trait slice and
+      confirmed the old `__type_traits/is_void.h:26` failure disappeared,
+      leaving `/usr/include/c++/v1/__type_traits/common_reference.h:155` as the
+      first surviving libc++ parser error
 
 ## Next Intended Slice
 
 - Reduce the new first surviving parser failure in
-  `/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__ranges/size.h:71:223`
-  (`try_parse_record_method_or_field_member expected=RPAREN got='_Tp'`) into
-  one internal parse testcase before changing parser code.
+  `/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__type_traits/common_reference.h:155:59`
+  (`parse_top_level expected=LESS got='__apply'`) into one internal parse
+  testcase before changing parser code.
 
 ## Blockers
 
 - The next live frontier is now in later libc++ parser surfaces such as
-  `__ranges/size.h`, `__type_traits/is_void.h`, and
-  `__type_traits/common_reference.h`, but they are not reduced yet.
+  `__type_traits/common_reference.h`, `__ranges/size.h`, and
+  `__algorithm/comp_ref_type.h`, but they are not reduced yet.
 - Older GNU `libstdc++` blocker ordering in the source idea remains useful as
   history, but it is not the active execution frontier for this branch.
 
@@ -97,6 +105,9 @@ Last Updated: 2026-03-30
 - `__is_signed` now has the same direct parse-only/runtime/header coverage
   pattern, and clearing its builtin branch was enough to move the libc++ path
   past the earlier `unwrap_iter` frontier.
+- Builtin transform traits now work in `__is_same(...)` type-argument
+  positions, which was enough to clear the `is_void.h` blocker and advance the
+  libc++ path to `common_reference.h`.
 - Prefer shared parser or preprocessor compatibility fixes over libc++-specific
   hacks.
 - Do not reactivate backend umbrella work while this parser bring-up is active.
