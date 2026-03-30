@@ -151,6 +151,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     builtin_trait_is_signed_parse
     libcxx_is_unsigned_header_parse
     libcxx_is_signed_header_parse
+    libcxx_synth_three_way_generic_lambda_parse
     libcxx_common_comparison_category_array_param_parse
     libcxx_ordering_hidden_consteval_ctor_parse
     qualified_type_spelling_shared_parse

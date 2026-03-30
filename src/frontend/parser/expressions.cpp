@@ -68,6 +68,85 @@ static void append_type_mangled_suffix_local(std::string& out, const TypeSpec& t
     if (ts.is_rvalue_ref) out += "_rref";
 }
 
+static void skip_lambda_template_parameter_list(Parser& parser) {
+    if (!parser.check(TokenKind::Less)) return;
+
+    parser.consume();  // <
+    int angle_depth = 1;
+    while (!parser.at_end() && angle_depth > 0) {
+        if (parser.check(TokenKind::LParen)) {
+            parser.skip_paren_group();
+            continue;
+        }
+        if (parser.check(TokenKind::LBracket)) {
+            parser.consume();
+            int bracket_depth = 1;
+            while (!parser.at_end() && bracket_depth > 0) {
+                if (parser.check(TokenKind::LBracket)) ++bracket_depth;
+                else if (parser.check(TokenKind::RBracket)) --bracket_depth;
+                parser.consume();
+            }
+            continue;
+        }
+        if (parser.check(TokenKind::Less)) {
+            ++angle_depth;
+            parser.consume();
+            continue;
+        }
+        if (parser.check_template_close()) {
+            --angle_depth;
+            parser.match_template_close();
+            continue;
+        }
+        parser.consume();
+    }
+}
+
+static void skip_lambda_trailing_requires_clause(Parser& parser) {
+    if (!parser.check(TokenKind::KwRequires)) return;
+
+    parser.consume();  // requires
+    int paren_depth = 0;
+    int bracket_depth = 0;
+    int angle_depth = 0;
+    while (!parser.at_end()) {
+        if (parser.check(TokenKind::LBrace) && paren_depth == 0 &&
+            bracket_depth == 0 && angle_depth == 0) {
+            break;
+        }
+
+        if (parser.check(TokenKind::KwRequires)) {
+            parser.consume();
+            if (parser.check(TokenKind::LParen)) parser.skip_paren_group();
+            if (parser.check(TokenKind::LBrace)) {
+                parser.skip_brace_group();
+                continue;
+            }
+            continue;
+        }
+
+        if (parser.check(TokenKind::LParen)) {
+            ++paren_depth;
+        } else if (parser.check(TokenKind::RParen)) {
+            if (paren_depth > 0) --paren_depth;
+        } else if (parser.check(TokenKind::LBracket)) {
+            ++bracket_depth;
+        } else if (parser.check(TokenKind::RBracket)) {
+            if (bracket_depth > 0) --bracket_depth;
+        } else if (parser.check(TokenKind::Less)) {
+            ++angle_depth;
+        } else if (parser.check_template_close()) {
+            int close_count = 1;
+            if (parser.check(TokenKind::GreaterGreater)) {
+                close_count = 2;
+            }
+            angle_depth -= std::min(angle_depth, close_count);
+        }
+
+        parser.consume();
+    }
+}
+
 int Parser::bin_prec(TokenKind k) {
     switch (k) {
         case TokenKind::PipePipe:       return 4;
@@ -1682,6 +1761,8 @@ Node* Parser::parse_primary() {
             if (depth > 0) consume();
         }
         if (check(TokenKind::RBracket)) consume(); // ]
+        // Skip optional generic lambda template head []<class T>
+        if (check(TokenKind::Less)) skip_lambda_template_parameter_list(*this);
         // Skip optional (params)
         if (check(TokenKind::LParen)) skip_paren_group();
         // Skip optional mutable/constexpr/consteval
@@ -1697,6 +1778,8 @@ Node* Parser::parse_primary() {
             consume();
             parse_type_name();
         }
+        // Skip optional trailing requires-clause.
+        skip_lambda_trailing_requires_clause(*this);
         // Skip body { ... }
         if (check(TokenKind::LBrace)) skip_brace_group();
         return make_int_lit(0, ln);

@@ -8,8 +8,8 @@ Last Updated: 2026-03-30
 ## Current Active Item
 
 - Step 2/4: reduce the new first surviving libc++ frontier at
-  `__compare/synth_three_way.h:28`, now that the direct `std::vector` repro
-  gets past `__compare/common_comparison_category.h`
+  `__utility/pair.h:463`, now that the direct `std::vector` repro gets past
+  `__compare/synth_three_way.h`
 
 ## Todo
 
@@ -47,6 +47,16 @@ Last Updated: 2026-03-30
 - [x] Validate the attributed-alias slice with targeted parser coverage plus a
       monotonic full-suite comparison (`before: 706/731`, `after: 707/732`,
       zero new failures)
+- [x] Reduce the `__compare/synth_three_way.h:28` failure to a focused
+      internal parser testcase for generic lambdas with template parameter
+      lists and trailing requires-clauses
+- [x] Implement the narrowest parser fix for the reduced `synth_three_way`
+      generic-lambda frontier
+- [x] Re-run the direct `std::vector` repro to confirm the next post-
+      `synth_three_way` frontier
+- [x] Validate the completed `synth_three_way` slice with targeted parser
+      coverage plus a monotonic full-suite comparison (`before: 710/735`,
+      `after: 711/736`, zero new failures)
 
 ## Completed
 
@@ -144,30 +154,41 @@ Last Updated: 2026-03-30
 - [x] Validated the completed `common_comparison_category` slice with targeted
       parser coverage and a fresh full-suite snapshot that matches the last
       recorded branch baseline (`709/734` passing)
+- [x] Added
+      `tests/cpp/internal/postive_case/libcxx_synth_three_way_generic_lambda_parse.cpp`
+      to cover the reduced `synth_three_way` generic-lambda spelling directly
+- [x] Taught lambda placeholder parsing to skip optional generic template
+      heads and trailing requires-clauses before looking for the lambda body
+- [x] Re-ran the direct `std::vector` repro and confirmed the
+      `__compare/synth_three_way.h:28` frontier disappeared, exposing
+      `__utility/pair.h:463` and later `__iterator/advance.h:160` parser
+      failures instead
+- [x] Validated the completed `synth_three_way` slice with targeted parser
+      coverage for the reduced testcase, the earlier requires-expression
+      testcase, and the existing lambda parse coverage
 
 ## Next Intended Slice
 
 - Reproduce and reduce the new first surviving libc++ frontier at
--  `__compare/synth_three_way.h:28:224`, where the parser now reaches the
-  generic lambda spelling `[]<class _Tp, class _Up>(...) requires ...`.
-- Keep the next reduction scoped to the comparison-category / synth-three-way
-  headers that became visible only after clearing
-  `common_comparison_category.h`.
+  `__utility/pair.h:463:7`, where the parser now reaches the C++20 init-
+  statement spelling `if (auto __c = ...; __c != 0)`.
+- Keep the next reduction scoped to the `pair` / iterator follow-on headers
+  that became visible only after clearing `__compare/synth_three_way.h`.
 - Re-run the forcing `std::vector` repro after the next parser fix and confirm
-  whether `__utility/pair.h:463` becomes the next lead blocker.
+  whether `__iterator/advance.h:160` remains the next lead blocker.
 
 ## Blockers
 
 - The latest direct repro no longer leads with either
   `common_reference.h:155`, `integer_sequence.h:82`, or
-  `__compare/ordering.h:44`; it now first fails in the `__compare` headers at
-  `__compare/synth_three_way.h:28`.
+  `__compare/ordering.h:44`; it now first fails in `__utility/pair.h:463`
+  while parsing the C++20 `if` init-statement inside `operator<=>`.
+- A later follow-on parser failure now appears in
+  `__iterator/advance.h:160`, where the iterator lambda body reaches an
+  `if (const auto __m = ...; ...)` spelling after the `pair.h` frontier.
 - The current full-suite run still contains unrelated environment/path failures
   such as missing `/workspaces/c4c/...` fixtures and unavailable GNU
   `bits/...` headers, so those results are not attributable to this patch.
-- This slice used the previous recorded `709/734` suite result as the branch
-  baseline reference; a fresh pre-patch failure-set diff was not captured
-  before the code edit.
 - Older GNU `libstdc++` blocker ordering in the source idea remains useful as
   history, but it is not the active execution frontier for this branch.
 
@@ -204,12 +225,16 @@ Last Updated: 2026-03-30
   now covers the reduced `ordering.h` spelling directly.
 - `tests/cpp/internal/postive_case/libcxx_common_comparison_category_array_param_parse.cpp`
   now covers the reduced `common_comparison_category` spelling directly.
+- `tests/cpp/internal/postive_case/libcxx_synth_three_way_generic_lambda_parse.cpp`
+  now covers the reduced `synth_three_way` generic-lambda spelling directly.
 - A direct parse of `#include <__utility/integer_sequence.h>` now succeeds; the
   remaining libc++ failures are later headers surfaced by the forcing
   `std::vector` include stack.
 - The `ordering.h` slice only needed constructor-member prelude handling for
   leading GNU / C++11 attributes; trailing `__enable_if__` attributes already
   parsed once the member was classified as a constructor.
+- Lambda placeholder parsing now skips optional generic template heads and
+  trailing requires-clauses before looking for the lambda body.
 - Prefer shared parser or preprocessor compatibility fixes over libc++-specific
   hacks.
 - Do not reactivate backend umbrella work while this parser bring-up is active.
