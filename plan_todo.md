@@ -8,12 +8,22 @@ Source Plan: plan.md
 
 - Step 2: Define the backend-owned IR model.
 - Exact target for the next iteration: extend `src/backend/ir.*` past the
-  newly lowered predecessor-local conditional-join arithmetic slice into a
-  bounded join where one predecessor stays a direct immediate input while the
-  other contributes a predecessor-local typed arithmetic result, so the
-  explicit join contract is not implicitly symmetric about both predecessor
-  shapes.
+  newly covered mixed predecessor/immediate conditional-join slice into a
+  bounded join where one predecessor stays a direct immediate input, the other
+  contributes predecessor-local typed arithmetic, and the join block itself
+  applies a bounded typed post-`phi` add so the explicit contract covers
+  asymmetric incoming shapes plus one join-local scalar use.
 - Resume notes:
+  - backend-owned IR coverage now proves the bounded conditional-join slice
+    remains valid when one predecessor computes a typed `i32 add` and the
+    other contributes a direct immediate `phi` input, instead of assuming both
+    predecessor shapes must match
+  - both x86 and AArch64 now have focused explicit-backend-IR coverage for
+    that mixed predecessor/immediate join shape without falling back to
+    backend-IR text or legacy LIR
+  - the next highest-value join seam is preserving that asymmetric incoming
+    shape when the join block itself computes one typed scalar use from the
+    merged `phi` result
   - backend-owned IR now lowers a bounded four-block
     compare/branch/join/return slice where `then` and `else` each compute one
     typed `i32 add` before branching to the merge, and the join `phi` merges
@@ -92,6 +102,22 @@ Source Plan: plan.md
 
 ## Completed Items
 
+- Completed an additional Step 2 mixed predecessor/immediate join slice:
+  - added focused backend coverage for the bounded
+    compare/branch/join/return shape where one predecessor computes a typed
+    `i32 add` before branching while the opposite predecessor contributes a
+    direct immediate phi input
+  - verified the existing lowering path preserves that non-symmetric join
+    contract in backend IR printer/validator coverage instead of implicitly
+    assuming both predecessor shapes must match
+  - added focused x86 and AArch64 explicit-backend-IR emission tests proving
+    the mixed predecessor/immediate join slice emits directly without backend
+    IR text fallback
+- Verified the current post-change full-suite regression status in
+  `test_fail_after.log`: `93% tests passed`, `183 tests failed out of 2560`
+  (2377 passing), improving the checked `test_fail_before.log` baseline
+  (`189` failing / `2371` passing) by 6 passing tests with no newly failing
+  tests.
 - Completed an additional Step 2 predecessor-computed join arithmetic slice:
   - taught `src/backend/lir_adapter.cpp` to lower the bounded
     compare/branch/join/return shape when predecessor-local phi inputs are
