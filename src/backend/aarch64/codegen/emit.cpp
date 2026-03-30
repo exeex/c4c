@@ -253,7 +253,8 @@ struct MinimalConditionalReturnSlice {
 struct MinimalConditionalPhiJoinSlice {
   struct IncomingValue {
     std::int64_t base_imm = 0;
-    std::optional<std::int64_t> add_imm;
+    std::optional<c4c::backend::BackendBinaryOpcode> opcode;
+    std::optional<std::int64_t> imm;
   };
 
   c4c::codegen::lir::LirCmpPredicate predicate = c4c::codegen::lir::LirCmpPredicate::Eq;
@@ -896,24 +897,25 @@ std::optional<MinimalConditionalPhiJoinSlice> parse_minimal_conditional_phi_join
       if (!imm.has_value()) {
         return std::nullopt;
       }
-      return MinimalConditionalPhiJoinSlice::IncomingValue{*imm, std::nullopt};
+      return MinimalConditionalPhiJoinSlice::IncomingValue{*imm, std::nullopt, std::nullopt};
     }
     if (block.insts.size() != 1) {
       return std::nullopt;
     }
 
-    const auto* add = std::get_if<c4c::backend::BackendBinaryInst>(&block.insts.front());
-    if (add == nullptr || add->opcode != c4c::backend::BackendBinaryOpcode::Add ||
-        add->type_str != "i32" || add->result != expected_result) {
+    const auto* bin = std::get_if<c4c::backend::BackendBinaryInst>(&block.insts.front());
+    if (bin == nullptr || bin->type_str != "i32" || bin->result != expected_result ||
+        (bin->opcode != c4c::backend::BackendBinaryOpcode::Add &&
+         bin->opcode != c4c::backend::BackendBinaryOpcode::Sub)) {
       return std::nullopt;
     }
 
-    const auto base_imm = parse_i64(add->lhs);
-    const auto add_imm = parse_i64(add->rhs);
-    if (!base_imm.has_value() || !add_imm.has_value()) {
+    const auto base_imm = parse_i64(bin->lhs);
+    const auto op_imm = parse_i64(bin->rhs);
+    if (!base_imm.has_value() || !op_imm.has_value()) {
       return std::nullopt;
     }
-    return MinimalConditionalPhiJoinSlice::IncomingValue{*base_imm, *add_imm};
+    return MinimalConditionalPhiJoinSlice::IncomingValue{*base_imm, bin->opcode, *op_imm};
   };
   if (entry.label != "entry" || entry.insts.size() != 1 ||
       entry.terminator.kind != c4c::backend::BackendTerminatorKind::CondBranch ||
@@ -2385,9 +2387,10 @@ std::string emit_minimal_conditional_phi_join_asm(
       !in_mov_range(slice.true_value.base_imm) || !in_mov_range(slice.false_value.base_imm)) {
     fail_unsupported("conditional-phi-join immediates outside the minimal mov-supported range");
   }
-  if ((slice.true_value.add_imm.has_value() && !in_mov_range(*slice.true_value.add_imm)) ||
-      (slice.false_value.add_imm.has_value() && !in_mov_range(*slice.false_value.add_imm))) {
-    fail_unsupported("conditional-phi-join predecessor add immediates outside the minimal add-supported range");
+  if ((slice.true_value.imm.has_value() && !in_mov_range(*slice.true_value.imm)) ||
+      (slice.false_value.imm.has_value() && !in_mov_range(*slice.false_value.imm))) {
+    fail_unsupported(
+        "conditional-phi-join predecessor arithmetic immediates outside the minimal add/sub-supported range");
   }
   if (slice.join_add_imm.has_value() &&
       (*slice.join_add_imm < 0 ||
@@ -2421,14 +2424,18 @@ std::string emit_minimal_conditional_phi_join_asm(
       << "  " << fail_branch << " .L" << slice.false_label << "\n"
       << ".L" << slice.true_label << ":\n"
       << "  mov w0, #" << slice.true_value.base_imm << "\n";
-  if (slice.true_value.add_imm.has_value()) {
-    out << "  add w0, w0, #" << *slice.true_value.add_imm << "\n";
+  if (slice.true_value.opcode.has_value() && slice.true_value.imm.has_value()) {
+    out << "  "
+        << (*slice.true_value.opcode == c4c::backend::BackendBinaryOpcode::Sub ? "sub" : "add")
+        << " w0, w0, #" << *slice.true_value.imm << "\n";
   }
   out << "  b .L" << slice.join_label << "\n"
       << ".L" << slice.false_label << ":\n"
       << "  mov w0, #" << slice.false_value.base_imm << "\n";
-  if (slice.false_value.add_imm.has_value()) {
-    out << "  add w0, w0, #" << *slice.false_value.add_imm << "\n";
+  if (slice.false_value.opcode.has_value() && slice.false_value.imm.has_value()) {
+    out << "  "
+        << (*slice.false_value.opcode == c4c::backend::BackendBinaryOpcode::Sub ? "sub" : "add")
+        << " w0, w0, #" << *slice.false_value.imm << "\n";
   }
   out
       << ".L" << slice.join_label << ":\n";

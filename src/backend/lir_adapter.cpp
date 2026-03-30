@@ -312,19 +312,24 @@ std::optional<BackendBinaryInst> adapt_conditional_phi_join_predecessor_compute(
     return std::nullopt;
   }
 
-  const auto* add = std::get_if<LirBinOp>(&block.insts.front());
-  if (add == nullptr || !has_binary_opcode(*add, LirBinaryOpcode::Add) ||
-      add->type_str != "i32" || add->result != expected_result ||
-      !parse_i64(add->lhs).has_value() || !parse_i64(add->rhs).has_value()) {
+  const auto* bin = std::get_if<LirBinOp>(&block.insts.front());
+  if (bin == nullptr || bin->type_str != "i32" || bin->result != expected_result ||
+      !parse_i64(bin->lhs).has_value() || !parse_i64(bin->rhs).has_value()) {
+    return std::nullopt;
+  }
+
+  const auto opcode = adapt_binary_opcode(bin->opcode);
+  if (!opcode.has_value() ||
+      (*opcode != BackendBinaryOpcode::Add && *opcode != BackendBinaryOpcode::Sub)) {
     return std::nullopt;
   }
 
   return BackendBinaryInst{
-      BackendBinaryOpcode::Add,
-      add->result,
-      add->type_str,
-      add->lhs,
-      add->rhs,
+      *opcode,
+      bin->result,
+      bin->type_str,
+      bin->lhs,
+      bin->rhs,
   };
 }
 

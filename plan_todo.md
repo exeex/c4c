@@ -8,10 +8,11 @@ Source Plan: plan.md
 
 - Step 2: Define the backend-owned IR model.
 - Exact target for the next iteration: extend `src/backend/ir.*` past the
-  newly lowered predecessor-local conditional-join slice into a bounded join
-  where the merge still stays explicit but at least one predecessor computes
-  its incoming scalar with a second typed ALU form beyond add-immediate, so
-  the backend-owned join contract is not special-cased to one arithmetic shape.
+  newly lowered predecessor-local conditional-join arithmetic slice into a
+  bounded join where one predecessor stays a direct immediate input while the
+  other contributes a predecessor-local typed arithmetic result, so the
+  explicit join contract is not implicitly symmetric about both predecessor
+  shapes.
 - Resume notes:
   - backend-owned IR now lowers a bounded four-block
     compare/branch/join/return slice where `then` and `else` each compute one
@@ -91,6 +92,23 @@ Source Plan: plan.md
 
 ## Completed Items
 
+- Completed an additional Step 2 predecessor-computed join arithmetic slice:
+  - taught `src/backend/lir_adapter.cpp` to lower the bounded
+    compare/branch/join/return shape when predecessor-local phi inputs are
+    computed with typed `i32 sub` as well as the existing `i32 add` form,
+    instead of rejecting non-add predecessor arithmetic outright
+  - updated `src/backend/x86/codegen/emit.cpp` and
+    `src/backend/aarch64/codegen/emit.cpp` so explicit backend IR inputs can
+    emit predecessor-local `sub` phi inputs directly before the join label
+    instead of falling back to backend-IR text
+  - added focused backend tests covering lowered predecessor-sub join
+    printing, validation, x86 explicit-backend-IR emission, and AArch64
+    explicit-backend-IR emission
+- Verified the current post-change full-suite regression status in
+  `test_fail_after.log`: `93% tests passed`, `183 tests failed out of 2560`
+  (2377 passing), improving the checked `test_fail_before.log` baseline
+  (`189` failing / `2371` passing) by 6 passing tests with no newly failing
+  tests.
 - Completed an additional Step 2 predecessor-computed join slice:
   - taught `src/backend/lir_adapter.cpp` to lower the bounded
     compare/branch/join/return shape when `then` and `else` each compute one
