@@ -61,6 +61,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     template_member_type_inherited_parse
     dependent_template_typename_member_parse
     dependent_member_template_template_arg_parse
+    dependent_member_template_operator_call_parse
     record_base_template_member_alias_parse
     template_alias_nttp_expr_parse
     template_alias_nttp_expr_inherited_parse

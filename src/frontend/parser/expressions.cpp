@@ -98,6 +98,16 @@ Node* Parser::parse_expr() {
     Node* lhs = parse_assign_expr();
     while (check(TokenKind::Comma)) {
         int ln = cur().line;
+        if (is_cpp_mode() &&
+            pos_ + 1 < static_cast<int>(tokens_.size()) &&
+            tokens_[pos_ + 1].kind == TokenKind::Ellipsis) {
+            consume();
+            consume();
+            Node* n = make_node(NK_PACK_EXPANSION, ln);
+            n->left = lhs;
+            lhs = n;
+            break;
+        }
         consume();
         Node* rhs = parse_assign_expr();
         Node* n = make_node(NK_COMMA_EXPR, ln);
@@ -490,6 +500,53 @@ Node* Parser::parse_new_expr(int ln, bool global_qualified) {
 }
 
 Node* Parser::parse_postfix(Node* base) {
+    auto attach_optional_member_template_args = [&](Node* member) {
+        if (!(is_cpp_mode() && check(TokenKind::Less)))
+            return;
+
+        const int saved_pos = pos_;
+        std::vector<TemplateArgParseResult> parsed_args;
+        if (!parse_template_argument_list(&parsed_args)) {
+            pos_ = saved_pos;
+            return;
+        }
+
+        auto is_valid_after_template = [&]() -> bool {
+            if (check(TokenKind::LParen) || check(TokenKind::ColonColon) ||
+                check(TokenKind::LBrace)) return true;
+            if (check(TokenKind::RParen) || check(TokenKind::Semi) ||
+                check(TokenKind::Comma) || check(TokenKind::Ellipsis) ||
+                check(TokenKind::RBracket) || check(TokenKind::RBrace) ||
+                check(TokenKind::Dot) || check(TokenKind::Arrow)) return true;
+            return false;
+        };
+
+        if (!is_valid_after_template()) {
+            pos_ = saved_pos;
+            return;
+        }
+
+        member->has_template_args = true;
+        member->n_template_args = static_cast<int>(parsed_args.size());
+        member->template_arg_types =
+            arena_.alloc_array<TypeSpec>(member->n_template_args);
+        member->template_arg_is_value =
+            arena_.alloc_array<bool>(member->n_template_args);
+        member->template_arg_values =
+            arena_.alloc_array<long long>(member->n_template_args);
+        member->template_arg_nttp_names =
+            arena_.alloc_array<const char*>(member->n_template_args);
+        member->template_arg_exprs =
+            arena_.alloc_array<Node*>(member->n_template_args);
+        for (int i = 0; i < member->n_template_args; ++i) {
+            member->template_arg_types[i] = parsed_args[i].type;
+            member->template_arg_is_value[i] = parsed_args[i].is_value;
+            member->template_arg_values[i] = parsed_args[i].value;
+            member->template_arg_nttp_names[i] = parsed_args[i].nttp_name;
+            member->template_arg_exprs[i] = parsed_args[i].expr;
+        }
+    };
+
     while (true) {
         int ln = cur().line;
         switch (cur().kind) {
@@ -511,6 +568,8 @@ Node* Parser::parse_postfix(Node* base) {
             }
             case TokenKind::Dot: {
                 consume();
+                const bool saw_template_keyword =
+                    is_cpp_mode() && match(TokenKind::KwTemplate);
                 std::string member_name;
                 if (is_cpp_mode() && match(TokenKind::Tilde)) {
                     member_name = "~";
@@ -524,17 +583,24 @@ Node* Parser::parse_postfix(Node* base) {
                     member_name = cur().lexeme;
                     consume();
                 } else if (!try_parse_operator_function_id(member_name)) {
+                    if (saw_template_keyword) {
+                        throw std::runtime_error(
+                            "expected member name after '.template'");
+                    }
                     break;
                 }
                 Node* n = make_node(NK_MEMBER, ln);
                 n->left     = base;
                 n->name     = arena_.strdup(member_name.c_str());
                 n->is_arrow = false;
+                attach_optional_member_template_args(n);
                 base = n;
                 break;
             }
             case TokenKind::Arrow: {
                 consume();
+                const bool saw_template_keyword =
+                    is_cpp_mode() && match(TokenKind::KwTemplate);
                 std::string member_name;
                 if (is_cpp_mode() && match(TokenKind::Tilde)) {
                     member_name = "~";
@@ -548,12 +614,17 @@ Node* Parser::parse_postfix(Node* base) {
                     member_name = cur().lexeme;
                     consume();
                 } else if (!try_parse_operator_function_id(member_name)) {
+                    if (saw_template_keyword) {
+                        throw std::runtime_error(
+                            "expected member name after '->template'");
+                    }
                     break;
                 }
                 Node* n = make_node(NK_MEMBER, ln);
                 n->left     = base;
                 n->name     = arena_.strdup(member_name.c_str());
                 n->is_arrow = true;
+                attach_optional_member_template_args(n);
                 base = n;
                 break;
             }

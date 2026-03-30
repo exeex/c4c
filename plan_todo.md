@@ -7,10 +7,9 @@ Last Updated: 2026-03-30
 
 ## Current Active Item
 
-- Step 2/4: re-reduce the surviving `common_reference.h:155` frontier from the
-  live preprocessed libc++ stream, because the isolated
-  `__xref<_Tp>::template __apply` testcase now passes but the forcing
-  `std::vector` repro still fails at the same header line
+- Step 2/4: reduce the new first surviving libc++ frontier at
+  `__compare/ordering.h:44`, now that the direct `std::vector` repro gets past
+  `__utility/integer_sequence.h`
 
 ## Todo
 
@@ -106,30 +105,44 @@ Last Updated: 2026-03-30
       template-template arguments in type context
 - [x] Taught both top-level and record-scope `using` alias parsing to accept
       `[[...]]` attributes between the alias name and `=`
+- [x] Reduced the post-merge `std::vector` frontier at
+      `__utility/integer_sequence.h:82` to a focused internal testcase for
+      dependent member-template operator calls inside a fold expression
+- [x] Taught postfix expression parsing to accept `.template` / `->template`
+      member access with explicit template arguments before the final call
+- [x] Taught comma-expression parsing to accept the `(expr, ...)` fold form
+      used by `__for_each_index_sequence`
+- [x] Re-ran the direct `std::vector` repro and confirmed the
+      `__utility/integer_sequence.h:82` frontier disappeared, exposing
+      `__compare/ordering.h:44`,
+      `__compare/common_comparison_category.h:42`, and later `__utility/pair.h`
+      parser failures instead
+- [x] Validated the completed `integer_sequence` slice with targeted parser
+      coverage for the reduced testcase, the earlier dependent-member-template
+      testcase, and the libc++ signed/unsigned header probes
 
 ## Next Intended Slice
 
-- Reproduce the remaining `common_reference.h:155` failure from a wider
-  preprocessed slice of the live libc++ stream, not just the isolated alias
-  declaration.
-- Identify the earlier parser-state corruption that makes the full
-  `tests/cpp/std/std_vector_simple.cpp` path fail even though
-  `tests/cpp/internal/postive_case/dependent_member_template_template_arg_parse.cpp`
-  now passes.
-- Once that wider reduced testcase exists, patch only the next parser boundary
-  needed to move the direct `std::vector` repro beyond `common_reference.h`.
+- Reproduce and reduce the new first surviving libc++ frontier at
+  `__compare/ordering.h:44:216`, where record-member parsing currently expects
+  `)` before `__zero`.
+- Keep the next reduction scoped to the comparison-category headers that became
+  visible only after clearing `integer_sequence.h`.
+- Re-run the forcing `std::vector` repro after the next parser fix and confirm
+  whether `__compare/common_comparison_category.h:42` or `__utility/pair.h`
+  becomes the next lead blocker.
 
 ## Blockers
 
-- The next live frontier is now in later libc++ parser surfaces such as
-  `__type_traits/common_reference.h`, `__ranges/size.h`, and
-  `__algorithm/comp_ref_type.h`, but they are not reduced yet.
-- The fresh `origin/main` merge may have shifted the exact first surviving
-  libc++ failure, so the repro ordering needs to be reconfirmed before the next
-  parser edit.
-- The isolated attributed-alias testcase now passes, so the remaining
-  `common_reference.h:155` failure is caused by earlier live-stream parser
-  state, not by the final alias spelling alone.
+- The latest direct repro no longer leads with either
+  `common_reference.h:155` or `integer_sequence.h:82`; it now first fails in
+  the `__compare` headers, beginning at `__compare/ordering.h:44`.
+- The stored `test_fail_before.log` baseline predates a large test-set
+  expansion, so the monotonic regression script cannot be used verbatim for
+  this slice without regenerating a same-era baseline.
+- The current full-suite run still contains unrelated environment/path failures
+  such as missing `/workspaces/c4c/...` fixtures and unavailable GNU
+  `bits/...` headers, so those results are not attributable to this patch.
 - Older GNU `libstdc++` blocker ordering in the source idea remains useful as
   history, but it is not the active execution frontier for this branch.
 
@@ -154,9 +167,14 @@ Last Updated: 2026-03-30
   them widen this branch's active plan beyond the current libc++ frontier.
 - Attributed `using` aliases now parse in both top-level and record scope when
   `[[...]]` appears between the alias name and `=`.
-- The isolated reduced testcase for `__xref<T>::template apply` now passes, so
-  the next reduction needs to keep more live libc++ context around the
-  `common_reference.h` frontier.
+- The isolated reduced testcase for `__xref<T>::template apply` still passes,
+  and the subsequent `integer_sequence.h` dependent-member-template frontier is
+  now cleared.
+- `tests/cpp/internal/postive_case/dependent_member_template_operator_call_parse.cpp`
+  now covers the reduced `integer_sequence` spelling directly.
+- A direct parse of `#include <__utility/integer_sequence.h>` now succeeds; the
+  remaining libc++ failures are later headers surfaced by the forcing
+  `std::vector` include stack.
 - Prefer shared parser or preprocessor compatibility fixes over libc++-specific
   hacks.
 - Do not reactivate backend umbrella work while this parser bring-up is active.
