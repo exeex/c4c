@@ -302,35 +302,67 @@ std::optional<BackendComparePredicate> adapt_compare_predicate(
   return std::nullopt;
 }
 
-std::optional<BackendBinaryInst> adapt_conditional_phi_join_predecessor_compute(
+std::optional<std::vector<BackendBinaryInst>> adapt_conditional_phi_join_predecessor_compute_chain(
     const c4c::codegen::lir::LirBlock& block,
     std::string_view expected_result) {
   if (block.insts.empty()) {
-    return std::nullopt;
+    return std::vector<BackendBinaryInst>{};
   }
-  if (block.insts.size() != 1) {
-    return std::nullopt;
-  }
-
-  const auto* bin = std::get_if<LirBinOp>(&block.insts.front());
-  if (bin == nullptr || bin->type_str != "i32" || bin->result != expected_result ||
-      !parse_i64(bin->lhs).has_value() || !parse_i64(bin->rhs).has_value()) {
+  if (block.insts.size() > 2) {
     return std::nullopt;
   }
 
-  const auto opcode = adapt_binary_opcode(bin->opcode);
+  std::vector<BackendBinaryInst> out;
+  out.reserve(block.insts.size());
+
+  const auto* first = std::get_if<LirBinOp>(&block.insts.front());
+  if (first == nullptr || first->type_str != "i32" || !parse_i64(first->lhs).has_value() ||
+      !parse_i64(first->rhs).has_value()) {
+    return std::nullopt;
+  }
+
+  const auto opcode = adapt_binary_opcode(first->opcode);
   if (!opcode.has_value() ||
       (*opcode != BackendBinaryOpcode::Add && *opcode != BackendBinaryOpcode::Sub)) {
     return std::nullopt;
   }
 
-  return BackendBinaryInst{
+  out.push_back(BackendBinaryInst{
       *opcode,
-      bin->result,
-      bin->type_str,
-      bin->lhs,
-      bin->rhs,
-  };
+      first->result,
+      first->type_str,
+      first->lhs,
+      first->rhs,
+  });
+
+  if (block.insts.size() == 1) {
+    if (first->result != expected_result) {
+      return std::nullopt;
+    }
+    return out;
+  }
+
+  const auto* second = std::get_if<LirBinOp>(&block.insts[1]);
+  if (second == nullptr || second->type_str != "i32" || second->result != expected_result ||
+      second->lhs != first->result || !parse_i64(second->rhs).has_value()) {
+    return std::nullopt;
+  }
+
+  const auto second_opcode = adapt_binary_opcode(second->opcode);
+  if (!second_opcode.has_value() ||
+      (*second_opcode != BackendBinaryOpcode::Add &&
+       *second_opcode != BackendBinaryOpcode::Sub)) {
+    return std::nullopt;
+  }
+
+  out.push_back(BackendBinaryInst{
+      *second_opcode,
+      second->result,
+      second->type_str,
+      second->lhs,
+      second->rhs,
+  });
+  return out;
 }
 
 std::vector<std::string> own_backend_call_param_types(
@@ -580,7 +612,7 @@ std::optional<BackendFunction> adapt_conditional_phi_join_function(
   const auto& false_block = function.blocks[2];
   const auto& join_block = function.blocks[3];
   if (entry.label != "entry" || entry.insts.size() != 3 ||
-      true_block.insts.size() > 1 || false_block.insts.size() > 1 ||
+      true_block.insts.size() > 2 || false_block.insts.size() > 2 ||
       (join_block.insts.size() != 1 && join_block.insts.size() != 2)) {
     return std::nullopt;
   }
@@ -620,9 +652,9 @@ std::optional<BackendFunction> adapt_conditional_phi_join_function(
   }
 
   const auto true_compute =
-      adapt_conditional_phi_join_predecessor_compute(true_block, phi->incoming[0].first);
+      adapt_conditional_phi_join_predecessor_compute_chain(true_block, phi->incoming[0].first);
   const auto false_compute =
-      adapt_conditional_phi_join_predecessor_compute(false_block, phi->incoming[1].first);
+      adapt_conditional_phi_join_predecessor_compute_chain(false_block, phi->incoming[1].first);
   if ((!true_block.insts.empty() && !true_compute.has_value()) ||
       (!false_block.insts.empty() && !false_compute.has_value())) {
     return std::nullopt;
@@ -673,7 +705,9 @@ std::optional<BackendFunction> adapt_conditional_phi_join_function(
   BackendBlock out_true;
   out_true.label = true_block.label;
   if (true_compute.has_value()) {
-    out_true.insts.push_back(*true_compute);
+    for (const auto& inst : *true_compute) {
+      out_true.insts.push_back(inst);
+    }
   }
   out_true.terminator = BackendTerminator::make_branch(join_block.label);
   out.blocks.push_back(std::move(out_true));
@@ -681,7 +715,9 @@ std::optional<BackendFunction> adapt_conditional_phi_join_function(
   BackendBlock out_false;
   out_false.label = false_block.label;
   if (false_compute.has_value()) {
-    out_false.insts.push_back(*false_compute);
+    for (const auto& inst : *false_compute) {
+      out_false.insts.push_back(inst);
+    }
   }
   out_false.terminator = BackendTerminator::make_branch(join_block.label);
   out.blocks.push_back(std::move(out_false));

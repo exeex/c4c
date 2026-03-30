@@ -251,10 +251,14 @@ struct MinimalConditionalReturnSlice {
 };
 
 struct MinimalConditionalPhiJoinSlice {
+  struct ArithmeticStep {
+    c4c::backend::BackendBinaryOpcode opcode = c4c::backend::BackendBinaryOpcode::Add;
+    std::int64_t imm = 0;
+  };
+
   struct IncomingValue {
     std::int64_t base_imm = 0;
-    std::optional<c4c::backend::BackendBinaryOpcode> opcode;
-    std::optional<std::int64_t> imm;
+    std::vector<ArithmeticStep> steps;
   };
 
   c4c::codegen::lir::LirCmpPredicate predicate = c4c::codegen::lir::LirCmpPredicate::Eq;
@@ -897,31 +901,55 @@ std::optional<MinimalConditionalPhiJoinSlice> parse_minimal_conditional_phi_join
       if (!imm.has_value()) {
         return std::nullopt;
       }
-      return MinimalConditionalPhiJoinSlice::IncomingValue{*imm, std::nullopt, std::nullopt};
+      return MinimalConditionalPhiJoinSlice::IncomingValue{*imm, {}};
     }
-    if (block.insts.size() != 1) {
+    if (block.insts.size() > 2) {
       return std::nullopt;
     }
 
-    const auto* bin = std::get_if<c4c::backend::BackendBinaryInst>(&block.insts.front());
-    if (bin == nullptr || bin->type_str != "i32" || bin->result != expected_result ||
-        (bin->opcode != c4c::backend::BackendBinaryOpcode::Add &&
-         bin->opcode != c4c::backend::BackendBinaryOpcode::Sub)) {
+    const auto* first = std::get_if<c4c::backend::BackendBinaryInst>(&block.insts.front());
+    if (first == nullptr || first->type_str != "i32" ||
+        (first->opcode != c4c::backend::BackendBinaryOpcode::Add &&
+         first->opcode != c4c::backend::BackendBinaryOpcode::Sub)) {
       return std::nullopt;
     }
 
-    const auto base_imm = parse_i64(bin->lhs);
-    const auto op_imm = parse_i64(bin->rhs);
-    if (!base_imm.has_value() || !op_imm.has_value()) {
+    const auto base_imm = parse_i64(first->lhs);
+    const auto first_imm = parse_i64(first->rhs);
+    if (!base_imm.has_value() || !first_imm.has_value()) {
       return std::nullopt;
     }
-    return MinimalConditionalPhiJoinSlice::IncomingValue{*base_imm, bin->opcode, *op_imm};
+
+    MinimalConditionalPhiJoinSlice::IncomingValue value;
+    value.base_imm = *base_imm;
+    value.steps.push_back({first->opcode, *first_imm});
+
+    if (block.insts.size() == 1) {
+      if (first->result != expected_result) {
+        return std::nullopt;
+      }
+      return value;
+    }
+
+    const auto* second = std::get_if<c4c::backend::BackendBinaryInst>(&block.insts[1]);
+    if (second == nullptr || second->type_str != "i32" || second->result != expected_result ||
+        second->lhs != first->result ||
+        (second->opcode != c4c::backend::BackendBinaryOpcode::Add &&
+         second->opcode != c4c::backend::BackendBinaryOpcode::Sub)) {
+      return std::nullopt;
+    }
+    const auto second_imm = parse_i64(second->rhs);
+    if (!second_imm.has_value()) {
+      return std::nullopt;
+    }
+    value.steps.push_back({second->opcode, *second_imm});
+    return value;
   };
   if (entry.label != "entry" || entry.insts.size() != 1 ||
       entry.terminator.kind != c4c::backend::BackendTerminatorKind::CondBranch ||
       true_block.label != entry.terminator.true_label ||
       false_block.label != entry.terminator.false_label ||
-      true_block.insts.size() > 1 || false_block.insts.size() > 1 ||
+      true_block.insts.size() > 2 || false_block.insts.size() > 2 ||
       true_block.terminator.kind != c4c::backend::BackendTerminatorKind::Branch ||
       false_block.terminator.kind != c4c::backend::BackendTerminatorKind::Branch ||
       true_block.terminator.target_label != join_block.label ||
@@ -2387,10 +2415,17 @@ std::string emit_minimal_conditional_phi_join_asm(
       !in_mov_range(slice.true_value.base_imm) || !in_mov_range(slice.false_value.base_imm)) {
     fail_unsupported("conditional-phi-join immediates outside the minimal mov-supported range");
   }
-  if ((slice.true_value.imm.has_value() && !in_mov_range(*slice.true_value.imm)) ||
-      (slice.false_value.imm.has_value() && !in_mov_range(*slice.false_value.imm))) {
-    fail_unsupported(
-        "conditional-phi-join predecessor arithmetic immediates outside the minimal add/sub-supported range");
+  for (const auto& step : slice.true_value.steps) {
+    if (!in_mov_range(step.imm)) {
+      fail_unsupported(
+          "conditional-phi-join predecessor arithmetic immediates outside the minimal add/sub-supported range");
+    }
+  }
+  for (const auto& step : slice.false_value.steps) {
+    if (!in_mov_range(step.imm)) {
+      fail_unsupported(
+          "conditional-phi-join predecessor arithmetic immediates outside the minimal add/sub-supported range");
+    }
   }
   if (slice.join_add_imm.has_value() &&
       (*slice.join_add_imm < 0 ||
@@ -2424,18 +2459,18 @@ std::string emit_minimal_conditional_phi_join_asm(
       << "  " << fail_branch << " .L" << slice.false_label << "\n"
       << ".L" << slice.true_label << ":\n"
       << "  mov w0, #" << slice.true_value.base_imm << "\n";
-  if (slice.true_value.opcode.has_value() && slice.true_value.imm.has_value()) {
+  for (const auto& step : slice.true_value.steps) {
     out << "  "
-        << (*slice.true_value.opcode == c4c::backend::BackendBinaryOpcode::Sub ? "sub" : "add")
-        << " w0, w0, #" << *slice.true_value.imm << "\n";
+        << (step.opcode == c4c::backend::BackendBinaryOpcode::Sub ? "sub" : "add")
+        << " w0, w0, #" << step.imm << "\n";
   }
   out << "  b .L" << slice.join_label << "\n"
       << ".L" << slice.false_label << ":\n"
       << "  mov w0, #" << slice.false_value.base_imm << "\n";
-  if (slice.false_value.opcode.has_value() && slice.false_value.imm.has_value()) {
+  for (const auto& step : slice.false_value.steps) {
     out << "  "
-        << (*slice.false_value.opcode == c4c::backend::BackendBinaryOpcode::Sub ? "sub" : "add")
-        << " w0, w0, #" << *slice.false_value.imm << "\n";
+        << (step.opcode == c4c::backend::BackendBinaryOpcode::Sub ? "sub" : "add")
+        << " w0, w0, #" << step.imm << "\n";
   }
   out
       << ".L" << slice.join_label << ":\n";
