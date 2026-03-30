@@ -3,7 +3,7 @@
 Status: Active
 Source Idea: ideas/open/04_std_vector_bringup_plan.md
 Source Plan: plan.md
-Last Updated: 2026-03-29
+Last Updated: 2026-03-30
 
 ## Current Active Item
 
@@ -66,6 +66,17 @@ Last Updated: 2026-03-29
 - [x] Validated the reduced `alloc_traits` slice with nearby parser tests and a
       monotonic full-suite comparison (`2434/2435` passed before,
       `2435/2435` passed after; no new failing tests)
+- [x] Reduced the `max_size_type.h` frontier enough to show
+      `bits/max_size_type.h` does not fail in isolation; the failure appears
+      once iterator/concepts headers such as `bits/stl_iterator.h` are parsed
+      before it
+- [x] Fixed local incomplete-type checking so a forward-declared record is
+      treated as complete for self-type local declarations inside its own
+      inline member bodies once the full definition is being parsed
+- [x] Added parser regressions for namespaced forward-declared self-type local
+      declarations, including a fully-qualified spelling variant, plus a
+      negative guard that keeps unrelated forward-declared local object types
+      rejected
 
 ## Next Intended Slice
 
@@ -80,6 +91,10 @@ Last Updated: 2026-03-29
   `max_size_type.h` frontier is not reduced yet; the first surviving parse-side
   anchor is the record-constructor-member `got='-'` failure at line 564, with
   incomplete-type diagnostics appearing earlier in the same header.
+- The `__max_size_type` local incomplete-type false positive is fixed, but the
+  remaining `__max_diff_type` cascade shows there is still a second parser bug
+  in the `max_size_type.h` / `ranges_base.h` path after forward-declare
+  handling.
 
 ## Resume Notes
 
@@ -102,5 +117,9 @@ Last Updated: 2026-03-29
 - This slice landed reduced coverage for record-qualified
   `typename X::template member<...>::type` aliases and moved the direct
   `std::vector` frontier past `alloc_traits.h:134` into `max_size_type.h`.
+- The current `max_size_type.h` investigation showed the first forward-declare
+  related bug was in local incomplete-type checking for inline member bodies;
+  targeted internal tests now cover both unqualified and fully-qualified
+  self-type locals after a prior forward declaration.
 - Do not reactivate `ideas/open/__backend_port_plan.md`; it is an umbrella
   roadmap, not the next execution target.

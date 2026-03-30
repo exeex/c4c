@@ -588,6 +588,20 @@ Node* Parser::parse_local_decl() {
         if (ts.base != TB_STRUCT && ts.base != TB_UNION) return false;
         if (ts.tpl_struct_origin) return false;  // pending template struct — resolved at HIR level
         if (!ts.tag) return true;
+        if (is_cpp_mode() && !current_struct_tag_.empty()) {
+            const std::string current_tag = current_struct_tag_;
+            const std::string qualified_current_tag = qualify_name(current_tag);
+            const std::string spelled_tag = ts.tag;
+            const std::string qualified_spelled_tag = qualify_name(spelled_tag);
+            if (current_tag == spelled_tag ||
+                current_tag == qualified_spelled_tag ||
+                qualified_current_tag == spelled_tag ||
+                qualified_current_tag == qualified_spelled_tag)
+                return false;
+            if (resolve_visible_type_name(spelled_tag) == current_tag ||
+                resolve_visible_type_name(spelled_tag) == qualified_current_tag)
+                return false;
+        }
         auto it = struct_tag_def_map_.find(ts.tag);
         if (it == struct_tag_def_map_.end()) return true;
         Node* def = it->second;
@@ -2025,6 +2039,20 @@ top_level_base_ready:
         if (ts.base != TB_STRUCT && ts.base != TB_UNION) return false;
         if (ts.tpl_struct_origin) return false;  // pending template struct — resolved at HIR level
         if (!ts.tag) return true;
+        if (is_cpp_mode() && !current_struct_tag_.empty()) {
+            const std::string current_tag = current_struct_tag_;
+            const std::string qualified_current_tag = qualify_name(current_tag);
+            const std::string spelled_tag = ts.tag;
+            const std::string qualified_spelled_tag = qualify_name(spelled_tag);
+            if (current_tag == spelled_tag ||
+                current_tag == qualified_spelled_tag ||
+                qualified_current_tag == spelled_tag ||
+                qualified_current_tag == qualified_spelled_tag)
+                return false;
+            if (resolve_visible_type_name(spelled_tag) == current_tag ||
+                resolve_visible_type_name(spelled_tag) == qualified_current_tag)
+                return false;
+        }
         auto it = struct_tag_def_map_.find(ts.tag);
         if (it == struct_tag_def_map_.end()) return true;
         Node* def = it->second;
