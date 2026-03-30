@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ir.hpp"
 #include "operands.hpp"
 
 #include <array>
@@ -317,6 +318,40 @@ inline FormattedLirTypedCall format_lir_typed_call(
       format_lir_call_param_types(param_types),
       format_lir_typed_call_args(args),
   };
+}
+
+inline FormattedLirTypedCall format_lir_call_fields(
+    std::string_view callee_type_suffix,
+    const std::vector<OwnedLirTypedCallArg>& args) {
+  FormattedLirTypedCall formatted;
+  formatted.args_str = format_lir_typed_call_args(args);
+
+  const auto trimmed_suffix = trim_lir_arg_text(callee_type_suffix);
+  if (trimmed_suffix.empty()) {
+    return formatted;
+  }
+
+  const auto parsed_param_types = parse_lir_call_param_types(trimmed_suffix);
+  if (!parsed_param_types.has_value()) {
+    formatted.callee_type_suffix = std::string(trimmed_suffix);
+    return formatted;
+  }
+
+  formatted.callee_type_suffix = format_lir_call_param_types(*parsed_param_types);
+  return formatted;
+}
+
+inline LirCallOp make_lir_call_op(std::string result,
+                                  std::string return_type,
+                                  std::string callee,
+                                  std::string_view callee_type_suffix,
+                                  const std::vector<OwnedLirTypedCallArg>& args) {
+  const auto formatted = format_lir_call_fields(callee_type_suffix, args);
+  return LirCallOp{std::string(trim_lir_arg_text(result)),
+                   std::string(trim_lir_arg_text(return_type)),
+                   std::string(trim_lir_arg_text(callee)),
+                   formatted.callee_type_suffix,
+                   formatted.args_str};
 }
 
 inline std::optional<ParsedLirTypedCallView> parse_lir_typed_call(

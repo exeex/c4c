@@ -8,24 +8,32 @@ Source Plan: plan.md
 
 - Step 4: Migrate high-friction instruction families and consumers.
 - Exact target for the next iteration: continue Step 4 past
-  the landed backend-owned shared call operand migration into the remaining
-  LIR-side construction/printing seams that still stitch together call
-  compatibility text directly instead of consuming one shared structured call
-  view end to end.
+  the landed stmt-emitter shared typed-call construction slice into the
+  remaining special-case LIR-side call builders and any adjacent persistence
+  seams that still hand-assemble `LirCallOp::{callee_type_suffix,args_str}`
+  text instead of routing through one shared structured helper.
 - Iteration focus: continue Step 4 in
   `src/codegen/lir/stmt_emitter.cpp`,
-  `src/codegen/lir/lir_printer.cpp`, and any adjacent LIR-side call helpers so
-  structured typed call metadata, including indirect callees and rewritten
-  operands, can flow through one shared formatter/parser seam without each site
-  rebuilding `callee_type_suffix` / `args_str` handling.
+  `src/codegen/lir/hir_to_lir.cpp`, and any adjacent LIR-side call helpers so
+  the residual raw ptrmask-style call construction and serialization paths use
+  the same shared typed call-field seam as the generic stmt-emitter call path.
 - Exact target for the next iteration after this slice: continue Step 4 into
   the remaining LIR-side call and serialization paths that still treat typed
   call metadata as ad hoc text, especially any residual `LirCallOp`
   construction or persistence seams outside the shared formatter/parser helper
-  layer.
+  layer after the ptrmask/special-call cleanup lands.
 
 ## Completed Items
 
+- Completed the next Step 4 stmt-emitter shared call-construction slice by
+  adding `format_lir_call_fields(...)` and `make_lir_call_op(...)` to
+  `src/codegen/lir/call_args.hpp`, routing
+  `src/codegen/lir/stmt_emitter.cpp`'s generic call emission plus the covered
+  builtin/intrinsic typed-call sites through that shared call-field builder
+  instead of hand-carrying `callee_type_suffix` and `args_str` separately, and
+  adding focused regression coverage in
+  `tests/backend/backend_lir_adapter_tests.cpp` for canonical suffix/argument
+  normalization through the new shared helper seam.
 - Completed the next Step 4 LIR-side shared call-formatting slice by adding
   `FormattedLirTypedCall`, `format_lir_typed_call(...)`, and
   `format_lir_call_site(...)` to `src/codegen/lir/call_args.hpp`, routing

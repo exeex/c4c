@@ -323,6 +323,38 @@ void test_lir_call_arg_helpers_format_full_call_site_round_trip() {
               "shared full-call formatter should canonicalize typed indirect-call suffix and args");
 }
 
+void test_lir_call_arg_helpers_format_call_fields_with_suffix() {
+  using namespace c4c::codegen::lir;
+
+  const std::vector<OwnedLirTypedCallArg> args{
+      {" ptr ", " %base "},
+      {" i32 ", " %idx "},
+  };
+  const auto formatted = format_lir_call_fields(" ( ptr , i32 ) ", args);
+
+  expect_true(formatted.callee_type_suffix == "(ptr, i32)",
+              "shared call-field formatter should canonicalize typed call parameter suffixes");
+  expect_true(formatted.args_str == "ptr %base, i32 %idx",
+              "shared call-field formatter should canonicalize typed call arguments");
+}
+
+void test_lir_call_arg_helpers_make_typed_call_op() {
+  using namespace c4c::codegen::lir;
+
+  const auto call = make_lir_call_op(
+      "%t0",
+      " i32 ",
+      " %fn.ptr ",
+      " ( ptr , i32 ) ",
+      {{" ptr ", " %base "}, {" i32 ", " %idx "}});
+
+  expect_true(call.result == "%t0" && call.return_type == "i32" &&
+                  call.callee == "%fn.ptr" &&
+                  call.callee_type_suffix == "(ptr, i32)" &&
+                  call.args_str == "ptr %base, i32 %idx",
+              "shared typed-call builder should canonicalize call-site metadata into one LIR construction seam");
+}
+
 void test_backend_call_helpers_decode_structured_direct_global_call() {
   c4c::backend::BackendCallInst call{
       "%t0",
@@ -8356,6 +8388,8 @@ int main() {
   test_lir_call_arg_helpers_decode_zero_arg_and_call_crossing_direct_calls();
   test_lir_call_arg_helpers_format_typed_call_round_trip();
   test_lir_call_arg_helpers_format_full_call_site_round_trip();
+  test_lir_call_arg_helpers_format_call_fields_with_suffix();
+  test_lir_call_arg_helpers_make_typed_call_op();
   test_backend_call_helpers_decode_structured_direct_global_call();
   test_lir_typed_wrappers_preserve_legacy_opcode_and_predicate_strings();
   test_lir_typed_wrappers_leave_unknown_opcode_text_compatible();

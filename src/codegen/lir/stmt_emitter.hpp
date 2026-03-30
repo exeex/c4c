@@ -292,9 +292,9 @@ class StmtEmitter {
   std::vector<OwnedLirTypedCallArg> prepare_call_args(FnCtx& ctx, const CallExpr& call,
                                                       const CallTargetInfo& call_target);
   void emit_void_call(FnCtx& ctx, const CallTargetInfo& call_target,
-                      const std::string& args_str);
+                      const std::vector<OwnedLirTypedCallArg>& args);
   std::string emit_call_with_result(FnCtx& ctx, const CallTargetInfo& call_target,
-                                    const std::string& args_str);
+                                    const std::vector<OwnedLirTypedCallArg>& args);
   PreparedBuiltinIntArg prepare_builtin_int_arg(FnCtx& ctx, ExprId arg_id,
                                                 BuiltinId builtin_id);
   std::string narrow_builtin_int_result(FnCtx& ctx, const PreparedBuiltinIntArg& arg,
