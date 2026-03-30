@@ -136,6 +136,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     keyword_not_parse
     qualified_cpp_base_type_dispatch_parse
     gcc_type_trait_type_arg_parse
+    builtin_trait_is_unsigned_parse
     libcxx_is_unsigned_header_parse
     qualified_type_spelling_shared_parse
     qualified_type_resolution_dispatch_parse

@@ -45,6 +45,9 @@ Last Updated: 2026-03-30
 - [x] Added `tests/cpp/internal/postive_case/libcxx_is_unsigned_header_parse.cpp`
       and taught the preprocessor `__has_builtin` probe to recognize
       `__is_unsigned`
+- [x] Added direct parse-only coverage for the builtin trait spelling
+      `__is_unsigned(T)` in
+      `tests/cpp/internal/postive_case/builtin_trait_is_unsigned_parse.cpp`
 - [x] Re-ran the direct `std::vector` repro and confirmed the old
       `byte.h` / `construct_at.h` / `is_unsigned` frontier disappeared, exposing
       later parser failures in `__algorithm/unwrap_iter.h`,
