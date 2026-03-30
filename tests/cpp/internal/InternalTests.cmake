@@ -102,6 +102,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     access_labels_treated_public_runtime
     friend_access_parse
     friend_inline_operator_parse
+    friend_relational_operator_parse
     friend_spaceship_operator_parse
     if_condition_decl_parse
     free_function_record_ref_param_parse

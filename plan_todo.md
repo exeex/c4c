@@ -7,9 +7,9 @@ Last Updated: 2026-03-30
 
 ## Current Active Item
 
-- Step 2/3: reduce and fix the surviving `max_size_type.h` parser frontier,
-  currently anchored at `/usr/include/c++/14/bits/max_size_type.h:564`
-  `try_parse_record_constructor_member expected=RPAREN got='-'`
+- Step 4/5: confirm the post-`max_size_type` `std::vector` frontier after the
+  friend relational-operator skipper fix and localize the next blocker beyond
+  the old fast-fail parser error.
 
 ## Todo
 
@@ -21,13 +21,13 @@ Last Updated: 2026-03-30
       the `alloc_traits` dependent-template slice
 - [x] Validate the next completed slice with targeted tests plus a monotonic
       full-suite comparison
-- [ ] Reduce the contextual `max_size_type.h:564` failure to the smallest
+- [x] Reduce the contextual `max_size_type.h:564` failure to the smallest
       committed internal testcase
-- [ ] Implement the narrowest parser fix for the reduced `max_size_type`
+- [x] Implement the narrowest parser fix for the reduced `max_size_type`
       frontier
-- [ ] Re-run the direct `std::vector` repro to confirm the next post-
+- [x] Re-run the direct `std::vector` repro to confirm the next post-
       `max_size_type` frontier
-- [ ] Validate the completed `max_size_type` slice with targeted tests plus a
+- [x] Validate the completed `max_size_type` slice with targeted tests plus a
       monotonic full-suite comparison
 
 ## Completed
@@ -102,48 +102,41 @@ Last Updated: 2026-03-30
       further: `tests/cpp/internal/postive_case/stl_iterator_then_max_size_type_parse.cpp`
       now reproduces the same `max_size_type.h:564` failure with
       `<bits/iterator_concepts.h>` alone before `<bits/max_size_type.h>`
+- [x] Reduced the surviving `max_size_type` mis-sync to friend relational
+      operators inside the header skip path and added
+      `tests/cpp/internal/postive_case/friend_relational_operator_parse.cpp`
+- [x] Fixed `try_skip_record_friend_member(...)` so friend operator names such
+      as `operator<` are consumed explicitly instead of being mistaken for
+      template-angle depth and swallowing following record members
+- [x] Re-ran the reduced include-order testcase and confirmed
+      `tests/cpp/internal/postive_case/stl_iterator_then_max_size_type_parse.cpp`
+      now parses successfully
+- [x] Re-ran the direct `std::vector` repro and confirmed the old
+      `/usr/include/c++/14/bits/max_size_type.h:564`
+      `expected=RPAREN got='-'` fast-fail no longer appears; with a 60 second
+      timeout the parse produced no stderr before timing out, so the frontier
+      has moved beyond the old `max_size_type` parser error
+- [x] Validated the slice with targeted parser regressions plus a clean full
+      suite run (`2450/2450` passed; no failing tests)
 
 ## Next Intended Slice
 
-- Reduce the next `std::vector` frontier in
-  `/usr/include/c++/14/bits/max_size_type.h`, still starting from the
-  `try_parse_record_constructor_member expected=RPAREN got='-'` failure at
-  line 564; now that the `ranges_base.h` attribute and qualified template-call
-  blockers are cleared, focus on reducing the remaining contextual
-  `__max_diff_type` failure from the smaller
-  `<bits/iterator_concepts.h> + <bits/max_size_type.h>` repro without the
-  earlier `ranges_base` / `stl_iterator` noise.
+- Re-run the direct `std::vector` repro with a tighter profiling / timeout
+  harness and reduce the first post-`max_size_type` blocker now that the old
+  `max_size_type.h:564` fast-fail is gone.
+- If the remaining frontier is another parser issue, reduce it into a new
+  internal testcase smaller than the full `std::vector` stack before touching
+  parser code again.
 
 ## Blockers
 
-- The direct repro now clears `alloc_traits.h:134`, but the next
-  `max_size_type.h` frontier is not reduced yet; the first surviving parse-side
-  anchor is the record-constructor-member `got='-'` failure at line 564, with
-  incomplete-type diagnostics appearing earlier in the same header.
-- The `__max_size_type` local incomplete-type false positive is fixed, but the
-  remaining `__max_diff_type` cascade shows there is still a second parser bug
-  in the `max_size_type.h` / `ranges_base.h` path after forward-declare
-  handling.
-- This iteration added lexer/parser support for the C++20 `<=>` token plus
-  basic member-operator parsing coverage, but the real `max_size_type.h:564`
-  blocker still reproduces after `<bits/stl_iterator.h>` and
-  `<bits/max_size_type.h>` are combined, so another contextual parser issue
-  remains.
-- The direct repro also now clears the earlier `ranges_base.h` attribute and
-  `noexcept(bool(std::declval<T&>().empty()))` expression failures; once the
-  `max_size_type.h` frontier is cleared, the next visible parser follow-on is
-  in `/usr/include/c++/14/bits/ranges_util.h`.
-- This iteration confirmed the parser already accepts member
-  `operator&=` / `operator|=` / `operator^=` / `operator<<=` /
-  `operator>>=` declarations in isolation; the surviving `max_size_type`
-  failure is therefore more contextual than a missing compound-assignment
-  operator token case.
-- A narrow expression-side hardening pass now restores the token stream after
-  speculative parenthesized-cast / functional-cast type parsing in
-  `expressions.cpp`, and reduced internal coverage was added for both a
-  `~(Type(-1) >> rhs)` expression and member bitwise-compound operator
-  declarations, but the live `max_size_type.h:564` repro still fails after
-  `<bits/iterator_concepts.h>`.
+- The direct `std::vector` repro no longer exposes the old
+  `max_size_type.h:564` parser error quickly; the next visible frontier still
+  needs to be localized from the slower full-header path.
+- A 60 second timeout on the direct repro produced no stderr after the
+  relational-friend skip fix, so the next slice should determine whether the
+  remaining issue is a later parser blocker or a performance path in the
+  deeper header stack.
 
 ## Resume Notes
 
@@ -174,5 +167,11 @@ Last Updated: 2026-03-30
   including member parse coverage and a reduced include-order testcase
   (`stl_iterator_then_max_size_type_parse.cpp`) that locks in the still-failing
   contextual `max_size_type` frontier.
+- The `max_size_type` failure turned out not to be a compound-assignment token
+  bug; `try_skip_record_friend_member(...)` was treating friend operator names
+  like `operator<` as template-angle depth and swallowing the rest of the
+  class body until the later `-1` expression.
+- Internal coverage now includes `friend_relational_operator_parse.cpp` to keep
+  friend relational operators from regressing back into that skip-path bug.
 - Do not reactivate `ideas/open/__backend_port_plan.md`; it is an umbrella
   roadmap, not the next execution target.

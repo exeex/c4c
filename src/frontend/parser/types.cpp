@@ -513,7 +513,28 @@ bool looks_like_record_member_decl_boundary(Parser& parser) {
         return false;
     }
     const TokenKind start_kind = parser.cur().kind;
-    if (!(is_type_kw(start_kind) || is_qualifier(start_kind) ||
+    if (!(start_kind == TokenKind::KwTemplate ||
+          start_kind == TokenKind::KwFriend ||
+          start_kind == TokenKind::KwUsing ||
+          start_kind == TokenKind::KwStaticAssert ||
+          start_kind == TokenKind::KwConstexpr ||
+          start_kind == TokenKind::KwConsteval ||
+          start_kind == TokenKind::KwExplicit ||
+          start_kind == TokenKind::KwInline ||
+          start_kind == TokenKind::KwStatic ||
+          start_kind == TokenKind::KwExtern ||
+          start_kind == TokenKind::KwMutable ||
+          start_kind == TokenKind::KwVirtual ||
+          start_kind == TokenKind::KwTypedef ||
+          start_kind == TokenKind::KwConcept ||
+          start_kind == TokenKind::KwStruct ||
+          start_kind == TokenKind::KwClass ||
+          start_kind == TokenKind::KwUnion ||
+          start_kind == TokenKind::KwEnum ||
+          start_kind == TokenKind::KwTypename ||
+          start_kind == TokenKind::KwAuto ||
+          start_kind == TokenKind::KwAlignas ||
+          is_type_kw(start_kind) || is_qualifier(start_kind) ||
           is_storage_class(start_kind))) {
         return false;
     }
@@ -606,13 +627,6 @@ bool is_record_member_recovery_boundary(Parser& parser,
         member_start_pos < 0 ||
         member_start_pos >= static_cast<int>(parser.tokens_.size()) ||
         parser.pos_ <= member_start_pos) {
-        return false;
-    }
-
-    const TokenKind start_kind = parser.tokens_[member_start_pos].kind;
-    if (start_kind != TokenKind::Tilde &&
-        start_kind != TokenKind::KwOperator &&
-        start_kind != TokenKind::KwUsing) {
         return false;
     }
 
@@ -4496,6 +4510,13 @@ bool Parser::try_skip_record_friend_member() {
     int angle_depth = 0;
     int paren_depth = 0;
     while (!at_end()) {
+        if (check(TokenKind::KwOperator) && angle_depth == 0 &&
+            paren_depth == 0) {
+            std::string ignored_name;
+            if (parse_operator_declarator_name(&ignored_name)) {
+                continue;
+            }
+        }
         if (check(TokenKind::Less) && paren_depth == 0) {
             ++angle_depth;
             consume();
