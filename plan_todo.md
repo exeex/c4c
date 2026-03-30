@@ -8,12 +8,24 @@ Source Plan: plan.md
 
 - Step 2: Define the backend-owned IR model.
 - Exact target for the next iteration: extend `src/backend/ir.*` past the
-  newly covered mixed predecessor/immediate conditional-join slice into the
-  next bounded asymmetric join seam after the chained predecessor edge
+  newly covered mixed predecessor chain/computed-edge conditional-join slice
+  into the next bounded asymmetric join seam after alternate-edge computed
   coverage, ideally preserving the same four-block compare/branch/join/return
-  shape while widening the alternate predecessor edge beyond direct immediate
-  input without reopening backend-IR text fallback.
+  shape while widening the alternate predecessor edge from a single computed
+  op into its own bounded add/sub chain without reopening backend-IR text
+  fallback.
 - Resume notes:
+  - backend-owned IR coverage now proves the bounded
+    compare/branch/join/return slice remains valid when one predecessor
+    computes the merged `phi` input with a two-op typed `i32 add` then `sub`
+    chain, the opposite predecessor contributes a single typed `i32 add`, and
+    the join block itself applies one bounded typed `i32 add`
+  - both x86 and AArch64 now have focused explicit-backend-IR coverage for
+    that asymmetric predecessor chain/computed-edge plus join-local-add shape
+    without falling back to backend-IR text or legacy LIR
+  - the next highest-value asymmetric join seam is widening the alternate
+    predecessor edge from a single computed op into its own bounded add/sub
+    chain while preserving the same bounded join-local scalar use
   - backend-owned IR coverage now proves the bounded
     compare/branch/join/return slice remains valid when one predecessor
     computes the merged `phi` input with a two-op typed `i32 add` then `sub`
@@ -134,6 +146,17 @@ Source Plan: plan.md
 
 ## Completed Items
 
+- Completed an additional Step 2 mixed predecessor chain/computed-edge join
+  slice:
+  - added focused backend coverage for the bounded
+    compare/branch/join/return shape where one predecessor computes the `phi`
+    input through a two-op typed `i32 add` then `sub` chain, the alternate
+    predecessor computes a single typed `i32 add`, and the join block itself
+    applies a bounded typed `i32 add`
+  - verified the existing lowering and explicit-backend-IR emitter paths
+    already preserve that asymmetric chain/computed-edge join contract in
+    printer, validator, x86, and AArch64 coverage instead of only covering an
+    immediate alternate edge after the chained predecessor case
 - Verified the current post-change full-suite regression status in
   `test_fail_after.log`: `93% tests passed`, `183 tests failed out of 2560`
   (2377 passing), matching the checked `test_fail_before.log` baseline with no
