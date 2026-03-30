@@ -54,7 +54,7 @@ The backend effort should keep execution focused on one narrow open child at a t
 
 Current open child:
 
-- none currently selected
+- `19_backend_aarch64_return_zero_runtime_promotion_plan.md`
 
 ## Shared Guardrails
 
@@ -90,4 +90,10 @@ The bounded AArch64 global int-pointer-roundtrip seam from `14_backend_aarch64_g
 
 The `15_backend_aarch64_param_member_array_plan.md` child was already completed and moved to `ideas/closed/` on 2026-03-30.
 
-The next child should be derived from the remaining backend roadmap gaps instead of reactivating the umbrella directly.
+The `17_backend_aarch64_nested_member_pointer_array_plan.md` child was completed and moved to `ideas/closed/` on 2026-03-30 after promoting the bounded nested pointer-member chasing seam through the backend-owned asm path.
+
+The `18_backend_aarch64_nested_param_member_array_plan.md` child was completed and moved to `ideas/closed/` on 2026-03-30 after promoting the bounded nested by-value aggregate member-array seam through the backend-owned asm path.
+
+The next child is `19_backend_aarch64_return_zero_runtime_promotion_plan.md`, which isolates the remaining runtime-harness promotion gap for the already-supported minimal constant-return AArch64 slice.
+
+The umbrella should remain inactive while that narrow child is the active execution target.

@@ -1947,10 +1947,12 @@ c4c::codegen::lir::LirModule make_nested_param_member_array_gep_module() {
   entry.insts.push_back(
       LirGepOp{"%t1", "%struct.Inner", "%t0", false, {"i32 0", "i32 0"}});
   entry.insts.push_back(
-      LirCastOp{"%t2", LirCastKind::SExt, "i32", "1", "i64"});
-  entry.insts.push_back(LirGepOp{"%t3", "i32", "%t1", false, {"i64 %t2"}});
-  entry.insts.push_back(LirLoadOp{"%t4", "i32", "%t3"});
-  entry.terminator = LirRet{std::string("%t4"), "i32"};
+      LirGepOp{"%t2", "[2 x i32]", "%t1", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(
+      LirCastOp{"%t3", LirCastKind::SExt, "i32", "1", "i64"});
+  entry.insts.push_back(LirGepOp{"%t4", "i32", "%t2", false, {"i64 %t3"}});
+  entry.insts.push_back(LirLoadOp{"%t5", "i32", "%t4"});
+  entry.terminator = LirRet{std::string("%t5"), "i32"};
   function.blocks.push_back(std::move(entry));
 
   module.functions.push_back(std::move(function));
@@ -3712,22 +3714,16 @@ void test_aarch64_backend_renders_nested_param_member_array_gep_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_nested_param_member_array_gep_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-  expect_contains(rendered, "%struct.Inner = type { [2 x i32] }",
-                  "aarch64 backend should preserve nested by-value member type declarations");
-  expect_contains(rendered, "%struct.Outer = type { %struct.Inner }",
-                  "aarch64 backend should preserve nested by-value outer type declarations");
-  expect_contains(rendered, "%lv.param.o = alloca %struct.Outer, align 4",
-                  "aarch64 backend should spill nested by-value parameters into stack slots");
-  expect_contains(rendered, "store %struct.Outer %p.o, ptr %lv.param.o",
-                  "aarch64 backend should store nested by-value parameters into their slots");
-  expect_contains(rendered, "%t0 = getelementptr %struct.Outer, ptr %lv.param.o, i32 0, i32 0",
-                  "aarch64 backend should render the outer nested by-value member-addressing GEP");
-  expect_contains(rendered, "%t1 = getelementptr %struct.Inner, ptr %t0, i32 0, i32 0",
-                  "aarch64 backend should render the inner nested by-value member-addressing GEP");
-  expect_contains(rendered, "%t3 = getelementptr i32, ptr %t1, i64 %t2",
-                  "aarch64 backend should render indexed nested by-value member-array addressing");
-  expect_contains(rendered, "ret i32 %t4",
-                  "aarch64 backend should preserve the loaded nested by-value member-array result");
+  expect_contains(rendered, "get_second:",
+                  "aarch64 backend should emit a helper symbol for the bounded nested by-value member-array slice");
+  expect_contains(rendered, "str x0, [sp, #8]",
+                  "aarch64 backend should spill the nested by-value outer aggregate parameter into the helper slot");
+  expect_contains(rendered, "ldr w0, [sp, #12]",
+                  "aarch64 backend should reload the second nested member-array element from the spilled helper slot");
+  expect_contains(rendered, "ret",
+                  "aarch64 backend should return directly after the bounded nested member-array reload");
+  expect_not_contains(rendered, "getelementptr",
+                      "aarch64 backend should not fall back to LLVM-text GEP rendering for the bounded nested by-value member-array slice");
 }
 
 void test_aarch64_backend_renders_global_definition_slice() {

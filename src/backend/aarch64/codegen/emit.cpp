@@ -268,6 +268,13 @@ struct MinimalParamMemberArraySlice {
   std::int64_t store1_imm = 0;
 };
 
+struct MinimalNestedParamMemberArraySlice {};
+
+struct MinimalNestedParamMemberArrayRuntimeSlice {
+  std::int64_t store0_imm = 0;
+  std::int64_t store1_imm = 0;
+};
+
 struct MinimalNestedMemberPointerArraySlice {};
 
 struct MinimalNestedMemberPointerArrayRuntimeSlice {
@@ -749,6 +756,249 @@ std::optional<MinimalParamMemberArraySlice> parse_minimal_param_member_array_sli
   }
 
   return MinimalParamMemberArraySlice{*store0_imm, *store1_imm};
+}
+
+std::optional<MinimalNestedParamMemberArraySlice>
+parse_minimal_nested_param_member_array_slice(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || !module.globals.empty() ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* function = find_lir_function(module, "get_second");
+  if (function == nullptr || function->is_declaration || !function->stack_objects.empty() ||
+      function->signature_text != "define i32 @get_second(%struct.Outer %p.o)\n" ||
+      function->entry.value != 0 || function->blocks.size() != 1 ||
+      function->alloca_insts.size() != 2) {
+    return std::nullopt;
+  }
+
+  const auto* param_slot = std::get_if<LirAllocaOp>(&function->alloca_insts[0]);
+  const auto* param_spill = std::get_if<LirStoreOp>(&function->alloca_insts[1]);
+  if (param_slot == nullptr || param_spill == nullptr ||
+      param_slot->result != "%lv.param.o" || param_slot->type_str != "%struct.Outer" ||
+      !param_slot->count.empty() || param_spill->type_str != "%struct.Outer" ||
+      param_spill->val != "%p.o" || param_spill->ptr != param_slot->result) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function->blocks.front();
+  if (entry.label != "entry" || entry.insts.size() != 6) {
+    return std::nullopt;
+  }
+
+  const auto* outer_member_gep = std::get_if<LirGepOp>(&entry.insts[0]);
+  const auto* inner_member_gep = std::get_if<LirGepOp>(&entry.insts[1]);
+  const auto* array_decay_gep = std::get_if<LirGepOp>(&entry.insts[2]);
+  const auto* index_cast = std::get_if<LirCastOp>(&entry.insts[3]);
+  const auto* element_gep = std::get_if<LirGepOp>(&entry.insts[4]);
+  const auto* element_load = std::get_if<LirLoadOp>(&entry.insts[5]);
+  const auto* ret = std::get_if<LirRet>(&entry.terminator);
+  if (outer_member_gep == nullptr || inner_member_gep == nullptr ||
+      array_decay_gep == nullptr || index_cast == nullptr ||
+      element_gep == nullptr || element_load == nullptr || ret == nullptr) {
+    return std::nullopt;
+  }
+
+  if (outer_member_gep->result != "%t0" ||
+      outer_member_gep->element_type != "%struct.Outer" ||
+      outer_member_gep->ptr != "%lv.param.o" || outer_member_gep->indices.size() != 2 ||
+      outer_member_gep->indices[0] != "i32 0" ||
+      outer_member_gep->indices[1] != "i32 0") {
+    return std::nullopt;
+  }
+  if (inner_member_gep->result != "%t1" ||
+      inner_member_gep->element_type != "%struct.Inner" ||
+      inner_member_gep->ptr != "%t0" || inner_member_gep->indices.size() != 2 ||
+      inner_member_gep->indices[0] != "i32 0" ||
+      inner_member_gep->indices[1] != "i32 0") {
+    return std::nullopt;
+  }
+  if (array_decay_gep->result != "%t2" ||
+      array_decay_gep->element_type != "[2 x i32]" ||
+      array_decay_gep->ptr != "%t1" || array_decay_gep->indices.size() != 2 ||
+      array_decay_gep->indices[0] != "i64 0" ||
+      array_decay_gep->indices[1] != "i64 0") {
+    return std::nullopt;
+  }
+  if (index_cast->result != "%t3" || index_cast->kind != LirCastKind::SExt ||
+      index_cast->from_type != "i32" || index_cast->operand != "1" ||
+      index_cast->to_type != "i64") {
+    return std::nullopt;
+  }
+  if (element_gep->result != "%t4" || element_gep->element_type != "i32" ||
+      element_gep->ptr != "%t2" || element_gep->indices.size() != 1 ||
+      element_gep->indices[0] != "i64 %t3") {
+    return std::nullopt;
+  }
+  if (element_load->result != "%t5" || element_load->type_str != "i32" ||
+      element_load->ptr != "%t4" || !ret->value_str.has_value() ||
+      *ret->value_str != "%t5" || ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  return MinimalNestedParamMemberArraySlice{};
+}
+
+std::optional<MinimalNestedParamMemberArrayRuntimeSlice>
+parse_minimal_nested_param_member_array_runtime_slice(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 2 || !module.globals.empty() ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* callee = find_lir_function(module, "get_second");
+  const auto* main_fn = find_lir_function(module, "main");
+  if (callee == nullptr || main_fn == nullptr || callee->is_declaration ||
+      main_fn->is_declaration || !callee->stack_objects.empty() ||
+      !main_fn->stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  c4c::codegen::lir::LirModule helper_module;
+  helper_module.target_triple = module.target_triple;
+  helper_module.data_layout = module.data_layout;
+  helper_module.type_decls = module.type_decls;
+  helper_module.functions.push_back(*callee);
+  if (!parse_minimal_nested_param_member_array_slice(helper_module).has_value()) {
+    return std::nullopt;
+  }
+
+  if (main_fn->signature_text != "define i32 @main()\n" || main_fn->entry.value != 0 ||
+      main_fn->blocks.size() != 1 || main_fn->alloca_insts.size() != 2) {
+    return std::nullopt;
+  }
+
+  const auto* outer_slot = std::get_if<LirAllocaOp>(&main_fn->alloca_insts[0]);
+  const auto* outer_init0 = std::get_if<LirStoreOp>(&main_fn->alloca_insts[1]);
+  if (outer_slot == nullptr || outer_init0 == nullptr ||
+      outer_slot->result != "%lv.outer" || outer_slot->type_str != "%struct.Outer" ||
+      !outer_slot->count.empty() || outer_slot->align < 4 ||
+      outer_init0->type_str != "%struct.Outer" ||
+      outer_init0->val != "zeroinitializer" || outer_init0->ptr != "%lv.outer") {
+    return std::nullopt;
+  }
+
+  const auto& entry = main_fn->blocks.front();
+  if (entry.label != "entry" || entry.insts.size() != 15) {
+    return std::nullopt;
+  }
+
+  const auto* outer_init1 = std::get_if<LirStoreOp>(&entry.insts[0]);
+  const auto* outer_member_gep0 = std::get_if<LirGepOp>(&entry.insts[1]);
+  const auto* inner_member_gep0 = std::get_if<LirGepOp>(&entry.insts[2]);
+  const auto* array_decay_gep0 = std::get_if<LirGepOp>(&entry.insts[3]);
+  const auto* index_cast0 = std::get_if<LirCastOp>(&entry.insts[4]);
+  const auto* element_gep0 = std::get_if<LirGepOp>(&entry.insts[5]);
+  const auto* store0 = std::get_if<LirStoreOp>(&entry.insts[6]);
+  const auto* outer_member_gep1 = std::get_if<LirGepOp>(&entry.insts[7]);
+  const auto* inner_member_gep1 = std::get_if<LirGepOp>(&entry.insts[8]);
+  const auto* array_decay_gep1 = std::get_if<LirGepOp>(&entry.insts[9]);
+  const auto* index_cast1 = std::get_if<LirCastOp>(&entry.insts[10]);
+  const auto* element_gep1 = std::get_if<LirGepOp>(&entry.insts[11]);
+  const auto* store1 = std::get_if<LirStoreOp>(&entry.insts[12]);
+  const auto* load_outer = std::get_if<LirLoadOp>(&entry.insts[13]);
+  const auto* call = std::get_if<LirCallOp>(&entry.insts[14]);
+  const auto* ret = std::get_if<LirRet>(&entry.terminator);
+  if (outer_init1 == nullptr || outer_member_gep0 == nullptr ||
+      inner_member_gep0 == nullptr || array_decay_gep0 == nullptr ||
+      index_cast0 == nullptr || element_gep0 == nullptr || store0 == nullptr ||
+      outer_member_gep1 == nullptr || inner_member_gep1 == nullptr ||
+      array_decay_gep1 == nullptr || index_cast1 == nullptr ||
+      element_gep1 == nullptr || store1 == nullptr || load_outer == nullptr ||
+      call == nullptr || ret == nullptr) {
+    return std::nullopt;
+  }
+
+  if (outer_init1->type_str != "%struct.Outer" ||
+      outer_init1->val != "zeroinitializer" || outer_init1->ptr != "%lv.outer") {
+    return std::nullopt;
+  }
+  if (outer_member_gep0->result != "%t0" ||
+      outer_member_gep0->element_type != "%struct.Outer" ||
+      outer_member_gep0->ptr != "%lv.outer" || outer_member_gep0->indices.size() != 2 ||
+      outer_member_gep0->indices[0] != "i32 0" ||
+      outer_member_gep0->indices[1] != "i32 0") {
+    return std::nullopt;
+  }
+  if (inner_member_gep0->result != "%t1" ||
+      inner_member_gep0->element_type != "%struct.Inner" ||
+      inner_member_gep0->ptr != "%t0" || inner_member_gep0->indices.size() != 2 ||
+      inner_member_gep0->indices[0] != "i32 0" ||
+      inner_member_gep0->indices[1] != "i32 0") {
+    return std::nullopt;
+  }
+  if (array_decay_gep0->result != "%t2" ||
+      array_decay_gep0->element_type != "[2 x i32]" ||
+      array_decay_gep0->ptr != "%t1" || array_decay_gep0->indices.size() != 2 ||
+      array_decay_gep0->indices[0] != "i64 0" ||
+      array_decay_gep0->indices[1] != "i64 0") {
+    return std::nullopt;
+  }
+  if (index_cast0->result != "%t3" || index_cast0->kind != LirCastKind::SExt ||
+      index_cast0->from_type != "i32" || index_cast0->operand != "0" ||
+      index_cast0->to_type != "i64") {
+    return std::nullopt;
+  }
+  if (element_gep0->result != "%t4" || element_gep0->element_type != "i32" ||
+      element_gep0->ptr != "%t2" || element_gep0->indices.size() != 1 ||
+      element_gep0->indices[0] != "i64 %t3" || store0->type_str != "i32" ||
+      store0->ptr != "%t4") {
+    return std::nullopt;
+  }
+  if (outer_member_gep1->result != "%t5" ||
+      outer_member_gep1->element_type != "%struct.Outer" ||
+      outer_member_gep1->ptr != "%lv.outer" || outer_member_gep1->indices.size() != 2 ||
+      outer_member_gep1->indices[0] != "i32 0" ||
+      outer_member_gep1->indices[1] != "i32 0") {
+    return std::nullopt;
+  }
+  if (inner_member_gep1->result != "%t6" ||
+      inner_member_gep1->element_type != "%struct.Inner" ||
+      inner_member_gep1->ptr != "%t5" || inner_member_gep1->indices.size() != 2 ||
+      inner_member_gep1->indices[0] != "i32 0" ||
+      inner_member_gep1->indices[1] != "i32 0") {
+    return std::nullopt;
+  }
+  if (array_decay_gep1->result != "%t7" ||
+      array_decay_gep1->element_type != "[2 x i32]" ||
+      array_decay_gep1->ptr != "%t6" || array_decay_gep1->indices.size() != 2 ||
+      array_decay_gep1->indices[0] != "i64 0" ||
+      array_decay_gep1->indices[1] != "i64 0") {
+    return std::nullopt;
+  }
+  if (index_cast1->result != "%t8" || index_cast1->kind != LirCastKind::SExt ||
+      index_cast1->from_type != "i32" || index_cast1->operand != "1" ||
+      index_cast1->to_type != "i64") {
+    return std::nullopt;
+  }
+  if (element_gep1->result != "%t9" || element_gep1->element_type != "i32" ||
+      element_gep1->ptr != "%t7" || element_gep1->indices.size() != 1 ||
+      element_gep1->indices[0] != "i64 %t8" || store1->type_str != "i32" ||
+      store1->ptr != "%t9") {
+    return std::nullopt;
+  }
+
+  const auto store0_imm = parse_i64(store0->val);
+  const auto store1_imm = parse_i64(store1->val);
+  if (!store0_imm.has_value() || !store1_imm.has_value() || call == nullptr ||
+      load_outer->result != "%t10" || load_outer->type_str != "%struct.Outer" ||
+      load_outer->ptr != "%lv.outer" || call->result != "%t11" ||
+      call->return_type != "i32" ||
+      call->callee != "@get_second" || call->callee_type_suffix != "(%struct.Outer)" ||
+      call->args_str != "%struct.Outer %t10" ||
+      !ret->value_str.has_value() || *ret->value_str != "%t11" ||
+      ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  return MinimalNestedParamMemberArrayRuntimeSlice{*store0_imm, *store1_imm};
 }
 
 std::optional<MinimalNestedMemberPointerArraySlice>
@@ -2399,6 +2649,64 @@ std::string emit_minimal_param_member_array_asm(
   return out.str();
 }
 
+std::string emit_minimal_nested_param_member_array_asm(
+    const c4c::codegen::lir::LirModule& module,
+    const MinimalNestedParamMemberArraySlice&) {
+  c4c::backend::BackendModule backend_module;
+  backend_module.target_triple = module.target_triple;
+  const std::string helper_symbol = asm_symbol_name(backend_module, "get_second");
+
+  std::ostringstream out;
+  out << ".text\n";
+  emit_function_prelude(out, backend_module, helper_symbol, false);
+  out << "  sub sp, sp, #16\n"
+      << "  str x0, [sp, #8]\n"
+      << "  ldr w0, [sp, #12]\n"
+      << "  add sp, sp, #16\n"
+      << "  ret\n";
+  return out.str();
+}
+
+std::string emit_minimal_nested_param_member_array_runtime_asm(
+    const c4c::codegen::lir::LirModule& module,
+    const MinimalNestedParamMemberArrayRuntimeSlice& slice) {
+  const auto in_mov_range = [](std::int64_t imm) {
+    return imm >= 0 && imm <= std::numeric_limits<std::uint16_t>::max();
+  };
+  if (!in_mov_range(slice.store0_imm) || !in_mov_range(slice.store1_imm)) {
+    fail_unsupported(
+        "nested-param-member-array store immediates outside the minimal mov-supported range");
+  }
+
+  c4c::backend::BackendModule backend_module;
+  backend_module.target_triple = module.target_triple;
+  const std::string helper_symbol = asm_symbol_name(backend_module, "get_second");
+  const std::string main_symbol = asm_symbol_name(backend_module, "main");
+
+  std::ostringstream out;
+  out << ".text\n";
+  emit_function_prelude(out, backend_module, helper_symbol, false);
+  out << "  sub sp, sp, #16\n"
+      << "  str x0, [sp, #8]\n"
+      << "  ldr w0, [sp, #12]\n"
+      << "  add sp, sp, #16\n"
+      << "  ret\n";
+  emit_function_prelude(out, backend_module, main_symbol, true);
+  out << "  sub sp, sp, #32\n"
+      << "  str x30, [sp, #24]\n"
+      << "  add x8, sp, #8\n"
+      << "  mov w9, #" << slice.store0_imm << "\n"
+      << "  str w9, [x8]\n"
+      << "  mov w9, #" << slice.store1_imm << "\n"
+      << "  str w9, [x8, #4]\n"
+      << "  ldr x0, [x8]\n"
+      << "  bl " << helper_symbol << "\n"
+      << "  ldr x30, [sp, #24]\n"
+      << "  add sp, sp, #32\n"
+      << "  ret\n";
+  return out.str();
+}
+
 std::string emit_minimal_nested_member_pointer_array_asm(
     const c4c::codegen::lir::LirModule& module,
     const MinimalNestedMemberPointerArraySlice&) {
@@ -2460,6 +2768,14 @@ std::string emit_minimal_nested_member_pointer_array_runtime_asm(
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {
   const auto prepared = prepare_module_for_fallback(module);
   validate_module(prepared);
+  if (const auto slice = parse_minimal_nested_param_member_array_runtime_slice(prepared);
+      slice.has_value()) {
+    return emit_minimal_nested_param_member_array_runtime_asm(prepared, *slice);
+  }
+  if (const auto slice = parse_minimal_nested_param_member_array_slice(prepared);
+      slice.has_value()) {
+    return emit_minimal_nested_param_member_array_asm(prepared, *slice);
+  }
   if (const auto slice = parse_minimal_nested_member_pointer_array_runtime_slice(prepared);
       slice.has_value()) {
     return emit_minimal_nested_member_pointer_array_runtime_asm(prepared, *slice);
