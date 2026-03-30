@@ -23,7 +23,9 @@ set(CPP_POSITIVE_PARSE_STEMS
     alignas_symbol_parse
     operator_decl_subscript_parse
     operator_decl_subscript_attr_parse
+    operator_decl_bitwise_assign_parse
     noexcept_bool_qualified_template_call_parse
+    functional_cast_shift_expr_parse
     operator_decl_deref_parse
     operator_decl_arrow_parse
     operator_arrow_explicit_member_call_parse

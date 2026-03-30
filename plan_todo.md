@@ -133,6 +133,17 @@ Last Updated: 2026-03-30
   `noexcept(bool(std::declval<T&>().empty()))` expression failures; once the
   `max_size_type.h` frontier is cleared, the next visible parser follow-on is
   in `/usr/include/c++/14/bits/ranges_util.h`.
+- This iteration confirmed the parser already accepts member
+  `operator&=` / `operator|=` / `operator^=` / `operator<<=` /
+  `operator>>=` declarations in isolation; the surviving `max_size_type`
+  failure is therefore more contextual than a missing compound-assignment
+  operator token case.
+- A narrow expression-side hardening pass now restores the token stream after
+  speculative parenthesized-cast / functional-cast type parsing in
+  `expressions.cpp`, and reduced internal coverage was added for both a
+  `~(Type(-1) >> rhs)` expression and member bitwise-compound operator
+  declarations, but the live `max_size_type.h:564` repro still fails after
+  `<bits/iterator_concepts.h>`.
 
 ## Resume Notes
 

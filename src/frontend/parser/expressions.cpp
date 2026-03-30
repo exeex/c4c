@@ -1039,6 +1039,7 @@ Node* Parser::parse_primary() {
         // Check for cast: (type-name)expr
         if (is_type_start() && has_balanced_template_id_ahead()) {
             int save_pos = pos_;
+            std::vector<Token> saved_tokens = tokens_;
             TypeSpec cast_ts = parse_type_name();
             if (check(TokenKind::RParen)) {
                 // In C++ mode, check if this is really a cast or a parenthesized
@@ -1062,6 +1063,7 @@ Node* Parser::parse_primary() {
                             ak == TokenKind::Pipe || ak == TokenKind::Caret) {
                             // Not a cast — restore and parse as paren expression.
                             pos_ = save_pos;
+                            tokens_ = saved_tokens;
                             goto not_a_cast;
                         }
                     }
@@ -1093,6 +1095,7 @@ Node* Parser::parse_primary() {
             } else {
                 // Not a type name after all — restore and parse as expression
                 pos_ = save_pos;
+                tokens_ = saved_tokens;
             }
         }
 
@@ -1183,6 +1186,7 @@ Node* Parser::parse_primary() {
             if (!candidate_type_name.empty() &&
                 typedef_types_.count(candidate_type_name) > 0) {
                 pos_ = ident_start;
+                std::vector<Token> saved_tokens = tokens_;
                 std::string saved_typedef = last_resolved_typedef_;
                 TypeSpec cast_ts = parse_base_type();
                 while (check(TokenKind::Star)) {
@@ -1235,6 +1239,7 @@ Node* Parser::parse_primary() {
                     return parse_postfix(n);
                 }
                 pos_ = ident_start;
+                tokens_ = saved_tokens;
                 last_resolved_typedef_ = saved_typedef;
                 qn = parse_qualified_name(false);
             }
