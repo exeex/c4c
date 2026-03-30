@@ -50,6 +50,7 @@ int Parser::bin_prec(TokenKind k) {
         case TokenKind::BangEqual:      return 9;
         case TokenKind::Less:
         case TokenKind::LessEqual:
+        case TokenKind::Spaceship:
         case TokenKind::Greater:
         case TokenKind::GreaterEqual:   return 10;
         case TokenKind::LessLess:
@@ -157,6 +158,7 @@ Node* Parser::parse_binary(int min_prec) {
             case TokenKind::BangEqual:        op = "!="; break;
             case TokenKind::Less:             op = "<";  break;
             case TokenKind::LessEqual:        op = "<="; break;
+            case TokenKind::Spaceship:        op = "<=>"; break;
             case TokenKind::Greater:          op = ">";  break;
             case TokenKind::GreaterEqual:     op = ">="; break;
             case TokenKind::AmpAmp:           op = "&&"; break;
@@ -642,6 +644,7 @@ bool Parser::try_parse_operator_function_id(std::string& out_name) {
     else if (match(TokenKind::Minus))          out_name = "operator_minus";
     else if (match(TokenKind::Assign))         out_name = "operator_assign";
     else if (match(TokenKind::LessEqual))      out_name = "operator_le";
+    else if (match(TokenKind::Spaceship))      out_name = "operator_spaceship";
     else if (match(TokenKind::GreaterEqual))   out_name = "operator_ge";
     else if (match(TokenKind::Less))           out_name = "operator_lt";
     else if (match(TokenKind::Greater))        out_name = "operator_gt";

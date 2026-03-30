@@ -1452,6 +1452,7 @@ static const char* extra_operator_mangled_name(TokenKind kind) {
         case TokenKind::CaretAssign: return "operator_xor_assign";
         case TokenKind::LessLessAssign: return "operator_shl_assign";
         case TokenKind::GreaterGreaterAssign: return "operator_shr_assign";
+        case TokenKind::Spaceship: return "operator_spaceship";
         default: return nullptr;
     }
 }
@@ -2053,6 +2054,9 @@ bool Parser::parse_operator_declarator_name(std::string* out_name) {
     } else if (check(TokenKind::LessEqual)) {
         consume();
         op_name = "operator_le";
+    } else if (check(TokenKind::Spaceship)) {
+        consume();
+        op_name = "operator_spaceship";
     } else if (check(TokenKind::GreaterEqual)) {
         consume();
         op_name = "operator_ge";
@@ -5574,6 +5578,9 @@ bool Parser::try_parse_record_method_or_field_member(
         } else if (check(TokenKind::LessEqual)) {
             consume();
             op_kind = OP_LE;
+        } else if (check(TokenKind::Spaceship)) {
+            consume();
+            op_kind = OP_SPACESHIP;
         } else if (check(TokenKind::GreaterEqual)) {
             consume();
             op_kind = OP_GE;

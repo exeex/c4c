@@ -7,10 +7,9 @@ Last Updated: 2026-03-30
 
 ## Current Active Item
 
-- Step 4: stage the next `std::vector` frontier after clearing the
-  `/usr/include/c++/14/bits/alloc_traits.h:134`
-  `typename __allocator_traits_base::template __rebind<_Alloc, _Up>::type`
-  alias blocker
+- Step 2/3: reduce and fix the surviving `max_size_type.h` parser frontier,
+  currently anchored at `/usr/include/c++/14/bits/max_size_type.h:564`
+  `try_parse_record_constructor_member expected=RPAREN got='-'`
 
 ## Todo
 
@@ -22,6 +21,14 @@ Last Updated: 2026-03-30
       the `alloc_traits` dependent-template slice
 - [x] Validate the next completed slice with targeted tests plus a monotonic
       full-suite comparison
+- [ ] Reduce the contextual `max_size_type.h:564` failure to the smallest
+      committed internal testcase
+- [ ] Implement the narrowest parser fix for the reduced `max_size_type`
+      frontier
+- [ ] Re-run the direct `std::vector` repro to confirm the next post-
+      `max_size_type` frontier
+- [ ] Validate the completed `max_size_type` slice with targeted tests plus a
+      monotonic full-suite comparison
 
 ## Completed
 
@@ -81,9 +88,10 @@ Last Updated: 2026-03-30
 ## Next Intended Slice
 
 - Reduce the next `std::vector` frontier in
-  `/usr/include/c++/14/bits/max_size_type.h`, most likely starting from the
+  `/usr/include/c++/14/bits/max_size_type.h`, still starting from the
   `try_parse_record_constructor_member expected=RPAREN got='-'` failure at
-  line 564 because it likely drives the surrounding incomplete-type cascade.
+  line 564; this iteration confirmed the newer `operator<=>` parser support is
+  not sufficient to clear that frontier on its own.
 
 ## Blockers
 
@@ -95,6 +103,11 @@ Last Updated: 2026-03-30
   remaining `__max_diff_type` cascade shows there is still a second parser bug
   in the `max_size_type.h` / `ranges_base.h` path after forward-declare
   handling.
+- This iteration added lexer/parser support for the C++20 `<=>` token plus
+  basic member-operator parsing coverage, but the real `max_size_type.h:564`
+  blocker still reproduces after `<bits/stl_iterator.h>` and
+  `<bits/max_size_type.h>` are combined, so another contextual parser issue
+  remains.
 
 ## Resume Notes
 
@@ -121,5 +134,9 @@ Last Updated: 2026-03-30
   related bug was in local incomplete-type checking for inline member bodies;
   targeted internal tests now cover both unqualified and fully-qualified
   self-type locals after a prior forward declaration.
+- This iteration also added basic lexer/parser support for `operator<=>`,
+  including member parse coverage and a reduced include-order testcase
+  (`stl_iterator_then_max_size_type_parse.cpp`) that locks in the still-failing
+  contextual `max_size_type` frontier.
 - Do not reactivate `ideas/open/__backend_port_plan.md`; it is an umbrella
   roadmap, not the next execution target.

@@ -98,9 +98,11 @@ set(CPP_POSITIVE_PARSE_STEMS
     access_labels_treated_public_runtime
     friend_access_parse
     friend_inline_operator_parse
+    friend_spaceship_operator_parse
     if_condition_decl_parse
     free_function_record_ref_param_parse
     iterator_concepts_following_hash_base_parse
+    stl_iterator_then_max_size_type_parse
     cpp20_requires_clause_parse
     cpp20_requires_clause_struct_decl_parse
     cpp20_trailing_requires_following_member_decl_parse
@@ -189,6 +191,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     record_body_state_bundle_parse
     qualified_record_partial_specialization_parse
     record_final_specifier_parse
+    member_spaceship_operator_parse
     lambda_empty_capture_parse
     lambda_empty_capture_parens_parse
     lambda_ref_capture_parse
@@ -308,6 +311,24 @@ add_test(
 set_tests_properties(cpp_parse_template_friend_record_member_dump PROPERTIES
   LABELS "internal;positive_case;cpp;parse"
   PASS_REGULAR_EXPRESSION "Function\\(operator_postinc\\)"
+)
+
+add_test(
+  NAME cpp_parse_friend_spaceship_operator_dump
+  COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/postive_case/friend_spaceship_operator_parse.cpp"
+)
+set_tests_properties(cpp_parse_friend_spaceship_operator_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;parse"
+  PASS_REGULAR_EXPRESSION "Decl\\(marker\\)"
+)
+
+add_test(
+  NAME cpp_parse_member_spaceship_operator_dump
+  COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/postive_case/member_spaceship_operator_parse.cpp"
+)
+set_tests_properties(cpp_parse_member_spaceship_operator_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;parse"
+  PASS_REGULAR_EXPRESSION "Function\\(operator_spaceship\\)"
 )
 
 add_test(

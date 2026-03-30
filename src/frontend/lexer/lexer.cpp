@@ -695,7 +695,14 @@ Token Lexer::scan_punct() {
         if (peek() == '=') { text.push_back(advance()); return make_token(TokenKind::LessLessAssign, text, tok_line, tok_col); }
         return make_token(TokenKind::LessLess, text, tok_line, tok_col);
       }
-      if (peek() == '=') { text.push_back(advance()); return make_token(TokenKind::LessEqual, text, tok_line, tok_col); }
+      if (peek() == '=') {
+        text.push_back(advance());
+        if (peek() == '>') {
+          text.push_back(advance());
+          return make_token(TokenKind::Spaceship, text, tok_line, tok_col);
+        }
+        return make_token(TokenKind::LessEqual, text, tok_line, tok_col);
+      }
       return make_token(TokenKind::Less, text, tok_line, tok_col);
 
     case '>':
