@@ -5322,8 +5322,61 @@ bool Parser::try_parse_record_constructor_member(
     if (!(is_cpp_mode() && !current_struct_tag_.empty()))
         return false;
 
+    auto skip_cpp11_attrs_at = [&](int* cursor) {
+        while (*cursor + 1 < static_cast<int>(tokens_.size()) &&
+               tokens_[*cursor].kind == TokenKind::LBracket &&
+               tokens_[*cursor + 1].kind == TokenKind::LBracket) {
+            *cursor += 2;
+            int depth = 1;
+            while (*cursor < static_cast<int>(tokens_.size()) && depth > 0) {
+                if (*cursor + 1 < static_cast<int>(tokens_.size()) &&
+                    tokens_[*cursor].kind == TokenKind::LBracket &&
+                    tokens_[*cursor + 1].kind == TokenKind::LBracket) {
+                    *cursor += 2;
+                    ++depth;
+                    continue;
+                }
+                if (*cursor + 1 < static_cast<int>(tokens_.size()) &&
+                    tokens_[*cursor].kind == TokenKind::RBracket &&
+                    tokens_[*cursor + 1].kind == TokenKind::RBracket) {
+                    *cursor += 2;
+                    --depth;
+                    continue;
+                }
+                ++*cursor;
+            }
+        }
+    };
+
+    auto skip_member_prelude_attrs_at = [&](int* cursor) {
+        while (*cursor < static_cast<int>(tokens_.size())) {
+            if (tokens_[*cursor].kind == TokenKind::KwAttribute) {
+                ++*cursor;
+                if (*cursor < static_cast<int>(tokens_.size()) &&
+                    tokens_[*cursor].kind == TokenKind::LParen) {
+                    int depth = 0;
+                    do {
+                        if (tokens_[*cursor].kind == TokenKind::LParen) ++depth;
+                        else if (tokens_[*cursor].kind == TokenKind::RParen) --depth;
+                        ++*cursor;
+                    } while (*cursor < static_cast<int>(tokens_.size()) &&
+                             depth > 0);
+                }
+                continue;
+            }
+            skip_cpp11_attrs_at(cursor);
+            if (*cursor < static_cast<int>(tokens_.size()) &&
+                tokens_[*cursor].kind == TokenKind::KwAttribute) {
+                continue;
+            }
+            break;
+        }
+    };
+
     int probe = pos_;
     while (probe < static_cast<int>(tokens_.size())) {
+        skip_member_prelude_attrs_at(&probe);
+        if (probe >= static_cast<int>(tokens_.size())) break;
         if (tokens_[probe].kind == TokenKind::KwConstexpr ||
             tokens_[probe].kind == TokenKind::KwConsteval ||
             (tokens_[probe].kind == TokenKind::Identifier &&
@@ -5354,7 +5407,13 @@ bool Parser::try_parse_record_constructor_member(
         probe + 1 < static_cast<int>(tokens_.size()) &&
         tokens_[probe + 1].kind == TokenKind::LParen) {
         while (pos_ < probe) {
-            if (check(TokenKind::KwExplicit))
+            if (check(TokenKind::KwAttribute)) {
+                skip_attributes();
+            } else if (check(TokenKind::LBracket) &&
+                       pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                       tokens_[pos_ + 1].kind == TokenKind::LBracket) {
+                skip_attributes();
+            } else if (check(TokenKind::KwExplicit))
                 consume_optional_cpp_explicit_specifier(this);
             else
                 consume();

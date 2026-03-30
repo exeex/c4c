@@ -8,8 +8,8 @@ Last Updated: 2026-03-30
 ## Current Active Item
 
 - Step 2/4: reduce the new first surviving libc++ frontier at
-  `__compare/ordering.h:44`, now that the direct `std::vector` repro gets past
-  `__utility/integer_sequence.h`
+  `__compare/common_comparison_category.h:42`, now that the direct
+  `std::vector` repro gets past `__compare/ordering.h`
 
 ## Todo
 
@@ -120,26 +120,37 @@ Last Updated: 2026-03-30
 - [x] Validated the completed `integer_sequence` slice with targeted parser
       coverage for the reduced testcase, the earlier dependent-member-template
       testcase, and the libc++ signed/unsigned header probes
+- [x] Reduced the `__compare/ordering.h:44` constructor failure to a focused
+      internal parser testcase covering a templated record constructor with a
+      leading GNU attribute before the constructor name
+- [x] Taught record-constructor detection to preserve constructor parsing when
+      leading GNU or `[[...]]` attributes appear before the constructor name
+- [x] Re-ran the direct `std::vector` repro and confirmed the
+      `__compare/ordering.h:44` frontier disappeared, leaving
+      `__compare/common_comparison_category.h:42` as the new first surviving
+      libc++ parser error
+- [x] Validated the completed `ordering.h` slice with targeted parser coverage
+      plus a monotonic full-suite comparison (`before: 707/733`, `after:
+      709/734`, zero new failures)
 
 ## Next Intended Slice
 
 - Reproduce and reduce the new first surviving libc++ frontier at
-  `__compare/ordering.h:44:216`, where record-member parsing currently expects
-  `)` before `__zero`.
+-  `__compare/common_comparison_category.h:42:59`, where top-level parameter
+  parsing now stops at `[` inside the `_ClassifyCompCategory (&__types)[_Size]`
+  array-reference parameter.
 - Keep the next reduction scoped to the comparison-category headers that became
-  visible only after clearing `integer_sequence.h`.
+  visible only after clearing `ordering.h`.
 - Re-run the forcing `std::vector` repro after the next parser fix and confirm
-  whether `__compare/common_comparison_category.h:42` or `__utility/pair.h`
-  becomes the next lead blocker.
+  whether `__compare/synth_three_way.h:28` or `__utility/pair.h:463` becomes
+  the next lead blocker.
 
 ## Blockers
 
 - The latest direct repro no longer leads with either
-  `common_reference.h:155` or `integer_sequence.h:82`; it now first fails in
-  the `__compare` headers, beginning at `__compare/ordering.h:44`.
-- The stored `test_fail_before.log` baseline predates a large test-set
-  expansion, so the monotonic regression script cannot be used verbatim for
-  this slice without regenerating a same-era baseline.
+  `common_reference.h:155`, `integer_sequence.h:82`, or
+  `__compare/ordering.h:44`; it now first fails in the `__compare` headers at
+  `__compare/common_comparison_category.h:42`.
 - The current full-suite run still contains unrelated environment/path failures
   such as missing `/workspaces/c4c/...` fixtures and unavailable GNU
   `bits/...` headers, so those results are not attributable to this patch.
@@ -172,9 +183,14 @@ Last Updated: 2026-03-30
   now cleared.
 - `tests/cpp/internal/postive_case/dependent_member_template_operator_call_parse.cpp`
   now covers the reduced `integer_sequence` spelling directly.
+- `tests/cpp/internal/postive_case/libcxx_ordering_hidden_consteval_ctor_parse.cpp`
+  now covers the reduced `ordering.h` spelling directly.
 - A direct parse of `#include <__utility/integer_sequence.h>` now succeeds; the
   remaining libc++ failures are later headers surfaced by the forcing
   `std::vector` include stack.
+- The `ordering.h` slice only needed constructor-member prelude handling for
+  leading GNU / C++11 attributes; trailing `__enable_if__` attributes already
+  parsed once the member was classified as a constructor.
 - Prefer shared parser or preprocessor compatibility fixes over libc++-specific
   hacks.
 - Do not reactivate backend umbrella work while this parser bring-up is active.
