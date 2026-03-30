@@ -8,12 +8,24 @@ Source Plan: plan.md
 
 - Step 2: Define the backend-owned IR model.
 - Exact target for the next iteration: extend `src/backend/ir.*` past the
-  newly covered mixed predecessor/immediate conditional-join slice into a
-  bounded join where one predecessor stays a direct immediate input, the other
-  contributes predecessor-local typed arithmetic, and the join block itself
-  applies a bounded typed post-`phi` add so the explicit contract covers
-  asymmetric incoming shapes plus one join-local scalar use.
+  newly covered mixed predecessor/immediate conditional-join slice into the
+  next asymmetric join seam beyond add-only arithmetic, ideally a bounded join
+  where one predecessor stays a direct immediate input, the other contributes
+  predecessor-local typed `sub`, and the join block still applies one bounded
+  typed post-`phi` scalar use so the explicit contract widens without
+  reopening backend-IR text fallback.
 - Resume notes:
+  - backend-owned IR coverage now proves the bounded
+    compare/branch/join/return slice remains valid when one predecessor
+    computes a typed `i32 add`, the other contributes a direct immediate `phi`
+    input, and the join block itself applies one bounded typed `i32 add` from
+    the merged `phi` result instead of only returning it directly
+  - both x86 and AArch64 now have focused explicit-backend-IR coverage for
+    that asymmetric predecessor/immediate plus join-local-add shape without
+    falling back to backend-IR text or legacy LIR
+  - the next highest-value asymmetric join seam is widening the
+    predecessor-local arithmetic side beyond add-only computation while still
+    preserving one bounded join-local scalar use
   - backend-owned IR coverage now proves the bounded conditional-join slice
     remains valid when one predecessor computes a typed `i32 add` and the
     other contributes a direct immediate `phi` input, instead of assuming both
@@ -102,6 +114,17 @@ Source Plan: plan.md
 
 ## Completed Items
 
+- Completed an additional Step 2 mixed predecessor/immediate post-`phi` join slice:
+  - added focused backend coverage for the bounded
+    compare/branch/join/return shape where one predecessor computes a typed
+    `i32 add`, the opposite predecessor contributes a direct immediate `phi`
+    input, and the join block itself applies a bounded typed `i32 add`
+  - verified the existing lowering path preserves that asymmetric incoming
+    join contract plus the join-local scalar use in backend IR
+    printer/validator coverage instead of only covering direct `phi` returns
+  - added focused x86 and AArch64 explicit-backend-IR emission tests proving
+    the mixed predecessor/immediate plus join-local-add slice emits directly
+    without backend-IR text fallback
 - Completed an additional Step 2 mixed predecessor/immediate join slice:
   - added focused backend coverage for the bounded
     compare/branch/join/return shape where one predecessor computes a typed
