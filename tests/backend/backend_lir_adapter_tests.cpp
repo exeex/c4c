@@ -170,6 +170,21 @@ void test_lir_call_arg_helpers_collect_full_call_value_names() {
               "shared full-call value collection should preserve indirect callees and typed argument operands");
 }
 
+void test_lir_call_arg_helpers_collect_full_call_global_refs() {
+  using namespace c4c::codegen::lir;
+
+  std::vector<std::string> refs;
+  collect_lir_global_symbol_refs_from_call(
+      " @\"helper.with.dot\" ",
+      "ptr @glob, ptr getelementptr inbounds ([2 x ptr], ptr @\"dispatch.table\", i64 0, i64 1), "
+      "ptr %fp",
+      [&](std::string_view ref) { refs.emplace_back(ref); });
+
+  expect_true(refs.size() == 3 && refs[0] == "\"helper.with.dot\"" &&
+                  refs[1] == "glob" && refs[2] == "\"dispatch.table\"",
+              "shared full-call global-ref collection should preserve direct callees and nested typed-arg global refs");
+}
+
 void test_lir_call_arg_helpers_rewrite_full_call_operands() {
   using namespace c4c::codegen::lir;
 
@@ -8396,6 +8411,7 @@ int main() {
   test_lir_call_arg_helpers_split_nested_typed_args();
   test_lir_call_arg_helpers_collect_value_names();
   test_lir_call_arg_helpers_collect_full_call_value_names();
+  test_lir_call_arg_helpers_collect_full_call_global_refs();
   test_lir_call_arg_helpers_rewrite_full_call_operands();
   test_lir_call_arg_helpers_decode_single_typed_operand();
   test_lir_call_arg_helpers_decode_two_typed_operands();

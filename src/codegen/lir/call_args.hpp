@@ -136,6 +136,38 @@ inline void collect_lir_value_names_from_text(std::string_view text,
 }
 
 template <typename Fn>
+inline void collect_lir_global_symbol_refs_from_text(std::string_view text, Fn&& visit) {
+  std::size_t pos = 0;
+  while ((pos = text.find('@', pos)) != std::string_view::npos) {
+    ++pos;
+    if (pos < text.size() && text[pos] == '"') {
+      ++pos;
+      const std::size_t start = pos;
+      while (pos < text.size() && text[pos] != '"') {
+        ++pos;
+      }
+      if (pos > start) {
+        visit(text.substr(start - 1, pos - start + 2));
+      }
+      if (pos < text.size()) {
+        ++pos;
+      }
+      continue;
+    }
+
+    const std::size_t start = pos;
+    while (pos < text.size() &&
+           (std::isalnum(static_cast<unsigned char>(text[pos])) || text[pos] == '_' ||
+            text[pos] == '.')) {
+      ++pos;
+    }
+    if (pos > start) {
+      visit(text.substr(start, pos - start));
+    }
+  }
+}
+
+template <typename Fn>
 inline void for_each_lir_top_level_segment(std::string_view text,
                                            char delim,
                                            Fn&& fn) {
@@ -541,6 +573,36 @@ inline void collect_lir_value_names_from_call(std::string_view callee,
     collect_lir_value_names_from_text(callee, values);
   }
   collect_lir_value_names_from_call_args(args_str, values);
+}
+
+template <typename Fn>
+inline void collect_lir_global_symbol_refs_from_call_args(std::string_view args_str,
+                                                          Fn&& visit) {
+  for_each_lir_call_arg(args_str, [&](std::string_view arg) {
+    const auto operand = lir_call_arg_operand(arg);
+    if (operand.has_value()) {
+      const auto parsed_operand = parse_lir_call_callee(*operand);
+      if (parsed_operand.has_value() &&
+          parsed_operand->kind != LirCallCalleeKind::Indirect) {
+        visit(parsed_operand->symbol_name);
+        return;
+      }
+    }
+    collect_lir_global_symbol_refs_from_text(arg, visit);
+  });
+}
+
+template <typename Fn>
+inline void collect_lir_global_symbol_refs_from_call(std::string_view callee,
+                                                     std::string_view args_str,
+                                                     Fn&& visit) {
+  const auto parsed_callee = parse_lir_call_callee(callee);
+  if (parsed_callee.has_value() && parsed_callee->kind != LirCallCalleeKind::Indirect) {
+    visit(parsed_callee->symbol_name);
+  } else {
+    collect_lir_global_symbol_refs_from_text(callee, visit);
+  }
+  collect_lir_global_symbol_refs_from_call_args(args_str, std::forward<Fn>(visit));
 }
 
 template <typename Fn>

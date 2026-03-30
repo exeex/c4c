@@ -11,11 +11,11 @@ Source Plan: plan.md
   ptrmask/special-call cleanup into any remaining LIR-side call builders or
   persistence seams outside the generic stmt-emitter helper path that still
   treat typed call metadata as ad hoc text.
-- Iteration focus: inspect the remaining `LirCallOp` producers and
-  call-adjacent metadata readers outside the generic stmt-emitter path,
-  especially `src/codegen/lir/hir_to_lir.cpp` and any other residual
-  call-string compatibility seams, and route any still-open construction or
-  preservation path through the shared typed call parser/formatter layer.
+- Iteration focus: continue inspecting the remaining `LirCallOp` producers and
+  call-adjacent metadata readers outside the generic stmt-emitter path after
+  the dead-internal elimination scan cleanup, and route any still-open
+  construction or preservation path through the shared typed call
+  parser/formatter layer.
 - Exact target for the next iteration after this slice: continue Step 4 into
   the remaining LIR-side call and serialization paths that still treat typed
   call metadata as ad hoc text, especially any residual `LirCallOp`
@@ -24,6 +24,14 @@ Source Plan: plan.md
 
 ## Completed Items
 
+- Completed the next Step 4 LIR persistence seam cleanup slice by adding
+  shared call-site global-reference collection helpers in
+  `src/codegen/lir/call_args.hpp`, routing
+  `src/codegen/lir/hir_to_lir.cpp`'s dead-internal elimination
+  `LirCallOp::{callee,args_str}` scan through that shared call-aware helper
+  instead of raw text scanning, and adding focused regression coverage in
+  `tests/backend/backend_lir_adapter_tests.cpp` for direct quoted callees plus
+  nested typed-argument global references.
 - Completed the next Step 4 special-call construction cleanup slice by routing
   the residual AArch64 `@llvm.ptrmask.p0.i64` call in
   `src/codegen/lir/stmt_emitter.cpp` through

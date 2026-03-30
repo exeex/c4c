@@ -1,4 +1,5 @@
 #include "hir_to_lir.hpp"
+#include "call_args.hpp"
 #include "ir.hpp"
 #include "const_init_emitter.hpp"
 #include "stmt_emitter.hpp"
@@ -662,7 +663,10 @@ static void collect_inst_refs(const LirInst& inst,
   auto visitor = [&](const auto& op) {
     using T = std::decay_t<decltype(op)>;
     if constexpr (std::is_same_v<T, LirCallOp>) {
-      S(op.callee); S(op.args_str);
+      collect_lir_global_symbol_refs_from_call(
+          op.callee,
+          op.args_str,
+          [&](std::string_view ref) { refs.insert(std::string(ref)); });
     } else if constexpr (std::is_same_v<T, LirStoreOp>) {
       S(op.val); S(op.ptr);
     } else if constexpr (std::is_same_v<T, LirLoadOp>) {
