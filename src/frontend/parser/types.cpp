@@ -5619,6 +5619,10 @@ bool Parser::try_parse_record_method_or_field_member(
             op_mangled = arena_.strdup(conversion_mangled_name.c_str());
         }
 
+        // Function attributes such as [[nodiscard]] can appear between the
+        // operator name and its parameter list.
+        skip_attributes();
+
         // Parse parameter list
         expect(TokenKind::LParen);
         std::vector<Node*> params;

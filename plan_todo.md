@@ -84,14 +84,35 @@ Last Updated: 2026-03-30
       declarations, including a fully-qualified spelling variant, plus a
       negative guard that keeps unrelated forward-declared local object types
       rejected
+- [x] Reduced the `ranges_base.h` member-operator attribute frontier into
+      `tests/cpp/internal/postive_case/operator_decl_subscript_attr_parse.cpp`
+- [x] Fixed record-member operator overload parsing to accept attributes such
+      as `[[nodiscard]]` between `operator[]` / `operator()` and the parameter
+      list
+- [x] Reduced the `ranges_base.h:420` `noexcept(bool(std::declval<T&>().empty()))`
+      failure into
+      `tests/cpp/internal/postive_case/noexcept_bool_qualified_template_call_parse.cpp`
+- [x] Fixed functional-cast argument parsing so qualified template-id calls are
+      not downgraded to plain qualified variables inside expressions like
+      `bool(std::declval<T&>().empty())`
+- [x] Re-ran the direct `std::vector` repro and confirmed the earlier
+      `ranges_base.h` `got='['` and `got='<'` failures disappeared, moving the
+      follow-on frontier into `/usr/include/c++/14/bits/ranges_util.h`
+- [x] Reduced the contextual `max_size_type` include-order repro one step
+      further: `tests/cpp/internal/postive_case/stl_iterator_then_max_size_type_parse.cpp`
+      now reproduces the same `max_size_type.h:564` failure with
+      `<bits/iterator_concepts.h>` alone before `<bits/max_size_type.h>`
 
 ## Next Intended Slice
 
 - Reduce the next `std::vector` frontier in
   `/usr/include/c++/14/bits/max_size_type.h`, still starting from the
   `try_parse_record_constructor_member expected=RPAREN got='-'` failure at
-  line 564; this iteration confirmed the newer `operator<=>` parser support is
-  not sufficient to clear that frontier on its own.
+  line 564; now that the `ranges_base.h` attribute and qualified template-call
+  blockers are cleared, focus on reducing the remaining contextual
+  `__max_diff_type` failure from the smaller
+  `<bits/iterator_concepts.h> + <bits/max_size_type.h>` repro without the
+  earlier `ranges_base` / `stl_iterator` noise.
 
 ## Blockers
 
@@ -108,6 +129,10 @@ Last Updated: 2026-03-30
   blocker still reproduces after `<bits/stl_iterator.h>` and
   `<bits/max_size_type.h>` are combined, so another contextual parser issue
   remains.
+- The direct repro also now clears the earlier `ranges_base.h` attribute and
+  `noexcept(bool(std::declval<T&>().empty()))` expression failures; once the
+  `max_size_type.h` frontier is cleared, the next visible parser follow-on is
+  in `/usr/include/c++/14/bits/ranges_util.h`.
 
 ## Resume Notes
 

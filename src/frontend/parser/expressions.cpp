@@ -1479,7 +1479,9 @@ Node* Parser::parse_primary() {
                     if (is_cpp_mode() && check(TokenKind::Identifier) &&
                         pos_ + 2 < static_cast<int>(tokens_.size()) &&
                         tokens_[pos_ + 1].kind == TokenKind::ColonColon &&
-                        tokens_[pos_ + 2].kind == TokenKind::Identifier) {
+                        tokens_[pos_ + 2].kind == TokenKind::Identifier &&
+                        !(pos_ + 3 < static_cast<int>(tokens_.size()) &&
+                          tokens_[pos_ + 3].kind == TokenKind::Less)) {
                         QualifiedNameRef operand_name = parse_qualified_name(false);
                         std::string qualified_name;
                         int context_id = resolve_namespace_context(operand_name);
