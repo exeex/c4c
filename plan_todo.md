@@ -48,6 +48,9 @@ Last Updated: 2026-03-30
 - [x] Added direct parse-only coverage for the builtin trait spelling
       `__is_unsigned(T)` in
       `tests/cpp/internal/postive_case/builtin_trait_is_unsigned_parse.cpp`
+- [x] Added non-dependent runtime coverage for `__is_unsigned(unsigned)` and
+      `__is_unsigned(int)` in
+      `tests/cpp/internal/postive_case/builtin_trait_is_unsigned_runtime.cpp`
 - [x] Re-ran the direct `std::vector` repro and confirmed the old
       `byte.h` / `construct_at.h` / `is_unsigned` frontier disappeared, exposing
       later parser failures in `__algorithm/unwrap_iter.h`,
@@ -74,6 +77,9 @@ Last Updated: 2026-03-30
 - Keep the plan narrow to one live parser blocker at a time.
 - This slice showed the first visible libc++ failure was actually a
   preprocessor builtin-query mismatch, not a raw template-parameter parser bug.
+- `__is_unsigned` now has direct parse-only coverage plus concrete runtime
+  coverage; dependent template-value evaluation for builtin traits is still a
+  separate follow-on concern if libc++ reduction reaches it.
 - Prefer shared parser or preprocessor compatibility fixes over libc++-specific
   hacks.
 - Do not reactivate backend umbrella work while this parser bring-up is active.

@@ -8,6 +8,20 @@
 
 namespace c4c {
 
+static bool builtin_trait_is_unsigned_type_local(const TypeSpec& ts) {
+    switch (ts.base) {
+        case TB_UCHAR:
+        case TB_USHORT:
+        case TB_UINT:
+        case TB_ULONG:
+        case TB_ULONGLONG:
+        case TB_UINT128:
+            return true;
+        default:
+            return false;
+    }
+}
+
 static void append_type_mangled_suffix_local(std::string& out, const TypeSpec& ts) {
     switch (ts.base) {
         case TB_INT: out += "int"; break;
@@ -827,6 +841,19 @@ Node* Parser::parse_primary() {
                 expect(TokenKind::RParen);
                 const int result =
                     types_compatible_p(lhs, rhs, typedef_types_) ? 1 : 0;
+                return make_int_lit(result, ln);
+            } catch (...) {
+                pos_ = saved_pos;
+                return nullptr;
+            }
+        }
+
+        if (builtin_name == "__is_unsigned") {
+            try {
+                TypeSpec arg = parse_type_name();
+                expect(TokenKind::RParen);
+                const int result =
+                    builtin_trait_is_unsigned_type_local(arg) ? 1 : 0;
                 return make_int_lit(result, ln);
             } catch (...) {
                 pos_ = saved_pos;
