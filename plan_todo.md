@@ -8,21 +8,33 @@ Source Plan: plan.md
 
 - Step 4: Migrate high-friction instruction families and consumers.
 - Exact target for the next iteration: continue Step 4 past
-  the landed x86 residual zero-arg / two-arg direct-call cleanup into the
-  remaining backend call-adjacent consumers that still decode typed call
-  metadata from compatibility text instead of one shared structured view.
-- Iteration focus: continue Step 4 into the remaining backend or LIR-side
-  call-family recognizers that still branch on raw `LirCallOp` storage
-  compatibility instead of consuming `ParsedLirTypedCallView` or
-  `ParsedLirDirectGlobalTypedCallView` end to end.
+  the landed adapter local-call typed-view cleanup into the remaining backend
+  call-adjacent consumers that still carry raw `LirCallOp`
+  `callee_type_suffix` / `args_str` compatibility text through backend-owned
+  call state instead of a shared structured view.
+- Iteration focus: continue Step 4 into the remaining adapter-owned generic
+  call representation and render paths that still forward raw call
+  compatibility text outside the shared typed/direct-call helpers, so backend
+  consumers can normalize typed call metadata without preserving source
+  spacing or re-decoding the same shapes later.
 - Exact target for the next iteration after this slice: continue Step 4 into
   the remaining backend call-adjacent consumers that still decode typed call
   argument/result shape from compatibility text, especially any residual
-  LIR-side direct-call recognizers that still stitch together callee and
-  argument shape checks instead of consuming one shared structured call view.
+  adapter-owned or LIR-side call paths that still stitch together callee,
+  parameter, and argument text instead of consuming one shared structured call
+  view end to end.
 
 ## Completed Items
 
+- Completed the next Step 4 adapter local-call typed-view cleanup slice by
+  deleting `src/backend/lir_adapter.cpp`'s private typed-call parser wrapper,
+  adding shared typed-call ownership and parameter-format helpers in
+  `src/codegen/lir/call_args.hpp`, routing the adapter's single-arg and
+  two-arg local-call normalization paths through `parse_lir_typed_call(...)`
+  plus those shared helpers instead of hand-copying parsed call metadata, and
+  updating `tests/backend/backend_lir_adapter_tests.cpp` to assert that
+  spacing-tolerant typed two-argument local calls now normalize to canonical
+  backend-owned call formatting.
 - Completed the next Step 4 residual direct-call recognizer cleanup slice by
   routing the remaining x86 zero-arg extern/declared direct-call recognizers
   and the x86 two-arg direct-call shape decoders through
@@ -238,6 +250,16 @@ Source Plan: plan.md
   consumers can prove typed-call compatibility without reimplementing
   ad hoc suffix/argument parsing or exact-text comparisons.
 - `src/codegen/lir/call_args.hpp` now also exposes shared helper entry points
+  for owning parsed typed-call arguments and canonicalizing parameter-list
+  formatting, so adapter-side local-call normalization no longer needs a
+  private parse/copy layer just to re-emit structured call metadata.
+- Verification for the current slice:
+  `./build/backend_lir_adapter_tests` passes after the adapter cleanup. Full
+  `ctest --test-dir build -j8 --output-on-failure | tee test_after.log`
+  finishes with the same standing 188 failing tests out of 2560 that are
+  already captured in the repo's `test_fail_before.log` / `test_fail_after.log`
+  baseline, with the failures concentrated in the existing x86 backend
+  fallback set.
   for the common single-arg and two-arg typed direct-call shapes used by the
   minimal x86/AArch64 emitter fast paths, which removes the duplicated
   `parse_lir_typed_call(...)` shape assertions that had drifted into those

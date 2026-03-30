@@ -4274,7 +4274,7 @@ void test_adapter_normalizes_typed_two_arg_direct_call_local_arg_spacing_slice()
   const auto adapted = c4c::backend::adapt_minimal_module(
       make_typed_direct_call_two_arg_local_arg_with_spacing_module());
   const auto rendered = c4c::backend::render_module(adapted);
-  expect_contains(rendered, "call i32 ( i32 , i32 ) @add_pair(i32 5, i32 7)",
+  expect_contains(rendered, "call i32 (i32, i32) @add_pair(i32 5, i32 7)",
                   "adapter should normalize first-local two-argument direct-call arguments even when compatibility spacing varies");
 }
 

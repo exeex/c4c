@@ -265,8 +265,31 @@ inline std::string format_lir_typed_call_args(
   return formatted;
 }
 
+inline std::vector<OwnedLirTypedCallArg> own_lir_typed_call_args(
+    const ParsedLirTypedCallView& parsed) {
+  std::vector<OwnedLirTypedCallArg> owned_args;
+  owned_args.reserve(parsed.args.size());
+  for (const auto& arg : parsed.args) {
+    owned_args.push_back({std::string(arg.type), std::string(arg.operand)});
+  }
+  return owned_args;
+}
+
 inline std::string format_lir_call_param_types(
     const std::vector<std::string>& param_types) {
+  std::string formatted("(");
+  for (std::size_t index = 0; index < param_types.size(); ++index) {
+    if (index != 0) {
+      formatted += ", ";
+    }
+    formatted += trim_lir_arg_text(param_types[index]);
+  }
+  formatted.push_back(')');
+  return formatted;
+}
+
+inline std::string format_lir_call_param_types(
+    const std::vector<std::string_view>& param_types) {
   std::string formatted("(");
   for (std::size_t index = 0; index < param_types.size(); ++index) {
     if (index != 0) {
