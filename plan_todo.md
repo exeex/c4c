@@ -7,16 +7,15 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 4: Migrate high-friction instruction families and consumers.
-- Exact target for the next iteration: continue Step 4 past
-  the landed stmt-emitter shared typed-call construction slice into the
-  remaining special-case LIR-side call builders and any adjacent persistence
-  seams that still hand-assemble `LirCallOp::{callee_type_suffix,args_str}`
-  text instead of routing through one shared structured helper.
-- Iteration focus: continue Step 4 in
-  `src/codegen/lir/stmt_emitter.cpp`,
-  `src/codegen/lir/hir_to_lir.cpp`, and any adjacent LIR-side call helpers so
-  the residual raw ptrmask-style call construction and serialization paths use
-  the same shared typed call-field seam as the generic stmt-emitter call path.
+- Exact target for the next iteration: continue Step 4 past the landed
+  ptrmask/special-call cleanup into any remaining LIR-side call builders or
+  persistence seams outside the generic stmt-emitter helper path that still
+  treat typed call metadata as ad hoc text.
+- Iteration focus: inspect the remaining `LirCallOp` producers and
+  call-adjacent metadata readers outside the generic stmt-emitter path,
+  especially `src/codegen/lir/hir_to_lir.cpp` and any other residual
+  call-string compatibility seams, and route any still-open construction or
+  preservation path through the shared typed call parser/formatter layer.
 - Exact target for the next iteration after this slice: continue Step 4 into
   the remaining LIR-side call and serialization paths that still treat typed
   call metadata as ad hoc text, especially any residual `LirCallOp`
@@ -25,6 +24,14 @@ Source Plan: plan.md
 
 ## Completed Items
 
+- Completed the next Step 4 special-call construction cleanup slice by routing
+  the residual AArch64 `@llvm.ptrmask.p0.i64` call in
+  `src/codegen/lir/stmt_emitter.cpp` through
+  `make_lir_call_op(...)` instead of hand-assembling
+  `LirCallOp::{callee_type_suffix,args_str}`, and added focused regression
+  coverage in `tests/backend/backend_lir_adapter_tests.cpp` proving the shared
+  builder canonicalizes empty-suffix direct-call metadata for special intrinsic
+  call sites.
 - Completed the next Step 4 stmt-emitter shared call-construction slice by
   adding `format_lir_call_fields(...)` and `make_lir_call_op(...)` to
   `src/codegen/lir/call_args.hpp`, routing
@@ -410,6 +417,11 @@ Source Plan: plan.md
 - `cmake --build build -j8`
 - `ctest --test-dir build -R backend_lir_adapter_tests --output-on-failure`
   passed.
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
+  --before test_fail_after.log --after test_after.log
+  --allow-non-decreasing-passed` passed with zero new failures, zero new
+  suspicious slow tests, and no pass-count regression against the stored
+  `2372/2560` Step 4 baseline.
 - `ctest --test-dir build -j8 --output-on-failure > test_after.log`
   recorded `2372/2560` passing and `188` failing tests.
 - `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py

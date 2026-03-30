@@ -4222,13 +4222,12 @@ std::string StmtEmitter::emit_aarch64_vaarg_fp_src_ptr(
                                  false,
                                  {"i64 " + std::to_string(stack_align_bytes - 1)}});
         aligned_stack_ptr = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirCallOp{
-                                 aligned_stack_ptr,
-                                 "ptr",
-                                 "@llvm.ptrmask.p0.i64",
-                                 "",
-                                 "ptr " + stack_plus + ", i64 " +
-                                     std::to_string(-stack_align_bytes)});
+        emit_lir_op(ctx, make_lir_call_op(aligned_stack_ptr,
+                                          "ptr",
+                                          "@llvm.ptrmask.p0.i64",
+                                          "",
+                                          {{"ptr", stack_plus},
+                                           {"i64", std::to_string(-stack_align_bytes)}}));
         module_->need_ptrmask = true;
       } else {
         const std::string stack_i = fresh_tmp(ctx);

@@ -355,6 +355,22 @@ void test_lir_call_arg_helpers_make_typed_call_op() {
               "shared typed-call builder should canonicalize call-site metadata into one LIR construction seam");
 }
 
+void test_lir_call_arg_helpers_make_direct_call_op_without_suffix() {
+  using namespace c4c::codegen::lir;
+
+  const auto call = make_lir_call_op("%t1",
+                                     " ptr ",
+                                     " @llvm.ptrmask.p0.i64 ",
+                                     "",
+                                     {{" ptr ", " %stack.plus "}, {" i64 ", " -16 "}});
+
+  expect_true(call.result == "%t1" && call.return_type == "ptr" &&
+                  call.callee == "@llvm.ptrmask.p0.i64" &&
+                  call.callee_type_suffix.empty() &&
+                  call.args_str == "ptr %stack.plus, i64 -16",
+              "shared typed-call builder should canonicalize empty-suffix direct-call metadata for special intrinsic call sites");
+}
+
 void test_backend_call_helpers_decode_structured_direct_global_call() {
   c4c::backend::BackendCallInst call{
       "%t0",
@@ -8390,6 +8406,7 @@ int main() {
   test_lir_call_arg_helpers_format_full_call_site_round_trip();
   test_lir_call_arg_helpers_format_call_fields_with_suffix();
   test_lir_call_arg_helpers_make_typed_call_op();
+  test_lir_call_arg_helpers_make_direct_call_op_without_suffix();
   test_backend_call_helpers_decode_structured_direct_global_call();
   test_lir_typed_wrappers_preserve_legacy_opcode_and_predicate_strings();
   test_lir_typed_wrappers_leave_unknown_opcode_text_compatible();
