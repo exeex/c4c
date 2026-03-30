@@ -138,6 +138,7 @@ std::string resolve_defined_and_intrinsics(
             "__builtin_isnan", "__builtin_isinf", "__builtin_isfinite",
             "__builtin_add_overflow", "__builtin_sub_overflow", "__builtin_mul_overflow",
             "__remove_reference_t", "__remove_reference",
+            "__is_signed",
             "__is_trivially_destructible", "__has_trivial_destructor",
             "__is_unsigned",
             "__make_integer_seq", "__integer_pack",

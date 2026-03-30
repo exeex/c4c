@@ -3067,15 +3067,23 @@ TypeSpec Parser::parse_base_type() {
             return true;
         }
         if (is_type_start()) {
-            bool save_c = out->is_const, save_v = out->is_volatile;
-            *out = parse_type_name();
-            if (strip_qual) {
-                out->is_const = false;
-                out->is_volatile = false;
+            const int saved_pos = pos_;
+            const bool save_c = out->is_const;
+            const bool save_v = out->is_volatile;
+            try {
+                *out = parse_type_name();
+                if (strip_qual) {
+                    out->is_const = false;
+                    out->is_volatile = false;
+                }
+                out->is_const |= save_c;
+                out->is_volatile |= save_v;
+                return true;
+            } catch (...) {
+                pos_ = saved_pos;
+                out->is_const = save_c;
+                out->is_volatile = save_v;
             }
-            out->is_const |= save_c;
-            out->is_volatile |= save_v;
-            return true;
         }
         if (check(TokenKind::Identifier)) {
             std::string id = cur().lexeme;

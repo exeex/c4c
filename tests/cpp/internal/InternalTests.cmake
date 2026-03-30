@@ -62,6 +62,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     template_argument_expr_close_staging_parse
     member_template_decltype_default_parse
     member_template_decltype_overload_parse
+    decltype_qualified_call_declval_parse
     member_template_sfinae_typename_prelude_parse
     member_template_nested_call_default_parse
     templated_member_nested_scope_parse
@@ -137,7 +138,9 @@ set(CPP_POSITIVE_PARSE_STEMS
     qualified_cpp_base_type_dispatch_parse
     gcc_type_trait_type_arg_parse
     builtin_trait_is_unsigned_parse
+    builtin_trait_is_signed_parse
     libcxx_is_unsigned_header_parse
+    libcxx_is_signed_header_parse
     qualified_type_spelling_shared_parse
     qualified_type_resolution_dispatch_parse
     qualified_type_start_shared_probe_parse

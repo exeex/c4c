@@ -22,6 +22,21 @@ static bool builtin_trait_is_unsigned_type_local(const TypeSpec& ts) {
     }
 }
 
+static bool builtin_trait_is_signed_type_local(const TypeSpec& ts) {
+    switch (ts.base) {
+        case TB_CHAR:
+        case TB_SCHAR:
+        case TB_SHORT:
+        case TB_INT:
+        case TB_LONG:
+        case TB_LONGLONG:
+        case TB_INT128:
+            return true;
+        default:
+            return false;
+    }
+}
+
 static void append_type_mangled_suffix_local(std::string& out, const TypeSpec& ts) {
     switch (ts.base) {
         case TB_INT: out += "int"; break;
@@ -854,6 +869,19 @@ Node* Parser::parse_primary() {
                 expect(TokenKind::RParen);
                 const int result =
                     builtin_trait_is_unsigned_type_local(arg) ? 1 : 0;
+                return make_int_lit(result, ln);
+            } catch (...) {
+                pos_ = saved_pos;
+                return nullptr;
+            }
+        }
+
+        if (builtin_name == "__is_signed") {
+            try {
+                TypeSpec arg = parse_type_name();
+                expect(TokenKind::RParen);
+                const int result =
+                    builtin_trait_is_signed_type_local(arg) ? 1 : 0;
                 return make_int_lit(result, ln);
             } catch (...) {
                 pos_ = saved_pos;

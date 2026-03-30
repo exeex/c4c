@@ -8,8 +8,8 @@ Last Updated: 2026-03-30
 ## Current Active Item
 
 - Step 4: stage the next `libc++` frontier after restoring the
-  `__has_builtin(__is_unsigned)` preprocessor branch used by
-  `__type_traits/is_unsigned.h`
+  `__has_builtin(__is_signed)` preprocessor branch used by
+  `__type_traits/is_signed.h`
 
 ## Todo
 
@@ -51,22 +51,36 @@ Last Updated: 2026-03-30
 - [x] Added non-dependent runtime coverage for `__is_unsigned(unsigned)` and
       `__is_unsigned(int)` in
       `tests/cpp/internal/postive_case/builtin_trait_is_unsigned_runtime.cpp`
+- [x] Reduced the next independent libc++ failure to `#include
+      <__type_traits/is_signed.h>`, which failed because the preprocessor
+      missed `__has_builtin(__is_signed)`
+- [x] Added direct parse-only and runtime coverage for `__is_signed(T)` plus a
+      libc++ header regression for `__type_traits/is_signed.h`
 - [x] Re-ran the direct `std::vector` repro and confirmed the old
       `byte.h` / `construct_at.h` / `is_unsigned` frontier disappeared, exposing
       later parser failures in `__algorithm/unwrap_iter.h`,
       `__ranges/size.h`, `__algorithm/comp_ref_type.h`, and `__utility/pair.h`
+- [x] Re-ran the direct `std::vector` repro after the `__is_signed` slice and
+      confirmed the old `__algorithm/unwrap_iter.h:63` frontier disappeared,
+      leaving `/usr/include/c++/v1/__ranges/size.h:71` as the first surviving
+      libc++ parser error
+- [x] Confirmed `#include <__iterator/iterator_traits.h>` now gets past the
+      earlier EOF / unbalanced-state failure and instead exposes more localized
+      parser frontiers in `__type_traits/is_void.h` and
+      `__type_traits/common_reference.h`
 
 ## Next Intended Slice
 
 - Reduce the new first surviving parser failure in
-  `/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__algorithm/unwrap_iter.h:63:224`
-  (`expected=RPAREN got='::'`) into one internal parse testcase before
-  changing parser code.
+  `/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__ranges/size.h:71:223`
+  (`try_parse_record_method_or_field_member expected=RPAREN got='_Tp'`) into
+  one internal parse testcase before changing parser code.
 
 ## Blockers
 
 - The next live frontier is now in later libc++ parser surfaces such as
-  `__algorithm/unwrap_iter.h`, but it is not reduced yet.
+  `__ranges/size.h`, `__type_traits/is_void.h`, and
+  `__type_traits/common_reference.h`, but they are not reduced yet.
 - Older GNU `libstdc++` blocker ordering in the source idea remains useful as
   history, but it is not the active execution frontier for this branch.
 
@@ -80,6 +94,9 @@ Last Updated: 2026-03-30
 - `__is_unsigned` now has direct parse-only coverage plus concrete runtime
   coverage; dependent template-value evaluation for builtin traits is still a
   separate follow-on concern if libc++ reduction reaches it.
+- `__is_signed` now has the same direct parse-only/runtime/header coverage
+  pattern, and clearing its builtin branch was enough to move the libc++ path
+  past the earlier `unwrap_iter` frontier.
 - Prefer shared parser or preprocessor compatibility fixes over libc++-specific
   hacks.
 - Do not reactivate backend umbrella work while this parser bring-up is active.
