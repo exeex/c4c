@@ -1,10 +1,13 @@
 #pragma once
 
+#include "../codegen/lir/call_args.hpp"
 #include "../codegen/lir/ir.hpp"
 
+#include <array>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <variant>
 #include <vector>
 
@@ -55,12 +58,18 @@ struct BackendBinaryInst {
   std::string rhs;
 };
 
+struct BackendCallArg {
+  std::string type_str;
+  std::string operand;
+};
+
 struct BackendCallInst {
   std::string result;
   std::string return_type;
   std::string callee;
-  std::string callee_type_suffix;
-  std::string args_str;
+  std::vector<std::string> param_types;
+  std::vector<BackendCallArg> args;
+  bool render_callee_type_suffix = false;
 };
 
 using BackendInst = std::variant<BackendBinaryInst, BackendCallInst>;
@@ -89,7 +98,43 @@ struct BackendModule {
   std::vector<BackendFunction> functions;
 };
 
+struct BackendTypedCallArgView {
+  std::string_view type_str;
+  std::string_view operand;
+};
+
+struct ParsedBackendTypedCallView {
+  std::vector<std::string_view> param_types;
+  std::vector<BackendTypedCallArgView> args;
+};
+
+struct ParsedBackendDirectGlobalTypedCallView {
+  std::string_view symbol_name;
+  ParsedBackendTypedCallView typed_call;
+};
+
+template <std::size_t N>
+inline bool backend_typed_call_has_param_types(
+    const ParsedBackendTypedCallView& parsed,
+    const std::array<std::string_view, N>& expected_types) {
+  if (parsed.param_types.size() != expected_types.size()) {
+    return false;
+  }
+  for (std::size_t index = 0; index < expected_types.size(); ++index) {
+    if (parsed.param_types[index] != expected_types[index]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 BackendModule adapt_minimal_module(const c4c::codegen::lir::LirModule& module);
 std::string render_module(const BackendModule& module);
+std::optional<c4c::codegen::lir::ParsedLirDirectGlobalTypedCallView>
+parse_backend_direct_global_typed_call(const c4c::codegen::lir::LirCallOp& call);
+std::optional<ParsedBackendTypedCallView> parse_backend_typed_call(
+    const BackendCallInst& call);
+std::optional<ParsedBackendDirectGlobalTypedCallView> parse_backend_direct_global_typed_call(
+    const BackendCallInst& call);
 
 }  // namespace c4c::backend

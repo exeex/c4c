@@ -269,6 +269,24 @@ void test_lir_call_arg_helpers_format_typed_call_round_trip() {
               "shared typed-call formatting should preserve the original operands");
 }
 
+void test_backend_call_helpers_decode_structured_direct_global_call() {
+  c4c::backend::BackendCallInst call{
+      "%t0",
+      "i32",
+      "@add_pair",
+      {"i32", "i32"},
+      {{"i32", "%lhs"}, {"i32", "%rhs"}},
+  };
+
+  const auto parsed = c4c::backend::parse_backend_direct_global_typed_call(call);
+  expect_true(parsed.has_value() && parsed->symbol_name == "add_pair" &&
+                  parsed->typed_call.param_types.size() == 2 &&
+                  parsed->typed_call.args.size() == 2 &&
+                  parsed->typed_call.args[0].operand == "%lhs" &&
+                  parsed->typed_call.args[1].operand == "%rhs",
+              "backend-owned call helper should expose structured direct-call metadata without reparsing raw adapter text");
+}
+
 void test_lir_typed_wrappers_preserve_legacy_opcode_and_predicate_strings() {
   using namespace c4c::codegen::lir;
 
@@ -4258,6 +4276,19 @@ void test_adapter_normalizes_typed_direct_call_local_arg_spacing_slice() {
                   "adapter should normalize local slot direct-call arguments even when compatibility spacing varies");
 }
 
+void test_adapter_canonicalizes_backend_owned_direct_call_rendering() {
+  auto module = make_typed_direct_call_module();
+  auto& call = std::get<c4c::codegen::lir::LirCallOp>(
+      module.functions.back().blocks.front().insts.front());
+  call.callee_type_suffix = " ( i32 ) ";
+  call.args_str = "  i32   5  ";
+
+  const auto adapted = c4c::backend::adapt_minimal_module(module);
+  const auto rendered = c4c::backend::render_module(adapted);
+  expect_contains(rendered, "call i32 (i32) @add_one(i32 5)",
+                  "adapter should render backend-owned direct calls from canonical structured metadata instead of preserving raw compatibility spacing");
+}
+
 void test_adapter_normalizes_typed_two_arg_direct_call_local_arg_slice() {
   const auto adapted =
       c4c::backend::adapt_minimal_module(make_typed_direct_call_two_arg_local_arg_module());
@@ -8245,6 +8276,7 @@ int main() {
   test_lir_call_arg_helpers_decode_direct_global_typed_call();
   test_lir_call_arg_helpers_decode_zero_arg_and_call_crossing_direct_calls();
   test_lir_call_arg_helpers_format_typed_call_round_trip();
+  test_backend_call_helpers_decode_structured_direct_global_call();
   test_lir_typed_wrappers_preserve_legacy_opcode_and_predicate_strings();
   test_lir_typed_wrappers_leave_unknown_opcode_text_compatible();
   test_lir_printer_renders_verified_typed_ops();
@@ -8264,6 +8296,7 @@ int main() {
   test_adapter_preserves_typed_two_arg_direct_call_helper_slice();
   test_adapter_normalizes_typed_direct_call_local_arg_slice();
   test_adapter_normalizes_typed_direct_call_local_arg_spacing_slice();
+  test_adapter_canonicalizes_backend_owned_direct_call_rendering();
   test_adapter_normalizes_typed_two_arg_direct_call_local_arg_slice();
   test_adapter_normalizes_typed_two_arg_direct_call_local_arg_spacing_slice();
   test_adapter_normalizes_typed_two_arg_direct_call_second_local_arg_slice();

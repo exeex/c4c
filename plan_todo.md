@@ -8,24 +8,34 @@ Source Plan: plan.md
 
 - Step 4: Migrate high-friction instruction families and consumers.
 - Exact target for the next iteration: continue Step 4 past
-  the landed adapter local-call typed-view cleanup into the remaining backend
-  call-adjacent consumers that still carry raw `LirCallOp`
-  `callee_type_suffix` / `args_str` compatibility text through backend-owned
-  call state instead of a shared structured view.
-- Iteration focus: continue Step 4 into the remaining adapter-owned generic
-  call representation and render paths that still forward raw call
-  compatibility text outside the shared typed/direct-call helpers, so backend
-  consumers can normalize typed call metadata without preserving source
-  spacing or re-decoding the same shapes later.
+  the landed backend-owned call-structure cleanup into the remaining shared
+  backend analysis/state-tracking consumers that still read `LirCallOp`
+  compatibility text directly instead of consuming one shared typed call view.
+- Iteration focus: continue Step 4 in
+  `src/backend/liveness.cpp`,
+  `src/backend/stack_layout/analysis.cpp`,
+  `src/backend/stack_layout/alloca_coalescing.cpp`, and
+  `src/backend/stack_layout/slot_assignment.cpp` so the remaining backend
+  call-adjacent state tracking can stop depending on raw call compatibility
+  fields as its primary ingestion surface.
 - Exact target for the next iteration after this slice: continue Step 4 into
-  the remaining backend call-adjacent consumers that still decode typed call
-  argument/result shape from compatibility text, especially any residual
-  adapter-owned or LIR-side call paths that still stitch together callee,
+  the remaining LIR-side call paths that still stitch together callee,
   parameter, and argument text instead of consuming one shared structured call
-  view end to end.
+  view end to end, especially any residual printer or serialization seams that
+  still treat typed call metadata as ad hoc text.
 
 ## Completed Items
 
+- Completed the next Step 4 backend-owned call representation cleanup slice by
+  replacing `src/backend/lir_adapter.hpp`'s raw `BackendCallInst`
+  `callee_type_suffix` / `args_str` storage with structured owned parameter and
+  argument metadata plus a legacy render-shape flag, routing
+  `src/backend/lir_adapter.cpp` through shared typed-call parsing with legacy
+  direct-call parameter inference when the source omitted an explicit suffix,
+  updating the x86 and AArch64 backend readers to consume the new shared
+  backend call view instead of reparsing raw adapter text, and adding focused
+  regression coverage in `tests/backend/backend_lir_adapter_tests.cpp` for the
+  backend-owned helper view plus canonical backend call rendering.
 - Completed the next Step 4 adapter local-call typed-view cleanup slice by
   deleting `src/backend/lir_adapter.cpp`'s private typed-call parser wrapper,
   adding shared typed-call ownership and parameter-format helpers in
