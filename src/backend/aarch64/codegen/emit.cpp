@@ -251,14 +251,19 @@ struct MinimalConditionalReturnSlice {
 };
 
 struct MinimalConditionalPhiJoinSlice {
+  struct IncomingValue {
+    std::int64_t base_imm = 0;
+    std::optional<std::int64_t> add_imm;
+  };
+
   c4c::codegen::lir::LirCmpPredicate predicate = c4c::codegen::lir::LirCmpPredicate::Eq;
   std::int64_t lhs_imm = 0;
   std::int64_t rhs_imm = 0;
   std::string true_label;
   std::string false_label;
   std::string join_label;
-  std::int64_t true_value_imm = 0;
-  std::int64_t false_value_imm = 0;
+  IncomingValue true_value;
+  IncomingValue false_value;
   std::optional<std::int64_t> join_add_imm;
 };
 
@@ -882,11 +887,39 @@ std::optional<MinimalConditionalPhiJoinSlice> parse_minimal_conditional_phi_join
   const auto& true_block = function->blocks[1];
   const auto& false_block = function->blocks[2];
   const auto& join_block = function->blocks[3];
+  const auto parse_incoming_value =
+      [](const c4c::backend::BackendBlock& block,
+         std::string_view expected_result)
+      -> std::optional<MinimalConditionalPhiJoinSlice::IncomingValue> {
+    if (block.insts.empty()) {
+      const auto imm = parse_i64(expected_result);
+      if (!imm.has_value()) {
+        return std::nullopt;
+      }
+      return MinimalConditionalPhiJoinSlice::IncomingValue{*imm, std::nullopt};
+    }
+    if (block.insts.size() != 1) {
+      return std::nullopt;
+    }
+
+    const auto* add = std::get_if<c4c::backend::BackendBinaryInst>(&block.insts.front());
+    if (add == nullptr || add->opcode != c4c::backend::BackendBinaryOpcode::Add ||
+        add->type_str != "i32" || add->result != expected_result) {
+      return std::nullopt;
+    }
+
+    const auto base_imm = parse_i64(add->lhs);
+    const auto add_imm = parse_i64(add->rhs);
+    if (!base_imm.has_value() || !add_imm.has_value()) {
+      return std::nullopt;
+    }
+    return MinimalConditionalPhiJoinSlice::IncomingValue{*base_imm, *add_imm};
+  };
   if (entry.label != "entry" || entry.insts.size() != 1 ||
       entry.terminator.kind != c4c::backend::BackendTerminatorKind::CondBranch ||
       true_block.label != entry.terminator.true_label ||
       false_block.label != entry.terminator.false_label ||
-      !true_block.insts.empty() || !false_block.insts.empty() ||
+      true_block.insts.size() > 1 || false_block.insts.size() > 1 ||
       true_block.terminator.kind != c4c::backend::BackendTerminatorKind::Branch ||
       false_block.terminator.kind != c4c::backend::BackendTerminatorKind::Branch ||
       true_block.terminator.target_label != join_block.label ||
@@ -926,10 +959,10 @@ std::optional<MinimalConditionalPhiJoinSlice> parse_minimal_conditional_phi_join
 
   const auto lhs_imm = parse_i64(cmp->lhs);
   const auto rhs_imm = parse_i64(cmp->rhs);
-  const auto true_value_imm = parse_i64(phi->incoming[0].value);
-  const auto false_value_imm = parse_i64(phi->incoming[1].value);
-  if (!lhs_imm.has_value() || !rhs_imm.has_value() || !true_value_imm.has_value() ||
-      !false_value_imm.has_value()) {
+  const auto true_value = parse_incoming_value(true_block, phi->incoming[0].value);
+  const auto false_value = parse_incoming_value(false_block, phi->incoming[1].value);
+  if (!lhs_imm.has_value() || !rhs_imm.has_value() || !true_value.has_value() ||
+      !false_value.has_value()) {
     return std::nullopt;
   }
 
@@ -955,8 +988,8 @@ std::optional<MinimalConditionalPhiJoinSlice> parse_minimal_conditional_phi_join
                                         true_block.label,
                                         false_block.label,
                                         join_block.label,
-                                        *true_value_imm,
-                                        *false_value_imm,
+                                        *true_value,
+                                        *false_value,
                                         join_add_imm};
 }
 
@@ -2349,8 +2382,12 @@ std::string emit_minimal_conditional_phi_join_asm(
     return imm >= 0 && imm <= std::numeric_limits<std::uint16_t>::max();
   };
   if (!in_mov_range(slice.lhs_imm) || !in_mov_range(slice.rhs_imm) ||
-      !in_mov_range(slice.true_value_imm) || !in_mov_range(slice.false_value_imm)) {
+      !in_mov_range(slice.true_value.base_imm) || !in_mov_range(slice.false_value.base_imm)) {
     fail_unsupported("conditional-phi-join immediates outside the minimal mov-supported range");
+  }
+  if ((slice.true_value.add_imm.has_value() && !in_mov_range(*slice.true_value.add_imm)) ||
+      (slice.false_value.add_imm.has_value() && !in_mov_range(*slice.false_value.add_imm))) {
+    fail_unsupported("conditional-phi-join predecessor add immediates outside the minimal add-supported range");
   }
   if (slice.join_add_imm.has_value() &&
       (*slice.join_add_imm < 0 ||
@@ -2383,10 +2420,17 @@ std::string emit_minimal_conditional_phi_join_asm(
       << "  cmp w8, #" << slice.rhs_imm << "\n"
       << "  " << fail_branch << " .L" << slice.false_label << "\n"
       << ".L" << slice.true_label << ":\n"
-      << "  mov w0, #" << slice.true_value_imm << "\n"
-      << "  b .L" << slice.join_label << "\n"
+      << "  mov w0, #" << slice.true_value.base_imm << "\n";
+  if (slice.true_value.add_imm.has_value()) {
+    out << "  add w0, w0, #" << *slice.true_value.add_imm << "\n";
+  }
+  out << "  b .L" << slice.join_label << "\n"
       << ".L" << slice.false_label << ":\n"
-      << "  mov w0, #" << slice.false_value_imm << "\n"
+      << "  mov w0, #" << slice.false_value.base_imm << "\n";
+  if (slice.false_value.add_imm.has_value()) {
+    out << "  add w0, w0, #" << *slice.false_value.add_imm << "\n";
+  }
+  out
       << ".L" << slice.join_label << ":\n";
   if (slice.join_add_imm.has_value()) {
     out << "  add w0, w0, #" << *slice.join_add_imm << "\n";

@@ -8,12 +8,20 @@ Source Plan: plan.md
 
 - Step 2: Define the backend-owned IR model.
 - Exact target for the next iteration: extend `src/backend/ir.*` past the
-  newly lowered conditional `phi -> add immediate -> ret` join slice into a
-  bounded join where predecessor blocks compute the incoming scalar values
-  before the merge, so backend-owned IR can cover a join that depends on
-  predecessor-local computation instead of only immediate phi inputs plus a
-  post-join add.
+  newly lowered predecessor-local conditional-join slice into a bounded join
+  where the merge still stays explicit but at least one predecessor computes
+  its incoming scalar with a second typed ALU form beyond add-immediate, so
+  the backend-owned join contract is not special-cased to one arithmetic shape.
 - Resume notes:
+  - backend-owned IR now lowers a bounded four-block
+    compare/branch/join/return slice where `then` and `else` each compute one
+    typed `i32 add` before branching to the merge, and the join `phi` merges
+    those predecessor-local SSA values instead of only immediate constants
+  - both x86 and AArch64 now accept that predecessor-computed conditional-join
+    slice directly from explicit backend IR inputs instead of falling back to
+    backend-IR text or legacy LIR
+  - the next highest-value join seam is widening predecessor-local merge input
+    computation beyond add-immediate without reopening raw adapter text
   - backend-owned IR now lowers the bounded four-block
     compare/branch/join/return shape into an explicit join block with a typed
     `phi` result instead of stopping at branch-to-return control flow
@@ -83,6 +91,22 @@ Source Plan: plan.md
 
 ## Completed Items
 
+- Completed an additional Step 2 predecessor-computed join slice:
+  - taught `src/backend/lir_adapter.cpp` to lower the bounded
+    compare/branch/join/return shape when `then` and `else` each compute one
+    typed `i32 add` before branching, instead of only accepting immediate phi
+    inputs at the merge
+  - updated `src/backend/x86/codegen/emit.cpp` and
+    `src/backend/aarch64/codegen/emit.cpp` so explicit backend IR inputs can
+    emit predecessor-local computed phi inputs directly before the join label
+  - added focused backend tests covering lowered predecessor-computed join
+    printing, validation, x86 explicit-backend-IR emission, and AArch64
+    explicit-backend-IR emission
+- Verified the current post-change full-suite regression status in
+  `test_after.log`: `93% tests passed`, `183 tests failed out of 2560`
+  (2377 passing), matching the current recorded runbook baseline from
+  `test_fail_after.log` with an identical failing-test set and no newly
+  failing tests.
 - Activated this runbook from
   `ideas/open/35_backend_ready_ir_contract_plan.md` after closing and archiving
   `ideas/open/38_lir_de_stringify_legacy_safe_refactor_plan.md`.

@@ -302,6 +302,32 @@ std::optional<BackendComparePredicate> adapt_compare_predicate(
   return std::nullopt;
 }
 
+std::optional<BackendBinaryInst> adapt_conditional_phi_join_predecessor_compute(
+    const c4c::codegen::lir::LirBlock& block,
+    std::string_view expected_result) {
+  if (block.insts.empty()) {
+    return std::nullopt;
+  }
+  if (block.insts.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto* add = std::get_if<LirBinOp>(&block.insts.front());
+  if (add == nullptr || !has_binary_opcode(*add, LirBinaryOpcode::Add) ||
+      add->type_str != "i32" || add->result != expected_result ||
+      !parse_i64(add->lhs).has_value() || !parse_i64(add->rhs).has_value()) {
+    return std::nullopt;
+  }
+
+  return BackendBinaryInst{
+      BackendBinaryOpcode::Add,
+      add->result,
+      add->type_str,
+      add->lhs,
+      add->rhs,
+  };
+}
+
 std::vector<std::string> own_backend_call_param_types(
     const c4c::codegen::lir::ParsedLirTypedCallView& parsed) {
   std::vector<std::string> param_types;
@@ -548,8 +574,8 @@ std::optional<BackendFunction> adapt_conditional_phi_join_function(
   const auto& true_block = function.blocks[1];
   const auto& false_block = function.blocks[2];
   const auto& join_block = function.blocks[3];
-  if (entry.label != "entry" || entry.insts.size() != 3 || !true_block.insts.empty() ||
-      !false_block.insts.empty() ||
+  if (entry.label != "entry" || entry.insts.size() != 3 ||
+      true_block.insts.size() > 1 || false_block.insts.size() > 1 ||
       (join_block.insts.size() != 1 && join_block.insts.size() != 2)) {
     return std::nullopt;
   }
@@ -584,9 +610,22 @@ std::optional<BackendFunction> adapt_conditional_phi_join_function(
   }
 
   if (phi->incoming[0].second != true_block.label ||
-      phi->incoming[1].second != false_block.label ||
-      !parse_i64(phi->incoming[0].first).has_value() ||
-      !parse_i64(phi->incoming[1].first).has_value()) {
+      phi->incoming[1].second != false_block.label) {
+    return std::nullopt;
+  }
+
+  const auto true_compute =
+      adapt_conditional_phi_join_predecessor_compute(true_block, phi->incoming[0].first);
+  const auto false_compute =
+      adapt_conditional_phi_join_predecessor_compute(false_block, phi->incoming[1].first);
+  if ((!true_block.insts.empty() && !true_compute.has_value()) ||
+      (!false_block.insts.empty() && !false_compute.has_value())) {
+    return std::nullopt;
+  }
+  if (true_block.insts.empty() && !parse_i64(phi->incoming[0].first).has_value()) {
+    return std::nullopt;
+  }
+  if (false_block.insts.empty() && !parse_i64(phi->incoming[1].first).has_value()) {
     return std::nullopt;
   }
 
@@ -628,11 +667,17 @@ std::optional<BackendFunction> adapt_conditional_phi_join_function(
 
   BackendBlock out_true;
   out_true.label = true_block.label;
+  if (true_compute.has_value()) {
+    out_true.insts.push_back(*true_compute);
+  }
   out_true.terminator = BackendTerminator::make_branch(join_block.label);
   out.blocks.push_back(std::move(out_true));
 
   BackendBlock out_false;
   out_false.label = false_block.label;
+  if (false_compute.has_value()) {
+    out_false.insts.push_back(*false_compute);
+  }
   out_false.terminator = BackendTerminator::make_branch(join_block.label);
   out.blocks.push_back(std::move(out_false));
 
