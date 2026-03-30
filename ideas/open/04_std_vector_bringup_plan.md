@@ -3,6 +3,47 @@
 Status: Parked
 Last Updated: 2026-03-29
 
+## 2026-03-30 libc++ Branching Update
+
+This idea originally tracked a GNU `libstdc++` header-compatibility bring-up.
+The current local environment is now using LLVM `libc++`, so the active parser
+frontier is different and the previous `libstdc++`-specific error ordering
+should no longer be treated as the live target.
+
+Fresh direct repro on 2026-03-30:
+
+```bash
+./build/c4cll --parse-only tests/cpp/std/std_vector_simple.cpp
+```
+
+The first surviving `libc++` parser failures are now:
+
+- `/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__cstddef/byte.h:72:27`
+  `error: expected template parameter name`
+- `/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__memory/construct_at.h:63:22`
+  `error: expected template parameter name`
+- `/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__type_traits/is_trivially_lexicographically_comparable.h:50:35`
+  `error: parse_fn=parse_top_level phase=committed expected=GREATER got='byte'`
+
+The first two failures reduce to a libc++-style SFINAE template-parameter
+pattern:
+
+- `template <class _Tp, __enable_if_t<!is_array<_Tp>::value, int> = 0>`
+
+Interpretation:
+
+- the next live frontier is no longer concept-heavy GNU iterator helpers
+- the next likely parser slice is template-parameter-list handling for
+  alias-template typed NTTPs in unqualified libc++ spelling
+- downstream `libc++` errors should be re-ranked only after the `__enable_if_t`
+  template-parameter blocker moves
+
+Lifecycle note:
+
+- the prior active `plan.md` / `plan_todo.md` pair was intentionally retired so
+  this idea can be resumed on a dedicated `libc++` parser branch with a fresh
+  runbook instead of inheriting the old GNU `libstdc++` execution queue
+
 ## Goal
 
 Push `tests/cpp/std/std_vector_simple.cpp` from current failure state to a stable,
