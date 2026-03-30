@@ -5493,8 +5493,8 @@ class Lowerer {
     const HirStructField* data_field = nullptr;
     const HirStructField* len_field = nullptr;
     for (const auto& field : sit->second.fields) {
-      if (field.name == "_M_array") data_field = &field;
-      else if (field.name == "_M_len") len_field = &field;
+      if (field.name == "_M_array" || field.name == "__begin_") data_field = &field;
+      else if (field.name == "_M_len" || field.name == "__size_") len_field = &field;
     }
     if (!data_field || !len_field) return false;
     if (data_field->elem_type.ptr_level <= 0) return false;
@@ -5571,6 +5571,15 @@ class Lowerer {
     tmp_ref.local = tmp_lid;
     ExprId tmp_id = append_expr(list_node, tmp_ref, param_ts, ValueCategory::LValue);
 
+    const char* data_field_name = "_M_array";
+    const char* len_field_name = "_M_len";
+    if (auto sit = module_->struct_defs.find(param_ts.tag); sit != module_->struct_defs.end()) {
+      for (const auto& field : sit->second.fields) {
+        if (field.name == "__begin_") data_field_name = "__begin_";
+        else if (field.name == "__size_") len_field_name = "__size_";
+      }
+    }
+
     auto assign_field = [&](const char* field_name,
                             const TypeSpec& field_ts,
                             ExprId rhs_id) {
@@ -5587,11 +5596,11 @@ class Lowerer {
       append_stmt(*ctx, Stmt{StmtPayload{ExprStmt{assign_id}}, make_span(list_node)});
     };
 
-    assign_field("_M_array", data_ptr_ts, data_ptr_id);
+    assign_field(data_field_name, data_ptr_ts, data_ptr_id);
     ExprId len_id = append_expr(list_node,
                                 IntLiteral{list_node ? list_node->n_children : 0, false},
                                 len_ts);
-    assign_field("_M_len", len_ts, len_id);
+    assign_field(len_field_name, len_ts, len_id);
     return tmp_id;
   }
 

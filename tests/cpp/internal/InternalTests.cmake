@@ -182,6 +182,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     record_nested_aggregate_member_parse
     record_member_typedef_using_parse
     record_member_enum_parse
+    scoped_enum_underlying_type_parse
     record_member_prelude_parse
     record_member_mixed_prelude_parse
     record_member_entry_parse

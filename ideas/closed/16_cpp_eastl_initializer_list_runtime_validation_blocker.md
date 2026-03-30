@@ -2,7 +2,7 @@
 
 ## Status
 
-Open
+Complete
 
 ## Trigger
 
@@ -39,9 +39,25 @@ This is not part of the bounded AArch64 `param_member_array` asm plan:
 
 ## Next Step
 
-Isolate whether this is:
+Resolved on 2026-03-30.
 
-1. a pre-existing stale-build/flaky validation issue, or
-2. a real frontend / LLVM IR regression in the C++ path
+## Resolution
 
-Then rerun the full regression guard so the active backend plan can finish validation cleanly.
+- `enum class byte : unsigned char` was not being parsed as a scoped enum, which left `std::byte` materialized as a zero-sized struct and produced invalid LLVM IR for the bitwise helper overloads.
+- libc++ `std::initializer_list` materialization also needed to recognize and populate the Darwin libc++ field names `__begin_` and `__size_` instead of only `_M_array` and `_M_len`.
+- C++ assignment expressions needed to preserve lvalue identity in LIR emission so helper overloads returning references could lower correctly.
+
+## Validation
+
+- Targeted tests now pass:
+  - `cpp_positive_sema_eastl_probe_initializer_list_runtime_cpp`
+  - `cpp_positive_sema_scoped_enum_underlying_type_parse_cpp`
+- Clean-build regression guard now passes:
+  - before: passed=715 failed=25 total=740
+  - after: passed=718 failed=24 total=742
+  - resolved failing tests: `cpp_llvm_initializer_list_runtime_materialization`
+  - new failing tests: none
+
+## Follow-On
+
+- The superseded backend idea `ideas/open/15_backend_aarch64_param_member_array_plan.md` can resume closure work with the validation blocker removed.

@@ -6694,12 +6694,23 @@ Node* Parser::parse_enum() {
     int ln = cur().line;
     skip_attributes();
 
+    if (check(TokenKind::KwClass) || check(TokenKind::KwStruct)) {
+        consume();
+        skip_attributes();
+    }
+
     const char* tag = nullptr;
     if (check(TokenKind::Identifier)) {
         tag = arena_.strdup(cur().lexeme);
         consume();
     }
     skip_attributes();
+
+    if (match(TokenKind::Colon)) {
+        skip_attributes();
+        (void)parse_base_type();
+        skip_attributes();
+    }
 
     auto register_enum_injected_type = [&](const char* source_tag,
                                            const char* canonical_name) {

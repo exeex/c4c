@@ -1,9 +1,33 @@
 #include "stmt_emitter.hpp"
 #include "canonical_symbol.hpp"
+#include <type_traits>
 
 namespace c4c::codegen::lir {
 
 namespace {
+
+const char* expr_payload_name(const Expr& e) {
+  return std::visit(
+      [](const auto& payload) -> const char* {
+        using T = std::decay_t<decltype(payload)>;
+        if constexpr (std::is_same_v<T, DeclRef>) return "DeclRef";
+        if constexpr (std::is_same_v<T, UnaryExpr>) return "UnaryExpr";
+        if constexpr (std::is_same_v<T, BinaryExpr>) return "BinaryExpr";
+        if constexpr (std::is_same_v<T, AssignExpr>) return "AssignExpr";
+        if constexpr (std::is_same_v<T, CallExpr>) return "CallExpr";
+        if constexpr (std::is_same_v<T, MemberExpr>) return "MemberExpr";
+        if constexpr (std::is_same_v<T, IndexExpr>) return "IndexExpr";
+        if constexpr (std::is_same_v<T, CastExpr>) return "CastExpr";
+        if constexpr (std::is_same_v<T, IntLiteral>) return "IntLiteral";
+        if constexpr (std::is_same_v<T, FloatLiteral>) return "FloatLiteral";
+        if constexpr (std::is_same_v<T, CharLiteral>) return "CharLiteral";
+        if constexpr (std::is_same_v<T, StringLiteral>) return "StringLiteral";
+        if constexpr (std::is_same_v<T, SizeofExpr>) return "SizeofExpr";
+        if constexpr (std::is_same_v<T, LabelAddrExpr>) return "LabelAddrExpr";
+        return "UnknownExpr";
+      },
+      e.payload);
+}
 
 template <typename TerminatorT>
 bool set_terminator_if_open(FnCtx& ctx, TerminatorT&& terminator) {
@@ -1035,7 +1059,11 @@ std::string StmtEmitter::emit_lval_dispatch(FnCtx& ctx, const Expr& e, TypeSpec&
         return emit_lval(ctx, c->expr, pts);
       }
     }
-    throw std::runtime_error("StmtEmitter: cannot take lval of expr");
+    if (const auto* a = std::get_if<AssignExpr>(&e.payload)) {
+      return emit_lval(ctx, a->lhs, pts);
+    }
+    throw std::runtime_error(std::string("StmtEmitter: cannot take lval of expr kind=") +
+                             expr_payload_name(e));
   }
 
 std::string StmtEmitter::emit_member_lval(FnCtx& ctx, const MemberExpr& m, TypeSpec& out_pts,
