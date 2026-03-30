@@ -3696,22 +3696,16 @@ void test_aarch64_backend_renders_nested_member_pointer_array_gep_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_nested_member_pointer_array_gep_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-  expect_contains(rendered, "%struct.Inner = type { [2 x i32] }",
-                  "aarch64 backend should preserve nested pointee type declarations");
-  expect_contains(rendered, "%struct.Outer = type { ptr }",
-                  "aarch64 backend should preserve nested pointer-holder type declarations");
-  expect_contains(rendered, "%t0 = getelementptr %struct.Outer, ptr %p.o, i32 0, i32 0",
-                  "aarch64 backend should render outer member-addressing GEP");
-  expect_contains(rendered, "%t1 = load ptr, ptr %t0",
-                  "aarch64 backend should reload nested struct pointers from outer members");
-  expect_contains(rendered, "%t2 = getelementptr %struct.Inner, ptr %t1, i32 0, i32 0",
-                  "aarch64 backend should render nested pointee member-addressing GEP");
-  expect_contains(rendered, "%t3 = getelementptr [2 x i32], ptr %t2, i64 0, i64 0",
-                  "aarch64 backend should render array decay from nested pointee members");
-  expect_contains(rendered, "%t5 = getelementptr i32, ptr %t3, i64 %t4",
-                  "aarch64 backend should render indexed nested member-pointer addressing");
-  expect_contains(rendered, "ret i32 %t6",
-                  "aarch64 backend should preserve the loaded nested member-pointer result");
+  expect_contains(rendered, "get_second:",
+                  "aarch64 backend should emit a helper symbol for the bounded nested member-pointer slice");
+  expect_contains(rendered, "ldr x8, [x0]",
+                  "aarch64 backend should reload the nested inner pointer from the outer argument base");
+  expect_contains(rendered, "ldr w0, [x8, #4]",
+                  "aarch64 backend should reload the second nested array element through the bounded folded offset");
+  expect_contains(rendered, "ret",
+                  "aarch64 backend should return directly after reloading the bounded nested member-pointer result");
+  expect_not_contains(rendered, "getelementptr",
+                      "aarch64 backend should not fall back to LLVM-text GEP rendering for the bounded nested member-pointer slice");
 }
 
 void test_aarch64_backend_renders_nested_param_member_array_gep_slice() {
