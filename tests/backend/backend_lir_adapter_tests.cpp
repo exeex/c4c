@@ -54,6 +54,9 @@ std::uint32_t sf_bit(bool is_64);
 
 namespace {
 
+c4c::codegen::lir::LirModule make_typed_direct_call_local_arg_with_suffix_spacing_module();
+c4c::codegen::lir::LirModule make_typed_direct_call_two_arg_local_arg_with_spacing_module();
+
 [[noreturn]] void fail(const std::string& message) {
   std::cerr << "FAIL: " << message << "\n";
   std::exit(1);
@@ -591,6 +594,28 @@ void test_backend_call_helpers_decode_lir_direct_global_typed_operands() {
   expect_true(two_operands.has_value() && two_operands->first == "%lhs" &&
                   two_operands->second == "%rhs",
               "shared direct-global two-operand helper should decode spacing-tolerant LIR call operands");
+}
+
+void test_backend_call_helpers_decode_single_typed_local_operand() {
+  auto module = make_typed_direct_call_local_arg_with_suffix_spacing_module();
+  const auto& call = std::get<c4c::codegen::lir::LirCallOp>(
+      module.functions.back().blocks.front().insts.back());
+
+  const auto operand = c4c::backend::parse_backend_single_typed_call_operand(call, "i32");
+  expect_true(operand.has_value() && *operand == "%t0",
+              "shared typed-call helper should decode spacing-tolerant local-call operands without repeating parsed single-arg shape checks");
+}
+
+void test_backend_call_helpers_decode_two_typed_local_operands() {
+  auto module = make_typed_direct_call_two_arg_local_arg_with_spacing_module();
+  const auto& call = std::get<c4c::codegen::lir::LirCallOp>(
+      module.functions.back().blocks.front().insts.back());
+
+  const auto operands = c4c::backend::parse_backend_two_typed_call_operands(
+      call, "i32", "i32");
+  expect_true(operands.has_value() && operands->first == "%t0" &&
+                  operands->second == "7",
+              "shared typed-call helper should decode spacing-tolerant local two-arg call operands without repeating parsed shape checks");
 }
 
 void test_backend_call_helpers_borrow_structured_typed_call_view() {
@@ -8656,6 +8681,8 @@ int main() {
   test_backend_call_helpers_decode_direct_global_two_typed_operands();
   test_backend_call_helpers_decode_zero_arg_direct_global_calls();
   test_backend_call_helpers_decode_lir_direct_global_typed_operands();
+  test_backend_call_helpers_decode_single_typed_local_operand();
+  test_backend_call_helpers_decode_two_typed_local_operands();
   test_backend_call_helpers_borrow_structured_typed_call_view();
   test_lir_typed_wrappers_preserve_legacy_opcode_and_predicate_strings();
   test_lir_typed_wrappers_leave_unknown_opcode_text_compatible();

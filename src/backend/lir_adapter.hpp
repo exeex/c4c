@@ -104,6 +104,11 @@ struct ParsedBackendDirectGlobalTypedCallView {
   ParsedBackendTypedCallView typed_call;
 };
 
+inline std::optional<ParsedBackendTypedCallView> parse_backend_typed_call(
+    const c4c::codegen::lir::LirCallOp& call) {
+  return c4c::codegen::lir::parse_lir_typed_call_or_infer_params(call);
+}
+
 std::optional<c4c::codegen::lir::ParsedLirDirectGlobalTypedCallView>
 parse_backend_direct_global_typed_call(const c4c::codegen::lir::LirCallOp& call);
 std::optional<ParsedBackendTypedCallView> parse_backend_typed_call(
@@ -112,18 +117,49 @@ std::optional<ParsedBackendDirectGlobalTypedCallView> parse_backend_direct_globa
     const BackendCallInst& call);
 
 template <std::size_t N>
-inline bool backend_typed_call_has_param_types(
+inline bool backend_typed_call_matches(
     const ParsedBackendTypedCallView& parsed,
     const std::array<std::string_view, N>& expected_types) {
-  if (parsed.param_types.size() != expected_types.size()) {
+  if (parsed.param_types.size() != expected_types.size() ||
+      parsed.args.size() != expected_types.size()) {
     return false;
   }
   for (std::size_t index = 0; index < expected_types.size(); ++index) {
-    if (parsed.param_types[index] != expected_types[index]) {
+    if (c4c::codegen::lir::trim_lir_arg_text(parsed.param_types[index]) !=
+        c4c::codegen::lir::trim_lir_arg_text(expected_types[index])) {
       return false;
     }
   }
   return true;
+}
+
+template <typename Call>
+inline std::optional<std::string_view> parse_backend_single_typed_call_operand(
+    const Call& call,
+    std::string_view expected_type) {
+  const auto parsed = parse_backend_typed_call(call);
+  if (!parsed.has_value() ||
+      !backend_typed_call_matches(*parsed, std::array<std::string_view, 1>{expected_type})) {
+    return std::nullopt;
+  }
+  return parsed->args.front().operand;
+}
+
+template <typename Call>
+inline std::optional<std::pair<std::string_view, std::string_view>>
+parse_backend_two_typed_call_operands(const Call& call,
+                                      std::string_view expected_type0,
+                                      std::string_view expected_type1) {
+  const auto parsed = parse_backend_typed_call(call);
+  if (!parsed.has_value() ||
+      !backend_typed_call_matches(
+          *parsed, std::array<std::string_view, 2>{expected_type0, expected_type1})) {
+    return std::nullopt;
+  }
+  return std::pair<std::string_view, std::string_view>{
+      parsed->args[0].operand,
+      parsed->args[1].operand,
+  };
 }
 
 template <typename DirectCallView, std::size_t N>

@@ -210,11 +210,6 @@ BackendCallInst make_backend_call_inst(std::string result,
   };
 }
 
-std::optional<c4c::codegen::lir::ParsedLirTypedCallView> parse_backend_source_typed_call(
-    const c4c::codegen::lir::LirCallOp& call) {
-  return c4c::codegen::lir::parse_lir_typed_call_or_infer_params(call);
-}
-
 BackendInst adapt_inst(const c4c::codegen::lir::LirInst& inst) {
   if (const auto* bin = std::get_if<c4c::codegen::lir::LirBinOp>(&inst)) {
     const auto opcode = adapt_binary_opcode(bin->opcode);
@@ -231,7 +226,7 @@ BackendInst adapt_inst(const c4c::codegen::lir::LirInst& inst) {
   }
 
   if (const auto* call = std::get_if<c4c::codegen::lir::LirCallOp>(&inst)) {
-    const auto parsed_call = parse_backend_source_typed_call(*call);
+    const auto parsed_call = parse_backend_typed_call(*call);
     if (!parsed_call.has_value()) {
       throw LirAdapterError(
           LirAdapterErrorKind::Malformed,
@@ -1168,10 +1163,9 @@ std::optional<BackendFunction> adapt_local_single_arg_call_function(
     return std::nullopt;
   }
 
-  const auto parsed_call = parse_backend_source_typed_call(*call);
-  if (!parsed_call.has_value() || parsed_call->param_types.size() != 1 ||
-      parsed_call->param_types.front() != "i32" || parsed_call->args.size() != 1 ||
-      parsed_call->args.front().operand != load->result) {
+  const auto parsed_call = parse_backend_typed_call(*call);
+  const auto call_operand = parse_backend_single_typed_call_operand(*call, "i32");
+  if (!parsed_call.has_value() || !call_operand.has_value() || *call_operand != load->result) {
     return std::nullopt;
   }
 
@@ -1267,10 +1261,9 @@ std::optional<BackendFunction> adapt_local_two_arg_call_function(
       return std::nullopt;
     }
 
-    const auto parsed_call = parse_backend_source_typed_call(*call);
-    if (!parsed_call.has_value() || parsed_call->param_types.size() != 2 ||
-        parsed_call->param_types[0] != "i32" || parsed_call->param_types[1] != "i32" ||
-        parsed_call->args.size() != 2) {
+    const auto parsed_call = parse_backend_typed_call(*call);
+    const auto call_operands = parse_backend_two_typed_call_operands(*call, "i32", "i32");
+    if (!parsed_call.has_value() || !call_operands.has_value()) {
       return std::nullopt;
     }
 
@@ -1418,12 +1411,11 @@ std::optional<BackendFunction> adapt_local_two_arg_call_function(
       return std::nullopt;
     }
 
-    const auto parsed_call = parse_backend_source_typed_call(*call);
-    if (!parsed_call.has_value() || parsed_call->param_types.size() != 2 ||
-        parsed_call->param_types[0] != "i32" || parsed_call->param_types[1] != "i32" ||
-        parsed_call->args.size() != 2 ||
-        parsed_call->args[0].operand != call_arg_load0->result ||
-        parsed_call->args[1].operand != call_arg_load1->result) {
+    const auto parsed_call = parse_backend_typed_call(*call);
+    const auto call_operands = parse_backend_two_typed_call_operands(*call, "i32", "i32");
+    if (!parsed_call.has_value() || !call_operands.has_value() ||
+        call_operands->first != call_arg_load0->result ||
+        call_operands->second != call_arg_load1->result) {
       return std::nullopt;
     }
 

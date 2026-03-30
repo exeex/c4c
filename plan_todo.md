@@ -7,24 +7,37 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 4: Migrate high-friction instruction families and consumers.
-- Exact target for the next iteration: audit whether any backend-adjacent
-  backend-owned indirect/local-call normalization paths in
-  `src/backend/lir_adapter.cpp` still repeat parsed typed-call shape matching
-  that should move behind one shared helper seam before Step 4 handoff.
-- Iteration focus: compare the adapter's local/indirect-call normalization
-  slices against the shared backend direct-global and typed-call helpers,
-  and only factor a new helper if it removes repeated parsed
-  `param_types`/`args` shape checks without obscuring the normalization logic.
-- Next iteration's slice: if no reusable helper seam emerges for those
-  backend-owned indirect/local-call paths, record that Step 4's backend
-  consumers are effectively on shared typed-call helpers already and shift the
-  remaining work toward Step 5 handoff notes.
-- Exact target for the next iteration after this slice: record any remaining
-  call-shape-specific helper gaps, or mark Step 4 ready to hand off a clean
-  typed-call consumer surface to the follow-on backend-ready IR plans.
+- Exact target for the next iteration: decide whether Step 4 is effectively
+  complete for backend/local-call helper sharing after the shared local typed
+  call operand helpers landed and the full-suite regression guard stayed
+  monotonic.
+- Iteration focus: scan for any remaining backend consumer sites that still
+  repeat local/indirect typed-call shape checks instead of using the shared
+  adapter helpers, and if none remain, move directly to Step 5 handoff notes.
+- Next iteration's slice: record the stable typed LIR helper surface that
+  backend-ready IR follow-on plans can rely on, plus any residual
+  compatibility-path call decoding that those plans should delete.
+- Exact target for the next iteration after this slice: start Step 5 handoff
+  notes in `plan_todo.md` and propagate the follow-on contracts back to ideas
+  `35`, `36`, and `37`.
 
 ## Completed Items
 
+- Completed the next Step 4 local-call helper cleanup slice by adding shared
+  non-direct typed-call operand helpers in `src/backend/lir_adapter.hpp`,
+  routing `src/backend/lir_adapter.cpp`'s local single-arg and two-arg call
+  normalization paths through those helpers instead of repeating parsed
+  `param_types`/`args` shape checks inline, and adding focused regression
+  coverage in `tests/backend/backend_lir_adapter_tests.cpp` for
+  spacing-tolerant local typed-call operand decoding.
+- Verified this slice with `cmake --build build -j8 --target
+  backend_lir_adapter_tests`, `./build/backend_lir_adapter_tests`,
+  `cmake --build build -j8`, `ctest --test-dir build -j8 --output-on-failure >
+  test_fail_after.log`, and the regression guard
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
+  --before test_fail_before.log --after test_fail_after.log`, which passed at
+  `2371 -> 2372` passes with zero new failing tests and one resolved failing
+  test (`c_testsuite_x86_backend_src_00100_c`).
 - Completed the next Step 4 x86 zero-arg direct-call helper cleanup slice by
   routing `src/backend/x86/codegen/emit.cpp`'s residual LIR-side extern-decl
   direct-call recognizer through
