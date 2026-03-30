@@ -92,6 +92,70 @@ std::optional<std::int64_t> parse_i64(std::string_view text) {
   return value;
 }
 
+std::optional<std::vector<std::string>> infer_extern_param_types(
+    const c4c::codegen::lir::LirModule& module,
+    const c4c::codegen::lir::LirExternDecl& decl) {
+  std::optional<std::vector<std::string>> inferred;
+  const std::string callee = "@" + decl.name;
+
+  for (const auto& function : module.functions) {
+    for (const auto& block : function.blocks) {
+      for (const auto& inst : block.insts) {
+        const auto* call = std::get_if<c4c::codegen::lir::LirCallOp>(&inst);
+        if (call == nullptr || call->callee.str() != callee) {
+          continue;
+        }
+
+        const auto parsed_call = parse_backend_typed_call(*call);
+        if (!parsed_call.has_value()) {
+          continue;
+        }
+
+        std::vector<std::string> param_types;
+        param_types.reserve(parsed_call->param_types.size());
+        for (const auto type : parsed_call->param_types) {
+          param_types.push_back(std::string(type));
+        }
+        if (!inferred.has_value()) {
+          inferred = std::move(param_types);
+          continue;
+        }
+        if (*inferred != param_types) {
+          throw LirAdapterError(
+              LirAdapterErrorKind::Unsupported,
+              "minimal backend LIR adapter does not support extern declarations with inconsistent typed call surfaces");
+        }
+      }
+    }
+  }
+
+  return inferred;
+}
+
+BackendFunction adapt_extern_decl(const c4c::codegen::lir::LirModule& module,
+                                  const c4c::codegen::lir::LirExternDecl& decl) {
+  BackendFunction out;
+  out.is_declaration = true;
+  out.signature.linkage = "declare";
+  out.signature.return_type = decl.return_type_str;
+  out.signature.name = decl.name;
+
+  if (out.signature.return_type.empty() || out.signature.name.empty()) {
+    throw LirAdapterError(LirAdapterErrorKind::Malformed,
+                          "minimal backend LIR adapter could not adapt extern declaration");
+  }
+
+  const auto param_types = infer_extern_param_types(module, decl);
+  if (param_types.has_value()) {
+    out.signature.params.reserve(param_types->size());
+    for (const auto& type_str : *param_types) {
+      out.signature.params.push_back(BackendParam{type_str, {}});
+    }
+  }
+
+  return out;
+}
+
 [[noreturn]] void fail_unsupported(const std::string& detail) {
   throw LirAdapterError(LirAdapterErrorKind::Unsupported,
                         "minimal backend LIR adapter does not support " + detail);
@@ -1513,7 +1577,6 @@ BackendFunction adapt_function(const c4c::codegen::lir::LirFunction& function) {
 BackendModule adapt_minimal_module(const c4c::codegen::lir::LirModule& module) {
   if (!module.globals.empty()) fail_unsupported("globals");
   if (!module.string_pool.empty()) fail_unsupported("string constants");
-  if (!module.extern_decls.empty()) fail_unsupported("extern declarations");
   if (module.need_va_start || module.need_va_end || module.need_va_copy ||
       module.need_memcpy || module.need_stacksave || module.need_stackrestore ||
       module.need_abs) {
@@ -1524,6 +1587,9 @@ BackendModule adapt_minimal_module(const c4c::codegen::lir::LirModule& module) {
   out.target_triple = module.target_triple;
   out.data_layout = module.data_layout;
   out.type_decls = module.type_decls;
+  for (const auto& decl : module.extern_decls) {
+    out.functions.push_back(adapt_extern_decl(module, decl));
+  }
   for (const auto& function : module.functions) {
     out.functions.push_back(adapt_function(function));
   }

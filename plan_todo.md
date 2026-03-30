@@ -8,8 +8,9 @@ Source Plan: plan.md
 
 - Step 2: Define the backend-owned IR model.
 - Exact target for the next iteration: extend `src/backend/ir.*` past the
-  current binary/call/return subset so more target slices can be emitted from
-  lowered backend IR without using the optional legacy `LirModule` fallback.
+  current function-only subset so global definitions and extern global loads
+  can be emitted from lowered backend IR without using the optional legacy
+  `LirModule` fallback.
 - Resume notes:
   - canonical emitter-facing IR ownership now lives in `src/backend/ir.hpp`
     and is shared by the new printer/validator layers
@@ -22,9 +23,10 @@ Source Plan: plan.md
     `src/backend/aarch64/codegen/emit.cpp` now accept lowered backend IR
     directly for the current minimal return/direct-call slices and fall back to
     legacy LIR only for still-unlowered target-specific cases
-  - the current backend IR still only models the existing minimal binary/call
-    instruction subset plus return terminators; globals, externs, memory, and
-    multi-block control-flow remain for later slices
+  - lowered backend IR now carries extern declarations as backend declaration
+    functions with typed parameter inference from direct call sites
+  - globals, string-pool entities, memory ops, and multi-block control-flow
+    still remain outside the current backend-owned IR model
 
 ## Completed Items
 
@@ -65,3 +67,15 @@ Source Plan: plan.md
 - Verified the post-change full-suite regression status in `test_after.log`:
   `93% tests passed`, `188 tests failed out of 2560` (2372 passing), matching
   the prior recorded baseline from this runbook with no newly failing tests.
+- Completed an additional Step 2 extern-declaration slice:
+  - taught `src/backend/lir_adapter.cpp` to lower `LirModule::extern_decls`
+    into backend-owned declaration functions instead of rejecting them
+  - infer declaration parameter types from typed direct call sites so lowered
+    backend IR prints coherent extern prototypes
+  - added focused backend tests covering lowered extern-declaration printing,
+    validation, x86 explicit-backend-IR emission, and the updated AArch64
+    fallback text expectation
+- Verified the current post-change full-suite regression status in
+  `test_after.log`: `93% tests passed`, `188 tests failed out of 2560`
+  (2372 passing), matching the previously recorded runbook baseline with no
+  pass-count regression.

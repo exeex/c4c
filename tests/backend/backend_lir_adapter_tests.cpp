@@ -4554,6 +4554,30 @@ void test_backend_ir_validator_rejects_definition_without_blocks() {
                   "backend IR validator should explain the malformed definition");
 }
 
+void test_backend_ir_printer_renders_lowered_extern_decl_slice() {
+  const auto lowered =
+      c4c::backend::lower_to_backend_ir(make_x86_extern_decl_object_module());
+  const auto rendered = c4c::backend::print_backend_ir(lowered);
+
+  expect_contains(rendered, "declare i32 @helper_ext()\n",
+                  "backend IR printer should render lowered extern declarations");
+  expect_contains(rendered, "%t0 = call i32 () @helper_ext()",
+                  "backend IR printer should render the lowered extern call site");
+  expect_contains(rendered, "ret i32 %t0",
+                  "backend IR printer should preserve the lowered extern call return");
+}
+
+void test_backend_ir_validator_accepts_lowered_extern_decl_slice() {
+  const auto lowered =
+      c4c::backend::lower_to_backend_ir(make_x86_extern_decl_object_module());
+  std::string error;
+
+  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should accept lowered extern declaration slices");
+  expect_true(error.empty(),
+              "backend IR validator should not report an error for valid lowered extern declarations");
+}
+
 void test_adapter_normalizes_typed_direct_call_helper_slice() {
   const auto adapted = c4c::backend::adapt_minimal_module(make_typed_direct_call_module());
   const auto rendered = c4c::backend::render_module(adapted);
@@ -5007,6 +5031,23 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_ir_input() {
                   "x86 backend seam should lower the explicit backend IR input without legacy LIR");
   expect_not_contains(rendered, "target triple =",
                       "x86 backend seam should not fall back to backend IR text for the supported lowered slice");
+}
+
+void test_x86_backend_scaffold_accepts_explicit_lowered_extern_decl_ir_input() {
+  const auto lowered =
+      c4c::backend::lower_to_backend_ir(make_x86_extern_decl_object_module());
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, ".intel_syntax noprefix\n",
+                  "x86 backend seam should accept lowered extern-call IR directly");
+  expect_contains(rendered, "call helper_ext\n",
+                  "x86 backend seam should preserve lowered extern helper calls");
+  expect_contains(rendered, "ret\n",
+                  "x86 backend seam should return directly after the lowered extern helper call");
+  expect_not_contains(rendered, "define i32 @main()",
+                      "x86 backend seam should not fall back to backend IR text for lowered extern helper calls");
 }
 
 void test_x86_backend_scaffold_renders_direct_return_immediate_slice() {
@@ -6786,8 +6827,8 @@ void test_aarch64_backend_renders_extern_decl_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_extern_decl_call_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-  expect_contains(rendered, "declare i32 @helper_ext(...)\n",
-                  "aarch64 backend should render module extern declarations");
+  expect_contains(rendered, "declare i32 @helper_ext(i32)\n",
+                  "aarch64 backend should render inferred extern declaration parameter types");
   expect_contains(rendered, "define i32 @main()\n{\nentry:\n  %t0 = call i32 @helper_ext(i32 5)\n",
                   "aarch64 backend should preserve direct calls that target extern declarations");
   expect_contains(rendered, "ret i32 %t0",
@@ -8745,6 +8786,8 @@ int main() {
   test_backend_ir_printer_renders_return_add();
   test_backend_ir_validator_accepts_lowered_slice();
   test_backend_ir_validator_rejects_definition_without_blocks();
+  test_backend_ir_printer_renders_lowered_extern_decl_slice();
+  test_backend_ir_validator_accepts_lowered_extern_decl_slice();
   test_adapter_normalizes_typed_direct_call_helper_slice();
   test_adapter_normalizes_local_temp_return_slice();
   test_adapter_normalizes_local_temp_sub_return_slice();
@@ -8780,6 +8823,7 @@ int main() {
   test_aarch64_backend_scaffold_renders_direct_return_immediate_slice();
   test_x86_backend_scaffold_routes_through_explicit_emit_surface();
   test_x86_backend_scaffold_accepts_explicit_lowered_ir_input();
+  test_x86_backend_scaffold_accepts_explicit_lowered_extern_decl_ir_input();
   test_x86_backend_scaffold_renders_direct_return_immediate_slice();
   test_x86_backend_scaffold_renders_direct_return_sub_immediate_slice();
   test_x86_backend_renders_local_temp_sub_slice();
