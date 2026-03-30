@@ -139,6 +139,7 @@ std::string resolve_defined_and_intrinsics(
             "__builtin_add_overflow", "__builtin_sub_overflow", "__builtin_mul_overflow",
             "__remove_reference_t", "__remove_reference",
             "__is_trivially_destructible", "__has_trivial_destructor",
+            "__is_unsigned",
             "__make_integer_seq", "__integer_pack",
             "__is_target_arch", "__is_target_vendor", "__is_target_os",
             "__is_target_environment", "__is_target_variant_os",

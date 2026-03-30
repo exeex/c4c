@@ -681,6 +681,22 @@ void test_builtin_location_macros() {
   }
 }
 
+void test_has_builtin_is_unsigned() {
+  fs::path dir = make_test_dir("has_builtin_is_unsigned");
+  fs::path file = dir / "main.cpp";
+  write_text(file,
+             "#if __has_builtin(__is_unsigned)\n"
+             "int has_builtin_is_unsigned = 1;\n"
+             "#else\n"
+             "int has_builtin_is_unsigned = 0;\n"
+             "#endif\n");
+
+  Preprocessor pp;
+  std::string out = pp.preprocess_file(file.string());
+  expect_contains(out, "int has_builtin_is_unsigned = 1;",
+                  "__has_builtin(__is_unsigned) should stay enabled for libc++ builtin branches");
+}
+
 void test_line_markers() {
   // Test initial line marker
   {
@@ -1383,6 +1399,7 @@ int main() {
     test_define_undefine_api();
     test_preprocess_source();
     test_builtin_location_macros();
+    test_has_builtin_is_unsigned();
     test_line_markers();
     test_error_warning_diagnostics();
     test_macro_rescan_uses_following_source_tokens();
