@@ -8,11 +8,11 @@ Source Plan: plan.md
 
 - Step 2: Define the backend-owned IR model.
 - Exact target for the next iteration: extend `src/backend/ir.*` past the
-  newly lowered constant-phi join slice into the next explicit join-form
-  control-flow seam that merges computed scalar values instead of only
-  immediate predecessor values, so backend-owned IR can represent a bounded
-  merge point beyond branch-to-return, countdown-only loops, and constant-phi
-  joins.
+  newly lowered conditional `phi -> add immediate -> ret` join slice into a
+  bounded join where predecessor blocks compute the incoming scalar values
+  before the merge, so backend-owned IR can cover a join that depends on
+  predecessor-local computation instead of only immediate phi inputs plus a
+  post-join add.
 - Resume notes:
   - backend-owned IR now lowers the bounded four-block
     compare/branch/join/return shape into an explicit join block with a typed
@@ -260,3 +260,18 @@ Source Plan: plan.md
   failed out of 2560` (2377 passing), matching the current recorded runbook
   baseline from `test_fail_after.log` with an identical failing-test set and
   no newly failing tests.
+- Completed an additional Step 2 computed join-result slice:
+  - taught `src/backend/lir_adapter.cpp` to lower the bounded
+    compare/branch/join/`phi -> add immediate -> ret` shape into explicit
+    backend-owned IR instead of stopping at a bare phi-return join
+  - updated `src/backend/x86/codegen/emit.cpp` and
+    `src/backend/aarch64/codegen/emit.cpp` so explicit backend IR inputs can
+    emit the lowered computed join block directly after materializing the phi
+    input on each predecessor
+  - added focused backend tests covering lowered computed-join printing,
+    validation, x86 explicit-backend-IR emission, and AArch64
+    explicit-backend-IR emission
+- Verified the current post-change full-suite regression status in
+  `test_after.log`: `93% tests passed`, `183 tests failed out of 2560`
+  (2377 passing), matching `test_fail_after.log` exactly with an identical
+  failing-test set and no newly failing tests.

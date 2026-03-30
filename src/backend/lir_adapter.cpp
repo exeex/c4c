@@ -549,7 +549,8 @@ std::optional<BackendFunction> adapt_conditional_phi_join_function(
   const auto& false_block = function.blocks[2];
   const auto& join_block = function.blocks[3];
   if (entry.label != "entry" || entry.insts.size() != 3 || !true_block.insts.empty() ||
-      !false_block.insts.empty() || join_block.insts.size() != 1) {
+      !false_block.insts.empty() ||
+      (join_block.insts.size() != 1 && join_block.insts.size() != 2)) {
     return std::nullopt;
   }
 
@@ -578,7 +579,7 @@ std::optional<BackendFunction> adapt_conditional_phi_join_function(
       true_br->target_label != join_block.label ||
       false_br->target_label != join_block.label || phi->type_str != "i32" ||
       phi->incoming.size() != 2 || !ret->value_str.has_value() ||
-      ret->type_str != "i32" || *ret->value_str != phi->result) {
+      ret->type_str != "i32") {
     return std::nullopt;
   }
 
@@ -587,6 +588,26 @@ std::optional<BackendFunction> adapt_conditional_phi_join_function(
       !parse_i64(phi->incoming[0].first).has_value() ||
       !parse_i64(phi->incoming[1].first).has_value()) {
     return std::nullopt;
+  }
+
+  std::optional<BackendBinaryInst> join_compute;
+  std::string return_value = "%t.join";
+  if (join_block.insts.size() == 2) {
+    const auto* add = std::get_if<LirBinOp>(&join_block.insts[1]);
+    if (add == nullptr || !has_binary_opcode(*add, LirBinaryOpcode::Add) ||
+        add->type_str != "i32" || add->lhs != phi->result ||
+        !parse_i64(add->rhs).has_value() || *ret->value_str != add->result) {
+      return std::nullopt;
+    }
+
+    join_compute = BackendBinaryInst{
+        BackendBinaryOpcode::Add,
+        add->result,
+        add->type_str,
+        "%t.join",
+        add->rhs,
+    };
+    return_value = add->result;
   }
 
   BackendFunction out;
@@ -625,7 +646,10 @@ std::optional<BackendFunction> adapt_conditional_phi_join_function(
           BackendPhiIncoming{phi->incoming[1].first, false_block.label},
       },
   });
-  out_join.terminator = BackendReturn{"%t.join", "i32"};
+  if (join_compute.has_value()) {
+    out_join.insts.push_back(*join_compute);
+  }
+  out_join.terminator = BackendReturn{return_value, "i32"};
   out.blocks.push_back(std::move(out_join));
 
   return out;

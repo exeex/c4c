@@ -1988,6 +1988,17 @@ c4c::codegen::lir::LirModule make_conditional_phi_join_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_conditional_phi_join_add_module() {
+  using namespace c4c::codegen::lir;
+
+  auto module = make_conditional_phi_join_module();
+  auto& function = module.functions.front();
+  auto& join_block = function.blocks.back();
+  join_block.insts.push_back(LirBinOp{"%t4", "add", "i32", "%t3", "5"});
+  join_block.terminator = LirRet{std::string("%t4"), "i32"};
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_conditional_return_le_module() {
   using namespace c4c::codegen::lir;
 
@@ -4770,6 +4781,28 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_slice() {
               "backend IR validator should not report an error for valid lowered conditional joins");
 }
 
+void test_backend_ir_printer_renders_lowered_conditional_phi_join_add_slice() {
+  const auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_phi_join_add_module());
+  const auto rendered = c4c::backend::print_backend_ir(lowered);
+
+  expect_contains(rendered, "%t0 = icmp slt i32 2, 3",
+                  "backend IR printer should render the lowered compare for the computed conditional-join slice");
+  expect_contains(rendered, "join:\n  %t.join = phi i32 [ 7, %then ], [ 9, %else ]\n  %t4 = add i32 %t.join, 5",
+                  "backend IR printer should preserve the phi-fed add in the lowered join block");
+  expect_contains(rendered, "ret i32 %t4",
+                  "backend IR printer should preserve the computed conditional-join return");
+}
+
+void test_backend_ir_validator_accepts_lowered_conditional_phi_join_add_slice() {
+  const auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_phi_join_add_module());
+  std::string error;
+
+  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should accept lowered conditional joins whose phi feeds a computed scalar");
+  expect_true(error.empty(),
+              "backend IR validator should not report an error for valid computed conditional joins");
+}
+
 void test_backend_ir_printer_renders_lowered_countdown_while_slice() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_countdown_while_return_module());
   const auto rendered = c4c::backend::print_backend_ir(lowered);
@@ -5548,6 +5581,22 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_ir_
                   "x86 backend seam should preserve the explicit join label for the lowered phi merge");
   expect_not_contains(rendered, "phi i32",
                       "x86 backend seam should not fall back to backend IR text for lowered conditional joins");
+}
+
+void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_add_ir_input() {
+  auto module = make_conditional_phi_join_add_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, ".Lthen:\n  mov eax, 7\n  jmp .Ljoin\n",
+                  "x86 backend seam should still materialize the then phi input before the computed join");
+  expect_contains(rendered, ".Ljoin:\n  add eax, 5\n  ret\n",
+                  "x86 backend seam should lower the phi-fed add directly in the explicit join block");
+  expect_not_contains(rendered, "phi i32",
+                      "x86 backend seam should not fall back to backend IR text for computed conditional joins");
 }
 
 void test_x86_backend_scaffold_accepts_explicit_lowered_countdown_while_ir_input() {
@@ -7576,6 +7625,20 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join
                       "aarch64 backend seam should not fall back to backend IR text for lowered conditional joins");
 }
 
+void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_add_ir_input() {
+  const auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_phi_join_add_module());
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  expect_contains(rendered, ".Lthen:\n  mov w0, #7\n  b .Ljoin\n",
+                  "aarch64 backend seam should still materialize the then phi input before the computed join");
+  expect_contains(rendered, ".Ljoin:\n  add w0, w0, #5\n  ret\n",
+                  "aarch64 backend seam should lower the phi-fed add directly in the explicit join block");
+  expect_not_contains(rendered, "phi i32",
+                      "aarch64 backend seam should not fall back to backend IR text for computed conditional joins");
+}
+
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_countdown_while_ir_input() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_countdown_while_return_module());
   const auto rendered = c4c::backend::emit_module(
@@ -9584,6 +9647,8 @@ int main() {
   test_backend_ir_validator_accepts_lowered_conditional_return_slice();
   test_backend_ir_printer_renders_lowered_conditional_phi_join_slice();
   test_backend_ir_validator_accepts_lowered_conditional_phi_join_slice();
+  test_backend_ir_printer_renders_lowered_conditional_phi_join_add_slice();
+  test_backend_ir_validator_accepts_lowered_conditional_phi_join_add_slice();
   test_backend_ir_printer_renders_lowered_countdown_while_slice();
   test_backend_ir_validator_accepts_lowered_countdown_while_slice();
   test_x86_backend_scaffold_accepts_explicit_lowered_string_literal_ir_input();
@@ -9593,6 +9658,7 @@ int main() {
   test_x86_backend_scaffold_accepts_explicit_lowered_global_int_pointer_diff_ir_input();
   test_x86_backend_scaffold_accepts_explicit_lowered_conditional_return_ir_input();
   test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_ir_input();
+  test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_add_ir_input();
   test_x86_backend_scaffold_accepts_explicit_lowered_countdown_while_ir_input();
   test_x86_backend_scaffold_renders_direct_return_immediate_slice();
   test_x86_backend_scaffold_renders_direct_return_sub_immediate_slice();
@@ -9702,6 +9768,7 @@ int main() {
   test_aarch64_backend_scaffold_accepts_explicit_lowered_global_int_pointer_diff_ir_input();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_return_ir_input();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_ir_input();
+  test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_add_ir_input();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_countdown_while_ir_input();
   test_aarch64_backend_renders_extern_global_array_slice();
   test_aarch64_backend_renders_global_char_pointer_diff_slice();
