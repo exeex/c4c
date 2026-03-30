@@ -2562,6 +2562,34 @@ top_level_base_ready:
     parse_attributes(&ts);
     skip_attributes();
 
+    if (is_cpp_mode() && !decl_name && check(TokenKind::LParen)) {
+        const int saved_deduction_guide_pos = pos_;
+        try {
+            std::vector<Node*> ignored_params;
+            std::vector<const char*> ignored_knr_param_names;
+            bool ignored_variadic = false;
+            parse_top_level_parameter_list(&ignored_params,
+                                           &ignored_knr_param_names,
+                                           &ignored_variadic);
+            parse_attributes(&ts);
+            skip_asm();
+            parse_attributes(&ts);
+            skip_attributes();
+            skip_exception_spec();
+            if (match(TokenKind::Arrow)) {
+                TypeSpec deduced_ts = parse_type_name();
+                (void)deduced_ts;
+                parse_attributes(&ts);
+                parse_optional_cpp20_trailing_requires_clause(*this);
+                match(TokenKind::Semi);
+                restore_owner_scope();
+                return nullptr;
+            }
+        } catch (const std::exception&) {
+        }
+        pos_ = saved_deduction_guide_pos;
+    }
+
     if (!decl_name) {
         auto tail_is_attr_or_asm_only = [&](int begin, int end) -> bool {
             int i = begin;

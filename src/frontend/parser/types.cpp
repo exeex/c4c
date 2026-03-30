@@ -2250,7 +2250,8 @@ bool Parser::is_grouped_declarator_start() const {
                       tokens_[pk].kind == TokenKind::Identifier;
     if (is_grouped && pk + 1 < static_cast<int>(tokens_.size())) {
         const auto next_k = tokens_[pk + 1].kind;
-        if (next_k == TokenKind::Comma || next_k == TokenKind::Ellipsis)
+        if (next_k == TokenKind::Comma || next_k == TokenKind::Ellipsis ||
+            next_k == TokenKind::Less)
             is_grouped = false;
     }
     return is_grouped;

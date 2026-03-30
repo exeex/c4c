@@ -8,8 +8,8 @@ Last Updated: 2026-03-30
 ## Current Active Item
 
 - Step 2/4: reduce the still-live `std::vector` libc++ frontier after landing
-  the `tuple:512` constructor-initializer parser fix; the forcing repro now
-  first reports `tuple:1044`
+  the `tuple:1044` deduction-guide parser fix; the forcing repro now first
+  reports `tuple:1171`
 
 ## Todo
 
@@ -86,6 +86,16 @@ Last Updated: 2026-03-30
 - [x] Validate the completed `tuple:512` slice with targeted libc++ parser
       coverage plus a monotonic full-suite comparison (`before: 707/733`,
       `after: 714/739`, zero new failures)
+- [x] Reduce the live `tuple:1044` frontier to a focused internal parser
+      testcase covering deduction guides with template-id parameter types
+- [x] Teach top-level parsing to stop misclassifying deduction-guide parameter
+      types such as `pair<T1, T2>` as grouped declarators and to consume the
+      resulting deduction-guide declaration shape without a parser failure
+- [x] Re-run the direct `std::vector` repro to confirm the post-`tuple:1044`
+      frontier moved forward to `tuple:1171`
+- [x] Validate the completed `tuple:1044` slice with targeted libc++ parser
+      coverage plus a monotonic full-suite comparison (`before: 707/733`,
+      `after: 715/740`, zero new failures)
 
 ## Completed
 
@@ -213,17 +223,16 @@ Last Updated: 2026-03-30
 
 ## Next Intended Slice
 
-- Reduce the new first surviving `tuple:1044:11` failure to a focused internal
-  parser testcase; the surrounding source lines are libc++ tuple deduction
-  guides, but simple synthetic deduction-guide spellings already parse, so the
-  reduced case must preserve whatever nearby context still triggers the `<`
-  failure.
-- Use parser-debug traces around `tuple:1044` to determine whether the live
-  failure is a deduction-guide-local gap or residual parse-state loss from
+- Reduce the new first surviving `tuple:1171:123` failure to a focused
+  internal parser testcase for the unexpected `...` expression spelling now
+  leading the libc++ `std::vector` repro.
+- Use parser-debug traces around `tuple:1171` to determine whether the live
+  failure is a fold-expression-local gap or residual parse-state loss from
   earlier tuple declarations.
 - Re-run the forcing `std::vector` repro after the next reduction and confirm
-  whether `tuple:1171`, `variant:538`, and `variant:679` remain the immediate
-  follow-ons once `tuple:1044` is genuinely cleared.
+  whether `tuple:1378`, `tuple:1416`, and
+  `__memory_resource/polymorphic_allocator.h:132` remain the immediate
+  follow-ons once `tuple:1171` is genuinely cleared.
 
 ## Blockers
 
@@ -231,15 +240,20 @@ Last Updated: 2026-03-30
   `common_reference.h:155`, `integer_sequence.h:82`, or
   `__compare/ordering.h:44`; it no longer first fails in `__utility/pair.h`.
 - The latest direct repro no longer fails first at `tuple:512`; it now first
-  fails at `tuple:1044:11` with `expected=RPAREN got='<'`, followed by
-  `tuple:1171`, `variant:538`, `variant:679`, `variant:681`, and `variant:683`
-  parser failures plus later `typename` expression follow-ons.
+  fails at `tuple:1171:123` with `unexpected token in expression: ...`,
+  followed by `tuple:1378`, `tuple:1416`, and
+  `__memory_resource/polymorphic_allocator.h:132` `typename`-expression
+  follow-ons.
 - The new reduced testcase
   `tests/cpp/internal/postive_case/libcxx_tuple_ctor_base_template_init_parse.cpp`
   covers the cleared `tuple:512` constructor-initializer gap directly.
-- Simple standalone tuple deduction-guide spellings now parse, so the live
-  `tuple:1044` failure likely depends on more surrounding libc++ context than a
-  bare `tuple(Ts...) -> tuple<Ts...>;` probe.
+- The new reduced testcase
+  `tests/cpp/internal/postive_case/libcxx_tuple_pair_deduction_guide_parse.cpp`
+  covers the cleared `tuple:1044` deduction-guide gap directly.
+- Simple standalone tuple deduction-guide spellings were already being dropped
+  as `Empty` nodes; the actual `tuple:1044` blocker was that grouped-declarator
+  probing treated `tuple(pair<T1, T2>)` as if `pair` were a parenthesized
+  declarator name and then failed on `<`.
 - The current full-suite run still contains unrelated environment/path failures
   such as missing `/workspaces/c4c/...` fixtures and unavailable GNU
   `bits/...` headers, so those results are not attributable to this patch.
