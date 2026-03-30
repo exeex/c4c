@@ -5094,25 +5094,31 @@ bool Parser::try_parse_record_using_member(
         return false;
 
     consume();
-    if (check(TokenKind::Identifier) &&
-        pos_ + 1 < static_cast<int>(tokens_.size()) &&
-        tokens_[pos_ + 1].kind == TokenKind::Assign) {
+    if (check(TokenKind::Identifier)) {
+        const int alias_probe_pos = pos_;
         std::string alias_name = cur().lexeme;
         consume(); // name
-        consume(); // '='
-        TypeSpec alias_ts = parse_type_name();
-        expect(TokenKind::Semi);
+        TypeSpec ignored_attr_ts{};
+        parse_attributes(&ignored_attr_ts);
+        skip_attributes();
 
-        typedefs_.insert(alias_name);
-        typedef_types_[alias_name] = alias_ts;
-        member_typedef_names->push_back(arena_.strdup(alias_name.c_str()));
-        member_typedef_types->push_back(alias_ts);
-        if (!current_struct_tag_.empty()) {
-            std::string scoped = current_struct_tag_ + "::" + alias_name;
-            typedefs_.insert(scoped);
-            typedef_types_[scoped] = alias_ts;
+        if (match(TokenKind::Assign)) {
+            TypeSpec alias_ts = parse_type_name();
+            expect(TokenKind::Semi);
+
+            typedefs_.insert(alias_name);
+            typedef_types_[alias_name] = alias_ts;
+            member_typedef_names->push_back(arena_.strdup(alias_name.c_str()));
+            member_typedef_types->push_back(alias_ts);
+            if (!current_struct_tag_.empty()) {
+                std::string scoped = current_struct_tag_ + "::" + alias_name;
+                typedefs_.insert(scoped);
+                typedef_types_[scoped] = alias_ts;
+            }
+            return true;
         }
-        return true;
+
+        pos_ = alias_probe_pos;
     }
 
     if (check(TokenKind::KwTypename))

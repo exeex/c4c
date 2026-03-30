@@ -976,6 +976,11 @@ Node* Parser::parse_top_level() {
             std::string first_name = cur().lexeme;
             consume();
 
+            const int alias_probe_pos = pos_;
+            TypeSpec ignored_attr_ts{};
+            parse_attributes(&ignored_attr_ts);
+            skip_attributes();
+
             if (match(TokenKind::Assign)) {
                 const int alias_type_pos = pos_;
                 TypeSpec alias_ts{};
@@ -1011,6 +1016,7 @@ Node* Parser::parse_top_level() {
                 last_using_alias_name_ = first_name;
                 return nullptr;
             }
+            pos_ = alias_probe_pos;
             target = first_name;
         }
         while (match(TokenKind::ColonColon)) {

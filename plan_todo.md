@@ -7,9 +7,10 @@ Last Updated: 2026-03-30
 
 ## Current Active Item
 
-- Step 4: re-run the direct `libc++` `std::vector` repro after merging
-  `origin/main`, then reduce the first surviving parser frontier beyond
-  `__type_traits/common_reference.h`
+- Step 2/4: re-reduce the surviving `common_reference.h:155` frontier from the
+  live preprocessed libc++ stream, because the isolated
+  `__xref<_Tp>::template __apply` testcase now passes but the forcing
+  `std::vector` repro still fails at the same header line
 
 ## Todo
 
@@ -35,6 +36,18 @@ Last Updated: 2026-03-30
       `max_size_type` frontier
 - [x] Validate the completed `max_size_type` slice with targeted tests plus a
       monotonic full-suite comparison
+- [x] Re-run the direct `std::vector` repro after merging `origin/main` and
+      confirm `/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__type_traits/common_reference.h:155:59`
+      (`expected=LESS got='__apply'`) is still the first surviving libc++
+      parser failure
+- [x] Reduce the `common_reference.h:155` spelling to a focused internal parser
+      testcase for dependent member templates used as template-template
+      arguments
+- [x] Teach top-level and record-scope `using` alias parsing to accept
+      attributes between the alias name and `=`
+- [x] Validate the attributed-alias slice with targeted parser coverage plus a
+      monotonic full-suite comparison (`before: 706/731`, `after: 707/732`,
+      zero new failures)
 
 ## Completed
 
@@ -87,15 +100,24 @@ Last Updated: 2026-03-30
       first surviving libc++ parser error
 - [x] Merged the latest `origin/main` parser work into this branch so the next
       libc++ reduction happens on top of the current upstream baseline
+- [x] Added
+      `tests/cpp/internal/postive_case/dependent_member_template_template_arg_parse.cpp`
+      to cover attributed dependent member templates used as
+      template-template arguments in type context
+- [x] Taught both top-level and record-scope `using` alias parsing to accept
+      `[[...]]` attributes between the alias name and `=`
 
 ## Next Intended Slice
 
-- Re-run the direct `std::vector` repro on top of the merged tree and confirm
-  whether `/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/c++/v1/__type_traits/common_reference.h:155:59`
-  (`parse_top_level expected=LESS got='__apply'`) is still the first surviving
-  parser failure.
-- If it is, reduce that frontier into one internal parse testcase before
-  changing parser code.
+- Reproduce the remaining `common_reference.h:155` failure from a wider
+  preprocessed slice of the live libc++ stream, not just the isolated alias
+  declaration.
+- Identify the earlier parser-state corruption that makes the full
+  `tests/cpp/std/std_vector_simple.cpp` path fail even though
+  `tests/cpp/internal/postive_case/dependent_member_template_template_arg_parse.cpp`
+  now passes.
+- Once that wider reduced testcase exists, patch only the next parser boundary
+  needed to move the direct `std::vector` repro beyond `common_reference.h`.
 
 ## Blockers
 
@@ -105,6 +127,9 @@ Last Updated: 2026-03-30
 - The fresh `origin/main` merge may have shifted the exact first surviving
   libc++ failure, so the repro ordering needs to be reconfirmed before the next
   parser edit.
+- The isolated attributed-alias testcase now passes, so the remaining
+  `common_reference.h:155` failure is caused by earlier live-stream parser
+  state, not by the final alias spelling alone.
 - Older GNU `libstdc++` blocker ordering in the source idea remains useful as
   history, but it is not the active execution frontier for this branch.
 
@@ -127,6 +152,11 @@ Last Updated: 2026-03-30
 - `origin/main` brought in additional parser fixes and regressions from the GNU
   bring-up branch; keep them as upstream baseline improvements, but do not let
   them widen this branch's active plan beyond the current libc++ frontier.
+- Attributed `using` aliases now parse in both top-level and record scope when
+  `[[...]]` appears between the alias name and `=`.
+- The isolated reduced testcase for `__xref<T>::template apply` now passes, so
+  the next reduction needs to keep more live libc++ context around the
+  `common_reference.h` frontier.
 - Prefer shared parser or preprocessor compatibility fixes over libc++-specific
   hacks.
 - Do not reactivate backend umbrella work while this parser bring-up is active.
