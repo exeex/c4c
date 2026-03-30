@@ -86,6 +86,12 @@ struct BackendLoadInst {
   BackendLoadExtension extension = BackendLoadExtension::None;
 };
 
+struct BackendStoreInst {
+  std::string type_str;
+  std::string value;
+  BackendAddress address;
+};
+
 struct BackendPtrDiffEqInst {
   std::string result;
   std::string type_str;
@@ -98,6 +104,7 @@ struct BackendPtrDiffEqInst {
 using BackendInst = std::variant<BackendBinaryInst,
                                  BackendCallInst,
                                  BackendLoadInst,
+                                 BackendStoreInst,
                                  BackendPtrDiffEqInst>;
 
 struct BackendReturn {

@@ -96,6 +96,12 @@ struct MinimalScalarGlobalLoadSlice {
   std::int64_t init_imm = 0;
 };
 
+struct MinimalScalarGlobalStoreReloadSlice {
+  std::string global_name;
+  std::int64_t init_imm = 0;
+  std::int64_t store_imm = 0;
+};
+
 struct MinimalStringLiteralCharSlice {
   std::string pool_name;
   std::string raw_bytes;
@@ -1404,6 +1410,56 @@ std::optional<MinimalScalarGlobalLoadSlice> parse_minimal_scalar_global_load_sli
   return MinimalScalarGlobalLoadSlice{global.name, *init_imm};
 }
 
+std::optional<MinimalScalarGlobalStoreReloadSlice> parse_minimal_scalar_global_store_reload_slice(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || module.globals.size() != 1 ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& global = module.globals.front();
+  if (global.is_internal || global.is_const || global.is_extern_decl ||
+      global.linkage_vis != "" || global.qualifier != "global " ||
+      global.llvm_type != "i32") {
+    return std::nullopt;
+  }
+  const auto init_imm = parse_i64(global.init_text);
+  if (!init_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration || function.signature_text != "define i32 @main()\n" ||
+      function.entry.value != 0 || function.blocks.size() != 1 ||
+      !function.alloca_insts.empty() || !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  const auto* ret = std::get_if<LirRet>(&entry.terminator);
+  if (entry.label != "entry" || entry.insts.size() != 2 || ret == nullptr ||
+      !ret->value_str.has_value() || ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto* store = std::get_if<LirStoreOp>(&entry.insts[0]);
+  const auto* load = std::get_if<LirLoadOp>(&entry.insts[1]);
+  if (store == nullptr || load == nullptr || store->type_str != "i32" ||
+      load->type_str != "i32" || store->ptr != ("@" + global.name) ||
+      load->ptr != store->ptr || *ret->value_str != load->result) {
+    return std::nullopt;
+  }
+
+  const auto store_imm = parse_i64(store->val);
+  if (!store_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  return MinimalScalarGlobalStoreReloadSlice{global.name, *init_imm, *store_imm};
+}
+
 std::optional<MinimalStringLiteralCharSlice> parse_minimal_string_literal_char_slice(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
@@ -1527,6 +1583,54 @@ std::optional<MinimalStringLiteralCharSlice> parse_minimal_string_literal_char_s
       load->address.byte_offset,
       load->extension == c4c::backend::BackendLoadExtension::SignExtend,
   };
+}
+
+std::optional<MinimalScalarGlobalStoreReloadSlice> parse_minimal_scalar_global_store_reload_slice(
+    const c4c::backend::BackendModule& module) {
+  if (module.functions.size() != 1 || module.globals.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto* global = find_global(module, module.globals.front().name);
+  if (global == nullptr || global->is_extern_decl || global->qualifier != "global " ||
+      global->llvm_type != "i32") {
+    return std::nullopt;
+  }
+  const auto init_imm = parse_i64(global->init_text);
+  if (!init_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto* main_fn = find_function(module, "main");
+  if (main_fn == nullptr || main_fn->is_declaration ||
+      main_fn->signature.linkage != "define" ||
+      main_fn->signature.return_type != "i32" ||
+      !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
+      main_fn->blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& block = main_fn->blocks.front();
+  if (block.label != "entry" || block.insts.size() != 2 ||
+      !block.terminator.value.has_value() || block.terminator.type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto* store = std::get_if<c4c::backend::BackendStoreInst>(&block.insts[0]);
+  const auto* load = std::get_if<c4c::backend::BackendLoadInst>(&block.insts[1]);
+  if (store == nullptr || load == nullptr || store->type_str != "i32" ||
+      load->type_str != "i32" || store->address.base_symbol != global->name ||
+      store->address.byte_offset != 0 || load->address.base_symbol != global->name ||
+      load->address.byte_offset != 0 || *block.terminator.value != load->result) {
+    return std::nullopt;
+  }
+
+  const auto store_imm = parse_i64(store->value);
+  if (!store_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  return MinimalScalarGlobalStoreReloadSlice{global->name, *init_imm, *store_imm};
 }
 
 std::optional<MinimalCallCrossingDirectCallSlice> parse_minimal_call_crossing_direct_call_slice(
@@ -2388,6 +2492,28 @@ std::string emit_minimal_scalar_global_load_asm(
   return out.str();
 }
 
+std::string emit_minimal_scalar_global_store_reload_asm(
+    const c4c::backend::BackendModule& module,
+    const MinimalScalarGlobalStoreReloadSlice& slice) {
+  const std::string global_symbol = asm_symbol_name(module, slice.global_name);
+  const std::string main_symbol = asm_symbol_name(module, "main");
+
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n";
+  out << ".data\n"
+      << ".globl " << global_symbol << "\n"
+      << global_symbol << ":\n"
+      << "  .long " << slice.init_imm << "\n";
+  out << ".text\n";
+  out << ".globl " << main_symbol << "\n";
+  out << main_symbol << ":\n";
+  out << "  lea rax, " << global_symbol << "[rip]\n"
+      << "  mov dword ptr [rax], " << slice.store_imm << "\n"
+      << "  mov eax, dword ptr [rax]\n"
+      << "  ret\n";
+  return out.str();
+}
+
 std::string emit_minimal_string_literal_char_asm(
     const c4c::codegen::lir::LirModule& module,
     const MinimalStringLiteralCharSlice& slice) {
@@ -2532,6 +2658,10 @@ std::string emit_module(const c4c::backend::BackendModule& module,
         slice.has_value()) {
       return emit_minimal_scalar_global_load_asm(module, *slice);
     }
+    if (const auto slice = parse_minimal_scalar_global_store_reload_slice(module);
+        slice.has_value()) {
+      return emit_minimal_scalar_global_store_reload_asm(module, *slice);
+    }
     if (const auto slice = parse_minimal_global_char_pointer_diff_slice(module);
         slice.has_value()) {
       return emit_minimal_global_char_pointer_diff_asm(module, *slice);
@@ -2643,6 +2773,12 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
       c4c::backend::BackendModule scaffold_module;
       scaffold_module.target_triple = module.target_triple;
       return emit_minimal_scalar_global_load_asm(scaffold_module, *slice);
+    }
+    if (const auto slice = parse_minimal_scalar_global_store_reload_slice(module);
+        slice.has_value()) {
+      c4c::backend::BackendModule scaffold_module;
+      scaffold_module.target_triple = module.target_triple;
+      return emit_minimal_scalar_global_store_reload_asm(scaffold_module, *slice);
     }
     if (const auto slice = parse_minimal_string_literal_char_slice(module);
         slice.has_value()) {

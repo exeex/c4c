@@ -98,6 +98,17 @@ void render_inst(std::ostringstream& out, const BackendInst& inst) {
       return;
     }
 
+    const auto* store = std::get_if<BackendStoreInst>(&inst);
+    if (store != nullptr) {
+      out << "  store " << store->type_str << " " << store->value << ", ptr @"
+          << store->address.base_symbol;
+      if (store->address.byte_offset != 0) {
+        out << " + " << store->address.byte_offset;
+      }
+      out << "\n";
+      return;
+    }
+
     const auto* ptrdiff = std::get_if<BackendPtrDiffEqInst>(&inst);
     if (ptrdiff == nullptr) {
       return;

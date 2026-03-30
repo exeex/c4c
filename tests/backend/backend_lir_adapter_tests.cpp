@@ -3503,6 +3503,51 @@ c4c::codegen::lir::LirModule make_global_load_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_global_store_reload_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.globals.push_back(LirGlobal{
+      LirGlobalId{0},
+      "g_counter",
+      {},
+      false,
+      false,
+      "",
+      "global ",
+      "i32",
+      "11",
+      4,
+      false,
+  });
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{"i32", "7", "@g_counter"});
+  entry.insts.push_back(LirLoadOp{"%t0", "i32", "@g_counter"});
+  entry.terminator = LirRet{std::string("%t0"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_x86_global_store_reload_module() {
+  auto module = make_global_store_reload_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_string_literal_char_module() {
   using namespace c4c::codegen::lir;
 
@@ -4600,6 +4645,32 @@ void test_backend_ir_validator_accepts_lowered_global_load_slice() {
               "backend IR validator should not report an error for valid lowered globals");
 }
 
+void test_backend_ir_printer_renders_lowered_global_store_reload_slice() {
+  const auto lowered =
+      c4c::backend::lower_to_backend_ir(make_global_store_reload_module());
+  const auto rendered = c4c::backend::print_backend_ir(lowered);
+
+  expect_contains(rendered, "@g_counter = global i32 11, align 4\n",
+                  "backend IR printer should keep the bounded store-reload global definition");
+  expect_contains(rendered, "store i32 7, ptr @g_counter\n",
+                  "backend IR printer should render lowered scalar global stores");
+  expect_contains(rendered, "%t0 = load i32, ptr @g_counter\n",
+                  "backend IR printer should render the reload after the lowered scalar global store");
+  expect_contains(rendered, "ret i32 %t0",
+                  "backend IR printer should preserve the lowered scalar global store-reload return");
+}
+
+void test_backend_ir_validator_accepts_lowered_global_store_reload_slice() {
+  const auto lowered =
+      c4c::backend::lower_to_backend_ir(make_global_store_reload_module());
+  std::string error;
+
+  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should accept lowered global store-reload slices");
+  expect_true(error.empty(),
+              "backend IR validator should not report an error for valid lowered scalar global stores");
+}
+
 void test_backend_ir_printer_renders_lowered_string_literal_char_slice() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_string_literal_char_module());
   const auto rendered = c4c::backend::print_backend_ir(lowered);
@@ -5208,6 +5279,23 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_global_load_ir_input() {
                   "x86 backend seam should lower explicit backend-IR global loads directly");
   expect_not_contains(rendered, "target triple =",
                       "x86 backend seam should not fall back to backend IR text for lowered global loads");
+}
+
+void test_x86_backend_scaffold_accepts_explicit_lowered_global_store_reload_ir_input() {
+  const auto lowered =
+      c4c::backend::lower_to_backend_ir(make_x86_global_store_reload_module());
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, ".globl g_counter\n",
+                  "x86 backend seam should preserve lowered scalar global definitions for store-reload slices");
+  expect_contains(rendered, "mov dword ptr [rax], 7\n",
+                  "x86 backend seam should lower explicit backend-IR scalar global stores directly");
+  expect_contains(rendered, "mov eax, dword ptr [rax]\n",
+                  "x86 backend seam should reload the explicit backend-IR scalar global after the store");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back to backend IR text for lowered global store-reload slices");
 }
 
 void test_x86_backend_scaffold_accepts_explicit_lowered_string_literal_ir_input() {
@@ -5823,6 +5911,24 @@ void test_x86_backend_renders_global_load_slice() {
                   "x86 backend should load the scalar global value into eax");
   expect_not_contains(rendered, "target triple =",
                       "x86 backend should stop falling back to LLVM text for the bounded global-load slice");
+}
+
+void test_x86_backend_renders_global_store_reload_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_x86_global_store_reload_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".data\n",
+                  "x86 backend should place scalar store-reload globals in the data section");
+  expect_contains(rendered, "g_counter:\n  .long 11\n",
+                  "x86 backend should materialize the bounded scalar store-reload global initializer");
+  expect_contains(rendered, "lea rax, g_counter[rip]\n",
+                  "x86 backend should materialize the scalar global address for the store-reload slice");
+  expect_contains(rendered, "mov dword ptr [rax], 7\n",
+                  "x86 backend should lower the bounded scalar global store directly");
+  expect_contains(rendered, "mov eax, dword ptr [rax]\n",
+                  "x86 backend should reload the scalar global value after the store");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the bounded global store-reload slice");
 }
 
 void test_x86_backend_uses_shared_regalloc_for_call_crossing_direct_call_slice() {
@@ -7044,6 +7150,26 @@ void test_aarch64_backend_renders_global_definition_slice() {
                   "aarch64 backend should return the loaded scalar global value");
 }
 
+void test_aarch64_backend_renders_global_store_reload_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_global_store_reload_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".data\n",
+                  "aarch64 backend should place scalar store-reload globals in the data section");
+  expect_contains(rendered, "g_counter:\n  .long 11\n",
+                  "aarch64 backend should materialize the bounded scalar store-reload global initializer");
+  expect_contains(rendered, "add x8, x8, :lo12:g_counter\n",
+                  "aarch64 backend should materialize the scalar global base address for the store-reload slice");
+  expect_contains(rendered, "mov w9, #7\n",
+                  "aarch64 backend should materialize the bounded store immediate");
+  expect_contains(rendered, "str w9, [x8]\n",
+                  "aarch64 backend should lower the scalar global store directly");
+  expect_contains(rendered, "ldr w0, [x8]\n",
+                  "aarch64 backend should reload the scalar global after the store");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend should not fall back to LLVM text for the bounded global store-reload slice");
+}
+
 void test_aarch64_backend_renders_string_pool_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_string_literal_char_module()},
@@ -7108,6 +7234,25 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_global_load_ir_input
                   "aarch64 backend seam should lower explicit backend-IR scalar global loads directly");
   expect_not_contains(rendered, "target triple =",
                       "aarch64 backend seam should not fall back to backend IR text for lowered scalar global loads");
+}
+
+void test_aarch64_backend_scaffold_accepts_explicit_lowered_global_store_reload_ir_input() {
+  const auto lowered =
+      c4c::backend::lower_to_backend_ir(make_global_store_reload_module());
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  expect_contains(rendered, ".globl g_counter\n",
+                  "aarch64 backend seam should preserve lowered scalar global definitions for store-reload slices");
+  expect_contains(rendered, "mov w9, #7\n",
+                  "aarch64 backend seam should materialize the explicit backend-IR store immediate directly");
+  expect_contains(rendered, "str w9, [x8]\n",
+                  "aarch64 backend seam should lower explicit backend-IR scalar global stores directly");
+  expect_contains(rendered, "ldr w0, [x8]\n",
+                  "aarch64 backend seam should reload the scalar global after the explicit backend-IR store");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should not fall back to backend IR text for lowered global store-reload slices");
 }
 
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_string_literal_ir_input() {
@@ -9149,6 +9294,8 @@ int main() {
   test_backend_ir_validator_accepts_lowered_extern_decl_slice();
   test_backend_ir_printer_renders_lowered_global_load_slice();
   test_backend_ir_validator_accepts_lowered_global_load_slice();
+  test_backend_ir_printer_renders_lowered_global_store_reload_slice();
+  test_backend_ir_validator_accepts_lowered_global_store_reload_slice();
   test_backend_ir_printer_renders_lowered_string_literal_char_slice();
   test_backend_ir_validator_accepts_lowered_string_literal_char_slice();
   test_backend_ir_printer_renders_lowered_global_int_pointer_roundtrip_slice();
@@ -9195,6 +9342,7 @@ int main() {
   test_x86_backend_scaffold_accepts_explicit_lowered_ir_input();
   test_x86_backend_scaffold_accepts_explicit_lowered_extern_decl_ir_input();
   test_x86_backend_scaffold_accepts_explicit_lowered_global_load_ir_input();
+  test_x86_backend_scaffold_accepts_explicit_lowered_global_store_reload_ir_input();
   test_x86_backend_scaffold_accepts_explicit_lowered_string_literal_ir_input();
   test_x86_backend_scaffold_accepts_explicit_lowered_extern_global_array_ir_input();
   test_x86_backend_scaffold_accepts_explicit_lowered_global_int_pointer_roundtrip_ir_input();
@@ -9228,6 +9376,7 @@ int main() {
   test_x86_backend_renders_typed_two_arg_direct_call_both_local_double_rewrite_slice();
   test_x86_backend_renders_local_array_slice();
   test_x86_backend_renders_global_load_slice();
+  test_x86_backend_renders_global_store_reload_slice();
   test_x86_backend_uses_shared_regalloc_for_call_crossing_direct_call_slice();
   test_x86_backend_cleans_up_redundant_self_move_on_call_crossing_slice();
   test_x86_backend_keeps_spacing_tolerant_call_crossing_slice_on_asm_path();
@@ -9293,10 +9442,12 @@ int main() {
   test_aarch64_backend_renders_nested_member_pointer_array_gep_slice();
   test_aarch64_backend_renders_nested_param_member_array_gep_slice();
   test_aarch64_backend_renders_global_definition_slice();
+  test_aarch64_backend_renders_global_store_reload_slice();
   test_aarch64_backend_renders_string_pool_slice();
   test_aarch64_backend_renders_extern_decl_slice();
   test_aarch64_backend_renders_extern_global_load_slice();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_global_load_ir_input();
+  test_aarch64_backend_scaffold_accepts_explicit_lowered_global_store_reload_ir_input();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_string_literal_ir_input();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_extern_global_load_ir_input();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_extern_global_array_ir_input();

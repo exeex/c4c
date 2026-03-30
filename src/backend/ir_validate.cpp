@@ -125,6 +125,20 @@ bool validate_inst(const BackendInst& inst, std::string* error, std::string_view
     return true;
   }
 
+  const auto* store = std::get_if<BackendStoreInst>(&inst);
+  if (store != nullptr) {
+    if (store->type_str.empty()) {
+      return fail(error, std::string(context) + ": store type must not be empty");
+    }
+    if (store->value.empty()) {
+      return fail(error, std::string(context) + ": store value must not be empty");
+    }
+    if (store->address.base_symbol.empty()) {
+      return fail(error, std::string(context) + ": store base symbol must not be empty");
+    }
+    return true;
+  }
+
   const auto* ptrdiff = std::get_if<BackendPtrDiffEqInst>(&inst);
   if (ptrdiff == nullptr) {
     return fail(error, std::string(context) + ": unknown instruction variant");

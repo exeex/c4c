@@ -1672,6 +1672,64 @@ std::optional<BackendFunction> adapt_direct_global_load_function(
   return out;
 }
 
+std::optional<BackendFunction> adapt_direct_global_store_reload_function(
+    const c4c::codegen::lir::LirFunction& function,
+    const c4c::codegen::lir::LirModule& module,
+    const BackendFunctionSignature& signature) {
+  using namespace c4c::codegen::lir;
+
+  if (function.is_declaration || signature.linkage != "define" ||
+      signature.return_type != "i32" || signature.name != "main" ||
+      !signature.params.empty() || signature.is_vararg || function.blocks.size() != 1 ||
+      !function.alloca_insts.empty() || !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& block = function.blocks.front();
+  if (block.label != "entry" || block.insts.size() != 2) {
+    return std::nullopt;
+  }
+
+  const auto* store = std::get_if<LirStoreOp>(&block.insts[0]);
+  const auto* load = std::get_if<LirLoadOp>(&block.insts[1]);
+  const auto* ret = std::get_if<LirRet>(&block.terminator);
+  if (store == nullptr || load == nullptr || ret == nullptr ||
+      store->type_str != "i32" || load->type_str != "i32" ||
+      !ret->value_str.has_value() || *ret->value_str != load->result ||
+      ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const std::string store_ptr = store->ptr.str();
+  if (store_ptr.size() < 2 || store_ptr.front() != '@' || load->ptr != store_ptr) {
+    return std::nullopt;
+  }
+
+  const auto* global = find_lir_global(module, std::string_view(store_ptr).substr(1));
+  if (global == nullptr || global->is_extern_decl || global->llvm_type != "i32") {
+    return std::nullopt;
+  }
+
+  BackendFunction out;
+  out.signature = signature;
+  BackendBlock out_block;
+  out_block.label = block.label;
+  out_block.insts.push_back(BackendStoreInst{
+      store->type_str,
+      store->val,
+      BackendAddress{global->name, 0},
+  });
+  out_block.insts.push_back(BackendLoadInst{
+      load->result,
+      load->type_str,
+      load->type_str,
+      BackendAddress{global->name, 0},
+  });
+  out_block.terminator = BackendReturn{*ret->value_str, "i32"};
+  out.blocks.push_back(std::move(out_block));
+  return out;
+}
+
 std::optional<BackendFunction> adapt_global_int_pointer_roundtrip_function(
     const c4c::codegen::lir::LirFunction& function,
     const c4c::codegen::lir::LirModule& module,
@@ -2140,6 +2198,11 @@ BackendFunction adapt_function(const c4c::codegen::lir::LirFunction& function,
     return *normalized;
   }
   if (const auto normalized = adapt_direct_global_load_function(function, module, signature);
+      normalized.has_value()) {
+    return *normalized;
+  }
+  if (const auto normalized =
+          adapt_direct_global_store_reload_function(function, module, signature);
       normalized.has_value()) {
     return *normalized;
   }
