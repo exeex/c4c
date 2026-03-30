@@ -11,6 +11,7 @@
 
 #include <array>
 #include <charconv>
+#include <cctype>
 #include <cstdint>
 #include <limits>
 #include <optional>
@@ -354,9 +355,76 @@ std::optional<std::string_view> strip_typed_operand_prefix(std::string_view oper
 }
 
 std::string escape_asm_string(std::string_view raw_bytes) {
+  auto hex_value = [](unsigned char ch) -> int {
+    if (ch >= '0' && ch <= '9') return ch - '0';
+    if (ch >= 'a' && ch <= 'f') return ch - 'a' + 10;
+    if (ch >= 'A' && ch <= 'F') return ch - 'A' + 10;
+    return -1;
+  };
+
+  auto decode_llvm_c_string = [&](std::string_view bytes) {
+    std::string decoded;
+    decoded.reserve(bytes.size());
+    for (std::size_t i = 0; i < bytes.size(); ++i) {
+      const char ch = bytes[i];
+      if (ch != '\\' || i + 1 >= bytes.size()) {
+        decoded.push_back(ch);
+        continue;
+      }
+
+      const char code = bytes[i + 1];
+      if (code == 'x' && i + 3 < bytes.size()) {
+        const int hi = hex_value(static_cast<unsigned char>(bytes[i + 2]));
+        const int lo = hex_value(static_cast<unsigned char>(bytes[i + 3]));
+        if (hi >= 0 && lo >= 0) {
+          decoded.push_back(static_cast<char>((hi << 4) | lo));
+          i += 3;
+          continue;
+        }
+        decoded.push_back('\\');
+        continue;
+      }
+
+      const int hi = hex_value(static_cast<unsigned char>(code));
+      if (hi >= 0 && i + 2 < bytes.size()) {
+        const int lo = hex_value(static_cast<unsigned char>(bytes[i + 2]));
+        if (lo >= 0) {
+          decoded.push_back(static_cast<char>((hi << 4) | lo));
+          i += 2;
+          continue;
+        }
+      }
+
+      ++i;
+      switch (code) {
+        case 'n':
+          decoded.push_back('\n');
+          break;
+        case 'r':
+          decoded.push_back('\r');
+          break;
+        case 't':
+          decoded.push_back('\t');
+          break;
+        case '\"':
+          decoded.push_back('\"');
+          break;
+        case '\\':
+          decoded.push_back('\\');
+          break;
+        default:
+          decoded.push_back('\\');
+          decoded.push_back(code);
+          break;
+      }
+    }
+    return decoded;
+  };
+
+  const std::string decoded = decode_llvm_c_string(raw_bytes);
   std::string escaped;
-  escaped.reserve(raw_bytes.size());
-  for (const unsigned char ch : raw_bytes) {
+  escaped.reserve(decoded.size());
+  for (const unsigned char ch : decoded) {
     switch (ch) {
       case '\\':
         escaped += "\\\\";

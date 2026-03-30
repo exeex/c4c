@@ -2041,6 +2041,107 @@ std::optional<BackendFunction> adapt_local_two_arg_call_function(
   return out;
 }
 
+std::optional<BackendFunction> adapt_direct_vararg_decl_call_function(
+    const c4c::codegen::lir::LirFunction& function,
+    const BackendFunctionSignature& signature) {
+  using namespace c4c::codegen::lir;
+
+  if (function.is_declaration || signature.linkage != "define" ||
+      signature.return_type != "i32" || signature.name != "main" ||
+      !signature.params.empty() || signature.is_vararg || function.blocks.size() != 1 ||
+      !function.alloca_insts.empty() || !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& block = function.blocks.front();
+  const auto* ret = std::get_if<LirRet>(&block.terminator);
+  if (ret == nullptr || block.label != "entry" || !ret->value_str.has_value() ||
+      ret->type_str != "i32" || block.insts.empty()) {
+    return std::nullopt;
+  }
+
+  const std::size_t call_index = block.insts.size() - 1;
+  const auto* call = std::get_if<LirCallOp>(&block.insts[call_index]);
+  if (call == nullptr || call->return_type != "i32") {
+    return std::nullopt;
+  }
+
+  const auto parsed_call = parse_backend_direct_global_typed_call(*call);
+  if (!parsed_call.has_value() || parsed_call->typed_call.args.empty()) {
+    return std::nullopt;
+  }
+
+  auto is_ptr_type = [](std::string_view type) {
+    const auto trimmed = c4c::codegen::lir::trim_lir_arg_text(type);
+    return trimmed == "ptr" || (!trimmed.empty() && trimmed.back() == '*');
+  };
+
+  auto is_zero_index = [](std::string_view index) -> bool {
+    const auto first_space = index.find(' ');
+    if (first_space == std::string_view::npos) {
+      return false;
+    }
+    const auto value = c4c::codegen::lir::trim_lir_arg_text(index.substr(first_space + 1));
+    const auto parsed = parse_i64(value);
+    return parsed.has_value() && *parsed == 0;
+  };
+
+  std::unordered_map<std::string, std::string> resolved_ptr_operands;
+  for (std::size_t index = 0; index < call_index; ++index) {
+    if (const auto* gep = std::get_if<LirGepOp>(&block.insts[index])) {
+      const auto gep_ptr = gep->ptr.str();
+      if (gep->result.empty() || gep->ptr.empty() || gep_ptr.empty() || gep_ptr.front() != '@' ||
+          gep->indices.size() != 2 || !is_zero_index(gep->indices[0]) ||
+          !is_zero_index(gep->indices[1])) {
+        continue;
+      }
+      resolved_ptr_operands.emplace(gep->result.str(), gep_ptr);
+      continue;
+    }
+
+    if (const auto* cast = std::get_if<LirCastOp>(&block.insts[index])) {
+      if (cast->result.empty() || cast->kind != LirCastKind::Bitcast ||
+          cast->from_type != "ptr" || cast->to_type != "ptr") {
+        continue;
+      }
+      const auto source = std::string(cast->operand);
+      const auto found = resolved_ptr_operands.find(source);
+      if (found != resolved_ptr_operands.end()) {
+        resolved_ptr_operands.emplace(cast->result, found->second);
+      }
+    }
+  }
+
+  auto normalized_call = make_backend_call_inst(call->result.str(),
+                                               call->return_type.str(),
+                                               call->callee.str(),
+                                               parsed_call->typed_call,
+                                               true);
+  for (auto& arg : normalized_call.args) {
+    if (!is_ptr_type(arg.type)) {
+      continue;
+    }
+
+    if (!parse_i64(arg.operand).has_value() && !arg.operand.empty() &&
+        arg.operand.front() == '%') {
+      const auto it = resolved_ptr_operands.find(arg.operand);
+      if (it == resolved_ptr_operands.end()) {
+        return std::nullopt;
+      }
+      arg.operand = it->second;
+    }
+  }
+
+  BackendFunction out;
+  out.signature = signature;
+  BackendBlock out_block;
+  out_block.label = block.label;
+  out_block.insts.push_back(std::move(normalized_call));
+  out_block.terminator = BackendReturn{*ret->value_str, "i32"};
+  out.blocks.push_back(std::move(out_block));
+  return out;
+}
+
 std::optional<BackendFunction> adapt_direct_global_load_function(
     const c4c::codegen::lir::LirFunction& function,
     const c4c::codegen::lir::LirModule& module,
@@ -2621,6 +2722,10 @@ BackendFunction adapt_function(const c4c::codegen::lir::LirFunction& function,
       normalized.has_value()) {
     return *normalized;
   }
+  if (const auto normalized = adapt_direct_vararg_decl_call_function(function, signature);
+      normalized.has_value()) {
+    return *normalized;
+  }
   if (const auto normalized = adapt_string_literal_char_function(function, module, signature);
       normalized.has_value()) {
     return *normalized;
@@ -2710,7 +2815,62 @@ std::string render_module(const BackendModule& module) {
 
 std::optional<c4c::codegen::lir::ParsedLirDirectGlobalTypedCallView>
 parse_backend_direct_global_typed_call(const c4c::codegen::lir::LirCallOp& call) {
-  return c4c::codegen::lir::parse_lir_direct_global_typed_call(call);
+  using namespace c4c::codegen::lir;
+
+  const auto symbol_name = parse_lir_direct_global_callee(call.callee);
+  if (!symbol_name.has_value()) {
+    return std::nullopt;
+  }
+
+  if (const auto parsed = parse_lir_direct_global_typed_call(call);
+      parsed.has_value()) {
+    return parsed;
+  }
+
+  const auto callee_type_suffix = trim_lir_arg_text(call.callee_type_suffix);
+  if (callee_type_suffix.empty()) {
+    return std::nullopt;
+  }
+
+  const auto param_types = parse_lir_call_param_types(callee_type_suffix);
+  if (!param_types.has_value()) {
+    return std::nullopt;
+  }
+
+  std::vector<std::string_view> fixed_param_types;
+  bool saw_varargs = false;
+  for (auto type : *param_types) {
+    const auto trimmed_type = trim_lir_arg_text(type);
+    if (trimmed_type == "...") {
+      saw_varargs = true;
+      break;
+    }
+    fixed_param_types.push_back(trimmed_type);
+  }
+
+  if (!saw_varargs) {
+    return std::nullopt;
+  }
+
+  const auto args = parse_lir_typed_call_args(call.args_str);
+  if (!args.has_value() || args->size() < fixed_param_types.size()) {
+    return std::nullopt;
+  }
+
+  ParsedLirTypedCallView parsed;
+  parsed.param_types.reserve(fixed_param_types.size());
+  parsed.args.reserve(fixed_param_types.size());
+  for (std::size_t index = 0; index < fixed_param_types.size(); ++index) {
+    if (fixed_param_types[index] != (*args)[index].type) {
+      return std::nullopt;
+    }
+    parsed.param_types.push_back(fixed_param_types[index]);
+    parsed.args.push_back((*args)[index]);
+  }
+  return ParsedLirDirectGlobalTypedCallView{
+      *symbol_name,
+      std::move(parsed),
+  };
 }
 
 std::optional<ParsedBackendTypedCallView> parse_backend_typed_call(

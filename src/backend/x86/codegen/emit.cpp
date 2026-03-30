@@ -8,6 +8,7 @@
 #include "../../../codegen/lir/lir_printer.hpp"
 
 #include <charconv>
+#include <cctype>
 #include <cstdint>
 #include <limits>
 #include <optional>
@@ -46,6 +47,13 @@ struct MinimalParamSlotSlice {
   std::string callee_name;
   std::int64_t call_arg_imm = 0;
   std::int64_t helper_add_imm = 0;
+};
+
+struct MinimalExternCallArgSlice {
+  enum class Kind { I32Imm, I64Imm, Ptr };
+  Kind kind = Kind::Ptr;
+  std::int64_t imm = 0;
+  std::string operand;
 };
 
 struct MinimalTwoArgDirectCallSlice {
@@ -105,6 +113,10 @@ struct MinimalExternGlobalArrayLoadSlice {
 
 struct MinimalExternDeclCallSlice {
   std::string callee_name;
+  std::vector<MinimalExternCallArgSlice> args;
+  bool callee_is_vararg = false;
+  bool return_call_result = false;
+  std::int64_t return_imm = 0;
 };
 
 struct MinimalGlobalCharPointerDiffSlice {
@@ -149,6 +161,58 @@ std::optional<std::int64_t> parse_i64(std::string_view text) {
   return value;
 }
 
+std::optional<MinimalExternCallArgSlice> parse_minimal_extern_decl_call_arg(
+    const c4c::backend::BackendModule& module,
+    std::string_view type,
+    std::string_view operand) {
+  (void)module;
+  const auto normalized_type = c4c::codegen::lir::trim_lir_arg_text(type);
+  const auto normalized_operand = c4c::codegen::lir::trim_lir_arg_text(operand);
+  if (normalized_type.empty() || normalized_operand.empty()) {
+    return std::nullopt;
+  }
+
+  if (normalized_type == "i32") {
+    const auto imm = parse_i64(normalized_operand);
+    if (!imm.has_value() ||
+        *imm < std::numeric_limits<std::int32_t>::min() ||
+        *imm > std::numeric_limits<std::int32_t>::max()) {
+      return std::nullopt;
+    }
+    return MinimalExternCallArgSlice{MinimalExternCallArgSlice::Kind::I32Imm,
+                                    *imm, {}};
+  }
+
+  if (normalized_type == "i64") {
+    const auto imm = parse_i64(normalized_operand);
+    if (!imm.has_value()) {
+      return std::nullopt;
+    }
+    return MinimalExternCallArgSlice{MinimalExternCallArgSlice::Kind::I64Imm,
+                                    *imm, {}};
+  }
+
+  const bool is_ptr_type = normalized_type == "ptr" ||
+                          (normalized_type.size() > 1 &&
+                           normalized_type.back() == '*');
+  if (!is_ptr_type) {
+    return std::nullopt;
+  }
+
+  const auto imm = parse_i64(normalized_operand);
+  if (imm.has_value()) {
+    return MinimalExternCallArgSlice{MinimalExternCallArgSlice::Kind::I64Imm,
+                                    *imm, {}};
+  }
+
+  if (normalized_operand.front() != '@') {
+    return std::nullopt;
+  }
+
+  return MinimalExternCallArgSlice{MinimalExternCallArgSlice::Kind::Ptr, 0,
+                                  std::string(normalized_operand)};
+}
+
 std::optional<std::string_view> strip_typed_operand_prefix(std::string_view operand,
                                                            std::string_view type_prefix) {
   if (operand.size() <= type_prefix.size() + 1 ||
@@ -167,7 +231,7 @@ std::string asm_symbol_name(const c4c::backend::BackendModule& module,
   return std::string("_") + std::string(logical_name);
 }
 
-std::string asm_private_data_label(const c4c::codegen::lir::LirModule& module,
+std::string asm_private_data_label(const c4c::backend::BackendModule& module,
                                    std::string_view pool_name) {
   std::string label(pool_name);
   if (!label.empty() && label.front() == '@') {
@@ -185,12 +249,80 @@ std::string asm_private_data_label(const c4c::codegen::lir::LirModule& module,
   return ".L." + label;
 }
 
+std::string decode_llvm_c_string(std::string_view bytes) {
+  auto hex_value = [](unsigned char ch) -> int {
+    if (ch >= '0' && ch <= '9') return ch - '0';
+    if (ch >= 'a' && ch <= 'f') return ch - 'a' + 10;
+    if (ch >= 'A' && ch <= 'F') return ch - 'A' + 10;
+    return -1;
+  };
+
+  std::string decoded;
+  decoded.reserve(bytes.size());
+  for (std::size_t i = 0; i < bytes.size(); ++i) {
+    const char ch = bytes[i];
+    if (ch != '\\' || i + 1 >= bytes.size()) {
+      decoded.push_back(ch);
+      continue;
+    }
+
+    const char code = bytes[i + 1];
+    const int hi = hex_value(static_cast<unsigned char>(code));
+    if (code == 'x' && i + 3 < bytes.size()) {
+      const int hi2 = hex_value(static_cast<unsigned char>(bytes[i + 2]));
+      const int lo2 = hex_value(static_cast<unsigned char>(bytes[i + 3]));
+      if (hi2 >= 0 && lo2 >= 0) {
+        decoded.push_back(static_cast<char>((hi2 << 4) | lo2));
+        i += 3;
+        continue;
+      }
+      decoded.push_back('\\');
+      continue;
+    }
+
+    if (hi >= 0 && i + 2 < bytes.size()) {
+      const int lo = hex_value(static_cast<unsigned char>(bytes[i + 2]));
+      if (lo >= 0) {
+        decoded.push_back(static_cast<char>((hi << 4) | lo));
+        i += 2;
+        continue;
+      }
+    }
+
+    ++i;
+    switch (code) {
+      case 'n':
+        decoded.push_back('\n');
+        break;
+      case 'r':
+        decoded.push_back('\r');
+        break;
+      case 't':
+        decoded.push_back('\t');
+        break;
+      case '\"':
+        decoded.push_back('\"');
+        break;
+      case '\\':
+        decoded.push_back('\\');
+        break;
+      default:
+        decoded.push_back('\\');
+        decoded.push_back(code);
+        break;
+    }
+  }
+  return decoded;
+}
+
 std::string escape_asm_string(std::string_view bytes) {
+  const std::string decoded = decode_llvm_c_string(bytes);
+
   static constexpr char kHexDigits[] = "0123456789abcdef";
 
   std::string escaped;
-  escaped.reserve(bytes.size());
-  for (unsigned char ch : bytes) {
+  escaped.reserve(decoded.size());
+  for (unsigned char ch : decoded) {
     switch (ch) {
       case '\\':
         escaped += "\\\\";
@@ -1034,9 +1166,22 @@ std::optional<MinimalExternDeclCallSlice> parse_minimal_extern_decl_call_slice(
 
 std::optional<MinimalExternDeclCallSlice> parse_minimal_declared_direct_call_slice(
     const c4c::backend::BackendModule& module) {
-  if (module.functions.size() != 2) {
+  if (module.functions.size() < 2) {
     return std::nullopt;
   }
+
+  const auto is_known_variadic_decl = [](std::string_view callee_name) {
+    static constexpr const char* kKnownVariadic[] = {
+        "fprintf",      "printf",  "sprintf",   "snprintf", "asprintf",
+        "__asprintf",   "dprintf", "fscanf",    "scanf",    "sscanf",
+    };
+    for (const auto* name : kKnownVariadic) {
+      if (callee_name == name) {
+        return true;
+      }
+    }
+    return false;
+  };
 
   const auto* main_fn = find_function(module, "main");
   if (main_fn == nullptr || main_fn->is_declaration ||
@@ -1054,18 +1199,17 @@ std::optional<MinimalExternDeclCallSlice> parse_minimal_declared_direct_call_sli
     return std::nullopt;
   }
 
-  const auto* call =
-      std::get_if<c4c::backend::BackendCallInst>(&main_block.insts.front());
-  const auto callee_name =
+  const auto* call = std::get_if<c4c::backend::BackendCallInst>(&main_block.insts.front());
+  const auto parsed_call =
       call == nullptr ? std::nullopt
-                      : c4c::backend::parse_backend_zero_arg_direct_global_typed_call(*call);
-  if (call == nullptr || call->return_type != "i32" || call->result.empty() ||
-      *main_block.terminator.value != call->result || !callee_name.has_value()) {
+                      : c4c::backend::parse_backend_direct_global_typed_call(*call);
+  if (call == nullptr || !parsed_call.has_value() || call->return_type != "i32") {
     return std::nullopt;
   }
 
-  const std::string callee_name_str = std::string(*callee_name);
-  if (callee_name_str == "main") {
+  const auto callee_name = parsed_call->symbol_name;
+  const auto callee_name_str = std::string(callee_name);
+  if (callee_name == "main" || callee_name.empty()) {
     return std::nullopt;
   }
 
@@ -1073,11 +1217,62 @@ std::optional<MinimalExternDeclCallSlice> parse_minimal_declared_direct_call_sli
   if (callee_fn == nullptr || !callee_fn->is_declaration ||
       callee_fn->signature.linkage != "declare" ||
       callee_fn->signature.return_type != "i32" ||
-      !callee_fn->signature.params.empty() || callee_fn->signature.is_vararg) {
+      callee_fn->signature.params.size() > parsed_call->typed_call.param_types.size()) {
     return std::nullopt;
   }
 
-  return MinimalExternDeclCallSlice{callee_name_str};
+  for (std::size_t index = 0; index < callee_fn->signature.params.size(); ++index) {
+    if (callee_fn->signature.params[index].type_str !=
+        parsed_call->typed_call.param_types[index]) {
+      return std::nullopt;
+    }
+  }
+
+  const bool callee_is_vararg = callee_fn->signature.is_vararg ||
+                               is_known_variadic_decl(callee_name_str);
+  if (parsed_call->typed_call.args.size() < callee_fn->signature.params.size() ||
+      (!callee_is_vararg &&
+       callee_fn->signature.params.size() != parsed_call->typed_call.args.size())) {
+    return std::nullopt;
+  }
+
+  const bool returns_call_result =
+      !call->result.empty() && *main_block.terminator.value == call->result;
+  std::int64_t return_imm = 0;
+  if (!returns_call_result) {
+    const auto parsed_return = parse_i64(*main_block.terminator.value);
+    if (!parsed_return.has_value() ||
+        *parsed_return < std::numeric_limits<std::int32_t>::min() ||
+        *parsed_return > std::numeric_limits<std::int32_t>::max()) {
+      return std::nullopt;
+    }
+    return_imm = *parsed_return;
+  }
+
+  if (parsed_call->typed_call.args.size() > 6) {
+    return std::nullopt;
+  }
+
+  std::vector<MinimalExternCallArgSlice> call_args;
+  call_args.reserve(parsed_call->typed_call.args.size());
+  for (std::size_t index = 0; index < parsed_call->typed_call.args.size(); ++index) {
+    auto parsed_arg =
+        parse_minimal_extern_decl_call_arg(module,
+                                          parsed_call->typed_call.param_types[index],
+                                          parsed_call->typed_call.args[index].operand);
+    if (!parsed_arg.has_value()) {
+      return std::nullopt;
+    }
+    call_args.push_back(*parsed_arg);
+  }
+
+  return MinimalExternDeclCallSlice{
+      callee_name_str,
+      std::move(call_args),
+      callee_is_vararg,
+      returns_call_result,
+      return_imm,
+  };
 }
 
 std::optional<MinimalExternGlobalArrayLoadSlice> parse_minimal_extern_global_array_load_slice(
@@ -2767,16 +2962,87 @@ std::string emit_minimal_extern_global_array_load_asm(
 std::string emit_minimal_extern_decl_call_asm(
     const c4c::backend::BackendModule& module,
     const MinimalExternDeclCallSlice& slice) {
+  static constexpr const char* kArgIntRegs[6] = {"edi", "esi", "edx", "ecx", "r8d", "r9d"};
+  static constexpr const char* kArgPtrRegs[6] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
+
   const std::string helper_symbol = asm_symbol_name(module, slice.callee_name);
   const std::string main_symbol = asm_symbol_name(module, "main");
 
+  if (slice.args.size() > 6) {
+    throw c4c::backend::LirAdapterError(
+        c4c::backend::LirAdapterErrorKind::Unsupported,
+        "extern declaration call argument count exceeds minimal x86 register budget");
+  }
+
+  std::vector<std::string> emitted_string_constant_names;
+  for (const auto& arg : slice.args) {
+    if (arg.kind != MinimalExternCallArgSlice::Kind::Ptr || arg.operand.empty() ||
+        arg.operand.front() != '@') {
+      continue;
+    }
+    const auto* string_constant = find_string_constant(module, arg.operand.substr(1));
+    if (string_constant == nullptr) {
+      continue;
+    }
+    const auto& name = string_constant->name;
+    bool duplicate = false;
+    for (const auto& emitted : emitted_string_constant_names) {
+      if (emitted == name) {
+        duplicate = true;
+        break;
+      }
+    }
+    if (!duplicate) {
+      emitted_string_constant_names.push_back(name);
+    }
+  }
+
   std::ostringstream out;
   out << ".intel_syntax noprefix\n";
+  if (!emitted_string_constant_names.empty()) {
+    out << ".section .rodata\n";
+    for (const auto& name : emitted_string_constant_names) {
+      const auto* string_constant = find_string_constant(module, name);
+      if (string_constant == nullptr) {
+        continue;
+      }
+      const std::string label = asm_private_data_label(module, "@" + name);
+      out << label << ":\n"
+          << "  .asciz \"" << escape_asm_string(string_constant->raw_bytes) << "\"\n";
+    }
+  }
   out << ".text\n";
   out << ".globl " << main_symbol << "\n";
   out << main_symbol << ":\n";
-  out << "  call " << helper_symbol << "\n"
-      << "  ret\n";
+  for (std::size_t index = 0; index < slice.args.size(); ++index) {
+    const auto& arg = slice.args[index];
+    switch (arg.kind) {
+      case MinimalExternCallArgSlice::Kind::I32Imm:
+        out << "  mov " << kArgIntRegs[index] << ", " << arg.imm << "\n";
+        break;
+      case MinimalExternCallArgSlice::Kind::I64Imm:
+        out << "  mov " << kArgPtrRegs[index] << ", " << arg.imm << "\n";
+        break;
+      case MinimalExternCallArgSlice::Kind::Ptr: {
+        const auto* string_constant = find_string_constant(module, arg.operand.substr(1));
+        if (string_constant == nullptr) {
+          const std::string symbol = asm_symbol_name(module, arg.operand.substr(1));
+          out << "  lea " << kArgPtrRegs[index] << ", " << symbol << "[rip]\n";
+          break;
+        }
+        const auto label = asm_private_data_label(module, arg.operand);
+        out << "  lea " << kArgPtrRegs[index] << ", " << label << "[rip]\n";
+      } break;
+    }
+  }
+  if (slice.callee_is_vararg) {
+    out << "  mov al, 0\n";
+  }
+  out << "  call " << helper_symbol << "\n";
+  if (!slice.return_call_result) {
+    out << "  mov eax, " << slice.return_imm << "\n";
+  }
+  out << "  ret\n";
   return out.str();
 }
 
@@ -2879,7 +3145,7 @@ std::string emit_minimal_string_literal_char_asm(
     const MinimalStringLiteralCharSlice& slice) {
   c4c::backend::BackendModule backend_module;
   backend_module.target_triple = module.target_triple;
-  const std::string string_label = asm_private_data_label(module, slice.pool_name);
+  const std::string string_label = asm_private_data_label(backend_module, slice.pool_name);
   const std::string main_symbol = asm_symbol_name(backend_module, "main");
 
   std::ostringstream out;
