@@ -6,9 +6,41 @@ Source Plan: plan.md
 
 ## Steps
 
-- [ ] Step 1 — Scaffold + single-block alloca/binop/ret
-- [ ] Step 2 — Multi-block: icmp + br + condbr
-- [ ] Step 3 — Direct function calls + multi-function modules
-- [ ] Step 4 — GEP + more cast ops + more ALU + phi nodes
-- [ ] Step 5 — Globals + string literals + switch + remaining edge cases
+- [x] Step 1 — Scaffold + single-block alloca/binop/ret
+- [x] Step 2 — Multi-block: icmp + br + condbr
+- [x] Step 3 — Direct function calls + multi-function modules
+- [x] Step 4 — GEP + more cast ops + more ALU + phi nodes
+- [x] Step 5 — Globals + string literals + switch + remaining edge cases
 - [ ] Step 6 — Full suite cleanup and close-out
+
+## Progress Notes
+
+### Steps 1–5 completed in single implementation (2026-03-31)
+
+Implemented `try_emit_general_lir_asm()` in `emit.cpp` as a comprehensive
+stack-spill AArch64 emitter. All instruction types handled in one pass.
+
+**Baseline**: 85/220 aarch64 tests passing
+**After**: 185/220 aarch64 tests passing (+100 tests)
+**Overall**: 2630/2671 total tests passing (was 2534, +96)
+
+### Implementation Details
+- GenSlotMap: every SSA value gets 8-byte stack slot; allocas get separate data area
+- Stack-spill approach: load operands from stack → compute in scratch regs → store result
+- Register convention: x0/w0 result, x1/w1 second operand, x2 scratch
+- LR saved at [sp+0], restored at each ret and after each bl
+- Parameters parsed from signature_text (LirFunction.params not populated by lowering)
+- GOT-relative addressing for extern globals (adrp :got: + ldr :got_lo12:)
+- String pool: LLVM hex escapes decoded and re-encoded for GAS assembler
+- Global initializers: recursive handler for aggregates, arrays, ptr refs
+
+### Remaining 35 failures
+- 22 FRONTEND_FAIL (not backend issue)
+- 6 RUNTIME_NONZERO (segfaults in struct-heavy or complex tests)
+- 5 RUNTIME_MISMATCH (printf output doesn't match)
+- 2 BACKEND_FAIL (assembler/linker errors)
+
+### Next: Step 6
+- Investigate remaining RUNTIME_NONZERO failures (struct GEP issues likely)
+- Fix RUNTIME_MISMATCH (printf arg passing edge cases)
+- Fix BACKEND_FAIL (linker issues)
