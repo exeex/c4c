@@ -294,17 +294,21 @@ Node* Parser::parse_unary() {
             if (check(TokenKind::LParen)) {
                 // Could be sizeof(type) or sizeof(expr)
                 // Disambiguate: if first token inside is a type keyword, it's a type
-                int save_pos = pos_;
-                consume();  // consume (
-                if (is_type_start()) {
-                    TypeSpec ts = parse_type_name();
-                    expect(TokenKind::RParen);
-                    Node* n = make_node(NK_SIZEOF_TYPE, ln);
-                    n->type = ts;
-                    return n;
-                } else {
-                    // Restore and parse as sizeof(expr)
-                    pos_ = save_pos;
+                {
+                    TentativeParseGuard guard(*this);
+                    consume();  // consume (
+                    if (is_type_start()) {
+                        TypeSpec ts = parse_type_name();
+                        expect(TokenKind::RParen);
+                        guard.commit();
+                        Node* n = make_node(NK_SIZEOF_TYPE, ln);
+                        n->type = ts;
+                        return n;
+                    }
+                    // guard restores pos_ on scope exit (not committed)
+                }
+                {
+                    // Parse as sizeof(expr) — pos_ already restored by guard above
                     consume();  // consume (
                     Node* inner = parse_assign_expr();
                     expect(TokenKind::RParen);
@@ -398,6 +402,8 @@ Node* Parser::parse_new_expr(int ln, bool global_qualified) {
         // Disambiguate: could be placement args or a parenthesized type.
         // Peek: if '(' followed by a type start and then ')', it's a cast-style type.
         // For placement new, arguments are expressions.
+        // NOTE: pos_ saved/restored only to re-consume '(' after a peek; not a
+        // full tentative parse, so TentativeParseGuard is not used here.
         int saved = pos_;
         consume(); // '('
         bool is_placement = true;
@@ -729,7 +735,7 @@ Node* Parser::parse_primary() {
 
     auto parse_operator_ref = [&]() -> Node* {
         if (!is_cpp_mode()) return nullptr;
-        int saved_pos = pos_;
+        TentativeParseGuard guard(*this);
         std::string qualified_name;
 
         if (match(TokenKind::ColonColon))
@@ -749,7 +755,6 @@ Node* Parser::parse_primary() {
 
         std::string op_name;
         if (!try_parse_operator_function_id(op_name)) {
-            pos_ = saved_pos;
             return nullptr;
         }
 
@@ -761,6 +766,7 @@ Node* Parser::parse_primary() {
         }
         qualified_name += op_name;
         Node* ident = make_var(arena_.strdup(qualified_name.c_str()), ln);
+        guard.commit();
         return parse_postfix(ident);
     };
 
@@ -818,7 +824,7 @@ Node* Parser::parse_primary() {
                                      builtin_name);
         }
 
-        const int saved_pos = pos_;
+        TentativeParseGuard guard(*this);
         consume();  // builtin identifier
         consume();  // (
 
@@ -830,9 +836,9 @@ Node* Parser::parse_primary() {
                 expect(TokenKind::RParen);
                 const int result =
                     types_compatible_p(lhs, rhs, typedef_types_) ? 1 : 0;
+                guard.commit();
                 return make_int_lit(result, ln);
             } catch (...) {
-                pos_ = saved_pos;
                 return nullptr;
             }
         }
@@ -847,18 +853,17 @@ Node* Parser::parse_primary() {
             }
             expect(TokenKind::RParen);
         } catch (...) {
-            pos_ = saved_pos;
             return nullptr;
         }
 
         if (parsed_args == 0) {
-            pos_ = saved_pos;
             return nullptr;
         }
 
         // These GCC/Clang type-trait builtins are parse-only placeholders for
         // now. The important behavior for this slice is to consume their
         // type-name argument lists instead of misparsing them as expressions.
+        guard.commit();
         return make_int_lit(1, ln);
     };
 
@@ -893,11 +898,13 @@ Node* Parser::parse_primary() {
         return requires_expr;
 
     if (is_cpp_mode() && check(TokenKind::LBracket)) {
-        const int saved_pos = pos_;
+        TentativeParseGuard guard(*this);
         try {
-            return parse_lambda_expr(ln);
+            Node* result = parse_lambda_expr(ln);
+            guard.commit();
+            return result;
         } catch (const std::exception&) {
-            pos_ = saved_pos;
+            // guard restores pos_ on scope exit
         }
     }
 
@@ -1037,6 +1044,8 @@ Node* Parser::parse_primary() {
         consume();  // consume (
 
         // Check for cast: (type-name)expr
+        // NOTE: This site saves tokens_ in addition to pos_ (for template edge cases).
+        // TentativeParseGuard does not snapshot tokens_, so manual save/restore is kept here.
         if (is_type_start() && has_balanced_template_id_ahead()) {
             int save_pos = pos_;
             std::vector<Token> saved_tokens = tokens_;
@@ -1310,7 +1319,7 @@ Node* Parser::parse_primary() {
         Node* ident = make_var(nm, ln);
         apply_qualified_name(ident, qn, nm);
         if (is_cpp_mode() && check(TokenKind::Less)) {
-            int save_pos = pos_;
+            TentativeParseGuard guard(*this);
             std::vector<TemplateArgParseResult> parsed_args;
             if (parse_template_argument_list(&parsed_args)) {
                 // Accept template instantiation when followed by a token that
@@ -1340,6 +1349,7 @@ Node* Parser::parse_primary() {
                 };
                 if (is_valid_after_template()) {
                     // Accept template instantiation.
+                    guard.commit();
                     ident->has_template_args = true;
                     ident->n_template_args = static_cast<int>(parsed_args.size());
                     ident->template_arg_types = arena_.alloc_array<TypeSpec>(ident->n_template_args);
@@ -1405,12 +1415,10 @@ Node* Parser::parse_primary() {
                             ident = ctor;
                         }
                     }
-                } else {
-                    pos_ = save_pos;
                 }
-            } else {
-                pos_ = save_pos;
+                // else: guard restores pos_ on scope exit (not valid after template)
             }
+            // else: guard restores pos_ on scope exit (template arg list parse failed)
         }
         if (is_cpp_mode() && check(TokenKind::LBrace) &&
             pos_ + 1 < static_cast<int>(tokens_.size()) &&
@@ -1461,8 +1469,7 @@ Node* Parser::parse_primary() {
 
     // C++ functional cast: T(expr)
     if (is_cpp_mode() && is_type_start() && has_balanced_template_id_ahead()) {
-        int save_pos = pos_;
-        std::string saved_typedef = last_resolved_typedef_;
+        TentativeParseGuard guard(*this);
         TypeSpec cast_ts = parse_base_type();
         while (check(TokenKind::Star)) {
             consume();
@@ -1537,10 +1544,10 @@ Node* Parser::parse_primary() {
                     n->fn_ptr_variadic = tdit->second.variadic;
                 }
             }
+            guard.commit();
             return parse_postfix(n);
         }
-        pos_ = save_pos;
-        last_resolved_typedef_ = saved_typedef;
+        // guard restores pos_ and last_resolved_typedef_ on scope exit
     }
 
     // C++ lambda expression: [captures](params) -> ret { body }

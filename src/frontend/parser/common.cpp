@@ -1,9 +1,34 @@
+#include "parser.hpp"
 #include "parser_internal.hpp"
 
 #include <cstring>
 #include <cstdlib>
 
 namespace c4c {
+
+// ── ParserSnapshot save / restore ────────────────────────────────────────────
+
+Parser::ParserSnapshot Parser::save_state() const {
+    ParserSnapshot snap;
+    snap.pos                  = pos_;
+    snap.typedefs             = typedefs_;
+    snap.user_typedefs        = user_typedefs_;
+    snap.typedef_types        = typedef_types_;
+    snap.var_types            = var_types_;
+    snap.last_resolved_typedef = last_resolved_typedef_;
+    return snap;
+}
+
+void Parser::restore_state(const ParserSnapshot& snap) {
+    pos_                   = snap.pos;
+    typedefs_              = snap.typedefs;
+    user_typedefs_         = snap.user_typedefs;
+    typedef_types_         = snap.typedef_types;
+    var_types_             = snap.var_types;
+    last_resolved_typedef_ = snap.last_resolved_typedef;
+}
+
+
 bool eval_enum_expr(Node* n, const std::unordered_map<std::string, long long>& consts,
                            long long* out) {
     if (!n || !out) return false;

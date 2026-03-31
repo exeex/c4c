@@ -265,6 +265,9 @@ bool Parser::eval_deferred_nttp_expr_tokens(
             t.kind = TokenKind::Semi; t.lexeme = ";";
             inject_toks.push_back(t);
 
+            // Token injection: temporarily swap tokens_ to parse injected text.
+            // TentativeParseGuard does not snapshot tokens_, so manual
+            // save/restore of tokens_ and pos_ is intentionally kept here.
             int saved_pos = pos_;
             auto saved_parser_toks = std::move(tokens_);
             tokens_ = std::move(inject_toks);

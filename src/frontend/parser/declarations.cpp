@@ -1285,7 +1285,7 @@ Node* Parser::parse_top_level() {
                 }
                 push_nttp_no_default();
             } else if (is_cpp_mode()) {
-                const int saved_pos = pos_;
+                TentativeParseGuard guard(*this);
                 std::string constraint_name;
                 if (consume_qualified_type_spelling(
                         /*allow_global=*/true,
@@ -1302,8 +1302,9 @@ Node* Parser::parse_top_level() {
                     } else {
                         push_type_template_param(pname, is_pack);
                     }
+                    guard.commit();
                 } else {
-                    pos_ = saved_pos;
+                    // guard restores pos_ on scope exit
                     throw std::runtime_error("expected template parameter name");
                 }
             } else {
@@ -1534,6 +1535,9 @@ Node* Parser::parse_top_level() {
     //   Type::operator bool() const { ... }
     // There is no explicit return type, so handle these before parse_base_type().
     if (is_cpp_mode() && !is_typedef) {
+        // NOTE: saved_special_member_pos is captured by the lambdas below;
+        // converting to TentativeParseGuard would require refactoring all
+        // lambda captures, so manual pos_ save/restore is intentionally kept here.
         const int saved_special_member_pos = pos_;
         auto consume_optional_template_id = [&]() -> bool {
             if (!check(TokenKind::Less)) return true;

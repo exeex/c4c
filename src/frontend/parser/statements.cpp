@@ -271,8 +271,7 @@ Node* Parser::parse_stmt() {
             auto parse_if_condition_decl = [&]() -> Node* {
                 if (!can_start_if_condition_decl()) return nullptr;
 
-                const int saved_pos = pos_;
-                const auto saved_var_types = var_types_;
+                TentativeParseGuard guard(*this);
                 try {
                     TypeSpec base_ts = parse_base_type();
                     parse_attributes(&base_ts);
@@ -286,8 +285,6 @@ Node* Parser::parse_stmt() {
                     skip_attributes();
 
                     if (!vname) {
-                        pos_ = saved_pos;
-                        var_types_ = saved_var_types;
                         return nullptr;
                     }
 
@@ -298,8 +295,6 @@ Node* Parser::parse_stmt() {
                     }
 
                     if (!check(TokenKind::RParen)) {
-                        pos_ = saved_pos;
-                        var_types_ = saved_var_types;
                         return nullptr;
                     }
 
@@ -308,10 +303,9 @@ Node* Parser::parse_stmt() {
                     decl->name = vname;
                     decl->init = init_node;
                     var_types_[vname] = ts;
+                    guard.commit();
                     return decl;
                 } catch (const std::exception&) {
-                    pos_ = saved_pos;
-                    var_types_ = saved_var_types;
                     return nullptr;
                 }
             };
@@ -382,13 +376,11 @@ Node* Parser::parse_stmt() {
                     // C++ range-for detection: save position, parse decl,
                     // check if ':' follows (range-for) vs ';' (regular for).
                     if (is_cpp_mode()) {
-                        int saved_pos = pos_;
-                        auto saved_typedefs = typedefs_;
-                        auto saved_user_typedefs = user_typedefs_;
-                        auto saved_typedef_types = typedef_types_;
+                        TentativeParseGuard range_guard(*this);
                         Node* decl = parse_local_decl();
                         if (check(TokenKind::Colon)) {
                             // Range-for: for (Type var : range_expr) body
+                            range_guard.commit();
                             consume(); // consume ':'
                             Node* range_expr = parse_expr();
                             expect(TokenKind::RParen);
@@ -399,12 +391,8 @@ Node* Parser::parse_stmt() {
                             n->body  = bd;
                             return n;
                         }
-                        // Not range-for — restore position and fall through
-                        // to regular for-loop parsing.
-                        pos_ = saved_pos;
-                        typedefs_ = std::move(saved_typedefs);
-                        user_typedefs_ = std::move(saved_user_typedefs);
-                        typedef_types_ = std::move(saved_typedef_types);
+                        // Not range-for — TentativeParseGuard restores state
+                        // on scope exit since commit() was not called.
                     }
                     for_init = parse_local_decl();
                     // parse_local_decl already consumed the ';' — do NOT

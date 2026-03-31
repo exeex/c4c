@@ -129,6 +129,39 @@ class Parser {
     ~ParseContextGuard();
   };
 
+  // ── tentative parse snapshot / guard ─────────────────────────────────────
+  // Snapshot of all speculative parser state fields.  Used by TentativeParseGuard
+  // to automatically roll back on failure without each call site having to
+  // enumerate which fields it touched.
+  struct ParserSnapshot {
+    int pos;
+    std::set<std::string> typedefs;
+    std::set<std::string> user_typedefs;
+    std::unordered_map<std::string, TypeSpec> typedef_types;
+    std::unordered_map<std::string, TypeSpec> var_types;
+    std::string last_resolved_typedef;
+  };
+
+  // RAII guard that saves parser state on construction and restores it on
+  // destruction unless commit() has been called.
+  struct TentativeParseGuard {
+    Parser& parser;
+    ParserSnapshot snapshot;
+    bool committed = false;
+
+    explicit TentativeParseGuard(Parser& p)
+        : parser(p), snapshot(p.save_state()) {}
+
+    ~TentativeParseGuard() {
+      if (!committed) parser.restore_state(snapshot);
+    }
+
+    void commit() { committed = true; }
+  };
+
+  ParserSnapshot save_state() const;
+  void restore_state(const ParserSnapshot& snap);
+
   // All members public (required by project coding constraints).
   explicit Parser(std::vector<Token> tokens, Arena& arena,
                   SourceProfile source_profile = SourceProfile::C,

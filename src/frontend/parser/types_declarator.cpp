@@ -65,13 +65,13 @@ bool Parser::parse_next_template_argument(std::vector<TemplateArgParseResult>* o
 bool Parser::try_parse_template_type_arg(TemplateArgParseResult* out_arg) {
     ParseContextGuard trace(this, __func__);
     if (!out_arg) return false;
-    int saved_pos = pos_;
+    TentativeParseGuard guard(*this);
+    const int start_pos = pos_;
     try {
         TypeSpec ts = parse_type_name();
         if (is_cpp_mode() && check(TokenKind::LParen)) skip_paren_group();
         if (is_cpp_mode() && check(TokenKind::Ellipsis)) consume();
         if (!check(TokenKind::Comma) && !check_template_close()) {
-            pos_ = saved_pos;
             return false;
         }
         // Reject phantom type-id: if exactly one Identifier token was consumed
@@ -79,11 +79,10 @@ bool Parser::try_parse_template_type_arg(TemplateArgParseResult* out_arg) {
         // fell through to the default TB_INT base with the identifier consumed as
         // a declarator name. This happens for forwarded NTTP names like <N>
         // where N is not a type. Reject so non-type parsing can handle it.
-        if (is_cpp_mode() && pos_ == saved_pos + 1 &&
-            tokens_[saved_pos].kind == TokenKind::Identifier &&
-            !is_typedef_name(tokens_[saved_pos].lexeme) &&
-            !is_template_scope_type_param(tokens_[saved_pos].lexeme)) {
-            pos_ = saved_pos;
+        if (is_cpp_mode() && pos_ == start_pos + 1 &&
+            tokens_[start_pos].kind == TokenKind::Identifier &&
+            !is_typedef_name(tokens_[start_pos].lexeme) &&
+            !is_template_scope_type_param(tokens_[start_pos].lexeme)) {
             return false;
         }
         out_arg->is_value = false;
@@ -91,9 +90,9 @@ bool Parser::try_parse_template_type_arg(TemplateArgParseResult* out_arg) {
         out_arg->value = 0;
         out_arg->nttp_name = nullptr;
         out_arg->expr = nullptr;
+        guard.commit();
         return true;
     } catch (...) {
-        pos_ = saved_pos;
         return false;
     }
 }
@@ -116,7 +115,7 @@ bool Parser::try_parse_template_non_type_expr(int expr_start,
                                               TemplateArgParseResult* out_arg) {
     if (!out_arg) return false;
 
-    const int saved_pos = pos_;
+    TentativeParseGuard guard(*this);
     try {
         Node* expr = parse_assign_expr();
         if (pos_ > expr_start && (check(TokenKind::Comma) || check_template_close())) {
@@ -128,13 +127,13 @@ bool Parser::try_parse_template_non_type_expr(int expr_start,
                 out_arg->expr = expr;
                 out_arg->nttp_name =
                     arena_.strdup((std::string("$expr:") + expr_text).c_str());
+                guard.commit();
                 return true;
             }
         }
     } catch (...) {
     }
 
-    pos_ = saved_pos;
     return false;
 }
 
@@ -176,7 +175,7 @@ bool Parser::try_parse_template_non_type_arg(TemplateArgParseResult* out_arg) {
         return true;
     }
     if (check(TokenKind::Identifier)) {
-        int saved_pos = pos_;
+        TentativeParseGuard id_guard(*this);
         const char* name = arena_.strdup(cur().lexeme.c_str());
         consume();
         if (check(TokenKind::Comma) || check_template_close()) {
@@ -184,9 +183,10 @@ bool Parser::try_parse_template_non_type_arg(TemplateArgParseResult* out_arg) {
             out_arg->value = 0;
             out_arg->nttp_name = name;
             out_arg->expr = nullptr;
+            id_guard.commit();
             return true;
         }
-        pos_ = saved_pos;
+        // id_guard destructor restores pos_ on scope exit
     } else if (expr_start != pos_) {
         pos_ = expr_start;
     }
@@ -233,7 +233,7 @@ bool Parser::consume_qualified_type_spelling_with_typename(
     std::string* out_name,
     QualifiedNameRef* out_qn) {
     ParseContextGuard trace(this, __func__);
-    const int saved_pos = pos_;
+    TentativeParseGuard guard(*this);
     if (require_typename) {
         if (!is_cpp_mode() || !check(TokenKind::KwTypename))
             return false;
@@ -242,10 +242,10 @@ bool Parser::consume_qualified_type_spelling_with_typename(
 
     if (consume_qualified_type_spelling(allow_global, consume_final_template_args,
                                         out_name, out_qn)) {
+        guard.commit();
         return true;
     }
 
-    pos_ = saved_pos;
     return false;
 }
 
@@ -254,7 +254,8 @@ bool Parser::consume_qualified_type_spelling(bool allow_global,
                                              std::string* out_name,
                                              QualifiedNameRef* out_qn) {
     ParseContextGuard trace(this, __func__);
-    const int saved_pos = pos_;
+    TentativeParseGuard guard(*this);
+    const int start_pos = guard.snapshot.pos;
     QualifiedNameRef qn;
 
     auto consume_optional_template_args = [&]() -> bool {
@@ -276,7 +277,7 @@ bool Parser::consume_qualified_type_spelling(bool allow_global,
             consume();
         }
         if (!check_template_close()) {
-            pos_ = saved_pos;
+            pos_ = start_pos;
             return false;
         }
         match_template_close();
@@ -289,7 +290,6 @@ bool Parser::consume_qualified_type_spelling(bool allow_global,
     }
 
     if (!check(TokenKind::Identifier)) {
-        pos_ = saved_pos;
         return false;
     }
 
@@ -330,20 +330,21 @@ bool Parser::consume_qualified_type_spelling(bool allow_global,
         *out_name = std::move(spelled);
     }
     if (out_qn) *out_qn = std::move(qn);
+    guard.commit();
     return true;
 }
 
 bool Parser::consume_template_parameter_type_head(bool allow_typename_keyword) {
-    const int saved_pos = pos_;
-
     if (allow_typename_keyword && check(TokenKind::KwTypename)) {
+        TentativeParseGuard guard(*this);
         consume();
         if (consume_qualified_type_spelling(/*allow_global=*/true,
                                             /*consume_final_template_args=*/true,
                                             nullptr, nullptr)) {
+            guard.commit();
             return true;
         }
-        pos_ = saved_pos;
+        // guard restores pos_ on scope exit
     }
 
     if (is_type_kw(cur().kind)) {
@@ -357,14 +358,12 @@ bool Parser::consume_template_parameter_type_head(bool allow_typename_keyword) {
         return true;
     }
 
-    pos_ = saved_pos;
     return false;
 }
 
 bool Parser::consume_template_args_followed_by_scope() {
     if (!check(TokenKind::Less)) return false;
 
-    const int saved_pos = pos_;
     int probe = pos_;
     int depth = 0;
     bool balanced = false;
@@ -393,7 +392,6 @@ bool Parser::consume_template_args_followed_by_scope() {
 
     if (!balanced || probe >= static_cast<int>(tokens_.size()) ||
         tokens_[probe].kind != TokenKind::ColonColon) {
-        pos_ = saved_pos;
         return false;
     }
 
@@ -404,7 +402,7 @@ bool Parser::consume_template_args_followed_by_scope() {
 bool Parser::consume_member_pointer_owner_prefix() {
     if (!is_cpp_mode()) return false;
 
-    const int saved_pos = pos_;
+    TentativeParseGuard guard(*this);
     if (!consume_qualified_type_spelling(/*allow_global=*/true,
                                          /*consume_final_template_args=*/false,
                                          nullptr, nullptr)) {
@@ -414,21 +412,19 @@ bool Parser::consume_member_pointer_owner_prefix() {
     if (!(check(TokenKind::ColonColon) &&
           pos_ + 1 < static_cast<int>(tokens_.size()) &&
           tokens_[pos_ + 1].kind == TokenKind::Star)) {
-        pos_ = saved_pos;
         return false;
     }
 
     consume(); // ::
     consume(); // *
+    guard.commit();
     return true;
 }
 
 bool Parser::try_parse_declarator_member_pointer_prefix(TypeSpec& ts) {
     if (!is_cpp_mode()) return false;
 
-    const int saved_pos = pos_;
     if (!consume_member_pointer_owner_prefix()) {
-        pos_ = saved_pos;
         return false;
     }
 
@@ -740,11 +736,13 @@ bool Parser::is_parenthesized_pointer_declarator_start() {
         return false;
     }
 
-    const int saved_pos = pos_;
-    pos_ = pk;
-    const bool is_member_ptr_fn = consume_member_pointer_owner_prefix();
-    pos_ = saved_pos;
-    return is_member_ptr_fn;
+    {
+        TentativeParseGuard probe_guard(*this);
+        pos_ = pk;
+        const bool is_member_ptr_fn = consume_member_pointer_owner_prefix();
+        // probe_guard restores pos_ to pre-pk state on scope exit
+        return is_member_ptr_fn;
+    }
 }
 
 void Parser::parse_pointer_ref_qualifiers(TypeSpec& ts, TokenKind pointer_tok,
@@ -840,13 +838,13 @@ void Parser::parse_normal_declarator_tail(TypeSpec& ts, const char** out_name,
     if (out_name && is_cpp_mode() &&
         (check(TokenKind::Identifier) || check(TokenKind::ColonColon) ||
          check(TokenKind::KwOperator))) {
-        int saved_pos = pos_;
+        TentativeParseGuard guard(*this);
         std::string qualified_name;
         if (parse_qualified_declarator_name(&qualified_name)) {
             *out_name = arena_.strdup(qualified_name.c_str());
-        } else {
-            pos_ = saved_pos;
+            guard.commit();
         }
+        // guard restores pos_ on scope exit if not committed
     }
 
     if (out_name && !*out_name && check(TokenKind::Identifier)) {

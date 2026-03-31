@@ -765,11 +765,11 @@ TypeSpec Parser::parse_base_type() {
                     if (ati_it != alias_template_info_.end() &&
                         ati_it->second.aliased_type.tpl_struct_origin) {
                         const AliasTemplateInfo& ati = ati_it->second;
-                        const int save_pos_alias = pos_;
+                        TentativeParseGuard alias_guard(*this);
                         std::vector<TemplateArgParseResult> alias_args;
                         if (!parse_template_argument_list(&alias_args) ||
                             alias_args.size() != ati.param_names.size()) {
-                            pos_ = save_pos_alias;
+                            // alias_guard restores pos_ on scope exit
                         } else {
                             std::unordered_map<std::string, std::string> subst;
                             bool alias_parse_ok = true;
@@ -792,7 +792,7 @@ TypeSpec Parser::parse_base_type() {
                                 }
                             }
                             if (!alias_parse_ok) {
-                                pos_ = save_pos_alias;
+                                // alias_guard restores pos_ on scope exit
                             } else {
                             // Substitute alias params in the aliased type's arg_refs.
                                 ts = ati.aliased_type;
@@ -826,6 +826,7 @@ TypeSpec Parser::parse_base_type() {
                                 }
                                 ts.is_const   |= save_const;
                                 ts.is_volatile |= save_vol;
+                                alias_guard.commit();
                                 return ts;
                             }
                         }
@@ -1437,7 +1438,9 @@ TypeSpec Parser::parse_base_type() {
                                             t.kind = TokenKind::Semi; t.lexeme = ";";
                                             inject_toks.push_back(t);
 
-                                            // Save and inject tokens
+                                            // Token injection: temporarily swap tokens_ to parse injected text.
+                                            // TentativeParseGuard does not snapshot tokens_, so manual
+                                            // save/restore of tokens_ and pos_ is intentionally kept here.
                                             int saved_pos = pos_;
                                             auto saved_toks = std::move(tokens_);
                                             tokens_ = std::move(inject_toks);
