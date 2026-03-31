@@ -1,7 +1,8 @@
 # AArch64 Direct-Call Convergence Plan
 
-Status: Open
-Last Updated: 2026-03-30
+Status: Closed
+Last Updated: 2026-03-31
+Completed: 2026-03-31
 
 ## Relationship To Roadmap
 
@@ -49,6 +50,15 @@ Current work already has a growing set of AArch64 direct-call paths, including t
 
 4. Run focused validation and record outcomes:
    - `ctest -j --output-on-failure -L aarch64_backend`
+
+## Completion Notes (2026-03-31)
+
+- All acceptance criteria met: AArch64 direct-call coverage converged with x86 baseline.
+- Added helper body asm verification to `test_aarch64_backend_renders_param_slot_direct_call_slice`.
+- Added `target triple =` non-fallback assertion to `test_aarch64_backend_renders_typed_direct_call_local_arg_slice`.
+- Call-rewrite symmetry verified as already complete (no new tests needed for step 3).
+- ctest result: 2534/2671 — no regression from baseline.
+- Intentionally deferred: `goto_only_constant_return`, `countdown_while_return`, `countdown_do_while_return` — these are non-direct-call tests, out of scope for this plan.
 
 ## Risks / Non-goals
 

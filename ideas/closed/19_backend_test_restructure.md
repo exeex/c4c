@@ -1,5 +1,16 @@
 # Backend Test Restructure
 
+Status: Closed
+Completed: 2026-03-31
+
+## Completion Notes
+
+- helper split complete: `backend_test_util.hpp` (assertions/utilities) + `backend_test_fixtures.hpp` (module builders); `backend_test_helper.hpp` reduced to thin aggregator
+- argv[1] filter complete: `test_filter()` + updated `RUN_TEST` macro; all 5 test `main()` functions accept the argument
+- file-by-category split (item 3) deferred: aarch64 (2708 lines) and x86 (2566 lines) files share file-local `make_*` helpers across all categories; a clean split would require moving helpers to yet another shared header — deferred to a future idea
+- parameterized merge (item 4) remains long-term
+- Regression: 2534/2671 before and after (no change)
+
 ## Problem
 tests/backend/ 目前是一萬行勉強拆成五個檔案，內部沒有分層。
 

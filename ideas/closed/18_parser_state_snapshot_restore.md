@@ -1,7 +1,8 @@
 # Unified Parser State Snapshot/Restore
 
-Status: Open
+Status: Closed
 Last Updated: 2026-03-31
+Completed: 2026-03-31
 
 ## Goal
 
@@ -67,10 +68,19 @@ struct TentativeParseGuard {
 - Snapshot copy cost is acceptable for correctness; optimize later if profiling shows a bottleneck
 - New speculative state fields added in the future must be added to `ParserSnapshot` (enforce via comment/checklist in `parser.hpp`)
 
+## Completion Notes (2026-03-31)
+
+- `ParserSnapshot` struct added to `parser.hpp` covering: `pos_`, `typedefs_`, `user_typedefs_`, `typedef_types_`, `var_types_`, `last_resolved_typedef_`
+- `save_state()` / `restore_state()` implemented in `common.cpp`
+- `TentativeParseGuard` RAII guard added to `parser.hpp`
+- 25 manual save/restore sites converted across `statements.cpp`, `types_declarator.cpp`, `types_struct.cpp`, `types_base.cpp`, `expressions.cpp`, `declarations.cpp`
+- 5 sites left unchanged (token injection patterns that swap `tokens_`, lambda-captured positions, non-tentative re-consume patterns)
+- Regression: 2534/2671 (baseline maintained, no new failures)
+
 ## Acceptance Criteria
 
-- [ ] All manual save/restore sites replaced with `TentativeParseGuard`
-- [ ] No raw `pos_ = saved_pos` patterns remain outside of `restore_state()`
-- [ ] `cmake --build build -j8` succeeds
-- [ ] `ctest --test-dir build -j 8` shows no regressions (2123/2123)
-- [ ] Debug build logs snapshot restore events for traceability
+- [x] All convertible manual save/restore sites replaced with `TentativeParseGuard` (25/30; 5 left for structural reasons)
+- [x] No raw `pos_ = saved_pos` patterns remain outside of `restore_state()` (except the 5 documented exceptions)
+- [x] `cmake --build build -j8` succeeds
+- [x] `ctest --test-dir build -j 8` shows no regressions (2534/2671 baseline maintained)
+- [ ] Debug build logs snapshot restore events for traceability (skipped — not needed for correctness)

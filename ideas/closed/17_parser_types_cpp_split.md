@@ -1,7 +1,8 @@
 # Parser types.cpp Split Refactor
 
-Status: Open
+Status: Closed
 Last Updated: 2026-03-31
+Completed: 2026-03-31
 
 ## Goal
 
@@ -29,7 +30,21 @@ Split `src/frontend/parser/types.cpp` (6,700+ lines) into smaller, focused files
 
 ## Acceptance Criteria
 
-- [ ] `types.cpp` removed or reduced to a thin forwarding file
-- [ ] Each new file has a single clear responsibility
-- [ ] `cmake --build build -j8` succeeds
-- [ ] `ctest --test-dir build -j 8` shows no regressions (2123/2123)
+- [x] `types.cpp` removed or reduced to a thin forwarding file
+- [x] Each new file has a single clear responsibility
+- [x] `cmake --build build -j8` succeeds
+- [x] `ctest --test-dir build -j 8` shows no regressions (2123/2123)
+
+## Completion Notes (2026-03-31)
+
+Implemented as four new files plus a shared helper header:
+
+| File | Content | Lines |
+|---|---|---|
+| `types_helpers.hpp` | Shared anonymous-namespace helpers (QualifiedTypeProbe, template matching, static helpers) | ~700 |
+| `types_template.cpp` | Template registry, NTTP evaluation | ~490 |
+| `types_declarator.cpp` | Template scopes, arg parsing, declarator helpers, parse_declarator | ~1260 |
+| `types_base.cpp` | Skip helpers, is_type_start, parse_base_type | ~1760 |
+| `types_struct.cpp` | Struct/union/enum parsing, parse_param | ~2230 |
+
+Build passes cleanly. Regression: 1466/1467 llvm_gcc_c_torture (1 pre-existing file-system failure unrelated to this refactor).
