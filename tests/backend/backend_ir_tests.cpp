@@ -739,7 +739,8 @@ void test_backend_ir_validator_accepts_lowered_global_store_reload_slice() {
   expect_true(error.empty(),
               "backend IR validator should not report an error for valid lowered scalar global stores");
 }
-int main() {
+int main(int argc, char* argv[]) {
+  if (argc >= 2) test_filter() = argv[1];
 
   test_backend_ir_printer_renders_return_add();
   test_backend_ir_validator_accepts_lowered_slice();

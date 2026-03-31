@@ -2701,7 +2701,8 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_assembler_handoff_helper_stages_emitted_text();
 }
 
-int main() {
+int main(int argc, char* argv[]) {
+  if (argc >= 2) test_filter() = argv[1];
   run_aarch64_backend_tests();
   check_failures();
   return 0;

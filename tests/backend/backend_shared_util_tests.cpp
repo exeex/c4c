@@ -809,7 +809,8 @@ void test_shared_linker_parses_single_member_archive_fixture() {
               "shared linker archive parser should preserve relocation inventory for the bounded archive member");
 }
 
-int main(){
+int main(int argc, char* argv[]) {
+  if (argc >= 2) test_filter() = argv[1];
   test_backend_shared_liveness_surface_tracks_result_names();
   test_backend_shared_liveness_surface_tracks_call_crossing_ranges();
   test_backend_shared_liveness_surface_tracks_phi_join_ranges();

@@ -1174,7 +1174,8 @@ void test_shared_linker_parses_builtin_x86_extern_call_object() {
 #endif
 
 
-int main() {
+int main(int argc, char* argv[]) {
+  if (argc >= 2) test_filter() = argv[1];
   test_lir_typed_wrappers_classify_basic_operands();
   test_lir_typed_wrappers_classify_basic_types();
   test_lir_call_arg_helpers_split_nested_typed_args();

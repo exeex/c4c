@@ -2463,7 +2463,8 @@ void test_x86_backend_assembler_handoff_helper_stages_emitted_text() {
   std::filesystem::remove(output_path);
 }
 
-int main() {
+int main(int argc, char* argv[]) {
+  if (argc >= 2) test_filter() = argv[1];
 RUN_TEST(test_x86_backend_scaffold_routes_through_explicit_emit_surface);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_ir_input);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_extern_decl_ir_input);
