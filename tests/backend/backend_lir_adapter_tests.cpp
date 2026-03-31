@@ -1244,5 +1244,6 @@ int main() {
   test_adapter_normalizes_local_temp_arithmetic_chain_slice();
   test_rejects_unsupported_instruction();
 
+  check_failures();
   return 0;
 }

@@ -15,10 +15,18 @@
 
 #include "../../src/codegen/lir/verify.hpp"
 
-[[noreturn]] inline void fail(const std::string& message) {
+inline int& fail_count() { static int c = 0; return c; }
+inline void fail(const std::string& message) {
   std::cerr << "FAIL: " << message << "\n";
-  std::exit(1);
+  ++fail_count();
 }
+inline void check_failures() {
+  if (fail_count() > 0) {
+    std::cerr << "\n" << fail_count() << " test(s) FAILED\n";
+    std::exit(1);
+  }
+}
+#define RUN_TEST(fn) do { try { fn(); } catch (const std::exception& e) { fail(std::string(#fn) + " threw: " + e.what()); } } while(0)
 
 inline void expect_true(bool condition, const std::string& message = "expectation failed") {
   if (!condition) fail(message);

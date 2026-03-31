@@ -795,5 +795,6 @@ int main() {
   test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predecessor_five_op_chain_and_five_op_chain_post_join_add_slice();
   test_backend_ir_printer_renders_lowered_countdown_while_slice();
   test_backend_ir_validator_accepts_lowered_countdown_while_slice();
+  check_failures();
   return 0;
 }
