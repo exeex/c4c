@@ -1082,6 +1082,8 @@ void test_aarch64_backend_renders_param_slot_direct_call_slice() {
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   expect_contains(rendered, ".type add_one, %function",
                   "aarch64 backend should lower the helper into a real function symbol");
+  expect_contains(rendered, "add_one:\n  add w0, w0, #1\n  ret\n",
+                  "aarch64 backend should lower the modified parameter slot helper through the ABI argument register");
   expect_contains(rendered, "mov w0, #5",
                   "aarch64 backend should materialize direct-call argument in w0");
   expect_contains(rendered, "bl add_one",
@@ -1195,6 +1197,8 @@ void test_aarch64_backend_renders_typed_direct_call_local_arg_slice() {
                   "aarch64 backend should materialize the local direct-call argument in w0 before bl");
   expect_contains(rendered, "bl add_one",
                   "aarch64 backend should lower the local-argument direct call with bl");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend should not fall back to LLVM text for the single-local direct-call slice");
 }
 
 void test_aarch64_backend_renders_typed_direct_call_local_arg_spacing_slice() {
