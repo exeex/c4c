@@ -1594,6 +1594,22 @@ void test_aarch64_backend_renders_typed_two_arg_direct_call_both_local_double_re
                   "aarch64 backend should lower the double-rewritten both-local direct call with bl");
 }
 
+void test_aarch64_backend_renders_double_printf_call_with_fp_register_args() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_double_printf_runtime_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, "movk x0, #16424, lsl #48",
+                  "aarch64 backend should materialize the first double literal bit-pattern instead of silently zeroing it");
+  expect_contains(rendered, "movk x0, #16460, lsl #48",
+                  "aarch64 backend should materialize the second double literal bit-pattern instead of silently zeroing it");
+  expect_contains(rendered, "ldr d0, [sp, #",
+                  "aarch64 backend should place the first double printf argument into d0");
+  expect_contains(rendered, "ldr d1, [sp, #",
+                  "aarch64 backend should place the second double printf argument into d1");
+  expect_contains(rendered, "bl printf",
+                  "aarch64 backend should still lower the direct variadic call with bl");
+}
+
 void test_aarch64_backend_renders_local_array_gep_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_local_array_gep_module()},
@@ -2944,6 +2960,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_renders_typed_two_arg_direct_call_both_local_first_rewrite_slice();
   test_aarch64_backend_renders_typed_two_arg_direct_call_both_local_second_rewrite_slice();
   test_aarch64_backend_renders_typed_two_arg_direct_call_both_local_double_rewrite_slice();
+  test_aarch64_backend_renders_double_printf_call_with_fp_register_args();
   // TODO: local-array GEP slice disabled — backend lowering changed
   // test_aarch64_backend_renders_local_array_gep_slice();
   test_aarch64_backend_renders_param_member_array_gep_slice();

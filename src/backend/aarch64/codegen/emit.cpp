@@ -13,6 +13,7 @@
 #include <charconv>
 #include <cctype>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <map>
 #include <optional>
@@ -4217,8 +4218,76 @@ static int gen_type_bits(const std::string& ty) {
   return 64;  // default
 }
 
+static bool gen_is_fp_type(const std::string& ty) {
+  return ty == "float" || ty == "double";
+}
+
 static bool gen_is_64bit(const std::string& ty) { return gen_type_bits(ty) > 32; }
 static const char* gen_reg_prefix(const std::string& ty) { return gen_is_64bit(ty) ? "x" : "w"; }
+
+static void gen_emit_integer_immediate(std::ostringstream& out, int reg_idx,
+                                       std::uint64_t value, bool is_64bit) {
+  if (is_64bit) {
+    if (value <= 65535) {
+      out << "  mov x" << reg_idx << ", #" << value << "\n";
+      return;
+    }
+    out << "  movz x" << reg_idx << ", #" << (value & 0xFFFF) << "\n";
+    if ((value >> 16) & 0xFFFF) {
+      out << "  movk x" << reg_idx << ", #" << ((value >> 16) & 0xFFFF)
+          << ", lsl #16\n";
+    }
+    if ((value >> 32) & 0xFFFF) {
+      out << "  movk x" << reg_idx << ", #" << ((value >> 32) & 0xFFFF)
+          << ", lsl #32\n";
+    }
+    if ((value >> 48) & 0xFFFF) {
+      out << "  movk x" << reg_idx << ", #" << ((value >> 48) & 0xFFFF)
+          << ", lsl #48\n";
+    }
+    return;
+  }
+
+  const std::uint32_t narrow = static_cast<std::uint32_t>(value);
+  if (static_cast<std::int64_t>(static_cast<std::int32_t>(narrow)) >= -65536 &&
+      narrow <= 65535) {
+    out << "  mov w" << reg_idx << ", #"
+        << static_cast<std::int32_t>(narrow) << "\n";
+    return;
+  }
+  out << "  movz w" << reg_idx << ", #" << (narrow & 0xFFFF) << "\n";
+  if ((narrow >> 16) & 0xFFFF) {
+    out << "  movk w" << reg_idx << ", #" << ((narrow >> 16) & 0xFFFF)
+        << ", lsl #16\n";
+  }
+}
+
+static bool gen_try_parse_fp_immediate_bits(const std::string& op, const std::string& ty,
+                                            std::uint64_t& bits_out) {
+  if (!gen_is_fp_type(ty)) return false;
+
+  try {
+    if (op.rfind("0x", 0) == 0 || op.rfind("-0x", 0) == 0) {
+      bits_out = std::stoull(op, nullptr, 16);
+      if (ty == "float") bits_out &= 0xFFFFFFFFu;
+      return true;
+    }
+
+    if (ty == "double") {
+      const double value = std::stod(op);
+      std::memcpy(&bits_out, &value, sizeof(value));
+      return true;
+    }
+
+    const float value = std::stof(op);
+    std::uint32_t bits32 = 0;
+    std::memcpy(&bits32, &value, sizeof(value));
+    bits_out = bits32;
+    return true;
+  } catch (...) {
+    return false;
+  }
+}
 
 static void gen_emit_sp_adjust(std::ostringstream& out, const char* op, int amount) {
   if (amount <= 0) return;
@@ -4576,36 +4645,47 @@ static void gen_load_operand(std::ostringstream& out, const std::string& op,
   } else if (op == "false" || op == "zeroinitializer" || op == "undef" || op == "poison") {
     out << "  mov " << rp << reg_idx << ", #0\n";
   } else {
+    std::uint64_t fp_bits = 0;
+    if (gen_try_parse_fp_immediate_bits(op, ty, fp_bits)) {
+      gen_emit_integer_immediate(out, reg_idx, fp_bits, gen_is_64bit(ty));
+      return;
+    }
+
     // Immediate value
     long long imm = 0;
     try { imm = std::stoll(op); } catch (...) {}
-    if (gen_is_64bit(ty)) {
-      if (imm >= 0 && imm <= 65535) {
-        out << "  mov x" << reg_idx << ", #" << imm << "\n";
-      } else if (imm >= -65536 && imm < 0) {
-        out << "  mov x" << reg_idx << ", #" << imm << "\n";
-      } else {
-        // Use movz/movk for large immediates
-        uint64_t u = static_cast<uint64_t>(imm);
-        out << "  movz x" << reg_idx << ", #" << (u & 0xFFFF) << "\n";
-        if ((u >> 16) & 0xFFFF)
-          out << "  movk x" << reg_idx << ", #" << ((u >> 16) & 0xFFFF) << ", lsl #16\n";
-        if ((u >> 32) & 0xFFFF)
-          out << "  movk x" << reg_idx << ", #" << ((u >> 32) & 0xFFFF) << ", lsl #32\n";
-        if ((u >> 48) & 0xFFFF)
-          out << "  movk x" << reg_idx << ", #" << ((u >> 48) & 0xFFFF) << ", lsl #48\n";
-      }
-    } else {
-      if (imm >= -65536 && imm <= 65535) {
-        out << "  mov w" << reg_idx << ", #" << imm << "\n";
-      } else {
-        uint32_t u = static_cast<uint32_t>(static_cast<int32_t>(imm));
-        out << "  movz w" << reg_idx << ", #" << (u & 0xFFFF) << "\n";
-        if ((u >> 16) & 0xFFFF)
-          out << "  movk w" << reg_idx << ", #" << ((u >> 16) & 0xFFFF) << ", lsl #16\n";
-      }
-    }
+    gen_emit_integer_immediate(out, reg_idx, static_cast<std::uint64_t>(imm),
+                               gen_is_64bit(ty));
   }
+}
+
+static void gen_load_fp_operand(std::ostringstream& out, const std::string& op,
+                                const std::string& ty, const GenSlotMap& sm,
+                                int reg_idx, const std::string& fn_prefix,
+                                const std::unordered_set<std::string>* extern_globals = nullptr) {
+  if (op.empty()) return;
+
+  if (op[0] == '%') {
+    const int off = sm.lookup(op);
+    if (off >= 0) {
+      out << "  ldr " << (ty == "double" ? "d" : "s") << reg_idx
+          << ", [sp, #" << off << "]\n";
+    }
+    return;
+  }
+
+  std::uint64_t bits = 0;
+  if (gen_try_parse_fp_immediate_bits(op, ty, bits)) {
+    gen_emit_integer_immediate(out, 9, bits, ty == "double");
+    out << "  fmov " << (ty == "double" ? "d" : "s") << reg_idx << ", "
+        << (ty == "double" ? "x9" : "w9") << "\n";
+    return;
+  }
+
+  gen_load_operand(out, op, ty == "double" ? "i64" : "i32", sm, 9, fn_prefix,
+                   extern_globals);
+  out << "  fmov " << (ty == "double" ? "d" : "s") << reg_idx << ", "
+      << (ty == "double" ? "x9" : "w9") << "\n";
 }
 
 // Store register to stack slot.
@@ -5299,22 +5379,73 @@ static std::optional<std::string> try_emit_general_lir_asm(
           bool is_direct = (callee[0] == '@');
           std::string callee_sym = is_direct ? callee.substr(1) : callee;
 
-          // Parse and load arguments
           auto args = gen_parse_call_args(p->args_str);
-          for (size_t i = 0; i < args.size() && i < 8; ++i) {
-            gen_load_operand(out, args[i].value, args[i].type, sm, static_cast<int>(i), fn.name, &extern_globals);
+
+          struct GenAssignedCallArg {
+            GenCallArg arg;
+            bool is_fp = false;
+            int reg_index = -1;
+            int stack_index = -1;
+          };
+
+          std::vector<GenAssignedCallArg> assigned_args;
+          assigned_args.reserve(args.size());
+
+          int next_gp_reg = 0;
+          int next_fp_reg = 0;
+          int next_stack_slot = 0;
+          for (const auto& arg : args) {
+            GenAssignedCallArg assigned;
+            assigned.arg = arg;
+            assigned.is_fp = gen_is_fp_type(arg.type);
+            if (assigned.is_fp) {
+              if (next_fp_reg < 8) {
+                assigned.reg_index = next_fp_reg++;
+              } else {
+                assigned.stack_index = next_stack_slot++;
+              }
+            } else {
+              if (next_gp_reg < 8) {
+                assigned.reg_index = next_gp_reg++;
+              } else {
+                assigned.stack_index = next_stack_slot++;
+              }
+            }
+            assigned_args.push_back(std::move(assigned));
           }
 
-          const int stack_arg_count = args.size() > 8 ? static_cast<int>(args.size() - 8) : 0;
-          int stack_arg_bytes = stack_arg_count * 8;
+          for (const auto& assigned : assigned_args) {
+            if (assigned.reg_index < 0) continue;
+            if (assigned.is_fp) {
+              gen_load_fp_operand(out, assigned.arg.value, assigned.arg.type, sm,
+                                  assigned.reg_index, fn.name, &extern_globals);
+            } else {
+              gen_load_operand(out, assigned.arg.value, assigned.arg.type, sm,
+                               assigned.reg_index, fn.name, &extern_globals);
+            }
+          }
+
+          int stack_arg_bytes = next_stack_slot * 8;
           if (stack_arg_bytes % 16 != 0) {
             stack_arg_bytes += 16 - (stack_arg_bytes % 16);
           }
           if (stack_arg_bytes > 0) {
             gen_emit_sp_adjust(out, "sub", stack_arg_bytes);
-            for (size_t i = 8; i < args.size(); ++i) {
-              gen_load_operand(out, args[i].value, args[i].type, sm, 9, fn.name, &extern_globals);
-              out << "  str x9, [sp, #" << ((i - 8) * 8) << "]\n";
+            for (const auto& assigned : assigned_args) {
+              if (assigned.stack_index < 0) continue;
+              if (assigned.is_fp) {
+                gen_load_fp_operand(out, assigned.arg.value, assigned.arg.type, sm, 9,
+                                    fn.name, &extern_globals);
+                if (assigned.arg.type == "double") {
+                  out << "  fmov x9, d9\n";
+                } else {
+                  out << "  fmov w9, s9\n";
+                }
+              } else {
+                gen_load_operand(out, assigned.arg.value, assigned.arg.type, sm, 9,
+                                 fn.name, &extern_globals);
+              }
+              out << "  str x9, [sp, #" << (assigned.stack_index * 8) << "]\n";
             }
           }
 

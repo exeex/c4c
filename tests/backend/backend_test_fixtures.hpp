@@ -554,6 +554,44 @@ inline c4c::codegen::lir::LirModule make_typed_direct_call_two_arg_both_local_do
   return module;
 }
 
+inline c4c::codegen::lir::LirModule make_double_printf_runtime_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.string_pool.push_back(LirStringConst{"@.str0", "%f, %f\\0A", 8});
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.x", "double", "", 8});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.y", "double", "", 8});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{"double", "0x4028AE147AE147AE", "%lv.x"});
+  entry.insts.push_back(LirStoreOp{"double", "0x404C63D70A3D70A4", "%lv.y"});
+  entry.insts.push_back(LirLoadOp{"%t0", "double", "%lv.x"});
+  entry.insts.push_back(LirLoadOp{"%t1", "double", "%lv.y"});
+  entry.insts.push_back(
+      LirGepOp{"%t2", "[8 x i8]", "@.str0", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirCallOp{
+      "%t3",
+      "i32",
+      LirOperand(std::string("@printf"), LirOperandKind::Global),
+      "(ptr, ...)",
+      "ptr %t2, double %t0, double %t1",
+  });
+  entry.terminator = LirRet{std::string("0"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 inline c4c::codegen::lir::LirModule make_local_array_gep_module() {
   using namespace c4c::codegen::lir;
 

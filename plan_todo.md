@@ -296,3 +296,45 @@ stack-spill AArch64 emitter. All instruction types handled in one pass.
   treat the two remaining AArch64 failures as separate follow-ons:
   `00195.c` as a floating-point constant/calling-convention bug, and
   `00216.c` as a remaining aggregate/runtime memory bug.
+
+### Step 6 slice result (2026-04-01, double literal + FP call ABI in general emitter)
+- Root cause isolated from `00195.c`:
+  the general AArch64 emitter treated `double` values as generic integer slots
+  without handling LLVM floating-point immediates or the AArch64 FP call ABI.
+  In practice it stored both `double` literals as zero and then passed the
+  loaded payloads to `printf` in `x1`/`x2` instead of `d0`/`d1`.
+- Fixed `src/backend/aarch64/codegen/emit.cpp` by:
+  1. parsing LLVM `float`/`double` immediates into raw IEEE bit patterns before
+     stack stores
+  2. assigning floating-point call arguments to `sN`/`dN` registers while
+     preserving the existing integer-register and stack overflow handling.
+- Added focused backend coverage in
+  `tests/backend/backend_test_fixtures.hpp` and
+  `tests/backend/backend_lir_adapter_aarch64_tests.cpp` for a direct
+  `printf("%f, %f\n", ...)` slice that must materialize non-zero double
+  literals and load the call arguments into `d0`/`d1`.
+- Focus validation:
+  `ctest --test-dir build -R c_testsuite_aarch64_backend_src_00195_c
+  --output-on-failure` now passes.
+- Updated AArch64 subset status:
+  `ctest --test-dir build -R c_testsuite_aarch64 -j8 --output-on-failure`
+  now reports 1 failure total out of 220 (`219/220` passing), improved from
+  2 failures (`218/220` passing). Remaining AArch64 failure:
+  `00216.c`.
+- Full-suite snapshot:
+  `ctest --test-dir build -j8 --output-on-failure` now reports 4 failures out
+  of 2671 tests (`2667/2671` passing), improved from the prior recorded
+  `2666/2671`. Remaining full-suite failures:
+  `positive_sema_linux_stage2_repro_03_asm_volatile_c`,
+  `backend_lir_adapter_aarch64_tests`,
+  `c_testsuite_aarch64_backend_src_00216_c`, and
+  `llvm_gcc_c_torture_src_20080502_1_c`.
+- Residual note:
+  `backend_lir_adapter_aarch64_tests` still contains many pre-existing
+  expectations for LLVM-text output from slices now emitted as assembly; this
+  slice only added focused FP-call coverage and did not reconcile the older
+  harness assumptions.
+- Next intended slice:
+  isolate the remaining `00216.c` segfault as a stack-/aggregate-addressing
+  bug in the general emitter without expanding Step 6 beyond the last AArch64
+  correctness case.
