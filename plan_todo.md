@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 1: Establish Header Ownership
-- Current slice: extract the next cohesive inline `Lowerer` helper family from the class body, with the next candidate being the larger type-inference helper `infer_generic_ctrl_type`
+- Current slice: select the next cohesive `Lowerer` helper cluster to peel out of the inline class body after `infer_generic_ctrl_type`
 
 ## Todo
 
@@ -37,10 +37,12 @@ Source Plan: plan.md
 - [x] Rebuilt and reran the targeted known-failure triplet plus the full `ctest --test-dir build -j8 --output-on-failure`; the suite again finished at 2671 total tests, 2668 passing, and the same 3 historical failures
 - [x] Extracted the small declref/call-result helper pair (`infer_call_result_type_from_callee` and `storage_type_for_declref`) out of the inline `Lowerer` class body into out-of-class definitions in `src/frontend/hir/ast_to_hir.cpp`
 - [x] Rebuilt and reran the targeted known-failure triplet plus the full `ctest --test-dir build -j8 --output-on-failure`; the suite remained at 2671 total tests, 2668 passing, and the same 3 historical failures
+- [x] Extracted the larger type-inference helper `infer_generic_ctrl_type` out of the inline `Lowerer` class body into an out-of-class definition in `src/frontend/hir/ast_to_hir.cpp`
+- [x] Rebuilt and reran the targeted known-failure triplet plus the full `ctest --test-dir build -j8 --output-on-failure`; the suite again finished at 2671 total tests, 2668 passing, and the same 3 historical failures
 
 ## Next Slice
 
-- Continue Step 1 by extracting the larger but still self-contained type-inference helper `infer_generic_ctrl_type` from the inline `Lowerer` class body into an out-of-class definition before tackling more entangled lowering methods or moving the full class definition into `ast_to_hir.hpp`.
+- Continue Step 1 by selecting the next cohesive `Lowerer` helper cluster to peel out of the inline class body before moving the full class definition into `ast_to_hir.hpp`.
 
 ## Blockers
 
@@ -61,4 +63,6 @@ Source Plan: plan.md
 - The latest slice peeled the low-coupling pack-binding and reference-type utilities out of the inline `Lowerer` class body into out-of-class definitions, shrinking the monolithic class definition again without changing symbol ownership or behavior.
 - The newest slice peeled the low-coupling block-management and struct-static-member lookup helpers out of the inline `Lowerer` class body into out-of-class definitions, continuing the monolith shrink without changing ownership or behavior.
 - The current slice peeled the small declref/call-result helper pair (`infer_call_result_type_from_callee` and `storage_type_for_declref`) out of the inline `Lowerer` class body into out-of-class definitions, preserving behavior while continuing the monolith shrink.
+- Validation on 2026-04-01: `cmake --build build -j8` succeeded; the targeted rerun of `positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c` matched the historical blocker list; a full `ctest --test-dir build -j8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 failing tests.
+- The latest slice peeled the larger type-inference helper `infer_generic_ctrl_type` out of the inline `Lowerer` class body into an out-of-class definition, preserving behavior while continuing the monolith shrink.
 - Validation on 2026-04-01: `cmake --build build -j8` succeeded; the targeted rerun of `positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c` matched the historical blocker list; a full `ctest --test-dir build -j8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 failing tests.

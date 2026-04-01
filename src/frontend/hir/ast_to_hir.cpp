@@ -1120,261 +1120,7 @@ class Lowerer {
   std::optional<TypeSpec> storage_type_for_declref(FunctionCtx* ctx,
                                                    const DeclRef& r);
 
-  TypeSpec infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
-    if (!n) return {};
-    if (has_concrete_type(n->type)) return n->type;
-    switch (n->kind) {
-      case NK_INT_LIT:
-        return infer_int_literal_type(n);
-      case NK_FLOAT_LIT: {
-        TypeSpec ts = n->type;
-        if (!has_concrete_type(ts)) ts = classify_float_literal_type(const_cast<Node*>(n));
-        return ts;
-      }
-      case NK_CHAR_LIT: {
-        TypeSpec ts = n->type;
-        if (!has_concrete_type(ts)) ts.base = TB_INT;
-        return ts;
-      }
-      case NK_STR_LIT: {
-        TypeSpec ts{};
-        ts.base = TB_CHAR;
-        ts.ptr_level = 1;
-        return ts;
-      }
-      case NK_VAR: {
-        const std::string name = n->name ? n->name : "";
-        // Non-type template parameter: infer as int.
-        if (ctx && !name.empty()) {
-          auto nttp_it = ctx->nttp_bindings.find(name);
-          if (nttp_it != ctx->nttp_bindings.end()) {
-            TypeSpec ts{};
-            ts.base = TB_INT;
-            ts.array_size = -1;
-            ts.inner_rank = -1;
-            return ts;
-          }
-        }
-        if (n->name && n->name[0] &&
-            n->has_template_args && find_template_struct_primary(n->name)) {
-          std::string arg_refs;
-          for (int i = 0; i < n->n_template_args; ++i) {
-            if (!arg_refs.empty()) arg_refs += ",";
-            if (n->template_arg_is_value && n->template_arg_is_value[i]) {
-              const char* fwd_name = n->template_arg_nttp_names ?
-                  n->template_arg_nttp_names[i] : nullptr;
-              if (fwd_name && fwd_name[0]) arg_refs += fwd_name;
-              else arg_refs += std::to_string(n->template_arg_values[i]);
-            } else if (n->template_arg_types) {
-              const TypeSpec& arg_ts = n->template_arg_types[i];
-              arg_refs += encode_template_type_arg_ref_hir(arg_ts);
-            }
-          }
-          TypeSpec tmp_ts{};
-          tmp_ts.base = TB_STRUCT;
-          tmp_ts.array_size = -1;
-          tmp_ts.inner_rank = -1;
-          tmp_ts.tpl_struct_origin = n->name;
-          tmp_ts.tpl_struct_arg_refs = ::strdup(arg_refs.c_str());
-          const Node* primary_tpl = find_template_struct_primary(n->name);
-          TypeBindings tpl_empty;
-          NttpBindings nttp_empty;
-          seed_and_resolve_pending_template_type_if_needed(
-              tmp_ts,
-              ctx ? ctx->tpl_bindings : tpl_empty,
-              ctx ? ctx->nttp_bindings : nttp_empty,
-              n, PendingTemplateTypeKind::OwnerStruct, "generic-ctrl-type-var",
-              primary_tpl);
-          if (tmp_ts.tag && module_->struct_defs.count(tmp_ts.tag)) return tmp_ts;
-        }
-        if (ctx) {
-          auto lit = ctx->locals.find(name);
-          if (lit != ctx->locals.end()) {
-            auto tt = ctx->local_types.find(lit->second.value);
-            if (tt != ctx->local_types.end()) return reference_value_ts(tt->second);
-          }
-          auto pit = ctx->params.find(name);
-          if (pit != ctx->params.end() && ctx->fn &&
-              pit->second < ctx->fn->params.size())
-            return reference_value_ts(ctx->fn->params[pit->second].type.spec);
-          auto sit = ctx->static_globals.find(name);
-          if (sit != ctx->static_globals.end()) {
-            if (const GlobalVar* gv = module_->find_global(sit->second))
-              return reference_value_ts(gv->type.spec);
-          }
-        }
-        auto git = module_->global_index.find(name);
-        if (git != module_->global_index.end()) {
-          if (const GlobalVar* gv = module_->find_global(git->second))
-            return reference_value_ts(gv->type.spec);
-        }
-        auto fit = module_->fn_index.find(name);
-        if (fit != module_->fn_index.end()) {
-          if (const Function* fn = module_->find_function(fit->second)) {
-            TypeSpec ts = fn->return_type.spec;
-            ts.is_fn_ptr = true;  // bare function designator
-            ts.ptr_level = 0;
-            ts.array_rank = 0;
-            ts.array_size = -1;
-            return ts;
-          }
-        }
-        return n->type;
-      }
-      case NK_ADDR: {
-        TypeSpec ts = infer_generic_ctrl_type(ctx, n->left);
-        if (ts.array_rank > 0 && !is_vector_ty(ts)) {
-          ts.array_rank = 0;
-          ts.array_size = -1;
-        }
-        ts.ptr_level += 1;
-        return ts;
-      }
-      case NK_DEREF: {
-        TypeSpec ts = infer_generic_ctrl_type(ctx, n->left);
-        if (ts.ptr_level == 0 && ts.base == TB_STRUCT && ts.tag) {
-          // Check for operator_deref method — return its return type.
-          // Try both non-const and const variants.
-          std::string base_key = std::string(ts.tag) + "::operator_deref";
-          auto rit = struct_method_ret_types_.find(base_key);
-          if (rit == struct_method_ret_types_.end())
-            rit = struct_method_ret_types_.find(base_key + "_const");
-          if (rit != struct_method_ret_types_.end())
-            return rit->second;
-        }
-        if (ts.ptr_level > 0) ts.ptr_level -= 1;
-        else if (ts.array_rank > 0) ts.array_rank -= 1;
-        return ts;
-      }
-      case NK_MEMBER: {
-        TypeSpec base_ts = infer_generic_ctrl_type(ctx, n->left);
-        if (n->is_arrow && base_ts.ptr_level > 0) base_ts.ptr_level -= 1;
-        if (base_ts.tag) {
-          auto it = module_->struct_defs.find(base_ts.tag);
-          if (it != module_->struct_defs.end()) {
-            for (const auto& f : it->second.fields) {
-              if (f.name == (n->name ? n->name : "")) return field_type_of(f);
-            }
-          }
-        }
-        return n->type;
-      }
-      case NK_INDEX: {
-        TypeSpec ts = infer_generic_ctrl_type(ctx, n->left);
-        if (ts.ptr_level > 0) ts.ptr_level -= 1;
-        else if (is_vector_ty(ts)) return vector_element_type(ts);
-        else if (ts.array_rank > 0) {
-          ts.array_rank -= 1;
-          ts.array_size = (ts.array_rank > 0) ? ts.array_dims[0] : -1;
-        }
-        return ts;
-      }
-      case NK_CAST:
-      case NK_COMPOUND_LIT: {
-        TypeSpec ts = n->type;
-        if (ctx && !ctx->tpl_bindings.empty() &&
-            ts.base == TB_TYPEDEF && ts.tag) {
-          auto it = ctx->tpl_bindings.find(ts.tag);
-          if (it != ctx->tpl_bindings.end()) {
-            ts.base = it->second.base;
-            ts.tag = it->second.tag;
-          }
-      }
-      if (ctx && !ctx->tpl_bindings.empty() && ts.tpl_struct_origin)
-        {
-          seed_and_resolve_pending_template_type_if_needed(
-              ts, ctx->tpl_bindings, ctx->nttp_bindings, n,
-              PendingTemplateTypeKind::DeclarationType, "generic-ctrl-type");
-        }
-        return ts;
-      }
-      case NK_BINOP: {
-        const TypeSpec l = infer_generic_ctrl_type(ctx, n->left);
-        const TypeSpec r = infer_generic_ctrl_type(ctx, n->right);
-        if (is_vector_ty(l)) return l;
-        if (is_vector_ty(r)) return r;
-        const bool ptr_l = l.ptr_level > 0 || l.array_rank > 0;
-        const bool ptr_r = r.ptr_level > 0 || r.array_rank > 0;
-        if (n->op && n->op[0] && !n->op[1]) {
-          const char op = n->op[0];
-          if ((op == '+' || op == '-') && ptr_l && !ptr_r) return normalize_generic_type(l);
-          if (op == '+' && ptr_r && !ptr_l) return normalize_generic_type(r);
-        }
-        if (l.base == TB_LONGLONG || l.base == TB_ULONGLONG ||
-            r.base == TB_LONGLONG || r.base == TB_ULONGLONG) {
-          TypeSpec ts{};
-          ts.base = (l.base == TB_ULONGLONG || r.base == TB_ULONGLONG)
-                        ? TB_ULONGLONG
-                        : TB_LONGLONG;
-          return ts;
-        }
-        if (l.base == TB_LONG || l.base == TB_ULONG || r.base == TB_LONG || r.base == TB_ULONG) {
-          TypeSpec ts{};
-          ts.base = (l.base == TB_ULONG || r.base == TB_ULONG) ? TB_ULONG : TB_LONG;
-          return ts;
-        }
-        if (l.base == TB_DOUBLE || r.base == TB_DOUBLE) {
-          TypeSpec ts{};
-          ts.base = TB_DOUBLE;
-          return ts;
-        }
-        if (l.base == TB_FLOAT || r.base == TB_FLOAT) {
-          TypeSpec ts{};
-          ts.base = TB_FLOAT;
-          return ts;
-        }
-        TypeSpec ts{}; ts.base = TB_INT; return ts;
-      }
-      case NK_CALL:
-      case NK_BUILTIN_CALL: {
-        if (n->left && n->left->kind == NK_VAR && n->left->name &&
-            n->n_children == 0 && n->left->has_template_args &&
-            find_template_struct_primary(n->left->name)) {
-          TypeSpec callee_ts = infer_generic_ctrl_type(ctx, n->left);
-          if (callee_ts.base == TB_STRUCT) return callee_ts;
-        }
-        if (n->left && n->left->kind == NK_VAR && n->left->name) {
-          auto sit = module_->struct_defs.find(n->left->name);
-          if (sit != module_->struct_defs.end()) {
-            TypeSpec ts{};
-            ts.base = TB_STRUCT;
-            ts.tag = sit->second.tag.c_str();
-            return ts;
-          }
-        }
-        // Try to infer the return type of the called function.
-        if (n->left && n->left->kind == NK_VAR && n->left->name) {
-          const std::string callee_name = n->left->name;
-          // Check deduced template call first.
-          auto dit = deduced_template_calls_.find(n);
-          if (dit != deduced_template_calls_.end()) {
-            auto fit = module_->fn_index.find(dit->second.mangled_name);
-            if (fit != module_->fn_index.end()) {
-              const Function* fn = module_->find_function(fit->second);
-              if (fn) return reference_value_ts(fn->return_type.spec);
-            }
-          }
-          // Direct function lookup.
-          auto fit = module_->fn_index.find(callee_name);
-          if (fit != module_->fn_index.end()) {
-            const Function* fn = module_->find_function(fit->second);
-            if (fn) return reference_value_ts(fn->return_type.spec);
-          }
-          // operator() on struct variable: look up operator_call return type.
-          TypeSpec callee_ts = infer_generic_ctrl_type(ctx, n->left);
-          if (callee_ts.base == TB_STRUCT && callee_ts.ptr_level == 0 && callee_ts.tag) {
-            if (auto rit = find_struct_method_return_type(callee_ts.tag, "operator_call",
-                                                          callee_ts.is_const))
-              return reference_value_ts(*rit);
-          }
-        }
-        break;
-      }
-      default:
-        break;
-    }
-    return n->type;
-  }
+  TypeSpec infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n);
 
   Block& ensure_block(FunctionCtx& ctx, BlockId id);
 
@@ -9671,6 +9417,263 @@ TypeSpec Lowerer::reference_value_ts(TypeSpec ts) {
   ts.is_rvalue_ref = false;
   if (ts.ptr_level > 0) ts.ptr_level -= 1;
   return ts;
+}
+
+TypeSpec Lowerer::infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
+  if (!n) return {};
+  if (has_concrete_type(n->type)) return n->type;
+  switch (n->kind) {
+    case NK_INT_LIT:
+      return infer_int_literal_type(n);
+    case NK_FLOAT_LIT: {
+      TypeSpec ts = n->type;
+      if (!has_concrete_type(ts)) ts = classify_float_literal_type(const_cast<Node*>(n));
+      return ts;
+    }
+    case NK_CHAR_LIT: {
+      TypeSpec ts = n->type;
+      if (!has_concrete_type(ts)) ts.base = TB_INT;
+      return ts;
+    }
+    case NK_STR_LIT: {
+      TypeSpec ts{};
+      ts.base = TB_CHAR;
+      ts.ptr_level = 1;
+      return ts;
+    }
+    case NK_VAR: {
+      const std::string name = n->name ? n->name : "";
+      // Non-type template parameter: infer as int.
+      if (ctx && !name.empty()) {
+        auto nttp_it = ctx->nttp_bindings.find(name);
+        if (nttp_it != ctx->nttp_bindings.end()) {
+          TypeSpec ts{};
+          ts.base = TB_INT;
+          ts.array_size = -1;
+          ts.inner_rank = -1;
+          return ts;
+        }
+      }
+      if (n->name && n->name[0] &&
+          n->has_template_args && find_template_struct_primary(n->name)) {
+        std::string arg_refs;
+        for (int i = 0; i < n->n_template_args; ++i) {
+          if (!arg_refs.empty()) arg_refs += ",";
+          if (n->template_arg_is_value && n->template_arg_is_value[i]) {
+            const char* fwd_name = n->template_arg_nttp_names ?
+                n->template_arg_nttp_names[i] : nullptr;
+            if (fwd_name && fwd_name[0]) arg_refs += fwd_name;
+            else arg_refs += std::to_string(n->template_arg_values[i]);
+          } else if (n->template_arg_types) {
+            const TypeSpec& arg_ts = n->template_arg_types[i];
+            arg_refs += encode_template_type_arg_ref_hir(arg_ts);
+          }
+        }
+        TypeSpec tmp_ts{};
+        tmp_ts.base = TB_STRUCT;
+        tmp_ts.array_size = -1;
+        tmp_ts.inner_rank = -1;
+        tmp_ts.tpl_struct_origin = n->name;
+        tmp_ts.tpl_struct_arg_refs = ::strdup(arg_refs.c_str());
+        const Node* primary_tpl = find_template_struct_primary(n->name);
+        TypeBindings tpl_empty;
+        NttpBindings nttp_empty;
+        seed_and_resolve_pending_template_type_if_needed(
+            tmp_ts,
+            ctx ? ctx->tpl_bindings : tpl_empty,
+            ctx ? ctx->nttp_bindings : nttp_empty,
+            n, PendingTemplateTypeKind::OwnerStruct, "generic-ctrl-type-var",
+            primary_tpl);
+        if (tmp_ts.tag && module_->struct_defs.count(tmp_ts.tag)) return tmp_ts;
+      }
+      if (ctx) {
+        auto lit = ctx->locals.find(name);
+        if (lit != ctx->locals.end()) {
+          auto tt = ctx->local_types.find(lit->second.value);
+          if (tt != ctx->local_types.end()) return reference_value_ts(tt->second);
+        }
+        auto pit = ctx->params.find(name);
+        if (pit != ctx->params.end() && ctx->fn &&
+            pit->second < ctx->fn->params.size())
+          return reference_value_ts(ctx->fn->params[pit->second].type.spec);
+        auto sit = ctx->static_globals.find(name);
+        if (sit != ctx->static_globals.end()) {
+          if (const GlobalVar* gv = module_->find_global(sit->second))
+            return reference_value_ts(gv->type.spec);
+        }
+      }
+      auto git = module_->global_index.find(name);
+      if (git != module_->global_index.end()) {
+        if (const GlobalVar* gv = module_->find_global(git->second))
+          return reference_value_ts(gv->type.spec);
+      }
+      auto fit = module_->fn_index.find(name);
+      if (fit != module_->fn_index.end()) {
+        if (const Function* fn = module_->find_function(fit->second)) {
+          TypeSpec ts = fn->return_type.spec;
+          ts.is_fn_ptr = true;  // bare function designator
+          ts.ptr_level = 0;
+          ts.array_rank = 0;
+          ts.array_size = -1;
+          return ts;
+        }
+      }
+      return n->type;
+    }
+    case NK_ADDR: {
+      TypeSpec ts = infer_generic_ctrl_type(ctx, n->left);
+      if (ts.array_rank > 0 && !is_vector_ty(ts)) {
+        ts.array_rank = 0;
+        ts.array_size = -1;
+      }
+      ts.ptr_level += 1;
+      return ts;
+    }
+    case NK_DEREF: {
+      TypeSpec ts = infer_generic_ctrl_type(ctx, n->left);
+      if (ts.ptr_level == 0 && ts.base == TB_STRUCT && ts.tag) {
+        // Check for operator_deref method - return its return type.
+        // Try both non-const and const variants.
+        std::string base_key = std::string(ts.tag) + "::operator_deref";
+        auto rit = struct_method_ret_types_.find(base_key);
+        if (rit == struct_method_ret_types_.end())
+          rit = struct_method_ret_types_.find(base_key + "_const");
+        if (rit != struct_method_ret_types_.end())
+          return rit->second;
+      }
+      if (ts.ptr_level > 0) ts.ptr_level -= 1;
+      else if (ts.array_rank > 0) ts.array_rank -= 1;
+      return ts;
+    }
+    case NK_MEMBER: {
+      TypeSpec base_ts = infer_generic_ctrl_type(ctx, n->left);
+      if (n->is_arrow && base_ts.ptr_level > 0) base_ts.ptr_level -= 1;
+      if (base_ts.tag) {
+        auto it = module_->struct_defs.find(base_ts.tag);
+        if (it != module_->struct_defs.end()) {
+          for (const auto& f : it->second.fields) {
+            if (f.name == (n->name ? n->name : "")) return field_type_of(f);
+          }
+        }
+      }
+      return n->type;
+    }
+    case NK_INDEX: {
+      TypeSpec ts = infer_generic_ctrl_type(ctx, n->left);
+      if (ts.ptr_level > 0) ts.ptr_level -= 1;
+      else if (is_vector_ty(ts)) return vector_element_type(ts);
+      else if (ts.array_rank > 0) {
+        ts.array_rank -= 1;
+        ts.array_size = (ts.array_rank > 0) ? ts.array_dims[0] : -1;
+      }
+      return ts;
+    }
+    case NK_CAST:
+    case NK_COMPOUND_LIT: {
+      TypeSpec ts = n->type;
+      if (ctx && !ctx->tpl_bindings.empty() &&
+          ts.base == TB_TYPEDEF && ts.tag) {
+        auto it = ctx->tpl_bindings.find(ts.tag);
+        if (it != ctx->tpl_bindings.end()) {
+          ts.base = it->second.base;
+          ts.tag = it->second.tag;
+        }
+      }
+      if (ctx && !ctx->tpl_bindings.empty() && ts.tpl_struct_origin) {
+        seed_and_resolve_pending_template_type_if_needed(
+            ts, ctx->tpl_bindings, ctx->nttp_bindings, n,
+            PendingTemplateTypeKind::DeclarationType, "generic-ctrl-type");
+      }
+      return ts;
+    }
+    case NK_BINOP: {
+      const TypeSpec l = infer_generic_ctrl_type(ctx, n->left);
+      const TypeSpec r = infer_generic_ctrl_type(ctx, n->right);
+      if (is_vector_ty(l)) return l;
+      if (is_vector_ty(r)) return r;
+      const bool ptr_l = l.ptr_level > 0 || l.array_rank > 0;
+      const bool ptr_r = r.ptr_level > 0 || r.array_rank > 0;
+      if (n->op && n->op[0] && !n->op[1]) {
+        const char op = n->op[0];
+        if ((op == '+' || op == '-') && ptr_l && !ptr_r) return normalize_generic_type(l);
+        if (op == '+' && ptr_r && !ptr_l) return normalize_generic_type(r);
+      }
+      if (l.base == TB_LONGLONG || l.base == TB_ULONGLONG ||
+          r.base == TB_LONGLONG || r.base == TB_ULONGLONG) {
+        TypeSpec ts{};
+        ts.base = (l.base == TB_ULONGLONG || r.base == TB_ULONGLONG)
+                      ? TB_ULONGLONG
+                      : TB_LONGLONG;
+        return ts;
+      }
+      if (l.base == TB_LONG || l.base == TB_ULONG || r.base == TB_LONG || r.base == TB_ULONG) {
+        TypeSpec ts{};
+        ts.base = (l.base == TB_ULONG || r.base == TB_ULONG) ? TB_ULONG : TB_LONG;
+        return ts;
+      }
+      if (l.base == TB_DOUBLE || r.base == TB_DOUBLE) {
+        TypeSpec ts{};
+        ts.base = TB_DOUBLE;
+        return ts;
+      }
+      if (l.base == TB_FLOAT || r.base == TB_FLOAT) {
+        TypeSpec ts{};
+        ts.base = TB_FLOAT;
+        return ts;
+      }
+      TypeSpec ts{};
+      ts.base = TB_INT;
+      return ts;
+    }
+    case NK_CALL:
+    case NK_BUILTIN_CALL: {
+      if (n->left && n->left->kind == NK_VAR && n->left->name &&
+          n->n_children == 0 && n->left->has_template_args &&
+          find_template_struct_primary(n->left->name)) {
+        TypeSpec callee_ts = infer_generic_ctrl_type(ctx, n->left);
+        if (callee_ts.base == TB_STRUCT) return callee_ts;
+      }
+      if (n->left && n->left->kind == NK_VAR && n->left->name) {
+        auto sit = module_->struct_defs.find(n->left->name);
+        if (sit != module_->struct_defs.end()) {
+          TypeSpec ts{};
+          ts.base = TB_STRUCT;
+          ts.tag = sit->second.tag.c_str();
+          return ts;
+        }
+      }
+      // Try to infer the return type of the called function.
+      if (n->left && n->left->kind == NK_VAR && n->left->name) {
+        const std::string callee_name = n->left->name;
+        // Check deduced template call first.
+        auto dit = deduced_template_calls_.find(n);
+        if (dit != deduced_template_calls_.end()) {
+          auto fit = module_->fn_index.find(dit->second.mangled_name);
+          if (fit != module_->fn_index.end()) {
+            const Function* fn = module_->find_function(fit->second);
+            if (fn) return reference_value_ts(fn->return_type.spec);
+          }
+        }
+        // Direct function lookup.
+        auto fit = module_->fn_index.find(callee_name);
+        if (fit != module_->fn_index.end()) {
+          const Function* fn = module_->find_function(fit->second);
+          if (fn) return reference_value_ts(fn->return_type.spec);
+        }
+        // operator() on struct variable: look up operator_call return type.
+        TypeSpec callee_ts = infer_generic_ctrl_type(ctx, n->left);
+        if (callee_ts.base == TB_STRUCT && callee_ts.ptr_level == 0 && callee_ts.tag) {
+          if (auto rit = find_struct_method_return_type(callee_ts.tag, "operator_call",
+                                                        callee_ts.is_const))
+            return reference_value_ts(*rit);
+        }
+      }
+      break;
+    }
+    default:
+      break;
+  }
+  return n->type;
 }
 
 std::optional<TypeSpec> Lowerer::infer_call_result_type_from_callee(
