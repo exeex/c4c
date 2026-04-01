@@ -6,8 +6,16 @@
 #include "ir.hpp"
 
 #include <memory>
+#include <string>
 
 namespace c4c::hir {
+
+class Lowerer;
+
+SourceSpan make_span(const Node* n);
+NamespaceQualifier make_ns_qual(const Node* n);
+std::string decode_string_node(const Node* n);
+std::string strip_quoted_string(const char* raw);
 
 struct InitialHirBuildResult {
   std::shared_ptr<Module> module;
