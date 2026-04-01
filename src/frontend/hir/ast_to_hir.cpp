@@ -1413,58 +1413,17 @@ class Lowerer {
     return n->type;
   }
 
-  Block& ensure_block(FunctionCtx& ctx, BlockId id) {
-    for (auto& b : ctx.fn->blocks) {
-      if (b.id.value == id.value) return b;
-    }
-    ctx.fn->blocks.push_back(Block{id, {}, false});
-    return ctx.fn->blocks.back();
-  }
+  Block& ensure_block(FunctionCtx& ctx, BlockId id);
 
-  BlockId create_block(FunctionCtx& ctx) {
-    const BlockId id = next_block_id();
-    ctx.fn->blocks.push_back(Block{id, {}, false});
-    return id;
-  }
+  BlockId create_block(FunctionCtx& ctx);
 
-  void append_stmt(FunctionCtx& ctx, Stmt stmt) {
-    Block& b = ensure_block(ctx, ctx.current_block);
-    b.stmts.push_back(std::move(stmt));
-  }
+  void append_stmt(FunctionCtx& ctx, Stmt stmt);
 
   const Node* find_struct_static_member_decl(const std::string& tag,
-                                             const std::string& member) const {
-    auto sit = struct_static_member_decls_.find(tag);
-    if (sit != struct_static_member_decls_.end()) {
-      auto mit = sit->second.find(member);
-      if (mit != sit->second.end()) return mit->second;
-    }
-    auto dit = module_->struct_defs.find(tag);
-    if (dit != module_->struct_defs.end()) {
-      for (const auto& base_tag : dit->second.base_tags) {
-        if (const Node* from_base = find_struct_static_member_decl(base_tag, member))
-          return from_base;
-      }
-    }
-    return nullptr;
-  }
+                                             const std::string& member) const;
 
   std::optional<long long> find_struct_static_member_const_value(
-      const std::string& tag, const std::string& member) const {
-    auto sit = struct_static_member_const_values_.find(tag);
-    if (sit != struct_static_member_const_values_.end()) {
-      auto mit = sit->second.find(member);
-      if (mit != sit->second.end()) return mit->second;
-    }
-    auto dit = module_->struct_defs.find(tag);
-    if (dit != module_->struct_defs.end()) {
-      for (const auto& base_tag : dit->second.base_tags) {
-        if (auto from_base = find_struct_static_member_const_value(base_tag, member))
-          return from_base;
-      }
-    }
-    return std::nullopt;
-  }
+      const std::string& tag, const std::string& member) const;
 
   long long eval_const_int_with_nttp_bindings(
       const Node* n, const NttpBindings& nttp_bindings) const {
@@ -9976,6 +9935,59 @@ bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
   }
   *ts = resolved_member;
   return true;
+}
+
+Block& Lowerer::ensure_block(FunctionCtx& ctx, BlockId id) {
+  for (auto& b : ctx.fn->blocks) {
+    if (b.id.value == id.value) return b;
+  }
+  ctx.fn->blocks.push_back(Block{id, {}, false});
+  return ctx.fn->blocks.back();
+}
+
+BlockId Lowerer::create_block(FunctionCtx& ctx) {
+  const BlockId id = next_block_id();
+  ctx.fn->blocks.push_back(Block{id, {}, false});
+  return id;
+}
+
+void Lowerer::append_stmt(FunctionCtx& ctx, Stmt stmt) {
+  Block& b = ensure_block(ctx, ctx.current_block);
+  b.stmts.push_back(std::move(stmt));
+}
+
+const Node* Lowerer::find_struct_static_member_decl(
+    const std::string& tag, const std::string& member) const {
+  auto sit = struct_static_member_decls_.find(tag);
+  if (sit != struct_static_member_decls_.end()) {
+    auto mit = sit->second.find(member);
+    if (mit != sit->second.end()) return mit->second;
+  }
+  auto dit = module_->struct_defs.find(tag);
+  if (dit != module_->struct_defs.end()) {
+    for (const auto& base_tag : dit->second.base_tags) {
+      if (const Node* from_base = find_struct_static_member_decl(base_tag, member))
+        return from_base;
+    }
+  }
+  return nullptr;
+}
+
+std::optional<long long> Lowerer::find_struct_static_member_const_value(
+    const std::string& tag, const std::string& member) const {
+  auto sit = struct_static_member_const_values_.find(tag);
+  if (sit != struct_static_member_const_values_.end()) {
+    auto mit = sit->second.find(member);
+    if (mit != sit->second.end()) return mit->second;
+  }
+  auto dit = module_->struct_defs.find(tag);
+  if (dit != module_->struct_defs.end()) {
+    for (const auto& base_tag : dit->second.base_tags) {
+      if (auto from_base = find_struct_static_member_const_value(base_tag, member))
+        return from_base;
+    }
+  }
+  return std::nullopt;
 }
 
 void Lowerer::collect_weak_symbol_names(const std::vector<const Node*>& items) {
