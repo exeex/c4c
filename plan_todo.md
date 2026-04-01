@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 1: Establish Header Ownership
-- Current slice: target the next small inline `Lowerer` helper cluster after the callable-body helpers, likely another declaration-only peel that reduces the monolithic class body without widening scope
+- Current slice: target the next low-coupling inline template-struct helper cluster after the template-arg materialization helpers, still avoiding heavier structural bodies such as `lower_struct_def`
 
 ## Todo
 
@@ -54,10 +54,12 @@ Source Plan: plan.md
 - [x] Rebuilt and reran the full `ctest --test-dir build -j8 --output-on-failure`, then passed `.codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`; the suite remained at 2671 total tests, 2668 passing, and the same 3 historical failures
 - [x] Extracted the inline template-struct registry/lookup helpers (`find_template_struct_primary`, `find_template_struct_specializations`, `build_template_struct_env`, `register_template_struct_primary`, and `register_template_struct_specialization`) out of the `Lowerer` class body into out-of-class definitions in `src/frontend/hir/ast_to_hir.cpp`
 - [x] Rebuilt and reran the targeted known-failure triplet plus the full `ctest --test-dir build -j8 --output-on-failure`, then passed `.codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`; the suite remained at 2671 total tests, 2668 passing, and the same 3 historical failures
+- [x] Extracted the inline template-arg materialization helper cluster (`eval_deferred_nttp_expr_hir`, `template_struct_has_pack_params`, and `materialize_template_args`) out of the `Lowerer` class body into out-of-class definitions in `src/frontend/hir/ast_to_hir.cpp`
+- [x] Rebuilt and reran the targeted known-failure triplet plus the full `ctest --test-dir build -j8 --output-on-failure`, then passed `.codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`; the suite remained at 2671 total tests, 2668 passing, and the same 3 historical failures
 
 ## Next Slice
 
-- Continue Step 1 by peeling the next low-coupling inline `Lowerer` utility cluster out of the class body before moving the full class definition into `ast_to_hir.hpp`, while still leaving heavier structural helpers such as `lower_struct_def` for a later, more deliberate extraction.
+- Continue Step 1 by peeling the next low-coupling inline template-struct helper cluster out of the class body, likely starting with `prepare_template_struct_instance` or adjacent declaration-only helpers before tackling heavier structural bodies such as `lower_struct_def`.
 
 ## Blockers
 
@@ -105,3 +107,6 @@ Source Plan: plan.md
 - The current slice targeted the small callable-lowering helper cluster (`register_bodyless_callable`, `maybe_register_bodyless_callable`, `begin_callable_body_lowering`, and `finish_lowered_callable`) because those helpers share one cohesive responsibility and could move out of the inline `Lowerer` class body without changing ownership or widening the declaration surface.
 - The latest slice moved that callable-lowering helper cluster out of the inline `Lowerer` class body into out-of-class definitions, preserving behavior while continuing the monolith shrink.
 - Validation on 2026-04-01: `cmake --build build -j8` succeeded; a full `ctest --test-dir build -j8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 failing tests (`positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c`); `.codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passed with zero new failing tests.
+- The current slice targeted the inline template-arg materialization helper cluster because those helpers are self-contained coordination utilities inside the template-struct path and could move out of the inline `Lowerer` class body without changing ownership or widening the declaration surface.
+- The latest slice moved `eval_deferred_nttp_expr_hir`, `template_struct_has_pack_params`, and `materialize_template_args` out of the inline `Lowerer` class body into out-of-class definitions, preserving behavior while continuing the monolith shrink.
+- Validation on 2026-04-01: `cmake --build build -j8` succeeded; the targeted rerun of `positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c` matched the historical blocker list; a full `ctest --test-dir build -j8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 failing tests; `.codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passed with zero new failing tests.
