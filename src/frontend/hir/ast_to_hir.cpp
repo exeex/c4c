@@ -4818,87 +4818,17 @@ class Lowerer {
   // insert an implicit call to operator_bool(). Otherwise return as-is.
   ExprId maybe_bool_convert(FunctionCtx* ctx, ExprId expr, const Node* n);
 
-  TypeSpec builtin_query_result_type() const {
-    TypeSpec ts{};
-    ts.base = TB_ULONG;
-    return ts;
-  }
+  TypeSpec builtin_query_result_type() const;
 
-  TypeSpec resolve_builtin_query_type(FunctionCtx* ctx, TypeSpec target) const {
-    if (!ctx || ctx->tpl_bindings.empty() ||
-        target.base != TB_TYPEDEF || !target.tag) {
-      return target;
-    }
-    auto it = ctx->tpl_bindings.find(target.tag);
-    if (it == ctx->tpl_bindings.end()) return target;
-    const TypeSpec& concrete = it->second;
-    target.base = concrete.base;
-    target.tag = concrete.tag;
-    if (concrete.ptr_level > 0) target.ptr_level += concrete.ptr_level;
-    return target;
-  }
+  TypeSpec resolve_builtin_query_type(FunctionCtx* ctx, TypeSpec target) const;
 
-  ExprId lower_builtin_sizeof_type(FunctionCtx* ctx, const Node* n) {
-    const LayoutQueries queries(*module_);
-    const TypeSpec sizeof_target = resolve_builtin_query_type(ctx, n->type);
-    const TypeSpec result_ts = builtin_query_result_type();
-    if (ctx && sizeof_target.array_rank > 0 && n->type.array_size_expr &&
-        (sizeof_target.array_size <= 0 || sizeof_target.array_dims[0] <= 0)) {
-      TypeSpec elem_ts = sizeof_target;
-      elem_ts.array_rank--;
-      if (elem_ts.array_rank > 0) {
-        for (int i = 0; i < elem_ts.array_rank; ++i) {
-          elem_ts.array_dims[i] = elem_ts.array_dims[i + 1];
-        }
-      }
-      elem_ts.array_size = (elem_ts.array_rank > 0) ? elem_ts.array_dims[0] : -1;
+  ExprId lower_builtin_sizeof_type(FunctionCtx* ctx, const Node* n);
 
-      const ExprId count_id = lower_expr(ctx, n->type.array_size_expr);
-      const ExprId elem_size_id = append_expr(
-          n, IntLiteral{static_cast<long long>(queries.type_size_bytes(elem_ts)), false},
-          result_ts);
-      BinaryExpr mul{};
-      mul.op = BinaryOp::Mul;
-      mul.lhs = count_id;
-      mul.rhs = elem_size_id;
-      return append_expr(n, mul, result_ts);
-    }
+  ExprId lower_builtin_alignof_type(FunctionCtx* ctx, const Node* n);
 
-    const int size = queries.type_size_bytes(sizeof_target);
-    return append_expr(n, IntLiteral{static_cast<long long>(size), false}, result_ts);
-  }
+  int builtin_alignof_expr_bytes(FunctionCtx* ctx, const Node* expr);
 
-  ExprId lower_builtin_alignof_type(FunctionCtx* ctx, const Node* n) {
-    const LayoutQueries queries(*module_);
-    const TypeSpec alignof_target = resolve_builtin_query_type(ctx, n->type);
-    const int align = queries.type_align_bytes(alignof_target);
-    return append_expr(
-        n, IntLiteral{static_cast<long long>(align), false}, builtin_query_result_type());
-  }
-
-  int builtin_alignof_expr_bytes(FunctionCtx* ctx, const Node* expr) {
-    const LayoutQueries queries(*module_);
-    const TypeSpec expr_ts = infer_generic_ctrl_type(ctx, expr);
-    int align = 0;
-    if (expr && expr->kind == NK_VAR && expr->name) {
-      const std::string fn_name(expr->name);
-      auto fit = module_->fn_index.find(fn_name);
-      if (fit != module_->fn_index.end() &&
-          fit->second.value < module_->functions.size()) {
-        int fn_align = module_->functions[fit->second.value].attrs.align_bytes;
-        if (fn_align > 0) align = fn_align;
-      }
-    }
-    if (align != 0) return align;
-    if (expr_ts.align_bytes > 0) return expr_ts.align_bytes;
-    return queries.type_align_bytes(expr_ts);
-  }
-
-  ExprId lower_builtin_alignof_expr(FunctionCtx* ctx, const Node* n) {
-    const int align = builtin_alignof_expr_bytes(ctx, n->left);
-    return append_expr(
-        n, IntLiteral{static_cast<long long>(align), false}, builtin_query_result_type());
-  }
+  ExprId lower_builtin_alignof_expr(FunctionCtx* ctx, const Node* n);
 
   ExprId lower_expr(FunctionCtx* ctx, const Node* n) {
     if (!n) {
@@ -9781,6 +9711,88 @@ ExprId Lowerer::maybe_bool_convert(FunctionCtx* ctx, ExprId expr, const Node* n)
   c.args.push_back(append_expr(n, addr, ptr_ts));
 
   return append_expr(n, c, fn_ts);
+}
+
+TypeSpec Lowerer::builtin_query_result_type() const {
+  TypeSpec ts{};
+  ts.base = TB_ULONG;
+  return ts;
+}
+
+TypeSpec Lowerer::resolve_builtin_query_type(FunctionCtx* ctx, TypeSpec target) const {
+  if (!ctx || ctx->tpl_bindings.empty() ||
+      target.base != TB_TYPEDEF || !target.tag) {
+    return target;
+  }
+  auto it = ctx->tpl_bindings.find(target.tag);
+  if (it == ctx->tpl_bindings.end()) return target;
+  const TypeSpec& concrete = it->second;
+  target.base = concrete.base;
+  target.tag = concrete.tag;
+  if (concrete.ptr_level > 0) target.ptr_level += concrete.ptr_level;
+  return target;
+}
+
+ExprId Lowerer::lower_builtin_sizeof_type(FunctionCtx* ctx, const Node* n) {
+  const LayoutQueries queries(*module_);
+  const TypeSpec sizeof_target = resolve_builtin_query_type(ctx, n->type);
+  const TypeSpec result_ts = builtin_query_result_type();
+  if (ctx && sizeof_target.array_rank > 0 && n->type.array_size_expr &&
+      (sizeof_target.array_size <= 0 || sizeof_target.array_dims[0] <= 0)) {
+    TypeSpec elem_ts = sizeof_target;
+    elem_ts.array_rank--;
+    if (elem_ts.array_rank > 0) {
+      for (int i = 0; i < elem_ts.array_rank; ++i) {
+        elem_ts.array_dims[i] = elem_ts.array_dims[i + 1];
+      }
+    }
+    elem_ts.array_size = (elem_ts.array_rank > 0) ? elem_ts.array_dims[0] : -1;
+
+    const ExprId count_id = lower_expr(ctx, n->type.array_size_expr);
+    const ExprId elem_size_id = append_expr(
+        n, IntLiteral{static_cast<long long>(queries.type_size_bytes(elem_ts)), false},
+        result_ts);
+    BinaryExpr mul{};
+    mul.op = BinaryOp::Mul;
+    mul.lhs = count_id;
+    mul.rhs = elem_size_id;
+    return append_expr(n, mul, result_ts);
+  }
+
+  const int size = queries.type_size_bytes(sizeof_target);
+  return append_expr(n, IntLiteral{static_cast<long long>(size), false}, result_ts);
+}
+
+ExprId Lowerer::lower_builtin_alignof_type(FunctionCtx* ctx, const Node* n) {
+  const LayoutQueries queries(*module_);
+  const TypeSpec alignof_target = resolve_builtin_query_type(ctx, n->type);
+  const int align = queries.type_align_bytes(alignof_target);
+  return append_expr(
+      n, IntLiteral{static_cast<long long>(align), false}, builtin_query_result_type());
+}
+
+int Lowerer::builtin_alignof_expr_bytes(FunctionCtx* ctx, const Node* expr) {
+  const LayoutQueries queries(*module_);
+  const TypeSpec expr_ts = infer_generic_ctrl_type(ctx, expr);
+  int align = 0;
+  if (expr && expr->kind == NK_VAR && expr->name) {
+    const std::string fn_name(expr->name);
+    auto fit = module_->fn_index.find(fn_name);
+    if (fit != module_->fn_index.end() &&
+        fit->second.value < module_->functions.size()) {
+      int fn_align = module_->functions[fit->second.value].attrs.align_bytes;
+      if (fn_align > 0) align = fn_align;
+    }
+  }
+  if (align != 0) return align;
+  if (expr_ts.align_bytes > 0) return expr_ts.align_bytes;
+  return queries.type_align_bytes(expr_ts);
+}
+
+ExprId Lowerer::lower_builtin_alignof_expr(FunctionCtx* ctx, const Node* n) {
+  const int align = builtin_alignof_expr_bytes(ctx, n->left);
+  return append_expr(
+      n, IntLiteral{static_cast<long long>(align), false}, builtin_query_result_type());
 }
 
 void Lowerer::attach_out_of_class_struct_method_defs(
