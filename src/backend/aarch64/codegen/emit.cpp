@@ -4209,135 +4209,149 @@ static std::pair<int, int> gen_parse_array_type(const std::string& ty) {
   return {count, gen_type_bytes(elem)};
 }
 
+struct GenTypeLayout {
+  int size = 0;
+  int align = 1;
+};
+
+static std::string gen_trim_type_token(std::string_view text) {
+  while (!text.empty() && (text.front() == ' ' || text.front() == '\t')) {
+    text.remove_prefix(1);
+  }
+  while (!text.empty() && (text.back() == ' ' || text.back() == '\t')) {
+    text.remove_suffix(1);
+  }
+  return std::string(text);
+}
+
+static std::string gen_resolve_type_decl_body(const std::string& ty,
+                                              const std::vector<std::string>& type_decls) {
+  if (ty.empty() || ty[0] != '%') return ty;
+  for (const auto& decl : type_decls) {
+    const auto eq = decl.find(" = type ");
+    if (eq != std::string::npos && decl.substr(0, eq) == ty) {
+      return decl.substr(eq + 8);
+    }
+  }
+  return ty;
+}
+
+static std::vector<std::string> gen_split_aggregate_fields(std::string_view text) {
+  std::vector<std::string> fields;
+  int depth = 0;
+  std::size_t field_start = 0;
+  for (std::size_t i = 0; i < text.size(); ++i) {
+    const char c = text[i];
+    if (c == '{' || c == '[' || c == '<' || c == '(') {
+      ++depth;
+    } else if (c == '}' || c == ']' || c == '>' || c == ')') {
+      if (depth > 0) --depth;
+    } else if (c == ',' && depth == 0) {
+      fields.push_back(gen_trim_type_token(text.substr(field_start, i - field_start)));
+      field_start = i + 1;
+    }
+  }
+  if (field_start < text.size()) {
+    fields.push_back(gen_trim_type_token(text.substr(field_start)));
+  }
+  return fields;
+}
+
+static GenTypeLayout gen_type_layout(const std::string& ty,
+                                     const std::vector<std::string>& type_decls);
+
+static GenTypeLayout gen_struct_layout(const std::string& ty,
+                                       const std::vector<std::string>& type_decls) {
+  const std::string resolved = gen_resolve_type_decl_body(ty, type_decls);
+  bool packed = false;
+  std::string_view body = resolved;
+  if (body.size() >= 4 && body[0] == '<' && body[1] == '{' &&
+      body[body.size() - 2] == '}' && body.back() == '>') {
+    packed = true;
+    body.remove_prefix(2);
+    body.remove_suffix(2);
+  } else if (body.size() >= 2 && body.front() == '{' && body.back() == '}') {
+    body.remove_prefix(1);
+    body.remove_suffix(1);
+  } else {
+    return {8, 8};
+  }
+
+  const auto fields = gen_split_aggregate_fields(body);
+  if (fields.empty()) return {0, packed ? 1 : 1};
+
+  int offset = 0;
+  int struct_align = packed ? 1 : 1;
+  for (const auto& field : fields) {
+    const auto field_layout = gen_type_layout(field, type_decls);
+    const int field_align = std::max(1, packed ? 1 : field_layout.align);
+    if (!packed && offset % field_align != 0) {
+      offset += field_align - (offset % field_align);
+    }
+    offset += field_layout.size;
+    if (!packed) struct_align = std::max(struct_align, field_align);
+  }
+  if (!packed && struct_align > 1 && offset % struct_align != 0) {
+    offset += struct_align - (offset % struct_align);
+  }
+  return {offset, packed ? 1 : struct_align};
+}
+
+static GenTypeLayout gen_type_layout(const std::string& ty,
+                                     const std::vector<std::string>& type_decls) {
+  const std::string trimmed = gen_trim_type_token(ty);
+  if (trimmed.empty()) return {0, 1};
+  if (trimmed == "i1" || trimmed == "i8") return {1, 1};
+  if (trimmed == "i16") return {2, 2};
+  if (trimmed == "i32" || trimmed == "float") return {4, 4};
+  if (trimmed == "i64" || trimmed == "ptr" || trimmed == "double") return {8, 8};
+  if (trimmed.front() == '[') {
+    const auto [count, elem_size] = gen_parse_array_type(trimmed);
+    std::string elem = trimmed.substr(trimmed.find(" x ") + 3);
+    if (!elem.empty() && elem.back() == ']') elem.pop_back();
+    const auto elem_layout = gen_type_layout(elem, type_decls);
+    return {count * elem_layout.size, std::max(1, elem_layout.align)};
+  }
+  if (trimmed.front() == '{' || trimmed.front() == '<' || trimmed.front() == '%') {
+    return gen_struct_layout(trimmed, type_decls);
+  }
+  return {gen_type_bytes(trimmed), std::max(1, gen_type_bytes(trimmed))};
+}
+
 // Parse struct type "{ T1, T2, ... }" — compute byte size.
 static int gen_struct_size(const std::string& ty,
                            const std::vector<std::string>& type_decls) {
-  std::string resolved = ty;
-  // Resolve named struct types like %struct.foo
-  if (resolved.rfind("%struct.", 0) == 0 || (resolved.size() > 1 && resolved[0] == '%')) {
-    for (const auto& decl : type_decls) {
-      // Format: "%struct.foo = type { i32, i32 }"
-      auto eq = decl.find(" = type ");
-      if (eq != std::string::npos && decl.substr(0, eq) == resolved) {
-        resolved = decl.substr(eq + 8);
-        break;
-      }
-    }
-  }
-  if (resolved.empty() || resolved[0] != '{') return 8;  // unknown → 8
-  // Count fields and sum sizes
-  int total = 0;
-  int depth = 0;
-  std::string field;
-  for (size_t i = 1; i < resolved.size(); ++i) {
-    char c = resolved[i];
-    if (c == '{' || c == '[' || c == '<') { ++depth; field += c; }
-    else if (c == '}' || c == ']' || c == '>') {
-      if (depth > 0) { --depth; field += c; }
-      else {
-        // end of struct
-        if (!field.empty()) {
-          // trim whitespace
-          size_t s = field.find_first_not_of(" \t");
-          if (s != std::string::npos) {
-            std::string f = field.substr(s);
-            size_t e = f.find_last_not_of(" \t");
-            if (e != std::string::npos) f = f.substr(0, e + 1);
-            int fsz = gen_type_bytes(f);
-            // Align field to its natural alignment
-            int align = fsz;
-            if (align > 0 && total % align != 0)
-              total += align - (total % align);
-            total += fsz;
-          }
-        }
-        break;
-      }
-    } else if (c == ',' && depth == 0) {
-      if (!field.empty()) {
-        size_t s = field.find_first_not_of(" \t");
-        if (s != std::string::npos) {
-          std::string f = field.substr(s);
-          size_t e = f.find_last_not_of(" \t");
-          if (e != std::string::npos) f = f.substr(0, e + 1);
-          int fsz = gen_type_bytes(f);
-          int align = fsz;
-          if (align > 0 && total % align != 0)
-            total += align - (total % align);
-          total += fsz;
-        }
-      }
-      field.clear();
-    } else {
-      field += c;
-    }
-  }
-  if (total == 0) total = 8;
-  return total;
+  return gen_type_layout(ty, type_decls).size;
 }
 
 // Compute byte offset for a struct field.
 static int gen_struct_field_offset(const std::string& ty, int field_idx,
                                    const std::vector<std::string>& type_decls) {
-  std::string resolved = ty;
-  if (resolved.rfind("%struct.", 0) == 0 || (resolved.size() > 1 && resolved[0] == '%')) {
-    for (const auto& decl : type_decls) {
-      auto eq = decl.find(" = type ");
-      if (eq != std::string::npos && decl.substr(0, eq) == resolved) {
-        resolved = decl.substr(eq + 8);
-        break;
-      }
-    }
+  const std::string resolved = gen_resolve_type_decl_body(ty, type_decls);
+  bool packed = false;
+  std::string_view body = resolved;
+  if (body.size() >= 4 && body[0] == '<' && body[1] == '{' &&
+      body[body.size() - 2] == '}' && body.back() == '>') {
+    packed = true;
+    body.remove_prefix(2);
+    body.remove_suffix(2);
+  } else if (body.size() >= 2 && body.front() == '{' && body.back() == '}') {
+    body.remove_prefix(1);
+    body.remove_suffix(1);
+  } else {
+    return field_idx * 8;
   }
-  if (resolved.empty() || resolved[0] != '{') return field_idx * 8;
-  // Parse fields
+
+  const auto fields = gen_split_aggregate_fields(body);
   int offset = 0;
-  int cur_field = 0;
-  int depth = 0;
-  std::string field;
-  for (size_t i = 1; i < resolved.size(); ++i) {
-    char c = resolved[i];
-    if (c == '{' || c == '[' || c == '<') { ++depth; field += c; }
-    else if (c == '}' || c == ']' || c == '>') {
-      if (depth > 0) { --depth; field += c; }
-      else {
-        if (!field.empty() && cur_field <= field_idx) {
-          size_t s = field.find_first_not_of(" \t");
-          if (s != std::string::npos) {
-            std::string f = field.substr(s);
-            size_t e = f.find_last_not_of(" \t");
-            if (e != std::string::npos) f = f.substr(0, e + 1);
-            int fsz = gen_type_bytes(f);
-            int align = fsz;
-            if (align > 0 && offset % align != 0)
-              offset += align - (offset % align);
-            if (cur_field == field_idx) return offset;
-            offset += fsz;
-            cur_field++;
-          }
-        }
-        break;
-      }
-    } else if (c == ',' && depth == 0) {
-      if (!field.empty() && cur_field <= field_idx) {
-        size_t s = field.find_first_not_of(" \t");
-        if (s != std::string::npos) {
-          std::string f = field.substr(s);
-          size_t e = f.find_last_not_of(" \t");
-          if (e != std::string::npos) f = f.substr(0, e + 1);
-          int fsz = gen_type_bytes(f);
-          int align = fsz;
-          if (align > 0 && offset % align != 0)
-            offset += align - (offset % align);
-          if (cur_field == field_idx) return offset;
-          offset += fsz;
-          cur_field++;
-        }
-      }
-      field.clear();
-    } else {
-      field += c;
+  for (int i = 0; i < static_cast<int>(fields.size()); ++i) {
+    const auto field_layout = gen_type_layout(fields[i], type_decls);
+    const int field_align = std::max(1, packed ? 1 : field_layout.align);
+    if (!packed && offset % field_align != 0) {
+      offset += field_align - (offset % field_align);
     }
+    if (i == field_idx) return offset;
+    offset += field_layout.size;
   }
   return offset;
 }
@@ -4572,13 +4586,10 @@ static std::pair<std::string, std::string> gen_parse_index(const std::string& id
 // Emit a global initializer value.
 // Handles: integers, zeroinitializer, @global refs, { ... } aggregates, [N x T] arrays.
 static void gen_emit_global_init(std::ostringstream& out, const std::string& init,
-                                  const std::string& ty) {
+                                  const std::string& ty,
+                                  const std::vector<std::string>& type_decls) {
   if (init.empty() || init == "zeroinitializer") {
-    int sz = gen_type_bytes(ty);
-    if (ty[0] == '[') {
-      auto [cnt, esz] = gen_parse_array_type(ty);
-      sz = cnt * esz;
-    }
+    int sz = gen_type_layout(ty, type_decls).size;
     out << "  .zero " << sz << "\n";
     return;
   }
@@ -4596,7 +4607,7 @@ static void gen_emit_global_init(std::ostringstream& out, const std::string& ini
     bool ok = false;
     try { val = std::stoll(init); ok = true; } catch (...) {}
     if (ok) {
-      int sz = gen_type_bytes(ty);
+      int sz = gen_type_layout(ty, type_decls).size;
       if (sz <= 1) out << "  .byte " << (val & 0xFF) << "\n";
       else if (sz <= 2) out << "  .short " << (val & 0xFFFF) << "\n";
       else if (sz <= 4) out << "  .word " << (val & 0xFFFFFFFF) << "\n";
@@ -4657,7 +4668,7 @@ static void gen_emit_global_init(std::ostringstream& out, const std::string& ini
       while (!field_val.empty() && (field_val.back() == ' ' || field_val.back() == '\t'))
         field_val.pop_back();
 
-      gen_emit_global_init(out, field_val, field_ty);
+      gen_emit_global_init(out, field_val, field_ty, type_decls);
 
       // Skip comma
       if (pos < init.size() && init[pos] == ',') ++pos;
@@ -4704,7 +4715,7 @@ static void gen_emit_global_init(std::ostringstream& out, const std::string& ini
       while (!elem_val.empty() && (elem_val.back() == ' ' || elem_val.back() == '\t'))
         elem_val.pop_back();
 
-      gen_emit_global_init(out, elem_val, elem_ty);
+      gen_emit_global_init(out, elem_val, elem_ty, type_decls);
 
       if (pos < init.size() && init[pos] == ',') ++pos;
     }
@@ -4775,7 +4786,7 @@ static std::optional<std::string> try_emit_general_lir_asm(
     if (align > 0) out << ".p2align " << __builtin_ctz(align) << "\n";
     out << sym << ":\n";
     // Emit initializer
-    gen_emit_global_init(out, g.init_text, g.llvm_type);
+    gen_emit_global_init(out, g.init_text, g.llvm_type, module.type_decls);
   }
 
   // Emit .rodata for string pool

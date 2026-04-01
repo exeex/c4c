@@ -229,6 +229,95 @@ c4c::codegen::lir::LirModule make_nested_param_member_array_gep_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_named_struct_field_offset_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.type_decls.push_back("%struct.S1 = type { i32, i32 }");
+  module.type_decls.push_back("%struct._anon_0 = type { [4 x i8] }");
+  module.type_decls.push_back("%struct.S2 = type { i32, i32, %struct._anon_0, %struct.S1 }");
+  module.globals.push_back(LirGlobal{
+      LirGlobalId{0},
+      "v",
+      {},
+      false,
+      false,
+      "",
+      "global ",
+      "%struct.S2",
+      "zeroinitializer",
+      4,
+      false,
+  });
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(
+      LirGepOp{"%t0", "%struct.S2", "@v", false, {"i32 0", "i32 3"}});
+  entry.insts.push_back(
+      LirGepOp{"%t1", "%struct.S1", "%t0", false, {"i32 0", "i32 0"}});
+  entry.insts.push_back(LirLoadOp{"%t2", "i32", "%t1"});
+  entry.terminator = LirRet{std::string("%t2"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_array_of_named_struct_stride_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.type_decls.push_back("%struct.Record = type { i32, [2 x i32] }");
+  module.globals.push_back(LirGlobal{
+      LirGlobalId{0},
+      "a",
+      {},
+      false,
+      false,
+      "",
+      "global ",
+      "[2 x %struct.Record]",
+      "zeroinitializer",
+      4,
+      false,
+  });
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCastOp{"%idx64", LirCastKind::SExt, "i32", "1", "i64"});
+  entry.insts.push_back(
+      LirGepOp{"%t0", "[2 x %struct.Record]", "@a", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(
+      LirGepOp{"%t1", "%struct.Record", "%t0", false, {"i64 %idx64"}});
+  entry.insts.push_back(
+      LirGepOp{"%t2", "%struct.Record", "%t1", false, {"i32 0", "i32 1"}});
+  entry.insts.push_back(
+      LirGepOp{"%t3", "[2 x i32]", "%t2", false, {"i64 0", "i64 1"}});
+  entry.insts.push_back(LirLoadOp{"%t4", "i32", "%t3"});
+  entry.terminator = LirRet{std::string("%t4"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 
 
 
@@ -2240,6 +2329,30 @@ void test_aarch64_backend_renders_mutable_string_global_bytes() {
                       "aarch64 backend should not zero-fill mutable string globals that have explicit byte initializers");
 }
 
+void test_aarch64_backend_uses_real_named_struct_field_offsets() {
+  const auto rendered = c4c::backend::aarch64::emit_module(
+      make_named_struct_field_offset_module());
+  expect_contains(rendered, ".globl main",
+                  "aarch64 general emitter should keep named-struct field loads on the asm path");
+  expect_contains(rendered, "add x0, x0, #12\n",
+                  "aarch64 general emitter should place the named trailing struct field at its ABI offset");
+  expect_not_contains(rendered, "add x0, x0, #16\n",
+                      "aarch64 general emitter should not over-align named nested struct fields to their byte size");
+}
+
+void test_aarch64_backend_uses_real_array_of_struct_stride() {
+  const auto rendered = c4c::backend::aarch64::emit_module(
+      make_array_of_named_struct_stride_module());
+  expect_contains(rendered, ".globl main",
+                  "aarch64 general emitter should keep array-of-struct GEPs on the asm path");
+  expect_contains(rendered, "mov x2, #12\n",
+                  "aarch64 general emitter should stride array-of-struct indexing by the LLVM layout size");
+  expect_contains(rendered, "add x0, x0, #4\n",
+                  "aarch64 general emitter should use the real field offset inside the named struct element");
+  expect_not_contains(rendered, "mov x2, #16\n",
+                      "aarch64 general emitter should not reuse rounded-up pseudo-slot sizes for array-of-struct indexing");
+}
+
 void test_aarch64_backend_renders_va_intrinsic_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_va_intrinsic_module()},
@@ -2773,6 +2886,8 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_renders_trunc_slice();
   test_aarch64_backend_renders_large_frame_adjustments();
   test_aarch64_backend_renders_mutable_string_global_bytes();
+  test_aarch64_backend_uses_real_named_struct_field_offsets();
+  test_aarch64_backend_uses_real_array_of_struct_stride();
   test_aarch64_backend_renders_va_intrinsic_slice();
   test_aarch64_backend_renders_va_arg_scalar_slice();
   test_aarch64_backend_renders_va_arg_pair_slice();

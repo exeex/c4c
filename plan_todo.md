@@ -148,3 +148,31 @@ stack-spill AArch64 emitter. All instruction types handled in one pass.
 - Remaining failures after this slice:
   `00040.c`, `00050.c`, `00091.c`, `00104.c`, `00182.c`, `00195.c`,
   `00207.c`, and `00216.c`.
+
+### Step 6 slice result (2026-04-01, aggregate layout for named structs)
+- Root cause isolated from `00050.c` and `00091.c`:
+  the general AArch64 emitter approximated aggregate layout with primitive byte
+  sizes, so named structs and arrays of named structs were indexed using
+  pseudo-aligned sizes instead of LLVM ABI field offsets and element strides.
+- Fixed `src/backend/aarch64/codegen/emit.cpp` by adding recursive aggregate
+  layout helpers for named structs, nested structs, packed structs, and arrays,
+  then routing struct-size, field-offset, and global-initializer sizing through
+  that shared layout computation.
+- Added focused backend coverage in
+  `tests/backend/backend_lir_adapter_aarch64_tests.cpp` for:
+  1. a named trailing-struct field that must land at byte offset `12`, not `16`
+  2. an array-of-named-struct access that must stride by `12`, not `16`
+- Focus validation:
+  `ctest --test-dir build -R "c_testsuite_aarch64_backend_src_(00050|00091)_c"
+  --output-on-failure` now passes both cases.
+- Updated suite status:
+  `ctest --test-dir build -R c_testsuite_aarch64 -j8 --output-on-failure`
+  now reports 6 failures total (improved from 8).
+- Full-suite snapshot after this slice:
+  `ctest --test-dir build -j8 --output-on-failure` reports 12 failures out of
+  2671 tests; this slice is only confirmed to improve the AArch64 subset.
+- Remaining AArch64 failures after this slice:
+  `00040.c`, `00104.c`, `00182.c`, `00195.c`, `00207.c`, and `00216.c`.
+- Next intended slice:
+  investigate one remaining narrow runtime bug, with `00207.c` or one of the
+  remaining struct-heavy segfault cases as the next target.
