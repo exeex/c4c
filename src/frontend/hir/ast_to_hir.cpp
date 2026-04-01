@@ -2295,6 +2295,7 @@ bool Lowerer::has_plain_call(const Node* n, const char* fn_name) {
   return false;
 }
 
+#if 0
 TypeSpec Lowerer::field_type_of(const HirStructField& f) {
   TypeSpec ts = f.elem_type;
   ts.inner_rank = -1;
@@ -2351,6 +2352,7 @@ std::optional<InitListItem> Lowerer::make_init_item(const GlobalInit& init) {
   }
   return item;
 }
+#endif
 
 TypeBindings Lowerer::build_call_bindings(const Node* call_var, const Node* fn_def,
                                           const TypeBindings* enclosing_bindings) {
@@ -2678,6 +2680,7 @@ TypeBindings Lowerer::merge_explicit_and_deduced_type_bindings(
   return bindings;
 }
 
+#if 0
 ExprId Lowerer::lower_expr(FunctionCtx* ctx, const Node* n) {
   if (!n) {
     TypeSpec ts{};
@@ -3774,12 +3777,15 @@ ExprId Lowerer::lower_expr(FunctionCtx* ctx, const Node* n) {
     }
   }
 }
+#endif
 
+#if 0
 bool Lowerer::is_lvalue_ref_ts(const TypeSpec& ts) {
   return ts.is_lvalue_ref;
 }
 
 std::shared_ptr<CompileTimeState> Lowerer::ct_state() const { return ct_state_; }
+#endif
 
 void Lowerer::lower_struct_def(const Node* sd) {
   if (!sd || sd->kind != NK_STRUCT_DEF) return;
@@ -4121,6 +4127,7 @@ void Lowerer::lower_struct_def(const Node* sd) {
   }
 }
 
+#if 0
 void Lowerer::resolve_typedef_to_struct(TypeSpec& ts) const {
   if (ts.base != TB_TYPEDEF || !ts.tag) return;
   auto sit = module_->struct_defs.find(ts.tag);
@@ -4155,6 +4162,7 @@ bool Lowerer::contains_stmt_expr(const Node* n) {
     if (contains_stmt_expr(n->children[i])) return true;
   return false;
 }
+#endif
 
 void Lowerer::lower_stmt_node(FunctionCtx& ctx, const Node* n) {
   if (!n) return;
@@ -4886,6 +4894,7 @@ void Lowerer::lower_stmt_node(FunctionCtx& ctx, const Node* n) {
   }
 }
 
+#if 0
 QualType Lowerer::qtype_from(const TypeSpec& t, ValueCategory c) {
   QualType qt{};
   qt.spec = t;
@@ -5062,6 +5071,7 @@ TypeSpec Lowerer::reference_value_ts(TypeSpec ts) {
   return ts;
 }
 
+#endif
 TypeSpec Lowerer::infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
   if (!n) return {};
   if (has_concrete_type(n->type)) return n->type;
@@ -5319,6 +5329,7 @@ TypeSpec Lowerer::infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
   return n->type;
 }
 
+#if 0
 std::optional<std::string> Lowerer::find_struct_method_mangled(
     const std::string& tag,
     const std::string& method,
@@ -5424,6 +5435,7 @@ std::optional<TypeSpec> Lowerer::storage_type_for_declref(
   }
   return std::nullopt;
 }
+#endif
 
 bool Lowerer::eval_deferred_nttp_expr_hir(
     const Node* owner_tpl, int param_idx,
@@ -5978,6 +5990,7 @@ void Lowerer::register_template_struct_specialization(
   ct_state_->register_template_struct_specialization(primary_tpl, node);
 }
 
+#if 0
 std::vector<const Node*> Lowerer::flatten_program_items(const Node* root) const {
   std::vector<const Node*> items;
   std::function<void(const Node*)> flatten = [&](const Node* n) {
@@ -5991,6 +6004,7 @@ std::vector<const Node*> Lowerer::flatten_program_items(const Node* root) const 
   for (int i = 0; i < root->n_children; ++i) flatten(root->children[i]);
   return items;
 }
+#endif
 
 void Lowerer::seed_pending_template_type(const TypeSpec& ts,
                                          const TypeBindings& tpl_bindings,
@@ -6335,6 +6349,7 @@ ExprId Lowerer::append_expr(const Node* src,
   return module_->expr_pool.back().id;
 }
 
+#if 0
 void Lowerer::register_bodyless_callable(Function&& fn) {
   module_->fn_index[fn.name] = fn.id;
   module_->functions.push_back(std::move(fn));
@@ -6366,7 +6381,9 @@ void Lowerer::finish_lowered_callable(Function* fn, BlockId entry) {
   }
   module_->functions[fn->id.value] = std::move(*fn);
 }
+#endif
 
+#if 0
 GlobalId Lowerer::lower_static_local_global(FunctionCtx& ctx, const Node* n) {
   GlobalVar g{};
   g.id = next_global_id();
@@ -6584,6 +6601,7 @@ bool Lowerer::struct_has_member_dtors(const std::string& tag) {
   }
   return false;
 }
+#endif
 
 void Lowerer::emit_defaulted_method_body(FunctionCtx& ctx,
                                          Function& fn,
@@ -7691,6 +7709,7 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
   }
 }
 
+#if 0
 std::optional<ExprId> Lowerer::try_lower_consteval_call_expr(FunctionCtx* ctx,
                                                              const Node* n) {
   if (!(n->kind == NK_CALL && n->left && n->left->kind == NK_VAR && n->left->name))
@@ -7934,7 +7953,9 @@ ExprId Lowerer::materialize_initializer_list_arg(FunctionCtx* ctx,
   assign_field("_M_len", len_ts, len_id);
   return tmp_id;
 }
+#endif
 
+#if 0
 bool Lowerer::is_string_scalar(const GlobalInit& init) const {
   const auto* scalar = std::get_if<InitScalar>(&init);
   if (!scalar) return false;
@@ -8362,7 +8383,9 @@ GlobalInit Lowerer::normalize_global_init(const TypeSpec& ts, const GlobalInit& 
 
   return init;
 }
+#endif
 
+#if 0
 const Node* Lowerer::find_struct_static_member_decl(
     const std::string& tag, const std::string& member) const {
   auto sit = struct_static_member_decls_.find(tag);
@@ -8396,7 +8419,9 @@ std::optional<long long> Lowerer::find_struct_static_member_const_value(
   }
   return std::nullopt;
 }
+#endif
 
+#if 0
 void Lowerer::collect_weak_symbol_names(const std::vector<const Node*>& items) {
   for (const Node* item : items) {
     if (item->kind == NK_PRAGMA_WEAK && item->name) weak_symbols_.insert(item->name);
@@ -8741,7 +8766,9 @@ void Lowerer::collect_ref_overloaded_free_functions(
     ref_overload_mangled_[item] = fn_name + "__rref_overload";
   }
 }
+#endif
 
+#if 0
 ExprId Lowerer::hoist_compound_literal_to_global(const Node* addr_node,
                                                  const Node* clit) {
   GlobalVar cg{};
@@ -9707,7 +9734,9 @@ ExprId Lowerer::lower_builtin_alignof_expr(FunctionCtx* ctx, const Node* n) {
   return append_expr(
       n, IntLiteral{static_cast<long long>(align), false}, builtin_query_result_type());
 }
+#endif
 
+#if 0
 void Lowerer::attach_out_of_class_struct_method_defs(
     const std::vector<const Node*>& items,
     Module& m) {
@@ -9801,7 +9830,9 @@ void Lowerer::lower_pending_struct_methods() {
                         pm.nttp_bindings.empty() ? nullptr : &pm.nttp_bindings);
   }
 }
+#endif
 
+#if 0
 void Lowerer::lower_initial_program(const Node* root, Module& m) {
   if (!root || root->kind != NK_PROGRAM) {
     throw std::runtime_error("build_initial_hir: root is not NK_PROGRAM");
@@ -9826,7 +9857,9 @@ void Lowerer::lower_initial_program(const Node* root, Module& m) {
   lower_non_method_functions_and_globals(items, m);
   lower_pending_struct_methods();
 }
+#endif
 
+#if 0
 TypeSpec Lowerer::substitute_signature_template_type(
     TypeSpec ts, const TypeBindings* tpl_bindings) const {
   if (!tpl_bindings || ts.base != TB_TYPEDEF || !ts.tag) return ts;
@@ -9948,6 +9981,7 @@ void Lowerer::append_callable_params(
         context_prefix + param_name, resolve_typedef_struct);
   }
 }
+#endif
 
 void Lowerer::lower_function(const Node* fn_node,
                              const std::string* name_override,
@@ -10419,6 +10453,7 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
   finish_lowered_callable(&fn, entry);
 }
 
+#if 0
 bool Lowerer::instantiate_deferred_template(const std::string& tpl_name,
                                             const TypeBindings& bindings,
                                             const NttpBindings& nttp_bindings,
@@ -10501,5 +10536,6 @@ InitialHirBuildResult build_initial_hir(
   };
   return result;
 }
+#endif
 
 }  // namespace c4c::hir

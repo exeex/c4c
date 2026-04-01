@@ -5,7 +5,6 @@
 // Omitted for now: lower_struct_def, infer_generic_ctrl_type, and the template /
 // program coordinator paths. Those stay in ast_to_hir.cpp until the shared
 // Lowerer declaration surface is hoisted into ast_to_hir.hpp.
-#if 0
 
 #include "ast_to_hir.hpp"
 #include "hir_lowerer_internal.hpp"
@@ -859,119 +858,6 @@ std::optional<long long> Lowerer::find_struct_static_member_const_value(
   return std::nullopt;
 }
 
-bool Lowerer::describe_initializer_list_struct(const TypeSpec& ts,
-                                               TypeSpec* elem_ts,
-                                               TypeSpec* data_ptr_ts,
-                                               TypeSpec* len_ts) const {
-  if (ts.base != TB_STRUCT || ts.ptr_level != 0 || !ts.tag) return false;
-  auto sit = module_->struct_defs.find(ts.tag);
-  if (sit == module_->struct_defs.end()) return false;
-
-  const HirStructField* data_field = nullptr;
-  const HirStructField* len_field = nullptr;
-  for (const auto& field : sit->second.fields) {
-    if (field.name == "_M_array") {
-      data_field = &field;
-    } else if (field.name == "_M_len") {
-      len_field = &field;
-    }
-  }
-  if (!data_field || !len_field) return false;
-  if (data_field->elem_type.ptr_level <= 0) return false;
-
-  if (data_ptr_ts) *data_ptr_ts = data_field->elem_type;
-  if (elem_ts) {
-    *elem_ts = data_field->elem_type;
-    elem_ts->ptr_level--;
-  }
-  if (len_ts) *len_ts = len_field->elem_type;
-  return true;
-}
-
-ExprId Lowerer::materialize_initializer_list_arg(FunctionCtx* ctx,
-                                                 const Node* list_node,
-                                                 const TypeSpec& param_ts) {
-  TypeSpec elem_ts{};
-  TypeSpec data_ptr_ts{};
-  TypeSpec len_ts{};
-  if (!describe_initializer_list_struct(param_ts, &elem_ts, &data_ptr_ts, &len_ts)) {
-    return append_expr(list_node, IntLiteral{0, false}, param_ts);
-  }
-
-  ExprId data_ptr_id{};
-  if (list_node && list_node->n_children > 0) {
-    TypeSpec array_ts = elem_ts;
-    array_ts.array_rank = 1;
-    array_ts.array_size = list_node->n_children;
-    array_ts.array_dims[0] = list_node->n_children;
-    for (int i = 1; i < 8; ++i) array_ts.array_dims[i] = -1;
-
-    Node array_tmp{};
-    array_tmp.kind = NK_COMPOUND_LIT;
-    array_tmp.type = array_ts;
-    array_tmp.left = const_cast<Node*>(list_node);
-    array_tmp.line = list_node->line;
-
-    ExprId array_id = lower_expr(ctx, &array_tmp);
-
-    TypeSpec idx_ts{};
-    idx_ts.base = TB_INT;
-    ExprId zero_idx = append_expr(list_node, IntLiteral{0, false}, idx_ts);
-    IndexExpr first_elem{};
-    first_elem.base = array_id;
-    first_elem.index = zero_idx;
-    ExprId first_elem_id =
-        append_expr(list_node, first_elem, elem_ts, ValueCategory::LValue);
-
-    UnaryExpr addr{};
-    addr.op = UnaryOp::AddrOf;
-    addr.operand = first_elem_id;
-    data_ptr_id = append_expr(list_node, addr, data_ptr_ts);
-  } else {
-    data_ptr_id = append_expr(list_node, IntLiteral{0, false}, data_ptr_ts);
-  }
-
-  LocalDecl tmp{};
-  tmp.id = next_local_id();
-  tmp.name = "__init_list_arg_" + std::to_string(tmp.id.value);
-  tmp.type = qtype_from(param_ts, ValueCategory::LValue);
-  tmp.storage = StorageClass::Auto;
-  tmp.span = make_span(list_node);
-  const std::string tmp_name = tmp.name;
-  TypeSpec int_ts{};
-  int_ts.base = TB_INT;
-  tmp.init = append_expr(list_node, IntLiteral{0, false}, int_ts);
-  const LocalId tmp_lid = tmp.id;
-  ctx->locals[tmp_name] = tmp.id;
-  ctx->local_types[tmp.id.value] = param_ts;
-  append_stmt(*ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(list_node)});
-
-  DeclRef tmp_ref{};
-  tmp_ref.name = tmp_name;
-  tmp_ref.local = tmp_lid;
-  ExprId tmp_id = append_expr(list_node, tmp_ref, param_ts, ValueCategory::LValue);
-
-  auto assign_field = [&](const char* field_name, const TypeSpec& field_ts, ExprId rhs_id) {
-    MemberExpr lhs{};
-    lhs.base = tmp_id;
-    lhs.field = field_name;
-    lhs.is_arrow = false;
-    ExprId lhs_id = append_expr(list_node, lhs, field_ts, ValueCategory::LValue);
-    AssignExpr assign{};
-    assign.op = AssignOp::Set;
-    assign.lhs = lhs_id;
-    assign.rhs = rhs_id;
-    ExprId assign_id = append_expr(list_node, assign, field_ts);
-    append_stmt(*ctx, Stmt{StmtPayload{ExprStmt{assign_id}}, make_span(list_node)});
-  };
-
-  assign_field("_M_array", data_ptr_ts, data_ptr_id);
-  ExprId len_id = append_expr(
-      list_node, IntLiteral{list_node ? list_node->n_children : 0, false}, len_ts);
-  assign_field("_M_len", len_ts, len_id);
-  return tmp_id;
-}
-
 bool Lowerer::has_side_effect_expr(const Node* n) const {
   if (!n) return false;
   switch (n->kind) {
@@ -1191,4 +1077,3 @@ InitList Lowerer::lower_init_list(const Node* n, FunctionCtx* ctx) {
 // - collect_* / lower_initial_program / build_initial_hir
 
 }  // namespace c4c::hir
-#endif

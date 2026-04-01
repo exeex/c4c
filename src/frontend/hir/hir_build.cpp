@@ -1,5 +1,4 @@
-// Draft-only extraction from ast_to_hir.cpp.
-// Not yet wired into the build.
+// Build/coordinator lowering cluster extracted from ast_to_hir.cpp.
 //
 // Included here as a staging artifact for later split integration:
 // - flatten_program_items
@@ -28,7 +27,6 @@
 // - attach_out_of_class_struct_method_defs
 // - lower_non_method_functions_and_globals
 // - lower_pending_struct_methods
-#if 0
 
 #include "ast_to_hir.hpp"
 #include "hir_lowerer_internal.hpp"
@@ -508,4 +506,3 @@ InitialHirBuildResult build_initial_hir(
 }
 
 }  // namespace c4c::hir
-#endif

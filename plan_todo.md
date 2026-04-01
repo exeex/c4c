@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 2: introduce a safe transitional source layout and build wiring
-- Current slice: keep the draft `src/frontend/hir/hir_*.cpp` files build-wired as inert staging units so the tree compiles cleanly again, then re-enable one ownership cluster at a time by deleting the corresponding bodies from `src/frontend/hir/ast_to_hir.cpp`
+- Current slice: use duplicate-definition linker output to batch-transfer ownership from `src/frontend/hir/ast_to_hir.cpp` into the staged `hir_*.cpp` files, preferring cluster-sized cutovers over one-function-at-a-time cleanup
 
 ## Todo
 
@@ -18,6 +18,8 @@ Source Plan: plan.md
 - [ ] Step 5: run final build and regression validation
 
 ## Completed
+
+- Validation on 2026-04-01 after switching to duplicate-driven batch cutover: `src/frontend/hir/hir_expr.cpp`, `src/frontend/hir/hir_functions.cpp`, and `src/frontend/hir/hir_types.cpp` are now active owners for their migrated clusters, while `src/frontend/hir/hir_stmt.cpp` and `src/frontend/hir/hir_templates.cpp` were returned to inert staging because they still overlapped with other split units. Matching owner bodies in `src/frontend/hir/ast_to_hir.cpp` were batch-disabled in cluster-sized sections rather than peeled off one by one, and `cmake --build build -j8` now succeeds again with the new ownership split.
 
 - Validation on 2026-04-01 after muting the staged `hir_*.cpp` ownership bodies with temporary `#if 0` guards: `cmake --build build -j8` succeeds again. This preserves the transitional file layout in the build while preventing duplicate-definition link failures from `src/frontend/hir/ast_to_hir.cpp` versus the draft split translation units. The next slice should remove one real ownership cluster from `src/frontend/hir/ast_to_hir.cpp` and then re-enable the matching staged file bodies instead of keeping every draft unit inert.
 

@@ -8,7 +8,6 @@
 // - lower_function, lower_struct_method, lower_global, lower_local_decl_stmt
 // - initializer normalization helpers
 // - template collection / template-struct realization helpers
-#if 0
 
 #include "ast_to_hir.hpp"
 #include "hir_lowerer_internal.hpp"
@@ -269,6 +268,7 @@ void Lowerer::lower_pending_struct_methods() {
   }
 }
 
+#if 0
 void Lowerer::lower_initial_program(const Node* root, Module& m) {
   if (!root || root->kind != NK_PROGRAM) {
     throw std::runtime_error("build_initial_hir: root is not NK_PROGRAM");
@@ -375,6 +375,6 @@ InitialHirBuildResult build_initial_hir(
   };
   return result;
 }
+#endif
 
 }  // namespace c4c::hir
-#endif
