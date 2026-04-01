@@ -1114,48 +1114,11 @@ class Lowerer {
     return std::nullopt;
   }
 
-  std::optional<TypeSpec> infer_call_result_type_from_callee(FunctionCtx* ctx, const Node* callee) {
-    if (!callee) return std::nullopt;
-    if (callee->kind == NK_DEREF) return infer_call_result_type_from_callee(ctx, callee->left);
-    if (callee->kind != NK_VAR || !callee->name || !callee->name[0]) return std::nullopt;
-    const std::string name = callee->name;
-    if (ctx) {
-      const auto pit = ctx->param_fn_ptr_sigs.find(name);
-      if (pit != ctx->param_fn_ptr_sigs.end()) return pit->second.return_type.spec;
-      const auto lit = ctx->local_fn_ptr_sigs.find(name);
-      if (lit != ctx->local_fn_ptr_sigs.end()) return lit->second.return_type.spec;
-      const auto sit = ctx->static_globals.find(name);
-      if (sit != ctx->static_globals.end()) {
-        if (const GlobalVar* gv = module_->find_global(sit->second)) {
-          if (gv->fn_ptr_sig) return gv->fn_ptr_sig->return_type.spec;
-        }
-      }
-    }
-    const auto git = module_->global_index.find(name);
-    if (git != module_->global_index.end()) {
-      if (const GlobalVar* gv = module_->find_global(git->second)) {
-        if (gv->fn_ptr_sig) return gv->fn_ptr_sig->return_type.spec;
-      }
-    }
-    const auto fit = module_->fn_index.find(name);
-    if (fit != module_->fn_index.end() && fit->second.value < module_->functions.size()) {
-      return module_->functions[fit->second.value].return_type.spec;
-    }
-    return std::nullopt;
-  }
+  std::optional<TypeSpec> infer_call_result_type_from_callee(
+      FunctionCtx* ctx, const Node* callee);
 
-  std::optional<TypeSpec> storage_type_for_declref(FunctionCtx* ctx, const DeclRef& r) {
-    if (r.local && ctx) {
-      auto it = ctx->local_types.find(r.local->value);
-      if (it != ctx->local_types.end()) return it->second;
-    }
-    if (r.param_index && ctx && ctx->fn && *r.param_index < ctx->fn->params.size())
-      return ctx->fn->params[*r.param_index].type.spec;
-    if (r.global) {
-      if (const GlobalVar* gv = module_->find_global(*r.global)) return gv->type.spec;
-    }
-    return std::nullopt;
-  }
+  std::optional<TypeSpec> storage_type_for_declref(FunctionCtx* ctx,
+                                                   const DeclRef& r);
 
   TypeSpec infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
     if (!n) return {};
@@ -9708,6 +9671,56 @@ TypeSpec Lowerer::reference_value_ts(TypeSpec ts) {
   ts.is_rvalue_ref = false;
   if (ts.ptr_level > 0) ts.ptr_level -= 1;
   return ts;
+}
+
+std::optional<TypeSpec> Lowerer::infer_call_result_type_from_callee(
+    FunctionCtx* ctx, const Node* callee) {
+  if (!callee) return std::nullopt;
+  if (callee->kind == NK_DEREF) {
+    return infer_call_result_type_from_callee(ctx, callee->left);
+  }
+  if (callee->kind != NK_VAR || !callee->name || !callee->name[0]) {
+    return std::nullopt;
+  }
+  const std::string name = callee->name;
+  if (ctx) {
+    const auto pit = ctx->param_fn_ptr_sigs.find(name);
+    if (pit != ctx->param_fn_ptr_sigs.end()) return pit->second.return_type.spec;
+    const auto lit = ctx->local_fn_ptr_sigs.find(name);
+    if (lit != ctx->local_fn_ptr_sigs.end()) return lit->second.return_type.spec;
+    const auto sit = ctx->static_globals.find(name);
+    if (sit != ctx->static_globals.end()) {
+      if (const GlobalVar* gv = module_->find_global(sit->second)) {
+        if (gv->fn_ptr_sig) return gv->fn_ptr_sig->return_type.spec;
+      }
+    }
+  }
+  const auto git = module_->global_index.find(name);
+  if (git != module_->global_index.end()) {
+    if (const GlobalVar* gv = module_->find_global(git->second)) {
+      if (gv->fn_ptr_sig) return gv->fn_ptr_sig->return_type.spec;
+    }
+  }
+  const auto fit = module_->fn_index.find(name);
+  if (fit != module_->fn_index.end() && fit->second.value < module_->functions.size()) {
+    return module_->functions[fit->second.value].return_type.spec;
+  }
+  return std::nullopt;
+}
+
+std::optional<TypeSpec> Lowerer::storage_type_for_declref(
+    FunctionCtx* ctx, const DeclRef& r) {
+  if (r.local && ctx) {
+    auto it = ctx->local_types.find(r.local->value);
+    if (it != ctx->local_types.end()) return it->second;
+  }
+  if (r.param_index && ctx && ctx->fn && *r.param_index < ctx->fn->params.size()) {
+    return ctx->fn->params[*r.param_index].type.spec;
+  }
+  if (r.global) {
+    if (const GlobalVar* gv = module_->find_global(*r.global)) return gv->type.spec;
+  }
+  return std::nullopt;
 }
 
 std::vector<const Node*> Lowerer::flatten_program_items(const Node* root) const {

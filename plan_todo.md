@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 1: Establish Header Ownership
-- Current slice: extract the private low-coupling block-management and struct-static-member lookup helpers from the inline `Lowerer` class body into out-of-class definitions in `src/frontend/hir/ast_to_hir.cpp`
+- Current slice: extract the next cohesive inline `Lowerer` helper family from the class body, with the next candidate being the larger type-inference helper `infer_generic_ctrl_type`
 
 ## Todo
 
@@ -35,15 +35,16 @@ Source Plan: plan.md
 - [x] Rebuilt and reran the targeted known-failure triplet plus the full `ctest --test-dir build -j8 --output-on-failure`; the suite remained at 2671 total tests, 2668 passing, and the same 3 known failures
 - [x] Extracted the private low-coupling `Lowerer` block helpers (`ensure_block`, `create_block`, and `append_stmt`) plus the struct-static-member lookup helpers (`find_struct_static_member_decl` and `find_struct_static_member_const_value`) into out-of-class definitions in `src/frontend/hir/ast_to_hir.cpp`
 - [x] Rebuilt and reran the targeted known-failure triplet plus the full `ctest --test-dir build -j8 --output-on-failure`; the suite again finished at 2671 total tests, 2668 passing, and the same 3 historical failures
+- [x] Extracted the small declref/call-result helper pair (`infer_call_result_type_from_callee` and `storage_type_for_declref`) out of the inline `Lowerer` class body into out-of-class definitions in `src/frontend/hir/ast_to_hir.cpp`
+- [x] Rebuilt and reran the targeted known-failure triplet plus the full `ctest --test-dir build -j8 --output-on-failure`; the suite remained at 2671 total tests, 2668 passing, and the same 3 historical failures
 
 ## Next Slice
 
-- Continue Step 1 by extracting the next cohesive inline `Lowerer` helper family from the class body, with the next best candidates being small type-inference and declref helpers such as `storage_type_for_declref` and `infer_call_result_type_from_callee` before tackling larger lowering methods or moving the full class definition into `ast_to_hir.hpp`.
+- Continue Step 1 by extracting the larger but still self-contained type-inference helper `infer_generic_ctrl_type` from the inline `Lowerer` class body into an out-of-class definition before tackling more entangled lowering methods or moving the full class definition into `ast_to_hir.hpp`.
 
 ## Blockers
 
 - The historical targeted failures remain: `positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c`.
-- A fresh `ctest --test-dir build -j8 --output-on-failure` run on 2026-04-01 did not match the older 3-failure note in this file and reported many additional failures across the GCC torture suite. This slice only moved `Lowerer` method bodies, so the widened failure surface needs separate baseline reconciliation before Step 5 can use the earlier expectation.
 
 ## Resume Notes
 
@@ -59,3 +60,5 @@ Source Plan: plan.md
 - Validation on 2026-04-01: `cmake --build build -j8` succeeded; targeted reruns of `positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c` matched the historical blocker list; a full `ctest --test-dir build -j8 --output-on-failure` finished with the same 3 failing tests and 2668 passing tests.
 - The latest slice peeled the low-coupling pack-binding and reference-type utilities out of the inline `Lowerer` class body into out-of-class definitions, shrinking the monolithic class definition again without changing symbol ownership or behavior.
 - The newest slice peeled the low-coupling block-management and struct-static-member lookup helpers out of the inline `Lowerer` class body into out-of-class definitions, continuing the monolith shrink without changing ownership or behavior.
+- The current slice peeled the small declref/call-result helper pair (`infer_call_result_type_from_callee` and `storage_type_for_declref`) out of the inline `Lowerer` class body into out-of-class definitions, preserving behavior while continuing the monolith shrink.
+- Validation on 2026-04-01: `cmake --build build -j8` succeeded; the targeted rerun of `positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c` matched the historical blocker list; a full `ctest --test-dir build -j8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 failing tests.
