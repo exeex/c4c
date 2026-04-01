@@ -1959,57 +1959,17 @@ class Lowerer {
   ExprId lower_call_expr(FunctionCtx* ctx, const Node* n);
 
   // Reconstruct the full TypeSpec for a struct field from its HirStructField.
-  static TypeSpec field_type_of(const HirStructField& f) {
-    TypeSpec ts = f.elem_type;
-    ts.inner_rank = -1;
-    if (f.array_first_dim >= 0) {
-      for (int i = std::min(ts.array_rank, 7); i > 0; --i) ts.array_dims[i] = ts.array_dims[i - 1];
-      ts.array_rank = std::min(ts.array_rank + 1, 8);
-      ts.array_size = f.array_first_dim;
-      ts.array_dims[0] = f.array_first_dim;
-    }
-    return ts;
-  }
+  static TypeSpec field_type_of(const HirStructField& f);
 
-  static TypeSpec field_init_type_of(const HirStructField& f) {
-    TypeSpec ts = field_type_of(f);
-    if (f.is_flexible_array && ts.array_rank > 0) {
-      ts.array_size = -1;
-      ts.array_dims[0] = -1;
-    }
-    return ts;
-  }
+  static TypeSpec field_init_type_of(const HirStructField& f);
 
-  static bool is_char_like(TypeBase base) {
-    return base == TB_CHAR || base == TB_SCHAR || base == TB_UCHAR;
-  }
+  static bool is_char_like(TypeBase base);
 
-  static bool is_scalar_init_type(const TypeSpec& ts) {
-    return !is_vector_ty(ts) &&
-           ts.array_rank == 0 &&
-           !((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0);
-  }
+  static bool is_scalar_init_type(const TypeSpec& ts);
 
-  static GlobalInit child_init_of(const InitListItem& item) {
-    return std::visit(
-        [&](const auto& v) -> GlobalInit {
-          using V = std::decay_t<decltype(v)>;
-          if constexpr (std::is_same_v<V, InitScalar>) return GlobalInit(v);
-          else return GlobalInit(*v);
-        },
-        item.value);
-  }
+  static GlobalInit child_init_of(const InitListItem& item);
 
-  static std::optional<InitListItem> make_init_item(const GlobalInit& init) {
-    if (std::holds_alternative<std::monostate>(init)) return std::nullopt;
-    InitListItem item{};
-    if (const auto* scalar = std::get_if<InitScalar>(&init)) {
-      item.value = *scalar;
-    } else {
-      item.value = std::make_shared<InitList>(std::get<InitList>(init));
-    }
-    return item;
-  }
+  static std::optional<InitListItem> make_init_item(const GlobalInit& init);
 
   bool is_string_scalar(const GlobalInit& init) const;
 
@@ -2329,6 +2289,63 @@ class Lowerer {
   bool lowering_deferred_instantiation_ = false;
 
 };
+
+TypeSpec Lowerer::field_type_of(const HirStructField& f) {
+  TypeSpec ts = f.elem_type;
+  ts.inner_rank = -1;
+  if (f.array_first_dim >= 0) {
+    for (int i = std::min(ts.array_rank, 7); i > 0; --i) {
+      ts.array_dims[i] = ts.array_dims[i - 1];
+    }
+    ts.array_rank = std::min(ts.array_rank + 1, 8);
+    ts.array_size = f.array_first_dim;
+    ts.array_dims[0] = f.array_first_dim;
+  }
+  return ts;
+}
+
+TypeSpec Lowerer::field_init_type_of(const HirStructField& f) {
+  TypeSpec ts = field_type_of(f);
+  if (f.is_flexible_array && ts.array_rank > 0) {
+    ts.array_size = -1;
+    ts.array_dims[0] = -1;
+  }
+  return ts;
+}
+
+bool Lowerer::is_char_like(TypeBase base) {
+  return base == TB_CHAR || base == TB_SCHAR || base == TB_UCHAR;
+}
+
+bool Lowerer::is_scalar_init_type(const TypeSpec& ts) {
+  return !is_vector_ty(ts) &&
+         ts.array_rank == 0 &&
+         !((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0);
+}
+
+GlobalInit Lowerer::child_init_of(const InitListItem& item) {
+  return std::visit(
+      [&](const auto& v) -> GlobalInit {
+        using V = std::decay_t<decltype(v)>;
+        if constexpr (std::is_same_v<V, InitScalar>) {
+          return GlobalInit(v);
+        } else {
+          return GlobalInit(*v);
+        }
+      },
+      item.value);
+}
+
+std::optional<InitListItem> Lowerer::make_init_item(const GlobalInit& init) {
+  if (std::holds_alternative<std::monostate>(init)) return std::nullopt;
+  InitListItem item{};
+  if (const auto* scalar = std::get_if<InitScalar>(&init)) {
+    item.value = *scalar;
+  } else {
+    item.value = std::make_shared<InitList>(std::get<InitList>(init));
+  }
+  return item;
+}
 
 TypeBindings Lowerer::build_call_bindings(const Node* call_var, const Node* fn_def,
                                           const TypeBindings* enclosing_bindings) {

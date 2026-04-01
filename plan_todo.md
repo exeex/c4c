@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 1: Establish Header Ownership
-- Current slice: continue Step 1 monolith peel-back by extracting the next remaining inline `Lowerer` helper cluster after the template-call binding and deduction utilities, keeping ownership in `src/frontend/hir/ast_to_hir.cpp` while shrinking the inline class body further
+- Current slice: continue Step 1 monolith peel-back by extracting the next remaining inline `Lowerer` helper cluster around template-parameter-order and plain-call discovery utilities, keeping ownership in `src/frontend/hir/ast_to_hir.cpp` while shrinking the inline class body further
 
 ## Todo
 
@@ -18,6 +18,10 @@ Source Plan: plan.md
 - [ ] Step 5: run final build and regression validation
 
 ## Completed
+
+- The current slice targeted the nearby field/init helper cluster because `field_type_of`, `field_init_type_of`, `is_char_like`, `is_scalar_init_type`, `child_init_of`, and `make_init_item` were still inline in the `Lowerer` class body but already served as local initializer-structure utilities that could move out-of-class without changing ownership or widening the declaration surface.
+- The latest slice moved that field/init helper cluster out of the inline `Lowerer` class body into out-of-class definitions in `src/frontend/hir/ast_to_hir.cpp`, preserving behavior while continuing the monolith shrink.
+- Validation on 2026-04-01: `cmake --build build -j8` succeeded; a full `ctest --test-dir build -j8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 failing tests (`positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c`); `.codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passed with zero new failing tests.
 
 - The current slice targeted the remaining inline template-call binding and deduction helpers because `build_call_bindings`, `build_call_nttp_bindings`, `has_forwarded_nttp`, and the nearby deduction utilities still lived in the `Lowerer` class body even after `lower_expr` moved out-of-class.
 - The latest slice moved `build_call_bindings`, `build_call_nttp_bindings`, `has_forwarded_nttp`, `try_infer_arg_type_for_deduction`, `try_deduce_template_type_args`, `deduction_covers_all_type_params`, `fill_deduced_defaults`, and `merge_explicit_and_deduced_type_bindings` out of the inline `Lowerer` class body into out-of-class definitions in `src/frontend/hir/ast_to_hir.cpp`, preserving behavior while continuing the Step 1 monolith shrink.
