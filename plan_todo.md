@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 2: introduce a safe transitional source layout and build wiring
-- Current slice: continue pulling coordinator-adjacent ownership into `src/frontend/hir/hir_build.cpp`, then trim the remaining overlap between `src/frontend/hir/ast_to_hir.cpp` and the staged split files in cluster-sized batches
+- Current slice: trim the remaining overlap between `src/frontend/hir/ast_to_hir.cpp` and the staged split files in cluster-sized batches, starting with active-owner dead blocks that still linger under transitional `#if 0` guards
 
 ## Todo
 
@@ -18,6 +18,8 @@ Source Plan: plan.md
 - [ ] Step 5: run final build and regression validation
 
 ## Completed
+
+- Validation on 2026-04-01 after deleting obsolete build/coordinator draft blocks from [`src/frontend/hir/ast_to_hir.cpp`](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp) and [`src/frontend/hir/hir_functions.cpp`](/workspaces/c4c/src/frontend/hir/hir_functions.cpp): the disabled duplicates for `lower_initial_program`, deferred-instantiation entrypoints, and the coordinator handoff helpers were removed now that [`src/frontend/hir/hir_build.cpp`](/workspaces/c4c/src/frontend/hir/hir_build.cpp) is the active owner. `cmake --build build -j8` still succeeds after pruning those inert copies.
 
 - Validation on 2026-04-01 after moving `attach_out_of_class_struct_method_defs`, `lower_non_method_functions_and_globals`, and `lower_pending_struct_methods` into [`src/frontend/hir/hir_build.cpp`](/workspaces/c4c/src/frontend/hir/hir_build.cpp): the top-level `lower_initial_program` call chain now lives in the build/coordinator split unit instead of being spread across [`src/frontend/hir/hir_build.cpp`](/workspaces/c4c/src/frontend/hir/hir_build.cpp) and [`src/frontend/hir/hir_functions.cpp`](/workspaces/c4c/src/frontend/hir/hir_functions.cpp). Matching coordinator ownership was removed from [`src/frontend/hir/hir_functions.cpp`](/workspaces/c4c/src/frontend/hir/hir_functions.cpp), and `cmake --build build -j8` succeeded after the handoff.
 
