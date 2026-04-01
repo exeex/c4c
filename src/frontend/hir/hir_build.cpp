@@ -22,8 +22,6 @@
 // - instantiate_deferred_template
 // - instantiate_deferred_template_type
 // - build_initial_hir
-//
-// Omitted for now because they are still intertwined with other clusters:
 // - attach_out_of_class_struct_method_defs
 // - lower_non_method_functions_and_globals
 // - lower_pending_struct_methods
@@ -398,6 +396,100 @@ void Lowerer::collect_ref_overloaded_free_functions(
     }
     ovset.push_back(std::move(e1));
     ref_overload_mangled_[item] = fn_name + "__rref_overload";
+  }
+}
+
+void Lowerer::attach_out_of_class_struct_method_defs(
+    const std::vector<const Node*>& items,
+    Module& m) {
+  for (const Node* item : items) {
+    if (item->kind != NK_FUNCTION || !item->body) continue;
+    auto method_ref = try_parse_qualified_struct_method_name(item);
+    if (!method_ref.has_value()) continue;
+    if (!m.struct_defs.count(method_ref->struct_tag)) continue;
+    auto mit = struct_methods_.find(method_ref->key);
+    if (mit == struct_methods_.end()) continue;
+    for (auto& pm : pending_methods_) {
+      if (pm.mangled == mit->second) {
+        pm.method_node = item;
+        break;
+      }
+    }
+  }
+}
+
+void Lowerer::lower_non_method_functions_and_globals(
+    const std::vector<const Node*>& items,
+    Module& m) {
+  for (const Node* item : items) {
+    if (item->kind == NK_FUNCTION) {
+      auto method_ref = try_parse_qualified_struct_method_name(item);
+      if (method_ref.has_value() && m.struct_defs.count(method_ref->struct_tag) &&
+          struct_methods_.count(method_ref->key)) {
+        continue;
+      }
+      if (item->is_consteval && item->n_template_params == 0) {
+        Function ce_fn{};
+        ce_fn.id = next_fn_id();
+        ce_fn.name = item->name ? item->name : "<anon_consteval>";
+        ce_fn.ns_qual = make_ns_qual(item);
+        ce_fn.return_type = qtype_from(item->type);
+        ce_fn.consteval_only = true;
+        ce_fn.span = make_span(item);
+        for (int i = 0; i < item->n_params; ++i) {
+          const Node* p = item->params[i];
+          if (!p) continue;
+          Param param{};
+          param.name = p->name ? p->name : "<anon_param>";
+          param.type = qtype_from(p->type, ValueCategory::LValue);
+          param.span = make_span(p);
+          ce_fn.params.push_back(std::move(param));
+        }
+        m.fn_index[ce_fn.name] = ce_fn.id;
+        m.functions.push_back(std::move(ce_fn));
+        continue;
+      }
+      if (item->is_consteval) continue;
+      if (item->n_template_params > 0 && item->name) {
+        auto* inst_list = registry_.find_instances(item->name);
+        if (inst_list && !inst_list->empty()) {
+          for (const auto& inst : *inst_list) {
+            auto selected = registry_.select_function_specialization(
+                item, inst.bindings, inst.nttp_bindings, inst.spec_key);
+            if (selected.selected_pattern != item) {
+              lower_function(selected.selected_pattern, &inst.mangled_name);
+            } else {
+              lower_function(item, &inst.mangled_name, &inst.bindings,
+                             inst.nttp_bindings.empty() ? nullptr : &inst.nttp_bindings);
+            }
+            if (!m.functions.empty()) {
+              m.functions.back().template_origin = item->name ? item->name : "";
+              m.functions.back().spec_key = inst.spec_key;
+            }
+          }
+        } else {
+          if (!is_referenced_without_template_args(item->name, items)) continue;
+          lower_function(item);
+        }
+      } else if (!item->is_explicit_specialization) {
+        auto ovit = ref_overload_mangled_.find(item);
+        if (ovit != ref_overload_mangled_.end()) {
+          lower_function(item, &ovit->second);
+        } else {
+          lower_function(item);
+        }
+      }
+    } else if (item->kind == NK_GLOBAL_VAR) {
+      lower_global(item);
+    }
+  }
+}
+
+void Lowerer::lower_pending_struct_methods() {
+  for (const auto& pm : pending_methods_) {
+    lower_struct_method(pm.mangled, pm.struct_tag, pm.method_node,
+                        pm.tpl_bindings.empty() ? nullptr : &pm.tpl_bindings,
+                        pm.nttp_bindings.empty() ? nullptr : &pm.nttp_bindings);
   }
 }
 

@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 2: introduce a safe transitional source layout and build wiring
-- Current slice: use duplicate-definition linker output to batch-transfer ownership from `src/frontend/hir/ast_to_hir.cpp` into the staged `hir_*.cpp` files, preferring cluster-sized cutovers over one-function-at-a-time cleanup
+- Current slice: continue pulling coordinator-adjacent ownership into `src/frontend/hir/hir_build.cpp`, then trim the remaining overlap between `src/frontend/hir/ast_to_hir.cpp` and the staged split files in cluster-sized batches
 
 ## Todo
 
@@ -18,6 +18,8 @@ Source Plan: plan.md
 - [ ] Step 5: run final build and regression validation
 
 ## Completed
+
+- Validation on 2026-04-01 after moving `attach_out_of_class_struct_method_defs`, `lower_non_method_functions_and_globals`, and `lower_pending_struct_methods` into [`src/frontend/hir/hir_build.cpp`](/workspaces/c4c/src/frontend/hir/hir_build.cpp): the top-level `lower_initial_program` call chain now lives in the build/coordinator split unit instead of being spread across [`src/frontend/hir/hir_build.cpp`](/workspaces/c4c/src/frontend/hir/hir_build.cpp) and [`src/frontend/hir/hir_functions.cpp`](/workspaces/c4c/src/frontend/hir/hir_functions.cpp). Matching coordinator ownership was removed from [`src/frontend/hir/hir_functions.cpp`](/workspaces/c4c/src/frontend/hir/hir_functions.cpp), and `cmake --build build -j8` succeeded after the handoff.
 
 - Validation on 2026-04-01 after switching to duplicate-driven batch cutover: `src/frontend/hir/hir_expr.cpp`, `src/frontend/hir/hir_functions.cpp`, and `src/frontend/hir/hir_types.cpp` are now active owners for their migrated clusters, while `src/frontend/hir/hir_stmt.cpp` and `src/frontend/hir/hir_templates.cpp` were returned to inert staging because they still overlapped with other split units. Matching owner bodies in `src/frontend/hir/ast_to_hir.cpp` were batch-disabled in cluster-sized sections rather than peeled off one by one, and `cmake --build build -j8` now succeeds again with the new ownership split.
 
