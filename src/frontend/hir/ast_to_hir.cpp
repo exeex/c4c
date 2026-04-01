@@ -1007,64 +1007,23 @@ class Lowerer {
     std::vector<DtorLocal> dtor_stack;
   };
 
-  static bool is_lvalue_ref_ts(const TypeSpec& ts) {
-    return ts.is_lvalue_ref;
-  }
+  static bool is_lvalue_ref_ts(const TypeSpec& ts);
 
-  static std::string pack_binding_name(const std::string& base, int index) {
-    return base + "#" + std::to_string(index);
-  }
+  static std::string pack_binding_name(const std::string& base, int index);
 
   static bool parse_pack_binding_name(const std::string& key,
                                       const std::string& base,
-                                      int* out_index = nullptr) {
-    if (key.size() <= base.size() + 1) return false;
-    if (key.compare(0, base.size(), base) != 0) return false;
-    if (key[base.size()] != '#') return false;
-    int index = 0;
-    try {
-      index = std::stoi(key.substr(base.size() + 1));
-    } catch (...) {
-      return false;
-    }
-    if (index < 0) return false;
-    if (out_index) *out_index = index;
-    return true;
-  }
+                                      int* out_index = nullptr);
 
   static long long count_pack_bindings_for_name(const TypeBindings& bindings,
                                                 const NttpBindings& nttp_bindings,
-                                                const std::string& base) {
-    int max_index = -1;
-    for (const auto& [key, _] : bindings) {
-      int pack_index = 0;
-      if (parse_pack_binding_name(key, base, &pack_index))
-        max_index = std::max(max_index, pack_index);
-    }
-    for (const auto& [key, _] : nttp_bindings) {
-      int pack_index = 0;
-      if (parse_pack_binding_name(key, base, &pack_index))
-        max_index = std::max(max_index, pack_index);
-    }
-    return max_index + 1;
-  }
+                                                const std::string& base);
 
-  static bool is_any_ref_ts(const TypeSpec& ts) {
-    return ts.is_lvalue_ref || ts.is_rvalue_ref;
-  }
+  static bool is_any_ref_ts(const TypeSpec& ts);
 
-  static TypeSpec reference_storage_ts(TypeSpec ts) {
-    if (ts.is_lvalue_ref || ts.is_rvalue_ref) ts.ptr_level += 1;
-    return ts;
-  }
+  static TypeSpec reference_storage_ts(TypeSpec ts);
 
-  static TypeSpec reference_value_ts(TypeSpec ts) {
-    if (!ts.is_lvalue_ref && !ts.is_rvalue_ref) return ts;
-    ts.is_lvalue_ref = false;
-    ts.is_rvalue_ref = false;
-    if (ts.ptr_level > 0) ts.ptr_level -= 1;
-    return ts;
-  }
+  static TypeSpec reference_value_ts(TypeSpec ts);
 
   // Resolve TB_TYPEDEF to TB_STRUCT/TB_UNION when the tag matches a known
   // struct definition.  Handles the injected-class-name case where the parser
@@ -9732,6 +9691,65 @@ class Lowerer {
   bool lowering_deferred_instantiation_ = false;
 
 };
+
+bool Lowerer::is_lvalue_ref_ts(const TypeSpec& ts) {
+  return ts.is_lvalue_ref;
+}
+
+std::string Lowerer::pack_binding_name(const std::string& base, int index) {
+  return base + "#" + std::to_string(index);
+}
+
+bool Lowerer::parse_pack_binding_name(const std::string& key,
+                                      const std::string& base,
+                                      int* out_index) {
+  if (key.size() <= base.size() + 1) return false;
+  if (key.compare(0, base.size(), base) != 0) return false;
+  if (key[base.size()] != '#') return false;
+  int index = 0;
+  try {
+    index = std::stoi(key.substr(base.size() + 1));
+  } catch (...) {
+    return false;
+  }
+  if (index < 0) return false;
+  if (out_index) *out_index = index;
+  return true;
+}
+
+long long Lowerer::count_pack_bindings_for_name(const TypeBindings& bindings,
+                                                const NttpBindings& nttp_bindings,
+                                                const std::string& base) {
+  int max_index = -1;
+  for (const auto& [key, _] : bindings) {
+    int pack_index = 0;
+    if (parse_pack_binding_name(key, base, &pack_index))
+      max_index = std::max(max_index, pack_index);
+  }
+  for (const auto& [key, _] : nttp_bindings) {
+    int pack_index = 0;
+    if (parse_pack_binding_name(key, base, &pack_index))
+      max_index = std::max(max_index, pack_index);
+  }
+  return max_index + 1;
+}
+
+bool Lowerer::is_any_ref_ts(const TypeSpec& ts) {
+  return ts.is_lvalue_ref || ts.is_rvalue_ref;
+}
+
+TypeSpec Lowerer::reference_storage_ts(TypeSpec ts) {
+  if (ts.is_lvalue_ref || ts.is_rvalue_ref) ts.ptr_level += 1;
+  return ts;
+}
+
+TypeSpec Lowerer::reference_value_ts(TypeSpec ts) {
+  if (!ts.is_lvalue_ref && !ts.is_rvalue_ref) return ts;
+  ts.is_lvalue_ref = false;
+  ts.is_rvalue_ref = false;
+  if (ts.ptr_level > 0) ts.ptr_level -= 1;
+  return ts;
+}
 
 std::vector<const Node*> Lowerer::flatten_program_items(const Node* root) const {
   std::vector<const Node*> items;
