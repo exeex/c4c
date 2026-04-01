@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 1: Establish Header Ownership
-- Current slice: continue Step 1 monolith peel-back by extracting the next adjacent low-coupling call-lowering helper cluster downstream of the initializer-list/consteval helpers while still deferring heavier structural bodies such as `lower_expr`, `lower_stmt_node`, and `lower_struct_def`
+- Current slice: continue Step 1 monolith peel-back by extracting the statement-lowering entrypoint now that its nearby destructor/defaulted-method helpers have moved out of the inline `Lowerer` class body, while still deferring heavier structural bodies such as `lower_expr` and `lower_struct_def`
 
 ## Todo
 
@@ -19,6 +19,8 @@ Source Plan: plan.md
 
 ## Completed
 
+- [x] Extracted the nearby destructor/defaulted-method helper cluster (`struct_has_member_dtors`, `emit_defaulted_method_body`, `emit_member_dtor_calls`, and `emit_dtor_calls`) out of the inline `Lowerer` class body into out-of-class definitions in `src/frontend/hir/ast_to_hir.cpp`
+- [x] Rebuilt with `cmake --build build -j8`, reran the full `ctest --test-dir build -j8 --output-on-failure` into `test_fail_after.log`, and passed `.codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`; the suite remained at 2671 total tests, 2668 passing, and the same 3 historical failures (`positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c`)
 - [x] Extracted the adjacent call-lowering helper cluster (`try_lower_consteval_call_expr`, `resolve_ref_overload`, `find_pending_method_by_mangled`, `describe_initializer_list_struct`, and `materialize_initializer_list_arg`) out of the inline `Lowerer` class body into out-of-class definitions in `src/frontend/hir/ast_to_hir.cpp`
 - [x] Rebuilt with `cmake --build build -j8`, reran the full `ctest --test-dir build -j8 --output-on-failure` into `test_fail_after.log`, and passed `.codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`; the suite remained at 2671 total tests, 2668 passing, and the same 3 historical failures (`positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c`)
 - [x] Extracted the adjacent template-instantiation collection helper cluster (`get_template_param_order_from_instances`, `record_seed`, `resolve_template_call_name`, `collect_template_instantiations`, and `collect_consteval_template_instantiations`) out of the inline `Lowerer` class body into out-of-class definitions in `src/frontend/hir/ast_to_hir.cpp`
@@ -77,7 +79,7 @@ Source Plan: plan.md
 
 ## Next Slice
 
-- Continue Step 1 by peeling the next nearby call-expression helper cluster out of the class body, likely starting with narrow `lower_call_expr` support paths that do not require widening the header surface or touching heavier structural bodies such as `lower_stmt_node` or `lower_struct_def`.
+- Continue Step 1 by peeling `lower_stmt_node` out of the inline class body now that its destructor/defaulted-method support helpers already live as out-of-class definitions, while still deferring `lower_struct_def` and heavier expression-lowering bodies.
 
 ## Blockers
 

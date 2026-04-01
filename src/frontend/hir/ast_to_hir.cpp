@@ -3593,205 +3593,18 @@ class Lowerer {
     return true;
   }
 
-  // Check whether a struct has any member fields whose types have destructors.
-  bool struct_has_member_dtors(const std::string& tag) {
-    auto sit = module_->struct_defs.find(tag);
-    if (sit == module_->struct_defs.end()) return false;
-    for (auto it = sit->second.fields.rbegin(); it != sit->second.fields.rend(); ++it) {
-      if (it->elem_type.base == TB_STRUCT && it->elem_type.ptr_level == 0 &&
-          it->elem_type.tag) {
-        std::string ftag = it->elem_type.tag;
-        if (struct_destructors_.count(ftag) || struct_has_member_dtors(ftag))
-          return true;
-      }
-    }
-    return false;
-  }
+  bool struct_has_member_dtors(const std::string& tag);
 
-  // Generate the synthetic body for a = default special member function.
-  // - Default constructor: empty (alloca zeroed by default)
-  // - Copy/move constructor: memberwise copy from source param to this
-  // - Copy/move assignment: memberwise copy from source param to this + return this
-  // - Default destructor: empty (member dtors handled by caller)
   void emit_defaulted_method_body(FunctionCtx& ctx, Function& fn,
-                                   const std::string& struct_tag,
-                                   const Node* method_node) {
-    auto sit = module_->struct_defs.find(struct_tag);
-    bool is_copy_or_move_ctor = method_node->is_constructor && method_node->n_params == 1;
-    bool is_copy_or_move_assign = (method_node->operator_kind == OP_ASSIGN) && method_node->n_params == 1;
+                                  const std::string& struct_tag,
+                                  const Node* method_node);
 
-    if (is_copy_or_move_ctor || is_copy_or_move_assign) {
-      // Emit memberwise copy: this->field = other.field for each field.
-      if (sit != module_->struct_defs.end()) {
-        // Build 'this' reference.
-        DeclRef this_ref{};
-        this_ref.name = "this";
-        auto pit = ctx.params.find("this");
-        if (pit != ctx.params.end()) this_ref.param_index = pit->second;
-        TypeSpec this_ts{};
-        this_ts.base = TB_STRUCT;
-        this_ts.tag = sit->second.tag.c_str();
-        this_ts.ptr_level = 1;
-        ExprId this_id = append_expr(method_node, this_ref, this_ts, ValueCategory::LValue);
+  void emit_member_dtor_calls(FunctionCtx& ctx,
+                              const std::string& struct_tag,
+                              ExprId this_ptr_id,
+                              const Node* span_node);
 
-        // Build 'other' reference (second parameter — the source).
-        // For ref params the storage is a pointer, so we use it directly.
-        std::string other_name = method_node->params[0]->name
-            ? method_node->params[0]->name : "<anon_param>";
-        DeclRef other_ref{};
-        other_ref.name = other_name;
-        auto opit = ctx.params.find(other_name);
-        if (opit != ctx.params.end()) other_ref.param_index = opit->second;
-        TypeSpec other_ts = this_ts; // ptr to struct
-        ExprId other_id = append_expr(method_node, other_ref, other_ts, ValueCategory::LValue);
-
-        for (const auto& field : sit->second.fields) {
-          TypeSpec field_ts = field.elem_type;
-          // Restore array dim if present.
-          if (field.array_first_dim >= 0) {
-            field_ts.array_rank = 1;
-            field_ts.array_size = field.array_first_dim;
-          }
-
-          // this->field
-          MemberExpr lhs_me{};
-          lhs_me.base = this_id;
-          lhs_me.field = field.name;
-          lhs_me.is_arrow = true;
-          ExprId lhs_member = append_expr(method_node, lhs_me, field_ts, ValueCategory::LValue);
-
-          // other->field
-          MemberExpr rhs_me{};
-          rhs_me.base = other_id;
-          rhs_me.field = field.name;
-          rhs_me.is_arrow = true;
-          ExprId rhs_member = append_expr(method_node, rhs_me, field_ts, ValueCategory::LValue);
-
-          // this->field = other->field
-          AssignExpr ae{};
-          ae.lhs = lhs_member;
-          ae.rhs = rhs_member;
-          ExprId assign_id = append_expr(method_node, ae, field_ts);
-          ExprStmt es{}; es.expr = assign_id;
-          append_stmt(ctx, Stmt{StmtPayload{es}, make_span(method_node)});
-        }
-      }
-    }
-
-    if (is_copy_or_move_assign) {
-      // Return *this (as pointer for T& return type).
-      DeclRef this_ref2{};
-      this_ref2.name = "this";
-      auto pit2 = ctx.params.find("this");
-      if (pit2 != ctx.params.end()) this_ref2.param_index = pit2->second;
-      TypeSpec this_ts2{};
-      this_ts2.base = TB_STRUCT;
-      this_ts2.tag = sit != module_->struct_defs.end()
-                         ? sit->second.tag.c_str()
-                         : struct_tag.c_str();
-      this_ts2.ptr_level = 1;
-      ExprId this_ret = append_expr(method_node, this_ref2, this_ts2, ValueCategory::LValue);
-      ReturnStmt rs{};
-      rs.expr = this_ret;
-      append_stmt(ctx, Stmt{StmtPayload{rs}, make_span(method_node)});
-    } else if (!method_node->is_destructor) {
-      // Default ctor, copy/move ctor: return void.
-      // (Destructors: ret void is emitted by caller after member dtor calls.)
-      ReturnStmt rs{};
-      append_stmt(ctx, Stmt{StmtPayload{rs}, make_span(method_node)});
-    }
-  }
-
-  // Emit destructor calls for struct member fields that have destructors.
-  // Calls are emitted in reverse field order. `this_ptr_id` is an ExprId
-  // of type pointer-to-struct.
-  void emit_member_dtor_calls(FunctionCtx& ctx, const std::string& struct_tag,
-                              ExprId this_ptr_id, const Node* span_node) {
-    auto sit = module_->struct_defs.find(struct_tag);
-    if (sit == module_->struct_defs.end()) return;
-    const auto& fields = sit->second.fields;
-    // Reverse field order for destruction.
-    for (auto it = fields.rbegin(); it != fields.rend(); ++it) {
-      const auto& field = *it;
-      if (field.elem_type.base != TB_STRUCT || field.elem_type.ptr_level != 0 ||
-          !field.elem_type.tag)
-        continue;
-      std::string ftag = field.elem_type.tag;
-      bool has_explicit_dtor = struct_destructors_.count(ftag) > 0;
-      bool has_member_dtors = struct_has_member_dtors(ftag);
-      if (!has_explicit_dtor && !has_member_dtors) continue;
-
-      // Build GEP: &(this->field)
-      MemberExpr me{};
-      me.base = this_ptr_id;
-      me.field = field.name;
-      me.is_arrow = true;
-      TypeSpec field_ts = field.elem_type;
-      ExprId member_id = append_expr(span_node, me, field_ts, ValueCategory::LValue);
-      UnaryExpr addr{};
-      addr.op = UnaryOp::AddrOf;
-      addr.operand = member_id;
-      TypeSpec ptr_ts = field_ts; ptr_ts.ptr_level++;
-      ExprId member_ptr_id = append_expr(span_node, addr, ptr_ts);
-
-      if (has_explicit_dtor) {
-        // Call the explicit destructor (it handles its own member dtors internally).
-        auto dit = struct_destructors_.find(ftag);
-        CallExpr c{};
-        DeclRef callee_ref{};
-        callee_ref.name = dit->second.mangled_name;
-        TypeSpec fn_ts{}; fn_ts.base = TB_VOID;
-        TypeSpec callee_ts = fn_ts; callee_ts.ptr_level++;
-        c.callee = append_expr(span_node, callee_ref, callee_ts);
-        c.args.push_back(member_ptr_id);
-        ExprId call_id = append_expr(span_node, c, fn_ts);
-        ExprStmt es{}; es.expr = call_id;
-        append_stmt(ctx, Stmt{StmtPayload{es}, make_span(span_node)});
-      } else {
-        // No explicit dtor — recursively emit member dtors for this field's type.
-        emit_member_dtor_calls(ctx, ftag, member_ptr_id, span_node);
-      }
-    }
-  }
-
-  // Emit destructor calls for locals pushed since dtor_stack index `since`.
-  // Calls are emitted in reverse order (LIFO).
-  void emit_dtor_calls(FunctionCtx& ctx, size_t since, const Node* span_node) {
-    for (size_t i = ctx.dtor_stack.size(); i > since; --i) {
-      const auto& dl = ctx.dtor_stack[i - 1];
-      auto dit = struct_destructors_.find(dl.struct_tag);
-
-      // Build the &var expression for this local.
-      DeclRef var_ref{};
-      var_ref.local = dl.local_id;
-      auto lt = ctx.local_types.find(dl.local_id.value);
-      TypeSpec var_ts{};
-      if (lt != ctx.local_types.end()) var_ts = lt->second;
-      ExprId var_id = append_expr(span_node, var_ref, var_ts, ValueCategory::LValue);
-      UnaryExpr addr{};
-      addr.op = UnaryOp::AddrOf;
-      addr.operand = var_id;
-      TypeSpec ptr_ts = var_ts; ptr_ts.ptr_level++;
-      ExprId addr_id = append_expr(span_node, addr, ptr_ts);
-
-      if (dit != struct_destructors_.end()) {
-        // Call explicit destructor (which handles its own member dtors).
-        CallExpr c{};
-        DeclRef callee_ref{};
-        callee_ref.name = dit->second.mangled_name;
-        TypeSpec fn_ts{}; fn_ts.base = TB_VOID;
-        TypeSpec callee_ts = fn_ts; callee_ts.ptr_level++;
-        c.callee = append_expr(span_node, callee_ref, callee_ts);
-        c.args.push_back(addr_id);
-        ExprId call_id = append_expr(span_node, c, fn_ts);
-        ExprStmt es{}; es.expr = call_id;
-        append_stmt(ctx, Stmt{StmtPayload{es}, make_span(span_node)});
-      } else {
-        // No explicit dtor, but has member dtors — emit them directly.
-        emit_member_dtor_calls(ctx, dl.struct_tag, addr_id, span_node);
-      }
-    }
-  }
+  void emit_dtor_calls(FunctionCtx& ctx, size_t since, const Node* span_node);
 
   void lower_stmt_node(FunctionCtx& ctx, const Node* n) {
     if (!n) return;
@@ -7967,6 +7780,193 @@ GlobalInit Lowerer::lower_global_init(const Node* n,
   }
   s.expr = lower_expr(ctx, n);
   return s;
+}
+
+bool Lowerer::struct_has_member_dtors(const std::string& tag) {
+  auto sit = module_->struct_defs.find(tag);
+  if (sit == module_->struct_defs.end()) return false;
+  for (auto it = sit->second.fields.rbegin(); it != sit->second.fields.rend(); ++it) {
+    if (it->elem_type.base == TB_STRUCT && it->elem_type.ptr_level == 0 &&
+        it->elem_type.tag) {
+      std::string ftag = it->elem_type.tag;
+      if (struct_destructors_.count(ftag) || struct_has_member_dtors(ftag)) return true;
+    }
+  }
+  return false;
+}
+
+void Lowerer::emit_defaulted_method_body(FunctionCtx& ctx,
+                                         Function& fn,
+                                         const std::string& struct_tag,
+                                         const Node* method_node) {
+  auto sit = module_->struct_defs.find(struct_tag);
+  bool is_copy_or_move_ctor = method_node->is_constructor && method_node->n_params == 1;
+  bool is_copy_or_move_assign =
+      (method_node->operator_kind == OP_ASSIGN) && method_node->n_params == 1;
+
+  if (is_copy_or_move_ctor || is_copy_or_move_assign) {
+    if (sit != module_->struct_defs.end()) {
+      DeclRef this_ref{};
+      this_ref.name = "this";
+      auto pit = ctx.params.find("this");
+      if (pit != ctx.params.end()) this_ref.param_index = pit->second;
+      TypeSpec this_ts{};
+      this_ts.base = TB_STRUCT;
+      this_ts.tag = sit->second.tag.c_str();
+      this_ts.ptr_level = 1;
+      ExprId this_id = append_expr(method_node, this_ref, this_ts, ValueCategory::LValue);
+
+      std::string other_name =
+          method_node->params[0]->name ? method_node->params[0]->name : "<anon_param>";
+      DeclRef other_ref{};
+      other_ref.name = other_name;
+      auto opit = ctx.params.find(other_name);
+      if (opit != ctx.params.end()) other_ref.param_index = opit->second;
+      TypeSpec other_ts = this_ts;
+      ExprId other_id =
+          append_expr(method_node, other_ref, other_ts, ValueCategory::LValue);
+
+      for (const auto& field : sit->second.fields) {
+        TypeSpec field_ts = field.elem_type;
+        if (field.array_first_dim >= 0) {
+          field_ts.array_rank = 1;
+          field_ts.array_size = field.array_first_dim;
+        }
+
+        MemberExpr lhs_me{};
+        lhs_me.base = this_id;
+        lhs_me.field = field.name;
+        lhs_me.is_arrow = true;
+        ExprId lhs_member =
+            append_expr(method_node, lhs_me, field_ts, ValueCategory::LValue);
+
+        MemberExpr rhs_me{};
+        rhs_me.base = other_id;
+        rhs_me.field = field.name;
+        rhs_me.is_arrow = true;
+        ExprId rhs_member =
+            append_expr(method_node, rhs_me, field_ts, ValueCategory::LValue);
+
+        AssignExpr ae{};
+        ae.lhs = lhs_member;
+        ae.rhs = rhs_member;
+        ExprId assign_id = append_expr(method_node, ae, field_ts);
+        ExprStmt es{};
+        es.expr = assign_id;
+        append_stmt(ctx, Stmt{StmtPayload{es}, make_span(method_node)});
+      }
+    }
+  }
+
+  if (is_copy_or_move_assign) {
+    DeclRef this_ref2{};
+    this_ref2.name = "this";
+    auto pit2 = ctx.params.find("this");
+    if (pit2 != ctx.params.end()) this_ref2.param_index = pit2->second;
+    TypeSpec this_ts2{};
+    this_ts2.base = TB_STRUCT;
+    this_ts2.tag =
+        sit != module_->struct_defs.end() ? sit->second.tag.c_str() : struct_tag.c_str();
+    this_ts2.ptr_level = 1;
+    ExprId this_ret =
+        append_expr(method_node, this_ref2, this_ts2, ValueCategory::LValue);
+    ReturnStmt rs{};
+    rs.expr = this_ret;
+    append_stmt(ctx, Stmt{StmtPayload{rs}, make_span(method_node)});
+  } else if (!method_node->is_destructor) {
+    ReturnStmt rs{};
+    append_stmt(ctx, Stmt{StmtPayload{rs}, make_span(method_node)});
+  }
+}
+
+void Lowerer::emit_member_dtor_calls(FunctionCtx& ctx,
+                                     const std::string& struct_tag,
+                                     ExprId this_ptr_id,
+                                     const Node* span_node) {
+  auto sit = module_->struct_defs.find(struct_tag);
+  if (sit == module_->struct_defs.end()) return;
+  const auto& fields = sit->second.fields;
+  for (auto it = fields.rbegin(); it != fields.rend(); ++it) {
+    const auto& field = *it;
+    if (field.elem_type.base != TB_STRUCT || field.elem_type.ptr_level != 0 ||
+        !field.elem_type.tag) {
+      continue;
+    }
+    std::string ftag = field.elem_type.tag;
+    bool has_explicit_dtor = struct_destructors_.count(ftag) > 0;
+    bool has_member_dtors = struct_has_member_dtors(ftag);
+    if (!has_explicit_dtor && !has_member_dtors) continue;
+
+    MemberExpr me{};
+    me.base = this_ptr_id;
+    me.field = field.name;
+    me.is_arrow = true;
+    TypeSpec field_ts = field.elem_type;
+    ExprId member_id = append_expr(span_node, me, field_ts, ValueCategory::LValue);
+    UnaryExpr addr{};
+    addr.op = UnaryOp::AddrOf;
+    addr.operand = member_id;
+    TypeSpec ptr_ts = field_ts;
+    ptr_ts.ptr_level++;
+    ExprId member_ptr_id = append_expr(span_node, addr, ptr_ts);
+
+    if (has_explicit_dtor) {
+      auto dit = struct_destructors_.find(ftag);
+      CallExpr c{};
+      DeclRef callee_ref{};
+      callee_ref.name = dit->second.mangled_name;
+      TypeSpec fn_ts{};
+      fn_ts.base = TB_VOID;
+      TypeSpec callee_ts = fn_ts;
+      callee_ts.ptr_level++;
+      c.callee = append_expr(span_node, callee_ref, callee_ts);
+      c.args.push_back(member_ptr_id);
+      ExprId call_id = append_expr(span_node, c, fn_ts);
+      ExprStmt es{};
+      es.expr = call_id;
+      append_stmt(ctx, Stmt{StmtPayload{es}, make_span(span_node)});
+    } else {
+      emit_member_dtor_calls(ctx, ftag, member_ptr_id, span_node);
+    }
+  }
+}
+
+void Lowerer::emit_dtor_calls(FunctionCtx& ctx, size_t since, const Node* span_node) {
+  for (size_t i = ctx.dtor_stack.size(); i > since; --i) {
+    const auto& dl = ctx.dtor_stack[i - 1];
+    auto dit = struct_destructors_.find(dl.struct_tag);
+
+    DeclRef var_ref{};
+    var_ref.local = dl.local_id;
+    auto lt = ctx.local_types.find(dl.local_id.value);
+    TypeSpec var_ts{};
+    if (lt != ctx.local_types.end()) var_ts = lt->second;
+    ExprId var_id = append_expr(span_node, var_ref, var_ts, ValueCategory::LValue);
+    UnaryExpr addr{};
+    addr.op = UnaryOp::AddrOf;
+    addr.operand = var_id;
+    TypeSpec ptr_ts = var_ts;
+    ptr_ts.ptr_level++;
+    ExprId addr_id = append_expr(span_node, addr, ptr_ts);
+
+    if (dit != struct_destructors_.end()) {
+      CallExpr c{};
+      DeclRef callee_ref{};
+      callee_ref.name = dit->second.mangled_name;
+      TypeSpec fn_ts{};
+      fn_ts.base = TB_VOID;
+      TypeSpec callee_ts = fn_ts;
+      callee_ts.ptr_level++;
+      c.callee = append_expr(span_node, callee_ref, callee_ts);
+      c.args.push_back(addr_id);
+      ExprId call_id = append_expr(span_node, c, fn_ts);
+      ExprStmt es{};
+      es.expr = call_id;
+      append_stmt(ctx, Stmt{StmtPayload{es}, make_span(span_node)});
+    } else {
+      emit_member_dtor_calls(ctx, dl.struct_tag, addr_id, span_node);
+    }
+  }
 }
 
 void Lowerer::lower_global(const Node* gv) {
