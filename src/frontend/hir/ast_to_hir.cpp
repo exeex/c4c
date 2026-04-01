@@ -846,7 +846,7 @@ class Lowerer {
   const sema::ResolvedTypeTable* resolved_types_ = nullptr;
 
   /// Engine-owned compile-time state, shared with the pipeline.
-  std::shared_ptr<CompileTimeState> ct_state() const { return ct_state_; }
+  std::shared_ptr<CompileTimeState> ct_state() const;
 
   void seed_pending_template_type(const TypeSpec& ts,
                                   const TypeBindings& tpl_bindings,
@@ -1029,43 +1029,17 @@ class Lowerer {
   // struct definition.  Handles the injected-class-name case where the parser
   // cannot fully resolve the typedef because the struct is still incomplete
   // during body parsing.
-  void resolve_typedef_to_struct(TypeSpec& ts) const {
-    if (ts.base != TB_TYPEDEF || !ts.tag) return;
-    auto sit = module_->struct_defs.find(ts.tag);
-    if (sit != module_->struct_defs.end()) {
-      ts.base = TB_STRUCT;
-      ts.tag = sit->second.tag.c_str();
-    }
-  }
+  void resolve_typedef_to_struct(TypeSpec& ts) const;
 
-  FunctionId next_fn_id() { return module_->alloc_function_id(); }
-  GlobalId next_global_id() { return module_->alloc_global_id(); }
-  LocalId next_local_id() { return module_->alloc_local_id(); }
-  BlockId next_block_id() { return module_->alloc_block_id(); }
-  ExprId next_expr_id() { return module_->alloc_expr_id(); }
+  FunctionId next_fn_id();
+  GlobalId next_global_id();
+  LocalId next_local_id();
+  BlockId next_block_id();
+  ExprId next_expr_id();
 
-  static bool contains_stmt_expr(const Node* n) {
-    if (!n) return false;
-    if (n->kind == NK_STMT_EXPR) return true;
-    if (contains_stmt_expr(n->left)) return true;
-    if (contains_stmt_expr(n->right)) return true;
-    if (contains_stmt_expr(n->cond)) return true;
-    if (contains_stmt_expr(n->then_)) return true;
-    if (contains_stmt_expr(n->else_)) return true;
-    if (contains_stmt_expr(n->body)) return true;
-    if (contains_stmt_expr(n->init)) return true;
-    if (contains_stmt_expr(n->update)) return true;
-    for (int i = 0; i < n->n_children; ++i)
-      if (contains_stmt_expr(n->children[i])) return true;
-    return false;
-  }
+  static bool contains_stmt_expr(const Node* n);
 
-  QualType qtype_from(const TypeSpec& t, ValueCategory c = ValueCategory::RValue) {
-    QualType qt{};
-    qt.spec = t;
-    qt.category = c;
-    return qt;
-  }
+  QualType qtype_from(const TypeSpec& t, ValueCategory c = ValueCategory::RValue);
 
   std::optional<FnPtrSig> fn_ptr_sig_from_decl_node(const Node* n) {
     if (!n) return std::nullopt;
@@ -9324,6 +9298,50 @@ class Lowerer {
 
 bool Lowerer::is_lvalue_ref_ts(const TypeSpec& ts) {
   return ts.is_lvalue_ref;
+}
+
+std::shared_ptr<CompileTimeState> Lowerer::ct_state() const { return ct_state_; }
+
+void Lowerer::resolve_typedef_to_struct(TypeSpec& ts) const {
+  if (ts.base != TB_TYPEDEF || !ts.tag) return;
+  auto sit = module_->struct_defs.find(ts.tag);
+  if (sit != module_->struct_defs.end()) {
+    ts.base = TB_STRUCT;
+    ts.tag = sit->second.tag.c_str();
+  }
+}
+
+FunctionId Lowerer::next_fn_id() { return module_->alloc_function_id(); }
+
+GlobalId Lowerer::next_global_id() { return module_->alloc_global_id(); }
+
+LocalId Lowerer::next_local_id() { return module_->alloc_local_id(); }
+
+BlockId Lowerer::next_block_id() { return module_->alloc_block_id(); }
+
+ExprId Lowerer::next_expr_id() { return module_->alloc_expr_id(); }
+
+bool Lowerer::contains_stmt_expr(const Node* n) {
+  if (!n) return false;
+  if (n->kind == NK_STMT_EXPR) return true;
+  if (contains_stmt_expr(n->left)) return true;
+  if (contains_stmt_expr(n->right)) return true;
+  if (contains_stmt_expr(n->cond)) return true;
+  if (contains_stmt_expr(n->then_)) return true;
+  if (contains_stmt_expr(n->else_)) return true;
+  if (contains_stmt_expr(n->body)) return true;
+  if (contains_stmt_expr(n->init)) return true;
+  if (contains_stmt_expr(n->update)) return true;
+  for (int i = 0; i < n->n_children; ++i)
+    if (contains_stmt_expr(n->children[i])) return true;
+  return false;
+}
+
+QualType Lowerer::qtype_from(const TypeSpec& t, ValueCategory c) {
+  QualType qt{};
+  qt.spec = t;
+  qt.category = c;
+  return qt;
 }
 
 std::string Lowerer::pack_binding_name(const std::string& base, int index) {

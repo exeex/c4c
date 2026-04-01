@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 1: Establish Header Ownership
-- Current slice: select the next low-coupling inline `Lowerer` utility cluster to peel out of the class body after the struct-method lookup helper extraction
+- Current slice: select the next low-coupling inline `Lowerer` utility cluster to peel out of the class body after the compile-time state and allocator helper extraction
 
 ## Todo
 
@@ -41,10 +41,12 @@ Source Plan: plan.md
 - [x] Rebuilt and reran the targeted known-failure triplet plus the full `ctest --test-dir build -j8 --output-on-failure`; the suite again finished at 2671 total tests, 2668 passing, and the same 3 historical failures
 - [x] Extracted the inline struct-method lookup helpers (`find_struct_method_mangled` and `find_struct_method_return_type`) into out-of-class definitions in `src/frontend/hir/ast_to_hir.cpp`
 - [x] Rebuilt and reran the targeted known-failure triplet plus the full `ctest --test-dir build -j8 --output-on-failure`; the suite still finished at 2671 total tests, 2668 passing, and the same 3 historical failures
+- [x] Extracted the low-coupling inline `Lowerer` compile-time/utility helpers (`ct_state`, `resolve_typedef_to_struct`, `next_*_id`, `contains_stmt_expr`, and `qtype_from`) into out-of-class definitions in `src/frontend/hir/ast_to_hir.cpp`
+- [x] Rebuilt and reran the targeted known-failure triplet plus the full `ctest --test-dir build -j8 --output-on-failure`; the suite still finished at 2671 total tests, 2668 passing, and the same 3 historical failures
 
 ## Next Slice
 
-- Continue Step 1 by peeling the next low-coupling inline `Lowerer` utility cluster out of the class body before moving the full class definition into `ast_to_hir.hpp`.
+- Continue Step 1 by peeling the next low-coupling inline `Lowerer` utility cluster out of the class body before moving the full class definition into `ast_to_hir.hpp`, likely starting with `fn_ptr_sig_from_decl_node` and neighboring type-utility helpers.
 
 ## Blockers
 
@@ -70,4 +72,7 @@ Source Plan: plan.md
 - Validation on 2026-04-01: `cmake --build build -j8` succeeded; the targeted rerun of `positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c` matched the historical blocker list; a full `ctest --test-dir build -j8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 failing tests.
 - The current slice targets the two inline struct-method lookup helpers (`find_struct_method_mangled` and `find_struct_method_return_type`) because they are self-contained, recursive lookups with no expected ownership changes beyond moving their bodies out of the class definition.
 - The latest slice moved the recursive struct-method lookup helpers (`find_struct_method_mangled` and `find_struct_method_return_type`) out of the inline `Lowerer` class body into out-of-class definitions, preserving behavior while continuing the monolith shrink.
+- Validation on 2026-04-01: `cmake --build build -j8` succeeded; the targeted rerun of `positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c` matched the historical blocker list; a full `ctest --test-dir build -j8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 failing tests.
+- The current slice targeted the small compile-time state, allocator, and generic utility helpers because they are low-coupling one-liners or local recursion helpers that can move out of the inline class body without changing symbol ownership.
+- The latest slice moved `ct_state`, `resolve_typedef_to_struct`, `next_fn_id`, `next_global_id`, `next_local_id`, `next_block_id`, `next_expr_id`, `contains_stmt_expr`, and `qtype_from` out of the inline `Lowerer` class body into out-of-class definitions, preserving behavior while continuing the monolith shrink.
 - Validation on 2026-04-01: `cmake --build build -j8` succeeded; the targeted rerun of `positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c` matched the historical blocker list; a full `ctest --test-dir build -j8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 failing tests.
