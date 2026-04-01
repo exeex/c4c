@@ -194,7 +194,9 @@ std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(
     if (plan.needs_stack_slot) {
       if (plan.coalesced_block.has_value()) {
         for (auto& assigned_slot : assigned_slots) {
-          if (assigned_slot.type_str != alloca->type_str || assigned_slot.align != alloca->align ||
+          if (assigned_slot.occupied_blocks.empty() ||
+              assigned_slot.type_str != alloca->type_str ||
+              assigned_slot.align != alloca->align ||
               assigned_slot.occupied_blocks.find(*plan.coalesced_block) !=
                   assigned_slot.occupied_blocks.end()) {
             continue;

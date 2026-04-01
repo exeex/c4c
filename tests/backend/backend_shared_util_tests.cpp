@@ -467,6 +467,25 @@ void test_backend_shared_slot_assignment_plans_entry_alloca_slots() {
                   same_block_plans[0].assigned_slot != same_block_plans[1].assigned_slot,
               "shared slot-assignment planning should keep same-block local allocas in distinct slots even when both are individually coalescable");
 
+  const auto mixed_lifetime_module = make_mixed_lifetime_local_alloca_candidate_module();
+  const auto& mixed_lifetime_function = mixed_lifetime_module.functions.front();
+  const auto mixed_lifetime_analysis = c4c::backend::stack_layout::analyze_stack_layout(
+      mixed_lifetime_function, regalloc, {});
+  const auto mixed_lifetime_plans =
+      c4c::backend::stack_layout::plan_entry_alloca_slots(mixed_lifetime_function,
+                                                          mixed_lifetime_analysis);
+
+  expect_true(mixed_lifetime_plans.size() == 2 &&
+                  mixed_lifetime_plans[0].alloca_name == "%lv.a" &&
+                  !mixed_lifetime_plans[0].coalesced_block.has_value() &&
+                  mixed_lifetime_plans[0].assigned_slot.has_value() &&
+                  mixed_lifetime_plans[1].alloca_name == "%lv.y" &&
+                  mixed_lifetime_plans[1].coalesced_block == 0 &&
+                  mixed_lifetime_plans[1].assigned_slot.has_value() &&
+                  mixed_lifetime_plans[0].assigned_slot !=
+                      mixed_lifetime_plans[1].assigned_slot,
+              "shared slot-assignment planning should not let a single-block alloca reuse the slot of a value that stays live across multiple blocks");
+
   const auto read_first_module = make_read_before_store_local_alloca_candidate_module();
   const auto& read_first_function = read_first_module.functions.front();
   const auto read_first_analysis =
@@ -620,6 +639,23 @@ void test_backend_shared_slot_assignment_applies_coalesced_entry_slots() {
 
   expect_true(same_block_function.alloca_insts.size() == 2,
               "shared slot-assignment application should keep same-block allocas distinct when planning assigned them different slots");
+
+  const auto mixed_lifetime_module = make_mixed_lifetime_local_alloca_candidate_module();
+  auto mixed_lifetime_function = mixed_lifetime_module.functions.front();
+  const auto mixed_lifetime_analysis = c4c::backend::stack_layout::analyze_stack_layout(
+      mixed_lifetime_function, regalloc, {});
+  const auto mixed_lifetime_plans =
+      c4c::backend::stack_layout::plan_entry_alloca_slots(mixed_lifetime_function,
+                                                          mixed_lifetime_analysis);
+  c4c::backend::stack_layout::apply_entry_alloca_slot_plan(mixed_lifetime_function,
+                                                           mixed_lifetime_plans);
+
+  expect_true(mixed_lifetime_function.alloca_insts.size() == 2,
+              "shared slot-assignment application should keep mixed-lifetime allocas distinct when the entry value remains live after the scratch store");
+  const auto* mixed_entry_store =
+      std::get_if<c4c::codegen::lir::LirStoreOp>(&mixed_lifetime_function.blocks[0].insts[1]);
+  expect_true(mixed_entry_store != nullptr && mixed_entry_store->ptr == "%lv.y",
+              "shared slot-assignment application should preserve the scratch-store destination instead of rewriting it onto the long-lived entry alloca");
 
   const auto call_arg_module = make_disjoint_block_call_arg_alloca_candidate_module();
   auto call_arg_function = call_arg_module.functions.front();

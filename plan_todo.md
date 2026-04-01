@@ -122,6 +122,29 @@ stack-spill AArch64 emitter. All instruction types handled in one pass.
   `00170.c`, `00115.c`, and `00217.c` now pass in the AArch64 c-testsuite.
 - Next intended slice:
   investigate the remaining runtime-only failures in `00040.c`, `00050.c`,
-  `00091.c`, `00104.c`, `00164.c`, `00182.c`, `00195.c`, `00207.c`, and
-  `00216.c`, with `00164.c` the best mismatch candidate for another narrow
+  `00091.c`, `00104.c`, `00182.c`, `00195.c`, `00207.c`, and `00216.c`,
+  with `00207.c` or one of the struct-heavy segfaults as the next narrow
   root-cause slice.
+
+### Step 6 slice result (2026-04-01, mixed-lifetime alloca alias)
+- Root cause isolated from `00164.c`:
+  entry-slot planning allowed a single-block scratch alloca to reuse the slot
+  of a separate alloca whose value stayed live across multiple blocks. In
+  practice this let `%lv.y` alias `%lv.a`, corrupting later arithmetic.
+- Added shared slot-planning regression coverage for the mixed-lifetime case:
+  a long-lived entry alloca and a single-block scratch alloca must receive
+  distinct assigned slots and must not be rewritten onto the same canonical
+  alloca.
+- Fixed `src/backend/stack_layout/slot_assignment.cpp` so single-block reuse
+  only considers previously assigned slots that are themselves in the
+  single-block coalescing pool; whole-function-lifetime slots are no longer
+  eligible for reuse.
+- Focus validation:
+  `ctest --test-dir build -R c_testsuite_aarch64_backend_src_00164_c
+  --output-on-failure` now passes.
+- Updated suite status:
+  `ctest --test-dir build -R c_testsuite_aarch64 -j8 --output-on-failure`
+  now reports 8 failures total (improved from 9).
+- Remaining failures after this slice:
+  `00040.c`, `00050.c`, `00091.c`, `00104.c`, `00182.c`, `00195.c`,
+  `00207.c`, and `00216.c`.

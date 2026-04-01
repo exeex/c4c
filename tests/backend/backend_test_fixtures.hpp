@@ -1046,6 +1046,49 @@ inline c4c::codegen::lir::LirModule make_same_block_local_alloca_candidate_modul
   return module;
 }
 
+inline c4c::codegen::lir::LirModule
+make_mixed_lifetime_local_alloca_candidate_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.a", "i32", "", 4});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.y", "i32", "", 4});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{"i32", "12", "%lv.a"});
+  entry.insts.push_back(LirStoreOp{"i32", "34", "%lv.y"});
+  entry.insts.push_back(LirLoadOp{"%t0", "i32", "%lv.a"});
+  entry.insts.push_back(LirCmpOp{"%t1", false, "ne", "i32", "%t0", "0"});
+  entry.terminator = LirCondBr{"%t1", "then", "else"};
+
+  LirBlock then_block;
+  then_block.id = LirBlockId{1};
+  then_block.label = "then";
+  then_block.insts.push_back(LirLoadOp{"%t2", "i32", "%lv.a"});
+  then_block.terminator = LirRet{std::string("%t2"), "i32"};
+
+  LirBlock else_block;
+  else_block.id = LirBlockId{2};
+  else_block.label = "else";
+  else_block.terminator = LirRet{std::string("0"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(then_block));
+  function.blocks.push_back(std::move(else_block));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 inline c4c::codegen::lir::LirModule make_read_before_store_local_alloca_candidate_module() {
   using namespace c4c::codegen::lir;
 
