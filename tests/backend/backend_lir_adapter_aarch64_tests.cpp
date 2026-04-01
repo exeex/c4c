@@ -2317,6 +2317,15 @@ void test_aarch64_backend_renders_large_frame_adjustments() {
                       "aarch64 backend should not emit an oversized stack-restore immediate");
 }
 
+void test_aarch64_backend_initializes_param_alloca_slots_in_general_emitter() {
+  const auto rendered = c4c::backend::aarch64::emit_module(
+      make_param_slot_module());
+  expect_contains(rendered, ".globl main",
+                  "aarch64 general emitter should keep parameter-slot functions on the asm path");
+  expect_contains(rendered, "ldr x9, [sp, #8]\n  str w0, [x9]\n",
+                  "aarch64 general emitter should initialize lowered parameter allocas from incoming ABI registers");
+}
+
 void test_aarch64_backend_renders_mutable_string_global_bytes() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_mutable_string_global_module()},
@@ -2885,6 +2894,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_renders_bitcast_slice();
   test_aarch64_backend_renders_trunc_slice();
   test_aarch64_backend_renders_large_frame_adjustments();
+  test_aarch64_backend_initializes_param_alloca_slots_in_general_emitter();
   test_aarch64_backend_renders_mutable_string_global_bytes();
   test_aarch64_backend_uses_real_named_struct_field_offsets();
   test_aarch64_backend_uses_real_array_of_struct_stride();

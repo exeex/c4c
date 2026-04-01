@@ -4874,7 +4874,6 @@ static std::optional<std::string> try_emit_general_lir_asm(
         auto parsed_params = gen_parse_call_args(params_str);
         for (size_t i = 0; i < parsed_params.size() && i < 8; ++i) {
           if (parsed_params[i].value == "...") break;
-          // Skip byval parameters (their value is already a pointer)
           int off = sm.lookup(parsed_params[i].value);
           if (off >= 0) {
             out << "  str x" << i << ", [sp, #" << off << "]\n";
@@ -4921,6 +4920,43 @@ static std::optional<std::string> try_emit_general_lir_asm(
             out << "  add x0, sp, x0\n";
           }
           out << "  str x0, [sp, #" << ptr_off << "]\n";
+        }
+      }
+    }
+
+    // Lowered parameter allocas (e.g. %lv.param.x) must be initialized after the
+    // alloca address slots have been materialized.
+    {
+      auto paren_open = fn.signature_text.find('(');
+      auto paren_close = fn.signature_text.rfind(')');
+      if (paren_open != std::string::npos && paren_close != std::string::npos &&
+          paren_close > paren_open + 1) {
+        std::string params_str = fn.signature_text.substr(paren_open + 1,
+                                                           paren_close - paren_open - 1);
+        auto parsed_params = gen_parse_call_args(params_str);
+        for (size_t i = 0; i < parsed_params.size() && i < 8; ++i) {
+          if (parsed_params[i].value == "...") break;
+          const std::string param_name = parsed_params[i].value;
+          if (param_name.compare(0, 3, "%p.") != 0) continue;
+
+          const std::string param_slot_name =
+              "%lv.param." + param_name.substr(std::string("%p.").size());
+          const int param_ptr_off = sm.lookup(param_slot_name);
+          if (param_ptr_off < 0) continue;
+
+          const auto param_layout = gen_type_layout(parsed_params[i].type, module.type_decls);
+          if (param_layout.size <= 0 || param_layout.size > 8) continue;
+
+          out << "  ldr x9, [sp, #" << param_ptr_off << "]\n";
+          if (param_layout.size == 1) {
+            out << "  strb w" << i << ", [x9]\n";
+          } else if (param_layout.size == 2) {
+            out << "  strh w" << i << ", [x9]\n";
+          } else if (param_layout.size == 4) {
+            out << "  str w" << i << ", [x9]\n";
+          } else {
+            out << "  str x" << i << ", [x9]\n";
+          }
         }
       }
     }

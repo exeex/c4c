@@ -176,3 +176,39 @@ stack-spill AArch64 emitter. All instruction types handled in one pass.
 - Next intended slice:
   investigate one remaining narrow runtime bug, with `00207.c` or one of the
   remaining struct-heavy segfault cases as the next target.
+
+### Step 6 slice result (2026-04-01, lowered parameter alloca initialization)
+- Root cause isolated from `00040.c`, `00182.c`, and `00207.c`:
+  the general AArch64 emitter spilled incoming `%p.*` ABI registers to SSA temp
+  slots, but it never initialized the lowered `%lv.param.*` allocas that the
+  frontend uses for mutable parameters and address-taken parameter storage.
+- Fixed `src/backend/aarch64/codegen/emit.cpp` so, after alloca address slots
+  are materialized, scalar/pointer incoming parameters also get written into the
+  matching `%lv.param.*` storage slot in the function prologue.
+- Added focused assembly-path coverage in
+  `tests/backend/backend_lir_adapter_aarch64_tests.cpp` that asserts the
+  general emitter emits the extra prologue writeback for `make_param_slot_module()`.
+- Focus validation:
+  `ctest --test-dir build -R "c_testsuite_aarch64_backend_src_(00040|00182|00207)_c" --output-on-failure`
+  now passes `00040.c`; `00182.c` improves from `RUNTIME_NONZERO` to
+  `RUNTIME_MISMATCH`; `00207.c` improves from a missing-output mismatch to a
+  timeout caused by repeated `boom!` output.
+- Updated AArch64 subset status:
+  `ctest --test-dir build -R c_testsuite_aarch64 -j8 --output-on-failure`
+  now reports 5 failures total out of 220 (`215/220` passing), improved from
+  6 failures (`214/220` passing).
+- Full-suite snapshot after this slice:
+  `ctest --test-dir build -j8 --output-on-failure` reports 11 failures out of
+  2671 tests (`2660/2671` passing), improved from the prior recorded 12
+  failures. The remaining failures still include pre-existing non-AArch64
+  issues such as `positive_sema_linux_stage2_repro_03_asm_volatile_c`,
+  `backend_lir_adapter_aarch64_tests`, the three
+  `backend_runtime_*param*_member_array` cases, and
+  `llvm_gcc_c_torture_src_20080502_1_c`.
+- Remaining AArch64 failures after this slice:
+  `00104.c`, `00182.c`, `00195.c`, `00207.c`, and `00216.c`.
+- Next intended slice:
+  fix the remaining parameter/aggregate runtime correctness issue exposed by
+  `00207.c` and the `backend_runtime_*param*_member_array` cases, likely by
+  tightening how lowered parameter allocas interact with by-value aggregates
+  and control-flow around address-taken parameters.
