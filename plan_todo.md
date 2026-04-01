@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 1: Establish Header Ownership
-- Current slice: select the next low-coupling inline `Lowerer` utility cluster to peel out of the class body after the `append_expr` extraction
+- Current slice: select the next low-coupling inline `Lowerer` utility cluster to peel out of the class body after the `collect_enum_def` extraction
 
 ## Todo
 
@@ -47,10 +47,12 @@ Source Plan: plan.md
 - [x] Rebuilt and reran the targeted known-failure triplet plus the full `ctest --test-dir build -j8 --output-on-failure`; the suite still finished at 2671 total tests, 2668 passing, and the same 3 historical failures
 - [x] Extracted the inline `append_expr` helper out of the `Lowerer` class body into an out-of-class definition in `src/frontend/hir/ast_to_hir.cpp`
 - [x] Rebuilt and reran the targeted known-failure triplet plus the full `ctest --test-dir build -j8 --output-on-failure`; the suite still finished at 2671 total tests, 2668 passing, and the same 3 historical failures
+- [x] Extracted the inline enum-constant collector `collect_enum_def` out of the `Lowerer` class body into an out-of-class definition in `src/frontend/hir/ast_to_hir.cpp`
+- [x] Rebuilt and reran the full `ctest --test-dir build -j8 --output-on-failure`, then passed `.codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`; the suite remained at 2671 total tests, 2668 passing, and the same 3 historical failures
 
 ## Next Slice
 
-- Continue Step 1 by peeling the next low-coupling inline `Lowerer` utility cluster out of the class body before moving the full class definition into `ast_to_hir.hpp`, likely targeting another small helper adjacent to the remaining inline lowering bodies while leaving `lower_struct_def` for a later, more deliberate extraction.
+- Continue Step 1 by peeling the next low-coupling inline `Lowerer` utility cluster out of the class body before moving the full class definition into `ast_to_hir.hpp`, likely targeting another setup/helper member adjacent to the remaining inline lowering bodies while still leaving `lower_struct_def` for a later, more deliberate extraction.
 
 ## Blockers
 
@@ -86,3 +88,6 @@ Source Plan: plan.md
 - The current slice targeted `append_expr` because it is a small, high-fanout helper that could move out of the inline `Lowerer` class body without requiring any new declaration surface or ownership changes.
 - The latest slice moved `append_expr` out of the inline `Lowerer` class body into an out-of-class definition, preserving behavior while continuing the monolith shrink.
 - Validation on 2026-04-01: `cmake --build build -j8` succeeded; the targeted rerun of `positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c` matched the historical blocker list; a full `ctest --test-dir build -j8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 failing tests.
+- The current slice targeted `collect_enum_def` because it is a small setup helper that still lived inline in the `Lowerer` class body and could move out-of-class without changing ownership or widening the declaration surface.
+- The latest slice moved `collect_enum_def` out of the inline `Lowerer` class body into an out-of-class definition, preserving behavior while continuing the monolith shrink.
+- Validation on 2026-04-01: `cmake -S . -B build` and `cmake --build build -j8` succeeded; a full `ctest --test-dir build -j8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 failing tests; `.codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passed with zero new failing tests.
