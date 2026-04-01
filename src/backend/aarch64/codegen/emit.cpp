@@ -4520,7 +4520,8 @@ static int gen_struct_field_offset(const std::string& ty, int field_idx,
 }
 
 // Collect all SSA names used in a function (alloca_insts + block insts + terminators).
-static GenSlotMap gen_build_slots(const c4c::codegen::lir::LirFunction& fn) {
+static GenSlotMap gen_build_slots(const c4c::codegen::lir::LirFunction& fn,
+                                  const std::vector<std::string>& type_decls) {
   using namespace c4c::codegen::lir;
   GenSlotMap sm;
 
@@ -4584,12 +4585,7 @@ static GenSlotMap gen_build_slots(const c4c::codegen::lir::LirFunction& fn) {
   // Allocate data areas for allocas (separate from the pointer slot)
   auto alloc_data_for_alloca = [&](const LirInst& inst) {
     if (const auto* p = std::get_if<LirAllocaOp>(&inst)) {
-      int elem_size = gen_type_bytes(p->type_str.str());
-      // Handle array types
-      if (p->type_str.str()[0] == '[') {
-        auto [cnt, esz] = gen_parse_array_type(p->type_str.str());
-        elem_size = cnt * esz;
-      }
+      int elem_size = gen_type_layout(p->type_str.str(), type_decls).size;
       // Handle dynamic count
       if (!p->count.empty()) {
         // Dynamic alloca — allocate a generous default
@@ -5008,7 +5004,7 @@ static std::optional<std::string> try_emit_general_lir_asm(
     if (fn.is_declaration) continue;
 
     // Build slot map
-    GenSlotMap sm = gen_build_slots(fn);
+    GenSlotMap sm = gen_build_slots(fn, module.type_decls);
 
     // Parse params from signature_text and ensure they have slots
     {

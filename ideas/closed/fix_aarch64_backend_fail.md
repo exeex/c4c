@@ -1,3 +1,38 @@
+# Status
+
+Complete as of 2026-04-01.
+
+## Outcome
+
+- Goal achieved: `ctest --test-dir build -R c_testsuite_aarch64 -j8 --output-on-failure`
+  now passes all `220/220` AArch64 backend c-testsuite cases.
+- Final root cause fixed in the closing slice:
+  the general AArch64 emitter sized named aggregate allocas as 8-byte scalars
+  when building stack frames, which made local `%struct.*` allocas overlap and
+  corrupted `00216.c`.
+- Final implementation change:
+  `src/backend/aarch64/codegen/emit.cpp` now sizes general-emitter alloca data
+  areas with `gen_type_layout(...)` and the module type declarations rather
+  than the scalar-only `gen_type_bytes()` helper.
+
+## Validation
+
+- Focus case:
+  `ctest --test-dir build -R c_testsuite_aarch64_backend_src_00216_c --output-on-failure`
+  passes.
+- Full AArch64 subset:
+  `ctest --test-dir build -R c_testsuite_aarch64 -j8 --output-on-failure`
+  passes `220/220`.
+- Broader suite snapshot after completion:
+  `ctest --test-dir build -j8 --output-on-failure` reports `2668/2671`
+  passing.
+
+## Leftover Issues Outside This Idea
+
+- `positive_sema_linux_stage2_repro_03_asm_volatile_c`
+- `backend_lir_adapter_aarch64_tests`
+- `llvm_gcc_c_torture_src_20080502_1_c`
+
 # Scope
 
 work dir / file:
