@@ -3434,164 +3434,17 @@ class Lowerer {
                                FunctionCtx* ctx = nullptr,
                                bool allow_named_const_fold = false);
 
-  InitList lower_init_list(const Node* n, FunctionCtx* ctx = nullptr) {
-    InitList out{};
-    for (int i = 0; i < n->n_children; ++i) {
-      const Node* it = n->children[i];
-      if (!it) continue;
-      InitListItem item{};
+  InitList lower_init_list(const Node* n, FunctionCtx* ctx = nullptr);
 
-      const Node* value_node = it;
-      if (it->kind == NK_INIT_ITEM) {
-        if (it->is_designated) {
-          if (it->is_index_desig) {
-            item.index_designator = it->desig_val;
-          } else if (it->desig_field) {
-            item.field_designator = std::string(it->desig_field);
-          }
-        }
-        value_node = it->left ? it->left : it->right;
-        if (!value_node) value_node = it->init;
-      }
+  const Node* init_item_value_node(const Node* item) const;
 
-      if (value_node && value_node->kind == NK_INIT_LIST) {
-        item.value = std::make_shared<InitList>(lower_init_list(value_node, ctx));
-      } else if (value_node && value_node->kind == NK_COMPOUND_LIT &&
-                 value_node->left && value_node->left->kind == NK_INIT_LIST) {
-        // Compound literal with init list: treat as a sub-list so the emitter
-        // can use field-by-field init (not brace elision from the parent).
-        item.value = std::make_shared<InitList>(lower_init_list(value_node->left, ctx));
-      } else if (!ctx && value_node && value_node->kind == NK_ADDR &&
-                 value_node->left && value_node->left->kind == NK_COMPOUND_LIT) {
-        // Global scope: &(T){...} inside an init list — hoist the compound
-        // literal to an anonymous global and use its address.
-        InitScalar s{};
-        s.expr = hoist_compound_literal_to_global(value_node, value_node->left);
-        item.value = s;
-      } else {
-        InitScalar s{};
-        s.expr = lower_expr(ctx, value_node);
-        item.value = s;
-      }
-      out.items.push_back(std::move(item));
-    }
-    return out;
-  }
+  const Node* unwrap_init_scalar_value(const Node* node) const;
 
-  const Node* init_item_value_node(const Node* item) const {
-    if (!item) return nullptr;
-    if (item->kind != NK_INIT_ITEM) return item;
-    const Node* v = item->left ? item->left : item->right;
-    if (!v) v = item->init;
-    if (!v && item->n_children > 0) {
-      for (int i = 0; i < item->n_children; ++i) {
-        if (item->children && item->children[i]) {
-          v = item->children[i];
-          break;
-        }
-      }
-    }
-    return v;
-  }
+  bool has_side_effect_expr(const Node* n) const;
 
-  const Node* unwrap_init_scalar_value(const Node* node) const {
-    const Node* cur = node;
-    for (int guard = 0; guard < 32 && cur; ++guard) {
-      if (cur->kind == NK_INIT_ITEM) {
-        const Node* next = init_item_value_node(cur);
-        if (!next || next == cur) break;
-        cur = next;
-        continue;
-      }
-      if (cur->kind == NK_INIT_LIST) {
-        const Node* first = nullptr;
-        for (int i = 0; i < cur->n_children; ++i) {
-          if (cur->children && cur->children[i]) {
-            first = cur->children[i];
-            break;
-          }
-        }
-        if (!first) break;
-        const Node* next = init_item_value_node(first);
-        if (!next || next == cur) break;
-        cur = next;
-        continue;
-      }
-      break;
-    }
-    return cur;
-  }
+  bool is_simple_constant_expr(const Node* n) const;
 
-  bool has_side_effect_expr(const Node* n) const {
-    if (!n) return false;
-    switch (n->kind) {
-      case NK_CALL:
-      case NK_BUILTIN_CALL:
-      case NK_ASSIGN:
-      case NK_COMPOUND_ASSIGN:
-      case NK_COMMA_EXPR:
-        return true;
-      case NK_POSTFIX: {
-        const char* op = n->op ? n->op : "";
-        if (std::strcmp(op, "++") == 0 || std::strcmp(op, "--") == 0) return true;
-        break;
-      }
-      case NK_UNARY: {
-        const char* op = n->op ? n->op : "";
-        if (std::strcmp(op, "++pre") == 0 || std::strcmp(op, "--pre") == 0) return true;
-        break;
-      }
-      default:
-        break;
-    }
-    if (has_side_effect_expr(n->left)) return true;
-    if (has_side_effect_expr(n->right)) return true;
-    if (has_side_effect_expr(n->cond)) return true;
-    if (has_side_effect_expr(n->then_)) return true;
-    if (has_side_effect_expr(n->else_)) return true;
-    if (has_side_effect_expr(n->init)) return true;
-    if (has_side_effect_expr(n->update)) return true;
-    if (has_side_effect_expr(n->body)) return true;
-    for (int i = 0; i < n->n_children; ++i) {
-      if (has_side_effect_expr(n->children ? n->children[i] : nullptr)) return true;
-    }
-    return false;
-  }
-
-  bool is_simple_constant_expr(const Node* n) const {
-    if (!n) return false;
-    switch (n->kind) {
-      case NK_INT_LIT:
-      case NK_FLOAT_LIT:
-      case NK_CHAR_LIT:
-        return true;
-      case NK_CAST:
-        return is_simple_constant_expr(n->left);
-      case NK_UNARY: {
-        const char* op = n->op ? n->op : "";
-        if (std::strcmp(op, "+") == 0 || std::strcmp(op, "-") == 0 || std::strcmp(op, "~") == 0)
-          return is_simple_constant_expr(n->left);
-        return false;
-      }
-      default:
-        return false;
-    }
-  }
-
-  bool can_fast_path_scalar_array_init(const Node* init_list) const {
-    if (!init_list || init_list->kind != NK_INIT_LIST) return false;
-    for (int i = 0; i < init_list->n_children; ++i) {
-      const Node* item = init_list->children ? init_list->children[i] : nullptr;
-      if (!item) continue;
-      if (item->kind == NK_INIT_ITEM && item->is_designated) return false;
-      const Node* v = init_item_value_node(item);
-      if (!v) return false;
-      if (v->kind == NK_INIT_LIST || v->kind == NK_COMPOUND_LIT) return false;
-      if (has_side_effect_expr(v)) return false;
-      if (!is_simple_constant_expr(v)) return false;
-    }
-    return true;
-  }
+  bool can_fast_path_scalar_array_init(const Node* init_list) const;
 
   bool struct_has_member_dtors(const std::string& tag);
 
@@ -7780,6 +7633,167 @@ GlobalInit Lowerer::lower_global_init(const Node* n,
   }
   s.expr = lower_expr(ctx, n);
   return s;
+}
+
+InitList Lowerer::lower_init_list(const Node* n, FunctionCtx* ctx) {
+  InitList out{};
+  for (int i = 0; i < n->n_children; ++i) {
+    const Node* it = n->children[i];
+    if (!it) continue;
+    InitListItem item{};
+
+    const Node* value_node = it;
+    if (it->kind == NK_INIT_ITEM) {
+      if (it->is_designated) {
+        if (it->is_index_desig) {
+          item.index_designator = it->desig_val;
+        } else if (it->desig_field) {
+          item.field_designator = std::string(it->desig_field);
+        }
+      }
+      value_node = it->left ? it->left : it->right;
+      if (!value_node) value_node = it->init;
+    }
+
+    if (value_node && value_node->kind == NK_INIT_LIST) {
+      item.value = std::make_shared<InitList>(lower_init_list(value_node, ctx));
+    } else if (value_node && value_node->kind == NK_COMPOUND_LIT &&
+               value_node->left && value_node->left->kind == NK_INIT_LIST) {
+      // Compound literal with init list: treat as a sub-list so the emitter
+      // can use field-by-field init (not brace elision from the parent).
+      item.value = std::make_shared<InitList>(lower_init_list(value_node->left, ctx));
+    } else if (!ctx && value_node && value_node->kind == NK_ADDR &&
+               value_node->left && value_node->left->kind == NK_COMPOUND_LIT) {
+      // Global scope: &(T){...} inside an init list — hoist the compound
+      // literal to an anonymous global and use its address.
+      InitScalar s{};
+      s.expr = hoist_compound_literal_to_global(value_node, value_node->left);
+      item.value = s;
+    } else {
+      InitScalar s{};
+      s.expr = lower_expr(ctx, value_node);
+      item.value = s;
+    }
+    out.items.push_back(std::move(item));
+  }
+  return out;
+}
+
+const Node* Lowerer::init_item_value_node(const Node* item) const {
+  if (!item) return nullptr;
+  if (item->kind != NK_INIT_ITEM) return item;
+  const Node* v = item->left ? item->left : item->right;
+  if (!v) v = item->init;
+  if (!v && item->n_children > 0) {
+    for (int i = 0; i < item->n_children; ++i) {
+      if (item->children && item->children[i]) {
+        v = item->children[i];
+        break;
+      }
+    }
+  }
+  return v;
+}
+
+const Node* Lowerer::unwrap_init_scalar_value(const Node* node) const {
+  const Node* cur = node;
+  for (int guard = 0; guard < 32 && cur; ++guard) {
+    if (cur->kind == NK_INIT_ITEM) {
+      const Node* next = init_item_value_node(cur);
+      if (!next || next == cur) break;
+      cur = next;
+      continue;
+    }
+    if (cur->kind == NK_INIT_LIST) {
+      const Node* first = nullptr;
+      for (int i = 0; i < cur->n_children; ++i) {
+        if (cur->children && cur->children[i]) {
+          first = cur->children[i];
+          break;
+        }
+      }
+      if (!first) break;
+      const Node* next = init_item_value_node(first);
+      if (!next || next == cur) break;
+      cur = next;
+      continue;
+    }
+    break;
+  }
+  return cur;
+}
+
+bool Lowerer::has_side_effect_expr(const Node* n) const {
+  if (!n) return false;
+  switch (n->kind) {
+    case NK_CALL:
+    case NK_BUILTIN_CALL:
+    case NK_ASSIGN:
+    case NK_COMPOUND_ASSIGN:
+    case NK_COMMA_EXPR:
+      return true;
+    case NK_POSTFIX: {
+      const char* op = n->op ? n->op : "";
+      if (std::strcmp(op, "++") == 0 || std::strcmp(op, "--") == 0) return true;
+      break;
+    }
+    case NK_UNARY: {
+      const char* op = n->op ? n->op : "";
+      if (std::strcmp(op, "++pre") == 0 || std::strcmp(op, "--pre") == 0) return true;
+      break;
+    }
+    default:
+      break;
+  }
+  if (has_side_effect_expr(n->left)) return true;
+  if (has_side_effect_expr(n->right)) return true;
+  if (has_side_effect_expr(n->cond)) return true;
+  if (has_side_effect_expr(n->then_)) return true;
+  if (has_side_effect_expr(n->else_)) return true;
+  if (has_side_effect_expr(n->init)) return true;
+  if (has_side_effect_expr(n->update)) return true;
+  if (has_side_effect_expr(n->body)) return true;
+  for (int i = 0; i < n->n_children; ++i) {
+    if (has_side_effect_expr(n->children ? n->children[i] : nullptr)) return true;
+  }
+  return false;
+}
+
+bool Lowerer::is_simple_constant_expr(const Node* n) const {
+  if (!n) return false;
+  switch (n->kind) {
+    case NK_INT_LIT:
+    case NK_FLOAT_LIT:
+    case NK_CHAR_LIT:
+      return true;
+    case NK_CAST:
+      return is_simple_constant_expr(n->left);
+    case NK_UNARY: {
+      const char* op = n->op ? n->op : "";
+      if (std::strcmp(op, "+") == 0 || std::strcmp(op, "-") == 0 ||
+          std::strcmp(op, "~") == 0) {
+        return is_simple_constant_expr(n->left);
+      }
+      return false;
+    }
+    default:
+      return false;
+  }
+}
+
+bool Lowerer::can_fast_path_scalar_array_init(const Node* init_list) const {
+  if (!init_list || init_list->kind != NK_INIT_LIST) return false;
+  for (int i = 0; i < init_list->n_children; ++i) {
+    const Node* item = init_list->children ? init_list->children[i] : nullptr;
+    if (!item) continue;
+    if (item->kind == NK_INIT_ITEM && item->is_designated) return false;
+    const Node* v = init_item_value_node(item);
+    if (!v) return false;
+    if (v->kind == NK_INIT_LIST || v->kind == NK_COMPOUND_LIT) return false;
+    if (has_side_effect_expr(v)) return false;
+    if (!is_simple_constant_expr(v)) return false;
+  }
+  return true;
 }
 
 bool Lowerer::struct_has_member_dtors(const std::string& tag) {

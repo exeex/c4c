@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 1: Establish Header Ownership
-- Current slice: continue Step 1 monolith peel-back by extracting the statement-lowering entrypoint now that its nearby destructor/defaulted-method helpers have moved out of the inline `Lowerer` class body, while still deferring heavier structural bodies such as `lower_expr` and `lower_struct_def`
+- Current slice: continue Step 1 monolith peel-back by extracting another low-coupling helper cluster near call/init lowering before revisiting the heavier inline entrypoints (`lower_expr`, `lower_stmt_node`, and `lower_struct_def`)
 
 ## Todo
 
@@ -19,6 +19,8 @@ Source Plan: plan.md
 
 ## Completed
 
+- [x] Extracted the initializer-lowering helper cluster (`lower_init_list`, `init_item_value_node`, `unwrap_init_scalar_value`, `has_side_effect_expr`, `is_simple_constant_expr`, and `can_fast_path_scalar_array_init`) out of the inline `Lowerer` class body into out-of-class definitions in `src/frontend/hir/ast_to_hir.cpp`
+- [x] Rebuilt with `cmake --build build -j8`, reran the full `ctest --test-dir build -j8 --output-on-failure` into `test_fail_after.log`, and passed `.codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`; the suite remained at 2671 total tests, 2668 passing, and the same 3 historical failures (`positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c`)
 - [x] Extracted the nearby destructor/defaulted-method helper cluster (`struct_has_member_dtors`, `emit_defaulted_method_body`, `emit_member_dtor_calls`, and `emit_dtor_calls`) out of the inline `Lowerer` class body into out-of-class definitions in `src/frontend/hir/ast_to_hir.cpp`
 - [x] Rebuilt with `cmake --build build -j8`, reran the full `ctest --test-dir build -j8 --output-on-failure` into `test_fail_after.log`, and passed `.codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`; the suite remained at 2671 total tests, 2668 passing, and the same 3 historical failures (`positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c`)
 - [x] Extracted the adjacent call-lowering helper cluster (`try_lower_consteval_call_expr`, `resolve_ref_overload`, `find_pending_method_by_mangled`, `describe_initializer_list_struct`, and `materialize_initializer_list_arg`) out of the inline `Lowerer` class body into out-of-class definitions in `src/frontend/hir/ast_to_hir.cpp`
