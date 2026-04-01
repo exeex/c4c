@@ -1205,53 +1205,15 @@ class Lowerer {
     return 0;
   }
 
-  std::optional<std::string> find_struct_method_mangled(const std::string& tag,
-                                                        const std::string& method,
-                                                        bool is_const_obj) const {
-    const std::string base_key = tag + "::" + method;
-    const std::string const_key = base_key + "_const";
-    auto try_local = [&]() -> std::optional<std::string> {
-      auto it = is_const_obj ? struct_methods_.find(const_key) : struct_methods_.find(base_key);
-      if (it != struct_methods_.end()) return it->second;
-      it = is_const_obj ? struct_methods_.find(base_key) : struct_methods_.find(const_key);
-      if (it != struct_methods_.end()) return it->second;
-      return std::nullopt;
-    };
-    if (auto local = try_local()) return local;
-    auto dit = module_->struct_defs.find(tag);
-    if (dit != module_->struct_defs.end()) {
-      for (const auto& base_tag : dit->second.base_tags) {
-        if (auto inherited = find_struct_method_mangled(base_tag, method, is_const_obj))
-          return inherited;
-      }
-    }
-    return std::nullopt;
-  }
+  std::optional<std::string> find_struct_method_mangled(
+      const std::string& tag,
+      const std::string& method,
+      bool is_const_obj) const;
 
-  std::optional<TypeSpec> find_struct_method_return_type(const std::string& tag,
-                                                         const std::string& method,
-                                                         bool is_const_obj) const {
-    const std::string base_key = tag + "::" + method;
-    const std::string const_key = base_key + "_const";
-    auto try_local = [&]() -> std::optional<TypeSpec> {
-      auto it = is_const_obj ? struct_method_ret_types_.find(const_key)
-                             : struct_method_ret_types_.find(base_key);
-      if (it != struct_method_ret_types_.end()) return it->second;
-      it = is_const_obj ? struct_method_ret_types_.find(base_key)
-                        : struct_method_ret_types_.find(const_key);
-      if (it != struct_method_ret_types_.end()) return it->second;
-      return std::nullopt;
-    };
-    if (auto local = try_local()) return local;
-    auto dit = module_->struct_defs.find(tag);
-    if (dit != module_->struct_defs.end()) {
-      for (const auto& base_tag : dit->second.base_tags) {
-        if (auto inherited = find_struct_method_return_type(base_tag, method, is_const_obj))
-          return inherited;
-      }
-    }
-    return std::nullopt;
-  }
+  std::optional<TypeSpec> find_struct_method_return_type(
+      const std::string& tag,
+      const std::string& method,
+      bool is_const_obj) const;
 
   ExprId append_expr(const Node* src, ExprPayload payload, const TypeSpec& ts,
                      ValueCategory c = ValueCategory::RValue) {
@@ -9674,6 +9636,62 @@ TypeSpec Lowerer::infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
       break;
   }
   return n->type;
+}
+
+std::optional<std::string> Lowerer::find_struct_method_mangled(
+    const std::string& tag,
+    const std::string& method,
+    bool is_const_obj) const {
+  const std::string base_key = tag + "::" + method;
+  const std::string const_key = base_key + "_const";
+  auto try_local = [&]() -> std::optional<std::string> {
+    auto it = is_const_obj ? struct_methods_.find(const_key)
+                           : struct_methods_.find(base_key);
+    if (it != struct_methods_.end()) return it->second;
+    it = is_const_obj ? struct_methods_.find(base_key)
+                      : struct_methods_.find(const_key);
+    if (it != struct_methods_.end()) return it->second;
+    return std::nullopt;
+  };
+  if (auto local = try_local()) return local;
+  auto dit = module_->struct_defs.find(tag);
+  if (dit != module_->struct_defs.end()) {
+    for (const auto& base_tag : dit->second.base_tags) {
+      if (auto inherited =
+              find_struct_method_mangled(base_tag, method, is_const_obj)) {
+        return inherited;
+      }
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<TypeSpec> Lowerer::find_struct_method_return_type(
+    const std::string& tag,
+    const std::string& method,
+    bool is_const_obj) const {
+  const std::string base_key = tag + "::" + method;
+  const std::string const_key = base_key + "_const";
+  auto try_local = [&]() -> std::optional<TypeSpec> {
+    auto it = is_const_obj ? struct_method_ret_types_.find(const_key)
+                           : struct_method_ret_types_.find(base_key);
+    if (it != struct_method_ret_types_.end()) return it->second;
+    it = is_const_obj ? struct_method_ret_types_.find(base_key)
+                      : struct_method_ret_types_.find(const_key);
+    if (it != struct_method_ret_types_.end()) return it->second;
+    return std::nullopt;
+  };
+  if (auto local = try_local()) return local;
+  auto dit = module_->struct_defs.find(tag);
+  if (dit != module_->struct_defs.end()) {
+    for (const auto& base_tag : dit->second.base_tags) {
+      if (auto inherited =
+              find_struct_method_return_type(base_tag, method, is_const_obj)) {
+        return inherited;
+      }
+    }
+  }
+  return std::nullopt;
 }
 
 std::optional<TypeSpec> Lowerer::infer_call_result_type_from_callee(
