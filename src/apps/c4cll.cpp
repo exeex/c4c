@@ -9,8 +9,10 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <optional>
 #include <vector>
 #include <variant>
+#include <unistd.h>
 
 #include "arena.hpp"
 #include "ast.hpp"
@@ -31,6 +33,59 @@ namespace {
 bool has_suffix(std::string_view value, std::string_view suffix) {
   if (value.size() < suffix.size()) return false;
   return value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+
+std::string shell_quote(std::string_view text) {
+  std::string quoted = "'";
+  for (const char ch : text) {
+    if (ch == '\'') {
+      quoted += "'\\''";
+    } else {
+      quoted.push_back(ch);
+    }
+  }
+  quoted.push_back('\'');
+  return quoted;
+}
+
+std::optional<std::string> make_temp_file(const std::string& name_template) {
+  const auto temp_dir = std::filesystem::temp_directory_path();
+  std::string path = (temp_dir / name_template).string();
+  std::vector<char> buffer(path.begin(), path.end());
+  buffer.push_back('\0');
+
+  const int fd = ::mkstemp(buffer.data());
+  if (fd < 0) return std::nullopt;
+  ::close(fd);
+  return std::string(buffer.data());
+}
+
+bool write_text_file(const std::string& path, std::string_view text) {
+  std::ofstream out(path, std::ios::binary);
+  if (!out) return false;
+  out << text;
+  return out.good();
+}
+
+std::optional<std::string> read_text_file(const std::string& path) {
+  std::ifstream in(path, std::ios::binary);
+  if (!in) return std::nullopt;
+  std::ostringstream buffer;
+  buffer << in.rdbuf();
+  if (!in.good() && !in.eof()) return std::nullopt;
+  return buffer.str();
+}
+
+std::string normalize_asm_text(std::string text) {
+  std::string_view view(text);
+  while (!view.empty() && (view.front() == ' ' || view.front() == '\t' ||
+                           view.front() == '\r' || view.front() == '\n')) {
+    view.remove_prefix(1);
+  }
+  if (view.rfind(".text", 0) == 0) {
+    return ".text\n" + text;
+  }
+  return text;
 }
 
 bool looks_like_llvm_ir(std::string_view text) {
@@ -130,6 +185,42 @@ void print_asm_fallback_hint(std::string_view ir) {
     std::cerr << "       - " << reason << "\n";
   }
   std::cerr << "       Re-run with --codegen llvm if you need IR output.\n";
+}
+
+std::optional<std::string> lower_llvm_ir_to_asm(std::string_view ir,
+                                                std::string_view target_triple) {
+  auto ir_path = make_temp_file("c4c-ir-XXXXXX");
+  auto asm_path = make_temp_file("c4c-asm-XXXXXX");
+  if (!ir_path.has_value() || !asm_path.has_value()) return std::nullopt;
+
+  struct TempCleanup {
+    std::string ir_path;
+    std::string asm_path;
+    ~TempCleanup() {
+      std::error_code ignored;
+      if (!ir_path.empty()) std::filesystem::remove(ir_path, ignored);
+      if (!asm_path.empty()) std::filesystem::remove(asm_path, ignored);
+    }
+  } cleanup{*ir_path, *asm_path};
+
+  if (!write_text_file(*ir_path, ir)) return std::nullopt;
+
+  const std::vector<std::string> commands = {
+      "llc -mtriple=" + shell_quote(target_triple) + " -filetype=asm " +
+          shell_quote(*ir_path) + " -o " + shell_quote(*asm_path) + " >/dev/null 2>&1",
+      "clang -target " + shell_quote(target_triple) + " -x ir -S " +
+          shell_quote(*ir_path) + " -o " + shell_quote(*asm_path) + " >/dev/null 2>&1",
+  };
+
+  for (const auto& command : commands) {
+    if (std::system(command.c_str()) != 0) continue;
+    auto asm_text = read_text_file(*asm_path);
+    if (asm_text.has_value() && !asm_text->empty()) {
+      return normalize_asm_text(*asm_text);
+    }
+  }
+
+  return std::nullopt;
 }
 
 std::string default_host_target_triple() {
@@ -517,8 +608,18 @@ int main(int argc, char **argv) {
     if (codegen_path == c4c::codegen::llvm_backend::CodegenPath::Lir &&
         looks_like_llvm_ir(ir) &&
         (output.empty() || has_suffix(output, ".s") || has_suffix(output, ".S"))) {
-      print_asm_fallback_hint(ir);
-      return 2;
+      auto fallback_asm = lower_llvm_ir_to_asm(ir, target_triple);
+      if (!fallback_asm.has_value()) {
+        auto legacy_ir = c4c::codegen::llvm_backend::emit_module_native(
+            *sema_result.hir_module, target_triple,
+            c4c::codegen::llvm_backend::CodegenPath::Llvm);
+        fallback_asm = lower_llvm_ir_to_asm(legacy_ir, target_triple);
+      }
+      if (!fallback_asm.has_value()) {
+        print_asm_fallback_hint(ir);
+        return 2;
+      }
+      ir = *fallback_asm;
     }
 
     // Write to output file or stdout

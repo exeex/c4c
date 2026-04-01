@@ -61,3 +61,24 @@ stack-spill AArch64 emitter. All instruction types handled in one pass.
 - Regression status for `00216.c` improved from `BACKEND_FAIL` (assembler reject)
   to `RUNTIME_NONZERO` (segfault), so the oversized-immediate backend failure is
   fixed and the next slice should target the remaining runtime bug.
+
+### Step 6 active slice (2026-04-01)
+- Current target: convert AArch64 `--codegen asm` LLVM-IR fallbacks into real
+  assembly via the LLVM toolchain instead of exiting with `FRONTEND_FAIL`.
+- Reproduced baseline: `ctest --test-dir build -R c_testsuite_aarch64 -j8
+  --output-on-failure` currently reports 34 failures total, with the largest
+  bucket being asm fallback refusals.
+- Focus cases for this slice: `00108.c` (simple IR fallback) and `00125.c`
+  (varargs/stdio IR fallback).
+- Implemented fallback in `src/apps/c4cll.cpp`: when AArch64 `--codegen asm`
+  receives LLVM IR from the backend path, it now tries `llc` first and then
+  `clang -x ir -S`, with a retry against canonical `--codegen llvm` IR if the
+  backend fallback IR is not consumable.
+- Focus validation now passes for `00108.c` and `00125.c`.
+- Current suite status after this slice: `ctest --test-dir build -R
+  c_testsuite_aarch64 -j8 --output-on-failure` reports 12 failures total
+  (improved from 34), all now runtime correctness issues rather than asm
+  generation refusal.
+- Next intended slice: investigate the remaining struct/aggregate runtime bugs
+  driving `00040.c`, `00050.c`, `00091.c`, `00104.c`, `00115.c`, `00164.c`,
+  `00170.c`, `00182.c`, `00195.c`, `00207.c`, `00216.c`, and `00217.c`.
