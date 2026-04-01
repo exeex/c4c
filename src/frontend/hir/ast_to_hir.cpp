@@ -482,14 +482,8 @@ std::string sanitize_symbol(std::string s) {
   return s;
 }
 
-struct QualifiedMethodRef {
-  std::string struct_tag;
-  std::string method_name;
-  std::string key;
-};
-
 std::optional<QualifiedMethodRef> try_parse_qualified_struct_method_name(
-    const Node* fn, bool include_const_suffix = true) {
+    const Node* fn, bool include_const_suffix) {
   if (!fn || fn->kind != NK_FUNCTION || !fn->name) return std::nullopt;
   const std::string name(fn->name);
   const size_t sep = name.rfind("::");

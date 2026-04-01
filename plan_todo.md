@@ -21,10 +21,12 @@ Source Plan: plan.md
 - [x] Activated the runbook from `ideas/open/01_ast_to_hir_cpp_split_refactor.md`
 - [x] Added the first Step 1 header declarations for top-level HIR lowering helpers and the `Lowerer` type in `src/frontend/hir/ast_to_hir.hpp`
 - [x] Rebuilt the tree after the Step 1 header-surface slice
+- [x] Promoted split-relevant HIR helper declarations (`QualifiedMethodRef`, op mappers, generic-type helpers, and layout entrypoints) into `src/frontend/hir/ast_to_hir.hpp`
+- [x] Rebuilt and reran `ctest --test-dir build -j8 --output-on-failure`; the suite remained at the same 3 known failures
 
 ## Next Slice
 
-- Continue Step 1 by moving split-relevant helper type declarations from `ast_to_hir.cpp` into the header surface, then start teasing `Lowerer` declarations away from the monolith without changing behavior.
+- Continue Step 1 by identifying which `Lowerer`-owned helper structs and method groups need an internal declaration surface for the future `hir_*.cpp` split, then peel the first cohesive method cluster out of the monolithic class definition without changing behavior.
 
 ## Blockers
 
@@ -37,3 +39,4 @@ Source Plan: plan.md
 - Inventory confirms the current monolith owns top-level helpers such as `make_span(...)`, `make_ns_qual(...)`, string-decoding helpers, and the `Lowerer` class definition.
 - The first execution slice keeps behavior unchanged and starts header ownership with forward declarations before moving larger helper/class surfaces.
 - Validation after the slice: `cmake -S . -B build` and `cmake --build build -j8` succeeded; full `ctest` completed with 3 existing failures outside this HIR declaration-only change.
+- The current slice moved reusable non-anonymous helper declarations into `src/frontend/hir/ast_to_hir.hpp` so future `hir_*.cpp` files can include one declaration surface instead of rediscovering local monolith-only types.
