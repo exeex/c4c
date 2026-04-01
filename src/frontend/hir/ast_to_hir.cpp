@@ -1078,345 +1078,7 @@ class Lowerer {
       const TypeBindings& tpl_bindings,
       const NttpBindings& nttp_bindings);
 
-  void lower_struct_def(const Node* sd) {
-    if (!sd || sd->kind != NK_STRUCT_DEF) return;
-    // Skip primary templates and specialization patterns that still depend on
-    // template parameters. Concrete explicit specializations and realized
-    // instantiations are still lowered as ordinary structs.
-    if (is_primary_template_struct_def(sd) ||
-        is_dependent_template_struct_specialization(sd)) {
-      return;
-    }
-    const char* tag = sd->name;
-    if (!tag || !tag[0]) return;
-
-    // Gather fields: they may be in sd->fields[] (n_fields) OR sd->children[] (n_children)
-    // The IR builder uses sd->fields; but some parsers store struct fields in children.
-    int num_fields = sd->n_fields > 0 ? sd->n_fields : sd->n_children;
-    auto get_field = [&](int i) -> const Node* {
-      return sd->n_fields > 0 ? sd->fields[i] : sd->children[i];
-    };
-
-    // If already fully populated, skip (forward decl followed by full def is OK)
-    if (module_->struct_defs.count(tag) &&
-        !module_->struct_defs.at(tag).fields.empty() &&
-        num_fields == 0) return;
-
-    HirStructDef def;
-    def.tag = tag;
-    def.ns_qual = make_ns_qual(sd);
-    def.is_union = sd->is_union;
-    def.pack_align = sd->pack_align;
-    def.struct_align = sd->struct_align;
-    for (int bi = 0; bi < sd->n_bases; ++bi) {
-      TypeSpec base = sd->base_types[bi];
-      if (base.tpl_struct_origin) {
-        // Resolve pending template base type (e.g. deferred $expr: NTTP args).
-        // Build bindings from the struct's own template args if available.
-        TypeBindings base_tpl_bindings;
-        NttpBindings base_nttp_bindings;
-        if (sd->n_template_args > 0 && sd->n_template_params > 0) {
-          for (int pi = 0; pi < sd->n_template_params && pi < sd->n_template_args; ++pi) {
-            const char* pname = sd->template_param_names[pi];
-            if (sd->template_param_is_nttp[pi]) {
-              base_nttp_bindings[pname] = sd->template_arg_values[pi];
-            } else {
-              base_tpl_bindings[pname] = sd->template_arg_types[pi];
-            }
-          }
-        }
-        seed_and_resolve_pending_template_type_if_needed(
-            base, base_tpl_bindings, base_nttp_bindings, sd,
-            PendingTemplateTypeKind::BaseType,
-            std::string("struct-base:") + (tag ? tag : ""));
-      }
-      if (!resolve_struct_member_typedef_if_ready(&base) &&
-          base.deferred_member_type_name && base.tag && base.tag[0]) {
-        TypeBindings empty_tb;
-        NttpBindings empty_nb;
-        seed_pending_template_type(
-            base, empty_tb, empty_nb, sd, PendingTemplateTypeKind::MemberTypedef,
-            std::string("struct-base-member:") + (tag ? tag : ""));
-      }
-      if (base.tag && base.tag[0]) def.base_tags.push_back(base.tag);
-    }
-
-    int llvm_idx = 0;
-    // Bitfield packing state (for structs only; unions always use offset 0)
-    int bf_unit_start_bit = -1;  // bit position where current storage unit starts (-1 = none)
-    int bf_unit_bits = 0;        // size of current storage unit in bits
-    int bf_current_bit = 0;      // current bit position within the storage unit
-
-    // Build NTTP bindings for template instantiations so static constexpr
-    // members that reference NTTP parameters (e.g. `static constexpr T value = v;`)
-    // are evaluated correctly.
-    NttpBindings struct_nttp_bindings;
-    if (sd->n_template_args > 0 && sd->n_template_params > 0) {
-      for (int pi = 0; pi < sd->n_template_params && pi < sd->n_template_args; ++pi) {
-        const char* pname = sd->template_param_names[pi];
-        if (sd->template_param_is_nttp[pi]) {
-          struct_nttp_bindings[pname] = sd->template_arg_values[pi];
-        }
-      }
-    }
-
-    for (int i = 0; i < num_fields; ++i) {
-      const Node* f = get_field(i);
-      if (!f) continue;
-      // Struct methods live in sd->children[] alongside fields for some parser
-      // paths, but they are not data members and must not participate in
-      // layout. They are collected separately after the layout pass.
-      if (f->kind == NK_FUNCTION) continue;
-      if (f->name && f->name[0])
-        struct_static_member_decls_[tag][f->name] = f;
-      if (f->is_static && f->is_constexpr && f->name && f->name[0] && f->init) {
-        struct_static_member_const_values_[tag][f->name] =
-            struct_nttp_bindings.empty()
-                ? static_eval_int(f->init, enum_consts_)
-                : eval_const_int_with_nttp_bindings(f->init, struct_nttp_bindings);
-      }
-      if (f->is_static)
-        continue;
-
-      const int bit_width = static_cast<int>(f->ival);  // -1 = not bitfield, 0+ = bitfield width
-      const bool is_bitfield = (bit_width >= 0);
-
-      // Skip anonymous non-bitfield fields (they have no name) but keep named fields
-      // and bitfield fields (including anonymous bitfields for layout purposes).
-      if (!f->name && !is_bitfield) continue;
-      // Zero-width bitfield: force alignment, close current storage unit
-      if (is_bitfield && bit_width == 0) {
-        if (!sd->is_union && bf_unit_start_bit >= 0) {
-          bf_unit_start_bit = -1;
-          bf_current_bit = 0;
-        }
-        continue;
-      }
-      // Anonymous bitfields with width > 0 but no name: skip as field but advance bit position
-      if (!f->name && is_bitfield) {
-        if (!sd->is_union && bf_unit_start_bit >= 0) {
-          bf_current_bit += bit_width;
-          if (bf_current_bit > bf_unit_bits) {
-            // Doesn't fit, start new unit
-            bf_unit_start_bit = -1;
-            bf_current_bit = 0;
-          }
-        }
-        continue;
-      }
-
-      HirStructField hf;
-      hf.name = f->name;
-      TypeSpec ft = f->type;
-
-      if (is_bitfield && !sd->is_union) {
-        // Determine signedness from original declared type
-        const bool bf_signed = (ft.base == TB_INT || ft.base == TB_CHAR ||
-                                ft.base == TB_SCHAR || ft.base == TB_SHORT ||
-                                ft.base == TB_LONG || ft.base == TB_LONGLONG ||
-                                ft.base == TB_INT128);
-        // Determine storage unit size from declared type
-        int decl_unit_bits = static_cast<int>(sizeof_base(ft.base) * 8);
-        if (decl_unit_bits < 8) decl_unit_bits = 8;
-
-        // Can we pack into current storage unit?
-        bool can_pack = (bf_unit_start_bit >= 0) &&
-                        (bf_current_bit + bit_width <= bf_unit_bits);
-
-        if (can_pack) {
-          hf.bit_offset = bf_current_bit;
-          hf.storage_unit_bits = bf_unit_bits;
-          hf.bit_width = bit_width;
-          hf.llvm_idx = llvm_idx - 1;  // same LLVM field as previous
-        } else {
-          // Start new storage unit
-          bf_unit_start_bit = 0;
-          bf_unit_bits = decl_unit_bits;
-          bf_current_bit = 0;
-          hf.bit_offset = 0;
-          hf.storage_unit_bits = decl_unit_bits;
-          hf.bit_width = bit_width;
-          hf.llvm_idx = llvm_idx;
-          ++llvm_idx;
-        }
-        bf_current_bit = hf.bit_offset + bit_width;
-        hf.is_bf_signed = bf_signed;
-
-        // Set elem_type to the storage unit's integer type
-        TypeSpec sft{};
-        switch (hf.storage_unit_bits) {
-          case 8:  sft.base = TB_UCHAR; break;
-          case 16: sft.base = TB_USHORT; break;
-          case 32: sft.base = TB_UINT; break;
-          case 64: sft.base = TB_ULONGLONG; break;
-          default: sft.base = TB_UINT; break;
-        }
-        hf.elem_type = sft;
-        hf.is_anon_member = f->is_anon_field;
-        def.fields.push_back(std::move(hf));
-        continue;
-      }
-
-      if (is_bitfield && sd->is_union) {
-        const bool bf_signed = (ft.base == TB_INT || ft.base == TB_CHAR ||
-                                ft.base == TB_SCHAR || ft.base == TB_SHORT ||
-                                ft.base == TB_LONG || ft.base == TB_LONGLONG ||
-                                ft.base == TB_INT128);
-        int decl_unit_bits = static_cast<int>(sizeof_base(ft.base) * 8);
-        if (decl_unit_bits < 8) decl_unit_bits = 8;
-        hf.bit_width = bit_width;
-        hf.bit_offset = 0;
-        hf.storage_unit_bits = decl_unit_bits;
-        hf.is_bf_signed = bf_signed;
-        hf.llvm_idx = 0;
-        TypeSpec sft{};
-        switch (hf.storage_unit_bits) {
-          case 8:  sft.base = TB_UCHAR; break;
-          case 16: sft.base = TB_USHORT; break;
-          case 32: sft.base = TB_UINT; break;
-          case 64: sft.base = TB_ULONGLONG; break;
-          default: sft.base = TB_UINT; break;
-        }
-        hf.elem_type = sft;
-        hf.is_anon_member = f->is_anon_field;
-        def.fields.push_back(std::move(hf));
-        continue;
-      }
-
-      // Non-bitfield: flush any open bitfield storage unit
-      if (!sd->is_union && bf_unit_start_bit >= 0) {
-        bf_unit_start_bit = -1;
-        bf_current_bit = 0;
-      }
-
-      // Extract first array dimension (keep base element type for LLVM)
-      if (ft.array_rank > 0) {
-        hf.is_flexible_array = (ft.array_size < 0);
-        // Flexible array member is represented as zero-length for the nominal
-        // struct layout, while remaining explicit in HIR metadata.
-        hf.array_first_dim = (ft.array_size >= 0) ? ft.array_size : 0;
-        for (int i = 0; i + 1 < ft.array_rank; ++i) ft.array_dims[i] = ft.array_dims[i + 1];
-        if (ft.array_rank > 0) ft.array_dims[ft.array_rank - 1] = -1;
-        --ft.array_rank;
-        ft.array_size = (ft.array_rank > 0) ? ft.array_dims[0] : -1;
-      }
-      hf.elem_type = ft;
-      hf.align_bytes = ft.align_bytes > 0 ? ft.align_bytes : 0;
-      hf.is_anon_member = f->is_anon_field;
-      hf.llvm_idx = sd->is_union ? 0 : llvm_idx;
-      // Phase C: capture fn_ptr signature for callable struct fields.
-      // Use canonical type directly (struct fields aren't in ResolvedTypeTable).
-      {
-        auto ct = std::make_shared<sema::CanonicalType>(sema::canonicalize_declarator_type(f));
-        if (sema::is_callable_type(*ct)) {
-          const auto* fsig = sema::get_function_sig(*ct);
-          if (fsig) {
-            FnPtrSig sig{};
-            sig.canonical_sig = ct;
-            if (fsig->return_type)
-              sig.return_type = qtype_from(sema::typespec_from_canonical(*fsig->return_type));
-            sig.variadic = fsig->is_variadic;
-            sig.unspecified_params = fsig->unspecified_params;
-            for (const auto& param : fsig->params)
-              sig.params.push_back(qtype_from(sema::typespec_from_canonical(param), ValueCategory::LValue));
-            hf.fn_ptr_sig = std::move(sig);
-          }
-        }
-      }
-      def.fields.push_back(std::move(hf));
-      if (!sd->is_union) ++llvm_idx;
-    }
-
-    compute_struct_layout(module_, def);
-
-    if (!module_->struct_defs.count(tag))
-      module_->struct_def_order.push_back(tag);
-    module_->struct_defs[tag] = std::move(def);
-
-    // Collect struct methods (stored in sd->children[]) for later lowering.
-    // If the struct was parser-instantiated from a template, extract the
-    // template bindings so method bodies can resolve pending template types.
-    TypeBindings method_tpl_bindings;
-    NttpBindings method_nttp_bindings;
-    if (sd->n_template_args > 0 && sd->template_param_names) {
-      for (int i = 0; i < sd->n_template_args; ++i) {
-        const char* pname = sd->template_param_names[i];
-        if (!pname) continue;
-        if (sd->template_param_is_nttp && sd->template_param_is_nttp[i]) {
-          method_nttp_bindings[pname] = sd->template_arg_values[i];
-        } else if (sd->template_arg_types) {
-          method_tpl_bindings[pname] = sd->template_arg_types[i];
-        }
-      }
-    }
-    for (int i = 0; i < sd->n_children; ++i) {
-      const Node* method = sd->children[i];
-      if (!method || method->kind != NK_FUNCTION || !method->name) continue;
-      const char* const_suffix = method->is_const_method ? "_const" : "";
-      // Constructors get special handling: stored in struct_constructors_
-      // with unique mangled names to support overloading by parameter types.
-      if (method->is_constructor) {
-        auto& ctors = struct_constructors_[tag];
-        int ctor_idx = (int)ctors.size();
-        std::string mangled = std::string(tag) + "__" + method->name;
-        if (ctor_idx > 0) mangled += "__" + std::to_string(ctor_idx);
-        ctors.push_back({mangled, method});
-        // Also register in struct_methods_ so the first ctor is findable.
-        if (ctor_idx == 0) {
-          std::string key = std::string(tag) + "::" + method->name;
-          struct_methods_[key] = mangled;
-          struct_method_ret_types_[key] = method->type;
-        }
-        pending_methods_.push_back({mangled, std::string(tag), method,
-                                    method_tpl_bindings, method_nttp_bindings});
-        continue;
-      }
-      if (method->is_destructor) {
-        std::string mangled = std::string(tag) + "__dtor";
-        struct_destructors_[tag] = {mangled, method};
-        pending_methods_.push_back({mangled, std::string(tag), method,
-                                    method_tpl_bindings, method_nttp_bindings});
-        continue;
-      }
-      std::string mangled = std::string(tag) + "__" + method->name + const_suffix;
-      std::string key = std::string(tag) + "::" + method->name + const_suffix;
-      // Detect ref-overloaded methods: if this key already exists, check for
-      // ref-qualifier difference and register in the overload set.
-      if (struct_methods_.count(key)) {
-        // This is a second overload of the same method — mangle differently.
-        mangled += "__rref";
-        // Register both in the ref_overload_set_ for call-site resolution.
-        auto& ovset = ref_overload_set_[key];
-        if (ovset.empty()) {
-          // Register the first overload.
-          RefOverloadEntry e0;
-          e0.mangled_name = struct_methods_[key];
-          // Find the first method's params from pending_methods_.
-          for (const auto& pm : pending_methods_) {
-            if (pm.mangled == struct_methods_[key]) {
-              for (int pi = 0; pi < pm.method_node->n_params; ++pi) {
-                e0.param_is_rvalue_ref.push_back(pm.method_node->params[pi]->type.is_rvalue_ref);
-                e0.param_is_lvalue_ref.push_back(pm.method_node->params[pi]->type.is_lvalue_ref);
-              }
-              break;
-            }
-          }
-          ovset.push_back(std::move(e0));
-        }
-        RefOverloadEntry e1;
-        e1.mangled_name = mangled;
-        for (int pi = 0; pi < method->n_params; ++pi) {
-          e1.param_is_rvalue_ref.push_back(method->params[pi]->type.is_rvalue_ref);
-          e1.param_is_lvalue_ref.push_back(method->params[pi]->type.is_lvalue_ref);
-        }
-        ovset.push_back(std::move(e1));
-      }
-      struct_methods_[key] = mangled;
-      struct_method_ret_types_[key] = method->type;
-      pending_methods_.push_back({mangled, std::string(tag), method,
-                                  method_tpl_bindings, method_nttp_bindings});
-    }
-  }
+  void lower_struct_def(const Node* sd);
 
   bool resolve_struct_member_typedef_hir(const std::string& tag,
                                          const std::string& member,
@@ -4227,6 +3889,346 @@ bool Lowerer::is_lvalue_ref_ts(const TypeSpec& ts) {
 }
 
 std::shared_ptr<CompileTimeState> Lowerer::ct_state() const { return ct_state_; }
+
+void Lowerer::lower_struct_def(const Node* sd) {
+  if (!sd || sd->kind != NK_STRUCT_DEF) return;
+  // Skip primary templates and specialization patterns that still depend on
+  // template parameters. Concrete explicit specializations and realized
+  // instantiations are still lowered as ordinary structs.
+  if (is_primary_template_struct_def(sd) ||
+      is_dependent_template_struct_specialization(sd)) {
+    return;
+  }
+  const char* tag = sd->name;
+  if (!tag || !tag[0]) return;
+
+  // Gather fields: they may be in sd->fields[] (n_fields) OR sd->children[] (n_children)
+  // The IR builder uses sd->fields; but some parsers store struct fields in children.
+  int num_fields = sd->n_fields > 0 ? sd->n_fields : sd->n_children;
+  auto get_field = [&](int i) -> const Node* {
+    return sd->n_fields > 0 ? sd->fields[i] : sd->children[i];
+  };
+
+  // If already fully populated, skip (forward decl followed by full def is OK)
+  if (module_->struct_defs.count(tag) &&
+      !module_->struct_defs.at(tag).fields.empty() &&
+      num_fields == 0) return;
+
+  HirStructDef def;
+  def.tag = tag;
+  def.ns_qual = make_ns_qual(sd);
+  def.is_union = sd->is_union;
+  def.pack_align = sd->pack_align;
+  def.struct_align = sd->struct_align;
+  for (int bi = 0; bi < sd->n_bases; ++bi) {
+    TypeSpec base = sd->base_types[bi];
+    if (base.tpl_struct_origin) {
+      // Resolve pending template base type (e.g. deferred $expr: NTTP args).
+      // Build bindings from the struct's own template args if available.
+      TypeBindings base_tpl_bindings;
+      NttpBindings base_nttp_bindings;
+      if (sd->n_template_args > 0 && sd->n_template_params > 0) {
+        for (int pi = 0; pi < sd->n_template_params && pi < sd->n_template_args; ++pi) {
+          const char* pname = sd->template_param_names[pi];
+          if (sd->template_param_is_nttp[pi]) {
+            base_nttp_bindings[pname] = sd->template_arg_values[pi];
+          } else {
+            base_tpl_bindings[pname] = sd->template_arg_types[pi];
+          }
+        }
+      }
+      seed_and_resolve_pending_template_type_if_needed(
+          base, base_tpl_bindings, base_nttp_bindings, sd,
+          PendingTemplateTypeKind::BaseType,
+          std::string("struct-base:") + (tag ? tag : ""));
+    }
+    if (!resolve_struct_member_typedef_if_ready(&base) &&
+        base.deferred_member_type_name && base.tag && base.tag[0]) {
+      TypeBindings empty_tb;
+      NttpBindings empty_nb;
+      seed_pending_template_type(
+          base, empty_tb, empty_nb, sd, PendingTemplateTypeKind::MemberTypedef,
+          std::string("struct-base-member:") + (tag ? tag : ""));
+    }
+    if (base.tag && base.tag[0]) def.base_tags.push_back(base.tag);
+  }
+
+  int llvm_idx = 0;
+  // Bitfield packing state (for structs only; unions always use offset 0)
+  int bf_unit_start_bit = -1;  // bit position where current storage unit starts (-1 = none)
+  int bf_unit_bits = 0;        // size of current storage unit in bits
+  int bf_current_bit = 0;      // current bit position within the storage unit
+
+  // Build NTTP bindings for template instantiations so static constexpr
+  // members that reference NTTP parameters (e.g. `static constexpr T value = v;`)
+  // are evaluated correctly.
+  NttpBindings struct_nttp_bindings;
+  if (sd->n_template_args > 0 && sd->n_template_params > 0) {
+    for (int pi = 0; pi < sd->n_template_params && pi < sd->n_template_args; ++pi) {
+      const char* pname = sd->template_param_names[pi];
+      if (sd->template_param_is_nttp[pi]) {
+        struct_nttp_bindings[pname] = sd->template_arg_values[pi];
+      }
+    }
+  }
+
+  for (int i = 0; i < num_fields; ++i) {
+    const Node* f = get_field(i);
+    if (!f) continue;
+    // Struct methods live in sd->children[] alongside fields for some parser
+    // paths, but they are not data members and must not participate in
+    // layout. They are collected separately after the layout pass.
+    if (f->kind == NK_FUNCTION) continue;
+    if (f->name && f->name[0])
+      struct_static_member_decls_[tag][f->name] = f;
+    if (f->is_static && f->is_constexpr && f->name && f->name[0] && f->init) {
+      struct_static_member_const_values_[tag][f->name] =
+          struct_nttp_bindings.empty()
+              ? static_eval_int(f->init, enum_consts_)
+              : eval_const_int_with_nttp_bindings(f->init, struct_nttp_bindings);
+    }
+    if (f->is_static)
+      continue;
+
+    const int bit_width = static_cast<int>(f->ival);  // -1 = not bitfield, 0+ = bitfield width
+    const bool is_bitfield = (bit_width >= 0);
+
+    // Skip anonymous non-bitfield fields (they have no name) but keep named fields
+    // and bitfield fields (including anonymous bitfields for layout purposes).
+    if (!f->name && !is_bitfield) continue;
+    // Zero-width bitfield: force alignment, close current storage unit
+    if (is_bitfield && bit_width == 0) {
+      if (!sd->is_union && bf_unit_start_bit >= 0) {
+        bf_unit_start_bit = -1;
+        bf_current_bit = 0;
+      }
+      continue;
+    }
+    // Anonymous bitfields with width > 0 but no name: skip as field but advance bit position
+    if (!f->name && is_bitfield) {
+      if (!sd->is_union && bf_unit_start_bit >= 0) {
+        bf_current_bit += bit_width;
+        if (bf_current_bit > bf_unit_bits) {
+          // Doesn't fit, start new unit
+          bf_unit_start_bit = -1;
+          bf_current_bit = 0;
+        }
+      }
+      continue;
+    }
+
+    HirStructField hf;
+    hf.name = f->name;
+    TypeSpec ft = f->type;
+
+    if (is_bitfield && !sd->is_union) {
+      // Determine signedness from original declared type
+      const bool bf_signed = (ft.base == TB_INT || ft.base == TB_CHAR ||
+                              ft.base == TB_SCHAR || ft.base == TB_SHORT ||
+                              ft.base == TB_LONG || ft.base == TB_LONGLONG ||
+                              ft.base == TB_INT128);
+      // Determine storage unit size from declared type
+      int decl_unit_bits = static_cast<int>(sizeof_base(ft.base) * 8);
+      if (decl_unit_bits < 8) decl_unit_bits = 8;
+
+      // Can we pack into current storage unit?
+      bool can_pack = (bf_unit_start_bit >= 0) &&
+                      (bf_current_bit + bit_width <= bf_unit_bits);
+
+      if (can_pack) {
+        hf.bit_offset = bf_current_bit;
+        hf.storage_unit_bits = bf_unit_bits;
+        hf.bit_width = bit_width;
+        hf.llvm_idx = llvm_idx - 1;  // same LLVM field as previous
+      } else {
+        // Start new storage unit
+        bf_unit_start_bit = 0;
+        bf_unit_bits = decl_unit_bits;
+        bf_current_bit = 0;
+        hf.bit_offset = 0;
+        hf.storage_unit_bits = decl_unit_bits;
+        hf.bit_width = bit_width;
+        hf.llvm_idx = llvm_idx;
+        ++llvm_idx;
+      }
+      bf_current_bit = hf.bit_offset + bit_width;
+      hf.is_bf_signed = bf_signed;
+
+      // Set elem_type to the storage unit's integer type
+      TypeSpec sft{};
+      switch (hf.storage_unit_bits) {
+        case 8:  sft.base = TB_UCHAR; break;
+        case 16: sft.base = TB_USHORT; break;
+        case 32: sft.base = TB_UINT; break;
+        case 64: sft.base = TB_ULONGLONG; break;
+        default: sft.base = TB_UINT; break;
+      }
+      hf.elem_type = sft;
+      hf.is_anon_member = f->is_anon_field;
+      def.fields.push_back(std::move(hf));
+      continue;
+    }
+
+    if (is_bitfield && sd->is_union) {
+      const bool bf_signed = (ft.base == TB_INT || ft.base == TB_CHAR ||
+                              ft.base == TB_SCHAR || ft.base == TB_SHORT ||
+                              ft.base == TB_LONG || ft.base == TB_LONGLONG ||
+                              ft.base == TB_INT128);
+      int decl_unit_bits = static_cast<int>(sizeof_base(ft.base) * 8);
+      if (decl_unit_bits < 8) decl_unit_bits = 8;
+      hf.bit_width = bit_width;
+      hf.bit_offset = 0;
+      hf.storage_unit_bits = decl_unit_bits;
+      hf.is_bf_signed = bf_signed;
+      hf.llvm_idx = 0;
+      TypeSpec sft{};
+      switch (hf.storage_unit_bits) {
+        case 8:  sft.base = TB_UCHAR; break;
+        case 16: sft.base = TB_USHORT; break;
+        case 32: sft.base = TB_UINT; break;
+        case 64: sft.base = TB_ULONGLONG; break;
+        default: sft.base = TB_UINT; break;
+      }
+      hf.elem_type = sft;
+      hf.is_anon_member = f->is_anon_field;
+      def.fields.push_back(std::move(hf));
+      continue;
+    }
+
+    // Non-bitfield: flush any open bitfield storage unit
+    if (!sd->is_union && bf_unit_start_bit >= 0) {
+      bf_unit_start_bit = -1;
+      bf_current_bit = 0;
+    }
+
+    // Extract first array dimension (keep base element type for LLVM)
+    if (ft.array_rank > 0) {
+      hf.is_flexible_array = (ft.array_size < 0);
+      // Flexible array member is represented as zero-length for the nominal
+      // struct layout, while remaining explicit in HIR metadata.
+      hf.array_first_dim = (ft.array_size >= 0) ? ft.array_size : 0;
+      for (int i = 0; i + 1 < ft.array_rank; ++i) ft.array_dims[i] = ft.array_dims[i + 1];
+      if (ft.array_rank > 0) ft.array_dims[ft.array_rank - 1] = -1;
+      --ft.array_rank;
+      ft.array_size = (ft.array_rank > 0) ? ft.array_dims[0] : -1;
+    }
+    hf.elem_type = ft;
+    hf.align_bytes = ft.align_bytes > 0 ? ft.align_bytes : 0;
+    hf.is_anon_member = f->is_anon_field;
+    hf.llvm_idx = sd->is_union ? 0 : llvm_idx;
+    // Phase C: capture fn_ptr signature for callable struct fields.
+    // Use canonical type directly (struct fields aren't in ResolvedTypeTable).
+    {
+      auto ct = std::make_shared<sema::CanonicalType>(sema::canonicalize_declarator_type(f));
+      if (sema::is_callable_type(*ct)) {
+        const auto* fsig = sema::get_function_sig(*ct);
+        if (fsig) {
+          FnPtrSig sig{};
+          sig.canonical_sig = ct;
+          if (fsig->return_type)
+            sig.return_type = qtype_from(sema::typespec_from_canonical(*fsig->return_type));
+          sig.variadic = fsig->is_variadic;
+          sig.unspecified_params = fsig->unspecified_params;
+          for (const auto& param : fsig->params)
+            sig.params.push_back(qtype_from(sema::typespec_from_canonical(param), ValueCategory::LValue));
+          hf.fn_ptr_sig = std::move(sig);
+        }
+      }
+    }
+    def.fields.push_back(std::move(hf));
+    if (!sd->is_union) ++llvm_idx;
+  }
+
+  compute_struct_layout(module_, def);
+
+  if (!module_->struct_defs.count(tag))
+    module_->struct_def_order.push_back(tag);
+  module_->struct_defs[tag] = std::move(def);
+
+  // Collect struct methods (stored in sd->children[]) for later lowering.
+  // If the struct was parser-instantiated from a template, extract the
+  // template bindings so method bodies can resolve pending template types.
+  TypeBindings method_tpl_bindings;
+  NttpBindings method_nttp_bindings;
+  if (sd->n_template_args > 0 && sd->template_param_names) {
+    for (int i = 0; i < sd->n_template_args; ++i) {
+      const char* pname = sd->template_param_names[i];
+      if (!pname) continue;
+      if (sd->template_param_is_nttp && sd->template_param_is_nttp[i]) {
+        method_nttp_bindings[pname] = sd->template_arg_values[i];
+      } else if (sd->template_arg_types) {
+        method_tpl_bindings[pname] = sd->template_arg_types[i];
+      }
+    }
+  }
+  for (int i = 0; i < sd->n_children; ++i) {
+    const Node* method = sd->children[i];
+    if (!method || method->kind != NK_FUNCTION || !method->name) continue;
+    const char* const_suffix = method->is_const_method ? "_const" : "";
+    // Constructors get special handling: stored in struct_constructors_
+    // with unique mangled names to support overloading by parameter types.
+    if (method->is_constructor) {
+      auto& ctors = struct_constructors_[tag];
+      int ctor_idx = (int)ctors.size();
+      std::string mangled = std::string(tag) + "__" + method->name;
+      if (ctor_idx > 0) mangled += "__" + std::to_string(ctor_idx);
+      ctors.push_back({mangled, method});
+      // Also register in struct_methods_ so the first ctor is findable.
+      if (ctor_idx == 0) {
+        std::string key = std::string(tag) + "::" + method->name;
+        struct_methods_[key] = mangled;
+        struct_method_ret_types_[key] = method->type;
+      }
+      pending_methods_.push_back({mangled, std::string(tag), method,
+                                  method_tpl_bindings, method_nttp_bindings});
+      continue;
+    }
+    if (method->is_destructor) {
+      std::string mangled = std::string(tag) + "__dtor";
+      struct_destructors_[tag] = {mangled, method};
+      pending_methods_.push_back({mangled, std::string(tag), method,
+                                  method_tpl_bindings, method_nttp_bindings});
+      continue;
+    }
+    std::string mangled = std::string(tag) + "__" + method->name + const_suffix;
+    std::string key = std::string(tag) + "::" + method->name + const_suffix;
+    // Detect ref-overloaded methods: if this key already exists, check for
+    // ref-qualifier difference and register in the overload set.
+    if (struct_methods_.count(key)) {
+      // This is a second overload of the same method — mangle differently.
+      mangled += "__rref";
+      // Register both in the ref_overload_set_ for call-site resolution.
+      auto& ovset = ref_overload_set_[key];
+      if (ovset.empty()) {
+        // Register the first overload.
+        RefOverloadEntry e0;
+        e0.mangled_name = struct_methods_[key];
+        // Find the first method's params from pending_methods_.
+        for (const auto& pm : pending_methods_) {
+          if (pm.mangled == struct_methods_[key]) {
+            for (int pi = 0; pi < pm.method_node->n_params; ++pi) {
+              e0.param_is_rvalue_ref.push_back(pm.method_node->params[pi]->type.is_rvalue_ref);
+              e0.param_is_lvalue_ref.push_back(pm.method_node->params[pi]->type.is_lvalue_ref);
+            }
+            break;
+          }
+        }
+        ovset.push_back(std::move(e0));
+      }
+      RefOverloadEntry e1;
+      e1.mangled_name = mangled;
+      for (int pi = 0; pi < method->n_params; ++pi) {
+        e1.param_is_rvalue_ref.push_back(method->params[pi]->type.is_rvalue_ref);
+        e1.param_is_lvalue_ref.push_back(method->params[pi]->type.is_lvalue_ref);
+      }
+      ovset.push_back(std::move(e1));
+    }
+    struct_methods_[key] = mangled;
+    struct_method_ret_types_[key] = method->type;
+    pending_methods_.push_back({mangled, std::string(tag), method,
+                                method_tpl_bindings, method_nttp_bindings});
+  }
+}
 
 void Lowerer::resolve_typedef_to_struct(TypeSpec& ts) const {
   if (ts.base != TB_TYPEDEF || !ts.tag) return;
