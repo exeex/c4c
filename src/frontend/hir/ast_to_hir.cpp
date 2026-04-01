@@ -2299,96 +2299,8 @@ class Lowerer {
 
   void lower_local_decl_stmt(FunctionCtx& ctx, const Node* n);
 
-  std::optional<ExprId> try_lower_consteval_call_expr(FunctionCtx* ctx, const Node* n) {
-    if (!(n->kind == NK_CALL && n->left && n->left->kind == NK_VAR && n->left->name))
-      return std::nullopt;
-    const Node* ce_fn_def = ct_state_->find_consteval_def(n->left->name);
-    if (!ce_fn_def) return std::nullopt;
-
-    ConstEvalEnv arg_env{&enum_consts_, &const_int_bindings_,
-                         ctx ? &ctx->local_const_bindings : nullptr};
-    TypeBindings tpl_bindings;
-    NttpBindings ce_nttp_bindings;
-    const Node* fn_def = ce_fn_def;
-    if ((n->left->n_template_args > 0 || n->left->has_template_args) &&
-        fn_def->n_template_params > 0) {
-      int count = std::min(n->left->n_template_args, fn_def->n_template_params);
-      for (int i = 0; i < count; ++i) {
-        if (!fn_def->template_param_names[i]) continue;
-        if (fn_def->template_param_is_nttp &&
-            fn_def->template_param_is_nttp[i]) {
-          if (n->left->template_arg_is_value &&
-              n->left->template_arg_is_value[i]) {
-            if (n->left->template_arg_nttp_names &&
-                n->left->template_arg_nttp_names[i] && ctx &&
-                !ctx->nttp_bindings.empty()) {
-              auto it = ctx->nttp_bindings.find(
-                  n->left->template_arg_nttp_names[i]);
-              if (it != ctx->nttp_bindings.end()) {
-                ce_nttp_bindings[fn_def->template_param_names[i]] =
-                    it->second;
-              }
-            } else {
-              ce_nttp_bindings[fn_def->template_param_names[i]] =
-                  n->left->template_arg_values[i];
-            }
-          }
-          continue;
-        }
-        TypeSpec arg_ts = n->left->template_arg_types[i];
-        if (arg_ts.base == TB_TYPEDEF && arg_ts.tag && ctx &&
-            !ctx->tpl_bindings.empty()) {
-          auto resolved = ctx->tpl_bindings.find(arg_ts.tag);
-          if (resolved != ctx->tpl_bindings.end()) arg_ts = resolved->second;
-        }
-        tpl_bindings[fn_def->template_param_names[i]] = arg_ts;
-      }
-      if (fn_def->template_param_has_default) {
-        for (int i = count; i < fn_def->n_template_params; ++i) {
-          if (!fn_def->template_param_names[i]) continue;
-          if (!fn_def->template_param_has_default[i]) continue;
-          if (fn_def->template_param_is_nttp && fn_def->template_param_is_nttp[i]) {
-            ce_nttp_bindings[fn_def->template_param_names[i]] =
-                fn_def->template_param_default_values[i];
-          } else {
-            tpl_bindings[fn_def->template_param_names[i]] =
-                fn_def->template_param_default_types[i];
-          }
-        }
-      }
-      arg_env.type_bindings = &tpl_bindings;
-      if (!ce_nttp_bindings.empty())
-        arg_env.nttp_bindings = &ce_nttp_bindings;
-    }
-    std::vector<ConstValue> args;
-    bool all_const = true;
-    for (int i = 0; i < n->n_children; ++i) {
-      auto r = evaluate_constant_expr(n->children[i], arg_env);
-      if (r.ok()) {
-        args.push_back(*r.value);
-      } else {
-        all_const = false;
-        break;
-      }
-    }
-    if (!all_const) {
-      std::string diag = "error: call to consteval function '";
-      diag += n->left->name;
-      diag += "' with non-constant arguments";
-      throw std::runtime_error(diag);
-    }
-
-    PendingConstevalExpr pce;
-    pce.fn_name = n->left->name;
-    for (const auto& cv : args)
-      pce.const_args.push_back(cv.as_int());
-    pce.tpl_bindings = tpl_bindings;
-    pce.nttp_bindings = ce_nttp_bindings;
-    pce.call_span = make_span(n);
-    pce.unlocked_by_deferred_instantiation = lowering_deferred_instantiation_;
-    TypeSpec ts = n->type;
-    return append_expr(n, std::move(pce), ts);
-  }
+  std::optional<ExprId> try_lower_consteval_call_expr(FunctionCtx* ctx,
+                                                      const Node* n);
 
   // Check if an AST expression is an lvalue (variable, subscript, deref, member).
   static bool is_ast_lvalue(const Node* n) {
@@ -2404,148 +2316,20 @@ class Lowerer {
   // Resolve a ref-overloaded function call: pick the best overload based on
   // argument value categories. Returns the mangled name of the best match,
   // or empty string if no overload set exists.
-  std::string resolve_ref_overload(const std::string& base_name, const Node* call_node) {
-    auto ovit = ref_overload_set_.find(base_name);
-    if (ovit == ref_overload_set_.end()) return {};
-    const auto& overloads = ovit->second;
-    const std::string* best_name = nullptr;
-    int best_score = -1;
-    for (const auto& ov : overloads) {
-      bool viable = true;
-      int score = 0;
-      for (int i = 0; i < call_node->n_children && i < static_cast<int>(ov.param_is_rvalue_ref.size()); ++i) {
-        bool arg_is_lvalue = is_ast_lvalue(call_node->children[i]);
-        if (ov.param_is_lvalue_ref[static_cast<size_t>(i)] && !arg_is_lvalue) { viable = false; break; }
-        if (ov.param_is_rvalue_ref[static_cast<size_t>(i)] && arg_is_lvalue) { viable = false; break; }
-        // Exact match scores higher.
-        if (ov.param_is_rvalue_ref[static_cast<size_t>(i)] && !arg_is_lvalue) score += 2;
-        else if (ov.param_is_lvalue_ref[static_cast<size_t>(i)] && arg_is_lvalue) score += 2;
-        else score += 1;
-      }
-      if (viable && score > best_score) { best_name = &ov.mangled_name; best_score = score; }
-    }
-    return best_name ? *best_name : base_name;
-  }
+  std::string resolve_ref_overload(const std::string& base_name,
+                                   const Node* call_node);
 
-  const Node* find_pending_method_by_mangled(const std::string& mangled_name) const {
-    for (const auto& pm : pending_methods_) {
-      if (pm.mangled == mangled_name) return pm.method_node;
-    }
-    return nullptr;
-  }
+  const Node* find_pending_method_by_mangled(
+      const std::string& mangled_name) const;
 
   bool describe_initializer_list_struct(const TypeSpec& ts,
                                         TypeSpec* elem_ts,
                                         TypeSpec* data_ptr_ts,
-                                        TypeSpec* len_ts) const {
-    if (ts.base != TB_STRUCT || ts.ptr_level != 0 || !ts.tag) return false;
-    auto sit = module_->struct_defs.find(ts.tag);
-    if (sit == module_->struct_defs.end()) return false;
-
-    const HirStructField* data_field = nullptr;
-    const HirStructField* len_field = nullptr;
-    for (const auto& field : sit->second.fields) {
-      if (field.name == "_M_array") data_field = &field;
-      else if (field.name == "_M_len") len_field = &field;
-    }
-    if (!data_field || !len_field) return false;
-    if (data_field->elem_type.ptr_level <= 0) return false;
-
-    if (data_ptr_ts) *data_ptr_ts = data_field->elem_type;
-    if (elem_ts) {
-      *elem_ts = data_field->elem_type;
-      elem_ts->ptr_level--;
-    }
-    if (len_ts) *len_ts = len_field->elem_type;
-    return true;
-  }
+                                        TypeSpec* len_ts) const;
 
   ExprId materialize_initializer_list_arg(FunctionCtx* ctx,
                                           const Node* list_node,
-                                          const TypeSpec& param_ts) {
-    TypeSpec elem_ts{};
-    TypeSpec data_ptr_ts{};
-    TypeSpec len_ts{};
-    if (!describe_initializer_list_struct(param_ts, &elem_ts, &data_ptr_ts, &len_ts)) {
-      return append_expr(list_node, IntLiteral{0, false}, param_ts);
-    }
-
-    ExprId data_ptr_id{};
-    if (list_node && list_node->n_children > 0) {
-      TypeSpec array_ts = elem_ts;
-      array_ts.array_rank = 1;
-      array_ts.array_size = list_node->n_children;
-      array_ts.array_dims[0] = list_node->n_children;
-      for (int i = 1; i < 8; ++i) array_ts.array_dims[i] = -1;
-
-      Node array_tmp{};
-      array_tmp.kind = NK_COMPOUND_LIT;
-      array_tmp.type = array_ts;
-      array_tmp.left = const_cast<Node*>(list_node);
-      array_tmp.line = list_node->line;
-
-      ExprId array_id = lower_expr(ctx, &array_tmp);
-
-      TypeSpec idx_ts{};
-      idx_ts.base = TB_INT;
-      ExprId zero_idx = append_expr(list_node, IntLiteral{0, false}, idx_ts);
-      IndexExpr first_elem{};
-      first_elem.base = array_id;
-      first_elem.index = zero_idx;
-      ExprId first_elem_id =
-          append_expr(list_node, first_elem, elem_ts, ValueCategory::LValue);
-
-      UnaryExpr addr{};
-      addr.op = UnaryOp::AddrOf;
-      addr.operand = first_elem_id;
-      data_ptr_id = append_expr(list_node, addr, data_ptr_ts);
-    } else {
-      data_ptr_id = append_expr(list_node, IntLiteral{0, false}, data_ptr_ts);
-    }
-
-    LocalDecl tmp{};
-    tmp.id = next_local_id();
-    tmp.name = "__init_list_arg_" + std::to_string(tmp.id.value);
-    tmp.type = qtype_from(param_ts, ValueCategory::LValue);
-    tmp.storage = StorageClass::Auto;
-    tmp.span = make_span(list_node);
-    const std::string tmp_name = tmp.name;
-    TypeSpec int_ts{};
-    int_ts.base = TB_INT;
-    tmp.init = append_expr(list_node, IntLiteral{0, false}, int_ts);
-    const LocalId tmp_lid = tmp.id;
-    ctx->locals[tmp_name] = tmp.id;
-    ctx->local_types[tmp.id.value] = param_ts;
-    append_stmt(*ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(list_node)});
-
-    DeclRef tmp_ref{};
-    tmp_ref.name = tmp_name;
-    tmp_ref.local = tmp_lid;
-    ExprId tmp_id = append_expr(list_node, tmp_ref, param_ts, ValueCategory::LValue);
-
-    auto assign_field = [&](const char* field_name,
-                            const TypeSpec& field_ts,
-                            ExprId rhs_id) {
-      MemberExpr lhs{};
-      lhs.base = tmp_id;
-      lhs.field = field_name;
-      lhs.is_arrow = false;
-      ExprId lhs_id = append_expr(list_node, lhs, field_ts, ValueCategory::LValue);
-      AssignExpr assign{};
-      assign.op = AssignOp::Set;
-      assign.lhs = lhs_id;
-      assign.rhs = rhs_id;
-      ExprId assign_id = append_expr(list_node, assign, field_ts);
-      append_stmt(*ctx, Stmt{StmtPayload{ExprStmt{assign_id}}, make_span(list_node)});
-    };
-
-    assign_field("_M_array", data_ptr_ts, data_ptr_id);
-    ExprId len_id = append_expr(list_node,
-                                IntLiteral{list_node ? list_node->n_children : 0, false},
-                                len_ts);
-    assign_field("_M_len", len_ts, len_id);
-    return tmp_id;
-  }
+                                          const TypeSpec& param_ts);
 
   ExprId lower_call_expr(FunctionCtx* ctx, const Node* n) {
     if (auto consteval_expr = try_lower_consteval_call_expr(ctx, n)) {
@@ -9115,6 +8899,250 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
     int cursor = 0;
     consume_from_list(decl_ts, base_id, n->init, cursor);
   }
+}
+
+std::optional<ExprId> Lowerer::try_lower_consteval_call_expr(FunctionCtx* ctx,
+                                                             const Node* n) {
+  if (!(n->kind == NK_CALL && n->left && n->left->kind == NK_VAR && n->left->name))
+    return std::nullopt;
+  const Node* ce_fn_def = ct_state_->find_consteval_def(n->left->name);
+  if (!ce_fn_def) return std::nullopt;
+
+  ConstEvalEnv arg_env{&enum_consts_, &const_int_bindings_,
+                       ctx ? &ctx->local_const_bindings : nullptr};
+  TypeBindings tpl_bindings;
+  NttpBindings ce_nttp_bindings;
+  const Node* fn_def = ce_fn_def;
+  if ((n->left->n_template_args > 0 || n->left->has_template_args) &&
+      fn_def->n_template_params > 0) {
+    int count = std::min(n->left->n_template_args, fn_def->n_template_params);
+    for (int i = 0; i < count; ++i) {
+      if (!fn_def->template_param_names[i]) continue;
+      if (fn_def->template_param_is_nttp && fn_def->template_param_is_nttp[i]) {
+        if (n->left->template_arg_is_value && n->left->template_arg_is_value[i]) {
+          if (n->left->template_arg_nttp_names && n->left->template_arg_nttp_names[i] &&
+              ctx && !ctx->nttp_bindings.empty()) {
+            auto it = ctx->nttp_bindings.find(n->left->template_arg_nttp_names[i]);
+            if (it != ctx->nttp_bindings.end()) {
+              ce_nttp_bindings[fn_def->template_param_names[i]] = it->second;
+            }
+          } else {
+            ce_nttp_bindings[fn_def->template_param_names[i]] =
+                n->left->template_arg_values[i];
+          }
+        }
+        continue;
+      }
+      TypeSpec arg_ts = n->left->template_arg_types[i];
+      if (arg_ts.base == TB_TYPEDEF && arg_ts.tag && ctx && !ctx->tpl_bindings.empty()) {
+        auto resolved = ctx->tpl_bindings.find(arg_ts.tag);
+        if (resolved != ctx->tpl_bindings.end()) arg_ts = resolved->second;
+      }
+      tpl_bindings[fn_def->template_param_names[i]] = arg_ts;
+    }
+    if (fn_def->template_param_has_default) {
+      for (int i = count; i < fn_def->n_template_params; ++i) {
+        if (!fn_def->template_param_names[i]) continue;
+        if (!fn_def->template_param_has_default[i]) continue;
+        if (fn_def->template_param_is_nttp && fn_def->template_param_is_nttp[i]) {
+          ce_nttp_bindings[fn_def->template_param_names[i]] =
+              fn_def->template_param_default_values[i];
+        } else {
+          tpl_bindings[fn_def->template_param_names[i]] =
+              fn_def->template_param_default_types[i];
+        }
+      }
+    }
+    arg_env.type_bindings = &tpl_bindings;
+    if (!ce_nttp_bindings.empty()) arg_env.nttp_bindings = &ce_nttp_bindings;
+  }
+  std::vector<ConstValue> args;
+  bool all_const = true;
+  for (int i = 0; i < n->n_children; ++i) {
+    auto r = evaluate_constant_expr(n->children[i], arg_env);
+    if (r.ok()) {
+      args.push_back(*r.value);
+    } else {
+      all_const = false;
+      break;
+    }
+  }
+  if (!all_const) {
+    std::string diag = "error: call to consteval function '";
+    diag += n->left->name;
+    diag += "' with non-constant arguments";
+    throw std::runtime_error(diag);
+  }
+
+  PendingConstevalExpr pce;
+  pce.fn_name = n->left->name;
+  for (const auto& cv : args) pce.const_args.push_back(cv.as_int());
+  pce.tpl_bindings = tpl_bindings;
+  pce.nttp_bindings = ce_nttp_bindings;
+  pce.call_span = make_span(n);
+  pce.unlocked_by_deferred_instantiation = lowering_deferred_instantiation_;
+  TypeSpec ts = n->type;
+  return append_expr(n, std::move(pce), ts);
+}
+
+std::string Lowerer::resolve_ref_overload(const std::string& base_name,
+                                          const Node* call_node) {
+  auto ovit = ref_overload_set_.find(base_name);
+  if (ovit == ref_overload_set_.end()) return {};
+  const auto& overloads = ovit->second;
+  const std::string* best_name = nullptr;
+  int best_score = -1;
+  for (const auto& ov : overloads) {
+    bool viable = true;
+    int score = 0;
+    for (int i = 0;
+         i < call_node->n_children &&
+         i < static_cast<int>(ov.param_is_rvalue_ref.size());
+         ++i) {
+      bool arg_is_lvalue = is_ast_lvalue(call_node->children[i]);
+      if (ov.param_is_lvalue_ref[static_cast<size_t>(i)] && !arg_is_lvalue) {
+        viable = false;
+        break;
+      }
+      if (ov.param_is_rvalue_ref[static_cast<size_t>(i)] && arg_is_lvalue) {
+        viable = false;
+        break;
+      }
+      if (ov.param_is_rvalue_ref[static_cast<size_t>(i)] && !arg_is_lvalue) {
+        score += 2;
+      } else if (ov.param_is_lvalue_ref[static_cast<size_t>(i)] && arg_is_lvalue) {
+        score += 2;
+      } else {
+        score += 1;
+      }
+    }
+    if (viable && score > best_score) {
+      best_name = &ov.mangled_name;
+      best_score = score;
+    }
+  }
+  return best_name ? *best_name : base_name;
+}
+
+const Node* Lowerer::find_pending_method_by_mangled(
+    const std::string& mangled_name) const {
+  for (const auto& pm : pending_methods_) {
+    if (pm.mangled == mangled_name) return pm.method_node;
+  }
+  return nullptr;
+}
+
+bool Lowerer::describe_initializer_list_struct(const TypeSpec& ts,
+                                               TypeSpec* elem_ts,
+                                               TypeSpec* data_ptr_ts,
+                                               TypeSpec* len_ts) const {
+  if (ts.base != TB_STRUCT || ts.ptr_level != 0 || !ts.tag) return false;
+  auto sit = module_->struct_defs.find(ts.tag);
+  if (sit == module_->struct_defs.end()) return false;
+
+  const HirStructField* data_field = nullptr;
+  const HirStructField* len_field = nullptr;
+  for (const auto& field : sit->second.fields) {
+    if (field.name == "_M_array") {
+      data_field = &field;
+    } else if (field.name == "_M_len") {
+      len_field = &field;
+    }
+  }
+  if (!data_field || !len_field) return false;
+  if (data_field->elem_type.ptr_level <= 0) return false;
+
+  if (data_ptr_ts) *data_ptr_ts = data_field->elem_type;
+  if (elem_ts) {
+    *elem_ts = data_field->elem_type;
+    elem_ts->ptr_level--;
+  }
+  if (len_ts) *len_ts = len_field->elem_type;
+  return true;
+}
+
+ExprId Lowerer::materialize_initializer_list_arg(FunctionCtx* ctx,
+                                                 const Node* list_node,
+                                                 const TypeSpec& param_ts) {
+  TypeSpec elem_ts{};
+  TypeSpec data_ptr_ts{};
+  TypeSpec len_ts{};
+  if (!describe_initializer_list_struct(param_ts, &elem_ts, &data_ptr_ts, &len_ts)) {
+    return append_expr(list_node, IntLiteral{0, false}, param_ts);
+  }
+
+  ExprId data_ptr_id{};
+  if (list_node && list_node->n_children > 0) {
+    TypeSpec array_ts = elem_ts;
+    array_ts.array_rank = 1;
+    array_ts.array_size = list_node->n_children;
+    array_ts.array_dims[0] = list_node->n_children;
+    for (int i = 1; i < 8; ++i) array_ts.array_dims[i] = -1;
+
+    Node array_tmp{};
+    array_tmp.kind = NK_COMPOUND_LIT;
+    array_tmp.type = array_ts;
+    array_tmp.left = const_cast<Node*>(list_node);
+    array_tmp.line = list_node->line;
+
+    ExprId array_id = lower_expr(ctx, &array_tmp);
+
+    TypeSpec idx_ts{};
+    idx_ts.base = TB_INT;
+    ExprId zero_idx = append_expr(list_node, IntLiteral{0, false}, idx_ts);
+    IndexExpr first_elem{};
+    first_elem.base = array_id;
+    first_elem.index = zero_idx;
+    ExprId first_elem_id =
+        append_expr(list_node, first_elem, elem_ts, ValueCategory::LValue);
+
+    UnaryExpr addr{};
+    addr.op = UnaryOp::AddrOf;
+    addr.operand = first_elem_id;
+    data_ptr_id = append_expr(list_node, addr, data_ptr_ts);
+  } else {
+    data_ptr_id = append_expr(list_node, IntLiteral{0, false}, data_ptr_ts);
+  }
+
+  LocalDecl tmp{};
+  tmp.id = next_local_id();
+  tmp.name = "__init_list_arg_" + std::to_string(tmp.id.value);
+  tmp.type = qtype_from(param_ts, ValueCategory::LValue);
+  tmp.storage = StorageClass::Auto;
+  tmp.span = make_span(list_node);
+  const std::string tmp_name = tmp.name;
+  TypeSpec int_ts{};
+  int_ts.base = TB_INT;
+  tmp.init = append_expr(list_node, IntLiteral{0, false}, int_ts);
+  const LocalId tmp_lid = tmp.id;
+  ctx->locals[tmp_name] = tmp.id;
+  ctx->local_types[tmp.id.value] = param_ts;
+  append_stmt(*ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(list_node)});
+
+  DeclRef tmp_ref{};
+  tmp_ref.name = tmp_name;
+  tmp_ref.local = tmp_lid;
+  ExprId tmp_id = append_expr(list_node, tmp_ref, param_ts, ValueCategory::LValue);
+
+  auto assign_field = [&](const char* field_name, const TypeSpec& field_ts, ExprId rhs_id) {
+    MemberExpr lhs{};
+    lhs.base = tmp_id;
+    lhs.field = field_name;
+    lhs.is_arrow = false;
+    ExprId lhs_id = append_expr(list_node, lhs, field_ts, ValueCategory::LValue);
+    AssignExpr assign{};
+    assign.op = AssignOp::Set;
+    assign.lhs = lhs_id;
+    assign.rhs = rhs_id;
+    ExprId assign_id = append_expr(list_node, assign, field_ts);
+    append_stmt(*ctx, Stmt{StmtPayload{ExprStmt{assign_id}}, make_span(list_node)});
+  };
+
+  assign_field("_M_array", data_ptr_ts, data_ptr_id);
+  ExprId len_id = append_expr(
+      list_node, IntLiteral{list_node ? list_node->n_children : 0, false}, len_ts);
+  assign_field("_M_len", len_ts, len_id);
+  return tmp_id;
 }
 
 const Node* Lowerer::find_struct_static_member_decl(
