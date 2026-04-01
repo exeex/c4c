@@ -2183,35 +2183,9 @@ class Lowerer {
   // Check if a template function is called from any non-template function
   // without explicit template args (implicit deduction / plain call).
   static bool is_referenced_without_template_args(
-      const char* fn_name, const std::vector<const Node*>& items) {
-    if (!fn_name) return false;
-    for (const Node* item : items) {
-      if (item->kind != NK_FUNCTION || !item->body) continue;
-      if (item->n_template_params > 0) continue;  // Skip template function bodies
-      if (has_plain_call(item->body, fn_name)) return true;
-    }
-    return false;
-  }
+      const char* fn_name, const std::vector<const Node*>& items);
 
-  static bool has_plain_call(const Node* n, const char* fn_name) {
-    if (!n) return false;
-    if (n->kind == NK_CALL && n->left && n->left->kind == NK_VAR &&
-        n->left->name && strcmp(n->left->name, fn_name) == 0 &&
-        n->left->n_template_args == 0) {
-      return true;
-    }
-    if (has_plain_call(n->left, fn_name)) return true;
-    if (has_plain_call(n->right, fn_name)) return true;
-    if (has_plain_call(n->cond, fn_name)) return true;
-    if (has_plain_call(n->then_, fn_name)) return true;
-    if (has_plain_call(n->else_, fn_name)) return true;
-    if (has_plain_call(n->body, fn_name)) return true;
-    if (has_plain_call(n->init, fn_name)) return true;
-    if (has_plain_call(n->update, fn_name)) return true;
-    for (int i = 0; i < n->n_children; ++i)
-      if (has_plain_call(n->children[i], fn_name)) return true;
-    return false;
-  }
+  static bool has_plain_call(const Node* n, const char* fn_name);
 
   const Node* find_template_struct_primary(const std::string& name) const;
   const std::vector<const Node*>* find_template_struct_specializations(
@@ -2289,6 +2263,37 @@ class Lowerer {
   bool lowering_deferred_instantiation_ = false;
 
 };
+
+bool Lowerer::is_referenced_without_template_args(
+    const char* fn_name, const std::vector<const Node*>& items) {
+  if (!fn_name) return false;
+  for (const Node* item : items) {
+    if (item->kind != NK_FUNCTION || !item->body) continue;
+    if (item->n_template_params > 0) continue;  // Skip template function bodies
+    if (has_plain_call(item->body, fn_name)) return true;
+  }
+  return false;
+}
+
+bool Lowerer::has_plain_call(const Node* n, const char* fn_name) {
+  if (!n) return false;
+  if (n->kind == NK_CALL && n->left && n->left->kind == NK_VAR &&
+      n->left->name && strcmp(n->left->name, fn_name) == 0 &&
+      n->left->n_template_args == 0) {
+    return true;
+  }
+  if (has_plain_call(n->left, fn_name)) return true;
+  if (has_plain_call(n->right, fn_name)) return true;
+  if (has_plain_call(n->cond, fn_name)) return true;
+  if (has_plain_call(n->then_, fn_name)) return true;
+  if (has_plain_call(n->else_, fn_name)) return true;
+  if (has_plain_call(n->body, fn_name)) return true;
+  if (has_plain_call(n->init, fn_name)) return true;
+  if (has_plain_call(n->update, fn_name)) return true;
+  for (int i = 0; i < n->n_children; ++i)
+    if (has_plain_call(n->children[i], fn_name)) return true;
+  return false;
+}
 
 TypeSpec Lowerer::field_type_of(const HirStructField& f) {
   TypeSpec ts = f.elem_type;

@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 1: Establish Header Ownership
-- Current slice: continue Step 1 monolith peel-back by extracting the next remaining inline `Lowerer` helper cluster around template-parameter-order and plain-call discovery utilities, keeping ownership in `src/frontend/hir/ast_to_hir.cpp` while shrinking the inline class body further
+- Current slice: continue Step 1 by promoting the next split-relevant helper/type declaration cluster from `src/frontend/hir/ast_to_hir.cpp` into `src/frontend/hir/ast_to_hir.hpp`, now that the remaining plain-call discovery helpers are no longer inline in the `Lowerer` class body
 
 ## Todo
 
@@ -18,6 +18,10 @@ Source Plan: plan.md
 - [ ] Step 5: run final build and regression validation
 
 ## Completed
+
+- The current slice targeted the remaining inline plain-call discovery helpers because `is_referenced_without_template_args` and `has_plain_call` still lived inline in the `Lowerer` class body immediately after the template-instantiation collection utilities, making them the next low-coupling monolith peel-back in the same local area.
+- The latest slice moved `is_referenced_without_template_args` and `has_plain_call` out of the inline `Lowerer` class body into out-of-class definitions in `src/frontend/hir/ast_to_hir.cpp`, preserving behavior while continuing the Step 1 monolith shrink.
+- Validation on 2026-04-01: `cmake --build build -j8` succeeded; a full `ctest --test-dir build -j8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 failing tests (`positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c`); `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passed with zero new failing tests.
 
 - The current slice targeted the nearby field/init helper cluster because `field_type_of`, `field_init_type_of`, `is_char_like`, `is_scalar_init_type`, `child_init_of`, and `make_init_item` were still inline in the `Lowerer` class body but already served as local initializer-structure utilities that could move out-of-class without changing ownership or widening the declaration surface.
 - The latest slice moved that field/init helper cluster out of the inline `Lowerer` class body into out-of-class definitions in `src/frontend/hir/ast_to_hir.cpp`, preserving behavior while continuing the monolith shrink.
