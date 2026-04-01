@@ -4126,6 +4126,16 @@ static int gen_type_bits(const std::string& ty) {
 static bool gen_is_64bit(const std::string& ty) { return gen_type_bits(ty) > 32; }
 static const char* gen_reg_prefix(const std::string& ty) { return gen_is_64bit(ty) ? "x" : "w"; }
 
+static void gen_emit_sp_adjust(std::ostringstream& out, const char* op, int amount) {
+  if (amount <= 0) return;
+  int remaining = amount;
+  while (remaining > 0) {
+    const int chunk = std::min(remaining, 4095);
+    out << "  " << op << " sp, sp, #" << chunk << "\n";
+    remaining -= chunk;
+  }
+}
+
 // Parse type byte size for GEP element sizing.
 static std::pair<int, int> gen_parse_array_type(const std::string& ty);
 
@@ -4824,7 +4834,7 @@ static std::optional<std::string> try_emit_general_lir_asm(
     out << fn.name << ":\n";
 
     // Prologue: allocate stack frame, save lr
-    out << "  sub sp, sp, #" << sm.frame_size << "\n";
+    gen_emit_sp_adjust(out, "sub", sm.frame_size);
     out << "  str x30, [sp, #0]\n";  // save lr
 
     // Parse parameters from signature_text and store to stack slots
@@ -5390,7 +5400,7 @@ static std::optional<std::string> try_emit_general_lir_asm(
           gen_load_operand(out, *t->value_str, t->type_str, sm, 0, fn.name, &extern_globals);
         }
         out << "  ldr x30, [sp, #0]\n";
-        out << "  add sp, sp, #" << sm.frame_size << "\n";
+        gen_emit_sp_adjust(out, "add", sm.frame_size);
         out << "  ret\n";
       }
       else if (const auto* t = std::get_if<LirBr>(&blk.terminator)) {

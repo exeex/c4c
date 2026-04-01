@@ -357,6 +357,31 @@ c4c::codegen::lir::LirModule make_trunc_scalar_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_large_frame_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.large", "[5200 x i8]", "", 16});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{"i8", "7", "%lv.large"});
+  entry.insts.push_back(LirLoadOp{"%t0", "i8", "%lv.large"});
+  entry.terminator = LirRet{std::string("%t0"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_va_intrinsic_module() {
   using namespace c4c::codegen::lir;
 
@@ -2149,6 +2174,22 @@ void test_aarch64_backend_renders_trunc_slice() {
                   "aarch64 backend should preserve the trunc result");
 }
 
+void test_aarch64_backend_renders_large_frame_adjustments() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_large_frame_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".globl main",
+                  "aarch64 backend should keep large-frame functions on the assembly path");
+  expect_contains(rendered, "sub sp, sp, #4095\n  sub sp, sp, #1137\n",
+                  "aarch64 backend should split oversized stack allocations into legal AArch64 immediates");
+  expect_contains(rendered, "add sp, sp, #4095\n  add sp, sp, #1137\n",
+                  "aarch64 backend should split oversized stack restores into legal AArch64 immediates");
+  expect_not_contains(rendered, "sub sp, sp, #5232",
+                      "aarch64 backend should not emit an oversized stack-allocation immediate");
+  expect_not_contains(rendered, "add sp, sp, #5232",
+                      "aarch64 backend should not emit an oversized stack-restore immediate");
+}
+
 void test_aarch64_backend_renders_va_intrinsic_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_va_intrinsic_module()},
@@ -2680,6 +2721,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_renders_global_int_pointer_roundtrip_slice();
   test_aarch64_backend_renders_bitcast_slice();
   test_aarch64_backend_renders_trunc_slice();
+  test_aarch64_backend_renders_large_frame_adjustments();
   test_aarch64_backend_renders_va_intrinsic_slice();
   test_aarch64_backend_renders_va_arg_scalar_slice();
   test_aarch64_backend_renders_va_arg_pair_slice();

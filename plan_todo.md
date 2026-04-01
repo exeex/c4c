@@ -41,6 +41,23 @@ stack-spill AArch64 emitter. All instruction types handled in one pass.
 - 2 BACKEND_FAIL (assembler/linker errors)
 
 ### Next: Step 6
-- Investigate remaining RUNTIME_NONZERO failures (struct GEP issues likely)
-- Fix RUNTIME_MISMATCH (printf arg passing edge cases)
-- Fix BACKEND_FAIL (linker issues)
+- Active slice: fix large stack-frame prologue/epilogue emission in the general
+  AArch64 emitter so frames above the immediate encoding limit still assemble.
+- Validate with a focused backend adapter test and the failing
+  `c_testsuite_aarch64_backend_src_00216_c` case.
+- Remaining after this slice: investigate `RUNTIME_NONZERO` failures (struct GEP
+  issues likely) and `RUNTIME_MISMATCH` cases (printf / aggregate passing edge
+  cases).
+
+### Step 6 progress (2026-04-01)
+- Added `gen_emit_sp_adjust()` so the general emitter splits stack pointer
+  adjustments into legal AArch64 immediates instead of emitting one oversized
+  `sub/add sp, sp, #frame_size`.
+- Added a focused large-frame adapter test module covering a used
+  `[5200 x i8]` alloca with expected `4095 + 1137` split adjustments.
+- Verified the production compiler path on
+  `tests/c/external/c-testsuite/src/00216.c`: emitted assembly now contains
+  `sub sp, sp, #4095` + `sub sp, sp, #1137` and matching `add` instructions.
+- Regression status for `00216.c` improved from `BACKEND_FAIL` (assembler reject)
+  to `RUNTIME_NONZERO` (segfault), so the oversized-immediate backend failure is
+  fixed and the next slice should target the remaining runtime bug.
