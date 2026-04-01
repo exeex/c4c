@@ -6483,183 +6483,31 @@ class Lowerer {
   }
 
   // Get template parameter order from the definition (for specialization key).
-  std::vector<std::string> get_template_param_order_from_instances(const std::string& fn_name) {
-    const Node* tpl_def = ct_state_->find_template_def(fn_name);
-    if (tpl_def) return get_template_param_order(tpl_def);
-    return {};
-  }
+  std::vector<std::string> get_template_param_order_from_instances(
+      const std::string& fn_name);
 
   // Record a template seed via the centralized registry.
   // Returns the mangled name, or "" if bindings are not concrete.
-  std::string record_seed(const std::string& fn_name, TypeBindings bindings,
-                           NttpBindings nttp_bindings = {},
-                           TemplateSeedOrigin origin = TemplateSeedOrigin::DirectCall) {
-    const Node* primary_def = ct_state_->find_template_def(fn_name);
-    auto param_order = get_template_param_order(primary_def, &bindings, &nttp_bindings);
-    return registry_.record_seed(fn_name, std::move(bindings),
-                                 std::move(nttp_bindings), param_order,
-                                 origin, primary_def);
-  }
+  std::string record_seed(
+      const std::string& fn_name,
+      TypeBindings bindings,
+      NttpBindings nttp_bindings = {},
+      TemplateSeedOrigin origin = TemplateSeedOrigin::DirectCall);
 
   // Resolve the mangled name for a call to a template function.
-  std::string resolve_template_call_name(const Node* call_var,
-                                          const TypeBindings* enclosing_bindings,
-                                          const NttpBindings* enclosing_nttp = nullptr) {
-    if (!call_var || !call_var->name ||
-        (call_var->n_template_args <= 0 && !call_var->has_template_args))
-      return call_var ? (call_var->name ? call_var->name : "") : "";
-    const Node* fn_def = ct_state_->find_template_def(call_var->name);
-    if (!fn_def) return call_var->name;
-    if (fn_def->is_consteval) return call_var->name;  // consteval handled separately
-    TypeBindings bindings =
-        merge_explicit_and_deduced_type_bindings(nullptr, call_var, fn_def, enclosing_bindings);
-    NttpBindings nttp_bindings = build_call_nttp_bindings(call_var, fn_def, enclosing_nttp);
-    return mangle_template_name(call_var->name, bindings, nttp_bindings);
-  }
+  std::string resolve_template_call_name(
+      const Node* call_var,
+      const TypeBindings* enclosing_bindings,
+      const NttpBindings* enclosing_nttp = nullptr);
 
   // Recursively collect template instantiations from call sites in AST.
-  void collect_template_instantiations(const Node* n, const Node* enclosing_fn) {
-    if (!n) return;
-    if (n->kind == NK_CALL && n->left && n->left->kind == NK_VAR &&
-        n->left->name &&
-        (n->left->n_template_args > 0 || n->left->has_template_args)) {
-      const Node* fn_def = ct_state_->find_template_def(n->left->name);
-      if (fn_def) {
-        if (!fn_def->is_consteval && fn_def->n_template_params > 0) {
-          // Determine the enclosing function's template bindings (if any).
-          const TypeBindings* enclosing_bindings = nullptr;
-          TypeBindings enc_bindings;
-          if (enclosing_fn && enclosing_fn->name) {
-            auto* enc_list = registry_.find_instances(enclosing_fn->name);
-            if (enc_list) {
-              // For each enclosing instantiation, record an inner instantiation.
-              for (const auto& enc_inst : *enc_list) {
-                TypeBindings inner = merge_explicit_and_deduced_type_bindings(
-                    n, n->left, fn_def, &enc_inst.bindings, enclosing_fn);
-                NttpBindings call_nttp = build_call_nttp_bindings(n->left, fn_def, &enc_inst.nttp_bindings);
-                record_seed(
-                    n->left->name, std::move(inner), call_nttp,
-                    TemplateSeedOrigin::EnclosingTemplateExpansion);
-              }
-              goto recurse;  // Already handled all enclosing instantiations.
-            }
-          }
-          {
-            NttpBindings call_nttp = build_call_nttp_bindings(n->left, fn_def);
-            if (has_forwarded_nttp(n->left)) goto recurse;  // Deferred: forwarded NTTPs not yet resolved.
-            TypeBindings bindings =
-                merge_explicit_and_deduced_type_bindings(n, n->left, fn_def, nullptr, enclosing_fn);
-            std::string mangled = record_seed(
-                n->left->name, std::move(bindings), call_nttp,
-                TemplateSeedOrigin::DirectCall);
-            if (fn_def->n_template_params > n->left->n_template_args) {
-              TypeBindings full_bindings =
-                  merge_explicit_and_deduced_type_bindings(n, n->left, fn_def, nullptr, enclosing_fn);
-              deduced_template_calls_[n] =
-                  {mangled, std::move(full_bindings), std::move(call_nttp)};
-            }
-          }
-        }
-      }
-    }
-    // Template argument deduction: if the call has no explicit template args
-    // but the callee name matches a template function, try to deduce type
-    // args from the call arguments.
-    if (n->kind == NK_CALL && n->left && n->left->kind == NK_VAR &&
-        n->left->name &&
-        n->left->n_template_args == 0 && !n->left->has_template_args) {
-      const Node* fn_def = ct_state_->find_template_def(n->left->name);
-      if (fn_def) {
-        if (!fn_def->is_consteval && fn_def->n_template_params > 0) {
-          TypeBindings deduced = try_deduce_template_type_args(n, fn_def, enclosing_fn);
-
-          if (deduction_covers_all_type_params(deduced, fn_def)) {
-            fill_deduced_defaults(deduced, fn_def);
-            NttpBindings nttp{};
-            // Fill NTTP defaults if any.
-            if (fn_def->template_param_has_default) {
-              for (int i = 0; i < fn_def->n_template_params; ++i) {
-                if (!fn_def->template_param_names[i]) continue;
-                if (!fn_def->template_param_is_nttp || !fn_def->template_param_is_nttp[i]) continue;
-                if (fn_def->template_param_has_default[i])
-                  nttp[fn_def->template_param_names[i]] = fn_def->template_param_default_values[i];
-              }
-            }
-            std::string mangled = record_seed(
-                n->left->name, TypeBindings(deduced), nttp,
-                TemplateSeedOrigin::DeducedCall);
-            // Store the deduction result for use during call lowering.
-            deduced_template_calls_[n] = {mangled, std::move(deduced), std::move(nttp)};
-          }
-        }
-      }
-    }
-    recurse:
-    if (n->left) collect_template_instantiations(n->left, enclosing_fn);
-    if (n->right) collect_template_instantiations(n->right, enclosing_fn);
-    if (n->cond) collect_template_instantiations(n->cond, enclosing_fn);
-    if (n->then_) collect_template_instantiations(n->then_, enclosing_fn);
-    if (n->else_) collect_template_instantiations(n->else_, enclosing_fn);
-    if (n->body) collect_template_instantiations(n->body, enclosing_fn);
-    if (n->init) collect_template_instantiations(n->init, enclosing_fn);
-    if (n->update) collect_template_instantiations(n->update, enclosing_fn);
-    for (int i = 0; i < n->n_children; ++i)
-      if (n->children[i]) collect_template_instantiations(n->children[i], enclosing_fn);
-  }
+  void collect_template_instantiations(const Node* n, const Node* enclosing_fn);
 
   // Like collect_template_instantiations, but only records instances for
   // consteval template functions.  Non-consteval template calls inside template
   // bodies are left for the compile-time reduction pass to discover and lower.
-  void collect_consteval_template_instantiations(const Node* n, const Node* enclosing_fn) {
-    if (!n) return;
-    if (n->kind == NK_CALL && n->left && n->left->kind == NK_VAR &&
-        n->left->name &&
-        (n->left->n_template_args > 0 || n->left->has_template_args)) {
-      const Node* fn_def = ct_state_->find_template_def(n->left->name);
-      if (fn_def) {
-        if (fn_def->is_consteval && fn_def->n_template_params > 0) {
-          if (enclosing_fn && enclosing_fn->name) {
-            auto* enc_list = registry_.find_instances(enclosing_fn->name);
-            if (enc_list) {
-              for (const auto& enc_inst : *enc_list) {
-                TypeBindings inner = build_call_bindings(n->left, fn_def, &enc_inst.bindings);
-                NttpBindings call_nttp = build_call_nttp_bindings(n->left, fn_def, &enc_inst.nttp_bindings);
-                record_seed(
-                    n->left->name, std::move(inner), call_nttp,
-                    TemplateSeedOrigin::ConstevalEnclosingExpansion);
-              }
-              goto recurse_ce;
-            }
-            // Enclosing template function has no concrete instances yet.
-            // Skip recording — the consteval call will be discovered when
-            // the enclosing function is later instantiated by the HIR
-            // compile-time reduction pass (deferred consteval).
-            if (enclosing_fn->n_template_params > 0)
-              goto recurse_ce;
-          }
-          {
-            NttpBindings call_nttp = build_call_nttp_bindings(n->left, fn_def);
-            if (has_forwarded_nttp(n->left)) goto recurse_ce;  // Deferred.
-            TypeBindings bindings = build_call_bindings(n->left, fn_def, nullptr);
-            record_seed(
-                n->left->name, std::move(bindings), call_nttp,
-                TemplateSeedOrigin::ConstevalSeed);
-          }
-        }
-      }
-    }
-    recurse_ce:
-    if (n->left) collect_consteval_template_instantiations(n->left, enclosing_fn);
-    if (n->right) collect_consteval_template_instantiations(n->right, enclosing_fn);
-    if (n->cond) collect_consteval_template_instantiations(n->cond, enclosing_fn);
-    if (n->then_) collect_consteval_template_instantiations(n->then_, enclosing_fn);
-    if (n->else_) collect_consteval_template_instantiations(n->else_, enclosing_fn);
-    if (n->body) collect_consteval_template_instantiations(n->body, enclosing_fn);
-    if (n->init) collect_consteval_template_instantiations(n->init, enclosing_fn);
-    if (n->update) collect_consteval_template_instantiations(n->update, enclosing_fn);
-    for (int i = 0; i < n->n_children; ++i)
-      if (n->children[i]) collect_consteval_template_instantiations(n->children[i], enclosing_fn);
-  }
+  void collect_consteval_template_instantiations(
+      const Node* n, const Node* enclosing_fn);
 
   // Check if a template function is called from any non-template function
   // without explicit template args (implicit deduction / plain call).
@@ -9372,6 +9220,178 @@ void Lowerer::collect_depth0_template_instantiations(
   for (const Node* item : items) {
     if (item->kind == NK_FUNCTION && item->body && item->n_template_params == 0) {
       collect_template_instantiations(item->body, item);
+    }
+  }
+}
+
+std::vector<std::string> Lowerer::get_template_param_order_from_instances(
+    const std::string& fn_name) {
+  const Node* tpl_def = ct_state_->find_template_def(fn_name);
+  if (tpl_def) return get_template_param_order(tpl_def);
+  return {};
+}
+
+std::string Lowerer::record_seed(const std::string& fn_name,
+                                 TypeBindings bindings,
+                                 NttpBindings nttp_bindings,
+                                 TemplateSeedOrigin origin) {
+  const Node* primary_def = ct_state_->find_template_def(fn_name);
+  auto param_order =
+      get_template_param_order(primary_def, &bindings, &nttp_bindings);
+  return registry_.record_seed(fn_name, std::move(bindings),
+                               std::move(nttp_bindings), param_order,
+                               origin, primary_def);
+}
+
+std::string Lowerer::resolve_template_call_name(
+    const Node* call_var,
+    const TypeBindings* enclosing_bindings,
+    const NttpBindings* enclosing_nttp) {
+  if (!call_var || !call_var->name ||
+      (call_var->n_template_args <= 0 && !call_var->has_template_args)) {
+    return call_var ? (call_var->name ? call_var->name : "") : "";
+  }
+  const Node* fn_def = ct_state_->find_template_def(call_var->name);
+  if (!fn_def) return call_var->name;
+  if (fn_def->is_consteval) return call_var->name;
+  TypeBindings bindings = merge_explicit_and_deduced_type_bindings(
+      nullptr, call_var, fn_def, enclosing_bindings);
+  NttpBindings nttp_bindings =
+      build_call_nttp_bindings(call_var, fn_def, enclosing_nttp);
+  return mangle_template_name(call_var->name, bindings, nttp_bindings);
+}
+
+void Lowerer::collect_template_instantiations(const Node* n,
+                                              const Node* enclosing_fn) {
+  if (!n) return;
+  if (n->kind == NK_CALL && n->left && n->left->kind == NK_VAR &&
+      n->left->name &&
+      (n->left->n_template_args > 0 || n->left->has_template_args)) {
+    const Node* fn_def = ct_state_->find_template_def(n->left->name);
+    if (fn_def && !fn_def->is_consteval && fn_def->n_template_params > 0) {
+      if (enclosing_fn && enclosing_fn->name) {
+        auto* enc_list = registry_.find_instances(enclosing_fn->name);
+        if (enc_list) {
+          for (const auto& enc_inst : *enc_list) {
+            TypeBindings inner = merge_explicit_and_deduced_type_bindings(
+                n, n->left, fn_def, &enc_inst.bindings, enclosing_fn);
+            NttpBindings call_nttp = build_call_nttp_bindings(
+                n->left, fn_def, &enc_inst.nttp_bindings);
+            record_seed(n->left->name, std::move(inner), call_nttp,
+                        TemplateSeedOrigin::EnclosingTemplateExpansion);
+          }
+          goto recurse;
+        }
+      }
+      NttpBindings call_nttp = build_call_nttp_bindings(n->left, fn_def);
+      if (has_forwarded_nttp(n->left)) goto recurse;
+      TypeBindings bindings = merge_explicit_and_deduced_type_bindings(
+          n, n->left, fn_def, nullptr, enclosing_fn);
+      std::string mangled = record_seed(n->left->name, std::move(bindings),
+                                        call_nttp,
+                                        TemplateSeedOrigin::DirectCall);
+      if (fn_def->n_template_params > n->left->n_template_args) {
+        TypeBindings full_bindings = merge_explicit_and_deduced_type_bindings(
+            n, n->left, fn_def, nullptr, enclosing_fn);
+        deduced_template_calls_[n] = {
+            mangled, std::move(full_bindings), std::move(call_nttp)};
+      }
+    }
+  }
+  if (n->kind == NK_CALL && n->left && n->left->kind == NK_VAR &&
+      n->left->name && n->left->n_template_args == 0 &&
+      !n->left->has_template_args) {
+    const Node* fn_def = ct_state_->find_template_def(n->left->name);
+    if (fn_def && !fn_def->is_consteval && fn_def->n_template_params > 0) {
+      TypeBindings deduced =
+          try_deduce_template_type_args(n, fn_def, enclosing_fn);
+      if (deduction_covers_all_type_params(deduced, fn_def)) {
+        fill_deduced_defaults(deduced, fn_def);
+        NttpBindings nttp{};
+        if (fn_def->template_param_has_default) {
+          for (int i = 0; i < fn_def->n_template_params; ++i) {
+            if (!fn_def->template_param_names[i]) continue;
+            if (!fn_def->template_param_is_nttp ||
+                !fn_def->template_param_is_nttp[i]) {
+              continue;
+            }
+            if (fn_def->template_param_has_default[i]) {
+              nttp[fn_def->template_param_names[i]] =
+                  fn_def->template_param_default_values[i];
+            }
+          }
+        }
+        std::string mangled = record_seed(
+            n->left->name, TypeBindings(deduced), nttp,
+            TemplateSeedOrigin::DeducedCall);
+        deduced_template_calls_[n] = {
+            mangled, std::move(deduced), std::move(nttp)};
+      }
+    }
+  }
+
+recurse:
+  if (n->left) collect_template_instantiations(n->left, enclosing_fn);
+  if (n->right) collect_template_instantiations(n->right, enclosing_fn);
+  if (n->cond) collect_template_instantiations(n->cond, enclosing_fn);
+  if (n->then_) collect_template_instantiations(n->then_, enclosing_fn);
+  if (n->else_) collect_template_instantiations(n->else_, enclosing_fn);
+  if (n->body) collect_template_instantiations(n->body, enclosing_fn);
+  if (n->init) collect_template_instantiations(n->init, enclosing_fn);
+  if (n->update) collect_template_instantiations(n->update, enclosing_fn);
+  for (int i = 0; i < n->n_children; ++i) {
+    if (n->children[i]) collect_template_instantiations(n->children[i],
+                                                        enclosing_fn);
+  }
+}
+
+void Lowerer::collect_consteval_template_instantiations(
+    const Node* n, const Node* enclosing_fn) {
+  if (!n) return;
+  if (n->kind == NK_CALL && n->left && n->left->kind == NK_VAR &&
+      n->left->name &&
+      (n->left->n_template_args > 0 || n->left->has_template_args)) {
+    const Node* fn_def = ct_state_->find_template_def(n->left->name);
+    if (fn_def && fn_def->is_consteval && fn_def->n_template_params > 0) {
+      if (enclosing_fn && enclosing_fn->name) {
+        auto* enc_list = registry_.find_instances(enclosing_fn->name);
+        if (enc_list) {
+          for (const auto& enc_inst : *enc_list) {
+            TypeBindings inner =
+                build_call_bindings(n->left, fn_def, &enc_inst.bindings);
+            NttpBindings call_nttp = build_call_nttp_bindings(
+                n->left, fn_def, &enc_inst.nttp_bindings);
+            record_seed(n->left->name, std::move(inner), call_nttp,
+                        TemplateSeedOrigin::ConstevalEnclosingExpansion);
+          }
+          goto recurse_ce;
+        }
+        if (enclosing_fn->n_template_params > 0) goto recurse_ce;
+      }
+      NttpBindings call_nttp = build_call_nttp_bindings(n->left, fn_def);
+      if (has_forwarded_nttp(n->left)) goto recurse_ce;
+      TypeBindings bindings = build_call_bindings(n->left, fn_def, nullptr);
+      record_seed(n->left->name, std::move(bindings), call_nttp,
+                  TemplateSeedOrigin::ConstevalSeed);
+    }
+  }
+
+recurse_ce:
+  if (n->left) collect_consteval_template_instantiations(n->left, enclosing_fn);
+  if (n->right) {
+    collect_consteval_template_instantiations(n->right, enclosing_fn);
+  }
+  if (n->cond) collect_consteval_template_instantiations(n->cond, enclosing_fn);
+  if (n->then_) collect_consteval_template_instantiations(n->then_, enclosing_fn);
+  if (n->else_) collect_consteval_template_instantiations(n->else_, enclosing_fn);
+  if (n->body) collect_consteval_template_instantiations(n->body, enclosing_fn);
+  if (n->init) collect_consteval_template_instantiations(n->init, enclosing_fn);
+  if (n->update) {
+    collect_consteval_template_instantiations(n->update, enclosing_fn);
+  }
+  for (int i = 0; i < n->n_children; ++i) {
+    if (n->children[i]) {
+      collect_consteval_template_instantiations(n->children[i], enclosing_fn);
     }
   }
 }

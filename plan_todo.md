@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 1: Establish Header Ownership
-- Current slice: continue Step 1 monolith peel-back by extracting the next adjacent low-coupling expression/helper cluster downstream of the builtin-query helpers while still deferring heavier structural bodies such as `lower_expr` and `lower_stmt_node`
+- Current slice: continue Step 1 monolith peel-back by extracting the next adjacent low-coupling template/consteval helper cluster downstream of the template-instantiation collection helpers while still deferring heavier structural bodies such as `lower_expr`, `lower_stmt_node`, and `lower_struct_def`
 
 ## Todo
 
@@ -19,6 +19,8 @@ Source Plan: plan.md
 
 ## Completed
 
+- [x] Extracted the adjacent template-instantiation collection helper cluster (`get_template_param_order_from_instances`, `record_seed`, `resolve_template_call_name`, `collect_template_instantiations`, and `collect_consteval_template_instantiations`) out of the inline `Lowerer` class body into out-of-class definitions in `src/frontend/hir/ast_to_hir.cpp`
+- [x] Rebuilt with `cmake --build build -j8`, reran the targeted known-failure triplet, reran the full `ctest --test-dir build -j8 --output-on-failure` into `test_fail_after.log`, and passed `.codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`; the suite remained at 2671 total tests, 2668 passing, and the same 3 historical failures
 - [x] Extracted the adjacent builtin-query helper cluster (`builtin_query_result_type`, `resolve_builtin_query_type`, `lower_builtin_sizeof_type`, `lower_builtin_alignof_type`, `builtin_alignof_expr_bytes`, and `lower_builtin_alignof_expr`) out of the inline `Lowerer` class body into out-of-class definitions in `src/frontend/hir/ast_to_hir.cpp`
 - [x] Rebuilt and reran the targeted known-failure triplet plus the full `ctest --test-dir build -j8 --output-on-failure`, then passed `.codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`; the suite remained at 2671 total tests, 2668 passing, and the same 3 historical failures
 - [x] Extracted the adjacent statement/global lowering helpers (`lower_global` and `lower_local_decl_stmt`) out of the inline `Lowerer` class body into out-of-class definitions in `src/frontend/hir/ast_to_hir.cpp`
@@ -73,7 +75,7 @@ Source Plan: plan.md
 
 ## Next Slice
 
-- Continue Step 1 by peeling the adjacent builtin-query helper cluster out of the class body before tackling heavier structural bodies such as `lower_stmt_node` or `lower_struct_def`.
+- Continue Step 1 by peeling the nearby consteval/template-call and initializer-list helper cluster out of the class body before tackling heavier structural bodies such as `lower_stmt_node` or `lower_struct_def`.
 
 ## Blockers
 
@@ -141,4 +143,7 @@ Source Plan: plan.md
 - Validation on 2026-04-01: `cmake --build build -j8` succeeded; the targeted rerun of `positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c` matched the historical blocker list; a full `ctest --test-dir build -j8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 failing tests; `.codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passed with zero new failing tests.
 - The current slice targeted the adjacent builtin-query helper cluster because those helpers only coordinate existing type-resolution, layout-query, and expression-lowering utilities and could move out of the inline `Lowerer` class body without changing ownership or widening the declaration surface.
 - The latest slice moved `builtin_query_result_type`, `resolve_builtin_query_type`, `lower_builtin_sizeof_type`, `lower_builtin_alignof_type`, `builtin_alignof_expr_bytes`, and `lower_builtin_alignof_expr` out of the inline `Lowerer` class body into out-of-class definitions, preserving behavior while continuing the monolith shrink.
+- Validation on 2026-04-01: `cmake --build build -j8` succeeded; the targeted rerun of `positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c` matched the historical blocker list; a full `ctest --test-dir build -j8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 failing tests; `.codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passed with zero new failing tests.
+- The current slice targeted the adjacent template-instantiation collection helpers because they are stateful template-seed/AST-walk utilities that still lived inline in the `Lowerer` class body but could move out-of-class without widening the declaration surface or changing ownership.
+- The latest slice moved `get_template_param_order_from_instances`, `record_seed`, `resolve_template_call_name`, `collect_template_instantiations`, and `collect_consteval_template_instantiations` out of the inline `Lowerer` class body into out-of-class definitions, preserving behavior while continuing the monolith shrink.
 - Validation on 2026-04-01: `cmake --build build -j8` succeeded; the targeted rerun of `positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c` matched the historical blocker list; a full `ctest --test-dir build -j8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 failing tests; `.codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passed with zero new failing tests.
