@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 1: Establish Header Ownership
-- Current slice: select the next low-coupling inline `Lowerer` utility cluster to peel out of the class body after the `fn_ptr_sig_from_decl_node` and NTTP const-eval helper extraction
+- Current slice: select the next low-coupling inline `Lowerer` utility cluster to peel out of the class body after the `append_expr` extraction
 
 ## Todo
 
@@ -45,10 +45,12 @@ Source Plan: plan.md
 - [x] Rebuilt and reran the targeted known-failure triplet plus the full `ctest --test-dir build -j8 --output-on-failure`; the suite still finished at 2671 total tests, 2668 passing, and the same 3 historical failures
 - [x] Extracted the inline function-pointer signature helper (`fn_ptr_sig_from_decl_node`) and NTTP const-eval utility (`eval_const_int_with_nttp_bindings`) out of the `Lowerer` class body into out-of-class definitions in `src/frontend/hir/ast_to_hir.cpp`
 - [x] Rebuilt and reran the targeted known-failure triplet plus the full `ctest --test-dir build -j8 --output-on-failure`; the suite still finished at 2671 total tests, 2668 passing, and the same 3 historical failures
+- [x] Extracted the inline `append_expr` helper out of the `Lowerer` class body into an out-of-class definition in `src/frontend/hir/ast_to_hir.cpp`
+- [x] Rebuilt and reran the targeted known-failure triplet plus the full `ctest --test-dir build -j8 --output-on-failure`; the suite still finished at 2671 total tests, 2668 passing, and the same 3 historical failures
 
 ## Next Slice
 
-- Continue Step 1 by peeling the next low-coupling inline `Lowerer` utility cluster out of the class body before moving the full class definition into `ast_to_hir.hpp`, likely starting with `append_expr` or another small self-contained helper adjacent to the remaining inline lowering bodies.
+- Continue Step 1 by peeling the next low-coupling inline `Lowerer` utility cluster out of the class body before moving the full class definition into `ast_to_hir.hpp`, likely targeting another small helper adjacent to the remaining inline lowering bodies while leaving `lower_struct_def` for a later, more deliberate extraction.
 
 ## Blockers
 
@@ -80,4 +82,7 @@ Source Plan: plan.md
 - Validation on 2026-04-01: `cmake --build build -j8` succeeded; the targeted rerun of `positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c` matched the historical blocker list; a full `ctest --test-dir build -j8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 failing tests.
 - The current slice targeted the inline function-pointer signature helper and the nearby NTTP const-eval utility because both are self-contained helpers used broadly by the remaining monolith but do not require any new declaration surface.
 - The latest slice moved `fn_ptr_sig_from_decl_node` and `eval_const_int_with_nttp_bindings` out of the inline `Lowerer` class body into out-of-class definitions, preserving behavior while continuing the monolith shrink.
+- Validation on 2026-04-01: `cmake --build build -j8` succeeded; the targeted rerun of `positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c` matched the historical blocker list; a full `ctest --test-dir build -j8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 failing tests.
+- The current slice targeted `append_expr` because it is a small, high-fanout helper that could move out of the inline `Lowerer` class body without requiring any new declaration surface or ownership changes.
+- The latest slice moved `append_expr` out of the inline `Lowerer` class body into an out-of-class definition, preserving behavior while continuing the monolith shrink.
 - Validation on 2026-04-01: `cmake --build build -j8` succeeded; the targeted rerun of `positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c` matched the historical blocker list; a full `ctest --test-dir build -j8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 failing tests.

@@ -1076,16 +1076,10 @@ class Lowerer {
       const std::string& method,
       bool is_const_obj) const;
 
-  ExprId append_expr(const Node* src, ExprPayload payload, const TypeSpec& ts,
-                     ValueCategory c = ValueCategory::RValue) {
-    Expr e{};
-    e.id = next_expr_id();
-    e.span = make_span(src);
-    e.type = qtype_from(ts, c);
-    e.payload = std::move(payload);
-    module_->expr_pool.push_back(std::move(e));
-    return module_->expr_pool.back().id;
-  }
+  ExprId append_expr(const Node* src,
+                     ExprPayload payload,
+                     const TypeSpec& ts,
+                     ValueCategory c = ValueCategory::RValue);
 
   void lower_struct_def(const Node* sd) {
     if (!sd || sd->kind != NK_STRUCT_DEF) return;
@@ -10007,6 +10001,19 @@ BlockId Lowerer::create_block(FunctionCtx& ctx) {
 void Lowerer::append_stmt(FunctionCtx& ctx, Stmt stmt) {
   Block& b = ensure_block(ctx, ctx.current_block);
   b.stmts.push_back(std::move(stmt));
+}
+
+ExprId Lowerer::append_expr(const Node* src,
+                            ExprPayload payload,
+                            const TypeSpec& ts,
+                            ValueCategory c) {
+  Expr e{};
+  e.id = next_expr_id();
+  e.span = make_span(src);
+  e.type = qtype_from(ts, c);
+  e.payload = std::move(payload);
+  module_->expr_pool.push_back(std::move(e));
+  return module_->expr_pool.back().id;
 }
 
 const Node* Lowerer::find_struct_static_member_decl(
