@@ -8974,37 +8974,13 @@ class Lowerer {
     return false;
   }
 
-  const Node* find_template_struct_primary(const std::string& name) const {
-    auto it = template_struct_defs_.find(name);
-    return it != template_struct_defs_.end() ? it->second : nullptr;
-  }
-
+  const Node* find_template_struct_primary(const std::string& name) const;
   const std::vector<const Node*>* find_template_struct_specializations(
-      const Node* primary_tpl) const {
-    if (!primary_tpl || !primary_tpl->name) return nullptr;
-    auto it = template_struct_specializations_.find(primary_tpl->name);
-    return it != template_struct_specializations_.end() ? &it->second : nullptr;
-  }
-
-  TemplateStructEnv build_template_struct_env(const Node* primary_tpl) const {
-    TemplateStructEnv env;
-    env.primary_def = primary_tpl;
-    env.specialization_patterns = find_template_struct_specializations(primary_tpl);
-    return env;
-  }
-
-  void register_template_struct_primary(const std::string& name, const Node* node) {
-    if (!is_primary_template_struct_def(node)) return;
-    template_struct_defs_[name] = node;
-    ct_state_->register_template_struct_def(name, node);
-  }
-
+      const Node* primary_tpl) const;
+  TemplateStructEnv build_template_struct_env(const Node* primary_tpl) const;
+  void register_template_struct_primary(const std::string& name, const Node* node);
   void register_template_struct_specialization(const Node* primary_tpl,
-                                               const Node* node) {
-    if (!primary_tpl || !primary_tpl->name || !node) return;
-    template_struct_specializations_[primary_tpl->name].push_back(node);
-    ct_state_->register_template_struct_specialization(primary_tpl, node);
-  }
+                                               const Node* node);
 
   Module* module_ = nullptr;
   std::unordered_map<std::string, long long> enum_consts_;
@@ -9653,6 +9629,41 @@ std::optional<TypeSpec> Lowerer::storage_type_for_declref(
     if (const GlobalVar* gv = module_->find_global(*r.global)) return gv->type.spec;
   }
   return std::nullopt;
+}
+
+const Node* Lowerer::find_template_struct_primary(const std::string& name) const {
+  auto it = template_struct_defs_.find(name);
+  return it != template_struct_defs_.end() ? it->second : nullptr;
+}
+
+const std::vector<const Node*>* Lowerer::find_template_struct_specializations(
+    const Node* primary_tpl) const {
+  if (!primary_tpl || !primary_tpl->name) return nullptr;
+  auto it = template_struct_specializations_.find(primary_tpl->name);
+  return it != template_struct_specializations_.end() ? &it->second : nullptr;
+}
+
+TemplateStructEnv Lowerer::build_template_struct_env(const Node* primary_tpl) const {
+  TemplateStructEnv env;
+  env.primary_def = primary_tpl;
+  env.specialization_patterns = find_template_struct_specializations(primary_tpl);
+  return env;
+}
+
+void Lowerer::register_template_struct_primary(
+    const std::string& name,
+    const Node* node) {
+  if (!is_primary_template_struct_def(node)) return;
+  template_struct_defs_[name] = node;
+  ct_state_->register_template_struct_def(name, node);
+}
+
+void Lowerer::register_template_struct_specialization(
+    const Node* primary_tpl,
+    const Node* node) {
+  if (!primary_tpl || !primary_tpl->name || !node) return;
+  template_struct_specializations_[primary_tpl->name].push_back(node);
+  ct_state_->register_template_struct_specialization(primary_tpl, node);
 }
 
 std::vector<const Node*> Lowerer::flatten_program_items(const Node* root) const {
