@@ -6,8 +6,8 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 1: Establish Header Ownership
-- Current slice: continue Step 1 by promoting the next split-relevant helper/type declaration cluster from `src/frontend/hir/ast_to_hir.cpp` into `src/frontend/hir/ast_to_hir.hpp`, now that the remaining plain-call discovery helpers are no longer inline in the `Lowerer` class body
+- Step 2: introduce a safe transitional source layout and build wiring
+- Current slice: keep the draft `src/frontend/hir/hir_*.cpp` files build-wired as inert staging units so the tree compiles cleanly again, then re-enable one ownership cluster at a time by deleting the corresponding bodies from `src/frontend/hir/ast_to_hir.cpp`
 
 ## Todo
 
@@ -18,6 +18,29 @@ Source Plan: plan.md
 - [ ] Step 5: run final build and regression validation
 
 ## Completed
+
+- Validation on 2026-04-01 after muting the staged `hir_*.cpp` ownership bodies with temporary `#if 0` guards: `cmake --build build -j8` succeeds again. This preserves the transitional file layout in the build while preventing duplicate-definition link failures from `src/frontend/hir/ast_to_hir.cpp` versus the draft split translation units. The next slice should remove one real ownership cluster from `src/frontend/hir/ast_to_hir.cpp` and then re-enable the matching staged file bodies instead of keeping every draft unit inert.
+
+- Validation on 2026-04-01 after introducing [`src/frontend/hir/hir_lowerer_internal.hpp`](/workspaces/c4c/src/frontend/hir/hir_lowerer_internal.hpp) and repairing the staged draft files: `cmake --build build -j8` now compiles the mixed-layout `hir_*.cpp` set far enough to reach the link step. The active blocker has shifted from incomplete-type compile failures to the expected duplicate-definition linker errors against [`src/frontend/hir/ast_to_hir.cpp`](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp), which now provide a concrete ownership-removal list for the next cleanup pass.
+
+- Validation on 2026-04-01 after wiring draft `hir_*.cpp` files into CMake: `cmake --build build -j8` now reaches compilation of the staged files and fails before link with the first major structural blocker clearly exposed: `src/frontend/hir/ast_to_hir.hpp` still only forward-declares `Lowerer`, so the new translation units cannot compile `Lowerer::...` definitions or instantiate `Lowerer`. Additional compile blockers surfaced in the same run include missing nested/private `Lowerer` types such as `FunctionCtx` in the shared declaration surface and draft-local inconsistencies inside `src/frontend/hir/hir_templates.cpp`.
+
+- Transitional build-wiring slice started on 2026-04-01: the draft `hir_*.cpp` files are now being connected to the build before `ast_to_hir.cpp` cleanup so compiler diagnostics can drive the first ownership-reconciliation pass.
+
+- Draft-only staging file created on 2026-04-01: [`src/frontend/hir/hir_expr.cpp`](/workspaces/c4c/src/frontend/hir/hir_expr.cpp) now holds the expression-lowering cluster requested for parallel extraction, while leaving the original `ast_to_hir.cpp` and build wiring untouched.
+
+- Draft-only staging file created on 2026-04-01: [`src/frontend/hir/hir_stmt.cpp`](/workspaces/c4c/src/frontend/hir/hir_stmt.cpp) now holds the statement/initializer helper cluster requested for parallel extraction, while leaving the original `ast_to_hir.cpp` and build wiring untouched.
+
+- Draft-only staging file created on 2026-04-01: [`src/frontend/hir/hir_build.cpp`](/workspaces/c4c/src/frontend/hir/hir_build.cpp) now holds the top-level build/coordinator cluster requested for parallel extraction, while leaving the original `ast_to_hir.cpp` and build wiring untouched.
+
+- Draft-only staging file created on 2026-04-01: [`src/frontend/hir/hir_templates.cpp`](/workspaces/c4c/src/frontend/hir/hir_templates.cpp) now holds the template/deferred-instantiation helpers requested for parallel extraction, while leaving the original `ast_to_hir.cpp` and build wiring untouched.
+
+- Draft-only staging file created on 2026-04-01: [`src/frontend/hir/hir_types.cpp`](/workspaces/c4c/src/frontend/hir/hir_types.cpp) now holds the type/struct/layout/init-normalization helpers requested for parallel extraction, while leaving the original `ast_to_hir.cpp` and build wiring untouched.
+
+- Draft-only staging file created on 2026-04-01: [`src/frontend/hir/hir_functions.cpp`](/workspaces/c4c/src/frontend/hir/hir_functions.cpp) now holds the callable/program-oriented helpers requested for parallel extraction, while leaving the original `ast_to_hir.cpp` and build wiring untouched.
+
+- Strategy adjustment on 2026-04-01: stop spending slices on tiny inline-to-out-of-class helper moves as the primary axis of progress. The remaining blocker to Step 2/3 is that `Lowerer` itself still lives only in `src/frontend/hir/ast_to_hir.cpp`, so the next execution slice should bulk-promote the declaration surface into `src/frontend/hir/ast_to_hir.hpp` and then pivot to transitional `hir_*.cpp` extraction.
+- Planning note on 2026-04-01: the desired follow-on order is now (1) header ownership for the full `Lowerer` declaration surface, (2) transitional build wiring for multiple HIR lowering translation units, then (3) semantic-cluster extraction into `hir_expr.cpp`, `hir_stmt.cpp`, `hir_types.cpp`, `hir_templates.cpp`, and `hir_functions.cpp`. This preserves the existing runbook while removing the current low-yield micro-slice pattern.
 
 - The current slice targeted the remaining inline plain-call discovery helpers because `is_referenced_without_template_args` and `has_plain_call` still lived inline in the `Lowerer` class body immediately after the template-instantiation collection utilities, making them the next low-coupling monolith peel-back in the same local area.
 - The latest slice moved `is_referenced_without_template_args` and `has_plain_call` out of the inline `Lowerer` class body into out-of-class definitions in `src/frontend/hir/ast_to_hir.cpp`, preserving behavior while continuing the Step 1 monolith shrink.
@@ -108,10 +131,14 @@ Source Plan: plan.md
 
 ## Next Slice
 
-- Continue Step 1 by peeling the next remaining inline `Lowerer` helper cluster out of the class body, prioritizing low-coupling utilities that do not widen the declaration surface beyond `ast_to_hir.cpp`.
+- Use the linker duplicate-definition list to remove one ownership cluster at a time from [`src/frontend/hir/ast_to_hir.cpp`](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp), starting with the cleanest domain such as [`src/frontend/hir/hir_build.cpp`](/workspaces/c4c/src/frontend/hir/hir_build.cpp) or [`src/frontend/hir/hir_expr.cpp`](/workspaces/c4c/src/frontend/hir/hir_expr.cpp).
+- Resolve the still-known overlap between [`src/frontend/hir/hir_stmt.cpp`](/workspaces/c4c/src/frontend/hir/hir_stmt.cpp) and [`src/frontend/hir/hir_types.cpp`](/workspaces/c4c/src/frontend/hir/hir_types.cpp) before both clusters are made authoritative.
+- After the first `ast_to_hir.cpp` ownership-pruning pass, rebuild to expose the next duplicate-definition layer and continue iteratively.
 
 ## Blockers
 
+- The first mixed-layout build now fails at compile time because [`src/frontend/hir/ast_to_hir.hpp`](/workspaces/c4c/src/frontend/hir/ast_to_hir.hpp) still exposes only a forward declaration of `Lowerer`; the staged `hir_*.cpp` files need the real class declaration, nested helper types, and method declarations before duplicate-definition cleanup can even begin.
+- [`src/frontend/hir/hir_templates.cpp`](/workspaces/c4c/src/frontend/hir/hir_templates.cpp) currently carries draft-local declaration inconsistencies, including references to nested deferred-NTTP helper types that are not yet in shared scope.
 - The historical targeted failures remain: `positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c`.
 
 ## Resume Notes

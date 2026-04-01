@@ -60,6 +60,7 @@ Goal: make [`src/frontend/hir/ast_to_hir.hpp`](/workspaces/c4c/src/frontend/hir/
 Actions:
 - inventory top-level structs, enums, helper types, free functions, and the `Lowerer` definition currently living in [`src/frontend/hir/ast_to_hir.cpp`](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp)
 - move declarations into [`src/frontend/hir/ast_to_hir.hpp`](/workspaces/c4c/src/frontend/hir/ast_to_hir.hpp)
+- prefer one bulk promotion of the remaining split-critical declaration surface over many tiny out-of-class helper moves when that better unlocks the file split
 - keep only declarations in the header and preserve private/internal visibility where possible
 
 Completion Check:
