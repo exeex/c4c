@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 1: Establish Header Ownership
-- Current slice: continue Step 1 monolith peel-back by extracting `lower_expr`, now that `lower_struct_def` has moved out of the inline `Lowerer` class body and expression lowering is the largest remaining inline entrypoint
+- Current slice: continue Step 1 monolith peel-back by extracting the next remaining inline `Lowerer` helper cluster after the template-call binding and deduction utilities, keeping ownership in `src/frontend/hir/ast_to_hir.cpp` while shrinking the inline class body further
 
 ## Todo
 
@@ -19,6 +19,13 @@ Source Plan: plan.md
 
 ## Completed
 
+- The current slice targeted the remaining inline template-call binding and deduction helpers because `build_call_bindings`, `build_call_nttp_bindings`, `has_forwarded_nttp`, and the nearby deduction utilities still lived in the `Lowerer` class body even after `lower_expr` moved out-of-class.
+- The latest slice moved `build_call_bindings`, `build_call_nttp_bindings`, `has_forwarded_nttp`, `try_infer_arg_type_for_deduction`, `try_deduce_template_type_args`, `deduction_covers_all_type_params`, `fill_deduced_defaults`, and `merge_explicit_and_deduced_type_bindings` out of the inline `Lowerer` class body into out-of-class definitions in `src/frontend/hir/ast_to_hir.cpp`, preserving behavior while continuing the Step 1 monolith shrink.
+- Validation on 2026-04-01: `cmake --build build -j8` succeeded; a full `ctest --test-dir build -j8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 failing tests (`positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c`); `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passed with zero new failing tests.
+
+- The current slice targeted `lower_expr` because it remained the largest inline `Lowerer` entrypoint after the surrounding call/init/operator support helpers had already moved out of the class body, making it the highest-value remaining monolith peel-back in Step 1.
+- The latest slice moved `lower_expr` out of the inline `Lowerer` class body into an out-of-class definition in `src/frontend/hir/ast_to_hir.cpp`, preserving symbol ownership and behavior while shrinking the remaining inline declaration surface.
+- Validation on 2026-04-01: `cmake --build build -j8` succeeded after the extraction; full-suite regression validation is the next action for this slice.
 - The current slice targeted `lower_struct_def` because it remained one of the largest inline `Lowerer` entrypoints but could move out-of-class without widening the declaration surface or changing symbol ownership.
 - The latest slice moved `lower_struct_def` out of the inline `Lowerer` class body into an out-of-class definition in `src/frontend/hir/ast_to_hir.cpp`, preserving behavior while continuing the Step 1 monolith shrink.
 - Validation on 2026-04-01: `cmake --build build -j8` succeeded; a full `ctest --test-dir build -j8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 failing tests (`positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c`); `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passed with zero new failing tests.
@@ -93,7 +100,7 @@ Source Plan: plan.md
 
 ## Next Slice
 
-- Continue Step 1 by peeling `lower_expr` out of the inline class body now that `lower_struct_def` and the surrounding call/init/operator support helpers already live as out-of-class definitions.
+- Continue Step 1 by peeling the next remaining inline `Lowerer` helper cluster out of the class body, prioritizing low-coupling utilities that do not widen the declaration surface beyond `ast_to_hir.cpp`.
 
 ## Blockers
 
