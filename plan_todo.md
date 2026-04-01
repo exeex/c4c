@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 2: introduce a safe transitional source layout and build wiring
-- Current slice: continue trimming the remaining overlap between `src/frontend/hir/ast_to_hir.cpp` and the staged split files by removing the larger dead `#if 0` blocks that still mirror live owners, then decide whether the next slice should reactivate `hir_templates.cpp` or `hir_stmt.cpp`
+- Current slice: continue trimming the remaining overlap between `src/frontend/hir/ast_to_hir.cpp` and the staged split files by removing dead staging copies that still mirror live owners, then reassess whether the next real extraction target is `hir_templates.cpp` or an actual statement-orchestration cluster rather than the now-empty `hir_stmt.cpp`
 
 ## Todo
 
@@ -18,6 +18,8 @@ Source Plan: plan.md
 - [ ] Step 5: run final build and regression validation
 
 ## Completed
+
+- Validation on 2026-04-01 after pruning the stale staged duplicate bodies from [`src/frontend/hir/hir_stmt.cpp`](/workspaces/c4c/src/frontend/hir/hir_stmt.cpp): attempting to reactivate the file showed that its initializer/global-lowering helpers (`lower_static_local_global`, `lower_global_init`, `lower_init_list`, `init_item_value_node`, `unwrap_init_scalar_value`, `has_side_effect_expr`, `is_simple_constant_expr`, `can_fast_path_scalar_array_init`, and `struct_has_member_dtors`) are already actively owned by [`src/frontend/hir/hir_types.cpp`](/workspaces/c4c/src/frontend/hir/hir_types.cpp). The staged duplicate block was replaced with a placeholder split-unit comment so the build keeps the file in the layout without carrying a second shadow copy of the same owners. `cmake --build build -j8` succeeded; a full `ctest --test-dir build -j 8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 historical failing tests (`positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c`).
 
 - Validation on 2026-04-01 after pruning another batch of obsolete dead blocks from [`src/frontend/hir/ast_to_hir.cpp`](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp): removed disabled duplicate bodies for the initializer helper cluster (`field_type_of`, `field_init_type_of`, `is_char_like`, `is_scalar_init_type`, `child_init_of`, `make_init_item`), small shared utilities (`is_lvalue_ref_ts`, `ct_state`, `flatten_program_items`), callable-body ownership helpers (`register_bodyless_callable`, `maybe_register_bodyless_callable`, `begin_callable_body_lowering`, `finish_lowered_callable`), struct-static-member lookup helpers, and callable-signature helpers (`substitute_signature_template_type`, `resolve_signature_template_type_if_needed`, `prepare_callable_return_type`, `append_explicit_callable_param`, `append_callable_params`) now that the live owners are the split units and shared internal declarations. `cmake --build build -j8` succeeded; a full `ctest --test-dir build -j 8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 historical failing tests (`positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c`); `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passed with zero new failing tests.
 
