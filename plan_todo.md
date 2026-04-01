@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 1: Establish Header Ownership
-- Current slice: continue Step 1 declaration-surface expansion by promoting the next split-relevant `ast_to_hir.cpp` helper types and declarations into `src/frontend/hir/ast_to_hir.hpp`, keeping behavior unchanged while reducing anonymous-namespace ownership
+- Current slice: continue Step 1 monolith peel-back by extracting the callable-signature helper cluster (`substitute_signature_template_type`, `resolve_signature_template_type_if_needed`, `prepare_callable_return_type`, `append_explicit_callable_param`, and `append_callable_params`) into out-of-class `Lowerer::...` definitions in `src/frontend/hir/ast_to_hir.cpp`
 
 ## Todo
 
@@ -19,6 +19,8 @@ Source Plan: plan.md
 
 ## Completed
 
+- [x] Extracted the callable-signature helper cluster (`substitute_signature_template_type`, `resolve_signature_template_type_if_needed`, `prepare_callable_return_type`, `append_explicit_callable_param`, and `append_callable_params`) out of the inline `Lowerer` class body into out-of-class definitions in `src/frontend/hir/ast_to_hir.cpp`
+- [x] Rebuilt and reran the full `ctest --test-dir build -j8 --output-on-failure`, then passed `.codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`; the suite remained at 2671 total tests, 2668 passing, and the same 3 historical failures
 - [x] Promoted the template-instantiation helper value types (`HirTemplateArg`, `ResolvedTemplateArgs`, and `PreparedTemplateStructInstance`) out of the anonymous namespace in `src/frontend/hir/ast_to_hir.cpp` and into `src/frontend/hir/ast_to_hir.hpp` so future HIR split files can share one declaration source
 - [x] Rebuilt and reran the full `ctest --test-dir build -j8 --output-on-failure`, then passed `.codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`; the suite remained at 2671 total tests, 2668 passing, and the same 3 historical failures
 - [x] Activated the runbook from `ideas/open/01_ast_to_hir_cpp_split_refactor.md`
@@ -61,7 +63,7 @@ Source Plan: plan.md
 
 ## Next Slice
 
-- Continue Step 1 by peeling the next low-coupling inline template-struct helper cluster out of the class body, likely starting with `prepare_template_struct_instance` or adjacent declaration-only helpers before tackling heavier structural bodies such as `lower_struct_def`.
+- Continue Step 1 by peeling the next low-coupling inline helper cluster out of the class body, likely starting with `prepare_template_struct_instance` or the adjacent `lower_function`/`lower_struct_method` callable-lowering bodies before tackling heavier structural bodies such as `lower_struct_def`.
 
 ## Blockers
 
@@ -115,3 +117,6 @@ Source Plan: plan.md
 - The current slice targeted the next low-coupling template-instantiation helper cluster immediately downstream of template-arg materialization because those helpers only coordinate base/field/method realization and could move out of the inline `Lowerer` class body without changing ownership or widening the declaration surface.
 - The latest slice moved `apply_template_typedef_bindings`, `materialize_template_array_extent`, `append_instantiated_template_struct_bases`, `register_instantiated_template_struct_methods`, `record_instantiated_template_struct_field_metadata`, `instantiate_template_struct_field`, `append_instantiated_template_struct_fields`, `instantiate_template_struct_body`, and `resolve_pending_tpl_struct` out of the inline `Lowerer` class body into out-of-class definitions, preserving behavior while continuing the monolith shrink.
 - Validation on 2026-04-01: `cmake --build build -j8` succeeded; the targeted rerun of `positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c` matched the historical blocker list; a full `ctest --test-dir build -j8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 failing tests; `.codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passed with zero new failing tests.
+- The current slice targeted the callable-signature helper cluster because those helpers only coordinate existing template-substitution, pending-template-resolution, and parameter materialization utilities and could move out of the inline `Lowerer` class body without changing ownership or widening the declaration surface.
+- The latest slice moved `substitute_signature_template_type`, `resolve_signature_template_type_if_needed`, `prepare_callable_return_type`, `append_explicit_callable_param`, and `append_callable_params` out of the inline `Lowerer` class body into out-of-class definitions, preserving behavior while continuing the monolith shrink.
+- Validation on 2026-04-01: `cmake --build build -j8` succeeded; a full `ctest --test-dir build -j8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 failing tests (`positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c`); `.codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passed with zero new failing tests.
