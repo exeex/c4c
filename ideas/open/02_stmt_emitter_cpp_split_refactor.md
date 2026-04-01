@@ -64,8 +64,13 @@ Prefer the same workflow that is now proving faster for the `ast_to_hir` split:
 2. Let multiple agents create unintegrated staging files such as `stmt_emitter_stmt.cpp`, `stmt_emitter_call.cpp`, `stmt_emitter_lvalue.cpp`, `stmt_emitter_expr.cpp`, `stmt_emitter_types.cpp`, and `stmt_emitter_core.cpp` in parallel.
 3. Treat those first-pass files as ownership proposals, not finished integration work.
 4. Review the staged files for overlap, duplicated helpers, and cross-file dependency direction before any build wiring is changed.
-5. Only after the draft boundaries stabilize, connect selected files to the build and start deleting/moving bodies out of the original `stmt_emitter.cpp`.
-6. Reduce or remove the original `stmt_emitter.cpp` only after the staged files have converged and compile cleanly together.
+5. Once the first-pass boundaries look plausible, wire the staged files into the build earlier rather than trying to finish all ownership cleanup by inspection alone.
+6. Use compiler and linker diagnostics as the main ownership-reconciliation tool:
+   - compiler errors expose missing declaration surface and bad cross-file dependency assumptions
+   - duplicate-definition linker errors expose which `StmtEmitter::...` bodies still need to be disabled or removed from `stmt_emitter.cpp`
+   - undefined-reference linker errors expose helpers that were disabled too aggressively or still have no split-file owner
+7. Prefer batch ownership cleanup driven by those diagnostics over one-function-at-a-time manual peeling.
+8. Reduce or remove the original `stmt_emitter.cpp` only after the staged files have converged and compile cleanly together.
 
 This mode intentionally front-loads cheap parallel extraction and postpones the risky ownership cleanup until the target file boundaries are visible.
 
@@ -74,10 +79,11 @@ This mode intentionally front-loads cheap parallel extraction and postpones the 
 Once the draft-only staging files exist and their boundaries have been reviewed:
 
 1. Normalize overlap between draft files and assign one owner per helper cluster.
-2. Wire the lowest-coupling draft file into the build first.
-3. Move additional draft files into the build one cluster at a time.
-4. Shrink `stmt_emitter.cpp` after each successful ownership transfer.
-5. Remove or reduce the monolith only after the staged files have replaced it cleanly.
+2. Wire several draft files into the build as soon as their boundaries are coherent enough to generate useful diagnostics.
+3. Let compiler/linker output produce the first concrete ownership-removal list instead of trying to predict every overlap manually.
+4. Batch-disable or batch-delete the matching bodies from `stmt_emitter.cpp` by semantic cluster.
+5. Rebuild and repeat until the duplicate-definition list collapses to the next unresolved cluster.
+6. Remove or reduce the monolith only after the staged files have replaced it cleanly.
 
 This keeps the parallel speedup from the draft pass while preserving a conservative integration path.
 
@@ -90,7 +96,8 @@ This keeps the parallel speedup from the draft pass while preserving a conservat
 - Keep private helper free functions file-local unless cross-file sharing is clearly justified
 - Prefer one optional internal helper header over proliferating many tiny headers
 - During the draft-only staging pass, do not edit `stmt_emitter.cpp` just to "keep up" with the extracted files; let the staged files settle first
-- During the draft-only staging pass, do not change CMake or other build wiring yet
+- During the very first draft-only pass, do not change CMake or other build wiring yet
+- After the first draft boundaries stabilize, prefer early build wiring plus diagnostic-driven cleanup over prolonged manual ownership review
 - Existing tests must pass unchanged after the split
 
 ## Acceptance Criteria
@@ -110,6 +117,7 @@ This keeps the parallel speedup from the draft pass while preserving a conservat
 - Keep platform ABI helpers close to the call/vararg implementation instead of scattering them
 - If a helper is only used by one implementation file, keep it local to that file
 - If parallel draft extraction creates duplicate helper ownership, resolve the duplication before wiring those files into the build instead of trying to force both versions forward
+- Once files are wired into the build, treat duplicate-definition and undefined-reference errors as the fastest ownership map available; use them aggressively to drive batch cleanup
 - Planning state should describe the current phase explicitly: draft-only extraction, overlap cleanup, build wiring, or monolith cleanup
 
 ## Good First Patch
