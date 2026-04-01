@@ -3011,422 +3011,21 @@ class Lowerer {
     return item;
   }
 
-  bool is_string_scalar(const GlobalInit& init) const {
-    const auto* scalar = std::get_if<InitScalar>(&init);
-    if (!scalar) return false;
-    const Expr& e = module_->expr_pool[scalar->expr.value];
-    return std::holds_alternative<StringLiteral>(e.payload);
-  }
+  bool is_string_scalar(const GlobalInit& init) const;
 
-  long long flat_scalar_count(const TypeSpec& ts) const {
-    if (is_vector_ty(ts)) return ts.vector_lanes > 0 ? ts.vector_lanes : 1;
-    if (ts.array_rank > 0) {
-      if (ts.array_size <= 0) return 1;
-      TypeSpec elem_ts = ts;
-      elem_ts.array_rank--;
-      elem_ts.array_size = (elem_ts.array_rank > 0) ? elem_ts.array_dims[0] : -1;
-      return ts.array_size * flat_scalar_count(elem_ts);
-    }
-    if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0 && ts.tag) {
-      const auto it = module_->struct_defs.find(ts.tag);
-      if (it == module_->struct_defs.end()) return 1;
-      const auto& sd = it->second;
-      if (sd.fields.empty()) return 1;
-      if (sd.is_union) return flat_scalar_count(field_type_of(sd.fields.front()));
-      long long count = 0;
-      for (const auto& f : sd.fields) count += flat_scalar_count(field_type_of(f));
-      return count > 0 ? count : 1;
-    }
-    return 1;
-  }
+  long long flat_scalar_count(const TypeSpec& ts) const;
 
-  long long deduce_array_size_from_init(const GlobalInit& init) const {
-    if (const auto* list = std::get_if<InitList>(&init)) {
-      long long max_idx = -1;
-      long long next = 0;
-      for (const auto& item : list->items) {
-        long long idx = next;
-        if (item.index_designator && *item.index_designator >= 0) idx = *item.index_designator;
-        if (idx > max_idx) max_idx = idx;
-        next = idx + 1;
-      }
-      return max_idx + 1;
-    }
-    if (is_string_scalar(init)) {
-      const auto& scalar = std::get<InitScalar>(init);
-      const Expr& e = module_->expr_pool[scalar.expr.value];
-      const auto& sl = std::get<StringLiteral>(e.payload);
-      if (sl.is_wide) {
-        return static_cast<long long>(decode_string_literal_values(sl.raw.c_str(), true).size());
-      }
-      return static_cast<long long>(bytes_from_string_literal(sl).size()) + 1;
-    }
-    return -1;
-  }
+  long long deduce_array_size_from_init(const GlobalInit& init) const;
 
-  TypeSpec resolve_array_ts(const TypeSpec& ts, const GlobalInit& init) const {
-    if (ts.array_rank <= 0 || ts.array_size >= 0) return ts;
-    long long deduced = deduce_array_size_from_init(init);
-    if (deduced < 0) return ts;
-    TypeSpec elem_ts = ts;
-    elem_ts.array_rank--;
-    elem_ts.array_size = (elem_ts.array_rank > 0) ? elem_ts.array_dims[0] : -1;
-    const bool elem_is_agg = is_vector_ty(elem_ts) ||
-                             elem_ts.array_rank > 0 ||
-                             ((elem_ts.base == TB_STRUCT || elem_ts.base == TB_UNION) &&
-                              elem_ts.ptr_level == 0);
-    if (elem_is_agg) {
-      if (const auto* list = std::get_if<InitList>(&init)) {
-        bool all_scalar = true;
-        for (const auto& item : list->items) {
-          if (!std::holds_alternative<InitScalar>(item.value)) {
-            all_scalar = false;
-            break;
-          }
-        }
-        if (all_scalar) {
-          const long long fc = flat_scalar_count(elem_ts);
-          if (fc > 1) deduced = (deduced + fc - 1) / fc;
-        }
-      }
-    }
-    TypeSpec out = ts;
-    out.array_size = deduced;
-    out.array_dims[0] = deduced;
-    return out;
-  }
+  TypeSpec resolve_array_ts(const TypeSpec& ts, const GlobalInit& init) const;
 
-  bool is_direct_char_array_init(const TypeSpec& ts, const GlobalInit& init) const {
-    if (ts.array_rank != 1 || ts.ptr_level != 0) return false;
-    if (!is_char_like(ts.base)) return false;
-    return is_string_scalar(init);
-  }
+  bool is_direct_char_array_init(const TypeSpec& ts, const GlobalInit& init) const;
 
-  bool union_allows_init_normalization(const TypeSpec& ts) const {
-    if (ts.base != TB_UNION || ts.ptr_level != 0 || !ts.tag || !ts.tag[0]) return false;
-    const auto it = module_->struct_defs.find(ts.tag);
-    if (it == module_->struct_defs.end()) return false;
-    const auto& sd = it->second;
-    if (!sd.is_union || sd.fields.empty()) return false;
-    for (const auto& field : sd.fields) {
-      TypeSpec field_ts = field_init_type_of(field);
-      if (field_ts.array_rank > 0 || is_vector_ty(field_ts)) continue;
-      if (field_ts.base == TB_STRUCT && field_ts.ptr_level == 0 &&
-          !struct_allows_init_normalization(field_ts)) {
-        return false;
-      }
-      if (field_ts.base == TB_UNION && field_ts.ptr_level == 0 &&
-          !union_allows_init_normalization(field_ts)) {
-        return false;
-      }
-    }
-    return true;
-  }
+  bool union_allows_init_normalization(const TypeSpec& ts) const;
 
-  bool struct_allows_init_normalization(const TypeSpec& ts) const {
-    if (ts.base != TB_STRUCT || ts.ptr_level != 0 || !ts.tag || !ts.tag[0]) return false;
-    const auto it = module_->struct_defs.find(ts.tag);
-    if (it == module_->struct_defs.end()) return false;
-    const auto& sd = it->second;
-    if (sd.is_union) return false;
-    for (size_t fi = 0; fi < sd.fields.size(); ++fi) {
-      const auto& field = sd.fields[fi];
-      if (field.is_flexible_array) {
-        if (fi + 1 != sd.fields.size()) return false;
-        continue;
-      }
-      TypeSpec field_ts = field_init_type_of(field);
-      if (field_ts.array_rank > 0 || is_vector_ty(field_ts)) continue;
-      if (field_ts.base == TB_STRUCT && field_ts.ptr_level == 0 &&
-          !struct_allows_init_normalization(field_ts)) {
-        return false;
-      }
-      if (field_ts.base == TB_UNION && field_ts.ptr_level == 0 &&
-          !union_allows_init_normalization(field_ts)) {
-        return false;
-      }
-    }
-    return true;
-  }
+  bool struct_allows_init_normalization(const TypeSpec& ts) const;
 
-  GlobalInit normalize_global_init(const TypeSpec& ts, const GlobalInit& init) {
-    std::function<GlobalInit(const TypeSpec&, const InitList&, size_t&)> consume_from_flat;
-    auto has_designators = [](const InitList& list) {
-      return std::any_of(
-          list.items.begin(), list.items.end(),
-          [](const InitListItem& item) {
-            return item.field_designator.has_value() || item.index_designator.has_value();
-          });
-    };
-    auto find_aggregate_field_index =
-        [&](const HirStructDef& sd, const InitListItem& item, size_t next_idx) -> std::optional<size_t> {
-      size_t idx = next_idx;
-      if (item.field_designator) {
-        const auto fit = std::find_if(
-            sd.fields.begin(), sd.fields.end(),
-            [&](const HirStructField& field) { return field.name == *item.field_designator; });
-        if (fit == sd.fields.end()) return std::nullopt;
-        idx = static_cast<size_t>(std::distance(sd.fields.begin(), fit));
-      } else if (item.index_designator && *item.index_designator >= 0) {
-        idx = static_cast<size_t>(*item.index_designator);
-      }
-      if (idx >= sd.fields.size()) return std::nullopt;
-      return idx;
-    };
-    auto make_field_mapped_item =
-        [&](const HirStructDef& sd, size_t idx, const TypeSpec& target_ts,
-            const GlobalInit& child) -> std::optional<InitListItem> {
-      auto item = make_init_item(child);
-      if (!item) return std::nullopt;
-      if (!sd.fields[idx].name.empty()) item->field_designator = sd.fields[idx].name;
-      else item->index_designator = static_cast<long long>(idx);
-      if (target_ts.array_rank > 0 && target_ts.array_size >= 0) {
-        item->resolved_array_bound = target_ts.array_size;
-      }
-      return item;
-    };
-    auto make_indexed_item =
-        [&](long long idx, const TypeSpec& target_ts, const GlobalInit& child) -> std::optional<InitListItem> {
-      auto item = make_init_item(child);
-      if (!item) return std::nullopt;
-      item->index_designator = idx;
-      item->field_designator.reset();
-      if (target_ts.array_rank > 0 && target_ts.array_size >= 0) {
-        item->resolved_array_bound = target_ts.array_size;
-      }
-      return item;
-    };
-
-    auto normalize_scalar_like = [&](const TypeSpec& cur_ts, const GlobalInit& cur_init) -> GlobalInit {
-      if (const auto* scalar = std::get_if<InitScalar>(&cur_init)) return GlobalInit(*scalar);
-      if (const auto* list = std::get_if<InitList>(&cur_init)) {
-        if (!list->items.empty()) return normalize_global_init(cur_ts, child_init_of(list->items.front()));
-      }
-      return std::monostate{};
-    };
-
-    consume_from_flat = [&](const TypeSpec& cur_ts, const InitList& list, size_t& cursor) -> GlobalInit {
-      if (cursor >= list.items.size()) return std::monostate{};
-      const auto& item = list.items[cursor];
-      if (std::holds_alternative<std::shared_ptr<InitList>>(item.value)) {
-        auto sub = std::get<std::shared_ptr<InitList>>(item.value);
-        ++cursor;
-        return normalize_global_init(cur_ts, GlobalInit(*sub));
-      }
-      if (is_scalar_init_type(cur_ts)) {
-        ++cursor;
-        if (const auto* scalar = std::get_if<InitScalar>(&item.value)) return GlobalInit(*scalar);
-        return std::monostate{};
-      }
-      if (is_vector_ty(cur_ts) || cur_ts.array_rank > 0) {
-        TypeSpec elem_ts = cur_ts;
-        long long bound = 0;
-        if (is_vector_ty(cur_ts)) {
-          elem_ts = vector_element_type(cur_ts);
-          bound = cur_ts.vector_lanes > 0 ? cur_ts.vector_lanes : 0;
-        } else {
-          // Shift array_dims to drop the outermost dimension
-          for (int di = 0; di < elem_ts.array_rank - 1; ++di)
-            elem_ts.array_dims[di] = elem_ts.array_dims[di + 1];
-          elem_ts.array_dims[elem_ts.array_rank - 1] = -1;
-          elem_ts.array_rank--;
-          elem_ts.array_size = (elem_ts.array_rank > 0) ? elem_ts.array_dims[0] : -1;
-          bound = resolve_array_ts(cur_ts, GlobalInit(list)).array_size;
-        }
-        if (!is_vector_ty(cur_ts) && is_direct_char_array_init(cur_ts, child_init_of(item))) {
-          ++cursor;
-          return child_init_of(item);
-        }
-        InitList out{};
-        for (long long i = 0; i < bound && cursor < list.items.size(); ++i) {
-          auto child = consume_from_flat(elem_ts, list, cursor);
-          if (auto it = make_init_item(child)) out.items.push_back(std::move(*it));
-        }
-        return out;
-      }
-      if ((cur_ts.base == TB_STRUCT || cur_ts.base == TB_UNION) && cur_ts.ptr_level == 0 && cur_ts.tag) {
-        const auto sit = module_->struct_defs.find(cur_ts.tag);
-        if (sit == module_->struct_defs.end()) {
-          ++cursor;
-          return std::monostate{};
-        }
-        const auto& sd = sit->second;
-        if (sd.is_union) {
-          InitList out{};
-          if (!sd.fields.empty()) {
-            TypeSpec field_ts = field_init_type_of(sd.fields.front());
-            auto child = consume_from_flat(field_ts, list, cursor);
-            field_ts = resolve_array_ts(field_ts, child);
-            child = normalize_global_init(field_ts, child);
-            if (auto it = make_field_mapped_item(sd, 0, field_ts, child)) out.items.push_back(std::move(*it));
-          }
-          return out;
-        }
-        InitList out{};
-        for (size_t fi = 0; fi < sd.fields.size() && cursor < list.items.size(); ++fi) {
-          TypeSpec field_ts = field_init_type_of(sd.fields[fi]);
-          auto child = consume_from_flat(field_ts, list, cursor);
-          field_ts = resolve_array_ts(field_ts, child);
-          child = normalize_global_init(field_ts, child);
-          if (auto it = make_field_mapped_item(sd, fi, field_ts, child)) out.items.push_back(std::move(*it));
-        }
-        return out;
-      }
-      ++cursor;
-      return std::monostate{};
-    };
-
-    if (is_scalar_init_type(ts)) return normalize_scalar_like(ts, init);
-
-    if (is_vector_ty(ts) || ts.array_rank > 0) {
-      const auto* list = std::get_if<InitList>(&init);
-      if (!list) return init;
-      TypeSpec elem_ts = ts;
-      long long bound = 0;
-      if (is_vector_ty(ts)) {
-        elem_ts = vector_element_type(ts);
-        bound = ts.vector_lanes > 0 ? ts.vector_lanes : 0;
-      } else {
-        // Shift array_dims to drop the outermost dimension
-        for (int di = 0; di < elem_ts.array_rank - 1; ++di)
-          elem_ts.array_dims[di] = elem_ts.array_dims[di + 1];
-        elem_ts.array_dims[elem_ts.array_rank - 1] = -1;
-        elem_ts.array_rank--;
-        elem_ts.array_size = (elem_ts.array_rank > 0) ? elem_ts.array_dims[0] : -1;
-        bound = resolve_array_ts(ts, init).array_size;
-      }
-      if (!list->items.empty() && !is_vector_ty(ts) &&
-          is_direct_char_array_init(ts, child_init_of(list->items.front()))) {
-        return child_init_of(list->items.front());
-      }
-
-      if (!is_vector_ty(ts) && has_designators(*list)) {
-        if (bound <= 0) return init;
-        std::vector<std::optional<GlobalInit>> slots(static_cast<size_t>(bound));
-        long long next_idx = 0;
-        for (const auto& item : list->items) {
-          long long idx = next_idx;
-          if (item.index_designator && *item.index_designator >= 0) idx = *item.index_designator;
-          if (idx >= 0 && idx < bound) {
-            slots[static_cast<size_t>(idx)] = normalize_global_init(elem_ts, child_init_of(item));
-          }
-          next_idx = idx + 1;
-        }
-        InitList out{};
-        for (long long idx = 0; idx < bound; ++idx) {
-          const auto& slot = slots[static_cast<size_t>(idx)];
-          if (!slot) continue;
-          if (auto item = make_indexed_item(idx, elem_ts, *slot)) out.items.push_back(std::move(*item));
-        }
-        return out;
-      }
-
-      InitList out{};
-      size_t cursor = 0;
-      for (long long i = 0; i < bound && cursor < list->items.size(); ++i) {
-        auto child = consume_from_flat(elem_ts, *list, cursor);
-        if (!is_vector_ty(ts)) {
-          if (auto it = make_indexed_item(i, elem_ts, child)) out.items.push_back(std::move(*it));
-        } else if (auto it = make_init_item(child)) {
-          out.items.push_back(std::move(*it));
-        }
-      }
-      return out;
-    }
-
-    if (ts.base == TB_UNION && ts.ptr_level == 0 && ts.tag) {
-      const auto sit = module_->struct_defs.find(ts.tag);
-      if (sit == module_->struct_defs.end()) return init;
-      const auto& sd = sit->second;
-      if (!sd.is_union || sd.fields.empty()) return init;
-
-      size_t idx = 0;
-      GlobalInit child = std::monostate{};
-      bool has_child = false;
-      if (const auto* list = std::get_if<InitList>(&init)) {
-        if (list->items.empty()) return init;
-        const auto& item0 = list->items.front();
-        const auto maybe_idx = find_aggregate_field_index(sd, item0, 0);
-        if (maybe_idx && (item0.field_designator || item0.index_designator)) {
-          idx = *maybe_idx;
-          child = child_init_of(item0);
-        } else {
-          child = (list->items.size() == 1 &&
-                   std::holds_alternative<std::shared_ptr<InitList>>(item0.value))
-              ? GlobalInit(*std::get<std::shared_ptr<InitList>>(item0.value))
-              : GlobalInit(*list);
-        }
-        has_child = true;
-      } else {
-        child = normalize_scalar_like(field_init_type_of(sd.fields.front()), init);
-        has_child = !std::holds_alternative<std::monostate>(child);
-      }
-      if (!has_child) return init;
-      TypeSpec field_ts = field_init_type_of(sd.fields[idx]);
-      field_ts = resolve_array_ts(field_ts, child);
-      auto normalized_child = normalize_global_init(field_ts, child);
-      InitList out{};
-      if (auto item = make_field_mapped_item(sd, idx, field_ts, normalized_child)) {
-        out.items.push_back(std::move(*item));
-      }
-      return out;
-    }
-
-    if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0 && ts.tag) {
-      const auto* list = std::get_if<InitList>(&init);
-      const auto sit = module_->struct_defs.find(ts.tag);
-      if (sit == module_->struct_defs.end()) return list ? init : normalize_scalar_like(ts, init);
-      const auto& sd = sit->second;
-      if (sd.is_union) return init;
-      if (!struct_allows_init_normalization(ts)) return list ? init : normalize_scalar_like(ts, init);
-      if (!list) {
-        if (sd.fields.empty()) return std::monostate{};
-        TypeSpec field_ts = field_init_type_of(sd.fields.front());
-        field_ts = resolve_array_ts(field_ts, init);
-        auto child = normalize_global_init(field_ts, init);
-        InitList out{};
-        if (auto item = make_field_mapped_item(sd, 0, field_ts, child)) {
-          out.items.push_back(std::move(*item));
-        }
-        return out;
-      }
-
-      InitList out{};
-      if (has_designators(*list)) {
-        size_t next_idx = 0;
-        for (const auto& item : list->items) {
-          const auto maybe_idx = find_aggregate_field_index(sd, item, next_idx);
-          if (!maybe_idx) continue;
-          const size_t idx = *maybe_idx;
-          TypeSpec field_ts = field_init_type_of(sd.fields[idx]);
-          field_ts = resolve_array_ts(field_ts, child_init_of(item));
-          auto child = normalize_global_init(field_ts, child_init_of(item));
-          auto normalized_item = make_field_mapped_item(sd, idx, field_ts, child);
-          if (!normalized_item) {
-            next_idx = idx + 1;
-            continue;
-          }
-          out.items.push_back(std::move(*normalized_item));
-          next_idx = idx + 1;
-        }
-        return out;
-      }
-
-      size_t cursor = 0;
-      for (size_t fi = 0; fi < sd.fields.size(); ++fi) {
-        if (cursor >= list->items.size()) break;
-        TypeSpec field_ts = field_init_type_of(sd.fields[fi]);
-        auto child = consume_from_flat(field_ts, *list, cursor);
-        field_ts = resolve_array_ts(field_ts, child);
-        child = normalize_global_init(field_ts, child);
-        if (auto it = make_field_mapped_item(sd, fi, field_ts, child))
-          out.items.push_back(std::move(*it));
-      }
-      return out;
-    }
-
-    return init;
-  }
+  GlobalInit normalize_global_init(const TypeSpec& ts, const GlobalInit& init);
 
   GlobalId lower_static_local_global(FunctionCtx& ctx, const Node* n);
 
@@ -9157,6 +8756,434 @@ ExprId Lowerer::materialize_initializer_list_arg(FunctionCtx* ctx,
       list_node, IntLiteral{list_node ? list_node->n_children : 0, false}, len_ts);
   assign_field("_M_len", len_ts, len_id);
   return tmp_id;
+}
+
+bool Lowerer::is_string_scalar(const GlobalInit& init) const {
+  const auto* scalar = std::get_if<InitScalar>(&init);
+  if (!scalar) return false;
+  const Expr& e = module_->expr_pool[scalar->expr.value];
+  return std::holds_alternative<StringLiteral>(e.payload);
+}
+
+long long Lowerer::flat_scalar_count(const TypeSpec& ts) const {
+  if (is_vector_ty(ts)) return ts.vector_lanes > 0 ? ts.vector_lanes : 1;
+  if (ts.array_rank > 0) {
+    if (ts.array_size <= 0) return 1;
+    TypeSpec elem_ts = ts;
+    elem_ts.array_rank--;
+    elem_ts.array_size = (elem_ts.array_rank > 0) ? elem_ts.array_dims[0] : -1;
+    return ts.array_size * flat_scalar_count(elem_ts);
+  }
+  if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0 && ts.tag) {
+    const auto it = module_->struct_defs.find(ts.tag);
+    if (it == module_->struct_defs.end()) return 1;
+    const auto& sd = it->second;
+    if (sd.fields.empty()) return 1;
+    if (sd.is_union) return flat_scalar_count(field_type_of(sd.fields.front()));
+    long long count = 0;
+    for (const auto& f : sd.fields) count += flat_scalar_count(field_type_of(f));
+    return count > 0 ? count : 1;
+  }
+  return 1;
+}
+
+long long Lowerer::deduce_array_size_from_init(const GlobalInit& init) const {
+  if (const auto* list = std::get_if<InitList>(&init)) {
+    long long max_idx = -1;
+    long long next = 0;
+    for (const auto& item : list->items) {
+      long long idx = next;
+      if (item.index_designator && *item.index_designator >= 0) idx = *item.index_designator;
+      if (idx > max_idx) max_idx = idx;
+      next = idx + 1;
+    }
+    return max_idx + 1;
+  }
+  if (is_string_scalar(init)) {
+    const auto& scalar = std::get<InitScalar>(init);
+    const Expr& e = module_->expr_pool[scalar.expr.value];
+    const auto& sl = std::get<StringLiteral>(e.payload);
+    if (sl.is_wide) {
+      return static_cast<long long>(decode_string_literal_values(sl.raw.c_str(), true).size());
+    }
+    return static_cast<long long>(bytes_from_string_literal(sl).size()) + 1;
+  }
+  return -1;
+}
+
+TypeSpec Lowerer::resolve_array_ts(const TypeSpec& ts, const GlobalInit& init) const {
+  if (ts.array_rank <= 0 || ts.array_size >= 0) return ts;
+  long long deduced = deduce_array_size_from_init(init);
+  if (deduced < 0) return ts;
+  TypeSpec elem_ts = ts;
+  elem_ts.array_rank--;
+  elem_ts.array_size = (elem_ts.array_rank > 0) ? elem_ts.array_dims[0] : -1;
+  const bool elem_is_agg = is_vector_ty(elem_ts) ||
+                           elem_ts.array_rank > 0 ||
+                           ((elem_ts.base == TB_STRUCT || elem_ts.base == TB_UNION) &&
+                            elem_ts.ptr_level == 0);
+  if (elem_is_agg) {
+    if (const auto* list = std::get_if<InitList>(&init)) {
+      bool all_scalar = true;
+      for (const auto& item : list->items) {
+        if (!std::holds_alternative<InitScalar>(item.value)) {
+          all_scalar = false;
+          break;
+        }
+      }
+      if (all_scalar) {
+        const long long fc = flat_scalar_count(elem_ts);
+        if (fc > 1) deduced = (deduced + fc - 1) / fc;
+      }
+    }
+  }
+  TypeSpec out = ts;
+  out.array_size = deduced;
+  out.array_dims[0] = deduced;
+  return out;
+}
+
+bool Lowerer::is_direct_char_array_init(const TypeSpec& ts, const GlobalInit& init) const {
+  if (ts.array_rank != 1 || ts.ptr_level != 0) return false;
+  if (!is_char_like(ts.base)) return false;
+  return is_string_scalar(init);
+}
+
+bool Lowerer::union_allows_init_normalization(const TypeSpec& ts) const {
+  if (ts.base != TB_UNION || ts.ptr_level != 0 || !ts.tag || !ts.tag[0]) return false;
+  const auto it = module_->struct_defs.find(ts.tag);
+  if (it == module_->struct_defs.end()) return false;
+  const auto& sd = it->second;
+  if (!sd.is_union || sd.fields.empty()) return false;
+  for (const auto& field : sd.fields) {
+    TypeSpec field_ts = field_init_type_of(field);
+    if (field_ts.array_rank > 0 || is_vector_ty(field_ts)) continue;
+    if (field_ts.base == TB_STRUCT && field_ts.ptr_level == 0 &&
+        !struct_allows_init_normalization(field_ts)) {
+      return false;
+    }
+    if (field_ts.base == TB_UNION && field_ts.ptr_level == 0 &&
+        !union_allows_init_normalization(field_ts)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool Lowerer::struct_allows_init_normalization(const TypeSpec& ts) const {
+  if (ts.base != TB_STRUCT || ts.ptr_level != 0 || !ts.tag || !ts.tag[0]) return false;
+  const auto it = module_->struct_defs.find(ts.tag);
+  if (it == module_->struct_defs.end()) return false;
+  const auto& sd = it->second;
+  if (sd.is_union) return false;
+  for (size_t fi = 0; fi < sd.fields.size(); ++fi) {
+    const auto& field = sd.fields[fi];
+    if (field.is_flexible_array) {
+      if (fi + 1 != sd.fields.size()) return false;
+      continue;
+    }
+    TypeSpec field_ts = field_init_type_of(field);
+    if (field_ts.array_rank > 0 || is_vector_ty(field_ts)) continue;
+    if (field_ts.base == TB_STRUCT && field_ts.ptr_level == 0 &&
+        !struct_allows_init_normalization(field_ts)) {
+      return false;
+    }
+    if (field_ts.base == TB_UNION && field_ts.ptr_level == 0 &&
+        !union_allows_init_normalization(field_ts)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+GlobalInit Lowerer::normalize_global_init(const TypeSpec& ts, const GlobalInit& init) {
+  std::function<GlobalInit(const TypeSpec&, const InitList&, size_t&)> consume_from_flat;
+  auto has_designators = [](const InitList& list) {
+    return std::any_of(
+        list.items.begin(), list.items.end(),
+        [](const InitListItem& item) {
+          return item.field_designator.has_value() || item.index_designator.has_value();
+        });
+  };
+  auto find_aggregate_field_index =
+      [&](const HirStructDef& sd, const InitListItem& item, size_t next_idx)
+      -> std::optional<size_t> {
+    size_t idx = next_idx;
+    if (item.field_designator) {
+      const auto fit = std::find_if(
+          sd.fields.begin(), sd.fields.end(),
+          [&](const HirStructField& field) { return field.name == *item.field_designator; });
+      if (fit == sd.fields.end()) return std::nullopt;
+      idx = static_cast<size_t>(std::distance(sd.fields.begin(), fit));
+    } else if (item.index_designator && *item.index_designator >= 0) {
+      idx = static_cast<size_t>(*item.index_designator);
+    }
+    if (idx >= sd.fields.size()) return std::nullopt;
+    return idx;
+  };
+  auto make_field_mapped_item =
+      [&](const HirStructDef& sd, size_t idx, const TypeSpec& target_ts,
+          const GlobalInit& child) -> std::optional<InitListItem> {
+    auto item = make_init_item(child);
+    if (!item) return std::nullopt;
+    if (!sd.fields[idx].name.empty()) item->field_designator = sd.fields[idx].name;
+    else item->index_designator = static_cast<long long>(idx);
+    if (target_ts.array_rank > 0 && target_ts.array_size >= 0) {
+      item->resolved_array_bound = target_ts.array_size;
+    }
+    return item;
+  };
+  auto make_indexed_item =
+      [&](long long idx, const TypeSpec& target_ts, const GlobalInit& child)
+      -> std::optional<InitListItem> {
+    auto item = make_init_item(child);
+    if (!item) return std::nullopt;
+    item->index_designator = idx;
+    item->field_designator.reset();
+    if (target_ts.array_rank > 0 && target_ts.array_size >= 0) {
+      item->resolved_array_bound = target_ts.array_size;
+    }
+    return item;
+  };
+
+  auto normalize_scalar_like = [&](const TypeSpec& cur_ts, const GlobalInit& cur_init)
+      -> GlobalInit {
+    if (const auto* scalar = std::get_if<InitScalar>(&cur_init)) return GlobalInit(*scalar);
+    if (const auto* list = std::get_if<InitList>(&cur_init)) {
+      if (!list->items.empty()) return normalize_global_init(cur_ts, child_init_of(list->items.front()));
+    }
+    return std::monostate{};
+  };
+
+  consume_from_flat = [&](const TypeSpec& cur_ts, const InitList& list, size_t& cursor)
+      -> GlobalInit {
+    if (cursor >= list.items.size()) return std::monostate{};
+    const auto& item = list.items[cursor];
+    if (std::holds_alternative<std::shared_ptr<InitList>>(item.value)) {
+      auto sub = std::get<std::shared_ptr<InitList>>(item.value);
+      ++cursor;
+      return normalize_global_init(cur_ts, GlobalInit(*sub));
+    }
+    if (is_scalar_init_type(cur_ts)) {
+      ++cursor;
+      if (const auto* scalar = std::get_if<InitScalar>(&item.value)) return GlobalInit(*scalar);
+      return std::monostate{};
+    }
+    if (is_vector_ty(cur_ts) || cur_ts.array_rank > 0) {
+      TypeSpec elem_ts = cur_ts;
+      long long bound = 0;
+      if (is_vector_ty(cur_ts)) {
+        elem_ts = vector_element_type(cur_ts);
+        bound = cur_ts.vector_lanes > 0 ? cur_ts.vector_lanes : 0;
+      } else {
+        for (int di = 0; di < elem_ts.array_rank - 1; ++di)
+          elem_ts.array_dims[di] = elem_ts.array_dims[di + 1];
+        elem_ts.array_dims[elem_ts.array_rank - 1] = -1;
+        elem_ts.array_rank--;
+        elem_ts.array_size = (elem_ts.array_rank > 0) ? elem_ts.array_dims[0] : -1;
+        bound = resolve_array_ts(cur_ts, GlobalInit(list)).array_size;
+      }
+      if (!is_vector_ty(cur_ts) && is_direct_char_array_init(cur_ts, child_init_of(item))) {
+        ++cursor;
+        return child_init_of(item);
+      }
+      InitList out{};
+      for (long long i = 0; i < bound && cursor < list.items.size(); ++i) {
+        auto child = consume_from_flat(elem_ts, list, cursor);
+        if (auto it = make_init_item(child)) out.items.push_back(std::move(*it));
+      }
+      return out;
+    }
+    if ((cur_ts.base == TB_STRUCT || cur_ts.base == TB_UNION) &&
+        cur_ts.ptr_level == 0 && cur_ts.tag) {
+      const auto sit = module_->struct_defs.find(cur_ts.tag);
+      if (sit == module_->struct_defs.end()) {
+        ++cursor;
+        return std::monostate{};
+      }
+      const auto& sd = sit->second;
+      if (sd.is_union) {
+        InitList out{};
+        if (!sd.fields.empty()) {
+          TypeSpec field_ts = field_init_type_of(sd.fields.front());
+          auto child = consume_from_flat(field_ts, list, cursor);
+          field_ts = resolve_array_ts(field_ts, child);
+          child = normalize_global_init(field_ts, child);
+          if (auto it = make_field_mapped_item(sd, 0, field_ts, child)) {
+            out.items.push_back(std::move(*it));
+          }
+        }
+        return out;
+      }
+      InitList out{};
+      for (size_t fi = 0; fi < sd.fields.size() && cursor < list.items.size(); ++fi) {
+        TypeSpec field_ts = field_init_type_of(sd.fields[fi]);
+        auto child = consume_from_flat(field_ts, list, cursor);
+        field_ts = resolve_array_ts(field_ts, child);
+        child = normalize_global_init(field_ts, child);
+        if (auto it = make_field_mapped_item(sd, fi, field_ts, child)) {
+          out.items.push_back(std::move(*it));
+        }
+      }
+      return out;
+    }
+    ++cursor;
+    return std::monostate{};
+  };
+
+  if (is_scalar_init_type(ts)) return normalize_scalar_like(ts, init);
+
+  if (is_vector_ty(ts) || ts.array_rank > 0) {
+    const auto* list = std::get_if<InitList>(&init);
+    if (!list) return init;
+    TypeSpec elem_ts = ts;
+    long long bound = 0;
+    if (is_vector_ty(ts)) {
+      elem_ts = vector_element_type(ts);
+      bound = ts.vector_lanes > 0 ? ts.vector_lanes : 0;
+    } else {
+      for (int di = 0; di < elem_ts.array_rank - 1; ++di)
+        elem_ts.array_dims[di] = elem_ts.array_dims[di + 1];
+      elem_ts.array_dims[elem_ts.array_rank - 1] = -1;
+      elem_ts.array_rank--;
+      elem_ts.array_size = (elem_ts.array_rank > 0) ? elem_ts.array_dims[0] : -1;
+      bound = resolve_array_ts(ts, init).array_size;
+    }
+    if (!list->items.empty() && !is_vector_ty(ts) &&
+        is_direct_char_array_init(ts, child_init_of(list->items.front()))) {
+      return child_init_of(list->items.front());
+    }
+
+    if (!is_vector_ty(ts) && has_designators(*list)) {
+      if (bound <= 0) return init;
+      std::vector<std::optional<GlobalInit>> slots(static_cast<size_t>(bound));
+      long long next_idx = 0;
+      for (const auto& item : list->items) {
+        long long idx = next_idx;
+        if (item.index_designator && *item.index_designator >= 0) idx = *item.index_designator;
+        if (idx >= 0 && idx < bound) {
+          slots[static_cast<size_t>(idx)] = normalize_global_init(elem_ts, child_init_of(item));
+        }
+        next_idx = idx + 1;
+      }
+      InitList out{};
+      for (long long idx = 0; idx < bound; ++idx) {
+        const auto& slot = slots[static_cast<size_t>(idx)];
+        if (!slot) continue;
+        if (auto item = make_indexed_item(idx, elem_ts, *slot)) out.items.push_back(std::move(*item));
+      }
+      return out;
+    }
+
+    InitList out{};
+    size_t cursor = 0;
+    for (long long i = 0; i < bound && cursor < list->items.size(); ++i) {
+      auto child = consume_from_flat(elem_ts, *list, cursor);
+      if (!is_vector_ty(ts)) {
+        if (auto it = make_indexed_item(i, elem_ts, child)) out.items.push_back(std::move(*it));
+      } else if (auto it = make_init_item(child)) {
+        out.items.push_back(std::move(*it));
+      }
+    }
+    return out;
+  }
+
+  if (ts.base == TB_UNION && ts.ptr_level == 0 && ts.tag) {
+    const auto sit = module_->struct_defs.find(ts.tag);
+    if (sit == module_->struct_defs.end()) return init;
+    const auto& sd = sit->second;
+    if (!sd.is_union || sd.fields.empty()) return init;
+
+    size_t idx = 0;
+    GlobalInit child = std::monostate{};
+    bool has_child = false;
+    if (const auto* list = std::get_if<InitList>(&init)) {
+      if (list->items.empty()) return init;
+      const auto& item0 = list->items.front();
+      const auto maybe_idx = find_aggregate_field_index(sd, item0, 0);
+      if (maybe_idx && (item0.field_designator || item0.index_designator)) {
+        idx = *maybe_idx;
+        child = child_init_of(item0);
+      } else {
+        child = (list->items.size() == 1 &&
+                 std::holds_alternative<std::shared_ptr<InitList>>(item0.value))
+            ? GlobalInit(*std::get<std::shared_ptr<InitList>>(item0.value))
+            : GlobalInit(*list);
+      }
+      has_child = true;
+    } else {
+      child = normalize_scalar_like(field_init_type_of(sd.fields.front()), init);
+      has_child = !std::holds_alternative<std::monostate>(child);
+    }
+    if (!has_child) return init;
+    TypeSpec field_ts = field_init_type_of(sd.fields[idx]);
+    field_ts = resolve_array_ts(field_ts, child);
+    auto normalized_child = normalize_global_init(field_ts, child);
+    InitList out{};
+    if (auto item = make_field_mapped_item(sd, idx, field_ts, normalized_child)) {
+      out.items.push_back(std::move(*item));
+    }
+    return out;
+  }
+
+  if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0 && ts.tag) {
+    const auto* list = std::get_if<InitList>(&init);
+    const auto sit = module_->struct_defs.find(ts.tag);
+    if (sit == module_->struct_defs.end()) {
+      return list ? init : normalize_scalar_like(ts, init);
+    }
+    const auto& sd = sit->second;
+    if (sd.is_union) return init;
+    if (!struct_allows_init_normalization(ts)) {
+      return list ? init : normalize_scalar_like(ts, init);
+    }
+    if (!list) {
+      if (sd.fields.empty()) return std::monostate{};
+      TypeSpec field_ts = field_init_type_of(sd.fields.front());
+      field_ts = resolve_array_ts(field_ts, init);
+      auto child = normalize_global_init(field_ts, init);
+      InitList out{};
+      if (auto item = make_field_mapped_item(sd, 0, field_ts, child)) {
+        out.items.push_back(std::move(*item));
+      }
+      return out;
+    }
+
+    InitList out{};
+    if (has_designators(*list)) {
+      size_t next_idx = 0;
+      for (const auto& item : list->items) {
+        const auto maybe_idx = find_aggregate_field_index(sd, item, next_idx);
+        if (!maybe_idx) continue;
+        const size_t idx = *maybe_idx;
+        TypeSpec field_ts = field_init_type_of(sd.fields[idx]);
+        field_ts = resolve_array_ts(field_ts, child_init_of(item));
+        auto child = normalize_global_init(field_ts, child_init_of(item));
+        auto normalized_item = make_field_mapped_item(sd, idx, field_ts, child);
+        if (!normalized_item) {
+          next_idx = idx + 1;
+          continue;
+        }
+        out.items.push_back(std::move(*normalized_item));
+        next_idx = idx + 1;
+      }
+      return out;
+    }
+
+    size_t cursor = 0;
+    for (size_t fi = 0; fi < sd.fields.size(); ++fi) {
+      if (cursor >= list->items.size()) break;
+      TypeSpec field_ts = field_init_type_of(sd.fields[fi]);
+      auto child = consume_from_flat(field_ts, *list, cursor);
+      field_ts = resolve_array_ts(field_ts, child);
+      child = normalize_global_init(field_ts, child);
+      if (auto it = make_field_mapped_item(sd, fi, field_ts, child))
+        out.items.push_back(std::move(*it));
+    }
+    return out;
+  }
+
+  return init;
 }
 
 const Node* Lowerer::find_struct_static_member_decl(
