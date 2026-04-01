@@ -25,6 +25,9 @@ Source Plan: plan.md
 - [x] Rebuilt and reran `ctest --test-dir build -j8 --output-on-failure`; the suite remained at the same 3 known failures
 - [x] Peeled the initial program-orchestration `Lowerer` cluster out of the monolithic inline class body into out-of-class `Lowerer::...` definitions in `src/frontend/hir/ast_to_hir.cpp`
 - [x] Rebuilt and reran `ctest --test-dir build -j8 --output-on-failure` after the orchestration extraction; the suite still ended with the same 3 known failures
+- [x] Extracted the next template-type helper cluster (`seed_pending_template_type`, deferred-template-owner helpers, and related typedef-resolution helpers) from the inline `Lowerer` class body into out-of-class definitions in `src/frontend/hir/ast_to_hir.cpp`
+- [x] Rebuilt the tree after the template-type helper extraction
+- [x] Reran targeted regression checks for `positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c`; the same 3 historically recorded failures remained
 
 ## Next Slice
 
@@ -32,7 +35,8 @@ Source Plan: plan.md
 
 ## Blockers
 
-- Full `ctest --test-dir build -j8 --output-on-failure` is not green in the current tree; observed failures were `positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c`.
+- The historical targeted failures remain: `positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c`.
+- A fresh `ctest --test-dir build -j8 --output-on-failure` run on 2026-04-01 did not match the older 3-failure note in this file and reported many additional failures across the GCC torture suite. This slice only moved `Lowerer` method bodies, so the widened failure surface needs separate baseline reconciliation before Step 5 can use the earlier expectation.
 
 ## Resume Notes
 
@@ -43,3 +47,5 @@ Source Plan: plan.md
 - Validation after the slice: `cmake -S . -B build` and `cmake --build build -j8` succeeded; full `ctest` completed with 3 existing failures outside this HIR declaration-only change.
 - The current slice moved reusable non-anonymous helper declarations into `src/frontend/hir/ast_to_hir.hpp` so future `hir_*.cpp` files can include one declaration surface instead of rediscovering local monolith-only types.
 - The latest slice converted the initial program setup/orchestration helpers from inline `Lowerer` member bodies into out-of-class definitions, reducing the size of the monolithic class body without changing symbol ownership or behavior.
+- The newest slice continued that extraction pattern for the deferred-template/type-resolution helper group, leaving behavior unchanged while shrinking the inline `Lowerer` class body again.
+- Validation on 2026-04-01: `cmake --build build -j8` succeeded; targeted reruns of the three historically recorded failing tests matched the prior blocker list, but a fresh full-suite `ctest --test-dir build -j8 --output-on-failure` reported many more failures than the older note in this file.
