@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 1: Establish Header Ownership
-- Current slice: target the next small inline `Lowerer` helper cluster after the template-struct registry/lookup extraction, likely another declaration-only peel that reduces the monolithic class body without widening scope
+- Current slice: target the next small inline `Lowerer` helper cluster after the callable-body helpers, likely another declaration-only peel that reduces the monolithic class body without widening scope
 
 ## Todo
 
@@ -20,6 +20,7 @@ Source Plan: plan.md
 ## Completed
 
 - [x] Activated the runbook from `ideas/open/01_ast_to_hir_cpp_split_refactor.md`
+- [x] Extracted the small callable-lowering helper cluster (`register_bodyless_callable`, `maybe_register_bodyless_callable`, `begin_callable_body_lowering`, and `finish_lowered_callable`) out of the inline `Lowerer` class body into out-of-class definitions in `src/frontend/hir/ast_to_hir.cpp`
 - [x] Added the first Step 1 header declarations for top-level HIR lowering helpers and the `Lowerer` type in `src/frontend/hir/ast_to_hir.hpp`
 - [x] Rebuilt the tree after the Step 1 header-surface slice
 - [x] Promoted split-relevant HIR helper declarations (`QualifiedMethodRef`, op mappers, generic-type helpers, and layout entrypoints) into `src/frontend/hir/ast_to_hir.hpp`
@@ -101,3 +102,6 @@ Source Plan: plan.md
 - The current slice targeted the template-struct registry and lookup helpers because they are small state-accessors and registration helpers that can move out of the inline `Lowerer` class body without changing ownership or widening the declaration surface.
 - The latest slice moved `find_template_struct_primary`, `find_template_struct_specializations`, `build_template_struct_env`, `register_template_struct_primary`, and `register_template_struct_specialization` out of the inline `Lowerer` class body into out-of-class definitions, preserving behavior while continuing the monolith shrink.
 - Validation on 2026-04-01: `cmake --build build -j8` succeeded; the targeted rerun of `positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c` matched the historical blocker list; a full `ctest --test-dir build -j8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 failing tests; `.codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passed with zero new failing tests.
+- The current slice targeted the small callable-lowering helper cluster (`register_bodyless_callable`, `maybe_register_bodyless_callable`, `begin_callable_body_lowering`, and `finish_lowered_callable`) because those helpers share one cohesive responsibility and could move out of the inline `Lowerer` class body without changing ownership or widening the declaration surface.
+- The latest slice moved that callable-lowering helper cluster out of the inline `Lowerer` class body into out-of-class definitions, preserving behavior while continuing the monolith shrink.
+- Validation on 2026-04-01: `cmake --build build -j8` succeeded; a full `ctest --test-dir build -j8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 failing tests (`positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c`); `.codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passed with zero new failing tests.

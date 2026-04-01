@@ -2812,36 +2812,13 @@ class Lowerer {
     }
   }
 
-  void register_bodyless_callable(Function&& fn) {
-    module_->fn_index[fn.name] = fn.id;
-    module_->functions.push_back(std::move(fn));
-  }
+  void register_bodyless_callable(Function&& fn);
 
-  bool maybe_register_bodyless_callable(Function* fn, bool has_lowerable_body) {
-    if (has_lowerable_body) return false;
-    register_bodyless_callable(std::move(*fn));
-    return true;
-  }
+  bool maybe_register_bodyless_callable(Function* fn, bool has_lowerable_body);
 
-  BlockId begin_callable_body_lowering(Function& fn, FunctionCtx& ctx) {
-    module_->fn_index[fn.name] = fn.id;
-    if (fn.id.value == module_->functions.size()) {
-      // Push a skeleton; callers replace it after body lowering completes.
-      module_->functions.push_back(Function{fn.id, fn.name, fn.ns_qual, fn.return_type});
-    }
+  BlockId begin_callable_body_lowering(Function& fn, FunctionCtx& ctx);
 
-    const BlockId entry = create_block(ctx);
-    fn.entry = entry;
-    ctx.current_block = entry;
-    return entry;
-  }
-
-  void finish_lowered_callable(Function* fn, BlockId entry) {
-    if (fn->blocks.empty()) {
-      fn->blocks.push_back(Block{entry, {}, false});
-    }
-    module_->functions[fn->id.value] = std::move(*fn);
-  }
+  void finish_lowered_callable(Function* fn, BlockId entry);
 
   void lower_function(const Node* fn_node,
                       const std::string* name_override = nullptr,
@@ -10021,6 +9998,38 @@ ExprId Lowerer::append_expr(const Node* src,
   e.payload = std::move(payload);
   module_->expr_pool.push_back(std::move(e));
   return module_->expr_pool.back().id;
+}
+
+void Lowerer::register_bodyless_callable(Function&& fn) {
+  module_->fn_index[fn.name] = fn.id;
+  module_->functions.push_back(std::move(fn));
+}
+
+bool Lowerer::maybe_register_bodyless_callable(Function* fn,
+                                               bool has_lowerable_body) {
+  if (has_lowerable_body) return false;
+  register_bodyless_callable(std::move(*fn));
+  return true;
+}
+
+BlockId Lowerer::begin_callable_body_lowering(Function& fn, FunctionCtx& ctx) {
+  module_->fn_index[fn.name] = fn.id;
+  if (fn.id.value == module_->functions.size()) {
+    // Push a skeleton; callers replace it after body lowering completes.
+    module_->functions.push_back(Function{fn.id, fn.name, fn.ns_qual, fn.return_type});
+  }
+
+  const BlockId entry = create_block(ctx);
+  fn.entry = entry;
+  ctx.current_block = entry;
+  return entry;
+}
+
+void Lowerer::finish_lowered_callable(Function* fn, BlockId entry) {
+  if (fn->blocks.empty()) {
+    fn->blocks.push_back(Block{entry, {}, false});
+  }
+  module_->functions[fn->id.value] = std::move(*fn);
 }
 
 const Node* Lowerer::find_struct_static_member_decl(
