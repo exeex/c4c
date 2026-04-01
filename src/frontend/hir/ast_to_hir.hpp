@@ -8,6 +8,8 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace c4c::hir {
 
@@ -22,6 +24,24 @@ struct QualifiedMethodRef {
   std::string struct_tag;
   std::string method_name;
   std::string key;
+};
+
+struct HirTemplateArg {
+  bool is_value = false;
+  TypeSpec type{};
+  long long value = 0;
+};
+
+struct ResolvedTemplateArgs {
+  std::vector<HirTemplateArg> concrete_args;
+  std::vector<std::pair<std::string, TypeSpec>> type_bindings;
+  std::vector<std::pair<std::string, long long>> nttp_bindings;
+};
+
+struct PreparedTemplateStructInstance {
+  TypeBindings type_bindings;
+  NttpBindings nttp_bindings;
+  TemplateStructInstanceKey instance_key;
 };
 
 std::string rewrite_gcc_asm_template(std::string text);

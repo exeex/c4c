@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 1: Establish Header Ownership
-- Current slice: target the next low-coupling inline lowering helper outside the template-instantiation path, continuing to avoid heavier structural bodies such as `lower_struct_def`
+- Current slice: continue Step 1 declaration-surface expansion by promoting the next split-relevant `ast_to_hir.cpp` helper types and declarations into `src/frontend/hir/ast_to_hir.hpp`, keeping behavior unchanged while reducing anonymous-namespace ownership
 
 ## Todo
 
@@ -19,6 +19,8 @@ Source Plan: plan.md
 
 ## Completed
 
+- [x] Promoted the template-instantiation helper value types (`HirTemplateArg`, `ResolvedTemplateArgs`, and `PreparedTemplateStructInstance`) out of the anonymous namespace in `src/frontend/hir/ast_to_hir.cpp` and into `src/frontend/hir/ast_to_hir.hpp` so future HIR split files can share one declaration source
+- [x] Rebuilt and reran the full `ctest --test-dir build -j8 --output-on-failure`, then passed `.codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`; the suite remained at 2671 total tests, 2668 passing, and the same 3 historical failures
 - [x] Activated the runbook from `ideas/open/01_ast_to_hir_cpp_split_refactor.md`
 - [x] Extracted the small callable-lowering helper cluster (`register_bodyless_callable`, `maybe_register_bodyless_callable`, `begin_callable_body_lowering`, and `finish_lowered_callable`) out of the inline `Lowerer` class body into out-of-class definitions in `src/frontend/hir/ast_to_hir.cpp`
 - [x] Added the first Step 1 header declarations for top-level HIR lowering helpers and the `Lowerer` type in `src/frontend/hir/ast_to_hir.hpp`

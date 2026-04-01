@@ -83,26 +83,6 @@ std::string strip_quoted_string(const char* raw) {
 
 namespace {
 
-struct HirTemplateArg {
-  bool is_value = false;
-  TypeSpec type{};
-  long long value = 0;
-};
-
-/// Result of materializing template arguments for a pending template struct.
-struct ResolvedTemplateArgs {
-  std::vector<HirTemplateArg> concrete_args;
-  std::vector<std::pair<std::string, TypeSpec>> type_bindings;
-  std::vector<std::pair<std::string, long long>> nttp_bindings;
-};
-
-/// Prepared identity data for one concrete template-struct instantiation.
-struct PreparedTemplateStructInstance {
-  TypeBindings type_bindings;
-  NttpBindings nttp_bindings;
-  TemplateStructInstanceKey instance_key;
-};
-
 bool hir_is_type_template_param(const Node* tpl_def, const char* name) {
   if (!tpl_def || !name) return false;
   for (int i = 0; i < tpl_def->n_template_params; ++i) {
