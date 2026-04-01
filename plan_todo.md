@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 1: Establish Header Ownership
-- Current slice: continue Step 1 monolith peel-back by extracting the callable-signature helper cluster (`substitute_signature_template_type`, `resolve_signature_template_type_if_needed`, `prepare_callable_return_type`, `append_explicit_callable_param`, and `append_callable_params`) into out-of-class `Lowerer::...` definitions in `src/frontend/hir/ast_to_hir.cpp`
+- Current slice: continue Step 1 monolith peel-back by extracting the next low-coupling statement/global lowering helpers, starting with `lower_global` and `lower_local_decl_stmt`, into out-of-class `Lowerer::...` definitions in `src/frontend/hir/ast_to_hir.cpp`
 
 ## Todo
 
@@ -19,6 +19,8 @@ Source Plan: plan.md
 
 ## Completed
 
+- [x] Extracted the callable-lowering entrypoints (`lower_function` and `lower_struct_method`) out of the inline `Lowerer` class body into out-of-class definitions in `src/frontend/hir/ast_to_hir.cpp`
+- [x] Rebuilt with `cmake --build build -j8` and reran the full `ctest --test-dir build -j8 --output-on-failure`; the suite remained at 2671 total tests, 2668 passing, and the same 3 historical failures (`positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c`)
 - [x] Extracted the callable-signature helper cluster (`substitute_signature_template_type`, `resolve_signature_template_type_if_needed`, `prepare_callable_return_type`, `append_explicit_callable_param`, and `append_callable_params`) out of the inline `Lowerer` class body into out-of-class definitions in `src/frontend/hir/ast_to_hir.cpp`
 - [x] Rebuilt and reran the full `ctest --test-dir build -j8 --output-on-failure`, then passed `.codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`; the suite remained at 2671 total tests, 2668 passing, and the same 3 historical failures
 - [x] Promoted the template-instantiation helper value types (`HirTemplateArg`, `ResolvedTemplateArgs`, and `PreparedTemplateStructInstance`) out of the anonymous namespace in `src/frontend/hir/ast_to_hir.cpp` and into `src/frontend/hir/ast_to_hir.hpp` so future HIR split files can share one declaration source
@@ -63,7 +65,7 @@ Source Plan: plan.md
 
 ## Next Slice
 
-- Continue Step 1 by peeling the next low-coupling inline helper cluster out of the class body, likely starting with `prepare_template_struct_instance` or the adjacent `lower_function`/`lower_struct_method` callable-lowering bodies before tackling heavier structural bodies such as `lower_struct_def`.
+- Continue Step 1 by peeling the next low-coupling inline helper cluster out of the class body, starting with `lower_global` and `lower_local_decl_stmt` before tackling heavier structural bodies such as `lower_stmt_node` or `lower_struct_def`.
 
 ## Blockers
 

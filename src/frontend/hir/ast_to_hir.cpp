@@ -2253,478 +2253,14 @@ class Lowerer {
   void lower_function(const Node* fn_node,
                       const std::string* name_override = nullptr,
                       const TypeBindings* tpl_override = nullptr,
-                      const NttpBindings* nttp_override = nullptr) {
-    Function fn{};
-    fn.id = next_fn_id();
-    fn.name = name_override ? *name_override
-                            : (fn_node->name ? fn_node->name : "<anon_fn>");
-    fn.ns_qual = make_ns_qual(fn_node);
-    // Substitute template type parameters in the return type.
-    {
-      TypeSpec ret_ts = fn_node->type;
-      if ((fn_node->n_ret_fn_ptr_params > 0 || fn_node->ret_fn_ptr_variadic) &&
-          !ret_ts.is_fn_ptr) {
-        ret_ts.is_fn_ptr = true;
-        ret_ts.ptr_level = std::max(ret_ts.ptr_level, 1);
-      }
-      ret_ts = prepare_callable_return_type(
-          ret_ts, tpl_override, nttp_override, fn_node,
-          std::string("function-return:") + fn.name, false);
-      fn.return_type = qtype_from(ret_ts);
-    }
-    // Build fn_ptr_sig for the return type when the function returns a fn_ptr.
-    // Uses canonical type to extract the return type's callable signature.
-    if (fn_node->type.is_fn_ptr ||
-        fn_node->n_ret_fn_ptr_params > 0 ||
-        fn_node->ret_fn_ptr_variadic) {
-      auto fn_ct = sema::canonicalize_declarator_type(fn_node);
-      const auto* fn_fsig = sema::get_function_sig(fn_ct);
-      if (fn_fsig && fn_fsig->return_type && sema::is_callable_type(*fn_fsig->return_type)) {
-        const auto* ret_fsig = sema::get_function_sig(*fn_fsig->return_type);
-        if (ret_fsig) {
-          FnPtrSig ret_sig{};
-          ret_sig.canonical_sig = fn_fsig->return_type;
-          if (ret_fsig->return_type) {
-            TypeSpec ret_ts = sema::typespec_from_canonical(*ret_fsig->return_type);
-            // Nested fn_ptr fixup: canonical type doesn't capture nested fn_ptr
-            // return structure. Use parser's ret_fn_ptr_params to correct it.
-            if ((fn_node->n_ret_fn_ptr_params > 0 || fn_node->ret_fn_ptr_variadic) &&
-                !ret_ts.is_fn_ptr) {
-              ret_ts.is_fn_ptr = true;
-              ret_ts.ptr_level = std::max(ret_ts.ptr_level, 1);
-            }
-            ret_sig.return_type = qtype_from(ret_ts);
-          }
-          ret_sig.variadic = ret_fsig->is_variadic;
-          ret_sig.unspecified_params = ret_fsig->unspecified_params;
-          for (const auto& param : ret_fsig->params)
-            ret_sig.params.push_back(qtype_from(sema::typespec_from_canonical(param), ValueCategory::LValue));
-          if (ret_sig.params.empty() &&
-              (fn_node->n_ret_fn_ptr_params > 0 || fn_node->ret_fn_ptr_variadic)) {
-            ret_sig.variadic = fn_node->ret_fn_ptr_variadic;
-            ret_sig.unspecified_params = false;
-            for (int i = 0; i < fn_node->n_ret_fn_ptr_params; ++i) {
-              const Node* param = fn_node->ret_fn_ptr_params[i];
-              ret_sig.params.push_back(qtype_from(param->type, ValueCategory::LValue));
-            }
-          }
-          fn.ret_fn_ptr_sig = std::move(ret_sig);
-        }
-      }
-      if (!fn.ret_fn_ptr_sig &&
-          (fn_node->n_ret_fn_ptr_params > 0 || fn_node->ret_fn_ptr_variadic)) {
-        FnPtrSig ret_sig{};
-        ret_sig.return_type = qtype_from(fn.return_type.spec);
-        ret_sig.variadic = fn_node->ret_fn_ptr_variadic;
-        ret_sig.unspecified_params = false;
-        for (int i = 0; i < fn_node->n_ret_fn_ptr_params; ++i) {
-          const Node* param = fn_node->ret_fn_ptr_params[i];
-          ret_sig.params.push_back(qtype_from(param->type, ValueCategory::LValue));
-        }
-        fn.ret_fn_ptr_sig = std::move(ret_sig);
-      }
-    }
-    fn.linkage = {fn_node->is_static, fn_node->is_extern || fn_node->body == nullptr, fn_node->is_inline,
-                   weak_symbols_.count(fn.name) > 0, static_cast<Visibility>(fn_node->visibility)};
-    fn.attrs.variadic = fn_node->variadic;
-    fn.attrs.no_inline = fn_node->type.is_noinline;
-    fn.attrs.always_inline = fn_node->type.is_always_inline;
-    if (fn_node->type.align_bytes > 0)
-      fn.attrs.align_bytes = fn_node->type.align_bytes;
-    // Inherit alignment from prior declaration if definition doesn't repeat the attribute.
-    if (fn.attrs.align_bytes == 0) {
-      auto fit = module_->fn_index.find(fn.name);
-      if (fit != module_->fn_index.end() && fit->second.value < module_->functions.size()) {
-        int prev_align = module_->functions[fit->second.value].attrs.align_bytes;
-        if (prev_align > 0) fn.attrs.align_bytes = prev_align;
-      }
-    }
-    fn.span = make_span(fn_node);
-
-    FunctionCtx ctx{};
-    ctx.fn = &fn;
-
-    // Populate template bindings for template function instantiations.
-    if (tpl_override)
-      ctx.tpl_bindings = *tpl_override;
-    if (nttp_override)
-      ctx.nttp_bindings = *nttp_override;
-    append_callable_params(fn, ctx, fn_node, tpl_override, nttp_override,
-                           "function-param:", false, true);
-
-    if (maybe_register_bodyless_callable(&fn, fn_node->body != nullptr)) {
-      return;
-    }
-
-    // Pre-register the function so that self-references during body
-    // lowering (e.g. recursive function using its own name as a value)
-    // can look up the return type via fn_index.
-    const BlockId entry = begin_callable_body_lowering(fn, ctx);
-
-    for (int i = 0; i < fn_node->n_params; ++i) {
-      const Node* p = fn_node->params[i];
-      if (!p) continue;
-      if (p->type.array_rank <= 0 || !p->type.array_size_expr) continue;
-      if (p->type.array_size > 0 && p->type.array_dims[0] > 0) continue;
-      ExprStmt side_effect{};
-      side_effect.expr = lower_expr(&ctx, p->type.array_size_expr);
-      append_stmt(ctx, Stmt{StmtPayload{side_effect}, make_span(p)});
-    }
-
-    lower_stmt_node(ctx, fn_node->body);
-
-    // Replace the skeleton with the fully lowered function.
-    finish_lowered_callable(&fn, entry);
-  }
+                      const NttpBindings* nttp_override = nullptr);
 
   // Lower a struct method as a standalone function with an implicit `this` pointer.
   void lower_struct_method(const std::string& mangled_name,
                            const std::string& struct_tag,
                            const Node* method_node,
                            const TypeBindings* tpl_bindings = nullptr,
-                           const NttpBindings* nttp_bindings = nullptr) {
-    // Skip deleted methods — they have no body and must not be lowered.
-    if (method_node->is_deleted) return;
-    Function fn{};
-    fn.id = next_fn_id();
-    fn.name = mangled_name;
-    fn.ns_qual = make_ns_qual(method_node);
-    // Substitute template type parameters in the return type.
-    {
-      TypeSpec ret_ts = prepare_callable_return_type(
-          method_node->type, tpl_bindings, nttp_bindings, method_node,
-          std::string("method-return:") + mangled_name, true);
-      fn.return_type = qtype_from(ret_ts);
-    }
-    fn.linkage = {true, false, false, false, Visibility::Default};  // internal
-    fn.attrs.variadic = method_node->variadic;
-    fn.span = make_span(method_node);
-
-    FunctionCtx ctx{};
-    ctx.fn = &fn;
-    if (tpl_bindings) ctx.tpl_bindings = *tpl_bindings;
-    if (nttp_bindings) ctx.nttp_bindings = *nttp_bindings;
-
-    // Add implicit `this` parameter (pointer to struct).
-    {
-      Param this_param{};
-      this_param.name = "this";
-      TypeSpec this_ts{};
-      this_ts.base = TB_STRUCT;
-      // Use the persistent tag pointer from the struct_def in the module.
-      auto sit = module_->struct_defs.find(struct_tag);
-      this_ts.tag = sit != module_->struct_defs.end()
-                        ? sit->second.tag.c_str()
-                        : struct_tag.c_str();
-      this_ts.ptr_level = 1;
-      this_param.type = qtype_from(this_ts, ValueCategory::LValue);
-      this_param.span = make_span(method_node);
-      ctx.params[this_param.name] = static_cast<uint32_t>(fn.params.size());
-      fn.params.push_back(std::move(this_param));
-    }
-
-    // Add explicit parameters.
-    append_callable_params(fn, ctx, method_node, tpl_bindings, nttp_bindings,
-                           "method-param:", true, false);
-
-    // Store the struct tag so field accesses in the body can resolve via `this`.
-    ctx.method_struct_tag = struct_tag;
-
-    if (maybe_register_bodyless_callable(
-            &fn, method_node->body != nullptr || method_node->is_defaulted)) {
-      return;
-    }
-
-    const BlockId entry = begin_callable_body_lowering(fn, ctx);
-
-    // Generate synthetic body for = default special member functions.
-    if (method_node->is_defaulted) {
-      emit_defaulted_method_body(ctx, fn, struct_tag, method_node);
-      // For destructors: emit member destructor calls after the (empty) body.
-      if (method_node->is_destructor) {
-        DeclRef this_ref{};
-        this_ref.name = "this";
-        auto pit = ctx.params.find("this");
-        if (pit != ctx.params.end()) this_ref.param_index = pit->second;
-        TypeSpec this_ts{};
-        this_ts.base = TB_STRUCT;
-        auto sit2 = module_->struct_defs.find(struct_tag);
-        this_ts.tag = sit2 != module_->struct_defs.end()
-                          ? sit2->second.tag.c_str()
-                          : struct_tag.c_str();
-        this_ts.ptr_level = 1;
-        ExprId this_ptr = append_expr(method_node, this_ref, this_ts, ValueCategory::LValue);
-        emit_member_dtor_calls(ctx, struct_tag, this_ptr, method_node);
-      }
-      // Emit ret void for destructors (after member dtor calls) and any other
-      // defaulted methods that didn't already emit a return.
-      if (method_node->is_destructor) {
-        ReturnStmt rs{};
-        append_stmt(ctx, Stmt{StmtPayload{rs}, make_span(method_node)});
-      }
-      finish_lowered_callable(&fn, entry);
-      return;
-    }
-
-    // Emit constructor initializer list assignments before body.
-    if (method_node->is_constructor && method_node->n_ctor_inits > 0) {
-      auto sit = module_->struct_defs.find(struct_tag);
-      for (int i = 0; i < method_node->n_ctor_inits; ++i) {
-        const char* mem_name = method_node->ctor_init_names[i];
-        int nargs = method_node->ctor_init_nargs[i];
-        Node** args = method_node->ctor_init_args[i];
-
-        // Delegating constructor: init name matches struct tag.
-        if (mem_name == struct_tag || (mem_name && struct_tag == mem_name)) {
-          // Resolve and call target constructor with same 'this' pointer.
-          auto cit = struct_constructors_.find(struct_tag);
-          if (cit == struct_constructors_.end() || cit->second.empty()) {
-            throw std::runtime_error("error: no constructors found for delegating constructor call to '" + struct_tag + "'");
-          }
-          const CtorOverload* best = nullptr;
-          if (cit->second.size() == 1 && cit->second[0].method_node->n_params == nargs) {
-            best = &cit->second[0];
-          } else {
-            int best_score = -1;
-            for (const auto& ov : cit->second) {
-              if (ov.method_node->n_params != nargs) continue;
-              // Skip self (same mangled name as current ctor).
-              if (ov.mangled_name == mangled_name) continue;
-              int score = 0;
-              bool viable = true;
-              for (int pi = 0; pi < nargs && viable; ++pi) {
-                TypeSpec param_ts = ov.method_node->params[pi]->type;
-                resolve_typedef_to_struct(param_ts);
-                TypeSpec arg_ts = infer_generic_ctrl_type(&ctx, args[pi]);
-                bool arg_is_lvalue = is_ast_lvalue(args[pi]);
-                TypeSpec param_base = param_ts;
-                param_base.is_lvalue_ref = false;
-                param_base.is_rvalue_ref = false;
-                if (param_base.base == arg_ts.base &&
-                    param_base.ptr_level == arg_ts.ptr_level) {
-                  score += 2;
-                  if (param_ts.is_rvalue_ref && !arg_is_lvalue) score += 4;
-                  else if (param_ts.is_rvalue_ref && arg_is_lvalue) viable = false;
-                  else if (param_ts.is_lvalue_ref && arg_is_lvalue) score += 3;
-                  else if (param_ts.is_lvalue_ref && !arg_is_lvalue) score += 1;
-                } else if (param_base.ptr_level == 0 && arg_ts.ptr_level == 0 &&
-                           param_base.base != TB_STRUCT && arg_ts.base != TB_STRUCT) {
-                  score += 1;
-                } else {
-                  viable = false;
-                }
-              }
-              if (viable && score > best_score) {
-                best_score = score;
-                best = &ov;
-              }
-            }
-          }
-          if (!best) {
-            throw std::runtime_error("error: no matching constructor for delegating constructor call to '" + struct_tag + "'");
-          }
-          if (best->method_node->is_deleted) {
-            throw std::runtime_error("error: call to deleted constructor '" + struct_tag + "'");
-          }
-          // Emit: Tag__Tag(&this, args...)
-          DeclRef this_ref{};
-          this_ref.name = "this";
-          auto pit = ctx.params.find("this");
-          if (pit != ctx.params.end()) this_ref.param_index = pit->second;
-          TypeSpec this_ts{};
-          this_ts.base = TB_STRUCT;
-          this_ts.tag = struct_tag.c_str();
-          this_ts.ptr_level = 1;
-          ExprId this_id = append_expr(method_node, this_ref, this_ts, ValueCategory::LValue);
-
-          CallExpr c{};
-          DeclRef callee_ref{};
-          callee_ref.name = best->mangled_name;
-          TypeSpec fn_ts{}; fn_ts.base = TB_VOID;
-          TypeSpec callee_ts = fn_ts; callee_ts.ptr_level++;
-          c.callee = append_expr(method_node, callee_ref, callee_ts);
-          c.args.push_back(this_id);  // pass 'this' directly (already a ptr)
-          for (int ai = 0; ai < nargs; ++ai) {
-            TypeSpec param_ts = best->method_node->params[ai]->type;
-            resolve_typedef_to_struct(param_ts);
-            if (param_ts.is_rvalue_ref || param_ts.is_lvalue_ref) {
-              ExprId arg_val = lower_expr(&ctx, args[ai]);
-              TypeSpec storage_ts = reference_storage_ts(param_ts);
-              UnaryExpr addr_e{};
-              addr_e.op = UnaryOp::AddrOf;
-              addr_e.operand = arg_val;
-              c.args.push_back(append_expr(args[ai], addr_e, storage_ts));
-            } else {
-              c.args.push_back(lower_expr(&ctx, args[ai]));
-            }
-          }
-          ExprId call_id = append_expr(method_node, c, fn_ts);
-          ExprStmt es{}; es.expr = call_id;
-          append_stmt(ctx, Stmt{StmtPayload{es}, make_span(method_node)});
-          continue;  // skip normal member init processing
-        }
-
-        // Build this->member as lvalue.
-        DeclRef this_ref{};
-        this_ref.name = "this";
-        auto pit = ctx.params.find("this");
-        if (pit != ctx.params.end()) this_ref.param_index = pit->second;
-        TypeSpec this_ts{};
-        this_ts.base = TB_STRUCT;
-        this_ts.tag = sit != module_->struct_defs.end()
-                          ? sit->second.tag.c_str()
-                          : struct_tag.c_str();
-        this_ts.ptr_level = 1;
-        ExprId this_id = append_expr(method_node, this_ref, this_ts, ValueCategory::LValue);
-        // Find field type.
-        TypeSpec field_ts{};
-        if (sit != module_->struct_defs.end()) {
-          for (const auto& fld : sit->second.fields) {
-            if (fld.name == mem_name) {
-              field_ts = fld.elem_type;
-              // Restore array type if needed.
-              if (fld.array_first_dim >= 0) {
-                field_ts.array_rank = 1;
-                field_ts.array_size = fld.array_first_dim;
-              }
-              break;
-            }
-          }
-        }
-        MemberExpr me{};
-        me.base = this_id;
-        me.field = mem_name;
-        me.is_arrow = true;
-        ExprId lhs_id = append_expr(method_node, me, field_ts, ValueCategory::LValue);
-
-        // Check if member is a struct type with constructors — call constructor.
-        bool did_ctor_call = false;
-        if (field_ts.base == TB_STRUCT && field_ts.tag && field_ts.ptr_level == 0) {
-          auto cit = struct_constructors_.find(field_ts.tag);
-          if (cit != struct_constructors_.end() && !cit->second.empty()) {
-            // Resolve best constructor overload.
-            const CtorOverload* best = nullptr;
-            if (cit->second.size() == 1 && cit->second[0].method_node->n_params == nargs) {
-              best = &cit->second[0];
-            } else {
-              int best_score = -1;
-              for (const auto& ov : cit->second) {
-                if (ov.method_node->n_params != nargs) continue;
-                int score = 0;
-                bool viable = true;
-                for (int pi = 0; pi < nargs && viable; ++pi) {
-                  TypeSpec param_ts = ov.method_node->params[pi]->type;
-                  resolve_typedef_to_struct(param_ts);
-                  TypeSpec arg_ts = infer_generic_ctrl_type(&ctx, args[pi]);
-                  bool arg_is_lvalue = is_ast_lvalue(args[pi]);
-                  TypeSpec param_base = param_ts;
-                  param_base.is_lvalue_ref = false;
-                  param_base.is_rvalue_ref = false;
-                  if (param_base.base == arg_ts.base &&
-                      param_base.ptr_level == arg_ts.ptr_level) {
-                    score += 2;
-                    if (param_ts.is_rvalue_ref && !arg_is_lvalue) score += 4;
-                    else if (param_ts.is_rvalue_ref && arg_is_lvalue) viable = false;
-                    else if (param_ts.is_lvalue_ref && arg_is_lvalue) score += 3;
-                    else if (param_ts.is_lvalue_ref && !arg_is_lvalue) score += 1;
-                  } else if (param_base.ptr_level == 0 && arg_ts.ptr_level == 0 &&
-                             param_base.base != TB_STRUCT && arg_ts.base != TB_STRUCT) {
-                    score += 1;
-                  } else {
-                    viable = false;
-                  }
-                }
-                if (viable && score > best_score) {
-                  best_score = score;
-                  best = &ov;
-                }
-              }
-            }
-            if (best) {
-              if (best->method_node->is_deleted) {
-                std::string diag = "error: call to deleted constructor '";
-                diag += field_ts.tag;
-                diag += "'";
-                throw std::runtime_error(diag);
-              }
-              // Emit: MemberTag__MemberTag(&this->member, args...)
-              CallExpr c{};
-              DeclRef callee_ref{};
-              callee_ref.name = best->mangled_name;
-              TypeSpec fn_ts{}; fn_ts.base = TB_VOID;
-              TypeSpec callee_ts = fn_ts; callee_ts.ptr_level++;
-              c.callee = append_expr(method_node, callee_ref, callee_ts);
-              // First arg: &(this->member) as the constructor's this pointer.
-              UnaryExpr addr{};
-              addr.op = UnaryOp::AddrOf;
-              addr.operand = lhs_id;
-              TypeSpec ptr_ts = field_ts; ptr_ts.ptr_level++;
-              c.args.push_back(append_expr(method_node, addr, ptr_ts));
-              // Explicit args — handle reference params.
-              for (int ai = 0; ai < nargs; ++ai) {
-                TypeSpec param_ts = best->method_node->params[ai]->type;
-                resolve_typedef_to_struct(param_ts);
-                if (param_ts.is_rvalue_ref || param_ts.is_lvalue_ref) {
-                  ExprId arg_val = lower_expr(&ctx, args[ai]);
-                  TypeSpec storage_ts = reference_storage_ts(param_ts);
-                  UnaryExpr addr_e{};
-                  addr_e.op = UnaryOp::AddrOf;
-                  addr_e.operand = arg_val;
-                  c.args.push_back(append_expr(args[ai], addr_e, storage_ts));
-                } else {
-                  c.args.push_back(lower_expr(&ctx, args[ai]));
-                }
-              }
-              ExprId call_id = append_expr(method_node, c, fn_ts);
-              ExprStmt es{}; es.expr = call_id;
-              append_stmt(ctx, Stmt{StmtPayload{es}, make_span(method_node)});
-              did_ctor_call = true;
-            }
-          }
-        }
-
-        if (!did_ctor_call) {
-          // Scalar member: simple assignment this->member = expr.
-          if (nargs != 1) {
-            std::string diag = "error: initializer for scalar member '";
-            diag += mem_name;
-            diag += "' must have exactly one argument";
-            throw std::runtime_error(diag);
-          }
-          ExprId rhs_id = lower_expr(&ctx, args[0]);
-          AssignExpr ae{};
-          ae.op = AssignOp::Set;
-          ae.lhs = lhs_id;
-          ae.rhs = rhs_id;
-          ExprId ae_id = append_expr(method_node, ae, field_ts);
-          ExprStmt es{}; es.expr = ae_id;
-          append_stmt(ctx, Stmt{StmtPayload{es}, make_span(method_node)});
-        }
-      }
-    }
-
-    lower_stmt_node(ctx, method_node->body);
-
-    // For destructors: emit member destructor calls after the user body.
-    if (method_node->is_destructor) {
-      // Build `this` parameter reference as the pointer to pass to member dtors.
-      DeclRef this_ref{};
-      this_ref.name = "this";
-      auto pit = ctx.params.find("this");
-      if (pit != ctx.params.end()) this_ref.param_index = pit->second;
-      TypeSpec this_ts{};
-      this_ts.base = TB_STRUCT;
-      auto sit2 = module_->struct_defs.find(struct_tag);
-      this_ts.tag = sit2 != module_->struct_defs.end()
-                        ? sit2->second.tag.c_str()
-                        : struct_tag.c_str();
-      this_ts.ptr_level = 1;
-      ExprId this_ptr = append_expr(method_node, this_ref, this_ts, ValueCategory::LValue);
-      emit_member_dtor_calls(ctx, struct_tag, this_ptr, method_node);
-    }
-
-    finish_lowered_callable(&fn, entry);
-  }
+                           const NttpBindings* nttp_bindings = nullptr);
 
   // Hoist a compound literal to an anonymous global variable.
   // Returns the ExprId of an AddrOf(DeclRef{clit_name}) expression.
@@ -10426,6 +9962,476 @@ void Lowerer::append_callable_params(
         fn, ctx, p, param_name, p->type, tpl_bindings, nttp_bindings,
         context_prefix + param_name, resolve_typedef_struct);
   }
+}
+
+void Lowerer::lower_function(const Node* fn_node,
+                             const std::string* name_override,
+                             const TypeBindings* tpl_override,
+                             const NttpBindings* nttp_override) {
+  Function fn{};
+  fn.id = next_fn_id();
+  fn.name = name_override ? *name_override
+                          : (fn_node->name ? fn_node->name : "<anon_fn>");
+  fn.ns_qual = make_ns_qual(fn_node);
+  {
+    TypeSpec ret_ts = fn_node->type;
+    if ((fn_node->n_ret_fn_ptr_params > 0 || fn_node->ret_fn_ptr_variadic) &&
+        !ret_ts.is_fn_ptr) {
+      ret_ts.is_fn_ptr = true;
+      ret_ts.ptr_level = std::max(ret_ts.ptr_level, 1);
+    }
+    ret_ts = prepare_callable_return_type(
+        ret_ts, tpl_override, nttp_override, fn_node,
+        std::string("function-return:") + fn.name, false);
+    fn.return_type = qtype_from(ret_ts);
+  }
+  if (fn_node->type.is_fn_ptr ||
+      fn_node->n_ret_fn_ptr_params > 0 ||
+      fn_node->ret_fn_ptr_variadic) {
+    auto fn_ct = sema::canonicalize_declarator_type(fn_node);
+    const auto* fn_fsig = sema::get_function_sig(fn_ct);
+    if (fn_fsig && fn_fsig->return_type &&
+        sema::is_callable_type(*fn_fsig->return_type)) {
+      const auto* ret_fsig = sema::get_function_sig(*fn_fsig->return_type);
+      if (ret_fsig) {
+        FnPtrSig ret_sig{};
+        ret_sig.canonical_sig = fn_fsig->return_type;
+        if (ret_fsig->return_type) {
+          TypeSpec ret_ts = sema::typespec_from_canonical(*ret_fsig->return_type);
+          if ((fn_node->n_ret_fn_ptr_params > 0 || fn_node->ret_fn_ptr_variadic) &&
+              !ret_ts.is_fn_ptr) {
+            ret_ts.is_fn_ptr = true;
+            ret_ts.ptr_level = std::max(ret_ts.ptr_level, 1);
+          }
+          ret_sig.return_type = qtype_from(ret_ts);
+        }
+        ret_sig.variadic = ret_fsig->is_variadic;
+        ret_sig.unspecified_params = ret_fsig->unspecified_params;
+        for (const auto& param : ret_fsig->params) {
+          ret_sig.params.push_back(
+              qtype_from(sema::typespec_from_canonical(param),
+                         ValueCategory::LValue));
+        }
+        if (ret_sig.params.empty() &&
+            (fn_node->n_ret_fn_ptr_params > 0 || fn_node->ret_fn_ptr_variadic)) {
+          ret_sig.variadic = fn_node->ret_fn_ptr_variadic;
+          ret_sig.unspecified_params = false;
+          for (int i = 0; i < fn_node->n_ret_fn_ptr_params; ++i) {
+            const Node* param = fn_node->ret_fn_ptr_params[i];
+            ret_sig.params.push_back(
+                qtype_from(param->type, ValueCategory::LValue));
+          }
+        }
+        fn.ret_fn_ptr_sig = std::move(ret_sig);
+      }
+    }
+    if (!fn.ret_fn_ptr_sig &&
+        (fn_node->n_ret_fn_ptr_params > 0 || fn_node->ret_fn_ptr_variadic)) {
+      FnPtrSig ret_sig{};
+      ret_sig.return_type = qtype_from(fn.return_type.spec);
+      ret_sig.variadic = fn_node->ret_fn_ptr_variadic;
+      ret_sig.unspecified_params = false;
+      for (int i = 0; i < fn_node->n_ret_fn_ptr_params; ++i) {
+        const Node* param = fn_node->ret_fn_ptr_params[i];
+        ret_sig.params.push_back(qtype_from(param->type, ValueCategory::LValue));
+      }
+      fn.ret_fn_ptr_sig = std::move(ret_sig);
+    }
+  }
+  fn.linkage = {fn_node->is_static,
+                fn_node->is_extern || fn_node->body == nullptr,
+                fn_node->is_inline,
+                weak_symbols_.count(fn.name) > 0,
+                static_cast<Visibility>(fn_node->visibility)};
+  fn.attrs.variadic = fn_node->variadic;
+  fn.attrs.no_inline = fn_node->type.is_noinline;
+  fn.attrs.always_inline = fn_node->type.is_always_inline;
+  if (fn_node->type.align_bytes > 0) {
+    fn.attrs.align_bytes = fn_node->type.align_bytes;
+  }
+  if (fn.attrs.align_bytes == 0) {
+    auto fit = module_->fn_index.find(fn.name);
+    if (fit != module_->fn_index.end() &&
+        fit->second.value < module_->functions.size()) {
+      int prev_align = module_->functions[fit->second.value].attrs.align_bytes;
+      if (prev_align > 0) {
+        fn.attrs.align_bytes = prev_align;
+      }
+    }
+  }
+  fn.span = make_span(fn_node);
+
+  FunctionCtx ctx{};
+  ctx.fn = &fn;
+  if (tpl_override) {
+    ctx.tpl_bindings = *tpl_override;
+  }
+  if (nttp_override) {
+    ctx.nttp_bindings = *nttp_override;
+  }
+  append_callable_params(
+      fn, ctx, fn_node, tpl_override, nttp_override, "function-param:", false,
+      true);
+
+  if (maybe_register_bodyless_callable(&fn, fn_node->body != nullptr)) {
+    return;
+  }
+
+  const BlockId entry = begin_callable_body_lowering(fn, ctx);
+
+  for (int i = 0; i < fn_node->n_params; ++i) {
+    const Node* p = fn_node->params[i];
+    if (!p) continue;
+    if (p->type.array_rank <= 0 || !p->type.array_size_expr) continue;
+    if (p->type.array_size > 0 && p->type.array_dims[0] > 0) continue;
+    ExprStmt side_effect{};
+    side_effect.expr = lower_expr(&ctx, p->type.array_size_expr);
+    append_stmt(ctx, Stmt{StmtPayload{side_effect}, make_span(p)});
+  }
+
+  lower_stmt_node(ctx, fn_node->body);
+  finish_lowered_callable(&fn, entry);
+}
+
+void Lowerer::lower_struct_method(const std::string& mangled_name,
+                                  const std::string& struct_tag,
+                                  const Node* method_node,
+                                  const TypeBindings* tpl_bindings,
+                                  const NttpBindings* nttp_bindings) {
+  if (method_node->is_deleted) return;
+  Function fn{};
+  fn.id = next_fn_id();
+  fn.name = mangled_name;
+  fn.ns_qual = make_ns_qual(method_node);
+  {
+    TypeSpec ret_ts = prepare_callable_return_type(
+        method_node->type, tpl_bindings, nttp_bindings, method_node,
+        std::string("method-return:") + mangled_name, true);
+    fn.return_type = qtype_from(ret_ts);
+  }
+  fn.linkage = {true, false, false, false, Visibility::Default};
+  fn.attrs.variadic = method_node->variadic;
+  fn.span = make_span(method_node);
+
+  FunctionCtx ctx{};
+  ctx.fn = &fn;
+  if (tpl_bindings) ctx.tpl_bindings = *tpl_bindings;
+  if (nttp_bindings) ctx.nttp_bindings = *nttp_bindings;
+
+  {
+    Param this_param{};
+    this_param.name = "this";
+    TypeSpec this_ts{};
+    this_ts.base = TB_STRUCT;
+    auto sit = module_->struct_defs.find(struct_tag);
+    this_ts.tag = sit != module_->struct_defs.end() ? sit->second.tag.c_str()
+                                                    : struct_tag.c_str();
+    this_ts.ptr_level = 1;
+    this_param.type = qtype_from(this_ts, ValueCategory::LValue);
+    this_param.span = make_span(method_node);
+    ctx.params[this_param.name] = static_cast<uint32_t>(fn.params.size());
+    fn.params.push_back(std::move(this_param));
+  }
+
+  append_callable_params(
+      fn, ctx, method_node, tpl_bindings, nttp_bindings, "method-param:", true,
+      false);
+  ctx.method_struct_tag = struct_tag;
+
+  if (maybe_register_bodyless_callable(
+          &fn, method_node->body != nullptr || method_node->is_defaulted)) {
+    return;
+  }
+
+  const BlockId entry = begin_callable_body_lowering(fn, ctx);
+
+  if (method_node->is_defaulted) {
+    emit_defaulted_method_body(ctx, fn, struct_tag, method_node);
+    if (method_node->is_destructor) {
+      DeclRef this_ref{};
+      this_ref.name = "this";
+      auto pit = ctx.params.find("this");
+      if (pit != ctx.params.end()) this_ref.param_index = pit->second;
+      TypeSpec this_ts{};
+      this_ts.base = TB_STRUCT;
+      auto sit2 = module_->struct_defs.find(struct_tag);
+      this_ts.tag = sit2 != module_->struct_defs.end()
+                        ? sit2->second.tag.c_str()
+                        : struct_tag.c_str();
+      this_ts.ptr_level = 1;
+      ExprId this_ptr = append_expr(
+          method_node, this_ref, this_ts, ValueCategory::LValue);
+      emit_member_dtor_calls(ctx, struct_tag, this_ptr, method_node);
+    }
+    if (method_node->is_destructor) {
+      ReturnStmt rs{};
+      append_stmt(ctx, Stmt{StmtPayload{rs}, make_span(method_node)});
+    }
+    finish_lowered_callable(&fn, entry);
+    return;
+  }
+
+  if (method_node->is_constructor && method_node->n_ctor_inits > 0) {
+    auto sit = module_->struct_defs.find(struct_tag);
+    for (int i = 0; i < method_node->n_ctor_inits; ++i) {
+      const char* mem_name = method_node->ctor_init_names[i];
+      int nargs = method_node->ctor_init_nargs[i];
+      Node** args = method_node->ctor_init_args[i];
+
+      if (mem_name == struct_tag || (mem_name && struct_tag == mem_name)) {
+        auto cit = struct_constructors_.find(struct_tag);
+        if (cit == struct_constructors_.end() || cit->second.empty()) {
+          throw std::runtime_error(
+              "error: no constructors found for delegating constructor call to '" +
+              struct_tag + "'");
+        }
+        const CtorOverload* best = nullptr;
+        if (cit->second.size() == 1 &&
+            cit->second[0].method_node->n_params == nargs) {
+          best = &cit->second[0];
+        } else {
+          int best_score = -1;
+          for (const auto& ov : cit->second) {
+            if (ov.method_node->n_params != nargs) continue;
+            if (ov.mangled_name == mangled_name) continue;
+            int score = 0;
+            bool viable = true;
+            for (int pi = 0; pi < nargs && viable; ++pi) {
+              TypeSpec param_ts = ov.method_node->params[pi]->type;
+              resolve_typedef_to_struct(param_ts);
+              TypeSpec arg_ts = infer_generic_ctrl_type(&ctx, args[pi]);
+              bool arg_is_lvalue = is_ast_lvalue(args[pi]);
+              TypeSpec param_base = param_ts;
+              param_base.is_lvalue_ref = false;
+              param_base.is_rvalue_ref = false;
+              if (param_base.base == arg_ts.base &&
+                  param_base.ptr_level == arg_ts.ptr_level) {
+                score += 2;
+                if (param_ts.is_rvalue_ref && !arg_is_lvalue) score += 4;
+                else if (param_ts.is_rvalue_ref && arg_is_lvalue) viable = false;
+                else if (param_ts.is_lvalue_ref && arg_is_lvalue) score += 3;
+                else if (param_ts.is_lvalue_ref && !arg_is_lvalue) score += 1;
+              } else if (param_base.ptr_level == 0 && arg_ts.ptr_level == 0 &&
+                         param_base.base != TB_STRUCT &&
+                         arg_ts.base != TB_STRUCT) {
+                score += 1;
+              } else {
+                viable = false;
+              }
+            }
+            if (viable && score > best_score) {
+              best_score = score;
+              best = &ov;
+            }
+          }
+        }
+        if (!best) {
+          throw std::runtime_error(
+              "error: no matching constructor for delegating constructor call to '" +
+              struct_tag + "'");
+        }
+        if (best->method_node->is_deleted) {
+          throw std::runtime_error(
+              "error: call to deleted constructor '" + struct_tag + "'");
+        }
+        DeclRef this_ref{};
+        this_ref.name = "this";
+        auto pit = ctx.params.find("this");
+        if (pit != ctx.params.end()) this_ref.param_index = pit->second;
+        TypeSpec this_ts{};
+        this_ts.base = TB_STRUCT;
+        this_ts.tag = struct_tag.c_str();
+        this_ts.ptr_level = 1;
+        ExprId this_id = append_expr(
+            method_node, this_ref, this_ts, ValueCategory::LValue);
+
+        CallExpr c{};
+        DeclRef callee_ref{};
+        callee_ref.name = best->mangled_name;
+        TypeSpec fn_ts{};
+        fn_ts.base = TB_VOID;
+        TypeSpec callee_ts = fn_ts;
+        callee_ts.ptr_level++;
+        c.callee = append_expr(method_node, callee_ref, callee_ts);
+        c.args.push_back(this_id);
+        for (int ai = 0; ai < nargs; ++ai) {
+          TypeSpec param_ts = best->method_node->params[ai]->type;
+          resolve_typedef_to_struct(param_ts);
+          if (param_ts.is_rvalue_ref || param_ts.is_lvalue_ref) {
+            ExprId arg_val = lower_expr(&ctx, args[ai]);
+            TypeSpec storage_ts = reference_storage_ts(param_ts);
+            UnaryExpr addr_e{};
+            addr_e.op = UnaryOp::AddrOf;
+            addr_e.operand = arg_val;
+            c.args.push_back(append_expr(args[ai], addr_e, storage_ts));
+          } else {
+            c.args.push_back(lower_expr(&ctx, args[ai]));
+          }
+        }
+        ExprId call_id = append_expr(method_node, c, fn_ts);
+        ExprStmt es{};
+        es.expr = call_id;
+        append_stmt(ctx, Stmt{StmtPayload{es}, make_span(method_node)});
+        continue;
+      }
+
+      DeclRef this_ref{};
+      this_ref.name = "this";
+      auto pit = ctx.params.find("this");
+      if (pit != ctx.params.end()) this_ref.param_index = pit->second;
+      TypeSpec this_ts{};
+      this_ts.base = TB_STRUCT;
+      this_ts.tag = sit != module_->struct_defs.end() ? sit->second.tag.c_str()
+                                                      : struct_tag.c_str();
+      this_ts.ptr_level = 1;
+      ExprId this_id = append_expr(
+          method_node, this_ref, this_ts, ValueCategory::LValue);
+      TypeSpec field_ts{};
+      if (sit != module_->struct_defs.end()) {
+        for (const auto& fld : sit->second.fields) {
+          if (fld.name == mem_name) {
+            field_ts = fld.elem_type;
+            if (fld.array_first_dim >= 0) {
+              field_ts.array_rank = 1;
+              field_ts.array_size = fld.array_first_dim;
+            }
+            break;
+          }
+        }
+      }
+      MemberExpr me{};
+      me.base = this_id;
+      me.field = mem_name;
+      me.is_arrow = true;
+      ExprId lhs_id = append_expr(method_node, me, field_ts, ValueCategory::LValue);
+
+      bool did_ctor_call = false;
+      if (field_ts.base == TB_STRUCT && field_ts.tag && field_ts.ptr_level == 0) {
+        auto cit = struct_constructors_.find(field_ts.tag);
+        if (cit != struct_constructors_.end() && !cit->second.empty()) {
+          const CtorOverload* best = nullptr;
+          if (cit->second.size() == 1 &&
+              cit->second[0].method_node->n_params == nargs) {
+            best = &cit->second[0];
+          } else {
+            int best_score = -1;
+            for (const auto& ov : cit->second) {
+              if (ov.method_node->n_params != nargs) continue;
+              int score = 0;
+              bool viable = true;
+              for (int pi = 0; pi < nargs && viable; ++pi) {
+                TypeSpec param_ts = ov.method_node->params[pi]->type;
+                resolve_typedef_to_struct(param_ts);
+                TypeSpec arg_ts = infer_generic_ctrl_type(&ctx, args[pi]);
+                bool arg_is_lvalue = is_ast_lvalue(args[pi]);
+                TypeSpec param_base = param_ts;
+                param_base.is_lvalue_ref = false;
+                param_base.is_rvalue_ref = false;
+                if (param_base.base == arg_ts.base &&
+                    param_base.ptr_level == arg_ts.ptr_level) {
+                  score += 2;
+                  if (param_ts.is_rvalue_ref && !arg_is_lvalue) score += 4;
+                  else if (param_ts.is_rvalue_ref && arg_is_lvalue) viable = false;
+                  else if (param_ts.is_lvalue_ref && arg_is_lvalue) score += 3;
+                  else if (param_ts.is_lvalue_ref && !arg_is_lvalue) score += 1;
+                } else if (param_base.ptr_level == 0 && arg_ts.ptr_level == 0 &&
+                           param_base.base != TB_STRUCT &&
+                           arg_ts.base != TB_STRUCT) {
+                  score += 1;
+                } else {
+                  viable = false;
+                }
+              }
+              if (viable && score > best_score) {
+                best_score = score;
+                best = &ov;
+              }
+            }
+          }
+          if (best) {
+            if (best->method_node->is_deleted) {
+              std::string diag = "error: call to deleted constructor '";
+              diag += field_ts.tag;
+              diag += "'";
+              throw std::runtime_error(diag);
+            }
+            CallExpr c{};
+            DeclRef callee_ref{};
+            callee_ref.name = best->mangled_name;
+            TypeSpec fn_ts{};
+            fn_ts.base = TB_VOID;
+            TypeSpec callee_ts = fn_ts;
+            callee_ts.ptr_level++;
+            c.callee = append_expr(method_node, callee_ref, callee_ts);
+            UnaryExpr addr{};
+            addr.op = UnaryOp::AddrOf;
+            addr.operand = lhs_id;
+            TypeSpec ptr_ts = field_ts;
+            ptr_ts.ptr_level++;
+            c.args.push_back(append_expr(method_node, addr, ptr_ts));
+            for (int ai = 0; ai < nargs; ++ai) {
+              TypeSpec param_ts = best->method_node->params[ai]->type;
+              resolve_typedef_to_struct(param_ts);
+              if (param_ts.is_rvalue_ref || param_ts.is_lvalue_ref) {
+                ExprId arg_val = lower_expr(&ctx, args[ai]);
+                TypeSpec storage_ts = reference_storage_ts(param_ts);
+                UnaryExpr addr_e{};
+                addr_e.op = UnaryOp::AddrOf;
+                addr_e.operand = arg_val;
+                c.args.push_back(append_expr(args[ai], addr_e, storage_ts));
+              } else {
+                c.args.push_back(lower_expr(&ctx, args[ai]));
+              }
+            }
+            ExprId call_id = append_expr(method_node, c, fn_ts);
+            ExprStmt es{};
+            es.expr = call_id;
+            append_stmt(ctx, Stmt{StmtPayload{es}, make_span(method_node)});
+            did_ctor_call = true;
+          }
+        }
+      }
+
+      if (!did_ctor_call) {
+        if (nargs != 1) {
+          std::string diag = "error: initializer for scalar member '";
+          diag += mem_name;
+          diag += "' must have exactly one argument";
+          throw std::runtime_error(diag);
+        }
+        ExprId rhs_id = lower_expr(&ctx, args[0]);
+        AssignExpr ae{};
+        ae.op = AssignOp::Set;
+        ae.lhs = lhs_id;
+        ae.rhs = rhs_id;
+        ExprId ae_id = append_expr(method_node, ae, field_ts);
+        ExprStmt es{};
+        es.expr = ae_id;
+        append_stmt(ctx, Stmt{StmtPayload{es}, make_span(method_node)});
+      }
+    }
+  }
+
+  lower_stmt_node(ctx, method_node->body);
+
+  if (method_node->is_destructor) {
+    DeclRef this_ref{};
+    this_ref.name = "this";
+    auto pit = ctx.params.find("this");
+    if (pit != ctx.params.end()) this_ref.param_index = pit->second;
+    TypeSpec this_ts{};
+    this_ts.base = TB_STRUCT;
+    auto sit2 = module_->struct_defs.find(struct_tag);
+    this_ts.tag = sit2 != module_->struct_defs.end()
+                      ? sit2->second.tag.c_str()
+                      : struct_tag.c_str();
+    this_ts.ptr_level = 1;
+    ExprId this_ptr = append_expr(
+        method_node, this_ref, this_ts, ValueCategory::LValue);
+    emit_member_dtor_calls(ctx, struct_tag, this_ptr, method_node);
+  }
+
+  finish_lowered_callable(&fn, entry);
 }
 
 bool Lowerer::instantiate_deferred_template(const std::string& tpl_name,
