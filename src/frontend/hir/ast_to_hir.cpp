@@ -1041,52 +1041,7 @@ class Lowerer {
 
   QualType qtype_from(const TypeSpec& t, ValueCategory c = ValueCategory::RValue);
 
-  std::optional<FnPtrSig> fn_ptr_sig_from_decl_node(const Node* n) {
-    if (!n) return std::nullopt;
-
-    // Canonical path: extract fn_ptr sig from sema's resolved type table.
-    if (resolved_types_) {
-      auto ct = resolved_types_->lookup(n);
-      if (ct && sema::is_callable_type(*ct)) {
-        const auto* fsig = sema::get_function_sig(*ct);
-        if (fsig) {
-          FnPtrSig sig{};
-          sig.canonical_sig = ct;
-          // Derive return type from canonical sig.
-          if (fsig->return_type) {
-            TypeSpec ret_ts = sema::typespec_from_canonical(*fsig->return_type);
-            // Fix for nested fn_ptr: canonical type doesn't capture nested fn_ptr
-            // return structure. Use parser's ret_fn_ptr_params to correct it.
-            if ((n->n_ret_fn_ptr_params > 0 || n->ret_fn_ptr_variadic) &&
-                !ret_ts.is_fn_ptr) {
-              ret_ts.is_fn_ptr = true;
-              ret_ts.ptr_level = std::max(ret_ts.ptr_level, 1);
-            }
-            sig.return_type = qtype_from(ret_ts);
-          }
-          sig.variadic = fsig->is_variadic;
-          sig.unspecified_params = fsig->unspecified_params;
-          for (const auto& param : fsig->params) {
-            sig.params.push_back(qtype_from(sema::typespec_from_canonical(param), ValueCategory::LValue));
-          }
-          if (sig.params.empty() && (n->n_fn_ptr_params > 0 || n->fn_ptr_variadic)) {
-            sig.variadic = n->fn_ptr_variadic;
-            sig.unspecified_params = false;
-            for (int i = 0; i < n->n_fn_ptr_params; ++i) {
-              const Node* param = n->fn_ptr_params[i];
-              sig.params.push_back(qtype_from(param->type, ValueCategory::LValue));
-            }
-          }
-          return sig;
-        }
-      }
-    }
-
-    // Legacy path removed (Phase D slice 4).
-    // All fn_ptr declarations should be in ResolvedTypeTable after sema.
-    // If canonical lookup fails, the node is not a callable fn_ptr.
-    return std::nullopt;
-  }
+  std::optional<FnPtrSig> fn_ptr_sig_from_decl_node(const Node* n);
 
   std::optional<TypeSpec> infer_call_result_type_from_callee(
       FunctionCtx* ctx, const Node* callee);
@@ -1109,75 +1064,7 @@ class Lowerer {
       const std::string& tag, const std::string& member) const;
 
   long long eval_const_int_with_nttp_bindings(
-      const Node* n, const NttpBindings& nttp_bindings) const {
-    if (!n) return 0;
-    if (n->kind == NK_INT_LIT || n->kind == NK_CHAR_LIT) return n->ival;
-    if (n->kind == NK_VAR && n->name) {
-      auto nttp_it = nttp_bindings.find(n->name);
-      if (nttp_it != nttp_bindings.end()) return nttp_it->second;
-      auto enum_it = enum_consts_.find(n->name);
-      if (enum_it != enum_consts_.end()) return enum_it->second;
-      return 0;
-    }
-    if (n->kind == NK_CAST && n->left) {
-      long long v = eval_const_int_with_nttp_bindings(n->left, nttp_bindings);
-      TypeSpec ts = n->type;
-      if (ts.ptr_level == 0) {
-        int bits = 0;
-        switch (ts.base) {
-          case TB_BOOL: bits = 1; break;
-          case TB_CHAR:
-          case TB_UCHAR:
-          case TB_SCHAR: bits = 8; break;
-          case TB_SHORT:
-          case TB_USHORT: bits = 16; break;
-          case TB_INT:
-          case TB_UINT:
-          case TB_ENUM: bits = 32; break;
-          default: break;
-        }
-        if (bits > 0 && bits < 64) {
-          long long mask = (1LL << bits) - 1;
-          v &= mask;
-          if (!is_unsigned_base(ts.base) && ts.base != TB_BOOL &&
-              (v >> (bits - 1)))
-            v |= ~mask;
-        }
-      }
-      return v;
-    }
-    if (n->kind == NK_UNARY && n->op && n->left) {
-      if (strcmp(n->op, "-") == 0)
-        return -eval_const_int_with_nttp_bindings(n->left, nttp_bindings);
-      if (strcmp(n->op, "+") == 0)
-        return eval_const_int_with_nttp_bindings(n->left, nttp_bindings);
-      if (strcmp(n->op, "~") == 0)
-        return ~eval_const_int_with_nttp_bindings(n->left, nttp_bindings);
-    }
-    if (n->kind == NK_BINOP && n->op && n->left && n->right) {
-      long long l = eval_const_int_with_nttp_bindings(n->left, nttp_bindings);
-      long long r = eval_const_int_with_nttp_bindings(n->right, nttp_bindings);
-      if (strcmp(n->op, "+") == 0) return l + r;
-      if (strcmp(n->op, "-") == 0) return l - r;
-      if (strcmp(n->op, "*") == 0) return l * r;
-      if (strcmp(n->op, "/") == 0 && r != 0) return l / r;
-      if (strcmp(n->op, "%") == 0 && r != 0) return l % r;
-      if (strcmp(n->op, "&") == 0) return l & r;
-      if (strcmp(n->op, "|") == 0) return l | r;
-      if (strcmp(n->op, "^") == 0) return l ^ r;
-      if (strcmp(n->op, "<<") == 0) return l << (r & 63);
-      if (strcmp(n->op, ">>") == 0) return l >> (r & 63);
-      if (strcmp(n->op, "<") == 0) return l < r;
-      if (strcmp(n->op, ">") == 0) return l > r;
-      if (strcmp(n->op, "<=") == 0) return l <= r;
-      if (strcmp(n->op, ">=") == 0) return l >= r;
-      if (strcmp(n->op, "==") == 0) return l == r;
-      if (strcmp(n->op, "!=") == 0) return l != r;
-      if (strcmp(n->op, "&&") == 0) return (l != 0) && (r != 0);
-      if (strcmp(n->op, "||") == 0) return (l != 0) || (r != 0);
-    }
-    return 0;
-  }
+      const Node* n, const NttpBindings& nttp_bindings) const;
 
   std::optional<std::string> find_struct_method_mangled(
       const std::string& tag,
@@ -9342,6 +9229,120 @@ QualType Lowerer::qtype_from(const TypeSpec& t, ValueCategory c) {
   qt.spec = t;
   qt.category = c;
   return qt;
+}
+
+std::optional<FnPtrSig> Lowerer::fn_ptr_sig_from_decl_node(const Node* n) {
+  if (!n) return std::nullopt;
+
+  // Canonical path: extract fn_ptr sig from sema's resolved type table.
+  if (resolved_types_) {
+    auto ct = resolved_types_->lookup(n);
+    if (ct && sema::is_callable_type(*ct)) {
+      const auto* fsig = sema::get_function_sig(*ct);
+      if (fsig) {
+        FnPtrSig sig{};
+        sig.canonical_sig = ct;
+        // Fix nested fn_ptr return types using parser-side declarator details.
+        if (fsig->return_type) {
+          TypeSpec ret_ts = sema::typespec_from_canonical(*fsig->return_type);
+          if ((n->n_ret_fn_ptr_params > 0 || n->ret_fn_ptr_variadic) &&
+              !ret_ts.is_fn_ptr) {
+            ret_ts.is_fn_ptr = true;
+            ret_ts.ptr_level = std::max(ret_ts.ptr_level, 1);
+          }
+          sig.return_type = qtype_from(ret_ts);
+        }
+        sig.variadic = fsig->is_variadic;
+        sig.unspecified_params = fsig->unspecified_params;
+        for (const auto& param : fsig->params) {
+          sig.params.push_back(qtype_from(sema::typespec_from_canonical(param),
+                                          ValueCategory::LValue));
+        }
+        if (sig.params.empty() && (n->n_fn_ptr_params > 0 || n->fn_ptr_variadic)) {
+          sig.variadic = n->fn_ptr_variadic;
+          sig.unspecified_params = false;
+          for (int i = 0; i < n->n_fn_ptr_params; ++i) {
+            const Node* param = n->fn_ptr_params[i];
+            sig.params.push_back(qtype_from(param->type, ValueCategory::LValue));
+          }
+        }
+        return sig;
+      }
+    }
+  }
+
+  // All fn_ptr declarations should already be represented in ResolvedTypeTable.
+  return std::nullopt;
+}
+
+long long Lowerer::eval_const_int_with_nttp_bindings(
+    const Node* n, const NttpBindings& nttp_bindings) const {
+  if (!n) return 0;
+  if (n->kind == NK_INT_LIT || n->kind == NK_CHAR_LIT) return n->ival;
+  if (n->kind == NK_VAR && n->name) {
+    auto nttp_it = nttp_bindings.find(n->name);
+    if (nttp_it != nttp_bindings.end()) return nttp_it->second;
+    auto enum_it = enum_consts_.find(n->name);
+    if (enum_it != enum_consts_.end()) return enum_it->second;
+    return 0;
+  }
+  if (n->kind == NK_CAST && n->left) {
+    long long v = eval_const_int_with_nttp_bindings(n->left, nttp_bindings);
+    TypeSpec ts = n->type;
+    if (ts.ptr_level == 0) {
+      int bits = 0;
+      switch (ts.base) {
+        case TB_BOOL: bits = 1; break;
+        case TB_CHAR:
+        case TB_UCHAR:
+        case TB_SCHAR: bits = 8; break;
+        case TB_SHORT:
+        case TB_USHORT: bits = 16; break;
+        case TB_INT:
+        case TB_UINT:
+        case TB_ENUM: bits = 32; break;
+        default: break;
+      }
+      if (bits > 0 && bits < 64) {
+        long long mask = (1LL << bits) - 1;
+        v &= mask;
+        if (!is_unsigned_base(ts.base) && ts.base != TB_BOOL && (v >> (bits - 1)))
+          v |= ~mask;
+      }
+    }
+    return v;
+  }
+  if (n->kind == NK_UNARY && n->op && n->left) {
+    if (strcmp(n->op, "-") == 0)
+      return -eval_const_int_with_nttp_bindings(n->left, nttp_bindings);
+    if (strcmp(n->op, "+") == 0)
+      return eval_const_int_with_nttp_bindings(n->left, nttp_bindings);
+    if (strcmp(n->op, "~") == 0)
+      return ~eval_const_int_with_nttp_bindings(n->left, nttp_bindings);
+  }
+  if (n->kind == NK_BINOP && n->op && n->left && n->right) {
+    long long l = eval_const_int_with_nttp_bindings(n->left, nttp_bindings);
+    long long r = eval_const_int_with_nttp_bindings(n->right, nttp_bindings);
+    if (strcmp(n->op, "+") == 0) return l + r;
+    if (strcmp(n->op, "-") == 0) return l - r;
+    if (strcmp(n->op, "*") == 0) return l * r;
+    if (strcmp(n->op, "/") == 0 && r != 0) return l / r;
+    if (strcmp(n->op, "%") == 0 && r != 0) return l % r;
+    if (strcmp(n->op, "&") == 0) return l & r;
+    if (strcmp(n->op, "|") == 0) return l | r;
+    if (strcmp(n->op, "^") == 0) return l ^ r;
+    if (strcmp(n->op, "<<") == 0) return l << (r & 63);
+    if (strcmp(n->op, ">>") == 0) return l >> (r & 63);
+    if (strcmp(n->op, "<") == 0) return l < r;
+    if (strcmp(n->op, ">") == 0) return l > r;
+    if (strcmp(n->op, "<=") == 0) return l <= r;
+    if (strcmp(n->op, ">=") == 0) return l >= r;
+    if (strcmp(n->op, "==") == 0) return l == r;
+    if (strcmp(n->op, "!=") == 0) return l != r;
+    if (strcmp(n->op, "&&") == 0) return (l != 0) && (r != 0);
+    if (strcmp(n->op, "||") == 0) return (l != 0) || (r != 0);
+  }
+  return 0;
 }
 
 std::string Lowerer::pack_binding_name(const std::string& base, int index) {
