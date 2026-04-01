@@ -51,6 +51,33 @@ inline c4c::codegen::lir::LirModule make_param_slot_runtime_module() {
   return module;
 }
 
+inline c4c::codegen::lir::LirModule make_param_slot_with_following_alloca_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.type_decls.push_back("%struct.__va_list_tag_ = type { ptr, ptr, ptr, i32, i32 }");
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main(i32 %p.x)\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.param.x", "i32", "", 4});
+  function.alloca_insts.push_back(LirStoreOp{"i32", "%p.x", "%lv.param.x"});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.buf", "i8", "%p.x", 1});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirLoadOp{"%t0", "i32", "%lv.param.x"});
+  entry.terminator = LirRet{std::string("%t0"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 inline c4c::codegen::lir::LirModule make_typed_direct_call_module() {
   using namespace c4c::codegen::lir;
 

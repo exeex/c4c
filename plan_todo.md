@@ -212,3 +212,46 @@ stack-spill AArch64 emitter. All instruction types handled in one pass.
   `00207.c` and the `backend_runtime_*param*_member_array` cases, likely by
   tightening how lowered parameter allocas interact with by-value aggregates
   and control-flow around address-taken parameters.
+
+### Step 6 slice result (2026-04-01, preserved param register values + asm harness alignment)
+- Root cause isolated from `00207.c`:
+  the general AArch64 emitter initialized lowered `%lv.param.*` allocas after
+  materializing later alloca addresses in `x0`/`x1`, so it could store a
+  clobbered pointer value instead of the original incoming parameter register.
+- Fixed `src/backend/aarch64/codegen/emit.cpp` so lowered parameter alloca
+  initialization reloads the preserved incoming `%p.*` spill slot before
+  writing into the alloca-backed storage slot.
+- Added focused assembly-path coverage in
+  `tests/backend/backend_test_fixtures.hpp` and
+  `tests/backend/backend_lir_adapter_aarch64_tests.cpp` for a mixed
+  parameter-slot + following-alloca function; the emitted prologue now spills
+  `x0` first and reloads it for `%lv.param.x` initialization.
+- Updated `tests/c/internal/InternalTests.cmake` so
+  `nested_member_pointer_array`, `nested_param_member_array`, and
+  `param_member_array` are classified as `asm` backend-output cases and passed
+  to Clang with the assembler frontend instead of incorrectly as LLVM IR.
+- Focus validation:
+  `ctest --test-dir build -R "(c_testsuite_aarch64_backend_src_00207_c|backend_runtime_.*param.*member_array)" --output-on-failure`
+  now passes all three targeted cases.
+- Additional internal backend validation:
+  `ctest --test-dir build -R backend_runtime_nested_member_pointer_array --output-on-failure`
+  now passes after the asm-harness fix.
+- Updated AArch64 subset status:
+  `ctest --test-dir build -R c_testsuite_aarch64 -j8 --output-on-failure`
+  now reports 3 failures total out of 220 (`217/220` passing), improved from
+  5 failures (`215/220` passing). Remaining AArch64 failures:
+  `00104.c`, `00195.c`, and `00216.c`.
+- Full-suite snapshot:
+  `ctest --test-dir build -j8 --output-on-failure` now reports 6 failures out
+  of 2671 tests (`2665/2671` passing), improved from the prior recorded
+  `2660/2671`. Remaining full-suite failures:
+  `positive_sema_linux_stage2_repro_03_asm_volatile_c`,
+  `backend_lir_adapter_aarch64_tests`,
+  `c_testsuite_aarch64_backend_src_00104_c`,
+  `c_testsuite_aarch64_backend_src_00195_c`,
+  `c_testsuite_aarch64_backend_src_00216_c`, and
+  `llvm_gcc_c_torture_src_20080502_1_c`.
+- Next intended slice:
+  split the remaining AArch64 work into two narrow follow-ons:
+  `00104.c`/`00216.c` as likely stack- or aggregate-addressing runtime bugs,
+  and `00195.c` as a separate floating-point / calling-convention mismatch.

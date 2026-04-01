@@ -4943,19 +4943,40 @@ static std::optional<std::string> try_emit_general_lir_asm(
               "%lv.param." + param_name.substr(std::string("%p.").size());
           const int param_ptr_off = sm.lookup(param_slot_name);
           if (param_ptr_off < 0) continue;
+          const int param_value_off = sm.lookup(param_name);
 
           const auto param_layout = gen_type_layout(parsed_params[i].type, module.type_decls);
           if (param_layout.size <= 0 || param_layout.size > 8) continue;
 
           out << "  ldr x9, [sp, #" << param_ptr_off << "]\n";
           if (param_layout.size == 1) {
-            out << "  strb w" << i << ", [x9]\n";
+            if (param_value_off >= 0) {
+              out << "  ldr w10, [sp, #" << param_value_off << "]\n";
+              out << "  strb w10, [x9]\n";
+            } else {
+              out << "  strb w" << i << ", [x9]\n";
+            }
           } else if (param_layout.size == 2) {
-            out << "  strh w" << i << ", [x9]\n";
+            if (param_value_off >= 0) {
+              out << "  ldr w10, [sp, #" << param_value_off << "]\n";
+              out << "  strh w10, [x9]\n";
+            } else {
+              out << "  strh w" << i << ", [x9]\n";
+            }
           } else if (param_layout.size == 4) {
-            out << "  str w" << i << ", [x9]\n";
+            if (param_value_off >= 0) {
+              out << "  ldr w10, [sp, #" << param_value_off << "]\n";
+              out << "  str w10, [x9]\n";
+            } else {
+              out << "  str w" << i << ", [x9]\n";
+            }
           } else {
-            out << "  str x" << i << ", [x9]\n";
+            if (param_value_off >= 0) {
+              out << "  ldr x10, [sp, #" << param_value_off << "]\n";
+              out << "  str x10, [x9]\n";
+            } else {
+              out << "  str x" << i << ", [x9]\n";
+            }
           }
         }
       }

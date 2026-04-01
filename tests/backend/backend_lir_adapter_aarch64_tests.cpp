@@ -2326,6 +2326,19 @@ void test_aarch64_backend_initializes_param_alloca_slots_in_general_emitter() {
                   "aarch64 general emitter should initialize lowered parameter allocas from incoming ABI registers");
 }
 
+void test_aarch64_backend_preserves_param_registers_across_alloca_address_setup() {
+  const auto rendered = c4c::backend::aarch64::emit_module(
+      make_param_slot_with_following_alloca_module());
+  expect_contains(rendered, ".globl main",
+                  "aarch64 general emitter should keep mixed param-slot/VLA functions on the asm path");
+  expect_contains(rendered, "str x0, [sp, #16]\n",
+                  "aarch64 general emitter should spill the incoming parameter register before any alloca-address setup");
+  expect_contains(rendered, "ldr x9, [sp, #8]\n  ldr w10, [sp, #16]\n  str w10, [x9]\n",
+                  "aarch64 general emitter should reload the original incoming parameter value when initializing lowered parameter allocas");
+  expect_not_contains(rendered, "ldr x9, [sp, #8]\n  str w0, [x9]\n",
+                      "aarch64 general emitter should not reuse a clobbered ABI register after alloca-address materialization");
+}
+
 void test_aarch64_backend_renders_mutable_string_global_bytes() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_mutable_string_global_module()},
@@ -2895,6 +2908,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_renders_trunc_slice();
   test_aarch64_backend_renders_large_frame_adjustments();
   test_aarch64_backend_initializes_param_alloca_slots_in_general_emitter();
+  test_aarch64_backend_preserves_param_registers_across_alloca_address_setup();
   test_aarch64_backend_renders_mutable_string_global_bytes();
   test_aarch64_backend_uses_real_named_struct_field_offsets();
   test_aarch64_backend_uses_real_array_of_struct_stride();
