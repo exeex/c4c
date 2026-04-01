@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 2: introduce a safe transitional source layout and build wiring
-- Current slice: continue trimming the remaining overlap between `src/frontend/hir/ast_to_hir.cpp` and the staged split files by removing dead staging copies that still mirror live owners, then reassess whether the next real extraction target is `hir_templates.cpp` or an actual statement-orchestration cluster rather than the now-empty `hir_stmt.cpp`
+- Current slice: continue Step 2 by re-extracting a narrow template-owned cluster from the live owners into `src/frontend/hir/hir_templates.cpp` instead of reviving the old broad draft, starting with template-specific helpers that do not overlap `hir_build.cpp` or `hir_expr.cpp`
 
 ## Todo
 
@@ -18,6 +18,8 @@ Source Plan: plan.md
 - [ ] Step 5: run final build and regression validation
 
 ## Completed
+
+- Validation on 2026-04-01 after replacing the stale disabled draft in [`src/frontend/hir/hir_templates.cpp`](/workspaces/c4c/src/frontend/hir/hir_templates.cpp) with a placeholder split-unit comment: the old file had drifted into a broad shadow copy of active owners from [`src/frontend/hir/ast_to_hir.cpp`](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp), [`src/frontend/hir/hir_build.cpp`](/workspaces/c4c/src/frontend/hir/hir_build.cpp), and [`src/frontend/hir/hir_expr.cpp`](/workspaces/c4c/src/frontend/hir/hir_expr.cpp), so keeping it as inert draft code was obscuring actual ownership boundaries. `cmake --build build -j8` succeeded; a rerun of `ctest --test-dir build -j 8 --output-on-failure` finished at 2671 total tests, 2668 passing, and the same 3 historical failing tests (`positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c`); `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passed with zero new failing tests. The first full-suite rerun after the edit produced a non-monotonic log, but spot-check reruns of representative cases from that log passed and the second full-suite rerun matched the expected historical baseline, so the recorded acceptance result is from the clean rerun.
 
 - Validation on 2026-04-01 after pruning the stale staged duplicate bodies from [`src/frontend/hir/hir_stmt.cpp`](/workspaces/c4c/src/frontend/hir/hir_stmt.cpp): attempting to reactivate the file showed that its initializer/global-lowering helpers (`lower_static_local_global`, `lower_global_init`, `lower_init_list`, `init_item_value_node`, `unwrap_init_scalar_value`, `has_side_effect_expr`, `is_simple_constant_expr`, `can_fast_path_scalar_array_init`, and `struct_has_member_dtors`) are already actively owned by [`src/frontend/hir/hir_types.cpp`](/workspaces/c4c/src/frontend/hir/hir_types.cpp). The staged duplicate block was replaced with a placeholder split-unit comment so the build keeps the file in the layout without carrying a second shadow copy of the same owners. `cmake --build build -j8` succeeded; a full `ctest --test-dir build -j 8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 historical failing tests (`positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c`).
 
