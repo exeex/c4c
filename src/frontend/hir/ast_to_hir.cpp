@@ -1425,100 +1425,7 @@ class Lowerer {
 
   bool resolve_struct_member_typedef_hir(const std::string& tag,
                                          const std::string& member,
-                                         TypeSpec* out) {
-    if (tag.empty() || member.empty() || !out) return false;
-
-    auto apply_bindings = [&](TypeSpec ts,
-                              const TypeBindings& type_bindings,
-                              const NttpBindings& nttp_bindings) -> TypeSpec {
-      if (ts.base == TB_TYPEDEF && ts.tag) {
-        auto it = type_bindings.find(ts.tag);
-        if (it != type_bindings.end()) ts = it->second;
-      }
-      if (ts.tpl_struct_origin) {
-        std::vector<std::string> refs;
-        if (ts.tpl_struct_arg_refs) {
-          refs = split_deferred_template_arg_refs(ts.tpl_struct_arg_refs);
-        }
-        std::string updated_refs;
-        for (size_t i = 0; i < refs.size(); ++i) {
-          std::string part = refs[i];
-          auto tit = type_bindings.find(part);
-          if (tit != type_bindings.end()) {
-            part = encode_template_type_arg_ref_hir(tit->second);
-          } else {
-            auto nit = nttp_bindings.find(part);
-            if (nit != nttp_bindings.end()) part = std::to_string(nit->second);
-          }
-          if (i) updated_refs += ",";
-          updated_refs += part;
-        }
-        if (!updated_refs.empty()) ts.tpl_struct_arg_refs = ::strdup(updated_refs.c_str());
-        seed_and_resolve_pending_template_type_if_needed(
-            ts, type_bindings, nttp_bindings, nullptr,
-            PendingTemplateTypeKind::MemberTypedef,
-            "member-typedef-binding");
-      }
-      return ts;
-    };
-
-    std::function<bool(const Node*, const TypeBindings&, const NttpBindings&, TypeSpec*)>
-        search_node =
-            [&](const Node* sdef, const TypeBindings& type_bindings,
-                const NttpBindings& nttp_bindings, TypeSpec* resolved) -> bool {
-              if (!sdef || !resolved) return false;
-              for (int i = 0; i < sdef->n_member_typedefs; ++i) {
-                const char* alias_name = sdef->member_typedef_names[i];
-                if (!alias_name || member != alias_name) continue;
-                *resolved = apply_bindings(sdef->member_typedef_types[i],
-                                           type_bindings, nttp_bindings);
-                if (resolved->deferred_member_type_name &&
-                    resolved->tag && resolved->tag[0]) {
-                  TypeSpec nested{};
-                  if (resolve_struct_member_typedef_hir(
-                          resolved->tag, resolved->deferred_member_type_name, &nested)) {
-                    *resolved = nested;
-                  }
-                }
-                return true;
-              }
-
-              auto mod_it = module_->struct_defs.find(sdef->name ? sdef->name : "");
-              if (mod_it != module_->struct_defs.end()) {
-                for (const auto& base_tag : mod_it->second.base_tags) {
-                  auto ast_it = struct_def_nodes_.find(base_tag);
-                  if (ast_it == struct_def_nodes_.end()) continue;
-                  if (search_node(ast_it->second, type_bindings, nttp_bindings, resolved))
-                    return true;
-                }
-              }
-              return false;
-            };
-
-    auto it = struct_def_nodes_.find(tag);
-    if (it == struct_def_nodes_.end()) return false;
-    const Node* sdef = it->second;
-    TypeBindings type_bindings;
-    NttpBindings nttp_bindings;
-    for (int i = 0; i < sdef->n_template_params && i < sdef->n_template_args; ++i) {
-      const char* pname = sdef->template_param_names ? sdef->template_param_names[i] : nullptr;
-      if (!pname) continue;
-      if (sdef->template_param_is_nttp && sdef->template_param_is_nttp[i]) {
-        nttp_bindings[pname] = sdef->template_arg_values[i];
-      } else if (sdef->template_arg_types) {
-        type_bindings[pname] = sdef->template_arg_types[i];
-      }
-    }
-
-    if (search_node(sdef, type_bindings, nttp_bindings, out)) return true;
-    if (sdef->template_origin_name) {
-      auto origin_it = struct_def_nodes_.find(sdef->template_origin_name);
-      if (origin_it != struct_def_nodes_.end() &&
-          search_node(origin_it->second, type_bindings, nttp_bindings, out))
-        return true;
-    }
-    return false;
-  }
+                                         TypeSpec* out);
 
   // Resolve a pending template struct type using concrete template bindings.
   // ---------------------------------------------------------------------------
@@ -9960,6 +9867,104 @@ void Lowerer::seed_and_resolve_pending_template_type_if_needed(
       ts, tpl_bindings, nttp_bindings, span_node, kind, context_name);
   resolve_pending_tpl_struct_if_needed(
       ts, tpl_bindings, nttp_bindings, primary_tpl);
+}
+
+bool Lowerer::resolve_struct_member_typedef_hir(const std::string& tag,
+                                                const std::string& member,
+                                                TypeSpec* out) {
+  if (tag.empty() || member.empty() || !out) return false;
+
+  auto apply_bindings = [&](TypeSpec ts,
+                            const TypeBindings& type_bindings,
+                            const NttpBindings& nttp_bindings) -> TypeSpec {
+    if (ts.base == TB_TYPEDEF && ts.tag) {
+      auto it = type_bindings.find(ts.tag);
+      if (it != type_bindings.end()) ts = it->second;
+    }
+    if (ts.tpl_struct_origin) {
+      std::vector<std::string> refs;
+      if (ts.tpl_struct_arg_refs) {
+        refs = split_deferred_template_arg_refs(ts.tpl_struct_arg_refs);
+      }
+      std::string updated_refs;
+      for (size_t i = 0; i < refs.size(); ++i) {
+        std::string part = refs[i];
+        auto tit = type_bindings.find(part);
+        if (tit != type_bindings.end()) {
+          part = encode_template_type_arg_ref_hir(tit->second);
+        } else {
+          auto nit = nttp_bindings.find(part);
+          if (nit != nttp_bindings.end()) part = std::to_string(nit->second);
+        }
+        if (i) updated_refs += ",";
+        updated_refs += part;
+      }
+      if (!updated_refs.empty()) ts.tpl_struct_arg_refs = ::strdup(updated_refs.c_str());
+      seed_and_resolve_pending_template_type_if_needed(
+          ts, type_bindings, nttp_bindings, nullptr,
+          PendingTemplateTypeKind::MemberTypedef,
+          "member-typedef-binding");
+    }
+    return ts;
+  };
+
+  std::function<bool(const Node*, const TypeBindings&, const NttpBindings&, TypeSpec*)>
+      search_node =
+          [&](const Node* sdef, const TypeBindings& type_bindings,
+              const NttpBindings& nttp_bindings, TypeSpec* resolved) -> bool {
+            if (!sdef || !resolved) return false;
+            for (int i = 0; i < sdef->n_member_typedefs; ++i) {
+              const char* alias_name = sdef->member_typedef_names[i];
+              if (!alias_name || member != alias_name) continue;
+              *resolved = apply_bindings(sdef->member_typedef_types[i],
+                                         type_bindings, nttp_bindings);
+              if (resolved->deferred_member_type_name &&
+                  resolved->tag && resolved->tag[0]) {
+                TypeSpec nested{};
+                if (resolve_struct_member_typedef_hir(
+                        resolved->tag, resolved->deferred_member_type_name, &nested)) {
+                  *resolved = nested;
+                }
+              }
+              return true;
+            }
+
+            auto mod_it = module_->struct_defs.find(sdef->name ? sdef->name : "");
+            if (mod_it != module_->struct_defs.end()) {
+              for (const auto& base_tag : mod_it->second.base_tags) {
+                auto ast_it = struct_def_nodes_.find(base_tag);
+                if (ast_it == struct_def_nodes_.end()) continue;
+                if (search_node(ast_it->second, type_bindings, nttp_bindings, resolved))
+                  return true;
+              }
+            }
+            return false;
+          };
+
+  auto it = struct_def_nodes_.find(tag);
+  if (it == struct_def_nodes_.end()) return false;
+  const Node* sdef = it->second;
+  TypeBindings type_bindings;
+  NttpBindings nttp_bindings;
+  for (int i = 0; i < sdef->n_template_params && i < sdef->n_template_args; ++i) {
+    const char* pname = sdef->template_param_names ? sdef->template_param_names[i] : nullptr;
+    if (!pname) continue;
+    if (sdef->template_param_is_nttp && sdef->template_param_is_nttp[i]) {
+      nttp_bindings[pname] = sdef->template_arg_values[i];
+    } else if (sdef->template_arg_types) {
+      type_bindings[pname] = sdef->template_arg_types[i];
+    }
+  }
+
+  if (search_node(sdef, type_bindings, nttp_bindings, out)) return true;
+  if (sdef->template_origin_name) {
+    auto origin_it = struct_def_nodes_.find(sdef->template_origin_name);
+    if (origin_it != struct_def_nodes_.end() &&
+        search_node(origin_it->second, type_bindings, nttp_bindings, out)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
