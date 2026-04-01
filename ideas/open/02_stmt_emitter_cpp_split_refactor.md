@@ -29,6 +29,7 @@ Adopt the same high-level shape proposed for `ast_to_hir`:
 - split `stmt_emitter.cpp` into multiple `stmt_emitter_*.cpp` files by responsibility
 - preserve `StmtEmitter` as the owning class for the lowering API
 - keep behavior unchanged; this is a structural refactor only
+- use a draft-first extraction flow so multiple agents can stage candidate split files in parallel before the original monolith is cleaned up
 
 ## Header Strategy
 
@@ -55,16 +56,30 @@ If cross-file private helpers become noisy during the split, introduce one small
 
 Exact ownership can shift slightly during execution, but the split should follow semantic families rather than equal line counts.
 
-## Preferred Extraction Order
+## Preferred Execution Mode
 
-1. Extract `stmt_emitter_stmt.cpp`
-2. Extract `stmt_emitter_call.cpp`
-3. Extract `stmt_emitter_lvalue.cpp`
-4. Extract `stmt_emitter_expr.cpp`
-5. Extract `stmt_emitter_types.cpp`
-6. Reduce or remove the original `stmt_emitter.cpp`
+Prefer the same workflow that is now proving faster for the `ast_to_hir` split:
 
-This order front-loads the cleanest seams first and avoids starting with the most cross-coupled expression/type helpers.
+1. Keep `src/codegen/lir/stmt_emitter.cpp`, `src/codegen/lir/stmt_emitter.hpp`, and build wiring untouched during the first draft pass.
+2. Let multiple agents create unintegrated staging files such as `stmt_emitter_stmt.cpp`, `stmt_emitter_call.cpp`, `stmt_emitter_lvalue.cpp`, `stmt_emitter_expr.cpp`, `stmt_emitter_types.cpp`, and `stmt_emitter_core.cpp` in parallel.
+3. Treat those first-pass files as ownership proposals, not finished integration work.
+4. Review the staged files for overlap, duplicated helpers, and cross-file dependency direction before any build wiring is changed.
+5. Only after the draft boundaries stabilize, connect selected files to the build and start deleting/moving bodies out of the original `stmt_emitter.cpp`.
+6. Reduce or remove the original `stmt_emitter.cpp` only after the staged files have converged and compile cleanly together.
+
+This mode intentionally front-loads cheap parallel extraction and postpones the risky ownership cleanup until the target file boundaries are visible.
+
+## Preferred Integration Order
+
+Once the draft-only staging files exist and their boundaries have been reviewed:
+
+1. Normalize overlap between draft files and assign one owner per helper cluster.
+2. Wire the lowest-coupling draft file into the build first.
+3. Move additional draft files into the build one cluster at a time.
+4. Shrink `stmt_emitter.cpp` after each successful ownership transfer.
+5. Remove or reduce the monolith only after the staged files have replaced it cleanly.
+
+This keeps the parallel speedup from the draft pass while preserving a conservative integration path.
 
 ## Constraints
 
@@ -74,6 +89,8 @@ This order front-loads the cleanest seams first and avoids starting with the mos
 - Preserve current lowering order and emitted instruction behavior as much as possible
 - Keep private helper free functions file-local unless cross-file sharing is clearly justified
 - Prefer one optional internal helper header over proliferating many tiny headers
+- During the draft-only staging pass, do not edit `stmt_emitter.cpp` just to "keep up" with the extracted files; let the staged files settle first
+- During the draft-only staging pass, do not change CMake or other build wiring yet
 - Existing tests must pass unchanged after the split
 
 ## Acceptance Criteria
@@ -92,7 +109,9 @@ This order front-loads the cleanest seams first and avoids starting with the mos
 - Avoid re-grouping methods in the header unless needed to keep declarations readable
 - Keep platform ABI helpers close to the call/vararg implementation instead of scattering them
 - If a helper is only used by one implementation file, keep it local to that file
+- If parallel draft extraction creates duplicate helper ownership, resolve the duplication before wiring those files into the build instead of trying to force both versions forward
+- Planning state should describe the current phase explicitly: draft-only extraction, overlap cleanup, build wiring, or monolith cleanup
 
 ## Good First Patch
 
-Move statement-dispatch and statement-kind implementations into `stmt_emitter_stmt.cpp` while leaving expression and call helpers in place. This yields a meaningful size reduction with relatively low coupling risk.
+Create unintegrated draft staging files for `stmt_emitter_stmt.cpp`, `stmt_emitter_call.cpp`, and `stmt_emitter_expr.cpp` in parallel while keeping the original `stmt_emitter.cpp` untouched. Then review overlaps before selecting the first file to wire into the build.
