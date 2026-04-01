@@ -21,6 +21,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <string_view>
+#include <type_traits>
 #include <vector>
 
 namespace c4c::backend::aarch64 {
@@ -68,6 +69,99 @@ std::optional<std::int64_t> parse_i64(std::string_view text) {
     return std::nullopt;
   }
   return value;
+}
+
+bool lir_type_needs_nonminimal_lowering(std::string_view type_str) {
+  return type_str.find("float") != std::string_view::npos ||
+         type_str.find("double") != std::string_view::npos ||
+         type_str.find("fp128") != std::string_view::npos ||
+         type_str.find("i64") != std::string_view::npos ||
+         type_str.find("i128") != std::string_view::npos;
+}
+
+bool lir_module_needs_nonminimal_lowering(const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  for (const auto& global : module.globals) {
+    if (lir_type_needs_nonminimal_lowering(global.llvm_type) ||
+        global.init_text.find("double") != std::string::npos ||
+        global.init_text.find("float") != std::string::npos) {
+      return true;
+    }
+  }
+
+  for (const auto& decl : module.extern_decls) {
+    if (lir_type_needs_nonminimal_lowering(decl.return_type_str)) {
+      return true;
+    }
+  }
+
+  auto inst_needs_nonminimal = [](const LirInst& inst) {
+    return std::visit(
+        [](const auto& op) -> bool {
+          using T = std::decay_t<decltype(op)>;
+          if constexpr (std::is_same_v<T, LirAllocaOp>) {
+            return lir_type_needs_nonminimal_lowering(op.type_str);
+          } else if constexpr (std::is_same_v<T, LirLoadOp>) {
+            return lir_type_needs_nonminimal_lowering(op.type_str);
+          } else if constexpr (std::is_same_v<T, LirStoreOp>) {
+            return lir_type_needs_nonminimal_lowering(op.type_str);
+          } else if constexpr (std::is_same_v<T, LirBinOp>) {
+            return lir_type_needs_nonminimal_lowering(op.type_str);
+          } else if constexpr (std::is_same_v<T, LirCmpOp>) {
+            return op.is_float || lir_type_needs_nonminimal_lowering(op.type_str);
+          } else if constexpr (std::is_same_v<T, LirCallOp>) {
+            return lir_type_needs_nonminimal_lowering(op.return_type) ||
+                   op.args_str.find("double") != std::string::npos ||
+                   op.args_str.find("float") != std::string::npos ||
+                   op.args_str.find("i64") != std::string::npos ||
+                   op.args_str.find("i128") != std::string::npos ||
+                   op.callee_type_suffix.find("double") != std::string::npos ||
+                   op.callee_type_suffix.find("float") != std::string::npos ||
+                   op.callee_type_suffix.find("i64") != std::string::npos ||
+                   op.callee_type_suffix.find("i128") != std::string::npos;
+          } else if constexpr (std::is_same_v<T, LirGepOp>) {
+            return lir_type_needs_nonminimal_lowering(op.element_type);
+          } else if constexpr (std::is_same_v<T, LirCastOp>) {
+            return lir_type_needs_nonminimal_lowering(op.from_type) ||
+                   lir_type_needs_nonminimal_lowering(op.to_type);
+          } else if constexpr (std::is_same_v<T, LirPhiOp>) {
+            return lir_type_needs_nonminimal_lowering(op.type_str);
+          } else {
+            return false;
+          }
+        },
+        inst);
+  };
+
+  for (const auto& function : module.functions) {
+    if (function.signature_text.find("double") != std::string::npos ||
+        function.signature_text.find("float") != std::string::npos ||
+        function.signature_text.find("i64") != std::string::npos ||
+        function.signature_text.find("i128") != std::string::npos) {
+      return true;
+    }
+    for (const auto& inst : function.alloca_insts) {
+      if (inst_needs_nonminimal(inst)) {
+        return true;
+      }
+    }
+    for (const auto& block : function.blocks) {
+      for (const auto& inst : block.insts) {
+        if (inst_needs_nonminimal(inst)) {
+          return true;
+        }
+      }
+      if (const auto* ret = std::get_if<LirRet>(&block.terminator)) {
+        if (ret->type_str == "double" || ret->type_str == "float" ||
+            ret->type_str == "i64" || ret->type_str == "i128") {
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
 }
 
 std::optional<std::string_view> strip_typed_operand_prefix(std::string_view operand,
@@ -5545,6 +5639,11 @@ static std::optional<std::string> try_emit_general_lir_asm(
 
 std::string emit_module(const c4c::backend::BackendModule& module,
                         const c4c::codegen::lir::LirModule* legacy_fallback) {
+  const bool needs_nonminimal_lowering =
+      legacy_fallback != nullptr && lir_module_needs_nonminimal_lowering(*legacy_fallback);
+  if (needs_nonminimal_lowering && legacy_fallback != nullptr) {
+    return emit_module(*legacy_fallback);
+  }
   try {
     if (const auto slice = parse_minimal_scalar_global_load_slice(module);
         slice.has_value()) {
@@ -5588,19 +5687,23 @@ std::string emit_module(const c4c::backend::BackendModule& module,
       scaffold_module.target_triple = module.target_triple;
       return emit_minimal_string_literal_char_asm(scaffold_module, *slice);
     }
-    if (const auto slice = parse_minimal_conditional_return_slice(module);
-        slice.has_value()) {
-      c4c::codegen::lir::LirModule scaffold_module;
-      scaffold_module.target_triple = module.target_triple;
-      return emit_minimal_conditional_return_asm(scaffold_module, *slice);
+    if (!needs_nonminimal_lowering) {
+      if (const auto slice = parse_minimal_conditional_return_slice(module);
+          slice.has_value()) {
+        c4c::codegen::lir::LirModule scaffold_module;
+        scaffold_module.target_triple = module.target_triple;
+        return emit_minimal_conditional_return_asm(scaffold_module, *slice);
+      }
     }
-    if (const auto slice = parse_minimal_conditional_phi_join_slice(module);
-        slice.has_value()) {
-      return emit_minimal_conditional_phi_join_asm(module, *slice);
-    }
-    if (const auto slice = parse_minimal_countdown_loop_slice(module);
-        slice.has_value()) {
-      return emit_minimal_countdown_loop_asm(module, *slice);
+    if (!needs_nonminimal_lowering) {
+      if (const auto slice = parse_minimal_conditional_phi_join_slice(module);
+          slice.has_value()) {
+        return emit_minimal_conditional_phi_join_asm(module, *slice);
+      }
+      if (const auto slice = parse_minimal_countdown_loop_slice(module);
+          slice.has_value()) {
+        return emit_minimal_countdown_loop_asm(module, *slice);
+      }
     }
     if (const auto slice = parse_minimal_call_crossing_direct_call_slice(module);
         slice.has_value()) {
@@ -5652,34 +5755,37 @@ std::string emit_module(const c4c::backend::BackendModule& module,
 }
 
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {
+  const bool needs_nonminimal_lowering = lir_module_needs_nonminimal_lowering(module);
   validate_module(module);
-  if (const auto imm = parse_minimal_lir_return_imm(module); imm.has_value()) {
-    c4c::backend::BackendModule scaffold_module;
-    scaffold_module.target_triple = module.target_triple;
-    return emit_minimal_return_imm_asm(scaffold_module, *imm);
-  }
-  if (const auto imm = parse_minimal_lir_return_sub_imm(module); imm.has_value()) {
-    c4c::backend::BackendModule scaffold_module;
-    scaffold_module.target_triple = module.target_triple;
-    return emit_minimal_return_sub_imm_asm(scaffold_module, *imm);
-  }
-  if (const auto imm = parse_minimal_lir_local_pointer_return_imm(module);
-      imm.has_value()) {
-    c4c::backend::BackendModule scaffold_module;
-    scaffold_module.target_triple = module.target_triple;
-    return emit_minimal_return_imm_asm(scaffold_module, *imm);
-  }
-  if (const auto imm = parse_minimal_lir_single_scalar_countdown_imm(module);
-      imm.has_value()) {
-    c4c::backend::BackendModule scaffold_module;
-    scaffold_module.target_triple = module.target_triple;
-    return emit_minimal_return_imm_asm(scaffold_module, *imm);
-  }
+  if (!needs_nonminimal_lowering) {
+    if (const auto imm = parse_minimal_lir_return_imm(module); imm.has_value()) {
+      c4c::backend::BackendModule scaffold_module;
+      scaffold_module.target_triple = module.target_triple;
+      return emit_minimal_return_imm_asm(scaffold_module, *imm);
+    }
+    if (const auto imm = parse_minimal_lir_return_sub_imm(module); imm.has_value()) {
+      c4c::backend::BackendModule scaffold_module;
+      scaffold_module.target_triple = module.target_triple;
+      return emit_minimal_return_sub_imm_asm(scaffold_module, *imm);
+    }
+    if (const auto imm = parse_minimal_lir_local_pointer_return_imm(module);
+        imm.has_value()) {
+      c4c::backend::BackendModule scaffold_module;
+      scaffold_module.target_triple = module.target_triple;
+      return emit_minimal_return_imm_asm(scaffold_module, *imm);
+    }
+    if (const auto imm = parse_minimal_lir_single_scalar_countdown_imm(module);
+        imm.has_value()) {
+      c4c::backend::BackendModule scaffold_module;
+      scaffold_module.target_triple = module.target_triple;
+      return emit_minimal_return_imm_asm(scaffold_module, *imm);
+    }
 
-  if (const auto imm2 = try_constant_fold_single_block(module); imm2.has_value()) {
-    c4c::backend::BackendModule scaffold_module;
-    scaffold_module.target_triple = module.target_triple;
-    return emit_minimal_return_imm_asm(scaffold_module, *imm2);
+    if (const auto imm2 = try_constant_fold_single_block(module); imm2.has_value()) {
+      c4c::backend::BackendModule scaffold_module;
+      scaffold_module.target_triple = module.target_triple;
+      return emit_minimal_return_imm_asm(scaffold_module, *imm2);
+    }
   }
 
   const auto prepared = prepare_module_for_fallback(module);
@@ -5688,9 +5794,11 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
       slice.has_value()) {
     return emit_minimal_local_array_asm(prepared, *slice);
   }
-  if (const auto slice = parse_minimal_conditional_return_slice(prepared);
-      slice.has_value()) {
-    return emit_minimal_conditional_return_asm(prepared, *slice);
+  if (!needs_nonminimal_lowering) {
+    if (const auto slice = parse_minimal_conditional_return_slice(prepared);
+        slice.has_value()) {
+      return emit_minimal_conditional_return_asm(prepared, *slice);
+    }
   }
   if (const auto slice = parse_minimal_scalar_global_load_slice(prepared);
       slice.has_value()) {
@@ -5724,53 +5832,55 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
       slice.has_value()) {
     return emit_minimal_string_literal_char_asm(prepared, *slice);
   }
-  try {
-    const auto adapted = c4c::backend::adapt_minimal_module(prepared);
-    if (const auto slice = parse_minimal_call_crossing_direct_call_slice(adapted);
-        slice.has_value()) {
-      const auto* main_fn = find_lir_function(prepared, "main");
-      if (main_fn == nullptr) {
-        fail_unsupported("main function for shared call-crossing direct-call slice");
+  if (!needs_nonminimal_lowering) {
+    try {
+      const auto adapted = c4c::backend::adapt_minimal_module(prepared);
+      if (const auto slice = parse_minimal_call_crossing_direct_call_slice(adapted);
+          slice.has_value()) {
+        const auto* main_fn = find_lir_function(prepared, "main");
+        if (main_fn == nullptr) {
+          fail_unsupported("main function for shared call-crossing direct-call slice");
+        }
+        return emit_minimal_call_crossing_direct_call_asm(
+            adapted, run_shared_aarch64_regalloc(*main_fn), *slice);
       }
-      return emit_minimal_call_crossing_direct_call_asm(
-          adapted, run_shared_aarch64_regalloc(*main_fn), *slice);
-    }
-    if (const auto imm = parse_minimal_return_imm(adapted); imm.has_value()) {
-      return emit_minimal_return_imm_asm(adapted, *imm);
-    }
-    if (const auto imm = parse_minimal_return_add_imm(adapted); imm.has_value()) {
-      return emit_minimal_return_imm_asm(adapted, *imm);
-    }
-    if (const auto imm = parse_minimal_return_sub_imm(adapted); imm.has_value()) {
-      return emit_minimal_return_sub_imm_asm(adapted, *imm);
-    }
-    if (const auto slice = parse_minimal_direct_call_slice(adapted); slice.has_value()) {
-      return emit_minimal_direct_call_asm(adapted, *slice);
-    }
-    if (const auto slice = parse_minimal_direct_call_add_imm_slice(adapted);
-        slice.has_value()) {
-      return emit_minimal_direct_call_add_imm_asm(adapted, *slice);
-    }
-    if (const auto slice = parse_minimal_direct_call_two_arg_add_slice(adapted);
-        slice.has_value()) {
-      return emit_minimal_direct_call_two_arg_add_asm(adapted, *slice);
-    }
-    if (const auto slice = parse_minimal_direct_call_two_arg_folded_slice(adapted);
-        slice.has_value()) {
-      return emit_minimal_direct_call_asm(adapted, *slice);
-    }
-    if (const auto slice = parse_minimal_countdown_loop_slice(adapted);
-        slice.has_value()) {
-      return emit_minimal_countdown_loop_asm(adapted, *slice);
-    }
-    if (const auto slice = parse_minimal_conditional_phi_join_slice(adapted);
-        slice.has_value()) {
-      return emit_minimal_conditional_phi_join_asm(adapted, *slice);
-    }
-    return c4c::backend::render_module(adapted);
-  } catch (const c4c::backend::LirAdapterError& ex) {
-    if (ex.kind() != c4c::backend::LirAdapterErrorKind::Unsupported) {
-      throw;
+      if (const auto imm = parse_minimal_return_imm(adapted); imm.has_value()) {
+        return emit_minimal_return_imm_asm(adapted, *imm);
+      }
+      if (const auto imm = parse_minimal_return_add_imm(adapted); imm.has_value()) {
+        return emit_minimal_return_imm_asm(adapted, *imm);
+      }
+      if (const auto imm = parse_minimal_return_sub_imm(adapted); imm.has_value()) {
+        return emit_minimal_return_sub_imm_asm(adapted, *imm);
+      }
+      if (const auto slice = parse_minimal_direct_call_slice(adapted); slice.has_value()) {
+        return emit_minimal_direct_call_asm(adapted, *slice);
+      }
+      if (const auto slice = parse_minimal_direct_call_add_imm_slice(adapted);
+          slice.has_value()) {
+        return emit_minimal_direct_call_add_imm_asm(adapted, *slice);
+      }
+      if (const auto slice = parse_minimal_direct_call_two_arg_add_slice(adapted);
+          slice.has_value()) {
+        return emit_minimal_direct_call_two_arg_add_asm(adapted, *slice);
+      }
+      if (const auto slice = parse_minimal_direct_call_two_arg_folded_slice(adapted);
+          slice.has_value()) {
+        return emit_minimal_direct_call_asm(adapted, *slice);
+      }
+      if (const auto slice = parse_minimal_countdown_loop_slice(adapted);
+          slice.has_value()) {
+        return emit_minimal_countdown_loop_asm(adapted, *slice);
+      }
+      if (const auto slice = parse_minimal_conditional_phi_join_slice(adapted);
+          slice.has_value()) {
+        return emit_minimal_conditional_phi_join_asm(adapted, *slice);
+      }
+      return c4c::backend::render_module(adapted);
+    } catch (const c4c::backend::LirAdapterError& ex) {
+      if (ex.kind() != c4c::backend::LirAdapterErrorKind::Unsupported) {
+        throw;
+      }
     }
   }
   if (auto gen_asm = try_emit_general_lir_asm(prepared)) return *gen_asm;

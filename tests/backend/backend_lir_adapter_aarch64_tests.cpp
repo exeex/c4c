@@ -70,6 +70,72 @@ c4c::codegen::lir::LirModule make_param_slot_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_mixed_width_conditional_return_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.x", "i32", "", 4});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.l", "i64", "", 8});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{"i32", "0", "%lv.x"});
+  entry.insts.push_back(LirStoreOp{"i64", "0", "%lv.l"});
+  entry.insts.push_back(LirLoadOp{"%t0", "i32", "%lv.x"});
+  entry.insts.push_back(LirBinOp{"%t1", "xor", "i32", "%t0", "-1"});
+  entry.insts.push_back(LirStoreOp{"i32", "%t1", "%lv.x"});
+  entry.insts.push_back(LirLoadOp{"%t2", "i32", "%lv.x"});
+  entry.insts.push_back(LirCmpOp{"%t3", false, "ne", "i32", "%t2", "4294967295"});
+  entry.insts.push_back(LirCastOp{"%t4", LirCastKind::ZExt, "i1", "%t3", "i32"});
+  entry.insts.push_back(LirCmpOp{"%t5", false, "ne", "i32", "%t4", "0"});
+  entry.terminator = LirCondBr{"%t5", "block_1", "block_2"};
+
+  LirBlock block1;
+  block1.id = LirBlockId{1};
+  block1.label = "block_1";
+  block1.terminator = LirRet{std::string("1"), "i32"};
+
+  LirBlock block2;
+  block2.id = LirBlockId{2};
+  block2.label = "block_2";
+  block2.insts.push_back(LirLoadOp{"%t6", "i64", "%lv.l"});
+  block2.insts.push_back(LirBinOp{"%t7", "xor", "i64", "%t6", "-1"});
+  block2.insts.push_back(LirStoreOp{"i64", "%t7", "%lv.l"});
+  block2.insts.push_back(LirLoadOp{"%t8", "i32", "%lv.x"});
+  block2.insts.push_back(LirCastOp{"%t9", LirCastKind::SExt, "i32", "%t8", "i64"});
+  block2.insts.push_back(LirCmpOp{"%t10", false, "ne", "i64", "%t9", "-1"});
+  block2.insts.push_back(LirCastOp{"%t11", LirCastKind::ZExt, "i1", "%t10", "i32"});
+  block2.insts.push_back(LirCmpOp{"%t12", false, "ne", "i32", "%t11", "0"});
+  block2.terminator = LirCondBr{"%t12", "block_3", "block_4"};
+
+  LirBlock block3;
+  block3.id = LirBlockId{3};
+  block3.label = "block_3";
+  block3.terminator = LirRet{std::string("2"), "i32"};
+
+  LirBlock block4;
+  block4.id = LirBlockId{4};
+  block4.label = "block_4";
+  block4.terminator = LirRet{std::string("0"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(block1));
+  function.blocks.push_back(std::move(block2));
+  function.blocks.push_back(std::move(block3));
+  function.blocks.push_back(std::move(block4));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 
 
 
@@ -1226,6 +1292,22 @@ void test_aarch64_backend_renders_param_slot_memory_slice() {
                   "aarch64 backend should write updated parameter values back to slots");
   expect_contains(rendered, "ret i32 %t2",
                   "aarch64 backend should preserve the final reloaded parameter value");
+}
+
+void test_aarch64_backend_skips_legacy_minimal_adapter_for_mixed_width_control_flow() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_mixed_width_conditional_return_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, "sub sp, sp, #",
+                  "aarch64 backend should route mixed-width control flow through the general stack-spill emitter");
+  expect_contains(rendered, "eor w0, w0, w1",
+                  "aarch64 backend should preserve the i32 bitwise-not lowering in the general emitter");
+  expect_contains(rendered, "eor x0, x0, x1",
+                  "aarch64 backend should preserve the i64 bitwise-not lowering in the general emitter");
+  expect_not_contains(rendered, "main:\n  mov w0, #1\n  ret\n",
+                      "aarch64 backend should not collapse mixed-width control flow into a constant-return legacy slice");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend should not fall back to LLVM text for this mixed-width integer case");
 }
 
 void test_aarch64_backend_renders_param_slot_direct_call_slice() {
@@ -2843,6 +2925,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_renders_local_pointer_temp_return_slice();
   test_aarch64_backend_renders_double_indirect_local_pointer_conditional_return_slice();
   test_aarch64_backend_renders_param_slot_memory_slice();
+  test_aarch64_backend_skips_legacy_minimal_adapter_for_mixed_width_control_flow();
   test_aarch64_backend_renders_param_slot_direct_call_slice();
   test_aarch64_backend_renders_typed_direct_call_slice();
   test_aarch64_backend_uses_shared_regalloc_for_call_crossing_direct_call_slice();

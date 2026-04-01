@@ -255,3 +255,44 @@ stack-spill AArch64 emitter. All instruction types handled in one pass.
   split the remaining AArch64 work into two narrow follow-ons:
   `00104.c`/`00216.c` as likely stack- or aggregate-addressing runtime bugs,
   and `00195.c` as a separate floating-point / calling-convention mismatch.
+
+### Step 6 slice result (2026-04-01, bypass unsound minimal constant folding for wide/fp LIR)
+- Root cause isolated from `00104.c`:
+  AArch64 asm generation could still route mixed-width or floating-point LIR
+  through legacy minimal-folding paths before the general emitter, collapsing
+  unsupported control flow into constant-return assembly such as
+  `mov w0, #1; ret`.
+- Fixed `src/backend/aarch64/codegen/emit.cpp` so LIR modules containing
+  floating-point types or integer widths wider than 32 bits bypass the legacy
+  minimal return/conditional/constant-folding paths and, when a backend-module
+  call still carries `legacy_fallback`, route back through the LIR emitter
+  instead of trusting already-misadapted backend IR.
+- Added focused coverage in
+  `tests/backend/backend_lir_adapter_aarch64_tests.cpp` for a mixed-width
+  conditional-return module that must stay on the general stack-spill path
+  rather than collapsing to a constant return.
+- Focus validation:
+  `ctest --test-dir build -R c_testsuite_aarch64_backend_src_00104_c
+  --output-on-failure` now passes.
+- Updated AArch64 subset status:
+  `ctest --test-dir build -R c_testsuite_aarch64 -j8 --output-on-failure`
+  now reports 2 failures total out of 220 (`218/220` passing), improved from
+  3 failures (`217/220` passing). Remaining AArch64 failures:
+  `00195.c` and `00216.c`.
+- Full-suite snapshot:
+  `ctest --test-dir build -j8 --output-on-failure` now reports 5 failures out
+  of 2671 tests (`2666/2671` passing), improved from the prior recorded
+  `2665/2671`. Remaining full-suite failures:
+  `positive_sema_linux_stage2_repro_03_asm_volatile_c`,
+  `backend_lir_adapter_aarch64_tests`,
+  `c_testsuite_aarch64_backend_src_00195_c`,
+  `c_testsuite_aarch64_backend_src_00216_c`, and
+  `llvm_gcc_c_torture_src_20080502_1_c`.
+- Residual note:
+  `backend_lir_adapter_aarch64_tests` still contains many pre-existing
+  assertions that expect legacy LLVM-text output from slices now emitted as
+  real AArch64 assembly; this slice did not attempt to reconcile that harness.
+- Next intended slice:
+  treat the two remaining AArch64 failures as separate follow-ons:
+  `00195.c` as a floating-point constant/calling-convention bug, and
+  `00216.c` as a remaining aggregate/runtime memory bug.
