@@ -962,57 +962,10 @@ class Lowerer {
   bool instantiate_deferred_template(const std::string& tpl_name,
                                      const TypeBindings& bindings,
                                      const NttpBindings& nttp_bindings,
-                                     const std::string& mangled) {
-    // NOTE: consteval pre-check and post-instantiation metadata
-    // (template_origin, spec_key) are now handled by the engine's
-    // TemplateInstantiationStep.  This callback is a pure lowering
-    // operation.
-    const Node* fn_def = ct_state_->find_template_def(tpl_name);
-    if (!fn_def) return false;
-    // Structured specialization selection (primary path).
-    // Build a temporary spec_key for selection (not used for dedup here).
-    SpecializationKey sk;
-    auto selected = registry_.select_function_specialization(
-        fn_def, bindings, nttp_bindings, sk);
-    if (selected.selected_pattern != fn_def) {
-      lower_function(selected.selected_pattern, &mangled);
-    } else {
-      lowering_deferred_instantiation_ = true;
-      const NttpBindings* nttp_ptr = nttp_bindings.empty() ? nullptr : &nttp_bindings;
-      lower_function(fn_def, &mangled, &bindings, nttp_ptr);
-      lowering_deferred_instantiation_ = false;
-    }
-    return true;
-  }
+                                     const std::string& mangled);
 
   DeferredTemplateTypeResult instantiate_deferred_template_type(
-      const PendingTemplateTypeWorkItem& work_item) {
-    TypeSpec ts = work_item.pending_type;
-    if (ts.deferred_member_type_name) {
-      return resolve_deferred_member_typedef_type(work_item);
-    }
-    if (ts.tpl_struct_origin &&
-        work_item.kind != PendingTemplateTypeKind::OwnerStruct) {
-      DeferredTemplateTypeResult result;
-      if (!ensure_pending_template_owner_ready(
-              ts, work_item, true, "no primary template def",
-              "delegated to owner struct work", &result)) {
-        return result;
-      }
-      return DeferredTemplateTypeResult::resolved();
-    }
-    if (ts.tpl_struct_origin) {
-      DeferredTemplateTypeResult result;
-      if (!ensure_pending_template_owner_ready(
-              ts, work_item, false,
-              "no primary template def for owner",
-              "owner struct still pending", &result)) {
-        return result;
-      }
-      return DeferredTemplateTypeResult::resolved();
-    }
-    return DeferredTemplateTypeResult::resolved();
-  }
+      const PendingTemplateTypeWorkItem& work_item);
 
  private:
   struct SwitchCtx {
@@ -10286,6 +10239,59 @@ void Lowerer::lower_initial_program(const Node* root, Module& m) {
   attach_out_of_class_struct_method_defs(items, m);
   lower_non_method_functions_and_globals(items, m);
   lower_pending_struct_methods();
+}
+
+bool Lowerer::instantiate_deferred_template(const std::string& tpl_name,
+                                            const TypeBindings& bindings,
+                                            const NttpBindings& nttp_bindings,
+                                            const std::string& mangled) {
+  // NOTE: consteval pre-check and post-instantiation metadata
+  // (template_origin, spec_key) are now handled by the engine's
+  // TemplateInstantiationStep. This callback is a pure lowering operation.
+  const Node* fn_def = ct_state_->find_template_def(tpl_name);
+  if (!fn_def) return false;
+
+  SpecializationKey sk;
+  auto selected = registry_.select_function_specialization(
+      fn_def, bindings, nttp_bindings, sk);
+  if (selected.selected_pattern != fn_def) {
+    lower_function(selected.selected_pattern, &mangled);
+  } else {
+    lowering_deferred_instantiation_ = true;
+    const NttpBindings* nttp_ptr = nttp_bindings.empty() ? nullptr : &nttp_bindings;
+    lower_function(fn_def, &mangled, &bindings, nttp_ptr);
+    lowering_deferred_instantiation_ = false;
+  }
+  return true;
+}
+
+DeferredTemplateTypeResult Lowerer::instantiate_deferred_template_type(
+    const PendingTemplateTypeWorkItem& work_item) {
+  TypeSpec ts = work_item.pending_type;
+  if (ts.deferred_member_type_name) {
+    return resolve_deferred_member_typedef_type(work_item);
+  }
+  if (ts.tpl_struct_origin &&
+      work_item.kind != PendingTemplateTypeKind::OwnerStruct) {
+    DeferredTemplateTypeResult result;
+    if (!ensure_pending_template_owner_ready(
+            ts, work_item, true, "no primary template def",
+            "delegated to owner struct work", &result)) {
+      return result;
+    }
+    return DeferredTemplateTypeResult::resolved();
+  }
+  if (ts.tpl_struct_origin) {
+    DeferredTemplateTypeResult result;
+    if (!ensure_pending_template_owner_ready(
+            ts, work_item, false,
+            "no primary template def for owner",
+            "owner struct still pending", &result)) {
+      return result;
+    }
+    return DeferredTemplateTypeResult::resolved();
+  }
+  return DeferredTemplateTypeResult::resolved();
 }
 
 

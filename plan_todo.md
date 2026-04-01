@@ -28,10 +28,12 @@ Source Plan: plan.md
 - [x] Extracted the next template-type helper cluster (`seed_pending_template_type`, deferred-template-owner helpers, and related typedef-resolution helpers) from the inline `Lowerer` class body into out-of-class definitions in `src/frontend/hir/ast_to_hir.cpp`
 - [x] Rebuilt the tree after the template-type helper extraction
 - [x] Reran targeted regression checks for `positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c`; the same 3 historically recorded failures remained
+- [x] Extracted the inline deferred-instantiation `Lowerer` methods (`instantiate_deferred_template` and `instantiate_deferred_template_type`) into out-of-class definitions in `src/frontend/hir/ast_to_hir.cpp`
+- [x] Rebuilt and reran both the targeted 3-test regression check and `ctest --test-dir build -j8 --output-on-failure`; the suite still ended with the same 3 known failures
 
 ## Next Slice
 
-- Continue Step 1 by introducing an internal declaration surface for `Lowerer`-owned helper structs and method groups, then migrate the next cohesive lowering cluster out of the inline class body without changing behavior.
+- Continue Step 1 by extracting the next cohesive inline `Lowerer` helper cluster from the class body, starting with small non-stateful utilities or another isolated lowering method group that does not require header-level API expansion.
 
 ## Blockers
 
@@ -48,4 +50,5 @@ Source Plan: plan.md
 - The current slice moved reusable non-anonymous helper declarations into `src/frontend/hir/ast_to_hir.hpp` so future `hir_*.cpp` files can include one declaration surface instead of rediscovering local monolith-only types.
 - The latest slice converted the initial program setup/orchestration helpers from inline `Lowerer` member bodies into out-of-class definitions, reducing the size of the monolithic class body without changing symbol ownership or behavior.
 - The newest slice continued that extraction pattern for the deferred-template/type-resolution helper group, leaving behavior unchanged while shrinking the inline `Lowerer` class body again.
-- Validation on 2026-04-01: `cmake --build build -j8` succeeded; targeted reruns of the three historically recorded failing tests matched the prior blocker list, but a fresh full-suite `ctest --test-dir build -j8 --output-on-failure` reported many more failures than the older note in this file.
+- The current slice moved the two deferred-instantiation entrypoints out of the inline `Lowerer` class body into out-of-class definitions, keeping the callback behavior unchanged while continuing the monolith peel-back.
+- Validation on 2026-04-01: `cmake --build build -j8` succeeded; targeted reruns of `positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c` matched the historical blocker list; a full `ctest --test-dir build -j8 --output-on-failure` finished with the same 3 failing tests and 2668 passing tests.
