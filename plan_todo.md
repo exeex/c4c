@@ -23,10 +23,12 @@ Source Plan: plan.md
 - [x] Rebuilt the tree after the Step 1 header-surface slice
 - [x] Promoted split-relevant HIR helper declarations (`QualifiedMethodRef`, op mappers, generic-type helpers, and layout entrypoints) into `src/frontend/hir/ast_to_hir.hpp`
 - [x] Rebuilt and reran `ctest --test-dir build -j8 --output-on-failure`; the suite remained at the same 3 known failures
+- [x] Peeled the initial program-orchestration `Lowerer` cluster out of the monolithic inline class body into out-of-class `Lowerer::...` definitions in `src/frontend/hir/ast_to_hir.cpp`
+- [x] Rebuilt and reran `ctest --test-dir build -j8 --output-on-failure` after the orchestration extraction; the suite still ended with the same 3 known failures
 
 ## Next Slice
 
-- Continue Step 1 by identifying which `Lowerer`-owned helper structs and method groups need an internal declaration surface for the future `hir_*.cpp` split, then peel the first cohesive method cluster out of the monolithic class definition without changing behavior.
+- Continue Step 1 by introducing an internal declaration surface for `Lowerer`-owned helper structs and method groups, then migrate the next cohesive lowering cluster out of the inline class body without changing behavior.
 
 ## Blockers
 
@@ -40,3 +42,4 @@ Source Plan: plan.md
 - The first execution slice keeps behavior unchanged and starts header ownership with forward declarations before moving larger helper/class surfaces.
 - Validation after the slice: `cmake -S . -B build` and `cmake --build build -j8` succeeded; full `ctest` completed with 3 existing failures outside this HIR declaration-only change.
 - The current slice moved reusable non-anonymous helper declarations into `src/frontend/hir/ast_to_hir.hpp` so future `hir_*.cpp` files can include one declaration surface instead of rediscovering local monolith-only types.
+- The latest slice converted the initial program setup/orchestration helpers from inline `Lowerer` member bodies into out-of-class definitions, reducing the size of the monolithic class body without changing symbol ownership or behavior.

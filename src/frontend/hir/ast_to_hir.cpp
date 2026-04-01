@@ -1061,294 +1061,37 @@ class Lowerer {
     return true;
   }
 
-  std::vector<const Node*> flatten_program_items(const Node* root) const {
-    std::vector<const Node*> items;
-    std::function<void(const Node*)> flatten = [&](const Node* n) {
-      if (!n) return;
-      if (n->kind == NK_BLOCK) {
-        for (int j = 0; j < n->n_children; ++j) flatten(n->children[j]);
-        return;
-      }
-      items.push_back(n);
-    };
-    for (int i = 0; i < root->n_children; ++i) flatten(root->children[i]);
-    return items;
-  }
+  std::vector<const Node*> flatten_program_items(const Node* root) const;
 
-  void collect_weak_symbol_names(const std::vector<const Node*>& items) {
-    for (const Node* item : items) {
-      if (item->kind == NK_PRAGMA_WEAK && item->name) weak_symbols_.insert(item->name);
-    }
-  }
+  void collect_weak_symbol_names(const std::vector<const Node*>& items);
 
-  void collect_initial_type_definitions(const std::vector<const Node*>& items) {
-    for (const Node* item : items) {
-      if (item->kind == NK_STRUCT_DEF) {
-        lower_struct_def(item);
-        if (item->name) struct_def_nodes_[item->name] = item;
-        if (is_primary_template_struct_def(item) && item->name) {
-          register_template_struct_primary(item->name, item);
-        }
-        if (item->template_origin_name && item->n_template_args > 0) {
-          const Node* primary_tpl =
-              find_template_struct_primary(item->template_origin_name);
-          if (primary_tpl) register_template_struct_specialization(primary_tpl, item);
-        }
-      }
-      if (item->kind == NK_ENUM_DEF) collect_enum_def(item);
-    }
-  }
+  void collect_initial_type_definitions(const std::vector<const Node*>& items);
 
-  void collect_consteval_function_definitions(const std::vector<const Node*>& items) {
-    for (const Node* item : items) {
-      if (item->kind == NK_FUNCTION && item->is_consteval && item->name) {
-        ct_state_->register_consteval_def(item->name, item);
-      }
-    }
-  }
+  void collect_consteval_function_definitions(const std::vector<const Node*>& items);
 
-  void collect_template_function_definitions(const std::vector<const Node*>& items) {
-    for (const Node* item : items) {
-      if (item->kind == NK_FUNCTION && item->name && item->n_template_params > 0) {
-        ct_state_->register_template_def(item->name, item);
-      }
-    }
-  }
+  void collect_template_function_definitions(const std::vector<const Node*>& items);
 
-  void collect_function_template_specializations(const std::vector<const Node*>& items) {
-    for (const Node* item : items) {
-      if (item->kind == NK_FUNCTION && item->name && item->is_explicit_specialization &&
-          item->n_template_args > 0) {
-        const Node* tpl_def = ct_state_->find_template_def(item->name);
-        if (tpl_def) ct_state_->register_function_specialization(tpl_def, item);
-      }
-    }
-  }
+  void collect_function_template_specializations(const std::vector<const Node*>& items);
 
-  void collect_depth0_template_instantiations(const std::vector<const Node*>& items) {
-    for (const Node* item : items) {
-      if (item->kind == NK_FUNCTION && item->body && item->n_template_params == 0) {
-        collect_template_instantiations(item->body, item);
-      }
-    }
-  }
+  void collect_depth0_template_instantiations(const std::vector<const Node*>& items);
 
-  void run_consteval_template_seed_fixpoint(const std::vector<const Node*>& items) {
-    for (int pass = 0; pass < 8; ++pass) {
-      size_t prev_size = registry_.total_instance_count();
-      for (const Node* item : items) {
-        if (item->kind == NK_FUNCTION && item->body && item->n_template_params > 0) {
-          collect_consteval_template_instantiations(item->body, item);
-        }
-      }
-      registry_.realize_seeds();
-      if (registry_.total_instance_count() == prev_size) break;
-    }
-  }
+  void run_consteval_template_seed_fixpoint(const std::vector<const Node*>& items);
 
-  void finalize_template_seed_realization() {
-    registry_.realize_seeds();
-    if (!registry_.verify_parity()) {
-      registry_.dump_parity(stderr);
-      throw std::runtime_error(
-          "InstantiationRegistry: seed/instance parity violation after "
-          "realize_seeds()");
-    }
-  }
+  void finalize_template_seed_realization();
 
-  void populate_hir_template_defs(Module& m) {
-    ct_state_->for_each_template_def([&](const std::string& name, const Node* fn_def) {
-      HirTemplateDef tdef;
-      tdef.name = name;
-      tdef.is_consteval = fn_def->is_consteval;
-      tdef.span = make_span(fn_def);
-      for (int i = 0; i < fn_def->n_template_params; ++i) {
-        if (fn_def->template_param_names[i])
-          tdef.template_params.emplace_back(fn_def->template_param_names[i]);
-        tdef.param_is_nttp.push_back(
-            fn_def->template_param_is_nttp && fn_def->template_param_is_nttp[i]);
-      }
-      tdef.instances = ct_state_->instances_to_hir_metadata(
-          name, tdef.template_params);
-      m.template_defs[name] = std::move(tdef);
-    });
-  }
+  void populate_hir_template_defs(Module& m);
 
-  void collect_ref_overloaded_free_functions(const std::vector<const Node*>& items) {
-    std::unordered_map<std::string, const Node*> first_fn_decl;
-    for (const Node* item : items) {
-      if (item->kind != NK_FUNCTION || !item->name || item->is_consteval ||
-          item->n_template_params > 0 || item->is_explicit_specialization) {
-        continue;
-      }
-      std::string fn_name = item->name;
-      auto prev_it = first_fn_decl.find(fn_name);
-      if (prev_it == first_fn_decl.end()) {
-        first_fn_decl[fn_name] = item;
-        continue;
-      }
-      const Node* prev = prev_it->second;
-      if (prev->n_params != item->n_params) continue;
-      bool has_ref_diff = false;
-      bool base_match = true;
-      for (int pi = 0; pi < item->n_params; ++pi) {
-        const TypeSpec& a = prev->params[pi]->type;
-        const TypeSpec& b = item->params[pi]->type;
-        if (a.is_lvalue_ref != b.is_lvalue_ref || a.is_rvalue_ref != b.is_rvalue_ref) {
-          has_ref_diff = true;
-        }
-        if (a.base != b.base || a.ptr_level != b.ptr_level) {
-          base_match = false;
-          break;
-        }
-        if ((a.base == TB_STRUCT || a.base == TB_UNION) && a.tag && b.tag) {
-          if (std::string(a.tag) != std::string(b.tag)) {
-            base_match = false;
-            break;
-          }
-        }
-      }
-      if (!has_ref_diff || !base_match) continue;
-      auto& ovset = ref_overload_set_[fn_name];
-      if (ovset.empty()) {
-        RefOverloadEntry e0;
-        e0.mangled_name = fn_name;
-        for (int pi = 0; pi < prev->n_params; ++pi) {
-          e0.param_is_rvalue_ref.push_back(prev->params[pi]->type.is_rvalue_ref);
-          e0.param_is_lvalue_ref.push_back(prev->params[pi]->type.is_lvalue_ref);
-        }
-        ovset.push_back(std::move(e0));
-        ref_overload_mangled_[prev] = fn_name;
-      }
-      RefOverloadEntry e1;
-      e1.mangled_name = fn_name + "__rref_overload";
-      for (int pi = 0; pi < item->n_params; ++pi) {
-        e1.param_is_rvalue_ref.push_back(item->params[pi]->type.is_rvalue_ref);
-        e1.param_is_lvalue_ref.push_back(item->params[pi]->type.is_lvalue_ref);
-      }
-      ovset.push_back(std::move(e1));
-      ref_overload_mangled_[item] = fn_name + "__rref_overload";
-    }
-  }
+  void collect_ref_overloaded_free_functions(const std::vector<const Node*>& items);
 
   void attach_out_of_class_struct_method_defs(const std::vector<const Node*>& items,
-                                              Module& m) {
-    for (const Node* item : items) {
-      if (item->kind != NK_FUNCTION || !item->body) continue;
-      auto method_ref = try_parse_qualified_struct_method_name(item);
-      if (!method_ref.has_value()) continue;
-      if (!m.struct_defs.count(method_ref->struct_tag)) continue;
-      auto mit = struct_methods_.find(method_ref->key);
-      if (mit == struct_methods_.end()) continue;
-      for (auto& pm : pending_methods_) {
-        if (pm.mangled == mit->second) {
-          pm.method_node = item;
-          break;
-        }
-      }
-    }
-  }
+                                              Module& m);
 
   void lower_non_method_functions_and_globals(const std::vector<const Node*>& items,
-                                              Module& m) {
-    for (const Node* item : items) {
-      if (item->kind == NK_FUNCTION) {
-        auto method_ref = try_parse_qualified_struct_method_name(item);
-        if (method_ref.has_value() && m.struct_defs.count(method_ref->struct_tag) &&
-            struct_methods_.count(method_ref->key)) {
-          continue;
-        }
-        if (item->is_consteval && item->n_template_params == 0) {
-          Function ce_fn{};
-          ce_fn.id = next_fn_id();
-          ce_fn.name = item->name ? item->name : "<anon_consteval>";
-          ce_fn.ns_qual = make_ns_qual(item);
-          ce_fn.return_type = qtype_from(item->type);
-          ce_fn.consteval_only = true;
-          ce_fn.span = make_span(item);
-          for (int i = 0; i < item->n_params; ++i) {
-            const Node* p = item->params[i];
-            if (!p) continue;
-            Param param{};
-            param.name = p->name ? p->name : "<anon_param>";
-            param.type = qtype_from(p->type, ValueCategory::LValue);
-            param.span = make_span(p);
-            ce_fn.params.push_back(std::move(param));
-          }
-          m.fn_index[ce_fn.name] = ce_fn.id;
-          m.functions.push_back(std::move(ce_fn));
-          continue;
-        }
-        if (item->is_consteval) continue;
-        if (item->n_template_params > 0 && item->name) {
-          auto* inst_list = registry_.find_instances(item->name);
-          if (inst_list && !inst_list->empty()) {
-            for (const auto& inst : *inst_list) {
-              auto selected = registry_.select_function_specialization(
-                  item, inst.bindings, inst.nttp_bindings, inst.spec_key);
-              if (selected.selected_pattern != item) {
-                lower_function(selected.selected_pattern, &inst.mangled_name);
-              } else {
-                lower_function(item, &inst.mangled_name, &inst.bindings,
-                               inst.nttp_bindings.empty() ? nullptr : &inst.nttp_bindings);
-              }
-              if (!m.functions.empty()) {
-                m.functions.back().template_origin = item->name ? item->name : "";
-                m.functions.back().spec_key = inst.spec_key;
-              }
-            }
-          } else {
-            if (!is_referenced_without_template_args(item->name, items)) continue;
-            lower_function(item);
-          }
-        } else if (!item->is_explicit_specialization) {
-          auto ovit = ref_overload_mangled_.find(item);
-          if (ovit != ref_overload_mangled_.end()) {
-            lower_function(item, &ovit->second);
-          } else {
-            lower_function(item);
-          }
-        }
-      } else if (item->kind == NK_GLOBAL_VAR) {
-        lower_global(item);
-      }
-    }
-  }
+                                              Module& m);
 
-  void lower_pending_struct_methods() {
-    for (const auto& pm : pending_methods_) {
-      lower_struct_method(pm.mangled, pm.struct_tag, pm.method_node,
-                          pm.tpl_bindings.empty() ? nullptr : &pm.tpl_bindings,
-                          pm.nttp_bindings.empty() ? nullptr : &pm.nttp_bindings);
-    }
-  }
+  void lower_pending_struct_methods();
 
-  void lower_initial_program(const Node* root, Module& m) {
-    if (!root || root->kind != NK_PROGRAM) {
-      throw std::runtime_error("build_initial_hir: root is not NK_PROGRAM");
-    }
-
-    module_ = &m;
-
-    std::vector<const Node*> items = flatten_program_items(root);
-
-    collect_weak_symbol_names(items);
-    collect_initial_type_definitions(items);
-    collect_consteval_function_definitions(items);
-    collect_template_function_definitions(items);
-    collect_function_template_specializations(items);
-    collect_depth0_template_instantiations(items);
-    registry_.realize_seeds();
-    run_consteval_template_seed_fixpoint(items);
-    finalize_template_seed_realization();
-    populate_hir_template_defs(m);
-    collect_ref_overloaded_free_functions(items);
-    attach_out_of_class_struct_method_defs(items, m);
-    lower_non_method_functions_and_globals(items, m);
-    lower_pending_struct_methods();
-
-    return;
-  }
+  void lower_initial_program(const Node* root, Module& m);
 
   bool instantiate_deferred_template(const std::string& tpl_name,
                                      const TypeBindings& bindings,
@@ -10170,6 +9913,301 @@ class Lowerer {
   bool lowering_deferred_instantiation_ = false;
 
 };
+
+std::vector<const Node*> Lowerer::flatten_program_items(const Node* root) const {
+  std::vector<const Node*> items;
+  std::function<void(const Node*)> flatten = [&](const Node* n) {
+    if (!n) return;
+    if (n->kind == NK_BLOCK) {
+      for (int j = 0; j < n->n_children; ++j) flatten(n->children[j]);
+      return;
+    }
+    items.push_back(n);
+  };
+  for (int i = 0; i < root->n_children; ++i) flatten(root->children[i]);
+  return items;
+}
+
+void Lowerer::collect_weak_symbol_names(const std::vector<const Node*>& items) {
+  for (const Node* item : items) {
+    if (item->kind == NK_PRAGMA_WEAK && item->name) weak_symbols_.insert(item->name);
+  }
+}
+
+void Lowerer::collect_initial_type_definitions(const std::vector<const Node*>& items) {
+  for (const Node* item : items) {
+    if (item->kind == NK_STRUCT_DEF) {
+      lower_struct_def(item);
+      if (item->name) struct_def_nodes_[item->name] = item;
+      if (is_primary_template_struct_def(item) && item->name) {
+        register_template_struct_primary(item->name, item);
+      }
+      if (item->template_origin_name && item->n_template_args > 0) {
+        const Node* primary_tpl =
+            find_template_struct_primary(item->template_origin_name);
+        if (primary_tpl) register_template_struct_specialization(primary_tpl, item);
+      }
+    }
+    if (item->kind == NK_ENUM_DEF) collect_enum_def(item);
+  }
+}
+
+void Lowerer::collect_consteval_function_definitions(
+    const std::vector<const Node*>& items) {
+  for (const Node* item : items) {
+    if (item->kind == NK_FUNCTION && item->is_consteval && item->name) {
+      ct_state_->register_consteval_def(item->name, item);
+    }
+  }
+}
+
+void Lowerer::collect_template_function_definitions(
+    const std::vector<const Node*>& items) {
+  for (const Node* item : items) {
+    if (item->kind == NK_FUNCTION && item->name && item->n_template_params > 0) {
+      ct_state_->register_template_def(item->name, item);
+    }
+  }
+}
+
+void Lowerer::collect_function_template_specializations(
+    const std::vector<const Node*>& items) {
+  for (const Node* item : items) {
+    if (item->kind == NK_FUNCTION && item->name && item->is_explicit_specialization &&
+        item->n_template_args > 0) {
+      const Node* tpl_def = ct_state_->find_template_def(item->name);
+      if (tpl_def) ct_state_->register_function_specialization(tpl_def, item);
+    }
+  }
+}
+
+void Lowerer::collect_depth0_template_instantiations(
+    const std::vector<const Node*>& items) {
+  for (const Node* item : items) {
+    if (item->kind == NK_FUNCTION && item->body && item->n_template_params == 0) {
+      collect_template_instantiations(item->body, item);
+    }
+  }
+}
+
+void Lowerer::run_consteval_template_seed_fixpoint(
+    const std::vector<const Node*>& items) {
+  for (int pass = 0; pass < 8; ++pass) {
+    size_t prev_size = registry_.total_instance_count();
+    for (const Node* item : items) {
+      if (item->kind == NK_FUNCTION && item->body && item->n_template_params > 0) {
+        collect_consteval_template_instantiations(item->body, item);
+      }
+    }
+    registry_.realize_seeds();
+    if (registry_.total_instance_count() == prev_size) break;
+  }
+}
+
+void Lowerer::finalize_template_seed_realization() {
+  registry_.realize_seeds();
+  if (!registry_.verify_parity()) {
+    registry_.dump_parity(stderr);
+    throw std::runtime_error(
+        "InstantiationRegistry: seed/instance parity violation after "
+        "realize_seeds()");
+  }
+}
+
+void Lowerer::populate_hir_template_defs(Module& m) {
+  ct_state_->for_each_template_def([&](const std::string& name, const Node* fn_def) {
+    HirTemplateDef tdef;
+    tdef.name = name;
+    tdef.is_consteval = fn_def->is_consteval;
+    tdef.span = make_span(fn_def);
+    for (int i = 0; i < fn_def->n_template_params; ++i) {
+      if (fn_def->template_param_names[i])
+        tdef.template_params.emplace_back(fn_def->template_param_names[i]);
+      tdef.param_is_nttp.push_back(
+          fn_def->template_param_is_nttp && fn_def->template_param_is_nttp[i]);
+    }
+    tdef.instances = ct_state_->instances_to_hir_metadata(
+        name, tdef.template_params);
+    m.template_defs[name] = std::move(tdef);
+  });
+}
+
+void Lowerer::collect_ref_overloaded_free_functions(
+    const std::vector<const Node*>& items) {
+  std::unordered_map<std::string, const Node*> first_fn_decl;
+  for (const Node* item : items) {
+    if (item->kind != NK_FUNCTION || !item->name || item->is_consteval ||
+        item->n_template_params > 0 || item->is_explicit_specialization) {
+      continue;
+    }
+    std::string fn_name = item->name;
+    auto prev_it = first_fn_decl.find(fn_name);
+    if (prev_it == first_fn_decl.end()) {
+      first_fn_decl[fn_name] = item;
+      continue;
+    }
+    const Node* prev = prev_it->second;
+    if (prev->n_params != item->n_params) continue;
+    bool has_ref_diff = false;
+    bool base_match = true;
+    for (int pi = 0; pi < item->n_params; ++pi) {
+      const TypeSpec& a = prev->params[pi]->type;
+      const TypeSpec& b = item->params[pi]->type;
+      if (a.is_lvalue_ref != b.is_lvalue_ref || a.is_rvalue_ref != b.is_rvalue_ref) {
+        has_ref_diff = true;
+      }
+      if (a.base != b.base || a.ptr_level != b.ptr_level) {
+        base_match = false;
+        break;
+      }
+      if ((a.base == TB_STRUCT || a.base == TB_UNION) && a.tag && b.tag) {
+        if (std::string(a.tag) != std::string(b.tag)) {
+          base_match = false;
+          break;
+        }
+      }
+    }
+    if (!has_ref_diff || !base_match) continue;
+    auto& ovset = ref_overload_set_[fn_name];
+    if (ovset.empty()) {
+      Lowerer::RefOverloadEntry e0;
+      e0.mangled_name = fn_name;
+      for (int pi = 0; pi < prev->n_params; ++pi) {
+        e0.param_is_rvalue_ref.push_back(prev->params[pi]->type.is_rvalue_ref);
+        e0.param_is_lvalue_ref.push_back(prev->params[pi]->type.is_lvalue_ref);
+      }
+      ovset.push_back(std::move(e0));
+      ref_overload_mangled_[prev] = fn_name;
+    }
+    Lowerer::RefOverloadEntry e1;
+    e1.mangled_name = fn_name + "__rref_overload";
+    for (int pi = 0; pi < item->n_params; ++pi) {
+      e1.param_is_rvalue_ref.push_back(item->params[pi]->type.is_rvalue_ref);
+      e1.param_is_lvalue_ref.push_back(item->params[pi]->type.is_lvalue_ref);
+    }
+    ovset.push_back(std::move(e1));
+    ref_overload_mangled_[item] = fn_name + "__rref_overload";
+  }
+}
+
+void Lowerer::attach_out_of_class_struct_method_defs(
+    const std::vector<const Node*>& items,
+    Module& m) {
+  for (const Node* item : items) {
+    if (item->kind != NK_FUNCTION || !item->body) continue;
+    auto method_ref = try_parse_qualified_struct_method_name(item);
+    if (!method_ref.has_value()) continue;
+    if (!m.struct_defs.count(method_ref->struct_tag)) continue;
+    auto mit = struct_methods_.find(method_ref->key);
+    if (mit == struct_methods_.end()) continue;
+    for (auto& pm : pending_methods_) {
+      if (pm.mangled == mit->second) {
+        pm.method_node = item;
+        break;
+      }
+    }
+  }
+}
+
+void Lowerer::lower_non_method_functions_and_globals(
+    const std::vector<const Node*>& items,
+    Module& m) {
+  for (const Node* item : items) {
+    if (item->kind == NK_FUNCTION) {
+      auto method_ref = try_parse_qualified_struct_method_name(item);
+      if (method_ref.has_value() && m.struct_defs.count(method_ref->struct_tag) &&
+          struct_methods_.count(method_ref->key)) {
+        continue;
+      }
+      if (item->is_consteval && item->n_template_params == 0) {
+        Function ce_fn{};
+        ce_fn.id = next_fn_id();
+        ce_fn.name = item->name ? item->name : "<anon_consteval>";
+        ce_fn.ns_qual = make_ns_qual(item);
+        ce_fn.return_type = qtype_from(item->type);
+        ce_fn.consteval_only = true;
+        ce_fn.span = make_span(item);
+        for (int i = 0; i < item->n_params; ++i) {
+          const Node* p = item->params[i];
+          if (!p) continue;
+          Param param{};
+          param.name = p->name ? p->name : "<anon_param>";
+          param.type = qtype_from(p->type, ValueCategory::LValue);
+          param.span = make_span(p);
+          ce_fn.params.push_back(std::move(param));
+        }
+        m.fn_index[ce_fn.name] = ce_fn.id;
+        m.functions.push_back(std::move(ce_fn));
+        continue;
+      }
+      if (item->is_consteval) continue;
+      if (item->n_template_params > 0 && item->name) {
+        auto* inst_list = registry_.find_instances(item->name);
+        if (inst_list && !inst_list->empty()) {
+          for (const auto& inst : *inst_list) {
+            auto selected = registry_.select_function_specialization(
+                item, inst.bindings, inst.nttp_bindings, inst.spec_key);
+            if (selected.selected_pattern != item) {
+              lower_function(selected.selected_pattern, &inst.mangled_name);
+            } else {
+              lower_function(item, &inst.mangled_name, &inst.bindings,
+                             inst.nttp_bindings.empty() ? nullptr : &inst.nttp_bindings);
+            }
+            if (!m.functions.empty()) {
+              m.functions.back().template_origin = item->name ? item->name : "";
+              m.functions.back().spec_key = inst.spec_key;
+            }
+          }
+        } else {
+          if (!is_referenced_without_template_args(item->name, items)) continue;
+          lower_function(item);
+        }
+      } else if (!item->is_explicit_specialization) {
+        auto ovit = ref_overload_mangled_.find(item);
+        if (ovit != ref_overload_mangled_.end()) {
+          lower_function(item, &ovit->second);
+        } else {
+          lower_function(item);
+        }
+      }
+    } else if (item->kind == NK_GLOBAL_VAR) {
+      lower_global(item);
+    }
+  }
+}
+
+void Lowerer::lower_pending_struct_methods() {
+  for (const auto& pm : pending_methods_) {
+    lower_struct_method(pm.mangled, pm.struct_tag, pm.method_node,
+                        pm.tpl_bindings.empty() ? nullptr : &pm.tpl_bindings,
+                        pm.nttp_bindings.empty() ? nullptr : &pm.nttp_bindings);
+  }
+}
+
+void Lowerer::lower_initial_program(const Node* root, Module& m) {
+  if (!root || root->kind != NK_PROGRAM) {
+    throw std::runtime_error("build_initial_hir: root is not NK_PROGRAM");
+  }
+
+  module_ = &m;
+
+  std::vector<const Node*> items = flatten_program_items(root);
+
+  collect_weak_symbol_names(items);
+  collect_initial_type_definitions(items);
+  collect_consteval_function_definitions(items);
+  collect_template_function_definitions(items);
+  collect_function_template_specializations(items);
+  collect_depth0_template_instantiations(items);
+  registry_.realize_seeds();
+  run_consteval_template_seed_fixpoint(items);
+  finalize_template_seed_realization();
+  populate_hir_template_defs(m);
+  collect_ref_overloaded_free_functions(items);
+  attach_out_of_class_struct_method_defs(items, m);
+  lower_non_method_functions_and_globals(items, m);
+  lower_pending_struct_methods();
+}
 
 
 InitialHirBuildResult build_initial_hir(
