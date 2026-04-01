@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 1: Establish Header Ownership
-- Current slice: continue Step 1 monolith peel-back by extracting the next low-coupling helper cluster adjacent to call/init lowering, likely the small compound-literal and call-prep helpers, before revisiting the heavier inline entrypoints (`lower_expr`, `lower_stmt_node`, and `lower_struct_def`)
+- Current slice: continue Step 1 monolith peel-back by extracting the next heavy inline entrypoint, likely `lower_stmt_node`, now that the compound-literal/call-prep helpers are out of the `Lowerer` class body and the remaining inline bodies are concentrated in `lower_struct_def`, `lower_stmt_node`, and `lower_expr`
 
 ## Todo
 
@@ -19,6 +19,9 @@ Source Plan: plan.md
 
 ## Completed
 
+- The current slice targeted the small compound-literal and call-prep helpers because `hoist_compound_literal_to_global`, `is_ast_lvalue`, and `lower_call_expr` were still inline in the `Lowerer` class body but already coordinated existing initializer, constructor, method-dispatch, and template-call utilities without widening the declaration surface.
+- The latest slice moved `hoist_compound_literal_to_global`, `is_ast_lvalue`, and `lower_call_expr` out of the inline `Lowerer` class body into out-of-class definitions in `src/frontend/hir/ast_to_hir.cpp`, preserving behavior while continuing the monolith shrink.
+- Validation on 2026-04-01: `cmake --build build -j8` succeeded; a full `ctest --test-dir build -j8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 failing tests (`positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c`); `.codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passed with zero new failing tests.
 - The current slice targeted the global initializer-normalization helper cluster because `is_string_scalar`, `flat_scalar_count`, `deduce_array_size_from_init`, `resolve_array_ts`, `is_direct_char_array_init`, `union_allows_init_normalization`, `struct_allows_init_normalization`, and `normalize_global_init` were still inline in the `Lowerer` class body but already coordinated existing struct/array metadata and initializer helpers without widening the declaration surface.
 - The latest slice moved that initializer-normalization helper cluster out of the inline `Lowerer` class body into out-of-class definitions in `src/frontend/hir/ast_to_hir.cpp`, preserving behavior while continuing the monolith shrink.
 - Validation on 2026-04-01: `cmake --build build -j8` succeeded; a full `ctest --test-dir build -j8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 failing tests (`positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c`); `.codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passed with zero new failing tests.

@@ -2264,36 +2264,7 @@ class Lowerer {
 
   // Hoist a compound literal to an anonymous global variable.
   // Returns the ExprId of an AddrOf(DeclRef{clit_name}) expression.
-  ExprId hoist_compound_literal_to_global(const Node* addr_node, const Node* clit) {
-    GlobalVar cg{};
-    cg.id = next_global_id();
-    const std::string clit_name = "__clit_" + std::to_string(cg.id.value);
-    cg.name = clit_name;
-    cg.type = qtype_from(clit->type, ValueCategory::LValue);
-    cg.linkage = {true, false, false};  // internal linkage
-    cg.is_const = false;
-    cg.span = make_span(clit);
-    // Lower the compound literal's init list (stored in clit->left).
-    if (clit->left && clit->left->kind == NK_INIT_LIST) {
-      cg.init = lower_init_list(clit->left);
-      cg.type.spec = resolve_array_ts(cg.type.spec, cg.init);
-      cg.init = normalize_global_init(cg.type.spec, cg.init);
-    }
-    module_->global_index[clit_name] = cg.id;
-    module_->globals.push_back(std::move(cg));
-
-    // Build a scalar init: AddrOf(DeclRef{clit_name})
-    TypeSpec ptr_ts = clit->type;
-    ptr_ts.ptr_level++;
-    DeclRef dr{};
-    dr.name = clit_name;
-    dr.global = module_->global_index[clit_name];
-    ExprId dr_id = append_expr(clit, dr, clit->type, ValueCategory::LValue);
-    UnaryExpr addr{};
-    addr.op = UnaryOp::AddrOf;
-    addr.operand = dr_id;
-    return append_expr(addr_node, addr, ptr_ts);
-  }
+  ExprId hoist_compound_literal_to_global(const Node* addr_node, const Node* clit);
 
   void lower_global(const Node* gv);
 
@@ -2303,15 +2274,7 @@ class Lowerer {
                                                       const Node* n);
 
   // Check if an AST expression is an lvalue (variable, subscript, deref, member).
-  static bool is_ast_lvalue(const Node* n) {
-    if (!n) return false;
-    switch (n->kind) {
-      case NK_VAR: case NK_INDEX: case NK_DEREF: case NK_MEMBER:
-        return true;
-      default:
-        return false;
-    }
-  }
+  static bool is_ast_lvalue(const Node* n);
 
   // Resolve a ref-overloaded function call: pick the best overload based on
   // argument value categories. Returns the mangled name of the best match,
@@ -2331,632 +2294,7 @@ class Lowerer {
                                           const Node* list_node,
                                           const TypeSpec& param_ts);
 
-  ExprId lower_call_expr(FunctionCtx* ctx, const Node* n) {
-    if (auto consteval_expr = try_lower_consteval_call_expr(ctx, n)) {
-      return *consteval_expr;
-    }
-
-    if (ctx && n->left && n->left->kind == NK_VAR && n->left->name &&
-        n->n_children == 0) {
-      auto sit = module_->struct_defs.find(n->left->name);
-      auto cit = struct_constructors_.find(n->left->name);
-      if (sit != module_->struct_defs.end() &&
-          (cit == struct_constructors_.end() || cit->second.empty())) {
-        TypeSpec tmp_ts{};
-        tmp_ts.base = TB_STRUCT;
-        tmp_ts.tag = sit->second.tag.c_str();
-        tmp_ts.array_size = -1;
-        tmp_ts.inner_rank = -1;
-
-        const LocalId tmp_lid = next_local_id();
-        const std::string tmp_name = "__brace_tmp_" + std::to_string(tmp_lid.value);
-        LocalDecl tmp{};
-        tmp.id = tmp_lid;
-        tmp.name = tmp_name;
-        tmp.type = qtype_from(tmp_ts, ValueCategory::LValue);
-        tmp.storage = StorageClass::Auto;
-        tmp.span = make_span(n);
-        ctx->locals[tmp.name] = tmp.id;
-        ctx->local_types[tmp.id.value] = tmp_ts;
-        append_stmt(*ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(n)});
-
-        DeclRef tmp_ref{};
-        tmp_ref.name = tmp_name;
-        tmp_ref.local = tmp_lid;
-        return append_expr(n, tmp_ref, tmp_ts, ValueCategory::LValue);
-      }
-    }
-
-    // C++ constructor expression parsed as a call, e.g. `T(args...)`.
-    // Materialize a temporary object, invoke the selected constructor on it,
-    // and use the temporary as the expression result.
-    if (ctx && n->left && n->left->kind == NK_VAR && n->left->name) {
-      const std::string callee_name = n->left->name;
-      auto cit = struct_constructors_.find(callee_name);
-      auto sit = module_->struct_defs.find(callee_name);
-      if (cit != struct_constructors_.end() && sit != module_->struct_defs.end()) {
-        const CtorOverload* best = nullptr;
-        if (cit->second.size() == 1) {
-          if (cit->second[0].method_node->n_params == n->n_children)
-            best = &cit->second[0];
-        } else {
-          int best_score = -1;
-          for (const auto& ov : cit->second) {
-            if (ov.method_node->n_params != n->n_children) continue;
-            int score = 0;
-            bool viable = true;
-            for (int pi = 0; pi < ov.method_node->n_params && viable; ++pi) {
-              TypeSpec param_ts = ov.method_node->params[pi]->type;
-              resolve_typedef_to_struct(param_ts);
-              TypeSpec arg_ts = infer_generic_ctrl_type(ctx, n->children[pi]);
-              const bool arg_is_lvalue = is_ast_lvalue(n->children[pi]);
-              TypeSpec param_base = param_ts;
-              param_base.is_lvalue_ref = false;
-              param_base.is_rvalue_ref = false;
-              if (param_base.base == arg_ts.base &&
-                  param_base.ptr_level == arg_ts.ptr_level) {
-                score += 2;
-                if (param_ts.is_rvalue_ref && !arg_is_lvalue) {
-                  score += 4;
-                } else if (param_ts.is_rvalue_ref && arg_is_lvalue) {
-                  viable = false;
-                } else if (param_ts.is_lvalue_ref && arg_is_lvalue) {
-                  score += 3;
-                } else if (param_ts.is_lvalue_ref && !arg_is_lvalue) {
-                  score += 1;
-                }
-              } else if (param_base.ptr_level == 0 && arg_ts.ptr_level == 0 &&
-                         param_base.base != TB_STRUCT && arg_ts.base != TB_STRUCT &&
-                         param_base.base != TB_VOID && arg_ts.base != TB_VOID) {
-                score += 1;
-              } else {
-                viable = false;
-              }
-            }
-            if (viable && score > best_score) {
-              best_score = score;
-              best = &ov;
-            }
-          }
-        }
-
-        if (best) {
-          if (best->method_node->is_deleted) {
-            std::string diag = "error: call to deleted constructor '";
-            diag += callee_name;
-            diag += "'";
-            throw std::runtime_error(diag);
-          }
-
-          TypeSpec tmp_ts{};
-          tmp_ts.base = TB_STRUCT;
-          tmp_ts.tag = sit->second.tag.c_str();
-          tmp_ts.array_size = -1;
-          tmp_ts.inner_rank = -1;
-
-          const LocalId tmp_lid = next_local_id();
-          const std::string tmp_name = "__ctor_tmp_" + std::to_string(tmp_lid.value);
-          LocalDecl tmp{};
-          tmp.id = tmp_lid;
-          tmp.name = tmp_name;
-          tmp.type = qtype_from(tmp_ts, ValueCategory::LValue);
-          tmp.storage = StorageClass::Auto;
-          tmp.span = make_span(n);
-          ctx->locals[tmp.name] = tmp.id;
-          ctx->local_types[tmp.id.value] = tmp_ts;
-          append_stmt(*ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(n)});
-
-          CallExpr ctor_call{};
-          DeclRef callee_ref{};
-          callee_ref.name = best->mangled_name;
-          TypeSpec fn_ts{};
-          fn_ts.base = TB_VOID;
-          TypeSpec callee_ts = fn_ts;
-          callee_ts.ptr_level++;
-          ctor_call.callee = append_expr(n, callee_ref, callee_ts);
-
-          DeclRef tmp_ref{};
-          tmp_ref.name = tmp_name;
-          tmp_ref.local = tmp_lid;
-          ExprId tmp_id = append_expr(n, tmp_ref, tmp_ts, ValueCategory::LValue);
-          UnaryExpr addr{};
-          addr.op = UnaryOp::AddrOf;
-          addr.operand = tmp_id;
-          TypeSpec ptr_ts = tmp_ts;
-          ptr_ts.ptr_level++;
-          ctor_call.args.push_back(append_expr(n, addr, ptr_ts));
-
-          for (int i = 0; i < n->n_children; ++i) {
-            TypeSpec param_ts = best->method_node->params[i]->type;
-            resolve_typedef_to_struct(param_ts);
-            if (param_ts.is_rvalue_ref || param_ts.is_lvalue_ref) {
-              const Node* arg = n->children[i];
-              const Node* inner = arg;
-              if (inner->kind == NK_CAST && inner->left) inner = inner->left;
-              ExprId arg_val = lower_expr(ctx, inner);
-              TypeSpec storage_ts = reference_storage_ts(param_ts);
-              UnaryExpr addr_e{};
-              addr_e.op = UnaryOp::AddrOf;
-              addr_e.operand = arg_val;
-              ctor_call.args.push_back(append_expr(arg, addr_e, storage_ts));
-            } else {
-              ctor_call.args.push_back(lower_expr(ctx, n->children[i]));
-            }
-          }
-
-          ExprId call_id = append_expr(n, ctor_call, fn_ts);
-          ExprStmt es{};
-          es.expr = call_id;
-          append_stmt(*ctx, Stmt{StmtPayload{es}, make_span(n)});
-          return tmp_id;
-        }
-      }
-    }
-
-    // Handle template struct brace-init + operator() call: Type<Args>{}()
-    // The parser consumes {} and merges the trailing () into a single NK_CALL
-    // with n_children==0.  When the callee is a template struct, lower the
-    // struct construction first, then check the concrete type for operator().
-    if (ctx && n->left && n->left->kind == NK_VAR && n->left->name &&
-        n->left->has_template_args &&
-        find_template_struct_primary(n->left->name)) {
-      ExprId tmp_expr = lower_expr(ctx, n->left);
-      // `Type<Args>{}` is represented as a zero-arg call on the template-id.
-      // If there is a trailing `()`, the parser builds a nested outer call,
-      // so this inner node must yield only the constructed temporary.
-      if (n->n_children == 0) return tmp_expr;
-      const TypeSpec& tmp_ts = module_->expr_pool[tmp_expr.value].type.spec;
-      if (tmp_ts.base == TB_STRUCT && tmp_ts.ptr_level == 0 && tmp_ts.tag) {
-        auto resolved = find_struct_method_mangled(tmp_ts.tag, "operator_call", false);
-        if (!resolved)
-          resolved = find_struct_method_mangled(tmp_ts.tag, "operator_call", true);
-        if (resolved) {
-          ExprId this_obj = tmp_expr;
-          if (module_->expr_pool[tmp_expr.value].type.category != ValueCategory::LValue) {
-            LocalDecl tmp{};
-            tmp.id = next_local_id();
-            std::string tmp_name = "__call_tmp_" + std::to_string(tmp.id.value);
-            tmp.name = tmp_name;
-            tmp.type = qtype_from(tmp_ts, ValueCategory::RValue);
-            const TypeSpec init_ts = module_->expr_pool[tmp_expr.value].type.spec;
-            if (init_ts.base == tmp_ts.base && init_ts.ptr_level == tmp_ts.ptr_level &&
-                init_ts.tag == tmp_ts.tag) {
-              tmp.init = tmp_expr;
-            }
-            append_stmt(*ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(n)});
-
-            DeclRef tmp_ref{};
-            tmp_ref.name = tmp_name;
-            tmp_ref.local = LocalId{tmp.id.value};
-            this_obj = append_expr(n, tmp_ref, tmp_ts, ValueCategory::LValue);
-          }
-          std::string resolved_mangled = *resolved;
-          CallExpr oc{};
-          DeclRef dr{};
-          dr.name = resolved_mangled;
-          auto fit = module_->fn_index.find(dr.name);
-          TypeSpec fn_ts{};
-          fn_ts.base = TB_VOID;
-          if (fit != module_->fn_index.end() &&
-              fit->second.value < module_->functions.size())
-            fn_ts = module_->functions[fit->second.value].return_type.spec;
-          if (fn_ts.base == TB_VOID) {
-            if (auto rit = find_struct_method_return_type(
-                    tmp_ts.tag, "operator_call", false))
-              fn_ts = *rit;
-          }
-          TypeSpec callee_ts = fn_ts;
-          callee_ts.ptr_level++;
-          oc.callee = append_expr(n, dr, callee_ts);
-          // Pass a stable address for the temporary object as the this pointer.
-          UnaryExpr addr{};
-          addr.op = UnaryOp::AddrOf;
-          addr.operand = this_obj;
-          TypeSpec ptr_ts = tmp_ts;
-          ptr_ts.ptr_level++;
-          oc.args.push_back(append_expr(n, addr, ptr_ts));
-          // Forward any call arguments.
-          for (int i = 0; i < n->n_children; ++i)
-            oc.args.push_back(lower_expr(ctx, n->children[i]));
-          return append_expr(n, oc, fn_ts);
-        }
-      }
-      // No operator() found — just return the constructed temporary.
-      return tmp_expr;
-    }
-
-    // Try operator() dispatch on any struct-typed callable expression,
-    // including temporaries like `Trait{}()`.
-    if (n->left) {
-      TypeSpec callee_ts = infer_generic_ctrl_type(ctx, n->left);
-      if (callee_ts.base == TB_STRUCT && callee_ts.ptr_level == 0 && callee_ts.tag) {
-        std::vector<const Node*> arg_nodes;
-        for (int i = 0; i < n->n_children; ++i)
-          arg_nodes.push_back(n->children[i]);
-        ExprId op = try_lower_operator_call(ctx, n, n->left, "operator_call", arg_nodes);
-        if (op.valid()) return op;
-      }
-    }
-
-    CallExpr c{};
-    auto maybe_lower_ref_arg = [&](const Node* arg_node, const TypeSpec* param_ts) -> ExprId {
-      if (ctx && arg_node && arg_node->kind == NK_INIT_LIST && param_ts &&
-          !param_ts->is_lvalue_ref && !param_ts->is_rvalue_ref) {
-        TypeSpec direct_ts = *param_ts;
-        direct_ts.is_lvalue_ref = false;
-        direct_ts.is_rvalue_ref = false;
-        resolve_typedef_to_struct(direct_ts);
-        if (direct_ts.base == TB_STRUCT && direct_ts.ptr_level == 0) {
-          if (describe_initializer_list_struct(direct_ts, nullptr, nullptr, nullptr))
-            return materialize_initializer_list_arg(ctx, arg_node, direct_ts);
-        }
-      }
-      if (!param_ts || (!param_ts->is_lvalue_ref && !param_ts->is_rvalue_ref)) return lower_expr(ctx, arg_node);
-      TypeSpec storage_ts = reference_storage_ts(*param_ts);
-      if (param_ts->is_rvalue_ref) {
-        if (arg_node && arg_node->kind == NK_CAST && arg_node->type.is_rvalue_ref &&
-            arg_node->left) {
-          UnaryExpr addr{};
-          addr.op = UnaryOp::AddrOf;
-          addr.operand = lower_expr(ctx, arg_node->left);
-          return append_expr(arg_node, addr, storage_ts);
-        }
-        // Rvalue ref param: materialize arg into a temporary, then pass &temp
-        ExprId arg_val = lower_expr(ctx, arg_node);
-        TypeSpec val_ts = reference_value_ts(*param_ts);
-        resolve_typedef_to_struct(val_ts);
-        LocalDecl tmp{};
-        tmp.id = next_local_id();
-        tmp.name = "__rref_arg_tmp";
-        tmp.type = qtype_from(val_ts, ValueCategory::LValue);
-        tmp.init = arg_val;
-        const LocalId tmp_lid = tmp.id;
-        ctx->locals[tmp.name] = tmp.id;
-        ctx->local_types[tmp.id.value] = val_ts;
-        append_stmt(*ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(arg_node)});
-        DeclRef tmp_ref{};
-        tmp_ref.name = "__rref_arg_tmp";
-        tmp_ref.local = tmp_lid;
-        ExprId var_id = append_expr(arg_node, tmp_ref, val_ts, ValueCategory::LValue);
-        UnaryExpr addr{};
-        addr.op = UnaryOp::AddrOf;
-        addr.operand = var_id;
-        return append_expr(arg_node, addr, storage_ts);
-      }
-      UnaryExpr addr{};
-      addr.op = UnaryOp::AddrOf;
-      addr.operand = lower_expr(ctx, arg_node);
-      return append_expr(arg_node, addr, storage_ts);
-    };
-    auto direct_callee_fn = [&](const std::string& name) -> const Function* {
-      auto fit = module_->fn_index.find(name);
-      if (fit == module_->fn_index.end()) return nullptr;
-      return module_->find_function(fit->second);
-    };
-    auto try_expand_pack_call_arg =
-        [&](const Node* arg_node, const TypeSpec* construct_param_ts) -> bool {
-      if (!ctx || !arg_node || arg_node->kind != NK_PACK_EXPANSION || !arg_node->left)
-        return false;
-      const Node* pattern = arg_node->left;
-      if (pattern->kind != NK_CALL || pattern->n_children != 1 || !pattern->left)
-        return false;
-      if (pattern->left->kind != NK_VAR || !pattern->left->name ||
-          std::strcmp(pattern->left->name, "forward") != 0)
-        return false;
-      if (pattern->left->n_template_args != 1 || !pattern->left->template_arg_types ||
-          pattern->left->template_arg_types[0].base != TB_TYPEDEF ||
-          !pattern->left->template_arg_types[0].tag)
-        return false;
-      const Node* forwarded_arg = pattern->children[0];
-      if (!forwarded_arg || forwarded_arg->kind != NK_VAR || !forwarded_arg->name)
-        return false;
-      auto pit = ctx->pack_params.find(forwarded_arg->name);
-      if (pit == ctx->pack_params.end() || pit->second.empty()) return false;
-
-      for (const auto& elem : pit->second) {
-        const Node* tpl_fn = ct_state_->find_template_def("forward");
-        TypeBindings forward_bindings;
-        if (tpl_fn && tpl_fn->n_template_params > 0 && tpl_fn->template_param_names[0])
-          forward_bindings[tpl_fn->template_param_names[0]] = elem.type;
-        else
-          forward_bindings["T"] = elem.type;
-        const std::string callee_name =
-            mangle_template_name("forward", forward_bindings);
-
-        DeclRef callee_ref{};
-        callee_ref.name = callee_name;
-        TypeSpec callee_ts = pattern->left->type;
-        if (const Function* callee_fn = direct_callee_fn(callee_name)) {
-          callee_ts = callee_fn->return_type.spec;
-          callee_ts.ptr_level++;
-        }
-
-        CallExpr expanded_call{};
-        expanded_call.callee = append_expr(pattern->left, callee_ref, callee_ts);
-        TemplateCallInfo tci;
-        tci.source_template = "forward";
-        tci.template_args.push_back(elem.type);
-        expanded_call.template_info = std::move(tci);
-
-        DeclRef param_ref{};
-        param_ref.name = elem.element_name;
-        param_ref.param_index = elem.param_index;
-        ExprId param_expr = append_expr(forwarded_arg, param_ref, elem.type, ValueCategory::LValue);
-        UnaryExpr addr{};
-        addr.op = UnaryOp::AddrOf;
-        addr.operand = param_expr;
-        TypeSpec param_storage_ts = elem.type;
-        param_storage_ts.ptr_level += 1;
-        expanded_call.args.push_back(append_expr(forwarded_arg, addr, param_storage_ts));
-
-        TypeSpec ret_ts = elem.type;
-        ret_ts.is_lvalue_ref = false;
-        ret_ts.is_rvalue_ref = true;
-        ExprId expanded_id = append_expr(pattern, expanded_call, ret_ts);
-        if (!construct_param_ts || (!construct_param_ts->is_lvalue_ref &&
-                                    !construct_param_ts->is_rvalue_ref)) {
-          c.args.push_back(expanded_id);
-        } else {
-          TypeSpec storage_ts = reference_storage_ts(*construct_param_ts);
-          UnaryExpr outer_addr{};
-          outer_addr.op = UnaryOp::AddrOf;
-          outer_addr.operand = expanded_id;
-          c.args.push_back(append_expr(pattern, outer_addr, storage_ts));
-        }
-      }
-      return true;
-    };
-    if (n->left && n->left->kind == NK_MEMBER && n->left->name) {
-      const Node* base_node = n->left->left;
-      const char* method_name = n->left->name;
-      TypeSpec base_ts = infer_generic_ctrl_type(ctx, base_node);
-      if (n->left->is_arrow && base_ts.ptr_level > 0)
-        base_ts.ptr_level--;
-      const char* tag = base_ts.tag;
-      if (tag) {
-        std::string base_key = std::string(tag) + "::" + method_name;
-        std::string const_key = base_key + "_const";
-        decltype(struct_methods_)::iterator mit;
-        if (base_ts.is_const) {
-          mit = struct_methods_.find(const_key);
-          if (mit == struct_methods_.end())
-            mit = struct_methods_.find(base_key);
-        } else {
-          mit = struct_methods_.find(base_key);
-          if (mit == struct_methods_.end())
-            mit = struct_methods_.find(const_key);
-        }
-        if (mit != struct_methods_.end()) {
-          DeclRef dr{};
-          // Check for ref-overloaded methods and resolve based on arg value categories.
-          std::string resolved_method = mit->second;
-          auto ovit = ref_overload_set_.find(mit->first);
-          if (ovit != ref_overload_set_.end() && !ovit->second.empty()) {
-            resolved_method = resolve_ref_overload(mit->first, n);
-          }
-          dr.name = resolved_method;
-          auto fit = module_->fn_index.find(dr.name);
-          TypeSpec fn_ts{};
-          fn_ts.base = TB_VOID;
-          if (fit != module_->fn_index.end() &&
-              fit->second.value < module_->functions.size()) {
-            fn_ts = module_->functions[fit->second.value].return_type.spec;
-          }
-          fn_ts.ptr_level++;
-          c.callee = append_expr(n->left, dr, fn_ts);
-          ExprId base_id = lower_expr(ctx, base_node);
-          if (n->left->is_arrow) {
-            c.args.push_back(base_id);
-          } else {
-            UnaryExpr addr{};
-            addr.op = UnaryOp::AddrOf;
-            addr.operand = base_id;
-            TypeSpec ptr_ts = base_ts;
-            ptr_ts.ptr_level++;
-            c.args.push_back(append_expr(base_node, addr, ptr_ts));
-          }
-          const Node* callee_method = find_pending_method_by_mangled(resolved_method);
-          for (int i = 0; i < n->n_children; ++i) {
-            const TypeSpec* param_ts = nullptr;
-            if (callee_method && i < callee_method->n_params &&
-                callee_method->params[i]) {
-              param_ts = &callee_method->params[i]->type;
-            }
-            if (try_expand_pack_call_arg(n->children[i], param_ts)) continue;
-            c.args.push_back(maybe_lower_ref_arg(n->children[i], param_ts));
-          }
-          TypeSpec ts = n->type;
-          if (ts.base == TB_VOID && ts.ptr_level == 0) {
-            auto mfit = module_->fn_index.find(resolved_method);
-            if (mfit != module_->fn_index.end() &&
-                mfit->second.value < module_->functions.size())
-              ts = module_->functions[mfit->second.value].return_type.spec;
-          }
-          return append_expr(n, c, ts);
-        }
-      }
-    }
-
-    std::string resolved_callee_name;
-    if (n->left && n->left->kind == NK_VAR && n->left->name &&
-        (n->left->n_template_args > 0 || n->left->has_template_args) &&
-        ct_state_->has_template_def(n->left->name) &&
-        !ct_state_->has_consteval_def(n->left->name)) {
-      const TypeBindings* enc = (ctx && !ctx->tpl_bindings.empty())
-                                    ? &ctx->tpl_bindings : nullptr;
-      const NttpBindings* enc_nttp = (ctx && !ctx->nttp_bindings.empty())
-                                          ? &ctx->nttp_bindings : nullptr;
-      const Node* tpl_fn = ct_state_->find_template_def(n->left->name);
-      TypeBindings bindings;
-      NttpBindings nttp_bindings;
-      if (auto ded_it = deduced_template_calls_.find(n);
-          ded_it != deduced_template_calls_.end()) {
-        resolved_callee_name = ded_it->second.mangled_name;
-        bindings = ded_it->second.bindings;
-        nttp_bindings = ded_it->second.nttp_bindings;
-      } else {
-        bindings = merge_explicit_and_deduced_type_bindings(n, n->left, tpl_fn, enc);
-        nttp_bindings = build_call_nttp_bindings(n->left, tpl_fn, enc_nttp);
-        resolved_callee_name =
-            mangle_template_name(n->left->name, bindings, nttp_bindings);
-        if (tpl_fn) {
-          const auto param_order = get_template_param_order(tpl_fn, &bindings, &nttp_bindings);
-          const SpecializationKey spec_key = nttp_bindings.empty()
-              ? make_specialization_key(n->left->name, param_order, bindings)
-              : make_specialization_key(n->left->name, param_order, bindings, nttp_bindings);
-          if (const auto* inst_list = registry_.find_instances(n->left->name)) {
-            for (const auto& inst : *inst_list) {
-              if (inst.spec_key == spec_key) {
-                resolved_callee_name = inst.mangled_name;
-                break;
-              }
-            }
-          }
-        }
-      }
-      DeclRef dr{};
-      dr.name = resolved_callee_name;
-      auto fit = module_->fn_index.find(dr.name);
-      if (fit != module_->fn_index.end() &&
-          fit->second.value < module_->functions.size()) {
-        TypeSpec fn_ts = module_->functions[fit->second.value].return_type.spec;
-        fn_ts.ptr_level++;
-        c.callee = append_expr(n->left, dr, fn_ts);
-      } else {
-        c.callee = append_expr(n->left, dr, n->left->type);
-      }
-      TemplateCallInfo tci;
-      tci.source_template = n->left->name;
-      if (tpl_fn) {
-        for (const auto& pname : get_template_param_order(tpl_fn, &bindings, &nttp_bindings)) {
-          auto bit = bindings.find(pname);
-          if (bit != bindings.end()) tci.template_args.push_back(bit->second);
-        }
-        tci.nttp_args = std::move(nttp_bindings);
-      }
-      c.template_info = std::move(tci);
-    } else if (auto ded_it = deduced_template_calls_.find(n);
-               ded_it != deduced_template_calls_.end()) {
-      resolved_callee_name = ded_it->second.mangled_name;
-      DeclRef dr{};
-      dr.name = resolved_callee_name;
-      auto fit = module_->fn_index.find(dr.name);
-      if (fit != module_->fn_index.end() &&
-          fit->second.value < module_->functions.size()) {
-        TypeSpec fn_ts = module_->functions[fit->second.value].return_type.spec;
-        fn_ts.ptr_level++;
-        c.callee = append_expr(n->left, dr, fn_ts);
-      } else {
-        c.callee = append_expr(n->left, dr, n->left->type);
-      }
-      TemplateCallInfo tci;
-      tci.source_template = n->left->name;
-      const Node* tpl_fn = ct_state_->find_template_def(n->left->name);
-      if (tpl_fn) {
-        for (const auto& pname : get_template_param_order(
-                 tpl_fn, &ded_it->second.bindings, &ded_it->second.nttp_bindings)) {
-          auto bit = ded_it->second.bindings.find(pname);
-          if (bit != ded_it->second.bindings.end())
-            tci.template_args.push_back(bit->second);
-        }
-        tci.nttp_args = ded_it->second.nttp_bindings;
-      }
-      c.template_info = std::move(tci);
-    } else {
-      // Check for ref-overloaded function call.
-      if (n->left && n->left->kind == NK_VAR && n->left->name &&
-          ref_overload_set_.count(n->left->name)) {
-        resolved_callee_name = resolve_ref_overload(n->left->name, n);
-        DeclRef dr{};
-        dr.name = resolved_callee_name;
-        auto fit = module_->fn_index.find(dr.name);
-        if (fit != module_->fn_index.end() &&
-            fit->second.value < module_->functions.size()) {
-          TypeSpec fn_ts = module_->functions[fit->second.value].return_type.spec;
-          fn_ts.ptr_level++;
-          c.callee = append_expr(n->left, dr, fn_ts);
-        } else {
-          c.callee = append_expr(n->left, dr, n->left->type);
-        }
-      } else {
-        // Inside a method body, resolve unqualified calls that match a sibling
-        // struct method (e.g. static member functions called without qualifier).
-        bool resolved_as_method = false;
-        if (ctx && !ctx->method_struct_tag.empty() &&
-            n->left && n->left->kind == NK_VAR && n->left->name) {
-          const std::string callee_name = n->left->name;
-          // Only attempt method resolution when the name isn't already a known
-          // global function (free functions take precedence over implicit lookup).
-          if (!direct_callee_fn(callee_name)) {
-            std::string base_key = ctx->method_struct_tag + "::" + callee_name;
-            std::string const_key = base_key + "_const";
-            auto mit = struct_methods_.find(base_key);
-            if (mit == struct_methods_.end())
-              mit = struct_methods_.find(const_key);
-            if (mit != struct_methods_.end()) {
-              resolved_callee_name = mit->second;
-              DeclRef dr{};
-              dr.name = resolved_callee_name;
-              auto fit = module_->fn_index.find(dr.name);
-              TypeSpec fn_ts{};
-              fn_ts.base = TB_VOID;
-              if (fit != module_->fn_index.end() &&
-                  fit->second.value < module_->functions.size()) {
-                fn_ts = module_->functions[fit->second.value].return_type.spec;
-              }
-              fn_ts.ptr_level++;
-              c.callee = append_expr(n->left, dr, fn_ts);
-              // Pass implicit `this` as the first argument (struct methods
-              // always receive a this pointer, even for static members).
-              auto pit = ctx->params.find("this");
-              if (pit != ctx->params.end()) {
-                DeclRef this_ref{};
-                this_ref.name = "this";
-                this_ref.param_index = pit->second;
-                TypeSpec this_ts{};
-                this_ts.base = TB_STRUCT;
-                auto sit = module_->struct_defs.find(ctx->method_struct_tag);
-                this_ts.tag = sit != module_->struct_defs.end()
-                                  ? sit->second.tag.c_str()
-                                  : ctx->method_struct_tag.c_str();
-                this_ts.ptr_level = 1;
-                c.args.push_back(append_expr(n->left, this_ref, this_ts, ValueCategory::LValue));
-              }
-              resolved_as_method = true;
-            }
-          }
-        }
-        if (!resolved_as_method)
-          c.callee = lower_expr(ctx, n->left);
-      }
-    }
-    c.builtin_id = n->builtin_id;
-    const Function* callee_fn = !resolved_callee_name.empty()
-                                    ? direct_callee_fn(resolved_callee_name)
-                                    : (n->left && n->left->kind == NK_VAR && n->left->name
-                                           ? direct_callee_fn(n->left->name)
-                                           : nullptr);
-    for (int i = 0; i < n->n_children; ++i) {
-      const TypeSpec* param_ts =
-          (callee_fn && static_cast<size_t>(i) < callee_fn->params.size())
-              ? &callee_fn->params[static_cast<size_t>(i)].type.spec
-              : nullptr;
-      c.args.push_back(maybe_lower_ref_arg(n->children[i], param_ts));
-    }
-    TypeSpec ts = n->type;
-    if (n->builtin_id != BuiltinId::Unknown) {
-      bool known = false;
-      TypeSpec builtin_ts = classify_known_builtin_return_type(n->builtin_id, &known);
-      if (known) ts = builtin_ts;
-    } else if (auto inferred = infer_call_result_type_from_callee(ctx, n->left)) {
-      ts = *inferred;
-    } else if (n->left && n->left->kind == NK_VAR && n->left->name) {
-      bool known = false;
-      TypeSpec kts = classify_known_call_return_type(n->left->name, &known);
-      if (known) ts = kts;
-    }
-    return append_expr(n, c, ts);
-  }
+  ExprId lower_call_expr(FunctionCtx* ctx, const Node* n);
 
   // Reconstruct the full TypeSpec for a struct field from its HirStructField.
   static TypeSpec field_type_of(const HirStructField& f) {
@@ -9563,6 +8901,653 @@ void Lowerer::collect_ref_overloaded_free_functions(
     ovset.push_back(std::move(e1));
     ref_overload_mangled_[item] = fn_name + "__rref_overload";
   }
+}
+
+ExprId Lowerer::hoist_compound_literal_to_global(const Node* addr_node,
+                                                 const Node* clit) {
+  GlobalVar cg{};
+  cg.id = next_global_id();
+  const std::string clit_name = "__clit_" + std::to_string(cg.id.value);
+  cg.name = clit_name;
+  cg.type = qtype_from(clit->type, ValueCategory::LValue);
+  cg.linkage = {true, false, false};
+  cg.is_const = false;
+  cg.span = make_span(clit);
+  if (clit->left && clit->left->kind == NK_INIT_LIST) {
+    cg.init = lower_init_list(clit->left);
+    cg.type.spec = resolve_array_ts(cg.type.spec, cg.init);
+    cg.init = normalize_global_init(cg.type.spec, cg.init);
+  }
+  module_->global_index[clit_name] = cg.id;
+  module_->globals.push_back(std::move(cg));
+
+  TypeSpec ptr_ts = clit->type;
+  ptr_ts.ptr_level++;
+  DeclRef dr{};
+  dr.name = clit_name;
+  dr.global = module_->global_index[clit_name];
+  ExprId dr_id = append_expr(clit, dr, clit->type, ValueCategory::LValue);
+  UnaryExpr addr{};
+  addr.op = UnaryOp::AddrOf;
+  addr.operand = dr_id;
+  return append_expr(addr_node, addr, ptr_ts);
+}
+
+bool Lowerer::is_ast_lvalue(const Node* n) {
+  if (!n) return false;
+  switch (n->kind) {
+    case NK_VAR:
+    case NK_INDEX:
+    case NK_DEREF:
+    case NK_MEMBER:
+      return true;
+    default:
+      return false;
+  }
+}
+
+ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
+  if (auto consteval_expr = try_lower_consteval_call_expr(ctx, n)) {
+    return *consteval_expr;
+  }
+
+  if (ctx && n->left && n->left->kind == NK_VAR && n->left->name &&
+      n->n_children == 0) {
+    auto sit = module_->struct_defs.find(n->left->name);
+    auto cit = struct_constructors_.find(n->left->name);
+    if (sit != module_->struct_defs.end() &&
+        (cit == struct_constructors_.end() || cit->second.empty())) {
+      TypeSpec tmp_ts{};
+      tmp_ts.base = TB_STRUCT;
+      tmp_ts.tag = sit->second.tag.c_str();
+      tmp_ts.array_size = -1;
+      tmp_ts.inner_rank = -1;
+
+      const LocalId tmp_lid = next_local_id();
+      const std::string tmp_name = "__brace_tmp_" + std::to_string(tmp_lid.value);
+      LocalDecl tmp{};
+      tmp.id = tmp_lid;
+      tmp.name = tmp_name;
+      tmp.type = qtype_from(tmp_ts, ValueCategory::LValue);
+      tmp.storage = StorageClass::Auto;
+      tmp.span = make_span(n);
+      ctx->locals[tmp.name] = tmp.id;
+      ctx->local_types[tmp.id.value] = tmp_ts;
+      append_stmt(*ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(n)});
+
+      DeclRef tmp_ref{};
+      tmp_ref.name = tmp_name;
+      tmp_ref.local = tmp_lid;
+      return append_expr(n, tmp_ref, tmp_ts, ValueCategory::LValue);
+    }
+  }
+
+  if (ctx && n->left && n->left->kind == NK_VAR && n->left->name) {
+    const std::string callee_name = n->left->name;
+    auto cit = struct_constructors_.find(callee_name);
+    auto sit = module_->struct_defs.find(callee_name);
+    if (cit != struct_constructors_.end() && sit != module_->struct_defs.end()) {
+      const CtorOverload* best = nullptr;
+      if (cit->second.size() == 1) {
+        if (cit->second[0].method_node->n_params == n->n_children)
+          best = &cit->second[0];
+      } else {
+        int best_score = -1;
+        for (const auto& ov : cit->second) {
+          if (ov.method_node->n_params != n->n_children) continue;
+          int score = 0;
+          bool viable = true;
+          for (int pi = 0; pi < ov.method_node->n_params && viable; ++pi) {
+            TypeSpec param_ts = ov.method_node->params[pi]->type;
+            resolve_typedef_to_struct(param_ts);
+            TypeSpec arg_ts = infer_generic_ctrl_type(ctx, n->children[pi]);
+            const bool arg_is_lvalue = is_ast_lvalue(n->children[pi]);
+            TypeSpec param_base = param_ts;
+            param_base.is_lvalue_ref = false;
+            param_base.is_rvalue_ref = false;
+            if (param_base.base == arg_ts.base &&
+                param_base.ptr_level == arg_ts.ptr_level) {
+              score += 2;
+              if (param_ts.is_rvalue_ref && !arg_is_lvalue) {
+                score += 4;
+              } else if (param_ts.is_rvalue_ref && arg_is_lvalue) {
+                viable = false;
+              } else if (param_ts.is_lvalue_ref && arg_is_lvalue) {
+                score += 3;
+              } else if (param_ts.is_lvalue_ref && !arg_is_lvalue) {
+                score += 1;
+              }
+            } else if (param_base.ptr_level == 0 && arg_ts.ptr_level == 0 &&
+                       param_base.base != TB_STRUCT && arg_ts.base != TB_STRUCT &&
+                       param_base.base != TB_VOID && arg_ts.base != TB_VOID) {
+              score += 1;
+            } else {
+              viable = false;
+            }
+          }
+          if (viable && score > best_score) {
+            best_score = score;
+            best = &ov;
+          }
+        }
+      }
+
+      if (best) {
+        if (best->method_node->is_deleted) {
+          std::string diag = "error: call to deleted constructor '";
+          diag += callee_name;
+          diag += "'";
+          throw std::runtime_error(diag);
+        }
+
+        TypeSpec tmp_ts{};
+        tmp_ts.base = TB_STRUCT;
+        tmp_ts.tag = sit->second.tag.c_str();
+        tmp_ts.array_size = -1;
+        tmp_ts.inner_rank = -1;
+
+        const LocalId tmp_lid = next_local_id();
+        const std::string tmp_name = "__ctor_tmp_" + std::to_string(tmp_lid.value);
+        LocalDecl tmp{};
+        tmp.id = tmp_lid;
+        tmp.name = tmp_name;
+        tmp.type = qtype_from(tmp_ts, ValueCategory::LValue);
+        tmp.storage = StorageClass::Auto;
+        tmp.span = make_span(n);
+        ctx->locals[tmp.name] = tmp.id;
+        ctx->local_types[tmp.id.value] = tmp_ts;
+        append_stmt(*ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(n)});
+
+        CallExpr ctor_call{};
+        DeclRef callee_ref{};
+        callee_ref.name = best->mangled_name;
+        TypeSpec fn_ts{};
+        fn_ts.base = TB_VOID;
+        TypeSpec callee_ts = fn_ts;
+        callee_ts.ptr_level++;
+        ctor_call.callee = append_expr(n, callee_ref, callee_ts);
+
+        DeclRef tmp_ref{};
+        tmp_ref.name = tmp_name;
+        tmp_ref.local = tmp_lid;
+        ExprId tmp_id = append_expr(n, tmp_ref, tmp_ts, ValueCategory::LValue);
+        UnaryExpr addr{};
+        addr.op = UnaryOp::AddrOf;
+        addr.operand = tmp_id;
+        TypeSpec ptr_ts = tmp_ts;
+        ptr_ts.ptr_level++;
+        ctor_call.args.push_back(append_expr(n, addr, ptr_ts));
+
+        for (int i = 0; i < n->n_children; ++i) {
+          TypeSpec param_ts = best->method_node->params[i]->type;
+          resolve_typedef_to_struct(param_ts);
+          if (param_ts.is_rvalue_ref || param_ts.is_lvalue_ref) {
+            const Node* arg = n->children[i];
+            const Node* inner = arg;
+            if (inner->kind == NK_CAST && inner->left) inner = inner->left;
+            ExprId arg_val = lower_expr(ctx, inner);
+            TypeSpec storage_ts = reference_storage_ts(param_ts);
+            UnaryExpr addr_e{};
+            addr_e.op = UnaryOp::AddrOf;
+            addr_e.operand = arg_val;
+            ctor_call.args.push_back(append_expr(arg, addr_e, storage_ts));
+          } else {
+            ctor_call.args.push_back(lower_expr(ctx, n->children[i]));
+          }
+        }
+
+        ExprId call_id = append_expr(n, ctor_call, fn_ts);
+        ExprStmt es{};
+        es.expr = call_id;
+        append_stmt(*ctx, Stmt{StmtPayload{es}, make_span(n)});
+        return tmp_id;
+      }
+    }
+  }
+
+  if (ctx && n->left && n->left->kind == NK_VAR && n->left->name &&
+      n->left->has_template_args &&
+      find_template_struct_primary(n->left->name)) {
+    ExprId tmp_expr = lower_expr(ctx, n->left);
+    if (n->n_children == 0) return tmp_expr;
+    const TypeSpec& tmp_ts = module_->expr_pool[tmp_expr.value].type.spec;
+    if (tmp_ts.base == TB_STRUCT && tmp_ts.ptr_level == 0 && tmp_ts.tag) {
+      auto resolved = find_struct_method_mangled(tmp_ts.tag, "operator_call", false);
+      if (!resolved)
+        resolved = find_struct_method_mangled(tmp_ts.tag, "operator_call", true);
+      if (resolved) {
+        ExprId this_obj = tmp_expr;
+        if (module_->expr_pool[tmp_expr.value].type.category != ValueCategory::LValue) {
+          LocalDecl tmp{};
+          tmp.id = next_local_id();
+          std::string tmp_name = "__call_tmp_" + std::to_string(tmp.id.value);
+          tmp.name = tmp_name;
+          tmp.type = qtype_from(tmp_ts, ValueCategory::RValue);
+          const TypeSpec init_ts = module_->expr_pool[tmp_expr.value].type.spec;
+          if (init_ts.base == tmp_ts.base && init_ts.ptr_level == tmp_ts.ptr_level &&
+              init_ts.tag == tmp_ts.tag) {
+            tmp.init = tmp_expr;
+          }
+          append_stmt(*ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(n)});
+
+          DeclRef tmp_ref{};
+          tmp_ref.name = tmp_name;
+          tmp_ref.local = LocalId{tmp.id.value};
+          this_obj = append_expr(n, tmp_ref, tmp_ts, ValueCategory::LValue);
+        }
+        std::string resolved_mangled = *resolved;
+        CallExpr oc{};
+        DeclRef dr{};
+        dr.name = resolved_mangled;
+        auto fit = module_->fn_index.find(dr.name);
+        TypeSpec fn_ts{};
+        fn_ts.base = TB_VOID;
+        if (fit != module_->fn_index.end() &&
+            fit->second.value < module_->functions.size())
+          fn_ts = module_->functions[fit->second.value].return_type.spec;
+        if (fn_ts.base == TB_VOID) {
+          if (auto rit = find_struct_method_return_type(
+                  tmp_ts.tag, "operator_call", false))
+            fn_ts = *rit;
+        }
+        TypeSpec callee_ts = fn_ts;
+        callee_ts.ptr_level++;
+        oc.callee = append_expr(n, dr, callee_ts);
+        UnaryExpr addr{};
+        addr.op = UnaryOp::AddrOf;
+        addr.operand = this_obj;
+        TypeSpec ptr_ts = tmp_ts;
+        ptr_ts.ptr_level++;
+        oc.args.push_back(append_expr(n, addr, ptr_ts));
+        for (int i = 0; i < n->n_children; ++i)
+          oc.args.push_back(lower_expr(ctx, n->children[i]));
+        return append_expr(n, oc, fn_ts);
+      }
+    }
+    return tmp_expr;
+  }
+
+  if (n->left) {
+    TypeSpec callee_ts = infer_generic_ctrl_type(ctx, n->left);
+    if (callee_ts.base == TB_STRUCT && callee_ts.ptr_level == 0 && callee_ts.tag) {
+      std::vector<const Node*> arg_nodes;
+      for (int i = 0; i < n->n_children; ++i)
+        arg_nodes.push_back(n->children[i]);
+      ExprId op = try_lower_operator_call(ctx, n, n->left, "operator_call", arg_nodes);
+      if (op.valid()) return op;
+    }
+  }
+
+  CallExpr c{};
+  auto maybe_lower_ref_arg = [&](const Node* arg_node, const TypeSpec* param_ts) -> ExprId {
+    if (ctx && arg_node && arg_node->kind == NK_INIT_LIST && param_ts &&
+        !param_ts->is_lvalue_ref && !param_ts->is_rvalue_ref) {
+      TypeSpec direct_ts = *param_ts;
+      direct_ts.is_lvalue_ref = false;
+      direct_ts.is_rvalue_ref = false;
+      resolve_typedef_to_struct(direct_ts);
+      if (direct_ts.base == TB_STRUCT && direct_ts.ptr_level == 0) {
+        if (describe_initializer_list_struct(direct_ts, nullptr, nullptr, nullptr))
+          return materialize_initializer_list_arg(ctx, arg_node, direct_ts);
+      }
+    }
+    if (!param_ts || (!param_ts->is_lvalue_ref && !param_ts->is_rvalue_ref))
+      return lower_expr(ctx, arg_node);
+    TypeSpec storage_ts = reference_storage_ts(*param_ts);
+    if (param_ts->is_rvalue_ref) {
+      if (arg_node && arg_node->kind == NK_CAST && arg_node->type.is_rvalue_ref &&
+          arg_node->left) {
+        UnaryExpr addr{};
+        addr.op = UnaryOp::AddrOf;
+        addr.operand = lower_expr(ctx, arg_node->left);
+        return append_expr(arg_node, addr, storage_ts);
+      }
+      ExprId arg_val = lower_expr(ctx, arg_node);
+      TypeSpec val_ts = reference_value_ts(*param_ts);
+      resolve_typedef_to_struct(val_ts);
+      LocalDecl tmp{};
+      tmp.id = next_local_id();
+      tmp.name = "__rref_arg_tmp";
+      tmp.type = qtype_from(val_ts, ValueCategory::LValue);
+      tmp.init = arg_val;
+      const LocalId tmp_lid = tmp.id;
+      ctx->locals[tmp.name] = tmp.id;
+      ctx->local_types[tmp.id.value] = val_ts;
+      append_stmt(*ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(arg_node)});
+      DeclRef tmp_ref{};
+      tmp_ref.name = "__rref_arg_tmp";
+      tmp_ref.local = tmp_lid;
+      ExprId var_id = append_expr(arg_node, tmp_ref, val_ts, ValueCategory::LValue);
+      UnaryExpr addr{};
+      addr.op = UnaryOp::AddrOf;
+      addr.operand = var_id;
+      return append_expr(arg_node, addr, storage_ts);
+    }
+    UnaryExpr addr{};
+    addr.op = UnaryOp::AddrOf;
+    addr.operand = lower_expr(ctx, arg_node);
+    return append_expr(arg_node, addr, storage_ts);
+  };
+  auto direct_callee_fn = [&](const std::string& name) -> const Function* {
+    auto fit = module_->fn_index.find(name);
+    if (fit == module_->fn_index.end()) return nullptr;
+    return module_->find_function(fit->second);
+  };
+  auto try_expand_pack_call_arg =
+      [&](const Node* arg_node, const TypeSpec* construct_param_ts) -> bool {
+    if (!ctx || !arg_node || arg_node->kind != NK_PACK_EXPANSION || !arg_node->left)
+      return false;
+    const Node* pattern = arg_node->left;
+    if (pattern->kind != NK_CALL || pattern->n_children != 1 || !pattern->left)
+      return false;
+    if (pattern->left->kind != NK_VAR || !pattern->left->name ||
+        std::strcmp(pattern->left->name, "forward") != 0)
+      return false;
+    if (pattern->left->n_template_args != 1 || !pattern->left->template_arg_types ||
+        pattern->left->template_arg_types[0].base != TB_TYPEDEF ||
+        !pattern->left->template_arg_types[0].tag)
+      return false;
+    const Node* forwarded_arg = pattern->children[0];
+    if (!forwarded_arg || forwarded_arg->kind != NK_VAR || !forwarded_arg->name)
+      return false;
+    auto pit = ctx->pack_params.find(forwarded_arg->name);
+    if (pit == ctx->pack_params.end() || pit->second.empty()) return false;
+
+    for (const auto& elem : pit->second) {
+      const Node* tpl_fn = ct_state_->find_template_def("forward");
+      TypeBindings forward_bindings;
+      if (tpl_fn && tpl_fn->n_template_params > 0 && tpl_fn->template_param_names[0])
+        forward_bindings[tpl_fn->template_param_names[0]] = elem.type;
+      else
+        forward_bindings["T"] = elem.type;
+      const std::string callee_name =
+          mangle_template_name("forward", forward_bindings);
+
+      DeclRef callee_ref{};
+      callee_ref.name = callee_name;
+      TypeSpec callee_ts = pattern->left->type;
+      if (const Function* callee_fn = direct_callee_fn(callee_name)) {
+        callee_ts = callee_fn->return_type.spec;
+        callee_ts.ptr_level++;
+      }
+
+      CallExpr expanded_call{};
+      expanded_call.callee = append_expr(pattern->left, callee_ref, callee_ts);
+      TemplateCallInfo tci;
+      tci.source_template = "forward";
+      tci.template_args.push_back(elem.type);
+      expanded_call.template_info = std::move(tci);
+
+      DeclRef param_ref{};
+      param_ref.name = elem.element_name;
+      param_ref.param_index = elem.param_index;
+      ExprId param_expr = append_expr(forwarded_arg, param_ref, elem.type, ValueCategory::LValue);
+      UnaryExpr addr{};
+      addr.op = UnaryOp::AddrOf;
+      addr.operand = param_expr;
+      TypeSpec param_storage_ts = elem.type;
+      param_storage_ts.ptr_level += 1;
+      expanded_call.args.push_back(append_expr(forwarded_arg, addr, param_storage_ts));
+
+      TypeSpec ret_ts = elem.type;
+      ret_ts.is_lvalue_ref = false;
+      ret_ts.is_rvalue_ref = true;
+      ExprId expanded_id = append_expr(pattern, expanded_call, ret_ts);
+      if (!construct_param_ts || (!construct_param_ts->is_lvalue_ref &&
+                                  !construct_param_ts->is_rvalue_ref)) {
+        c.args.push_back(expanded_id);
+      } else {
+        TypeSpec storage_ts = reference_storage_ts(*construct_param_ts);
+        UnaryExpr outer_addr{};
+        outer_addr.op = UnaryOp::AddrOf;
+        outer_addr.operand = expanded_id;
+        c.args.push_back(append_expr(pattern, outer_addr, storage_ts));
+      }
+    }
+    return true;
+  };
+  if (n->left && n->left->kind == NK_MEMBER && n->left->name) {
+    const Node* base_node = n->left->left;
+    const char* method_name = n->left->name;
+    TypeSpec base_ts = infer_generic_ctrl_type(ctx, base_node);
+    if (n->left->is_arrow && base_ts.ptr_level > 0)
+      base_ts.ptr_level--;
+    const char* tag = base_ts.tag;
+    if (tag) {
+      std::string base_key = std::string(tag) + "::" + method_name;
+      std::string const_key = base_key + "_const";
+      decltype(struct_methods_)::iterator mit;
+      if (base_ts.is_const) {
+        mit = struct_methods_.find(const_key);
+        if (mit == struct_methods_.end())
+          mit = struct_methods_.find(base_key);
+      } else {
+        mit = struct_methods_.find(base_key);
+        if (mit == struct_methods_.end())
+          mit = struct_methods_.find(const_key);
+      }
+      if (mit != struct_methods_.end()) {
+        DeclRef dr{};
+        std::string resolved_method = mit->second;
+        auto ovit = ref_overload_set_.find(mit->first);
+        if (ovit != ref_overload_set_.end() && !ovit->second.empty()) {
+          resolved_method = resolve_ref_overload(mit->first, n);
+        }
+        dr.name = resolved_method;
+        auto fit = module_->fn_index.find(dr.name);
+        TypeSpec fn_ts{};
+        fn_ts.base = TB_VOID;
+        if (fit != module_->fn_index.end() &&
+            fit->second.value < module_->functions.size()) {
+          fn_ts = module_->functions[fit->second.value].return_type.spec;
+        }
+        fn_ts.ptr_level++;
+        c.callee = append_expr(n->left, dr, fn_ts);
+        ExprId base_id = lower_expr(ctx, base_node);
+        if (n->left->is_arrow) {
+          c.args.push_back(base_id);
+        } else {
+          UnaryExpr addr{};
+          addr.op = UnaryOp::AddrOf;
+          addr.operand = base_id;
+          TypeSpec ptr_ts = base_ts;
+          ptr_ts.ptr_level++;
+          c.args.push_back(append_expr(base_node, addr, ptr_ts));
+        }
+        const Node* callee_method = find_pending_method_by_mangled(resolved_method);
+        for (int i = 0; i < n->n_children; ++i) {
+          const TypeSpec* param_ts = nullptr;
+          if (callee_method && i < callee_method->n_params &&
+              callee_method->params[i]) {
+            param_ts = &callee_method->params[i]->type;
+          }
+          if (try_expand_pack_call_arg(n->children[i], param_ts)) continue;
+          c.args.push_back(maybe_lower_ref_arg(n->children[i], param_ts));
+        }
+        TypeSpec ts = n->type;
+        if (ts.base == TB_VOID && ts.ptr_level == 0) {
+          auto mfit = module_->fn_index.find(resolved_method);
+          if (mfit != module_->fn_index.end() &&
+              mfit->second.value < module_->functions.size())
+            ts = module_->functions[mfit->second.value].return_type.spec;
+        }
+        return append_expr(n, c, ts);
+      }
+    }
+  }
+
+  std::string resolved_callee_name;
+  if (n->left && n->left->kind == NK_VAR && n->left->name &&
+      (n->left->n_template_args > 0 || n->left->has_template_args) &&
+      ct_state_->has_template_def(n->left->name) &&
+      !ct_state_->has_consteval_def(n->left->name)) {
+    const TypeBindings* enc = (ctx && !ctx->tpl_bindings.empty())
+                                  ? &ctx->tpl_bindings : nullptr;
+    const NttpBindings* enc_nttp = (ctx && !ctx->nttp_bindings.empty())
+                                       ? &ctx->nttp_bindings : nullptr;
+    const Node* tpl_fn = ct_state_->find_template_def(n->left->name);
+    TypeBindings bindings;
+    NttpBindings nttp_bindings;
+    if (auto ded_it = deduced_template_calls_.find(n);
+        ded_it != deduced_template_calls_.end()) {
+      resolved_callee_name = ded_it->second.mangled_name;
+      bindings = ded_it->second.bindings;
+      nttp_bindings = ded_it->second.nttp_bindings;
+    } else {
+      bindings = merge_explicit_and_deduced_type_bindings(n, n->left, tpl_fn, enc);
+      nttp_bindings = build_call_nttp_bindings(n->left, tpl_fn, enc_nttp);
+      resolved_callee_name =
+          mangle_template_name(n->left->name, bindings, nttp_bindings);
+      if (tpl_fn) {
+        const auto param_order = get_template_param_order(tpl_fn, &bindings, &nttp_bindings);
+        const SpecializationKey spec_key = nttp_bindings.empty()
+            ? make_specialization_key(n->left->name, param_order, bindings)
+            : make_specialization_key(n->left->name, param_order, bindings, nttp_bindings);
+        if (const auto* inst_list = registry_.find_instances(n->left->name)) {
+          for (const auto& inst : *inst_list) {
+            if (inst.spec_key == spec_key) {
+              resolved_callee_name = inst.mangled_name;
+              break;
+            }
+          }
+        }
+      }
+    }
+    DeclRef dr{};
+    dr.name = resolved_callee_name;
+    auto fit = module_->fn_index.find(dr.name);
+    if (fit != module_->fn_index.end() &&
+        fit->second.value < module_->functions.size()) {
+      TypeSpec fn_ts = module_->functions[fit->second.value].return_type.spec;
+      fn_ts.ptr_level++;
+      c.callee = append_expr(n->left, dr, fn_ts);
+    } else {
+      c.callee = append_expr(n->left, dr, n->left->type);
+    }
+    TemplateCallInfo tci;
+    tci.source_template = n->left->name;
+    if (tpl_fn) {
+      for (const auto& pname : get_template_param_order(tpl_fn, &bindings, &nttp_bindings)) {
+        auto bit = bindings.find(pname);
+        if (bit != bindings.end()) tci.template_args.push_back(bit->second);
+      }
+      tci.nttp_args = std::move(nttp_bindings);
+    }
+    c.template_info = std::move(tci);
+  } else if (auto ded_it = deduced_template_calls_.find(n);
+             ded_it != deduced_template_calls_.end()) {
+    resolved_callee_name = ded_it->second.mangled_name;
+    DeclRef dr{};
+    dr.name = resolved_callee_name;
+    auto fit = module_->fn_index.find(dr.name);
+    if (fit != module_->fn_index.end() &&
+        fit->second.value < module_->functions.size()) {
+      TypeSpec fn_ts = module_->functions[fit->second.value].return_type.spec;
+      fn_ts.ptr_level++;
+      c.callee = append_expr(n->left, dr, fn_ts);
+    } else {
+      c.callee = append_expr(n->left, dr, n->left->type);
+    }
+    TemplateCallInfo tci;
+    tci.source_template = n->left->name;
+    const Node* tpl_fn = ct_state_->find_template_def(n->left->name);
+    if (tpl_fn) {
+      for (const auto& pname : get_template_param_order(
+               tpl_fn, &ded_it->second.bindings, &ded_it->second.nttp_bindings)) {
+        auto bit = ded_it->second.bindings.find(pname);
+        if (bit != ded_it->second.bindings.end())
+          tci.template_args.push_back(bit->second);
+      }
+      tci.nttp_args = ded_it->second.nttp_bindings;
+    }
+    c.template_info = std::move(tci);
+  } else {
+    if (n->left && n->left->kind == NK_VAR && n->left->name &&
+        ref_overload_set_.count(n->left->name)) {
+      resolved_callee_name = resolve_ref_overload(n->left->name, n);
+      DeclRef dr{};
+      dr.name = resolved_callee_name;
+      auto fit = module_->fn_index.find(dr.name);
+      if (fit != module_->fn_index.end() &&
+          fit->second.value < module_->functions.size()) {
+        TypeSpec fn_ts = module_->functions[fit->second.value].return_type.spec;
+        fn_ts.ptr_level++;
+        c.callee = append_expr(n->left, dr, fn_ts);
+      } else {
+        c.callee = append_expr(n->left, dr, n->left->type);
+      }
+    } else {
+      bool resolved_as_method = false;
+      if (ctx && !ctx->method_struct_tag.empty() &&
+          n->left && n->left->kind == NK_VAR && n->left->name) {
+        const std::string callee_name = n->left->name;
+        if (!direct_callee_fn(callee_name)) {
+          std::string base_key = ctx->method_struct_tag + "::" + callee_name;
+          std::string const_key = base_key + "_const";
+          auto mit = struct_methods_.find(base_key);
+          if (mit == struct_methods_.end())
+            mit = struct_methods_.find(const_key);
+          if (mit != struct_methods_.end()) {
+            resolved_callee_name = mit->second;
+            DeclRef dr{};
+            dr.name = resolved_callee_name;
+            auto fit = module_->fn_index.find(dr.name);
+            TypeSpec fn_ts{};
+            fn_ts.base = TB_VOID;
+            if (fit != module_->fn_index.end() &&
+                fit->second.value < module_->functions.size()) {
+              fn_ts = module_->functions[fit->second.value].return_type.spec;
+            }
+            fn_ts.ptr_level++;
+            c.callee = append_expr(n->left, dr, fn_ts);
+            auto pit = ctx->params.find("this");
+            if (pit != ctx->params.end()) {
+              DeclRef this_ref{};
+              this_ref.name = "this";
+              this_ref.param_index = pit->second;
+              TypeSpec this_ts{};
+              this_ts.base = TB_STRUCT;
+              auto sit = module_->struct_defs.find(ctx->method_struct_tag);
+              this_ts.tag = sit != module_->struct_defs.end()
+                                ? sit->second.tag.c_str()
+                                : ctx->method_struct_tag.c_str();
+              this_ts.ptr_level = 1;
+              c.args.push_back(append_expr(n->left, this_ref, this_ts, ValueCategory::LValue));
+            }
+            resolved_as_method = true;
+          }
+        }
+      }
+      if (!resolved_as_method)
+        c.callee = lower_expr(ctx, n->left);
+    }
+  }
+  c.builtin_id = n->builtin_id;
+  const Function* callee_fn = !resolved_callee_name.empty()
+                                  ? direct_callee_fn(resolved_callee_name)
+                                  : (n->left && n->left->kind == NK_VAR && n->left->name
+                                         ? direct_callee_fn(n->left->name)
+                                         : nullptr);
+  for (int i = 0; i < n->n_children; ++i) {
+    const TypeSpec* param_ts =
+        (callee_fn && static_cast<size_t>(i) < callee_fn->params.size())
+            ? &callee_fn->params[static_cast<size_t>(i)].type.spec
+            : nullptr;
+    c.args.push_back(maybe_lower_ref_arg(n->children[i], param_ts));
+  }
+  TypeSpec ts = n->type;
+  if (n->builtin_id != BuiltinId::Unknown) {
+    bool known = false;
+    TypeSpec builtin_ts = classify_known_builtin_return_type(n->builtin_id, &known);
+    if (known) ts = builtin_ts;
+  } else if (auto inferred = infer_call_result_type_from_callee(ctx, n->left)) {
+    ts = *inferred;
+  } else if (n->left && n->left->kind == NK_VAR && n->left->name) {
+    bool known = false;
+    TypeSpec kts = classify_known_call_return_type(n->left->name, &known);
+    if (known) ts = kts;
+  }
+  return append_expr(n, c, ts);
 }
 
 ExprId Lowerer::lower_stmt_expr_block(FunctionCtx& ctx,
