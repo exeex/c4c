@@ -4139,6 +4139,49 @@ static void gen_emit_sp_adjust(std::ostringstream& out, const char* op, int amou
 // Parse type byte size for GEP element sizing.
 static std::pair<int, int> gen_parse_array_type(const std::string& ty);
 
+static std::vector<unsigned char> gen_decode_llvm_byte_string(const std::string& text) {
+  std::vector<unsigned char> bytes;
+  for (size_t i = 0; i < text.size(); ++i) {
+    if (text[i] == '\\' && i + 2 < text.size()) {
+      auto hex_val = [](char c) -> int {
+        if (c >= '0' && c <= '9') return c - '0';
+        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+        return -1;
+      };
+      int h1 = hex_val(text[i + 1]);
+      int h2 = hex_val(text[i + 2]);
+      if (h1 >= 0 && h2 >= 0) {
+        bytes.push_back(static_cast<unsigned char>(h1 * 16 + h2));
+        i += 2;
+        continue;
+      }
+    }
+    bytes.push_back(static_cast<unsigned char>(text[i]));
+  }
+  return bytes;
+}
+
+static void gen_emit_ascii_bytes(std::ostringstream& out,
+                                 const std::vector<unsigned char>& bytes) {
+  out << "  .ascii \"";
+  for (unsigned char c : bytes) {
+    if (c == '"') out << "\\\"";
+    else if (c == '\\') out << "\\\\";
+    else if (c == '\n') out << "\\n";
+    else if (c == '\r') out << "\\r";
+    else if (c == '\t') out << "\\t";
+    else if (c < 32 || c >= 127) {
+      char buf[8];
+      std::snprintf(buf, sizeof(buf), "\\%03o", c);
+      out << buf;
+    } else {
+      out << static_cast<char>(c);
+    }
+  }
+  out << "\"\n";
+}
+
 static int gen_type_bytes(const std::string& ty) {
   if (!ty.empty() && ty[0] == '[') {
     auto [cnt, esz] = gen_parse_array_type(ty);
@@ -4540,6 +4583,13 @@ static void gen_emit_global_init(std::ostringstream& out, const std::string& ini
     return;
   }
 
+  // LLVM c"..." string literal initializer for mutable/global byte arrays.
+  if (init.size() >= 3 && init[0] == 'c' && init[1] == '"' && init.back() == '"') {
+    const auto bytes = gen_decode_llvm_byte_string(init.substr(2, init.size() - 3));
+    gen_emit_ascii_bytes(out, bytes);
+    return;
+  }
+
   // Try integer literal
   if (init[0] == '-' || (init[0] >= '0' && init[0] <= '9')) {
     long long val = 0;
@@ -4738,49 +4788,13 @@ static std::optional<std::string> try_emit_general_lir_asm(
       out << sym << ":\n";
 
       // Decode LLVM hex escapes to actual bytes
-      std::vector<unsigned char> bytes;
-      const auto& rb = sc.raw_bytes;
-      for (size_t i = 0; i < rb.size(); ++i) {
-        if (rb[i] == '\\' && i + 2 < rb.size()) {
-          // LLVM hex escape: \XX
-          auto hex_val = [](char c) -> int {
-            if (c >= '0' && c <= '9') return c - '0';
-            if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-            if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-            return -1;
-          };
-          int h1 = hex_val(rb[i + 1]);
-          int h2 = hex_val(rb[i + 2]);
-          if (h1 >= 0 && h2 >= 0) {
-            bytes.push_back(static_cast<unsigned char>(h1 * 16 + h2));
-            i += 2;
-            continue;
-          }
-        }
-        bytes.push_back(static_cast<unsigned char>(rb[i]));
-      }
+      const auto bytes = gen_decode_llvm_byte_string(sc.raw_bytes);
 
       // Emit as .byte directives for exact control, then a null terminator
       if (bytes.empty()) {
         out << "  .asciz \"\"\n";
       } else {
-        out << "  .ascii \"";
-        for (unsigned char c : bytes) {
-          if (c == '"') out << "\\\"";
-          else if (c == '\\') out << "\\\\";
-          else if (c == '\n') out << "\\n";
-          else if (c == '\r') out << "\\r";
-          else if (c == '\t') out << "\\t";
-          else if (c == 0) out << "\\000";
-          else if (c < 32 || c >= 127) {
-            char buf[8];
-            std::snprintf(buf, sizeof(buf), "\\%03o", c);
-            out << buf;
-          } else {
-            out << static_cast<char>(c);
-          }
-        }
-        out << "\"\n";
+        gen_emit_ascii_bytes(out, bytes);
         // Add null terminator if not already present
         if (bytes.empty() || bytes.back() != 0) {
           out << "  .byte 0\n";
@@ -5129,8 +5143,21 @@ static std::optional<std::string> try_emit_general_lir_asm(
             gen_load_operand(out, args[i].value, args[i].type, sm, static_cast<int>(i), fn.name, &extern_globals);
           }
 
+          const int stack_arg_count = args.size() > 8 ? static_cast<int>(args.size() - 8) : 0;
+          int stack_arg_bytes = stack_arg_count * 8;
+          if (stack_arg_bytes % 16 != 0) {
+            stack_arg_bytes += 16 - (stack_arg_bytes % 16);
+          }
+          if (stack_arg_bytes > 0) {
+            gen_emit_sp_adjust(out, "sub", stack_arg_bytes);
+            for (size_t i = 8; i < args.size(); ++i) {
+              gen_load_operand(out, args[i].value, args[i].type, sm, 9, fn.name, &extern_globals);
+              out << "  str x9, [sp, #" << ((i - 8) * 8) << "]\n";
+            }
+          }
+
           // Save lr before call
-          out << "  str x30, [sp, #0]\n";
+          out << "  str x30, [sp, #" << stack_arg_bytes << "]\n";
 
           if (is_direct) {
             out << "  bl " << callee_sym << "\n";
@@ -5146,7 +5173,10 @@ static std::optional<std::string> try_emit_general_lir_asm(
           }
 
           // Restore lr
-          out << "  ldr x30, [sp, #0]\n";
+          out << "  ldr x30, [sp, #" << stack_arg_bytes << "]\n";
+          if (stack_arg_bytes > 0) {
+            gen_emit_sp_adjust(out, "add", stack_arg_bytes);
+          }
 
           // Store return value
           if (!p->result.empty()) {

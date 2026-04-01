@@ -382,6 +382,44 @@ c4c::codegen::lir::LirModule make_large_frame_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_mutable_string_global_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.globals.push_back(LirGlobal{
+      LirGlobalId{0},
+      "t",
+      {},
+      false,
+      false,
+      "",
+      "global ",
+      "[10 x i8]",
+      "c\"012345678\\00\"",
+      1,
+      false,
+  });
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(
+      LirGepOp{"%t0", "[10 x i8]", "@t", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirLoadOp{"%t1", "i8", "%t0"});
+  entry.terminator = LirRet{std::string("%t1"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_va_intrinsic_module() {
   using namespace c4c::codegen::lir;
 
@@ -2190,6 +2228,18 @@ void test_aarch64_backend_renders_large_frame_adjustments() {
                       "aarch64 backend should not emit an oversized stack-restore immediate");
 }
 
+void test_aarch64_backend_renders_mutable_string_global_bytes() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_mutable_string_global_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".globl t",
+                  "aarch64 backend should emit mutable string globals as named data symbols");
+  expect_contains(rendered, "t:\n  .ascii \"012345678\\000\"\n",
+                  "aarch64 backend should materialize mutable string global bytes instead of zero-filling them");
+  expect_not_contains(rendered, "t:\n  .zero 10\n",
+                      "aarch64 backend should not zero-fill mutable string globals that have explicit byte initializers");
+}
+
 void test_aarch64_backend_renders_va_intrinsic_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_va_intrinsic_module()},
@@ -2722,6 +2772,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_renders_bitcast_slice();
   test_aarch64_backend_renders_trunc_slice();
   test_aarch64_backend_renders_large_frame_adjustments();
+  test_aarch64_backend_renders_mutable_string_global_bytes();
   test_aarch64_backend_renders_va_intrinsic_slice();
   test_aarch64_backend_renders_va_arg_scalar_slice();
   test_aarch64_backend_renders_va_arg_pair_slice();

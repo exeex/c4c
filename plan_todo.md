@@ -82,3 +82,46 @@ stack-spill AArch64 emitter. All instruction types handled in one pass.
 - Next intended slice: investigate the remaining struct/aggregate runtime bugs
   driving `00040.c`, `00050.c`, `00091.c`, `00104.c`, `00115.c`, `00164.c`,
   `00170.c`, `00182.c`, `00195.c`, `00207.c`, `00216.c`, and `00217.c`.
+
+### Step 6 active slice (2026-04-01, current)
+- Current target: fix two confirmed general-emitter correctness bugs that are
+  independent of the remaining struct-heavy runtime failures:
+  1. direct/variadic calls currently drop arguments after `x7` instead of
+     placing stack-passed overflow args in the caller argument area
+  2. global C string initializers like `c"0123\00"` currently fall through to
+     `.zero`, which breaks mutable global string data
+- Focus validations for this slice:
+  `c_testsuite_aarch64_backend_src_00170_c` and
+  `c_testsuite_aarch64_backend_src_00217_c`
+- Planned test-first coverage:
+  add focused AArch64 backend adapter assertions for overflow call-argument
+  stack stores and for emitted mutable string global bytes.
+- Deferred in this slice:
+  the `00164.c` arithmetic mismatch and the remaining segfault cases appear to
+  be separate runtime bugs and will stay for the next slice unless the targeted
+  fix unexpectedly resolves them.
+
+### Step 6 slice result (2026-04-01)
+- Implemented AArch64 overflow-argument stack passing in the general emitter:
+  calls with more than 8 integer/pointer arguments now allocate a temporary
+  16-byte-aligned outgoing argument area, spill extra args into 8-byte stack
+  slots, preserve `lr` relative to the adjusted `sp`, and restore `sp` after
+  the call.
+- Implemented LLVM `c"..."` mutable global string initializer emission:
+  mutable byte-array globals now decode LLVM hex escapes and emit real `.ascii`
+  byte data instead of incorrectly falling through to `.zero`.
+- Added focused backend adapter coverage for mutable string global byte
+  emission in `backend_lir_adapter_aarch64_tests.cpp`.
+- Focus validation:
+  `ctest --test-dir build -R "c_testsuite_aarch64_backend_src_(00170|00217)_c"
+  --output-on-failure` now passes both cases.
+- Updated suite status:
+  `ctest --test-dir build -R c_testsuite_aarch64 -j8 --output-on-failure`
+  now reports 9 failures total (improved from 12).
+- Fixed in this slice:
+  `00170.c`, `00115.c`, and `00217.c` now pass in the AArch64 c-testsuite.
+- Next intended slice:
+  investigate the remaining runtime-only failures in `00040.c`, `00050.c`,
+  `00091.c`, `00104.c`, `00164.c`, `00182.c`, `00195.c`, `00207.c`, and
+  `00216.c`, with `00164.c` the best mismatch candidate for another narrow
+  root-cause slice.
