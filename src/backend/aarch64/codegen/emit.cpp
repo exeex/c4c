@@ -31,6 +31,12 @@ namespace c4c::backend::aarch64 {
 
 namespace {
 
+const std::string& synthetic_call_crossing_regalloc_source_value() {
+  static const std::string kSyntheticCallCrossingRegallocSource =
+      "%t.call_crossing.regalloc_source";
+  return kSyntheticCallCrossingRegallocSource;
+}
+
 [[noreturn]] void fail_unsupported(const char* detail) {
   throw std::invalid_argument(std::string("aarch64 backend emitter does not support ") +
                               detail);
@@ -1434,7 +1440,7 @@ struct MinimalCallCrossingDirectCallSlice {
   std::string callee_name;
   std::int64_t source_imm = 0;
   std::int64_t helper_add_imm = 0;
-  std::string regalloc_source_value;
+  std::string regalloc_source_value = synthetic_call_crossing_regalloc_source_value();
 };
 
 std::optional<std::int64_t> fold_minimal_direct_call_two_arg_callee_return(
@@ -1606,9 +1612,10 @@ c4c::backend::RegAllocIntegrationResult run_shared_aarch64_regalloc(
 }
 
 c4c::backend::RegAllocIntegrationResult synthesize_shared_aarch64_call_crossing_regalloc(
-    const MinimalCallCrossingDirectCallSlice& slice) {
+    const MinimalCallCrossingDirectCallSlice&) {
   c4c::backend::RegAllocIntegrationResult regalloc;
-  regalloc.reg_assignments.emplace(slice.regalloc_source_value, kAarch64CalleeSavedRegs.front());
+  regalloc.reg_assignments.emplace(synthetic_call_crossing_regalloc_source_value(),
+                                   kAarch64CalleeSavedRegs.front());
   regalloc.used_callee_saved.push_back(kAarch64CalleeSavedRegs.front());
   return regalloc;
 }
@@ -3854,7 +3861,6 @@ parse_minimal_call_crossing_direct_call_slice(
       std::string(matched->parsed_call.symbol_name),
       *lhs_imm + *rhs_imm,
       helper_match->add_imm,
-      "%t.call_crossing.regalloc_source",
   };
 }
 
@@ -6132,12 +6138,12 @@ std::string emit_module(const c4c::backend::BackendModule& module,
         if (main_fn == nullptr) {
           fail_unsupported("main function for shared call-crossing direct-call slice");
         }
-        auto emit_slice = *slice;
         const auto regalloc_source_value =
             parse_minimal_call_crossing_regalloc_source_value(*legacy_fallback);
         if (!regalloc_source_value.has_value()) {
           fail_unsupported("legacy call-crossing source value for shared regalloc");
         }
+        auto emit_slice = *slice;
         emit_slice.regalloc_source_value = *regalloc_source_value;
         return emit_minimal_call_crossing_direct_call_asm(
             module, run_shared_aarch64_regalloc(*main_fn), emit_slice);

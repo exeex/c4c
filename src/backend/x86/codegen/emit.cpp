@@ -27,11 +27,17 @@ namespace c4c::backend::x86 {
 
 namespace {
 
+const std::string& synthetic_call_crossing_regalloc_source_value() {
+  static const std::string kSyntheticCallCrossingRegallocSource =
+      "%t.call_crossing.regalloc_source";
+  return kSyntheticCallCrossingRegallocSource;
+}
+
 struct MinimalCallCrossingDirectCallSlice {
   std::string callee_name;
   std::int64_t source_imm = 0;
   std::int64_t helper_add_imm = 0;
-  std::string regalloc_source_value;
+  std::string regalloc_source_value = synthetic_call_crossing_regalloc_source_value();
 };
 
 struct MinimalDirectCallSlice {
@@ -621,9 +627,10 @@ c4c::backend::RegAllocIntegrationResult run_shared_x86_regalloc(
 }
 
 c4c::backend::RegAllocIntegrationResult synthesize_shared_x86_call_crossing_regalloc(
-    const MinimalCallCrossingDirectCallSlice& slice) {
+    const MinimalCallCrossingDirectCallSlice&) {
   c4c::backend::RegAllocIntegrationResult regalloc;
-  regalloc.reg_assignments.emplace(slice.regalloc_source_value, c4c::backend::PhysReg{1});
+  regalloc.reg_assignments.emplace(synthetic_call_crossing_regalloc_source_value(),
+                                   c4c::backend::PhysReg{1});
   regalloc.used_callee_saved.push_back(c4c::backend::PhysReg{1});
   return regalloc;
 }
@@ -2514,7 +2521,6 @@ std::optional<MinimalCallCrossingDirectCallSlice> parse_minimal_call_crossing_di
       std::string(matched->parsed_call.symbol_name),
       *lhs_imm + *rhs_imm,
       helper_match->add_imm,
-      "%t.call_crossing.regalloc_source",
   };
 }
 
@@ -3755,7 +3761,6 @@ std::string emit_module(const c4c::backend::BackendModule& module,
               c4c::backend::LirAdapterErrorKind::Unsupported,
               "main function for shared x86 call-crossing direct-call slice");
         }
-        auto emit_slice = *slice;
         const auto regalloc_source_value =
             parse_minimal_call_crossing_regalloc_source_value(*legacy_fallback);
         if (!regalloc_source_value.has_value()) {
@@ -3763,6 +3768,7 @@ std::string emit_module(const c4c::backend::BackendModule& module,
               c4c::backend::LirAdapterErrorKind::Unsupported,
               "legacy x86 call-crossing source value for shared regalloc");
         }
+        auto emit_slice = *slice;
         emit_slice.regalloc_source_value = *regalloc_source_value;
         return remove_redundant_self_moves(emit_minimal_call_crossing_direct_call_asm(
             module, run_shared_x86_regalloc(*main_fn), emit_slice));
@@ -3885,7 +3891,6 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
             c4c::backend::LirAdapterErrorKind::Unsupported,
             "main function for shared x86 call-crossing direct-call slice");
       }
-      auto emit_slice = *slice;
       const auto regalloc_source_value =
           parse_minimal_call_crossing_regalloc_source_value(module);
       if (!regalloc_source_value.has_value()) {
@@ -3893,6 +3898,7 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
             c4c::backend::LirAdapterErrorKind::Unsupported,
             "legacy x86 call-crossing source value for shared regalloc");
       }
+      auto emit_slice = *slice;
       emit_slice.regalloc_source_value = *regalloc_source_value;
       return remove_redundant_self_moves(emit_minimal_call_crossing_direct_call_asm(
           adapted, run_shared_x86_regalloc(*main_fn), emit_slice));
