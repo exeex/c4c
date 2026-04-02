@@ -1842,6 +1842,46 @@ void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_ir_without
                       "x86 backend seam should not fall back when the explicit two-argument direct-call slice relies only on structured metadata");
 }
 
+void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_local_arg_ir_without_signature_shims() {
+  auto lowered =
+      c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_local_arg_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".type add_pair, %function",
+                  "x86 backend seam should still preserve lowered two-argument local-argument helper definitions without legacy signature text");
+  expect_contains(rendered, "mov edi, 5",
+                  "x86 backend seam should still materialize the normalized lowered local first argument from structured call metadata");
+  expect_contains(rendered, "mov esi, 7",
+                  "x86 backend seam should still preserve the lowered immediate second argument from structured call metadata");
+  expect_contains(rendered, "call add_pair",
+                  "x86 backend seam should still lower structured two-argument local-argument direct calls when legacy call/signature text is cleared");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back when the structured two-argument local-argument slice relies only on backend-owned metadata");
+}
+
+void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_double_rewrite_ir_without_signature_shims() {
+  auto lowered = c4c::backend::lower_to_backend_ir(
+      make_typed_direct_call_two_arg_both_local_double_rewrite_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".type add_pair, %function",
+                  "x86 backend seam should still preserve lowered two-argument rewritten helper definitions without legacy signature text");
+  expect_contains(rendered, "mov edi, 5",
+                  "x86 backend seam should still materialize the rewritten lowered first argument from structured call metadata");
+  expect_contains(rendered, "mov esi, 7",
+                  "x86 backend seam should still materialize the rewritten lowered second argument from structured call metadata");
+  expect_contains(rendered, "call add_pair",
+                  "x86 backend seam should still lower structured two-argument rewritten direct calls when legacy call/signature text is cleared");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back when the structured two-argument rewritten slice relies only on backend-owned metadata");
+}
+
 void test_x86_backend_renders_typed_direct_call_local_arg_spacing_slice() {
   auto module = make_typed_direct_call_local_arg_with_suffix_spacing_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -3234,6 +3274,8 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_renders_typed_direct_call_local_arg_slice);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_direct_call_add_imm_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_ir_without_signature_shims);
+  RUN_TEST(test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_local_arg_ir_without_signature_shims);
+  RUN_TEST(test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_double_rewrite_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_renders_typed_direct_call_local_arg_spacing_slice);
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_slice);
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_slice_with_spaced_helper_signature);
