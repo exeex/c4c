@@ -32,7 +32,7 @@ void clear_backend_memory_type_compatibility_shims(c4c::backend::BackendModule& 
   for (auto& function : module.functions) {
     for (auto& block : function.blocks) {
       if (c4c::backend::backend_return_type_kind(block.terminator) !=
-          c4c::backend::BackendReturn::TypeKind::Unknown) {
+          c4c::backend::BackendValueTypeKind::Unknown) {
         block.terminator.type_str.clear();
       }
       for (auto& inst : block.insts) {
@@ -940,6 +940,46 @@ void test_backend_ir_validator_accepts_structured_signature_and_call_types_witho
               "backend IR validator should accept structured signature and call types when the legacy text shims are cleared");
   expect_true(error.empty(),
               "backend IR validator should not report an error for structured signature and call type metadata without compatibility text");
+}
+
+void test_backend_ir_printer_renders_structured_pointer_return_without_raw_text() {
+  c4c::backend::BackendModule module;
+  c4c::backend::BackendFunction function;
+  function.signature.linkage_kind = c4c::backend::BackendFunctionLinkage::Define;
+  function.signature.return_type_kind = c4c::backend::BackendValueTypeKind::Ptr;
+  function.signature.name = "identity_ptr";
+
+  c4c::backend::BackendTerminator terminator;
+  terminator.value = "%p.ret";
+  terminator.type_kind = c4c::backend::BackendValueTypeKind::Ptr;
+  function.blocks.push_back(c4c::backend::BackendBlock{"entry", {}, std::move(terminator)});
+  module.functions.push_back(std::move(function));
+
+  const auto rendered = c4c::backend::print_backend_ir(module);
+  expect_contains(rendered, "define ptr @identity_ptr()",
+                  "backend IR printer should render structured pointer signature returns without raw text");
+  expect_contains(rendered, "ret ptr %p.ret",
+                  "backend IR printer should render structured pointer terminators without raw text");
+}
+
+void test_backend_ir_validator_accepts_structured_pointer_return_without_raw_text() {
+  c4c::backend::BackendModule module;
+  c4c::backend::BackendFunction function;
+  function.signature.linkage_kind = c4c::backend::BackendFunctionLinkage::Define;
+  function.signature.return_type_kind = c4c::backend::BackendValueTypeKind::Ptr;
+  function.signature.name = "identity_ptr";
+
+  c4c::backend::BackendTerminator terminator;
+  terminator.value = "%p.ret";
+  terminator.type_kind = c4c::backend::BackendValueTypeKind::Ptr;
+  function.blocks.push_back(c4c::backend::BackendBlock{"entry", {}, std::move(terminator)});
+  module.functions.push_back(std::move(function));
+
+  std::string error;
+  expect_true(c4c::backend::validate_backend_ir(module, &error),
+              "backend IR validator should accept structured pointer terminators without raw text");
+  expect_true(error.empty(),
+              "backend IR validator should not report an error for structured pointer return metadata without compatibility text");
 }
 
 void test_backend_ir_printer_renders_structured_global_linkage_without_raw_text() {

@@ -7,9 +7,9 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 3/2 slice: audit the remaining backend-owned IR surfaces that still
-      carry semantics only as raw text after the structured signature/call
-      type conversion and pick the next narrow in-scope structured cleanup
-      without widening into the later BIR scaffold plan
+      carry semantics only as raw text after the structured return-contract
+      cleanup and pick the next narrow in-scope structured cleanup without
+      widening into the later BIR scaffold plan
 
 ## Incomplete Items
 
@@ -144,14 +144,22 @@ Source Plan: plan.md
       `backend_lir_adapter_tests`, and `backend_lir_adapter_x86_64_tests`
       pass while the full suite remains monotonic at 2668 passed / 3 failed /
       2671 total with zero newly failing tests
+- [x] Step 3/5 slice: convert `BackendReturn` / `BackendTerminator` onto the
+      shared `BackendValueTypeKind` return-contract metadata so structured ptr
+      returns no longer depend on raw type text, add direct printer/validator
+      coverage for no-shim pointer returns in `backend_ir_tests`, and confirm
+      on 2026-04-02 that focused `backend_ir_tests`,
+      `backend_lir_adapter_tests`, and `backend_lir_adapter_x86_64_tests`
+      pass while the full suite remains monotonic at 2668 passed / 3 failed /
+      2671 total with zero newly failing tests
 
 ## Next Intended Slice
 
 - Audit the remaining backend-owned IR surfaces that still carry semantics only
-  as raw text after the structured signature/call type conversion, then pick
-  the next narrow Step 2/3 conversion without widening into the later BIR
-  scaffold plan. Prioritize any still-text-only backend-owned type or function
-  contract seams before broader BIR-shape work.
+  as raw text after the structured return-contract cleanup, then pick the next
+  narrow Step 2/3 conversion without widening into the later BIR scaffold
+  plan. Prioritize any still-text-only backend-owned type or function-contract
+  seams before broader BIR-shape work.
 
 ## Blockers
 
@@ -208,6 +216,15 @@ Source Plan: plan.md
 - Focused `backend_lir_adapter_aarch64_tests` still fails in the same
   pre-existing suite called out above; the full-suite rerun stayed monotonic
   with no new failures after the structured global-consumer cleanup.
+- A fresh 2026-04-02 `ctest --test-dir build -j --output-on-failure >
+  test_fail_after.log` run for the structured return-contract slice finished at
+  the same 2668 passed / 3 failed / 2671 total baseline, and
+  `check_monotonic_regression.py --before test_fail_before.log --after
+  test_fail_after.log --allow-non-decreasing-passed` passed with zero newly
+  failing tests.
+- Focused `backend_ir_tests`, `backend_lir_adapter_tests`, and
+  `backend_lir_adapter_x86_64_tests` pass with the new structured pointer
+  return-contract metadata slice.
 - A fresh 2026-04-02 `ctest --test-dir build -j --output-on-failure >
   test_after.log` run for the structured function-linkage slice finished at
   the same 2668 passed / 3 failed / 2671 total baseline, and

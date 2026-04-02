@@ -767,14 +767,8 @@ using BackendInst = std::variant<BackendPhiInst,
 struct BackendReturn {
   std::optional<std::string> value;
   std::string type_str;
-  enum class TypeKind : unsigned char {
-    Unknown,
-    Void,
-    Scalar,
-  };
-
-  TypeKind type_kind = TypeKind::Unknown;
-  BackendScalarType value_type = BackendScalarType::Unknown;
+  BackendValueTypeKind type_kind = BackendValueTypeKind::Unknown;
+  BackendScalarType scalar_type = BackendScalarType::Unknown;
 };
 
 inline BackendReturn make_backend_return(std::optional<std::string> value,
@@ -782,48 +776,36 @@ inline BackendReturn make_backend_return(std::optional<std::string> value,
   BackendReturn out;
   out.value = std::move(value);
   out.type_str = std::move(type_str);
-  if (out.type_str == "void") {
-    out.type_kind = BackendReturn::TypeKind::Void;
-  } else if (const auto scalar_type = parse_backend_scalar_type(out.type_str);
-             scalar_type.has_value()) {
-    out.type_kind = BackendReturn::TypeKind::Scalar;
-    out.value_type = *scalar_type;
-  }
+  out.type_kind = parse_backend_value_type_kind(out.type_str);
+  out.scalar_type = parse_backend_value_scalar_type(out.type_str);
   return out;
 }
 
-inline BackendReturn::TypeKind backend_return_type_kind(const BackendReturn& ret) {
-  if (ret.type_kind != BackendReturn::TypeKind::Unknown) {
+inline BackendValueTypeKind backend_return_type_kind(const BackendReturn& ret) {
+  if (ret.type_kind != BackendValueTypeKind::Unknown) {
     return ret.type_kind;
   }
-  if (ret.type_str == "void") {
-    return BackendReturn::TypeKind::Void;
-  }
-  if (parse_backend_scalar_type(ret.type_str).has_value()) {
-    return BackendReturn::TypeKind::Scalar;
-  }
-  return BackendReturn::TypeKind::Unknown;
+  return parse_backend_value_type_kind(ret.type_str);
 }
 
 inline BackendScalarType backend_return_scalar_type(const BackendReturn& ret) {
-  if (backend_return_type_kind(ret) != BackendReturn::TypeKind::Scalar) {
+  if (backend_return_type_kind(ret) != BackendValueTypeKind::Scalar) {
     return BackendScalarType::Unknown;
   }
-  if (ret.value_type != BackendScalarType::Unknown) {
-    return ret.value_type;
+  if (ret.scalar_type != BackendScalarType::Unknown) {
+    return ret.scalar_type;
   }
-  return parse_backend_scalar_type(ret.type_str).value_or(BackendScalarType::Unknown);
+  return parse_backend_value_scalar_type(ret.type_str);
 }
 
 inline bool backend_return_is_void(const BackendReturn& ret) {
-  return backend_return_type_kind(ret) == BackendReturn::TypeKind::Void;
+  return backend_return_type_kind(ret) == BackendValueTypeKind::Void;
 }
 
 inline std::string render_backend_return_type(const BackendReturn& ret) {
-  if (backend_return_is_void(ret)) {
-    return "void";
-  }
-  return render_backend_scalar_type_or_fallback(backend_return_scalar_type(ret), ret.type_str);
+  return render_backend_value_type_or_fallback(backend_return_type_kind(ret),
+                                               backend_return_scalar_type(ret),
+                                               ret.type_str);
 }
 
 enum class BackendTerminatorKind {
