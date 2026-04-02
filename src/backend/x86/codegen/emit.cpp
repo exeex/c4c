@@ -2468,6 +2468,79 @@ std::optional<MinimalDirectCallAddImmSlice> parse_minimal_direct_call_add_imm_sl
   };
 }
 
+std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_slice(
+    const c4c::backend::BackendModule& module) {
+  if (module.functions.size() != 2) return std::nullopt;
+
+  const auto* main_fn = find_function(module, "main");
+  if (main_fn == nullptr || main_fn->is_declaration ||
+      !backend_function_is_definition(main_fn->signature) ||
+      !is_i32_scalar_signature_return(main_fn->signature) ||
+      !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
+      main_fn->blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& main_block = main_fn->blocks.front();
+  if (main_block.label != "entry" || main_block.insts.size() != 1 ||
+      !main_block.terminator.value.has_value() ||
+      c4c::backend::backend_return_scalar_type(main_block.terminator) !=
+          c4c::backend::BackendScalarType::I32) {
+    return std::nullopt;
+  }
+
+  const auto* call = std::get_if<c4c::backend::BackendCallInst>(&main_block.insts.front());
+  const auto call_operands = call == nullptr
+                                 ? std::nullopt
+                                 : c4c::backend::parse_backend_direct_global_two_typed_call_operands(
+                                       *call, "add_pair", "i32", "i32");
+  if (call == nullptr || !is_i32_scalar_call_return(*call) || call->result.empty() ||
+      *main_block.terminator.value != call->result || !call_operands.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto lhs_call_arg_imm = parse_i64(call_operands->first);
+  const auto rhs_call_arg_imm = parse_i64(call_operands->second);
+  if (!lhs_call_arg_imm.has_value() || !rhs_call_arg_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto* helper = find_function(module, "add_pair");
+  if (helper == nullptr || helper->is_declaration ||
+      !backend_function_is_definition(helper->signature) ||
+      !is_i32_scalar_signature_return(helper->signature) ||
+      helper->signature.params.size() != 2 ||
+      !is_i32_scalar_param(helper->signature.params[0]) ||
+      !is_i32_scalar_param(helper->signature.params[1]) ||
+      helper->signature.params[0].name.empty() ||
+      helper->signature.params[1].name.empty() ||
+      helper->signature.is_vararg || helper->blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& helper_block = helper->blocks.front();
+  if (helper_block.label != "entry" || helper_block.insts.size() != 1 ||
+      !helper_block.terminator.value.has_value() ||
+      c4c::backend::backend_return_scalar_type(helper_block.terminator) !=
+          c4c::backend::BackendScalarType::I32) {
+    return std::nullopt;
+  }
+
+  const auto* add = std::get_if<c4c::backend::BackendBinaryInst>(&helper_block.insts.front());
+  if (add == nullptr || add->opcode != c4c::backend::BackendBinaryOpcode::Add ||
+      !is_i32_scalar_binary(*add) || *helper_block.terminator.value != add->result ||
+      add->lhs != helper->signature.params[0].name ||
+      add->rhs != helper->signature.params[1].name) {
+    return std::nullopt;
+  }
+
+  return MinimalTwoArgDirectCallSlice{
+      "add_pair",
+      *lhs_call_arg_imm,
+      *rhs_call_arg_imm,
+  };
+}
+
 std::optional<MinimalParamSlotSlice> parse_minimal_param_slot_slice(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
@@ -3516,6 +3589,10 @@ std::string emit_module(const c4c::backend::BackendModule& module,
         slice.has_value()) {
       return emit_minimal_direct_call_add_imm_asm(module, *slice);
     }
+    if (const auto slice = parse_minimal_two_arg_direct_call_slice(module);
+        slice.has_value()) {
+      return emit_minimal_two_arg_direct_call_asm(module, *slice);
+    }
     if (const auto slice = parse_minimal_call_crossing_direct_call_slice(module);
         slice.has_value()) {
       if (legacy_fallback == nullptr) {
@@ -3634,6 +3711,10 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
     if (const auto slice = parse_minimal_direct_call_add_imm_slice(adapted);
         slice.has_value()) {
       return emit_minimal_direct_call_add_imm_asm(adapted, *slice);
+    }
+    if (const auto slice = parse_minimal_two_arg_direct_call_slice(adapted);
+        slice.has_value()) {
+      return emit_minimal_two_arg_direct_call_asm(adapted, *slice);
     }
     if (const auto slice = parse_minimal_call_crossing_direct_call_slice(adapted);
         slice.has_value()) {
