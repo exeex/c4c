@@ -390,6 +390,18 @@ TypeSpec Parser::parse_base_type() {
     bool has_typedef  = false;
     bool done         = false;
     bool base_set     = false;  // true when ts.base was set directly (KwBuiltin, KwInt128, etc.)
+    auto parse_builtin_transform_type = [&](TypeSpec* out) -> bool {
+        if (!out || !check(TokenKind::Identifier)) return false;
+        if (cur().lexeme != "__underlying_type") return false;
+
+        consume();
+        expect(TokenKind::LParen);
+        // Keep transform-type builtins parseable in declaration contexts even
+        // when semantic lowering still treats them conservatively.
+        *out = parse_type_name();
+        expect(TokenKind::RParen);
+        return true;
+    };
     auto infer_typeof_like_operand_type = [&](TypeSpec* out, bool strip_qual) -> bool {
         if (!out) return false;
         if (check(TokenKind::KwNullptr) ||
@@ -614,6 +626,11 @@ TypeSpec Parser::parse_base_type() {
             case TokenKind::KwTypename:
             case TokenKind::Identifier:
                 {
+                    if (parse_builtin_transform_type(&ts)) {
+                        base_set = true;
+                        done = true;
+                        break;
+                    }
                     TypeBase floatn_base;
                     if (match_floatn_keyword_base(cur().lexeme, &floatn_base)) {
                         ts.base = floatn_base;

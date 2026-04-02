@@ -7,10 +7,10 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 2: Foundation headers and traits
-- Current slice: isolate the shared `type_properties.h` parser blocker exposed
-  by `eastl_integer_sequence_simple.cpp`, `eastl_type_traits_simple.cpp`, and
-  `eastl_utility_simple.cpp`, then reduce it to the smallest generic parser
-  testcase before implementation work
+- Current slice: compare the newly exposed
+  `eastl::has_unique_object_representations` incomplete-type failure against
+  Clang and reduce it to the smallest generic semantic testcase before the next
+  implementation change
 
 ## Todo
 
@@ -30,22 +30,29 @@ Source Plan: plan.md
   `tests/cpp/eastl/README.md`
 - [x] Added explicit parse recipe coverage for the five foundation cases so the
   current inventory is executable through CTest
+- [x] Reduced the shared `type_properties.h` parser blocker to an internal
+  `typedef __underlying_type(T) type;` record-member testcase and taught
+  `parse_base_type()` to treat `__underlying_type(...)` as a type-producing
+  builtin in declaration contexts
+- [x] Reclassified the affected EASTL recipes after the parser fix; the Step 2
+  and Step 3 fronts now stop on `eastl::has_unique_object_representations`
+  becoming incomplete during `--parse-only`
 
 ## Next Slice
 
-- reproduce the shared `type_properties.h` parser failure with the smallest
-  internal testcase possible
-- compare the reduced parser failure against Clang acceptance before attempting
-  a frontend fix for the Step 2 foundation batch
+- compare the `__has_unique_object_representations` spelling and resulting
+  record definition against Clang on a reduced internal testcase
+- decide whether the new blocker belongs to parse-only semantic validation or a
+  more general builtin-type-trait completeness bug before implementing the next
+  Step 2 fix
 
 ## Blockers
 
 - `eastl_integer_sequence_simple.cpp`, `eastl_type_traits_simple.cpp`,
   `eastl_utility_simple.cpp`, `eastl_memory_simple.cpp`,
-  `eastl_tuple_simple.cpp`, and `eastl_vector_simple.cpp` all currently stop in
-  parser handling of `ref/EASTL/include/EASTL/internal/type_properties.h:35:52`
-  with `parse_fn=try_parse_record_typedef_member phase=committed expected=SEMI
-  got='('`
+  `eastl_tuple_simple.cpp`, and `eastl_vector_simple.cpp` now all stop with
+  `object has incomplete type: eastl::has_unique_object_representations` after
+  the shared `__underlying_type(T)` parser blocker was removed
 
 ## Resume Notes
 
@@ -54,6 +61,8 @@ Source Plan: plan.md
 - Step 1 inventory is now captured in `tests/cpp/eastl/README.md`
 - the foundation batch now has executable parse recipes in
   `tests/cpp/internal/InternalTests.cmake`
+- `tests/cpp/internal/parse_only_case/record_member_underlying_type_parse.cpp`
+  is the reduced internal regression for the fixed parser blocker
 - `eastl_piecewise_construct_simple.cpp` and
   `eastl_tuple_fwd_decls_simple.cpp` parse successfully but first fail during
   canonical/sema expansion with undeclared identifiers from EASTL internals
