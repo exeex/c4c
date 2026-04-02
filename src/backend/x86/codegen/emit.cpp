@@ -2458,25 +2458,14 @@ std::optional<MinimalCallCrossingDirectCallSlice> parse_minimal_call_crossing_di
     const c4c::backend::BackendModule& module) {
   if (module.functions.size() != 2) return std::nullopt;
 
-  const auto* helper = find_function(module, "add_one");
   const auto* main_fn = find_function(module, "main");
-  if (helper == nullptr || main_fn == nullptr || helper->is_declaration ||
-      main_fn->is_declaration || helper->blocks.size() != 1 ||
-      main_fn->blocks.size() != 1) {
+  if (main_fn == nullptr || main_fn->is_declaration || main_fn->blocks.size() != 1) {
     return std::nullopt;
   }
 
-  if (!backend_function_is_definition(helper->signature) ||
-      helper->signature.params.size() != 1 || !is_i32_scalar_param(helper->signature.params.front()) ||
-      helper->signature.is_vararg || !backend_function_is_definition(main_fn->signature) ||
+  if (!backend_function_is_definition(main_fn->signature) ||
       !is_i32_scalar_signature_return(main_fn->signature) ||
-      !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
-      !is_i32_scalar_signature_return(helper->signature)) {
-    return std::nullopt;
-  }
-
-  const auto helper_match = match_minimal_structured_direct_call_add_imm_helper(*helper);
-  if (!helper_match.has_value()) {
+      !main_fn->signature.params.empty() || main_fn->signature.is_vararg) {
     return std::nullopt;
   }
 
@@ -2493,7 +2482,12 @@ std::optional<MinimalCallCrossingDirectCallSlice> parse_minimal_call_crossing_di
   const auto* final_add =
       std::get_if<c4c::backend::BackendBinaryInst>(&main_block.insts[2]);
   const auto matched = match_minimal_structured_direct_call(module, main_block, 1, 1);
+  const auto helper_match =
+      matched.has_value()
+          ? match_minimal_structured_direct_call_add_imm_helper(*matched->callee_fn)
+          : std::nullopt;
   if (source_add == nullptr || !matched.has_value() || final_add == nullptr ||
+      !helper_match.has_value() ||
       source_add->opcode != c4c::backend::BackendBinaryOpcode::Add ||
       !is_i32_scalar_binary(*source_add) ||
       matched->call->args.front().operand != source_add->result ||
@@ -2509,7 +2503,7 @@ std::optional<MinimalCallCrossingDirectCallSlice> parse_minimal_call_crossing_di
   if (!lhs_imm.has_value() || !rhs_imm.has_value()) return std::nullopt;
 
   return MinimalCallCrossingDirectCallSlice{
-      "add_one",
+      std::string(matched->parsed_call.symbol_name),
       *lhs_imm + *rhs_imm,
       helper_match->add_imm,
       source_add->result,

@@ -2975,6 +2975,124 @@ void test_x86_backend_keeps_spacing_tolerant_call_crossing_slice_on_asm_path() {
                       "x86 backend should not fall back to LLVM text for spacing-tolerant typed call-crossing slices");
 }
 
+void test_x86_backend_keeps_renamed_call_crossing_slice_on_asm_path() {
+  auto module = make_typed_call_crossing_direct_call_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  c4c::codegen::lir::LirFunction* helper = nullptr;
+  c4c::codegen::lir::LirFunction* main_fn = nullptr;
+  for (auto& function : module.functions) {
+    if (function.name == "add_one") {
+      helper = &function;
+    } else if (function.name == "main") {
+      main_fn = &function;
+    }
+  }
+  expect_true(helper != nullptr && main_fn != nullptr,
+              "x86 renamed call-crossing regression test needs helper and main functions");
+  if (helper == nullptr || main_fn == nullptr) {
+    return;
+  }
+
+  helper->name = "inc_value";
+  helper->signature_text = "define i32 @inc_value(i32 %p.x)\n";
+
+  auto* call = std::get_if<c4c::codegen::lir::LirCallOp>(&main_fn->blocks.front().insts[1]);
+  expect_true(call != nullptr,
+              "x86 renamed call-crossing regression test needs the direct call to mutate");
+  if (call == nullptr) {
+    return;
+  }
+  call->callee = "@inc_value";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".type inc_value, %function",
+                  "x86 backend seam should key the call-crossing helper definition from the structured callee symbol instead of a fixed helper name");
+  expect_contains(rendered, "mov edi, ebx",
+                  "x86 backend seam should still marshal the preserved source register through the ABI argument register for renamed call-crossing helpers");
+  expect_contains(rendered, "call inc_value",
+                  "x86 backend seam should keep renamed typed call-crossing helper calls on the asm path");
+  expect_contains(rendered, "add eax, ebx",
+                  "x86 backend seam should keep consuming the renamed helper result directly from eax");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back when the call-crossing slice relies only on structured call and callee metadata");
+}
+
+void test_x86_backend_scaffold_accepts_renamed_structured_call_crossing_direct_call_ir_without_signature_shims() {
+  auto legacy = make_typed_call_crossing_direct_call_module();
+  legacy.target_triple = "x86_64-unknown-linux-gnu";
+  auto lowered = c4c::backend::lower_to_backend_ir(legacy);
+
+  c4c::backend::BackendFunction* helper = nullptr;
+  c4c::backend::BackendFunction* main_fn = nullptr;
+  for (auto& function : lowered.functions) {
+    if (function.signature.name == "add_one") {
+      helper = &function;
+    } else if (function.signature.name == "main") {
+      main_fn = &function;
+    }
+  }
+  expect_true(helper != nullptr && main_fn != nullptr,
+              "x86 renamed lowered call-crossing regression test needs helper and main functions");
+  if (helper == nullptr || main_fn == nullptr) {
+    return;
+  }
+
+  helper->signature.name = "inc_value";
+  c4c::codegen::lir::LirFunction* legacy_helper = nullptr;
+  c4c::codegen::lir::LirFunction* legacy_main = nullptr;
+  for (auto& function : legacy.functions) {
+    if (function.name == "add_one") {
+      legacy_helper = &function;
+    } else if (function.name == "main") {
+      legacy_main = &function;
+    }
+  }
+  expect_true(legacy_helper != nullptr && legacy_main != nullptr,
+              "x86 renamed lowered call-crossing regression test needs the legacy helper and main functions");
+  if (legacy_helper == nullptr || legacy_main == nullptr) {
+    return;
+  }
+  legacy_helper->name = "inc_value";
+  legacy_helper->signature_text = "define i32 @inc_value(i32 %p.x)\n";
+
+  auto* call = std::get_if<c4c::backend::BackendCallInst>(&main_fn->blocks.front().insts[1]);
+  expect_true(call != nullptr,
+              "x86 renamed lowered call-crossing regression test needs the backend direct call to mutate");
+  if (call == nullptr) {
+    return;
+  }
+  call->callee.symbol_name = "inc_value";
+  auto* legacy_call =
+      std::get_if<c4c::codegen::lir::LirCallOp>(&legacy_main->blocks.front().insts[1]);
+  expect_true(legacy_call != nullptr,
+              "x86 renamed lowered call-crossing regression test needs the legacy direct call to mutate");
+  if (legacy_call == nullptr) {
+    return;
+  }
+  legacy_call->callee = "@inc_value";
+
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered, &legacy},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".type inc_value, %function",
+                  "x86 backend seam should key lowered call-crossing helper definitions from the structured callee symbol instead of legacy signature text");
+  expect_contains(rendered, "mov ebx, 5",
+                  "x86 backend seam should still materialize the preserved lowered cross-call source without legacy fallback");
+  expect_contains(rendered, "mov edi, ebx",
+                  "x86 backend seam should still marshal the renamed lowered call-crossing source through the ABI argument register");
+  expect_contains(rendered, "call inc_value",
+                  "x86 backend seam should keep renamed lowered call-crossing direct calls on the asm path when legacy call/signature text is cleared");
+  expect_contains(rendered, "add eax, ebx",
+                  "x86 backend seam should still consume the renamed lowered helper result directly from eax");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back when the renamed lowered call-crossing slice relies only on structured backend metadata");
+}
+
 void test_x86_backend_renders_compare_and_branch_slice() {
   auto module = make_conditional_return_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -4135,6 +4253,8 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_uses_shared_regalloc_for_call_crossing_direct_call_slice);
   RUN_TEST(test_x86_backend_cleans_up_redundant_self_move_on_call_crossing_slice);
   RUN_TEST(test_x86_backend_keeps_spacing_tolerant_call_crossing_slice_on_asm_path);
+  RUN_TEST(test_x86_backend_keeps_renamed_call_crossing_slice_on_asm_path);
+  RUN_TEST(test_x86_backend_scaffold_accepts_renamed_structured_call_crossing_direct_call_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_renders_compare_and_branch_slice);
   RUN_TEST(test_x86_backend_renders_compare_and_branch_slice_from_typed_predicates);
   RUN_TEST(test_x86_backend_renders_compare_and_branch_le_slice);
