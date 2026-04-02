@@ -533,9 +533,12 @@ bool validate_inst(const BackendInst& inst,
                 std::string(context) +
                     ": ptrdiff addresses must reference the same global");
   }
-  const auto bounds_it = referenced_bounds.find(ptrdiff->lhs_address.base_symbol);
-  if (lhs_is_referenced_object && rhs_is_referenced_object &&
-      bounds_it != referenced_bounds.end()) {
+  const auto lhs_bounds_it = referenced_bounds.find(ptrdiff->lhs_address.base_symbol);
+  const bool same_structured_base =
+      ptrdiff->lhs_address.base_symbol == ptrdiff->rhs_address.base_symbol &&
+      lhs_bounds_it != referenced_bounds.end();
+  if ((lhs_is_referenced_object && rhs_is_referenced_object && same_structured_base) ||
+      (!lhs_is_referenced_object && !rhs_is_referenced_object && same_structured_base)) {
     if (!validate_address_range(ptrdiff->lhs_address,
                                 1,
                                 referenced_bounds,
@@ -548,15 +551,15 @@ bool validate_inst(const BackendInst& inst,
                                 std::string(context) + ": ptrdiff rhs address")) {
       return false;
     }
-    if (bounds_it->second.element_type != BackendScalarType::Unknown &&
+    if (lhs_bounds_it->second.element_type != BackendScalarType::Unknown &&
         element_type != BackendScalarType::Unknown &&
-        bounds_it->second.element_type != element_type) {
+        lhs_bounds_it->second.element_type != element_type) {
       return fail(error,
                   std::string(context) +
                       ": ptrdiff element type must match referenced global element type");
     }
     if (ptrdiff->element_size !=
-        static_cast<std::int64_t>(bounds_it->second.element_size_bytes)) {
+        static_cast<std::int64_t>(lhs_bounds_it->second.element_size_bytes)) {
       return fail(error,
                   std::string(context) +
                       ": ptrdiff element size must match referenced global element size");

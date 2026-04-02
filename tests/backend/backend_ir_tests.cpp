@@ -135,6 +135,24 @@ void clear_backend_global_type_compatibility_shims(c4c::backend::BackendModule& 
   }
 }
 
+c4c::backend::BackendModule make_structured_local_slot_ptrdiff_module() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_local_array_gep_module());
+  auto& block = lowered.functions.front().blocks.front();
+  block.insts.resize(2);
+  block.insts.push_back(c4c::backend::BackendPtrDiffEqInst{
+      "%t.ptrdiff",
+      "i32",
+      c4c::backend::BackendAddress{"%lv.arr", 4},
+      c4c::backend::BackendAddress{"%lv.arr", 0},
+      4,
+      1,
+      c4c::backend::BackendScalarType::I32,
+      c4c::backend::BackendScalarType::I32,
+  });
+  block.terminator = c4c::backend::make_backend_return("%t.ptrdiff", "i32");
+  return lowered;
+}
+
 void test_backend_ir_printer_renders_lowered_conditional_return_slice() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_return_module());
   const auto rendered = c4c::backend::print_backend_ir(lowered);
@@ -1108,6 +1126,30 @@ void test_backend_ir_validator_rejects_local_slot_ptrdiff_with_misaligned_offset
                   "backend IR validator should explain when a structured local-slot ptrdiff address uses a misaligned byte offset");
 }
 
+void test_backend_ir_validator_accepts_structured_local_slot_ptrdiff_slice_without_raw_text() {
+  auto lowered = make_structured_local_slot_ptrdiff_module();
+  clear_backend_memory_type_compatibility_shims(lowered);
+  std::string error;
+
+  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should accept structured local-slot ptrdiff slices when local-slot bounds metadata and ptrdiff scalar metadata remain after clearing legacy type text");
+  expect_true(error.empty(),
+              "backend IR validator should not report an error for valid structured local-slot ptrdiff slices without raw type text");
+}
+
+void test_backend_ir_validator_rejects_local_slot_ptrdiff_past_structured_bounds() {
+  auto lowered = make_structured_local_slot_ptrdiff_module();
+  auto& ptrdiff = std::get<c4c::backend::BackendPtrDiffEqInst>(
+      lowered.functions.front().blocks.front().insts.back());
+  ptrdiff.lhs_address.byte_offset = 8;
+  std::string error;
+
+  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should reject structured local-slot ptrdiff slices whose referenced address escapes the bounded local slot");
+  expect_contains(error, "ptrdiff lhs address: address exceeds referenced global bounds",
+                  "backend IR validator should explain when a structured local-slot ptrdiff address escapes the bounded local slot");
+}
+
 void test_backend_ir_printer_renders_return_add() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_return_add_module());
   const auto rendered = c4c::backend::print_backend_ir(lowered);
@@ -1729,6 +1771,8 @@ int main(int argc, char* argv[]) {
   test_backend_ir_validator_rejects_ptrdiff_with_unknown_global_style_symbol();
   test_backend_ir_validator_rejects_local_slot_ptrdiff_with_negative_offset();
   test_backend_ir_validator_rejects_local_slot_ptrdiff_with_misaligned_offset();
+  test_backend_ir_validator_accepts_structured_local_slot_ptrdiff_slice_without_raw_text();
+  test_backend_ir_validator_rejects_local_slot_ptrdiff_past_structured_bounds();
   test_backend_ir_printer_renders_lowered_conditional_return_slice();
   test_backend_ir_validator_accepts_lowered_conditional_return_slice();
   test_backend_ir_printer_renders_structured_conditional_return_slice_without_type_text();
