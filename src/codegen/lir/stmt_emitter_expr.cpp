@@ -2,6 +2,8 @@
 
 namespace c4c::codegen::lir {
 
+using namespace stmt_emitter_detail;
+
 // Draft-only staging file for Step 2 of the stmt_emitter split refactor.
 // This is the first expression-oriented ownership slice; the monolith still
 // owns the full live implementation until Step 4 wires these files into CMake.
@@ -1639,6 +1641,46 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const TernaryExpr& t, con
 std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const SizeofExpr& s, const Expr&) {
   const Expr& op = get_expr(s.expr);
   TypeSpec op_ts = resolve_expr_type(ctx, op);
+  if (!has_concrete_type(op_ts)) {
+    op_ts = std::visit([&](const auto& p) -> TypeSpec { return resolve_payload_type(ctx, p); },
+                       op.payload);
+  }
+  if (const auto* sl = std::get_if<StringLiteral>(&op.payload)) {
+    if (sl->is_wide) {
+      const auto vals = decode_wide_string_values(sl->raw);
+      return std::to_string(vals.size() * 4);
+    }
+    const auto bytes = bytes_from_string_literal(*sl);
+    return std::to_string(bytes.size() + 1);
+  }
+  if (const auto* r = std::get_if<DeclRef>(&op.payload)) {
+    auto resolve_named_global_object_type = [&](const std::string& name) -> std::optional<TypeSpec> {
+      if (const GlobalVar* best = select_global_object(name)) return best->type.spec;
+      return std::nullopt;
+    };
+    if (r->global) {
+      if (const GlobalVar* gv = select_global_object(*r->global)) op_ts = gv->type.spec;
+    } else if (r->local) {
+      const auto it = ctx.local_types.find(r->local->value);
+      if (it != ctx.local_types.end()) op_ts = it->second;
+    } else if (r->param_index && ctx.fn && *r->param_index < ctx.fn->params.size()) {
+      op_ts = ctx.fn->params[*r->param_index].type.spec;
+      if (op_ts.array_rank > 0) {
+        op_ts.array_rank = 0;
+        op_ts.array_size = -1;
+        op_ts.ptr_level = 1;
+      }
+    } else if (!r->name.empty()) {
+      if (auto named_ts = resolve_named_global_object_type(r->name)) {
+        op_ts = *named_ts;
+      }
+    }
+    if (op_ts.array_rank == 0 && !r->name.empty()) {
+      if (auto named_ts = resolve_named_global_object_type(r->name)) {
+        op_ts = *named_ts;
+      }
+    }
+  }
   if (!has_concrete_type(op_ts)) return "8";
   return std::to_string(sizeof_ts(mod_, op_ts));
 }
@@ -1657,6 +1699,25 @@ std::string StmtEmitter::emit_rval_payload(FnCtx&, const PendingConstevalExpr& p
 }
 
 std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const IndexExpr&, const Expr& e) {
+  if (const auto* idx = std::get_if<IndexExpr>(&e.payload)) {
+    const TypeSpec base_ts = resolve_expr_type(ctx, idx->base);
+    if (is_vector_value(base_ts)) {
+      TypeSpec vec_ts{};
+      const std::string vec = emit_rval_id(ctx, idx->base, vec_ts);
+      TypeSpec ix_ts{};
+      std::string ix = emit_rval_id(ctx, idx->index, ix_ts);
+      TypeSpec i32_ts{};
+      i32_ts.base = TB_INT;
+      ix = coerce(ctx, ix, ix_ts, i32_ts);
+      TypeSpec elem_ts = base_ts;
+      elem_ts.is_vector = false;
+      elem_ts.vector_lanes = 0;
+      elem_ts.vector_bytes = 0;
+      const std::string tmp = fresh_tmp(ctx);
+      emit_lir_op(ctx, lir::LirExtractElementOp{tmp, llvm_ty(base_ts), vec, "i32", ix});
+      return tmp;
+    }
+  }
   TypeSpec pts{};
   const std::string ptr = emit_lval_dispatch(ctx, e, pts);
   return emit_rval_from_access_expr(ctx, e, ptr, pts, false);

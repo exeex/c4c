@@ -4,6 +4,7 @@
 namespace c4c::codegen::lir {
 
 namespace llvm_cc = c4c::codegen::llvm_backend;
+using namespace stmt_emitter_detail;
 
 // Draft-only staging file for Step 3 of the stmt_emitter split refactor.
 // This file owns the lvalue, member access, and assignable-store cluster.

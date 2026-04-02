@@ -1,7 +1,7 @@
 # `stmt_emitter.cpp` Split Refactor
 
-Status: Open
-Last Updated: 2026-04-01
+Status: Closed
+Last Updated: 2026-04-02
 
 ## Goal
 
@@ -100,15 +100,28 @@ This keeps the parallel speedup from the draft pass while preserving a conservat
 - After the first draft boundaries stabilize, prefer early build wiring plus diagnostic-driven cleanup over prolonged manual ownership review
 - Existing tests must pass unchanged after the split
 
+## Completion
+
+Completed on 2026-04-02.
+
+- `src/codegen/lir/stmt_emitter.hpp` remains the canonical declaration surface for `StmtEmitter`.
+- The monolithic `src/codegen/lir/stmt_emitter.cpp` was removed after the split files built cleanly together.
+- Statement lowering now lives in `src/codegen/lir/stmt_emitter_stmt.cpp`.
+- Call, builtin, and vararg lowering now live in `src/codegen/lir/stmt_emitter_call.cpp`.
+- Lvalue, type/helper, core, and expression ownership now live in focused `stmt_emitter_*.cpp` files.
+- `cmake --build build -j8` succeeds with only the split emitter translation units compiled.
+- `ctest --test-dir build -j 8 --output-on-failure` returned the same 2668/2671 passing baseline as `test_fail_before.log`.
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passed with zero new failures.
+
 ## Acceptance Criteria
 
-- [ ] `src/codegen/lir/stmt_emitter.hpp` remains the canonical declaration surface for `StmtEmitter`
-- [ ] `src/codegen/lir/stmt_emitter.cpp` is removed or reduced to a thin forwarding/coordinator file
-- [ ] statement emission logic lives in a dedicated `stmt_emitter_stmt.cpp`
-- [ ] call / builtin / vararg lowering lives in a dedicated `stmt_emitter_call.cpp`
-- [ ] lvalue and expression lowering are moved into focused implementation files
-- [ ] `cmake --build build -j8` succeeds
-- [ ] `ctest --test-dir build -j 8` shows no regressions
+- [x] `src/codegen/lir/stmt_emitter.hpp` remains the canonical declaration surface for `StmtEmitter`
+- [x] `src/codegen/lir/stmt_emitter.cpp` is removed or reduced to a thin forwarding/coordinator file
+- [x] statement emission logic lives in a dedicated `stmt_emitter_stmt.cpp`
+- [x] call / builtin / vararg lowering lives in a dedicated `stmt_emitter_call.cpp`
+- [x] lvalue and expression lowering are moved into focused implementation files
+- [x] `cmake --build build -j8` succeeds
+- [x] `ctest --test-dir build -j 8` shows no regressions
 
 ## Guardrails
 

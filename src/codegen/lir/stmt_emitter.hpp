@@ -108,6 +108,69 @@ struct PreparedBuiltinIntArg {
   bool is_i64 = false;
 };
 
+namespace stmt_emitter_detail {
+
+inline constexpr int kAmd64GpAreaBytes = 48;
+inline constexpr int kAmd64FpAreaBytes = 176;
+
+bool amd64_registers_available(const llvm_backend::Amd64VarargInfo& layout,
+                               const Amd64CallArgState& state);
+void amd64_track_usage(const llvm_backend::Amd64VarargInfo& layout,
+                       Amd64CallArgState& state);
+void amd64_account_type_if_needed(const hir::Module& mod, const TypeSpec& ts,
+                                  Amd64CallArgState* state);
+bool amd64_fixed_aggregate_byval(const hir::Module& mod, const TypeSpec& ts);
+
+template <typename TerminatorT>
+bool set_terminator_if_open(FnCtx& ctx, TerminatorT&& terminator) {
+  if (!std::holds_alternative<lir::LirUnreachable>(ctx.cur_block().terminator)) {
+    return false;
+  }
+  ctx.cur_block().terminator = std::forward<TerminatorT>(terminator);
+  ctx.last_term = true;
+  return true;
+}
+
+void open_lbl(FnCtx& ctx, const std::string& lbl);
+void emit_condbr_and_open_lbl(FnCtx& ctx, const std::string& cond,
+                              const std::string& true_label,
+                              const std::string& false_label,
+                              const std::string& open_label);
+void emit_condbr_and_open_sibling_lbl(FnCtx& ctx, const std::string& cond,
+                                      const std::string& true_label,
+                                      const std::string& false_label,
+                                      const std::string& sibling_label);
+void emit_condbr_and_fallthrough_lbl(FnCtx& ctx, const std::string& cond,
+                                     const std::string& true_label,
+                                     const std::string& false_label);
+
+TypeSpec sig_return_type(const FnPtrSig& sig);
+TypeSpec sig_param_type(const FnPtrSig& sig, size_t i);
+bool sig_param_is_va_list_value(const FnPtrSig& sig, size_t i);
+size_t sig_param_count(const FnPtrSig& sig);
+bool sig_is_variadic(const FnPtrSig& sig);
+bool sig_has_void_param_list(const FnPtrSig& sig);
+bool sig_has_meaningful_prototype(const FnPtrSig& sig);
+std::string llvm_fn_type_suffix_str(const hir::Module& mod, const FnPtrSig& sig);
+std::string llvm_fn_type_suffix_str(const hir::Module& mod, const Function& fn);
+int llvm_struct_field_slot(const HirStructDef& sd, int target_llvm_idx);
+int llvm_struct_field_slot_by_name(const HirStructDef& sd, const std::string& field_name);
+
+struct Aarch64HomogeneousFpAggregateInfo {
+  std::string elem_ty;
+  int elem_count = 0;
+  int elem_size = 0;
+  int aggregate_size = 0;
+  int aggregate_align = 0;
+};
+
+std::optional<Aarch64HomogeneousFpAggregateInfo> classify_aarch64_hfa(
+    const Module& mod, const TypeSpec& ts);
+int round_up_to(int value, int align);
+int object_align_bytes(const Module& mod, const TypeSpec& ts);
+
+}  // namespace stmt_emitter_detail
+
 class StmtEmitter {
  public:
   explicit StmtEmitter(const Module& m);

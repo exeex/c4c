@@ -1,6 +1,320 @@
 #include "stmt_emitter.hpp"
+#include "canonical_symbol.hpp"
+#include "../llvm/calling_convention.hpp"
 
 namespace c4c::codegen::lir {
+
+namespace llvm_cc = c4c::codegen::llvm_backend;
+using namespace stmt_emitter_detail;
+
+namespace stmt_emitter_detail {
+
+bool amd64_registers_available(const llvm_cc::Amd64VarargInfo& layout,
+                               const Amd64CallArgState& state) {
+  if (layout.gp_chunks > 0) {
+    const int remaining_gp = kAmd64GpAreaBytes - state.gp_bytes;
+    if (remaining_gp < layout.gp_chunks * 8) return false;
+  }
+  if (layout.sse_slots > 0) {
+    const int remaining_sse = kAmd64FpAreaBytes - state.sse_bytes;
+    if (remaining_sse < layout.sse_slots * 16) return false;
+  }
+  return true;
+}
+
+void amd64_track_usage(const llvm_cc::Amd64VarargInfo& layout,
+                       Amd64CallArgState& state) {
+  state.gp_bytes += layout.gp_chunks * 8;
+  state.sse_bytes += layout.sse_slots * 16;
+}
+
+void amd64_account_type_if_needed(const hir::Module& mod, const TypeSpec& ts,
+                                  Amd64CallArgState* state) {
+  if (!state) return;
+  const auto layout = llvm_cc::classify_amd64_vararg(ts, mod);
+  if (layout.size_bytes <= 0 || layout.needs_memory) return;
+  amd64_track_usage(layout, *state);
+}
+
+bool amd64_fixed_aggregate_byval(const hir::Module& mod, const TypeSpec& ts) {
+  return llvm_target_is_amd64_sysv(mod.target_triple) &&
+         llvm_cc::amd64_fixed_aggregate_passed_byval(ts, mod);
+}
+
+void open_lbl(FnCtx& ctx, const std::string& lbl) {
+  lir::LirBlock blk;
+  blk.id = lir::LirBlockId{static_cast<uint32_t>(ctx.lir_blocks.size())};
+  blk.label = lbl;
+  ctx.lir_blocks.push_back(std::move(blk));
+  ctx.current_block_idx = ctx.lir_blocks.size() - 1;
+  ctx.last_term = false;
+}
+
+void emit_condbr_and_open_lbl(FnCtx& ctx, const std::string& cond,
+                              const std::string& true_label,
+                              const std::string& false_label,
+                              const std::string& open_label) {
+  (void)set_terminator_if_open(ctx, lir::LirCondBr{cond, true_label, false_label});
+  open_lbl(ctx, open_label);
+}
+
+void emit_condbr_and_open_sibling_lbl(FnCtx& ctx, const std::string& cond,
+                                      const std::string& true_label,
+                                      const std::string& false_label,
+                                      const std::string& sibling_label) {
+  emit_condbr_and_open_lbl(ctx, cond, true_label, false_label, sibling_label);
+}
+
+void emit_condbr_and_fallthrough_lbl(FnCtx& ctx, const std::string& cond,
+                                     const std::string& true_label,
+                                     const std::string& false_label) {
+  emit_condbr_and_open_lbl(ctx, cond, true_label, false_label, false_label);
+}
+
+TypeSpec sig_return_type(const FnPtrSig& sig) { return sig.return_type.spec; }
+
+TypeSpec sig_param_type(const FnPtrSig& sig, size_t i) {
+  if (sig.canonical_sig) {
+    const auto* fsig = sema::get_function_sig(*sig.canonical_sig);
+    if (fsig && i < fsig->params.size()) return sema::typespec_from_canonical(fsig->params[i]);
+  }
+  return i < sig.params.size() ? sig.params[i].spec : TypeSpec{};
+}
+
+bool sig_param_is_va_list_value(const FnPtrSig& sig, size_t i) {
+  const TypeSpec ts = sig_param_type(sig, i);
+  return ts.base == TB_VA_LIST && ts.ptr_level == 0 && ts.array_rank == 0;
+}
+
+size_t sig_param_count(const FnPtrSig& sig) {
+  if (sig.canonical_sig) {
+    const auto* fsig = sema::get_function_sig(*sig.canonical_sig);
+    if (fsig) return fsig->params.size();
+  }
+  return sig.params.size();
+}
+
+bool sig_is_variadic(const FnPtrSig& sig) {
+  if (sig.canonical_sig) {
+    const auto* fsig = sema::get_function_sig(*sig.canonical_sig);
+    if (fsig) return fsig->is_variadic;
+  }
+  return sig.variadic;
+}
+
+bool sig_has_void_param_list(const FnPtrSig& sig) {
+  if (sig_param_count(sig) != 1) return false;
+  const TypeSpec ts = sig_param_type(sig, 0);
+  return ts.base == TB_VOID && ts.ptr_level == 0 && ts.array_rank == 0;
+}
+
+static bool sig_has_explicit_prototype(const FnPtrSig& sig) {
+  if (sig.unspecified_params) return false;
+  return sig_is_variadic(sig) || sig_has_void_param_list(sig) || sig_param_count(sig) > 0;
+}
+
+std::string llvm_fn_type_suffix_str(const hir::Module& mod, const FnPtrSig& sig) {
+  if (!sig_has_explicit_prototype(sig)) return "";
+  std::ostringstream out;
+  out << "(";
+  const bool void_param_list = sig_has_void_param_list(sig);
+  for (size_t i = 0; i < sig_param_count(sig); ++i) {
+    if (void_param_list) break;
+    if (i) out << ", ";
+    const TypeSpec param_ts = sig_param_type(sig, i);
+    out << (amd64_fixed_aggregate_byval(mod, param_ts) ? "ptr" : llvm_ty(param_ts));
+  }
+  if (sig_is_variadic(sig)) {
+    if (sig_param_count(sig) > 0 && !void_param_list) out << ", ";
+    out << "...";
+  }
+  out << ")";
+  return out.str();
+}
+
+bool sig_has_meaningful_prototype(const FnPtrSig& sig) {
+  if (sig_has_explicit_prototype(sig)) return true;
+  if (sig.canonical_sig) {
+    const auto* fsig = sema::get_function_sig(*sig.canonical_sig);
+    if (fsig) return fsig->is_variadic || !fsig->params.empty();
+  }
+  return false;
+}
+
+std::string llvm_fn_type_suffix_str(const hir::Module& mod, const Function& fn) {
+  if (fn.params.empty() && !fn.attrs.variadic) return "";
+  std::ostringstream out;
+  out << "(";
+  const bool void_param_list = fn.params.size() == 1 &&
+                               fn.params[0].type.spec.base == TB_VOID &&
+                               fn.params[0].type.spec.ptr_level == 0 &&
+                               fn.params[0].type.spec.array_rank == 0;
+  for (size_t i = 0; i < fn.params.size(); ++i) {
+    if (void_param_list) break;
+    if (i) out << ", ";
+    const TypeSpec& param_ts = fn.params[i].type.spec;
+    out << (amd64_fixed_aggregate_byval(mod, param_ts) ? "ptr" : llvm_ty(param_ts));
+  }
+  if (fn.attrs.variadic) {
+    if (!fn.params.empty() && !void_param_list) out << ", ";
+    out << "...";
+  }
+  out << ")";
+  return out.str();
+}
+
+int llvm_struct_field_slot(const HirStructDef& sd, int target_llvm_idx) {
+  if (sd.is_union) return 0;
+  int last_idx = -1;
+  int cur_offset = 0;
+  int slot = 0;
+  for (const auto& f : sd.fields) {
+    if (f.llvm_idx == last_idx) continue;
+    last_idx = f.llvm_idx;
+    if (f.offset_bytes > cur_offset) ++slot;
+    if (f.llvm_idx == target_llvm_idx) return slot;
+    cur_offset = f.offset_bytes + std::max(0, f.size_bytes);
+    ++slot;
+  }
+  return 0;
+}
+
+int llvm_struct_field_slot_by_name(const HirStructDef& sd, const std::string& field_name) {
+  for (const auto& f : sd.fields) {
+    if (f.name == field_name) return llvm_struct_field_slot(sd, f.llvm_idx);
+  }
+  return 0;
+}
+
+static TypeSpec field_decl_ts(const HirStructField& f) {
+  TypeSpec ts = f.elem_type;
+  if (f.array_first_dim >= 0) {
+    for (int i = std::min(ts.array_rank, 7); i > 0; --i) ts.array_dims[i] = ts.array_dims[i - 1];
+    ts.array_rank = std::min(ts.array_rank + 1, 8);
+    ts.array_size = f.array_first_dim;
+    ts.array_dims[0] = f.array_first_dim;
+  }
+  return ts;
+}
+
+static bool collect_aarch64_hfa_elements(const Module& mod, const TypeSpec& ts,
+                                         TypeBase* elem_base, int* elem_count) {
+  if (ts.ptr_level != 0) return false;
+  if (ts.array_rank > 0) {
+    if (ts.array_size <= 0) return false;
+    TypeSpec elem = ts;
+    elem.array_rank--;
+    for (int i = 0; i < 8; ++i) elem.array_dims[i] = (i + 1 < 8) ? ts.array_dims[i + 1] : -1;
+    elem.array_size = (elem.array_rank > 0) ? elem.array_dims[0] : -1;
+    for (int i = 0; i < ts.array_size; ++i) {
+      if (!collect_aarch64_hfa_elements(mod, elem, elem_base, elem_count)) return false;
+    }
+    return true;
+  }
+  if (ts.base == TB_FLOAT || ts.base == TB_DOUBLE) {
+    if (*elem_count == 0) {
+      *elem_base = ts.base;
+    } else if (*elem_base != ts.base) {
+      return false;
+    }
+    ++*elem_count;
+    return *elem_count <= 4;
+  }
+  if (ts.base != TB_STRUCT || !ts.tag || !ts.tag[0]) return false;
+  const auto it = mod.struct_defs.find(ts.tag);
+  if (it == mod.struct_defs.end()) return false;
+  const auto& sd = it->second;
+  if (sd.is_union || sd.fields.empty()) return false;
+  for (const auto& field : sd.fields) {
+    if (field.bit_width >= 0 || field.is_flexible_array) return false;
+    if (!collect_aarch64_hfa_elements(mod, field_decl_ts(field), elem_base, elem_count)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+std::optional<Aarch64HomogeneousFpAggregateInfo> classify_aarch64_hfa(
+    const Module& mod, const TypeSpec& ts) {
+  if (ts.base != TB_STRUCT || ts.ptr_level != 0 || ts.array_rank != 0 || !ts.tag ||
+      !ts.tag[0]) {
+    return std::nullopt;
+  }
+  const auto it = mod.struct_defs.find(ts.tag);
+  if (it == mod.struct_defs.end()) return std::nullopt;
+
+  TypeBase elem_base = TB_VOID;
+  int elem_count = 0;
+  if (!collect_aarch64_hfa_elements(mod, ts, &elem_base, &elem_count) || elem_count < 1) {
+    return std::nullopt;
+  }
+
+  Aarch64HomogeneousFpAggregateInfo info;
+  TypeSpec elem_ts{};
+  elem_ts.base = elem_base;
+  info.elem_ty = llvm_ty(elem_ts);
+  info.elem_count = elem_count;
+  info.elem_size = (elem_base == TB_FLOAT) ? 4 : 8;
+  info.aggregate_size = std::max(1, it->second.size_bytes);
+  info.aggregate_align = std::max(1, object_align_bytes(mod, ts));
+  return info;
+}
+
+int round_up_to(int value, int align) {
+  if (align <= 1) return value;
+  return ((value + align - 1) / align) * align;
+}
+
+int object_align_bytes(const Module& mod, const TypeSpec& ts) {
+  if (ts.array_rank > 0) {
+    TypeSpec elem = ts;
+    elem.array_rank--;
+    if (elem.array_rank > 0) {
+      for (int i = 0; i < elem.array_rank; ++i) elem.array_dims[i] = elem.array_dims[i + 1];
+    }
+    elem.array_size = (elem.array_rank > 0) ? elem.array_dims[0] : -1;
+    int align = object_align_bytes(mod, elem);
+    if (ts.align_bytes > align) align = ts.align_bytes;
+    return align;
+  }
+  int align = 1;
+  if (ts.is_vector && ts.vector_bytes > 0) {
+    align = static_cast<int>(ts.vector_bytes);
+  } else if (ts.ptr_level > 0 || ts.is_fn_ptr) {
+    align = 8;
+  } else if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.tag && ts.tag[0]) {
+    const auto it = mod.struct_defs.find(ts.tag);
+    align = (it != mod.struct_defs.end()) ? std::max(1, it->second.align_bytes) : 8;
+  } else if (ts.base == TB_VA_LIST && ts.ptr_level == 0 && ts.array_rank == 0) {
+    align = llvm_va_list_alignment(mod.target_triple);
+  } else {
+    switch (ts.base) {
+      case TB_BOOL:
+      case TB_CHAR:
+      case TB_SCHAR:
+      case TB_UCHAR: align = 1; break;
+      case TB_SHORT:
+      case TB_USHORT: align = 2; break;
+      case TB_INT:
+      case TB_UINT:
+      case TB_FLOAT:
+      case TB_ENUM: align = 4; break;
+      case TB_LONG:
+      case TB_ULONG:
+      case TB_LONGLONG:
+      case TB_ULONGLONG:
+      case TB_DOUBLE: align = 8; break;
+      case TB_LONGDOUBLE:
+      case TB_INT128:
+      case TB_UINT128: align = 16; break;
+      default: align = 8; break;
+    }
+  }
+  if (ts.align_bytes > align) align = ts.align_bytes;
+  return align;
+}
+
+}  // namespace stmt_emitter_detail
 
 // Draft-only staging file for Step 3 of the stmt_emitter split refactor.
 // The monolith remains the live implementation until Step 4 build wiring.

@@ -2,6 +2,8 @@
 
 namespace c4c::codegen::lir {
 
+using namespace stmt_emitter_detail;
+
 // Draft-only staging file for Step 2 of the stmt_emitter split refactor.
 // The monolith remains the live implementation until build wiring begins.
 

@@ -2,6 +2,8 @@
 
 namespace c4c::codegen::lir {
 
+using namespace stmt_emitter_detail;
+
 // Draft-only staging file for Step 3 of the stmt_emitter split refactor.
 // This file captures the type-centric lookup and promotion helpers.
 
