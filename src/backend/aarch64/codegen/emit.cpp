@@ -3028,7 +3028,7 @@ std::optional<MinimalScalarGlobalStoreReloadSlice> parse_minimal_scalar_global_s
   const auto* main_fn = find_function(module, "main");
   if (main_fn == nullptr || main_fn->is_declaration ||
       !backend_function_is_definition(main_fn->signature) ||
-      main_fn->signature.return_type != "i32" ||
+      !is_i32_scalar_signature_return(main_fn->signature) ||
       !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
       main_fn->blocks.size() != 1) {
     return std::nullopt;
@@ -3086,7 +3086,7 @@ std::optional<MinimalExternScalarGlobalLoadSlice> parse_minimal_extern_scalar_gl
   const auto* main_fn = find_function(module, "main");
   if (main_fn == nullptr || main_fn->is_declaration ||
       !backend_function_is_definition(main_fn->signature) ||
-      main_fn->signature.return_type != "i32" ||
+      !is_i32_scalar_signature_return(main_fn->signature) ||
       !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
       main_fn->blocks.size() != 1) {
     return std::nullopt;
@@ -3131,7 +3131,7 @@ std::optional<MinimalExternGlobalArrayLoadSlice> parse_minimal_extern_global_arr
   const auto* main_fn = find_function(module, "main");
   if (main_fn == nullptr || main_fn->is_declaration ||
       !backend_function_is_definition(main_fn->signature) ||
-      main_fn->signature.return_type != "i32" ||
+      !is_i32_scalar_signature_return(main_fn->signature) ||
       !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
       main_fn->blocks.size() != 1) {
     return std::nullopt;
@@ -3187,7 +3187,7 @@ std::optional<MinimalGlobalCharPointerDiffSlice> parse_minimal_global_char_point
   const auto* main_fn = find_function(module, "main");
   if (main_fn == nullptr || main_fn->is_declaration ||
       !backend_function_is_definition(main_fn->signature) ||
-      main_fn->signature.return_type != "i32" ||
+      !is_i32_scalar_signature_return(main_fn->signature) ||
       !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
       main_fn->blocks.size() != 1) {
     return std::nullopt;

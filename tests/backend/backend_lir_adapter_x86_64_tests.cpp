@@ -733,6 +733,22 @@ void test_x86_backend_scaffold_accepts_structured_global_store_reload_ir_without
                       "x86 backend seam should not fall back when scalar load/store metadata is present without type shims");
 }
 
+void test_x86_backend_scaffold_accepts_structured_global_store_reload_ir_without_type_or_signature_shims() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_x86_global_store_reload_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+  clear_backend_memory_type_compatibility_shims(lowered);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, "mov dword ptr [rax], 7\n",
+                  "x86 backend seam should still lower structured scalar stores when both legacy store types and signature return text are cleared");
+  expect_contains(rendered, "mov eax, dword ptr [rax]\n",
+                  "x86 backend seam should still lower structured scalar reloads when both legacy load types and signature return text are cleared");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back when structured scalar global store-reload slices rely only on backend-owned signature and memory metadata");
+}
+
 void test_x86_backend_scaffold_accepts_explicit_lowered_string_literal_ir_input() {
   const auto lowered =
       c4c::backend::lower_to_backend_ir(make_x86_string_literal_char_module());
@@ -795,6 +811,22 @@ void test_x86_backend_scaffold_accepts_structured_extern_global_load_ir_without_
                       "x86 backend seam should not fall back when extern scalar load metadata is present without type shims");
 }
 
+void test_x86_backend_scaffold_accepts_structured_extern_global_load_ir_without_type_or_signature_shims() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_x86_extern_global_load_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+  clear_backend_memory_type_compatibility_shims(lowered);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, "lea rax, ext_counter[rip]\n",
+                  "x86 backend seam should still materialize structured extern scalar globals when signature return text is cleared");
+  expect_contains(rendered, "mov eax, dword ptr [rax]\n",
+                  "x86 backend seam should still lower structured extern scalar loads when both signature and load type compatibility text are cleared");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back when extern scalar loads rely only on structured signature and memory metadata");
+}
+
 void test_x86_backend_scaffold_accepts_explicit_lowered_extern_global_array_ir_input() {
   const auto lowered =
       c4c::backend::lower_to_backend_ir(make_x86_extern_global_array_load_module());
@@ -824,6 +856,23 @@ void test_x86_backend_scaffold_accepts_structured_extern_global_array_ir_without
                   "x86 backend seam should preserve structured extern global array offsets without qualifier text");
   expect_not_contains(rendered, "target triple =",
                       "x86 backend seam should not fall back when extern globals are described only by structured metadata");
+}
+
+void test_x86_backend_scaffold_accepts_structured_extern_global_array_ir_without_compatibility_or_signature_shims() {
+  auto lowered =
+      c4c::backend::lower_to_backend_ir(make_x86_extern_global_array_load_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+  clear_backend_global_compatibility_shims(lowered);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, "lea rax, ext_arr[rip]\n",
+                  "x86 backend seam should still recognize structured extern global arrays when both extern and signature return text shims are cleared");
+  expect_contains(rendered, "mov eax, dword ptr [rax + 4]\n",
+                  "x86 backend seam should preserve structured extern global array offsets without legacy signature or global text");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back when extern global arrays rely only on structured signature and global metadata");
 }
 
 void test_x86_backend_scaffold_accepts_explicit_lowered_global_int_pointer_roundtrip_ir_input() {
@@ -2882,12 +2931,15 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_global_load_ir_without_compatibility_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_global_store_reload_ir_input);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_global_store_reload_ir_without_type_shims);
+  RUN_TEST(test_x86_backend_scaffold_accepts_structured_global_store_reload_ir_without_type_or_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_string_literal_ir_input);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_string_literal_ir_without_type_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_extern_global_load_ir_input);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_extern_global_load_ir_without_type_shims);
+  RUN_TEST(test_x86_backend_scaffold_accepts_structured_extern_global_load_ir_without_type_or_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_extern_global_array_ir_input);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_extern_global_array_ir_without_compatibility_shims);
+  RUN_TEST(test_x86_backend_scaffold_accepts_structured_extern_global_array_ir_without_compatibility_or_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_global_int_pointer_roundtrip_ir_input);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_global_char_pointer_diff_ir_input);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_global_char_pointer_diff_ir_without_type_shims);
