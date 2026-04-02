@@ -12,6 +12,12 @@
 // consume. Deferred compile-time work such as template-driven retries,
 // deferred consteval reduction, and deferred NTTP-related work is coordinated
 // by compile_time_engine after initial HIR construction.
+//
+// Implementation map:
+// - hir.cpp: facade entry point and pipeline-stage coordination
+// - hir_lowering.hpp + hir_lowerer_internal.hpp: shared lowering surfaces
+// - compile_time_engine.{hpp,cpp}: deferred compile-time fixpoint execution
+// - hir_printer.{hpp,cpp}: textual summaries and debug printing
 
 #include <string>
 
@@ -22,6 +28,7 @@
 
 namespace c4c::hir {
 
+// Public entry points.
 Module build_hir(const Node* program_root,
                  const sema::ResolvedTypeTable* resolved_types = nullptr,
                  SourceProfile source_profile = SourceProfile::C,

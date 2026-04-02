@@ -1,11 +1,24 @@
 #pragma once
 
-// Recursive-descent parser for the tiny-c2ll C++ frontend.
+// Parser entry/index surface.
 //
-// Entry point: Parser::parse() returns a NK_PROGRAM Node* containing all
-// top-level declarations (functions, global variables, struct/enum defs).
+// Role:
+// - owns the recursive-descent parser state and top-level entry point
+// - declares the cross-translation-unit parser helper families
+// - acts as the navigation index for parser_*.cpp implementation files
 //
-// Design:
+// Implementation map:
+// - parser_core.cpp: token cursor, diagnostics, namespace/visibility plumbing
+// - parser_types_base.cpp: type-specifier parsing and enum parsing
+// - parser_types_declarator.cpp: declarator parsing and qualified type spelling
+// - parser_types_struct.cpp: record/struct parsing and in-record dispatch
+// - parser_types_template.cpp: template argument parsing and template metadata
+// - parser_expressions.cpp: expression parsing
+// - parser_statements.cpp: statement parsing
+// - parser_declarations.cpp: declaration and translation-unit entry points
+// - parser_support.cpp: AST builders and shared parser helpers
+//
+// Design constraints:
 //  - All AST nodes and strings are allocated from the supplied Arena.
 //  - typedef names are tracked in a std::set<std::string> for disambiguation.
 //  - Anonymous struct/union/enum definitions are collected and prepended to
@@ -29,7 +42,7 @@ namespace c4c {
 
 class Parser {
  public:
-  // ── lightweight parser-side model types ──────────────────────────────────
+  // ── parser-side model types ───────────────────────────────────────────────
   // Namespace tree node used by C++ qualified-name lookup and using-directive
   // visibility tracking.
   struct NamespaceContext {
@@ -162,6 +175,7 @@ class Parser {
   ParserSnapshot save_state() const;
   void restore_state(const ParserSnapshot& snap);
 
+  // ── public parser entry points ────────────────────────────────────────────
   // All members public (required by project coding constraints).
   explicit Parser(std::vector<Token> tokens, Arena& arena,
                   SourceProfile source_profile = SourceProfile::C,
