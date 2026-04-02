@@ -653,6 +653,65 @@ void test_backend_call_helpers_match_zero_add_slot_rewrite_shapes() {
               "lowering-owned slot-rewrite helper should reject reloads from a different slot");
 }
 
+void test_backend_call_helpers_decode_local_typed_call_shapes() {
+  {
+    const auto module = make_typed_direct_call_local_arg_module();
+    const auto& function = module.functions.back();
+    const auto* slot = std::get_if<c4c::codegen::lir::LirAllocaOp>(&function.alloca_insts.front());
+    const auto parsed =
+        c4c::backend::parse_backend_single_local_typed_call(function.blocks.front().insts,
+                                                            slot->result);
+    expect_true(parsed.has_value() && parsed->arg_load != nullptr && parsed->call != nullptr &&
+                    parsed->arg_load->result == "%t0" && parsed->call->result == "%t1",
+                "lowering-owned local-call helper should decode the single-slot direct-load shape");
+  }
+
+  {
+    const auto module = make_typed_direct_call_two_arg_both_local_second_rewrite_module();
+    const auto& function = module.functions.back();
+    const auto* slot0 = std::get_if<c4c::codegen::lir::LirAllocaOp>(&function.alloca_insts.front());
+    const auto* slot1 = std::get_if<c4c::codegen::lir::LirAllocaOp>(&function.alloca_insts[1]);
+    const auto parsed =
+        c4c::backend::parse_backend_two_local_typed_call(
+            function.blocks.front().insts,
+            slot0->result,
+            slot1->result);
+    expect_true(parsed.has_value() && parsed->arg0_load != nullptr &&
+                    parsed->arg1_load != nullptr && parsed->call != nullptr &&
+                    parsed->arg0_load->result == "%t2" && parsed->arg1_load->result == "%t3" &&
+                    parsed->call->result == "%t4",
+                "lowering-owned local-call helper should decode the rewritten-second two-slot compatibility shape");
+  }
+
+  {
+    const auto module = make_typed_direct_call_two_arg_both_local_double_rewrite_module();
+    const auto& function = module.functions.back();
+    const auto* slot0 = std::get_if<c4c::codegen::lir::LirAllocaOp>(&function.alloca_insts[0]);
+    const auto* slot1 = std::get_if<c4c::codegen::lir::LirAllocaOp>(&function.alloca_insts[1]);
+    const auto parsed = c4c::backend::parse_backend_two_local_typed_call(
+        function.blocks.front().insts, slot0->result, slot1->result);
+    expect_true(parsed.has_value() && parsed->arg0_load != nullptr &&
+                    parsed->arg1_load != nullptr && parsed->call != nullptr &&
+                    parsed->arg0_load->result == "%t4" && parsed->arg1_load->result == "%t5" &&
+                    parsed->call->result == "%t6",
+                "lowering-owned local-call helper should decode double-rewritten two-slot compatibility shapes");
+  }
+
+  {
+    const auto module = make_typed_direct_call_two_arg_both_local_first_rewrite_module();
+    const auto& function = module.functions.back();
+    const auto* slot0 = std::get_if<c4c::codegen::lir::LirAllocaOp>(&function.alloca_insts[0]);
+    const auto* slot1 = std::get_if<c4c::codegen::lir::LirAllocaOp>(&function.alloca_insts[1]);
+    const auto parsed = c4c::backend::parse_backend_two_local_typed_call(
+        function.blocks.front().insts, slot0->result, slot1->result);
+    expect_true(parsed.has_value() && parsed->arg0_load != nullptr &&
+                    parsed->arg1_load != nullptr && parsed->call != nullptr &&
+                    parsed->arg0_load->result == "%t2" && parsed->arg1_load->result == "%t3" &&
+                    parsed->call->result == "%t4",
+                "lowering-owned local-call helper should decode mixed rewritten plus direct two-slot shapes");
+  }
+}
+
 void test_backend_call_helpers_borrow_structured_typed_call_view() {
   c4c::backend::BackendCallInst call{
       "%t2",
@@ -1320,6 +1379,7 @@ int main(int argc, char* argv[]) {
   test_backend_call_helpers_decode_two_typed_local_operands();
   test_backend_call_helpers_decode_structured_local_typed_operands();
   test_backend_call_helpers_match_zero_add_slot_rewrite_shapes();
+  test_backend_call_helpers_decode_local_typed_call_shapes();
   test_backend_call_helpers_borrow_structured_typed_call_view();
   test_lir_typed_wrappers_preserve_legacy_opcode_and_predicate_strings();
   test_lir_typed_wrappers_leave_unknown_opcode_text_compatible();

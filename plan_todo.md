@@ -6,9 +6,9 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 2: extract the remaining local-call shape recognizer that chooses
-      rewritten single-slot versus two-slot typed-call load operands from
-      `src/backend/lir_adapter.cpp`
+- Step 3: inventory the remaining backend IR surfaces that still carry
+      backend-owned call semantics as free-form text and choose the first
+      structured conversion slice
 
 ## Incomplete Items
 
@@ -46,13 +46,17 @@ Source Plan: plan.md
       `src/backend/lir_adapter.cpp` into
       `src/backend/lowering/call_decode.hpp`, and cover both reload and
       non-reload compatibility shapes directly in `backend_lir_adapter_tests`
+- [x] Step 2 slice: move the remaining single-slot versus two-slot local-call
+      typed operand recognizers out of `src/backend/lir_adapter.cpp` into
+      `src/backend/lowering/call_decode.hpp`, and cover direct-load plus
+      rewritten compatibility shapes in `backend_lir_adapter_tests`
 
 ## Next Intended Slice
 
-- Move the remaining local-call shape recognizer that selects rewritten
-  single-slot versus two-slot typed-call load operands out of
-  `src/backend/lir_adapter.cpp` without changing backend IR construction
-  behavior.
+- Start Step 3 by inventorying which `BackendCallInst` or related backend IR
+  fields still encode backend-owned call semantics as raw strings, then land
+  the smallest structured representation that removes one meaningful text-only
+  surface without changing backend behavior.
 
 ## Blockers
 
@@ -76,16 +80,14 @@ Source Plan: plan.md
 
 - Keep this slice behavior-preserving.
 - Do not pull `bir` naming into this plan.
-- This iteration is scoped to helper ownership only: move typed-call operand
-  decode wrappers into `src/backend/lowering/call_decode.hpp` and keep
+- This iteration kept helper ownership only: the local typed-call shape
+  recognizers that choose direct-load versus rewritten single-slot and
+  two-slot operands now live in `src/backend/lowering/call_decode.hpp`, with
   adapter/emitter behavior unchanged.
-- The current slice is the zero-add local-slot rewrite matcher that recognizes
-  `load -> add 0 -> store -> optional reload` compatibility patterns before
-  direct-call normalization; that helper now lives in
-  `src/backend/lowering/call_decode.hpp` with direct unit coverage.
 - `src/backend/lowering/call_decode.hpp` now owns both the direct-global and
-  local typed-call operand matcher templates; `src/backend/lir_adapter.hpp`
-  only keeps the public lowering entrypoints and adapter error surface.
+  local typed-call operand matcher templates plus the remaining local-call
+  shape recognizers; `src/backend/lir_adapter.hpp` only keeps the public
+  lowering entrypoints and adapter error surface.
 - `lower_to_backend_ir(...)` now lives in `src/backend/lir_adapter.hpp` and
   `src/backend/lir_adapter.cpp`; `adapt_minimal_module(...)` remains a
   compatibility shim for callers that have not moved yet.
