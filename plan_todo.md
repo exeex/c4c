@@ -57,9 +57,9 @@ Source Plan: plan.md
 - reduce the still-failing `bool_constant<T(-1) < T(0)>` case when the owning
   template also carries a defaulted NTTP such as
   `bool = is_arithmetic<T>::value`
-- decide whether that remaining blocker belongs in base-type substitution for
-  instantiated record bases, inherited member-typedef lookup on instantiated
-  bases, or defaulted-NTTP bookkeeping before the next implementation change
+- decide whether that remaining blocker belongs in namespace-scoped template
+  primary registration / lookup, base-type substitution for instantiated
+  record bases, or inherited member-typedef lookup on instantiated bases
 - use the new reduced reproducer in
   `tests/cpp/internal/negative_case/namespaced_inherited_type_alias_base_member_lookup_parse.cpp`
   as the starting point instead of reopening the full EASTL stack
@@ -88,6 +88,14 @@ Source Plan: plan.md
   `ns::wrap<int>` with a defaulted NTTP all parse successfully, so the
   surviving blocker still depends on the combination of a defaulted NTTP and
   inherited alias-base member lookup rather than namespace qualification alone
+- the current failure also reproduces without the explicit `eastl::` qualifier
+  inside the namespace body; `typename is_signed_helper<T>::type value{}`
+  still reaches the incomplete-type error when the helper stays under
+  `namespace eastl`
+- instrumentation on the failed reduction showed the declaration reaches the
+  incomplete-object check as a bare `eastl::is_signed_helper` type with no
+  `tpl_struct_origin` or deferred `::type` member attached, so the parser is
+  dropping out before the member-typedef path can be preserved
 
 ## Resume Notes
 
@@ -112,6 +120,10 @@ Source Plan: plan.md
 - probe reductions showed that namespace-qualified template instantiation and
   namespace-qualified `::type` lookup both work in simpler cases; the current
   failure still needs the inherited-base path exposed by `is_signed_helper`
+- a further reduction showed that the declaration-context `typename X<T>::type`
+  shape itself now works in both global and namespaced simple wrappers; the
+  blocker only reappears once the helper is namespace-scoped and carries the
+  defaulted-NTTP plus inherited-alias base pattern
 - `eastl_piecewise_construct_simple.cpp` and
   `eastl_tuple_fwd_decls_simple.cpp` parse successfully but first fail during
   canonical/sema expansion with undeclared identifiers from EASTL internals
