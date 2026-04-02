@@ -563,6 +563,10 @@ void test_backend_call_helpers_decode_lir_direct_global_typed_operands() {
       single, "add_one", "i32");
   expect_true(single_operand.has_value() && *single_operand == "%arg",
               "shared direct-global single-operand helper should decode spacing-tolerant LIR call operands");
+  expect_true(!c4c::backend::parse_backend_direct_global_single_typed_call_operand(
+                   single, "add_pair", "i32")
+                   .has_value(),
+              "shared direct-global single-operand helper should reject mismatched LIR callees");
 
   c4c::codegen::lir::LirCallOp two{
       "%t1",

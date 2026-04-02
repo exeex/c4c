@@ -9,7 +9,7 @@ Source Plan: plan.md
   - Notes: Moved the production lowering declarations/implementation to `src/backend/lowering/lir_to_backend_ir.*`, kept `src/backend/lir_adapter.hpp` as the legacy shim, and validated `backend_lir_adapter_tests`, `backend_lir_adapter_aarch64_tests`, `backend_lir_adapter_x86_64_tests`, `backend_ir_tests`, plus a monotonic full-suite regression check.
   - Blockers: None.
 - [ ] Step 2: Isolate LIR syntax decoding
-  - Notes: The lowering entrypoint/file ownership now exists; next slice should move additional LLVM-text decode helpers behind the lowering layer without expanding target-side parsing.
+  - Notes: The lowering entrypoint/file ownership now exists. This slice removed the remaining x86-local direct-global LIR call decoders in `src/backend/x86/codegen/emit.cpp` and routed those legacy-LIR call sites through the shared `src/backend/lowering/call_decode.*` helpers; `backend_lir_adapter_tests` now covers a mismatched-callee rejection on the shared LIR-call helper path. Validation: `backend_lir_adapter_tests`, `backend_lir_adapter_x86_64_tests`, and a monotonic full-suite regression check (`2667 passed / 2 failed` before and after, with the same existing AArch64 object-contract failures).
   - Blockers: None.
 - [ ] Step 3: Make backend IR more backend-native
   - Notes: Defer until decode ownership is isolated enough to expose a clean IR slice.
@@ -22,5 +22,5 @@ Source Plan: plan.md
   - Blockers: Depends on prior steps.
 
 Current Step: Step 2
-Next Step: Identify the next backend-owned LLVM-text decode helper still exposed outside `src/backend/lowering/` and migrate that narrow slice behind the lowering layer
+Next Step: Identify the next target-side LLVM-text decode helper outside `src/backend/lowering/` after the x86 direct-call helpers and migrate that narrow slice behind the shared lowering layer
 Blockers: None
