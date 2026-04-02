@@ -1,5 +1,6 @@
 #include "ir_validate.hpp"
 
+#include <unordered_map>
 #include <unordered_set>
 
 namespace c4c::backend {
@@ -70,7 +71,76 @@ bool validate_string_constant(const BackendStringConstant& string_constant,
   return true;
 }
 
-bool validate_inst(const BackendInst& inst, std::string* error, std::string_view context) {
+struct GlobalBoundsInfo {
+  std::size_t total_size_bytes = 0;
+  BackendScalarType element_type = BackendScalarType::Unknown;
+  std::size_t element_size_bytes = 0;
+};
+
+std::optional<GlobalBoundsInfo> global_bounds_info(const BackendGlobal& global) {
+  if (const auto array_type = backend_global_array_type(global); array_type.has_value()) {
+    if (array_type->element_type_kind != BackendValueTypeKind::Scalar) {
+      return std::nullopt;
+    }
+    const auto element_size = backend_scalar_type_size_bytes(array_type->element_scalar_type);
+    if (element_size == 0) {
+      return std::nullopt;
+    }
+    return GlobalBoundsInfo{
+        array_type->element_count * element_size,
+        array_type->element_scalar_type,
+        element_size,
+    };
+  }
+
+  if (backend_global_value_type_kind(global) != BackendValueTypeKind::Scalar) {
+    return std::nullopt;
+  }
+
+  const auto element_size = backend_scalar_type_size_bytes(backend_global_scalar_type(global));
+  if (element_size == 0) {
+    return std::nullopt;
+  }
+  return GlobalBoundsInfo{
+      element_size,
+      backend_global_scalar_type(global),
+      element_size,
+  };
+}
+
+bool validate_address_range(const BackendAddress& address,
+                            std::size_t access_size_bytes,
+                            const std::unordered_map<std::string, const BackendGlobal*>& globals,
+                            std::string* error,
+                            std::string_view context) {
+  const auto global_it = globals.find(address.base_symbol);
+  if (global_it == globals.end()) {
+    return true;
+  }
+
+  const auto bounds = global_bounds_info(*global_it->second);
+  if (!bounds.has_value()) {
+    return true;
+  }
+  if (address.byte_offset < 0) {
+    return fail(error, std::string(context) + ": address byte offset must not be negative");
+  }
+  const auto byte_offset = static_cast<std::size_t>(address.byte_offset);
+  if (byte_offset >= bounds->total_size_bytes ||
+      access_size_bytes > bounds->total_size_bytes - byte_offset) {
+    return fail(error, std::string(context) + ": address exceeds referenced global bounds");
+  }
+  if (bounds->element_size_bytes > 1 && byte_offset % bounds->element_size_bytes != 0) {
+    return fail(error,
+                std::string(context) + ": address byte offset must align to global element size");
+  }
+  return true;
+}
+
+bool validate_inst(const BackendInst& inst,
+                   const std::unordered_map<std::string, const BackendGlobal*>& globals,
+                   std::string* error,
+                   std::string_view context) {
   if (const auto* phi = std::get_if<BackendPhiInst>(&inst)) {
     if (phi->result.empty()) {
       return fail(error, std::string(context) + ": phi result must not be empty");
@@ -181,6 +251,13 @@ bool validate_inst(const BackendInst& inst, std::string* error, std::string_view
     if (load->address.base_symbol.empty()) {
       return fail(error, std::string(context) + ": load base symbol must not be empty");
     }
+    if (!validate_address_range(load->address,
+                                backend_scalar_type_size_bytes(load_memory_type),
+                                globals,
+                                error,
+                                std::string(context) + ": load address")) {
+      return false;
+    }
     return true;
   }
 
@@ -194,6 +271,13 @@ bool validate_inst(const BackendInst& inst, std::string* error, std::string_view
     }
     if (store->address.base_symbol.empty()) {
       return fail(error, std::string(context) + ": store base symbol must not be empty");
+    }
+    if (!validate_address_range(store->address,
+                                backend_scalar_type_size_bytes(backend_store_value_type(*store)),
+                                globals,
+                                error,
+                                std::string(context) + ": store address")) {
+      return false;
     }
     return true;
   }
@@ -223,10 +307,59 @@ bool validate_inst(const BackendInst& inst, std::string* error, std::string_view
                 std::string(context) +
                     ": ptrdiff element type must match element size");
   }
+  const auto lhs_global_it = globals.find(ptrdiff->lhs_address.base_symbol);
+  const auto rhs_global_it = globals.find(ptrdiff->rhs_address.base_symbol);
+  if (lhs_global_it != globals.end() && rhs_global_it != globals.end() &&
+      lhs_global_it->second == rhs_global_it->second) {
+    const auto bounds = global_bounds_info(*lhs_global_it->second);
+    if (bounds.has_value()) {
+      if (!validate_address_range(ptrdiff->lhs_address,
+                                  1,
+                                  globals,
+                                  error,
+                                  std::string(context) + ": ptrdiff lhs address") ||
+          !validate_address_range(ptrdiff->rhs_address,
+                                  1,
+                                  globals,
+                                  error,
+                                  std::string(context) + ": ptrdiff rhs address")) {
+        return false;
+      }
+      if (bounds->element_type != BackendScalarType::Unknown &&
+          element_type != BackendScalarType::Unknown &&
+          bounds->element_type != element_type) {
+        return fail(error,
+                    std::string(context) +
+                        ": ptrdiff element type must match referenced global element type");
+      }
+      if (ptrdiff->element_size != static_cast<std::int64_t>(bounds->element_size_bytes)) {
+        return fail(error,
+                    std::string(context) +
+                        ": ptrdiff element size must match referenced global element size");
+      }
+      if (ptrdiff->lhs_address.byte_offset % ptrdiff->element_size != 0 ||
+          ptrdiff->rhs_address.byte_offset % ptrdiff->element_size != 0) {
+        return fail(error,
+                    std::string(context) +
+                        ": ptrdiff addresses must align to the referenced element size");
+      }
+      const auto actual_diff =
+          (ptrdiff->lhs_address.byte_offset - ptrdiff->rhs_address.byte_offset) /
+          ptrdiff->element_size;
+      if (actual_diff != ptrdiff->expected_diff) {
+        return fail(error,
+                    std::string(context) +
+                        ": ptrdiff expected diff must match the referenced addresses");
+      }
+    }
+  }
   return true;
 }
 
-bool validate_block(const BackendBlock& block, std::string* error, std::string_view context) {
+bool validate_block(const BackendBlock& block,
+                    const std::unordered_map<std::string, const BackendGlobal*>& globals,
+                    std::string* error,
+                    std::string_view context) {
   if (block.label.empty()) {
     return fail(error, std::string(context) + ": block label must not be empty");
   }
@@ -262,6 +395,7 @@ bool validate_block(const BackendBlock& block, std::string* error, std::string_v
   }
   for (std::size_t index = 0; index < block.insts.size(); ++index) {
     if (!validate_inst(block.insts[index],
+                       globals,
                        error,
                        std::string(context) + ": instruction " + std::to_string(index))) {
       return false;
@@ -271,6 +405,7 @@ bool validate_block(const BackendBlock& block, std::string* error, std::string_v
 }
 
 bool validate_function(const BackendFunction& function,
+                       const std::unordered_map<std::string, const BackendGlobal*>& globals,
                        std::string* error,
                        std::string_view context) {
   if (!validate_function_signature(function.signature, error, context)) {
@@ -294,6 +429,7 @@ bool validate_function(const BackendFunction& function,
                   std::string(context) + ": duplicate block label '" + block.label + "'");
     }
     if (!validate_block(block,
+                        globals,
                         error,
                         std::string(context) + ": block " + std::to_string(index))) {
       return false;
@@ -341,6 +477,7 @@ bool validate_function(const BackendFunction& function,
 
 bool validate_backend_ir(const BackendModule& module, std::string* error) {
   std::unordered_set<std::string> globals;
+  std::unordered_map<std::string, const BackendGlobal*> globals_by_name;
   for (std::size_t index = 0; index < module.globals.size(); ++index) {
     const auto& global = module.globals[index];
     if (!validate_global(global, error, std::string("global ") + std::to_string(index))) {
@@ -349,6 +486,7 @@ bool validate_backend_ir(const BackendModule& module, std::string* error) {
     if (!globals.insert(global.name).second) {
       return fail(error, "duplicate global '" + global.name + "'");
     }
+    globals_by_name.emplace(global.name, &global);
   }
   for (std::size_t index = 0; index < module.string_constants.size(); ++index) {
     const auto& string_constant = module.string_constants[index];
@@ -365,6 +503,7 @@ bool validate_backend_ir(const BackendModule& module, std::string* error) {
 
   for (std::size_t index = 0; index < module.functions.size(); ++index) {
     if (!validate_function(module.functions[index],
+                           globals_by_name,
                            error,
                            std::string("function ") + std::to_string(index))) {
       return false;

@@ -847,6 +847,32 @@ void test_backend_ir_validator_accepts_structured_extern_global_array_load_slice
               "backend IR validator should not report an error when raw global array type text is cleared");
 }
 
+void test_backend_ir_validator_rejects_extern_global_array_load_past_structured_bounds() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_extern_global_array_load_module());
+  auto& load = std::get<c4c::backend::BackendLoadInst>(
+      lowered.functions.front().blocks.front().insts.front());
+  load.address.byte_offset = 8;
+  std::string error;
+
+  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should reject structured extern global array loads that exceed the referenced array bounds");
+  expect_contains(error, "address exceeds referenced global bounds",
+                  "backend IR validator should explain when a structured global-array load offset exceeds the referenced array");
+}
+
+void test_backend_ir_validator_rejects_global_int_ptrdiff_past_structured_bounds() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_global_int_pointer_diff_module());
+  auto& ptrdiff = std::get<c4c::backend::BackendPtrDiffEqInst>(
+      lowered.functions.front().blocks.front().insts.back());
+  ptrdiff.lhs_address.byte_offset = 8;
+  std::string error;
+
+  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should reject structured ptrdiff slices whose referenced address escapes the global array bounds");
+  expect_contains(error, "ptrdiff lhs address: address exceeds referenced global bounds",
+                  "backend IR validator should explain when a structured ptrdiff address escapes the referenced global array");
+}
+
 void test_backend_ir_printer_renders_return_add() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_return_add_module());
   const auto rendered = c4c::backend::print_backend_ir(lowered);
@@ -1374,6 +1400,8 @@ int main(int argc, char* argv[]) {
   test_backend_ir_printer_renders_lowered_extern_global_array_load_slice();
   test_backend_ir_printer_renders_structured_extern_global_array_load_slice_without_raw_type_text();
   test_backend_ir_validator_accepts_structured_extern_global_array_load_slice_without_raw_type_text();
+  test_backend_ir_validator_rejects_extern_global_array_load_past_structured_bounds();
+  test_backend_ir_validator_rejects_global_int_ptrdiff_past_structured_bounds();
   test_backend_ir_printer_renders_lowered_conditional_return_slice();
   test_backend_ir_validator_accepts_lowered_conditional_return_slice();
   test_backend_ir_printer_renders_structured_conditional_return_slice_without_type_text();
