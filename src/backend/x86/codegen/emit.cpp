@@ -1334,6 +1334,8 @@ std::optional<MinimalExternGlobalArrayLoadSlice> parse_minimal_extern_global_arr
   if (load == nullptr ||
       c4c::backend::backend_load_value_type(*load) !=
           c4c::backend::BackendScalarType::I32 ||
+      c4c::backend::backend_load_memory_type(*load) !=
+          c4c::backend::BackendScalarType::I32 ||
       load->address.kind != c4c::backend::BackendAddressBaseKind::Global ||
       load->address.base_symbol != global->name ||
       *block.terminator.value != load->result || load->address.byte_offset < 0 ||
@@ -1463,6 +1465,8 @@ std::optional<MinimalExternScalarGlobalLoadSlice> parse_minimal_extern_scalar_gl
   if (load == nullptr ||
       c4c::backend::backend_load_value_type(*load) !=
           c4c::backend::BackendScalarType::I32 ||
+      c4c::backend::backend_load_memory_type(*load) !=
+          c4c::backend::BackendScalarType::I32 ||
       load->address.kind != c4c::backend::BackendAddressBaseKind::Global ||
       load->address.base_symbol != global->name || load->address.byte_offset != 0 ||
       *block.terminator.value != load->result) {
@@ -1509,6 +1513,8 @@ std::optional<MinimalScalarGlobalLoadSlice> parse_minimal_scalar_global_load_sli
   const auto* load = std::get_if<c4c::backend::BackendLoadInst>(&block.insts.front());
   if (load == nullptr ||
       c4c::backend::backend_load_value_type(*load) !=
+          c4c::backend::BackendScalarType::I32 ||
+      c4c::backend::backend_load_memory_type(*load) !=
           c4c::backend::BackendScalarType::I32 ||
       load->address.kind != c4c::backend::BackendAddressBaseKind::Global ||
       load->address.base_symbol != global->name || load->address.byte_offset != 0 ||
@@ -2292,6 +2298,8 @@ std::optional<MinimalScalarGlobalStoreReloadSlice> parse_minimal_scalar_global_s
       c4c::backend::backend_store_value_type(*store) !=
           c4c::backend::BackendScalarType::I32 ||
       c4c::backend::backend_load_value_type(*load) !=
+          c4c::backend::BackendScalarType::I32 ||
+      c4c::backend::backend_load_memory_type(*load) !=
           c4c::backend::BackendScalarType::I32 ||
       store->address.kind != c4c::backend::BackendAddressBaseKind::Global ||
       load->address.kind != c4c::backend::BackendAddressBaseKind::Global ||

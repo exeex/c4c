@@ -2435,6 +2435,101 @@ void test_aarch64_backend_scaffold_rejects_global_fast_paths_when_address_kind_d
   }
 }
 
+void test_aarch64_backend_scaffold_rejects_global_fast_paths_when_memory_width_disagrees() {
+  {
+    auto lowered = c4c::backend::lower_to_backend_ir(make_global_load_module());
+    auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
+    auto* load =
+        main_fn != nullptr && !main_fn->blocks.empty() && !main_fn->blocks.front().insts.empty()
+            ? std::get_if<c4c::backend::BackendLoadInst>(&main_fn->blocks.front().insts.front())
+            : nullptr;
+    expect_true(load != nullptr,
+                "aarch64 global-load width regression test needs a lowered backend load to mutate");
+    if (load != nullptr) {
+      load->memory_value_type = c4c::backend::BackendScalarType::I8;
+      load->memory_type.clear();
+      load->extension = c4c::backend::BackendLoadExtension::ZeroExtend;
+    }
+
+    const auto rendered = c4c::backend::emit_module(
+        c4c::backend::BackendModuleInput{lowered},
+        c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+    expect_contains(rendered, "target triple = \"aarch64-unknown-linux-gnu\"",
+                    "aarch64 backend seam should stop matching the scalar-global asm slice when the structured load width no longer matches the referenced i32 global");
+  }
+
+  {
+    auto lowered = c4c::backend::lower_to_backend_ir(make_global_store_reload_module());
+    auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
+    auto* load = main_fn != nullptr && !main_fn->blocks.empty() &&
+                         main_fn->blocks.front().insts.size() > 1
+                     ? std::get_if<c4c::backend::BackendLoadInst>(&main_fn->blocks.front().insts[1])
+                     : nullptr;
+    expect_true(load != nullptr,
+                "aarch64 global store-reload width regression test needs a lowered backend load to mutate");
+    if (load != nullptr) {
+      load->memory_value_type = c4c::backend::BackendScalarType::I8;
+      load->memory_type.clear();
+      load->extension = c4c::backend::BackendLoadExtension::ZeroExtend;
+    }
+
+    const auto rendered = c4c::backend::emit_module(
+        c4c::backend::BackendModuleInput{lowered},
+        c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+    expect_contains(rendered, "target triple = \"aarch64-unknown-linux-gnu\"",
+                    "aarch64 backend seam should stop matching the scalar global store-reload asm slice when the structured reload width no longer matches the referenced i32 global");
+  }
+
+  {
+    auto lowered = c4c::backend::lower_to_backend_ir(make_extern_global_load_module());
+    auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
+    auto* load =
+        main_fn != nullptr && !main_fn->blocks.empty() && !main_fn->blocks.front().insts.empty()
+            ? std::get_if<c4c::backend::BackendLoadInst>(&main_fn->blocks.front().insts.front())
+            : nullptr;
+    expect_true(load != nullptr,
+                "aarch64 extern-global width regression test needs a lowered backend load to mutate");
+    if (load != nullptr) {
+      load->memory_value_type = c4c::backend::BackendScalarType::I8;
+      load->memory_type.clear();
+      load->extension = c4c::backend::BackendLoadExtension::ZeroExtend;
+    }
+
+    const auto rendered = c4c::backend::emit_module(
+        c4c::backend::BackendModuleInput{lowered},
+        c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+    expect_contains(rendered, "target triple = \"aarch64-unknown-linux-gnu\"",
+                    "aarch64 backend seam should stop matching the extern scalar-global asm slice when the structured load width no longer matches the referenced i32 global");
+  }
+
+  {
+    auto lowered =
+        c4c::backend::lower_to_backend_ir(make_extern_global_array_load_module());
+    auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
+    auto* load =
+        main_fn != nullptr && !main_fn->blocks.empty() && !main_fn->blocks.front().insts.empty()
+            ? std::get_if<c4c::backend::BackendLoadInst>(&main_fn->blocks.front().insts.front())
+            : nullptr;
+    expect_true(load != nullptr,
+                "aarch64 extern-global-array width regression test needs a lowered backend load to mutate");
+    if (load != nullptr) {
+      load->memory_value_type = c4c::backend::BackendScalarType::I8;
+      load->memory_type.clear();
+      load->extension = c4c::backend::BackendLoadExtension::ZeroExtend;
+    }
+
+    const auto rendered = c4c::backend::emit_module(
+        c4c::backend::BackendModuleInput{lowered},
+        c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+    expect_contains(rendered, "target triple = \"aarch64-unknown-linux-gnu\"",
+                    "aarch64 backend seam should stop matching the extern global-array asm slice when the structured load width no longer matches the referenced i32 array element");
+  }
+}
+
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_string_literal_ir_input() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_string_literal_char_module());
   const auto rendered = c4c::backend::emit_module(
@@ -4032,6 +4127,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_scaffold_accepts_structured_global_store_reload_ir_without_type_or_signature_shims();
   test_aarch64_backend_scaffold_accepts_structured_global_store_reload_ir_without_raw_global_type_text();
   test_aarch64_backend_scaffold_rejects_global_fast_paths_when_address_kind_disagrees();
+  test_aarch64_backend_scaffold_rejects_global_fast_paths_when_memory_width_disagrees();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_string_literal_ir_input();
   test_aarch64_backend_scaffold_accepts_structured_string_literal_ir_without_type_shims();
   test_aarch64_backend_scaffold_accepts_structured_string_literal_ir_without_signature_or_type_shims();
