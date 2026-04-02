@@ -1242,16 +1242,14 @@ std::optional<MinimalExternDeclCallSlice> parse_minimal_declared_direct_call_sli
   }
 
   const auto* call = std::get_if<c4c::backend::BackendCallInst>(&main_block.insts.front());
-  const auto parsed_call =
-      call != nullptr &&
-              call->callee.kind == c4c::backend::BackendCallCalleeKind::DirectGlobal
-          ? c4c::backend::parse_backend_typed_call(*call)
-          : std::nullopt;
+  const auto parsed_call = call == nullptr ? std::nullopt
+                                           : c4c::backend::parse_backend_direct_global_typed_call(
+                                                 *call);
   if (call == nullptr || !parsed_call.has_value() || call->return_type != "i32") {
     return std::nullopt;
   }
 
-  const auto callee_name = std::string_view(call->callee.symbol_name);
+  const auto callee_name = parsed_call->symbol_name;
   const auto callee_name_str = std::string(callee_name);
   if (callee_name == "main" || callee_name.empty()) {
     return std::nullopt;
@@ -1261,21 +1259,22 @@ std::optional<MinimalExternDeclCallSlice> parse_minimal_declared_direct_call_sli
   if (callee_fn == nullptr || !callee_fn->is_declaration ||
       callee_fn->signature.linkage != "declare" ||
       callee_fn->signature.return_type != "i32" ||
-      callee_fn->signature.params.size() > parsed_call->param_types.size()) {
+      callee_fn->signature.params.size() > parsed_call->typed_call.param_types.size()) {
     return std::nullopt;
   }
 
   for (std::size_t index = 0; index < callee_fn->signature.params.size(); ++index) {
-    if (callee_fn->signature.params[index].type_str != parsed_call->param_types[index]) {
+    if (callee_fn->signature.params[index].type_str !=
+        parsed_call->typed_call.param_types[index]) {
       return std::nullopt;
     }
   }
 
   const bool callee_is_vararg = callee_fn->signature.is_vararg ||
                                is_known_variadic_decl(callee_name_str);
-  if (parsed_call->args.size() < callee_fn->signature.params.size() ||
+  if (parsed_call->typed_call.args.size() < callee_fn->signature.params.size() ||
       (!callee_is_vararg &&
-       callee_fn->signature.params.size() != parsed_call->args.size())) {
+       callee_fn->signature.params.size() != parsed_call->typed_call.args.size())) {
     return std::nullopt;
   }
 
@@ -1292,17 +1291,17 @@ std::optional<MinimalExternDeclCallSlice> parse_minimal_declared_direct_call_sli
     return_imm = *parsed_return;
   }
 
-  if (parsed_call->args.size() > 6) {
+  if (parsed_call->typed_call.args.size() > 6) {
     return std::nullopt;
   }
 
   std::vector<MinimalExternCallArgSlice> call_args;
-  call_args.reserve(parsed_call->args.size());
-  for (std::size_t index = 0; index < parsed_call->args.size(); ++index) {
+  call_args.reserve(parsed_call->typed_call.args.size());
+  for (std::size_t index = 0; index < parsed_call->typed_call.args.size(); ++index) {
     auto parsed_arg =
         parse_minimal_extern_decl_call_arg(module,
-                                          parsed_call->param_types[index],
-                                          parsed_call->args[index].operand);
+                                          parsed_call->typed_call.param_types[index],
+                                          parsed_call->typed_call.args[index].operand);
     if (!parsed_arg.has_value()) {
       return std::nullopt;
     }
@@ -2209,16 +2208,10 @@ std::optional<MinimalCallCrossingDirectCallSlice> parse_minimal_call_crossing_di
   const auto* call = std::get_if<c4c::backend::BackendCallInst>(&main_block.insts[1]);
   const auto* final_add =
       std::get_if<c4c::backend::BackendBinaryInst>(&main_block.insts[2]);
-  const auto parsed_call = call == nullptr ? std::nullopt
-                                           : c4c::backend::parse_backend_typed_call(*call);
-  const auto call_operand =
-      parsed_call.has_value() &&
-              call->callee.kind == c4c::backend::BackendCallCalleeKind::DirectGlobal &&
-              call->callee.symbol_name == "add_one" &&
-              c4c::backend::backend_typed_call_matches(
-                  *parsed_call, std::array<std::string_view, 1>{"i32"})
-          ? std::optional<std::string_view>{parsed_call->args.front().operand}
-          : std::nullopt;
+  const auto call_operand = call == nullptr
+                                ? std::nullopt
+                                : c4c::backend::parse_backend_direct_global_single_typed_call_operand(
+                                      *call, "add_one", "i32");
   if (source_add == nullptr || call == nullptr || final_add == nullptr ||
       source_add->opcode != c4c::backend::BackendBinaryOpcode::Add ||
       source_add->type_str != "i32" || call->return_type != "i32" ||
@@ -2305,16 +2298,10 @@ std::optional<MinimalDirectCallAddImmSlice> parse_minimal_direct_call_add_imm_sl
   }
 
   const auto* call = std::get_if<c4c::backend::BackendCallInst>(&main_block.insts.front());
-  const auto parsed_call = call == nullptr ? std::nullopt
-                                           : c4c::backend::parse_backend_typed_call(*call);
-  const auto call_operand =
-      parsed_call.has_value() &&
-              call->callee.kind == c4c::backend::BackendCallCalleeKind::DirectGlobal &&
-              call->callee.symbol_name == "add_one" &&
-              c4c::backend::backend_typed_call_matches(
-                  *parsed_call, std::array<std::string_view, 1>{"i32"})
-          ? std::optional<std::string_view>{parsed_call->args.front().operand}
-          : std::nullopt;
+  const auto call_operand = call == nullptr
+                                ? std::nullopt
+                                : c4c::backend::parse_backend_direct_global_single_typed_call_operand(
+                                      *call, "add_one", "i32");
   if (call == nullptr || call->return_type != "i32" || call->result.empty() ||
       *main_block.terminator.value != call->result || !call_operand.has_value()) {
     return std::nullopt;

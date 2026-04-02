@@ -459,6 +459,25 @@ void test_backend_call_helpers_decode_structured_direct_global_call() {
               "backend-owned call helper should expose structured direct-call metadata without reparsing raw adapter text");
 }
 
+void test_backend_call_helpers_decode_structured_direct_global_vararg_prefix() {
+  c4c::backend::BackendCallInst call{
+      "%t0",
+      "i32",
+      c4c::backend::BackendCallCallee::direct_global("printf"),
+      {"ptr"},
+      {{"ptr", "@.str"}},
+  };
+
+  const auto parsed = c4c::backend::parse_backend_direct_global_typed_call(call);
+  expect_true(parsed.has_value() && parsed->symbol_name == "printf" &&
+                  parsed->typed_call.param_types.size() == 1 &&
+                  parsed->typed_call.param_types.front() == "ptr" &&
+                  parsed->typed_call.args.size() == 1 &&
+                  parsed->typed_call.args.front().type == "ptr" &&
+                  parsed->typed_call.args.front().operand == "@.str",
+              "backend-owned direct-global helper should preserve the lowered fixed typed prefix for structured vararg calls");
+}
+
 void test_backend_call_helpers_decode_direct_global_single_typed_operand() {
   c4c::backend::BackendCallInst call{
       "%t0",
@@ -1370,6 +1389,7 @@ int main(int argc, char* argv[]) {
   test_lir_call_arg_helpers_parse_and_format_call_op_views();
   test_lir_call_arg_helpers_collect_call_op_global_refs();
   test_backend_call_helpers_decode_structured_direct_global_call();
+  test_backend_call_helpers_decode_structured_direct_global_vararg_prefix();
   test_backend_call_helpers_decode_direct_global_single_typed_operand();
   test_backend_call_helpers_decode_direct_global_two_typed_operands();
   test_backend_call_helpers_decode_zero_arg_direct_global_calls();
