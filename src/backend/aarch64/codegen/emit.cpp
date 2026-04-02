@@ -5059,13 +5059,13 @@ static std::optional<std::string> try_emit_general_lir_asm(
 
     // Build slot map
     GenSlotMap sm = gen_build_slots(fn, module.type_decls);
+    const auto parsed_signature_params =
+        c4c::backend::parse_backend_function_signature_params(fn.signature_text);
 
-    // Parse params from signature_text and ensure they have slots
+    // Keep signature decoding centralized to one shared parse per emitted function.
     {
-      const auto parsed =
-          c4c::backend::parse_backend_function_signature_params(fn.signature_text);
-      if (parsed.has_value()) {
-        for (const auto& param : *parsed) {
+      if (parsed_signature_params.has_value()) {
+        for (const auto& param : *parsed_signature_params) {
           if (param.is_varargs) break;
           if (!param.operand.empty() && param.operand[0] == '%') {
             sm.get_or_alloc(param.operand);
@@ -5089,12 +5089,10 @@ static std::optional<std::string> try_emit_general_lir_asm(
     // Parse parameters from signature_text and store to stack slots
     // signature_text format: "define i32 @func(i32 %p.a, ptr %p.b)\n"
     {
-      const auto parsed_params =
-          c4c::backend::parse_backend_function_signature_params(fn.signature_text);
-      if (parsed_params.has_value()) {
-        for (size_t i = 0; i < parsed_params->size() && i < 8; ++i) {
-          if ((*parsed_params)[i].is_varargs) break;
-          int off = sm.lookup((*parsed_params)[i].operand);
+      if (parsed_signature_params.has_value()) {
+        for (size_t i = 0; i < parsed_signature_params->size() && i < 8; ++i) {
+          if ((*parsed_signature_params)[i].is_varargs) break;
+          int off = sm.lookup((*parsed_signature_params)[i].operand);
           if (off >= 0) {
             out << "  str x" << i << ", [sp, #" << off << "]\n";
           }
@@ -5147,12 +5145,10 @@ static std::optional<std::string> try_emit_general_lir_asm(
     // Lowered parameter allocas (e.g. %lv.param.x) must be initialized after the
     // alloca address slots have been materialized.
     {
-      const auto parsed_params =
-          c4c::backend::parse_backend_function_signature_params(fn.signature_text);
-      if (parsed_params.has_value()) {
-        for (size_t i = 0; i < parsed_params->size() && i < 8; ++i) {
-          if ((*parsed_params)[i].is_varargs) break;
-          const std::string& param_name = (*parsed_params)[i].operand;
+      if (parsed_signature_params.has_value()) {
+        for (size_t i = 0; i < parsed_signature_params->size() && i < 8; ++i) {
+          if ((*parsed_signature_params)[i].is_varargs) break;
+          const std::string& param_name = (*parsed_signature_params)[i].operand;
           if (param_name.compare(0, 3, "%p.") != 0) continue;
 
           const std::string param_slot_name =
@@ -5162,7 +5158,7 @@ static std::optional<std::string> try_emit_general_lir_asm(
           const int param_value_off = sm.lookup(param_name);
 
           const auto param_layout =
-              gen_type_layout((*parsed_params)[i].type, module.type_decls);
+              gen_type_layout((*parsed_signature_params)[i].type, module.type_decls);
           if (param_layout.size <= 0 || param_layout.size > 8) continue;
 
           out << "  ldr x9, [sp, #" << param_ptr_off << "]\n";
@@ -5422,7 +5418,7 @@ static std::optional<std::string> try_emit_general_lir_asm(
           bool is_direct = (callee[0] == '@');
           std::string callee_sym = is_direct ? callee.substr(1) : callee;
 
-          const auto args = c4c::backend::parse_backend_owned_typed_call_args(p->args_str);
+          const auto args = c4c::backend::parse_backend_owned_typed_call_args(*p);
           if (!args.has_value()) {
             return std::nullopt;
           }

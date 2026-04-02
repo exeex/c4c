@@ -361,6 +361,21 @@ std::optional<std::vector<OwnedBackendTypedCallArg>> parse_backend_owned_typed_c
   return owned;
 }
 
+std::optional<std::vector<OwnedBackendTypedCallArg>> parse_backend_owned_typed_call_args(
+    const c4c::codegen::lir::LirCallOp& call) {
+  const auto parsed = c4c::codegen::lir::parse_lir_typed_call_args(call.args_str);
+  if (!parsed.has_value()) {
+    return std::nullopt;
+  }
+
+  std::vector<OwnedBackendTypedCallArg> owned;
+  owned.reserve(parsed->size());
+  for (const auto& arg : *parsed) {
+    owned.push_back({std::string(arg.type), std::string(arg.operand)});
+  }
+  return owned;
+}
+
 std::optional<std::vector<ParsedBackendFunctionSignatureParam>>
 parse_backend_function_signature_params(std::string_view signature_text) {
   const auto paren_open = signature_text.find('(');

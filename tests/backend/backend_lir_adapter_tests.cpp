@@ -703,7 +703,18 @@ void test_backend_call_helpers_match_lir_helper_signature_shapes() {
           "i32",
           "add_pair",
           {"i32", "i32"}),
-      "lowering-owned helper-signature matcher should reject helper signatures whose parameter types drift");
+              "lowering-owned helper-signature matcher should reject helper signatures whose parameter types drift");
+}
+
+void test_backend_call_helpers_decode_signature_params_with_spacing_and_varargs() {
+  const auto params = c4c::backend::parse_backend_function_signature_params(
+      " define i32 @pair_sum( i32 %p.seed , ptr %p.buf , ... ) \n");
+  expect_true(params.has_value() && params->size() == 3 &&
+                  !(*params)[0].is_varargs && (*params)[0].type == "i32" &&
+                  (*params)[0].operand == "%p.seed" && !(*params)[1].is_varargs &&
+                  (*params)[1].type == "ptr" && (*params)[1].operand == "%p.buf" &&
+                  (*params)[2].is_varargs,
+              "lowering-owned signature-param decoder should preserve spacing-tolerant fixed params and trailing varargs on the shared decode seam");
 }
 
 void test_backend_call_helpers_classify_lir_nonminimal_global_and_return_types() {
@@ -742,6 +753,19 @@ void test_backend_call_helpers_decode_single_typed_local_operand() {
   const auto operand = c4c::backend::parse_backend_single_typed_call_operand(call, "i32");
   expect_true(operand.has_value() && *operand == "%t0",
               "shared typed-call helper should decode spacing-tolerant local-call operands without repeating parsed single-arg shape checks");
+}
+
+void test_backend_call_helpers_decode_owned_typed_args_from_lir_call() {
+  auto module = make_typed_direct_call_local_arg_with_suffix_spacing_module();
+  auto& call = std::get<c4c::codegen::lir::LirCallOp>(
+      module.functions.back().blocks.front().insts.back());
+  call.args_str = "  i32   %t0 ,   i32  7  ";
+
+  const auto args = c4c::backend::parse_backend_owned_typed_call_args(call);
+  expect_true(args.has_value() && args->size() == 2 && (*args)[0].type == "i32" &&
+                  (*args)[0].operand == "%t0" && (*args)[1].type == "i32" &&
+                  (*args)[1].operand == "7",
+              "lowering-owned typed-call decoder should materialize owned LIR call args from the shared call helper instead of target-local args_str parsing");
 }
 
 void test_backend_call_helpers_decode_two_typed_local_operands() {
@@ -1679,8 +1703,10 @@ int main(int argc, char* argv[]) {
   test_backend_call_helpers_classify_lir_nonminimal_signature_types();
   test_backend_call_helpers_classify_i32_main_signature_shapes();
   test_backend_call_helpers_match_lir_helper_signature_shapes();
+  test_backend_call_helpers_decode_signature_params_with_spacing_and_varargs();
   test_backend_call_helpers_classify_lir_nonminimal_global_and_return_types();
   test_backend_call_helpers_decode_single_typed_local_operand();
+  test_backend_call_helpers_decode_owned_typed_args_from_lir_call();
   test_backend_call_helpers_decode_two_typed_local_operands();
   test_backend_call_helpers_decode_structured_local_typed_operands();
   test_backend_call_helpers_match_zero_add_slot_rewrite_shapes();

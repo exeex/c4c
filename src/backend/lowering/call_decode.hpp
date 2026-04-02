@@ -85,6 +85,8 @@ std::optional<std::vector<ParsedBackendExternCallArg>> parse_backend_extern_call
     const ParsedBackendTypedCallView& parsed);
 std::optional<std::vector<OwnedBackendTypedCallArg>> parse_backend_owned_typed_call_args(
     std::string_view args_str);
+std::optional<std::vector<OwnedBackendTypedCallArg>> parse_backend_owned_typed_call_args(
+    const c4c::codegen::lir::LirCallOp& call);
 std::optional<std::vector<ParsedBackendFunctionSignatureParam>>
 parse_backend_function_signature_params(std::string_view signature_text);
 void collect_backend_call_value_names(const c4c::codegen::lir::LirCallOp& call,
