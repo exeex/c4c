@@ -122,6 +122,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     cpp20_requires_expression_if_constexpr_parse
     cpp20_if_likely_stmt_attr_parse
     eastl_slice7d_qualified_declarator_parse
+    eastl_function_detail_allocator_member_call_parse
     out_of_class_member_owner_scope_parse
     eastl_probe_pack_expansion_template_arg_parse
     eastl_probe_qualified_template_scope_parse
@@ -1510,8 +1511,8 @@ add_test(
           -DROOT=${PROJECT_SOURCE_DIR}
           -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/eastl/eastl_vector_simple.cpp
           -DCASE_TIMEOUT_SEC=25
-          "-DEXPECT_FAIL_LOC:STRING=ref/EASTL/include/EASTL/internal/function_detail.h:237:16"
-          "-DEXPECT_ERROR_SUBSTRING:STRING=unexpected token in expression: ."
+          "-DEXPECT_FAIL_LOC:STRING=ref/EASTL/include/EASTL/internal/function.h:66:26"
+          "-DEXPECT_ERROR_SUBSTRING:STRING=object has incomplete type: eastl::internal::function_detail"
           -P "${PROJECT_SOURCE_DIR}/tests/cpp/eastl/run_eastl_vector_parse_recipe.cmake"
 )
 set_tests_properties(cpp_eastl_vector_parse_recipe PROPERTIES

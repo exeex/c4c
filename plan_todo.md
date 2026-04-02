@@ -7,9 +7,10 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 3: Object lifetime and tuple layer
-- Current slice: reclassify `eastl_memory_simple.cpp` and
-  `eastl_tuple_simple.cpp` after the Step 2 foundation-trait parse blockers
-  were cleared into later canonical / semantic failures
+- Current slice: reduce and fix the shared parser frontier from
+  `ref/EASTL/include/EASTL/internal/function_detail.h` by isolating the
+  `static_cast<...>(allocator.allocate(...))` member-call expression shape now
+  reached by the Step 3 and Step 4 EASTL cases
 
 ## Todo
 
@@ -80,19 +81,32 @@ Source Plan: plan.md
   `ref/EASTL/include/EASTL/tuple.h:346`, and both Step 3 targets now advance
   into later parser pressure under libstdc++ / EASTL internals instead of the
   old `TupleLeaf<...>::operator=` expression failure
+- [x] Reduced the shared `function_detail.h` parser blocker to
+  `tests/cpp/internal/postive_case/eastl_function_detail_allocator_member_call_parse.cpp`
+  and taught block-scope statement parsing to prefer expression dispatch for
+  `value.member(...)` / `value->member(...)` when a visible value shadows a
+  same-spelled type name
+- [x] Reclassified `eastl_vector_simple.cpp` after the parser fix: the old
+  `ref/EASTL/include/EASTL/internal/function_detail.h:237:16`
+  `unexpected token in expression: .` failure is gone, and the current pinned
+  frontier is now the later incomplete-type cluster in
+  `ref/EASTL/include/EASTL/internal/function.h`
 
 ## Next Slice
 
-- reduce the new post-fix Step 3 frontier from the shared later parser failures
-  now visible in `/usr/include/c++/14/bits/ranges_util.h`,
-  `/usr/include/c++/14/tuple`, and
-  `ref/EASTL/include/EASTL/internal/function_detail.h`
-- determine why `--parse-only` for `eastl_memory_simple.cpp` and
-  `eastl_tuple_simple.cpp` still exceeds a 5s timeout with no terminal output
-  even though `--dump-canonical` now reaches actionable parser failures
+- reduce the new post-`function_detail.h` Step 3/4 frontier from the remaining
+  `eastl_memory_simple.cpp` and `eastl_tuple_simple.cpp` parse-time stalls
+  under the deeper libstdc++ / EASTL stack
+- determine whether `eastl_vector_simple.cpp`'s new
+  `ref/EASTL/include/EASTL/internal/function.h` incomplete-type diagnostics are
+  a semantic/canonical blocker or another parser-induced partial-definition
+  artifact
 - keep
   `tests/cpp/internal/postive_case/qualified_template_operator_assign_expr_parse.cpp`
   green as the parser-side guardrail for the fixed Step 3 expression shape
+- keep
+  `tests/cpp/internal/postive_case/eastl_function_detail_allocator_member_call_parse.cpp`
+  green as the guardrail for the fixed block-scope shadowed-member-call shape
 
 ## Blockers
 
@@ -104,16 +118,12 @@ Source Plan: plan.md
   same namespaced defaulted-NTTP plus inherited-alias-base shape now parses in
   `tests/cpp/internal/postive_case/namespaced_inherited_type_alias_base_member_lookup_parse.cpp`
 - `eastl_vector_simple.cpp` now stops at
-  `ref/EASTL/include/EASTL/internal/function_detail.h:237:16` with
-  `unexpected token in expression: .`
+  `ref/EASTL/include/EASTL/internal/function.h:66:26` with
+  `object has incomplete type: eastl::internal::function_detail` before the
+  parse-only timeout
 - `eastl_memory_simple.cpp` and `eastl_tuple_simple.cpp` no longer stop on the
-  old `TupleLeaf<...>::operator=` parser failure, but `--parse-only` still
-  times out after 5s with no terminal output while `--dump-canonical` now
-  surfaces later parser failures in `/usr/include/c++/14/bits/ranges_util.h`
-  (`expected=RPAREN got='&&'`), `/usr/include/c++/14/tuple`
-  (`expected=RPAREN got='typename'`), and the existing
-  `ref/EASTL/include/EASTL/internal/function_detail.h:237:16`
-  `unexpected token in expression: .` frontier
+  old `TupleLeaf<...>::operator=` or `function_detail.h` parser failures, but
+  they still time out under deeper libstdc++ / EASTL parser pressure
 - additional reduction work ruled out simpler namespace-qualified paths:
   `ns::wrap<int> value{}`, `ns::wrap<int>::type value{}`, and
   `ns::wrap<int>` with a defaulted NTTP all parse successfully, so the
@@ -145,6 +155,9 @@ Source Plan: plan.md
 - `tests/cpp/internal/postive_case/qualified_template_operator_assign_expr_parse.cpp`
   now covers the Step 3 qualified `TemplateId::operator=(...)` expression shape
   that previously blocked `eastl_tuple_simple.cpp`
+- `tests/cpp/internal/postive_case/eastl_function_detail_allocator_member_call_parse.cpp`
+  now covers the block-scope `allocator.deallocate(...)` expression statement
+  that previously misparsed as a declaration after `func->~Functor()`
 - the remaining `is_signed_helper` blocker no longer depends on inherited
   `false_type` lookup alone; it requires the combination of a defaulted NTTP
   and an alias-template base carrying a dependent expression argument

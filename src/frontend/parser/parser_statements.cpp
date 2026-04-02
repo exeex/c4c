@@ -708,6 +708,13 @@ Node* Parser::parse_stmt() {
     // a known type, route to expression parsing for qualified calls.
     if (is_type_start()) {
         if (is_cpp_mode() && check(TokenKind::Identifier) &&
+            (peek(1).kind == TokenKind::Dot || peek(1).kind == TokenKind::Arrow)) {
+            const std::string visible_value = resolve_visible_value_name(cur().lexeme);
+            if (!visible_value.empty()) {
+                goto expr_stmt;
+            }
+        }
+        if (is_cpp_mode() && check(TokenKind::Identifier) &&
             pos_ + 2 < static_cast<int>(tokens_.size()) &&
             tokens_[pos_ + 1].kind == TokenKind::ColonColon &&
             tokens_[pos_ + 2].kind == TokenKind::Identifier) {
