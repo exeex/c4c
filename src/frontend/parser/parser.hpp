@@ -612,7 +612,7 @@ class Parser {
   void skip_record_base_specifier_tail();
   bool try_parse_record_base_specifier(TypeSpec* base_ts);
   void parse_record_base_clause(std::vector<TypeSpec>* base_types);
-  void parse_record_prebody_setup(
+  void parse_record_definition_prelude(
       int line,
       TypeSpec* attr_ts,
       const char** tag,
@@ -625,7 +625,7 @@ class Parser {
                                const char* template_origin_name,
                                const TypeSpec& attr_ts,
                                const std::vector<TemplateArgParseResult>& specialization_args);
-  Node* initialize_record_definition(
+  Node* build_record_definition_node(
       int line,
       bool is_union,
       const char* tag,
@@ -657,10 +657,10 @@ class Parser {
   void store_record_body_members(
       Node* sd,
       const RecordBodyState& body_state);
-  void finalize_record_definition(Node* sd,
+  void register_record_definition(Node* sd,
                                   bool is_union,
                                   const char* source_tag);
-  void complete_record_definition(
+  void finalize_record_definition(
       Node* sd,
       bool is_union,
       const char* source_tag,

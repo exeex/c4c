@@ -1658,7 +1658,7 @@ void Parser::finish_record_body_context(const std::string& saved_struct_tag) {
     current_struct_tag_ = saved_struct_tag;
 }
 
-void Parser::parse_record_prebody_setup(
+void Parser::parse_record_definition_prelude(
     int line,
     TypeSpec* attr_ts,
     const char** tag,
@@ -1803,7 +1803,7 @@ Node* Parser::parse_record_tag_setup(int line,
         if (template_origin_name && template_origin_name[0] &&
             !specialization_args.empty()) {
             std::vector<TypeSpec> empty_base_types;
-            ref = initialize_record_definition(
+            ref = build_record_definition_node(
                 line, is_union, resolved_tag, template_origin_name, attr_ts,
                 specialization_args, empty_base_types);
             ref->n_fields = -1;  // forward-declared explicit specialization
@@ -1858,7 +1858,7 @@ Node* Parser::parse_record_tag_setup(int line,
     return nullptr;
 }
 
-Node* Parser::initialize_record_definition(
+Node* Parser::build_record_definition_node(
     int line,
     bool is_union,
     const char* tag,
@@ -1911,7 +1911,7 @@ Node* Parser::parse_record_definition_after_tag_setup(
     const std::vector<TemplateArgParseResult>& specialization_args,
     const std::vector<TypeSpec>& base_types) {
     const char* source_tag = tag;
-    Node* sd = initialize_record_definition(line, is_union, tag,
+    Node* sd = build_record_definition_node(line, is_union, tag,
                                             template_origin_name, attr_ts,
                                             specialization_args, base_types);
     parse_record_definition_body(sd, is_union, source_tag, tag,
@@ -1968,7 +1968,7 @@ void Parser::store_record_body_members(
     }
 }
 
-void Parser::finalize_record_definition(Node* sd,
+void Parser::register_record_definition(Node* sd,
                                         bool is_union,
                                         const char* source_tag) {
     if (!sd || !(source_tag && source_tag[0]))
@@ -2000,14 +2000,14 @@ void Parser::finalize_record_definition(Node* sd,
     }
 }
 
-void Parser::complete_record_definition(
+void Parser::finalize_record_definition(
     Node* sd,
     bool is_union,
     const char* source_tag,
     const RecordBodyState& body_state) {
     apply_record_trailing_type_attributes(sd);
     store_record_body_members(sd, body_state);
-    finalize_record_definition(sd, is_union, source_tag);
+    register_record_definition(sd, is_union, source_tag);
     struct_defs_.push_back(sd);
 }
 
@@ -2020,7 +2020,7 @@ void Parser::parse_record_definition_body(Node* sd,
 
     RecordBodyState body_state;
     parse_record_body_with_context(tag, template_origin_name, &body_state);
-    complete_record_definition(sd, is_union, source_tag, body_state);
+    finalize_record_definition(sd, is_union, source_tag, body_state);
 }
 
 Node* Parser::parse_struct_or_union(bool is_union) {
@@ -2030,8 +2030,8 @@ Node* Parser::parse_struct_or_union(bool is_union) {
     const char* template_origin_name = nullptr;
     std::vector<ParsedTemplateArg> specialization_args;
     std::vector<TypeSpec> base_types;
-    parse_record_prebody_setup(ln, &attr_ts, &tag, &template_origin_name,
-                               &specialization_args, &base_types);
+    parse_record_definition_prelude(ln, &attr_ts, &tag, &template_origin_name,
+                                    &specialization_args, &base_types);
 
     if (Node* ref = parse_record_tag_setup(ln, is_union, &tag,
                                            template_origin_name, attr_ts,
