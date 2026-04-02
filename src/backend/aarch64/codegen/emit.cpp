@@ -5961,7 +5961,7 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
   }
   if (!needs_nonminimal_lowering) {
     try {
-      const auto adapted = c4c::backend::adapt_minimal_module(prepared);
+      const auto adapted = c4c::backend::lower_to_backend_ir(prepared);
       if (const auto slice = parse_minimal_call_crossing_direct_call_slice(adapted);
           slice.has_value()) {
         const auto* main_fn = find_lir_function(prepared, "main");

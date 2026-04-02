@@ -162,7 +162,10 @@ inline std::optional<std::string_view> parse_backend_zero_arg_direct_global_type
   return parsed->symbol_name;
 }
 
-BackendModule adapt_minimal_module(const c4c::codegen::lir::LirModule& module);
+BackendModule lower_to_backend_ir(const c4c::codegen::lir::LirModule& module);
+inline BackendModule adapt_minimal_module(const c4c::codegen::lir::LirModule& module) {
+  return lower_to_backend_ir(module);
+}
 std::string render_module(const BackendModule& module);
 
 }  // namespace c4c::backend

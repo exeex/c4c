@@ -3428,7 +3428,7 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
       scaffold_module.target_triple = module.target_triple;
       return emit_minimal_conditional_return_asm(scaffold_module, *slice);
     }
-    const auto adapted = c4c::backend::adapt_minimal_module(module);
+    const auto adapted = c4c::backend::lower_to_backend_ir(module);
     if (const auto slice = parse_minimal_declared_direct_call_slice(adapted);
         slice.has_value()) {
       return emit_minimal_extern_decl_call_asm(adapted, *slice);

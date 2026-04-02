@@ -76,10 +76,6 @@ std::string emit_legacy_module(const c4c::codegen::lir::LirModule& module,
 
 }  // namespace
 
-BackendModule lower_to_backend_ir(const c4c::codegen::lir::LirModule& module) {
-  return adapt_minimal_module(module);
-}
-
 std::string emit_module(const BackendModuleInput& input,
                         const BackendOptions& options) {
   if (input.module == nullptr) {

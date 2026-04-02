@@ -717,6 +717,14 @@ void test_renders_return_add() {
                   "adapter renderer should emit the adapted return");
 }
 
+void test_adapter_keeps_legacy_shim_aligned_with_lowering_entrypoint() {
+  const auto lowered = c4c::backend::lower_to_backend_ir(make_return_add_module());
+  const auto adapted = c4c::backend::adapt_minimal_module(make_return_add_module());
+
+  expect_true(c4c::backend::render_module(lowered) == c4c::backend::render_module(adapted),
+              "adapter shim should remain behaviorally identical to the lowering-named entrypoint");
+}
+
 
 
 void test_adapter_normalizes_typed_direct_call_helper_slice() {
@@ -1213,6 +1221,7 @@ int main(int argc, char* argv[]) {
   test_lir_printer_rejects_malformed_typed_binary_surface();
   test_adapts_direct_return();
   test_renders_return_add();
+  test_adapter_keeps_legacy_shim_aligned_with_lowering_entrypoint();
   test_adapter_normalizes_typed_direct_call_helper_slice();
   test_adapter_normalizes_local_temp_return_slice();
   test_adapter_normalizes_local_temp_sub_return_slice();
