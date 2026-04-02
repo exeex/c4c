@@ -1909,14 +1909,6 @@ std::optional<TypeSpec> Lowerer::storage_type_for_declref(
 }
 #endif
 
-bool Lowerer::template_struct_has_pack_params(const Node* primary_tpl) {
-  if (!primary_tpl || !primary_tpl->template_param_is_pack) return false;
-  for (int pi = 0; pi < primary_tpl->n_template_params; ++pi) {
-    if (primary_tpl->template_param_is_pack[pi]) return true;
-  }
-  return false;
-}
-
 Block& Lowerer::ensure_block(FunctionCtx& ctx, BlockId id) {
   for (auto& b : ctx.fn->blocks) {
     if (b.id.value == id.value) return b;

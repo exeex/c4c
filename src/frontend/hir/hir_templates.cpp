@@ -134,6 +134,14 @@ bool Lowerer::has_plain_call(const Node* n, const char* fn_name) {
   return false;
 }
 
+bool Lowerer::template_struct_has_pack_params(const Node* primary_tpl) {
+  if (!primary_tpl || !primary_tpl->template_param_is_pack) return false;
+  for (int pi = 0; pi < primary_tpl->n_template_params; ++pi) {
+    if (primary_tpl->template_param_is_pack[pi]) return true;
+  }
+  return false;
+}
+
 TypeBindings Lowerer::build_call_bindings(const Node* call_var, const Node* fn_def,
                                           const TypeBindings* enclosing_bindings) {
   TypeBindings bindings;

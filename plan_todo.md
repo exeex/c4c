@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 2: introduce a safe transitional source layout and build wiring
-- Current slice: continue Step 2 by extracting the next live template helper still owned only by `src/frontend/hir/ast_to_hir.cpp`; after moving the call-binding and deduction helpers into `src/frontend/hir/hir_templates.cpp`, the next candidates are the remaining template-struct/query helpers such as `template_struct_has_pack_params`
+- Current slice: continue Step 2 by extracting the next template-struct helper that still lives only in `src/frontend/hir/ast_to_hir.cpp` but is part of the template lowering cluster; after moving `Lowerer::template_struct_has_pack_params`, the next candidates are nearby template-struct query/materialization helpers that can follow it into `src/frontend/hir/hir_templates.cpp`
 
 ## Todo
 
@@ -218,6 +218,8 @@ Source Plan: plan.md
 - The current slice targeted `collect_enum_def` because it is a small setup helper that still lived inline in the `Lowerer` class body and could move out-of-class without changing ownership or widening the declaration surface.
 - The latest slice moved `collect_enum_def` out of the inline `Lowerer` class body into an out-of-class definition, preserving behavior while continuing the monolith shrink.
 - Validation on 2026-04-01: `cmake -S . -B build` and `cmake --build build -j8` succeeded; a full `ctest --test-dir build -j8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 failing tests; `.codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passed with zero new failing tests.
+- The latest slice moved `Lowerer::template_struct_has_pack_params` out of [`src/frontend/hir/ast_to_hir.cpp`](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp) into [`src/frontend/hir/hir_templates.cpp`](/workspaces/c4c/src/frontend/hir/hir_templates.cpp), keeping the helper beside the template-struct selection logic that already consumes it and shrinking the monolith by one more live template-specific helper without widening the declaration surface.
+- Validation on 2026-04-02: `cmake --build build -j8` succeeded; after discarding one invalid mixed `test_fail_after.log` produced by an overlapping `ctest` race, a clean `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log` rerun again finished at 2671 total tests, 2668 passing, and the same 3 failing tests; `.codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passed with zero new failing tests.
 - The current slice targeted `resolve_struct_member_typedef_hir` because it is a self-contained private helper that still lived inline in the `Lowerer` class body and could move out-of-class without changing ownership or widening the declaration surface.
 - The latest slice moved `resolve_struct_member_typedef_hir` out of the inline `Lowerer` class body into an out-of-class definition, preserving behavior while continuing the monolith shrink.
 - Validation on 2026-04-01: `cmake --build build -j8` succeeded; a full `ctest --test-dir build -j8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 failing tests; `.codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passed with zero new failing tests.
