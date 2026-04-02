@@ -6,15 +6,15 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 2: Foundation headers and traits
-- Current slice: reduce the remaining `eastl::is_signed_helper` blocker to the
-  interaction between defaulted NTTPs and inherited alias-base member-typedef
-  lookup after ruling out simpler namespaced template instantiation paths
+- Step 3: Object lifetime and tuple layer
+- Current slice: reclassify `eastl_memory_simple.cpp` and
+  `eastl_tuple_simple.cpp` after the Step 2 foundation-trait parse blockers
+  were cleared into later canonical / semantic failures
 
 ## Todo
 
 - [x] Step 1: Inventory and recipe normalization
-- [ ] Step 2: Foundation headers and traits
+- [x] Step 2: Foundation headers and traits
 - [ ] Step 3: Object lifetime and tuple layer
 - [ ] Step 4: `eastl::vector` parse frontier
 - [ ] Step 5: `eastl::vector` semantic, HIR, and lowering viability
@@ -51,33 +51,46 @@ Source Plan: plan.md
   `tests/cpp/internal/postive_case/inherited_type_alias_base_member_lookup_parse.cpp`
   and taught recursive member-typedef lookup to follow aliased bases such as
   `false_type` instead of only direct struct tags
+- [x] Registered namespaced alias-template metadata under the qualified alias
+  spelling and taught alias-template argument parsing to respect alias NTTP
+  parameter kinds, so `bool_constant<T(-1) < T(0)>` now parses in namespaced
+  inherited-base reductions
+- [x] Promoted
+  `tests/cpp/internal/postive_case/namespaced_inherited_type_alias_base_member_lookup_parse.cpp`
+  to a positive parse regression for the unparenthesized
+  `bool_constant<T(-1) < T(0)>` shape under `namespace eastl`
+- [x] Reclassified the affected EASTL parse recipes after the parser fix:
+  `eastl_integer_sequence_simple.cpp` and `eastl_type_traits_simple.cpp` now
+  stop on `eastl::internal::is_complete_type__spec_167` instead of
+  `eastl::is_signed_helper`
+- [x] Advanced `eastl_integer_sequence_simple.cpp` and
+  `eastl_type_traits_simple.cpp` through `--parse-only`; both now join the
+  existing Step 2 canonical/sema undeclared-identifier cluster headed by
+  `mPart0` / `mPart1` in instantiated EASTL internals
+- [x] Step 2 completion check: all five foundation targets now either parse
+  successfully and fail later in canonical/sema or were already narrowed to
+  explicit later-stage blockers
 
 ## Next Slice
 
-- reduce the still-failing `bool_constant<T(-1) < T(0)>` case when the owning
-  template also carries a defaulted NTTP such as
-  `bool = is_arithmetic<T>::value`
-- decide whether that remaining blocker belongs in namespace-scoped template
-  primary registration / lookup, base-type substitution for instantiated
-  record bases, or inherited member-typedef lookup on instantiated bases
-- use the new reduced reproducer in
-  `tests/cpp/internal/negative_case/namespaced_inherited_type_alias_base_member_lookup_parse.cpp`
-  as the starting point instead of reopening the full EASTL stack
+- run `--parse-only` and `--dump-canonical` on `eastl_memory_simple.cpp` and
+  `eastl_tuple_simple.cpp` to place both Step 3 targets on the same stage map
+- decide whether the memory / tuple fronts share the existing undeclared
+  identifier cluster or expose a distinct object-lifetime / tuple-specific
+  blocker
+- keep
+  `tests/cpp/internal/postive_case/namespaced_inherited_type_alias_base_member_lookup_parse.cpp`
+  green as the parser-side guardrail while Step 3 starts
 
 ## Blockers
 
 - `eastl_integer_sequence_simple.cpp` and
-  `eastl_type_traits_simple.cpp` now stop with
-  `object has incomplete type: eastl::is_signed_helper`
-- the surviving reduced failure is narrower than the original EASTL stack:
-  `template<typename T, bool = arithmetic<T>::value> struct helper : bool_constant<T(-1) < T(0)> {};`
-  still trips the same incomplete-type error even after the aliased-base
-  `::type` fix
-- the failure no longer requires the full EASTL headers: the same incomplete
-  type now reproduces in
-  `tests/cpp/internal/negative_case/namespaced_inherited_type_alias_base_member_lookup_parse.cpp`
-  when the helper is referenced as `typename eastl::is_signed_helper<T>::type`
-  inside a declaration
+  `eastl_type_traits_simple.cpp` now pass `--parse-only` and fail later during
+  canonical/sema with undeclared identifiers such as `mPart0`, `mPart1`, `i`,
+  and `bBit`
+- the earlier reduced `is_signed_helper` failure is no longer a blocker; the
+  same namespaced defaulted-NTTP plus inherited-alias-base shape now parses in
+  `tests/cpp/internal/postive_case/namespaced_inherited_type_alias_base_member_lookup_parse.cpp`
 - `eastl_vector_simple.cpp` now stops at
   `ref/EASTL/include/EASTL/internal/function_detail.h:237:16` with
   `unexpected token in expression: .`
@@ -92,10 +105,10 @@ Source Plan: plan.md
   inside the namespace body; `typename is_signed_helper<T>::type value{}`
   still reaches the incomplete-type error when the helper stays under
   `namespace eastl`
-- instrumentation on the failed reduction showed the declaration reaches the
+- a temporary parser-side probe confirmed the old failure reached the
   incomplete-object check as a bare `eastl::is_signed_helper` type with no
-  `tpl_struct_origin` or deferred `::type` member attached, so the parser is
-  dropping out before the member-typedef path can be preserved
+  deferred member metadata; after the qualified alias-template registration fix
+  that probe is no longer needed and has been removed
 
 ## Resume Notes
 
@@ -114,9 +127,12 @@ Source Plan: plan.md
 - the remaining `is_signed_helper` blocker no longer depends on inherited
   `false_type` lookup alone; it requires the combination of a defaulted NTTP
   and an alias-template base carrying a dependent expression argument
-- a smaller negative regression now captures that remaining shape without the
-  full EASTL include stack:
-  `tests/cpp/internal/negative_case/namespaced_inherited_type_alias_base_member_lookup_parse.cpp`
+- that parser shape is now covered by the positive regression:
+  `tests/cpp/internal/postive_case/namespaced_inherited_type_alias_base_member_lookup_parse.cpp`
+- `eastl_integer_sequence_simple.cpp` and `eastl_type_traits_simple.cpp` now
+  sit on the same later-stage sema cluster as
+  `eastl_piecewise_construct_simple.cpp` and
+  `eastl_tuple_fwd_decls_simple.cpp`
 - probe reductions showed that namespace-qualified template instantiation and
   namespace-qualified `::type` lookup both work in simpler cases; the current
   failure still needs the inherited-base path exposed by `is_signed_helper`

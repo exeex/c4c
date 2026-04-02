@@ -797,7 +797,10 @@ TypeSpec Parser::parse_base_type() {
                         const AliasTemplateInfo& ati = ati_it->second;
                         TentativeParseGuard alias_guard(*this);
                         std::vector<TemplateArgParseResult> alias_args;
-                        if (!parse_template_argument_list(&alias_args) ||
+                        if (!parse_template_argument_list(
+                                &alias_args,
+                                nullptr,
+                                &ati.param_is_nttp) ||
                             alias_args.size() != ati.param_names.size()) {
                             // alias_guard restores pos_ on scope exit
                         } else {
@@ -859,10 +862,16 @@ TypeSpec Parser::parse_base_type() {
                                 alias_guard.commit();
                                 return ts;
                             }
-                        }
                     }
                 }
-                // Dependent template-template parameter application:
+            } else if (is_cpp_mode() && find_template_struct_primary(tname)) {
+                // Qualified names such as `ns::Template<T>` may resolve directly
+                // to a template primary without first passing through typedef
+                // registration. Reuse the existing template-struct
+                // instantiation/member-suffix path below.
+                ts.base = TB_STRUCT;
+            }
+            // Dependent template-template parameter application:
                 // template<template<typename...> class Op> using X = Op<int>;
                 // We only need to consume the argument list and keep the
                 // dependent name as a placeholder type for later stages.

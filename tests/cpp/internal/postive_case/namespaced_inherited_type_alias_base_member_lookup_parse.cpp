@@ -1,6 +1,6 @@
-// Reduced EASTL blocker: explicit namespace qualification plus a defaulted
-// NTTP and inherited alias-base `::type` lookup still leave the helper
-// incomplete in declaration context.
+// Parse-only regression: `typename ns::Template<T>::type` must keep the
+// templated owner intact so later `::type` lookup can resolve through an
+// inherited alias-base path.
 
 namespace eastl {
 template <typename T, T v>

@@ -64,6 +64,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     template_alias_nttp_expr_parse
     template_alias_nttp_expr_inherited_parse
     inherited_type_alias_base_member_lookup_parse
+    namespaced_inherited_type_alias_base_member_lookup_parse
     template_argument_loop_staging_parse
     template_argument_expr_close_staging_parse
     member_template_decltype_default_parse
@@ -1455,12 +1456,11 @@ add_test(
           -DCOMPILER=$<TARGET_FILE:c4cll>
           -DROOT=${PROJECT_SOURCE_DIR}
           -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/eastl/eastl_integer_sequence_simple.cpp
-          "-DEXPECT_FAIL_LOC:STRING=tests/cpp/eastl/eastl_integer_sequence_simple.cpp:6:1"
-          "-DEXPECT_ERROR_SUBSTRING:STRING=object has incomplete type: eastl::is_signed_helper"
+          -DEXPECT_SUCCESS=ON
           -P "${PROJECT_SOURCE_DIR}/tests/cpp/eastl/run_eastl_parse_recipe.cmake"
 )
 set_tests_properties(cpp_eastl_integer_sequence_parse_recipe PROPERTIES
-  LABELS "internal;negative_case;cpp;workflow"
+  LABELS "internal;positive_case;cpp;workflow"
   TIMEOUT 30
 )
 
@@ -1470,12 +1470,11 @@ add_test(
           -DCOMPILER=$<TARGET_FILE:c4cll>
           -DROOT=${PROJECT_SOURCE_DIR}
           -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/eastl/eastl_type_traits_simple.cpp
-          "-DEXPECT_FAIL_LOC:STRING=tests/cpp/eastl/eastl_type_traits_simple.cpp:55:1"
-          "-DEXPECT_ERROR_SUBSTRING:STRING=object has incomplete type: eastl::is_signed_helper"
+          -DEXPECT_SUCCESS=ON
           -P "${PROJECT_SOURCE_DIR}/tests/cpp/eastl/run_eastl_parse_recipe.cmake"
 )
 set_tests_properties(cpp_eastl_type_traits_parse_recipe PROPERTIES
-  LABELS "internal;negative_case;cpp;workflow"
+  LABELS "internal;positive_case;cpp;workflow"
   TIMEOUT 30
 )
 
@@ -1491,6 +1490,7 @@ add_test(
 set_tests_properties(cpp_eastl_utility_parse_recipe PROPERTIES
   LABELS "internal;positive_case;cpp;workflow"
   TIMEOUT 30
+  RUN_SERIAL TRUE
 )
 
 add_test(

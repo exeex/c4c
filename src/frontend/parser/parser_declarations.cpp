@@ -728,8 +728,9 @@ Node* Parser::parse_local_decl() {
 
         if (is_kr_fn_decl) continue;  // K&R fn decl: no local variable
 
-        if (is_incomplete_object_type(ts))
+        if (is_incomplete_object_type(ts)) {
             throw std::runtime_error(std::string("object has incomplete type: ") + (ts.tag ? ts.tag : "<anonymous>"));
+        }
 
         Node* init_node = nullptr;
         if (!is_ctor_init) {
@@ -1007,7 +1008,7 @@ Node* Parser::parse_top_level() {
                     user_typedefs_.insert(first_name);
                     typedef_types_[first_name] = alias_ts;
                 }
-                last_using_alias_name_ = first_name;
+                last_using_alias_name_ = qualified;
                 return nullptr;
             }
             target = first_name;

@@ -39,7 +39,8 @@ bool Parser::is_template_scope_type_param(const std::string& name) const {
 
 bool Parser::parse_next_template_argument(std::vector<TemplateArgParseResult>* out_args,
                                           const Node* primary_tpl, int arg_idx,
-                                          bool* out_has_more) {
+                                          bool* out_has_more,
+                                          const std::vector<bool>* explicit_param_is_nttp) {
     ParseContextGuard trace(this, __func__);
     if (!out_args || !out_has_more) return false;
 
@@ -51,7 +52,8 @@ bool Parser::parse_next_template_argument(std::vector<TemplateArgParseResult>* o
     // The primary_tpl hint (expect_value) is used only to prefer
     // non-type for tokens that are unambiguously value-like, avoiding
     // a redundant (and exception-throwing) type parse attempt.
-    if (!is_clearly_value_template_arg(primary_tpl, arg_idx))
+    if (!is_clearly_value_template_arg(primary_tpl, arg_idx,
+                                       explicit_param_is_nttp))
         ok = try_parse_template_type_arg(&arg);
     if (!ok) ok = try_parse_template_non_type_arg(&arg);
     if (!ok) return false;
@@ -202,11 +204,19 @@ bool Parser::try_parse_template_non_type_arg(TemplateArgParseResult* out_arg) {
     return capture_template_arg_expr(expr_start, out_arg);
 }
 
-bool Parser::is_clearly_value_template_arg(const Node* primary_tpl, int arg_idx) const {
-    const bool expect_value =
-        primary_tpl && arg_idx < primary_tpl->n_template_params &&
-        primary_tpl->template_param_is_nttp &&
-        primary_tpl->template_param_is_nttp[arg_idx];
+bool Parser::is_clearly_value_template_arg(const Node* primary_tpl, int arg_idx,
+                                           const std::vector<bool>* explicit_param_is_nttp) const {
+    bool expect_value = false;
+    if (explicit_param_is_nttp &&
+        arg_idx >= 0 &&
+        arg_idx < static_cast<int>(explicit_param_is_nttp->size())) {
+        expect_value = (*explicit_param_is_nttp)[arg_idx];
+    } else {
+        expect_value =
+            primary_tpl && arg_idx < primary_tpl->n_template_params &&
+            primary_tpl->template_param_is_nttp &&
+            primary_tpl->template_param_is_nttp[arg_idx];
+    }
     return expect_value && (
         check(TokenKind::IntLit) || check(TokenKind::CharLit) ||
         check(TokenKind::KwTrue) || check(TokenKind::KwFalse) ||
@@ -214,14 +224,16 @@ bool Parser::is_clearly_value_template_arg(const Node* primary_tpl, int arg_idx)
 }
 
 bool Parser::parse_template_argument_list(std::vector<TemplateArgParseResult>* out_args,
-                                         const Node* primary_tpl) {
+                                         const Node* primary_tpl,
+                                         const std::vector<bool>* explicit_param_is_nttp) {
     if (!out_args || !check(TokenKind::Less)) return false;
 
     consume();  // <
     int arg_idx = 0;
     while (!at_end() && !check_template_close()) {
         bool has_more = false;
-        if (!parse_next_template_argument(out_args, primary_tpl, arg_idx, &has_more))
+        if (!parse_next_template_argument(out_args, primary_tpl, arg_idx, &has_more,
+                                          explicit_param_is_nttp))
             return false;
         ++arg_idx;
         if (!has_more) break;

@@ -462,15 +462,18 @@ class Parser {
   void register_template_struct_specialization(const char* primary_name, Node* node);
   bool parse_next_template_argument(std::vector<TemplateArgParseResult>* out_args,
                                     const Node* primary_tpl, int arg_idx,
-                                    bool* out_has_more);
+                                    bool* out_has_more,
+                                    const std::vector<bool>* explicit_param_is_nttp = nullptr);
   bool try_parse_template_type_arg(TemplateArgParseResult* out_arg);
   bool try_parse_template_non_type_expr(int expr_start,
                                         TemplateArgParseResult* out_arg);
   bool try_parse_template_non_type_arg(TemplateArgParseResult* out_arg);
   bool capture_template_arg_expr(int expr_start, TemplateArgParseResult* out_arg);
-  bool is_clearly_value_template_arg(const Node* primary_tpl, int arg_idx) const;
+  bool is_clearly_value_template_arg(const Node* primary_tpl, int arg_idx,
+                                     const std::vector<bool>* explicit_param_is_nttp = nullptr) const;
   bool parse_template_argument_list(std::vector<TemplateArgParseResult>* out_args,
-                                    const Node* primary_tpl = nullptr);
+                                    const Node* primary_tpl = nullptr,
+                                    const std::vector<bool>* explicit_param_is_nttp = nullptr);
   TypenameTemplateParamKind classify_typename_template_parameter() const;
   void push_template_scope(TemplateScopeKind kind,
                            const std::vector<TemplateScopeParam>& params);
