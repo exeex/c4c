@@ -353,6 +353,11 @@ bool validate_inst(const BackendInst& inst,
   }
   const auto lhs_global_it = globals.find(ptrdiff->lhs_address.base_symbol);
   const auto rhs_global_it = globals.find(ptrdiff->rhs_address.base_symbol);
+  if ((lhs_global_it != globals.end()) != (rhs_global_it != globals.end())) {
+    return fail(error,
+                std::string(context) +
+                    ": ptrdiff addresses must both reference the same global when either side is global-backed");
+  }
   if (lhs_global_it != globals.end() && rhs_global_it != globals.end() &&
       lhs_global_it->second != rhs_global_it->second) {
     return fail(error,

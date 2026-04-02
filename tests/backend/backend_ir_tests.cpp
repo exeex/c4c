@@ -889,6 +889,21 @@ void test_backend_ir_validator_rejects_ptrdiff_across_different_structured_globa
                   "backend IR validator should explain cross-global structured ptrdiff mismatches");
 }
 
+void test_backend_ir_validator_rejects_ptrdiff_with_only_one_global_backed_address() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_global_int_pointer_diff_module());
+  auto& ptrdiff = std::get<c4c::backend::BackendPtrDiffEqInst>(
+      lowered.functions.front().blocks.front().insts.back());
+  ptrdiff.rhs_address.base_symbol = "%stack_slot";
+  std::string error;
+
+  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should reject structured ptrdiff slices when only one address is global-backed");
+  expect_contains(
+      error,
+      "ptrdiff addresses must both reference the same global when either side is global-backed",
+      "backend IR validator should explain mixed global-backed ptrdiff address mismatches");
+}
+
 void test_backend_ir_printer_renders_return_add() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_return_add_module());
   const auto rendered = c4c::backend::print_backend_ir(lowered);
@@ -1488,6 +1503,7 @@ int main(int argc, char* argv[]) {
   test_backend_ir_validator_rejects_structured_load_extension_that_does_not_widen();
   test_backend_ir_validator_rejects_global_int_ptrdiff_past_structured_bounds();
   test_backend_ir_validator_rejects_ptrdiff_across_different_structured_globals();
+  test_backend_ir_validator_rejects_ptrdiff_with_only_one_global_backed_address();
   test_backend_ir_printer_renders_lowered_conditional_return_slice();
   test_backend_ir_validator_accepts_lowered_conditional_return_slice();
   test_backend_ir_printer_renders_structured_conditional_return_slice_without_type_text();
