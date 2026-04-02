@@ -2482,6 +2482,27 @@ void test_aarch64_backend_scaffold_accepts_structured_string_literal_ir_without_
                       "aarch64 backend seam should not fall back when widened string-literal loads rely only on structured signature and memory metadata");
 }
 
+void test_aarch64_backend_scaffold_rejects_string_literal_fast_path_when_address_kind_disagrees() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_string_literal_char_module());
+  auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
+  auto* load =
+      main_fn != nullptr && !main_fn->blocks.empty() && !main_fn->blocks.front().insts.empty()
+          ? std::get_if<c4c::backend::BackendLoadInst>(&main_fn->blocks.front().insts.front())
+          : nullptr;
+  expect_true(load != nullptr,
+              "aarch64 string-literal regression test needs a lowered backend load to mutate");
+  if (load != nullptr) {
+    load->address.kind = c4c::backend::BackendAddressBaseKind::Global;
+  }
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  expect_contains(rendered, "target triple = \"aarch64-unknown-linux-gnu\"",
+                  "aarch64 backend seam should stop matching the string-literal asm slice when structured address provenance no longer names a string constant");
+}
+
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_extern_global_load_ir_input() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_extern_global_load_module());
   const auto rendered = c4c::backend::emit_module(
@@ -2604,6 +2625,28 @@ void test_aarch64_backend_scaffold_accepts_structured_extern_global_array_ir_wit
                   "aarch64 backend seam should preserve structured extern global array offsets from stored array metadata");
   expect_not_contains(rendered, "target triple =",
                       "aarch64 backend seam should not fall back when extern global arrays rely on structured linkage and array metadata only");
+}
+
+void test_aarch64_backend_scaffold_rejects_extern_global_array_fast_path_when_address_kind_disagrees() {
+  auto lowered =
+      c4c::backend::lower_to_backend_ir(make_extern_global_array_load_module());
+  auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
+  auto* load =
+      main_fn != nullptr && !main_fn->blocks.empty() && !main_fn->blocks.front().insts.empty()
+          ? std::get_if<c4c::backend::BackendLoadInst>(&main_fn->blocks.front().insts.front())
+          : nullptr;
+  expect_true(load != nullptr,
+              "aarch64 extern-global-array regression test needs a lowered backend load to mutate");
+  if (load != nullptr) {
+    load->address.kind = c4c::backend::BackendAddressBaseKind::StringConstant;
+  }
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  expect_contains(rendered, "target triple = \"aarch64-unknown-linux-gnu\"",
+                  "aarch64 backend seam should stop matching the extern global-array asm slice when structured address provenance no longer names a global");
 }
 
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_local_array_ir_input() {
@@ -3949,6 +3992,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_scaffold_accepts_explicit_lowered_string_literal_ir_input();
   test_aarch64_backend_scaffold_accepts_structured_string_literal_ir_without_type_shims();
   test_aarch64_backend_scaffold_accepts_structured_string_literal_ir_without_signature_or_type_shims();
+  test_aarch64_backend_scaffold_rejects_string_literal_fast_path_when_address_kind_disagrees();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_extern_global_load_ir_input();
   test_aarch64_backend_scaffold_accepts_structured_extern_global_load_ir_without_type_shims();
   test_aarch64_backend_scaffold_accepts_structured_extern_global_load_ir_without_raw_global_type_text();
@@ -3957,6 +4001,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_scaffold_accepts_structured_extern_global_array_ir_without_compatibility_shims();
   test_aarch64_backend_scaffold_accepts_structured_extern_global_array_ir_without_compatibility_or_signature_shims();
   test_aarch64_backend_scaffold_accepts_structured_extern_global_array_ir_without_raw_type_text();
+  test_aarch64_backend_scaffold_rejects_extern_global_array_fast_path_when_address_kind_disagrees();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_local_array_ir_input();
   test_aarch64_backend_scaffold_accepts_structured_local_array_ir_without_type_or_signature_shims();
   test_aarch64_backend_scaffold_rejects_local_array_fast_path_when_local_slot_metadata_disagrees();

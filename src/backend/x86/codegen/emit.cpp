@@ -1332,6 +1332,7 @@ std::optional<MinimalExternGlobalArrayLoadSlice> parse_minimal_extern_global_arr
   if (load == nullptr ||
       c4c::backend::backend_load_value_type(*load) !=
           c4c::backend::BackendScalarType::I32 ||
+      load->address.kind != c4c::backend::BackendAddressBaseKind::Global ||
       load->address.base_symbol != global->name ||
       *block.terminator.value != load->result || load->address.byte_offset < 0) {
     return std::nullopt;
@@ -2227,6 +2228,7 @@ std::optional<MinimalStringLiteralCharSlice> parse_minimal_string_literal_char_s
           c4c::backend::BackendScalarType::I32 ||
       c4c::backend::backend_load_memory_type(*load) !=
           c4c::backend::BackendScalarType::I8 ||
+      load->address.kind != c4c::backend::BackendAddressBaseKind::StringConstant ||
       load->address.base_symbol != string_const->name ||
       load->address.byte_offset < 0 ||
       load->address.byte_offset >=
