@@ -700,7 +700,7 @@ void test_lir_printer_rejects_malformed_typed_binary_surface() {
 
 
 void test_adapts_direct_return() {
-  const auto adapted = c4c::backend::adapt_minimal_module(make_return_zero_module());
+  const auto adapted = c4c::backend::lower_to_backend_ir(make_return_zero_module());
   expect_true(adapted.functions.size() == 1, "adapter should preserve one function");
   expect_true(adapted.functions.front().blocks.size() == 1,
               "adapter should preserve one block");
@@ -709,7 +709,7 @@ void test_adapts_direct_return() {
 }
 
 void test_renders_return_add() {
-  const auto adapted = c4c::backend::adapt_minimal_module(make_return_add_module());
+  const auto adapted = c4c::backend::lower_to_backend_ir(make_return_add_module());
   const auto rendered = c4c::backend::render_module(adapted);
   expect_contains(rendered, "%t0 = add i32 2, 3",
                   "adapter renderer should emit the add instruction");
@@ -728,7 +728,7 @@ void test_adapter_keeps_legacy_shim_aligned_with_lowering_entrypoint() {
 
 
 void test_adapter_normalizes_typed_direct_call_helper_slice() {
-  const auto adapted = c4c::backend::adapt_minimal_module(make_typed_direct_call_module());
+  const auto adapted = c4c::backend::lower_to_backend_ir(make_typed_direct_call_module());
   const auto rendered = c4c::backend::render_module(adapted);
   expect_contains(rendered, "define i32 @add_one(i32 %p.x)",
                   "adapter should preserve the single-argument helper signature");
@@ -741,7 +741,7 @@ void test_adapter_normalizes_typed_direct_call_helper_slice() {
 }
 
 void test_adapter_normalizes_local_temp_return_slice() {
-  const auto adapted = c4c::backend::adapt_minimal_module(make_local_temp_module());
+  const auto adapted = c4c::backend::lower_to_backend_ir(make_local_temp_module());
   const auto rendered = c4c::backend::render_module(adapted);
   expect_contains(rendered, "define i32 @main()",
                   "adapter should preserve the local-temp function signature");
@@ -750,7 +750,7 @@ void test_adapter_normalizes_local_temp_return_slice() {
 }
 
 void test_adapter_normalizes_local_temp_sub_return_slice() {
-  const auto adapted = c4c::backend::adapt_minimal_module(make_local_temp_sub_module());
+  const auto adapted = c4c::backend::lower_to_backend_ir(make_local_temp_sub_module());
   const auto rendered = c4c::backend::render_module(adapted);
   expect_contains(rendered, "%t1 = sub i32 5, 4",
                   "adapter should rewrite the local-slot subtraction slice into a direct subtraction");
@@ -760,7 +760,7 @@ void test_adapter_normalizes_local_temp_sub_return_slice() {
 
 void test_adapter_normalizes_two_local_temp_return_slice() {
   const auto adapted =
-      c4c::backend::adapt_minimal_module(make_two_local_temp_return_module());
+      c4c::backend::lower_to_backend_ir(make_two_local_temp_return_module());
   const auto rendered = c4c::backend::render_module(adapted);
   expect_contains(rendered, "define i32 @main()",
                   "adapter should preserve the two-local function signature");
@@ -770,7 +770,7 @@ void test_adapter_normalizes_two_local_temp_return_slice() {
 
 void test_adapter_normalizes_local_pointer_temp_return_slice() {
   const auto adapted =
-      c4c::backend::adapt_minimal_module(make_local_pointer_temp_return_module());
+      c4c::backend::lower_to_backend_ir(make_local_pointer_temp_return_module());
   const auto rendered = c4c::backend::render_module(adapted);
   expect_contains(rendered, "define i32 @main()",
                   "adapter should preserve the local-pointer round-trip function signature");
@@ -779,7 +779,7 @@ void test_adapter_normalizes_local_pointer_temp_return_slice() {
 }
 
 void test_adapter_normalizes_double_indirect_local_pointer_conditional_return_slice() {
-  const auto adapted = c4c::backend::adapt_minimal_module(
+  const auto adapted = c4c::backend::lower_to_backend_ir(
       make_double_indirect_local_pointer_conditional_return_module());
   const auto rendered = c4c::backend::render_module(adapted);
   expect_contains(rendered, "define i32 @main()",
@@ -790,7 +790,7 @@ void test_adapter_normalizes_double_indirect_local_pointer_conditional_return_sl
 
 void test_adapter_normalizes_goto_only_constant_return_slice() {
   const auto adapted =
-      c4c::backend::adapt_minimal_module(make_goto_only_constant_return_module());
+      c4c::backend::lower_to_backend_ir(make_goto_only_constant_return_module());
   const auto rendered = c4c::backend::render_module(adapted);
   expect_contains(rendered, "define i32 @main()",
                   "adapter should preserve the goto-only function signature");
@@ -800,7 +800,7 @@ void test_adapter_normalizes_goto_only_constant_return_slice() {
 
 void test_adapter_normalizes_countdown_while_return_slice() {
   const auto adapted =
-      c4c::backend::adapt_minimal_module(make_countdown_while_return_module());
+      c4c::backend::lower_to_backend_ir(make_countdown_while_return_module());
   const auto rendered = c4c::backend::render_module(adapted);
   expect_contains(rendered, "define i32 @main()",
                   "adapter should preserve the while-countdown function signature");
@@ -812,7 +812,7 @@ void test_adapter_normalizes_countdown_while_return_slice() {
 
 void test_adapter_normalizes_typed_countdown_while_return_slice() {
   const auto adapted =
-      c4c::backend::adapt_minimal_module(make_typed_countdown_while_return_module());
+      c4c::backend::lower_to_backend_ir(make_typed_countdown_while_return_module());
   const auto rendered = c4c::backend::render_module(adapted);
   expect_contains(rendered, "define i32 @main()",
                   "adapter should preserve the typed while-countdown function signature");
@@ -824,7 +824,7 @@ void test_adapter_normalizes_typed_countdown_while_return_slice() {
 
 void test_adapter_normalizes_countdown_do_while_return_slice() {
   const auto adapted =
-      c4c::backend::adapt_minimal_module(make_countdown_do_while_return_module());
+      c4c::backend::lower_to_backend_ir(make_countdown_do_while_return_module());
   const auto rendered = c4c::backend::render_module(adapted);
   expect_contains(rendered, "define i32 @main()",
                   "adapter should preserve the do-while countdown function signature");
@@ -834,7 +834,7 @@ void test_adapter_normalizes_countdown_do_while_return_slice() {
 
 void test_adapter_preserves_typed_two_arg_direct_call_helper_slice() {
   const auto adapted =
-      c4c::backend::adapt_minimal_module(make_typed_direct_call_two_arg_module());
+      c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_module());
   const auto rendered = c4c::backend::render_module(adapted);
   expect_contains(rendered, "define i32 @add_pair(i32 %p.x, i32 %p.y)",
                   "adapter should preserve the two-argument helper signature");
@@ -846,7 +846,7 @@ void test_adapter_preserves_typed_two_arg_direct_call_helper_slice() {
 
 void test_adapter_normalizes_typed_direct_call_local_arg_slice() {
   const auto adapted =
-      c4c::backend::adapt_minimal_module(make_typed_direct_call_local_arg_module());
+      c4c::backend::lower_to_backend_ir(make_typed_direct_call_local_arg_module());
   const auto rendered = c4c::backend::render_module(adapted);
   expect_contains(rendered, "define i32 @add_one(i32 %p.x)",
                   "adapter should preserve the local-argument helper signature");
@@ -857,7 +857,7 @@ void test_adapter_normalizes_typed_direct_call_local_arg_slice() {
 }
 
 void test_adapter_normalizes_typed_direct_call_local_arg_spacing_slice() {
-  const auto adapted = c4c::backend::adapt_minimal_module(
+  const auto adapted = c4c::backend::lower_to_backend_ir(
       make_typed_direct_call_local_arg_with_spacing_module());
   const auto rendered = c4c::backend::render_module(adapted);
   expect_contains(rendered, "call i32 (i32) @add_one(i32 5)",
@@ -870,7 +870,7 @@ void test_adapter_normalizes_typed_direct_call_local_arg_without_suffix_slice() 
       module.functions.back().blocks.front().insts.back());
   call.callee_type_suffix.clear();
 
-  const auto adapted = c4c::backend::adapt_minimal_module(module);
+  const auto adapted = c4c::backend::lower_to_backend_ir(module);
   const auto rendered = c4c::backend::render_module(adapted);
   expect_contains(rendered, "call i32 (i32) @add_one(i32 5)",
                   "adapter should infer backend call param types from typed args when local direct-call compatibility suffixes are absent");
@@ -883,7 +883,7 @@ void test_adapter_canonicalizes_backend_owned_direct_call_rendering() {
   call.callee_type_suffix = " ( i32 ) ";
   call.args_str = "  i32   5  ";
 
-  const auto adapted = c4c::backend::adapt_minimal_module(module);
+  const auto adapted = c4c::backend::lower_to_backend_ir(module);
   const auto rendered = c4c::backend::render_module(adapted);
   expect_contains(rendered, "call i32 (i32) @add_one(i32 5)",
                   "adapter should render backend-owned direct calls from canonical structured metadata instead of preserving raw compatibility spacing");
@@ -891,7 +891,7 @@ void test_adapter_canonicalizes_backend_owned_direct_call_rendering() {
 
 void test_adapter_normalizes_typed_two_arg_direct_call_local_arg_slice() {
   const auto adapted =
-      c4c::backend::adapt_minimal_module(make_typed_direct_call_two_arg_local_arg_module());
+      c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_local_arg_module());
   const auto rendered = c4c::backend::render_module(adapted);
   expect_contains(rendered, "define i32 @add_pair(i32 %p.x, i32 %p.y)",
                   "adapter should preserve the two-argument local-argument helper signature");
@@ -902,7 +902,7 @@ void test_adapter_normalizes_typed_two_arg_direct_call_local_arg_slice() {
 }
 
 void test_adapter_normalizes_typed_two_arg_direct_call_local_arg_spacing_slice() {
-  const auto adapted = c4c::backend::adapt_minimal_module(
+  const auto adapted = c4c::backend::lower_to_backend_ir(
       make_typed_direct_call_two_arg_local_arg_with_spacing_module());
   const auto rendered = c4c::backend::render_module(adapted);
   expect_contains(rendered, "call i32 (i32, i32) @add_pair(i32 5, i32 7)",
@@ -910,7 +910,7 @@ void test_adapter_normalizes_typed_two_arg_direct_call_local_arg_spacing_slice()
 }
 
 void test_adapter_normalizes_typed_two_arg_direct_call_second_local_arg_slice() {
-  const auto adapted = c4c::backend::adapt_minimal_module(
+  const auto adapted = c4c::backend::lower_to_backend_ir(
       make_typed_direct_call_two_arg_second_local_arg_module());
   const auto rendered = c4c::backend::render_module(adapted);
   expect_contains(rendered, "define i32 @add_pair(i32 %p.x, i32 %p.y)",
@@ -922,7 +922,7 @@ void test_adapter_normalizes_typed_two_arg_direct_call_second_local_arg_slice() 
 }
 
 void test_adapter_normalizes_typed_two_arg_direct_call_second_local_rewrite_slice() {
-  const auto adapted = c4c::backend::adapt_minimal_module(
+  const auto adapted = c4c::backend::lower_to_backend_ir(
       make_typed_direct_call_two_arg_second_local_rewrite_module());
   const auto rendered = c4c::backend::render_module(adapted);
   expect_contains(rendered, "define i32 @add_pair(i32 %p.x, i32 %p.y)",
@@ -934,7 +934,7 @@ void test_adapter_normalizes_typed_two_arg_direct_call_second_local_rewrite_slic
 }
 
 void test_adapter_normalizes_typed_two_arg_direct_call_first_local_rewrite_slice() {
-  const auto adapted = c4c::backend::adapt_minimal_module(
+  const auto adapted = c4c::backend::lower_to_backend_ir(
       make_typed_direct_call_two_arg_first_local_rewrite_module());
   const auto rendered = c4c::backend::render_module(adapted);
   expect_contains(rendered, "define i32 @add_pair(i32 %p.x, i32 %p.y)",
@@ -946,7 +946,7 @@ void test_adapter_normalizes_typed_two_arg_direct_call_first_local_rewrite_slice
 }
 
 void test_adapter_normalizes_typed_two_arg_direct_call_first_local_rewrite_spacing_slice() {
-  const auto adapted = c4c::backend::adapt_minimal_module(
+  const auto adapted = c4c::backend::lower_to_backend_ir(
       make_typed_direct_call_two_arg_first_local_rewrite_with_spacing_module());
   const auto rendered = c4c::backend::render_module(adapted);
   expect_contains(rendered, "call i32 (i32, i32) @add_pair(i32 5, i32 7)",
@@ -955,7 +955,7 @@ void test_adapter_normalizes_typed_two_arg_direct_call_first_local_rewrite_spaci
 
 void test_adapter_normalizes_typed_two_arg_direct_call_both_local_arg_slice() {
   const auto adapted =
-      c4c::backend::adapt_minimal_module(make_typed_direct_call_two_arg_both_local_arg_module());
+      c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_both_local_arg_module());
   const auto rendered = c4c::backend::render_module(adapted);
   expect_contains(rendered, "define i32 @add_pair(i32 %p.x, i32 %p.y)",
                   "adapter should preserve the two-argument both-local helper signature");
@@ -966,7 +966,7 @@ void test_adapter_normalizes_typed_two_arg_direct_call_both_local_arg_slice() {
 }
 
 void test_adapter_normalizes_typed_two_arg_direct_call_both_local_first_rewrite_slice() {
-  const auto adapted = c4c::backend::adapt_minimal_module(
+  const auto adapted = c4c::backend::lower_to_backend_ir(
       make_typed_direct_call_two_arg_both_local_first_rewrite_module());
   const auto rendered = c4c::backend::render_module(adapted);
   expect_contains(rendered, "define i32 @add_pair(i32 %p.x, i32 %p.y)",
@@ -978,7 +978,7 @@ void test_adapter_normalizes_typed_two_arg_direct_call_both_local_first_rewrite_
 }
 
 void test_adapter_normalizes_typed_two_arg_direct_call_both_local_second_rewrite_slice() {
-  const auto adapted = c4c::backend::adapt_minimal_module(
+  const auto adapted = c4c::backend::lower_to_backend_ir(
       make_typed_direct_call_two_arg_both_local_second_rewrite_module());
   const auto rendered = c4c::backend::render_module(adapted);
   expect_contains(rendered, "define i32 @add_pair(i32 %p.x, i32 %p.y)",
@@ -990,7 +990,7 @@ void test_adapter_normalizes_typed_two_arg_direct_call_both_local_second_rewrite
 }
 
 void test_adapter_normalizes_typed_two_arg_direct_call_both_local_double_rewrite_slice() {
-  const auto adapted = c4c::backend::adapt_minimal_module(
+  const auto adapted = c4c::backend::lower_to_backend_ir(
       make_typed_direct_call_two_arg_both_local_double_rewrite_module());
   const auto rendered = c4c::backend::render_module(adapted);
   expect_contains(rendered, "define i32 @add_pair(i32 %p.x, i32 %p.y)",
@@ -1002,7 +1002,7 @@ void test_adapter_normalizes_typed_two_arg_direct_call_both_local_double_rewrite
 }
 
 void test_adapter_tracks_structured_signature_contract() {
-  const auto adapted = c4c::backend::adapt_minimal_module(make_return_zero_module());
+  const auto adapted = c4c::backend::lower_to_backend_ir(make_return_zero_module());
   const auto& signature = adapted.functions.front().signature;
   expect_true(signature.linkage == "define",
               "adapter should preserve whether a function is defined or declared");
@@ -1017,7 +1017,7 @@ void test_adapter_tracks_structured_signature_contract() {
 }
 
 void test_adapter_tracks_structured_entry_block_and_return_contract() {
-  const auto adapted = c4c::backend::adapt_minimal_module(make_return_add_module());
+  const auto adapted = c4c::backend::lower_to_backend_ir(make_return_add_module());
   const auto& function = adapted.functions.front();
   expect_true(function.blocks.size() == 1,
               "adapter should preserve the single-block bring-up slice");
@@ -1044,7 +1044,7 @@ void test_adapter_tracks_structured_entry_block_and_return_contract() {
 }
 
 void test_adapter_tracks_structured_typed_add_entry_block_and_return_contract() {
-  const auto adapted = c4c::backend::adapt_minimal_module(make_typed_return_add_module());
+  const auto adapted = c4c::backend::lower_to_backend_ir(make_typed_return_add_module());
   const auto& function = adapted.functions.front();
   expect_true(function.blocks.size() == 1,
               "adapter should preserve the single-block typed-add slice");
@@ -1061,7 +1061,7 @@ void test_adapter_tracks_structured_typed_add_entry_block_and_return_contract() 
 }
 
 void test_adapter_tracks_structured_sub_entry_block_and_return_contract() {
-  const auto adapted = c4c::backend::adapt_minimal_module(make_return_sub_module());
+  const auto adapted = c4c::backend::lower_to_backend_ir(make_return_sub_module());
   const auto& function = adapted.functions.front();
   expect_true(function.blocks.size() == 1,
               "adapter should preserve the single-block subtraction slice");
@@ -1088,7 +1088,7 @@ void test_adapter_tracks_structured_sub_entry_block_and_return_contract() {
 }
 
 void test_adapter_normalizes_local_temp_arithmetic_chain_slice() {
-  const auto adapted = c4c::backend::adapt_minimal_module(make_local_temp_arithmetic_chain_module());
+  const auto adapted = c4c::backend::lower_to_backend_ir(make_local_temp_arithmetic_chain_module());
   const auto rendered = c4c::backend::render_module(adapted);
   expect_contains(rendered, "ret i32 0",
                   "adapter should collapse the bounded one-slot arithmetic chain into a direct return immediate");
@@ -1109,7 +1109,7 @@ void test_rejects_unsupported_instruction() {
   block.terminator = LirRet{std::string("%t0"), "i32"};
 
   try {
-    (void)c4c::backend::adapt_minimal_module(module);
+    (void)c4c::backend::lower_to_backend_ir(module);
     fail("adapter should reject unsupported instructions");
   } catch (const c4c::backend::LirAdapterError& ex) {
     expect_contains(ex.what(), "non-binary/non-call instructions",
