@@ -890,6 +890,50 @@ void test_x86_backend_scaffold_accepts_structured_extern_global_array_ir_without
                       "x86 backend seam should not fall back when extern global arrays rely only on structured signature and global metadata");
 }
 
+void test_x86_backend_scaffold_accepts_explicit_lowered_local_array_ir_input() {
+  auto module = make_local_array_gep_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, "lea rcx, [rbp - 8]",
+                  "x86 backend seam should preserve the lowered local-array stack-slot base");
+  expect_contains(rendered, "mov dword ptr [rcx], 4",
+                  "x86 backend seam should lower the explicit backend-IR first local-array store directly");
+  expect_contains(rendered, "mov dword ptr [rcx + 4], 3",
+                  "x86 backend seam should preserve the lowered second local-array byte offset");
+  expect_contains(rendered, "add eax, dword ptr [rcx + 4]",
+                  "x86 backend seam should keep the lowered local-array reload/add slice on the asm path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back to backend IR text for lowered local-array slices");
+}
+
+void test_x86_backend_scaffold_accepts_structured_local_array_ir_without_type_or_signature_shims() {
+  auto module = make_local_array_gep_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  auto lowered = c4c::backend::lower_to_backend_ir(module);
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+  clear_backend_memory_type_compatibility_shims(lowered);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, "lea rcx, [rbp - 8]",
+                  "x86 backend seam should still recognize structured local-array stack slots when signature text is cleared");
+  expect_contains(rendered, "mov dword ptr [rcx], 4",
+                  "x86 backend seam should still lower structured local-array stores without legacy store type text");
+  expect_contains(rendered, "add eax, dword ptr [rcx + 4]",
+                  "x86 backend seam should still lower structured local-array reload/add slices when both signature and memory type text are cleared");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back when local-array slices rely only on structured signature and memory metadata");
+}
+
 void test_x86_backend_scaffold_accepts_explicit_lowered_global_int_pointer_roundtrip_ir_input() {
   const auto lowered =
       c4c::backend::lower_to_backend_ir(make_x86_global_int_pointer_roundtrip_module());
@@ -3005,6 +3049,8 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_extern_global_array_ir_input);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_extern_global_array_ir_without_compatibility_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_extern_global_array_ir_without_compatibility_or_signature_shims);
+  RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_local_array_ir_input);
+  RUN_TEST(test_x86_backend_scaffold_accepts_structured_local_array_ir_without_type_or_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_global_int_pointer_roundtrip_ir_input);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_global_char_pointer_diff_ir_input);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_global_char_pointer_diff_ir_without_type_shims);

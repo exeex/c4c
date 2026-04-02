@@ -1311,6 +1311,81 @@ std::optional<MinimalExternGlobalArrayLoadSlice> parse_minimal_extern_global_arr
   return MinimalExternGlobalArrayLoadSlice{global->name, load->address.byte_offset};
 }
 
+std::optional<MinimalLocalArraySlice> parse_minimal_local_array_slice(
+    const c4c::backend::BackendModule& module) {
+  if (module.functions.size() != 1 || !module.globals.empty() ||
+      !module.string_constants.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* main_fn = find_function(module, "main");
+  if (main_fn == nullptr || main_fn->is_declaration ||
+      !backend_function_is_definition(main_fn->signature) ||
+      !is_i32_scalar_signature_return(main_fn->signature) ||
+      !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
+      main_fn->blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& block = main_fn->blocks.front();
+  if (block.label != "entry" || block.insts.size() != 5 ||
+      !block.terminator.value.has_value() ||
+      c4c::backend::backend_return_scalar_type(block.terminator) !=
+          c4c::backend::BackendScalarType::I32) {
+    return std::nullopt;
+  }
+
+  const auto* store0 = std::get_if<c4c::backend::BackendStoreInst>(&block.insts[0]);
+  const auto* store1 = std::get_if<c4c::backend::BackendStoreInst>(&block.insts[1]);
+  const auto* load0 = std::get_if<c4c::backend::BackendLoadInst>(&block.insts[2]);
+  const auto* load1 = std::get_if<c4c::backend::BackendLoadInst>(&block.insts[3]);
+  const auto* add = std::get_if<c4c::backend::BackendBinaryInst>(&block.insts[4]);
+  if (store0 == nullptr || store1 == nullptr || load0 == nullptr || load1 == nullptr ||
+      add == nullptr ||
+      c4c::backend::backend_store_value_type(*store0) !=
+          c4c::backend::BackendScalarType::I32 ||
+      c4c::backend::backend_store_value_type(*store1) !=
+          c4c::backend::BackendScalarType::I32 ||
+      c4c::backend::backend_load_value_type(*load0) !=
+          c4c::backend::BackendScalarType::I32 ||
+      c4c::backend::backend_load_value_type(*load1) !=
+          c4c::backend::BackendScalarType::I32 ||
+      c4c::backend::backend_load_memory_type(*load0) !=
+          c4c::backend::BackendScalarType::I32 ||
+      c4c::backend::backend_load_memory_type(*load1) !=
+          c4c::backend::BackendScalarType::I32 ||
+      add->opcode != c4c::backend::BackendBinaryOpcode::Add ||
+      c4c::backend::backend_binary_value_type(*add) !=
+          c4c::backend::BackendScalarType::I32) {
+    return std::nullopt;
+  }
+
+  if (store0->address.base_symbol.empty() ||
+      store0->address.base_symbol != store1->address.base_symbol ||
+      store0->address.base_symbol != load0->address.base_symbol ||
+      store0->address.base_symbol != load1->address.base_symbol ||
+      store0->address.byte_offset != 0 || store1->address.byte_offset != 4 ||
+      load0->address.byte_offset != 0 || load1->address.byte_offset != 4) {
+    return std::nullopt;
+  }
+
+  const auto store0_imm = parse_i64(store0->value);
+  const auto store1_imm = parse_i64(store1->value);
+  if (!store0_imm.has_value() || !store1_imm.has_value() ||
+      *block.terminator.value != add->result) {
+    return std::nullopt;
+  }
+
+  const bool add_matches_loads =
+      (add->lhs == load0->result && add->rhs == load1->result) ||
+      (add->lhs == load1->result && add->rhs == load0->result);
+  if (!add_matches_loads) {
+    return std::nullopt;
+  }
+
+  return MinimalLocalArraySlice{*store0_imm, *store1_imm};
+}
+
 std::optional<MinimalExternScalarGlobalLoadSlice> parse_minimal_extern_scalar_global_load_slice(
     const c4c::backend::BackendModule& module) {
   if (module.functions.size() != 1 || module.globals.size() != 1) {
@@ -3388,6 +3463,10 @@ std::string emit_module(const c4c::backend::BackendModule& module,
     if (const auto slice = parse_minimal_extern_global_array_load_slice(module);
         slice.has_value()) {
       return emit_minimal_extern_global_array_load_asm(module, *slice);
+    }
+    if (const auto slice = parse_minimal_local_array_slice(module);
+        slice.has_value()) {
+      return emit_minimal_local_array_asm(module, *slice);
     }
     if (const auto slice = parse_minimal_declared_direct_call_slice(module);
         slice.has_value()) {

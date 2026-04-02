@@ -2153,6 +2153,42 @@ void test_aarch64_backend_scaffold_accepts_structured_extern_global_array_ir_wit
                       "aarch64 backend seam should not fall back when extern global arrays rely only on structured signature and global metadata");
 }
 
+void test_aarch64_backend_scaffold_accepts_explicit_lowered_local_array_ir_input() {
+  const auto lowered = c4c::backend::lower_to_backend_ir(make_local_array_gep_module());
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  expect_contains(rendered, "add x8, sp, #8",
+                  "aarch64 backend seam should preserve the lowered local-array stack-slot base");
+  expect_contains(rendered, "str w9, [x8]",
+                  "aarch64 backend seam should lower the explicit backend-IR first local-array store directly");
+  expect_contains(rendered, "str w9, [x8, #4]",
+                  "aarch64 backend seam should preserve the lowered second local-array byte offset");
+  expect_contains(rendered, "add w0, w9, w10",
+                  "aarch64 backend seam should keep the lowered local-array reload/add slice on the asm path");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should not fall back to backend IR text for lowered local-array slices");
+}
+
+void test_aarch64_backend_scaffold_accepts_structured_local_array_ir_without_type_or_signature_shims() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_local_array_gep_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+  clear_backend_memory_type_compatibility_shims(lowered);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  expect_contains(rendered, "add x8, sp, #8",
+                  "aarch64 backend seam should still recognize structured local-array stack slots when signature text is cleared");
+  expect_contains(rendered, "str w9, [x8]",
+                  "aarch64 backend seam should still lower structured local-array stores without legacy store type text");
+  expect_contains(rendered, "add w0, w9, w10",
+                  "aarch64 backend seam should still lower structured local-array reload/add slices when both signature and memory type text are cleared");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should not fall back when local-array slices rely only on structured signature and memory metadata");
+}
+
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_global_int_pointer_roundtrip_ir_input() {
   const auto lowered =
       c4c::backend::lower_to_backend_ir(make_global_int_pointer_roundtrip_module());
@@ -3365,6 +3401,8 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_scaffold_accepts_explicit_lowered_extern_global_array_ir_input();
   test_aarch64_backend_scaffold_accepts_structured_extern_global_array_ir_without_compatibility_shims();
   test_aarch64_backend_scaffold_accepts_structured_extern_global_array_ir_without_compatibility_or_signature_shims();
+  test_aarch64_backend_scaffold_accepts_explicit_lowered_local_array_ir_input();
+  test_aarch64_backend_scaffold_accepts_structured_local_array_ir_without_type_or_signature_shims();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_global_int_pointer_roundtrip_ir_input();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_global_char_pointer_diff_ir_input();
   test_aarch64_backend_scaffold_accepts_structured_global_char_pointer_diff_ir_without_type_shims();

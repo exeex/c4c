@@ -1025,6 +1025,81 @@ void test_backend_ir_validator_accepts_structured_direct_call_add_imm_slice_with
               "backend IR validator should not report an error for structured direct-call add-immediate slices without compatibility text");
 }
 
+void test_backend_ir_preserves_structured_local_array_slice() {
+  const auto lowered = c4c::backend::lower_to_backend_ir(make_local_array_gep_module());
+
+  const auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
+  expect_true(main_fn != nullptr && c4c::backend::backend_function_is_definition(main_fn->signature) &&
+                  c4c::backend::backend_signature_return_scalar_type(main_fn->signature) ==
+                      c4c::backend::BackendScalarType::I32 &&
+                  main_fn->signature.name == "main" && main_fn->signature.params.empty() &&
+                  main_fn->blocks.size() == 1,
+              "backend IR should preserve the bounded local-array slice as a structured i32 main definition");
+
+  const auto* store0 =
+      main_fn != nullptr && !main_fn->blocks.empty() && main_fn->blocks.front().insts.size() > 0
+          ? std::get_if<c4c::backend::BackendStoreInst>(&main_fn->blocks.front().insts[0])
+          : nullptr;
+  const auto* store1 =
+      main_fn != nullptr && !main_fn->blocks.empty() && main_fn->blocks.front().insts.size() > 1
+          ? std::get_if<c4c::backend::BackendStoreInst>(&main_fn->blocks.front().insts[1])
+          : nullptr;
+  const auto* load0 =
+      main_fn != nullptr && !main_fn->blocks.empty() && main_fn->blocks.front().insts.size() > 2
+          ? std::get_if<c4c::backend::BackendLoadInst>(&main_fn->blocks.front().insts[2])
+          : nullptr;
+  const auto* load1 =
+      main_fn != nullptr && !main_fn->blocks.empty() && main_fn->blocks.front().insts.size() > 3
+          ? std::get_if<c4c::backend::BackendLoadInst>(&main_fn->blocks.front().insts[3])
+          : nullptr;
+  const auto* add =
+      main_fn != nullptr && !main_fn->blocks.empty() && main_fn->blocks.front().insts.size() > 4
+          ? std::get_if<c4c::backend::BackendBinaryInst>(&main_fn->blocks.front().insts[4])
+          : nullptr;
+
+  expect_true(store0 != nullptr && store1 != nullptr && load0 != nullptr && load1 != nullptr &&
+                  add != nullptr && c4c::backend::backend_store_value_type(*store0) ==
+                                       c4c::backend::BackendScalarType::I32 &&
+                  c4c::backend::backend_store_value_type(*store1) ==
+                      c4c::backend::BackendScalarType::I32 &&
+                  c4c::backend::backend_load_value_type(*load0) ==
+                      c4c::backend::BackendScalarType::I32 &&
+                  c4c::backend::backend_load_memory_type(*load0) ==
+                      c4c::backend::BackendScalarType::I32 &&
+                  c4c::backend::backend_load_value_type(*load1) ==
+                      c4c::backend::BackendScalarType::I32 &&
+                  c4c::backend::backend_load_memory_type(*load1) ==
+                      c4c::backend::BackendScalarType::I32 &&
+                  c4c::backend::backend_binary_value_type(*add) ==
+                      c4c::backend::BackendScalarType::I32,
+              "backend IR should preserve structured local-array store, load, and add metadata");
+  expect_true(store0 != nullptr && store1 != nullptr && load0 != nullptr && load1 != nullptr &&
+                  store0->address.base_symbol == "%lv.arr" &&
+                  store1->address.base_symbol == "%lv.arr" &&
+                  load0->address.base_symbol == "%lv.arr" &&
+                  load1->address.base_symbol == "%lv.arr" &&
+                  store0->address.byte_offset == 0 && store1->address.byte_offset == 4 &&
+                  load0->address.byte_offset == 0 && load1->address.byte_offset == 4,
+              "backend IR should preserve the bounded local-array stack-slot base and folded element offsets");
+  expect_true(store0 != nullptr && store1 != nullptr && load0 != nullptr && load1 != nullptr &&
+                  add != nullptr && store0->value == "4" && store1->value == "3" &&
+                  ((add->lhs == load0->result && add->rhs == load1->result) ||
+                   (add->lhs == load1->result && add->rhs == load0->result)),
+              "backend IR should preserve the bounded local-array immediate stores and add inputs");
+}
+
+void test_backend_ir_validator_accepts_structured_local_array_slice_without_raw_text() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_local_array_gep_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+  clear_backend_memory_type_compatibility_shims(lowered);
+  std::string error;
+
+  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should accept the structured local-array slice when signature and memory compatibility text are cleared");
+  expect_true(error.empty(),
+              "backend IR validator should not report an error for structured local-array slices without raw type text");
+}
+
 void test_backend_ir_printer_renders_structured_pointer_return_without_raw_text() {
   c4c::backend::BackendModule module;
   c4c::backend::BackendFunction function;
@@ -1183,6 +1258,8 @@ int main(int argc, char* argv[]) {
   test_backend_ir_printer_renders_structured_call_arg_types_without_raw_text();
   test_backend_ir_tracks_structured_two_arg_direct_call_signature_and_call_contract();
   test_backend_ir_validator_accepts_structured_direct_call_add_imm_slice_without_raw_text();
+  test_backend_ir_preserves_structured_local_array_slice();
+  test_backend_ir_validator_accepts_structured_local_array_slice_without_raw_text();
   test_backend_ir_printer_renders_lowered_extern_decl_slice();
   test_backend_ir_validator_accepts_lowered_extern_decl_slice();
   test_backend_ir_validator_accepts_structured_signature_and_call_types_without_raw_text();

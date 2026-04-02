@@ -93,6 +93,16 @@ std::optional<std::int64_t> parse_i64(std::string_view text) {
   return value;
 }
 
+std::optional<std::string_view> strip_typed_operand_prefix(std::string_view operand,
+                                                           std::string_view type_prefix) {
+  if (operand.size() <= type_prefix.size() + 1 ||
+      operand.substr(0, type_prefix.size()) != type_prefix ||
+      operand[type_prefix.size()] != ' ') {
+    return std::nullopt;
+  }
+  return operand.substr(type_prefix.size() + 1);
+}
+
 const c4c::codegen::lir::LirGlobal* find_lir_global(
     const c4c::codegen::lir::LirModule& module,
     std::string_view name) {
@@ -1431,6 +1441,201 @@ std::optional<BackendFunction> adapt_double_indirect_local_pointer_conditional_r
   return std::nullopt;
 }
 
+std::optional<BackendFunction> adapt_local_array_gep_function(
+    const c4c::codegen::lir::LirFunction& function,
+    const c4c::codegen::lir::LirModule& module,
+    const BackendFunctionSignature& signature) {
+  using namespace c4c::codegen::lir;
+
+  if (function.is_declaration || !backend_function_is_definition(signature) ||
+      signature.return_type != "i32" || signature.name != "main" ||
+      !signature.params.empty() || signature.is_vararg || function.entry.value != 0 ||
+      function.blocks.size() != 1 || function.alloca_insts.size() != 1 ||
+      !function.stack_objects.empty() || !module.globals.empty() ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* alloca = std::get_if<LirAllocaOp>(&function.alloca_insts.front());
+  if (alloca == nullptr || alloca->type_str != "[2 x i32]" || !alloca->count.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& block = function.blocks.front();
+  const auto* ret = std::get_if<LirRet>(&block.terminator);
+  if (block.label != "entry" || block.insts.empty() || ret == nullptr ||
+      !ret->value_str.has_value() || ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  std::unordered_map<std::string, std::int64_t> widened_indices;
+  std::unordered_map<std::string, std::int64_t> local_ptr_offsets;
+  std::optional<std::int64_t> store0_imm;
+  std::optional<std::int64_t> store1_imm;
+  std::optional<std::string> load0_result;
+  std::optional<std::string> load1_result;
+  std::optional<BackendBinaryInst> add_inst;
+
+  for (const auto& inst : block.insts) {
+    if (const auto* gep = std::get_if<LirGepOp>(&inst)) {
+      if (gep->element_type == "[2 x i32]" && gep->ptr == alloca->result &&
+          gep->indices.size() == 2 && gep->indices[0] == "i64 0" &&
+          gep->indices[1] == "i64 0") {
+        local_ptr_offsets[gep->result] = 0;
+        continue;
+      }
+
+      if (gep->element_type == "i32" && gep->indices.size() == 1) {
+        const auto base = local_ptr_offsets.find(gep->ptr);
+        const auto typed_index = strip_typed_operand_prefix(gep->indices.front(), "i64");
+        if (base == local_ptr_offsets.end() || !typed_index.has_value()) {
+          return std::nullopt;
+        }
+
+        std::int64_t index = 0;
+        if (const auto imm = parse_i64(*typed_index); imm.has_value()) {
+          index = *imm;
+        } else {
+          const auto widened = widened_indices.find(std::string(*typed_index));
+          if (widened == widened_indices.end()) {
+            return std::nullopt;
+          }
+          index = widened->second;
+        }
+
+        if (index < 0 || index > 1) {
+          return std::nullopt;
+        }
+        local_ptr_offsets[gep->result] = base->second + index * 4;
+        continue;
+      }
+
+      return std::nullopt;
+    }
+
+    if (const auto* cast = std::get_if<LirCastOp>(&inst)) {
+      if (cast->kind != LirCastKind::SExt || cast->from_type != "i32" ||
+          cast->to_type != "i64") {
+        return std::nullopt;
+      }
+      const auto imm = parse_i64(cast->operand);
+      if (!imm.has_value()) {
+        return std::nullopt;
+      }
+      widened_indices[cast->result] = *imm;
+      continue;
+    }
+
+    if (const auto* store = std::get_if<LirStoreOp>(&inst)) {
+      if (store->type_str != "i32") {
+        return std::nullopt;
+      }
+      const auto ptr = local_ptr_offsets.find(store->ptr);
+      const auto imm = parse_i64(store->val);
+      if (ptr == local_ptr_offsets.end() || !imm.has_value()) {
+        return std::nullopt;
+      }
+      if (ptr->second == 0) {
+        store0_imm = *imm;
+        continue;
+      }
+      if (ptr->second == 4) {
+        store1_imm = *imm;
+        continue;
+      }
+      return std::nullopt;
+    }
+
+    if (const auto* load = std::get_if<LirLoadOp>(&inst)) {
+      if (load->type_str != "i32") {
+        return std::nullopt;
+      }
+      const auto ptr = local_ptr_offsets.find(load->ptr);
+      if (ptr == local_ptr_offsets.end()) {
+        return std::nullopt;
+      }
+      if (ptr->second == 0) {
+        load0_result = load->result;
+        continue;
+      }
+      if (ptr->second == 4) {
+        load1_result = load->result;
+        continue;
+      }
+      return std::nullopt;
+    }
+
+    if (const auto* bin = std::get_if<LirBinOp>(&inst)) {
+      if (!has_binary_opcode(*bin, LirBinaryOpcode::Add) || bin->type_str != "i32") {
+        return std::nullopt;
+      }
+      add_inst = BackendBinaryInst{
+          BackendBinaryOpcode::Add,
+          bin->result,
+          bin->type_str,
+          bin->lhs,
+          bin->rhs,
+          BackendScalarType::I32,
+      };
+      continue;
+    }
+
+    return std::nullopt;
+  }
+
+  if (!store0_imm.has_value() || !store1_imm.has_value() || !load0_result.has_value() ||
+      !load1_result.has_value() || !add_inst.has_value() ||
+      *ret->value_str != add_inst->result) {
+    return std::nullopt;
+  }
+
+  const bool add_matches_loads =
+      (add_inst->lhs == *load0_result && add_inst->rhs == *load1_result) ||
+      (add_inst->lhs == *load1_result && add_inst->rhs == *load0_result);
+  if (!add_matches_loads) {
+    return std::nullopt;
+  }
+
+  BackendFunction out;
+  out.signature = signature;
+  BackendBlock out_block;
+  out_block.label = block.label;
+  out_block.insts.push_back(BackendStoreInst{
+      "i32",
+      std::to_string(*store0_imm),
+      BackendAddress{alloca->result, 0},
+      BackendScalarType::I32,
+  });
+  out_block.insts.push_back(BackendStoreInst{
+      "i32",
+      std::to_string(*store1_imm),
+      BackendAddress{alloca->result, 4},
+      BackendScalarType::I32,
+  });
+  out_block.insts.push_back(BackendLoadInst{
+      *load0_result,
+      "i32",
+      "i32",
+      BackendAddress{alloca->result, 0},
+      BackendLoadExtension::None,
+      BackendScalarType::I32,
+      BackendScalarType::I32,
+  });
+  out_block.insts.push_back(BackendLoadInst{
+      *load1_result,
+      "i32",
+      "i32",
+      BackendAddress{alloca->result, 4},
+      BackendLoadExtension::None,
+      BackendScalarType::I32,
+      BackendScalarType::I32,
+  });
+  out_block.insts.push_back(*add_inst);
+  out_block.terminator = make_backend_return(*ret->value_str, "i32");
+  out.blocks.push_back(std::move(out_block));
+  return out;
+}
+
 std::optional<BackendFunction> adapt_goto_only_constant_return_function(
     const c4c::codegen::lir::LirFunction& function,
     const BackendFunctionSignature& signature) {
@@ -2739,6 +2944,10 @@ BackendFunction adapt_function(const c4c::codegen::lir::LirFunction& function,
     return *normalized;
   }
   if (const auto normalized = adapt_string_literal_char_function(function, module, signature);
+      normalized.has_value()) {
+    return *normalized;
+  }
+  if (const auto normalized = adapt_local_array_gep_function(function, module, signature);
       normalized.has_value()) {
     return *normalized;
   }
