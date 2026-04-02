@@ -1297,6 +1297,27 @@ void test_aarch64_backend_renders_zero_arg_typed_direct_call_slice_with_whitespa
                       "aarch64 backend should not fall back to LLVM text for whitespace-tolerant zero-arg typed direct calls");
 }
 
+void test_aarch64_backend_scaffold_accepts_structured_zero_arg_direct_call_spacing_ir_without_signature_shims() {
+  auto module = make_direct_call_module();
+  auto& call = std::get<c4c::codegen::lir::LirCallOp>(
+      module.functions.back().blocks.front().insts.front());
+  call.callee_type_suffix = "( )";
+  call.args_str = "  ";
+
+  auto lowered = c4c::backend::lower_to_backend_ir(std::move(module));
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  expect_contains(rendered, ".type helper, %function",
+                  "aarch64 backend seam should still preserve spacing-tolerant lowered zero-arg helper definitions without legacy signature text");
+  expect_contains(rendered, "bl helper",
+                  "aarch64 backend seam should still lower spacing-tolerant structured zero-arg direct calls when legacy call/signature text is cleared");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should not fall back when the spacing-tolerant structured zero-arg slice relies only on backend-owned metadata");
+}
+
 void test_aarch64_backend_rejects_intrinsic_callee_from_direct_call_fast_path() {
   auto module = make_typed_direct_call_module();
   auto& call = std::get<c4c::codegen::lir::LirCallOp>(
@@ -1647,6 +1668,24 @@ void test_aarch64_backend_renders_typed_direct_call_local_arg_spacing_slice() {
                   "aarch64 backend should keep spacing-tolerant typed single-argument calls on the asm path");
   expect_contains(rendered, "bl add_one",
                   "aarch64 backend should still lower spacing-tolerant typed single-argument direct calls with bl");
+}
+
+void test_aarch64_backend_scaffold_accepts_structured_direct_call_local_arg_spacing_ir_without_signature_shims() {
+  auto lowered =
+      c4c::backend::lower_to_backend_ir(make_typed_direct_call_local_arg_with_suffix_spacing_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".type add_one, %function",
+                  "aarch64 backend seam should still preserve spacing-tolerant lowered single-argument helper definitions without legacy signature text");
+  expect_contains(rendered, "mov w0, #5",
+                  "aarch64 backend seam should still materialize the spacing-tolerant lowered single-argument direct-call immediate from structured call metadata");
+  expect_contains(rendered, "bl add_one",
+                  "aarch64 backend seam should still lower spacing-tolerant structured single-argument direct calls when legacy call/signature text is cleared");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should not fall back when the spacing-tolerant structured single-argument slice relies only on backend-owned metadata");
 }
 
 void test_aarch64_backend_renders_typed_two_arg_direct_call_local_arg_slice() {
@@ -3671,6 +3710,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_renders_direct_call_slice();
   test_aarch64_backend_scaffold_accepts_structured_direct_call_ir_without_signature_shims();
   test_aarch64_backend_renders_zero_arg_typed_direct_call_slice_with_whitespace();
+  test_aarch64_backend_scaffold_accepts_structured_zero_arg_direct_call_spacing_ir_without_signature_shims();
   test_aarch64_backend_rejects_intrinsic_callee_from_direct_call_fast_path();
   test_aarch64_backend_rejects_indirect_callee_from_direct_call_fast_path();
   test_aarch64_backend_renders_local_temp_memory_slice();
@@ -3694,6 +3734,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_renders_typed_direct_call_local_arg_slice();
   test_aarch64_backend_scaffold_accepts_structured_direct_call_add_imm_ir_without_signature_shims();
   test_aarch64_backend_renders_typed_direct_call_local_arg_spacing_slice();
+  test_aarch64_backend_scaffold_accepts_structured_direct_call_local_arg_spacing_ir_without_signature_shims();
   test_aarch64_backend_renders_typed_two_arg_direct_call_local_arg_slice();
   test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_local_arg_ir_without_signature_shims();
   test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_local_arg_spacing_ir_without_signature_shims();
