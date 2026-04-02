@@ -128,7 +128,8 @@ void clear_backend_global_linkage_compatibility_shims(c4c::backend::BackendModul
 
 void clear_backend_global_type_compatibility_shims(c4c::backend::BackendModule& module) {
   for (auto& global : module.globals) {
-    if (global.array_type.has_value()) {
+    if (global.array_type.has_value() ||
+        global.type_kind != c4c::backend::BackendValueTypeKind::Unknown) {
       global.llvm_type.clear();
     }
   }
@@ -1268,6 +1269,28 @@ void test_backend_ir_validator_accepts_structured_global_store_reload_slice_with
   expect_true(error.empty(),
               "backend IR validator should not report an error when scalar load/store type shims are cleared");
 }
+
+void test_backend_ir_printer_renders_structured_scalar_global_without_raw_global_type_text() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_global_load_module());
+  clear_backend_global_type_compatibility_shims(lowered);
+  const auto rendered = c4c::backend::print_backend_ir(lowered);
+
+  expect_contains(rendered, "@g_counter = global i32 11, align 4\n",
+                  "backend IR printer should render structured scalar globals after raw global type text is cleared");
+  expect_contains(rendered, "%t0 = load i32, ptr @g_counter\n",
+                  "backend IR printer should preserve lowered scalar global loads after raw global type text is cleared");
+}
+
+void test_backend_ir_validator_accepts_structured_scalar_global_without_raw_global_type_text() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_global_load_module());
+  clear_backend_global_type_compatibility_shims(lowered);
+  std::string error;
+
+  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should accept scalar globals described only by structured global type metadata");
+  expect_true(error.empty(),
+              "backend IR validator should not report an error when raw scalar global type text is cleared");
+}
 int main(int argc, char* argv[]) {
   if (argc >= 2) test_filter() = argv[1];
 
@@ -1290,6 +1313,8 @@ int main(int argc, char* argv[]) {
   test_backend_ir_validator_accepts_structured_signature_and_call_types_without_raw_text();
   test_backend_ir_printer_renders_lowered_global_load_slice();
   test_backend_ir_validator_accepts_lowered_global_load_slice();
+  test_backend_ir_printer_renders_structured_scalar_global_without_raw_global_type_text();
+  test_backend_ir_validator_accepts_structured_scalar_global_without_raw_global_type_text();
   test_backend_ir_printer_renders_lowered_global_store_reload_slice();
   test_backend_ir_validator_accepts_lowered_global_store_reload_slice();
   test_backend_ir_printer_renders_structured_global_store_reload_slice_without_type_text();

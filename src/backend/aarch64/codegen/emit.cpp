@@ -99,6 +99,13 @@ bool is_i32_scalar_binary(const c4c::backend::BackendBinaryInst& inst) {
          c4c::backend::BackendScalarType::I32;
 }
 
+bool is_i32_scalar_global(const c4c::backend::BackendGlobal& global) {
+  return c4c::backend::backend_global_value_type_kind(global) ==
+             c4c::backend::BackendValueTypeKind::Scalar &&
+         c4c::backend::backend_global_scalar_type(global) ==
+             c4c::backend::BackendScalarType::I32;
+}
+
 bool lir_module_needs_nonminimal_lowering(const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
 
@@ -2970,7 +2977,7 @@ std::optional<MinimalScalarGlobalLoadSlice> parse_minimal_scalar_global_load_sli
   const auto* global = find_global(module, module.globals.front().name);
   if (global == nullptr || c4c::backend::backend_global_is_extern_declaration(*global) ||
       global->storage != c4c::backend::BackendGlobalStorageKind::Mutable ||
-      global->llvm_type != "i32") {
+      !is_i32_scalar_global(*global)) {
     return std::nullopt;
   }
   std::int64_t init_imm = 0;
@@ -3095,7 +3102,7 @@ std::optional<MinimalScalarGlobalStoreReloadSlice> parse_minimal_scalar_global_s
   const auto* global = find_global(module, module.globals.front().name);
   if (global == nullptr || c4c::backend::backend_global_is_extern_declaration(*global) ||
       global->storage != c4c::backend::BackendGlobalStorageKind::Mutable ||
-      global->llvm_type != "i32") {
+      !is_i32_scalar_global(*global)) {
     return std::nullopt;
   }
   std::int64_t init_imm = 0;
@@ -3157,7 +3164,7 @@ std::optional<MinimalExternScalarGlobalLoadSlice> parse_minimal_extern_scalar_gl
       global->storage != c4c::backend::BackendGlobalStorageKind::Mutable ||
       c4c::backend::backend_global_linkage(*global) !=
           c4c::backend::BackendGlobalLinkage::External ||
-      global->llvm_type != "i32") {
+      !is_i32_scalar_global(*global)) {
     return std::nullopt;
   }
 

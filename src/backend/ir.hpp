@@ -22,6 +22,7 @@ enum class BackendValueTypeKind : unsigned char {
 };
 
 std::optional<BackendScalarType> parse_backend_scalar_type(std::string_view type);
+std::string_view render_backend_scalar_type(BackendScalarType type);
 BackendValueTypeKind parse_backend_value_type_kind(std::string_view type);
 BackendScalarType parse_backend_value_scalar_type(std::string_view type);
 
@@ -194,6 +195,8 @@ struct BackendGlobal {
   BackendGlobalLinkage linkage_kind = BackendGlobalLinkage::Default;
   StorageKind storage = StorageKind::Mutable;
   std::string llvm_type;
+  BackendValueTypeKind type_kind = BackendValueTypeKind::Unknown;
+  BackendScalarType scalar_type{};
   std::optional<ArrayType> array_type;
   Initializer initializer;
   int align_bytes = 0;
@@ -259,12 +262,32 @@ inline std::optional<BackendGlobalArrayType> backend_global_array_type(
   return parse_backend_global_array_type(global.llvm_type);
 }
 
+inline BackendValueTypeKind backend_global_value_type_kind(const BackendGlobal& global) {
+  if (global.type_kind != BackendValueTypeKind::Unknown) {
+    return global.type_kind;
+  }
+  if (backend_global_array_type(global).has_value()) {
+    return BackendValueTypeKind::Ptr;
+  }
+  return parse_backend_value_type_kind(global.llvm_type);
+}
+
+inline BackendScalarType backend_global_scalar_type(const BackendGlobal& global) {
+  if (global.type_kind == BackendValueTypeKind::Scalar) {
+    return global.scalar_type;
+  }
+  return parse_backend_value_scalar_type(global.llvm_type);
+}
+
 inline std::string render_backend_global_type(const BackendGlobal& global) {
   if (!global.llvm_type.empty()) {
     return global.llvm_type;
   }
   if (global.array_type.has_value()) {
     return render_backend_global_array_type(*global.array_type);
+  }
+  if (global.type_kind == BackendValueTypeKind::Scalar) {
+    return std::string(render_backend_scalar_type(global.scalar_type));
   }
   return {};
 }

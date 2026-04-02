@@ -54,7 +54,8 @@ void clear_backend_global_compatibility_shims(c4c::backend::BackendModule& modul
 
 void clear_backend_global_type_compatibility_shims(c4c::backend::BackendModule& module) {
   for (auto& global : module.globals) {
-    if (global.array_type.has_value()) {
+    if (global.array_type.has_value() ||
+        global.type_kind != c4c::backend::BackendValueTypeKind::Unknown) {
       global.llvm_type.clear();
     }
   }
@@ -2039,6 +2040,37 @@ void test_aarch64_backend_scaffold_accepts_structured_global_store_reload_ir_wit
                       "aarch64 backend seam should not fall back when structured scalar global store-reload slices rely only on backend-owned signature and memory metadata");
 }
 
+void test_aarch64_backend_scaffold_accepts_structured_global_load_ir_without_raw_global_type_text() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_global_load_module());
+  clear_backend_global_type_compatibility_shims(lowered);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  expect_contains(rendered, ".globl g_counter\n",
+                  "aarch64 backend seam should still preserve structured scalar globals when raw global type text is cleared");
+  expect_contains(rendered, "ldr w0, [x8, :lo12:g_counter]\n",
+                  "aarch64 backend seam should still lower structured scalar global loads from stored global type metadata");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should not fall back when scalar global loads rely on structured global type metadata only");
+}
+
+void test_aarch64_backend_scaffold_accepts_structured_global_store_reload_ir_without_raw_global_type_text() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_global_store_reload_module());
+  clear_backend_global_type_compatibility_shims(lowered);
+  clear_backend_memory_type_compatibility_shims(lowered);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  expect_contains(rendered, "str w9, [x8]\n",
+                  "aarch64 backend seam should still lower structured scalar stores when raw global type text is cleared");
+  expect_contains(rendered, "ldr w0, [x8]\n",
+                  "aarch64 backend seam should still lower structured scalar reloads from stored global type metadata");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should not fall back when scalar global store-reload slices rely on structured global and memory metadata");
+}
+
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_string_literal_ir_input() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_string_literal_char_module());
   const auto rendered = c4c::backend::emit_module(
@@ -3431,9 +3463,11 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_renders_extern_global_load_slice();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_global_load_ir_input();
   test_aarch64_backend_scaffold_accepts_structured_global_load_ir_without_compatibility_shims();
+  test_aarch64_backend_scaffold_accepts_structured_global_load_ir_without_raw_global_type_text();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_global_store_reload_ir_input();
   test_aarch64_backend_scaffold_accepts_structured_global_store_reload_ir_without_type_shims();
   test_aarch64_backend_scaffold_accepts_structured_global_store_reload_ir_without_type_or_signature_shims();
+  test_aarch64_backend_scaffold_accepts_structured_global_store_reload_ir_without_raw_global_type_text();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_string_literal_ir_input();
   test_aarch64_backend_scaffold_accepts_structured_string_literal_ir_without_type_shims();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_extern_global_load_ir_input();
