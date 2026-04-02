@@ -2363,6 +2363,78 @@ void test_aarch64_backend_scaffold_accepts_structured_global_store_reload_ir_wit
                       "aarch64 backend seam should not fall back when scalar global store-reload slices rely on structured global and memory metadata");
 }
 
+void test_aarch64_backend_scaffold_rejects_global_fast_paths_when_address_kind_disagrees() {
+  {
+    auto lowered = c4c::backend::lower_to_backend_ir(make_global_load_module());
+    auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
+    auto* load =
+        main_fn != nullptr && !main_fn->blocks.empty() && !main_fn->blocks.front().insts.empty()
+            ? std::get_if<c4c::backend::BackendLoadInst>(&main_fn->blocks.front().insts.front())
+            : nullptr;
+    expect_true(load != nullptr,
+                "aarch64 global-load regression test needs a lowered backend load to mutate");
+    if (load != nullptr) {
+      load->address.kind = c4c::backend::BackendAddressBaseKind::StringConstant;
+    }
+
+    const auto rendered = c4c::backend::emit_module(
+        c4c::backend::BackendModuleInput{lowered},
+        c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+    expect_contains(rendered, "target triple = \"aarch64-unknown-linux-gnu\"",
+                    "aarch64 backend seam should stop matching the scalar-global asm slice when structured address provenance no longer names a global");
+  }
+
+  {
+    auto lowered = c4c::backend::lower_to_backend_ir(make_global_store_reload_module());
+    auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
+    auto* store =
+        main_fn != nullptr && !main_fn->blocks.empty() && !main_fn->blocks.front().insts.empty()
+            ? std::get_if<c4c::backend::BackendStoreInst>(&main_fn->blocks.front().insts[0])
+            : nullptr;
+    auto* load = main_fn != nullptr && !main_fn->blocks.empty() &&
+                         main_fn->blocks.front().insts.size() > 1
+                     ? std::get_if<c4c::backend::BackendLoadInst>(&main_fn->blocks.front().insts[1])
+                     : nullptr;
+    expect_true(store != nullptr && load != nullptr,
+                "aarch64 global store-reload regression test needs lowered backend memory ops to mutate");
+    if (store != nullptr) {
+      store->address.kind = c4c::backend::BackendAddressBaseKind::StringConstant;
+    }
+    if (load != nullptr) {
+      load->address.kind = c4c::backend::BackendAddressBaseKind::StringConstant;
+    }
+
+    const auto rendered = c4c::backend::emit_module(
+        c4c::backend::BackendModuleInput{lowered},
+        c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+    expect_contains(rendered, "target triple = \"aarch64-unknown-linux-gnu\"",
+                    "aarch64 backend seam should stop matching the scalar global store-reload asm slice when structured address provenance no longer names a global");
+  }
+
+  {
+    auto lowered = c4c::backend::lower_to_backend_ir(make_extern_global_load_module());
+    auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
+    auto* load =
+        main_fn != nullptr && !main_fn->blocks.empty() && !main_fn->blocks.front().insts.empty()
+            ? std::get_if<c4c::backend::BackendLoadInst>(&main_fn->blocks.front().insts.front())
+            : nullptr;
+    expect_true(load != nullptr,
+                "aarch64 extern-global regression test needs a lowered backend load to mutate");
+    if (load != nullptr) {
+      load->address.kind = c4c::backend::BackendAddressBaseKind::StringConstant;
+    }
+
+    const auto rendered = c4c::backend::emit_module(
+        c4c::backend::BackendModuleInput{lowered},
+        c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+    expect_contains(rendered, "target triple = \"aarch64-unknown-linux-gnu\"",
+                    "aarch64 backend seam should stop matching the extern scalar-global asm slice when structured address provenance no longer names a global");
+  }
+}
+
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_string_literal_ir_input() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_string_literal_char_module());
   const auto rendered = c4c::backend::emit_module(
@@ -2651,6 +2723,54 @@ void test_aarch64_backend_scaffold_accepts_structured_global_char_pointer_diff_i
                   "aarch64 backend seam should still lower structured char pointer-difference compares from stored array metadata");
   expect_not_contains(rendered, "target triple =",
                       "aarch64 backend seam should not fall back when char ptrdiff slices rely on structured global array metadata");
+}
+
+void test_aarch64_backend_scaffold_rejects_global_ptrdiff_fast_paths_when_address_kind_disagrees() {
+  {
+    auto lowered = c4c::backend::lower_to_backend_ir(make_global_char_pointer_diff_module());
+    auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
+    auto* ptrdiff =
+        main_fn != nullptr && !main_fn->blocks.empty() && !main_fn->blocks.front().insts.empty()
+            ? std::get_if<c4c::backend::BackendPtrDiffEqInst>(
+                  &main_fn->blocks.front().insts.front())
+            : nullptr;
+    expect_true(ptrdiff != nullptr,
+                "aarch64 char-ptrdiff regression test needs a lowered backend ptrdiff op to mutate");
+    if (ptrdiff != nullptr) {
+      ptrdiff->lhs_address.kind = c4c::backend::BackendAddressBaseKind::StringConstant;
+      ptrdiff->rhs_address.kind = c4c::backend::BackendAddressBaseKind::StringConstant;
+    }
+
+    const auto rendered = c4c::backend::emit_module(
+        c4c::backend::BackendModuleInput{lowered},
+        c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+    expect_contains(rendered, "target triple = \"aarch64-unknown-linux-gnu\"",
+                    "aarch64 backend seam should stop matching the char ptrdiff asm slice when structured address provenance no longer names a global");
+  }
+
+  {
+    auto lowered = c4c::backend::lower_to_backend_ir(make_global_int_pointer_diff_module());
+    auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
+    auto* ptrdiff =
+        main_fn != nullptr && !main_fn->blocks.empty() && !main_fn->blocks.front().insts.empty()
+            ? std::get_if<c4c::backend::BackendPtrDiffEqInst>(
+                  &main_fn->blocks.front().insts.front())
+            : nullptr;
+    expect_true(ptrdiff != nullptr,
+                "aarch64 int-ptrdiff regression test needs a lowered backend ptrdiff op to mutate");
+    if (ptrdiff != nullptr) {
+      ptrdiff->lhs_address.kind = c4c::backend::BackendAddressBaseKind::StringConstant;
+      ptrdiff->rhs_address.kind = c4c::backend::BackendAddressBaseKind::StringConstant;
+    }
+
+    const auto rendered = c4c::backend::emit_module(
+        c4c::backend::BackendModuleInput{lowered},
+        c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+    expect_contains(rendered, "target triple = \"aarch64-unknown-linux-gnu\"",
+                    "aarch64 backend seam should stop matching the int ptrdiff asm slice when structured address provenance no longer names a global");
+  }
 }
 
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_global_int_pointer_diff_ir_input() {
@@ -3825,6 +3945,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_scaffold_accepts_structured_global_store_reload_ir_without_type_shims();
   test_aarch64_backend_scaffold_accepts_structured_global_store_reload_ir_without_type_or_signature_shims();
   test_aarch64_backend_scaffold_accepts_structured_global_store_reload_ir_without_raw_global_type_text();
+  test_aarch64_backend_scaffold_rejects_global_fast_paths_when_address_kind_disagrees();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_string_literal_ir_input();
   test_aarch64_backend_scaffold_accepts_structured_string_literal_ir_without_type_shims();
   test_aarch64_backend_scaffold_accepts_structured_string_literal_ir_without_signature_or_type_shims();
@@ -3843,6 +3964,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_scaffold_accepts_explicit_lowered_global_char_pointer_diff_ir_input();
   test_aarch64_backend_scaffold_accepts_structured_global_char_pointer_diff_ir_without_type_shims();
   test_aarch64_backend_scaffold_accepts_structured_global_char_pointer_diff_ir_without_raw_global_type_text();
+  test_aarch64_backend_scaffold_rejects_global_ptrdiff_fast_paths_when_address_kind_disagrees();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_global_int_pointer_diff_ir_input();
   test_aarch64_backend_scaffold_accepts_structured_global_int_pointer_diff_ir_without_type_shims();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_return_ir_input();

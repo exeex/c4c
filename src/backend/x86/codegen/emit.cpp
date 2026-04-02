@@ -1458,6 +1458,7 @@ std::optional<MinimalExternScalarGlobalLoadSlice> parse_minimal_extern_scalar_gl
   if (load == nullptr ||
       c4c::backend::backend_load_value_type(*load) !=
           c4c::backend::BackendScalarType::I32 ||
+      load->address.kind != c4c::backend::BackendAddressBaseKind::Global ||
       load->address.base_symbol != global->name || load->address.byte_offset != 0 ||
       *block.terminator.value != load->result) {
     return std::nullopt;
@@ -1504,6 +1505,7 @@ std::optional<MinimalScalarGlobalLoadSlice> parse_minimal_scalar_global_load_sli
   if (load == nullptr ||
       c4c::backend::backend_load_value_type(*load) !=
           c4c::backend::BackendScalarType::I32 ||
+      load->address.kind != c4c::backend::BackendAddressBaseKind::Global ||
       load->address.base_symbol != global->name || load->address.byte_offset != 0 ||
       *block.terminator.value != load->result) {
     return std::nullopt;
@@ -1556,6 +1558,8 @@ std::optional<MinimalGlobalCharPointerDiffSlice> parse_minimal_global_char_point
   if (ptrdiff == nullptr ||
       c4c::backend::backend_ptrdiff_result_type(*ptrdiff) !=
           c4c::backend::BackendScalarType::I32 ||
+      ptrdiff->lhs_address.kind != c4c::backend::BackendAddressBaseKind::Global ||
+      ptrdiff->rhs_address.kind != c4c::backend::BackendAddressBaseKind::Global ||
       ptrdiff->lhs_address.base_symbol != global->name ||
       ptrdiff->rhs_address.base_symbol != global->name ||
       ptrdiff->rhs_address.byte_offset != 0 ||
@@ -1620,6 +1624,8 @@ std::optional<MinimalGlobalIntPointerDiffSlice> parse_minimal_global_int_pointer
   if (ptrdiff == nullptr ||
       c4c::backend::backend_ptrdiff_result_type(*ptrdiff) !=
           c4c::backend::BackendScalarType::I32 ||
+      ptrdiff->lhs_address.kind != c4c::backend::BackendAddressBaseKind::Global ||
+      ptrdiff->rhs_address.kind != c4c::backend::BackendAddressBaseKind::Global ||
       ptrdiff->lhs_address.base_symbol != global->name ||
       ptrdiff->rhs_address.base_symbol != global->name ||
       ptrdiff->rhs_address.byte_offset != 0 || ptrdiff->expected_diff != 1 ||
@@ -2281,6 +2287,8 @@ std::optional<MinimalScalarGlobalStoreReloadSlice> parse_minimal_scalar_global_s
           c4c::backend::BackendScalarType::I32 ||
       c4c::backend::backend_load_value_type(*load) !=
           c4c::backend::BackendScalarType::I32 ||
+      store->address.kind != c4c::backend::BackendAddressBaseKind::Global ||
+      load->address.kind != c4c::backend::BackendAddressBaseKind::Global ||
       store->address.base_symbol != global->name ||
       store->address.byte_offset != 0 || load->address.base_symbol != global->name ||
       load->address.byte_offset != 0 || *block.terminator.value != load->result) {
