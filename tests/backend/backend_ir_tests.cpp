@@ -1356,6 +1356,53 @@ void test_backend_ir_validator_accepts_structured_scalar_global_without_raw_glob
   expect_true(error.empty(),
               "backend IR validator should not report an error when raw scalar global type text is cleared");
 }
+
+void test_backend_ir_validator_rejects_scalar_global_load_with_mismatched_structured_memory_type() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_global_load_module());
+  clear_backend_global_type_compatibility_shims(lowered);
+  auto& load = std::get<c4c::backend::BackendLoadInst>(
+      lowered.functions.front().blocks.front().insts.front());
+  load.memory_type = "i8";
+  load.memory_value_type = c4c::backend::BackendScalarType::I8;
+  load.extension = c4c::backend::BackendLoadExtension::ZeroExtend;
+  std::string error;
+
+  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should reject structured scalar-global loads whose memory type disagrees with the referenced global scalar type");
+  expect_contains(error, "load memory type: type must match referenced global element type",
+                  "backend IR validator should explain scalar-global load memory type mismatches");
+}
+
+void test_backend_ir_validator_rejects_scalar_global_store_with_mismatched_structured_type() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_global_store_reload_module());
+  clear_backend_global_type_compatibility_shims(lowered);
+  auto& store = std::get<c4c::backend::BackendStoreInst>(
+      lowered.functions.front().blocks.front().insts.front());
+  store.type_str = "i8";
+  store.value_type = c4c::backend::BackendScalarType::I8;
+  std::string error;
+
+  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should reject structured scalar-global stores whose store type disagrees with the referenced global scalar type");
+  expect_contains(error, "store type: type must match referenced global element type",
+                  "backend IR validator should explain scalar-global store type mismatches");
+}
+
+void test_backend_ir_validator_rejects_extern_global_array_load_with_mismatched_structured_memory_type() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_extern_global_array_load_module());
+  clear_backend_global_type_compatibility_shims(lowered);
+  auto& load = std::get<c4c::backend::BackendLoadInst>(
+      lowered.functions.front().blocks.front().insts.front());
+  load.memory_type = "i8";
+  load.memory_value_type = c4c::backend::BackendScalarType::I8;
+  load.extension = c4c::backend::BackendLoadExtension::ZeroExtend;
+  std::string error;
+
+  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should reject structured global-array loads whose memory type disagrees with the referenced element type");
+  expect_contains(error, "load memory type: type must match referenced global element type",
+                  "backend IR validator should explain global-array load memory type mismatches");
+}
 int main(int argc, char* argv[]) {
   if (argc >= 2) test_filter() = argv[1];
 
@@ -1381,6 +1428,8 @@ int main(int argc, char* argv[]) {
   test_backend_ir_validator_accepts_lowered_global_load_slice();
   test_backend_ir_printer_renders_structured_scalar_global_without_raw_global_type_text();
   test_backend_ir_validator_accepts_structured_scalar_global_without_raw_global_type_text();
+  test_backend_ir_validator_rejects_scalar_global_load_with_mismatched_structured_memory_type();
+  test_backend_ir_validator_rejects_scalar_global_store_with_mismatched_structured_type();
   test_backend_ir_printer_renders_lowered_global_store_reload_slice();
   test_backend_ir_validator_accepts_lowered_global_store_reload_slice();
   test_backend_ir_printer_renders_structured_global_store_reload_slice_without_type_text();
@@ -1401,6 +1450,7 @@ int main(int argc, char* argv[]) {
   test_backend_ir_printer_renders_structured_extern_global_array_load_slice_without_raw_type_text();
   test_backend_ir_validator_accepts_structured_extern_global_array_load_slice_without_raw_type_text();
   test_backend_ir_validator_rejects_extern_global_array_load_past_structured_bounds();
+  test_backend_ir_validator_rejects_extern_global_array_load_with_mismatched_structured_memory_type();
   test_backend_ir_validator_rejects_global_int_ptrdiff_past_structured_bounds();
   test_backend_ir_printer_renders_lowered_conditional_return_slice();
   test_backend_ir_validator_accepts_lowered_conditional_return_slice();

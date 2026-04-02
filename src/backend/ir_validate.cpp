@@ -137,6 +137,29 @@ bool validate_address_range(const BackendAddress& address,
   return true;
 }
 
+bool validate_address_scalar_type(
+    const BackendAddress& address,
+    BackendScalarType access_scalar_type,
+    const std::unordered_map<std::string, const BackendGlobal*>& globals,
+    std::string* error,
+    std::string_view context) {
+  const auto global_it = globals.find(address.base_symbol);
+  if (global_it == globals.end()) {
+    return true;
+  }
+
+  const auto bounds = global_bounds_info(*global_it->second);
+  if (!bounds.has_value() || bounds->element_type == BackendScalarType::Unknown) {
+    return true;
+  }
+  if (access_scalar_type != bounds->element_type) {
+    return fail(error,
+                std::string(context) +
+                    ": type must match referenced global element type");
+  }
+  return true;
+}
+
 bool validate_inst(const BackendInst& inst,
                    const std::unordered_map<std::string, const BackendGlobal*>& globals,
                    std::string* error,
@@ -258,6 +281,13 @@ bool validate_inst(const BackendInst& inst,
                                 std::string(context) + ": load address")) {
       return false;
     }
+    if (!validate_address_scalar_type(load->address,
+                                      load_memory_type,
+                                      globals,
+                                      error,
+                                      std::string(context) + ": load memory type")) {
+      return false;
+    }
     return true;
   }
 
@@ -277,6 +307,13 @@ bool validate_inst(const BackendInst& inst,
                                 globals,
                                 error,
                                 std::string(context) + ": store address")) {
+      return false;
+    }
+    if (!validate_address_scalar_type(store->address,
+                                      backend_store_value_type(*store),
+                                      globals,
+                                      error,
+                                      std::string(context) + ": store type")) {
       return false;
     }
     return true;
