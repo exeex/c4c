@@ -70,17 +70,29 @@ Source Plan: plan.md
 - [x] Step 2 completion check: all five foundation targets now either parse
   successfully and fail later in canonical/sema or were already narrowed to
   explicit later-stage blockers
+- [x] Added
+  `tests/cpp/internal/postive_case/qualified_template_operator_assign_expr_parse.cpp`
+  as a reduced parser regression for qualified `TemplateId::operator=(...)`
+  calls inside pack expansions, and taught the expression parser to accept
+  `::operator...` after a template-id owner in expression context
+- [x] Reclassified the Step 3 fronts after the qualified-operator parser fix:
+  `eastl_tuple_simple.cpp` no longer stops at
+  `ref/EASTL/include/EASTL/tuple.h:346`, and both Step 3 targets now advance
+  into later parser pressure under libstdc++ / EASTL internals instead of the
+  old `TupleLeaf<...>::operator=` expression failure
 
 ## Next Slice
 
-- run `--parse-only` and `--dump-canonical` on `eastl_memory_simple.cpp` and
-  `eastl_tuple_simple.cpp` to place both Step 3 targets on the same stage map
-- decide whether the memory / tuple fronts share the existing undeclared
-  identifier cluster or expose a distinct object-lifetime / tuple-specific
-  blocker
+- reduce the new post-fix Step 3 frontier from the shared later parser failures
+  now visible in `/usr/include/c++/14/bits/ranges_util.h`,
+  `/usr/include/c++/14/tuple`, and
+  `ref/EASTL/include/EASTL/internal/function_detail.h`
+- determine why `--parse-only` for `eastl_memory_simple.cpp` and
+  `eastl_tuple_simple.cpp` still exceeds a 5s timeout with no terminal output
+  even though `--dump-canonical` now reaches actionable parser failures
 - keep
-  `tests/cpp/internal/postive_case/namespaced_inherited_type_alias_base_member_lookup_parse.cpp`
-  green as the parser-side guardrail while Step 3 starts
+  `tests/cpp/internal/postive_case/qualified_template_operator_assign_expr_parse.cpp`
+  green as the parser-side guardrail for the fixed Step 3 expression shape
 
 ## Blockers
 
@@ -94,8 +106,14 @@ Source Plan: plan.md
 - `eastl_vector_simple.cpp` now stops at
   `ref/EASTL/include/EASTL/internal/function_detail.h:237:16` with
   `unexpected token in expression: .`
-- `eastl_memory_simple.cpp` and `eastl_tuple_simple.cpp` still need a fresh
-  post-fix reclassification before Step 3 resumes
+- `eastl_memory_simple.cpp` and `eastl_tuple_simple.cpp` no longer stop on the
+  old `TupleLeaf<...>::operator=` parser failure, but `--parse-only` still
+  times out after 5s with no terminal output while `--dump-canonical` now
+  surfaces later parser failures in `/usr/include/c++/14/bits/ranges_util.h`
+  (`expected=RPAREN got='&&'`), `/usr/include/c++/14/tuple`
+  (`expected=RPAREN got='typename'`), and the existing
+  `ref/EASTL/include/EASTL/internal/function_detail.h:237:16`
+  `unexpected token in expression: .` frontier
 - additional reduction work ruled out simpler namespace-qualified paths:
   `ns::wrap<int> value{}`, `ns::wrap<int>::type value{}`, and
   `ns::wrap<int>` with a defaulted NTTP all parse successfully, so the
@@ -124,6 +142,9 @@ Source Plan: plan.md
   blocker in record bases
 - `tests/cpp/internal/postive_case/inherited_type_alias_base_member_lookup_parse.cpp`
   now covers the inherited aliased-base member-typedef path that was fixed
+- `tests/cpp/internal/postive_case/qualified_template_operator_assign_expr_parse.cpp`
+  now covers the Step 3 qualified `TemplateId::operator=(...)` expression shape
+  that previously blocked `eastl_tuple_simple.cpp`
 - the remaining `is_signed_helper` blocker no longer depends on inherited
   `false_type` lookup alone; it requires the combination of a defaulted NTTP
   and an alias-template base carrying a dependent expression argument

@@ -1370,9 +1370,14 @@ Node* Parser::parse_primary() {
                     // instantiation and get the mangled tag.
                     if (check(TokenKind::ColonColon)) {
                         consume(); // eat ::
+                        std::string member;
                         if (check(TokenKind::Identifier)) {
-                            std::string member = cur().lexeme;
+                            member = cur().lexeme;
                             consume();
+                        } else {
+                            try_parse_operator_function_id(member);
+                        }
+                        if (!member.empty()) {
                             std::string struct_tag = ident->name;
                             // Try to instantiate via parse_base_type to get mangled tag
                             int after_member_pos = pos_;

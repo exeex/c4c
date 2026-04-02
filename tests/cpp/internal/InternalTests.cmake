@@ -154,6 +154,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     qualified_member_function_pointer_template_owner_parse
     qualified_type_start_probe_parse
     qualified_operator_template_owner_parse
+    qualified_template_operator_assign_expr_parse
     global_qualified_member_pointer_template_owner_parse
     declarator_array_suffix_staging_parse
     declarator_grouped_suffix_staging_parse
@@ -383,6 +384,15 @@ add_test(
 set_tests_properties(cpp_parse_gcc_type_trait_type_arg_dump PROPERTIES
   LABELS "internal;positive_case;cpp;parse"
   PASS_REGULAR_EXPRESSION "Decl\\(can_fill\\)"
+)
+
+add_test(
+  NAME cpp_parse_qualified_template_operator_assign_expr_dump
+  COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/postive_case/qualified_template_operator_assign_expr_parse.cpp"
+)
+set_tests_properties(cpp_parse_qualified_template_operator_assign_expr_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;parse"
+  PASS_REGULAR_EXPRESSION "Function\\(operator_assign\\)"
 )
 
 add_test(
