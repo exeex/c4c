@@ -1626,6 +1626,14 @@ c4c::backend::RegAllocIntegrationResult run_shared_aarch64_regalloc(
   return c4c::backend::run_regalloc_and_merge_clobbers(function, config, {});
 }
 
+c4c::backend::RegAllocIntegrationResult synthesize_shared_aarch64_call_crossing_regalloc(
+    const MinimalCallCrossingDirectCallSlice& slice) {
+  c4c::backend::RegAllocIntegrationResult regalloc;
+  regalloc.reg_assignments.emplace(slice.source_value, kAarch64CalleeSavedRegs.front());
+  regalloc.used_callee_saved.push_back(kAarch64CalleeSavedRegs.front());
+  return regalloc;
+}
+
 std::optional<std::string_view> strip_typed_operand_prefix(std::string_view operand,
                                                            std::string_view type_prefix) {
   if (operand.size() <= type_prefix.size() + 1 ||
@@ -6032,15 +6040,16 @@ std::string emit_module(const c4c::backend::BackendModule& module,
     }
     if (const auto slice = parse_minimal_call_crossing_direct_call_slice(module);
         slice.has_value()) {
-      if (legacy_fallback == nullptr) {
-        fail_unsupported("shared call-crossing direct-call slices still require legacy LIR fallback");
-      }
-      const auto* main_fn = find_lir_function(*legacy_fallback, "main");
-      if (main_fn == nullptr) {
-        fail_unsupported("main function for shared call-crossing direct-call slice");
+      if (legacy_fallback != nullptr) {
+        const auto* main_fn = find_lir_function(*legacy_fallback, "main");
+        if (main_fn == nullptr) {
+          fail_unsupported("main function for shared call-crossing direct-call slice");
+        }
+        return emit_minimal_call_crossing_direct_call_asm(
+            module, run_shared_aarch64_regalloc(*main_fn), *slice);
       }
       return emit_minimal_call_crossing_direct_call_asm(
-          module, run_shared_aarch64_regalloc(*main_fn), *slice);
+          module, synthesize_shared_aarch64_call_crossing_regalloc(*slice), *slice);
     }
     if (const auto imm = parse_minimal_return_imm(module); imm.has_value()) {
       return emit_minimal_return_imm_asm(module, *imm);

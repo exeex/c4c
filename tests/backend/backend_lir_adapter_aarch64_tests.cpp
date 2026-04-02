@@ -1620,6 +1620,29 @@ void test_aarch64_backend_keeps_renamed_structured_call_crossing_slice_on_asm_pa
                       "aarch64 backend seam should not fall back when the call-crossing slice relies only on structured call and callee metadata");
 }
 
+void test_aarch64_backend_scaffold_accepts_structured_call_crossing_direct_call_ir_without_signature_shims() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_typed_call_crossing_direct_call_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".type add_one, %function",
+                  "aarch64 backend seam should still preserve lowered call-crossing helper definitions without legacy signature text");
+  expect_contains(rendered, "sub sp, sp, #16",
+                  "aarch64 backend seam should still allocate the shared call-crossing frame from structured backend metadata alone");
+  expect_contains(rendered, "mov w20, #5",
+                  "aarch64 backend seam should still materialize the preserved cross-call source into a callee-saved register without legacy LIR fallback");
+  expect_contains(rendered, "mov w0, w20",
+                  "aarch64 backend seam should still marshal the structured call-crossing source through the ABI argument register");
+  expect_contains(rendered, "bl add_one",
+                  "aarch64 backend seam should still keep lowered call-crossing direct calls on the asm path when legacy call/signature text is cleared");
+  expect_contains(rendered, "add w0, w20, w0",
+                  "aarch64 backend seam should still consume the helper result directly from w0 on the pure backend-IR path");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should not fall back when the lowered call-crossing slice relies only on structured backend metadata");
+}
+
 void test_aarch64_backend_renders_typed_two_arg_direct_call_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_typed_direct_call_two_arg_module()},
@@ -4306,6 +4329,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_cleans_up_redundant_call_result_traffic_on_call_crossing_slice();
   test_aarch64_backend_keeps_spacing_tolerant_call_crossing_slice_on_asm_path();
   test_aarch64_backend_keeps_renamed_structured_call_crossing_slice_on_asm_path();
+  test_aarch64_backend_scaffold_accepts_structured_call_crossing_direct_call_ir_without_signature_shims();
   test_aarch64_backend_renders_typed_two_arg_direct_call_slice();
   test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_ir_without_signature_shims();
   test_aarch64_backend_scaffold_accepts_renamed_structured_two_arg_direct_call_ir_without_signature_shims();
