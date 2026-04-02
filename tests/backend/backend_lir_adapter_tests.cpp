@@ -557,6 +557,25 @@ void test_backend_call_helpers_decode_lir_direct_global_typed_operands() {
               "shared direct-global two-operand helper should decode spacing-tolerant LIR call operands");
 }
 
+void test_backend_call_helpers_decode_lir_direct_global_vararg_prefix() {
+  c4c::codegen::lir::LirCallOp call{
+      "%t2",
+      "i32",
+      "@printf",
+      "( ptr , ... )",
+      " ptr @.str , double %x ",
+  };
+
+  const auto parsed = c4c::backend::parse_backend_direct_global_typed_call(call);
+  expect_true(parsed.has_value() && parsed->symbol_name == "printf" &&
+                  parsed->typed_call.param_types.size() == 1 &&
+                  parsed->typed_call.param_types.front() == "ptr" &&
+                  parsed->typed_call.args.size() == 1 &&
+                  parsed->typed_call.args.front().type == "ptr" &&
+                  parsed->typed_call.args.front().operand == "@.str",
+              "shared direct-global helper should preserve the fixed typed prefix for vararg LIR calls");
+}
+
 void test_backend_call_helpers_decode_single_typed_local_operand() {
   auto module = make_typed_direct_call_local_arg_with_suffix_spacing_module();
   const auto& call = std::get<c4c::codegen::lir::LirCallOp>(
@@ -1211,6 +1230,7 @@ int main(int argc, char* argv[]) {
   test_backend_call_helpers_decode_direct_global_two_typed_operands();
   test_backend_call_helpers_decode_zero_arg_direct_global_calls();
   test_backend_call_helpers_decode_lir_direct_global_typed_operands();
+  test_backend_call_helpers_decode_lir_direct_global_vararg_prefix();
   test_backend_call_helpers_decode_single_typed_local_operand();
   test_backend_call_helpers_decode_two_typed_local_operands();
   test_backend_call_helpers_borrow_structured_typed_call_view();
