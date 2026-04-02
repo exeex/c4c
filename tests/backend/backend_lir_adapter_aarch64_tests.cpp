@@ -1576,6 +1576,50 @@ void test_aarch64_backend_keeps_spacing_tolerant_call_crossing_slice_on_asm_path
                   "aarch64 backend should still combine the decoded helper result with the preserved source register");
 }
 
+void test_aarch64_backend_keeps_renamed_structured_call_crossing_slice_on_asm_path() {
+  auto module = make_typed_call_crossing_direct_call_module();
+
+  c4c::codegen::lir::LirFunction* helper = nullptr;
+  c4c::codegen::lir::LirFunction* main_fn = nullptr;
+  for (auto& function : module.functions) {
+    if (function.name == "add_one") {
+      helper = &function;
+    } else if (function.name == "main") {
+      main_fn = &function;
+    }
+  }
+  expect_true(helper != nullptr && main_fn != nullptr,
+              "aarch64 renamed call-crossing regression test needs helper and main functions");
+  if (helper == nullptr || main_fn == nullptr) {
+    return;
+  }
+
+  helper->name = "inc_value";
+  helper->signature_text = "define i32 @inc_value(i32 %p.x)\n";
+
+  auto* call = std::get_if<c4c::codegen::lir::LirCallOp>(&main_fn->blocks.front().insts[1]);
+  expect_true(call != nullptr,
+              "aarch64 renamed call-crossing regression test needs the direct call to mutate");
+  if (call == nullptr) {
+    return;
+  }
+  call->callee = "@inc_value";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".type inc_value, %function",
+                  "aarch64 backend seam should key the call-crossing helper definition from the structured callee symbol instead of a fixed helper name");
+  expect_contains(rendered, "mov w0, w20",
+                  "aarch64 backend seam should still marshal the preserved source register through the ABI argument register for renamed call-crossing helpers");
+  expect_contains(rendered, "bl inc_value",
+                  "aarch64 backend seam should keep renamed lowered call-crossing direct calls on the asm path");
+  expect_contains(rendered, "add w0, w20, w0",
+                  "aarch64 backend seam should keep consuming the renamed helper result directly from w0");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should not fall back when the call-crossing slice relies only on structured call and callee metadata");
+}
+
 void test_aarch64_backend_renders_typed_two_arg_direct_call_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_typed_direct_call_two_arg_module()},
@@ -4220,6 +4264,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_uses_shared_regalloc_for_call_crossing_direct_call_slice();
   test_aarch64_backend_cleans_up_redundant_call_result_traffic_on_call_crossing_slice();
   test_aarch64_backend_keeps_spacing_tolerant_call_crossing_slice_on_asm_path();
+  test_aarch64_backend_keeps_renamed_structured_call_crossing_slice_on_asm_path();
   test_aarch64_backend_renders_typed_two_arg_direct_call_slice();
   test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_ir_without_signature_shims();
   test_aarch64_backend_scaffold_accepts_renamed_structured_two_arg_direct_call_ir_without_signature_shims();
