@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 2: introduce a safe transitional source layout and build wiring
-- Current slice: continue Step 2 by moving the next statement-lifetime helper cluster (`emit_member_dtor_calls` and `emit_dtor_calls`) into `src/frontend/hir/hir_stmt.cpp` so scope-exit teardown lives beside the statement dispatcher, local-decl lowering, and block-exit paths that invoke it
+- Current slice: continue Step 2 by moving the remaining destructor/defaulted-method helper cluster (`struct_has_member_dtors` and `emit_defaulted_method_body`) into `src/frontend/hir/hir_stmt.cpp` so method-body teardown and defaulted method emission live beside `emit_member_dtor_calls`, `emit_dtor_calls`, and the statement dispatcher that consume them
 
 ## Todo
 
@@ -18,6 +18,8 @@ Source Plan: plan.md
 - [ ] Step 5: run final build and regression validation
 
 ## Completed
+
+- Validation on 2026-04-02 after moving `Lowerer::emit_member_dtor_calls` and `Lowerer::emit_dtor_calls` into [`src/frontend/hir/hir_stmt.cpp`](/workspaces/c4c/src/frontend/hir/hir_stmt.cpp): scope-exit destructor emission now lives in the statement split unit beside `lower_stmt_node`, block-exit teardown, and local-declaration lowering, while [`src/frontend/hir/ast_to_hir.cpp`](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp) dropped both migrated bodies. `cmake -S . -B build` and `cmake --build build -j8` succeeded; `ctest --test-dir build -j8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 historical failing tests (`positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c`); `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passed with zero new failing tests.
 
 - Validation on 2026-04-02 after moving `Lowerer::lower_local_decl_stmt` into [`src/frontend/hir/hir_stmt.cpp`](/workspaces/c4c/src/frontend/hir/hir_stmt.cpp): local declaration lowering now lives in the statement split unit beside `lower_stmt_node`, while [`src/frontend/hir/ast_to_hir.cpp`](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp) dropped the migrated body and kept a single remaining definition site for the declaration path. `cmake --build build -j8` succeeded; `ctest --test-dir build -j8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 historical failing tests (`positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c`); the targeted rerun of that triplet matched the same blocker set; `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passed with zero new failing tests.
 

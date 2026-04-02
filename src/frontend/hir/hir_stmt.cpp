@@ -855,6 +855,96 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
   }
 }
 
+void Lowerer::emit_member_dtor_calls(FunctionCtx& ctx,
+                                     const std::string& struct_tag,
+                                     ExprId this_ptr_id,
+                                     const Node* span_node) {
+  auto sit = module_->struct_defs.find(struct_tag);
+  if (sit == module_->struct_defs.end()) return;
+  const auto& fields = sit->second.fields;
+  for (auto it = fields.rbegin(); it != fields.rend(); ++it) {
+    const auto& field = *it;
+    if (field.elem_type.base != TB_STRUCT || field.elem_type.ptr_level != 0 ||
+        !field.elem_type.tag) {
+      continue;
+    }
+    std::string ftag = field.elem_type.tag;
+    bool has_explicit_dtor = struct_destructors_.count(ftag) > 0;
+    bool has_member_dtors = struct_has_member_dtors(ftag);
+    if (!has_explicit_dtor && !has_member_dtors) continue;
+
+    MemberExpr me{};
+    me.base = this_ptr_id;
+    me.field = field.name;
+    me.is_arrow = true;
+    TypeSpec field_ts = field.elem_type;
+    ExprId member_id = append_expr(span_node, me, field_ts, ValueCategory::LValue);
+    UnaryExpr addr{};
+    addr.op = UnaryOp::AddrOf;
+    addr.operand = member_id;
+    TypeSpec ptr_ts = field_ts;
+    ptr_ts.ptr_level++;
+    ExprId member_ptr_id = append_expr(span_node, addr, ptr_ts);
+
+    if (has_explicit_dtor) {
+      auto dit = struct_destructors_.find(ftag);
+      CallExpr c{};
+      DeclRef callee_ref{};
+      callee_ref.name = dit->second.mangled_name;
+      TypeSpec fn_ts{};
+      fn_ts.base = TB_VOID;
+      TypeSpec callee_ts = fn_ts;
+      callee_ts.ptr_level++;
+      c.callee = append_expr(span_node, callee_ref, callee_ts);
+      c.args.push_back(member_ptr_id);
+      ExprId call_id = append_expr(span_node, c, fn_ts);
+      ExprStmt es{};
+      es.expr = call_id;
+      append_stmt(ctx, Stmt{StmtPayload{es}, make_span(span_node)});
+    } else {
+      emit_member_dtor_calls(ctx, ftag, member_ptr_id, span_node);
+    }
+  }
+}
+
+void Lowerer::emit_dtor_calls(FunctionCtx& ctx, size_t since, const Node* span_node) {
+  for (size_t i = ctx.dtor_stack.size(); i > since; --i) {
+    const auto& dl = ctx.dtor_stack[i - 1];
+    auto dit = struct_destructors_.find(dl.struct_tag);
+
+    DeclRef var_ref{};
+    var_ref.local = dl.local_id;
+    auto lt = ctx.local_types.find(dl.local_id.value);
+    TypeSpec var_ts{};
+    if (lt != ctx.local_types.end()) var_ts = lt->second;
+    ExprId var_id = append_expr(span_node, var_ref, var_ts, ValueCategory::LValue);
+    UnaryExpr addr{};
+    addr.op = UnaryOp::AddrOf;
+    addr.operand = var_id;
+    TypeSpec ptr_ts = var_ts;
+    ptr_ts.ptr_level++;
+    ExprId addr_id = append_expr(span_node, addr, ptr_ts);
+
+    if (dit != struct_destructors_.end()) {
+      CallExpr c{};
+      DeclRef callee_ref{};
+      callee_ref.name = dit->second.mangled_name;
+      TypeSpec fn_ts{};
+      fn_ts.base = TB_VOID;
+      TypeSpec callee_ts = fn_ts;
+      callee_ts.ptr_level++;
+      c.callee = append_expr(span_node, callee_ref, callee_ts);
+      c.args.push_back(addr_id);
+      ExprId call_id = append_expr(span_node, c, fn_ts);
+      ExprStmt es{};
+      es.expr = call_id;
+      append_stmt(ctx, Stmt{StmtPayload{es}, make_span(span_node)});
+    } else {
+      emit_member_dtor_calls(ctx, dl.struct_tag, addr_id, span_node);
+    }
+  }
+}
+
 void Lowerer::lower_stmt_node(FunctionCtx& ctx, const Node* n) {
   if (!n) return;
 
