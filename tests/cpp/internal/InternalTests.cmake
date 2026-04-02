@@ -156,6 +156,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     qualified_type_start_probe_parse
     qualified_operator_template_owner_parse
     qualified_template_operator_assign_expr_parse
+    qualified_typedef_operator_assign_expr_parse
     global_qualified_member_pointer_template_owner_parse
     declarator_array_suffix_staging_parse
     declarator_grouped_suffix_staging_parse

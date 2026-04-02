@@ -8,9 +8,10 @@ Source Plan: plan.md
 
 - Step 3: Object lifetime and tuple layer
 - Current slice: reduce and fix the shared parser frontier from
-  `ref/EASTL/include/EASTL/internal/function_detail.h` by isolating the
-  `static_cast<...>(allocator.allocate(...))` member-call expression shape now
-  reached by the Step 3 and Step 4 EASTL cases
+  `ref/EASTL/include/EASTL/internal/function.h` by determining whether the
+  pinned `Base::operator=(other);` / `object has incomplete type:
+  eastl::internal::function_detail` cluster is still parser-induced or the next
+  real semantic/canonical blocker
 
 ## Todo
 
@@ -91,6 +92,15 @@ Source Plan: plan.md
   `unexpected token in expression: .` failure is gone, and the current pinned
   frontier is now the later incomplete-type cluster in
   `ref/EASTL/include/EASTL/internal/function.h`
+- [x] Added
+  `tests/cpp/internal/postive_case/qualified_typedef_operator_assign_expr_parse.cpp`
+  as a reduced parse-only guardrail for typedef-alias-owned
+  `Base::operator=(other);` statements and taught statement parsing to route
+  `Type::operator...` shapes into expression parsing instead of local
+  declaration parsing
+- [x] Re-ran the focused EASTL/vector and qualified-operator guardrails plus
+  full-suite before/after logs; the tree stayed monotonic with the same three
+  pre-existing failures and one additional passing regression test
 
 ## Next Slice
 
@@ -100,10 +110,15 @@ Source Plan: plan.md
 - determine whether `eastl_vector_simple.cpp`'s new
   `ref/EASTL/include/EASTL/internal/function.h` incomplete-type diagnostics are
   a semantic/canonical blocker or another parser-induced partial-definition
-  artifact
+  artifact now that typedef-owner qualified operator statements no longer route
+  through local-declaration parsing
 - keep
   `tests/cpp/internal/postive_case/qualified_template_operator_assign_expr_parse.cpp`
   green as the parser-side guardrail for the fixed Step 3 expression shape
+- keep
+  `tests/cpp/internal/postive_case/qualified_typedef_operator_assign_expr_parse.cpp`
+  green as the new parser-side guardrail for typedef-owned qualified operator
+  calls
 - keep
   `tests/cpp/internal/postive_case/eastl_function_detail_allocator_member_call_parse.cpp`
   green as the guardrail for the fixed block-scope shadowed-member-call shape
@@ -121,6 +136,10 @@ Source Plan: plan.md
   `ref/EASTL/include/EASTL/internal/function.h:66:26` with
   `object has incomplete type: eastl::internal::function_detail` before the
   parse-only timeout
+- the reduced typedef-owner `Base::operator=(other);` parser shape is now fixed
+  at statement dispatch, but the standalone AST dump still prints it in a
+  declaration-like form, so more parser/canonical investigation may still be
+  needed if the EASTL `function.h` frontier does not move
 - `eastl_memory_simple.cpp` and `eastl_tuple_simple.cpp` no longer stop on the
   old `TupleLeaf<...>::operator=` or `function_detail.h` parser failures, but
   they still time out under deeper libstdc++ / EASTL parser pressure
@@ -158,6 +177,8 @@ Source Plan: plan.md
 - `tests/cpp/internal/postive_case/eastl_function_detail_allocator_member_call_parse.cpp`
   now covers the block-scope `allocator.deallocate(...)` expression statement
   that previously misparsed as a declaration after `func->~Functor()`
+- `tests/cpp/internal/postive_case/qualified_typedef_operator_assign_expr_parse.cpp`
+  now covers typedef-owned qualified operator calls in statement position
 - the remaining `is_signed_helper` blocker no longer depends on inherited
   `false_type` lookup alone; it requires the combination of a defaulted NTTP
   and an alias-template base carrying a dependent expression argument
