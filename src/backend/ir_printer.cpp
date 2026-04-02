@@ -96,16 +96,18 @@ void render_inst(std::ostringstream& out, const BackendInst& inst) {
   if (call == nullptr) {
     const auto* load = std::get_if<BackendLoadInst>(&inst);
     if (load != nullptr) {
+      const auto value_type = render_backend_load_value_type(*load);
+      const auto memory_type = render_backend_load_memory_type(*load);
       out << "  " << load->result << " = load ";
-      if (!load->memory_type.empty() && load->memory_type != load->type_str) {
-        out << load->type_str << " from " << load->memory_type;
+      if (memory_type != value_type) {
+        out << value_type << " from " << memory_type;
         if (load->extension == BackendLoadExtension::SignExtend) {
           out << " sext";
         } else if (load->extension == BackendLoadExtension::ZeroExtend) {
           out << " zext";
         }
       } else {
-        out << load->type_str;
+        out << value_type;
       }
       out << ", ptr @" << load->address.base_symbol;
       if (load->address.byte_offset != 0) {
@@ -117,7 +119,8 @@ void render_inst(std::ostringstream& out, const BackendInst& inst) {
 
     const auto* store = std::get_if<BackendStoreInst>(&inst);
     if (store != nullptr) {
-      out << "  store " << store->type_str << " " << store->value << ", ptr @"
+      out << "  store " << render_backend_store_value_type(*store) << " "
+          << store->value << ", ptr @"
           << store->address.base_symbol;
       if (store->address.byte_offset != 0) {
         out << " + " << store->address.byte_offset;
@@ -130,7 +133,8 @@ void render_inst(std::ostringstream& out, const BackendInst& inst) {
     if (ptrdiff == nullptr) {
       return;
     }
-    out << "  " << ptrdiff->result << " = ptrdiff_eq " << ptrdiff->type_str
+    out << "  " << ptrdiff->result << " = ptrdiff_eq "
+        << render_backend_ptrdiff_result_type(*ptrdiff)
         << ", ptr @" << ptrdiff->lhs_address.base_symbol;
     if (ptrdiff->lhs_address.byte_offset != 0) {
       out << " + " << ptrdiff->lhs_address.byte_offset;

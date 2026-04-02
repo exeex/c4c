@@ -49,6 +49,35 @@ void clear_backend_global_compatibility_shims(c4c::backend::BackendModule& modul
   }
 }
 
+void clear_backend_memory_type_compatibility_shims(c4c::backend::BackendModule& module) {
+  for (auto& function : module.functions) {
+    for (auto& block : function.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* load = std::get_if<c4c::backend::BackendLoadInst>(&inst)) {
+          if (load->value_type != c4c::backend::BackendScalarType::Unknown) {
+            load->type_str.clear();
+          }
+          if (load->memory_value_type != c4c::backend::BackendScalarType::Unknown) {
+            load->memory_type.clear();
+          }
+          continue;
+        }
+        if (auto* store = std::get_if<c4c::backend::BackendStoreInst>(&inst)) {
+          if (store->value_type != c4c::backend::BackendScalarType::Unknown) {
+            store->type_str.clear();
+          }
+          continue;
+        }
+        if (auto* ptrdiff = std::get_if<c4c::backend::BackendPtrDiffEqInst>(&inst)) {
+          if (ptrdiff->result_type != c4c::backend::BackendScalarType::Unknown) {
+            ptrdiff->type_str.clear();
+          }
+        }
+      }
+    }
+  }
+}
+
 c4c::codegen::lir::LirModule make_param_slot_module() {
   using namespace c4c::codegen::lir;
 
@@ -1851,6 +1880,21 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_global_store_reload_
                       "aarch64 backend seam should not fall back to backend IR text for lowered global store-reload slices");
 }
 
+void test_aarch64_backend_scaffold_accepts_structured_global_store_reload_ir_without_type_shims() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_global_store_reload_module());
+  clear_backend_memory_type_compatibility_shims(lowered);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  expect_contains(rendered, "str w9, [x8]\n",
+                  "aarch64 backend seam should still lower structured scalar stores without legacy store type text");
+  expect_contains(rendered, "ldr w0, [x8]\n",
+                  "aarch64 backend seam should still lower structured scalar reloads without legacy load type text");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should not fall back when scalar load/store metadata is present without type shims");
+}
+
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_string_literal_ir_input() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_string_literal_char_module());
   const auto rendered = c4c::backend::emit_module(
@@ -1869,6 +1913,19 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_string_literal_ir_in
                   "aarch64 backend seam should lower the explicit backend-IR sign-extension directly");
   expect_not_contains(rendered, "target triple =",
                       "aarch64 backend seam should not fall back to backend IR text for lowered string literals");
+}
+
+void test_aarch64_backend_scaffold_accepts_structured_string_literal_ir_without_type_shims() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_string_literal_char_module());
+  clear_backend_memory_type_compatibility_shims(lowered);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  expect_contains(rendered, "ldrb w0, [x8, #1]\n  sxtb w0, w0\n",
+                  "aarch64 backend seam should still lower widened string-literal loads from structured scalar metadata without legacy type text");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should not fall back when widened load metadata is present without type shims");
 }
 
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_extern_global_load_ir_input() {
@@ -1965,6 +2022,19 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_global_int_pointer_d
                   "aarch64 backend seam should lower the explicit backend-IR int pointer-difference scaling directly");
   expect_not_contains(rendered, "target triple =",
                       "aarch64 backend seam should not fall back to backend IR text for lowered int pointer differences");
+}
+
+void test_aarch64_backend_scaffold_accepts_structured_global_int_pointer_diff_ir_without_type_shims() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_global_int_pointer_diff_module());
+  clear_backend_memory_type_compatibility_shims(lowered);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  expect_contains(rendered, "lsr x8, x8, #2\n",
+                  "aarch64 backend seam should still lower structured int pointer-difference scaling without legacy result type text");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should not fall back when ptrdiff metadata is present without type shims");
 }
 
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_return_ir_input() {
@@ -3017,13 +3087,16 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_scaffold_accepts_explicit_lowered_global_load_ir_input();
   test_aarch64_backend_scaffold_accepts_structured_global_load_ir_without_compatibility_shims();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_global_store_reload_ir_input();
+  test_aarch64_backend_scaffold_accepts_structured_global_store_reload_ir_without_type_shims();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_string_literal_ir_input();
+  test_aarch64_backend_scaffold_accepts_structured_string_literal_ir_without_type_shims();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_extern_global_load_ir_input();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_extern_global_array_ir_input();
   test_aarch64_backend_scaffold_accepts_structured_extern_global_array_ir_without_compatibility_shims();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_global_int_pointer_roundtrip_ir_input();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_global_char_pointer_diff_ir_input();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_global_int_pointer_diff_ir_input();
+  test_aarch64_backend_scaffold_accepts_structured_global_int_pointer_diff_ir_without_type_shims();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_return_ir_input();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_ir_input();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_add_ir_input();

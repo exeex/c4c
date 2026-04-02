@@ -465,6 +465,8 @@ std::optional<BackendFunction> adapt_string_literal_char_function(
       BackendAddress{string_const->pool_name.substr(1), *byte_index},
       extend->kind == LirCastKind::SExt ? BackendLoadExtension::SignExtend
                                         : BackendLoadExtension::ZeroExtend,
+      BackendScalarType::I32,
+      BackendScalarType::I8,
   });
   out_block.terminator = BackendReturn{*ret->value_str, "i32"};
   out.blocks.push_back(std::move(out_block));
@@ -2114,6 +2116,9 @@ std::optional<BackendFunction> adapt_direct_global_load_function(
           load->type_str,
           load->type_str,
           BackendAddress{global->name, 0},
+          BackendLoadExtension::None,
+          BackendScalarType::I32,
+          BackendScalarType::I32,
       });
   out_block.terminator = BackendReturn{*ret->value_str, "i32"};
   out.blocks.push_back(std::move(out_block));
@@ -2166,12 +2171,16 @@ std::optional<BackendFunction> adapt_direct_global_store_reload_function(
       store->type_str,
       store->val,
       BackendAddress{global->name, 0},
+      BackendScalarType::I32,
   });
   out_block.insts.push_back(BackendLoadInst{
       load->result,
       load->type_str,
       load->type_str,
       BackendAddress{global->name, 0},
+      BackendLoadExtension::None,
+      BackendScalarType::I32,
+      BackendScalarType::I32,
   });
   out_block.terminator = BackendReturn{*ret->value_str, "i32"};
   out.blocks.push_back(std::move(out_block));
@@ -2252,6 +2261,9 @@ std::optional<BackendFunction> adapt_global_int_pointer_roundtrip_function(
           final_load->type_str,
           final_load->type_str,
           BackendAddress{global->name, 0},
+          BackendLoadExtension::None,
+          BackendScalarType::I32,
+          BackendScalarType::I32,
       });
   out_block.terminator = BackendReturn{*ret->value_str, "i32"};
   out.blocks.push_back(std::move(out_block));
@@ -2319,6 +2331,9 @@ std::optional<BackendFunction> adapt_indexed_global_array_load_function(
       load->type_str,
       load->type_str,
       BackendAddress{global->name, *element_index * 4},
+      BackendLoadExtension::None,
+      BackendScalarType::I32,
+      BackendScalarType::I32,
   });
   out_block.terminator = BackendReturn{*ret->value_str, "i32"};
   out.blocks.push_back(std::move(out_block));
@@ -2449,6 +2464,8 @@ std::optional<BackendFunction> adapt_global_char_pointer_diff_function(
       BackendAddress{global.name, 0},
       1,
       *expected_value,
+      BackendScalarType::I32,
+      BackendScalarType::I8,
   });
   out_block.terminator = BackendReturn{*ret->value_str, "i32"};
   out.blocks.push_back(std::move(out_block));
@@ -2584,6 +2601,8 @@ std::optional<BackendFunction> adapt_global_int_pointer_diff_function(
       BackendAddress{global.name, 0},
       *element_size,
       *expected_value,
+      BackendScalarType::I32,
+      BackendScalarType::I32,
   });
   out_block.terminator = BackendReturn{*ret->value_str, "i32"};
   out.blocks.push_back(std::move(out_block));

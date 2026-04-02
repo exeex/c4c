@@ -58,6 +58,35 @@ void clear_backend_global_compatibility_shims(c4c::backend::BackendModule& modul
   }
 }
 
+void clear_backend_memory_type_compatibility_shims(c4c::backend::BackendModule& module) {
+  for (auto& function : module.functions) {
+    for (auto& block : function.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* load = std::get_if<c4c::backend::BackendLoadInst>(&inst)) {
+          if (load->value_type != c4c::backend::BackendScalarType::Unknown) {
+            load->type_str.clear();
+          }
+          if (load->memory_value_type != c4c::backend::BackendScalarType::Unknown) {
+            load->memory_type.clear();
+          }
+          continue;
+        }
+        if (auto* store = std::get_if<c4c::backend::BackendStoreInst>(&inst)) {
+          if (store->value_type != c4c::backend::BackendScalarType::Unknown) {
+            store->type_str.clear();
+          }
+          continue;
+        }
+        if (auto* ptrdiff = std::get_if<c4c::backend::BackendPtrDiffEqInst>(&inst)) {
+          if (ptrdiff->result_type != c4c::backend::BackendScalarType::Unknown) {
+            ptrdiff->type_str.clear();
+          }
+        }
+      }
+    }
+  }
+}
+
 
 
 
@@ -547,6 +576,21 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_global_store_reload_ir_i
                       "x86 backend seam should not fall back to backend IR text for lowered global store-reload slices");
 }
 
+void test_x86_backend_scaffold_accepts_structured_global_store_reload_ir_without_type_shims() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_x86_global_store_reload_module());
+  clear_backend_memory_type_compatibility_shims(lowered);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, "mov dword ptr [rax], 7\n",
+                  "x86 backend seam should still lower structured scalar stores without legacy store type text");
+  expect_contains(rendered, "mov eax, dword ptr [rax]\n",
+                  "x86 backend seam should still lower structured scalar reloads without legacy load type text");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back when scalar load/store metadata is present without type shims");
+}
+
 void test_x86_backend_scaffold_accepts_explicit_lowered_string_literal_ir_input() {
   const auto lowered =
       c4c::backend::lower_to_backend_ir(make_x86_string_literal_char_module());
@@ -564,6 +608,19 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_string_literal_ir_input(
                   "x86 backend seam should lower the explicit backend-IR widened string byte load directly");
   expect_not_contains(rendered, "target triple =",
                       "x86 backend seam should not fall back to backend IR text for lowered string literals");
+}
+
+void test_x86_backend_scaffold_accepts_structured_string_literal_ir_without_type_shims() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_x86_string_literal_char_module());
+  clear_backend_memory_type_compatibility_shims(lowered);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, "movsx eax, byte ptr [rax + 1]\n",
+                  "x86 backend seam should still lower widened string-literal loads from structured scalar metadata without legacy type text");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back when widened load metadata is present without type shims");
 }
 
 void test_x86_backend_scaffold_accepts_explicit_lowered_extern_global_array_ir_input() {
@@ -646,6 +703,19 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_global_int_pointer_diff_
                   "x86 backend seam should lower the explicit backend-IR int pointer-difference scaling directly");
   expect_not_contains(rendered, "target triple =",
                       "x86 backend seam should not fall back to backend IR text for lowered int pointer differences");
+}
+
+void test_x86_backend_scaffold_accepts_structured_global_int_pointer_diff_ir_without_type_shims() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_x86_global_int_pointer_diff_module());
+  clear_backend_memory_type_compatibility_shims(lowered);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, "sar rcx, 2\n",
+                  "x86 backend seam should still lower structured int pointer-difference scaling without legacy result type text");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back when ptrdiff metadata is present without type shims");
 }
 
 void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_return_ir_input() {
@@ -2512,13 +2582,15 @@ RUN_TEST(test_x86_backend_scaffold_routes_through_explicit_emit_surface);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_global_load_ir_input);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_global_load_ir_without_compatibility_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_global_store_reload_ir_input);
- 
+  RUN_TEST(test_x86_backend_scaffold_accepts_structured_global_store_reload_ir_without_type_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_string_literal_ir_input);
+  RUN_TEST(test_x86_backend_scaffold_accepts_structured_string_literal_ir_without_type_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_extern_global_array_ir_input);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_extern_global_array_ir_without_compatibility_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_global_int_pointer_roundtrip_ir_input);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_global_char_pointer_diff_ir_input);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_global_int_pointer_diff_ir_input);
+  RUN_TEST(test_x86_backend_scaffold_accepts_structured_global_int_pointer_diff_ir_without_type_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_conditional_return_ir_input);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_ir_input);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_add_ir_input);

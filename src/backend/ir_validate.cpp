@@ -150,18 +150,22 @@ bool validate_inst(const BackendInst& inst, std::string* error, std::string_view
     if (load->result.empty()) {
       return fail(error, std::string(context) + ": load result must not be empty");
     }
-    if (load->type_str.empty()) {
+    const auto load_value_type = backend_load_value_type(*load);
+    if (load_value_type == BackendScalarType::Unknown) {
       return fail(error, std::string(context) + ": load type must not be empty");
     }
-    if (!load->memory_type.empty() &&
-        load->extension == BackendLoadExtension::None &&
-        load->memory_type != load->type_str) {
+    const auto load_memory_type = backend_load_memory_type(*load);
+    if (load_memory_type == BackendScalarType::Unknown) {
+      return fail(error, std::string(context) + ": load memory type must not be empty");
+    }
+    if (load->extension == BackendLoadExtension::None &&
+        load_memory_type != load_value_type) {
       return fail(error,
                   std::string(context) +
                       ": widened loads must declare an extension kind");
     }
-    if (load->memory_type.empty() &&
-        load->extension != BackendLoadExtension::None) {
+    if (load->extension != BackendLoadExtension::None &&
+        load_memory_type == load_value_type) {
       return fail(error,
                   std::string(context) +
                       ": extended loads must declare a memory type");
@@ -174,7 +178,7 @@ bool validate_inst(const BackendInst& inst, std::string* error, std::string_view
 
   const auto* store = std::get_if<BackendStoreInst>(&inst);
   if (store != nullptr) {
-    if (store->type_str.empty()) {
+    if (backend_store_value_type(*store) == BackendScalarType::Unknown) {
       return fail(error, std::string(context) + ": store type must not be empty");
     }
     if (store->value.empty()) {
@@ -193,7 +197,7 @@ bool validate_inst(const BackendInst& inst, std::string* error, std::string_view
   if (ptrdiff->result.empty()) {
     return fail(error, std::string(context) + ": ptrdiff result must not be empty");
   }
-  if (ptrdiff->type_str.empty()) {
+  if (backend_ptrdiff_result_type(*ptrdiff) == BackendScalarType::Unknown) {
     return fail(error, std::string(context) + ": ptrdiff type must not be empty");
   }
   if (ptrdiff->lhs_address.base_symbol.empty() ||
@@ -202,6 +206,14 @@ bool validate_inst(const BackendInst& inst, std::string* error, std::string_view
   }
   if (ptrdiff->element_size <= 0) {
     return fail(error, std::string(context) + ": ptrdiff element size must be positive");
+  }
+  const auto element_type = backend_ptrdiff_element_type(*ptrdiff);
+  if (element_type != BackendScalarType::Unknown &&
+      backend_scalar_type_size_bytes(element_type) !=
+          static_cast<std::size_t>(ptrdiff->element_size)) {
+    return fail(error,
+                std::string(context) +
+                    ": ptrdiff element type must match element size");
   }
   return true;
 }

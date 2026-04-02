@@ -1348,7 +1348,9 @@ std::optional<MinimalExternGlobalArrayLoadSlice> parse_minimal_extern_global_arr
   }
 
   const auto* load = std::get_if<c4c::backend::BackendLoadInst>(&block.insts.front());
-  if (load == nullptr || load->type_str != "i32" ||
+  if (load == nullptr ||
+      c4c::backend::backend_load_value_type(*load) !=
+          c4c::backend::BackendScalarType::I32 ||
       load->address.base_symbol != global->name ||
       *block.terminator.value != load->result || load->address.byte_offset < 0) {
     return std::nullopt;
@@ -1391,7 +1393,9 @@ std::optional<MinimalScalarGlobalLoadSlice> parse_minimal_scalar_global_load_sli
   }
 
   const auto* load = std::get_if<c4c::backend::BackendLoadInst>(&block.insts.front());
-  if (load == nullptr || load->type_str != "i32" ||
+  if (load == nullptr ||
+      c4c::backend::backend_load_value_type(*load) !=
+          c4c::backend::BackendScalarType::I32 ||
       load->address.base_symbol != global->name || load->address.byte_offset != 0 ||
       *block.terminator.value != load->result) {
     return std::nullopt;
@@ -1443,10 +1447,15 @@ std::optional<MinimalGlobalCharPointerDiffSlice> parse_minimal_global_char_point
   }
 
   const auto* ptrdiff = std::get_if<c4c::backend::BackendPtrDiffEqInst>(&block.insts.front());
-  if (ptrdiff == nullptr || ptrdiff->type_str != "i32" ||
+  if (ptrdiff == nullptr ||
+      c4c::backend::backend_ptrdiff_result_type(*ptrdiff) !=
+          c4c::backend::BackendScalarType::I32 ||
       ptrdiff->lhs_address.base_symbol != global->name ||
       ptrdiff->rhs_address.base_symbol != global->name ||
-      ptrdiff->rhs_address.byte_offset != 0 || ptrdiff->element_size != 1 ||
+      ptrdiff->rhs_address.byte_offset != 0 ||
+      c4c::backend::backend_ptrdiff_element_type(*ptrdiff) !=
+          c4c::backend::BackendScalarType::I8 ||
+      ptrdiff->element_size != 1 ||
       ptrdiff->expected_diff != ptrdiff->lhs_address.byte_offset ||
       ptrdiff->lhs_address.byte_offset <= 0 ||
       ptrdiff->lhs_address.byte_offset >= *global_size ||
@@ -1504,11 +1513,15 @@ std::optional<MinimalGlobalIntPointerDiffSlice> parse_minimal_global_int_pointer
   }
 
   const auto* ptrdiff = std::get_if<c4c::backend::BackendPtrDiffEqInst>(&block.insts.front());
-  if (ptrdiff == nullptr || ptrdiff->type_str != "i32" ||
+  if (ptrdiff == nullptr ||
+      c4c::backend::backend_ptrdiff_result_type(*ptrdiff) !=
+          c4c::backend::BackendScalarType::I32 ||
       ptrdiff->lhs_address.base_symbol != global->name ||
       ptrdiff->rhs_address.base_symbol != global->name ||
       ptrdiff->rhs_address.byte_offset != 0 || ptrdiff->expected_diff != 1 ||
       ptrdiff->lhs_address.byte_offset != ptrdiff->element_size ||
+      c4c::backend::backend_ptrdiff_element_type(*ptrdiff) !=
+          c4c::backend::BackendScalarType::I32 ||
       ptrdiff->element_size != 4 || *block.terminator.value != ptrdiff->result) {
     return std::nullopt;
   }
@@ -2092,7 +2105,10 @@ std::optional<MinimalStringLiteralCharSlice> parse_minimal_string_literal_char_s
 
   const auto* load = std::get_if<c4c::backend::BackendLoadInst>(&block.insts.front());
   if (load == nullptr || load->result != *block.terminator.value ||
-      load->type_str != "i32" || load->memory_type != "i8" ||
+      c4c::backend::backend_load_value_type(*load) !=
+          c4c::backend::BackendScalarType::I32 ||
+      c4c::backend::backend_load_memory_type(*load) !=
+          c4c::backend::BackendScalarType::I8 ||
       load->address.base_symbol != string_const->name ||
       load->address.byte_offset < 0 ||
       load->address.byte_offset >=
@@ -2146,8 +2162,12 @@ std::optional<MinimalScalarGlobalStoreReloadSlice> parse_minimal_scalar_global_s
 
   const auto* store = std::get_if<c4c::backend::BackendStoreInst>(&block.insts[0]);
   const auto* load = std::get_if<c4c::backend::BackendLoadInst>(&block.insts[1]);
-  if (store == nullptr || load == nullptr || store->type_str != "i32" ||
-      load->type_str != "i32" || store->address.base_symbol != global->name ||
+  if (store == nullptr || load == nullptr ||
+      c4c::backend::backend_store_value_type(*store) !=
+          c4c::backend::BackendScalarType::I32 ||
+      c4c::backend::backend_load_value_type(*load) !=
+          c4c::backend::BackendScalarType::I32 ||
+      store->address.base_symbol != global->name ||
       store->address.byte_offset != 0 || load->address.base_symbol != global->name ||
       load->address.byte_offset != 0 || *block.terminator.value != load->result) {
     return std::nullopt;

@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -262,6 +263,57 @@ struct BackendAddress {
   std::int64_t byte_offset = 0;
 };
 
+enum class BackendScalarType : unsigned char {
+  Unknown,
+  I8,
+  I32,
+};
+
+inline std::optional<BackendScalarType> parse_backend_scalar_type(std::string_view type) {
+  if (type == "i8") {
+    return BackendScalarType::I8;
+  }
+  if (type == "i32") {
+    return BackendScalarType::I32;
+  }
+  return std::nullopt;
+}
+
+inline std::string_view render_backend_scalar_type(BackendScalarType type) {
+  switch (type) {
+    case BackendScalarType::I8:
+      return "i8";
+    case BackendScalarType::I32:
+      return "i32";
+    case BackendScalarType::Unknown:
+      break;
+  }
+
+  return {};
+}
+
+inline std::size_t backend_scalar_type_size_bytes(BackendScalarType type) {
+  switch (type) {
+    case BackendScalarType::I8:
+      return 1;
+    case BackendScalarType::I32:
+      return 4;
+    case BackendScalarType::Unknown:
+      break;
+  }
+
+  return 0;
+}
+
+inline std::string render_backend_scalar_type_or_fallback(BackendScalarType type,
+                                                          std::string_view fallback) {
+  const auto rendered = render_backend_scalar_type(type);
+  if (!rendered.empty()) {
+    return std::string(rendered);
+  }
+  return std::string(fallback);
+}
+
 enum class BackendLoadExtension {
   None,
   SignExtend,
@@ -274,12 +326,15 @@ struct BackendLoadInst {
   std::string memory_type;
   BackendAddress address;
   BackendLoadExtension extension = BackendLoadExtension::None;
+  BackendScalarType value_type = BackendScalarType::Unknown;
+  BackendScalarType memory_value_type = BackendScalarType::Unknown;
 };
 
 struct BackendStoreInst {
   std::string type_str;
   std::string value;
   BackendAddress address;
+  BackendScalarType value_type = BackendScalarType::Unknown;
 };
 
 struct BackendPtrDiffEqInst {
@@ -289,7 +344,76 @@ struct BackendPtrDiffEqInst {
   BackendAddress rhs_address;
   std::int64_t element_size = 1;
   std::int64_t expected_diff = 0;
+  BackendScalarType result_type = BackendScalarType::Unknown;
+  BackendScalarType element_type = BackendScalarType::Unknown;
 };
+
+inline BackendScalarType backend_load_value_type(const BackendLoadInst& load) {
+  if (load.value_type != BackendScalarType::Unknown) {
+    return load.value_type;
+  }
+  return parse_backend_scalar_type(load.type_str).value_or(BackendScalarType::Unknown);
+}
+
+inline BackendScalarType backend_load_memory_type(const BackendLoadInst& load) {
+  if (load.memory_value_type != BackendScalarType::Unknown) {
+    return load.memory_value_type;
+  }
+  if (!load.memory_type.empty()) {
+    return parse_backend_scalar_type(load.memory_type).value_or(BackendScalarType::Unknown);
+  }
+  return backend_load_value_type(load);
+}
+
+inline std::string render_backend_load_value_type(const BackendLoadInst& load) {
+  return render_backend_scalar_type_or_fallback(backend_load_value_type(load), load.type_str);
+}
+
+inline std::string render_backend_load_memory_type(const BackendLoadInst& load) {
+  if (load.memory_type.empty() && load.memory_value_type == BackendScalarType::Unknown) {
+    return render_backend_load_value_type(load);
+  }
+  return render_backend_scalar_type_or_fallback(backend_load_memory_type(load),
+                                                load.memory_type);
+}
+
+inline BackendScalarType backend_store_value_type(const BackendStoreInst& store) {
+  if (store.value_type != BackendScalarType::Unknown) {
+    return store.value_type;
+  }
+  return parse_backend_scalar_type(store.type_str).value_or(BackendScalarType::Unknown);
+}
+
+inline std::string render_backend_store_value_type(const BackendStoreInst& store) {
+  return render_backend_scalar_type_or_fallback(backend_store_value_type(store),
+                                                store.type_str);
+}
+
+inline BackendScalarType backend_ptrdiff_result_type(const BackendPtrDiffEqInst& ptrdiff) {
+  if (ptrdiff.result_type != BackendScalarType::Unknown) {
+    return ptrdiff.result_type;
+  }
+  return parse_backend_scalar_type(ptrdiff.type_str).value_or(BackendScalarType::Unknown);
+}
+
+inline BackendScalarType backend_ptrdiff_element_type(const BackendPtrDiffEqInst& ptrdiff) {
+  if (ptrdiff.element_type != BackendScalarType::Unknown) {
+    return ptrdiff.element_type;
+  }
+  switch (ptrdiff.element_size) {
+    case 1:
+      return BackendScalarType::I8;
+    case 4:
+      return BackendScalarType::I32;
+    default:
+      return BackendScalarType::Unknown;
+  }
+}
+
+inline std::string render_backend_ptrdiff_result_type(const BackendPtrDiffEqInst& ptrdiff) {
+  return render_backend_scalar_type_or_fallback(backend_ptrdiff_result_type(ptrdiff),
+                                                ptrdiff.type_str);
+}
 
 using BackendInst = std::variant<BackendPhiInst,
                                  BackendBinaryInst,

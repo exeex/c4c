@@ -6,10 +6,8 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 3: select the next backend-owned semantic surface after the structured
-      global-metadata consumer cleanup, likely centered on load/store widening
-      or pointer-difference metadata that still carries type semantics as raw
-      strings
+- Step 5: run broader regression validation for the structured load/store/
+      ptrdiff scalar-metadata slice after the focused backend seam checks
 
 ## Incomplete Items
 
@@ -81,14 +79,18 @@ Source Plan: plan.md
       `is_extern_decl` shims onto structured storage + initializer metadata,
       and cover the compatibility-shim-free scalar-global and extern-array
       slices directly in the backend seam tests
+- [x] Step 3 slice: add structured scalar-width metadata for
+      `BackendLoadInst`, `BackendStoreInst`, and `BackendPtrDiffEqInst`, keep
+      the legacy type text as compatibility shims, and switch the backend IR
+      printer/validator plus x86/aarch64 seam recognizers onto the structured
+      metadata when present
 
 ## Next Intended Slice
 
-- Return to Step 3 and convert the next backend IR semantic surface that still
-  relies on text-shaped payloads, likely starting with load/store widening or
-  pointer-difference metadata that still leans on string-carried type text,
-  while keeping the structured global consumer boundary and direct-call
-  boundary stable.
+- Land the structured scalar-width metadata slice for load/store/ptrdiff and
+  then either remove the remaining target seam dependence on the legacy
+  `type_str` / `memory_type` shims for those migrated paths more broadly or
+  move to the next backend-IR semantic surface that is still text-carried.
 
 ## Blockers
 
@@ -142,6 +144,16 @@ Source Plan: plan.md
 - The latest full-suite run is recorded in `test_after.log`; the failing tests
   listed above still match the monotonic regression guard baseline from
   `test_fail_before.log` vs `test_fail_after.log`.
+- This iteration added structured scalar-width metadata to
+  `BackendLoadInst`, `BackendStoreInst`, and `BackendPtrDiffEqInst`; the
+  printer, validator, and the x86/aarch64 lowered-backend seam recognizers now
+  prefer that structured metadata and only fall back to `type_str` /
+  `memory_type` when needed for compatibility.
+- Focused verification passed for `backend_ir_tests` and
+  `backend_lir_adapter_x86_64_tests`; `backend_lir_adapter_aarch64_tests`
+  still has many pre-existing unrelated failures as a whole, so this slice was
+  checked there by rebuilding the binary and confirming the new structured-
+  scalar seam assertions no longer appear among the reported failures.
 - `src/backend/lowering/extern_lowering.cpp` now owns extern-call parameter
   inference and extern-declaration lowering; `src/backend/lir_adapter.cpp`
   only dispatches into that lowering helper for `module.extern_decls`.

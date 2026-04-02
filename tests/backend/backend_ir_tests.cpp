@@ -28,6 +28,35 @@
 #include "../../src/backend/x86/linker/mod.hpp"
 #include "backend_test_helper.hpp"
 
+void clear_backend_memory_type_compatibility_shims(c4c::backend::BackendModule& module) {
+  for (auto& function : module.functions) {
+    for (auto& block : function.blocks) {
+      for (auto& inst : block.insts) {
+        if (auto* load = std::get_if<c4c::backend::BackendLoadInst>(&inst)) {
+          if (load->value_type != c4c::backend::BackendScalarType::Unknown) {
+            load->type_str.clear();
+          }
+          if (load->memory_value_type != c4c::backend::BackendScalarType::Unknown) {
+            load->memory_type.clear();
+          }
+          continue;
+        }
+        if (auto* store = std::get_if<c4c::backend::BackendStoreInst>(&inst)) {
+          if (store->value_type != c4c::backend::BackendScalarType::Unknown) {
+            store->type_str.clear();
+          }
+          continue;
+        }
+        if (auto* ptrdiff = std::get_if<c4c::backend::BackendPtrDiffEqInst>(&inst)) {
+          if (ptrdiff->result_type != c4c::backend::BackendScalarType::Unknown) {
+            ptrdiff->type_str.clear();
+          }
+        }
+      }
+    }
+  }
+}
+
 void test_backend_ir_printer_renders_lowered_conditional_return_slice() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_return_module());
   const auto rendered = c4c::backend::print_backend_ir(lowered);
@@ -538,6 +567,26 @@ void test_backend_ir_validator_accepts_lowered_string_literal_char_slice() {
               "backend IR validator should not report an error for valid lowered string constants");
 }
 
+void test_backend_ir_printer_renders_structured_string_literal_char_slice_without_type_text() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_string_literal_char_module());
+  clear_backend_memory_type_compatibility_shims(lowered);
+  const auto rendered = c4c::backend::print_backend_ir(lowered);
+
+  expect_contains(rendered, "%t4 = load i32 from i8 sext, ptr @.str0 + 1\n",
+                  "backend IR printer should render widened string-literal loads from structured scalar metadata without legacy type text");
+}
+
+void test_backend_ir_validator_accepts_structured_string_literal_char_slice_without_type_text() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_string_literal_char_module());
+  clear_backend_memory_type_compatibility_shims(lowered);
+  std::string error;
+
+  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should accept widened string-literal loads described only by structured scalar metadata");
+  expect_true(error.empty(),
+              "backend IR validator should not report an error when widened string-literal load type shims are cleared");
+}
+
 void test_backend_ir_printer_renders_lowered_global_int_pointer_roundtrip_slice() {
   const auto lowered =
       c4c::backend::lower_to_backend_ir(make_global_int_pointer_roundtrip_module());
@@ -620,6 +669,27 @@ void test_backend_ir_validator_accepts_lowered_global_int_pointer_diff_slice() {
               "backend IR validator should accept lowered global int pointer-difference slices");
   expect_true(error.empty(),
               "backend IR validator should not report an error for valid lowered int pointer-difference globals");
+}
+
+void test_backend_ir_printer_renders_structured_global_int_pointer_diff_slice_without_type_text() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_global_int_pointer_diff_module());
+  clear_backend_memory_type_compatibility_shims(lowered);
+  const auto rendered = c4c::backend::print_backend_ir(lowered);
+
+  expect_contains(rendered,
+                  "%t12 = ptrdiff_eq i32, ptr @g_words + 4, ptr @g_words, elem_size 4, expected 1\n",
+                  "backend IR printer should render ptrdiff slices from structured scalar metadata without legacy result type text");
+}
+
+void test_backend_ir_validator_accepts_structured_global_int_pointer_diff_slice_without_type_text() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_global_int_pointer_diff_module());
+  clear_backend_memory_type_compatibility_shims(lowered);
+  std::string error;
+
+  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should accept ptrdiff slices described only by structured scalar metadata");
+  expect_true(error.empty(),
+              "backend IR validator should not report an error when ptrdiff result type shims are cleared");
 }
 
 void test_backend_ir_printer_renders_lowered_extern_global_array_load_slice() {
@@ -789,6 +859,28 @@ void test_backend_ir_validator_accepts_lowered_global_store_reload_slice() {
   expect_true(error.empty(),
               "backend IR validator should not report an error for valid lowered scalar global stores");
 }
+
+void test_backend_ir_printer_renders_structured_global_store_reload_slice_without_type_text() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_global_store_reload_module());
+  clear_backend_memory_type_compatibility_shims(lowered);
+  const auto rendered = c4c::backend::print_backend_ir(lowered);
+
+  expect_contains(rendered, "store i32 7, ptr @g_counter\n",
+                  "backend IR printer should render structured scalar global stores without legacy store type text");
+  expect_contains(rendered, "%t0 = load i32, ptr @g_counter\n",
+                  "backend IR printer should render structured scalar global reloads without legacy load type text");
+}
+
+void test_backend_ir_validator_accepts_structured_global_store_reload_slice_without_type_text() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_global_store_reload_module());
+  clear_backend_memory_type_compatibility_shims(lowered);
+  std::string error;
+
+  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should accept scalar global store-reload slices described only by structured scalar metadata");
+  expect_true(error.empty(),
+              "backend IR validator should not report an error when scalar load/store type shims are cleared");
+}
 int main(int argc, char* argv[]) {
   if (argc >= 2) test_filter() = argv[1];
 
@@ -804,14 +896,20 @@ int main(int argc, char* argv[]) {
   test_backend_ir_validator_accepts_lowered_global_load_slice();
   test_backend_ir_printer_renders_lowered_global_store_reload_slice();
   test_backend_ir_validator_accepts_lowered_global_store_reload_slice();
+  test_backend_ir_printer_renders_structured_global_store_reload_slice_without_type_text();
+  test_backend_ir_validator_accepts_structured_global_store_reload_slice_without_type_text();
   test_backend_ir_printer_renders_lowered_string_literal_char_slice();
   test_backend_ir_validator_accepts_lowered_string_literal_char_slice();
+  test_backend_ir_printer_renders_structured_string_literal_char_slice_without_type_text();
+  test_backend_ir_validator_accepts_structured_string_literal_char_slice_without_type_text();
   test_backend_ir_printer_renders_lowered_global_int_pointer_roundtrip_slice();
   test_backend_ir_validator_accepts_lowered_global_int_pointer_roundtrip_slice();
   test_backend_ir_printer_renders_lowered_global_char_pointer_diff_slice();
   test_backend_ir_validator_accepts_lowered_global_char_pointer_diff_slice();
   test_backend_ir_printer_renders_lowered_global_int_pointer_diff_slice();
   test_backend_ir_validator_accepts_lowered_global_int_pointer_diff_slice();
+  test_backend_ir_printer_renders_structured_global_int_pointer_diff_slice_without_type_text();
+  test_backend_ir_validator_accepts_structured_global_int_pointer_diff_slice_without_type_text();
   test_backend_ir_printer_renders_lowered_extern_global_array_load_slice();
   test_backend_ir_printer_renders_lowered_conditional_return_slice();
   test_backend_ir_validator_accepts_lowered_conditional_return_slice();
