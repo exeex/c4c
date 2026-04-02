@@ -942,6 +942,59 @@ void test_backend_ir_validator_accepts_structured_signature_and_call_types_witho
               "backend IR validator should not report an error for structured signature and call type metadata without compatibility text");
 }
 
+void test_backend_ir_tracks_structured_two_arg_direct_call_signature_and_call_contract() {
+  const auto lowered =
+      c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_module());
+  const auto find_function = [&lowered](std::string_view name)
+      -> const c4c::backend::BackendFunction* {
+    for (const auto& function : lowered.functions) {
+      if (function.signature.name == name) {
+        return &function;
+      }
+    }
+    return nullptr;
+  };
+  const auto* helper = find_function("add_pair");
+  const auto* main_fn = find_function("main");
+
+  expect_true(helper != nullptr && main_fn != nullptr,
+              "backend IR should preserve both functions in the two-argument direct-call slice");
+  expect_true(helper != nullptr && c4c::backend::backend_function_is_definition(helper->signature) &&
+                  c4c::backend::backend_signature_return_scalar_type(helper->signature) ==
+                      c4c::backend::BackendScalarType::I32,
+              "backend IR should preserve the helper as a structured i32 definition");
+  expect_true(helper != nullptr && helper->signature.params.size() == 2 &&
+                  c4c::backend::backend_param_scalar_type(helper->signature.params[0]) ==
+                      c4c::backend::BackendScalarType::I32 &&
+                  c4c::backend::backend_param_scalar_type(helper->signature.params[1]) ==
+                      c4c::backend::BackendScalarType::I32,
+              "backend IR should preserve both helper parameters as structured i32 values");
+  expect_true(main_fn != nullptr && c4c::backend::backend_function_is_definition(main_fn->signature) &&
+                  main_fn->signature.params.empty() && !main_fn->signature.is_vararg,
+              "backend IR should preserve the main entry signature separately from legacy signature text");
+
+  const auto* call =
+      main_fn == nullptr || main_fn->blocks.empty() || main_fn->blocks.front().insts.empty()
+          ? nullptr
+          : std::get_if<c4c::backend::BackendCallInst>(&main_fn->blocks.front().insts.front());
+  expect_true(call != nullptr && call->callee.kind ==
+                                  c4c::backend::BackendCallCalleeKind::DirectGlobal &&
+                  call->callee.symbol_name == "add_pair",
+              "backend IR should preserve the helper call as a direct-global backend call");
+  expect_true(call != nullptr &&
+                  c4c::backend::backend_call_return_scalar_type(*call) ==
+                      c4c::backend::BackendScalarType::I32 &&
+                  call->param_types.size() == 2 &&
+                  c4c::backend::backend_call_param_scalar_type(*call, 0) ==
+                      c4c::backend::BackendScalarType::I32 &&
+                  c4c::backend::backend_call_param_scalar_type(*call, 1) ==
+                      c4c::backend::BackendScalarType::I32,
+              "backend IR should preserve the structured i32 call signature for the two-argument helper call");
+  expect_true(call != nullptr && call->args.size() == 2 && call->args[0].operand == "5" &&
+                  call->args[1].operand == "7",
+              "backend IR should preserve the normalized two-argument direct-call operands");
+}
+
 void test_backend_ir_printer_renders_structured_pointer_return_without_raw_text() {
   c4c::backend::BackendModule module;
   c4c::backend::BackendFunction function;
@@ -1097,6 +1150,7 @@ int main(int argc, char* argv[]) {
   test_backend_ir_printer_renders_structured_global_linkage_without_raw_text();
   test_backend_ir_printer_renders_structured_function_linkage_without_raw_text();
   test_backend_ir_printer_renders_structured_signature_and_call_types_without_raw_text();
+  test_backend_ir_tracks_structured_two_arg_direct_call_signature_and_call_contract();
   test_backend_ir_printer_renders_lowered_extern_decl_slice();
   test_backend_ir_validator_accepts_lowered_extern_decl_slice();
   test_backend_ir_validator_accepts_structured_signature_and_call_types_without_raw_text();
