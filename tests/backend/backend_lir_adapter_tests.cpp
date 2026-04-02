@@ -14,6 +14,7 @@
 #include "../../src/codegen/lir/lir_printer.hpp"
 #include "../../src/codegen/lir/verify.hpp"
 #include "../../src/backend/elf/mod.hpp"
+#include "../../src/backend/lowering/call_decode.hpp"
 #include "../../src/backend/linker_common/mod.hpp"
 #include "../../src/backend/aarch64/assembler/mod.hpp"
 #include "../../src/backend/aarch64/codegen/emit.hpp"
@@ -596,6 +597,34 @@ void test_backend_call_helpers_decode_two_typed_local_operands() {
   expect_true(operands.has_value() && operands->first == "%t0" &&
                   operands->second == "7",
               "shared typed-call helper should decode spacing-tolerant local two-arg call operands without repeating parsed shape checks");
+}
+
+void test_backend_call_helpers_decode_structured_local_typed_operands() {
+  c4c::backend::BackendCallInst single{
+      "%t4",
+      "i32",
+      "%fn.ptr",
+      {" i32 "},
+      {{" i32 ", " %arg "}},
+      true,
+  };
+  const auto single_operand = c4c::backend::parse_backend_single_typed_call_operand(single, "i32");
+  expect_true(single_operand.has_value() && *single_operand == " %arg ",
+              "lowering-owned typed-call helper should decode structured single local operands without adapter-owned wrappers");
+
+  c4c::backend::BackendCallInst two{
+      "%t5",
+      "i32",
+      "%fn.ptr",
+      {" i32 ", " i32 "},
+      {{" i32 ", " %lhs "}, {" i32 ", " %rhs "}},
+      true,
+  };
+  const auto two_operands = c4c::backend::parse_backend_two_typed_call_operands(
+      two, "i32", "i32");
+  expect_true(two_operands.has_value() && two_operands->first == " %lhs " &&
+                  two_operands->second == " %rhs ",
+              "lowering-owned typed-call helper should decode structured two-operand local calls in order");
 }
 
 void test_backend_call_helpers_borrow_structured_typed_call_view() {
@@ -1263,6 +1292,7 @@ int main(int argc, char* argv[]) {
   test_backend_call_helpers_decode_lir_direct_global_vararg_prefix();
   test_backend_call_helpers_decode_single_typed_local_operand();
   test_backend_call_helpers_decode_two_typed_local_operands();
+  test_backend_call_helpers_decode_structured_local_typed_operands();
   test_backend_call_helpers_borrow_structured_typed_call_view();
   test_lir_typed_wrappers_preserve_legacy_opcode_and_predicate_strings();
   test_lir_typed_wrappers_leave_unknown_opcode_text_compatible();

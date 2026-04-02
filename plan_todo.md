@@ -6,9 +6,9 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 2: continue extracting decode-only helper clusters from
-      `lir_adapter.cpp` after the extern-declaration lowering path moved into
-      `src/backend/lowering/extern_lowering.cpp`
+- Step 2: extract the next decode-only local-call pattern matcher from
+      `src/backend/lir_adapter.cpp` after the typed-call operand helper wrappers
+      moved into `src/backend/lowering/call_decode.hpp`
 
 ## Incomplete Items
 
@@ -38,13 +38,17 @@ Source Plan: plan.md
       lowering out of `src/backend/lir_adapter.cpp` into
       `src/backend/lowering/extern_lowering.cpp`, with direct adapter tests for
       inferred fixed params and inconsistent typed-call surfaces
+- [x] Step 2 slice: move the shared typed-call operand matcher wrappers out of
+      `src/backend/lir_adapter.hpp` into
+      `src/backend/lowering/call_decode.hpp`, and cover structured local-call
+      helper decoding directly in `backend_lir_adapter_tests`
 
 ## Next Intended Slice
 
-- Extract the next decode-only utility cluster from `src/backend/lir_adapter.cpp`
-  without changing backend IR construction behavior; the likely follow-on is the
-  remaining call-normalization path that still couples typed-call parsing to
-  adapter-local instruction construction.
+- Extract the next decode-only local-call pattern matcher from
+  `src/backend/lir_adapter.cpp` without changing backend IR construction
+  behavior; the next low-risk target is the local single/two-arg slot-rewrite
+  shape recognition that still lives inline in the adapter.
 
 ## Blockers
 
@@ -53,15 +57,23 @@ Source Plan: plan.md
   `positive_sema_linux_stage2_repro_03_asm_volatile_c`,
   `backend_lir_adapter_aarch64_tests`, and
   `llvm_gcc_c_torture_src_20080502_1_c`.
-- `test_fail_before.log` vs `test_fail_after.log` remains monotonic at
-  2668 passed / 3 failed / 2671 total with zero newly failing tests.
-- Focused `backend_lir_adapter_tests` and `backend_ir_tests` both pass after the
-  extern-lowering extraction.
+- The latest full-suite run in `test_after.log` remains monotonic with the
+  recorded baseline at 2668 passed / 3 failed / 2671 total and zero newly
+  failing tests.
+- Focused `backend_lir_adapter_tests` passes after the helper move; the known
+  aarch64 adapter suite failure remains part of the pre-existing full-suite
+  baseline.
 
 ## Resume Notes
 
 - Keep this slice behavior-preserving.
 - Do not pull `bir` naming into this plan.
+- This iteration is scoped to helper ownership only: move typed-call operand
+  decode wrappers into `src/backend/lowering/call_decode.hpp` and keep
+  adapter/emitter behavior unchanged.
+- `src/backend/lowering/call_decode.hpp` now owns both the direct-global and
+  local typed-call operand matcher templates; `src/backend/lir_adapter.hpp`
+  only keeps the public lowering entrypoints and adapter error surface.
 - `lower_to_backend_ir(...)` now lives in `src/backend/lir_adapter.hpp` and
   `src/backend/lir_adapter.cpp`; `adapt_minimal_module(...)` remains a
   compatibility shim for callers that have not moved yet.
