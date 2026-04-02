@@ -650,6 +650,33 @@ void test_backend_call_helpers_classify_lir_nonminimal_signature_types() {
       "lowering-owned nonminimal signature classifier should reject nonminimal return types through the shared decode seam");
 }
 
+void test_backend_call_helpers_classify_i32_main_signature_shapes() {
+  expect_true(
+      c4c::backend::backend_lir_is_i32_main_definition(
+          "define i32 @main(i32 %argc, ptr %argv)\n"),
+      "lowering-owned main-signature classifier should recognize i32 main definitions without target-local text scans");
+
+  expect_true(
+      c4c::backend::backend_lir_is_zero_arg_i32_main_definition(
+          " define  i32   @main( ) \n"),
+      "lowering-owned zero-arg main classifier should tolerate compatibility spacing while keeping raw signature parsing centralized");
+
+  expect_true(
+      !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(
+          "define i32 @main(i32 %argc)\n"),
+      "lowering-owned zero-arg main classifier should reject signatures that still declare parameters");
+
+  expect_true(
+      !c4c::backend::backend_lir_is_i32_main_definition(
+          "declare i32 @main()\n"),
+      "lowering-owned main-signature classifier should reject declarations");
+
+  expect_true(
+      !c4c::backend::backend_lir_is_i32_main_definition(
+          "define i64 @main()\n"),
+      "lowering-owned main-signature classifier should reject non-i32 return signatures");
+}
+
 void test_backend_call_helpers_classify_lir_nonminimal_global_and_return_types() {
   c4c::codegen::lir::LirGlobal i32_global{};
   i32_global.llvm_type = "i32";
@@ -1621,6 +1648,7 @@ int main(int argc, char* argv[]) {
   test_backend_call_helpers_decode_lir_direct_global_vararg_prefix();
   test_backend_call_helpers_classify_lir_nonminimal_call_types();
   test_backend_call_helpers_classify_lir_nonminimal_signature_types();
+  test_backend_call_helpers_classify_i32_main_signature_shapes();
   test_backend_call_helpers_classify_lir_nonminimal_global_and_return_types();
   test_backend_call_helpers_decode_single_typed_local_operand();
   test_backend_call_helpers_decode_two_typed_local_operands();

@@ -27,6 +27,26 @@ bool backend_text_uses_nonminimal_types(std::string_view text) {
          text.find("i128") != std::string_view::npos;
 }
 
+bool parse_backend_signature_head(std::string_view signature_text,
+                                  std::string_view* linkage,
+                                  std::string_view* return_type,
+                                  std::string_view* function_name) {
+  const auto line = c4c::codegen::lir::trim_lir_arg_text(signature_text);
+  const auto first_space = line.find(' ');
+  const auto at_pos = line.find('@');
+  const auto paren_open = line.find('(', at_pos);
+  if (first_space == std::string_view::npos || at_pos == std::string_view::npos ||
+      paren_open == std::string_view::npos || first_space >= at_pos || at_pos + 1 >= paren_open) {
+    return false;
+  }
+
+  *linkage = c4c::codegen::lir::trim_lir_arg_text(line.substr(0, first_space));
+  *return_type = c4c::codegen::lir::trim_lir_arg_text(
+      line.substr(first_space + 1, at_pos - first_space - 1));
+  *function_name = line.substr(at_pos + 1, paren_open - at_pos - 1);
+  return true;
+}
+
 }  // namespace
 
 bool backend_lir_type_uses_nonminimal_types(std::string_view type_text) {
@@ -91,6 +111,26 @@ bool backend_lir_function_signature_uses_nonminimal_types(std::string_view signa
     }
   }
   return false;
+}
+
+bool backend_lir_is_i32_main_definition(std::string_view signature_text) {
+  std::string_view linkage;
+  std::string_view return_type;
+  std::string_view function_name;
+  if (!parse_backend_signature_head(signature_text, &linkage, &return_type, &function_name)) {
+    return false;
+  }
+
+  return linkage == "define" && return_type == "i32" && function_name == "main";
+}
+
+bool backend_lir_is_zero_arg_i32_main_definition(std::string_view signature_text) {
+  if (!backend_lir_is_i32_main_definition(signature_text)) {
+    return false;
+  }
+
+  const auto params = parse_backend_function_signature_params(signature_text);
+  return params.has_value() && params->empty();
 }
 
 std::optional<c4c::codegen::lir::ParsedLirDirectGlobalTypedCallView>

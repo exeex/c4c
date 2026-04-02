@@ -60,6 +60,8 @@ bool backend_lir_global_uses_nonminimal_types(const c4c::codegen::lir::LirGlobal
 bool backend_lir_return_uses_nonminimal_types(const c4c::codegen::lir::LirRet& ret);
 bool backend_lir_call_uses_nonminimal_types(const c4c::codegen::lir::LirCallOp& call);
 bool backend_lir_function_signature_uses_nonminimal_types(std::string_view signature_text);
+bool backend_lir_is_i32_main_definition(std::string_view signature_text);
+bool backend_lir_is_zero_arg_i32_main_definition(std::string_view signature_text);
 
 std::optional<c4c::codegen::lir::ParsedLirDirectGlobalTypedCallView>
 parse_backend_direct_global_typed_call(const c4c::codegen::lir::LirCallOp& call);

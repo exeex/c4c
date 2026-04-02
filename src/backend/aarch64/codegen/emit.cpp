@@ -367,7 +367,8 @@ std::optional<std::int64_t> parse_minimal_lir_return_sub_imm(
   }
 
   const auto& function = module.functions.front();
-  if (function.is_declaration || function.signature_text != "define i32 @main()\n" ||
+  if (function.is_declaration ||
+      !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(function.signature_text) ||
       function.entry.value != 0 || function.blocks.size() != 1) {
     return std::nullopt;
   }
@@ -444,7 +445,8 @@ std::optional<std::int64_t> parse_minimal_lir_return_imm(
   }
 
   const auto& function = module.functions.front();
-  if (function.is_declaration || function.signature_text != "define i32 @main()\n" ||
+  if (function.is_declaration ||
+      !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(function.signature_text) ||
       function.entry.value != 0 || function.blocks.size() != 1) {
     return std::nullopt;
   }
@@ -562,7 +564,7 @@ std::optional<std::int64_t> parse_minimal_lir_local_pointer_return_imm(
 
   const auto& function = module.functions.front();
   if (function.is_declaration || function.name != "main" ||
-      function.signature_text.find("i32 @main(") == std::string::npos ||
+      !c4c::backend::backend_lir_is_i32_main_definition(function.signature_text) ||
       function.entry.value != 0 || function.blocks.size() != 1 ||
       function.alloca_insts.size() < 2) {
     return std::nullopt;
@@ -782,7 +784,8 @@ std::optional<std::int64_t> parse_minimal_lir_single_scalar_countdown_imm(
   }
 
   const auto& function = module.functions.front();
-  if (function.is_declaration || function.signature_text != "define i32 @main()\n" ||
+  if (function.is_declaration ||
+      !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(function.signature_text) ||
       function.entry.value != 0 || function.blocks.empty() ||
       function.alloca_insts.size() != 1) {
     return std::nullopt;
@@ -1008,7 +1011,7 @@ std::optional<std::int64_t> try_constant_fold_single_block(
 
   const auto& function = module.functions.front();
   if (function.is_declaration || function.name != "main" ||
-      function.signature_text.find("i32 @main(") == std::string::npos ||
+      !c4c::backend::backend_lir_is_i32_main_definition(function.signature_text) ||
       function.entry.value != 0 || function.blocks.empty() ||
       !function.alloca_insts.empty()) {
     return std::nullopt;
@@ -1740,7 +1743,8 @@ std::optional<MinimalStringLiteralCharSlice> parse_minimal_string_literal_char_s
 
   const auto& string_const = module.string_pool.front();
   const auto& function = module.functions.front();
-  if (function.is_declaration || function.signature_text != "define i32 @main()\n" ||
+  if (function.is_declaration ||
+      !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(function.signature_text) ||
       function.entry.value != 0 || function.blocks.size() != 1 ||
       !function.alloca_insts.empty() || !function.stack_objects.empty()) {
     return std::nullopt;
@@ -1868,7 +1872,8 @@ std::optional<MinimalLocalArraySlice> parse_minimal_local_array_slice(
   }
 
   const auto& function = module.functions.front();
-  if (function.is_declaration || function.signature_text != "define i32 @main()\n" ||
+  if (function.is_declaration ||
+      !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(function.signature_text) ||
       function.entry.value != 0 || function.blocks.size() != 1 ||
       function.alloca_insts.size() != 1 || !function.stack_objects.empty()) {
     return std::nullopt;
@@ -2079,7 +2084,8 @@ std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_sl
   if (module.functions.size() != 1) return std::nullopt;
 
   const auto& function = module.functions.front();
-  if (function.is_declaration || function.signature_text != "define i32 @main()\n" ||
+  if (function.is_declaration ||
+      !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(function.signature_text) ||
       function.entry.value != 0 || function.blocks.size() != 3 ||
       !function.alloca_insts.empty() || !function.stack_objects.empty()) {
     return std::nullopt;
@@ -2376,7 +2382,8 @@ std::optional<MinimalScalarGlobalLoadSlice> parse_minimal_scalar_global_load_sli
   }
 
   const auto& function = module.functions.front();
-  if (function.is_declaration || function.signature_text != "define i32 @main()\n" ||
+  if (function.is_declaration ||
+      !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(function.signature_text) ||
       function.entry.value != 0 || function.blocks.size() != 1 ||
       !function.alloca_insts.empty() || !function.stack_objects.empty()) {
     return std::nullopt;
@@ -2420,7 +2427,8 @@ std::optional<MinimalScalarGlobalStoreReloadSlice> parse_minimal_scalar_global_s
   }
 
   const auto& function = module.functions.front();
-  if (function.is_declaration || function.signature_text != "define i32 @main()\n" ||
+  if (function.is_declaration ||
+      !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(function.signature_text) ||
       function.entry.value != 0 || function.blocks.size() != 1 ||
       !function.alloca_insts.empty() || !function.stack_objects.empty()) {
     return std::nullopt;
@@ -2475,7 +2483,8 @@ std::optional<MinimalScalarGlobalLoadSlice> parse_minimal_global_int_pointer_rou
   }
 
   const auto& function = module.functions.front();
-  if (function.is_declaration || function.signature_text != "define i32 @main()\n" ||
+  if (function.is_declaration ||
+      !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(function.signature_text) ||
       function.entry.value != 0 || function.blocks.size() != 1 ||
       function.alloca_insts.size() != 2 || !function.stack_objects.empty()) {
     return std::nullopt;
@@ -2560,7 +2569,8 @@ std::optional<MinimalExternScalarGlobalLoadSlice> parse_minimal_extern_scalar_gl
   }
 
   const auto& function = module.functions.front();
-  if (function.is_declaration || function.signature_text != "define i32 @main()\n" ||
+  if (function.is_declaration ||
+      !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(function.signature_text) ||
       function.entry.value != 0 || function.blocks.size() != 1 ||
       !function.alloca_insts.empty() || !function.stack_objects.empty()) {
     return std::nullopt;
@@ -2614,7 +2624,8 @@ std::optional<MinimalExternGlobalArrayLoadSlice> parse_minimal_extern_global_arr
   }
 
   const auto& function = module.functions.front();
-  if (function.is_declaration || function.signature_text != "define i32 @main()\n" ||
+  if (function.is_declaration ||
+      !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(function.signature_text) ||
       function.entry.value != 0 || function.blocks.size() != 1 ||
       !function.alloca_insts.empty() || !function.stack_objects.empty()) {
     return std::nullopt;
@@ -2701,7 +2712,8 @@ std::optional<MinimalGlobalCharPointerDiffSlice> parse_minimal_global_char_point
   }
 
   const auto& function = module.functions.front();
-  if (function.is_declaration || function.signature_text != "define i32 @main()\n" ||
+  if (function.is_declaration ||
+      !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(function.signature_text) ||
       function.entry.value != 0 || function.blocks.size() != 1 ||
       !function.alloca_insts.empty() || !function.stack_objects.empty()) {
     return std::nullopt;
@@ -2836,7 +2848,8 @@ std::optional<MinimalGlobalIntPointerDiffSlice> parse_minimal_global_int_pointer
   }
 
   const auto& function = module.functions.front();
-  if (function.is_declaration || function.signature_text != "define i32 @main()\n" ||
+  if (function.is_declaration ||
+      !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(function.signature_text) ||
       function.entry.value != 0 || function.blocks.size() != 1 ||
       !function.alloca_insts.empty() || !function.stack_objects.empty()) {
     return std::nullopt;
