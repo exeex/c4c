@@ -709,7 +709,7 @@ bool Parser::check(TokenKind k) const {
     return tokens_[pos_].kind == k;
 }
 
-bool Parser::check2(TokenKind k) const {
+bool Parser::peek_next_is(TokenKind k) const {
     int idx = pos_ + 1;
     if (idx >= (int)tokens_.size()) return false;
     return tokens_[idx].kind == k;

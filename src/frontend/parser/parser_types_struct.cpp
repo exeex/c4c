@@ -247,7 +247,7 @@ void Parser::parse_record_template_member_prelude(
                     }
                 }
             }
-        } else if (consume_template_parameter_type_head(/*allow_typename_keyword=*/true)) {
+        } else if (consume_template_parameter_type_start(/*allow_typename_keyword=*/true)) {
             while (check(TokenKind::Star) || is_qualifier(cur().kind)) consume();
             if (check(TokenKind::Ellipsis)) consume();
             if (check(TokenKind::Identifier)) consume();
@@ -1540,7 +1540,7 @@ bool Parser::try_parse_record_member_with_template_prelude(
                                             check_dup_field);
 }
 
-bool Parser::prepare_record_member_entry() {
+bool Parser::begin_record_member_parse() {
     skip_attributes();
     return !check(TokenKind::RBrace);
 }
@@ -1558,7 +1558,7 @@ bool Parser::try_parse_record_member(
     std::vector<const char*>* member_typedef_names,
     std::vector<TypeSpec>* member_typedef_types,
     const std::function<void(const char*)>& check_dup_field) {
-    if (!prepare_record_member_entry()) return false;
+    if (!begin_record_member_parse()) return false;
     if (try_parse_record_member_prelude(methods)) return true;
     return try_parse_record_member_with_template_prelude(
         struct_source_name, fields, methods, member_typedef_names,

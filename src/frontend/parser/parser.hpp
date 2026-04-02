@@ -341,7 +341,7 @@ class Parser {
   const Token& consume();                // consume and return current token
   bool at_end() const;
   bool check(TokenKind k) const;         // is current token kind k?
-  bool check2(TokenKind k) const;        // is next token kind k?
+  bool peek_next_is(TokenKind k) const;  // is next token kind k?
   bool match(TokenKind k);               // consume if check(k)
   void expect(TokenKind k);              // consume or throw
   const char* diag_file_at(int token_index) const;
@@ -386,7 +386,7 @@ class Parser {
   std::string resolve_visible_concept_name(const std::string& name) const;
   bool is_concept_name(const std::string& name) const;
   bool peek_qualified_name(QualifiedNameRef* out, bool allow_global = true) const;
-  bool consume_template_parameter_type_head(bool allow_typename_keyword = true);
+  bool consume_template_parameter_type_start(bool allow_typename_keyword = true);
   QualifiedNameRef parse_qualified_name(bool allow_global = true);
   void apply_qualified_name(Node* node, const QualifiedNameRef& qn,
                             const char* resolved_name = nullptr);
@@ -448,7 +448,7 @@ class Parser {
                                        bool consume_final_template_args,
                                        std::string* out_name = nullptr,
                                        QualifiedNameRef* out_qn = nullptr);
-  bool consume_template_args_followed_by_scope();
+  bool consume_template_args_before_scope();
   bool consume_member_pointer_owner_prefix();
   bool try_parse_declarator_member_pointer_prefix(TypeSpec& ts);
   void apply_declarator_pointer_token(TypeSpec& ts, TokenKind pointer_tok,
@@ -588,7 +588,7 @@ class Parser {
       std::vector<const char*>* member_typedef_names,
       std::vector<TypeSpec>* member_typedef_types,
       const std::function<void(const char*)>& check_dup_field);
-  bool prepare_record_member_entry();
+  bool begin_record_member_parse();
   bool try_parse_record_member_prelude(std::vector<Node*>* methods);
   bool try_parse_record_member(
       const std::string& struct_source_name,

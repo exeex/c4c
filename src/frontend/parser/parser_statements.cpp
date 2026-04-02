@@ -680,7 +680,7 @@ Node* Parser::parse_stmt() {
     }
 
     // Identifier followed by colon → label
-    if (check(TokenKind::Identifier) && check2(TokenKind::Colon)) {
+    if (check(TokenKind::Identifier) && peek_next_is(TokenKind::Colon)) {
         const char* lbl = arena_.strdup(cur().lexeme);
         consume(); consume();  // consume name and :
         Node* body_stmt = nullptr;

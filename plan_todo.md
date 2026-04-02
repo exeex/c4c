@@ -6,7 +6,7 @@ Source Plan: plan.md
 
 ## Active Item
 
-- [ ] Step 3: Rename parser helpers by behavior category
+- [ ] Step 3: Rename parser probe/consume and record-preflight helpers by behavior category
 
 ## Todo
 
@@ -18,10 +18,10 @@ Source Plan: plan.md
 
 ## Next Slice
 
-- Land the first parser rename batch around probe/consume/preflight helpers:
-  `check2`, `consume_template_parameter_type_head`,
-  `consume_template_args_followed_by_scope`, and the record-member entry
-  helpers, with declarations/definitions/call sites updated together.
+- Continue Step 3 with the next parser rename batch around the remaining
+  record-definition lifecycle helpers and any still-misnamed declarator-side
+  probes/consumers, keeping each rename family in one declaration/definition /
+  call-site slice.
 
 ## Notes
 
@@ -54,9 +54,26 @@ Source Plan: plan.md
   around shared entry points/result carriers/utilities; and replaced stale
   helper-divider comments in `hir_lowerer_internal.hpp` with responsibility
   sections.
+- Current iteration target:
+  rename the parser next-token probe / template-head consumers /
+  record-member setup helpers so their names state whether they only peek,
+  consume on success, or initialize record-definition state.
+- Completed in this iteration:
+  renamed `check2` -> `peek_next_is`,
+  `consume_template_parameter_type_head` ->
+  `consume_template_parameter_type_start`,
+  `consume_template_args_followed_by_scope` ->
+  `consume_template_args_before_scope`, and
+  `prepare_record_member_entry` -> `begin_record_member_parse`; updated the
+  declarations, definitions, and parser call sites together; and added a
+  focused parse-only regression covering template-template parameter heads plus
+  qualified template-id member usage.
 - Validation:
-  baseline `test_before.log` and after-run `test_after.log` both finished with
-  the same 3 known failures
+  targeted parser tests covering the renamed helpers passed, including the new
+  `cpp_parse_template_template_scope_member_dump` case.
+- Validation:
+  full-suite `test_before.log` and `test_after.log` both finished with the same
+  3 known failures
   (`positive_sema_linux_stage2_repro_03_asm_volatile_c`,
   `backend_lir_adapter_aarch64_tests`,
   `llvm_gcc_c_torture_src_20080502_1_c`); the monotonic regression guard

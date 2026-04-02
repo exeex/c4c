@@ -333,7 +333,7 @@ bool Parser::consume_qualified_type_spelling(bool allow_global,
     return true;
 }
 
-bool Parser::consume_template_parameter_type_head(bool allow_typename_keyword) {
+bool Parser::consume_template_parameter_type_start(bool allow_typename_keyword) {
     if (allow_typename_keyword && check(TokenKind::KwTypename)) {
         TentativeParseGuard guard(*this);
         consume();
@@ -360,7 +360,7 @@ bool Parser::consume_template_parameter_type_head(bool allow_typename_keyword) {
     return false;
 }
 
-bool Parser::consume_template_args_followed_by_scope() {
+bool Parser::consume_template_args_before_scope() {
     if (!check(TokenKind::Less)) return false;
 
     int probe = pos_;
@@ -407,7 +407,7 @@ bool Parser::consume_member_pointer_owner_prefix() {
                                          nullptr, nullptr)) {
         return false;
     }
-    consume_template_args_followed_by_scope();
+    consume_template_args_before_scope();
     if (!(check(TokenKind::ColonColon) &&
           pos_ + 1 < static_cast<int>(tokens_.size()) &&
           tokens_[pos_ + 1].kind == TokenKind::Star)) {
@@ -649,7 +649,7 @@ bool Parser::parse_qualified_declarator_name(std::string* out_name) {
         qualified_name += cur().lexeme;
         consume();
         parsed_qualified = true;
-        consume_template_args_followed_by_scope();
+        consume_template_args_before_scope();
     }
 
     while (parsed_qualified && match(TokenKind::ColonColon)) {
@@ -657,7 +657,7 @@ bool Parser::parse_qualified_declarator_name(std::string* out_name) {
         if (check(TokenKind::Identifier)) {
             qualified_name += cur().lexeme;
             consume();
-            consume_template_args_followed_by_scope();
+            consume_template_args_before_scope();
             continue;
         }
         if (check(TokenKind::KwOperator)) {

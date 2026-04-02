@@ -1178,7 +1178,7 @@ Node* Parser::parse_top_level() {
             return std::pair<bool, const char*>(is_pack, pname);
         };
         auto try_consume_typedef_nttp_type_head = [&]() -> bool {
-            return consume_template_parameter_type_head(/*allow_typename_keyword=*/true);
+            return consume_template_parameter_type_start(/*allow_typename_keyword=*/true);
         };
         while (!at_end() && !check(TokenKind::Greater)) {
             if (check(TokenKind::KwTemplate)) {
@@ -1984,7 +1984,7 @@ Node* Parser::parse_top_level() {
         // e.g. `main() { ... }` or `static foo() { ... }`.
         // Treat as `int name(...)` instead of discarding the whole definition.
         bool maybe_implicit_int_fn =
-            check(TokenKind::Identifier) && check2(TokenKind::LParen);
+            check(TokenKind::Identifier) && peek_next_is(TokenKind::LParen);
         if (!maybe_implicit_int_fn) {
             const int recovery_line = !at_end() ? cur().line : ln;
             while (!at_end() && !check(TokenKind::Semi)) {
@@ -2146,7 +2146,7 @@ top_level_base_ready:
     bool fn_returning_fptr = false;
     std::vector<Node*> fptr_fn_params;
     bool fptr_fn_variadic = false;
-    if (check(TokenKind::LParen) && check2(TokenKind::Star)) {
+    if (check(TokenKind::LParen) && peek_next_is(TokenKind::Star)) {
         consume();  // (
         consume();  // *
         ts.ptr_level++;
@@ -2179,7 +2179,7 @@ top_level_base_ready:
             if (ts.array_rank == 1) ts.array_size = ts.array_dims[0];
         }
         // Detect nested fn_ptr: (* (*name(params))(ret_params)) or function-returning-fptr: (* f1(params))
-        if (check(TokenKind::LParen) && check2(TokenKind::Star)) {
+        if (check(TokenKind::LParen) && peek_next_is(TokenKind::Star)) {
             // Nested fn_ptr: (* (*name(fn_params))(inner_ret_params) )(outer_ret_params)
             // Recurse: consume '(' '*' to enter the inner level.
             consume();  // (
