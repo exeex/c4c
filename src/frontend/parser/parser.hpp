@@ -1,5 +1,7 @@
 #pragma once
 
+#include <chrono>
+
 // Parser entry/index surface.
 //
 // Role:
@@ -321,11 +323,14 @@ class Parser {
   int max_no_progress_steps_ = 8;
   unsigned parser_debug_channels_ = ParseDebugNone;
   int max_parse_debug_events_ = 256;
+  int parse_debug_progress_interval_ms_ = 1000;
   std::vector<ParseContextFrame> parse_context_stack_;
   std::vector<ParseDebugEvent> parse_debug_events_;
   ParseFailure best_parse_failure_;
   int best_parse_stack_token_index_ = -1;
   std::vector<std::string> best_parse_stack_trace_;
+  std::chrono::steady_clock::time_point parse_debug_started_at_{};
+  std::chrono::steady_clock::time_point parse_debug_last_progress_at_{};
 
   // ── pragma state ─────────────────────────────────────────────────────────
   // #pragma pack state: current packing alignment (0 = default/no packing).
@@ -346,12 +351,14 @@ class Parser {
   bool parser_debug_enabled() const;
   bool parse_debug_event_visible(const char* kind) const;
   void clear_parse_debug_state();
+  void reset_parse_debug_progress();
   void push_parse_context(const char* function_name);
   void pop_parse_context();
   void note_parse_debug_event(const char* kind, const char* detail = nullptr);
   void note_parse_debug_event_for(const char* kind,
                                   const char* function_name,
                                   const char* detail = nullptr);
+  void maybe_emit_parse_debug_progress();
   void note_tentative_parse_event(const char* kind, int start_pos, int end_pos);
   void note_parse_failure(const char* expected,
                           const char* detail = nullptr,

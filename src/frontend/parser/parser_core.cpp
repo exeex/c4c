@@ -1,6 +1,7 @@
 #include "parser.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <sstream>
@@ -484,6 +485,11 @@ void Parser::clear_parse_debug_state() {
     best_parse_stack_trace_.clear();
 }
 
+void Parser::reset_parse_debug_progress() {
+    parse_debug_started_at_ = {};
+    parse_debug_last_progress_at_ = {};
+}
+
 void Parser::push_parse_context(const char* function_name) {
     ParseContextFrame frame;
     frame.function_name = function_name ? function_name : "";
@@ -505,6 +511,14 @@ void Parser::note_parse_debug_event_for(const char* kind,
                                         const char* function_name,
                                         const char* detail) {
     if (!parser_debug_enabled()) return;
+
+    const auto now = std::chrono::steady_clock::now();
+    if (parse_debug_started_at_ == std::chrono::steady_clock::time_point{}) {
+        parse_debug_started_at_ = now;
+    }
+    if (parse_debug_last_progress_at_ == std::chrono::steady_clock::time_point{}) {
+        parse_debug_last_progress_at_ = now;
+    }
 
     ParseDebugEvent event;
     event.kind = kind ? kind : "";
@@ -557,6 +571,41 @@ void Parser::note_parse_debug_event_for(const char* kind,
             }
         }
     }
+
+    maybe_emit_parse_debug_progress();
+}
+
+void Parser::maybe_emit_parse_debug_progress() {
+    if (!parser_debug_enabled()) return;
+    if (parse_debug_events_.empty()) return;
+
+    const auto now = std::chrono::steady_clock::now();
+    const auto interval =
+        std::chrono::milliseconds(parse_debug_progress_interval_ms_);
+    if (now - parse_debug_last_progress_at_ < interval) return;
+
+    const ParseDebugEvent& event = parse_debug_events_.back();
+    const auto elapsed_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+            now - parse_debug_started_at_)
+            .count();
+    fprintf(stderr,
+            "[pdebug] progress elapsed_ms=%lld token_index=%d line=%d col=%d",
+            static_cast<long long>(elapsed_ms), event.token_index, event.line,
+            event.column);
+    if (!event.function_name.empty()) {
+        fprintf(stderr, " fn=%s", event.function_name.c_str());
+    }
+    if (event.token_index >= 0 &&
+        event.token_index < static_cast<int>(tokens_.size())) {
+        fprintf(stderr, " token_kind=%s token='%s'",
+                token_kind_name(tokens_[event.token_index].kind),
+                tokens_[event.token_index].lexeme.c_str());
+    }
+    fprintf(stderr, "\n");
+    fflush(stderr);
+
+    parse_debug_last_progress_at_ = now;
 }
 
 void Parser::note_tentative_parse_event(const char* kind,
@@ -1221,6 +1270,7 @@ Node* Parser::parse() {
     had_error_ = false;
     parse_error_count_ = 0;
     int no_progress_steps = 0;
+    reset_parse_debug_progress();
 
     while (!at_end()) {
         Node* item = nullptr;

@@ -10,8 +10,14 @@ if(NOT EXISTS "${SRC}")
   message(FATAL_ERROR "[FAIL] std::vector source not found: ${SRC}")
 endif()
 
+set(compiler_args --parse-only)
+if(DEFINED PARSER_DEBUG_ARGS AND NOT "${PARSER_DEBUG_ARGS}" STREQUAL "")
+  separate_arguments(parser_debug_args NATIVE_COMMAND "${PARSER_DEBUG_ARGS}")
+  list(APPEND compiler_args ${parser_debug_args})
+endif()
+
 execute_process(
-  COMMAND "${COMPILER}" --parse-only "${SRC}"
+  COMMAND "${COMPILER}" ${compiler_args} "${SRC}"
   TIMEOUT "${EXPECT_TIMEOUT_SEC}"
   RESULT_VARIABLE rc
   OUTPUT_VARIABLE out
@@ -32,7 +38,16 @@ if(NOT "${out}" STREQUAL "")
     "stdout:\n${out}")
 endif()
 
-if(NOT "${err}" STREQUAL "")
+if(DEFINED EXPECT_STDERR_SUBSTRING AND
+   NOT "${EXPECT_STDERR_SUBSTRING}" STREQUAL "")
+  string(FIND "${err}" "${EXPECT_STDERR_SUBSTRING}" stderr_pos)
+  if(stderr_pos EQUAL -1)
+    message(FATAL_ERROR
+      "[FAIL] std::vector parse baseline missing expected stderr substring\n"
+      "substring: ${EXPECT_STDERR_SUBSTRING}\n"
+      "stderr:\n${err}")
+  endif()
+elseif(NOT "${err}" STREQUAL "")
   message(FATAL_ERROR
     "[FAIL] expected no stderr from timed out std::vector parse baseline\n"
     "stderr:\n${err}")
