@@ -68,6 +68,56 @@ bool validate_function_signature(const BackendFunctionSignature& signature,
   return true;
 }
 
+using FunctionSignatureMap = std::unordered_map<std::string, const BackendFunctionSignature*>;
+
+bool validate_direct_call_contract(const BackendCallInst& call,
+                                   const FunctionSignatureMap& function_signatures,
+                                   std::string* error,
+                                   std::string_view context) {
+  if (call.callee.kind != BackendCallCalleeKind::DirectGlobal) {
+    return true;
+  }
+
+  const auto signature_it = function_signatures.find(call.callee.symbol_name);
+  if (signature_it == function_signatures.end()) {
+    return fail(error,
+                std::string(context) +
+                    ": direct call must reference a declared or defined function");
+  }
+
+  const auto& signature = *signature_it->second;
+  if (backend_call_return_type_kind(call) != backend_signature_return_type_kind(signature) ||
+      backend_call_return_scalar_type(call) != backend_signature_return_scalar_type(signature)) {
+    return fail(error,
+                std::string(context) +
+                    ": direct call return type must match callee signature return type");
+  }
+
+  if (call.args.size() < signature.params.size()) {
+    return fail(error,
+                std::string(context) +
+                    ": direct call must provide all fixed callee parameters");
+  }
+  if (!signature.is_vararg && call.args.size() != signature.params.size()) {
+    return fail(error,
+                std::string(context) +
+                    ": direct call arg count must match callee signature");
+  }
+
+  for (std::size_t index = 0; index < signature.params.size(); ++index) {
+    if (backend_call_param_type_kind(call, index) !=
+            backend_param_type_kind(signature.params[index]) ||
+        backend_call_param_scalar_type(call, index) !=
+            backend_param_scalar_type(signature.params[index])) {
+      return fail(error,
+                  std::string(context) + ": direct call param type " +
+                      std::to_string(index) + " must match callee signature");
+    }
+  }
+
+  return true;
+}
+
 bool validate_global(const BackendGlobal& global,
                      std::string* error,
                      std::string_view context) {
@@ -299,6 +349,7 @@ bool validate_local_slot(const BackendLocalSlot& local_slot,
 }
 
 bool validate_inst(const BackendInst& inst,
+                   const FunctionSignatureMap& function_signatures,
                    const std::unordered_map<std::string, BackendAddressBaseKind>&
                        referenced_object_kinds,
                    const std::unordered_set<std::string>& referenced_string_constants,
@@ -384,6 +435,9 @@ bool validate_inst(const BackendInst& inst,
                     std::string(context) + ": call param type " +
                         std::to_string(index) + " must not be empty");
       }
+    }
+    if (!validate_direct_call_contract(*call, function_signatures, error, context)) {
+      return false;
     }
     return true;
   }
@@ -653,6 +707,7 @@ bool validate_inst(const BackendInst& inst,
 }
 
 bool validate_block(const BackendBlock& block,
+                    const FunctionSignatureMap& function_signatures,
                     const std::unordered_map<std::string, BackendAddressBaseKind>&
                         referenced_object_kinds,
                     const std::unordered_set<std::string>& referenced_string_constants,
@@ -695,6 +750,7 @@ bool validate_block(const BackendBlock& block,
   }
   for (std::size_t index = 0; index < block.insts.size(); ++index) {
     if (!validate_inst(block.insts[index],
+                       function_signatures,
                        referenced_object_kinds,
                        referenced_string_constants,
                        referenced_bounds,
@@ -707,6 +763,7 @@ bool validate_block(const BackendBlock& block,
 }
 
 bool validate_function(const BackendFunction& function,
+                       const FunctionSignatureMap& function_signatures,
                        const std::unordered_map<std::string, BackendAddressBaseKind>&
                            referenced_object_kinds,
                        const std::unordered_set<std::string>& referenced_string_constants,
@@ -758,6 +815,7 @@ bool validate_function(const BackendFunction& function,
                   std::string(context) + ": duplicate block label '" + block.label + "'");
     }
     if (!validate_block(block,
+                        function_signatures,
                         function_object_kinds,
                         referenced_string_constants,
                         function_bounds,
@@ -807,6 +865,7 @@ bool validate_function(const BackendFunction& function,
 }  // namespace
 
 bool validate_backend_ir(const BackendModule& module, std::string* error) {
+  FunctionSignatureMap function_signatures;
   std::unordered_map<std::string, BackendAddressBaseKind> referenced_object_kinds;
   std::unordered_set<std::string> referenced_string_constants;
   std::unordered_map<std::string, ReferencedBoundsInfo> referenced_bounds;
@@ -842,7 +901,17 @@ bool validate_backend_ir(const BackendModule& module, std::string* error) {
   }
 
   for (std::size_t index = 0; index < module.functions.size(); ++index) {
+    if (!function_signatures
+             .emplace(module.functions[index].signature.name, &module.functions[index].signature)
+             .second) {
+      return fail(error,
+                  "duplicate function '" + module.functions[index].signature.name + "'");
+    }
+  }
+
+  for (std::size_t index = 0; index < module.functions.size(); ++index) {
     if (!validate_function(module.functions[index],
+                           function_signatures,
                            referenced_object_kinds,
                            referenced_string_constants,
                            referenced_bounds,

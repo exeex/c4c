@@ -1838,6 +1838,60 @@ void test_backend_ir_validator_rejects_structured_load_extension_that_does_not_w
   expect_contains(error, "extended loads must widen from memory type to value type",
                   "backend IR validator should explain non-widening structured load extensions");
 }
+
+void test_backend_ir_validator_rejects_structured_direct_call_when_callee_signature_param_type_disagrees() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  c4c::backend::BackendFunction* helper = nullptr;
+  for (auto& function : lowered.functions) {
+    if (function.signature.name == "add_pair") {
+      helper = &function;
+      break;
+    }
+  }
+  expect_true(helper != nullptr,
+              "backend IR direct-call contract regression test needs the lowered helper signature to mutate");
+  if (helper != nullptr && !helper->signature.params.empty()) {
+    helper->signature.params.front().type_kind = c4c::backend::BackendValueTypeKind::Scalar;
+    helper->signature.params.front().scalar_type = c4c::backend::BackendScalarType::I8;
+  }
+
+  std::string error;
+  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should reject structured direct calls whose callee signature param types disagree with the call contract");
+  expect_contains(error, "direct call param type 0 must match callee signature",
+                  "backend IR validator should explain structured direct-call param mismatches against the callee signature");
+}
+
+void test_backend_ir_validator_rejects_structured_direct_call_when_call_return_type_disagrees_with_callee_signature() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  c4c::backend::BackendFunction* main_fn = nullptr;
+  for (auto& function : lowered.functions) {
+    if (function.signature.name == "main") {
+      main_fn = &function;
+      break;
+    }
+  }
+  auto* call =
+      main_fn != nullptr && !main_fn->blocks.empty() && !main_fn->blocks.front().insts.empty()
+          ? std::get_if<c4c::backend::BackendCallInst>(&main_fn->blocks.front().insts.front())
+          : nullptr;
+  expect_true(call != nullptr,
+              "backend IR direct-call return-contract regression test needs the lowered backend call to mutate");
+  if (call != nullptr) {
+    call->return_type_kind = c4c::backend::BackendValueTypeKind::Scalar;
+    call->return_scalar_type = c4c::backend::BackendScalarType::I8;
+  }
+
+  std::string error;
+  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should reject structured direct calls whose return type disagrees with the callee signature");
+  expect_contains(error, "direct call return type must match callee signature return type",
+                  "backend IR validator should explain structured direct-call return mismatches against the callee signature");
+}
 int main(int argc, char* argv[]) {
   if (argc >= 2) test_filter() = argv[1];
 
@@ -1865,6 +1919,8 @@ int main(int argc, char* argv[]) {
   test_backend_ir_validator_accepts_structured_scalar_global_without_raw_global_type_text();
   test_backend_ir_validator_rejects_scalar_global_load_with_mismatched_structured_memory_type();
   test_backend_ir_validator_rejects_scalar_global_store_with_mismatched_structured_type();
+  test_backend_ir_validator_rejects_structured_direct_call_when_callee_signature_param_type_disagrees();
+  test_backend_ir_validator_rejects_structured_direct_call_when_call_return_type_disagrees_with_callee_signature();
   test_backend_ir_printer_renders_lowered_global_store_reload_slice();
   test_backend_ir_validator_accepts_lowered_global_store_reload_slice();
   test_backend_ir_printer_renders_structured_global_store_reload_slice_without_type_text();
