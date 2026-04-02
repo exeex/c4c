@@ -1892,6 +1892,54 @@ void test_backend_ir_validator_rejects_structured_direct_call_when_call_return_t
   expect_contains(error, "direct call return type must match callee signature return type",
                   "backend IR validator should explain structured direct-call return mismatches against the callee signature");
 }
+
+void test_backend_ir_validator_rejects_function_marked_declaration_with_define_signature() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_x86_extern_decl_object_module());
+
+  c4c::backend::BackendFunction* helper = nullptr;
+  for (auto& function : lowered.functions) {
+    if (function.signature.name == "helper_ext") {
+      helper = &function;
+      break;
+    }
+  }
+  expect_true(helper != nullptr,
+              "backend IR declaration-linkage regression test needs the lowered extern helper signature to mutate");
+  if (helper != nullptr) {
+    helper->signature.linkage_kind = c4c::backend::BackendFunctionLinkage::Define;
+    helper->signature.linkage = "define";
+  }
+
+  std::string error;
+  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should reject functions whose declaration bit disagrees with a define signature");
+  expect_contains(error, "declaration bit must match signature linkage",
+                  "backend IR validator should explain declaration/signature linkage mismatches");
+}
+
+void test_backend_ir_validator_rejects_function_marked_definition_with_declare_signature() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_return_add_module());
+
+  c4c::backend::BackendFunction* main_fn = nullptr;
+  for (auto& function : lowered.functions) {
+    if (function.signature.name == "main") {
+      main_fn = &function;
+      break;
+    }
+  }
+  expect_true(main_fn != nullptr,
+              "backend IR definition-linkage regression test needs the lowered main definition to mutate");
+  if (main_fn != nullptr) {
+    main_fn->signature.linkage_kind = c4c::backend::BackendFunctionLinkage::Declare;
+    main_fn->signature.linkage = "declare";
+  }
+
+  std::string error;
+  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should reject functions whose definition body disagrees with a declare signature");
+  expect_contains(error, "declaration bit must match signature linkage",
+                  "backend IR validator should explain definition/signature linkage mismatches");
+}
 int main(int argc, char* argv[]) {
   if (argc >= 2) test_filter() = argv[1];
 
@@ -1921,6 +1969,8 @@ int main(int argc, char* argv[]) {
   test_backend_ir_validator_rejects_scalar_global_store_with_mismatched_structured_type();
   test_backend_ir_validator_rejects_structured_direct_call_when_callee_signature_param_type_disagrees();
   test_backend_ir_validator_rejects_structured_direct_call_when_call_return_type_disagrees_with_callee_signature();
+  test_backend_ir_validator_rejects_function_marked_declaration_with_define_signature();
+  test_backend_ir_validator_rejects_function_marked_definition_with_declare_signature();
   test_backend_ir_printer_renders_lowered_global_store_reload_slice();
   test_backend_ir_validator_accepts_lowered_global_store_reload_slice();
   test_backend_ir_printer_renders_structured_global_store_reload_slice_without_type_text();

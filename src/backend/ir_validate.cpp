@@ -774,6 +774,9 @@ bool validate_function(const BackendFunction& function,
   if (!validate_function_signature(function.signature, error, context)) {
     return false;
   }
+  if (function.is_declaration != backend_function_is_declaration(function.signature)) {
+    return fail(error, std::string(context) + ": declaration bit must match signature linkage");
+  }
   if (function.is_declaration) {
     if (!function.blocks.empty()) {
       return fail(error, std::string(context) + ": declarations must not have blocks");
