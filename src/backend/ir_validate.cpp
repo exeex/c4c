@@ -522,6 +522,8 @@ bool validate_inst(const BackendInst& inst,
       referenced_objects.find(ptrdiff->lhs_address.base_symbol) != referenced_objects.end();
   const bool rhs_is_referenced_object =
       referenced_objects.find(ptrdiff->rhs_address.base_symbol) != referenced_objects.end();
+  const bool lhs_is_local_address = is_local_address_symbol(ptrdiff->lhs_address.base_symbol);
+  const bool rhs_is_local_address = is_local_address_symbol(ptrdiff->rhs_address.base_symbol);
   if (lhs_is_referenced_object != rhs_is_referenced_object) {
     return fail(error,
                 std::string(context) +
@@ -532,6 +534,12 @@ bool validate_inst(const BackendInst& inst,
     return fail(error,
                 std::string(context) +
                     ": ptrdiff addresses must reference the same global");
+  }
+  if (lhs_is_local_address && rhs_is_local_address &&
+      ptrdiff->lhs_address.base_symbol != ptrdiff->rhs_address.base_symbol) {
+    return fail(error,
+                std::string(context) +
+                    ": ptrdiff addresses must reference the same local slot");
   }
   const auto lhs_bounds_it = referenced_bounds.find(ptrdiff->lhs_address.base_symbol);
   const bool same_structured_base =

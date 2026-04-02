@@ -153,6 +153,16 @@ c4c::backend::BackendModule make_structured_local_slot_ptrdiff_module() {
   return lowered;
 }
 
+c4c::backend::BackendModule make_structured_cross_local_slot_ptrdiff_module() {
+  auto lowered = make_structured_local_slot_ptrdiff_module();
+  lowered.functions.front().local_slots.push_back(
+      c4c::backend::BackendLocalSlot{"%lv.other", 8, c4c::backend::BackendScalarType::I32, 4});
+  auto& ptrdiff = std::get<c4c::backend::BackendPtrDiffEqInst>(
+      lowered.functions.front().blocks.front().insts.back());
+  ptrdiff.rhs_address.base_symbol = "%lv.other";
+  return lowered;
+}
+
 void test_backend_ir_printer_renders_lowered_conditional_return_slice() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_return_module());
   const auto rendered = c4c::backend::print_backend_ir(lowered);
@@ -1150,6 +1160,16 @@ void test_backend_ir_validator_rejects_local_slot_ptrdiff_past_structured_bounds
                   "backend IR validator should explain when a structured local-slot ptrdiff address escapes the bounded local slot");
 }
 
+void test_backend_ir_validator_rejects_ptrdiff_across_different_structured_local_slots() {
+  auto lowered = make_structured_cross_local_slot_ptrdiff_module();
+  std::string error;
+
+  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should reject structured ptrdiff slices that compare addresses from different local slots");
+  expect_contains(error, "ptrdiff addresses must reference the same local slot",
+                  "backend IR validator should explain cross-local structured ptrdiff mismatches");
+}
+
 void test_backend_ir_printer_renders_return_add() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_return_add_module());
   const auto rendered = c4c::backend::print_backend_ir(lowered);
@@ -1773,6 +1793,7 @@ int main(int argc, char* argv[]) {
   test_backend_ir_validator_rejects_local_slot_ptrdiff_with_misaligned_offset();
   test_backend_ir_validator_accepts_structured_local_slot_ptrdiff_slice_without_raw_text();
   test_backend_ir_validator_rejects_local_slot_ptrdiff_past_structured_bounds();
+  test_backend_ir_validator_rejects_ptrdiff_across_different_structured_local_slots();
   test_backend_ir_printer_renders_lowered_conditional_return_slice();
   test_backend_ir_validator_accepts_lowered_conditional_return_slice();
   test_backend_ir_printer_renders_structured_conditional_return_slice_without_type_text();
