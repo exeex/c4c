@@ -1,5 +1,18 @@
 #pragma once
 
+// Public HIR facade.
+//
+// Architecture:
+// - parser handles syntax plus the minimum early disambiguation needed to parse C++
+// - sema handles the first semantic pass: traditional type/canonicalization checks
+// - HIR handles the second semantic pass for template/dependent C++ constructs
+//
+// In practice, HIR is where higher-level C++ semantics are lowered toward a
+// stable, more C-like semantic model that later lowering/codegen stages can
+// consume. Deferred compile-time work such as template-driven retries,
+// deferred consteval reduction, and deferred NTTP-related work is coordinated
+// by compile_time_engine after initial HIR construction.
+
 #include <string>
 
 #include "ast.hpp"

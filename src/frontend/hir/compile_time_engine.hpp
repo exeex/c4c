@@ -1,5 +1,18 @@
 #pragma once
 
+// Compile-time retry / realization engine for HIR.
+//
+// Initial HIR lowering is allowed to leave some work deferred when full
+// template/dependent information is not yet ready. This engine owns the
+// follow-up loop for that deferred work, including:
+// - deferred template instantiation retries
+// - deferred consteval reductions unlocked by new instantiations
+// - deferred NTTP-related work and dependent template-type realization
+//
+// Conceptually, HIR acts as a second semantic layer for higher-level C++
+// constructs, and compile_time_engine is the fixpoint driver that materializes
+// those deferred compile-time semantics into concrete HIR state.
+
 #include "hir_ir.hpp"
 
 #include <algorithm>
