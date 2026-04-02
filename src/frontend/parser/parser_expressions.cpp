@@ -81,6 +81,7 @@ Node* Parser::parse_expr() {
 Node* Parser::parse_assign_expr() {
     ParseContextGuard trace(this, __func__);
     Node* lhs = parse_ternary();
+    if (template_arg_expr_depth_ > 0 && check_template_close()) return lhs;
     int ln = cur().line;
     TokenKind k = cur().kind;
     const char* op = nullptr;
@@ -137,6 +138,7 @@ Node* Parser::parse_ternary() {
 Node* Parser::parse_binary(int min_prec) {
     Node* lhs = parse_unary();
     while (true) {
+        if (template_arg_expr_depth_ > 0 && check_template_close()) break;
         int prec = bin_prec(cur().kind);
         if (prec < min_prec) break;
         TokenKind k = cur().kind;
@@ -1332,7 +1334,7 @@ Node* Parser::parse_primary() {
                     // Expression terminators / continuations
                     if (check(TokenKind::RParen) || check(TokenKind::Semi) ||
                         check(TokenKind::Comma) || check(TokenKind::Ellipsis) ||
-                        check(TokenKind::RBracket) ||
+                        check(TokenKind::RBracket) || check_template_close() ||
                         check(TokenKind::RBrace)) return true;
                     // Binary operators
                     if (check(TokenKind::Pipe) || check(TokenKind::PipePipe) ||

@@ -15,6 +15,7 @@ Parser::ParserSnapshot Parser::save_state() const {
     snap.typedef_types        = typedef_types_;
     snap.var_types            = var_types_;
     snap.last_resolved_typedef = last_resolved_typedef_;
+    snap.template_arg_expr_depth = template_arg_expr_depth_;
     return snap;
 }
 
@@ -25,6 +26,7 @@ void Parser::restore_state(const ParserSnapshot& snap) {
     typedef_types_         = snap.typedef_types;
     var_types_             = snap.var_types;
     last_resolved_typedef_ = snap.last_resolved_typedef;
+    template_arg_expr_depth_ = snap.template_arg_expr_depth;
 }
 
 

@@ -116,7 +116,9 @@ bool Parser::try_parse_template_non_type_expr(int expr_start,
 
     TentativeParseGuard guard(*this);
     try {
+        ++template_arg_expr_depth_;
         Node* expr = parse_assign_expr();
+        --template_arg_expr_depth_;
         if (pos_ > expr_start && (check(TokenKind::Comma) || check_template_close())) {
             const std::string expr_text =
                 capture_template_arg_expr_text(tokens_, expr_start, pos_);
@@ -131,6 +133,7 @@ bool Parser::try_parse_template_non_type_expr(int expr_start,
             }
         }
     } catch (...) {
+        if (template_arg_expr_depth_ > 0) --template_arg_expr_depth_;
     }
 
     return false;

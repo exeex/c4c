@@ -164,6 +164,7 @@ class Parser {
     std::unordered_map<std::string, TypeSpec> typedef_types;
     std::unordered_map<std::string, TypeSpec> var_types;
     std::string last_resolved_typedef;
+    int template_arg_expr_depth = 0;
   };
 
   // RAII guard that saves parser state on construction and restores it on
@@ -303,6 +304,10 @@ class Parser {
   bool parsing_top_level_context_;
   // True while parsing an explicit template specialization (template<>).
   bool parsing_explicit_specialization_ = false;
+  // Nesting depth for expression parses that are constrained by template
+  // argument delimiters, so expression parsing does not consume enclosing
+  // template-close tokens as operators.
+  int template_arg_expr_depth_ = 0;
 
   // ── namespace / using-directive visibility state ─────────────────────────
   // Transitional flattened path kept only as a compatibility bridge.

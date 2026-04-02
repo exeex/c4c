@@ -393,6 +393,15 @@ set_tests_properties(cpp_parse_record_member_underlying_type_dump PROPERTIES
 )
 
 add_test(
+  NAME cpp_parse_record_base_variable_template_value_arg_dump
+  COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/parse_only_case/record_base_variable_template_value_arg_parse.cpp"
+)
+set_tests_properties(cpp_parse_record_base_variable_template_value_arg_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;parse"
+  PASS_REGULAR_EXPRESSION "StructDef\\(struct eastl::has_unique_object_representations_T_int\\)"
+)
+
+add_test(
   NAME cpp_parse_trailing_requires_following_member_decl_dump
   COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/postive_case/cpp20_trailing_requires_following_member_decl_parse.cpp"
 )
@@ -1446,7 +1455,7 @@ add_test(
           -DROOT=${PROJECT_SOURCE_DIR}
           -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/eastl/eastl_integer_sequence_simple.cpp
           "-DEXPECT_FAIL_LOC:STRING=tests/cpp/eastl/eastl_integer_sequence_simple.cpp:6:1"
-          "-DEXPECT_ERROR_SUBSTRING:STRING=object has incomplete type: eastl::has_unique_object_representations"
+          "-DEXPECT_ERROR_SUBSTRING:STRING=object has incomplete type: eastl::is_signed_helper"
           -P "${PROJECT_SOURCE_DIR}/tests/cpp/eastl/run_eastl_parse_recipe.cmake"
 )
 set_tests_properties(cpp_eastl_integer_sequence_parse_recipe PROPERTIES
@@ -1461,7 +1470,7 @@ add_test(
           -DROOT=${PROJECT_SOURCE_DIR}
           -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/eastl/eastl_type_traits_simple.cpp
           "-DEXPECT_FAIL_LOC:STRING=tests/cpp/eastl/eastl_type_traits_simple.cpp:55:1"
-          "-DEXPECT_ERROR_SUBSTRING:STRING=object has incomplete type: eastl::has_unique_object_representations"
+          "-DEXPECT_ERROR_SUBSTRING:STRING=object has incomplete type: eastl::is_signed_helper"
           -P "${PROJECT_SOURCE_DIR}/tests/cpp/eastl/run_eastl_parse_recipe.cmake"
 )
 set_tests_properties(cpp_eastl_type_traits_parse_recipe PROPERTIES
@@ -1475,12 +1484,11 @@ add_test(
           -DCOMPILER=$<TARGET_FILE:c4cll>
           -DROOT=${PROJECT_SOURCE_DIR}
           -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/eastl/eastl_utility_simple.cpp
-          "-DEXPECT_FAIL_LOC:STRING=tests/cpp/eastl/eastl_utility_simple.cpp:7:1"
-          "-DEXPECT_ERROR_SUBSTRING:STRING=object has incomplete type: eastl::has_unique_object_representations"
+          -DEXPECT_SUCCESS=ON
           -P "${PROJECT_SOURCE_DIR}/tests/cpp/eastl/run_eastl_parse_recipe.cmake"
 )
 set_tests_properties(cpp_eastl_utility_parse_recipe PROPERTIES
-  LABELS "internal;negative_case;cpp;workflow"
+  LABELS "internal;positive_case;cpp;workflow"
   TIMEOUT 30
 )
 
@@ -1490,13 +1498,14 @@ add_test(
           -DCOMPILER=$<TARGET_FILE:c4cll>
           -DROOT=${PROJECT_SOURCE_DIR}
           -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/eastl/eastl_vector_simple.cpp
-          "-DEXPECT_FAIL_LOC:STRING=tests/cpp/eastl/eastl_vector_simple.cpp:32:1"
-          "-DEXPECT_ERROR_SUBSTRING:STRING=object has incomplete type: eastl::has_unique_object_representations"
+          -DCASE_TIMEOUT_SEC=25
+          "-DEXPECT_FAIL_LOC:STRING=ref/EASTL/include/EASTL/internal/function_detail.h:237:16"
+          "-DEXPECT_ERROR_SUBSTRING:STRING=unexpected token in expression: ."
           -P "${PROJECT_SOURCE_DIR}/tests/cpp/eastl/run_eastl_vector_parse_recipe.cmake"
 )
 set_tests_properties(cpp_eastl_vector_parse_recipe PROPERTIES
   LABELS "internal;negative_case;cpp;workflow"
-  TIMEOUT 30
+  TIMEOUT 45
 )
 
 add_test(

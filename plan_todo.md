@@ -7,10 +7,9 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 2: Foundation headers and traits
-- Current slice: compare the newly exposed
-  `eastl::has_unique_object_representations` incomplete-type failure against
-  Clang and reduce it to the smallest generic semantic testcase before the next
-  implementation change
+- Current slice: compare the newly exposed `eastl::is_signed_helper`
+  incomplete-type failure against Clang and reduce it to the smallest generic
+  semantic testcase before the next implementation change
 
 ## Todo
 
@@ -37,22 +36,36 @@ Source Plan: plan.md
 - [x] Reclassified the affected EASTL recipes after the parser fix; the Step 2
   and Step 3 fronts now stop on `eastl::has_unique_object_representations`
   becoming incomplete during `--parse-only`
+- [x] Reduced the fallback `integral_constant<bool, is_integral_v<...>>`
+  record-base failure to
+  `tests/cpp/internal/parse_only_case/record_base_variable_template_value_arg_parse.cpp`
+  and taught template-argument expression parsing to stop on enclosing
+  template-close tokens instead of consuming them as shift / relational
+  operators
+- [x] Reclassified the affected EASTL parse recipes after the parser fix:
+  `eastl_integer_sequence_simple.cpp` and `eastl_type_traits_simple.cpp` now
+  stop on `eastl::is_signed_helper`, `eastl_utility_simple.cpp` now passes
+  parse-only, and `eastl_vector_simple.cpp` advances to a new parser error in
+  `EASTL/internal/function_detail.h`
 
 ## Next Slice
 
-- compare the `__has_unique_object_representations` spelling and resulting
-  record definition against Clang on a reduced internal testcase
-- decide whether the new blocker belongs to parse-only semantic validation or a
-  more general builtin-type-trait completeness bug before implementing the next
-  Step 2 fix
+- compare the `is_signed_helper : bool_constant<T(-1) < T(0)>` pattern against
+  Clang on a reduced internal testcase
+- decide whether the new blocker belongs to parse-only semantic validation for
+  dependent value expressions in record bases or a more general incomplete-type
+  bug before implementing the next Step 2 fix
 
 ## Blockers
 
-- `eastl_integer_sequence_simple.cpp`, `eastl_type_traits_simple.cpp`,
-  `eastl_utility_simple.cpp`, `eastl_memory_simple.cpp`,
-  `eastl_tuple_simple.cpp`, and `eastl_vector_simple.cpp` now all stop with
-  `object has incomplete type: eastl::has_unique_object_representations` after
-  the shared `__underlying_type(T)` parser blocker was removed
+- `eastl_integer_sequence_simple.cpp` and
+  `eastl_type_traits_simple.cpp` now stop with
+  `object has incomplete type: eastl::is_signed_helper`
+- `eastl_vector_simple.cpp` now stops at
+  `ref/EASTL/include/EASTL/internal/function_detail.h:237:16` with
+  `unexpected token in expression: .`
+- `eastl_memory_simple.cpp` and `eastl_tuple_simple.cpp` still need a fresh
+  post-fix reclassification before Step 3 resumes
 
 ## Resume Notes
 
@@ -63,6 +76,9 @@ Source Plan: plan.md
   `tests/cpp/internal/InternalTests.cmake`
 - `tests/cpp/internal/parse_only_case/record_member_underlying_type_parse.cpp`
   is the reduced internal regression for the fixed parser blocker
+- `tests/cpp/internal/parse_only_case/record_base_variable_template_value_arg_parse.cpp`
+  is the reduced internal regression for the nested variable-template parser
+  blocker in record bases
 - `eastl_piecewise_construct_simple.cpp` and
   `eastl_tuple_fwd_decls_simple.cpp` parse successfully but first fail during
   canonical/sema expansion with undeclared identifiers from EASTL internals
