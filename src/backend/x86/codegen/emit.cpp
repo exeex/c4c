@@ -756,7 +756,9 @@ std::optional<MinimalConditionalPhiJoinSlice> parse_minimal_conditional_phi_join
 
   const auto& function = module.functions.front();
   if (function.is_declaration || !backend_function_is_definition(function.signature) ||
-      function.signature.return_type != "i32" || function.signature.name != "main" ||
+      c4c::backend::backend_signature_return_scalar_type(function.signature) !=
+          c4c::backend::BackendScalarType::I32 ||
+      function.signature.name != "main" ||
       !function.signature.params.empty() || function.signature.is_vararg ||
       function.blocks.size() != 4) {
     return std::nullopt;

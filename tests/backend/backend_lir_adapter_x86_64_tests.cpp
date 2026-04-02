@@ -1051,6 +1051,21 @@ void test_x86_backend_scaffold_accepts_structured_conditional_phi_join_add_ir_wi
                       "x86 backend seam should not fall back when structured phi and binary metadata is present without type shims");
 }
 
+void test_x86_backend_scaffold_accepts_structured_conditional_phi_join_add_ir_without_signature_shims() {
+  auto module = make_conditional_phi_join_add_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  auto lowered = c4c::backend::lower_to_backend_ir(module);
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, ".Ljoin:\n  add eax, 5\n  ret\n",
+                  "x86 backend seam should still lower structured phi-fed joins without legacy signature return text");
+  expect_not_contains(rendered, "phi i32",
+                      "x86 backend seam should not fall back when lowered conditional joins rely only on structured signature metadata");
+}
+
 void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_predecessor_add_ir_input() {
   auto module = make_conditional_phi_join_predecessor_add_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -2985,6 +3000,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_ir_input);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_add_ir_input);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_conditional_phi_join_add_ir_without_type_shims);
+  RUN_TEST(test_x86_backend_scaffold_accepts_structured_conditional_phi_join_add_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_predecessor_add_ir_input);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_predecessor_sub_ir_input);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_add_ir_input);
