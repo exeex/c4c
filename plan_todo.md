@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 2: introduce a safe transitional source layout and build wiring
-- Current slice: continue Step 2 by extracting the remaining type/template-heavy helpers still stranded in `src/frontend/hir/ast_to_hir.cpp`; after moving `Lowerer::infer_generic_ctrl_type` into `src/frontend/hir/hir_types.cpp`, the next likely target is one of the nearby template/program coordinator owners that still keep the monolith anchored there
+- Current slice: continue Step 2 by extracting the next live template helper still owned only by `src/frontend/hir/ast_to_hir.cpp`; after moving the call-binding and deduction helpers into `src/frontend/hir/hir_templates.cpp`, the next candidates are the remaining template-struct/query helpers such as `template_struct_has_pack_params`
 
 ## Todo
 
@@ -18,6 +18,8 @@ Source Plan: plan.md
 - [ ] Step 5: run final build and regression validation
 
 ## Completed
+
+- Validation on 2026-04-02 after moving `Lowerer::is_referenced_without_template_args`, `Lowerer::has_plain_call`, `Lowerer::build_call_bindings`, `Lowerer::build_call_nttp_bindings`, `Lowerer::has_forwarded_nttp`, `Lowerer::try_infer_arg_type_for_deduction`, `Lowerer::try_deduce_template_type_args`, `Lowerer::deduction_covers_all_type_params`, `Lowerer::fill_deduced_defaults`, and `Lowerer::merge_explicit_and_deduced_type_bindings` into [`src/frontend/hir/hir_templates.cpp`](/workspaces/c4c/src/frontend/hir/hir_templates.cpp): the live template argument-binding and deduction path now lives beside the rest of the template lowering support, while [`src/frontend/hir/ast_to_hir.cpp`](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp) dropped another real template-heavy ownership cluster. `cmake --build build -j8` succeeded; `ctest --test-dir build -j8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 historical failing tests (`positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c`); `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passed with zero new failing tests.
 
 - Validation on 2026-04-02 after moving `Lowerer::infer_generic_ctrl_type` into [`src/frontend/hir/hir_types.cpp`](/workspaces/c4c/src/frontend/hir/hir_types.cpp): generic controlling-expression type inference now lives beside the struct/layout/global/type helpers it consults, while [`src/frontend/hir/ast_to_hir.cpp`](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp) dropped another live type-heavy owner and [`src/frontend/hir/hir_types.cpp`](/workspaces/c4c/src/frontend/hir/hir_types.cpp) no longer lists that helper as intentionally omitted. `cmake --build build -j8` succeeded; `ctest --test-dir build -j8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 historical failing tests (`positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c`); `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passed with zero new failing tests.
 
