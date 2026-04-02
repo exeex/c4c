@@ -497,6 +497,7 @@ void Parser::note_parse_debug_event(const char* kind, const char* detail) {
     if (static_cast<int>(parse_debug_events_.size()) > max_parse_debug_events_) {
         parse_debug_events_.erase(parse_debug_events_.begin());
     }
+    if (kind && std::strncmp(kind, "tentative_", 10) == 0) return;
     if (!parse_context_stack_.empty()) {
         const int token_index = parse_debug_events_.back().token_index;
         const int token_delta = token_index - best_parse_stack_token_index_;
@@ -528,6 +529,13 @@ void Parser::note_parse_debug_event(const char* kind, const char* detail) {
             }
         }
     }
+}
+
+void Parser::note_tentative_parse_event(const char* kind,
+                                        int start_pos,
+                                        int end_pos) {
+    const std::string detail = format_tentative_parse_detail(start_pos, end_pos);
+    note_parse_debug_event(kind, detail.c_str());
 }
 
 void Parser::note_parse_failure(const char* expected,
@@ -669,6 +677,12 @@ std::string Parser::format_parse_failure_token_window(
         if (i > start) oss << " | ";
         oss << format_debug_token_entry(tokens_[i], i, i == center);
     }
+    return oss.str();
+}
+
+std::string Parser::format_tentative_parse_detail(int start_pos, int end_pos) const {
+    std::ostringstream oss;
+    oss << "start=" << start_pos << " end=" << end_pos;
     return oss.str();
 }
 

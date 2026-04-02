@@ -161,16 +161,28 @@ class Parser {
   struct TentativeParseGuard {
     Parser& parser;
     ParserSnapshot snapshot;
+    int start_pos = -1;
     bool committed = false;
 
     explicit TentativeParseGuard(Parser& p)
-        : parser(p), snapshot(p.save_state()) {}
-
-    ~TentativeParseGuard() {
-      if (!committed) parser.restore_state(snapshot);
+        : parser(p), snapshot(p.save_state()), start_pos(snapshot.pos) {
+      parser.note_tentative_parse_event("tentative_enter", start_pos, start_pos);
     }
 
-    void commit() { committed = true; }
+    ~TentativeParseGuard() {
+      if (!committed) {
+        parser.note_tentative_parse_event("tentative_rollback", start_pos,
+                                          parser.pos_);
+        parser.restore_state(snapshot);
+      }
+    }
+
+    void commit() {
+      if (committed) return;
+      parser.note_tentative_parse_event("tentative_commit", start_pos,
+                                        parser.pos_);
+      committed = true;
+    }
   };
 
   ParserSnapshot save_state() const;
@@ -327,6 +339,7 @@ class Parser {
   void push_parse_context(const char* function_name);
   void pop_parse_context();
   void note_parse_debug_event(const char* kind, const char* detail = nullptr);
+  void note_tentative_parse_event(const char* kind, int start_pos, int end_pos);
   void note_parse_failure(const char* expected,
                           const char* detail = nullptr,
                           bool committed = true);
@@ -335,6 +348,7 @@ class Parser {
   std::vector<std::string> best_debug_summary_stack() const;
   std::string format_best_parse_failure() const;
   void dump_parse_debug_trace() const;
+  std::string format_tentative_parse_detail(int start_pos, int end_pos) const;
   std::string format_parse_failure_token_window(const ParseFailure& failure) const;
 
   // ── token cursor / shared token utilities ────────────────────────────────
