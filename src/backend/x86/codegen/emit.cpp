@@ -1329,12 +1329,16 @@ std::optional<MinimalExternGlobalArrayLoadSlice> parse_minimal_extern_global_arr
   }
 
   const auto* load = std::get_if<c4c::backend::BackendLoadInst>(&block.insts.front());
+  const auto element_count = static_cast<std::int64_t>(global_array_type->element_count);
+  const auto element_size = static_cast<std::int64_t>(sizeof(std::int32_t));
   if (load == nullptr ||
       c4c::backend::backend_load_value_type(*load) !=
           c4c::backend::BackendScalarType::I32 ||
       load->address.kind != c4c::backend::BackendAddressBaseKind::Global ||
       load->address.base_symbol != global->name ||
-      *block.terminator.value != load->result || load->address.byte_offset < 0) {
+      *block.terminator.value != load->result || load->address.byte_offset < 0 ||
+      load->address.byte_offset % element_size != 0 ||
+      load->address.byte_offset / element_size >= element_count) {
     return std::nullopt;
   }
 

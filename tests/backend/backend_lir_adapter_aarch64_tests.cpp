@@ -2649,6 +2649,28 @@ void test_aarch64_backend_scaffold_rejects_extern_global_array_fast_path_when_ad
                   "aarch64 backend seam should stop matching the extern global-array asm slice when structured address provenance no longer names a global");
 }
 
+void test_aarch64_backend_scaffold_rejects_extern_global_array_fast_path_when_offset_escapes_bounds() {
+  auto lowered =
+      c4c::backend::lower_to_backend_ir(make_extern_global_array_load_module());
+  auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
+  auto* load =
+      main_fn != nullptr && !main_fn->blocks.empty() && !main_fn->blocks.front().insts.empty()
+          ? std::get_if<c4c::backend::BackendLoadInst>(&main_fn->blocks.front().insts.front())
+          : nullptr;
+  expect_true(load != nullptr,
+              "aarch64 extern-global-array bounds regression test needs a lowered backend load to mutate");
+  if (load != nullptr) {
+    load->address.byte_offset = 8;
+  }
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  expect_contains(rendered, "target triple = \"aarch64-unknown-linux-gnu\"",
+                  "aarch64 backend seam should stop matching the extern global-array asm slice when the structured load offset escapes the referenced array bounds");
+}
+
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_local_array_ir_input() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_local_array_gep_module());
   const auto rendered = c4c::backend::emit_module(
@@ -4002,6 +4024,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_scaffold_accepts_structured_extern_global_array_ir_without_compatibility_or_signature_shims();
   test_aarch64_backend_scaffold_accepts_structured_extern_global_array_ir_without_raw_type_text();
   test_aarch64_backend_scaffold_rejects_extern_global_array_fast_path_when_address_kind_disagrees();
+  test_aarch64_backend_scaffold_rejects_extern_global_array_fast_path_when_offset_escapes_bounds();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_local_array_ir_input();
   test_aarch64_backend_scaffold_accepts_structured_local_array_ir_without_type_or_signature_shims();
   test_aarch64_backend_scaffold_rejects_local_array_fast_path_when_local_slot_metadata_disagrees();
