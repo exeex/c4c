@@ -36,6 +36,108 @@ bool match_floatn_keyword_base(const std::string& name, TypeBase* out_base) {
     return true;
 }
 
+bool skip_balanced_template_arg_tokens(const std::vector<Token>& tokens, int* pos) {
+    if (!pos || *pos < 0 || *pos >= static_cast<int>(tokens.size()) ||
+        tokens[*pos].kind != TokenKind::Less) {
+        return false;
+    }
+
+    int depth = 0;
+    while (*pos < static_cast<int>(tokens.size())) {
+        const TokenKind kind = tokens[*pos].kind;
+        if (kind == TokenKind::Less) {
+            ++depth;
+            ++(*pos);
+            continue;
+        }
+        if (kind == TokenKind::Greater) {
+            --depth;
+            ++(*pos);
+            if (depth <= 0) return true;
+            continue;
+        }
+        if (kind == TokenKind::GreaterGreater) {
+            depth -= 2;
+            ++(*pos);
+            if (depth <= 0) return true;
+            continue;
+        }
+        ++(*pos);
+    }
+
+    return false;
+}
+
+bool token_can_follow_value_like_template_arg(TokenKind kind) {
+    switch (kind) {
+        case TokenKind::Comma:
+        case TokenKind::Greater:
+        case TokenKind::GreaterGreater:
+        case TokenKind::RParen:
+        case TokenKind::RBracket:
+        case TokenKind::RBrace:
+        case TokenKind::Semi:
+        case TokenKind::Ellipsis:
+        case TokenKind::Question:
+        case TokenKind::Colon:
+        case TokenKind::Assign:
+        case TokenKind::EqualEqual:
+        case TokenKind::BangEqual:
+        case TokenKind::Less:
+        case TokenKind::LessEqual:
+        case TokenKind::GreaterEqual:
+        case TokenKind::Plus:
+        case TokenKind::Minus:
+        case TokenKind::Star:
+        case TokenKind::Slash:
+        case TokenKind::Percent:
+        case TokenKind::Amp:
+        case TokenKind::AmpAmp:
+        case TokenKind::Pipe:
+        case TokenKind::PipePipe:
+        case TokenKind::Caret:
+        case TokenKind::Dot:
+        case TokenKind::Arrow:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool starts_with_trait_value_template_arg(const std::vector<Token>& tokens, int pos) {
+    if (pos < 0 || pos >= static_cast<int>(tokens.size())) return false;
+
+    if (tokens[pos].kind == TokenKind::ColonColon) ++pos;
+    if (pos >= static_cast<int>(tokens.size()) ||
+        tokens[pos].kind != TokenKind::Identifier) {
+        return false;
+    }
+
+    while (pos < static_cast<int>(tokens.size())) {
+        ++pos;  // identifier
+        if (pos < static_cast<int>(tokens.size()) &&
+            tokens[pos].kind == TokenKind::Less &&
+            !skip_balanced_template_arg_tokens(tokens, &pos)) {
+            return false;
+        }
+
+        if (pos + 1 >= static_cast<int>(tokens.size()) ||
+            tokens[pos].kind != TokenKind::ColonColon ||
+            tokens[pos + 1].kind != TokenKind::Identifier) {
+            return false;
+        }
+
+        const std::string& member_name = tokens[pos + 1].lexeme;
+        pos += 2;  // :: identifier
+        if (member_name == "value") {
+            if (pos >= static_cast<int>(tokens.size())) return true;
+            return token_can_follow_value_like_template_arg(tokens[pos].kind);
+        }
+    }
+
+    return false;
+}
+
 struct QualifiedTypeProbe {
     bool has_resolved_typedef = false;
     bool has_unresolved_qualified_fallback = false;

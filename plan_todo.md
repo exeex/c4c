@@ -7,10 +7,10 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 3: Object lifetime and tuple layer
-- Current slice: use the new file-aware parser-debug progress output to reduce
-  the remaining `eastl_memory_simple.cpp` / `eastl_tuple_simple.cpp` timeout
-  path inside the shared EASTL-to-libstdc++ type-traits stack now that the
-  worst variable-template functional-cast probe has been trimmed
+- Current slice: use the deeper post-`Trait<...>::value` progress to reduce the
+  remaining `eastl_memory_simple.cpp` / `eastl_tuple_simple.cpp` timeout path
+  inside the shared EASTL-to-libstdc++ trait / alias stack now that the worst
+  trait-value type-start speculation has been trimmed
 
 ## Todo
 
@@ -142,18 +142,37 @@ Source Plan: plan.md
   (`positive_sema_linux_stage2_repro_03_asm_volatile_c`,
   `backend_lir_adapter_aarch64_tests`, and
   `llvm_gcc_c_torture_src_20080502_1_c`)
+- [x] Added
+  `tests/cpp/internal/postive_case/qualified_trait_value_template_arg_parse.cpp`
+  as a parse-only guardrail for alias-template NTTPs that start with
+  `Trait<...>::value`, and taught both template-argument disambiguation and the
+  shared type-start probe to treat that shape as value-like instead of paying
+  the full speculative type parse first
+- [x] Re-ran the focused trait-value guardrails plus 12s EASTL parser-debug
+  probes: `eastl_memory_simple.cpp`, `eastl_tuple_simple.cpp`, and
+  `eastl_vector_simple.cpp` still time out, but the old
+  `/usr/include/c++/14/type_traits` `__and_<...>::value` / `add_const_t`
+  frontier is no longer the terminal hotspot and the remaining work now lands
+  deeper in shared trait / alias / constexpr machinery
+- [x] Re-ran the full suite and monotonic regression guard; the tree stayed
+  monotonic with `2694 -> 2696` passes and the same three pre-existing failures
+  (`positive_sema_linux_stage2_repro_03_asm_volatile_c`,
+  `backend_lir_adapter_aarch64_tests`, and
+  `llvm_gcc_c_torture_src_20080502_1_c`)
 
 ## Next Slice
 
-- reduce the post-variable-template-probe Step 3 frontier from the remaining
-  `eastl_memory_simple.cpp` and `eastl_tuple_simple.cpp` parse-time stalls
-  under the deeper libstdc++ / EASTL stack, starting from the current
-  `utility.h`, `functional_base.h`, and `/usr/include/c++/14/type_traits`
-  heartbeat hotspots
-- reduce the new timeout-only `eastl_vector_simple.cpp` frontier now that the
-  old `ref/EASTL/include/EASTL/internal/function.h` incomplete-type diagnostic
-  has been cleared; capture the next smaller parser/canonical blocker from the
-  deeper libstdc++ / EASTL stack
+- reduce the post-trait-value Step 3 frontier from the remaining
+  `eastl_memory_simple.cpp` and `eastl_tuple_simple.cpp` parse-time stalls,
+  starting from the new deeper hotspots in
+  `/usr/include/c++/14/type_traits:717`,
+  `/usr/include/c++/14/type_traits:1296`,
+  `/usr/include/c++/14/type_traits:1371`, and
+  `/usr/include/c++/14/type_traits:2219`
+- reduce the timeout-only `eastl_vector_simple.cpp` frontier from the later
+  EASTL-side hotspots now reached in `EASTL/internal/fill_help.h`,
+  `EASTL/functional.h`, and `EASTL/meta.h`, then capture the next smaller
+  parser/canonical blocker from that deeper stack
 - keep
   `tests/cpp/internal/postive_case/qualified_template_operator_assign_expr_parse.cpp`
   green as the parser-side guardrail for the fixed Step 3 expression shape
@@ -168,6 +187,10 @@ Source Plan: plan.md
 - keep
   `tests/cpp/internal/postive_case/eastl_function_detail_allocator_member_call_parse.cpp`
   green as the guardrail for the fixed block-scope shadowed-member-call shape
+- keep
+  `tests/cpp/internal/postive_case/qualified_trait_value_template_arg_parse.cpp`
+  green as the guardrail for the new `Trait<...>::value` template-argument /
+  type-start disambiguation shortcut
 
 ## Blockers
 
@@ -199,6 +222,19 @@ Source Plan: plan.md
   `ref/EASTL/include/EASTL/utility.h`,
   `ref/EASTL/include/EASTL/internal/functional_base.h`, and
   `/usr/include/c++/14/type_traits` before timing out
+- the new trait-value shortcut moves the current timeout frontier past the old
+  `__and_<...>::value` / `add_const_t` cluster, but `eastl_memory_simple.cpp`
+  still times out after reaching deeper `type_traits` work around
+  `is_arithmetic`, `is_trivially_constructible`, and nearby `_Tp`-driven trait
+  aliases
+- `eastl_tuple_simple.cpp` still times out after reaching deeper
+  `/usr/include/c++/14/type_traits` work around `__strictest_alignment` and
+  related `alignof(_Tp) > ... ? ...` constexpr expressions
+- `eastl_vector_simple.cpp` still times out, but the current 12s heartbeat now
+  reaches later EASTL-side parser pressure in
+  `ref/EASTL/include/EASTL/internal/fill_help.h`,
+  `ref/EASTL/include/EASTL/functional.h`, and
+  `ref/EASTL/include/EASTL/meta.h`
 - additional reduction work ruled out simpler namespace-qualified paths:
   `ns::wrap<int> value{}`, `ns::wrap<int>::type value{}`, and
   `ns::wrap<int>` with a defaulted NTTP all parse successfully, so the
@@ -239,6 +275,10 @@ Source Plan: plan.md
   now proves the typedef-owner qualified operator statement survives parsing and
   lowers through the inherited base method instead of an unresolved free
   function symbol
+- `tests/cpp/internal/postive_case/qualified_trait_value_template_arg_parse.cpp`
+  now covers alias-template NTTPs that begin with `Trait<...>::value`, and the
+  shared helper in `src/frontend/parser/types_helpers.hpp` also prevents that
+  shape from re-entering the broad C++ type-start fallback
 - the remaining `is_signed_helper` blocker no longer depends on inherited
   `false_type` lookup alone; it requires the combination of a defaulted NTTP
   and an alias-template base carrying a dependent expression argument
