@@ -1682,6 +1682,38 @@ void test_backend_ir_validator_accepts_lowered_extern_decl_slice() {
               "backend IR validator should not report an error for valid lowered extern declarations");
 }
 
+void test_backend_ir_tracks_structured_vararg_extern_decl_signature() {
+  const auto lowered = c4c::backend::lower_to_backend_ir(make_printf_vararg_decl_module());
+
+  const c4c::backend::BackendFunction* printf_decl = nullptr;
+  for (const auto& function : lowered.functions) {
+    if (function.signature.name == "printf") {
+      printf_decl = &function;
+      break;
+    }
+  }
+
+  expect_true(printf_decl != nullptr,
+              "backend IR vararg extern-declaration regression test needs the lowered printf declaration");
+  expect_true(printf_decl != nullptr && printf_decl->is_declaration &&
+                  c4c::backend::backend_function_is_declaration(printf_decl->signature),
+              "backend IR should still lower printf as a declaration-backed function surface");
+  expect_true(printf_decl != nullptr && printf_decl->signature.params.size() == 1 &&
+                  c4c::backend::backend_param_type_kind(printf_decl->signature.params.front()) ==
+                      c4c::backend::BackendValueTypeKind::Ptr &&
+                  printf_decl->signature.is_vararg,
+              "backend IR should preserve the structured fixed ptr prefix and trailing vararg marker for lowered extern declarations");
+}
+
+void test_backend_ir_printer_renders_structured_vararg_extern_decl_without_raw_signature_text() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_printf_vararg_decl_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  expect_contains(rendered, "declare i32 @printf(ptr, ...)\n",
+                  "backend IR printer should render structured vararg extern declarations without legacy signature text");
+}
+
 void test_backend_ir_printer_renders_lowered_global_load_slice() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_global_load_module());
   const auto rendered = c4c::backend::print_backend_ir(lowered);
@@ -1960,6 +1992,8 @@ int main(int argc, char* argv[]) {
   test_backend_ir_validator_accepts_structured_local_array_slice_without_raw_text();
   test_backend_ir_printer_renders_lowered_extern_decl_slice();
   test_backend_ir_validator_accepts_lowered_extern_decl_slice();
+  test_backend_ir_tracks_structured_vararg_extern_decl_signature();
+  test_backend_ir_printer_renders_structured_vararg_extern_decl_without_raw_signature_text();
   test_backend_ir_validator_accepts_structured_signature_and_call_types_without_raw_text();
   test_backend_ir_printer_renders_lowered_global_load_slice();
   test_backend_ir_validator_accepts_lowered_global_load_slice();

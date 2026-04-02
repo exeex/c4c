@@ -4,10 +4,44 @@
 
 namespace c4c::backend {
 
-std::optional<std::vector<std::string>> infer_extern_param_types(
+namespace {
+
+struct InferredExternCallSurface {
+  std::vector<std::string> param_types;
+  bool is_vararg = false;
+};
+
+std::optional<InferredExternCallSurface> infer_extern_call_surface(
+    const c4c::codegen::lir::LirCallOp& call) {
+  InferredExternCallSurface inferred;
+
+  if (const auto parsed = parse_backend_typed_call(call); parsed.has_value()) {
+    inferred.param_types.reserve(parsed->param_types.size());
+    for (const auto type : parsed->param_types) {
+      inferred.param_types.push_back(std::string(type));
+    }
+    return inferred;
+  }
+
+  const auto parsed_vararg_call = parse_backend_direct_global_typed_call(call);
+  if (!parsed_vararg_call.has_value()) {
+    return std::nullopt;
+  }
+
+  inferred.is_vararg = true;
+  inferred.param_types.reserve(parsed_vararg_call->typed_call.param_types.size());
+  for (const auto type : parsed_vararg_call->typed_call.param_types) {
+    inferred.param_types.push_back(std::string(type));
+  }
+  return inferred;
+}
+
+}  // namespace
+
+std::optional<InferredExternCallSurface> infer_extern_call_surfaces(
     const c4c::codegen::lir::LirModule& module,
     const c4c::codegen::lir::LirExternDecl& decl) {
-  std::optional<std::vector<std::string>> inferred;
+  std::optional<InferredExternCallSurface> inferred;
   const std::string callee = "@" + decl.name;
 
   for (const auto& function : module.functions) {
@@ -18,21 +52,17 @@ std::optional<std::vector<std::string>> infer_extern_param_types(
           continue;
         }
 
-        const auto parsed_call = parse_backend_typed_call(*call);
+        const auto parsed_call = infer_extern_call_surface(*call);
         if (!parsed_call.has_value()) {
           continue;
         }
 
-        std::vector<std::string> param_types;
-        param_types.reserve(parsed_call->param_types.size());
-        for (const auto type : parsed_call->param_types) {
-          param_types.push_back(std::string(type));
-        }
         if (!inferred.has_value()) {
-          inferred = std::move(param_types);
+          inferred = *parsed_call;
           continue;
         }
-        if (*inferred != param_types) {
+        if (inferred->param_types != parsed_call->param_types ||
+            inferred->is_vararg != parsed_call->is_vararg) {
           throw LirAdapterError(
               LirAdapterErrorKind::Unsupported,
               "minimal backend LIR adapter does not support extern declarations with inconsistent typed call surfaces");
@@ -58,12 +88,13 @@ BackendFunction lower_extern_decl(const c4c::codegen::lir::LirModule& module,
                           "minimal backend LIR adapter could not adapt extern declaration");
   }
 
-  const auto param_types = infer_extern_param_types(module, decl);
-  if (param_types.has_value()) {
-    out.signature.params.reserve(param_types->size());
-    for (const auto& type_str : *param_types) {
+  const auto inferred_surface = infer_extern_call_surfaces(module, decl);
+  if (inferred_surface.has_value()) {
+    out.signature.params.reserve(inferred_surface->param_types.size());
+    for (const auto& type_str : inferred_surface->param_types) {
       out.signature.params.push_back(BackendParam{type_str, {}});
     }
+    out.signature.is_vararg = inferred_surface->is_vararg;
   }
 
   return out;

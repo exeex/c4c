@@ -592,6 +592,33 @@ inline c4c::codegen::lir::LirModule make_double_printf_runtime_module() {
   return module;
 }
 
+inline c4c::codegen::lir::LirModule make_printf_vararg_decl_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.extern_decls.push_back(LirExternDecl{"printf", "i32"});
+  module.string_pool.push_back(LirStringConst{"@.str0", "hello\\0A", 7});
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{"%fmt", "[7 x i8]", "@.str0", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirCallOp{"%call0", "i32", "@printf", "(ptr, ...)", "ptr %fmt"});
+  entry.terminator = LirRet{std::string("0"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 inline c4c::codegen::lir::LirModule make_local_array_gep_module() {
   using namespace c4c::codegen::lir;
 
