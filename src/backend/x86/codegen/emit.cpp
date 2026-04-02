@@ -137,6 +137,11 @@ struct MatchedMinimalStructuredDirectCallAddImmHelper {
   std::int64_t add_imm = 0;
 };
 
+struct MatchedMinimalStructuredDirectCallReturnImmHelper {
+  const c4c::backend::BackendFunction* callee_fn = nullptr;
+  std::int64_t return_imm = 0;
+};
+
 struct MatchedMinimalStructuredTwoArgDirectCallHelper {
   const c4c::backend::BackendFunction* callee_fn = nullptr;
 };
@@ -489,6 +494,29 @@ match_minimal_structured_direct_call_add_imm_helper(
   }
 
   return MatchedMinimalStructuredDirectCallAddImmHelper{&callee_fn, *add_imm};
+}
+
+std::optional<MatchedMinimalStructuredDirectCallReturnImmHelper>
+match_minimal_structured_direct_call_return_imm_helper(
+    const c4c::backend::BackendFunction& callee_fn) {
+  if (!callee_fn.signature.params.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& callee_block = callee_fn.blocks.front();
+  if (callee_block.label != "entry" || !callee_block.terminator.value.has_value() ||
+      c4c::backend::backend_return_scalar_type(callee_block.terminator) !=
+          c4c::backend::BackendScalarType::I32 ||
+      !callee_block.insts.empty()) {
+    return std::nullopt;
+  }
+
+  const auto return_imm = parse_i64(*callee_block.terminator.value);
+  if (!return_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  return MatchedMinimalStructuredDirectCallReturnImmHelper{&callee_fn, *return_imm};
 }
 
 std::optional<MatchedMinimalStructuredTwoArgDirectCallHelper>
@@ -2514,10 +2542,16 @@ std::optional<MinimalDirectCallSlice> parse_minimal_direct_call_slice(
     return std::nullopt;
   }
 
-  const auto callee_imm = parse_single_block_return_imm(*matched->callee_fn);
-  if (!callee_imm.has_value()) return std::nullopt;
+  const auto helper_match =
+      match_minimal_structured_direct_call_return_imm_helper(*matched->callee_fn);
+  if (!helper_match.has_value()) {
+    return std::nullopt;
+  }
 
-  return MinimalDirectCallSlice{std::string(matched->parsed_call.symbol_name), *callee_imm};
+  return MinimalDirectCallSlice{
+      std::string(matched->parsed_call.symbol_name),
+      helper_match->return_imm,
+  };
 }
 
 std::optional<MinimalDirectCallAddImmSlice> parse_minimal_direct_call_add_imm_slice(

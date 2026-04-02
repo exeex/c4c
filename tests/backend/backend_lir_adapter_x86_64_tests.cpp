@@ -2095,6 +2095,40 @@ void test_x86_backend_scaffold_rejects_structured_zero_arg_direct_call_when_call
                   "x86 backend seam should stop matching the structured zero-argument direct-call asm slice when the callee signature no longer matches the call contract");
 }
 
+void test_x86_backend_scaffold_rejects_structured_zero_arg_direct_call_when_helper_body_contract_disagrees() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_direct_call_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  c4c::backend::BackendFunction* helper = nullptr;
+  for (auto& function : lowered.functions) {
+    if (function.signature.name == "helper") {
+      helper = &function;
+      break;
+    }
+  }
+  auto* entry =
+      helper != nullptr && !helper->blocks.empty() ? &helper->blocks.front() : nullptr;
+  expect_true(entry != nullptr,
+              "x86 zero-argument direct-call regression test needs the lowered helper block to mutate");
+  if (entry != nullptr) {
+    entry->insts.push_back(c4c::backend::BackendBinaryInst{
+        c4c::backend::BackendBinaryOpcode::Add,
+        "%t.helper.folded",
+        "i32",
+        "7",
+        "0",
+        c4c::backend::BackendScalarType::I32,
+    });
+    entry->terminator.value = "%t.helper.folded";
+  }
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, "target triple =",
+                  "x86 backend seam should stop matching the structured zero-argument direct-call asm slice when the lowered helper body no longer matches the shared immediate-return contract");
+}
+
 void test_x86_backend_rejects_intrinsic_callee_from_direct_call_fast_path() {
   auto module = make_typed_direct_call_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
