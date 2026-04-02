@@ -137,6 +137,14 @@ class Parser {
     int column = 1;
   };
 
+  enum ParseDebugChannel : unsigned {
+    ParseDebugNone = 0,
+    ParseDebugGeneral = 1u << 0,
+    ParseDebugTentative = 1u << 1,
+    ParseDebugInjected = 1u << 2,
+    ParseDebugAll = ParseDebugGeneral | ParseDebugTentative | ParseDebugInjected,
+  };
+
   struct ParseContextGuard {
     Parser* parser = nullptr;
     ParseContextGuard(Parser* parser, const char* function_name);
@@ -311,7 +319,7 @@ class Parser {
   int parse_error_count_ = 0;
   int max_parse_errors_ = 20;
   int max_no_progress_steps_ = 8;
-  bool parser_debug_enabled_ = false;
+  unsigned parser_debug_channels_ = ParseDebugNone;
   int max_parse_debug_events_ = 256;
   std::vector<ParseContextFrame> parse_context_stack_;
   std::vector<ParseDebugEvent> parse_debug_events_;
@@ -334,7 +342,9 @@ class Parser {
 
   // ── parser diagnostics / debug tracing ───────────────────────────────────
   void set_parser_debug(bool enabled);
+  void set_parser_debug_channels(unsigned channels);
   bool parser_debug_enabled() const;
+  bool parse_debug_event_visible(const char* kind) const;
   void clear_parse_debug_state();
   void push_parse_context(const char* function_name);
   void pop_parse_context();

@@ -340,7 +340,7 @@ void seed_default_system_include_paths(c4c::SourceProfile source_profile,
 
 void print_usage(const char *argv0) {
   std::cerr << "usage: " << argv0
-            << " [--version] [--pp-only|--lex-only|--parse-only|--dump-hir|--dump-hir-summary|--dump-canonical|--parser-debug]"
+            << " [--version] [--pp-only|--lex-only|--parse-only|--dump-hir|--dump-hir-summary|--dump-canonical|--parser-debug|--parser-debug-tentative|--parser-debug-injected]"
             << " [--codegen llvm|asm|compare]"
             << " [-D macro[=val]] [-U macro] [-I dir] [-iquote dir] [-isystem dir] [-idirafter dir]"
             << " [-O0|-O1|-O2|-O3|-Os] [-fPIC|-fpic] [-fPIE|-fpie]"
@@ -380,6 +380,8 @@ int main(int argc, char **argv) {
     bool        dump_hir = false;
     bool        dump_canonical = false;
     bool        parser_debug = false;
+    bool        parser_debug_tentative = false;
+    bool        parser_debug_injected = false;
     std::string input;
     std::string output;
     std::string target_triple = default_host_target_triple();
@@ -413,6 +415,10 @@ int main(int argc, char **argv) {
         dump_canonical = true;
       } else if (arg == "--parser-debug") {
         parser_debug = true;
+      } else if (arg == "--parser-debug-tentative") {
+        parser_debug_tentative = true;
+      } else if (arg == "--parser-debug-injected") {
+        parser_debug_injected = true;
       } else if (arg == "-o") {
         if (i + 1 < args.size()) output = args[++i];
       } else if (arg == "--target" && i + 1 < args.size()) {
@@ -545,7 +551,15 @@ int main(int argc, char **argv) {
     // Parse phase
     c4c::Arena arena;
     c4c::Parser parser(std::move(tokens), arena, source_profile, input);
-    parser.set_parser_debug(parser_debug);
+    unsigned parser_debug_channels = c4c::Parser::ParseDebugNone;
+    if (parser_debug) parser_debug_channels = c4c::Parser::ParseDebugAll;
+    if (parser_debug_tentative) {
+      parser_debug_channels |= c4c::Parser::ParseDebugTentative;
+    }
+    if (parser_debug_injected) {
+      parser_debug_channels |= c4c::Parser::ParseDebugInjected;
+    }
+    parser.set_parser_debug_channels(parser_debug_channels);
     c4c::Node* prog = parser.parse();
     if (parser.had_error_) {
       return 1;

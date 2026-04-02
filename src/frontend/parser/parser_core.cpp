@@ -453,11 +453,27 @@ void Parser::handle_pragma_pack(const std::string& args) {
 }
 
 void Parser::set_parser_debug(bool enabled) {
-    parser_debug_enabled_ = enabled;
+    parser_debug_channels_ = enabled ? ParseDebugAll : ParseDebugNone;
+}
+
+void Parser::set_parser_debug_channels(unsigned channels) {
+    parser_debug_channels_ = channels;
 }
 
 bool Parser::parser_debug_enabled() const {
-    return parser_debug_enabled_;
+    return parser_debug_channels_ != ParseDebugNone;
+}
+
+bool Parser::parse_debug_event_visible(const char* kind) const {
+    if (!parser_debug_enabled()) return false;
+    if (!kind) return (parser_debug_channels_ & ParseDebugGeneral) != 0;
+    if (std::strncmp(kind, "tentative_", 10) == 0) {
+        return (parser_debug_channels_ & ParseDebugTentative) != 0;
+    }
+    if (std::strncmp(kind, "injected_parse_", 15) == 0) {
+        return (parser_debug_channels_ & ParseDebugInjected) != 0;
+    }
+    return (parser_debug_channels_ & ParseDebugGeneral) != 0;
 }
 
 void Parser::clear_parse_debug_state() {
@@ -488,7 +504,7 @@ void Parser::note_parse_debug_event(const char* kind, const char* detail) {
 void Parser::note_parse_debug_event_for(const char* kind,
                                         const char* function_name,
                                         const char* detail) {
-    if (!parser_debug_enabled_) return;
+    if (!parser_debug_enabled()) return;
 
     ParseDebugEvent event;
     event.kind = kind ? kind : "";
@@ -662,7 +678,7 @@ std::string Parser::format_best_parse_failure() const {
         if (oss.tellp() > 0) oss << " ";
         oss << "detail=\"" << best_parse_failure_.detail << "\"";
     }
-    if (parser_debug_enabled_) {
+    if (parser_debug_enabled()) {
         if (oss.tellp() > 0) oss << " ";
         oss << "token_index=" << best_parse_failure_.token_index
             << " token_kind=" << token_kind_name(best_parse_failure_.token_kind)
@@ -699,13 +715,22 @@ std::string Parser::format_tentative_parse_detail(int start_pos, int end_pos) co
 }
 
 void Parser::dump_parse_debug_trace() const {
-    if (!parser_debug_enabled_ || parse_debug_events_.empty()) return;
+    if (!parser_debug_enabled() || parse_debug_events_.empty()) return;
+    bool has_visible_event = false;
+    for (const ParseDebugEvent& event : parse_debug_events_) {
+        if (parse_debug_event_visible(event.kind.c_str())) {
+            has_visible_event = true;
+            break;
+        }
+    }
+    if (!has_visible_event) return;
     fprintf(stderr, "%s:%d:%d: note: parser debug trace follows\n",
             best_parse_failure_.active ? diag_file_at(best_parse_failure_.token_index)
                                        : source_file_.c_str(),
             best_parse_failure_.active ? best_parse_failure_.line : 1,
             best_parse_failure_.active ? best_parse_failure_.column : 1);
     for (const ParseDebugEvent& event : parse_debug_events_) {
+        if (!parse_debug_event_visible(event.kind.c_str())) continue;
         fprintf(stderr, "[pdebug] kind=%s",
                 event.kind.c_str());
         if (!event.function_name.empty())

@@ -6,7 +6,7 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 3: Mark injected token-stream parsing.
+- Step 5: Validate on motivating STL cases.
 
 ## Checklist
 
@@ -25,6 +25,13 @@ Source Plan: plan.md
 - [x] Implement injected token-stream debug events around the template-base
       instantiation swap site.
 - [x] Re-run targeted parser/debug tests for the Step 3 slice.
+- [x] Inspect current parser-debug CLI and event gating to choose the smallest
+      narrower surface.
+- [x] Add focused tests for a targeted parser-debug CLI mode beyond
+      `--parser-debug`.
+- [x] Implement the new CLI parser-debug mode and wire it into parser debug
+      filtering.
+- [x] Re-run targeted parser/debug tests for the Step 4 slice.
 
 ## Completed
 
@@ -50,12 +57,24 @@ Source Plan: plan.md
       `ctest --test-dir build -j --output-on-failure` still had only the three
       known unrelated failures, and the monotonic regression guard passed with
       `before: passed=2672 failed=3` and `after: passed=2675 failed=3`.
+- [x] Step 4 landed: `c4cll` now accepts targeted `--parser-debug-tentative`
+      and `--parser-debug-injected` modes, parser debug trace emission filters
+      visible events by channel, and focused CLI-only regressions lock out
+      unrelated `enter` noise.
+- [x] Validation: `ctest --test-dir build -R '^cpp_parser_debug_'` passed with
+      the two new CLI-only cases, and full
+      `ctest --test-dir build -j --output-on-failure` still had only the same
+      three unrelated failures in `backend_lir_adapter_aarch64_tests`,
+      `positive_sema_linux_stage2_repro_03_asm_volatile_c`, and
+      `llvm_gcc_c_torture_src_20080502_1_c`.
 
 ## Next Intended Slice
 
-- Decide whether Step 3 needs the same begin/end markers at the remaining
-  manual `tokens_` swap sites in template-member lookup and cast disambiguation
-  before moving on to CLI narrowing.
+- Run parse-only and targeted parser-debug commands on
+  `tests/cpp/std/std_vector_simple.cpp` and
+  `tests/cpp/eastl/eastl_vector_simple.cpp`, then decide whether Step 5 needs a
+  success-path summary mode or whether the remaining manual `tokens_` swap
+  sites should be recorded as follow-on work.
 
 ## Blockers
 
@@ -74,3 +93,8 @@ Source Plan: plan.md
 - Step 3 now has a focused regression around the template-base instantiation
   injection path; the remaining manual `tokens_` swap sites still need a scope
   decision if we want broader injected-trace coverage.
+- Step 4 should reuse the existing `tentative_` / `injected_parse_` event kind
+  prefixes instead of redesigning parser tracing.
+- The new narrow flags currently filter trace visibility, not internal event
+  collection, so failure summaries and stack snapshots stay consistent with the
+  existing debug path.
