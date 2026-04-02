@@ -1535,3 +1535,18 @@ set_tests_properties(cpp_std_vector_parse_debug_progress PROPERTIES
   LABELS "internal;positive_case;cpp;workflow;diagnostic_format"
   TIMEOUT 15
 )
+
+add_test(
+  NAME cpp_std_vector_parse_debug_progress_file
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/std/std_vector_simple.cpp
+          -DEXPECT_TIMEOUT_SEC=5
+          "-DPARSER_DEBUG_ARGS:STRING=--parser-debug"
+          "-DEXPECT_STDERR_SUBSTRING:STRING=file="
+          -P "${PROJECT_SOURCE_DIR}/tests/cpp/std/run_std_vector_parse_baseline.cmake"
+)
+set_tests_properties(cpp_std_vector_parse_debug_progress_file PROPERTIES
+  LABELS "internal;positive_case;cpp;workflow;diagnostic_format"
+  TIMEOUT 15
+)

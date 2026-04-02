@@ -593,6 +593,11 @@ void Parser::maybe_emit_parse_debug_progress() {
             "[pdebug] progress elapsed_ms=%lld token_index=%d line=%d col=%d",
             static_cast<long long>(elapsed_ms), event.token_index, event.line,
             event.column);
+    if (event.token_index >= 0 &&
+        event.token_index < static_cast<int>(tokens_.size()) &&
+        !tokens_[event.token_index].file.empty()) {
+        fprintf(stderr, " file=%s", tokens_[event.token_index].file.c_str());
+    }
     if (!event.function_name.empty()) {
         fprintf(stderr, " fn=%s", event.function_name.c_str());
     }

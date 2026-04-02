@@ -7,9 +7,9 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 3: Object lifetime and tuple layer
-- Current slice: reduce the new timeout-only Step 3/4 pressure now that the
-  old qualified `Base::operator=(other);` / `function.h` parser cluster is
-  fixed and `eastl_vector_simple.cpp` no longer fails fast there
+- Current slice: use the new file-aware parser-debug progress output to reduce
+  the `eastl_memory_simple.cpp` timeout path now that the hot headers are
+  visible directly in the heartbeat stream
 
 ## Todo
 
@@ -125,12 +125,21 @@ Source Plan: plan.md
   (`positive_sema_linux_stage2_repro_03_asm_volatile_c`,
   `backend_lir_adapter_aarch64_tests`, and
   `llvm_gcc_c_torture_src_20080502_1_c`)
+- [x] Added file-aware parser-debug progress coverage with
+  `cpp_std_vector_parse_debug_progress_file` and taught parser progress
+  heartbeats to print the active token's logical source file so the remaining
+  EASTL timeout-only Step 3/4 pressure can be localized to concrete headers
 
 ## Next Slice
 
 - reduce the new post-`function_detail.h` Step 3/4 frontier from the remaining
   `eastl_memory_simple.cpp` and `eastl_tuple_simple.cpp` parse-time stalls
-  under the deeper libstdc++ / EASTL stack
+  under the deeper libstdc++ / EASTL stack, starting from the new
+  `eastl_memory_simple.cpp` parser-debug heartbeat path through
+  `ref/EABase/include/Common/EABase/int128.h`,
+  `ref/EASTL/include/EASTL/internal/type_transformations.h`,
+  `ref/EASTL/include/EASTL/internal/type_properties.h`, and
+  `ref/EASTL/include/EASTL/internal/type_pod.h`
 - reduce the new timeout-only `eastl_vector_simple.cpp` frontier now that the
   old `ref/EASTL/include/EASTL/internal/function.h` incomplete-type diagnostic
   has been cleared; capture the next smaller parser/canonical blocker from the
@@ -167,6 +176,13 @@ Source Plan: plan.md
 - `eastl_memory_simple.cpp` and `eastl_tuple_simple.cpp` no longer stop on the
   old `TupleLeaf<...>::operator=` or `function_detail.h` parser failures, but
   they still time out under deeper libstdc++ / EASTL parser pressure
+- the new file-aware parser-debug heartbeat confirms the current
+  `eastl_memory_simple.cpp` timeout path reaches
+  `ref/EABase/include/Common/EABase/int128.h`,
+  `ref/EASTL/include/EASTL/internal/type_transformations.h`,
+  `ref/EASTL/include/EASTL/internal/type_properties.h`, and
+  `ref/EASTL/include/EASTL/internal/type_pod.h` within the first 5 seconds,
+  but the exact smaller reduction inside that chain is still pending
 - additional reduction work ruled out simpler namespace-qualified paths:
   `ns::wrap<int> value{}`, `ns::wrap<int>::type value{}`, and
   `ns::wrap<int>` with a defaulted NTTP all parse successfully, so the
@@ -230,3 +246,12 @@ Source Plan: plan.md
   and still reports the same three pre-existing failing tests noted above; this
   turn did not capture a fresh `test_fail_before.log`, so monotonic guard
   script comparison is not available for this slice
+- parser-debug progress heartbeats now include the active logical source file;
+  the new diagnostic-format guardrail is
+  `cpp_std_vector_parse_debug_progress_file`
+- with the new heartbeat format, a 6-second `eastl_memory_simple.cpp`
+  `--parser-debug --parse-only` repro now shows the timeout path moving through
+  `ref/EABase/include/Common/EABase/int128.h`,
+  `ref/EASTL/include/EASTL/internal/type_transformations.h`,
+  `ref/EASTL/include/EASTL/internal/type_properties.h`, and
+  `ref/EASTL/include/EASTL/internal/type_pod.h`
