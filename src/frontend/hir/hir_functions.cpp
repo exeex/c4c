@@ -5,7 +5,7 @@
 // Intentionally omitted for now because they are tightly coupled to other
 // clusters that will likely move separately:
 // - lower_expr, lower_stmt_node, lower_call_expr, lower_stmt_expr_block
-// - lower_function, lower_struct_method, lower_global, lower_local_decl_stmt
+// - lower_struct_method, lower_global, lower_local_decl_stmt
 // - initializer normalization helpers
 // - template collection / template-struct realization helpers
 
@@ -50,6 +50,135 @@ void Lowerer::finish_lowered_callable(Function* fn, BlockId entry) {
     fn->blocks.push_back(Block{entry, {}, false});
   }
   module_->functions[fn->id.value] = std::move(*fn);
+}
+
+void Lowerer::lower_function(const Node* fn_node,
+                             const std::string* name_override,
+                             const TypeBindings* tpl_override,
+                             const NttpBindings* nttp_override) {
+  Function fn{};
+  fn.id = next_fn_id();
+  fn.name = name_override ? *name_override
+                          : (fn_node->name ? fn_node->name : "<anon_fn>");
+  fn.ns_qual = make_ns_qual(fn_node);
+  {
+    TypeSpec ret_ts = fn_node->type;
+    if ((fn_node->n_ret_fn_ptr_params > 0 || fn_node->ret_fn_ptr_variadic) &&
+        !ret_ts.is_fn_ptr) {
+      ret_ts.is_fn_ptr = true;
+      ret_ts.ptr_level = std::max(ret_ts.ptr_level, 1);
+    }
+    ret_ts = prepare_callable_return_type(
+        ret_ts, tpl_override, nttp_override, fn_node,
+        std::string("function-return:") + fn.name, false);
+    fn.return_type = qtype_from(ret_ts);
+  }
+  if (fn_node->type.is_fn_ptr ||
+      fn_node->n_ret_fn_ptr_params > 0 ||
+      fn_node->ret_fn_ptr_variadic) {
+    auto fn_ct = sema::canonicalize_declarator_type(fn_node);
+    const auto* fn_fsig = sema::get_function_sig(fn_ct);
+    if (fn_fsig && fn_fsig->return_type &&
+        sema::is_callable_type(*fn_fsig->return_type)) {
+      const auto* ret_fsig = sema::get_function_sig(*fn_fsig->return_type);
+      if (ret_fsig) {
+        FnPtrSig ret_sig{};
+        ret_sig.canonical_sig = fn_fsig->return_type;
+        if (ret_fsig->return_type) {
+          TypeSpec ret_ts = sema::typespec_from_canonical(*ret_fsig->return_type);
+          if ((fn_node->n_ret_fn_ptr_params > 0 || fn_node->ret_fn_ptr_variadic) &&
+              !ret_ts.is_fn_ptr) {
+            ret_ts.is_fn_ptr = true;
+            ret_ts.ptr_level = std::max(ret_ts.ptr_level, 1);
+          }
+          ret_sig.return_type = qtype_from(ret_ts);
+        }
+        ret_sig.variadic = ret_fsig->is_variadic;
+        ret_sig.unspecified_params = ret_fsig->unspecified_params;
+        for (const auto& param : ret_fsig->params) {
+          ret_sig.params.push_back(
+              qtype_from(sema::typespec_from_canonical(param),
+                         ValueCategory::LValue));
+        }
+        if (ret_sig.params.empty() &&
+            (fn_node->n_ret_fn_ptr_params > 0 || fn_node->ret_fn_ptr_variadic)) {
+          ret_sig.variadic = fn_node->ret_fn_ptr_variadic;
+          ret_sig.unspecified_params = false;
+          for (int i = 0; i < fn_node->n_ret_fn_ptr_params; ++i) {
+            const Node* param = fn_node->ret_fn_ptr_params[i];
+            ret_sig.params.push_back(
+                qtype_from(param->type, ValueCategory::LValue));
+          }
+        }
+        fn.ret_fn_ptr_sig = std::move(ret_sig);
+      }
+    }
+    if (!fn.ret_fn_ptr_sig &&
+        (fn_node->n_ret_fn_ptr_params > 0 || fn_node->ret_fn_ptr_variadic)) {
+      FnPtrSig ret_sig{};
+      ret_sig.return_type = qtype_from(fn.return_type.spec);
+      ret_sig.variadic = fn_node->ret_fn_ptr_variadic;
+      ret_sig.unspecified_params = false;
+      for (int i = 0; i < fn_node->n_ret_fn_ptr_params; ++i) {
+        const Node* param = fn_node->ret_fn_ptr_params[i];
+        ret_sig.params.push_back(qtype_from(param->type, ValueCategory::LValue));
+      }
+      fn.ret_fn_ptr_sig = std::move(ret_sig);
+    }
+  }
+  fn.linkage = {fn_node->is_static,
+                fn_node->is_extern || fn_node->body == nullptr,
+                fn_node->is_inline,
+                weak_symbols_.count(fn.name) > 0,
+                static_cast<Visibility>(fn_node->visibility)};
+  fn.attrs.variadic = fn_node->variadic;
+  fn.attrs.no_inline = fn_node->type.is_noinline;
+  fn.attrs.always_inline = fn_node->type.is_always_inline;
+  if (fn_node->type.align_bytes > 0) {
+    fn.attrs.align_bytes = fn_node->type.align_bytes;
+  }
+  if (fn.attrs.align_bytes == 0) {
+    auto fit = module_->fn_index.find(fn.name);
+    if (fit != module_->fn_index.end() &&
+        fit->second.value < module_->functions.size()) {
+      int prev_align = module_->functions[fit->second.value].attrs.align_bytes;
+      if (prev_align > 0) {
+        fn.attrs.align_bytes = prev_align;
+      }
+    }
+  }
+  fn.span = make_span(fn_node);
+
+  FunctionCtx ctx{};
+  ctx.fn = &fn;
+  if (tpl_override) {
+    ctx.tpl_bindings = *tpl_override;
+  }
+  if (nttp_override) {
+    ctx.nttp_bindings = *nttp_override;
+  }
+  append_callable_params(
+      fn, ctx, fn_node, tpl_override, nttp_override, "function-param:", false,
+      true);
+
+  if (maybe_register_bodyless_callable(&fn, fn_node->body != nullptr)) {
+    return;
+  }
+
+  const BlockId entry = begin_callable_body_lowering(fn, ctx);
+
+  for (int i = 0; i < fn_node->n_params; ++i) {
+    const Node* p = fn_node->params[i];
+    if (!p) continue;
+    if (p->type.array_rank <= 0 || !p->type.array_size_expr) continue;
+    if (p->type.array_size > 0 && p->type.array_dims[0] > 0) continue;
+    ExprStmt side_effect{};
+    side_effect.expr = lower_expr(&ctx, p->type.array_size_expr);
+    append_stmt(ctx, Stmt{StmtPayload{side_effect}, make_span(p)});
+  }
+
+  lower_stmt_node(ctx, fn_node->body);
+  finish_lowered_callable(&fn, entry);
 }
 
 TypeSpec Lowerer::substitute_signature_template_type(
