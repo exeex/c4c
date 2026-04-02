@@ -1705,6 +1705,31 @@ void test_x86_backend_renders_zero_arg_typed_direct_call_slice_with_whitespace()
                       "x86 backend should not fall back to LLVM text for whitespace-tolerant zero-arg typed direct calls");
 }
 
+void test_x86_backend_scaffold_accepts_structured_zero_arg_direct_call_spacing_ir_without_signature_shims() {
+  auto module = make_direct_call_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  auto& call = std::get<c4c::codegen::lir::LirCallOp>(
+      module.functions.back().blocks.front().insts.front());
+  call.callee_type_suffix = "( )";
+  call.args_str = "  ";
+
+  auto lowered = c4c::backend::lower_to_backend_ir(std::move(module));
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".type helper, %function",
+                  "x86 backend seam should still preserve spacing-tolerant lowered zero-arg helper definitions without legacy signature text");
+  expect_contains(rendered, "call helper",
+                  "x86 backend seam should still lower spacing-tolerant structured zero-arg direct calls when legacy call/signature text is cleared");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back when the spacing-tolerant structured zero-arg slice relies only on backend-owned metadata");
+}
+
 void test_x86_backend_rejects_intrinsic_callee_from_direct_call_fast_path() {
   auto module = make_typed_direct_call_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -2017,6 +2042,24 @@ void test_x86_backend_renders_typed_direct_call_local_arg_spacing_slice() {
                   "x86 backend should still lower spacing-tolerant typed single-argument calls directly");
   expect_not_contains(rendered, "target triple =",
                       "x86 backend should not fall back to LLVM text for spacing-tolerant typed single-argument calls");
+}
+
+void test_x86_backend_scaffold_accepts_structured_direct_call_local_arg_spacing_ir_without_signature_shims() {
+  auto lowered =
+      c4c::backend::lower_to_backend_ir(make_typed_direct_call_local_arg_with_suffix_spacing_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".type add_one, %function",
+                  "x86 backend seam should still preserve spacing-tolerant lowered single-argument helper definitions without legacy signature text");
+  expect_contains(rendered, "mov edi, 5",
+                  "x86 backend seam should still materialize the spacing-tolerant lowered single-argument direct-call immediate from structured call metadata");
+  expect_contains(rendered, "call add_one",
+                  "x86 backend seam should still lower spacing-tolerant structured single-argument direct calls when legacy call/signature text is cleared");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back when the spacing-tolerant structured single-argument slice relies only on backend-owned metadata");
 }
 
 void test_x86_backend_renders_typed_two_arg_direct_call_slice() {
@@ -3387,6 +3430,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_renders_countdown_do_while_return_slice);
   RUN_TEST(test_x86_backend_renders_direct_call_slice);
   RUN_TEST(test_x86_backend_renders_zero_arg_typed_direct_call_slice_with_whitespace);
+  RUN_TEST(test_x86_backend_scaffold_accepts_structured_zero_arg_direct_call_spacing_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_rejects_intrinsic_callee_from_direct_call_fast_path);
   RUN_TEST(test_x86_backend_rejects_indirect_callee_from_direct_call_fast_path);
   RUN_TEST(test_x86_backend_renders_param_slot_slice);
@@ -3403,6 +3447,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_both_local_first_rewrite_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_both_local_second_rewrite_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_renders_typed_direct_call_local_arg_spacing_slice);
+  RUN_TEST(test_x86_backend_scaffold_accepts_structured_direct_call_local_arg_spacing_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_slice);
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_slice_with_spaced_helper_signature);
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_local_arg_slice);

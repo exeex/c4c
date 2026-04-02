@@ -22,5 +22,7 @@ Source Plan: plan.md
   - Blockers: Depends on prior steps.
 
 Current Step: Step 3
-Next Step: Compare the remaining x86 spacing-tolerant zero-arg and single-arg direct-call fixtures against cleared-shim scaffold coverage and add the next missing regression only where a structured backend-owned call seam is still unproven.
+Next Step: Compare the remaining x86 spacing-tolerant two-argument direct-call fixtures against cleared-shim scaffold coverage and add the next missing regression only where a structured backend-owned call seam is still unproven.
 Blockers: None
+
+Latest Iteration Note: Added x86 scaffold regressions for `lower_to_backend_ir(make_direct_call_module())` with spacing-tolerant zero-arg call text and for `lower_to_backend_ir(make_typed_direct_call_local_arg_with_suffix_spacing_module())` after `clear_backend_signature_and_call_type_compatibility_shims(...)`, proving the structured backend-owned zero-arg and single-argument call seams already stay on the asm path without legacy call/signature text. Validation: `cmake --build build -j8 --target backend_lir_adapter_x86_64_tests backend_lir_adapter_aarch64_tests backend_ir_tests`, `./build/backend_lir_adapter_x86_64_tests`, `./build/backend_lir_adapter_aarch64_tests`, and `./build/backend_ir_tests` passed; `ctest --test-dir build -j --output-on-failure > test_fail_after.log` preserved the `2667 passed / 2 failed` baseline, and `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passed with no newly failing tests.
