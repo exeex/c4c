@@ -14,24 +14,34 @@ bool fail(std::string* error, std::string message) {
   return false;
 }
 
-enum class ReferencedObjectKind : unsigned char {
-  Global,
-  StringConstant,
-  LocalSlot,
-};
-
 bool is_local_address_symbol(std::string_view symbol) {
   return !symbol.empty() && symbol.front() == '%';
 }
 
-std::string_view referenced_element_type_label(ReferencedObjectKind kind) {
+std::string_view address_base_kind_label(BackendAddressBaseKind kind) {
   switch (kind) {
-    case ReferencedObjectKind::Global:
+    case BackendAddressBaseKind::Global:
+      return "global";
+    case BackendAddressBaseKind::StringConstant:
+      return "string constant";
+    case BackendAddressBaseKind::LocalSlot:
+      return "local slot";
+    case BackendAddressBaseKind::Unknown:
+      break;
+  }
+  return "object";
+}
+
+std::string_view referenced_element_type_label(BackendAddressBaseKind kind) {
+  switch (kind) {
+    case BackendAddressBaseKind::Global:
       return "global element type";
-    case ReferencedObjectKind::StringConstant:
+    case BackendAddressBaseKind::StringConstant:
       return "string-constant element type";
-    case ReferencedObjectKind::LocalSlot:
+    case BackendAddressBaseKind::LocalSlot:
       return "local-slot element type";
+    case BackendAddressBaseKind::Unknown:
+      break;
   }
   return "element type";
 }
@@ -102,7 +112,7 @@ bool validate_string_constant(const BackendStringConstant& string_constant,
 }
 
 struct ReferencedBoundsInfo {
-  ReferencedObjectKind kind = ReferencedObjectKind::Global;
+  BackendAddressBaseKind kind = BackendAddressBaseKind::Global;
   std::size_t total_size_bytes = 0;
   BackendScalarType element_type = BackendScalarType::Unknown;
   std::size_t element_size_bytes = 0;
@@ -118,7 +128,7 @@ std::optional<ReferencedBoundsInfo> global_bounds_info(const BackendGlobal& glob
       return std::nullopt;
     }
     return ReferencedBoundsInfo{
-        ReferencedObjectKind::Global,
+        BackendAddressBaseKind::Global,
         array_type->element_count * element_size,
         array_type->element_scalar_type,
         element_size,
@@ -134,7 +144,7 @@ std::optional<ReferencedBoundsInfo> global_bounds_info(const BackendGlobal& glob
     return std::nullopt;
   }
   return ReferencedBoundsInfo{
-      ReferencedObjectKind::Global,
+      BackendAddressBaseKind::Global,
       element_size,
       backend_global_scalar_type(global),
       element_size,
@@ -147,7 +157,7 @@ std::optional<ReferencedBoundsInfo> string_constant_bounds_info(
     return std::nullopt;
   }
   return ReferencedBoundsInfo{
-      ReferencedObjectKind::StringConstant,
+      BackendAddressBaseKind::StringConstant,
       string_constant.byte_length,
       BackendScalarType::I8,
       1,
@@ -172,7 +182,7 @@ bool validate_address_range(const BackendAddress& address,
   if (bounds_it->second.element_size_bytes > 1 &&
       byte_offset % bounds_it->second.element_size_bytes != 0) {
     const auto alignment_context =
-        is_local_address_symbol(address.base_symbol)
+        bounds_it->second.kind == BackendAddressBaseKind::LocalSlot
             ? ": address byte offset must align to local access size"
             : ": address byte offset must align to global element size";
     return fail(error, std::string(context) + alignment_context);
@@ -204,15 +214,23 @@ bool validate_address_scalar_type(
 
 bool validate_address_base_symbol(
     const BackendAddress& address,
-    const std::unordered_map<std::string, ReferencedObjectKind>& referenced_object_kinds,
+    const std::unordered_map<std::string, BackendAddressBaseKind>& referenced_object_kinds,
     std::string* error,
     std::string_view context) {
-  if (referenced_object_kinds.find(address.base_symbol) != referenced_object_kinds.end()) {
-    return true;
+  const auto object_it = referenced_object_kinds.find(address.base_symbol);
+  if (object_it == referenced_object_kinds.end()) {
+    return fail(error,
+                std::string(context) +
+                    ": base symbol must reference a known global, string constant, or local slot");
   }
-  return fail(error,
-              std::string(context) +
-                  ": base symbol must reference a known global, string constant, or local slot");
+  if (address.kind != BackendAddressBaseKind::Unknown && address.kind != object_it->second) {
+    return fail(error,
+                std::string(context) + ": address kind " +
+                    std::string(address_base_kind_label(address.kind)) +
+                    " must match referenced " +
+                    std::string(address_base_kind_label(object_it->second)));
+  }
+  return true;
 }
 
 bool validate_address_offset(const BackendAddress& address,
@@ -227,10 +245,16 @@ bool validate_address_offset(const BackendAddress& address,
 bool validate_local_address_alignment(
     const BackendAddress& address,
     std::size_t access_size_bytes,
+    const std::unordered_map<std::string, BackendAddressBaseKind>& referenced_object_kinds,
     const std::unordered_map<std::string, ReferencedBoundsInfo>& referenced_bounds,
     std::string* error,
     std::string_view context) {
-  if (!is_local_address_symbol(address.base_symbol) ||
+  const auto object_it = referenced_object_kinds.find(address.base_symbol);
+  const bool is_local_slot =
+      (object_it != referenced_object_kinds.end() &&
+       object_it->second == BackendAddressBaseKind::LocalSlot) ||
+      address.kind == BackendAddressBaseKind::LocalSlot;
+  if (!is_local_slot ||
       referenced_bounds.find(address.base_symbol) != referenced_bounds.end() ||
       access_size_bytes <= 1) {
     return true;
@@ -275,7 +299,7 @@ bool validate_local_slot(const BackendLocalSlot& local_slot,
 }
 
 bool validate_inst(const BackendInst& inst,
-                   const std::unordered_map<std::string, ReferencedObjectKind>&
+                   const std::unordered_map<std::string, BackendAddressBaseKind>&
                        referenced_object_kinds,
                    const std::unordered_set<std::string>& referenced_string_constants,
                    const std::unordered_map<std::string, ReferencedBoundsInfo>&
@@ -410,6 +434,7 @@ bool validate_inst(const BackendInst& inst,
     }
     if (!validate_local_address_alignment(load->address,
                                           backend_scalar_type_size_bytes(load_memory_type),
+                                          referenced_object_kinds,
                                           referenced_bounds,
                                           error,
                                           std::string(context) + ": load address")) {
@@ -455,6 +480,7 @@ bool validate_inst(const BackendInst& inst,
     if (!validate_local_address_alignment(store->address,
                                           backend_scalar_type_size_bytes(
                                               backend_store_value_type(*store)),
+                                          referenced_object_kinds,
                                           referenced_bounds,
                                           error,
                                           std::string(context) + ": store address")) {
@@ -522,18 +548,20 @@ bool validate_inst(const BackendInst& inst,
   if (ptrdiff->element_size <= 0) {
     return fail(error, std::string(context) + ": ptrdiff element size must be positive");
   }
-  if (!validate_local_address_alignment(ptrdiff->lhs_address,
-                                        static_cast<std::size_t>(ptrdiff->element_size),
-                                        referenced_bounds,
-                                        error,
-                                        std::string(context) + ": ptrdiff lhs address")) {
+    if (!validate_local_address_alignment(ptrdiff->lhs_address,
+                                          static_cast<std::size_t>(ptrdiff->element_size),
+                                          referenced_object_kinds,
+                                          referenced_bounds,
+                                          error,
+                                          std::string(context) + ": ptrdiff lhs address")) {
     return false;
   }
-  if (!validate_local_address_alignment(ptrdiff->rhs_address,
-                                        static_cast<std::size_t>(ptrdiff->element_size),
-                                        referenced_bounds,
-                                        error,
-                                        std::string(context) + ": ptrdiff rhs address")) {
+    if (!validate_local_address_alignment(ptrdiff->rhs_address,
+                                          static_cast<std::size_t>(ptrdiff->element_size),
+                                          referenced_object_kinds,
+                                          referenced_bounds,
+                                          error,
+                                          std::string(context) + ": ptrdiff rhs address")) {
     return false;
   }
   const auto element_type = backend_ptrdiff_element_type(*ptrdiff);
@@ -548,16 +576,16 @@ bool validate_inst(const BackendInst& inst,
   const auto rhs_kind_it = referenced_object_kinds.find(ptrdiff->rhs_address.base_symbol);
   const bool lhs_is_referenced_object =
       lhs_kind_it != referenced_object_kinds.end() &&
-      lhs_kind_it->second != ReferencedObjectKind::LocalSlot;
+      lhs_kind_it->second != BackendAddressBaseKind::LocalSlot;
   const bool rhs_is_referenced_object =
       rhs_kind_it != referenced_object_kinds.end() &&
-      rhs_kind_it->second != ReferencedObjectKind::LocalSlot;
+      rhs_kind_it->second != BackendAddressBaseKind::LocalSlot;
   const bool lhs_is_local_address =
       lhs_kind_it != referenced_object_kinds.end() &&
-      lhs_kind_it->second == ReferencedObjectKind::LocalSlot;
+      lhs_kind_it->second == BackendAddressBaseKind::LocalSlot;
   const bool rhs_is_local_address =
       rhs_kind_it != referenced_object_kinds.end() &&
-      rhs_kind_it->second == ReferencedObjectKind::LocalSlot;
+      rhs_kind_it->second == BackendAddressBaseKind::LocalSlot;
   if (lhs_is_referenced_object != rhs_is_referenced_object) {
     return fail(error,
                 std::string(context) +
@@ -625,7 +653,7 @@ bool validate_inst(const BackendInst& inst,
 }
 
 bool validate_block(const BackendBlock& block,
-                    const std::unordered_map<std::string, ReferencedObjectKind>&
+                    const std::unordered_map<std::string, BackendAddressBaseKind>&
                         referenced_object_kinds,
                     const std::unordered_set<std::string>& referenced_string_constants,
                     const std::unordered_map<std::string, ReferencedBoundsInfo>&
@@ -679,7 +707,7 @@ bool validate_block(const BackendBlock& block,
 }
 
 bool validate_function(const BackendFunction& function,
-                       const std::unordered_map<std::string, ReferencedObjectKind>&
+                       const std::unordered_map<std::string, BackendAddressBaseKind>&
                            referenced_object_kinds,
                        const std::unordered_set<std::string>& referenced_string_constants,
                        const std::unordered_map<std::string, ReferencedBoundsInfo>&
@@ -710,7 +738,7 @@ bool validate_function(const BackendFunction& function,
     }
     if (!function_bounds
              .emplace(local_slot.name,
-                      ReferencedBoundsInfo{ReferencedObjectKind::LocalSlot,
+                      ReferencedBoundsInfo{BackendAddressBaseKind::LocalSlot,
                                            local_slot.size_bytes,
                                            local_slot.element_type,
                                            local_slot.element_size_bytes})
@@ -719,7 +747,7 @@ bool validate_function(const BackendFunction& function,
                   std::string(context) + ": duplicate referenced object '" + local_slot.name +
                       "'");
     }
-    function_object_kinds.emplace(local_slot.name, ReferencedObjectKind::LocalSlot);
+    function_object_kinds.emplace(local_slot.name, BackendAddressBaseKind::LocalSlot);
   }
 
   std::unordered_set<std::string> labels;
@@ -779,7 +807,7 @@ bool validate_function(const BackendFunction& function,
 }  // namespace
 
 bool validate_backend_ir(const BackendModule& module, std::string* error) {
-  std::unordered_map<std::string, ReferencedObjectKind> referenced_object_kinds;
+  std::unordered_map<std::string, BackendAddressBaseKind> referenced_object_kinds;
   std::unordered_set<std::string> referenced_string_constants;
   std::unordered_map<std::string, ReferencedBoundsInfo> referenced_bounds;
   for (std::size_t index = 0; index < module.globals.size(); ++index) {
@@ -787,7 +815,7 @@ bool validate_backend_ir(const BackendModule& module, std::string* error) {
     if (!validate_global(global, error, std::string("global ") + std::to_string(index))) {
       return false;
     }
-    if (!referenced_object_kinds.emplace(global.name, ReferencedObjectKind::Global).second) {
+    if (!referenced_object_kinds.emplace(global.name, BackendAddressBaseKind::Global).second) {
       return fail(error, "duplicate global '" + global.name + "'");
     }
     if (const auto bounds = global_bounds_info(global); bounds.has_value()) {
@@ -803,7 +831,7 @@ bool validate_backend_ir(const BackendModule& module, std::string* error) {
       return false;
     }
     if (!referenced_object_kinds
-             .emplace(string_constant.name, ReferencedObjectKind::StringConstant)
+             .emplace(string_constant.name, BackendAddressBaseKind::StringConstant)
              .second) {
       return fail(error, "duplicate global '" + string_constant.name + "'");
     }

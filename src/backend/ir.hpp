@@ -515,9 +515,37 @@ struct BackendCallInst {
   }
 };
 
+enum class BackendAddressBaseKind : unsigned char {
+  Unknown,
+  Global,
+  StringConstant,
+  LocalSlot,
+};
+
 struct BackendAddress {
+  BackendAddressBaseKind kind = BackendAddressBaseKind::Unknown;
   std::string base_symbol;
   std::int64_t byte_offset = 0;
+
+  BackendAddress() = default;
+
+  BackendAddress(std::string symbol, std::int64_t offset)
+      : base_symbol(std::move(symbol)), byte_offset(offset) {}
+
+  BackendAddress(std::string symbol, BackendAddressBaseKind base_kind, std::int64_t offset = 0)
+      : kind(base_kind), base_symbol(std::move(symbol)), byte_offset(offset) {}
+
+  static BackendAddress global(std::string symbol, std::int64_t offset = 0) {
+    return BackendAddress(std::move(symbol), BackendAddressBaseKind::Global, offset);
+  }
+
+  static BackendAddress string_constant(std::string symbol, std::int64_t offset = 0) {
+    return BackendAddress(std::move(symbol), BackendAddressBaseKind::StringConstant, offset);
+  }
+
+  static BackendAddress local_slot(std::string symbol, std::int64_t offset = 0) {
+    return BackendAddress(std::move(symbol), BackendAddressBaseKind::LocalSlot, offset);
+  }
 };
 
 struct BackendLocalSlot {
