@@ -3184,6 +3184,54 @@ void test_x86_backend_scaffold_accepts_renamed_structured_call_crossing_direct_c
                       "x86 backend seam should not fall back when the renamed lowered call-crossing slice relies only on structured backend metadata");
 }
 
+void test_x86_backend_scaffold_rejects_structured_call_crossing_direct_call_when_helper_body_contract_disagrees() {
+  auto legacy = make_typed_call_crossing_direct_call_module();
+  legacy.target_triple = "x86_64-unknown-linux-gnu";
+  auto lowered = c4c::backend::lower_to_backend_ir(legacy);
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  c4c::backend::BackendFunction* helper = nullptr;
+  for (auto& function : lowered.functions) {
+    if (function.signature.name == "add_one") {
+      helper = &function;
+      break;
+    }
+  }
+  auto* lowered_add =
+      helper != nullptr && !helper->blocks.empty() && !helper->blocks.front().insts.empty()
+          ? std::get_if<c4c::backend::BackendBinaryInst>(&helper->blocks.front().insts.front())
+          : nullptr;
+  expect_true(lowered_add != nullptr,
+              "x86 lowered call-crossing regression test needs the backend helper add instruction to mutate");
+  if (lowered_add != nullptr) {
+    lowered_add->opcode = c4c::backend::BackendBinaryOpcode::Sub;
+  }
+
+  c4c::codegen::lir::LirFunction* legacy_helper = nullptr;
+  for (auto& function : legacy.functions) {
+    if (function.name == "add_one") {
+      legacy_helper = &function;
+      break;
+    }
+  }
+  auto* legacy_add =
+      legacy_helper != nullptr && !legacy_helper->blocks.empty() &&
+              !legacy_helper->blocks.front().insts.empty()
+          ? std::get_if<c4c::codegen::lir::LirBinOp>(&legacy_helper->blocks.front().insts.front())
+          : nullptr;
+  expect_true(legacy_add != nullptr,
+              "x86 lowered call-crossing regression test needs the legacy helper add instruction to mutate");
+  if (legacy_add != nullptr) {
+    legacy_add->opcode = "sub";
+  }
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered, &legacy},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, "target triple = \"x86_64-unknown-linux-gnu\"",
+                  "x86 backend seam should stop matching the structured call-crossing asm slice when the lowered helper body no longer matches the shared add-immediate helper contract");
+}
+
 void test_x86_backend_renders_compare_and_branch_slice() {
   auto module = make_conditional_return_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -4348,6 +4396,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_keeps_spacing_tolerant_call_crossing_slice_on_asm_path);
   RUN_TEST(test_x86_backend_keeps_renamed_call_crossing_slice_on_asm_path);
   RUN_TEST(test_x86_backend_scaffold_accepts_renamed_structured_call_crossing_direct_call_ir_without_signature_shims);
+  RUN_TEST(test_x86_backend_scaffold_rejects_structured_call_crossing_direct_call_when_helper_body_contract_disagrees);
   RUN_TEST(test_x86_backend_renders_compare_and_branch_slice);
   RUN_TEST(test_x86_backend_renders_compare_and_branch_slice_from_typed_predicates);
   RUN_TEST(test_x86_backend_renders_compare_and_branch_le_slice);
