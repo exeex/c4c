@@ -177,6 +177,7 @@ bool validate_address_scalar_type(
 
 bool validate_inst(const BackendInst& inst,
                    const std::unordered_set<std::string>& referenced_objects,
+                   const std::unordered_set<std::string>& referenced_string_constants,
                    const std::unordered_map<std::string, ReferencedBoundsInfo>&
                        referenced_bounds,
                    std::string* error,
@@ -326,6 +327,12 @@ bool validate_inst(const BackendInst& inst,
     if (store->address.base_symbol.empty()) {
       return fail(error, std::string(context) + ": store base symbol must not be empty");
     }
+    if (referenced_string_constants.find(store->address.base_symbol) !=
+        referenced_string_constants.end()) {
+      return fail(error,
+                  std::string(context) +
+                      ": stores must not target referenced string constants");
+    }
     if (!validate_address_range(store->address,
                                 backend_scalar_type_size_bytes(backend_store_value_type(*store)),
                                 referenced_bounds,
@@ -431,6 +438,7 @@ bool validate_inst(const BackendInst& inst,
 
 bool validate_block(const BackendBlock& block,
                     const std::unordered_set<std::string>& referenced_objects,
+                    const std::unordered_set<std::string>& referenced_string_constants,
                     const std::unordered_map<std::string, ReferencedBoundsInfo>&
                         referenced_bounds,
                     std::string* error,
@@ -471,6 +479,7 @@ bool validate_block(const BackendBlock& block,
   for (std::size_t index = 0; index < block.insts.size(); ++index) {
     if (!validate_inst(block.insts[index],
                        referenced_objects,
+                       referenced_string_constants,
                        referenced_bounds,
                        error,
                        std::string(context) + ": instruction " + std::to_string(index))) {
@@ -482,6 +491,7 @@ bool validate_block(const BackendBlock& block,
 
 bool validate_function(const BackendFunction& function,
                        const std::unordered_set<std::string>& referenced_objects,
+                       const std::unordered_set<std::string>& referenced_string_constants,
                        const std::unordered_map<std::string, ReferencedBoundsInfo>&
                            referenced_bounds,
                        std::string* error,
@@ -508,6 +518,7 @@ bool validate_function(const BackendFunction& function,
     }
     if (!validate_block(block,
                         referenced_objects,
+                        referenced_string_constants,
                         referenced_bounds,
                         error,
                         std::string(context) + ": block " + std::to_string(index))) {
@@ -556,6 +567,7 @@ bool validate_function(const BackendFunction& function,
 
 bool validate_backend_ir(const BackendModule& module, std::string* error) {
   std::unordered_set<std::string> referenced_objects;
+  std::unordered_set<std::string> referenced_string_constants;
   std::unordered_map<std::string, ReferencedBoundsInfo> referenced_bounds;
   for (std::size_t index = 0; index < module.globals.size(); ++index) {
     const auto& global = module.globals[index];
@@ -580,6 +592,7 @@ bool validate_backend_ir(const BackendModule& module, std::string* error) {
     if (!referenced_objects.insert(string_constant.name).second) {
       return fail(error, "duplicate global '" + string_constant.name + "'");
     }
+    referenced_string_constants.insert(string_constant.name);
     if (const auto bounds = string_constant_bounds_info(string_constant); bounds.has_value()) {
       referenced_bounds.emplace(string_constant.name, *bounds);
     }
@@ -588,6 +601,7 @@ bool validate_backend_ir(const BackendModule& module, std::string* error) {
   for (std::size_t index = 0; index < module.functions.size(); ++index) {
     if (!validate_function(module.functions[index],
                            referenced_objects,
+                           referenced_string_constants,
                            referenced_bounds,
                            error,
                            std::string("function ") + std::to_string(index))) {

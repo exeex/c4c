@@ -722,6 +722,24 @@ void test_backend_ir_validator_rejects_string_literal_load_past_structured_bound
                   "backend IR validator should explain when a structured string-literal load escapes the referenced bytes");
 }
 
+void test_backend_ir_validator_rejects_store_to_string_literal_constant() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_string_literal_char_module());
+  auto& insts = lowered.functions.front().blocks.front().insts;
+  insts.insert(insts.begin(),
+               c4c::backend::BackendStoreInst{
+                   "i8",
+                   "65",
+                   c4c::backend::BackendAddress{".str0", 0},
+                   c4c::backend::BackendScalarType::I8,
+               });
+  std::string error;
+
+  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should reject structured stores that target immutable string constants");
+  expect_contains(error, "stores must not target referenced string constants",
+                  "backend IR validator should explain when a structured store targets a string constant");
+}
+
 void test_backend_ir_printer_renders_lowered_global_int_pointer_roundtrip_slice() {
   const auto lowered =
       c4c::backend::lower_to_backend_ir(make_global_int_pointer_roundtrip_module());
@@ -1519,6 +1537,7 @@ int main(int argc, char* argv[]) {
   test_backend_ir_printer_renders_structured_string_literal_char_slice_without_type_text();
   test_backend_ir_validator_accepts_structured_string_literal_char_slice_without_type_text();
   test_backend_ir_validator_rejects_string_literal_load_past_structured_bounds();
+  test_backend_ir_validator_rejects_store_to_string_literal_constant();
   test_backend_ir_printer_renders_lowered_global_int_pointer_roundtrip_slice();
   test_backend_ir_validator_accepts_lowered_global_int_pointer_roundtrip_slice();
   test_backend_ir_printer_renders_lowered_global_char_pointer_diff_slice();
