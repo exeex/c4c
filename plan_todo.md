@@ -8,8 +8,8 @@ Source Plan: plan.md
 
 - Step 2: Foundation headers and traits
 - Current slice: reduce the remaining `eastl::is_signed_helper` blocker to the
-  interaction between defaulted NTTPs and alias-template base expressions after
-  the inherited aliased-base `::type` lookup fix
+  interaction between defaulted NTTPs and inherited alias-base member-typedef
+  lookup after ruling out simpler namespaced template instantiation paths
 
 ## Todo
 
@@ -57,9 +57,9 @@ Source Plan: plan.md
 - reduce the still-failing `bool_constant<T(-1) < T(0)>` case when the owning
   template also carries a defaulted NTTP such as
   `bool = is_arithmetic<T>::value`
-- decide whether that remaining blocker belongs in alias-template application,
-  deferred template-argument materialization, or top-level template-struct
-  bookkeeping before the next implementation change
+- decide whether that remaining blocker belongs in base-type substitution for
+  instantiated record bases, inherited member-typedef lookup on instantiated
+  bases, or defaulted-NTTP bookkeeping before the next implementation change
 - use the new reduced reproducer in
   `tests/cpp/internal/negative_case/namespaced_inherited_type_alias_base_member_lookup_parse.cpp`
   as the starting point instead of reopening the full EASTL stack
@@ -83,6 +83,11 @@ Source Plan: plan.md
   `unexpected token in expression: .`
 - `eastl_memory_simple.cpp` and `eastl_tuple_simple.cpp` still need a fresh
   post-fix reclassification before Step 3 resumes
+- additional reduction work ruled out simpler namespace-qualified paths:
+  `ns::wrap<int> value{}`, `ns::wrap<int>::type value{}`, and
+  `ns::wrap<int>` with a defaulted NTTP all parse successfully, so the
+  surviving blocker still depends on the combination of a defaulted NTTP and
+  inherited alias-base member lookup rather than namespace qualification alone
 
 ## Resume Notes
 
@@ -104,6 +109,9 @@ Source Plan: plan.md
 - a smaller negative regression now captures that remaining shape without the
   full EASTL include stack:
   `tests/cpp/internal/negative_case/namespaced_inherited_type_alias_base_member_lookup_parse.cpp`
+- probe reductions showed that namespace-qualified template instantiation and
+  namespace-qualified `::type` lookup both work in simpler cases; the current
+  failure still needs the inherited-base path exposed by `is_signed_helper`
 - `eastl_piecewise_construct_simple.cpp` and
   `eastl_tuple_fwd_decls_simple.cpp` parse successfully but first fail during
   canonical/sema expansion with undeclared identifiers from EASTL internals
