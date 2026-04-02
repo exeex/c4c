@@ -14,6 +14,10 @@ bool fail(std::string* error, std::string message) {
   return false;
 }
 
+bool is_local_address_symbol(std::string_view symbol) {
+  return !symbol.empty() && symbol.front() == '%';
+}
+
 bool validate_function_signature(const BackendFunctionSignature& signature,
                                  std::string* error,
                                  std::string_view context) {
@@ -175,6 +179,20 @@ bool validate_address_scalar_type(
   return true;
 }
 
+bool validate_address_base_symbol(
+    const BackendAddress& address,
+    const std::unordered_set<std::string>& referenced_objects,
+    std::string* error,
+    std::string_view context) {
+  if (referenced_objects.find(address.base_symbol) != referenced_objects.end() ||
+      is_local_address_symbol(address.base_symbol)) {
+    return true;
+  }
+  return fail(error,
+              std::string(context) +
+                  ": base symbol must reference a known global, string constant, or local slot");
+}
+
 bool validate_inst(const BackendInst& inst,
                    const std::unordered_set<std::string>& referenced_objects,
                    const std::unordered_set<std::string>& referenced_string_constants,
@@ -299,6 +317,12 @@ bool validate_inst(const BackendInst& inst,
     if (load->address.base_symbol.empty()) {
       return fail(error, std::string(context) + ": load base symbol must not be empty");
     }
+    if (!validate_address_base_symbol(load->address,
+                                      referenced_objects,
+                                      error,
+                                      std::string(context) + ": load address")) {
+      return false;
+    }
     if (!validate_address_range(load->address,
                                 backend_scalar_type_size_bytes(load_memory_type),
                                 referenced_bounds,
@@ -326,6 +350,12 @@ bool validate_inst(const BackendInst& inst,
     }
     if (store->address.base_symbol.empty()) {
       return fail(error, std::string(context) + ": store base symbol must not be empty");
+    }
+    if (!validate_address_base_symbol(store->address,
+                                      referenced_objects,
+                                      error,
+                                      std::string(context) + ": store address")) {
+      return false;
     }
     if (referenced_string_constants.find(store->address.base_symbol) !=
         referenced_string_constants.end()) {
@@ -363,6 +393,18 @@ bool validate_inst(const BackendInst& inst,
   if (ptrdiff->lhs_address.base_symbol.empty() ||
       ptrdiff->rhs_address.base_symbol.empty()) {
     return fail(error, std::string(context) + ": ptrdiff base symbols must not be empty");
+  }
+  if (!validate_address_base_symbol(ptrdiff->lhs_address,
+                                    referenced_objects,
+                                    error,
+                                    std::string(context) + ": ptrdiff lhs address")) {
+    return false;
+  }
+  if (!validate_address_base_symbol(ptrdiff->rhs_address,
+                                    referenced_objects,
+                                    error,
+                                    std::string(context) + ": ptrdiff rhs address")) {
+    return false;
   }
   if (ptrdiff->element_size <= 0) {
     return fail(error, std::string(context) + ": ptrdiff element size must be positive");

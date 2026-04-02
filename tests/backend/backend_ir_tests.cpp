@@ -722,6 +722,21 @@ void test_backend_ir_validator_rejects_string_literal_load_past_structured_bound
                   "backend IR validator should explain when a structured string-literal load escapes the referenced bytes");
 }
 
+void test_backend_ir_validator_rejects_load_from_unknown_global_style_symbol() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_global_load_module());
+  auto& load = std::get<c4c::backend::BackendLoadInst>(
+      lowered.functions.front().blocks.front().insts.front());
+  load.address.base_symbol = "g_missing";
+  std::string error;
+
+  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should reject structured loads that target unknown global-style symbols");
+  expect_contains(
+      error,
+      "load address: base symbol must reference a known global, string constant, or local slot",
+      "backend IR validator should explain when a structured load references an unknown global-style symbol");
+}
+
 void test_backend_ir_validator_rejects_store_to_string_literal_constant() {
   auto lowered = c4c::backend::lower_to_backend_ir(make_string_literal_char_module());
   auto& insts = lowered.functions.front().blocks.front().insts;
@@ -738,6 +753,21 @@ void test_backend_ir_validator_rejects_store_to_string_literal_constant() {
               "backend IR validator should reject structured stores that target immutable string constants");
   expect_contains(error, "stores must not target referenced string constants",
                   "backend IR validator should explain when a structured store targets a string constant");
+}
+
+void test_backend_ir_validator_rejects_store_to_unknown_global_style_symbol() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_global_store_reload_module());
+  auto& store = std::get<c4c::backend::BackendStoreInst>(
+      lowered.functions.front().blocks.front().insts.front());
+  store.address.base_symbol = "g_missing";
+  std::string error;
+
+  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should reject structured stores that target unknown global-style symbols");
+  expect_contains(
+      error,
+      "store address: base symbol must reference a known global, string constant, or local slot",
+      "backend IR validator should explain when a structured store references an unknown global-style symbol");
 }
 
 void test_backend_ir_printer_renders_lowered_global_int_pointer_roundtrip_slice() {
@@ -951,6 +981,21 @@ void test_backend_ir_validator_rejects_ptrdiff_with_only_one_global_backed_addre
       error,
       "ptrdiff addresses must both reference the same global when either side is global-backed",
       "backend IR validator should explain mixed global-backed ptrdiff address mismatches");
+}
+
+void test_backend_ir_validator_rejects_ptrdiff_with_unknown_global_style_symbol() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_global_int_pointer_diff_module());
+  auto& ptrdiff = std::get<c4c::backend::BackendPtrDiffEqInst>(
+      lowered.functions.front().blocks.front().insts.back());
+  ptrdiff.rhs_address.base_symbol = "g_missing";
+  std::string error;
+
+  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should reject structured ptrdiff slices that reference unknown global-style symbols");
+  expect_contains(
+      error,
+      "ptrdiff rhs address: base symbol must reference a known global, string constant, or local slot",
+      "backend IR validator should explain when structured ptrdiff addresses reference unknown global-style symbols");
 }
 
 void test_backend_ir_printer_renders_return_add() {
@@ -1537,7 +1582,9 @@ int main(int argc, char* argv[]) {
   test_backend_ir_printer_renders_structured_string_literal_char_slice_without_type_text();
   test_backend_ir_validator_accepts_structured_string_literal_char_slice_without_type_text();
   test_backend_ir_validator_rejects_string_literal_load_past_structured_bounds();
+  test_backend_ir_validator_rejects_load_from_unknown_global_style_symbol();
   test_backend_ir_validator_rejects_store_to_string_literal_constant();
+  test_backend_ir_validator_rejects_store_to_unknown_global_style_symbol();
   test_backend_ir_printer_renders_lowered_global_int_pointer_roundtrip_slice();
   test_backend_ir_validator_accepts_lowered_global_int_pointer_roundtrip_slice();
   test_backend_ir_printer_renders_lowered_global_char_pointer_diff_slice();
@@ -1556,6 +1603,7 @@ int main(int argc, char* argv[]) {
   test_backend_ir_validator_rejects_global_int_ptrdiff_past_structured_bounds();
   test_backend_ir_validator_rejects_ptrdiff_across_different_structured_globals();
   test_backend_ir_validator_rejects_ptrdiff_with_only_one_global_backed_address();
+  test_backend_ir_validator_rejects_ptrdiff_with_unknown_global_style_symbol();
   test_backend_ir_printer_renders_lowered_conditional_return_slice();
   test_backend_ir_validator_accepts_lowered_conditional_return_slice();
   test_backend_ir_printer_renders_structured_conditional_return_slice_without_type_text();
