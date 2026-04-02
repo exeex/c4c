@@ -995,6 +995,19 @@ void test_backend_ir_tracks_structured_two_arg_direct_call_signature_and_call_co
               "backend IR should preserve the normalized two-argument direct-call operands");
 }
 
+void test_backend_ir_validator_accepts_structured_direct_call_add_imm_slice_without_raw_text() {
+  auto lowered =
+      c4c::backend::lower_to_backend_ir(make_typed_direct_call_local_arg_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+  clear_backend_memory_type_compatibility_shims(lowered);
+  std::string error;
+
+  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should accept lowered direct-call add-immediate slices when structured signature, call, and binary type metadata remain after clearing legacy text");
+  expect_true(error.empty(),
+              "backend IR validator should not report an error for structured direct-call add-immediate slices without compatibility text");
+}
+
 void test_backend_ir_printer_renders_structured_pointer_return_without_raw_text() {
   c4c::backend::BackendModule module;
   c4c::backend::BackendFunction function;
@@ -1151,6 +1164,7 @@ int main(int argc, char* argv[]) {
   test_backend_ir_printer_renders_structured_function_linkage_without_raw_text();
   test_backend_ir_printer_renders_structured_signature_and_call_types_without_raw_text();
   test_backend_ir_tracks_structured_two_arg_direct_call_signature_and_call_contract();
+  test_backend_ir_validator_accepts_structured_direct_call_add_imm_slice_without_raw_text();
   test_backend_ir_printer_renders_lowered_extern_decl_slice();
   test_backend_ir_validator_accepts_lowered_extern_decl_slice();
   test_backend_ir_validator_accepts_structured_signature_and_call_types_without_raw_text();

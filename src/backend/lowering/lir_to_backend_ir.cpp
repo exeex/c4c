@@ -391,6 +391,7 @@ BackendInst adapt_inst(const c4c::codegen::lir::LirInst& inst) {
     out.type_str = bin->type_str;
     out.lhs = bin->lhs;
     out.rhs = bin->rhs;
+    out.value_type = parse_backend_scalar_type(bin->type_str).value_or(BackendScalarType::Unknown);
     return out;
   }
 
