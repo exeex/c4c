@@ -1028,7 +1028,8 @@ std::optional<std::int64_t> try_constant_fold_single_block(
   const auto& function = module.functions.front();
   if (function.is_declaration || function.name != "main" ||
       function.signature_text.find("i32 @main(") == std::string::npos ||
-      function.entry.value != 0 || function.blocks.empty()) {
+      function.entry.value != 0 || function.blocks.empty() ||
+      !function.alloca_insts.empty()) {
     return std::nullopt;
   }
 
@@ -5992,7 +5993,7 @@ std::string emit_module(const c4c::backend::BackendModule& module,
   }
 
   if (legacy_fallback != nullptr) {
-    return emit_module(*legacy_fallback);
+    return c4c::backend::print_backend_ir(module);
   }
   return c4c::backend::print_backend_ir(module);
 }

@@ -2639,8 +2639,8 @@ void test_aarch64_backend_initializes_param_alloca_slots_in_general_emitter() {
       make_param_slot_module());
   expect_contains(rendered, ".globl main",
                   "aarch64 general emitter should keep parameter-slot functions on the asm path");
-  expect_contains(rendered, "ldr x9, [sp, #8]\n  str w0, [x9]\n",
-                  "aarch64 general emitter should initialize lowered parameter allocas from incoming ABI registers");
+  expect_contains(rendered, "ldr x9, [sp, #8]\n  ldr w10, [sp, #16]\n  str w10, [x9]\n",
+                  "aarch64 general emitter should initialize lowered parameter allocas from the preserved incoming ABI register value");
 }
 
 void test_aarch64_backend_preserves_param_registers_across_alloca_address_setup() {
