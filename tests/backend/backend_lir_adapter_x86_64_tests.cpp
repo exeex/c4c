@@ -52,6 +52,9 @@ c4c::codegen::lir::LirModule make_x86_local_pointer_temp_return_module() {
 
 void clear_backend_global_compatibility_shims(c4c::backend::BackendModule& module) {
   for (auto& global : module.globals) {
+    if (global.linkage_kind != c4c::backend::BackendGlobalLinkage::Default) {
+      global.linkage.clear();
+    }
     global.qualifier.clear();
     global.init_text.clear();
     global.is_extern_decl = false;

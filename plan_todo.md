@@ -116,11 +116,21 @@ Source Plan: plan.md
       `backend_lir_adapter_x86_64_tests` pass while the full suite remains
       monotonic at 2668 passed / 3 failed / 2671 total with zero newly
       failing tests
+- [x] Step 3/5 slice: convert `BackendGlobal` linkage from raw backend text
+      into structured backend-owned metadata
+      (`BackendGlobalLinkage::{Default,External,ExternWeak}`), keep the legacy
+      `global.linkage` string as a compatibility shim, switch the
+      lowering/printer/validator plus x86/aarch64 lowered extern-global seam
+      recognizers onto the structured linkage helpers, and confirm on
+      2026-04-02 that focused `backend_ir_tests` and
+      `backend_lir_adapter_x86_64_tests` pass while the full suite remains
+      monotonic at 2668 passed / 3 failed / 2671 total with zero newly
+      failing tests
 
 ## Next Intended Slice
 
 - Audit the remaining backend-owned IR surfaces that still carry semantics only
-  as raw text after the structured function-linkage conversion, then pick the
+  as raw text after the structured function/global-linkage conversions, then pick the
   next narrow Step 2/3 conversion without widening into the later BIR scaffold
   plan.
 
@@ -179,6 +189,17 @@ Source Plan: plan.md
 - Focused `backend_lir_adapter_aarch64_tests` still fails in the same broad
   pre-existing suite called out above after the linkage-helper cleanup; the
   full-suite rerun stayed monotonic and reported no new failures.
+- A fresh 2026-04-02 `ctest --test-dir build -j --output-on-failure >
+  test_fail_after.log` run for the structured global-linkage slice finished at
+  the same 2668 passed / 3 failed / 2671 total baseline, and
+  `check_monotonic_regression.py --before test_fail_before.log --after
+  test_fail_after.log --allow-non-decreasing-passed` passed with zero newly
+  failing tests.
+- Focused `backend_ir_tests` and `backend_lir_adapter_x86_64_tests` pass with
+  the new structured global-linkage metadata slice.
+- Focused `backend_lir_adapter_aarch64_tests` still fails in the same broad
+  pre-existing suite called out above after the global-linkage-helper cleanup;
+  the full-suite rerun stayed monotonic and reported no new failures.
 
 ## Resume Notes
 
@@ -241,6 +262,11 @@ Source Plan: plan.md
   `storage` plus `initializer.kind`, while `qualifier` / `init_text` /
   `is_extern_decl` remain compatibility shims for backend consumers that have
   not migrated yet.
+- `BackendGlobal` now also stores structured linkage metadata in
+  `linkage_kind`; `src/backend/ir_printer.cpp`,
+  `src/backend/ir_validate.cpp`, and the x86/aarch64 lowered extern-global
+  seam recognizers prefer that helper-backed metadata and only fall back to
+  `global.linkage` when needed for compatibility.
 - The x86 and aarch64 lowered-backend global slice recognizers touched in this
   iteration now read `BackendGlobal::storage` plus
   `BackendGlobal::initializer` directly through shared helper predicates; the

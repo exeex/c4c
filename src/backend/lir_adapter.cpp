@@ -147,6 +147,8 @@ BackendGlobal adapt_global(const c4c::codegen::lir::LirGlobal& global) {
   BackendGlobal adapted;
   adapted.name = global.name;
   adapted.linkage = global.linkage_vis;
+  adapted.linkage_kind =
+      parse_backend_global_linkage(global.linkage_vis).value_or(BackendGlobalLinkage::Default);
   adapted.storage = adapt_global_storage(global.qualifier);
   adapted.llvm_type = global.llvm_type;
   adapted.initializer = adapt_global_initializer(global);

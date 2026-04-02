@@ -86,6 +86,39 @@ inline bool backend_function_is_declaration(const BackendFunctionSignature& sign
   return backend_function_linkage(signature) == BackendFunctionLinkage::Declare;
 }
 
+enum class BackendGlobalLinkage : unsigned char {
+  Default,
+  External,
+  ExternWeak,
+};
+
+inline std::optional<BackendGlobalLinkage> parse_backend_global_linkage(
+    std::string_view linkage) {
+  if (linkage.empty()) {
+    return BackendGlobalLinkage::Default;
+  }
+  if (linkage == "external ") {
+    return BackendGlobalLinkage::External;
+  }
+  if (linkage == "extern_weak ") {
+    return BackendGlobalLinkage::ExternWeak;
+  }
+  return std::nullopt;
+}
+
+inline std::string_view render_backend_global_linkage(BackendGlobalLinkage linkage) {
+  switch (linkage) {
+    case BackendGlobalLinkage::Default:
+      return {};
+    case BackendGlobalLinkage::External:
+      return "external ";
+    case BackendGlobalLinkage::ExternWeak:
+      return "extern_weak ";
+  }
+
+  return {};
+}
+
 struct BackendGlobal {
   enum class StorageKind : unsigned char {
     Mutable,
@@ -129,6 +162,7 @@ struct BackendGlobal {
 
   std::string name;
   std::string linkage;
+  BackendGlobalLinkage linkage_kind = BackendGlobalLinkage::Default;
   StorageKind storage = StorageKind::Mutable;
   std::string llvm_type;
   Initializer initializer;
@@ -143,9 +177,26 @@ struct BackendGlobal {
 using BackendGlobalStorageKind = BackendGlobal::StorageKind;
 using BackendGlobalInitializer = BackendGlobal::Initializer;
 
+inline BackendGlobalLinkage backend_global_linkage(const BackendGlobal& global) {
+  if (global.linkage_kind != BackendGlobalLinkage::Default) {
+    return global.linkage_kind;
+  }
+  return parse_backend_global_linkage(global.linkage)
+      .value_or(BackendGlobalLinkage::Default);
+}
+
+inline std::string render_backend_global_linkage(const BackendGlobal& global) {
+  const auto structured = render_backend_global_linkage(backend_global_linkage(global));
+  if (!structured.empty()) {
+    return std::string(structured);
+  }
+  return global.linkage;
+}
+
 inline bool backend_global_is_extern_declaration(const BackendGlobal& global) {
   return global.initializer.kind == BackendGlobalInitializer::Kind::Declaration &&
-         (global.linkage == "external " || global.linkage == "extern_weak ");
+         (backend_global_linkage(global) == BackendGlobalLinkage::External ||
+          backend_global_linkage(global) == BackendGlobalLinkage::ExternWeak);
 }
 
 inline bool backend_global_has_integer_initializer(const BackendGlobal& global,

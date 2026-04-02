@@ -75,6 +75,14 @@ void clear_backend_memory_type_compatibility_shims(c4c::backend::BackendModule& 
   }
 }
 
+void clear_backend_global_linkage_compatibility_shims(c4c::backend::BackendModule& module) {
+  for (auto& global : module.globals) {
+    if (global.linkage_kind != c4c::backend::BackendGlobalLinkage::Default) {
+      global.linkage.clear();
+    }
+  }
+}
+
 void test_backend_ir_printer_renders_lowered_conditional_return_slice() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_return_module());
   const auto rendered = c4c::backend::print_backend_ir(lowered);
@@ -806,6 +814,7 @@ void test_backend_ir_printer_renders_structured_global_constant_initializer() {
   module.globals.push_back(c4c::backend::BackendGlobal{
       "g_const",
       "",
+      c4c::backend::BackendGlobalLinkage::Default,
       c4c::backend::BackendGlobalStorageKind::Constant,
       "i32",
       c4c::backend::BackendGlobalInitializer::integer_literal(7),
@@ -822,6 +831,7 @@ void test_backend_ir_printer_renders_structured_extern_global_declaration() {
   module.globals.push_back(c4c::backend::BackendGlobal{
       "ext_counter",
       "external ",
+      c4c::backend::BackendGlobalLinkage::External,
       c4c::backend::BackendGlobalStorageKind::Mutable,
       "i32",
       c4c::backend::BackendGlobalInitializer::declaration(),
@@ -838,6 +848,7 @@ void test_backend_ir_validator_rejects_structured_defined_global_without_initial
   module.globals.push_back(c4c::backend::BackendGlobal{
       "g_missing_init",
       "",
+      c4c::backend::BackendGlobalLinkage::Default,
       c4c::backend::BackendGlobalStorageKind::Mutable,
       "i32",
       c4c::backend::BackendGlobalInitializer::declaration(),
@@ -867,6 +878,16 @@ void test_backend_ir_printer_renders_structured_function_linkage_without_raw_tex
   const auto rendered = c4c::backend::print_backend_ir(module);
   expect_contains(rendered, "define i32 @main()",
                   "backend IR printer should render structured function linkage without raw signature text");
+}
+
+void test_backend_ir_printer_renders_structured_global_linkage_without_raw_text() {
+  auto lowered =
+      c4c::backend::lower_to_backend_ir(make_extern_global_array_load_module());
+  clear_backend_global_linkage_compatibility_shims(lowered);
+
+  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  expect_contains(rendered, "@ext_arr = external global [2 x i32], align 4\n",
+                  "backend IR printer should render structured global linkage without raw linkage text");
 }
 
 void test_backend_ir_printer_renders_lowered_extern_decl_slice() {
@@ -971,6 +992,7 @@ int main(int argc, char* argv[]) {
   test_backend_ir_printer_renders_structured_global_constant_initializer();
   test_backend_ir_printer_renders_structured_extern_global_declaration();
   test_backend_ir_validator_rejects_structured_defined_global_without_initializer();
+  test_backend_ir_printer_renders_structured_global_linkage_without_raw_text();
   test_backend_ir_printer_renders_structured_function_linkage_without_raw_text();
   test_backend_ir_printer_renders_lowered_extern_decl_slice();
   test_backend_ir_validator_accepts_lowered_extern_decl_slice();

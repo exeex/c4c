@@ -45,7 +45,8 @@ bool validate_global(const BackendGlobal& global,
     return fail(error, std::string(context) + ": global type must not be empty");
   }
   if (global.initializer.kind == BackendGlobalInitializer::Kind::Declaration &&
-      global.linkage != "external " && global.linkage != "extern_weak ") {
+      backend_global_linkage(global) != BackendGlobalLinkage::External &&
+      backend_global_linkage(global) != BackendGlobalLinkage::ExternWeak) {
     return fail(error, std::string(context) + ": defined globals must have an initializer");
   }
   if (global.initializer.kind == BackendGlobalInitializer::Kind::RawText &&

@@ -1343,7 +1343,9 @@ std::optional<MinimalExternGlobalArrayLoadSlice> parse_minimal_extern_global_arr
   const auto* global = find_global(module, module.globals.front().name);
   if (global == nullptr || !c4c::backend::backend_global_is_extern_declaration(*global) ||
       global->storage != c4c::backend::BackendGlobalStorageKind::Mutable ||
-      global->linkage != "external " || global->llvm_type.size() < 7 ||
+      c4c::backend::backend_global_linkage(*global) !=
+          c4c::backend::BackendGlobalLinkage::External ||
+      global->llvm_type.size() < 7 ||
       global->llvm_type.substr(global->llvm_type.size() - 7) != " x i32]") {
     return std::nullopt;
   }
@@ -1385,7 +1387,9 @@ std::optional<MinimalExternScalarGlobalLoadSlice> parse_minimal_extern_scalar_gl
   const auto* global = find_global(module, module.globals.front().name);
   if (global == nullptr || !c4c::backend::backend_global_is_extern_declaration(*global) ||
       global->storage != c4c::backend::BackendGlobalStorageKind::Mutable ||
-      global->linkage != "external " || global->llvm_type != "i32") {
+      c4c::backend::backend_global_linkage(*global) !=
+          c4c::backend::BackendGlobalLinkage::External ||
+      global->llvm_type != "i32") {
     return std::nullopt;
   }
 
