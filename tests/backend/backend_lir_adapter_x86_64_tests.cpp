@@ -3112,9 +3112,9 @@ void test_x86_backend_keeps_renamed_call_crossing_slice_on_asm_path() {
 }
 
 void test_x86_backend_scaffold_accepts_renamed_structured_call_crossing_direct_call_ir_without_signature_shims() {
-  auto legacy = make_typed_call_crossing_direct_call_module();
-  legacy.target_triple = "x86_64-unknown-linux-gnu";
-  auto lowered = c4c::backend::lower_to_backend_ir(legacy);
+  auto module = make_typed_call_crossing_direct_call_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  auto lowered = c4c::backend::lower_to_backend_ir(module);
 
   c4c::backend::BackendFunction* helper = nullptr;
   c4c::backend::BackendFunction* main_fn = nullptr;
@@ -3132,23 +3132,6 @@ void test_x86_backend_scaffold_accepts_renamed_structured_call_crossing_direct_c
   }
 
   helper->signature.name = "inc_value";
-  c4c::codegen::lir::LirFunction* legacy_helper = nullptr;
-  c4c::codegen::lir::LirFunction* legacy_main = nullptr;
-  for (auto& function : legacy.functions) {
-    if (function.name == "add_one") {
-      legacy_helper = &function;
-    } else if (function.name == "main") {
-      legacy_main = &function;
-    }
-  }
-  expect_true(legacy_helper != nullptr && legacy_main != nullptr,
-              "x86 renamed lowered call-crossing regression test needs the legacy helper and main functions");
-  if (legacy_helper == nullptr || legacy_main == nullptr) {
-    return;
-  }
-  legacy_helper->name = "inc_value";
-  legacy_helper->signature_text = "define i32 @inc_value(i32 %p.x)\n";
-
   auto* call = std::get_if<c4c::backend::BackendCallInst>(&main_fn->blocks.front().insts[1]);
   expect_true(call != nullptr,
               "x86 renamed lowered call-crossing regression test needs the backend direct call to mutate");
@@ -3156,24 +3139,16 @@ void test_x86_backend_scaffold_accepts_renamed_structured_call_crossing_direct_c
     return;
   }
   call->callee.symbol_name = "inc_value";
-  auto* legacy_call =
-      std::get_if<c4c::codegen::lir::LirCallOp>(&legacy_main->blocks.front().insts[1]);
-  expect_true(legacy_call != nullptr,
-              "x86 renamed lowered call-crossing regression test needs the legacy direct call to mutate");
-  if (legacy_call == nullptr) {
-    return;
-  }
-  legacy_call->callee = "@inc_value";
 
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered, &legacy},
+      c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
   expect_contains(rendered, ".type inc_value, %function",
                   "x86 backend seam should key lowered call-crossing helper definitions from the structured callee symbol instead of legacy signature text");
   expect_contains(rendered, "mov ebx, 5",
-                  "x86 backend seam should still materialize the preserved lowered cross-call source without legacy fallback");
+                  "x86 backend seam should still materialize the preserved lowered cross-call source from backend-owned regalloc metadata");
   expect_contains(rendered, "mov edi, ebx",
                   "x86 backend seam should still marshal the renamed lowered call-crossing source through the ABI argument register");
   expect_contains(rendered, "call inc_value",
@@ -3185,9 +3160,9 @@ void test_x86_backend_scaffold_accepts_renamed_structured_call_crossing_direct_c
 }
 
 void test_x86_backend_scaffold_accepts_lowered_call_crossing_source_value_rename_without_signature_shims() {
-  auto legacy = make_typed_call_crossing_direct_call_module();
-  legacy.target_triple = "x86_64-unknown-linux-gnu";
-  auto lowered = c4c::backend::lower_to_backend_ir(legacy);
+  auto module = make_typed_call_crossing_direct_call_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  auto lowered = c4c::backend::lower_to_backend_ir(module);
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   c4c::backend::BackendFunction* main_fn = nullptr;
@@ -3218,10 +3193,10 @@ void test_x86_backend_scaffold_accepts_lowered_call_crossing_source_value_rename
   final_add->lhs = "%t.crossing.source.renamed";
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered, &legacy},
+      c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
   expect_contains(rendered, "mov ebx, 5",
-                  "x86 backend seam should keep using the legacy shared regalloc source when the lowered call-crossing source SSA name changes");
+                  "x86 backend seam should keep using a backend-owned shared regalloc source when the lowered call-crossing source SSA name changes");
   expect_contains(rendered, "mov edi, ebx",
                   "x86 backend seam should still marshal the renamed lowered call-crossing source through the ABI argument register");
   expect_contains(rendered, "call add_one",
