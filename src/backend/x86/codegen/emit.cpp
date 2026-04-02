@@ -31,7 +31,6 @@ struct MinimalCallCrossingDirectCallSlice {
   std::string callee_name;
   std::int64_t source_imm = 0;
   std::int64_t helper_add_imm = 0;
-  std::string source_value;
   std::string regalloc_source_value;
 };
 
@@ -2515,7 +2514,6 @@ std::optional<MinimalCallCrossingDirectCallSlice> parse_minimal_call_crossing_di
       std::string(matched->parsed_call.symbol_name),
       *lhs_imm + *rhs_imm,
       helper_match->add_imm,
-      source_add->result,
       "%t.call_crossing.regalloc_source",
   };
 }

@@ -1368,6 +1368,45 @@ void test_aarch64_backend_scaffold_accepts_structured_zero_arg_direct_call_spaci
                       "aarch64 backend seam should not fall back when the spacing-tolerant structured zero-arg slice relies only on backend-owned metadata");
 }
 
+void test_aarch64_backend_scaffold_accepts_renamed_structured_zero_arg_direct_call_ir_without_signature_shims() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_direct_call_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  c4c::backend::BackendFunction* helper = nullptr;
+  c4c::backend::BackendFunction* main_fn = nullptr;
+  for (auto& function : lowered.functions) {
+    if (function.signature.name == "helper") {
+      helper = &function;
+    } else if (function.signature.name == "main") {
+      main_fn = &function;
+    }
+  }
+  expect_true(helper != nullptr && main_fn != nullptr,
+              "aarch64 renamed zero-argument direct-call regression test needs lowered helper and main functions");
+  if (helper == nullptr || main_fn == nullptr) {
+    return;
+  }
+
+  helper->signature.name = "const_value";
+  auto* call = std::get_if<c4c::backend::BackendCallInst>(&main_fn->blocks.front().insts.front());
+  expect_true(call != nullptr,
+              "aarch64 renamed zero-argument direct-call regression test needs the lowered backend call to mutate");
+  if (call == nullptr) {
+    return;
+  }
+  call->callee.symbol_name = "const_value";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".type const_value, %function",
+                  "aarch64 backend seam should key the lowered zero-argument helper definition from the structured callee symbol instead of a fixed helper name");
+  expect_contains(rendered, "bl const_value",
+                  "aarch64 backend seam should still lower renamed structured zero-argument direct calls when legacy call/signature text is cleared");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should not fall back when a renamed zero-argument direct-call slice relies only on structured metadata");
+}
+
 void test_aarch64_backend_rejects_intrinsic_callee_from_direct_call_fast_path() {
   auto module = make_typed_direct_call_module();
   auto& call = std::get<c4c::codegen::lir::LirCallOp>(
@@ -4526,6 +4565,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_scaffold_rejects_structured_zero_arg_direct_call_when_helper_body_contract_disagrees();
   test_aarch64_backend_renders_zero_arg_typed_direct_call_slice_with_whitespace();
   test_aarch64_backend_scaffold_accepts_structured_zero_arg_direct_call_spacing_ir_without_signature_shims();
+  test_aarch64_backend_scaffold_accepts_renamed_structured_zero_arg_direct_call_ir_without_signature_shims();
   test_aarch64_backend_rejects_intrinsic_callee_from_direct_call_fast_path();
   test_aarch64_backend_rejects_indirect_callee_from_direct_call_fast_path();
   test_aarch64_backend_renders_local_temp_memory_slice();

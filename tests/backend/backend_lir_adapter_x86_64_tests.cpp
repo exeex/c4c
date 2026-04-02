@@ -2071,6 +2071,48 @@ void test_x86_backend_scaffold_accepts_structured_zero_arg_direct_call_spacing_i
                       "x86 backend seam should not fall back when the spacing-tolerant structured zero-arg slice relies only on backend-owned metadata");
 }
 
+void test_x86_backend_scaffold_accepts_renamed_structured_zero_arg_direct_call_ir_without_signature_shims() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_direct_call_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  c4c::backend::BackendFunction* helper = nullptr;
+  c4c::backend::BackendFunction* main_fn = nullptr;
+  for (auto& function : lowered.functions) {
+    if (function.signature.name == "helper") {
+      helper = &function;
+    } else if (function.signature.name == "main") {
+      main_fn = &function;
+    }
+  }
+  expect_true(helper != nullptr && main_fn != nullptr,
+              "x86 renamed zero-argument direct-call regression test needs lowered helper and main functions");
+  if (helper == nullptr || main_fn == nullptr) {
+    return;
+  }
+
+  helper->signature.name = "const_value";
+  auto* call =
+      main_fn->blocks.empty() || main_fn->blocks.front().insts.empty()
+          ? nullptr
+          : std::get_if<c4c::backend::BackendCallInst>(&main_fn->blocks.front().insts.front());
+  expect_true(call != nullptr,
+              "x86 renamed zero-argument direct-call regression test needs the lowered backend call to mutate");
+  if (call == nullptr) {
+    return;
+  }
+  call->callee.symbol_name = "const_value";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".type const_value, %function",
+                  "x86 backend seam should key the lowered zero-argument helper definition from the structured callee symbol instead of a fixed helper name");
+  expect_contains(rendered, "call const_value",
+                  "x86 backend seam should still lower renamed structured zero-argument direct calls when legacy call/signature text is cleared");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back when a renamed zero-argument direct-call slice relies only on structured metadata");
+}
+
 void test_x86_backend_scaffold_rejects_structured_zero_arg_direct_call_when_callee_signature_param_type_disagrees() {
   auto lowered = c4c::backend::lower_to_backend_ir(make_direct_call_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
@@ -4374,6 +4416,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_renders_direct_call_slice);
   RUN_TEST(test_x86_backend_renders_zero_arg_typed_direct_call_slice_with_whitespace);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_zero_arg_direct_call_spacing_ir_without_signature_shims);
+  RUN_TEST(test_x86_backend_scaffold_accepts_renamed_structured_zero_arg_direct_call_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_rejects_structured_zero_arg_direct_call_when_callee_signature_param_type_disagrees);
   RUN_TEST(test_x86_backend_rejects_intrinsic_callee_from_direct_call_fast_path);
   RUN_TEST(test_x86_backend_rejects_indirect_callee_from_direct_call_fast_path);
