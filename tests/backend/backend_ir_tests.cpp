@@ -918,6 +918,35 @@ void test_backend_ir_validator_rejects_local_slot_without_structured_element_typ
                   "backend IR validator should explain when a structured local slot omits its element type");
 }
 
+void test_backend_ir_validator_rejects_local_slot_load_with_mismatched_structured_memory_type() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_local_array_gep_module());
+  auto& load = std::get<c4c::backend::BackendLoadInst>(
+      lowered.functions.front().blocks.front().insts[2]);
+  load.memory_type = "i8";
+  load.memory_value_type = c4c::backend::BackendScalarType::I8;
+  load.extension = c4c::backend::BackendLoadExtension::ZeroExtend;
+  std::string error;
+
+  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should reject structured local-slot loads whose memory type disagrees with the referenced local-slot element type");
+  expect_contains(error, "load memory type: type must match referenced local-slot element type",
+                  "backend IR validator should explain local-slot load memory type mismatches");
+}
+
+void test_backend_ir_validator_rejects_local_slot_store_with_mismatched_structured_type() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_local_array_gep_module());
+  auto& store = std::get<c4c::backend::BackendStoreInst>(
+      lowered.functions.front().blocks.front().insts.front());
+  store.type_str = "i8";
+  store.value_type = c4c::backend::BackendScalarType::I8;
+  std::string error;
+
+  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should reject structured local-slot stores whose store type disagrees with the referenced local-slot element type");
+  expect_contains(error, "store type: type must match referenced local-slot element type",
+                  "backend IR validator should explain local-slot store type mismatches");
+}
+
 void test_backend_ir_printer_renders_lowered_global_int_pointer_roundtrip_slice() {
   const auto lowered =
       c4c::backend::lower_to_backend_ir(make_global_int_pointer_roundtrip_module());
@@ -1828,6 +1857,8 @@ int main(int argc, char* argv[]) {
   test_backend_ir_validator_rejects_local_slot_load_past_structured_bounds();
   test_backend_ir_validator_rejects_local_slot_store_past_structured_bounds();
   test_backend_ir_validator_rejects_local_slot_without_structured_element_type();
+  test_backend_ir_validator_rejects_local_slot_load_with_mismatched_structured_memory_type();
+  test_backend_ir_validator_rejects_local_slot_store_with_mismatched_structured_type();
   test_backend_ir_printer_renders_lowered_global_int_pointer_roundtrip_slice();
   test_backend_ir_validator_accepts_lowered_global_int_pointer_roundtrip_slice();
   test_backend_ir_printer_renders_lowered_global_char_pointer_diff_slice();
