@@ -6,8 +6,10 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 5: run broader regression validation for the structured load/store/
-      ptrdiff scalar-metadata slice after the focused backend seam checks
+- Step 4/3 slice: remove the remaining x86 and aarch64 lowered-backend seam
+      dependence on legacy `type_str` / `memory_type` compatibility shims for
+      the migrated load/store/ptrdiff paths, or prove the remaining shim usage
+      belongs to a separate follow-on idea
 
 ## Incomplete Items
 
@@ -84,13 +86,19 @@ Source Plan: plan.md
       the legacy type text as compatibility shims, and switch the backend IR
       printer/validator plus x86/aarch64 seam recognizers onto the structured
       metadata when present
+- [x] Step 5 slice: confirm the stored full-suite regression baseline for the
+      structured load/store/ptrdiff scalar-metadata work on 2026-04-02 by
+      rerunning the monotonic regression guard against
+      `test_fail_before.log` and `test_fail_after.log`; result stayed at 2668
+      passed / 3 failed / 2671 total with zero newly failing tests
 
 ## Next Intended Slice
 
-- Land the structured scalar-width metadata slice for load/store/ptrdiff and
-  then either remove the remaining target seam dependence on the legacy
-  `type_str` / `memory_type` shims for those migrated paths more broadly or
-  move to the next backend-IR semantic surface that is still text-carried.
+- Audit the remaining load/store/ptrdiff target seam recognizers and migrate
+  the highest-value survivors off the legacy `type_str` / `memory_type` shims
+  where the new structured scalar metadata is already sufficient; if the
+  remaining uses are outside this plan's boundary, record that follow-on
+  explicitly under `ideas/open/` instead of silently widening this runbook.
 
 ## Blockers
 
@@ -104,7 +112,7 @@ Source Plan: plan.md
   failing tests.
 - The latest regression-guard check
   (`check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`)
-  passes after the `BackendGlobal` metadata slice with the same
+  passes on 2026-04-02 for the structured scalar-width metadata slice with the same
   2668 passed / 3 failed / 2671 total baseline and zero new failures.
 - Focused `backend_lir_adapter_x86_64_tests` passes after the emitter cleanup;
   focused `backend_lir_adapter_aarch64_tests` still fails in the same
@@ -154,6 +162,10 @@ Source Plan: plan.md
   still has many pre-existing unrelated failures as a whole, so this slice was
   checked there by rebuilding the binary and confirming the new structured-
   scalar seam assertions no longer appear among the reported failures.
+- The current April 2, 2026 execution checkpoint is planning-state only: the
+  stored `test_fail_before.log` / `test_fail_after.log` pair still satisfies
+  the monotonic regression guard, so the next iteration can move back to code
+  changes instead of rerunning the same guard first.
 - `src/backend/lowering/extern_lowering.cpp` now owns extern-call parameter
   inference and extern-declaration lowering; `src/backend/lir_adapter.cpp`
   only dispatches into that lowering helper for `module.extern_decls`.
