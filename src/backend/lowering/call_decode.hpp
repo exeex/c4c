@@ -70,6 +70,11 @@ std::optional<ParsedBackendDirectGlobalTypedCallView> parse_backend_direct_globa
 std::optional<ParsedBackendExternCallArg> parse_backend_extern_call_arg(
     std::string_view type,
     std::string_view operand);
+bool backend_typed_call_matches_signature(const ParsedBackendTypedCallView& parsed,
+                                          const BackendFunctionSignature& signature,
+                                          bool allow_extra_varargs = false);
+std::optional<std::vector<ParsedBackendExternCallArg>> parse_backend_extern_call_args(
+    const ParsedBackendTypedCallView& parsed);
 std::optional<std::vector<OwnedBackendTypedCallArg>> parse_backend_owned_typed_call_args(
     std::string_view args_str);
 std::optional<std::vector<ParsedBackendFunctionSignatureParam>>

@@ -237,6 +237,44 @@ std::optional<ParsedBackendExternCallArg> parse_backend_extern_call_arg(
   };
 }
 
+bool backend_typed_call_matches_signature(const ParsedBackendTypedCallView& parsed,
+                                          const BackendFunctionSignature& signature,
+                                          bool allow_extra_varargs) {
+  if (signature.params.size() > parsed.param_types.size() ||
+      parsed.args.size() < signature.params.size()) {
+    return false;
+  }
+
+  for (std::size_t index = 0; index < signature.params.size(); ++index) {
+    if (render_backend_param_type(signature.params[index]) !=
+        c4c::codegen::lir::trim_lir_arg_text(parsed.param_types[index])) {
+      return false;
+    }
+  }
+
+  const bool is_vararg = signature.is_vararg || allow_extra_varargs;
+  if (!is_vararg && signature.params.size() != parsed.args.size()) {
+    return false;
+  }
+
+  return true;
+}
+
+std::optional<std::vector<ParsedBackendExternCallArg>> parse_backend_extern_call_args(
+    const ParsedBackendTypedCallView& parsed) {
+  std::vector<ParsedBackendExternCallArg> args;
+  args.reserve(parsed.args.size());
+  for (std::size_t index = 0; index < parsed.args.size(); ++index) {
+    auto parsed_arg = parse_backend_extern_call_arg(parsed.param_types[index],
+                                                    parsed.args[index].operand);
+    if (!parsed_arg.has_value()) {
+      return std::nullopt;
+    }
+    args.push_back(*parsed_arg);
+  }
+  return args;
+}
+
 std::optional<std::vector<OwnedBackendTypedCallArg>> parse_backend_owned_typed_call_args(
     std::string_view args_str) {
   const auto parsed = c4c::codegen::lir::parse_lir_typed_call_args(args_str);

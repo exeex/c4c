@@ -859,6 +859,64 @@ void test_backend_call_helpers_reconstruct_typed_call_view_from_structured_param
               "backend-owned typed-call view should reconstruct cleared param type text from structured backend call metadata");
 }
 
+void test_backend_call_helpers_match_declared_signature_prefix_and_varargs() {
+  c4c::backend::BackendFunctionSignature signature;
+  signature.return_type = "i32";
+  signature.name = "printf";
+  signature.params = {c4c::backend::BackendParam{"ptr", {}},
+                      c4c::backend::BackendParam{"i32", {}}};
+
+  c4c::backend::BackendCallInst call{
+      "%t2",
+      "i32",
+      c4c::backend::BackendCallCallee::direct_global("printf"),
+      {"ptr", "i32", "ptr"},
+      {{"ptr", "@.str"}, {"i32", "7"}, {"ptr", "@tail"}},
+      true,
+  };
+
+  const auto parsed = c4c::backend::parse_backend_typed_call(call);
+  expect_true(parsed.has_value() &&
+                  c4c::backend::backend_typed_call_matches_signature(
+                      *parsed, signature, true),
+              "shared backend call helpers should accept fixed declared params with trailing varargs");
+
+  signature.params[1] = c4c::backend::BackendParam{"i64", {}};
+  expect_true(parsed.has_value() &&
+                  !c4c::backend::backend_typed_call_matches_signature(
+                      *parsed, signature, true),
+              "shared backend call helpers should reject mismatched declared param types");
+}
+
+void test_backend_call_helpers_parse_extern_args_from_typed_call() {
+  c4c::backend::BackendCallInst call{
+      "%t2",
+      "i32",
+      c4c::backend::BackendCallCallee::direct_global("puts"),
+      {"i32", "ptr", "i64"},
+      {{"i32", "7"}, {"ptr", "@.str"}, {"i64", "42"}},
+      true,
+  };
+
+  const auto parsed = c4c::backend::parse_backend_typed_call(call);
+  const auto args =
+      parsed.has_value() ? c4c::backend::parse_backend_extern_call_args(*parsed) : std::nullopt;
+  expect_true(args.has_value() && args->size() == 3 &&
+                  (*args)[0].kind == c4c::backend::ParsedBackendExternCallArg::Kind::I32Imm &&
+                  (*args)[0].imm == 7 &&
+                  (*args)[1].kind == c4c::backend::ParsedBackendExternCallArg::Kind::Ptr &&
+                  (*args)[1].operand == "@.str" &&
+                  (*args)[2].kind == c4c::backend::ParsedBackendExternCallArg::Kind::I64Imm &&
+                  (*args)[2].imm == 42,
+              "shared backend call helpers should decode extern-call argument classes from typed calls");
+
+  call.args[1].operand = "%stack.slot";
+  const auto malformed = c4c::backend::parse_backend_typed_call(call);
+  expect_true(malformed.has_value() &&
+                  !c4c::backend::parse_backend_extern_call_args(*malformed).has_value(),
+              "shared backend call helpers should reject unsupported non-global ptr extern-call operands");
+}
+
 void test_lir_typed_wrappers_preserve_legacy_opcode_and_predicate_strings() {
   using namespace c4c::codegen::lir;
 
@@ -1571,6 +1629,8 @@ int main(int argc, char* argv[]) {
   test_backend_call_helpers_decode_local_typed_call_shapes();
   test_backend_call_helpers_borrow_structured_typed_call_view();
   test_backend_call_helpers_reconstruct_typed_call_view_from_structured_param_metadata();
+  test_backend_call_helpers_match_declared_signature_prefix_and_varargs();
+  test_backend_call_helpers_parse_extern_args_from_typed_call();
   test_lir_typed_wrappers_preserve_legacy_opcode_and_predicate_strings();
   test_lir_typed_wrappers_leave_unknown_opcode_text_compatible();
   test_lir_printer_renders_verified_typed_ops();

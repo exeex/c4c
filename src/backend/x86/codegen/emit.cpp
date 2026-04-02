@@ -1215,23 +1215,14 @@ std::optional<MinimalExternDeclCallSlice> parse_minimal_declared_direct_call_sli
   const auto* callee_fn = find_function(module, callee_name_str);
   if (callee_fn == nullptr || !callee_fn->is_declaration ||
       !backend_function_is_declaration(callee_fn->signature) ||
-      !is_i32_scalar_signature_return(callee_fn->signature) ||
-      callee_fn->signature.params.size() > parsed_call->typed_call.param_types.size()) {
+      !is_i32_scalar_signature_return(callee_fn->signature)) {
     return std::nullopt;
-  }
-
-  for (std::size_t index = 0; index < callee_fn->signature.params.size(); ++index) {
-    if (c4c::backend::render_backend_param_type(callee_fn->signature.params[index]) !=
-        c4c::codegen::lir::trim_lir_arg_text(parsed_call->typed_call.param_types[index])) {
-      return std::nullopt;
-    }
   }
 
   const bool callee_is_vararg = callee_fn->signature.is_vararg ||
                                is_known_variadic_decl(callee_name_str);
-  if (parsed_call->typed_call.args.size() < callee_fn->signature.params.size() ||
-      (!callee_is_vararg &&
-       callee_fn->signature.params.size() != parsed_call->typed_call.args.size())) {
+  if (!c4c::backend::backend_typed_call_matches_signature(
+          parsed_call->typed_call, callee_fn->signature, callee_is_vararg)) {
     return std::nullopt;
   }
 
@@ -1252,21 +1243,14 @@ std::optional<MinimalExternDeclCallSlice> parse_minimal_declared_direct_call_sli
     return std::nullopt;
   }
 
-  std::vector<MinimalExternCallArgSlice> call_args;
-  call_args.reserve(parsed_call->typed_call.args.size());
-  for (std::size_t index = 0; index < parsed_call->typed_call.args.size(); ++index) {
-    auto parsed_arg = c4c::backend::parse_backend_extern_call_arg(
-        parsed_call->typed_call.param_types[index],
-        parsed_call->typed_call.args[index].operand);
-    if (!parsed_arg.has_value()) {
-      return std::nullopt;
-    }
-    call_args.push_back(*parsed_arg);
+  auto call_args = c4c::backend::parse_backend_extern_call_args(parsed_call->typed_call);
+  if (!call_args.has_value()) {
+    return std::nullopt;
   }
 
   return MinimalExternDeclCallSlice{
       callee_name_str,
-      std::move(call_args),
+      std::move(*call_args),
       callee_is_vararg,
       returns_call_result,
       return_imm,
