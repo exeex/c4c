@@ -1922,6 +1922,26 @@ void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_second_loc
                       "x86 backend seam should not fall back when the structured rewritten second-local slice relies only on backend-owned metadata");
 }
 
+void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_first_local_rewrite_ir_without_signature_shims() {
+  auto lowered = c4c::backend::lower_to_backend_ir(
+      make_typed_direct_call_two_arg_first_local_rewrite_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".type add_pair, %function",
+                  "x86 backend seam should still preserve lowered rewritten first-local helper definitions without legacy signature text");
+  expect_contains(rendered, "mov edi, 5",
+                  "x86 backend seam should still materialize the rewritten lowered first argument from structured call metadata");
+  expect_contains(rendered, "mov esi, 7",
+                  "x86 backend seam should still preserve the lowered immediate second argument from structured call metadata for the rewritten first-local slice");
+  expect_contains(rendered, "call add_pair",
+                  "x86 backend seam should still lower structured rewritten first-local direct calls when legacy call/signature text is cleared");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back when the structured rewritten first-local slice relies only on backend-owned metadata");
+}
+
 void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_both_local_arg_ir_without_signature_shims() {
   auto lowered =
       c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_both_local_arg_module());
@@ -3378,6 +3398,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_double_rewrite_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_second_local_arg_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_second_local_rewrite_ir_without_signature_shims);
+  RUN_TEST(test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_first_local_rewrite_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_both_local_arg_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_both_local_first_rewrite_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_both_local_second_rewrite_ir_without_signature_shims);

@@ -1703,6 +1703,26 @@ void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_second
                       "aarch64 backend seam should not fall back when the structured rewritten second-local slice relies only on backend-owned metadata");
 }
 
+void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_first_local_rewrite_ir_without_signature_shims() {
+  auto lowered = c4c::backend::lower_to_backend_ir(
+      make_typed_direct_call_two_arg_first_local_rewrite_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".type add_pair, %function",
+                  "aarch64 backend seam should still preserve lowered rewritten first-local helper definitions without legacy signature text");
+  expect_contains(rendered, "mov w0, #5",
+                  "aarch64 backend seam should still materialize the rewritten lowered first argument from structured call metadata");
+  expect_contains(rendered, "mov w1, #7",
+                  "aarch64 backend seam should still preserve the lowered immediate second argument from structured call metadata for the rewritten first-local slice");
+  expect_contains(rendered, "bl add_pair",
+                  "aarch64 backend seam should still lower structured rewritten first-local direct calls when legacy call/signature text is cleared");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should not fall back when the structured rewritten first-local slice relies only on backend-owned metadata");
+}
+
 void test_aarch64_backend_renders_typed_two_arg_direct_call_second_local_rewrite_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{
@@ -3599,6 +3619,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_renders_typed_two_arg_direct_call_second_local_arg_slice();
   test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_second_local_rewrite_ir_without_signature_shims();
   test_aarch64_backend_renders_typed_two_arg_direct_call_second_local_rewrite_slice();
+  test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_first_local_rewrite_ir_without_signature_shims();
   test_aarch64_backend_renders_typed_two_arg_direct_call_first_local_rewrite_slice();
   test_aarch64_backend_renders_typed_two_arg_direct_call_first_local_rewrite_spacing_slice();
   test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_both_local_arg_ir_without_signature_shims();
