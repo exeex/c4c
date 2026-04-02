@@ -6,10 +6,10 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 3/2 slice: audit the remaining backend-owned IR surfaces that still
-      carry semantics only as raw text after the structured return-contract
-      cleanup and pick the next narrow in-scope structured cleanup without
-      widening into the later BIR scaffold plan
+- Step 3 audit slice: inventory the remaining backend-emitter fast paths that
+      still depend on backend-owned raw type text after the shared typed-call
+      metadata reconstruction cleanup, then choose the next narrow structured
+      conversion without widening into the later BIR scaffold
 
 ## Incomplete Items
 
@@ -152,14 +152,20 @@ Source Plan: plan.md
       `backend_lir_adapter_tests`, and `backend_lir_adapter_x86_64_tests`
       pass while the full suite remains monotonic at 2668 passed / 3 failed /
       2671 total with zero newly failing tests
+- [x] Step 3/4 slice: teach shared backend typed-call decoding to reconstruct
+      cleared backend call param type text from structured call metadata when
+      compatibility shims are absent, keep legacy borrowed param text behavior
+      unchanged when it is still present, and confirm on 2026-04-02 that
+      focused `backend_lir_adapter_tests`, `backend_lir_adapter_x86_64_tests`,
+      and `backend_ir_tests` pass
 
 ## Next Intended Slice
 
-- Audit the remaining backend-owned IR surfaces that still carry semantics only
-  as raw text after the structured return-contract cleanup, then pick the next
-  narrow Step 2/3 conversion without widening into the later BIR scaffold
-  plan. Prioritize any still-text-only backend-owned type or function-contract
-  seams before broader BIR-shape work.
+- If the direct-call seam cleanup lands cleanly, audit the remaining
+  backend-emitter fast paths that still inspect backend-owned `llvm_type` text
+  directly and decide whether the next narrow conversion should introduce
+  structured scalar-global type helpers or defer that shape to the later BIR
+  scaffold plan.
 
 ## Blockers
 

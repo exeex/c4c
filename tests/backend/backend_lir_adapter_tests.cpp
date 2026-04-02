@@ -753,6 +753,30 @@ void test_backend_call_helpers_borrow_structured_typed_call_view() {
               "backend-owned typed-call view should borrow shared structured metadata directly from owned storage");
 }
 
+void test_backend_call_helpers_reconstruct_typed_call_view_from_structured_param_metadata() {
+  c4c::backend::BackendCallInst call{
+      "%t2",
+      "i32",
+      c4c::backend::BackendCallCallee::indirect("%fn.ptr"),
+      {"ptr", "i32"},
+      {{"ptr", "%base"}, {"i32", "%idx"}},
+      true,
+  };
+  call.param_types[0].clear();
+  call.param_types[1].clear();
+
+  const auto parsed = c4c::backend::parse_backend_typed_call(call);
+  expect_true(parsed.has_value() && parsed->param_types.size() == 2 &&
+                  parsed->param_types[0] == "ptr" &&
+                  parsed->param_types[1] == "i32" &&
+                  parsed->args.size() == 2 &&
+                  parsed->args[0].type == "ptr" &&
+                  parsed->args[0].operand == "%base" &&
+                  parsed->args[1].type == "i32" &&
+                  parsed->args[1].operand == "%idx",
+              "backend-owned typed-call view should reconstruct cleared param type text from structured backend call metadata");
+}
+
 void test_lir_typed_wrappers_preserve_legacy_opcode_and_predicate_strings() {
   using namespace c4c::codegen::lir;
 
@@ -1454,6 +1478,7 @@ int main(int argc, char* argv[]) {
   test_backend_call_helpers_match_zero_add_slot_rewrite_shapes();
   test_backend_call_helpers_decode_local_typed_call_shapes();
   test_backend_call_helpers_borrow_structured_typed_call_view();
+  test_backend_call_helpers_reconstruct_typed_call_view_from_structured_param_metadata();
   test_lir_typed_wrappers_preserve_legacy_opcode_and_predicate_strings();
   test_lir_typed_wrappers_leave_unknown_opcode_text_compatible();
   test_lir_printer_renders_verified_typed_ops();

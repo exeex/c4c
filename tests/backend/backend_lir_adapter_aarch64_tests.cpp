@@ -99,6 +99,38 @@ void clear_backend_memory_type_compatibility_shims(c4c::backend::BackendModule& 
   }
 }
 
+void clear_backend_signature_and_call_type_compatibility_shims(
+    c4c::backend::BackendModule& module) {
+  for (auto& function : module.functions) {
+    if (function.signature.return_type_kind != c4c::backend::BackendValueTypeKind::Unknown) {
+      function.signature.return_type.clear();
+    }
+    for (auto& param : function.signature.params) {
+      if (param.type_kind != c4c::backend::BackendValueTypeKind::Unknown) {
+        param.type_str.clear();
+      }
+    }
+    for (auto& block : function.blocks) {
+      for (auto& inst : block.insts) {
+        auto* call = std::get_if<c4c::backend::BackendCallInst>(&inst);
+        if (call == nullptr) {
+          continue;
+        }
+        if (call->return_type_kind != c4c::backend::BackendValueTypeKind::Unknown) {
+          call->return_type.clear();
+        }
+        for (std::size_t index = 0; index < call->param_type_kinds.size() &&
+                                    index < call->param_types.size();
+             ++index) {
+          if (call->param_type_kinds[index] != c4c::backend::BackendValueTypeKind::Unknown) {
+            call->param_types[index].clear();
+          }
+        }
+      }
+    }
+  }
+}
+
 c4c::codegen::lir::LirModule make_param_slot_module() {
   using namespace c4c::codegen::lir;
 

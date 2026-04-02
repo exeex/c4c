@@ -186,6 +186,11 @@ bool is_i32_scalar_call_return(const c4c::backend::BackendCallInst& call) {
              c4c::backend::BackendScalarType::I32;
 }
 
+bool is_i32_scalar_binary(const c4c::backend::BackendBinaryInst& inst) {
+  return c4c::backend::backend_binary_value_type(inst) ==
+         c4c::backend::BackendScalarType::I32;
+}
+
 std::optional<std::string_view> parse_lir_zero_arg_direct_global_callee(
     const c4c::codegen::lir::LirCallOp& call) {
   const auto parsed = c4c::codegen::lir::parse_lir_direct_global_typed_call(call);
@@ -457,7 +462,8 @@ const c4c::backend::BackendStringConstant* find_string_constant(
 std::optional<std::int64_t> parse_single_block_return_imm(
     const c4c::backend::BackendFunction& function) {
   if (function.is_declaration || !backend_function_is_definition(function.signature) ||
-      function.signature.return_type != "i32" || !function.signature.params.empty() ||
+      !is_i32_scalar_signature_return(function.signature) ||
+      !function.signature.params.empty() ||
       function.signature.is_vararg || function.blocks.size() != 1) {
     return std::nullopt;
   }
@@ -2298,11 +2304,12 @@ std::optional<MinimalCallCrossingDirectCallSlice> parse_minimal_call_crossing_di
     return std::nullopt;
   }
 
-  if (!backend_function_is_definition(helper->signature) || helper->signature.return_type != "i32" ||
-      helper->signature.params.size() != 1 || helper->signature.params.front().type_str != "i32" ||
+  if (!backend_function_is_definition(helper->signature) ||
+      helper->signature.params.size() != 1 || !is_i32_scalar_param(helper->signature.params.front()) ||
       helper->signature.is_vararg || !backend_function_is_definition(main_fn->signature) ||
-      main_fn->signature.return_type != "i32" || !main_fn->signature.params.empty() ||
-      main_fn->signature.is_vararg) {
+      !is_i32_scalar_signature_return(main_fn->signature) ||
+      !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
+      !is_i32_scalar_signature_return(helper->signature)) {
     return std::nullopt;
   }
 
@@ -2318,7 +2325,7 @@ std::optional<MinimalCallCrossingDirectCallSlice> parse_minimal_call_crossing_di
       std::get_if<c4c::backend::BackendBinaryInst>(&helper_block.insts.front());
   if (helper_add == nullptr ||
       helper_add->opcode != c4c::backend::BackendBinaryOpcode::Add ||
-      helper_add->type_str != "i32" ||
+      !is_i32_scalar_binary(*helper_add) ||
       *helper_block.terminator.value != helper_add->result ||
       helper_add->lhs != helper->signature.params.front().name) {
     return std::nullopt;
@@ -2346,10 +2353,10 @@ std::optional<MinimalCallCrossingDirectCallSlice> parse_minimal_call_crossing_di
                                       *call, "add_one", "i32");
   if (source_add == nullptr || call == nullptr || final_add == nullptr ||
       source_add->opcode != c4c::backend::BackendBinaryOpcode::Add ||
-      source_add->type_str != "i32" || call->return_type != "i32" ||
+      !is_i32_scalar_binary(*source_add) || !is_i32_scalar_call_return(*call) ||
       !call_operand.has_value() || *call_operand != source_add->result ||
       final_add->opcode != c4c::backend::BackendBinaryOpcode::Add ||
-      final_add->type_str != "i32" || final_add->lhs != source_add->result ||
+      !is_i32_scalar_binary(*final_add) || final_add->lhs != source_add->result ||
       final_add->rhs != call->result ||
       *main_block.terminator.value != final_add->result) {
     return std::nullopt;
@@ -2374,7 +2381,7 @@ std::optional<MinimalDirectCallSlice> parse_minimal_direct_call_slice(
   const auto* main_fn = find_function(module, "main");
   if (main_fn == nullptr || main_fn->is_declaration ||
       !backend_function_is_definition(main_fn->signature) ||
-      main_fn->signature.return_type != "i32" ||
+      !is_i32_scalar_signature_return(main_fn->signature) ||
       !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
       main_fn->blocks.size() != 1) {
     return std::nullopt;
@@ -2395,7 +2402,7 @@ std::optional<MinimalDirectCallSlice> parse_minimal_direct_call_slice(
               call->param_types.empty() && call->args.empty()
           ? std::optional<std::string_view>{call->callee.symbol_name}
           : std::nullopt;
-  if (call == nullptr || call->return_type != "i32" || call->result.empty() ||
+  if (call == nullptr || !is_i32_scalar_call_return(*call) || call->result.empty() ||
       *main_block.terminator.value != call->result || !callee_name.has_value()) {
     return std::nullopt;
   }
@@ -2417,7 +2424,7 @@ std::optional<MinimalDirectCallAddImmSlice> parse_minimal_direct_call_add_imm_sl
   const auto* main_fn = find_function(module, "main");
   if (main_fn == nullptr || main_fn->is_declaration ||
       !backend_function_is_definition(main_fn->signature) ||
-      main_fn->signature.return_type != "i32" ||
+      !is_i32_scalar_signature_return(main_fn->signature) ||
       !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
       main_fn->blocks.size() != 1) {
     return std::nullopt;
@@ -2436,7 +2443,7 @@ std::optional<MinimalDirectCallAddImmSlice> parse_minimal_direct_call_add_imm_sl
                                 ? std::nullopt
                                 : c4c::backend::parse_backend_direct_global_single_typed_call_operand(
                                       *call, "add_one", "i32");
-  if (call == nullptr || call->return_type != "i32" || call->result.empty() ||
+  if (call == nullptr || !is_i32_scalar_call_return(*call) || call->result.empty() ||
       *main_block.terminator.value != call->result || !call_operand.has_value()) {
     return std::nullopt;
   }
@@ -2449,9 +2456,9 @@ std::optional<MinimalDirectCallAddImmSlice> parse_minimal_direct_call_add_imm_sl
   const auto* callee_fn = find_function(module, "add_one");
   if (callee_fn == nullptr || callee_fn->is_declaration ||
       !backend_function_is_definition(callee_fn->signature) ||
-      callee_fn->signature.return_type != "i32" ||
+      !is_i32_scalar_signature_return(callee_fn->signature) ||
       callee_fn->signature.params.size() != 1 ||
-      callee_fn->signature.params.front().type_str != "i32" ||
+      !is_i32_scalar_param(callee_fn->signature.params.front()) ||
       callee_fn->signature.params.front().name.empty() ||
       callee_fn->signature.is_vararg || callee_fn->blocks.size() != 1) {
     return std::nullopt;

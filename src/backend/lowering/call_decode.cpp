@@ -66,7 +66,23 @@ parse_backend_direct_global_typed_call(const c4c::codegen::lir::LirCallOp& call)
 
 std::optional<ParsedBackendTypedCallView> parse_backend_typed_call(
     const BackendCallInst& call) {
-  return c4c::codegen::lir::borrow_lir_typed_call(call.param_types, call.args);
+  bool can_borrow_existing_types = true;
+  for (std::size_t index = 0; index < call.param_types.size(); ++index) {
+    if (call.param_types[index].empty()) {
+      can_borrow_existing_types = false;
+      break;
+    }
+  }
+  if (can_borrow_existing_types) {
+    return c4c::codegen::lir::borrow_lir_typed_call(call.param_types, call.args);
+  }
+
+  std::vector<std::string> param_types;
+  param_types.reserve(call.args.size());
+  for (std::size_t index = 0; index < call.args.size(); ++index) {
+    param_types.push_back(render_backend_call_param_type(call, index));
+  }
+  return c4c::codegen::lir::borrow_lir_typed_call(param_types, call.args);
 }
 
 std::optional<ParsedBackendDirectGlobalTypedCallView> parse_backend_direct_global_typed_call(
