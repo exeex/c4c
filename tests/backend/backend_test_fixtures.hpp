@@ -3612,6 +3612,55 @@ inline c4c::codegen::lir::LirModule make_x86_extern_decl_object_module() {
   return module;
 }
 
+inline c4c::codegen::lir::LirModule make_x86_extern_decl_inferred_param_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-n8:16:32:64-S128";
+  module.extern_decls.push_back(LirExternDecl{"helper_ext", "i32"});
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{"%t0", "i32", "@helper_ext", "", "i32 5, i32 7"});
+  entry.terminator = LirRet{std::string("%t0"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+inline c4c::codegen::lir::LirModule make_x86_extern_decl_inconsistent_param_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-n8:16:32:64-S128";
+  module.extern_decls.push_back(LirExternDecl{"helper_ext", "i32"});
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{"%t0", "i32", "@helper_ext", "", "i32 5"});
+  entry.insts.push_back(LirCallOp{"%t1", "i32", "@helper_ext", "", "ptr @helper_ext"});
+  entry.terminator = LirRet{std::string("%t0"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 inline c4c::codegen::lir::LirModule make_x86_global_int_pointer_roundtrip_module() {
   auto module = make_global_int_pointer_roundtrip_module();
   module.target_triple = "x86_64-unknown-linux-gnu";

@@ -6,8 +6,9 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 2: continue splitting decode-only helpers from `lir_adapter.cpp` after
-      the typed-call decode extraction lands
+- Step 2: continue extracting decode-only helper clusters from
+      `lir_adapter.cpp` after the extern-declaration lowering path moved into
+      `src/backend/lowering/extern_lowering.cpp`
 
 ## Incomplete Items
 
@@ -33,23 +34,29 @@ Source Plan: plan.md
       `src/backend/lir_adapter.cpp` into `src/backend/lowering/call_decode.cpp`
       and cover the direct-global vararg prefix path in
       `backend_lir_adapter_tests`
+- [x] Step 2 slice: move extern-call parameter inference and extern-declaration
+      lowering out of `src/backend/lir_adapter.cpp` into
+      `src/backend/lowering/extern_lowering.cpp`, with direct adapter tests for
+      inferred fixed params and inconsistent typed-call surfaces
 
 ## Next Intended Slice
 
 - Extract the next decode-only utility cluster from `src/backend/lir_adapter.cpp`
-  without changing backend IR construction behavior; the likely next target is
-  the extern-parameter inference / call-normalization path that still depends on
-  typed-call parsing.
+  without changing backend IR construction behavior; the likely follow-on is the
+  remaining call-normalization path that still couples typed-call parsing to
+  adapter-local instruction construction.
 
 ## Blockers
 
-- Stable full-suite `ctest --test-dir build -j8 --output-on-failure` before and
-  after this slice report the same three pre-existing failures:
+- Stable full-suite regression guard still reports the same three pre-existing
+  failures:
   `positive_sema_linux_stage2_repro_03_asm_volatile_c`,
   `backend_lir_adapter_aarch64_tests`, and
   `llvm_gcc_c_torture_src_20080502_1_c`.
+- `test_fail_before.log` vs `test_fail_after.log` remains monotonic at
+  2668 passed / 3 failed / 2671 total with zero newly failing tests.
 - Focused `backend_lir_adapter_tests` and `backend_ir_tests` both pass after the
-  helper extraction.
+  extern-lowering extraction.
 
 ## Resume Notes
 
@@ -62,7 +69,10 @@ Source Plan: plan.md
   the remaining `adapt_minimal_module(...)` usage is the intentional
   compatibility assertion in `tests/backend/backend_lir_adapter_tests.cpp`.
 - The latest full-suite run is recorded in `test_after.log`; the failing tests
-  listed above match `test_before.log`, so this slice held the suite at the
-  same three known failures.
+  listed above still match the monotonic regression guard baseline from
+  `test_fail_before.log` vs `test_fail_after.log`.
+- `src/backend/lowering/extern_lowering.cpp` now owns extern-call parameter
+  inference and extern-declaration lowering; `src/backend/lir_adapter.cpp`
+  only dispatches into that lowering helper for `module.extern_decls`.
 - If the work expands into a separate migration initiative, record it under
   `ideas/open/` instead of widening the active runbook.

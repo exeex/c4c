@@ -1119,6 +1119,36 @@ void test_adapter_normalizes_local_temp_arithmetic_chain_slice() {
                       "adapter should fully normalize the bounded arithmetic chain before backend rendering");
 }
 
+void test_adapter_infers_extern_decl_params_from_typed_calls() {
+  const auto adapted =
+      c4c::backend::lower_to_backend_ir(make_x86_extern_decl_inferred_param_module());
+
+  expect_true(adapted.functions.size() == 2,
+              "adapter should preserve the extern declaration alongside the caller");
+  const auto& decl = adapted.functions.front();
+  expect_true(decl.is_declaration,
+              "adapter should keep inferred extern signatures as declarations");
+  expect_true(decl.signature.name == "helper_ext",
+              "adapter should preserve the extern declaration symbol name");
+  expect_true(decl.signature.params.size() == 2,
+              "adapter should infer the fixed extern parameter list from typed call sites");
+  expect_true(decl.signature.params[0].type_str == "i32" &&
+                  decl.signature.params[1].type_str == "i32",
+              "adapter should preserve the inferred extern parameter types in order");
+}
+
+void test_adapter_rejects_inconsistent_extern_decl_call_surfaces() {
+  try {
+    (void)c4c::backend::lower_to_backend_ir(make_x86_extern_decl_inconsistent_param_module());
+    fail("adapter should reject extern declarations whose typed call surfaces disagree");
+  } catch (const c4c::backend::LirAdapterError& ex) {
+    expect_true(ex.kind() == c4c::backend::LirAdapterErrorKind::Unsupported,
+                "adapter should classify inconsistent extern call surfaces as unsupported");
+    expect_contains(ex.what(), "inconsistent typed call surfaces",
+                    "adapter should explain inconsistent extern call inference failures");
+  }
+}
+
 void test_rejects_unsupported_instruction() {
   using namespace c4c::codegen::lir;
 
@@ -1272,6 +1302,8 @@ int main(int argc, char* argv[]) {
   test_adapter_tracks_structured_typed_add_entry_block_and_return_contract();
   test_adapter_tracks_structured_sub_entry_block_and_return_contract();
   test_adapter_normalizes_local_temp_arithmetic_chain_slice();
+  test_adapter_infers_extern_decl_params_from_typed_calls();
+  test_adapter_rejects_inconsistent_extern_decl_call_surfaces();
   test_rejects_unsupported_instruction();
 
   check_failures();
