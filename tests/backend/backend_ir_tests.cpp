@@ -32,6 +32,24 @@ void clear_backend_memory_type_compatibility_shims(c4c::backend::BackendModule& 
   for (auto& function : module.functions) {
     for (auto& block : function.blocks) {
       for (auto& inst : block.insts) {
+        if (auto* phi = std::get_if<c4c::backend::BackendPhiInst>(&inst)) {
+          if (phi->value_type != c4c::backend::BackendScalarType::Unknown) {
+            phi->type_str.clear();
+          }
+          continue;
+        }
+        if (auto* bin = std::get_if<c4c::backend::BackendBinaryInst>(&inst)) {
+          if (bin->value_type != c4c::backend::BackendScalarType::Unknown) {
+            bin->type_str.clear();
+          }
+          continue;
+        }
+        if (auto* cmp = std::get_if<c4c::backend::BackendCompareInst>(&inst)) {
+          if (cmp->operand_type != c4c::backend::BackendScalarType::Unknown) {
+            cmp->type_str.clear();
+          }
+          continue;
+        }
         if (auto* load = std::get_if<c4c::backend::BackendLoadInst>(&inst)) {
           if (load->value_type != c4c::backend::BackendScalarType::Unknown) {
             load->type_str.clear();
@@ -79,6 +97,28 @@ void test_backend_ir_validator_accepts_lowered_conditional_return_slice() {
               "backend IR validator should accept lowered conditional-return control-flow slices");
   expect_true(error.empty(),
               "backend IR validator should not report an error for valid lowered conditional-return slices");
+}
+
+void test_backend_ir_printer_renders_structured_conditional_return_slice_without_type_text() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_return_module());
+  clear_backend_memory_type_compatibility_shims(lowered);
+  const auto rendered = c4c::backend::print_backend_ir(lowered);
+
+  expect_contains(rendered, "%t0 = icmp slt i32 2, 3",
+                  "backend IR printer should render lowered conditional compares from structured compare metadata without legacy type text");
+  expect_contains(rendered, "br i1 %t0, label %then, label %else",
+                  "backend IR printer should preserve structured lowered conditional branches without compare type shims");
+}
+
+void test_backend_ir_validator_accepts_structured_conditional_return_slice_without_type_text() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_return_module());
+  clear_backend_memory_type_compatibility_shims(lowered);
+  std::string error;
+
+  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should accept lowered conditional-return slices when compare type metadata is structured and legacy text is cleared");
+  expect_true(error.empty(),
+              "backend IR validator should not report an error for structured conditional-return slices without compare type text");
 }
 
 void test_backend_ir_printer_renders_lowered_conditional_phi_join_slice() {
@@ -129,6 +169,28 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_add_slice() 
               "backend IR validator should accept lowered conditional joins whose phi feeds a computed scalar");
   expect_true(error.empty(),
               "backend IR validator should not report an error for valid computed conditional joins");
+}
+
+void test_backend_ir_printer_renders_structured_conditional_phi_join_add_slice_without_type_text() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_phi_join_add_module());
+  clear_backend_memory_type_compatibility_shims(lowered);
+  const auto rendered = c4c::backend::print_backend_ir(lowered);
+
+  expect_contains(rendered, "join:\n  %t.join = phi i32 [ 7, %then ], [ 9, %else ]\n  %t4 = add i32 %t.join, 5",
+                  "backend IR printer should render structured phi and binary metadata without legacy type text");
+  expect_contains(rendered, "ret i32 %t4",
+                  "backend IR printer should preserve the computed conditional-join return after clearing phi and binary type shims");
+}
+
+void test_backend_ir_validator_accepts_structured_conditional_phi_join_add_slice_without_type_text() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_phi_join_add_module());
+  clear_backend_memory_type_compatibility_shims(lowered);
+  std::string error;
+
+  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should accept lowered computed conditional joins when phi and binary type metadata is structured and legacy text is cleared");
+  expect_true(error.empty(),
+              "backend IR validator should not report an error for structured conditional-join slices without phi/binary type text");
 }
 
 void test_backend_ir_printer_renders_lowered_conditional_phi_join_predecessor_add_slice() {
@@ -913,10 +975,14 @@ int main(int argc, char* argv[]) {
   test_backend_ir_printer_renders_lowered_extern_global_array_load_slice();
   test_backend_ir_printer_renders_lowered_conditional_return_slice();
   test_backend_ir_validator_accepts_lowered_conditional_return_slice();
+  test_backend_ir_printer_renders_structured_conditional_return_slice_without_type_text();
+  test_backend_ir_validator_accepts_structured_conditional_return_slice_without_type_text();
   test_backend_ir_printer_renders_lowered_conditional_phi_join_slice();
   test_backend_ir_validator_accepts_lowered_conditional_phi_join_slice();
   test_backend_ir_printer_renders_lowered_conditional_phi_join_add_slice();
   test_backend_ir_validator_accepts_lowered_conditional_phi_join_add_slice();
+  test_backend_ir_printer_renders_structured_conditional_phi_join_add_slice_without_type_text();
+  test_backend_ir_validator_accepts_structured_conditional_phi_join_add_slice_without_type_text();
   test_backend_ir_printer_renders_lowered_conditional_phi_join_predecessor_add_slice();
   test_backend_ir_validator_accepts_lowered_conditional_phi_join_predecessor_add_slice();
   test_backend_ir_printer_renders_lowered_conditional_phi_join_predecessor_sub_slice();

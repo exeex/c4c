@@ -53,6 +53,24 @@ void clear_backend_memory_type_compatibility_shims(c4c::backend::BackendModule& 
   for (auto& function : module.functions) {
     for (auto& block : function.blocks) {
       for (auto& inst : block.insts) {
+        if (auto* phi = std::get_if<c4c::backend::BackendPhiInst>(&inst)) {
+          if (phi->value_type != c4c::backend::BackendScalarType::Unknown) {
+            phi->type_str.clear();
+          }
+          continue;
+        }
+        if (auto* bin = std::get_if<c4c::backend::BackendBinaryInst>(&inst)) {
+          if (bin->value_type != c4c::backend::BackendScalarType::Unknown) {
+            bin->type_str.clear();
+          }
+          continue;
+        }
+        if (auto* cmp = std::get_if<c4c::backend::BackendCompareInst>(&inst)) {
+          if (cmp->operand_type != c4c::backend::BackendScalarType::Unknown) {
+            cmp->type_str.clear();
+          }
+          continue;
+        }
         if (auto* load = std::get_if<c4c::backend::BackendLoadInst>(&inst)) {
           if (load->value_type != c4c::backend::BackendScalarType::Unknown) {
             load->type_str.clear();
@@ -2079,6 +2097,19 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_return_i
                       "aarch64 backend seam should not fall back to backend IR text for lowered conditional branches");
 }
 
+void test_aarch64_backend_scaffold_accepts_structured_conditional_return_ir_without_type_shims() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_return_module());
+  clear_backend_memory_type_compatibility_shims(lowered);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  expect_contains(rendered, "  cmp w8, #3\n",
+                  "aarch64 backend seam should still lower structured conditional compares without legacy compare type text");
+  expect_not_contains(rendered, "br i1",
+                      "aarch64 backend seam should not fall back when structured conditional compare metadata is present without type shims");
+}
+
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_ir_input() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_phi_join_module());
   const auto rendered = c4c::backend::emit_module(
@@ -2109,6 +2140,19 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join
                   "aarch64 backend seam should lower the phi-fed add directly in the explicit join block");
   expect_not_contains(rendered, "phi i32",
                       "aarch64 backend seam should not fall back to backend IR text for computed conditional joins");
+}
+
+void test_aarch64_backend_scaffold_accepts_structured_conditional_phi_join_add_ir_without_type_shims() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_phi_join_add_module());
+  clear_backend_memory_type_compatibility_shims(lowered);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  expect_contains(rendered, ".Ljoin:\n  add w0, w0, #5\n  ret\n",
+                  "aarch64 backend seam should still lower structured phi-fed joins without legacy phi/binary type text");
+  expect_not_contains(rendered, "phi i32",
+                      "aarch64 backend seam should not fall back when structured phi and binary metadata is present without type shims");
 }
 
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_predecessor_add_ir_input() {
@@ -3128,8 +3172,10 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_scaffold_accepts_explicit_lowered_global_int_pointer_diff_ir_input();
   test_aarch64_backend_scaffold_accepts_structured_global_int_pointer_diff_ir_without_type_shims();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_return_ir_input();
+  test_aarch64_backend_scaffold_accepts_structured_conditional_return_ir_without_type_shims();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_ir_input();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_add_ir_input();
+  test_aarch64_backend_scaffold_accepts_structured_conditional_phi_join_add_ir_without_type_shims();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_predecessor_add_ir_input();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_predecessor_sub_ir_input();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_add_ir_input();

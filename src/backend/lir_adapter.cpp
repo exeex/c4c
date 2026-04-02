@@ -305,6 +305,7 @@ std::optional<std::vector<BackendBinaryInst>> adapt_conditional_phi_join_predece
         bin->type_str,
         bin->lhs,
         bin->rhs,
+        parse_backend_scalar_type(bin->type_str).value_or(BackendScalarType::Unknown),
     });
     previous_result = bin->result;
   }
@@ -542,6 +543,7 @@ std::optional<BackendFunction> adapt_conditional_return_function(
       "i32",
       cmp0->lhs,
       cmp0->rhs,
+      BackendScalarType::I32,
   });
   out_entry.terminator =
       BackendTerminator::make_cond_branch(cmp0->result, true_block.label, false_block.label);
@@ -647,6 +649,7 @@ std::optional<BackendFunction> adapt_conditional_phi_join_function(
         add->type_str,
         "%t.join",
         add->rhs,
+        BackendScalarType::I32,
     };
     return_value = add->result;
   }
@@ -662,6 +665,7 @@ std::optional<BackendFunction> adapt_conditional_phi_join_function(
       "i32",
       cmp0->lhs,
       cmp0->rhs,
+      BackendScalarType::I32,
   });
   out_entry.terminator =
       BackendTerminator::make_cond_branch(cmp0->result, true_block.label, false_block.label);
@@ -696,6 +700,7 @@ std::optional<BackendFunction> adapt_conditional_phi_join_function(
           BackendPhiIncoming{phi->incoming[0].first, true_block.label},
           BackendPhiIncoming{phi->incoming[1].first, false_block.label},
       },
+      BackendScalarType::I32,
   });
   if (join_compute.has_value()) {
     out_join.insts.push_back(*join_compute);
@@ -758,7 +763,8 @@ std::optional<BackendFunction> adapt_single_param_add_function(
     out_block.label = block.label;
     out_block.insts.push_back(
         BackendBinaryInst{BackendBinaryOpcode::Add, add.result, add.type_str,
-                          signature.params.front().name, add.rhs});
+                          signature.params.front().name, add.rhs,
+                          BackendScalarType::I32});
     out_block.terminator = BackendReturn{add.result, "i32"};
     out.blocks.push_back(std::move(out_block));
     return out;
@@ -900,7 +906,8 @@ std::optional<BackendFunction> adapt_local_temp_sub_return_function(
   BackendBlock out_block;
   out_block.label = block.label;
   out_block.insts.push_back(
-      BackendBinaryInst{BackendBinaryOpcode::Sub, sub->result, sub->type_str, store->val, sub->rhs});
+      BackendBinaryInst{BackendBinaryOpcode::Sub, sub->result, sub->type_str, store->val, sub->rhs,
+                        BackendScalarType::I32});
   out_block.terminator = BackendReturn{sub->result, "i32"};
   out.blocks.push_back(std::move(out_block));
   return out;
@@ -1733,6 +1740,7 @@ std::optional<BackendFunction> adapt_countdown_while_loop_function(
           BackendPhiIncoming{entry_store->val, entry.label},
           BackendPhiIncoming{"%t.dec", body.label},
       },
+      BackendScalarType::I32,
   });
   out_loop.insts.push_back(BackendCompareInst{
       BackendComparePredicate::Ne,
@@ -1740,6 +1748,7 @@ std::optional<BackendFunction> adapt_countdown_while_loop_function(
       "i32",
       "%t.iter",
       "0",
+      BackendScalarType::I32,
   });
   out_loop.terminator =
       BackendTerminator::make_cond_branch("%t.keep_going", body.label, exit.label);
@@ -1752,6 +1761,7 @@ std::optional<BackendFunction> adapt_countdown_while_loop_function(
       "i32",
       "%t.iter",
       "1",
+      BackendScalarType::I32,
   });
   out_body.terminator = BackendTerminator::make_branch(loop.label);
 

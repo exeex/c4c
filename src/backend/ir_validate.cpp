@@ -74,7 +74,7 @@ bool validate_inst(const BackendInst& inst, std::string* error, std::string_view
     if (phi->result.empty()) {
       return fail(error, std::string(context) + ": phi result must not be empty");
     }
-    if (phi->type_str.empty()) {
+    if (backend_phi_value_type(*phi) == BackendScalarType::Unknown) {
       return fail(error, std::string(context) + ": phi type must not be empty");
     }
     if (phi->incoming.empty()) {
@@ -99,7 +99,7 @@ bool validate_inst(const BackendInst& inst, std::string* error, std::string_view
     if (bin->result.empty()) {
       return fail(error, std::string(context) + ": binary result must not be empty");
     }
-    if (bin->type_str.empty()) {
+    if (backend_binary_value_type(*bin) == BackendScalarType::Unknown) {
       return fail(error, std::string(context) + ": binary type must not be empty");
     }
     if (bin->lhs.empty() || bin->rhs.empty()) {
@@ -112,7 +112,7 @@ bool validate_inst(const BackendInst& inst, std::string* error, std::string_view
     if (cmp->result.empty()) {
       return fail(error, std::string(context) + ": compare result must not be empty");
     }
-    if (cmp->type_str.empty()) {
+    if (backend_compare_operand_type(*cmp) == BackendScalarType::Unknown) {
       return fail(error, std::string(context) + ": compare type must not be empty");
     }
     if (cmp->lhs.empty() || cmp->rhs.empty()) {

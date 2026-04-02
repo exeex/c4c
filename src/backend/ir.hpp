@@ -13,6 +13,8 @@
 
 namespace c4c::backend {
 
+enum class BackendScalarType : unsigned char;
+
 struct BackendParam {
   std::string type_str;
   std::string name;
@@ -163,6 +165,7 @@ struct BackendBinaryInst {
   std::string type_str;
   std::string lhs;
   std::string rhs;
+  BackendScalarType value_type{};
 };
 
 struct BackendCompareInst {
@@ -171,6 +174,7 @@ struct BackendCompareInst {
   std::string type_str;
   std::string lhs;
   std::string rhs;
+  BackendScalarType operand_type{};
 };
 
 struct BackendPhiIncoming {
@@ -182,6 +186,7 @@ struct BackendPhiInst {
   std::string result;
   std::string type_str;
   std::vector<BackendPhiIncoming> incoming;
+  BackendScalarType value_type{};
 };
 
 using BackendCallArg = c4c::codegen::lir::OwnedLirTypedCallArg;
@@ -312,6 +317,41 @@ inline std::string render_backend_scalar_type_or_fallback(BackendScalarType type
     return std::string(rendered);
   }
   return std::string(fallback);
+}
+
+inline BackendScalarType backend_binary_value_type(const BackendBinaryInst& binary) {
+  if (binary.value_type != BackendScalarType::Unknown) {
+    return binary.value_type;
+  }
+  return parse_backend_scalar_type(binary.type_str).value_or(BackendScalarType::Unknown);
+}
+
+inline std::string render_backend_binary_value_type(const BackendBinaryInst& binary) {
+  return render_backend_scalar_type_or_fallback(backend_binary_value_type(binary),
+                                                binary.type_str);
+}
+
+inline BackendScalarType backend_compare_operand_type(const BackendCompareInst& compare) {
+  if (compare.operand_type != BackendScalarType::Unknown) {
+    return compare.operand_type;
+  }
+  return parse_backend_scalar_type(compare.type_str).value_or(BackendScalarType::Unknown);
+}
+
+inline std::string render_backend_compare_operand_type(const BackendCompareInst& compare) {
+  return render_backend_scalar_type_or_fallback(backend_compare_operand_type(compare),
+                                                compare.type_str);
+}
+
+inline BackendScalarType backend_phi_value_type(const BackendPhiInst& phi) {
+  if (phi.value_type != BackendScalarType::Unknown) {
+    return phi.value_type;
+  }
+  return parse_backend_scalar_type(phi.type_str).value_or(BackendScalarType::Unknown);
+}
+
+inline std::string render_backend_phi_value_type(const BackendPhiInst& phi) {
+  return render_backend_scalar_type_or_fallback(backend_phi_value_type(phi), phi.type_str);
 }
 
 enum class BackendLoadExtension {

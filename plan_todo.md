@@ -6,9 +6,9 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 3/2 slice: inventory the highest-value remaining backend-IR
-      text-carried semantics after the load/store/ptrdiff seam cleanup and
-      choose the next structured conversion that stays inside the active
+- Step 3/2 slice: audit the remaining backend-IR text-carried semantics after
+      the structured binary/compare/phi scalar-type metadata cleanup and pick
+      the next in-scope structured conversion that stays inside the active
       `lir -> backend IR` refactor boundary
 
 ## Incomplete Items
@@ -97,13 +97,22 @@ Source Plan: plan.md
       implement the missing x86 extern-scalar backend fast path, and confirm
       the 2026-04-02 full-suite regression guard still stays monotonic at 2668
       passed / 3 failed / 2671 total with zero newly failing tests
+- [x] Step 3/5 slice: add structured scalar-type metadata for
+      `BackendBinaryInst`, `BackendCompareInst`, and `BackendPhiInst`, keep
+      legacy `type_str` fields as compatibility shims, switch the backend IR
+      printer/validator plus x86/aarch64 lowered conditional/countdown seam
+      recognizers onto the structured metadata when present, and confirm on
+      2026-04-02 that focused `backend_ir_tests` and
+      `backend_lir_adapter_x86_64_tests` pass while the full suite remains
+      monotonic at 2668 passed / 3 failed / 2671 total with zero newly
+      failing tests
 
 ## Next Intended Slice
 
 - Audit the remaining backend-owned IR surfaces that still carry semantics only
-  as raw text after the load/store/ptrdiff seam cleanup, then pick the
-  narrowest Step 2/3 slice that can be converted to structured metadata
-  without widening into the later BIR scaffold plan.
+  as raw text after the structured binary/compare/phi scalar-type cleanup,
+  then pick the narrowest Step 2/3 slice that can be converted to structured
+  metadata without widening into the later BIR scaffold plan.
 
 ## Blockers
 
@@ -131,6 +140,14 @@ Source Plan: plan.md
   `backend_lir_adapter_aarch64_tests` still fails in the same pre-existing
   suite called out above, so the new aarch64 seam checks could not be isolated
   through that runner in this iteration.
+- A fresh 2026-04-02 `ctest --test-dir build -j --output-on-failure >
+  test_after.log` run finished at the same 2668 passed / 3 failed / 2671 total
+  baseline, and the regression guard against `test_fail_before.log` passed with
+  zero newly failing tests.
+- Focused `backend_ir_tests` and `backend_lir_adapter_x86_64_tests` pass with
+  the new structured binary/compare/phi scalar-type metadata slice; focused
+  `backend_lir_adapter_aarch64_tests` still fails in the same broad
+  pre-existing suite called out above.
 - Focused `backend_lir_adapter_tests` passes with the new structured
   direct-global helper coverage for the lowered vararg-prefix backend-call
   shape.
@@ -167,6 +184,11 @@ Source Plan: plan.md
   printer, validator, and the x86/aarch64 lowered-backend seam recognizers now
   prefer that structured metadata and only fall back to `type_str` /
   `memory_type` when needed for compatibility.
+- This iteration added structured scalar-type metadata to
+  `BackendBinaryInst`, `BackendCompareInst`, and `BackendPhiInst`; the printer,
+  validator, and the x86/aarch64 lowered conditional/countdown seam
+  recognizers now prefer that structured metadata and only fall back to
+  `type_str` when needed for compatibility.
 - Focused verification passed for `backend_ir_tests` and
   `backend_lir_adapter_x86_64_tests`; `backend_lir_adapter_aarch64_tests`
   still has many pre-existing unrelated failures as a whole, so this slice was

@@ -2010,7 +2010,9 @@ std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_sl
   }
 
   const auto* cmp = std::get_if<c4c::backend::BackendCompareInst>(&entry.insts.front());
-  if (cmp == nullptr || cmp->result != entry.terminator.cond_name || cmp->type_str != "i32") {
+  if (cmp == nullptr || cmp->result != entry.terminator.cond_name ||
+      c4c::backend::backend_compare_operand_type(*cmp) !=
+          c4c::backend::BackendScalarType::I32) {
     return std::nullopt;
   }
 
@@ -2158,13 +2160,17 @@ std::optional<MinimalCountdownLoopSlice> parse_minimal_countdown_loop_slice(
   const auto* phi = std::get_if<c4c::backend::BackendPhiInst>(&loop.insts[0]);
   const auto* cmp = std::get_if<c4c::backend::BackendCompareInst>(&loop.insts[1]);
   const auto* dec = std::get_if<c4c::backend::BackendBinaryInst>(&body.insts.front());
-  if (phi == nullptr || cmp == nullptr || dec == nullptr || phi->type_str != "i32" ||
+  if (phi == nullptr || cmp == nullptr || dec == nullptr ||
+      c4c::backend::backend_phi_value_type(*phi) != c4c::backend::BackendScalarType::I32 ||
       phi->incoming.size() != 2 || phi->incoming[0].label != entry.label ||
       phi->incoming[1].label != body.label ||
       cmp->predicate != c4c::backend::BackendComparePredicate::Ne ||
-      cmp->result != loop.terminator.cond_name || cmp->type_str != "i32" ||
+      cmp->result != loop.terminator.cond_name ||
+      c4c::backend::backend_compare_operand_type(*cmp) !=
+          c4c::backend::BackendScalarType::I32 ||
       cmp->lhs != phi->result || cmp->rhs != "0" ||
-      dec->opcode != c4c::backend::BackendBinaryOpcode::Sub || dec->type_str != "i32" ||
+      dec->opcode != c4c::backend::BackendBinaryOpcode::Sub ||
+      c4c::backend::backend_binary_value_type(*dec) != c4c::backend::BackendScalarType::I32 ||
       dec->lhs != phi->result || dec->rhs != "1" || dec->result != phi->incoming[1].value ||
       *exit.terminator.value != phi->result) {
     return std::nullopt;
@@ -2213,7 +2219,9 @@ std::optional<MinimalConditionalPhiJoinSlice> parse_minimal_conditional_phi_join
     std::string previous_result;
     for (std::size_t index = 0; index < block.insts.size(); ++index) {
       const auto* inst = std::get_if<c4c::backend::BackendBinaryInst>(&block.insts[index]);
-      if (inst == nullptr || inst->type_str != "i32" ||
+      if (inst == nullptr ||
+          c4c::backend::backend_binary_value_type(*inst) !=
+              c4c::backend::BackendScalarType::I32 ||
           (inst->opcode != c4c::backend::BackendBinaryOpcode::Add &&
            inst->opcode != c4c::backend::BackendBinaryOpcode::Sub)) {
         return std::nullopt;
@@ -2256,7 +2264,10 @@ std::optional<MinimalConditionalPhiJoinSlice> parse_minimal_conditional_phi_join
   const auto* cmp = std::get_if<c4c::backend::BackendCompareInst>(&entry.insts.front());
   const auto* phi = std::get_if<c4c::backend::BackendPhiInst>(&join_block.insts.front());
   if (cmp == nullptr || phi == nullptr || cmp->result != entry.terminator.cond_name ||
-      cmp->type_str != "i32" || phi->type_str != "i32" || phi->incoming.size() != 2 ||
+      c4c::backend::backend_compare_operand_type(*cmp) !=
+          c4c::backend::BackendScalarType::I32 ||
+      c4c::backend::backend_phi_value_type(*phi) != c4c::backend::BackendScalarType::I32 ||
+      phi->incoming.size() != 2 ||
       phi->incoming[0].label != true_block.label ||
       phi->incoming[1].label != false_block.label) {
     return std::nullopt;
@@ -2270,7 +2281,9 @@ std::optional<MinimalConditionalPhiJoinSlice> parse_minimal_conditional_phi_join
   } else {
     const auto* add = std::get_if<c4c::backend::BackendBinaryInst>(&join_block.insts[1]);
     if (add == nullptr || add->opcode != c4c::backend::BackendBinaryOpcode::Add ||
-        add->type_str != "i32" || add->lhs != phi->result ||
+        c4c::backend::backend_binary_value_type(*add) !=
+            c4c::backend::BackendScalarType::I32 ||
+        add->lhs != phi->result ||
         *join_block.terminator.value != add->result) {
       return std::nullopt;
     }
