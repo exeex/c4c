@@ -2170,6 +2170,29 @@ void test_x86_backend_renders_typed_two_arg_direct_call_second_local_rewrite_sli
                       "x86 backend should stop falling back to LLVM text for the rewritten second-local slice");
 }
 
+void test_x86_backend_renders_typed_two_arg_direct_call_first_local_rewrite_slice() {
+  auto module = make_typed_direct_call_two_arg_first_local_rewrite_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".type add_pair, %function",
+                  "x86 backend should lower the rewritten first-local helper into a real function symbol");
+  expect_contains(rendered, "add_pair:\n  mov eax, edi\n  add eax, esi\n  ret\n",
+                  "x86 backend should keep the rewritten first-local helper on the register-only add path");
+  expect_contains(rendered, "mov edi, 5",
+                  "x86 backend should materialize the rewritten first-local argument in the first SysV integer register");
+  expect_contains(rendered, "mov esi, 7",
+                  "x86 backend should preserve the immediate second argument in the second SysV integer register for the rewritten first-local slice");
+  expect_contains(rendered, "call add_pair",
+                  "x86 backend should lower the rewritten first-local direct call on the asm path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the rewritten first-local slice");
+}
+
 void test_x86_backend_renders_typed_two_arg_direct_call_both_local_arg_slice() {
   auto module = make_typed_direct_call_two_arg_both_local_arg_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -3473,6 +3496,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_local_arg_slice);
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_second_local_arg_slice);
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_second_local_rewrite_slice);
+  RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_first_local_rewrite_slice);
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_first_local_rewrite_spacing_slice);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_first_local_rewrite_spacing_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_both_local_arg_slice);
