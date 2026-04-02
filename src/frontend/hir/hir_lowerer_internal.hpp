@@ -137,7 +137,7 @@ class Lowerer {
       const TypeSpec& ts,
       const Node* primary_tpl = nullptr) const;
 
-  void resolve_pending_tpl_struct_if_needed(
+  void realize_template_struct_if_needed(
       TypeSpec& ts,
       const TypeBindings& tpl_bindings,
       const NttpBindings& nttp_bindings,
@@ -222,11 +222,12 @@ class Lowerer {
 
   void collect_depth0_template_instantiations(const std::vector<const Node*>& items);
 
-  void run_consteval_template_seed_fixpoint(const std::vector<const Node*>& items);
+  void realize_consteval_template_seeds_fixpoint(
+      const std::vector<const Node*>& items);
 
   void finalize_template_seed_realization();
 
-  void populate_hir_template_defs(Module& m);
+  void materialize_hir_template_defs(Module& m);
 
   void collect_ref_overloaded_free_functions(const std::vector<const Node*>& items);
 
@@ -383,9 +384,9 @@ class Lowerer {
   // ── template-struct realization helpers ──────────────────────────────────
   void lower_struct_def(const Node* sd);
 
-  bool resolve_struct_member_typedef_hir(const std::string& tag,
-                                         const std::string& member,
-                                         TypeSpec* out);
+  bool resolve_struct_member_typedef_type(const std::string& tag,
+                                          const std::string& member,
+                                          TypeSpec* out);
 
   PreparedTemplateStructInstance prepare_template_struct_instance(
       const Node* primary_tpl,
@@ -443,10 +444,10 @@ class Lowerer {
       const std::vector<HirTemplateArg>& concrete_args,
       const TemplateStructInstanceKey& instance_key);
 
-  void resolve_pending_tpl_struct(TypeSpec& ts,
-                                  const Node* primary_tpl,
-                                  const TypeBindings& tpl_bindings,
-                                  const NttpBindings& nttp_bindings);
+  void realize_template_struct(TypeSpec& ts,
+                               const Node* primary_tpl,
+                               const TypeBindings& tpl_bindings,
+                               const NttpBindings& nttp_bindings);
 
   // ── callable and global lowering helpers ─────────────────────────────────
   TypeSpec substitute_signature_template_type(
@@ -743,9 +744,9 @@ class Lowerer {
   std::vector<std::string> get_template_param_order_from_instances(
       const std::string& fn_name);
 
-  // Record a template seed via the centralized registry.
+  // Record a template-instantiation seed via the centralized registry.
   // Returns the mangled name, or "" if bindings are not concrete.
-  std::string record_seed(
+  std::string record_template_seed(
       const std::string& fn_name,
       TypeBindings bindings,
       NttpBindings nttp_bindings = {},

@@ -1,6 +1,6 @@
 # Header Entry Surface And Function Naming Refactor
 
-Status: Open
+Status: Complete
 Last Updated: 2026-04-02
 
 ## Goal
@@ -256,6 +256,41 @@ Required checks:
 - do not collapse all internal headers into one giant surface
 - do not rename stable external APIs unless clarity gain is real
 - do not perform broad behavior changes under the guise of naming cleanup
+
+## Completion
+
+Completed on 2026-04-02.
+
+Implemented outcomes:
+
+- added file-role comments and implementation maps so
+  `parser.hpp`, `hir.hpp`, `hir_lowering.hpp`, and
+  `hir_lowerer_internal.hpp` act as clearer entry/index surfaces
+- regrouped the parser and HIR declaration blocks by reader task instead of
+  historical insertion order
+- renamed parser helpers to distinguish peek/consume/parse/build/finalize
+  behavior more explicitly
+- renamed the final HIR helper batch so template-struct realization,
+  member-typedef resolution, template-seed recording, consteval seed fixpoint
+  execution, and HIR template metadata materialization now read by semantic
+  role
+- added focused parser and HIR regressions covering the renamed helper paths
+
+Validation summary:
+
+- `cmake --build build -j8` succeeded
+- focused parser and HIR regression tests added for the renamed helper families
+  passed
+- full `ctest --test-dir build -j --output-on-failure` finished with the same
+  3 known failures
+  (`positive_sema_linux_stage2_repro_03_asm_volatile_c`,
+  `backend_lir_adapter_aarch64_tests`,
+  `llvm_gcc_c_torture_src_20080502_1_c`) and totals improved to 2672/2675
+  passing after the new HIR regression landed
+
+Leftover issues:
+
+- none beyond the existing known full-suite failures listed above
 
 
 ## Acceptance Criteria
