@@ -22,5 +22,5 @@ Source Plan: plan.md
   - Blockers: Depends on prior steps.
 
 Current Step: Step 3
-Next Step: Compare the remaining spacing-tolerant AArch64 direct-call variants against the cleared-shim backend-module scaffold coverage and add the next missing regression only where a structured backend-owned call seam is still unproven.
+Next Step: Compare the remaining spacing-tolerant AArch64 direct-call fixtures against cleared-shim scaffold coverage and add the next missing regression only where a structured backend-owned call seam is still unproven.
 Blockers: None

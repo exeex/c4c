@@ -1685,6 +1685,26 @@ void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_local_
                       "aarch64 backend seam should not fall back when the structured two-argument local-argument slice relies only on backend-owned metadata");
 }
 
+void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_local_arg_spacing_ir_without_signature_shims() {
+  auto lowered =
+      c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_local_arg_with_spacing_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".type add_pair, %function",
+                  "aarch64 backend seam should still preserve spacing-tolerant lowered two-argument local-argument helper definitions without legacy signature text");
+  expect_contains(rendered, "mov w0, #5",
+                  "aarch64 backend seam should still materialize the normalized lowered first local argument from structured call metadata after spacing is normalized away");
+  expect_contains(rendered, "mov w1, #7",
+                  "aarch64 backend seam should still preserve the lowered immediate second argument from structured call metadata after spacing is normalized away");
+  expect_contains(rendered, "bl add_pair",
+                  "aarch64 backend seam should still lower spacing-tolerant structured two-argument local-argument direct calls when legacy call/signature text is cleared");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should not fall back when the spacing-tolerant structured two-argument local-argument slice relies only on backend-owned metadata");
+}
+
 void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_second_local_arg_ir_without_signature_shims() {
   auto lowered =
       c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_second_local_arg_module());
@@ -3656,6 +3676,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_renders_typed_direct_call_local_arg_spacing_slice();
   test_aarch64_backend_renders_typed_two_arg_direct_call_local_arg_slice();
   test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_local_arg_ir_without_signature_shims();
+  test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_local_arg_spacing_ir_without_signature_shims();
   test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_second_local_arg_ir_without_signature_shims();
   test_aarch64_backend_renders_typed_two_arg_direct_call_second_local_arg_slice();
   test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_second_local_rewrite_ir_without_signature_shims();
