@@ -1436,8 +1436,8 @@ std::optional<std::int64_t> fold_minimal_direct_call_two_arg_callee_return(
     std::int64_t arg0_imm,
     std::int64_t arg1_imm) {
   if (callee_fn.signature.params.size() != 2 ||
-      callee_fn.signature.params[0].type_str != "i32" ||
-      callee_fn.signature.params[1].type_str != "i32" ||
+      !is_i32_scalar_param(callee_fn.signature.params[0]) ||
+      !is_i32_scalar_param(callee_fn.signature.params[1]) ||
       callee_fn.signature.params[0].name.empty() ||
       callee_fn.signature.params[1].name.empty() || callee_fn.signature.is_vararg ||
       callee_fn.blocks.size() != 1) {
@@ -1471,7 +1471,7 @@ std::optional<std::int64_t> fold_minimal_direct_call_two_arg_callee_return(
   for (const auto& inst : block.insts) {
     const auto* bin =
         std::get_if<c4c::backend::BackendBinaryInst>(&inst);
-    if (bin == nullptr || bin->type_str != "i32" || bin->result.empty()) {
+    if (bin == nullptr || !is_i32_scalar_binary(*bin) || bin->result.empty()) {
       return std::nullopt;
     }
 
@@ -3486,7 +3486,7 @@ std::optional<MinimalDirectCallSlice> parse_minimal_direct_call_two_arg_folded_s
   const auto* main_fn = find_function(module, "main");
   if (main_fn == nullptr || main_fn->is_declaration ||
       !backend_function_is_definition(main_fn->signature) ||
-      main_fn->signature.return_type != "i32" ||
+      !is_i32_scalar_signature_return(main_fn->signature) ||
       !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
       main_fn->blocks.size() != 1) {
     return std::nullopt;
@@ -3501,18 +3501,19 @@ std::optional<MinimalDirectCallSlice> parse_minimal_direct_call_two_arg_folded_s
   }
 
   const auto* call = std::get_if<c4c::backend::BackendCallInst>(&main_block.insts.front());
-  const auto parsed_call = call == nullptr ? std::nullopt
-                                           : c4c::backend::parse_backend_direct_global_typed_call(
-                                                 *call);
-  if (call == nullptr || !is_i32_scalar_call_return(*call) || call->result.empty() ||
-      *main_block.terminator.value != call->result || !parsed_call.has_value() ||
-      !c4c::backend::backend_direct_global_typed_call_matches(
-          *parsed_call, parsed_call->symbol_name, std::array<std::string_view, 2>{"i32", "i32"})) {
+  if (call == nullptr || call->callee.kind != c4c::backend::BackendCallCalleeKind::DirectGlobal ||
+      !is_i32_scalar_call_return(*call) || call->result.empty() ||
+      *main_block.terminator.value != call->result || call->callee.symbol_name.empty() ||
+      call->args.size() != 2 ||
+      c4c::backend::backend_call_param_scalar_type(*call, 0) !=
+          c4c::backend::BackendScalarType::I32 ||
+      c4c::backend::backend_call_param_scalar_type(*call, 1) !=
+          c4c::backend::BackendScalarType::I32) {
     return std::nullopt;
   }
 
-  const auto arg0_imm = parse_i64(parsed_call->typed_call.args[0].operand);
-  const auto arg1_imm = parse_i64(parsed_call->typed_call.args[1].operand);
+  const auto arg0_imm = parse_i64(call->args[0].operand);
+  const auto arg1_imm = parse_i64(call->args[1].operand);
   if (!arg0_imm.has_value() || !arg1_imm.has_value()) {
     return std::nullopt;
   }

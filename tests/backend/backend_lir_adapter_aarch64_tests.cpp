@@ -1560,6 +1560,22 @@ void test_aarch64_backend_renders_typed_two_arg_direct_call_folded_const_slice()
                   "aarch64 backend should keep the folded two-argument direct call on the asm path");
 }
 
+void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_folded_const_ir_without_signature_shims() {
+  auto lowered =
+      c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_folded_const_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  expect_contains(rendered, ".type foo, %function",
+                  "aarch64 backend seam should still preserve folded two-argument helper definitions without legacy signature return text");
+  expect_contains(rendered, "bl foo",
+                  "aarch64 backend seam should still lower folded two-argument direct calls when main relies only on structured signature metadata");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should not fall back when folded two-argument direct calls clear legacy signature return text");
+}
+
 void test_aarch64_backend_renders_typed_direct_call_local_arg_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_typed_direct_call_local_arg_module()},
@@ -3312,6 +3328,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_keeps_spacing_tolerant_call_crossing_slice_on_asm_path();
   test_aarch64_backend_renders_typed_two_arg_direct_call_slice();
   test_aarch64_backend_renders_typed_two_arg_direct_call_folded_const_slice();
+  test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_folded_const_ir_without_signature_shims();
   test_aarch64_backend_renders_typed_direct_call_local_arg_slice();
   test_aarch64_backend_renders_typed_direct_call_local_arg_spacing_slice();
   test_aarch64_backend_renders_typed_two_arg_direct_call_local_arg_slice();
