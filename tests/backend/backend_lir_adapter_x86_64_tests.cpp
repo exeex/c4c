@@ -2071,6 +2071,30 @@ void test_x86_backend_scaffold_accepts_structured_zero_arg_direct_call_spacing_i
                       "x86 backend seam should not fall back when the spacing-tolerant structured zero-arg slice relies only on backend-owned metadata");
 }
 
+void test_x86_backend_scaffold_rejects_structured_zero_arg_direct_call_when_callee_signature_param_type_disagrees() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_direct_call_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  c4c::backend::BackendFunction* helper = nullptr;
+  for (auto& function : lowered.functions) {
+    if (function.signature.name == "helper") {
+      helper = &function;
+      break;
+    }
+  }
+  expect_true(helper != nullptr,
+              "x86 zero-argument direct-call regression test needs the lowered helper signature to mutate");
+  if (helper != nullptr) {
+    helper->signature.params.push_back(c4c::backend::BackendParam{"i32", "%p.extra"});
+  }
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, "target triple =",
+                  "x86 backend seam should stop matching the structured zero-argument direct-call asm slice when the callee signature no longer matches the call contract");
+}
+
 void test_x86_backend_rejects_intrinsic_callee_from_direct_call_fast_path() {
   auto module = make_typed_direct_call_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -3979,6 +4003,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_renders_direct_call_slice);
   RUN_TEST(test_x86_backend_renders_zero_arg_typed_direct_call_slice_with_whitespace);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_zero_arg_direct_call_spacing_ir_without_signature_shims);
+  RUN_TEST(test_x86_backend_scaffold_rejects_structured_zero_arg_direct_call_when_callee_signature_param_type_disagrees);
   RUN_TEST(test_x86_backend_rejects_intrinsic_callee_from_direct_call_fast_path);
   RUN_TEST(test_x86_backend_rejects_indirect_callee_from_direct_call_fast_path);
   RUN_TEST(test_x86_backend_renders_param_slot_slice);
