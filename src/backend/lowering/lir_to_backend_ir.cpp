@@ -340,7 +340,7 @@ std::optional<std::vector<BackendBinaryInst>> adapt_conditional_phi_join_predece
 }
 
 std::vector<std::string> own_backend_call_param_types(
-    const c4c::codegen::lir::ParsedLirTypedCallView& parsed) {
+    const ParsedBackendTypedCallView& parsed) {
   std::vector<std::string> param_types;
   param_types.reserve(parsed.param_types.size());
   for (const auto type : parsed.param_types) {
@@ -350,7 +350,7 @@ std::vector<std::string> own_backend_call_param_types(
 }
 
 std::vector<BackendValueTypeKind> own_backend_call_param_type_kinds(
-    const c4c::codegen::lir::ParsedLirTypedCallView& parsed) {
+    const ParsedBackendTypedCallView& parsed) {
   std::vector<BackendValueTypeKind> param_type_kinds;
   param_type_kinds.reserve(parsed.param_types.size());
   for (const auto type : parsed.param_types) {
@@ -360,7 +360,7 @@ std::vector<BackendValueTypeKind> own_backend_call_param_type_kinds(
 }
 
 std::vector<BackendScalarType> own_backend_call_param_scalar_types(
-    const c4c::codegen::lir::ParsedLirTypedCallView& parsed) {
+    const ParsedBackendTypedCallView& parsed) {
   std::vector<BackendScalarType> param_scalar_types;
   param_scalar_types.reserve(parsed.param_types.size());
   for (const auto type : parsed.param_types) {
@@ -369,17 +369,27 @@ std::vector<BackendScalarType> own_backend_call_param_scalar_types(
   return param_scalar_types;
 }
 
+std::vector<c4c::codegen::lir::OwnedLirTypedCallArg> own_backend_call_args(
+    const ParsedBackendTypedCallView& parsed) {
+  std::vector<c4c::codegen::lir::OwnedLirTypedCallArg> owned_args;
+  owned_args.reserve(parsed.args.size());
+  for (const auto& arg : parsed.args) {
+    owned_args.push_back({std::string(arg.type), std::string(arg.operand)});
+  }
+  return owned_args;
+}
+
 BackendCallInst make_backend_call_inst(std::string result,
                                        std::string return_type,
                                        BackendCallCallee callee,
-                                       const c4c::codegen::lir::ParsedLirTypedCallView& parsed,
+                                       const ParsedBackendTypedCallView& parsed,
                                        bool render_callee_type_suffix) {
   BackendCallInst call{
       std::move(result),
       std::move(return_type),
       std::move(callee),
       own_backend_call_param_types(parsed),
-      c4c::codegen::lir::own_lir_typed_call_args(parsed),
+      own_backend_call_args(parsed),
       render_callee_type_suffix,
   };
   call.return_type_kind = parse_backend_value_type_kind(call.return_type);
@@ -387,6 +397,19 @@ BackendCallInst make_backend_call_inst(std::string result,
   call.param_type_kinds = own_backend_call_param_type_kinds(parsed);
   call.param_scalar_types = own_backend_call_param_scalar_types(parsed);
   return call;
+}
+
+BackendCallInst make_backend_call_inst(
+    std::string result,
+    std::string return_type,
+    BackendCallCallee callee,
+    const c4c::codegen::lir::ParsedLirTypedCallView& parsed,
+    bool render_callee_type_suffix) {
+  return make_backend_call_inst(std::move(result),
+                                std::move(return_type),
+                                std::move(callee),
+                                make_backend_typed_call_view(parsed),
+                                render_callee_type_suffix);
 }
 
 std::optional<BackendCallCallee> classify_backend_call_callee(

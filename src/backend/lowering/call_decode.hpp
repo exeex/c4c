@@ -17,7 +17,12 @@
 namespace c4c::backend {
 
 using BackendTypedCallArgView = c4c::codegen::lir::LirTypedCallArgView;
-using ParsedBackendTypedCallView = c4c::codegen::lir::ParsedLirTypedCallView;
+
+struct ParsedBackendTypedCallView {
+  std::vector<std::string> owned_param_types;
+  std::vector<std::string_view> param_types;
+  std::vector<BackendTypedCallArgView> args;
+};
 
 struct ParsedBackendDirectGlobalTypedCallView {
   std::string_view symbol_name;
@@ -51,9 +56,21 @@ struct ParsedBackendTwoLocalTypedCallView {
   const c4c::codegen::lir::LirCallOp* call = nullptr;
 };
 
+inline ParsedBackendTypedCallView make_backend_typed_call_view(
+    const c4c::codegen::lir::ParsedLirTypedCallView& parsed) {
+  ParsedBackendTypedCallView view;
+  view.param_types = parsed.param_types;
+  view.args = parsed.args;
+  return view;
+}
+
 inline std::optional<ParsedBackendTypedCallView> parse_backend_typed_call(
     const c4c::codegen::lir::LirCallOp& call) {
-  return c4c::codegen::lir::parse_lir_typed_call_or_infer_params(call);
+  const auto parsed = c4c::codegen::lir::parse_lir_typed_call_or_infer_params(call);
+  if (!parsed.has_value()) {
+    return std::nullopt;
+  }
+  return make_backend_typed_call_view(*parsed);
 }
 
 bool backend_lir_type_uses_nonminimal_types(std::string_view type_text);

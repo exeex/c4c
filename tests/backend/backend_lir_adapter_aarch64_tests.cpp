@@ -1601,6 +1601,24 @@ void test_aarch64_backend_renders_typed_direct_call_local_arg_slice() {
                       "aarch64 backend should not fall back to LLVM text for the single-local direct-call slice");
 }
 
+void test_aarch64_backend_scaffold_accepts_structured_direct_call_add_imm_ir_without_signature_shims() {
+  auto lowered =
+      c4c::backend::lower_to_backend_ir(make_typed_direct_call_local_arg_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".type add_one, %function",
+                  "aarch64 backend seam should still preserve lowered single-argument helper definitions without legacy signature text");
+  expect_contains(rendered, "mov w0, #5",
+                  "aarch64 backend seam should still materialize lowered single-argument direct-call immediates from structured call metadata");
+  expect_contains(rendered, "bl add_one",
+                  "aarch64 backend seam should still lower explicit single-argument direct calls when legacy call/signature text is cleared");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should not fall back when the explicit single-argument direct-call slice relies only on structured call metadata");
+}
+
 void test_aarch64_backend_renders_typed_direct_call_local_arg_spacing_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{
@@ -3454,6 +3472,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_renders_typed_two_arg_direct_call_folded_const_slice();
   test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_folded_const_ir_without_signature_shims();
   test_aarch64_backend_renders_typed_direct_call_local_arg_slice();
+  test_aarch64_backend_scaffold_accepts_structured_direct_call_add_imm_ir_without_signature_shims();
   test_aarch64_backend_renders_typed_direct_call_local_arg_spacing_slice();
   test_aarch64_backend_renders_typed_two_arg_direct_call_local_arg_slice();
   test_aarch64_backend_renders_typed_two_arg_direct_call_second_local_arg_slice();

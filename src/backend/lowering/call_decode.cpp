@@ -234,15 +234,20 @@ std::optional<ParsedBackendTypedCallView> parse_backend_typed_call(
     }
   }
   if (can_borrow_existing_types) {
-    return c4c::codegen::lir::borrow_lir_typed_call(call.param_types, call.args);
+    return make_backend_typed_call_view(
+        c4c::codegen::lir::borrow_lir_typed_call(call.param_types, call.args));
   }
 
-  std::vector<std::string> param_types;
-  param_types.reserve(call.args.size());
+  ParsedBackendTypedCallView view;
+  view.owned_param_types.reserve(call.args.size());
+  view.param_types.reserve(call.args.size());
+  view.args.reserve(call.args.size());
   for (std::size_t index = 0; index < call.args.size(); ++index) {
-    param_types.push_back(render_backend_call_param_type(call, index));
+    view.owned_param_types.push_back(render_backend_call_param_type(call, index));
+    view.param_types.push_back(view.owned_param_types.back());
+    view.args.push_back({call.args[index].type, call.args[index].operand});
   }
-  return c4c::codegen::lir::borrow_lir_typed_call(param_types, call.args);
+  return view;
 }
 
 std::optional<ParsedBackendDirectGlobalTypedCallView> parse_backend_direct_global_typed_call(
