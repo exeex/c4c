@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 2: introduce a safe transitional source layout and build wiring
-- Current slice: continue Step 2 by pushing more monolith-only helpers behind `src/frontend/hir/hir_lowerer_internal.hpp` now that `src/frontend/hir/ast_to_hir.cpp` consumes the shared `Lowerer` declaration surface cleanly
+- Current slice: continue Step 2 by auditing the remaining split units for helper definitions that still duplicate monolith/shared internal-surface ownership, then fold the next low-coupling cluster behind `src/frontend/hir/hir_lowerer_internal.hpp`
 
 ## Todo
 
@@ -18,6 +18,8 @@ Source Plan: plan.md
 - [ ] Step 5: run final build and regression validation
 
 ## Completed
+
+- Validation on 2026-04-02 after centralizing the remaining shared template helpers into [`src/frontend/hir/hir_templates.cpp`](/workspaces/c4c/src/frontend/hir/hir_templates.cpp): `encode_template_type_arg_ref_hir` and `eval_struct_static_member_value_hir` now live in the template split unit, [`src/frontend/hir/hir_lowerer_internal.hpp`](/workspaces/c4c/src/frontend/hir/hir_lowerer_internal.hpp) declares the shared helper surface, [`src/frontend/hir/ast_to_hir.cpp`](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp) dropped its last out-of-line deferred-NTTP static-member evaluator copy, and [`src/frontend/hir/hir_expr.cpp`](/workspaces/c4c/src/frontend/hir/hir_expr.cpp) now consumes the shared template-arg ref encoder instead of carrying its own duplicate helper. `cmake --build build -j8` succeeded; `ctest --test-dir build -j 8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 historical failing tests (`positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c`); `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passed with zero new failing tests.
 
 - Validation on 2026-04-02 after switching [`src/frontend/hir/ast_to_hir.cpp`](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp) over to [`src/frontend/hir/hir_lowerer_internal.hpp`](/workspaces/c4c/src/frontend/hir/hir_lowerer_internal.hpp): the monolith now consumes the shared `Lowerer` declaration surface instead of carrying a second class declaration block, the temporary `select_template_struct_pattern_hir` forward declaration is gone, and the deferred-NTTP template lookup/parser path now resolves through the internal-header surface with only the out-of-line `eval_struct_static_member_value_hir` definition left in the monolith for linker ownership. `cmake --build build -j8` succeeded; `ctest --test-dir build -j 8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 historical failing tests (`positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c`); `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passed with zero new failing tests.
 

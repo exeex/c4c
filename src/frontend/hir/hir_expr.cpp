@@ -26,44 +26,6 @@ namespace c4c::hir {
 
 namespace {
 
-std::string encode_template_type_arg_ref_hir(const TypeSpec& ts) {
-  if (ts.tpl_struct_origin && ts.tpl_struct_origin[0]) {
-    std::string ref = "@";
-    ref += ts.tpl_struct_origin;
-    ref += ":";
-    ref += ts.tpl_struct_arg_refs ? ts.tpl_struct_arg_refs : "";
-    return ref;
-  }
-  if (ts.tag && ts.tag[0]) return ts.tag;
-
-  std::string ref;
-  switch (ts.base) {
-    case TB_INT: ref = "int"; break;
-    case TB_UINT: ref = "uint"; break;
-    case TB_CHAR: ref = "char"; break;
-    case TB_SCHAR: ref = "schar"; break;
-    case TB_UCHAR: ref = "uchar"; break;
-    case TB_SHORT: ref = "short"; break;
-    case TB_USHORT: ref = "ushort"; break;
-    case TB_LONG: ref = "long"; break;
-    case TB_ULONG: ref = "ulong"; break;
-    case TB_LONGLONG: ref = "llong"; break;
-    case TB_ULONGLONG: ref = "ullong"; break;
-    case TB_FLOAT: ref = "float"; break;
-    case TB_DOUBLE: ref = "double"; break;
-    case TB_LONGDOUBLE: ref = "ldouble"; break;
-    case TB_VOID: ref = "void"; break;
-    case TB_BOOL: ref = "bool"; break;
-    case TB_INT128: ref = "i128"; break;
-    case TB_UINT128: ref = "u128"; break;
-    default: return "?";
-  }
-  for (int p = 0; p < ts.ptr_level; ++p) ref += "_ptr";
-  if (ts.is_lvalue_ref) ref += "_ref";
-  if (ts.is_rvalue_ref) ref += "_rref";
-  return ref;
-}
-
 class LayoutQueries {
  public:
   explicit LayoutQueries(const hir::Module& module) : module_(module) {}

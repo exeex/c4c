@@ -92,6 +92,7 @@ inline bool parse_builtin_typespec_text(const std::string& text, TypeSpec* out) 
 SelectedTemplateStructPattern select_template_struct_pattern_hir(
     const std::vector<HirTemplateArg>& actual_args,
     const TemplateStructEnv& env);
+std::string encode_template_type_arg_ref_hir(const TypeSpec& ts);
 bool eval_struct_static_member_value_hir(
     const Node* sdef,
     const std::unordered_map<std::string, const Node*>& struct_defs,
