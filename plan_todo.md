@@ -60,6 +60,9 @@ Source Plan: plan.md
 - decide whether that remaining blocker belongs in alias-template application,
   deferred template-argument materialization, or top-level template-struct
   bookkeeping before the next implementation change
+- use the new reduced reproducer in
+  `tests/cpp/internal/negative_case/namespaced_inherited_type_alias_base_member_lookup_parse.cpp`
+  as the starting point instead of reopening the full EASTL stack
 
 ## Blockers
 
@@ -70,6 +73,11 @@ Source Plan: plan.md
   `template<typename T, bool = arithmetic<T>::value> struct helper : bool_constant<T(-1) < T(0)> {};`
   still trips the same incomplete-type error even after the aliased-base
   `::type` fix
+- the failure no longer requires the full EASTL headers: the same incomplete
+  type now reproduces in
+  `tests/cpp/internal/negative_case/namespaced_inherited_type_alias_base_member_lookup_parse.cpp`
+  when the helper is referenced as `typename eastl::is_signed_helper<T>::type`
+  inside a declaration
 - `eastl_vector_simple.cpp` now stops at
   `ref/EASTL/include/EASTL/internal/function_detail.h:237:16` with
   `unexpected token in expression: .`
@@ -93,6 +101,9 @@ Source Plan: plan.md
 - the remaining `is_signed_helper` blocker no longer depends on inherited
   `false_type` lookup alone; it requires the combination of a defaulted NTTP
   and an alias-template base carrying a dependent expression argument
+- a smaller negative regression now captures that remaining shape without the
+  full EASTL include stack:
+  `tests/cpp/internal/negative_case/namespaced_inherited_type_alias_base_member_lookup_parse.cpp`
 - `eastl_piecewise_construct_simple.cpp` and
   `eastl_tuple_fwd_decls_simple.cpp` parse successfully but first fail during
   canonical/sema expansion with undeclared identifiers from EASTL internals
