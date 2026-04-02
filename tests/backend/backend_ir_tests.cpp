@@ -873,6 +873,22 @@ void test_backend_ir_validator_rejects_global_int_ptrdiff_past_structured_bounds
                   "backend IR validator should explain when a structured ptrdiff address escapes the referenced global array");
 }
 
+void test_backend_ir_validator_rejects_ptrdiff_across_different_structured_globals() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_global_int_pointer_diff_module());
+  auto other_global = lowered.globals.front();
+  other_global.name = "g_words_other";
+  lowered.globals.push_back(other_global);
+  auto& ptrdiff = std::get<c4c::backend::BackendPtrDiffEqInst>(
+      lowered.functions.front().blocks.front().insts.back());
+  ptrdiff.rhs_address.base_symbol = "g_words_other";
+  std::string error;
+
+  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should reject structured ptrdiff slices that compare addresses from different globals");
+  expect_contains(error, "ptrdiff addresses must reference the same global",
+                  "backend IR validator should explain cross-global structured ptrdiff mismatches");
+}
+
 void test_backend_ir_printer_renders_return_add() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_return_add_module());
   const auto rendered = c4c::backend::print_backend_ir(lowered);
@@ -1471,6 +1487,7 @@ int main(int argc, char* argv[]) {
   test_backend_ir_validator_rejects_extern_global_array_load_with_mismatched_structured_memory_type();
   test_backend_ir_validator_rejects_structured_load_extension_that_does_not_widen();
   test_backend_ir_validator_rejects_global_int_ptrdiff_past_structured_bounds();
+  test_backend_ir_validator_rejects_ptrdiff_across_different_structured_globals();
   test_backend_ir_printer_renders_lowered_conditional_return_slice();
   test_backend_ir_validator_accepts_lowered_conditional_return_slice();
   test_backend_ir_printer_renders_structured_conditional_return_slice_without_type_text();
