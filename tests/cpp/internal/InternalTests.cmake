@@ -63,6 +63,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     record_base_template_member_alias_parse
     template_alias_nttp_expr_parse
     template_alias_nttp_expr_inherited_parse
+    inherited_type_alias_base_member_lookup_parse
     template_argument_loop_staging_parse
     template_argument_expr_close_staging_parse
     member_template_decltype_default_parse

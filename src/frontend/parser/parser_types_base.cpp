@@ -341,6 +341,13 @@ TypeSpec Parser::parse_base_type() {
             [&](const std::string& tag, const std::string& member,
                 TypeSpec* out) -> bool {
                 if (tag.empty() || member.empty() || !out) return false;
+                auto resolve_struct_like = [&](TypeSpec ts) -> TypeSpec {
+                    ts = resolve_typedef_chain(ts, typedef_types_);
+                    if (ts.base == TB_TYPEDEF && ts.tag && typedef_types_.count(ts.tag) > 0) {
+                        ts = typedef_types_.at(ts.tag);
+                    }
+                    return ts;
+                };
                 auto try_lookup = [&](const std::string& scoped) -> bool {
                     auto it = typedef_types_.find(scoped);
                     if (it == typedef_types_.end()) return false;
@@ -359,13 +366,20 @@ TypeSpec Parser::parse_base_type() {
                     return false;
                 };
                 if (try_lookup(tag + "::" + member)) return true;
-                auto def_it = struct_tag_def_map_.find(tag);
+                std::string resolved_tag = tag;
+                auto typedef_it = typedef_types_.find(tag);
+                if (typedef_it != typedef_types_.end()) {
+                    TypeSpec resolved = resolve_struct_like(typedef_it->second);
+                    if (resolved.tag && resolved.tag[0])
+                        resolved_tag = resolved.tag;
+                }
+                auto def_it = struct_tag_def_map_.find(resolved_tag);
                 if (def_it == struct_tag_def_map_.end() || !def_it->second) return false;
                 const Node* sdef = def_it->second;
                 if (try_node_member_typedefs(sdef))
                     return true;
                 for (int bi = 0; bi < sdef->n_bases; ++bi) {
-                    const TypeSpec& base_ts = sdef->base_types[bi];
+                    TypeSpec base_ts = resolve_struct_like(sdef->base_types[bi]);
                     if (!base_ts.tag || !base_ts.tag[0]) continue;
                     if (lookup_struct_member_typedef_recursive(base_ts.tag, member, out))
                         return true;

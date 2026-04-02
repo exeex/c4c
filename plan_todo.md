@@ -7,9 +7,9 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 2: Foundation headers and traits
-- Current slice: compare the newly exposed `eastl::is_signed_helper`
-  incomplete-type failure against Clang and reduce it to the smallest generic
-  semantic testcase before the next implementation change
+- Current slice: reduce the remaining `eastl::is_signed_helper` blocker to the
+  interaction between defaulted NTTPs and alias-template base expressions after
+  the inherited aliased-base `::type` lookup fix
 
 ## Todo
 
@@ -47,20 +47,29 @@ Source Plan: plan.md
   stop on `eastl::is_signed_helper`, `eastl_utility_simple.cpp` now passes
   parse-only, and `eastl_vector_simple.cpp` advances to a new parser error in
   `EASTL/internal/function_detail.h`
+- [x] Reduced one generic `is_signed_helper` sub-case to
+  `tests/cpp/internal/postive_case/inherited_type_alias_base_member_lookup_parse.cpp`
+  and taught recursive member-typedef lookup to follow aliased bases such as
+  `false_type` instead of only direct struct tags
 
 ## Next Slice
 
-- compare the `is_signed_helper : bool_constant<T(-1) < T(0)>` pattern against
-  Clang on a reduced internal testcase
-- decide whether the new blocker belongs to parse-only semantic validation for
-  dependent value expressions in record bases or a more general incomplete-type
-  bug before implementing the next Step 2 fix
+- reduce the still-failing `bool_constant<T(-1) < T(0)>` case when the owning
+  template also carries a defaulted NTTP such as
+  `bool = is_arithmetic<T>::value`
+- decide whether that remaining blocker belongs in alias-template application,
+  deferred template-argument materialization, or top-level template-struct
+  bookkeeping before the next implementation change
 
 ## Blockers
 
 - `eastl_integer_sequence_simple.cpp` and
   `eastl_type_traits_simple.cpp` now stop with
   `object has incomplete type: eastl::is_signed_helper`
+- the surviving reduced failure is narrower than the original EASTL stack:
+  `template<typename T, bool = arithmetic<T>::value> struct helper : bool_constant<T(-1) < T(0)> {};`
+  still trips the same incomplete-type error even after the aliased-base
+  `::type` fix
 - `eastl_vector_simple.cpp` now stops at
   `ref/EASTL/include/EASTL/internal/function_detail.h:237:16` with
   `unexpected token in expression: .`
@@ -79,6 +88,11 @@ Source Plan: plan.md
 - `tests/cpp/internal/parse_only_case/record_base_variable_template_value_arg_parse.cpp`
   is the reduced internal regression for the nested variable-template parser
   blocker in record bases
+- `tests/cpp/internal/postive_case/inherited_type_alias_base_member_lookup_parse.cpp`
+  now covers the inherited aliased-base member-typedef path that was fixed
+- the remaining `is_signed_helper` blocker no longer depends on inherited
+  `false_type` lookup alone; it requires the combination of a defaulted NTTP
+  and an alias-template base carrying a dependent expression argument
 - `eastl_piecewise_construct_simple.cpp` and
   `eastl_tuple_fwd_decls_simple.cpp` parse successfully but first fail during
   canonical/sema expansion with undeclared identifiers from EASTL internals
