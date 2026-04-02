@@ -69,6 +69,18 @@ void render_signature(std::ostringstream& out,
   out << ")\n";
 }
 
+std::string render_call_args(const BackendCallInst& call) {
+  std::string formatted;
+  for (std::size_t index = 0; index < call.args.size(); ++index) {
+    if (index != 0) {
+      formatted += ", ";
+    }
+    formatted += c4c::codegen::lir::format_lir_typed_call_arg(
+        render_backend_call_param_type(call, index), call.args[index].operand);
+  }
+  return formatted;
+}
+
 void render_inst(std::ostringstream& out, const BackendInst& inst) {
   if (const auto* phi = std::get_if<BackendPhiInst>(&inst)) {
     out << "  " << phi->result << " = phi " << render_backend_phi_value_type(*phi);
@@ -170,7 +182,7 @@ void render_inst(std::ostringstream& out, const BackendInst& inst) {
   out << c4c::codegen::lir::format_lir_call_site(
              render_backend_call_callee(call->callee),
              callee_type_suffix,
-             c4c::codegen::lir::format_lir_typed_call_args(call->args))
+             render_call_args(*call))
       << "\n";
 }
 

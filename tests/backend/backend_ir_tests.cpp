@@ -106,6 +106,13 @@ void clear_backend_signature_and_call_type_compatibility_shims(
             call->param_types[index].clear();
           }
         }
+        for (std::size_t index = 0; index < call->param_type_kinds.size() &&
+                                    index < call->args.size();
+             ++index) {
+          if (call->param_type_kinds[index] != c4c::backend::BackendValueTypeKind::Unknown) {
+            call->args[index].type.clear();
+          }
+        }
       }
     }
   }
@@ -930,6 +937,16 @@ void test_backend_ir_printer_renders_structured_signature_and_call_types_without
                   "backend IR printer should render structured call return and param types without raw call text");
 }
 
+void test_backend_ir_printer_renders_structured_call_arg_types_without_raw_text() {
+  auto lowered =
+      c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  expect_contains(rendered, "%t0 = call i32 (i32, i32) @add_pair(i32 5, i32 7)",
+                  "backend IR printer should render typed call operands from structured call metadata when raw arg type text is cleared");
+}
+
 void test_backend_ir_validator_accepts_structured_signature_and_call_types_without_raw_text() {
   auto lowered =
       c4c::backend::lower_to_backend_ir(make_x86_extern_decl_object_module());
@@ -1163,6 +1180,7 @@ int main(int argc, char* argv[]) {
   test_backend_ir_printer_renders_structured_global_linkage_without_raw_text();
   test_backend_ir_printer_renders_structured_function_linkage_without_raw_text();
   test_backend_ir_printer_renders_structured_signature_and_call_types_without_raw_text();
+  test_backend_ir_printer_renders_structured_call_arg_types_without_raw_text();
   test_backend_ir_tracks_structured_two_arg_direct_call_signature_and_call_contract();
   test_backend_ir_validator_accepts_structured_direct_call_add_imm_slice_without_raw_text();
   test_backend_ir_printer_renders_lowered_extern_decl_slice();
