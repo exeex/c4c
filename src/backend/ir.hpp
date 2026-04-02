@@ -82,6 +82,26 @@ struct BackendGlobal {
 using BackendGlobalStorageKind = BackendGlobal::StorageKind;
 using BackendGlobalInitializer = BackendGlobal::Initializer;
 
+inline bool backend_global_is_extern_declaration(const BackendGlobal& global) {
+  return global.initializer.kind == BackendGlobalInitializer::Kind::Declaration &&
+         (global.linkage == "external " || global.linkage == "extern_weak ");
+}
+
+inline bool backend_global_has_integer_initializer(const BackendGlobal& global,
+                                                   std::int64_t* value = nullptr) {
+  if (global.initializer.kind != BackendGlobalInitializer::Kind::IntegerLiteral) {
+    return false;
+  }
+  if (value != nullptr) {
+    *value = global.initializer.integer_value;
+  }
+  return true;
+}
+
+inline bool backend_global_has_zero_initializer(const BackendGlobal& global) {
+  return global.initializer.kind == BackendGlobalInitializer::Kind::Zero;
+}
+
 inline std::string_view render_backend_global_storage(BackendGlobalStorageKind storage) {
   switch (storage) {
     case BackendGlobalStorageKind::Mutable:

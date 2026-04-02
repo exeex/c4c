@@ -6,10 +6,10 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 5: keep the regression guard current for each landed refactor slice
-      while selecting the next highest-value backend-owned semantic surface to
-      structure beyond direct-call callee metadata and global storage/init
-      metadata
+- Step 3: select the next backend-owned semantic surface after the structured
+      global-metadata consumer cleanup, likely centered on load/store widening
+      or pointer-difference metadata that still carries type semantics as raw
+      strings
 
 ## Incomplete Items
 
@@ -76,14 +76,19 @@ Source Plan: plan.md
       direct-call matchers onto the narrower direct-global helpers in
       `src/backend/lowering/call_decode.cpp`, with a direct helper regression
       test for the lowered vararg-prefix shape in `backend_lir_adapter_tests`
+- [x] Step 3 slice: switch the x86 and aarch64 lowered-backend global fast
+      paths from legacy `BackendGlobal::qualifier` / `init_text` /
+      `is_extern_decl` shims onto structured storage + initializer metadata,
+      and cover the compatibility-shim-free scalar-global and extern-array
+      slices directly in the backend seam tests
 
 ## Next Intended Slice
 
 - Return to Step 3 and convert the next backend IR semantic surface that still
-  relies on text-shaped payloads, likely starting with load/store or pointer-
-  difference metadata that currently still leans on string-carried type text,
-  while keeping the emitter-side direct-call boundary and new global metadata
-  stable.
+  relies on text-shaped payloads, likely starting with load/store widening or
+  pointer-difference metadata that still leans on string-carried type text,
+  while keeping the structured global consumer boundary and direct-call
+  boundary stable.
 
 ## Blockers
 
@@ -109,6 +114,12 @@ Source Plan: plan.md
 - Focused `backend_lir_adapter_tests` passes with the new structured
   direct-global helper coverage for the lowered vararg-prefix backend-call
   shape.
+- Focused `backend_lir_adapter_x86_64_tests` passes after clearing the legacy
+  backend-global compatibility shims in the new structured scalar-global and
+  extern-array seam coverage.
+- Focused `backend_lir_adapter_aarch64_tests` still fails in the same
+  pre-existing suite called out above; the full-suite rerun stayed monotonic
+  with no new failures after the structured global-consumer cleanup.
 
 ## Resume Notes
 
@@ -142,6 +153,11 @@ Source Plan: plan.md
   `storage` plus `initializer.kind`, while `qualifier` / `init_text` /
   `is_extern_decl` remain compatibility shims for backend consumers that have
   not migrated yet.
+- The x86 and aarch64 lowered-backend global slice recognizers touched in this
+  iteration now read `BackendGlobal::storage` plus
+  `BackendGlobal::initializer` directly through shared helper predicates; the
+  new seam tests blank the legacy shim fields to prove those paths no longer
+  depend on compatibility text.
 - The x86 and aarch64 minimal direct-call fast paths touched in this slice now
   read structured `BackendCallInst::callee` metadata directly through the
   narrower direct-global helper surface; they no longer depend on generic

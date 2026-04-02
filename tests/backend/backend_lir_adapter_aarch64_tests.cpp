@@ -41,6 +41,14 @@
 #include <unistd.h>
 #include <vector>
 
+void clear_backend_global_compatibility_shims(c4c::backend::BackendModule& module) {
+  for (auto& global : module.globals) {
+    global.qualifier.clear();
+    global.init_text.clear();
+    global.is_extern_decl = false;
+  }
+}
+
 c4c::codegen::lir::LirModule make_param_slot_module() {
   using namespace c4c::codegen::lir;
 
@@ -1806,6 +1814,24 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_global_load_ir_input
                       "aarch64 backend seam should not fall back to backend IR text for lowered scalar global loads");
 }
 
+void test_aarch64_backend_scaffold_accepts_structured_global_load_ir_without_compatibility_shims() {
+  auto lowered =
+      c4c::backend::lower_to_backend_ir(make_global_int_pointer_roundtrip_module());
+  clear_backend_global_compatibility_shims(lowered);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  expect_contains(rendered, ".globl g_value\n",
+                  "aarch64 backend seam should keep structured mutable globals even after compatibility shims are cleared");
+  expect_contains(rendered, "adrp x8, g_value\n",
+                  "aarch64 backend seam should still materialize structured global bases without legacy qualifier text");
+  expect_contains(rendered, "ldr w0, [x8, :lo12:g_value]\n",
+                  "aarch64 backend seam should still lower structured integer initializers without legacy init text");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should not fall back when structured global metadata is present without compatibility shims");
+}
+
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_global_store_reload_ir_input() {
   const auto lowered =
       c4c::backend::lower_to_backend_ir(make_global_store_reload_module());
@@ -1872,6 +1898,22 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_extern_global_array_
                   "aarch64 backend seam should preserve lowered extern global array byte offsets");
   expect_not_contains(rendered, "target triple =",
                       "aarch64 backend seam should not fall back to backend IR text for lowered extern global arrays");
+}
+
+void test_aarch64_backend_scaffold_accepts_structured_extern_global_array_ir_without_compatibility_shims() {
+  auto lowered =
+      c4c::backend::lower_to_backend_ir(make_extern_global_array_load_module());
+  clear_backend_global_compatibility_shims(lowered);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  expect_contains(rendered, ".extern ext_arr\n",
+                  "aarch64 backend seam should still recognize structured extern global arrays without legacy extern shims");
+  expect_contains(rendered, "ldr w0, [x8, #4]\n",
+                  "aarch64 backend seam should preserve structured extern global array offsets without qualifier text");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should not fall back when extern globals are described only by structured metadata");
 }
 
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_global_int_pointer_roundtrip_ir_input() {
@@ -2973,10 +3015,12 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_renders_extern_decl_slice();
   test_aarch64_backend_renders_extern_global_load_slice();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_global_load_ir_input();
+  test_aarch64_backend_scaffold_accepts_structured_global_load_ir_without_compatibility_shims();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_global_store_reload_ir_input();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_string_literal_ir_input();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_extern_global_load_ir_input();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_extern_global_array_ir_input();
+  test_aarch64_backend_scaffold_accepts_structured_extern_global_array_ir_without_compatibility_shims();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_global_int_pointer_roundtrip_ir_input();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_global_char_pointer_diff_ir_input();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_global_int_pointer_diff_ir_input();

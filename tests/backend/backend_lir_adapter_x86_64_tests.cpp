@@ -50,6 +50,14 @@ c4c::codegen::lir::LirModule make_x86_local_pointer_temp_return_module() {
   return module;
 }
 
+void clear_backend_global_compatibility_shims(c4c::backend::BackendModule& module) {
+  for (auto& global : module.globals) {
+    global.qualifier.clear();
+    global.init_text.clear();
+    global.is_extern_decl = false;
+  }
+}
+
 
 
 
@@ -505,6 +513,23 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_global_load_ir_input() {
                       "x86 backend seam should not fall back to backend IR text for lowered global loads");
 }
 
+void test_x86_backend_scaffold_accepts_structured_global_load_ir_without_compatibility_shims() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_x86_global_int_pointer_roundtrip_module());
+  clear_backend_global_compatibility_shims(lowered);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, ".globl g_value\n",
+                  "x86 backend seam should keep structured mutable globals even after compatibility shims are cleared");
+  expect_contains(rendered, "lea rax, g_value[rip]\n",
+                  "x86 backend seam should still materialize structured global bases without legacy qualifier text");
+  expect_contains(rendered, "mov eax, dword ptr [rax]\n",
+                  "x86 backend seam should still lower structured integer initializers without legacy init text");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back when structured global metadata is present without compatibility shims");
+}
+
 void test_x86_backend_scaffold_accepts_explicit_lowered_global_store_reload_ir_input() {
   const auto lowered =
       c4c::backend::lower_to_backend_ir(make_x86_global_store_reload_module());
@@ -554,6 +579,22 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_extern_global_array_ir_i
                   "x86 backend seam should preserve lowered extern global array byte offsets");
   expect_not_contains(rendered, "target triple =",
                       "x86 backend seam should not fall back to backend IR text for lowered extern global arrays");
+}
+
+void test_x86_backend_scaffold_accepts_structured_extern_global_array_ir_without_compatibility_shims() {
+  auto lowered =
+      c4c::backend::lower_to_backend_ir(make_x86_extern_global_array_load_module());
+  clear_backend_global_compatibility_shims(lowered);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, "lea rax, ext_arr[rip]\n",
+                  "x86 backend seam should still recognize structured extern global arrays without legacy extern shims");
+  expect_contains(rendered, "mov eax, dword ptr [rax + 4]\n",
+                  "x86 backend seam should preserve structured extern global array offsets without qualifier text");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back when extern globals are described only by structured metadata");
 }
 
 void test_x86_backend_scaffold_accepts_explicit_lowered_global_int_pointer_roundtrip_ir_input() {
@@ -2469,10 +2510,12 @@ RUN_TEST(test_x86_backend_scaffold_routes_through_explicit_emit_surface);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_ir_input);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_extern_decl_ir_input);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_global_load_ir_input);
+  RUN_TEST(test_x86_backend_scaffold_accepts_structured_global_load_ir_without_compatibility_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_global_store_reload_ir_input);
  
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_string_literal_ir_input);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_extern_global_array_ir_input);
+  RUN_TEST(test_x86_backend_scaffold_accepts_structured_extern_global_array_ir_without_compatibility_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_global_int_pointer_roundtrip_ir_input);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_global_char_pointer_diff_ir_input);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_global_int_pointer_diff_ir_input);

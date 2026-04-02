@@ -2910,12 +2910,13 @@ std::optional<MinimalScalarGlobalLoadSlice> parse_minimal_scalar_global_load_sli
   }
 
   const auto* global = find_global(module, module.globals.front().name);
-  if (global == nullptr || global->is_extern_decl || global->qualifier != "global " ||
+  if (global == nullptr || c4c::backend::backend_global_is_extern_declaration(*global) ||
+      global->storage != c4c::backend::BackendGlobalStorageKind::Mutable ||
       global->llvm_type != "i32") {
     return std::nullopt;
   }
-  const auto init_imm = parse_i64(global->init_text);
-  if (!init_imm.has_value()) {
+  std::int64_t init_imm = 0;
+  if (!c4c::backend::backend_global_has_integer_initializer(*global, &init_imm)) {
     return std::nullopt;
   }
 
@@ -2943,7 +2944,7 @@ std::optional<MinimalScalarGlobalLoadSlice> parse_minimal_scalar_global_load_sli
 
   return MinimalScalarGlobalLoadSlice{
       global->name,
-      *init_imm,
+      init_imm,
       global->align_bytes > 0 ? global->align_bytes : 4,
   };
 }
@@ -2955,12 +2956,13 @@ std::optional<MinimalScalarGlobalStoreReloadSlice> parse_minimal_scalar_global_s
   }
 
   const auto* global = find_global(module, module.globals.front().name);
-  if (global == nullptr || global->is_extern_decl || global->qualifier != "global " ||
+  if (global == nullptr || c4c::backend::backend_global_is_extern_declaration(*global) ||
+      global->storage != c4c::backend::BackendGlobalStorageKind::Mutable ||
       global->llvm_type != "i32") {
     return std::nullopt;
   }
-  const auto init_imm = parse_i64(global->init_text);
-  if (!init_imm.has_value()) {
+  std::int64_t init_imm = 0;
+  if (!c4c::backend::backend_global_has_integer_initializer(*global, &init_imm)) {
     return std::nullopt;
   }
 
@@ -2995,7 +2997,7 @@ std::optional<MinimalScalarGlobalStoreReloadSlice> parse_minimal_scalar_global_s
 
   return MinimalScalarGlobalStoreReloadSlice{
       global->name,
-      *init_imm,
+      init_imm,
       *store_imm,
       global->align_bytes > 0 ? global->align_bytes : 4,
   };
@@ -3008,7 +3010,8 @@ std::optional<MinimalExternScalarGlobalLoadSlice> parse_minimal_extern_scalar_gl
   }
 
   const auto* global = find_global(module, module.globals.front().name);
-  if (global == nullptr || !global->is_extern_decl || global->qualifier != "global " ||
+  if (global == nullptr || !c4c::backend::backend_global_is_extern_declaration(*global) ||
+      global->storage != c4c::backend::BackendGlobalStorageKind::Mutable ||
       global->linkage != "external " || global->llvm_type != "i32") {
     return std::nullopt;
   }
@@ -3045,7 +3048,8 @@ std::optional<MinimalExternGlobalArrayLoadSlice> parse_minimal_extern_global_arr
   }
 
   const auto* global = find_global(module, module.globals.front().name);
-  if (global == nullptr || !global->is_extern_decl || global->qualifier != "global " ||
+  if (global == nullptr || !c4c::backend::backend_global_is_extern_declaration(*global) ||
+      global->storage != c4c::backend::BackendGlobalStorageKind::Mutable ||
       global->linkage != "external " || global->llvm_type.size() < 7 ||
       global->llvm_type.substr(global->llvm_type.size() - 7) != " x i32]") {
     return std::nullopt;
@@ -3083,7 +3087,8 @@ std::optional<MinimalGlobalCharPointerDiffSlice> parse_minimal_global_char_point
   }
 
   const auto* global = find_global(module, module.globals.front().name);
-  if (global == nullptr || global->is_extern_decl || global->qualifier != "global ") {
+  if (global == nullptr || c4c::backend::backend_global_is_extern_declaration(*global) ||
+      global->storage != c4c::backend::BackendGlobalStorageKind::Mutable) {
     return std::nullopt;
   }
   const std::string array_prefix = "[";
@@ -3143,7 +3148,8 @@ std::optional<MinimalGlobalIntPointerDiffSlice> parse_minimal_global_int_pointer
   }
 
   const auto* global = find_global(module, module.globals.front().name);
-  if (global == nullptr || global->is_extern_decl || global->qualifier != "global ") {
+  if (global == nullptr || c4c::backend::backend_global_is_extern_declaration(*global) ||
+      global->storage != c4c::backend::BackendGlobalStorageKind::Mutable) {
     return std::nullopt;
   }
   const std::string array_prefix = "[";
