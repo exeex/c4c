@@ -1871,7 +1871,10 @@ std::optional<MinimalStringLiteralCharSlice> parse_minimal_string_literal_char_s
           c4c::backend::BackendScalarType::I8 ||
       load->address.kind != c4c::backend::BackendAddressBaseKind::StringConstant ||
       load->address.base_symbol != string_const->name ||
-      load->address.byte_offset < 0 || load->address.byte_offset > 4095) {
+      load->address.byte_offset < 0 ||
+      load->address.byte_offset >=
+          static_cast<std::int64_t>(string_const->byte_length) ||
+      load->address.byte_offset > 4095) {
     return std::nullopt;
   }
   if (load->extension != c4c::backend::BackendLoadExtension::SignExtend &&
