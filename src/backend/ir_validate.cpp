@@ -19,14 +19,14 @@ bool validate_function_signature(const BackendFunctionSignature& signature,
   if (backend_function_linkage(signature) == BackendFunctionLinkage::Unknown) {
     return fail(error, std::string(context) + ": signature linkage must not be empty");
   }
-  if (signature.return_type.empty()) {
+  if (backend_signature_return_type_kind(signature) == BackendValueTypeKind::Unknown) {
     return fail(error, std::string(context) + ": signature return type must not be empty");
   }
   if (signature.name.empty()) {
     return fail(error, std::string(context) + ": signature name must not be empty");
   }
   for (std::size_t index = 0; index < signature.params.size(); ++index) {
-    if (signature.params[index].type_str.empty()) {
+    if (backend_param_type_kind(signature.params[index]) == BackendValueTypeKind::Unknown) {
       return fail(error,
                   std::string(context) + ": parameter " + std::to_string(index) +
                       " type must not be empty");
@@ -123,7 +123,7 @@ bool validate_inst(const BackendInst& inst, std::string* error, std::string_view
   }
 
   if (const auto* call = std::get_if<BackendCallInst>(&inst)) {
-    if (call->return_type.empty()) {
+    if (backend_call_return_type_kind(*call) == BackendValueTypeKind::Unknown) {
       return fail(error, std::string(context) + ": call return type must not be empty");
     }
     switch (call->callee.kind) {
@@ -142,6 +142,13 @@ bool validate_inst(const BackendInst& inst, std::string* error, std::string_view
     if (call->param_types.size() != call->args.size()) {
       return fail(error,
                   std::string(context) + ": call param type count must match arg count");
+    }
+    for (std::size_t index = 0; index < call->args.size(); ++index) {
+      if (backend_call_param_type_kind(*call, index) == BackendValueTypeKind::Unknown) {
+        return fail(error,
+                    std::string(context) + ": call param type " +
+                        std::to_string(index) + " must not be empty");
+      }
     }
     return true;
   }

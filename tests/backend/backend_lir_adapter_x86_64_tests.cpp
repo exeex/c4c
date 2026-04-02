@@ -112,6 +112,38 @@ void clear_backend_memory_type_compatibility_shims(c4c::backend::BackendModule& 
   }
 }
 
+void clear_backend_signature_and_call_type_compatibility_shims(
+    c4c::backend::BackendModule& module) {
+  for (auto& function : module.functions) {
+    if (function.signature.return_type_kind != c4c::backend::BackendValueTypeKind::Unknown) {
+      function.signature.return_type.clear();
+    }
+    for (auto& param : function.signature.params) {
+      if (param.type_kind != c4c::backend::BackendValueTypeKind::Unknown) {
+        param.type_str.clear();
+      }
+    }
+    for (auto& block : function.blocks) {
+      for (auto& inst : block.insts) {
+        auto* call = std::get_if<c4c::backend::BackendCallInst>(&inst);
+        if (call == nullptr) {
+          continue;
+        }
+        if (call->return_type_kind != c4c::backend::BackendValueTypeKind::Unknown) {
+          call->return_type.clear();
+        }
+        for (std::size_t index = 0; index < call->param_type_kinds.size() &&
+                                    index < call->param_types.size();
+             ++index) {
+          if (call->param_type_kinds[index] != c4c::backend::BackendValueTypeKind::Unknown) {
+            call->param_types[index].clear();
+          }
+        }
+      }
+    }
+  }
+}
+
 
 
 
@@ -584,6 +616,24 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_extern_decl_ir_input() {
                   "x86 backend seam should return directly after the lowered extern helper call");
   expect_not_contains(rendered, "define i32 @main()",
                       "x86 backend seam should not fall back to backend IR text for lowered extern helper calls");
+}
+
+void test_x86_backend_scaffold_accepts_structured_signature_and_call_types_without_compatibility_shims() {
+  auto lowered =
+      c4c::backend::lower_to_backend_ir(make_x86_extern_decl_object_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, ".intel_syntax noprefix\n",
+                  "x86 backend seam should still accept lowered extern-call IR when signature and call type shims are cleared");
+  expect_contains(rendered, "call helper_ext\n",
+                  "x86 backend seam should still preserve lowered extern helper calls from structured signature and call metadata");
+  expect_contains(rendered, "ret\n",
+                  "x86 backend seam should still return directly after the structured extern helper call");
+  expect_not_contains(rendered, "define i32 @main()",
+                      "x86 backend seam should not fall back when structured signature and call type metadata is present without compatibility text");
 }
 
 void test_x86_backend_scaffold_accepts_explicit_lowered_global_load_ir_input() {
@@ -2713,9 +2763,10 @@ void test_x86_backend_assembler_handoff_helper_stages_emitted_text() {
 
 int main(int argc, char* argv[]) {
   if (argc >= 2) test_filter() = argv[1];
-RUN_TEST(test_x86_backend_scaffold_routes_through_explicit_emit_surface);
+  RUN_TEST(test_x86_backend_scaffold_routes_through_explicit_emit_surface);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_ir_input);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_extern_decl_ir_input);
+  RUN_TEST(test_x86_backend_scaffold_accepts_structured_signature_and_call_types_without_compatibility_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_global_load_ir_input);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_global_load_ir_without_compatibility_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_global_store_reload_ir_input);

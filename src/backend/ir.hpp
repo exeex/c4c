@@ -14,6 +14,16 @@
 namespace c4c::backend {
 
 enum class BackendScalarType : unsigned char;
+enum class BackendValueTypeKind : unsigned char {
+  Unknown,
+  Void,
+  Ptr,
+  Scalar,
+};
+
+std::optional<BackendScalarType> parse_backend_scalar_type(std::string_view type);
+BackendValueTypeKind parse_backend_value_type_kind(std::string_view type);
+BackendScalarType parse_backend_value_scalar_type(std::string_view type);
 
 enum class BackendFunctionLinkage : unsigned char {
   Unknown,
@@ -48,12 +58,24 @@ inline std::string_view render_backend_function_linkage(BackendFunctionLinkage l
 struct BackendParam {
   std::string type_str;
   std::string name;
+  BackendValueTypeKind type_kind = BackendValueTypeKind::Unknown;
+  BackendScalarType scalar_type{};
+
+  BackendParam() = default;
+
+  BackendParam(std::string type, std::string param_name)
+      : type_str(std::move(type)),
+        name(std::move(param_name)),
+        type_kind(parse_backend_value_type_kind(type_str)),
+        scalar_type(parse_backend_value_scalar_type(type_str)) {}
 };
 
 struct BackendFunctionSignature {
   std::string linkage;
   BackendFunctionLinkage linkage_kind = BackendFunctionLinkage::Unknown;
   std::string return_type;
+  BackendValueTypeKind return_type_kind = BackendValueTypeKind::Unknown;
+  BackendScalarType return_scalar_type{};
   std::string name;
   std::vector<BackendParam> params;
   bool is_vararg = false;
@@ -366,10 +388,38 @@ inline std::string render_backend_call_callee(const BackendCallCallee& callee) {
 struct BackendCallInst {
   std::string result;
   std::string return_type;
+  BackendValueTypeKind return_type_kind = BackendValueTypeKind::Unknown;
+  BackendScalarType return_scalar_type{};
   BackendCallCallee callee;
   std::vector<std::string> param_types;
+  std::vector<BackendValueTypeKind> param_type_kinds;
+  std::vector<BackendScalarType> param_scalar_types;
   std::vector<BackendCallArg> args;
   bool render_callee_type_suffix = false;
+
+  BackendCallInst() = default;
+
+  BackendCallInst(std::string call_result,
+                  std::string call_return_type,
+                  BackendCallCallee call_callee,
+                  std::vector<std::string> call_param_types,
+                  std::vector<BackendCallArg> call_args,
+                  bool render_suffix = false)
+      : result(std::move(call_result)),
+        return_type(std::move(call_return_type)),
+        return_type_kind(parse_backend_value_type_kind(return_type)),
+        return_scalar_type(parse_backend_value_scalar_type(return_type)),
+        callee(std::move(call_callee)),
+        param_types(std::move(call_param_types)),
+        args(std::move(call_args)),
+        render_callee_type_suffix(render_suffix) {
+    param_type_kinds.reserve(param_types.size());
+    param_scalar_types.reserve(param_types.size());
+    for (const auto& type : param_types) {
+      param_type_kinds.push_back(parse_backend_value_type_kind(type));
+      param_scalar_types.push_back(parse_backend_value_scalar_type(type));
+    }
+  }
 };
 
 struct BackendAddress {
@@ -426,6 +476,148 @@ inline std::string render_backend_scalar_type_or_fallback(BackendScalarType type
     return std::string(rendered);
   }
   return std::string(fallback);
+}
+
+inline BackendValueTypeKind parse_backend_value_type_kind(std::string_view type) {
+  if (type == "void") {
+    return BackendValueTypeKind::Void;
+  }
+  if (type == "ptr") {
+    return BackendValueTypeKind::Ptr;
+  }
+  if (parse_backend_scalar_type(type).has_value()) {
+    return BackendValueTypeKind::Scalar;
+  }
+  return BackendValueTypeKind::Unknown;
+}
+
+inline BackendScalarType parse_backend_value_scalar_type(std::string_view type) {
+  return parse_backend_scalar_type(type).value_or(BackendScalarType::Unknown);
+}
+
+inline std::string render_backend_value_type_or_fallback(BackendValueTypeKind kind,
+                                                         BackendScalarType scalar_type,
+                                                         std::string_view fallback) {
+  switch (kind) {
+    case BackendValueTypeKind::Void:
+      return "void";
+    case BackendValueTypeKind::Ptr:
+      return "ptr";
+    case BackendValueTypeKind::Scalar:
+      return render_backend_scalar_type_or_fallback(scalar_type, fallback);
+    case BackendValueTypeKind::Unknown:
+      break;
+  }
+
+  return std::string(fallback);
+}
+
+inline BackendValueTypeKind backend_param_type_kind(const BackendParam& param) {
+  if (param.type_kind != BackendValueTypeKind::Unknown) {
+    return param.type_kind;
+  }
+  return parse_backend_value_type_kind(param.type_str);
+}
+
+inline BackendScalarType backend_param_scalar_type(const BackendParam& param) {
+  if (backend_param_type_kind(param) != BackendValueTypeKind::Scalar) {
+    return BackendScalarType::Unknown;
+  }
+  if (param.scalar_type != BackendScalarType::Unknown) {
+    return param.scalar_type;
+  }
+  return parse_backend_value_scalar_type(param.type_str);
+}
+
+inline std::string render_backend_param_type(const BackendParam& param) {
+  return render_backend_value_type_or_fallback(backend_param_type_kind(param),
+                                               backend_param_scalar_type(param),
+                                               param.type_str);
+}
+
+inline BackendValueTypeKind backend_signature_return_type_kind(
+    const BackendFunctionSignature& signature) {
+  if (signature.return_type_kind != BackendValueTypeKind::Unknown) {
+    return signature.return_type_kind;
+  }
+  return parse_backend_value_type_kind(signature.return_type);
+}
+
+inline BackendScalarType backend_signature_return_scalar_type(
+    const BackendFunctionSignature& signature) {
+  if (backend_signature_return_type_kind(signature) != BackendValueTypeKind::Scalar) {
+    return BackendScalarType::Unknown;
+  }
+  if (signature.return_scalar_type != BackendScalarType::Unknown) {
+    return signature.return_scalar_type;
+  }
+  return parse_backend_value_scalar_type(signature.return_type);
+}
+
+inline std::string render_backend_signature_return_type(
+    const BackendFunctionSignature& signature) {
+  return render_backend_value_type_or_fallback(backend_signature_return_type_kind(signature),
+                                               backend_signature_return_scalar_type(signature),
+                                               signature.return_type);
+}
+
+inline BackendValueTypeKind backend_call_return_type_kind(const BackendCallInst& call) {
+  if (call.return_type_kind != BackendValueTypeKind::Unknown) {
+    return call.return_type_kind;
+  }
+  return parse_backend_value_type_kind(call.return_type);
+}
+
+inline BackendScalarType backend_call_return_scalar_type(const BackendCallInst& call) {
+  if (backend_call_return_type_kind(call) != BackendValueTypeKind::Scalar) {
+    return BackendScalarType::Unknown;
+  }
+  if (call.return_scalar_type != BackendScalarType::Unknown) {
+    return call.return_scalar_type;
+  }
+  return parse_backend_value_scalar_type(call.return_type);
+}
+
+inline std::string render_backend_call_return_type(const BackendCallInst& call) {
+  return render_backend_value_type_or_fallback(backend_call_return_type_kind(call),
+                                               backend_call_return_scalar_type(call),
+                                               call.return_type);
+}
+
+inline BackendValueTypeKind backend_call_param_type_kind(const BackendCallInst& call,
+                                                         std::size_t index) {
+  if (index < call.param_type_kinds.size() &&
+      call.param_type_kinds[index] != BackendValueTypeKind::Unknown) {
+    return call.param_type_kinds[index];
+  }
+  if (index >= call.param_types.size()) {
+    return BackendValueTypeKind::Unknown;
+  }
+  return parse_backend_value_type_kind(call.param_types[index]);
+}
+
+inline BackendScalarType backend_call_param_scalar_type(const BackendCallInst& call,
+                                                        std::size_t index) {
+  if (backend_call_param_type_kind(call, index) != BackendValueTypeKind::Scalar) {
+    return BackendScalarType::Unknown;
+  }
+  if (index < call.param_scalar_types.size() &&
+      call.param_scalar_types[index] != BackendScalarType::Unknown) {
+    return call.param_scalar_types[index];
+  }
+  if (index >= call.param_types.size()) {
+    return BackendScalarType::Unknown;
+  }
+  return parse_backend_value_scalar_type(call.param_types[index]);
+}
+
+inline std::string render_backend_call_param_type(const BackendCallInst& call,
+                                                  std::size_t index) {
+  const auto fallback =
+      index < call.param_types.size() ? std::string_view(call.param_types[index]) : std::string_view{};
+  return render_backend_value_type_or_fallback(backend_call_param_type_kind(call, index),
+                                               backend_call_param_scalar_type(call, index),
+                                               fallback);
 }
 
 inline BackendScalarType backend_binary_value_type(const BackendBinaryInst& binary) {

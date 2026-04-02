@@ -79,6 +79,38 @@ void clear_backend_memory_type_compatibility_shims(c4c::backend::BackendModule& 
   }
 }
 
+void clear_backend_signature_and_call_type_compatibility_shims(
+    c4c::backend::BackendModule& module) {
+  for (auto& function : module.functions) {
+    if (function.signature.return_type_kind != c4c::backend::BackendValueTypeKind::Unknown) {
+      function.signature.return_type.clear();
+    }
+    for (auto& param : function.signature.params) {
+      if (param.type_kind != c4c::backend::BackendValueTypeKind::Unknown) {
+        param.type_str.clear();
+      }
+    }
+    for (auto& block : function.blocks) {
+      for (auto& inst : block.insts) {
+        auto* call = std::get_if<c4c::backend::BackendCallInst>(&inst);
+        if (call == nullptr) {
+          continue;
+        }
+        if (call->return_type_kind != c4c::backend::BackendValueTypeKind::Unknown) {
+          call->return_type.clear();
+        }
+        for (std::size_t index = 0; index < call->param_type_kinds.size() &&
+                                    index < call->param_types.size();
+             ++index) {
+          if (call->param_type_kinds[index] != c4c::backend::BackendValueTypeKind::Unknown) {
+            call->param_types[index].clear();
+          }
+        }
+      }
+    }
+  }
+}
+
 void clear_backend_global_linkage_compatibility_shims(c4c::backend::BackendModule& module) {
   for (auto& global : module.globals) {
     if (global.linkage_kind != c4c::backend::BackendGlobalLinkage::Default) {
@@ -884,6 +916,32 @@ void test_backend_ir_printer_renders_structured_function_linkage_without_raw_tex
                   "backend IR printer should render structured function linkage without raw signature text");
 }
 
+void test_backend_ir_printer_renders_structured_signature_and_call_types_without_raw_text() {
+  auto lowered =
+      c4c::backend::lower_to_backend_ir(make_x86_extern_decl_object_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  expect_contains(rendered, "declare i32 @helper_ext()\n",
+                  "backend IR printer should render structured declaration return types without raw signature text");
+  expect_contains(rendered, "define i32 @main()",
+                  "backend IR printer should render structured definition return types without raw signature text");
+  expect_contains(rendered, "%t0 = call i32 () @helper_ext()",
+                  "backend IR printer should render structured call return and param types without raw call text");
+}
+
+void test_backend_ir_validator_accepts_structured_signature_and_call_types_without_raw_text() {
+  auto lowered =
+      c4c::backend::lower_to_backend_ir(make_x86_extern_decl_object_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+  std::string error;
+
+  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should accept structured signature and call types when the legacy text shims are cleared");
+  expect_true(error.empty(),
+              "backend IR validator should not report an error for structured signature and call type metadata without compatibility text");
+}
+
 void test_backend_ir_printer_renders_structured_global_linkage_without_raw_text() {
   auto lowered =
       c4c::backend::lower_to_backend_ir(make_extern_global_array_load_module());
@@ -998,8 +1056,10 @@ int main(int argc, char* argv[]) {
   test_backend_ir_validator_rejects_structured_defined_global_without_initializer();
   test_backend_ir_printer_renders_structured_global_linkage_without_raw_text();
   test_backend_ir_printer_renders_structured_function_linkage_without_raw_text();
+  test_backend_ir_printer_renders_structured_signature_and_call_types_without_raw_text();
   test_backend_ir_printer_renders_lowered_extern_decl_slice();
   test_backend_ir_validator_accepts_lowered_extern_decl_slice();
+  test_backend_ir_validator_accepts_structured_signature_and_call_types_without_raw_text();
   test_backend_ir_printer_renders_lowered_global_load_slice();
   test_backend_ir_validator_accepts_lowered_global_load_slice();
   test_backend_ir_printer_renders_lowered_global_store_reload_slice();

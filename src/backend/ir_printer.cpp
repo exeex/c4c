@@ -47,7 +47,7 @@ void render_string_constant(std::ostringstream& out,
 void render_signature(std::ostringstream& out,
                       const BackendFunctionSignature& signature) {
   out << render_backend_function_linkage(signature) << " "
-      << signature.return_type << " @"
+      << render_backend_signature_return_type(signature) << " @"
       << signature.name << "(";
   bool first = true;
   for (const auto& param : signature.params) {
@@ -55,7 +55,7 @@ void render_signature(std::ostringstream& out,
       out << ", ";
     }
     first = false;
-    out << param.type_str;
+    out << render_backend_param_type(param);
     if (!param.name.empty()) {
       out << " " << param.name;
     }
@@ -155,10 +155,17 @@ void render_inst(std::ostringstream& out, const BackendInst& inst) {
   if (!call->result.empty()) {
     out << call->result << " = ";
   }
-  out << "call " << call->return_type << " ";
+  out << "call " << render_backend_call_return_type(*call) << " ";
   const auto callee_type_suffix =
       call->render_callee_type_suffix
-          ? c4c::codegen::lir::format_lir_call_param_types(call->param_types)
+          ? [&call]() {
+              std::vector<std::string> rendered_param_types;
+              rendered_param_types.reserve(call->param_types.size());
+              for (std::size_t index = 0; index < call->param_types.size(); ++index) {
+                rendered_param_types.push_back(render_backend_call_param_type(*call, index));
+              }
+              return c4c::codegen::lir::format_lir_call_param_types(rendered_param_types);
+            }()
           : std::string{};
   out << c4c::codegen::lir::format_lir_call_site(
              render_backend_call_callee(call->callee),

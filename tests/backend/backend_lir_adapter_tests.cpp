@@ -1162,6 +1162,10 @@ void test_adapter_tracks_structured_signature_contract() {
               "adapter should preserve structured function linkage separately from the compatibility text");
   expect_true(signature.return_type == "i32",
               "adapter should preserve the function return type separately from the name");
+  expect_true(signature.return_type_kind == c4c::backend::BackendValueTypeKind::Scalar,
+              "adapter should preserve the structured function return kind separately from compatibility text");
+  expect_true(signature.return_scalar_type == c4c::backend::BackendScalarType::I32,
+              "adapter should preserve the structured function return scalar separately from compatibility text");
   expect_true(signature.name == "main",
               "adapter should preserve the function name separately from the signature text");
   expect_true(signature.params.empty(),
@@ -1279,6 +1283,44 @@ void test_adapter_infers_extern_decl_params_from_typed_calls() {
   expect_true(decl.signature.params[0].type_str == "i32" &&
                   decl.signature.params[1].type_str == "i32",
               "adapter should preserve the inferred extern parameter types in order");
+  expect_true(decl.signature.params[0].type_kind ==
+                      c4c::backend::BackendValueTypeKind::Scalar &&
+                  decl.signature.params[1].type_kind ==
+                      c4c::backend::BackendValueTypeKind::Scalar,
+              "adapter should preserve structured extern parameter kinds alongside the compatibility text");
+  expect_true(decl.signature.params[0].scalar_type ==
+                      c4c::backend::BackendScalarType::I32 &&
+                  decl.signature.params[1].scalar_type ==
+                      c4c::backend::BackendScalarType::I32,
+              "adapter should preserve structured extern parameter scalar types alongside the compatibility text");
+}
+
+void test_adapter_tracks_structured_call_type_contract() {
+  const auto adapted =
+      c4c::backend::lower_to_backend_ir(make_x86_extern_decl_inferred_param_module());
+  const auto& main_block = adapted.functions.back().blocks.front();
+  const auto* call = std::get_if<c4c::backend::BackendCallInst>(&main_block.insts.front());
+  expect_true(call != nullptr,
+              "adapter should materialize the inferred extern caller instruction as a backend-owned call");
+  expect_true(call->return_type == "i32",
+              "adapter should preserve the call return type compatibility text");
+  expect_true(call->return_type_kind == c4c::backend::BackendValueTypeKind::Scalar,
+              "adapter should preserve the structured call return kind");
+  expect_true(call->return_scalar_type == c4c::backend::BackendScalarType::I32,
+              "adapter should preserve the structured call return scalar type");
+  expect_true(call->param_types.size() == 2 && call->param_types[0] == "i32" &&
+                  call->param_types[1] == "i32",
+              "adapter should preserve the call parameter type compatibility text in order");
+  expect_true(call->param_type_kinds.size() == 2 &&
+                  call->param_type_kinds[0] ==
+                      c4c::backend::BackendValueTypeKind::Scalar &&
+                  call->param_type_kinds[1] ==
+                      c4c::backend::BackendValueTypeKind::Scalar,
+              "adapter should preserve structured call parameter kinds in order");
+  expect_true(call->param_scalar_types.size() == 2 &&
+                  call->param_scalar_types[0] == c4c::backend::BackendScalarType::I32 &&
+                  call->param_scalar_types[1] == c4c::backend::BackendScalarType::I32,
+              "adapter should preserve structured call parameter scalar types in order");
 }
 
 void test_adapter_rejects_inconsistent_extern_decl_call_surfaces() {
@@ -1446,6 +1488,7 @@ int main(int argc, char* argv[]) {
   test_adapter_normalizes_typed_two_arg_direct_call_both_local_second_rewrite_slice();
   test_adapter_normalizes_typed_two_arg_direct_call_both_local_double_rewrite_slice();
   test_adapter_tracks_structured_signature_contract();
+  test_adapter_tracks_structured_call_type_contract();
   test_adapter_tracks_structured_entry_block_and_return_contract();
   test_adapter_tracks_structured_typed_add_entry_block_and_return_contract();
   test_adapter_tracks_structured_sub_entry_block_and_return_contract();

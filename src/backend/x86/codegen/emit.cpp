@@ -165,6 +165,27 @@ std::optional<std::int64_t> parse_i64(std::string_view text) {
   return value;
 }
 
+bool is_i32_scalar_signature_return(const c4c::backend::BackendFunctionSignature& signature) {
+  return c4c::backend::backend_signature_return_type_kind(signature) ==
+             c4c::backend::BackendValueTypeKind::Scalar &&
+         c4c::backend::backend_signature_return_scalar_type(signature) ==
+             c4c::backend::BackendScalarType::I32;
+}
+
+bool is_i32_scalar_param(const c4c::backend::BackendParam& param) {
+  return c4c::backend::backend_param_type_kind(param) ==
+             c4c::backend::BackendValueTypeKind::Scalar &&
+         c4c::backend::backend_param_scalar_type(param) ==
+             c4c::backend::BackendScalarType::I32;
+}
+
+bool is_i32_scalar_call_return(const c4c::backend::BackendCallInst& call) {
+  return c4c::backend::backend_call_return_type_kind(call) ==
+             c4c::backend::BackendValueTypeKind::Scalar &&
+         c4c::backend::backend_call_return_scalar_type(call) ==
+             c4c::backend::BackendScalarType::I32;
+}
+
 std::optional<std::string_view> parse_lir_zero_arg_direct_global_callee(
     const c4c::codegen::lir::LirCallOp& call) {
   const auto parsed = c4c::codegen::lir::parse_lir_direct_global_typed_call(call);
@@ -1255,7 +1276,7 @@ std::optional<MinimalExternDeclCallSlice> parse_minimal_declared_direct_call_sli
   const auto* main_fn = find_function(module, "main");
   if (main_fn == nullptr || main_fn->is_declaration ||
       !backend_function_is_definition(main_fn->signature) ||
-      main_fn->signature.return_type != "i32" ||
+      !is_i32_scalar_signature_return(main_fn->signature) ||
       !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
       main_fn->blocks.size() != 1) {
     return std::nullopt;
@@ -1273,7 +1294,7 @@ std::optional<MinimalExternDeclCallSlice> parse_minimal_declared_direct_call_sli
   const auto parsed_call = call == nullptr ? std::nullopt
                                            : c4c::backend::parse_backend_direct_global_typed_call(
                                                  *call);
-  if (call == nullptr || !parsed_call.has_value() || call->return_type != "i32") {
+  if (call == nullptr || !parsed_call.has_value() || !is_i32_scalar_call_return(*call)) {
     return std::nullopt;
   }
 
@@ -1286,14 +1307,14 @@ std::optional<MinimalExternDeclCallSlice> parse_minimal_declared_direct_call_sli
   const auto* callee_fn = find_function(module, callee_name_str);
   if (callee_fn == nullptr || !callee_fn->is_declaration ||
       !backend_function_is_declaration(callee_fn->signature) ||
-      callee_fn->signature.return_type != "i32" ||
+      !is_i32_scalar_signature_return(callee_fn->signature) ||
       callee_fn->signature.params.size() > parsed_call->typed_call.param_types.size()) {
     return std::nullopt;
   }
 
   for (std::size_t index = 0; index < callee_fn->signature.params.size(); ++index) {
-    if (callee_fn->signature.params[index].type_str !=
-        parsed_call->typed_call.param_types[index]) {
+    if (c4c::backend::render_backend_param_type(callee_fn->signature.params[index]) !=
+        c4c::codegen::lir::trim_lir_arg_text(parsed_call->typed_call.param_types[index])) {
       return std::nullopt;
     }
   }

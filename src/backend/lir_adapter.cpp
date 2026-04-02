@@ -187,6 +187,8 @@ BackendFunctionSignature parse_signature(const std::string& signature_text) {
   signature.linkage_kind = parse_backend_function_linkage(signature.linkage)
                                .value_or(BackendFunctionLinkage::Unknown);
   signature.return_type = trim(line.substr(first_space + 1, at_pos - first_space - 1));
+  signature.return_type_kind = parse_backend_value_type_kind(signature.return_type);
+  signature.return_scalar_type = parse_backend_value_scalar_type(signature.return_type);
   signature.name = line.substr(at_pos + 1, open_paren - at_pos - 1);
   if (signature.linkage_kind == BackendFunctionLinkage::Unknown ||
       signature.return_type.empty() ||
@@ -211,6 +213,8 @@ BackendFunctionSignature parse_signature(const std::string& signature_text) {
         param.type_str = trim(part.substr(0, last_space));
         param.name = trim(part.substr(last_space + 1));
       }
+      param.type_kind = parse_backend_value_type_kind(param.type_str);
+      param.scalar_type = parse_backend_value_scalar_type(param.type_str);
       if (param.type_str.empty()) fail_bad_signature(signature_text);
       signature.params.push_back(std::move(param));
     }
@@ -332,12 +336,32 @@ std::vector<std::string> own_backend_call_param_types(
   return param_types;
 }
 
+std::vector<BackendValueTypeKind> own_backend_call_param_type_kinds(
+    const c4c::codegen::lir::ParsedLirTypedCallView& parsed) {
+  std::vector<BackendValueTypeKind> param_type_kinds;
+  param_type_kinds.reserve(parsed.param_types.size());
+  for (const auto type : parsed.param_types) {
+    param_type_kinds.push_back(parse_backend_value_type_kind(type));
+  }
+  return param_type_kinds;
+}
+
+std::vector<BackendScalarType> own_backend_call_param_scalar_types(
+    const c4c::codegen::lir::ParsedLirTypedCallView& parsed) {
+  std::vector<BackendScalarType> param_scalar_types;
+  param_scalar_types.reserve(parsed.param_types.size());
+  for (const auto type : parsed.param_types) {
+    param_scalar_types.push_back(parse_backend_value_scalar_type(type));
+  }
+  return param_scalar_types;
+}
+
 BackendCallInst make_backend_call_inst(std::string result,
                                        std::string return_type,
                                        BackendCallCallee callee,
                                        const c4c::codegen::lir::ParsedLirTypedCallView& parsed,
                                        bool render_callee_type_suffix) {
-  return BackendCallInst{
+  BackendCallInst call{
       std::move(result),
       std::move(return_type),
       std::move(callee),
@@ -345,6 +369,9 @@ BackendCallInst make_backend_call_inst(std::string result,
       c4c::codegen::lir::own_lir_typed_call_args(parsed),
       render_callee_type_suffix,
   };
+  call.param_type_kinds = own_backend_call_param_type_kinds(parsed);
+  call.param_scalar_types = own_backend_call_param_scalar_types(parsed);
+  return call;
 }
 
 std::optional<BackendCallCallee> classify_backend_call_callee(

@@ -7,9 +7,9 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 3/2 slice: audit the remaining backend-owned IR surfaces that still
-      carry semantics only as raw text after the structured return-terminator
-      conversion and pick the next narrow in-scope structured cleanup without
-      widening into the later BIR scaffold plan
+      carry semantics only as raw text after the structured signature/call
+      type conversion and pick the next narrow in-scope structured cleanup
+      without widening into the later BIR scaffold plan
 
 ## Incomplete Items
 
@@ -135,17 +135,38 @@ Source Plan: plan.md
       `backend_lir_adapter_x86_64_tests` pass while the full suite remains
       monotonic at 2668 passed / 3 failed / 2671 total with zero newly
       failing tests
+- [x] Step 3/5 slice: add structured backend-owned type metadata for
+      `BackendFunctionSignature` params/return and `BackendCallInst`
+      params/return, keep the legacy type text as compatibility shims, switch
+      the backend IR printer/validator plus the x86/aarch64 lowered direct-call
+      seam recognizers onto the structured helpers when present, and confirm
+      on 2026-04-02 that focused `backend_ir_tests`,
+      `backend_lir_adapter_tests`, and `backend_lir_adapter_x86_64_tests`
+      pass while the full suite remains monotonic at 2668 passed / 3 failed /
+      2671 total with zero newly failing tests
 
 ## Next Intended Slice
 
 - Audit the remaining backend-owned IR surfaces that still carry semantics only
-  as raw text after the structured return-terminator conversion, then pick the
-  next narrow Step 2/3 conversion without widening into the later BIR scaffold
-  plan. Prioritize `BackendFunctionSignature` / `BackendCallInst` return or
-  parameter type surfaces before any broader BIR-shape work.
+  as raw text after the structured signature/call type conversion, then pick
+  the next narrow Step 2/3 conversion without widening into the later BIR
+  scaffold plan. Prioritize any still-text-only backend-owned type or function
+  contract seams before broader BIR-shape work.
 
 ## Blockers
 
+- A fresh 2026-04-02 `ctest --test-dir build -j --output-on-failure >
+  test_after.log` run for the structured signature/call type slice finished at
+  the same 2668 passed / 3 failed / 2671 total baseline, and
+  `check_monotonic_regression.py --before test_fail_before.log --after
+  test_after.log --allow-non-decreasing-passed` passed with zero newly
+  failing tests.
+- Focused `backend_ir_tests`, `backend_lir_adapter_tests`, and
+  `backend_lir_adapter_x86_64_tests` pass with the new structured
+  signature/call type slice.
+- Focused `backend_lir_adapter_aarch64_tests` still fails in the same broad
+  pre-existing suite called out above; the full-suite rerun stayed monotonic
+  and reported no new failures after the signature/call helper cleanup.
 - Stable full-suite regression guard still reports the same three pre-existing
   failures:
   `positive_sema_linux_stage2_repro_03_asm_volatile_c`,
