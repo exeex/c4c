@@ -1038,6 +1038,45 @@ void test_backend_ir_tracks_structured_two_arg_direct_call_signature_and_call_co
               "backend IR should preserve the normalized two-argument direct-call operands");
 }
 
+void test_backend_ir_tracks_structured_single_arg_direct_call_return_contract() {
+  const auto lowered =
+      c4c::backend::lower_to_backend_ir(make_typed_direct_call_module());
+
+  const auto find_function = [&](std::string_view name) -> const c4c::backend::BackendFunction* {
+    for (const auto& function : lowered.functions) {
+      if (function.signature.name == name) {
+        return &function;
+      }
+    }
+    return nullptr;
+  };
+
+  const auto* main_fn = find_function("main");
+  expect_true(main_fn != nullptr && c4c::backend::backend_function_is_definition(main_fn->signature) &&
+                  main_fn->blocks.size() == 1,
+              "backend IR should preserve the single-argument direct-call main body as a structured definition");
+
+  const auto* call =
+      main_fn == nullptr || main_fn->blocks.empty() || main_fn->blocks.front().insts.empty()
+          ? nullptr
+          : std::get_if<c4c::backend::BackendCallInst>(&main_fn->blocks.front().insts.front());
+  expect_true(call != nullptr && call->callee.kind ==
+                                  c4c::backend::BackendCallCalleeKind::DirectGlobal &&
+                  call->callee.symbol_name == "add_one",
+              "backend IR should preserve the single-argument helper call as a direct-global backend call");
+  expect_true(call != nullptr &&
+                  c4c::backend::backend_call_return_type_kind(*call) ==
+                      c4c::backend::BackendValueTypeKind::Scalar &&
+                  c4c::backend::backend_call_return_scalar_type(*call) ==
+                      c4c::backend::BackendScalarType::I32 &&
+                  call->param_types.size() == 1 &&
+                  c4c::backend::backend_call_param_scalar_type(*call, 0) ==
+                      c4c::backend::BackendScalarType::I32,
+              "backend IR should preserve structured single-argument call return and parameter metadata");
+  expect_true(call != nullptr && call->args.size() == 1 && call->args[0].operand == "5",
+              "backend IR should preserve the normalized single-argument direct-call operand");
+}
+
 void test_backend_ir_validator_accepts_structured_direct_call_add_imm_slice_without_raw_text() {
   auto lowered =
       c4c::backend::lower_to_backend_ir(make_typed_direct_call_local_arg_module());
@@ -1305,6 +1344,7 @@ int main(int argc, char* argv[]) {
   test_backend_ir_printer_renders_structured_signature_and_call_types_without_raw_text();
   test_backend_ir_printer_renders_structured_call_arg_types_without_raw_text();
   test_backend_ir_tracks_structured_two_arg_direct_call_signature_and_call_contract();
+  test_backend_ir_tracks_structured_single_arg_direct_call_return_contract();
   test_backend_ir_validator_accepts_structured_direct_call_add_imm_slice_without_raw_text();
   test_backend_ir_preserves_structured_local_array_slice();
   test_backend_ir_validator_accepts_structured_local_array_slice_without_raw_text();

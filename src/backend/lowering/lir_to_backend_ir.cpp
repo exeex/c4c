@@ -382,6 +382,8 @@ BackendCallInst make_backend_call_inst(std::string result,
       c4c::codegen::lir::own_lir_typed_call_args(parsed),
       render_callee_type_suffix,
   };
+  call.return_type_kind = parse_backend_value_type_kind(call.return_type);
+  call.return_scalar_type = parse_backend_value_scalar_type(call.return_type);
   call.param_type_kinds = own_backend_call_param_type_kinds(parsed);
   call.param_scalar_types = own_backend_call_param_scalar_types(parsed);
   return call;

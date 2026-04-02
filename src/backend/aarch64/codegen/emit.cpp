@@ -3466,7 +3466,7 @@ std::optional<MinimalDirectCallAddImmSlice> parse_minimal_direct_call_add_imm_sl
 
   const auto* add = std::get_if<c4c::backend::BackendBinaryInst>(&callee_block.insts.front());
   if (add == nullptr || add->opcode != c4c::backend::BackendBinaryOpcode::Add ||
-      add->type_str != "i32" || *callee_block.terminator.value != add->result ||
+      !is_i32_scalar_binary(*add) || *callee_block.terminator.value != add->result ||
       add->lhs != callee_fn->signature.params.front().name) {
     return std::nullopt;
   }
@@ -3543,7 +3543,7 @@ parse_minimal_direct_call_two_arg_add_slice(const c4c::backend::BackendModule& m
 
   const auto* add = std::get_if<c4c::backend::BackendBinaryInst>(&callee_block.insts.front());
   if (add == nullptr || add->opcode != c4c::backend::BackendBinaryOpcode::Add ||
-      add->type_str != "i32" || *callee_block.terminator.value != add->result ||
+      !is_i32_scalar_binary(*add) || *callee_block.terminator.value != add->result ||
       add->lhs != callee_fn->signature.params[0].name ||
       add->rhs != callee_fn->signature.params[1].name) {
     return std::nullopt;
