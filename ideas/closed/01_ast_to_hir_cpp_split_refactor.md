@@ -1,7 +1,7 @@
 # `ast_to_hir.cpp` Split Refactor
 
-Status: Open
-Last Updated: 2026-04-01
+Status: Complete
+Last Updated: 2026-04-02
 
 ## Goal
 
@@ -80,12 +80,19 @@ If cross-file private declarations become noisy, introduce one internal helper h
 
 ## Acceptance Criteria
 
-- [ ] `src/frontend/hir/ast_to_hir.hpp` contains the full declaration surface for HIR lowering
-- [ ] `Lowerer` is no longer defined in `src/frontend/hir/ast_to_hir.cpp`
-- [ ] `src/frontend/hir/ast_to_hir.cpp` is removed or reduced to a thin forwarding/coordinator file
-- [ ] HIR lowering implementation is split across multiple focused `hir_*.cpp` files
-- [ ] `cmake --build build -j8` succeeds
-- [ ] `ctest --test-dir build -j 8` shows no regressions
+- [x] `src/frontend/hir/ast_to_hir.hpp` contains the full declaration surface for HIR lowering
+- [x] `Lowerer` is no longer defined in `src/frontend/hir/ast_to_hir.cpp`
+- [x] `src/frontend/hir/ast_to_hir.cpp` is removed or reduced to a thin forwarding/coordinator file
+- [x] HIR lowering implementation is split across multiple focused `hir_*.cpp` files
+- [x] `cmake --build build -j8` succeeds
+- [x] `ctest --test-dir build -j 8` shows no regressions
+
+## Completion Notes
+
+- `ast_to_hir.hpp` now serves as the single declaration-oriented entrypoint for the lowering surface.
+- HIR lowering ownership is split across focused `hir_build.cpp`, `hir_templates.cpp`, `hir_functions.cpp`, `hir_expr.cpp`, `hir_types.cpp`, and `hir_stmt.cpp` units that are compiled by the main build.
+- `src/frontend/hir/ast_to_hir.cpp` is now reduced to shared coordinator/layout utilities and no longer carries the monolithic `Lowerer` implementation or dead `#if 0` staging copies.
+- Validation on 2026-04-02: `cmake --build build -j8` succeeded; `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log` finished at 2671 total tests, 2668 passing, with the same 3 historical failing tests (`positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c`); `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passed with zero new failing tests.
 
 ## Non-Goals
 

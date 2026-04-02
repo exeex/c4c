@@ -1,126 +1,143 @@
-# `ast_to_hir.cpp` Split Refactor Runbook
+# `stmt_emitter.cpp` Split Refactor Runbook
 
 Status: Active
-Source Idea: ideas/open/01_ast_to_hir_cpp_split_refactor.md
-Activated from: ideas/open/01_ast_to_hir_cpp_split_refactor.md
+Source Idea: ideas/open/02_stmt_emitter_cpp_split_refactor.md
+Activated from: ideas/open/02_stmt_emitter_cpp_split_refactor.md
 
 ## Purpose
 
-Turn the monolithic [`src/frontend/hir/ast_to_hir.cpp`](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp) implementation into a parser-style layout with one authoritative declaration header and multiple focused implementation files.
+Turn [`src/codegen/lir/stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) into a multi-file implementation while keeping [`src/codegen/lir/stmt_emitter.hpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.hpp) as the single declaration-oriented surface for `StmtEmitter`.
 
 ## Goal
 
-Make the HIR lowering surface inspectable from one header while preserving existing behavior and test results.
+Make statement-emission ownership inspectable by focused `stmt_emitter_*.cpp` files without changing emitted behavior or test results.
 
 ## Core Rule
 
-This is a structural refactor only. Do not intentionally change lowering behavior, ownership semantics, or feature scope beyond what is required to complete the file split.
+This is a structural refactor only. Do not intentionally change LIR lowering semantics, ABI behavior, emitted instruction ordering, or feature scope beyond what is required to complete the split.
 
 ## Read First
 
-- [`ideas/open/01_ast_to_hir_cpp_split_refactor.md`](/workspaces/c4c/ideas/open/01_ast_to_hir_cpp_split_refactor.md)
-- [`src/frontend/hir/ast_to_hir.cpp`](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp)
-- [`src/frontend/hir/ast_to_hir.hpp`](/workspaces/c4c/src/frontend/hir/ast_to_hir.hpp)
-- frontend HIR CMake targets that currently compile `ast_to_hir.cpp`
+- [`ideas/open/02_stmt_emitter_cpp_split_refactor.md`](/workspaces/c4c/ideas/open/02_stmt_emitter_cpp_split_refactor.md)
+- [`src/codegen/lir/stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp)
+- [`src/codegen/lir/stmt_emitter.hpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.hpp)
+- root [`CMakeLists.txt`](/workspaces/c4c/CMakeLists.txt) entries that currently compile the LIR emitter sources
 
 ## Scope
 
-- Expand [`src/frontend/hir/ast_to_hir.hpp`](/workspaces/c4c/src/frontend/hir/ast_to_hir.hpp) into the canonical declaration surface.
-- Move implementation bodies out of the monolithic translation unit into cohesive `hir_*.cpp` files.
-- Update build wiring for the new source layout.
-- Keep helper visibility as private as practical unless cross-file sharing requires a declaration surface.
+- Keep [`src/codegen/lir/stmt_emitter.hpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.hpp) as the canonical declaration surface.
+- Stage and then integrate focused implementation files such as:
+  - `stmt_emitter_core.cpp`
+  - `stmt_emitter_types.cpp`
+  - `stmt_emitter_lvalue.cpp`
+  - `stmt_emitter_call.cpp`
+  - `stmt_emitter_expr.cpp`
+  - `stmt_emitter_stmt.cpp`
+- Use build and linker diagnostics to converge ownership once draft boundaries are visible.
+- Reduce [`src/codegen/lir/stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) only after split ownership is stable.
 
 ## Non-Goals
 
 - semantic bug fixing unrelated to preserving current behavior
-- redesigning the `Lowerer` API beyond the split
-- changing lowering order or ownership architecture
-- mixing adjacent refactors from later ideas into this plan
+- redesigning the `StmtEmitter` API beyond the split
+- scattering declaration ownership across new public headers
+- mixing later backend refactors into this runbook
 
 ## Working Model
 
-- Public and agent-facing declarations belong in [`src/frontend/hir/ast_to_hir.hpp`](/workspaces/c4c/src/frontend/hir/ast_to_hir.hpp).
-- Implementation should be grouped by semantic responsibility rather than by arbitrary line counts.
-- Validation should prove no regressions after each meaningful slice and again at the end.
+- [`src/codegen/lir/stmt_emitter.hpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.hpp) remains the one obvious summary of the emitter surface.
+- Early draft extraction is allowed before build wiring, but integrated ownership must end with exactly one live definition per helper/body.
+- Compiler and linker diagnostics are the authoritative signal for missing or duplicate ownership once staged files are wired into the build.
 
 ## Execution Rules
 
-- Keep edits narrow and compile frequently.
-- Prefer moving declarations first, then migrating one responsibility cluster at a time.
-- If private cross-file declarations become noisy, introduce one internal helper header only if clearly justified.
-- Update tests only when needed to preserve existing validation coverage for the structural refactor.
+- Keep slices narrow and behavior-preserving.
+- During the first draft pass, do not edit [`src/codegen/lir/stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) just to mirror extracted files.
+- Wire staged files into the build once their boundaries are coherent enough to generate useful diagnostics.
+- Use duplicate-definition and undefined-reference errors to drive batch cleanup by semantic cluster.
 - If execution reveals a separate initiative, record it under `ideas/open/` instead of expanding this runbook.
 
 ## Ordered Steps
 
-### Step 1: Establish Header Ownership
+### Step 1: Survey The Monolith And Header
 
-Goal: make [`src/frontend/hir/ast_to_hir.hpp`](/workspaces/c4c/src/frontend/hir/ast_to_hir.hpp) the authoritative declaration surface.
-
-Actions:
-- inventory top-level structs, enums, helper types, free functions, and the `Lowerer` definition currently living in [`src/frontend/hir/ast_to_hir.cpp`](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp)
-- move declarations into [`src/frontend/hir/ast_to_hir.hpp`](/workspaces/c4c/src/frontend/hir/ast_to_hir.hpp)
-- prefer one bulk promotion of the remaining split-critical declaration surface over many tiny out-of-class helper moves when that better unlocks the file split
-- keep only declarations in the header and preserve private/internal visibility where possible
-
-Completion Check:
-- `Lowerer` and the key helper type declarations are no longer defined only inside the `.cpp`
-- the header exposes the full lowering surface needed for the split
-
-### Step 2: Create a Safe Transitional Build
-
-Goal: keep the tree building while the monolith is being peeled apart.
+Goal: establish the current ownership surface before any extraction.
 
 Actions:
-- reduce [`src/frontend/hir/ast_to_hir.cpp`](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp) to a temporary implementation coordinator if needed
-- introduce the new `hir_*.cpp` files with clear ownership boundaries
-- ensure the build system includes the new files without duplicating definitions
+- inspect [`src/codegen/lir/stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) and [`src/codegen/lir/stmt_emitter.hpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.hpp)
+- inventory major helper families and method clusters by semantic responsibility
+- identify candidate file boundaries that match the idea document
 
 Completion Check:
-- the project builds with a mixed old/new layout
-- symbol ownership is unambiguous and free of duplicate definition errors
+- the first-pass ownership map names the intended split files and the clusters likely to belong in each
 
-### Step 3: Extract Lowering Clusters
+### Step 2: Create Draft Staging Files
 
-Goal: migrate implementation bodies into focused translation units.
+Goal: make the target ownership boundaries concrete before integration cleanup starts.
 
 Primary Targets:
-- `hir_build.cpp`
-- `hir_templates.cpp`
-- `hir_functions.cpp`
-- `hir_expr.cpp`
-- `hir_types.cpp`
-- `hir_stmt.cpp`
+- `stmt_emitter_stmt.cpp`
+- `stmt_emitter_call.cpp`
+- `stmt_emitter_expr.cpp`
 
 Actions:
-- move one semantic cluster at a time
-- keep helper functions close to their owning cluster unless shared
-- compile and run targeted validation after each extraction slice
+- create draft split files with coherent includes and copied/extracted bodies
+- keep [`src/codegen/lir/stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) intact during the initial draft pass
+- minimize overlap where obvious, but prefer visible staging over perfect first-pass partitioning
 
 Completion Check:
-- the major lowering domains live in focused `hir_*.cpp` files
-- the old monolithic file is removed or reduced to a thin non-owning coordinator
+- the draft files exist and each represents a plausible semantic ownership cluster
 
-### Step 4: Finalize Build and Surface
+### Step 3: Expand The Draft Set And Normalize Boundaries
 
-Goal: finish the structural split cleanly.
+Goal: cover the remaining semantic families before build wiring.
+
+Primary Targets:
+- `stmt_emitter_core.cpp`
+- `stmt_emitter_types.cpp`
+- `stmt_emitter_lvalue.cpp`
 
 Actions:
-- remove stale declarations and now-unused transitional scaffolding
-- confirm CMake reflects the final source layout
-- verify the header remains the single obvious entrypoint for HIR lowering structure
+- extract the remaining major helper families into draft files
+- identify shared helpers that should stay local versus those that need internal declaration support
+- resolve obvious duplicate ownership between draft files before wiring them into the build
 
 Completion Check:
-- source layout matches the intended split
-- no stale forwarding bodies or dead transitional glue remain without justification
+- the full staged source layout exists with one intended owner per major helper family
 
-### Step 5: Validate No Regressions
+### Step 4: Wire The Split Files Into The Build
+
+Goal: switch from draft inspection to diagnostic-driven ownership cleanup.
+
+Actions:
+- update build wiring to compile the new `stmt_emitter_*.cpp` files
+- rebuild and use compiler/linker output to find missing declarations and duplicate definitions
+- fix declaration-surface and ownership issues in batches instead of one function at a time
+
+Completion Check:
+- the project builds with the split emitter files compiled together
+- ownership conflicts are reduced to a manageable cleanup list or eliminated
+
+### Step 5: Reduce The Monolith Cleanly
+
+Goal: leave [`src/codegen/lir/stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) as a thin coordinator or remove it if no longer needed.
+
+Actions:
+- delete or disable stale bodies that are now owned by split files
+- remove transitional scaffolding and dead duplicate blocks
+- confirm [`src/codegen/lir/stmt_emitter.hpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.hpp) is still the single clear declaration surface
+
+Completion Check:
+- [`src/codegen/lir/stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) is removed or obviously thin
+- live statement, call, lvalue, expression, type, and core ownership resides in focused split files
+
+### Step 6: Validate No Regressions
 
 Goal: prove the refactor preserved behavior.
 
 Actions:
-- run a clean configure/build
-- run targeted subsystem tests during development
+- run a clean build
+- run targeted checks while ownership is moving
 - run the full `ctest --test-dir build -j 8` regression pass before handoff
 
 Completion Check:
@@ -129,9 +146,10 @@ Completion Check:
 
 ## Final Acceptance Checks
 
-- [`src/frontend/hir/ast_to_hir.hpp`](/workspaces/c4c/src/frontend/hir/ast_to_hir.hpp) contains the full declaration surface for HIR lowering
-- `Lowerer` is no longer defined in [`src/frontend/hir/ast_to_hir.cpp`](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp)
-- [`src/frontend/hir/ast_to_hir.cpp`](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp) is removed or reduced to a thin forwarding/coordinator file
-- HIR lowering implementation is split across multiple focused `hir_*.cpp` files
+- [`src/codegen/lir/stmt_emitter.hpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.hpp) remains the canonical declaration surface for `StmtEmitter`
+- [`src/codegen/lir/stmt_emitter.cpp`](/workspaces/c4c/src/codegen/lir/stmt_emitter.cpp) is removed or reduced to a thin forwarding/coordinator file
+- statement emission logic lives in a dedicated `stmt_emitter_stmt.cpp`
+- call / builtin / vararg lowering lives in a dedicated `stmt_emitter_call.cpp`
+- lvalue and expression lowering are moved into focused implementation files
 - the build succeeds
 - full-suite tests show no regressions
