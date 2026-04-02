@@ -50,12 +50,7 @@ struct MinimalParamSlotSlice {
   std::int64_t helper_add_imm = 0;
 };
 
-struct MinimalExternCallArgSlice {
-  enum class Kind { I32Imm, I64Imm, Ptr };
-  Kind kind = Kind::Ptr;
-  std::int64_t imm = 0;
-  std::string operand;
-};
+using MinimalExternCallArgSlice = c4c::backend::ParsedBackendExternCallArg;
 
 struct MinimalTwoArgDirectCallSlice {
   std::string callee_name;
@@ -190,58 +185,6 @@ bool is_i32_scalar_call_return(const c4c::backend::BackendCallInst& call) {
 bool is_i32_scalar_binary(const c4c::backend::BackendBinaryInst& inst) {
   return c4c::backend::backend_binary_value_type(inst) ==
          c4c::backend::BackendScalarType::I32;
-}
-
-std::optional<MinimalExternCallArgSlice> parse_minimal_extern_decl_call_arg(
-    const c4c::backend::BackendModule& module,
-    std::string_view type,
-    std::string_view operand) {
-  (void)module;
-  const auto normalized_type = c4c::codegen::lir::trim_lir_arg_text(type);
-  const auto normalized_operand = c4c::codegen::lir::trim_lir_arg_text(operand);
-  if (normalized_type.empty() || normalized_operand.empty()) {
-    return std::nullopt;
-  }
-
-  if (normalized_type == "i32") {
-    const auto imm = parse_i64(normalized_operand);
-    if (!imm.has_value() ||
-        *imm < std::numeric_limits<std::int32_t>::min() ||
-        *imm > std::numeric_limits<std::int32_t>::max()) {
-      return std::nullopt;
-    }
-    return MinimalExternCallArgSlice{MinimalExternCallArgSlice::Kind::I32Imm,
-                                    *imm, {}};
-  }
-
-  if (normalized_type == "i64") {
-    const auto imm = parse_i64(normalized_operand);
-    if (!imm.has_value()) {
-      return std::nullopt;
-    }
-    return MinimalExternCallArgSlice{MinimalExternCallArgSlice::Kind::I64Imm,
-                                    *imm, {}};
-  }
-
-  const bool is_ptr_type = normalized_type == "ptr" ||
-                          (normalized_type.size() > 1 &&
-                           normalized_type.back() == '*');
-  if (!is_ptr_type) {
-    return std::nullopt;
-  }
-
-  const auto imm = parse_i64(normalized_operand);
-  if (imm.has_value()) {
-    return MinimalExternCallArgSlice{MinimalExternCallArgSlice::Kind::I64Imm,
-                                    *imm, {}};
-  }
-
-  if (normalized_operand.front() != '@') {
-    return std::nullopt;
-  }
-
-  return MinimalExternCallArgSlice{MinimalExternCallArgSlice::Kind::Ptr, 0,
-                                  std::string(normalized_operand)};
 }
 
 std::optional<std::string_view> strip_typed_operand_prefix(std::string_view operand,
@@ -1312,10 +1255,9 @@ std::optional<MinimalExternDeclCallSlice> parse_minimal_declared_direct_call_sli
   std::vector<MinimalExternCallArgSlice> call_args;
   call_args.reserve(parsed_call->typed_call.args.size());
   for (std::size_t index = 0; index < parsed_call->typed_call.args.size(); ++index) {
-    auto parsed_arg =
-        parse_minimal_extern_decl_call_arg(module,
-                                          parsed_call->typed_call.param_types[index],
-                                          parsed_call->typed_call.args[index].operand);
+    auto parsed_arg = c4c::backend::parse_backend_extern_call_arg(
+        parsed_call->typed_call.param_types[index],
+        parsed_call->typed_call.args[index].operand);
     if (!parsed_arg.has_value()) {
       return std::nullopt;
     }

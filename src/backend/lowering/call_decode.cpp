@@ -1,8 +1,25 @@
 #include "call_decode.hpp"
 
+#include <charconv>
+#include <limits>
 #include <vector>
 
 namespace c4c::backend {
+
+namespace {
+
+std::optional<std::int64_t> parse_backend_i64(std::string_view text) {
+  std::int64_t value = 0;
+  const char* begin = text.data();
+  const char* end = begin + text.size();
+  const auto result = std::from_chars(begin, end, value);
+  if (result.ec != std::errc() || result.ptr != end) {
+    return std::nullopt;
+  }
+  return value;
+}
+
+}  // namespace
 
 std::optional<c4c::codegen::lir::ParsedLirDirectGlobalTypedCallView>
 parse_backend_direct_global_typed_call(const c4c::codegen::lir::LirCallOp& call) {
@@ -95,6 +112,57 @@ std::optional<ParsedBackendDirectGlobalTypedCallView> parse_backend_direct_globa
     return std::nullopt;
   }
   return ParsedBackendDirectGlobalTypedCallView{call.callee.symbol_name, std::move(*typed_call)};
+}
+
+std::optional<ParsedBackendExternCallArg> parse_backend_extern_call_arg(
+    std::string_view type,
+    std::string_view operand) {
+  using namespace c4c::codegen::lir;
+
+  const auto normalized_type = trim_lir_arg_text(type);
+  const auto normalized_operand = trim_lir_arg_text(operand);
+  if (normalized_type.empty() || normalized_operand.empty()) {
+    return std::nullopt;
+  }
+
+  if (normalized_type == "i32") {
+    const auto imm = parse_backend_i64(normalized_operand);
+    if (!imm.has_value() ||
+        *imm < std::numeric_limits<std::int32_t>::min() ||
+        *imm > std::numeric_limits<std::int32_t>::max()) {
+      return std::nullopt;
+    }
+    return ParsedBackendExternCallArg{ParsedBackendExternCallArg::Kind::I32Imm, *imm, {}};
+  }
+
+  if (normalized_type == "i64") {
+    const auto imm = parse_backend_i64(normalized_operand);
+    if (!imm.has_value()) {
+      return std::nullopt;
+    }
+    return ParsedBackendExternCallArg{ParsedBackendExternCallArg::Kind::I64Imm, *imm, {}};
+  }
+
+  const bool is_ptr_type =
+      normalized_type == "ptr" || (normalized_type.size() > 1 && normalized_type.back() == '*');
+  if (!is_ptr_type) {
+    return std::nullopt;
+  }
+
+  const auto imm = parse_backend_i64(normalized_operand);
+  if (imm.has_value()) {
+    return ParsedBackendExternCallArg{ParsedBackendExternCallArg::Kind::I64Imm, *imm, {}};
+  }
+
+  if (normalized_operand.front() != '@') {
+    return std::nullopt;
+  }
+
+  return ParsedBackendExternCallArg{
+      ParsedBackendExternCallArg::Kind::Ptr,
+      0,
+      std::string(normalized_operand),
+  };
 }
 
 }  // namespace c4c::backend

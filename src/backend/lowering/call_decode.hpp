@@ -6,7 +6,9 @@
 #include "../../codegen/lir/ir.hpp"
 
 #include <array>
+#include <cstdint>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -19,6 +21,14 @@ using ParsedBackendTypedCallView = c4c::codegen::lir::ParsedLirTypedCallView;
 struct ParsedBackendDirectGlobalTypedCallView {
   std::string_view symbol_name;
   ParsedBackendTypedCallView typed_call;
+};
+
+struct ParsedBackendExternCallArg {
+  enum class Kind { I32Imm, I64Imm, Ptr };
+
+  Kind kind = Kind::Ptr;
+  std::int64_t imm = 0;
+  std::string operand;
 };
 
 struct ParsedBackendSingleLocalTypedCallView {
@@ -43,6 +53,9 @@ std::optional<ParsedBackendTypedCallView> parse_backend_typed_call(
     const BackendCallInst& call);
 std::optional<ParsedBackendDirectGlobalTypedCallView> parse_backend_direct_global_typed_call(
     const BackendCallInst& call);
+std::optional<ParsedBackendExternCallArg> parse_backend_extern_call_arg(
+    std::string_view type,
+    std::string_view operand);
 
 template <std::size_t N>
 inline bool backend_typed_call_matches(

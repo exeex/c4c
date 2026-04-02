@@ -2164,6 +2164,23 @@ void test_x86_backend_renders_extern_decl_object_slice_with_typed_zero_arg_spaci
                       "x86 backend should not fall back for spacing-tolerant typed zero-arg extern calls");
 }
 
+void test_x86_backend_renders_extern_decl_inferred_param_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_x86_extern_decl_inferred_param_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, ".intel_syntax noprefix\n",
+                  "x86 backend should keep inferred typed extern-call slices on the direct asm path");
+  expect_contains(rendered, "mov edi, 5\n",
+                  "x86 backend should decode the first inferred i32 extern argument through the shared direct-call path");
+  expect_contains(rendered, "mov esi, 7\n",
+                  "x86 backend should decode the second inferred i32 extern argument through the shared direct-call path");
+  expect_contains(rendered, "call helper_ext\n",
+                  "x86 backend should preserve the inferred direct extern helper call");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should not fall back to LLVM text for inferred typed extern-call slices");
+}
+
 void test_x86_backend_adapter_preserves_multiple_printf_calls_in_backend_ir() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_x86_multi_printf_vararg_module());
   const c4c::backend::BackendFunction* main_fn = nullptr;
@@ -2910,6 +2927,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_renders_extern_global_array_slice);
   RUN_TEST(test_x86_backend_renders_extern_decl_object_slice);
   RUN_TEST(test_x86_backend_renders_extern_decl_object_slice_with_typed_zero_arg_spacing);
+  RUN_TEST(test_x86_backend_renders_extern_decl_inferred_param_slice);
   RUN_TEST(test_x86_backend_adapter_preserves_multiple_printf_calls_in_backend_ir);
   RUN_TEST(test_x86_backend_renders_string_literal_char_slice);
   RUN_TEST(test_x86_backend_renders_global_char_pointer_diff_slice);
