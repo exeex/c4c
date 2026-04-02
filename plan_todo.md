@@ -6,8 +6,8 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 2: introduce a safe transitional source layout and build wiring
-- Current slice: continue Step 2 by extracting the next template-struct helper that still lives only in `src/frontend/hir/ast_to_hir.cpp` but is part of the template lowering cluster; after moving `Lowerer::template_struct_has_pack_params`, the next candidates are nearby template-struct query/materialization helpers that can follow it into `src/frontend/hir/hir_templates.cpp`
+- Step 4: finalize the source layout and remove transitional scaffolding
+- Current slice: inspect the next stale `#if 0` cluster in `src/frontend/hir/ast_to_hir.cpp` and remove it only if the live ownership already exists in one of the split `hir_*.cpp` units, continuing Step 4 cleanup without changing behavior
 
 ## Todo
 
@@ -18,6 +18,12 @@ Source Plan: plan.md
 - [ ] Step 5: run final build and regression validation
 
 ## Completed
+
+- The current slice targeted the stale build/template-instantiation staging block in [`src/frontend/hir/ast_to_hir.cpp`](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp) because the live ownership for that cluster already sits in [`src/frontend/hir/hir_build.cpp`](/workspaces/c4c/src/frontend/hir/hir_build.cpp), so deleting the dead `#if 0` copy advances Step 4 cleanup without changing symbol ownership or behavior.
+
+- The latest slice removed that dead build/template-instantiation duplicate block from [`src/frontend/hir/ast_to_hir.cpp`](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp), leaving [`src/frontend/hir/hir_build.cpp`](/workspaces/c4c/src/frontend/hir/hir_build.cpp) as the single live owner for the coordinator/template-instantiation cluster and shrinking the monolith by another 346 lines of non-owning scaffolding.
+
+- Validation on 2026-04-02 after deleting the stale build/template-instantiation `#if 0` block from [`src/frontend/hir/ast_to_hir.cpp`](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp): `cmake --build build -j8` succeeded; after discarding one invalid overlapping `ctest` run that produced a mixed `test_fail_after.log`, a clean `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log` rerun again finished at 2671 total tests, 2668 passing, and the same 3 historical failing tests (`positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c`); `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passed with zero new failing tests.
 
 - Validation on 2026-04-02 after moving `Lowerer::is_referenced_without_template_args`, `Lowerer::has_plain_call`, `Lowerer::build_call_bindings`, `Lowerer::build_call_nttp_bindings`, `Lowerer::has_forwarded_nttp`, `Lowerer::try_infer_arg_type_for_deduction`, `Lowerer::try_deduce_template_type_args`, `Lowerer::deduction_covers_all_type_params`, `Lowerer::fill_deduced_defaults`, and `Lowerer::merge_explicit_and_deduced_type_bindings` into [`src/frontend/hir/hir_templates.cpp`](/workspaces/c4c/src/frontend/hir/hir_templates.cpp): the live template argument-binding and deduction path now lives beside the rest of the template lowering support, while [`src/frontend/hir/ast_to_hir.cpp`](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp) dropped another real template-heavy ownership cluster. `cmake --build build -j8` succeeded; `ctest --test-dir build -j8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 historical failing tests (`positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c`); `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passed with zero new failing tests.
 
