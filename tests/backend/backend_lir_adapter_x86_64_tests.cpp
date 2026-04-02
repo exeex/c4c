@@ -524,6 +524,36 @@ c4c::codegen::lir::LirModule make_x86_extern_global_array_load_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_x86_multi_printf_vararg_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.extern_decls.push_back(LirExternDecl{"printf", "i32"});
+  module.string_pool.push_back(LirStringConst{"@.str0", "first\n", 7});
+  module.string_pool.push_back(LirStringConst{"@.str1", "second\n", 8});
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{"%fmt0", "[7 x i8]", "@.str0", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirCallOp{"%call0", "i32", "@printf", "(ptr, ...)", "ptr %fmt0"});
+  entry.insts.push_back(LirGepOp{"%fmt1", "[8 x i8]", "@.str1", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirCallOp{"%call1", "i32", "@printf", "(ptr, ...)", "ptr %fmt1"});
+  entry.terminator = LirRet{std::string("0"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_x86_string_literal_char_module() {
   auto module = make_string_literal_char_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -2134,6 +2164,38 @@ void test_x86_backend_renders_extern_decl_object_slice_with_typed_zero_arg_spaci
                       "x86 backend should not fall back for spacing-tolerant typed zero-arg extern calls");
 }
 
+void test_x86_backend_adapter_preserves_multiple_printf_calls_in_backend_ir() {
+  const auto lowered = c4c::backend::lower_to_backend_ir(make_x86_multi_printf_vararg_module());
+  const c4c::backend::BackendFunction* main_fn = nullptr;
+  for (const auto& function : lowered.functions) {
+    if (function.signature.name == "main") {
+      main_fn = &function;
+      break;
+    }
+  }
+  expect_true(main_fn != nullptr && main_fn->blocks.size() == 1,
+              "x86 backend adapter should still materialize a backend main block for multi-printf slices");
+
+  const auto& entry = main_fn->blocks.front();
+  expect_true(entry.insts.size() == 2,
+              "x86 backend adapter should preserve both printf calls instead of collapsing to the final call");
+
+  const auto* call0 = std::get_if<c4c::backend::BackendCallInst>(&entry.insts[0]);
+  const auto* call1 = std::get_if<c4c::backend::BackendCallInst>(&entry.insts[1]);
+  expect_true(call0 != nullptr && call1 != nullptr,
+              "x86 backend adapter should lower each preserved printf into a backend call instruction");
+  expect_true(call0 != nullptr && call0->callee.kind == c4c::backend::BackendCallCalleeKind::DirectGlobal &&
+                  call0->callee.symbol_name == "printf" && call0->args.size() == 1 &&
+                  call0->args.front().operand == "@.str0",
+              "x86 backend adapter should resolve the first printf format pointer back to the first string constant");
+  expect_true(call1 != nullptr && call1->callee.kind == c4c::backend::BackendCallCalleeKind::DirectGlobal &&
+                  call1->callee.symbol_name == "printf" && call1->args.size() == 1 &&
+                  call1->args.front().operand == "@.str1",
+              "x86 backend adapter should resolve the second printf format pointer back to the second string constant");
+  expect_true(entry.terminator.value.has_value() && *entry.terminator.value == "0",
+              "x86 backend adapter should preserve the explicit zero return after the multi-printf sequence");
+}
+
 void test_x86_backend_renders_string_literal_char_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_x86_string_literal_char_module()},
@@ -2848,6 +2910,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_renders_extern_global_array_slice);
   RUN_TEST(test_x86_backend_renders_extern_decl_object_slice);
   RUN_TEST(test_x86_backend_renders_extern_decl_object_slice_with_typed_zero_arg_spacing);
+  RUN_TEST(test_x86_backend_adapter_preserves_multiple_printf_calls_in_backend_ir);
   RUN_TEST(test_x86_backend_renders_string_literal_char_slice);
   RUN_TEST(test_x86_backend_renders_global_char_pointer_diff_slice);
   RUN_TEST(test_x86_backend_renders_global_char_pointer_diff_slice_from_typed_ops);

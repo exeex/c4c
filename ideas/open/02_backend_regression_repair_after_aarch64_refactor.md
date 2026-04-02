@@ -61,6 +61,17 @@ This idea only targets backend regression recovery. No new API redesign, naming 
 - Document all fixes, assumptions, and follow-up risks.
 - Reactivate next plan only after backend regression scope is stable.
 
+## Progress Notes
+
+- 2026-04-02: Fixed the residual x86 backend runtime mismatch cluster affecting `00131`, `00165`, `00177`, `00188`, `00206`, and `00211`.
+  Root cause: `src/backend/lir_adapter.cpp` rewrote any `main` ending in a direct variadic call into a backend function containing only the final call, which truncated earlier `printf` calls and dropped their arguments.
+  Resolution: preserve all direct variadic calls discovered in the block and keep pointer-resolution for string literal GEPs, so unsupported multi-call surfaces fall back through LLVM IR lowering instead of emitting a one-call asm stub.
+- 2026-04-02: Added an x86 backend adapter regression covering multiple `printf` calls in one function so the backend IR seam keeps both calls instead of collapsing to the last one.
+- 2026-04-02: `ctest --test-dir build -R backend --output-on-failure` now fails only in:
+  - `backend_contract_aarch64_return_add_object`
+  - `backend_contract_aarch64_global_load_object`
+  These remain as the only unresolved backend cases in this plan after the x86 cluster recovery.
+
 ## Exit Criteria
 
 - [ ] `backend_lir_adapter_aarch64_tests` 回歸通過

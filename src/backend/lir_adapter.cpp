@@ -2032,17 +2032,6 @@ std::optional<BackendFunction> adapt_direct_vararg_decl_call_function(
     return std::nullopt;
   }
 
-  const std::size_t call_index = block.insts.size() - 1;
-  const auto* call = std::get_if<LirCallOp>(&block.insts[call_index]);
-  if (call == nullptr || call->return_type != "i32") {
-    return std::nullopt;
-  }
-
-  const auto parsed_call = parse_backend_direct_global_typed_call(*call);
-  if (!parsed_call.has_value() || parsed_call->typed_call.args.empty()) {
-    return std::nullopt;
-  }
-
   auto is_ptr_type = [](std::string_view type) {
     const auto trimmed = c4c::codegen::lir::trim_lir_arg_text(type);
     return trimmed == "ptr" || (!trimmed.empty() && trimmed.back() == '*');
@@ -2059,8 +2048,12 @@ std::optional<BackendFunction> adapt_direct_vararg_decl_call_function(
   };
 
   std::unordered_map<std::string, std::string> resolved_ptr_operands;
-  for (std::size_t index = 0; index < call_index; ++index) {
-    if (const auto* gep = std::get_if<LirGepOp>(&block.insts[index])) {
+  std::vector<BackendInst> normalized_insts;
+  normalized_insts.reserve(block.insts.size());
+  bool saw_direct_vararg_call = false;
+
+  for (const auto& inst : block.insts) {
+    if (const auto* gep = std::get_if<LirGepOp>(&inst)) {
       const auto gep_ptr = gep->ptr.str();
       if (gep->result.empty() || gep->ptr.empty() || gep_ptr.empty() || gep_ptr.front() != '@' ||
           gep->indices.size() != 2 || !is_zero_index(gep->indices[0]) ||
@@ -2071,7 +2064,7 @@ std::optional<BackendFunction> adapt_direct_vararg_decl_call_function(
       continue;
     }
 
-    if (const auto* cast = std::get_if<LirCastOp>(&block.insts[index])) {
+    if (const auto* cast = std::get_if<LirCastOp>(&inst)) {
       if (cast->result.empty() || cast->kind != LirCastKind::Bitcast ||
           cast->from_type != "ptr" || cast->to_type != "ptr") {
         continue;
@@ -2081,30 +2074,55 @@ std::optional<BackendFunction> adapt_direct_vararg_decl_call_function(
       if (found != resolved_ptr_operands.end()) {
         resolved_ptr_operands.emplace(cast->result, found->second);
       }
-    }
-  }
-
-  const auto normalized_callee = classify_backend_call_callee(*call);
-  if (!normalized_callee.has_value()) {
-    return std::nullopt;
-  }
-  auto normalized_call = make_backend_call_inst(call->result.str(),
-                                               call->return_type.str(),
-                                               std::move(*normalized_callee),
-                                               parsed_call->typed_call,
-                                               true);
-  for (auto& arg : normalized_call.args) {
-    if (!is_ptr_type(arg.type)) {
       continue;
     }
 
-    if (!parse_i64(arg.operand).has_value() && !arg.operand.empty() &&
-        arg.operand.front() == '%') {
-      const auto it = resolved_ptr_operands.find(arg.operand);
-      if (it == resolved_ptr_operands.end()) {
-        return std::nullopt;
+    const auto* call = std::get_if<LirCallOp>(&inst);
+    if (call == nullptr || call->return_type != "i32") {
+      return std::nullopt;
+    }
+
+    const auto parsed_call = parse_backend_direct_global_typed_call(*call);
+    if (!parsed_call.has_value() || parsed_call->typed_call.args.empty()) {
+      return std::nullopt;
+    }
+
+    const auto normalized_callee = classify_backend_call_callee(*call);
+    if (!normalized_callee.has_value()) {
+      return std::nullopt;
+    }
+    auto normalized_call = make_backend_call_inst(call->result.str(),
+                                                 call->return_type.str(),
+                                                 std::move(*normalized_callee),
+                                                 parsed_call->typed_call,
+                                                 true);
+    for (auto& arg : normalized_call.args) {
+      if (!is_ptr_type(arg.type)) {
+        continue;
       }
-      arg.operand = it->second;
+
+      if (!parse_i64(arg.operand).has_value() && !arg.operand.empty() &&
+          arg.operand.front() == '%') {
+        const auto it = resolved_ptr_operands.find(arg.operand);
+        if (it == resolved_ptr_operands.end()) {
+          return std::nullopt;
+        }
+        arg.operand = it->second;
+      }
+    }
+
+    normalized_insts.push_back(std::move(normalized_call));
+    saw_direct_vararg_call = true;
+  }
+
+  if (!saw_direct_vararg_call) {
+    return std::nullopt;
+  }
+
+  for (const auto& inst : normalized_insts) {
+    const auto* call = std::get_if<BackendCallInst>(&inst);
+    if (call == nullptr || call->args.empty()) {
+      return std::nullopt;
     }
   }
 
@@ -2112,7 +2130,7 @@ std::optional<BackendFunction> adapt_direct_vararg_decl_call_function(
   out.signature = signature;
   BackendBlock out_block;
   out_block.label = block.label;
-  out_block.insts.push_back(std::move(normalized_call));
+  out_block.insts = std::move(normalized_insts);
   out_block.terminator = make_backend_return(*ret->value_str, "i32");
   out.blocks.push_back(std::move(out_block));
   return out;
