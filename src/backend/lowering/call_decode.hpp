@@ -7,6 +7,7 @@
 
 #include <array>
 #include <cstdint>
+#include <initializer_list>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -60,6 +61,11 @@ bool backend_lir_global_uses_nonminimal_types(const c4c::codegen::lir::LirGlobal
 bool backend_lir_return_uses_nonminimal_types(const c4c::codegen::lir::LirRet& ret);
 bool backend_lir_call_uses_nonminimal_types(const c4c::codegen::lir::LirCallOp& call);
 bool backend_lir_function_signature_uses_nonminimal_types(std::string_view signature_text);
+bool backend_lir_signature_matches(std::string_view signature_text,
+                                   std::string_view expected_linkage,
+                                   std::string_view expected_return_type,
+                                   std::string_view expected_function_name,
+                                   std::initializer_list<std::string_view> expected_param_types);
 bool backend_lir_is_i32_main_definition(std::string_view signature_text);
 bool backend_lir_is_zero_arg_i32_main_definition(std::string_view signature_text);
 

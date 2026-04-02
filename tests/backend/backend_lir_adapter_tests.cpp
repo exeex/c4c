@@ -677,6 +677,35 @@ void test_backend_call_helpers_classify_i32_main_signature_shapes() {
       "lowering-owned main-signature classifier should reject non-i32 return signatures");
 }
 
+void test_backend_call_helpers_match_lir_helper_signature_shapes() {
+  expect_true(
+      c4c::backend::backend_lir_signature_matches(
+          " define  i32  @add_one( i32 %p.x ) \n",
+          "define",
+          "i32",
+          "add_one",
+          {"i32"}),
+      "lowering-owned helper-signature matcher should keep spacing-tolerant single-parameter helpers on the shared decode seam");
+
+  expect_true(
+      c4c::backend::backend_lir_signature_matches(
+          "define i32 @add_pair(i32 %p.x, i32 %p.y)\n",
+          "define",
+          "i32",
+          "add_pair",
+          {"i32", "i32"}),
+      "lowering-owned helper-signature matcher should preserve exact two-parameter helper matching without target-local string equality");
+
+  expect_true(
+      !c4c::backend::backend_lir_signature_matches(
+          "define i32 @add_pair(i32 %p.x, ptr %p.y)\n",
+          "define",
+          "i32",
+          "add_pair",
+          {"i32", "i32"}),
+      "lowering-owned helper-signature matcher should reject helper signatures whose parameter types drift");
+}
+
 void test_backend_call_helpers_classify_lir_nonminimal_global_and_return_types() {
   c4c::codegen::lir::LirGlobal i32_global{};
   i32_global.llvm_type = "i32";
@@ -1649,6 +1678,7 @@ int main(int argc, char* argv[]) {
   test_backend_call_helpers_classify_lir_nonminimal_call_types();
   test_backend_call_helpers_classify_lir_nonminimal_signature_types();
   test_backend_call_helpers_classify_i32_main_signature_shapes();
+  test_backend_call_helpers_match_lir_helper_signature_shapes();
   test_backend_call_helpers_classify_lir_nonminimal_global_and_return_types();
   test_backend_call_helpers_decode_single_typed_local_operand();
   test_backend_call_helpers_decode_two_typed_local_operands();

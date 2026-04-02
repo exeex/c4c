@@ -1517,6 +1517,22 @@ void test_x86_backend_renders_param_slot_slice() {
                       "x86 backend should stop falling back to LLVM text for the parameter-slot slice");
 }
 
+void test_x86_backend_renders_param_slot_slice_with_spaced_helper_signature() {
+  auto module = make_param_slot_runtime_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.functions.front().signature_text = " define  i32  @add_one( i32 %p.x ) \n";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, "call add_one",
+                  "x86 backend should keep spacing-tolerant single-argument helper signatures on the asm path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should not fall back to LLVM text for spacing-tolerant parameter-slot helper signatures");
+}
+
 void test_x86_backend_renders_typed_direct_call_local_arg_slice() {
   auto module = make_typed_direct_call_local_arg_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -1576,6 +1592,22 @@ void test_x86_backend_renders_typed_two_arg_direct_call_slice() {
                   "x86 backend should lower the typed two-argument direct call on the asm path");
   expect_not_contains(rendered, "target triple =",
                       "x86 backend should stop falling back to LLVM text for the two-argument direct-call slice");
+}
+
+void test_x86_backend_renders_typed_two_arg_direct_call_slice_with_spaced_helper_signature() {
+  auto module = make_typed_direct_call_two_arg_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.functions.front().signature_text = " define i32 @add_pair( i32 %p.x , i32 %p.y ) \n";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, "call add_pair",
+                  "x86 backend should keep spacing-tolerant two-argument helper signatures on the asm path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should not fall back to LLVM text for spacing-tolerant two-argument helper signatures");
 }
 
 void test_x86_backend_renders_typed_two_arg_direct_call_local_arg_slice() {
@@ -2896,9 +2928,11 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_rejects_intrinsic_callee_from_direct_call_fast_path);
   RUN_TEST(test_x86_backend_rejects_indirect_callee_from_direct_call_fast_path);
   RUN_TEST(test_x86_backend_renders_param_slot_slice);
+  RUN_TEST(test_x86_backend_renders_param_slot_slice_with_spaced_helper_signature);
   RUN_TEST(test_x86_backend_renders_typed_direct_call_local_arg_slice);
   RUN_TEST(test_x86_backend_renders_typed_direct_call_local_arg_spacing_slice);
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_slice);
+  RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_slice_with_spaced_helper_signature);
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_local_arg_slice);
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_second_local_arg_slice);
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_second_local_rewrite_slice);

@@ -2397,7 +2397,9 @@ std::optional<MinimalParamSlotSlice> parse_minimal_param_slot_slice(
   const auto* helper = find_lir_function(module, "add_one");
   const auto* main_fn = find_lir_function(module, "main");
   if (helper == nullptr || main_fn == nullptr || helper->is_declaration ||
-      main_fn->is_declaration || helper->signature_text != "define i32 @add_one(i32 %p.x)\n" ||
+      main_fn->is_declaration ||
+      !c4c::backend::backend_lir_signature_matches(
+          helper->signature_text, "define", "i32", "add_one", {"i32"}) ||
       !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(main_fn->signature_text) ||
       helper->entry.value != 0 ||
       main_fn->entry.value != 0 || helper->blocks.size() != 1 || main_fn->blocks.size() != 1 ||
@@ -2483,7 +2485,8 @@ std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_sl
   const auto* main_fn = find_lir_function(module, "main");
   if (helper == nullptr || main_fn == nullptr || helper->is_declaration ||
       main_fn->is_declaration ||
-      helper->signature_text != "define i32 @add_pair(i32 %p.x, i32 %p.y)\n" ||
+      !c4c::backend::backend_lir_signature_matches(
+          helper->signature_text, "define", "i32", "add_pair", {"i32", "i32"}) ||
       !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(main_fn->signature_text) ||
       helper->entry.value != 0 ||
       main_fn->entry.value != 0 || helper->blocks.size() != 1 || main_fn->blocks.size() != 1 ||

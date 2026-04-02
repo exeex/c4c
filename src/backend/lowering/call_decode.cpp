@@ -113,6 +113,37 @@ bool backend_lir_function_signature_uses_nonminimal_types(std::string_view signa
   return false;
 }
 
+bool backend_lir_signature_matches(std::string_view signature_text,
+                                   std::string_view expected_linkage,
+                                   std::string_view expected_return_type,
+                                   std::string_view expected_function_name,
+                                   std::initializer_list<std::string_view> expected_param_types) {
+  std::string_view linkage;
+  std::string_view return_type;
+  std::string_view function_name;
+  if (!parse_backend_signature_head(signature_text, &linkage, &return_type, &function_name) ||
+      linkage != expected_linkage || return_type != expected_return_type ||
+      function_name != expected_function_name) {
+    return false;
+  }
+
+  const auto params = parse_backend_function_signature_params(signature_text);
+  if (!params.has_value() || params->size() != expected_param_types.size()) {
+    return false;
+  }
+
+  std::size_t index = 0;
+  for (std::string_view expected_type : expected_param_types) {
+    if ((*params)[index].is_varargs ||
+        c4c::codegen::lir::trim_lir_arg_text((*params)[index].type) !=
+            c4c::codegen::lir::trim_lir_arg_text(expected_type)) {
+      return false;
+    }
+    ++index;
+  }
+  return true;
+}
+
 bool backend_lir_is_i32_main_definition(std::string_view signature_text) {
   std::string_view linkage;
   std::string_view return_type;
