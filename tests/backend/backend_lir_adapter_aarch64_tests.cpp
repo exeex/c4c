@@ -1555,6 +1555,25 @@ void test_aarch64_backend_renders_typed_two_arg_direct_call_slice() {
                   "aarch64 backend should lower the typed two-argument direct call with bl");
 }
 
+void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_ir_without_signature_shims() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".type add_pair, %function",
+                  "aarch64 backend seam should still preserve lowered two-argument helper definitions without legacy signature text");
+  expect_contains(rendered, "mov w0, #5",
+                  "aarch64 backend seam should still materialize the first lowered two-argument direct-call immediate from structured call metadata");
+  expect_contains(rendered, "mov w1, #7",
+                  "aarch64 backend seam should still materialize the second lowered two-argument direct-call immediate from structured call metadata");
+  expect_contains(rendered, "bl add_pair",
+                  "aarch64 backend seam should still lower explicit two-argument direct calls when legacy call/signature text is cleared");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should not fall back when the explicit two-argument direct-call slice relies only on structured metadata");
+}
+
 void test_aarch64_backend_renders_typed_two_arg_direct_call_folded_const_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_typed_direct_call_two_arg_folded_const_module()},
@@ -3609,6 +3628,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_cleans_up_redundant_call_result_traffic_on_call_crossing_slice();
   test_aarch64_backend_keeps_spacing_tolerant_call_crossing_slice_on_asm_path();
   test_aarch64_backend_renders_typed_two_arg_direct_call_slice();
+  test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_ir_without_signature_shims();
   test_aarch64_backend_renders_typed_two_arg_direct_call_folded_const_slice();
   test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_folded_const_ir_without_signature_shims();
   test_aarch64_backend_renders_typed_direct_call_local_arg_slice();
