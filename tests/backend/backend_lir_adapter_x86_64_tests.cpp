@@ -1338,6 +1338,25 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_countdown_while_ir_input
                       "x86 backend seam should not fall back to backend IR text for lowered countdown loops");
 }
 
+void test_x86_backend_scaffold_accepts_structured_countdown_while_ir_without_signature_shims() {
+  auto module = make_countdown_while_return_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  auto lowered = c4c::backend::lower_to_backend_ir(module);
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, ".Lblock_1:",
+                  "x86 backend seam should still emit the explicit lowered countdown loop header label when signature return text is cleared");
+  expect_contains(rendered, "  sub eax, 1\n",
+                  "x86 backend seam should still lower the structured countdown decrement without legacy signature return text");
+  expect_contains(rendered, "  jmp .Lblock_1\n",
+                  "x86 backend seam should still preserve the explicit backend-IR loop backedge from structured signature metadata");
+  expect_not_contains(rendered, "phi i32",
+                      "x86 backend seam should not fall back when lowered countdown loops rely only on structured signature metadata");
+}
+
 void test_x86_backend_scaffold_renders_direct_return_immediate_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_return_zero_module()},
@@ -2981,6 +3000,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_five_op_chain_and_four_op_chain_post_join_add_ir_input);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_five_op_chain_and_five_op_chain_post_join_add_ir_input);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_countdown_while_ir_input);
+  RUN_TEST(test_x86_backend_scaffold_accepts_structured_countdown_while_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_renders_direct_return_immediate_slice);
   RUN_TEST(test_x86_backend_scaffold_renders_direct_return_sub_immediate_slice);
   RUN_TEST(test_x86_backend_renders_local_temp_sub_slice);

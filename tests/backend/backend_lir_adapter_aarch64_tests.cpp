@@ -2543,6 +2543,23 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_countdown_while_ir_i
                       "aarch64 backend seam should not fall back to backend IR text for lowered countdown loops");
 }
 
+void test_aarch64_backend_scaffold_accepts_structured_countdown_while_ir_without_signature_shims() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_countdown_while_return_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  expect_contains(rendered, ".Lblock_1:",
+                  "aarch64 backend seam should still emit the explicit lowered countdown loop header label when signature return text is cleared");
+  expect_contains(rendered, "  cmp w0, #0\n",
+                  "aarch64 backend seam should still compare the structured loop-carried counter without legacy signature return text");
+  expect_contains(rendered, "  sub w0, w0, #1\n",
+                  "aarch64 backend seam should still emit the structured countdown decrement without legacy signature return text");
+  expect_not_contains(rendered, "phi i32",
+                      "aarch64 backend seam should not fall back when lowered countdown loops rely only on structured signature metadata");
+}
+
 void test_aarch64_backend_renders_extern_global_array_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_extern_global_array_load_module()},
@@ -3314,6 +3331,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_five_op_chain_and_four_op_chain_post_join_add_ir_input();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_five_op_chain_and_five_op_chain_post_join_add_ir_input();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_countdown_while_ir_input();
+  test_aarch64_backend_scaffold_accepts_structured_countdown_while_ir_without_signature_shims();
   test_aarch64_backend_renders_extern_global_array_slice();
   test_aarch64_backend_renders_global_char_pointer_diff_slice();
   test_aarch64_backend_renders_global_char_pointer_diff_slice_from_typed_ops();
