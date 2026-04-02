@@ -2,7 +2,7 @@
 
 #include "ast_to_hir.hpp"
 #include "type_utils.hpp"
-#include "../parser/parser_internal.hpp"
+#include "../parser/parser.hpp"
 
 #include <algorithm>
 #include <cctype>

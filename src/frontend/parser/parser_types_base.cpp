@@ -1,6 +1,5 @@
-// types_base.cpp — base type parsing, skip helpers, parse_base_type
+// parser_types_base.cpp — base type parsing, skip helpers, parse_base_type
 #include "parser.hpp"
-#include "parser_internal.hpp"
 #include "lexer.hpp"
 
 #include <climits>

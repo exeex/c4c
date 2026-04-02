@@ -1,5 +1,4 @@
 #include "parser.hpp"
-#include "parser_internal.hpp"
 
 #include <cctype>
 #include <stdexcept>

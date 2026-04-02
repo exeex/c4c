@@ -1,13 +1,12 @@
 // types_helpers.hpp — shared anonymous-namespace and static helper code
-// included by types_template.cpp, types_declarator.cpp, types_base.cpp,
-// types_struct.cpp.  Each translation unit gets its own copy (internal
+// included by parser_types_template.cpp, parser_types_declarator.cpp,
+// parser_types_base.cpp, parser_types_struct.cpp. Each translation unit gets its own copy (internal
 // linkage), which is intentional.
 
 #pragma once
 
 // NOTE: This file is meant to be #included inside a .cpp that has already
-// included parser.hpp, parser_internal.hpp, lexer.hpp and the standard
-// library headers needed below.
+// included parser.hpp, lexer.hpp and the standard library headers needed below.
 
 #include <cstring>
 #include <functional>

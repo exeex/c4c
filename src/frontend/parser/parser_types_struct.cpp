@@ -1,6 +1,5 @@
-// types_struct.cpp — struct/union/enum parsing, parse_param
+// parser_types_struct.cpp — struct/union/enum parsing, parse_param
 #include "parser.hpp"
-#include "parser_internal.hpp"
 #include "lexer.hpp"
 
 #include <climits>
