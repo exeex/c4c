@@ -1204,19 +1204,6 @@ std::optional<MinimalExternDeclCallSlice> parse_minimal_declared_direct_call_sli
     return std::nullopt;
   }
 
-  const auto is_known_variadic_decl = [](std::string_view callee_name) {
-    static constexpr const char* kKnownVariadic[] = {
-        "fprintf",      "printf",  "sprintf",   "snprintf", "asprintf",
-        "__asprintf",   "dprintf", "fscanf",    "scanf",    "sscanf",
-    };
-    for (const auto* name : kKnownVariadic) {
-      if (callee_name == name) {
-        return true;
-      }
-    }
-    return false;
-  };
-
   const auto* main_fn = find_function(module, "main");
   if (main_fn == nullptr || main_fn->is_declaration ||
       !backend_function_is_definition(main_fn->signature) ||
@@ -1255,8 +1242,7 @@ std::optional<MinimalExternDeclCallSlice> parse_minimal_declared_direct_call_sli
     return std::nullopt;
   }
 
-  const bool callee_is_vararg = callee_fn->signature.is_vararg ||
-                               is_known_variadic_decl(callee_name_str);
+  const bool callee_is_vararg = callee_fn->signature.is_vararg;
   if (!c4c::backend::backend_typed_call_matches_signature(
           parsed_call->typed_call, callee_fn->signature, callee_is_vararg)) {
     return std::nullopt;

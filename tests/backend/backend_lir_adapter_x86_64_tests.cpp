@@ -3165,6 +3165,45 @@ void test_x86_backend_renders_extern_decl_inferred_param_slice() {
                       "x86 backend should not fall back to LLVM text for inferred typed extern-call slices");
 }
 
+void test_x86_backend_declared_direct_call_uses_structured_vararg_metadata() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_x86_extern_decl_object_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  c4c::backend::BackendFunction* printf_decl = nullptr;
+  c4c::backend::BackendFunction* main_fn = nullptr;
+  for (auto& function : lowered.functions) {
+    if (function.signature.name == "helper_ext") {
+      printf_decl = &function;
+    }
+    if (function.signature.name == "main") {
+      main_fn = &function;
+    }
+  }
+
+  expect_true(printf_decl != nullptr && main_fn != nullptr,
+              "x86 backend structured-vararg regression test needs both the lowered extern declaration and main call site");
+  if (printf_decl == nullptr || main_fn == nullptr) {
+    return;
+  }
+
+  printf_decl->signature.name = "printf";
+  printf_decl->signature.is_vararg = false;
+  auto& call = std::get<c4c::backend::BackendCallInst>(
+      main_fn->blocks.front().insts.front());
+  call.callee.symbol_name = "printf";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, "call printf\n",
+                  "x86 backend should still keep the structured declared printf call on the direct asm path");
+  expect_not_contains(rendered, "mov al, 0\n",
+                      "x86 backend should only materialize the SysV vararg register count when the structured declaration marks the callee variadic");
+  expect_not_contains(rendered, "define i32 @main()",
+                      "x86 backend should not fall back to backend IR text when the structured non-vararg declaration still matches the call");
+}
+
 void test_x86_backend_adapter_preserves_multiple_printf_calls_in_backend_ir() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_x86_multi_printf_vararg_module());
   const c4c::backend::BackendFunction* main_fn = nullptr;
@@ -3954,6 +3993,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_renders_extern_decl_object_slice);
   RUN_TEST(test_x86_backend_renders_extern_decl_object_slice_with_typed_zero_arg_spacing);
   RUN_TEST(test_x86_backend_renders_extern_decl_inferred_param_slice);
+  RUN_TEST(test_x86_backend_declared_direct_call_uses_structured_vararg_metadata);
   RUN_TEST(test_x86_backend_adapter_preserves_multiple_printf_calls_in_backend_ir);
   RUN_TEST(test_x86_backend_renders_string_literal_char_slice);
   RUN_TEST(test_x86_backend_renders_global_char_pointer_diff_slice);
