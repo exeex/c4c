@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 2: introduce a safe transitional source layout and build wiring
-- Current slice: continue Step 2 by extracting the next cohesive live owner still stranded in `src/frontend/hir/ast_to_hir.cpp`; after moving `Lowerer::lower_function` into `src/frontend/hir/hir_functions.cpp`, the remaining likely next target is the struct/type-heavy `Lowerer::lower_struct_def`
+- Current slice: continue Step 2 by extracting the next cohesive live type-heavy owner still stranded in `src/frontend/hir/ast_to_hir.cpp`; after moving `Lowerer::lower_struct_def` into `src/frontend/hir/hir_types.cpp`, the next likely target is `Lowerer::infer_generic_ctrl_type`
 
 ## Todo
 
@@ -18,6 +18,8 @@ Source Plan: plan.md
 - [ ] Step 5: run final build and regression validation
 
 ## Completed
+
+- Validation on 2026-04-02 after moving `Lowerer::lower_struct_def` into [`src/frontend/hir/hir_types.cpp`](/workspaces/c4c/src/frontend/hir/hir_types.cpp): struct-definition lowering now lives beside the layout, field-shape, static-member, and initializer-normalization helpers that it coordinates, while [`src/frontend/hir/ast_to_hir.cpp`](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp) dropped that large live struct/type owner and [`src/frontend/hir/hir_types.cpp`](/workspaces/c4c/src/frontend/hir/hir_types.cpp) no longer advertises `lower_struct_def` as intentionally omitted. `cmake --build build -j8` succeeded; after discarding one invalid overlapping `ctest` attempt caused by concurrent writers, a clean `ctest --test-dir build -j8 --output-on-failure` rerun again finished at 2671 total tests, 2668 passing, and the same 3 historical failing tests (`positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c`); `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passed with zero new failing tests.
 
 - Validation on 2026-04-02 after moving `Lowerer::lower_function` into [`src/frontend/hir/hir_functions.cpp`](/workspaces/c4c/src/frontend/hir/hir_functions.cpp): the standalone function-lowering entrypoint now lives beside `register_bodyless_callable`, `append_callable_params`, and the other callable-signature/body orchestration helpers that it coordinates, while [`src/frontend/hir/ast_to_hir.cpp`](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp) dropped that live body owner. `cmake --build build -j8` succeeded; `ctest --test-dir build -j8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 historical failing tests (`positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c`); `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passed with zero new failing tests.
 
