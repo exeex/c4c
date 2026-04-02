@@ -931,19 +931,6 @@ bool Lowerer::can_fast_path_scalar_array_init(const Node* init_list) const {
   return true;
 }
 
-bool Lowerer::struct_has_member_dtors(const std::string& tag) {
-  auto sit = module_->struct_defs.find(tag);
-  if (sit == module_->struct_defs.end()) return false;
-  for (auto it = sit->second.fields.rbegin(); it != sit->second.fields.rend(); ++it) {
-    if (it->elem_type.base == TB_STRUCT && it->elem_type.ptr_level == 0 &&
-        it->elem_type.tag) {
-      std::string ftag = it->elem_type.tag;
-      if (struct_destructors_.count(ftag) || struct_has_member_dtors(ftag)) return true;
-    }
-  }
-  return false;
-}
-
 const Node* Lowerer::init_item_value_node(const Node* item) const {
   if (!item) return nullptr;
   if (item->kind != NK_INIT_ITEM) return item;

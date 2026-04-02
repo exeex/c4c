@@ -855,6 +855,103 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
   }
 }
 
+bool Lowerer::struct_has_member_dtors(const std::string& tag) {
+  auto sit = module_->struct_defs.find(tag);
+  if (sit == module_->struct_defs.end()) return false;
+  for (auto it = sit->second.fields.rbegin(); it != sit->second.fields.rend(); ++it) {
+    if (it->elem_type.base == TB_STRUCT && it->elem_type.ptr_level == 0 &&
+        it->elem_type.tag) {
+      std::string ftag = it->elem_type.tag;
+      if (struct_destructors_.count(ftag) || struct_has_member_dtors(ftag)) return true;
+    }
+  }
+  return false;
+}
+
+void Lowerer::emit_defaulted_method_body(FunctionCtx& ctx,
+                                         Function& fn,
+                                         const std::string& struct_tag,
+                                         const Node* method_node) {
+  auto sit = module_->struct_defs.find(struct_tag);
+  bool is_copy_or_move_ctor = method_node->is_constructor && method_node->n_params == 1;
+  bool is_copy_or_move_assign =
+      (method_node->operator_kind == OP_ASSIGN) && method_node->n_params == 1;
+
+  if (is_copy_or_move_ctor || is_copy_or_move_assign) {
+    if (sit != module_->struct_defs.end()) {
+      DeclRef this_ref{};
+      this_ref.name = "this";
+      auto pit = ctx.params.find("this");
+      if (pit != ctx.params.end()) this_ref.param_index = pit->second;
+      TypeSpec this_ts{};
+      this_ts.base = TB_STRUCT;
+      this_ts.tag = sit->second.tag.c_str();
+      this_ts.ptr_level = 1;
+      ExprId this_id = append_expr(method_node, this_ref, this_ts, ValueCategory::LValue);
+
+      std::string other_name =
+          method_node->params[0]->name ? method_node->params[0]->name : "<anon_param>";
+      DeclRef other_ref{};
+      other_ref.name = other_name;
+      auto opit = ctx.params.find(other_name);
+      if (opit != ctx.params.end()) other_ref.param_index = opit->second;
+      TypeSpec other_ts = this_ts;
+      ExprId other_id =
+          append_expr(method_node, other_ref, other_ts, ValueCategory::LValue);
+
+      for (const auto& field : sit->second.fields) {
+        TypeSpec field_ts = field.elem_type;
+        if (field.array_first_dim >= 0) {
+          field_ts.array_rank = 1;
+          field_ts.array_size = field.array_first_dim;
+        }
+
+        MemberExpr lhs_me{};
+        lhs_me.base = this_id;
+        lhs_me.field = field.name;
+        lhs_me.is_arrow = true;
+        ExprId lhs_member =
+            append_expr(method_node, lhs_me, field_ts, ValueCategory::LValue);
+
+        MemberExpr rhs_me{};
+        rhs_me.base = other_id;
+        rhs_me.field = field.name;
+        rhs_me.is_arrow = true;
+        ExprId rhs_member =
+            append_expr(method_node, rhs_me, field_ts, ValueCategory::LValue);
+
+        AssignExpr ae{};
+        ae.lhs = lhs_member;
+        ae.rhs = rhs_member;
+        ExprId assign_id = append_expr(method_node, ae, field_ts);
+        ExprStmt es{};
+        es.expr = assign_id;
+        append_stmt(ctx, Stmt{StmtPayload{es}, make_span(method_node)});
+      }
+    }
+  }
+
+  if (is_copy_or_move_assign) {
+    DeclRef this_ref2{};
+    this_ref2.name = "this";
+    auto pit2 = ctx.params.find("this");
+    if (pit2 != ctx.params.end()) this_ref2.param_index = pit2->second;
+    TypeSpec this_ts2{};
+    this_ts2.base = TB_STRUCT;
+    this_ts2.tag =
+        sit != module_->struct_defs.end() ? sit->second.tag.c_str() : struct_tag.c_str();
+    this_ts2.ptr_level = 1;
+    ExprId this_ret =
+        append_expr(method_node, this_ref2, this_ts2, ValueCategory::LValue);
+    ReturnStmt rs{};
+    rs.expr = this_ret;
+    append_stmt(ctx, Stmt{StmtPayload{rs}, make_span(method_node)});
+  } else if (!method_node->is_destructor) {
+    ReturnStmt rs{};
+    append_stmt(ctx, Stmt{StmtPayload{rs}, make_span(method_node)});
+  }
+}
+
 void Lowerer::emit_member_dtor_calls(FunctionCtx& ctx,
                                      const std::string& struct_tag,
                                      ExprId this_ptr_id,
