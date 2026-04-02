@@ -1611,6 +1611,49 @@ void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_ir_wit
                       "aarch64 backend seam should not fall back when the explicit two-argument direct-call slice relies only on structured metadata");
 }
 
+void test_aarch64_backend_scaffold_accepts_renamed_structured_two_arg_direct_call_ir_without_signature_shims() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  c4c::backend::BackendFunction* helper = nullptr;
+  c4c::backend::BackendFunction* main_fn = nullptr;
+  for (auto& function : lowered.functions) {
+    if (function.signature.name == "add_pair") {
+      helper = &function;
+    } else if (function.signature.name == "main") {
+      main_fn = &function;
+    }
+  }
+  expect_true(helper != nullptr && main_fn != nullptr,
+              "aarch64 renamed two-argument direct-call regression test needs lowered helper and main functions");
+  if (helper == nullptr || main_fn == nullptr) {
+    return;
+  }
+
+  helper->signature.name = "sum_pair";
+  auto* call = std::get_if<c4c::backend::BackendCallInst>(&main_fn->blocks.front().insts.front());
+  expect_true(call != nullptr,
+              "aarch64 renamed two-argument direct-call regression test needs the lowered backend call to mutate");
+  if (call == nullptr) {
+    return;
+  }
+  call->callee.symbol_name = "sum_pair";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".type sum_pair, %function",
+                  "aarch64 backend seam should key the lowered two-argument helper definition from the structured callee symbol instead of a fixed helper name");
+  expect_contains(rendered, "mov w0, #5",
+                  "aarch64 backend seam should still materialize the first lowered renamed direct-call argument from structured call metadata");
+  expect_contains(rendered, "mov w1, #7",
+                  "aarch64 backend seam should still materialize the second lowered renamed direct-call argument from structured call metadata");
+  expect_contains(rendered, "bl sum_pair",
+                  "aarch64 backend seam should still lower renamed structured two-argument direct calls when legacy call/signature text is cleared");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should not fall back when a renamed two-argument direct-call slice relies only on structured metadata");
+}
+
 void test_aarch64_backend_scaffold_rejects_structured_two_arg_direct_call_when_param_type_count_disagrees_with_args() {
   auto lowered = c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
@@ -1730,6 +1773,46 @@ void test_aarch64_backend_scaffold_accepts_structured_direct_call_add_imm_ir_wit
                   "aarch64 backend seam should still lower explicit single-argument direct calls when legacy call/signature text is cleared");
   expect_not_contains(rendered, "target triple =",
                       "aarch64 backend seam should not fall back when the explicit single-argument direct-call slice relies only on structured call metadata");
+}
+
+void test_aarch64_backend_scaffold_accepts_renamed_structured_direct_call_add_imm_ir_without_signature_shims() {
+  auto lowered =
+      c4c::backend::lower_to_backend_ir(make_typed_direct_call_local_arg_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  c4c::backend::BackendFunction* helper = nullptr;
+  c4c::backend::BackendFunction* main_fn = nullptr;
+  for (auto& function : lowered.functions) {
+    if (function.signature.name == "add_one") {
+      helper = &function;
+    } else if (function.signature.name == "main") {
+      main_fn = &function;
+    }
+  }
+  expect_true(helper != nullptr && main_fn != nullptr,
+              "aarch64 renamed single-argument direct-call regression test needs lowered helper and main functions");
+  if (helper == nullptr || main_fn == nullptr) {
+    return;
+  }
+
+  helper->signature.name = "inc_value";
+  auto* call = std::get_if<c4c::backend::BackendCallInst>(&main_fn->blocks.front().insts.front());
+  expect_true(call != nullptr,
+              "aarch64 renamed single-argument direct-call regression test needs the lowered backend call to mutate");
+  if (call == nullptr) {
+    return;
+  }
+  call->callee.symbol_name = "inc_value";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".type inc_value, %function",
+                  "aarch64 backend seam should key the lowered single-argument helper definition from the structured callee symbol instead of a fixed helper name");
+  expect_contains(rendered, "bl inc_value",
+                  "aarch64 backend seam should still lower renamed structured single-argument direct calls when legacy call/signature text is cleared");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should not fall back when a renamed single-argument direct-call slice relies only on backend-owned metadata");
 }
 
 void test_aarch64_backend_renders_typed_direct_call_local_arg_spacing_slice() {
@@ -4139,12 +4222,14 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_keeps_spacing_tolerant_call_crossing_slice_on_asm_path();
   test_aarch64_backend_renders_typed_two_arg_direct_call_slice();
   test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_ir_without_signature_shims();
+  test_aarch64_backend_scaffold_accepts_renamed_structured_two_arg_direct_call_ir_without_signature_shims();
   test_aarch64_backend_scaffold_rejects_structured_two_arg_direct_call_when_param_type_count_disagrees_with_args();
   test_aarch64_backend_scaffold_rejects_structured_two_arg_direct_call_when_callee_signature_param_type_disagrees();
   test_aarch64_backend_renders_typed_two_arg_direct_call_folded_const_slice();
   test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_folded_const_ir_without_signature_shims();
   test_aarch64_backend_renders_typed_direct_call_local_arg_slice();
   test_aarch64_backend_scaffold_accepts_structured_direct_call_add_imm_ir_without_signature_shims();
+  test_aarch64_backend_scaffold_accepts_renamed_structured_direct_call_add_imm_ir_without_signature_shims();
   test_aarch64_backend_renders_typed_direct_call_local_arg_spacing_slice();
   test_aarch64_backend_scaffold_accepts_structured_direct_call_local_arg_spacing_ir_without_signature_shims();
   test_aarch64_backend_renders_typed_two_arg_direct_call_local_arg_slice();
