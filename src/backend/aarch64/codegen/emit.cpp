@@ -277,7 +277,7 @@ std::optional<std::int64_t> parse_minimal_return_add_imm(
 
   const auto* add = std::get_if<c4c::backend::BackendBinaryInst>(&block.insts.front());
   if (add == nullptr || add->opcode != c4c::backend::BackendBinaryOpcode::Add ||
-      add->type_str != "i32" || *block.terminator.value != add->result) {
+      !is_i32_scalar_binary(*add) || *block.terminator.value != add->result) {
     return std::nullopt;
   }
 
@@ -305,7 +305,7 @@ std::optional<std::int64_t> parse_minimal_return_sub_imm(
 
   const auto* sub = std::get_if<c4c::backend::BackendBinaryInst>(&block.insts.front());
   if (sub == nullptr || sub->opcode != c4c::backend::BackendBinaryOpcode::Sub ||
-      sub->type_str != "i32" || *block.terminator.value != sub->result) {
+      !is_i32_scalar_binary(*sub) || *block.terminator.value != sub->result) {
     return std::nullopt;
   }
 

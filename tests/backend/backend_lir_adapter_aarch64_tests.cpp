@@ -966,6 +966,22 @@ void test_aarch64_backend_scaffold_accepts_structured_single_function_ir_without
                       "aarch64 backend seam should not fall back when the single-function slice relies only on structured signature metadata");
 }
 
+void test_aarch64_backend_scaffold_accepts_structured_single_function_ir_without_signature_or_binary_type_shims() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_return_add_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+  clear_backend_memory_type_compatibility_shims(lowered);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  expect_contains(rendered, ".text\n",
+                  "aarch64 backend seam should still accept structured single-function backend IR when signature and binary type text are cleared");
+  expect_contains(rendered, "mov w0, #5\n",
+                  "aarch64 backend seam should still lower the bounded return-add slice from structured signature and binary metadata");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should not fall back when the single-function slice relies only on structured signature and binary metadata");
+}
+
 void test_aarch64_backend_scaffold_renders_direct_return_immediate_slice() {
   auto module = make_return_zero_module();
   module.target_triple = "aarch64-unknown-linux-gnu";
@@ -3690,6 +3706,7 @@ void run_aarch64_backend_tests() {
 
   test_aarch64_backend_scaffold_renders_supported_slice();
   test_aarch64_backend_scaffold_accepts_structured_single_function_ir_without_signature_shims();
+  test_aarch64_backend_scaffold_accepts_structured_single_function_ir_without_signature_or_binary_type_shims();
   test_aarch64_backend_scaffold_renders_direct_return_immediate_slice();
   test_aarch64_backend_renders_void_return_slice();
   test_aarch64_backend_preserves_module_headers_and_declarations();

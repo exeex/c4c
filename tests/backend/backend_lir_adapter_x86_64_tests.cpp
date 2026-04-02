@@ -655,6 +655,22 @@ void test_x86_backend_scaffold_accepts_structured_single_function_ir_without_sig
                       "x86 backend seam should not fall back when the single-function slice relies only on structured signature metadata");
 }
 
+void test_x86_backend_scaffold_accepts_structured_single_function_ir_without_signature_or_binary_type_shims() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_return_add_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+  clear_backend_memory_type_compatibility_shims(lowered);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, ".text",
+                  "x86 backend seam should still accept structured single-function backend IR when signature and binary type text are cleared");
+  expect_contains(rendered, "mov eax, 5",
+                  "x86 backend seam should still lower the bounded return-add slice from structured signature and binary metadata");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back when the single-function slice relies only on structured signature and binary metadata");
+}
+
 void test_x86_backend_scaffold_accepts_explicit_lowered_extern_decl_ir_input() {
   const auto lowered =
       c4c::backend::lower_to_backend_ir(make_x86_extern_decl_object_module());
@@ -3431,6 +3447,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_scaffold_routes_through_explicit_emit_surface);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_ir_input);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_single_function_ir_without_signature_shims);
+  RUN_TEST(test_x86_backend_scaffold_accepts_structured_single_function_ir_without_signature_or_binary_type_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_extern_decl_ir_input);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_signature_and_call_types_without_compatibility_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_global_load_ir_input);
