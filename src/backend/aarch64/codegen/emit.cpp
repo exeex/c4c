@@ -1,6 +1,7 @@
 #include "emit.hpp"
 
 #include "../../lir_adapter.hpp"
+#include "../../lowering/call_decode.hpp"
 #include "../../generation.hpp"
 #include "../../ir_printer.hpp"
 #include "../../stack_layout/analysis.hpp"
@@ -4656,18 +4657,11 @@ static GenSlotMap gen_build_slots(const c4c::codegen::lir::LirFunction& fn,
     else if (const auto* p = std::get_if<LirCmpOp>(&inst)) { alloc_operand(p->result); alloc_operand(p->lhs); alloc_operand(p->rhs); }
     else if (const auto* p = std::get_if<LirCastOp>(&inst)) { alloc_operand(p->result); alloc_operand(p->operand); }
     else if (const auto* p = std::get_if<LirCallOp>(&inst)) {
-      alloc_operand(p->result); alloc_operand(p->callee);
-      // Parse args_str for SSA operands
-      // format: "type %name, type %name, ..."
-      const auto& args = p->args_str;
-      size_t pos = 0;
-      while (pos < args.size()) {
-        auto pct = args.find('%', pos);
-        if (pct == std::string::npos) break;
-        size_t end = pct + 1;
-        while (end < args.size() && args[end] != ',' && args[end] != ')' && args[end] != ' ') ++end;
-        sm.get_or_alloc(args.substr(pct, end - pct));
-        pos = end;
+      alloc_operand(p->result);
+      std::vector<std::string> call_values;
+      c4c::backend::collect_backend_call_value_names(*p, call_values);
+      for (const auto& value : call_values) {
+        sm.get_or_alloc(value);
       }
     }
     else if (const auto* p = std::get_if<LirGepOp>(&inst)) { alloc_operand(p->result); alloc_operand(p->ptr); }
@@ -4811,56 +4805,6 @@ static void gen_store_result(std::ostringstream& out, const std::string& name,
     out << "  str x" << reg_idx << ", [sp, #" << off << "]\n";
   else
     out << "  str w" << reg_idx << ", [sp, #" << off << "]\n";
-}
-
-// Parse call args_str to extract typed arguments.
-// Format: "i32 %t1, ptr %t2, i64 5, ..."
-struct GenCallArg {
-  std::string type;
-  std::string value;
-};
-
-static std::vector<GenCallArg> gen_parse_call_args(const std::string& args_str) {
-  std::vector<GenCallArg> result;
-  if (args_str.empty()) return result;
-  // Split by commas (respecting parentheses for function pointer types)
-  std::vector<std::string> parts;
-  int depth = 0;
-  std::string cur;
-  for (char c : args_str) {
-    if (c == '(' || c == '{' || c == '<') { ++depth; cur += c; }
-    else if (c == ')' || c == '}' || c == '>') { --depth; cur += c; }
-    else if (c == ',' && depth == 0) {
-      parts.push_back(cur);
-      cur.clear();
-    } else {
-      cur += c;
-    }
-  }
-  if (!cur.empty()) parts.push_back(cur);
-
-  for (auto& part : parts) {
-    // Trim
-    size_t s = part.find_first_not_of(" \t");
-    if (s == std::string::npos) continue;
-    part = part.substr(s);
-    size_t e = part.find_last_not_of(" \t");
-    if (e != std::string::npos) part = part.substr(0, e + 1);
-
-    // Split "type value": find last space before value
-    size_t last_space = part.rfind(' ');
-    if (last_space == std::string::npos) continue;
-    std::string ty = part.substr(0, last_space);
-    std::string val = part.substr(last_space + 1);
-    // Strip trailing ')' from type if fn ptr type
-    // Trim type
-    size_t ts = ty.find_first_not_of(" \t");
-    if (ts != std::string::npos) ty = ty.substr(ts);
-    size_t te = ty.find_last_not_of(" \t");
-    if (te != std::string::npos) ty = ty.substr(0, te + 1);
-    result.push_back({ty, val});
-  }
-  return result;
 }
 
 // Parse GEP index string "type value" → (type, value).
@@ -5125,14 +5069,14 @@ static std::optional<std::string> try_emit_general_lir_asm(
 
     // Parse params from signature_text and ensure they have slots
     {
-      auto po = fn.signature_text.find('(');
-      auto pc = fn.signature_text.rfind(')');
-      if (po != std::string::npos && pc != std::string::npos && pc > po + 1) {
-        auto parsed = gen_parse_call_args(fn.signature_text.substr(po + 1, pc - po - 1));
-        for (const auto& p : parsed) {
-          if (p.value == "...") break;
-          if (!p.value.empty() && p.value[0] == '%')
-            sm.get_or_alloc(p.value);
+      const auto parsed =
+          c4c::backend::parse_backend_function_signature_params(fn.signature_text);
+      if (parsed.has_value()) {
+        for (const auto& param : *parsed) {
+          if (param.is_varargs) break;
+          if (!param.operand.empty() && param.operand[0] == '%') {
+            sm.get_or_alloc(param.operand);
+          }
         }
       }
     }
@@ -5152,16 +5096,12 @@ static std::optional<std::string> try_emit_general_lir_asm(
     // Parse parameters from signature_text and store to stack slots
     // signature_text format: "define i32 @func(i32 %p.a, ptr %p.b)\n"
     {
-      auto paren_open = fn.signature_text.find('(');
-      auto paren_close = fn.signature_text.rfind(')');
-      if (paren_open != std::string::npos && paren_close != std::string::npos &&
-          paren_close > paren_open + 1) {
-        std::string params_str = fn.signature_text.substr(paren_open + 1,
-                                                           paren_close - paren_open - 1);
-        auto parsed_params = gen_parse_call_args(params_str);
-        for (size_t i = 0; i < parsed_params.size() && i < 8; ++i) {
-          if (parsed_params[i].value == "...") break;
-          int off = sm.lookup(parsed_params[i].value);
+      const auto parsed_params =
+          c4c::backend::parse_backend_function_signature_params(fn.signature_text);
+      if (parsed_params.has_value()) {
+        for (size_t i = 0; i < parsed_params->size() && i < 8; ++i) {
+          if ((*parsed_params)[i].is_varargs) break;
+          int off = sm.lookup((*parsed_params)[i].operand);
           if (off >= 0) {
             out << "  str x" << i << ", [sp, #" << off << "]\n";
           }
@@ -5214,16 +5154,12 @@ static std::optional<std::string> try_emit_general_lir_asm(
     // Lowered parameter allocas (e.g. %lv.param.x) must be initialized after the
     // alloca address slots have been materialized.
     {
-      auto paren_open = fn.signature_text.find('(');
-      auto paren_close = fn.signature_text.rfind(')');
-      if (paren_open != std::string::npos && paren_close != std::string::npos &&
-          paren_close > paren_open + 1) {
-        std::string params_str = fn.signature_text.substr(paren_open + 1,
-                                                           paren_close - paren_open - 1);
-        auto parsed_params = gen_parse_call_args(params_str);
-        for (size_t i = 0; i < parsed_params.size() && i < 8; ++i) {
-          if (parsed_params[i].value == "...") break;
-          const std::string param_name = parsed_params[i].value;
+      const auto parsed_params =
+          c4c::backend::parse_backend_function_signature_params(fn.signature_text);
+      if (parsed_params.has_value()) {
+        for (size_t i = 0; i < parsed_params->size() && i < 8; ++i) {
+          if ((*parsed_params)[i].is_varargs) break;
+          const std::string& param_name = (*parsed_params)[i].operand;
           if (param_name.compare(0, 3, "%p.") != 0) continue;
 
           const std::string param_slot_name =
@@ -5232,7 +5168,8 @@ static std::optional<std::string> try_emit_general_lir_asm(
           if (param_ptr_off < 0) continue;
           const int param_value_off = sm.lookup(param_name);
 
-          const auto param_layout = gen_type_layout(parsed_params[i].type, module.type_decls);
+          const auto param_layout =
+              gen_type_layout((*parsed_params)[i].type, module.type_decls);
           if (param_layout.size <= 0 || param_layout.size > 8) continue;
 
           out << "  ldr x9, [sp, #" << param_ptr_off << "]\n";
@@ -5492,25 +5429,28 @@ static std::optional<std::string> try_emit_general_lir_asm(
           bool is_direct = (callee[0] == '@');
           std::string callee_sym = is_direct ? callee.substr(1) : callee;
 
-          auto args = gen_parse_call_args(p->args_str);
+          const auto args = c4c::backend::parse_backend_owned_typed_call_args(p->args_str);
+          if (!args.has_value()) {
+            return std::nullopt;
+          }
 
           struct GenAssignedCallArg {
-            GenCallArg arg;
+            c4c::backend::OwnedBackendTypedCallArg arg;
             bool is_fp = false;
             int reg_index = -1;
             int stack_index = -1;
           };
 
           std::vector<GenAssignedCallArg> assigned_args;
-          assigned_args.reserve(args.size());
+          assigned_args.reserve(args->size());
 
           int next_gp_reg = 0;
           int next_fp_reg = 0;
           int next_stack_slot = 0;
-          for (const auto& arg : args) {
+          for (const auto& arg : *args) {
             GenAssignedCallArg assigned;
             assigned.arg = arg;
-            assigned.is_fp = gen_is_fp_type(arg.type);
+            assigned.is_fp = gen_is_fp_type(assigned.arg.type);
             if (assigned.is_fp) {
               if (next_fp_reg < 8) {
                 assigned.reg_index = next_fp_reg++;
@@ -5530,10 +5470,10 @@ static std::optional<std::string> try_emit_general_lir_asm(
           for (const auto& assigned : assigned_args) {
             if (assigned.reg_index < 0) continue;
             if (assigned.is_fp) {
-              gen_load_fp_operand(out, assigned.arg.value, assigned.arg.type, sm,
+              gen_load_fp_operand(out, assigned.arg.operand, assigned.arg.type, sm,
                                   assigned.reg_index, fn.name, &extern_globals);
             } else {
-              gen_load_operand(out, assigned.arg.value, assigned.arg.type, sm,
+              gen_load_operand(out, assigned.arg.operand, assigned.arg.type, sm,
                                assigned.reg_index, fn.name, &extern_globals);
             }
           }
@@ -5547,7 +5487,7 @@ static std::optional<std::string> try_emit_general_lir_asm(
             for (const auto& assigned : assigned_args) {
               if (assigned.stack_index < 0) continue;
               if (assigned.is_fp) {
-                gen_load_fp_operand(out, assigned.arg.value, assigned.arg.type, sm, 9,
+                gen_load_fp_operand(out, assigned.arg.operand, assigned.arg.type, sm, 9,
                                     fn.name, &extern_globals);
                 if (assigned.arg.type == "double") {
                   out << "  fmov x9, d9\n";
@@ -5555,7 +5495,7 @@ static std::optional<std::string> try_emit_general_lir_asm(
                   out << "  fmov w9, s9\n";
                 }
               } else {
-                gen_load_operand(out, assigned.arg.value, assigned.arg.type, sm, 9,
+                gen_load_operand(out, assigned.arg.operand, assigned.arg.type, sm, 9,
                                  fn.name, &extern_globals);
               }
               out << "  str x9, [sp, #" << (assigned.stack_index * 8) << "]\n";

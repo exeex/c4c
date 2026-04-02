@@ -165,4 +165,60 @@ std::optional<ParsedBackendExternCallArg> parse_backend_extern_call_arg(
   };
 }
 
+std::optional<std::vector<OwnedBackendTypedCallArg>> parse_backend_owned_typed_call_args(
+    std::string_view args_str) {
+  const auto parsed = c4c::codegen::lir::parse_lir_typed_call_args(args_str);
+  if (!parsed.has_value()) {
+    return std::nullopt;
+  }
+
+  std::vector<OwnedBackendTypedCallArg> owned;
+  owned.reserve(parsed->size());
+  for (const auto& arg : *parsed) {
+    owned.push_back({std::string(arg.type), std::string(arg.operand)});
+  }
+  return owned;
+}
+
+std::optional<std::vector<ParsedBackendFunctionSignatureParam>>
+parse_backend_function_signature_params(std::string_view signature_text) {
+  const auto paren_open = signature_text.find('(');
+  const auto paren_close = signature_text.rfind(')');
+  if (paren_open == std::string_view::npos || paren_close == std::string_view::npos ||
+      paren_close < paren_open) {
+    return std::nullopt;
+  }
+
+  const auto params_text = signature_text.substr(paren_open + 1, paren_close - paren_open - 1);
+  std::vector<ParsedBackendFunctionSignatureParam> params;
+  bool parse_failed = false;
+  c4c::codegen::lir::for_each_lir_top_level_segment(
+      params_text, ',', [&](std::string_view raw_param) {
+        const auto param = c4c::codegen::lir::trim_lir_arg_text(raw_param);
+        if (param.empty()) {
+          return;
+        }
+        if (param == "...") {
+          params.push_back({"", "...", true});
+          return;
+        }
+
+        const auto parsed = c4c::codegen::lir::parse_lir_typed_call_arg(param);
+        if (!parsed.has_value()) {
+          parse_failed = true;
+          return;
+        }
+        params.push_back({std::string(parsed->type), std::string(parsed->operand), false});
+      });
+  if (parse_failed) {
+    return std::nullopt;
+  }
+  return params;
+}
+
+void collect_backend_call_value_names(const c4c::codegen::lir::LirCallOp& call,
+                                      std::vector<std::string>& values) {
+  c4c::codegen::lir::collect_lir_value_names_from_call(call, values);
+}
+
 }  // namespace c4c::backend

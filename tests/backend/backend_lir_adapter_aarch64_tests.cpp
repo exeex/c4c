@@ -1416,6 +1416,27 @@ void test_aarch64_backend_renders_param_slot_direct_call_slice() {
                       "aarch64 backend should keep the parameter-slot direct call on the asm path");
 }
 
+void test_aarch64_backend_keeps_spaced_param_slot_call_decode_on_asm_path() {
+  auto module = make_param_slot_runtime_module();
+  module.functions.front().signature_text = "define i32 @add_one( i32 %p.x )\n";
+  auto& call =
+      std::get<c4c::codegen::lir::LirCallOp>(module.functions.back().blocks.front().insts.front());
+  call.callee_type_suffix = "( i32 )";
+  call.args_str = " i32 5 ";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, "add_one:\n  add w0, w0, #1\n  ret\n",
+                  "aarch64 backend should keep spacing-tolerant helper signatures on the asm path");
+  expect_contains(rendered, "mov w0, #5",
+                  "aarch64 backend should still decode spacing-tolerant call arguments on the asm path");
+  expect_contains(rendered, "bl add_one",
+                  "aarch64 backend should still lower spacing-tolerant param-slot direct calls with bl");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend should not fall back to LLVM text for spacing-tolerant param-slot calls");
+}
+
 void test_aarch64_backend_renders_typed_direct_call_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_typed_direct_call_module()},
@@ -3162,6 +3183,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_renders_param_slot_memory_slice();
   test_aarch64_backend_skips_legacy_minimal_adapter_for_mixed_width_control_flow();
   test_aarch64_backend_renders_param_slot_direct_call_slice();
+  test_aarch64_backend_keeps_spaced_param_slot_call_decode_on_asm_path();
   test_aarch64_backend_renders_typed_direct_call_slice();
   test_aarch64_backend_uses_shared_regalloc_for_call_crossing_direct_call_slice();
   test_aarch64_backend_cleans_up_redundant_call_result_traffic_on_call_crossing_slice();
