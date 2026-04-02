@@ -271,6 +271,13 @@ bool validate_inst(const BackendInst& inst,
                   std::string(context) +
                       ": extended loads must declare a memory type");
     }
+    if (load->extension != BackendLoadExtension::None &&
+        backend_scalar_type_size_bytes(load_memory_type) >=
+            backend_scalar_type_size_bytes(load_value_type)) {
+      return fail(error,
+                  std::string(context) +
+                      ": extended loads must widen from memory type to value type");
+    }
     if (load->address.base_symbol.empty()) {
       return fail(error, std::string(context) + ": load base symbol must not be empty");
     }

@@ -1403,6 +1403,24 @@ void test_backend_ir_validator_rejects_extern_global_array_load_with_mismatched_
   expect_contains(error, "load memory type: type must match referenced global element type",
                   "backend IR validator should explain global-array load memory type mismatches");
 }
+
+void test_backend_ir_validator_rejects_structured_load_extension_that_does_not_widen() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_global_load_module());
+  clear_backend_global_type_compatibility_shims(lowered);
+  auto& load = std::get<c4c::backend::BackendLoadInst>(
+      lowered.functions.front().blocks.front().insts.front());
+  load.type_str = "i8";
+  load.value_type = c4c::backend::BackendScalarType::I8;
+  load.memory_type = "i32";
+  load.memory_value_type = c4c::backend::BackendScalarType::I32;
+  load.extension = c4c::backend::BackendLoadExtension::ZeroExtend;
+  std::string error;
+
+  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should reject structured loads that claim an extension without widening");
+  expect_contains(error, "extended loads must widen from memory type to value type",
+                  "backend IR validator should explain non-widening structured load extensions");
+}
 int main(int argc, char* argv[]) {
   if (argc >= 2) test_filter() = argv[1];
 
@@ -1451,6 +1469,7 @@ int main(int argc, char* argv[]) {
   test_backend_ir_validator_accepts_structured_extern_global_array_load_slice_without_raw_type_text();
   test_backend_ir_validator_rejects_extern_global_array_load_past_structured_bounds();
   test_backend_ir_validator_rejects_extern_global_array_load_with_mismatched_structured_memory_type();
+  test_backend_ir_validator_rejects_structured_load_extension_that_does_not_widen();
   test_backend_ir_validator_rejects_global_int_ptrdiff_past_structured_bounds();
   test_backend_ir_printer_renders_lowered_conditional_return_slice();
   test_backend_ir_validator_accepts_lowered_conditional_return_slice();
