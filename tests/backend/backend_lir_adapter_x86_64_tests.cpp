@@ -2208,6 +2208,38 @@ void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_ir_without
                       "x86 backend seam should not fall back when the explicit two-argument direct-call slice relies only on structured metadata");
 }
 
+void test_x86_backend_scaffold_rejects_structured_two_arg_direct_call_when_param_type_count_disagrees_with_args() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  c4c::backend::BackendFunction* main_fn = nullptr;
+  for (auto& function : lowered.functions) {
+    if (function.signature.name == "main") {
+      main_fn = &function;
+      break;
+    }
+  }
+  auto* call =
+      main_fn != nullptr && !main_fn->blocks.empty() && !main_fn->blocks.front().insts.empty()
+          ? std::get_if<c4c::backend::BackendCallInst>(&main_fn->blocks.front().insts.front())
+          : nullptr;
+  expect_true(call != nullptr,
+              "x86 two-argument direct-call regression test needs a lowered backend call to mutate");
+  if (call != nullptr) {
+    expect_true(call->param_types.size() == call->args.size(),
+                "x86 two-argument direct-call regression test should start from matched structured call metadata");
+    if (!call->param_types.empty()) {
+      call->param_types.pop_back();
+    }
+  }
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, "target triple =",
+                  "x86 backend seam should stop matching the structured two-argument direct-call asm slice when call param type count no longer matches arg count");
+}
+
 void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_local_arg_ir_without_signature_shims() {
   auto lowered =
       c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_local_arg_module());
@@ -3851,6 +3883,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_renders_typed_direct_call_local_arg_slice);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_direct_call_add_imm_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_ir_without_signature_shims);
+  RUN_TEST(test_x86_backend_scaffold_rejects_structured_two_arg_direct_call_when_param_type_count_disagrees_with_args);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_local_arg_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_local_arg_spacing_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_double_rewrite_ir_without_signature_shims);

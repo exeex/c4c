@@ -1611,6 +1611,38 @@ void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_ir_wit
                       "aarch64 backend seam should not fall back when the explicit two-argument direct-call slice relies only on structured metadata");
 }
 
+void test_aarch64_backend_scaffold_rejects_structured_two_arg_direct_call_when_param_type_count_disagrees_with_args() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  c4c::backend::BackendFunction* main_fn = nullptr;
+  for (auto& function : lowered.functions) {
+    if (function.signature.name == "main") {
+      main_fn = &function;
+      break;
+    }
+  }
+  auto* call =
+      main_fn != nullptr && !main_fn->blocks.empty() && !main_fn->blocks.front().insts.empty()
+          ? std::get_if<c4c::backend::BackendCallInst>(&main_fn->blocks.front().insts.front())
+          : nullptr;
+  expect_true(call != nullptr,
+              "aarch64 two-argument direct-call regression test needs a lowered backend call to mutate");
+  if (call != nullptr) {
+    expect_true(call->param_types.size() == call->args.size(),
+                "aarch64 two-argument direct-call regression test should start from matched structured call metadata");
+    if (!call->param_types.empty()) {
+      call->param_types.pop_back();
+    }
+  }
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, "target triple = \"aarch64-unknown-linux-gnu\"",
+                  "aarch64 backend seam should stop matching the structured two-argument direct-call asm slice when call param type count no longer matches arg count");
+}
+
 void test_aarch64_backend_renders_typed_two_arg_direct_call_folded_const_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_typed_direct_call_two_arg_folded_const_module()},
@@ -4082,6 +4114,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_keeps_spacing_tolerant_call_crossing_slice_on_asm_path();
   test_aarch64_backend_renders_typed_two_arg_direct_call_slice();
   test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_ir_without_signature_shims();
+  test_aarch64_backend_scaffold_rejects_structured_two_arg_direct_call_when_param_type_count_disagrees_with_args();
   test_aarch64_backend_renders_typed_two_arg_direct_call_folded_const_slice();
   test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_folded_const_ir_without_signature_shims();
   test_aarch64_backend_renders_typed_direct_call_local_arg_slice();

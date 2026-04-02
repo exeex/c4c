@@ -4,6 +4,7 @@
 #include "../../lowering/call_decode.hpp"
 #include "../../generation.hpp"
 #include "../../ir_printer.hpp"
+#include "../../ir_validate.hpp"
 #include "../../stack_layout/analysis.hpp"
 #include "../../stack_layout/regalloc_helpers.hpp"
 #include "../../stack_layout/slot_assignment.hpp"
@@ -5948,6 +5949,10 @@ std::string emit_module(const c4c::backend::BackendModule& module,
       legacy_fallback != nullptr && lir_module_needs_nonminimal_lowering(*legacy_fallback);
   if (needs_nonminimal_lowering && legacy_fallback != nullptr) {
     return emit_module(*legacy_fallback);
+  }
+  std::string backend_ir_error;
+  if (!c4c::backend::validate_backend_ir(module, &backend_ir_error)) {
+    return c4c::backend::print_backend_ir(module);
   }
   try {
     if (const auto slice = parse_minimal_scalar_global_load_slice(module);
