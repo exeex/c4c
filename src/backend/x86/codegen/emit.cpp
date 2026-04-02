@@ -456,7 +456,7 @@ bool is_minimal_single_function_asm_slice(const c4c::backend::BackendModule& mod
 
   const auto& function = module.functions.front();
   if (function.is_declaration || !backend_function_is_definition(function.signature) ||
-      function.signature.return_type != "i32" || function.signature.name != "main" ||
+      !is_i32_scalar_signature_return(function.signature) || function.signature.name != "main" ||
       !function.signature.params.empty() || function.signature.is_vararg ||
       function.blocks.size() != 1) {
     return false;
