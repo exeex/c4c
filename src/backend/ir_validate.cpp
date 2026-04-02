@@ -142,9 +142,6 @@ bool validate_address_range(const BackendAddress& address,
   if (bounds_it == referenced_bounds.end()) {
     return true;
   }
-  if (address.byte_offset < 0) {
-    return fail(error, std::string(context) + ": address byte offset must not be negative");
-  }
   const auto byte_offset = static_cast<std::size_t>(address.byte_offset);
   if (byte_offset >= bounds_it->second.total_size_bytes ||
       access_size_bytes > bounds_it->second.total_size_bytes - byte_offset) {
@@ -191,6 +188,15 @@ bool validate_address_base_symbol(
   return fail(error,
               std::string(context) +
                   ": base symbol must reference a known global, string constant, or local slot");
+}
+
+bool validate_address_offset(const BackendAddress& address,
+                             std::string* error,
+                             std::string_view context) {
+  if (address.byte_offset < 0) {
+    return fail(error, std::string(context) + ": address byte offset must not be negative");
+  }
+  return true;
 }
 
 bool validate_inst(const BackendInst& inst,
@@ -323,6 +329,9 @@ bool validate_inst(const BackendInst& inst,
                                       std::string(context) + ": load address")) {
       return false;
     }
+    if (!validate_address_offset(load->address, error, std::string(context) + ": load address")) {
+      return false;
+    }
     if (!validate_address_range(load->address,
                                 backend_scalar_type_size_bytes(load_memory_type),
                                 referenced_bounds,
@@ -355,6 +364,9 @@ bool validate_inst(const BackendInst& inst,
                                       referenced_objects,
                                       error,
                                       std::string(context) + ": store address")) {
+      return false;
+    }
+    if (!validate_address_offset(store->address, error, std::string(context) + ": store address")) {
       return false;
     }
     if (referenced_string_constants.find(store->address.base_symbol) !=
@@ -400,10 +412,20 @@ bool validate_inst(const BackendInst& inst,
                                     std::string(context) + ": ptrdiff lhs address")) {
     return false;
   }
+  if (!validate_address_offset(ptrdiff->lhs_address,
+                               error,
+                               std::string(context) + ": ptrdiff lhs address")) {
+    return false;
+  }
   if (!validate_address_base_symbol(ptrdiff->rhs_address,
                                     referenced_objects,
                                     error,
                                     std::string(context) + ": ptrdiff rhs address")) {
+    return false;
+  }
+  if (!validate_address_offset(ptrdiff->rhs_address,
+                               error,
+                               std::string(context) + ": ptrdiff rhs address")) {
     return false;
   }
   if (ptrdiff->element_size <= 0) {
