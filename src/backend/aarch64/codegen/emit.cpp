@@ -3417,6 +3417,11 @@ struct MatchedMinimalStructuredDirectCallReturnImmHelper {
   std::int64_t return_imm = 0;
 };
 
+struct MatchedMinimalStructuredDirectCallFoldedTwoArgHelper {
+  const c4c::backend::BackendFunction* callee_fn = nullptr;
+  std::int64_t return_imm = 0;
+};
+
 std::optional<MatchedMinimalStructuredDirectCall> match_minimal_structured_direct_call(
     const c4c::backend::BackendModule& module,
     const c4c::backend::BackendBlock& block,
@@ -3469,6 +3474,45 @@ match_minimal_structured_direct_call_return_imm_helper(
   }
 
   return MatchedMinimalStructuredDirectCallReturnImmHelper{&callee_fn, *return_imm};
+}
+
+std::optional<MatchedMinimalStructuredDirectCallFoldedTwoArgHelper>
+match_minimal_structured_direct_call_folded_two_arg_helper(
+    const c4c::backend::BackendFunction& callee_fn,
+    std::int64_t arg0_imm,
+    std::int64_t arg1_imm) {
+  if (callee_fn.signature.params.size() != 2 ||
+      !is_i32_scalar_param(callee_fn.signature.params[0]) ||
+      !is_i32_scalar_param(callee_fn.signature.params[1]) ||
+      callee_fn.signature.params[0].name.empty() ||
+      callee_fn.signature.params[1].name.empty() || callee_fn.signature.is_vararg ||
+      callee_fn.blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& block = callee_fn.blocks.front();
+  if (block.label != "entry" || block.insts.size() != 2 ||
+      !block.terminator.value.has_value() ||
+      c4c::backend::backend_return_scalar_type(block.terminator) !=
+          c4c::backend::BackendScalarType::I32) {
+    return std::nullopt;
+  }
+
+  const auto* add = std::get_if<c4c::backend::BackendBinaryInst>(&block.insts[0]);
+  const auto* sub = std::get_if<c4c::backend::BackendBinaryInst>(&block.insts[1]);
+  if (add == nullptr || sub == nullptr ||
+      add->opcode != c4c::backend::BackendBinaryOpcode::Add ||
+      sub->opcode != c4c::backend::BackendBinaryOpcode::Sub ||
+      !is_i32_scalar_binary(*add) || !is_i32_scalar_binary(*sub) ||
+      add->result.empty() || sub->result.empty() ||
+      add->lhs != "2" || add->rhs != callee_fn.signature.params[0].name ||
+      sub->lhs != add->result || sub->rhs != callee_fn.signature.params[1].name ||
+      *block.terminator.value != sub->result) {
+    return std::nullopt;
+  }
+
+  return MatchedMinimalStructuredDirectCallFoldedTwoArgHelper{
+      &callee_fn, 2 + arg0_imm - arg1_imm};
 }
 
 std::optional<MinimalDirectCallSlice> parse_minimal_direct_call_slice(
@@ -3666,13 +3710,14 @@ std::optional<MinimalDirectCallSlice> parse_minimal_direct_call_two_arg_folded_s
     return std::nullopt;
   }
 
-  const auto callee_imm =
-      fold_minimal_direct_call_two_arg_callee_return(*matched->callee_fn, *arg0_imm, *arg1_imm);
-  if (!callee_imm.has_value()) {
+  const auto helper_match = match_minimal_structured_direct_call_folded_two_arg_helper(
+      *matched->callee_fn, *arg0_imm, *arg1_imm);
+  if (!helper_match.has_value()) {
     return std::nullopt;
   }
 
-  return MinimalDirectCallSlice{std::string(matched->parsed_call.symbol_name), *callee_imm};
+  return MinimalDirectCallSlice{std::string(matched->parsed_call.symbol_name),
+                                helper_match->return_imm};
 }
 
 std::optional<MinimalCallCrossingDirectCallSlice>

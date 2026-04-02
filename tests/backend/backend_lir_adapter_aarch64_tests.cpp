@@ -1929,6 +1929,35 @@ void test_aarch64_backend_scaffold_accepts_renamed_structured_two_arg_direct_cal
                       "aarch64 backend seam should not fall back when a renamed folded two-argument direct-call slice relies only on structured metadata");
 }
 
+void test_aarch64_backend_scaffold_rejects_structured_two_arg_direct_call_folded_const_when_helper_body_contract_disagrees() {
+  auto lowered =
+      c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_folded_const_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  c4c::backend::BackendFunction* helper = nullptr;
+  for (auto& function : lowered.functions) {
+    if (function.signature.name == "foo") {
+      helper = &function;
+      break;
+    }
+  }
+  auto* sub =
+      helper != nullptr && !helper->blocks.empty() && helper->blocks.front().insts.size() >= 2
+          ? std::get_if<c4c::backend::BackendBinaryInst>(&helper->blocks.front().insts[1])
+          : nullptr;
+  expect_true(sub != nullptr,
+              "aarch64 folded two-argument direct-call regression test needs the lowered helper body instruction to mutate");
+  if (sub != nullptr && helper != nullptr && helper->signature.params.size() == 2) {
+    sub->rhs = helper->signature.params.front().name;
+  }
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, "target triple =",
+                  "aarch64 backend seam should stop matching the structured folded two-argument direct-call asm slice when the lowered helper body no longer matches the shared folded-helper contract");
+}
+
 void test_aarch64_backend_renders_typed_direct_call_local_arg_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_typed_direct_call_local_arg_module()},
@@ -4420,6 +4449,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_renders_typed_two_arg_direct_call_folded_const_slice();
   test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_folded_const_ir_without_signature_shims();
   test_aarch64_backend_scaffold_accepts_renamed_structured_two_arg_direct_call_folded_const_ir_without_signature_shims();
+  test_aarch64_backend_scaffold_rejects_structured_two_arg_direct_call_folded_const_when_helper_body_contract_disagrees();
   test_aarch64_backend_renders_typed_direct_call_local_arg_slice();
   test_aarch64_backend_scaffold_accepts_structured_direct_call_add_imm_ir_without_signature_shims();
   test_aarch64_backend_scaffold_accepts_renamed_structured_direct_call_add_imm_ir_without_signature_shims();
