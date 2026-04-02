@@ -155,6 +155,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     qualified_member_function_pointer_template_owner_parse
     qualified_type_start_probe_parse
     qualified_operator_template_owner_parse
+    qualified_variable_template_compare_parse
     qualified_template_operator_assign_expr_parse
     qualified_typedef_operator_assign_expr_parse
     global_qualified_member_pointer_template_owner_parse

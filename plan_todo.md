@@ -8,8 +8,9 @@ Source Plan: plan.md
 
 - Step 3: Object lifetime and tuple layer
 - Current slice: use the new file-aware parser-debug progress output to reduce
-  the `eastl_memory_simple.cpp` timeout path now that the hot headers are
-  visible directly in the heartbeat stream
+  the remaining `eastl_memory_simple.cpp` / `eastl_tuple_simple.cpp` timeout
+  path inside the shared EASTL-to-libstdc++ type-traits stack now that the
+  worst variable-template functional-cast probe has been trimmed
 
 ## Todo
 
@@ -129,17 +130,26 @@ Source Plan: plan.md
   `cpp_std_vector_parse_debug_progress_file` and taught parser progress
   heartbeats to print the active token's logical source file so the remaining
   EASTL timeout-only Step 3/4 pressure can be localized to concrete headers
+- [x] Added
+  `tests/cpp/internal/postive_case/qualified_variable_template_compare_parse.cpp`
+  as a parse-only guardrail for qualified variable-template comparisons in
+  expression context and tightened the functional-cast probe so template-id
+  expressions with obvious non-call tokens after `>` stop paying the full
+  tentative type-parse cost
+- [x] Re-ran the focused qualified-type / EASTL parser guardrails plus
+  full-suite before/after logs; the regression guard passed monotonically with
+  `2694 -> 2695` passes and the same three pre-existing failures
+  (`positive_sema_linux_stage2_repro_03_asm_volatile_c`,
+  `backend_lir_adapter_aarch64_tests`, and
+  `llvm_gcc_c_torture_src_20080502_1_c`)
 
 ## Next Slice
 
-- reduce the new post-`function_detail.h` Step 3/4 frontier from the remaining
+- reduce the post-variable-template-probe Step 3 frontier from the remaining
   `eastl_memory_simple.cpp` and `eastl_tuple_simple.cpp` parse-time stalls
-  under the deeper libstdc++ / EASTL stack, starting from the new
-  `eastl_memory_simple.cpp` parser-debug heartbeat path through
-  `ref/EABase/include/Common/EABase/int128.h`,
-  `ref/EASTL/include/EASTL/internal/type_transformations.h`,
-  `ref/EASTL/include/EASTL/internal/type_properties.h`, and
-  `ref/EASTL/include/EASTL/internal/type_pod.h`
+  under the deeper libstdc++ / EASTL stack, starting from the current
+  `utility.h`, `functional_base.h`, and `/usr/include/c++/14/type_traits`
+  heartbeat hotspots
 - reduce the new timeout-only `eastl_vector_simple.cpp` frontier now that the
   old `ref/EASTL/include/EASTL/internal/function.h` incomplete-type diagnostic
   has been cleared; capture the next smaller parser/canonical blocker from the
@@ -183,6 +193,12 @@ Source Plan: plan.md
   `ref/EASTL/include/EASTL/internal/type_properties.h`, and
   `ref/EASTL/include/EASTL/internal/type_pod.h` within the first 5 seconds,
   but the exact smaller reduction inside that chain is still pending
+- the new functional-cast cutoff moves both Step 3 timeout probes deeper into
+  later shared headers instead of stalling as early on qualified
+  variable-template expressions; current 12s parser-debug progress reaches
+  `ref/EASTL/include/EASTL/utility.h`,
+  `ref/EASTL/include/EASTL/internal/functional_base.h`, and
+  `/usr/include/c++/14/type_traits` before timing out
 - additional reduction work ruled out simpler namespace-qualified paths:
   `ns::wrap<int> value{}`, `ns::wrap<int>::type value{}`, and
   `ns::wrap<int>` with a defaulted NTTP all parse successfully, so the
@@ -243,9 +259,9 @@ Source Plan: plan.md
   `eastl_tuple_fwd_decls_simple.cpp` parse successfully but first fail during
   canonical/sema expansion with undeclared identifiers from EASTL internals
 - the current full-suite post-change baseline lives in `test_fail_after.log`
-  and still reports the same three pre-existing failing tests noted above; this
-  turn did not capture a fresh `test_fail_before.log`, so monotonic guard
-  script comparison is not available for this slice
+  and still reports the same three pre-existing failing tests noted above; the
+  repaired monotonic guard comparison against `test_fail_before.log` passes for
+  this slice with one additional passing test and no newly failing tests
 - parser-debug progress heartbeats now include the active logical source file;
   the new diagnostic-format guardrail is
   `cpp_std_vector_parse_debug_progress_file`
@@ -255,3 +271,6 @@ Source Plan: plan.md
   `ref/EASTL/include/EASTL/internal/type_transformations.h`,
   `ref/EASTL/include/EASTL/internal/type_properties.h`, and
   `ref/EASTL/include/EASTL/internal/type_pod.h`
+- `tests/cpp/internal/postive_case/qualified_variable_template_compare_parse.cpp`
+  now covers the shared variable-template comparison shape trimmed out of the
+  functional-cast probe while reducing the remaining Step 3 timeout pressure

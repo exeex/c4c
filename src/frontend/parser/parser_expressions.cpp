@@ -789,39 +789,89 @@ Node* Parser::parse_primary() {
     };
 
     auto has_balanced_template_id_ahead = [&]() -> bool {
-        if (!(is_cpp_mode() && check(TokenKind::Identifier) &&
-              pos_ + 1 < static_cast<int>(tokens_.size()) &&
-              tokens_[pos_ + 1].kind == TokenKind::Less)) {
-            return true;
+        if (!is_cpp_mode()) return true;
+
+        int probe = pos_;
+        if (probe < static_cast<int>(tokens_.size()) &&
+            tokens_[probe].kind == TokenKind::ColonColon) {
+            ++probe;
         }
 
-        int depth = 0;
-        for (int probe = pos_ + 1; probe < static_cast<int>(tokens_.size()); ++probe) {
-            TokenKind k = tokens_[probe].kind;
-            if (k == TokenKind::Less) {
-                ++depth;
-                continue;
+        bool saw_template_args = false;
+        while (probe < static_cast<int>(tokens_.size())) {
+            if (tokens_[probe].kind == TokenKind::KwTemplate) ++probe;
+            if (probe >= static_cast<int>(tokens_.size()) ||
+                tokens_[probe].kind != TokenKind::Identifier) {
+                return true;
             }
-            if (k == TokenKind::Greater) {
-                if (depth > 0 && --depth == 0) return true;
-                continue;
-            }
-            if (k == TokenKind::GreaterGreater) {
-                if (depth > 0) {
-                    depth -= 2;
-                    if (depth <= 0) return true;
+            ++probe;
+
+            if (probe < static_cast<int>(tokens_.size()) &&
+                tokens_[probe].kind == TokenKind::Less) {
+                saw_template_args = true;
+                int depth = 0;
+                while (probe < static_cast<int>(tokens_.size())) {
+                    TokenKind k = tokens_[probe].kind;
+                    if (k == TokenKind::Less) {
+                        ++depth;
+                        ++probe;
+                        continue;
+                    }
+                    if (k == TokenKind::Greater) {
+                        ++probe;
+                        if (depth > 0 && --depth == 0) break;
+                        continue;
+                    }
+                    if (k == TokenKind::GreaterGreater) {
+                        ++probe;
+                        if (depth > 0) {
+                            depth -= 2;
+                            if (depth <= 0) break;
+                        }
+                        continue;
+                    }
+                    if ((k == TokenKind::RParen || k == TokenKind::Comma ||
+                         k == TokenKind::Semi || k == TokenKind::Question ||
+                         k == TokenKind::Colon || k == TokenKind::LessEqual ||
+                         k == TokenKind::GreaterEqual) &&
+                        depth > 0) {
+                        return false;
+                    }
+                    ++probe;
                 }
+                if (depth > 0) return false;
+
+                if (probe >= static_cast<int>(tokens_.size())) return false;
+                TokenKind after_template = tokens_[probe].kind;
+                if (after_template == TokenKind::EqualEqual ||
+                    after_template == TokenKind::BangEqual ||
+                    after_template == TokenKind::LessEqual ||
+                    after_template == TokenKind::GreaterEqual ||
+                    after_template == TokenKind::Comma ||
+                    after_template == TokenKind::Semi ||
+                    after_template == TokenKind::Question ||
+                    after_template == TokenKind::Colon ||
+                    after_template == TokenKind::RParen ||
+                    after_template == TokenKind::RBracket ||
+                    after_template == TokenKind::RBrace ||
+                    after_template == TokenKind::PipePipe ||
+                    after_template == TokenKind::AmpAmp ||
+                    after_template == TokenKind::Pipe ||
+                    after_template == TokenKind::Caret) {
+                    return false;
+                }
+            }
+
+            if (probe < static_cast<int>(tokens_.size()) &&
+                tokens_[probe].kind == TokenKind::ColonColon) {
+                ++probe;
                 continue;
             }
-            if ((k == TokenKind::RParen || k == TokenKind::Comma ||
-                 k == TokenKind::Semi || k == TokenKind::Question ||
-                 k == TokenKind::Colon || k == TokenKind::LessEqual ||
-                 k == TokenKind::GreaterEqual) &&
-                depth > 0) {
-                return false;
-            }
+            break;
         }
-        return false;
+
+        return !saw_template_args || (probe < static_cast<int>(tokens_.size()) &&
+                                      tokens_[probe].kind == TokenKind::LParen);
     };
 
     auto parse_gcc_type_trait_builtin = [&]() -> Node* {
