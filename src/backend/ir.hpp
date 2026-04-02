@@ -26,14 +26,88 @@ struct BackendFunctionSignature {
 };
 
 struct BackendGlobal {
+  enum class StorageKind : unsigned char {
+    Mutable,
+    Constant,
+  };
+
+  struct Initializer {
+    enum class Kind : unsigned char {
+      Declaration,
+      Zero,
+      IntegerLiteral,
+      RawText,
+    };
+
+    Kind kind = Kind::Declaration;
+    std::string raw_text;
+    std::int64_t integer_value = 0;
+
+    static Initializer declaration() { return {}; }
+
+    static Initializer zero() {
+      Initializer initializer;
+      initializer.kind = Kind::Zero;
+      return initializer;
+    }
+
+    static Initializer integer_literal(std::int64_t value) {
+      Initializer initializer;
+      initializer.kind = Kind::IntegerLiteral;
+      initializer.integer_value = value;
+      return initializer;
+    }
+
+    static Initializer raw(std::string text) {
+      Initializer initializer;
+      initializer.kind = Kind::RawText;
+      initializer.raw_text = std::move(text);
+      return initializer;
+    }
+  };
+
   std::string name;
   std::string linkage;
-  std::string qualifier;
+  StorageKind storage = StorageKind::Mutable;
   std::string llvm_type;
-  std::string init_text;
+  Initializer initializer;
   int align_bytes = 0;
+
+  // Compatibility shims for backend paths that still consume legacy global text.
+  std::string qualifier;
+  std::string init_text;
   bool is_extern_decl = false;
 };
+
+using BackendGlobalStorageKind = BackendGlobal::StorageKind;
+using BackendGlobalInitializer = BackendGlobal::Initializer;
+
+inline std::string_view render_backend_global_storage(BackendGlobalStorageKind storage) {
+  switch (storage) {
+    case BackendGlobalStorageKind::Mutable:
+      return "global ";
+    case BackendGlobalStorageKind::Constant:
+      return "constant ";
+  }
+
+  return "global ";
+}
+
+inline std::string render_backend_global_initializer(
+    const BackendGlobalInitializer& initializer) {
+  switch (initializer.kind) {
+    case BackendGlobalInitializer::Kind::Declaration:
+      return {};
+    case BackendGlobalInitializer::Kind::Zero:
+      return "zeroinitializer";
+    case BackendGlobalInitializer::Kind::IntegerLiteral:
+      return std::to_string(initializer.integer_value);
+    case BackendGlobalInitializer::Kind::RawText:
+      return initializer.raw_text;
+  }
+
+  return {};
+}
 
 struct BackendStringConstant {
   std::string name;

@@ -668,6 +668,56 @@ void test_backend_ir_validator_rejects_definition_without_blocks() {
                   "backend IR validator should explain the malformed definition");
 }
 
+void test_backend_ir_printer_renders_structured_global_constant_initializer() {
+  c4c::backend::BackendModule module;
+  module.globals.push_back(c4c::backend::BackendGlobal{
+      "g_const",
+      "",
+      c4c::backend::BackendGlobalStorageKind::Constant,
+      "i32",
+      c4c::backend::BackendGlobalInitializer::integer_literal(7),
+      4,
+  });
+
+  const auto rendered = c4c::backend::print_backend_ir(module);
+  expect_contains(rendered, "@g_const = constant i32 7, align 4\n",
+                  "backend IR printer should render structured constant globals without falling back to raw qualifier text");
+}
+
+void test_backend_ir_printer_renders_structured_extern_global_declaration() {
+  c4c::backend::BackendModule module;
+  module.globals.push_back(c4c::backend::BackendGlobal{
+      "ext_counter",
+      "external ",
+      c4c::backend::BackendGlobalStorageKind::Mutable,
+      "i32",
+      c4c::backend::BackendGlobalInitializer::declaration(),
+      4,
+  });
+
+  const auto rendered = c4c::backend::print_backend_ir(module);
+  expect_contains(rendered, "@ext_counter = external global i32, align 4\n",
+                  "backend IR printer should render structured extern globals without a raw initializer payload");
+}
+
+void test_backend_ir_validator_rejects_structured_defined_global_without_initializer() {
+  c4c::backend::BackendModule module;
+  module.globals.push_back(c4c::backend::BackendGlobal{
+      "g_missing_init",
+      "",
+      c4c::backend::BackendGlobalStorageKind::Mutable,
+      "i32",
+      c4c::backend::BackendGlobalInitializer::declaration(),
+      0,
+  });
+
+  std::string error;
+  expect_true(!c4c::backend::validate_backend_ir(module, &error),
+              "backend IR validator should reject structured global definitions that omit an initializer");
+  expect_contains(error, "defined globals must have an initializer",
+                  "backend IR validator should explain missing structured initializers");
+}
+
 void test_backend_ir_printer_renders_lowered_extern_decl_slice() {
   const auto lowered =
       c4c::backend::lower_to_backend_ir(make_x86_extern_decl_object_module());
@@ -745,6 +795,9 @@ int main(int argc, char* argv[]) {
   test_backend_ir_printer_renders_return_add();
   test_backend_ir_validator_accepts_lowered_slice();
   test_backend_ir_validator_rejects_definition_without_blocks();
+  test_backend_ir_printer_renders_structured_global_constant_initializer();
+  test_backend_ir_printer_renders_structured_extern_global_declaration();
+  test_backend_ir_validator_rejects_structured_defined_global_without_initializer();
   test_backend_ir_printer_renders_lowered_extern_decl_slice();
   test_backend_ir_validator_accepts_lowered_extern_decl_slice();
   test_backend_ir_printer_renders_lowered_global_load_slice();

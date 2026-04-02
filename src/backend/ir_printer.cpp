@@ -26,10 +26,10 @@ std::string escape_ir_bytes(std::string_view bytes) {
 }
 
 void render_global(std::ostringstream& out, const BackendGlobal& global) {
-  out << "@" << global.name << " = " << global.linkage << global.qualifier
-      << global.llvm_type;
-  if (!global.is_extern_decl) {
-    out << " " << global.init_text;
+  out << "@" << global.name << " = " << global.linkage
+      << render_backend_global_storage(global.storage) << global.llvm_type;
+  if (global.initializer.kind != BackendGlobalInitializer::Kind::Declaration) {
+    out << " " << render_backend_global_initializer(global.initializer);
   }
   if (global.align_bytes > 1) {
     out << ", align " << global.align_bytes;

@@ -41,17 +41,16 @@ bool validate_global(const BackendGlobal& global,
   if (global.name.empty()) {
     return fail(error, std::string(context) + ": global name must not be empty");
   }
-  if (global.qualifier.empty()) {
-    return fail(error, std::string(context) + ": global qualifier must not be empty");
-  }
   if (global.llvm_type.empty()) {
     return fail(error, std::string(context) + ": global type must not be empty");
   }
-  if (!global.is_extern_decl && global.init_text.empty()) {
+  if (global.initializer.kind == BackendGlobalInitializer::Kind::Declaration &&
+      global.linkage != "external " && global.linkage != "extern_weak ") {
     return fail(error, std::string(context) + ": defined globals must have an initializer");
   }
-  if (global.is_extern_decl && !global.init_text.empty()) {
-    return fail(error, std::string(context) + ": extern globals must not have an initializer");
+  if (global.initializer.kind == BackendGlobalInitializer::Kind::RawText &&
+      global.initializer.raw_text.empty()) {
+    return fail(error, std::string(context) + ": raw global initializers must not be empty");
   }
   return true;
 }

@@ -115,16 +115,46 @@ const c4c::codegen::lir::LirStringConst* find_lir_string_constant(
   return nullptr;
 }
 
+BackendGlobalStorageKind adapt_global_storage(std::string_view qualifier) {
+  if (qualifier == "global ") {
+    return BackendGlobalStorageKind::Mutable;
+  }
+  if (qualifier == "constant ") {
+    return BackendGlobalStorageKind::Constant;
+  }
+  throw LirAdapterError(LirAdapterErrorKind::Malformed,
+                        "minimal backend LIR adapter could not classify global qualifier '" +
+                            std::string(qualifier) + "'");
+}
+
+BackendGlobalInitializer adapt_global_initializer(
+    const c4c::codegen::lir::LirGlobal& global) {
+  if (global.is_extern_decl) {
+    return BackendGlobalInitializer::declaration();
+  }
+
+  const auto init_text = trim(global.init_text);
+  if (init_text == "zeroinitializer") {
+    return BackendGlobalInitializer::zero();
+  }
+  if (const auto integer_value = parse_i64(init_text); integer_value.has_value()) {
+    return BackendGlobalInitializer::integer_literal(*integer_value);
+  }
+  return BackendGlobalInitializer::raw(global.init_text);
+}
+
 BackendGlobal adapt_global(const c4c::codegen::lir::LirGlobal& global) {
-  return BackendGlobal{
-      global.name,
-      global.linkage_vis,
-      global.qualifier,
-      global.llvm_type,
-      global.init_text,
-      global.align_bytes,
-      global.is_extern_decl,
-  };
+  BackendGlobal adapted;
+  adapted.name = global.name;
+  adapted.linkage = global.linkage_vis;
+  adapted.storage = adapt_global_storage(global.qualifier);
+  adapted.llvm_type = global.llvm_type;
+  adapted.initializer = adapt_global_initializer(global);
+  adapted.align_bytes = global.align_bytes;
+  adapted.qualifier = global.qualifier;
+  adapted.init_text = global.init_text;
+  adapted.is_extern_decl = global.is_extern_decl;
+  return adapted;
 }
 
 [[noreturn]] void fail_unsupported(const std::string& detail) {

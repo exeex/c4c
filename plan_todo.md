@@ -8,7 +8,8 @@ Source Plan: plan.md
 
 - Step 5: keep the regression guard current for each landed refactor slice
       while selecting the next highest-value backend-owned semantic surface to
-      structure beyond direct-call callee metadata
+      structure beyond direct-call callee metadata and global storage/init
+      metadata
 
 ## Incomplete Items
 
@@ -52,6 +53,11 @@ Source Plan: plan.md
       backend-text into structured backend-owned call-target metadata
       (`DirectGlobal` / `DirectIntrinsic` / `Indirect`) while preserving
       backend IR printing and validation behavior
+- [x] Step 3 slice: convert `BackendGlobal` storage and initializer semantics
+      from raw qualifier/init text into structured backend-owned metadata
+      (`Mutable` / `Constant` plus `Declaration` / `Zero` /
+      `IntegerLiteral` / `RawText`) while preserving lowered IR printing and
+      validation behavior through compatibility shims for backend consumers
 - [x] Step 4 slice: switch the x86 and aarch64 minimal direct-call fast paths
       from reparsing backend call text through
       `parse_backend_direct_global_*` to reading structured
@@ -74,8 +80,10 @@ Source Plan: plan.md
 ## Next Intended Slice
 
 - Return to Step 3 and convert the next backend IR semantic surface that still
-  relies on text-shaped payloads, while keeping the emitter-side direct-call
-  boundary on the new direct-global helpers.
+  relies on text-shaped payloads, likely starting with load/store or pointer-
+  difference metadata that currently still leans on string-carried type text,
+  while keeping the emitter-side direct-call boundary and new global metadata
+  stable.
 
 ## Blockers
 
@@ -87,6 +95,10 @@ Source Plan: plan.md
 - The latest full-suite run in `test_after.log` remains monotonic with the
   recorded baseline at 2668 passed / 3 failed / 2671 total and zero newly
   failing tests.
+- The latest regression-guard check
+  (`check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`)
+  passes after the `BackendGlobal` metadata slice with the same
+  2668 passed / 3 failed / 2671 total baseline and zero new failures.
 - Focused `backend_lir_adapter_x86_64_tests` passes after the emitter cleanup;
   focused `backend_lir_adapter_aarch64_tests` still fails in the same
   pre-existing suite called out in the full-suite baseline.
@@ -126,6 +138,10 @@ Source Plan: plan.md
   `callee.kind` plus `symbol_name`/`operand` instead of carrying that call
   identity only as raw text; `src/backend/ir_printer.cpp` reconstructs the
   printable LIR-style call operand from that structured form.
+- `BackendGlobal` now stores structured storage/init metadata in
+  `storage` plus `initializer.kind`, while `qualifier` / `init_text` /
+  `is_extern_decl` remain compatibility shims for backend consumers that have
+  not migrated yet.
 - The x86 and aarch64 minimal direct-call fast paths touched in this slice now
   read structured `BackendCallInst::callee` metadata directly through the
   narrower direct-global helper surface; they no longer depend on generic
