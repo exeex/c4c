@@ -19,7 +19,64 @@ std::optional<std::int64_t> parse_backend_i64(std::string_view text) {
   return value;
 }
 
+bool backend_text_uses_nonminimal_types(std::string_view text) {
+  return text.find("float") != std::string_view::npos ||
+         text.find("double") != std::string_view::npos ||
+         text.find("fp128") != std::string_view::npos ||
+         text.find("i64") != std::string_view::npos ||
+         text.find("i128") != std::string_view::npos;
+}
+
 }  // namespace
+
+bool backend_lir_call_uses_nonminimal_types(const c4c::codegen::lir::LirCallOp& call) {
+  if (backend_text_uses_nonminimal_types(call.return_type)) {
+    return true;
+  }
+
+  const auto parsed = parse_backend_typed_call(call);
+  if (!parsed.has_value()) {
+    return backend_text_uses_nonminimal_types(call.callee_type_suffix) ||
+           backend_text_uses_nonminimal_types(call.args_str);
+  }
+
+  for (std::string_view type : parsed->param_types) {
+    if (backend_text_uses_nonminimal_types(type)) {
+      return true;
+    }
+  }
+  for (const auto& arg : parsed->args) {
+    if (backend_text_uses_nonminimal_types(arg.type)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool backend_lir_function_signature_uses_nonminimal_types(std::string_view signature_text) {
+  const auto line = c4c::codegen::lir::trim_lir_arg_text(signature_text);
+  const auto first_space = line.find(' ');
+  const auto at_pos = line.find('@');
+  if (first_space == std::string_view::npos || at_pos == std::string_view::npos ||
+      first_space >= at_pos) {
+    return backend_text_uses_nonminimal_types(signature_text);
+  }
+
+  if (backend_text_uses_nonminimal_types(line.substr(first_space + 1, at_pos - first_space - 1))) {
+    return true;
+  }
+
+  const auto params = parse_backend_function_signature_params(line);
+  if (!params.has_value()) {
+    return backend_text_uses_nonminimal_types(signature_text);
+  }
+  for (const auto& param : *params) {
+    if (!param.is_varargs && backend_text_uses_nonminimal_types(param.type)) {
+      return true;
+    }
+  }
+  return false;
+}
 
 std::optional<c4c::codegen::lir::ParsedLirDirectGlobalTypedCallView>
 parse_backend_direct_global_typed_call(const c4c::codegen::lir::LirCallOp& call) {

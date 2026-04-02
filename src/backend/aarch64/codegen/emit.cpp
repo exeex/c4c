@@ -139,15 +139,7 @@ bool lir_module_needs_nonminimal_lowering(const c4c::codegen::lir::LirModule& mo
           } else if constexpr (std::is_same_v<T, LirCmpOp>) {
             return op.is_float || lir_type_needs_nonminimal_lowering(op.type_str);
           } else if constexpr (std::is_same_v<T, LirCallOp>) {
-            return lir_type_needs_nonminimal_lowering(op.return_type) ||
-                   op.args_str.find("double") != std::string::npos ||
-                   op.args_str.find("float") != std::string::npos ||
-                   op.args_str.find("i64") != std::string::npos ||
-                   op.args_str.find("i128") != std::string::npos ||
-                   op.callee_type_suffix.find("double") != std::string::npos ||
-                   op.callee_type_suffix.find("float") != std::string::npos ||
-                   op.callee_type_suffix.find("i64") != std::string::npos ||
-                   op.callee_type_suffix.find("i128") != std::string::npos;
+            return c4c::backend::backend_lir_call_uses_nonminimal_types(op);
           } else if constexpr (std::is_same_v<T, LirGepOp>) {
             return lir_type_needs_nonminimal_lowering(op.element_type);
           } else if constexpr (std::is_same_v<T, LirCastOp>) {
@@ -163,10 +155,8 @@ bool lir_module_needs_nonminimal_lowering(const c4c::codegen::lir::LirModule& mo
   };
 
   for (const auto& function : module.functions) {
-    if (function.signature_text.find("double") != std::string::npos ||
-        function.signature_text.find("float") != std::string::npos ||
-        function.signature_text.find("i64") != std::string::npos ||
-        function.signature_text.find("i128") != std::string::npos) {
+    if (c4c::backend::backend_lir_function_signature_uses_nonminimal_types(
+            function.signature_text)) {
       return true;
     }
     for (const auto& inst : function.alloca_insts) {

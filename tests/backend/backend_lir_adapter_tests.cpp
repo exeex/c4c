@@ -601,6 +601,55 @@ void test_backend_call_helpers_decode_lir_direct_global_vararg_prefix() {
               "shared direct-global helper should preserve the fixed typed prefix for vararg LIR calls");
 }
 
+void test_backend_call_helpers_classify_lir_nonminimal_call_types() {
+  c4c::codegen::lir::LirCallOp i32_call{
+      "%t0",
+      "i32",
+      "@add_one",
+      " ( i32 ) ",
+      " i32 %arg ",
+  };
+  expect_true(!c4c::backend::backend_lir_call_uses_nonminimal_types(i32_call),
+              "lowering-owned nonminimal call classifier should keep plain i32 call metadata on the minimal path");
+
+  c4c::codegen::lir::LirCallOp i64_call{
+      "%t1",
+      "i32",
+      "@wide",
+      " ( i64 ) ",
+      " i64 %wide ",
+  };
+  expect_true(c4c::backend::backend_lir_call_uses_nonminimal_types(i64_call),
+              "lowering-owned nonminimal call classifier should reject wide integer call metadata through the shared decode seam");
+
+  c4c::codegen::lir::LirCallOp malformed_suffix{
+      "%t2",
+      "i32",
+      "@wide",
+      " ( i64 ",
+      " i32 %arg ",
+  };
+  expect_true(c4c::backend::backend_lir_call_uses_nonminimal_types(malformed_suffix),
+              "lowering-owned nonminimal call classifier should preserve the conservative fallback when call metadata does not parse cleanly");
+}
+
+void test_backend_call_helpers_classify_lir_nonminimal_signature_types() {
+  expect_true(
+      !c4c::backend::backend_lir_function_signature_uses_nonminimal_types(
+          "define i32 @helper(i32 %arg)\n"),
+      "lowering-owned nonminimal signature classifier should keep plain i32 helpers on the minimal path");
+
+  expect_true(
+      c4c::backend::backend_lir_function_signature_uses_nonminimal_types(
+          "define i32 @helper(i64 %arg)\n"),
+      "lowering-owned nonminimal signature classifier should reject wide integer parameter signatures through the shared decode seam");
+
+  expect_true(
+      c4c::backend::backend_lir_function_signature_uses_nonminimal_types(
+          "define double @helper(i32 %arg)\n"),
+      "lowering-owned nonminimal signature classifier should reject nonminimal return types through the shared decode seam");
+}
+
 void test_backend_call_helpers_decode_single_typed_local_operand() {
   auto module = make_typed_direct_call_local_arg_with_suffix_spacing_module();
   const auto& call = std::get<c4c::codegen::lir::LirCallOp>(
@@ -1484,6 +1533,8 @@ int main(int argc, char* argv[]) {
   test_backend_call_helpers_decode_zero_arg_direct_global_calls();
   test_backend_call_helpers_decode_lir_direct_global_typed_operands();
   test_backend_call_helpers_decode_lir_direct_global_vararg_prefix();
+  test_backend_call_helpers_classify_lir_nonminimal_call_types();
+  test_backend_call_helpers_classify_lir_nonminimal_signature_types();
   test_backend_call_helpers_decode_single_typed_local_operand();
   test_backend_call_helpers_decode_two_typed_local_operands();
   test_backend_call_helpers_decode_structured_local_typed_operands();
