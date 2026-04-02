@@ -1403,6 +1403,79 @@ set_tests_properties(cpp_llvm_initializer_list_runtime_materialization PROPERTIE
 )
 
 add_test(
+  NAME cpp_eastl_piecewise_construct_parse_recipe
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DROOT=${PROJECT_SOURCE_DIR}
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/eastl/eastl_piecewise_construct_simple.cpp
+          -DEXPECT_SUCCESS=ON
+          -P "${PROJECT_SOURCE_DIR}/tests/cpp/eastl/run_eastl_parse_recipe.cmake"
+)
+set_tests_properties(cpp_eastl_piecewise_construct_parse_recipe PROPERTIES
+  LABELS "internal;positive_case;cpp;workflow"
+  TIMEOUT 30
+)
+
+add_test(
+  NAME cpp_eastl_tuple_fwd_decls_parse_recipe
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DROOT=${PROJECT_SOURCE_DIR}
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/eastl/eastl_tuple_fwd_decls_simple.cpp
+          -DEXPECT_SUCCESS=ON
+          -P "${PROJECT_SOURCE_DIR}/tests/cpp/eastl/run_eastl_parse_recipe.cmake"
+)
+set_tests_properties(cpp_eastl_tuple_fwd_decls_parse_recipe PROPERTIES
+  LABELS "internal;positive_case;cpp;workflow"
+  TIMEOUT 30
+)
+
+add_test(
+  NAME cpp_eastl_integer_sequence_parse_recipe
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DROOT=${PROJECT_SOURCE_DIR}
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/eastl/eastl_integer_sequence_simple.cpp
+          "-DEXPECT_FAIL_LOC:STRING=ref/EASTL/include/EASTL/internal/type_properties.h:35:52"
+          "-DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=try_parse_record_typedef_member phase=committed expected=SEMI got='('"
+          -P "${PROJECT_SOURCE_DIR}/tests/cpp/eastl/run_eastl_parse_recipe.cmake"
+)
+set_tests_properties(cpp_eastl_integer_sequence_parse_recipe PROPERTIES
+  LABELS "internal;negative_case;cpp;workflow"
+  TIMEOUT 30
+)
+
+add_test(
+  NAME cpp_eastl_type_traits_parse_recipe
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DROOT=${PROJECT_SOURCE_DIR}
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/eastl/eastl_type_traits_simple.cpp
+          "-DEXPECT_FAIL_LOC:STRING=ref/EASTL/include/EASTL/internal/type_properties.h:35:52"
+          "-DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=try_parse_record_typedef_member phase=committed expected=SEMI got='('"
+          -P "${PROJECT_SOURCE_DIR}/tests/cpp/eastl/run_eastl_parse_recipe.cmake"
+)
+set_tests_properties(cpp_eastl_type_traits_parse_recipe PROPERTIES
+  LABELS "internal;negative_case;cpp;workflow"
+  TIMEOUT 30
+)
+
+add_test(
+  NAME cpp_eastl_utility_parse_recipe
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DROOT=${PROJECT_SOURCE_DIR}
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/eastl/eastl_utility_simple.cpp
+          "-DEXPECT_FAIL_LOC:STRING=ref/EASTL/include/EASTL/internal/type_properties.h:35:52"
+          "-DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=try_parse_record_typedef_member phase=committed expected=SEMI got='('"
+          -P "${PROJECT_SOURCE_DIR}/tests/cpp/eastl/run_eastl_parse_recipe.cmake"
+)
+set_tests_properties(cpp_eastl_utility_parse_recipe PROPERTIES
+  LABELS "internal;negative_case;cpp;workflow"
+  TIMEOUT 30
+)
+
+add_test(
   NAME cpp_eastl_vector_parse_recipe
   COMMAND "${CMAKE_COMMAND}"
           -DCOMPILER=$<TARGET_FILE:c4cll>
