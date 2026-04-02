@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 2: introduce a safe transitional source layout and build wiring
-- Current slice: continue Step 2 by moving the first live statement-orchestration cluster into `src/frontend/hir/hir_stmt.cpp` so the split no longer leaves that translation unit as a placeholder while major statement control flow still lives in `src/frontend/hir/ast_to_hir.cpp`
+- Current slice: continue Step 2 by moving the next statement-owned declaration-lowering cluster, starting with `Lowerer::lower_local_decl_stmt`, into `src/frontend/hir/hir_stmt.cpp` now that the core statement dispatch path already lives there
 
 ## Todo
 
@@ -18,6 +18,8 @@ Source Plan: plan.md
 - [ ] Step 5: run final build and regression validation
 
 ## Completed
+
+- Validation on 2026-04-02 after moving the live statement-dispatch/orchestration path into [`src/frontend/hir/hir_stmt.cpp`](/workspaces/c4c/src/frontend/hir/hir_stmt.cpp): `Lowerer::lower_stmt_node` now lives in the statement split unit, `Lowerer::lower_stmt_expr_block` was re-homed there from [`src/frontend/hir/hir_expr.cpp`](/workspaces/c4c/src/frontend/hir/hir_expr.cpp) so ownership is statement-local instead of expression-local, and [`src/frontend/hir/ast_to_hir.cpp`](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp) dropped both moved bodies. `cmake --build build -j8` succeeded; `ctest --test-dir build -j8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 historical failing tests (`positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c`); `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passed with zero new failing tests.
 
 - Validation on 2026-04-02 after moving the deferred-NTTP expression parser cluster into [`src/frontend/hir/hir_templates.cpp`](/workspaces/c4c/src/frontend/hir/hir_templates.cpp): [`src/frontend/hir/hir_lowerer_internal.hpp`](/workspaces/c4c/src/frontend/hir/hir_lowerer_internal.hpp) no longer carries the inline `DeferredNttpExprCursor`, `DeferredNttpExprEnv`, `DeferredNttpTemplateLookup`, and `DeferredNttpExprParser` helper bodies, while [`src/frontend/hir/ast_to_hir.cpp`](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp) dropped the out-of-line `Lowerer::eval_deferred_nttp_expr_hir` definition and [`src/frontend/hir/hir_templates.cpp`](/workspaces/c4c/src/frontend/hir/hir_templates.cpp) now owns that deferred-NTTP evaluation path end to end. `cmake --build build -j8` succeeded; `ctest --test-dir build -j 8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 historical failing tests (`positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c`); `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passed with zero new failing tests.
 
