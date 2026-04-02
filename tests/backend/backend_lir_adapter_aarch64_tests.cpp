@@ -1297,6 +1297,40 @@ void test_aarch64_backend_scaffold_accepts_structured_direct_call_ir_without_sig
                       "aarch64 backend seam should not fall back when structured direct calls clear legacy signature return text");
 }
 
+void test_aarch64_backend_scaffold_rejects_structured_zero_arg_direct_call_when_helper_body_contract_disagrees() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_direct_call_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  c4c::backend::BackendFunction* helper = nullptr;
+  for (auto& function : lowered.functions) {
+    if (function.signature.name == "helper") {
+      helper = &function;
+      break;
+    }
+  }
+  auto* entry =
+      helper != nullptr && !helper->blocks.empty() ? &helper->blocks.front() : nullptr;
+  expect_true(entry != nullptr,
+              "aarch64 zero-argument direct-call regression test needs the lowered helper block to mutate");
+  if (entry != nullptr) {
+    entry->insts.push_back(c4c::backend::BackendBinaryInst{
+        c4c::backend::BackendBinaryOpcode::Add,
+        "%t.helper.folded",
+        "i32",
+        "7",
+        "0",
+        c4c::backend::BackendScalarType::I32,
+    });
+    entry->terminator.value = "%t.helper.folded";
+  }
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, "target triple =",
+                  "aarch64 backend seam should stop matching the structured zero-argument direct-call asm slice when the lowered helper body no longer matches the shared immediate-return contract");
+}
+
 void test_aarch64_backend_renders_zero_arg_typed_direct_call_slice_with_whitespace() {
   auto module = make_direct_call_module();
   auto& call = std::get<c4c::codegen::lir::LirCallOp>(
@@ -4356,6 +4390,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_scaffold_rejects_out_of_slice_ir();
   test_aarch64_backend_renders_direct_call_slice();
   test_aarch64_backend_scaffold_accepts_structured_direct_call_ir_without_signature_shims();
+  test_aarch64_backend_scaffold_rejects_structured_zero_arg_direct_call_when_helper_body_contract_disagrees();
   test_aarch64_backend_renders_zero_arg_typed_direct_call_slice_with_whitespace();
   test_aarch64_backend_scaffold_accepts_structured_zero_arg_direct_call_spacing_ir_without_signature_shims();
   test_aarch64_backend_rejects_intrinsic_callee_from_direct_call_fast_path();

@@ -364,26 +364,6 @@ const c4c::backend::BackendStringConstant* find_string_constant(
   return nullptr;
 }
 
-std::optional<std::int64_t> parse_single_block_return_imm(
-    const c4c::backend::BackendFunction& function) {
-  if (function.is_declaration || !backend_function_is_definition(function.signature) ||
-      !is_i32_scalar_signature_return(function.signature) ||
-      !function.signature.params.empty() ||
-      function.signature.is_vararg || function.blocks.size() != 1) {
-    return std::nullopt;
-  }
-
-  const auto& block = function.blocks.front();
-  if (block.label != "entry" || !block.terminator.value.has_value() ||
-      c4c::backend::backend_return_scalar_type(block.terminator) !=
-          c4c::backend::BackendScalarType::I32 ||
-      !block.insts.empty()) {
-    return std::nullopt;
-  }
-
-  return parse_i64(*block.terminator.value);
-}
-
 std::optional<std::int64_t> parse_minimal_lir_return_sub_imm(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
@@ -3432,6 +3412,11 @@ struct MatchedMinimalStructuredDirectCall {
   const c4c::backend::BackendFunction* callee_fn = nullptr;
 };
 
+struct MatchedMinimalStructuredDirectCallReturnImmHelper {
+  const c4c::backend::BackendFunction* callee_fn = nullptr;
+  std::int64_t return_imm = 0;
+};
+
 std::optional<MatchedMinimalStructuredDirectCall> match_minimal_structured_direct_call(
     const c4c::backend::BackendModule& module,
     const c4c::backend::BackendBlock& block,
@@ -3463,6 +3448,29 @@ std::optional<MatchedMinimalStructuredDirectCall> match_minimal_structured_direc
   return MatchedMinimalStructuredDirectCall{call, *parsed_call, callee_fn};
 }
 
+std::optional<MatchedMinimalStructuredDirectCallReturnImmHelper>
+match_minimal_structured_direct_call_return_imm_helper(
+    const c4c::backend::BackendFunction& callee_fn) {
+  if (!callee_fn.signature.params.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& callee_block = callee_fn.blocks.front();
+  if (callee_block.label != "entry" || !callee_block.terminator.value.has_value() ||
+      c4c::backend::backend_return_scalar_type(callee_block.terminator) !=
+          c4c::backend::BackendScalarType::I32 ||
+      !callee_block.insts.empty()) {
+    return std::nullopt;
+  }
+
+  const auto return_imm = parse_i64(*callee_block.terminator.value);
+  if (!return_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  return MatchedMinimalStructuredDirectCallReturnImmHelper{&callee_fn, *return_imm};
+}
+
 std::optional<MinimalDirectCallSlice> parse_minimal_direct_call_slice(
     const c4c::backend::BackendModule& module) {
   if (module.functions.size() != 2) return std::nullopt;
@@ -3489,10 +3497,12 @@ std::optional<MinimalDirectCallSlice> parse_minimal_direct_call_slice(
     return std::nullopt;
   }
 
-  const auto callee_imm = parse_single_block_return_imm(*matched->callee_fn);
-  if (!callee_imm.has_value()) return std::nullopt;
+  const auto helper_match =
+      match_minimal_structured_direct_call_return_imm_helper(*matched->callee_fn);
+  if (!helper_match.has_value()) return std::nullopt;
 
-  return MinimalDirectCallSlice{std::string(matched->parsed_call.symbol_name), *callee_imm};
+  return MinimalDirectCallSlice{std::string(matched->parsed_call.symbol_name),
+                                helper_match->return_imm};
 }
 
 std::optional<MinimalDirectCallAddImmSlice> parse_minimal_direct_call_add_imm_slice(
