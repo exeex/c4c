@@ -39,7 +39,7 @@ set(FRONTEND_CXX_COMMON_SRCS
     "${PROJECT_SOURCE_DIR}/src/frontend/parser/parser_statements.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/parser/parser_declarations.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/parser/parser_support.cpp"
-    "${PROJECT_SOURCE_DIR}/src/frontend/hir/ast_to_hir.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_lowering_core.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_build.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_expr.cpp"

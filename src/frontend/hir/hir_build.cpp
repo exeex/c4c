@@ -1,4 +1,4 @@
-// Build/coordinator lowering cluster extracted from ast_to_hir.cpp.
+// Build/coordinator lowering cluster extracted from hir_lowering_core.cpp.
 //
 // Included here as a staging artifact for later split integration:
 // - flatten_program_items
@@ -26,7 +26,7 @@
 // - lower_non_method_functions_and_globals
 // - lower_pending_struct_methods
 
-#include "ast_to_hir.hpp"
+#include "hir_lowering.hpp"
 #include "hir_lowerer_internal.hpp"
 #include "consteval.hpp"
 #include "type_utils.hpp"

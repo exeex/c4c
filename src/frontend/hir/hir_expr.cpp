@@ -1,8 +1,8 @@
-// Draft-only HIR expression lowering split extracted from ast_to_hir.cpp.
+// Draft-only HIR expression lowering split extracted from hir_lowering_core.cpp.
 // This file is not yet wired into the build and is intended as a staging
 // artifact for the eventual multi-translation-unit split.
 
-#include "ast_to_hir.hpp"
+#include "hir_lowering.hpp"
 #include "hir_lowerer_internal.hpp"
 #include "consteval.hpp"
 

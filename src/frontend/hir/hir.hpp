@@ -5,7 +5,7 @@
 #include "ast.hpp"
 #include "canonical_symbol.hpp"
 #include "hir_printer.hpp"
-#include "ir.hpp"
+#include "hir_ir.hpp"
 
 namespace c4c::hir {
 

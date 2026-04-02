@@ -3,7 +3,7 @@
 #include "ast.hpp"
 #include "canonical_symbol.hpp"
 #include "compile_time_engine.hpp"
-#include "ir.hpp"
+#include "hir_ir.hpp"
 
 #include <memory>
 #include <optional>

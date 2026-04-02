@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ast_to_hir.hpp"
+#include "hir_lowering.hpp"
 #include "type_utils.hpp"
 #include "../parser/parser.hpp"
 

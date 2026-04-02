@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ir.hpp"
+#include "hir_ir.hpp"
 
 #include <algorithm>
 #include <cstdint>

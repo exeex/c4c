@@ -2,7 +2,7 @@
 
 #include <string>
 
-#include "ir.hpp"
+#include "hir_ir.hpp"
 
 namespace c4c::hir {
 

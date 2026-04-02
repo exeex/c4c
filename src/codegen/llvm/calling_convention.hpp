@@ -2,7 +2,7 @@
 
 #include <array>
 
-#include "../../frontend/hir/ir.hpp"
+#include "../../frontend/hir/hir_ir.hpp"
 
 namespace c4c::codegen::llvm_backend {
 
