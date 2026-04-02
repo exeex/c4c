@@ -709,6 +709,19 @@ void test_backend_ir_validator_accepts_structured_string_literal_char_slice_with
               "backend IR validator should not report an error when widened string-literal load type shims are cleared");
 }
 
+void test_backend_ir_validator_rejects_string_literal_load_past_structured_bounds() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_string_literal_char_module());
+  auto& load = std::get<c4c::backend::BackendLoadInst>(
+      lowered.functions.front().blocks.front().insts.front());
+  load.address.byte_offset = 3;
+  std::string error;
+
+  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should reject structured string-literal loads that exceed the referenced byte bounds");
+  expect_contains(error, "load address: address exceeds referenced global bounds",
+                  "backend IR validator should explain when a structured string-literal load escapes the referenced bytes");
+}
+
 void test_backend_ir_printer_renders_lowered_global_int_pointer_roundtrip_slice() {
   const auto lowered =
       c4c::backend::lower_to_backend_ir(make_global_int_pointer_roundtrip_module());
@@ -845,6 +858,24 @@ void test_backend_ir_validator_accepts_structured_extern_global_array_load_slice
               "backend IR validator should accept extern global arrays described only by structured array metadata");
   expect_true(error.empty(),
               "backend IR validator should not report an error when raw global array type text is cleared");
+}
+
+void test_backend_ir_validator_rejects_structured_global_array_with_nonscalar_element_type() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_extern_global_array_load_module());
+  clear_backend_global_type_compatibility_shims(lowered);
+  auto& global = lowered.globals.front();
+  global.array_type = c4c::backend::BackendGlobalArrayType{
+      2,
+      "ptr",
+      c4c::backend::BackendValueTypeKind::Ptr,
+      c4c::backend::BackendScalarType::Unknown,
+  };
+  std::string error;
+
+  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should reject structured global arrays whose element metadata is not a sized scalar");
+  expect_contains(error, "structured global arrays must use a sized scalar element type",
+                  "backend IR validator should explain invalid structured global-array element metadata");
 }
 
 void test_backend_ir_validator_rejects_extern_global_array_load_past_structured_bounds() {
@@ -1487,6 +1518,7 @@ int main(int argc, char* argv[]) {
   test_backend_ir_validator_accepts_lowered_string_literal_char_slice();
   test_backend_ir_printer_renders_structured_string_literal_char_slice_without_type_text();
   test_backend_ir_validator_accepts_structured_string_literal_char_slice_without_type_text();
+  test_backend_ir_validator_rejects_string_literal_load_past_structured_bounds();
   test_backend_ir_printer_renders_lowered_global_int_pointer_roundtrip_slice();
   test_backend_ir_validator_accepts_lowered_global_int_pointer_roundtrip_slice();
   test_backend_ir_printer_renders_lowered_global_char_pointer_diff_slice();
@@ -1498,6 +1530,7 @@ int main(int argc, char* argv[]) {
   test_backend_ir_printer_renders_lowered_extern_global_array_load_slice();
   test_backend_ir_printer_renders_structured_extern_global_array_load_slice_without_raw_type_text();
   test_backend_ir_validator_accepts_structured_extern_global_array_load_slice_without_raw_type_text();
+  test_backend_ir_validator_rejects_structured_global_array_with_nonscalar_element_type();
   test_backend_ir_validator_rejects_extern_global_array_load_past_structured_bounds();
   test_backend_ir_validator_rejects_extern_global_array_load_with_mismatched_structured_memory_type();
   test_backend_ir_validator_rejects_structured_load_extension_that_does_not_widen();
