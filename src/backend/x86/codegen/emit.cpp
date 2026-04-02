@@ -1273,12 +1273,15 @@ std::optional<MinimalExternGlobalArrayLoadSlice> parse_minimal_extern_global_arr
   }
 
   const auto* global = find_global(module, module.globals.front().name);
+  const auto global_array_type =
+      global == nullptr ? std::nullopt : c4c::backend::backend_global_array_type(*global);
   if (global == nullptr || !c4c::backend::backend_global_is_extern_declaration(*global) ||
       global->storage != c4c::backend::BackendGlobalStorageKind::Mutable ||
       c4c::backend::backend_global_linkage(*global) !=
           c4c::backend::BackendGlobalLinkage::External ||
-      global->llvm_type.size() < 7 ||
-      global->llvm_type.substr(global->llvm_type.size() - 7) != " x i32]") {
+      !global_array_type.has_value() ||
+      global_array_type->element_type_kind != c4c::backend::BackendValueTypeKind::Scalar ||
+      global_array_type->element_scalar_type != c4c::backend::BackendScalarType::I32) {
     return std::nullopt;
   }
 
@@ -1483,23 +1486,19 @@ std::optional<MinimalGlobalCharPointerDiffSlice> parse_minimal_global_char_point
   }
 
   const auto* global = find_global(module, module.globals.front().name);
+  const auto global_array_type =
+      global == nullptr ? std::nullopt : c4c::backend::backend_global_array_type(*global);
   if (global == nullptr || c4c::backend::backend_global_is_extern_declaration(*global) ||
       global->storage != c4c::backend::BackendGlobalStorageKind::Mutable) {
     return std::nullopt;
   }
-  const std::string array_prefix = "[";
-  const std::string array_suffix = " x i8]";
-  if (global->llvm_type.size() <= array_prefix.size() + array_suffix.size() ||
-      global->llvm_type.substr(0, array_prefix.size()) != array_prefix ||
-      global->llvm_type.substr(global->llvm_type.size() - array_suffix.size()) !=
-          array_suffix) {
+  if (!global_array_type.has_value() ||
+      global_array_type->element_type_kind != c4c::backend::BackendValueTypeKind::Scalar ||
+      global_array_type->element_scalar_type != c4c::backend::BackendScalarType::I8) {
     return std::nullopt;
   }
-  const auto global_size_text = global->llvm_type.substr(
-      array_prefix.size(),
-      global->llvm_type.size() - array_prefix.size() - array_suffix.size());
-  const auto global_size = parse_i64(global_size_text);
-  if (!global_size.has_value() || *global_size < 2) {
+  const auto global_size = static_cast<std::int64_t>(global_array_type->element_count);
+  if (global_size < 2) {
     return std::nullopt;
   }
 
@@ -1532,14 +1531,14 @@ std::optional<MinimalGlobalCharPointerDiffSlice> parse_minimal_global_char_point
       ptrdiff->element_size != 1 ||
       ptrdiff->expected_diff != ptrdiff->lhs_address.byte_offset ||
       ptrdiff->lhs_address.byte_offset <= 0 ||
-      ptrdiff->lhs_address.byte_offset >= *global_size ||
+      ptrdiff->lhs_address.byte_offset >= global_size ||
       *block.terminator.value != ptrdiff->result) {
     return std::nullopt;
   }
 
   return MinimalGlobalCharPointerDiffSlice{
       global->name,
-      *global_size,
+      global_size,
       ptrdiff->lhs_address.byte_offset,
   };
 }
@@ -1551,23 +1550,19 @@ std::optional<MinimalGlobalIntPointerDiffSlice> parse_minimal_global_int_pointer
   }
 
   const auto* global = find_global(module, module.globals.front().name);
+  const auto global_array_type =
+      global == nullptr ? std::nullopt : c4c::backend::backend_global_array_type(*global);
   if (global == nullptr || c4c::backend::backend_global_is_extern_declaration(*global) ||
       global->storage != c4c::backend::BackendGlobalStorageKind::Mutable) {
     return std::nullopt;
   }
-  const std::string array_prefix = "[";
-  const std::string array_suffix = " x i32]";
-  if (global->llvm_type.size() <= array_prefix.size() + array_suffix.size() ||
-      global->llvm_type.substr(0, array_prefix.size()) != array_prefix ||
-      global->llvm_type.substr(global->llvm_type.size() - array_suffix.size()) !=
-          array_suffix) {
+  if (!global_array_type.has_value() ||
+      global_array_type->element_type_kind != c4c::backend::BackendValueTypeKind::Scalar ||
+      global_array_type->element_scalar_type != c4c::backend::BackendScalarType::I32) {
     return std::nullopt;
   }
-  const auto global_size_text = global->llvm_type.substr(
-      array_prefix.size(),
-      global->llvm_type.size() - array_prefix.size() - array_suffix.size());
-  const auto global_size = parse_i64(global_size_text);
-  if (!global_size.has_value() || *global_size < 2) {
+  const auto global_size = static_cast<std::int64_t>(global_array_type->element_count);
+  if (global_size < 2) {
     return std::nullopt;
   }
 
@@ -1602,7 +1597,7 @@ std::optional<MinimalGlobalIntPointerDiffSlice> parse_minimal_global_int_pointer
     return std::nullopt;
   }
 
-  return MinimalGlobalIntPointerDiffSlice{global->name, *global_size, 4, 2};
+  return MinimalGlobalIntPointerDiffSlice{global->name, global_size, 4, 2};
 }
 
 std::optional<MinimalGlobalCharPointerDiffSlice> parse_minimal_global_char_pointer_diff_slice(

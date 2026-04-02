@@ -126,6 +126,14 @@ void clear_backend_global_linkage_compatibility_shims(c4c::backend::BackendModul
   }
 }
 
+void clear_backend_global_type_compatibility_shims(c4c::backend::BackendModule& module) {
+  for (auto& global : module.globals) {
+    if (global.array_type.has_value()) {
+      global.llvm_type.clear();
+    }
+  }
+}
+
 void test_backend_ir_printer_renders_lowered_conditional_return_slice() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_return_module());
   const auto rendered = c4c::backend::print_backend_ir(lowered);
@@ -818,6 +826,26 @@ void test_backend_ir_printer_renders_lowered_extern_global_array_load_slice() {
                   "backend IR printer should preserve the lowered extern global array load return");
 }
 
+void test_backend_ir_printer_renders_structured_extern_global_array_load_slice_without_raw_type_text() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_extern_global_array_load_module());
+  clear_backend_global_type_compatibility_shims(lowered);
+  const auto rendered = c4c::backend::print_backend_ir(lowered);
+
+  expect_contains(rendered, "@ext_arr = external global [2 x i32], align 4\n",
+                  "backend IR printer should render extern global arrays from structured array metadata when raw global type text is cleared");
+}
+
+void test_backend_ir_validator_accepts_structured_extern_global_array_load_slice_without_raw_type_text() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_extern_global_array_load_module());
+  clear_backend_global_type_compatibility_shims(lowered);
+  std::string error;
+
+  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should accept extern global arrays described only by structured array metadata");
+  expect_true(error.empty(),
+              "backend IR validator should not report an error when raw global array type text is cleared");
+}
+
 void test_backend_ir_printer_renders_return_add() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_return_add_module());
   const auto rendered = c4c::backend::print_backend_ir(lowered);
@@ -854,15 +882,14 @@ void test_backend_ir_validator_rejects_definition_without_blocks() {
 
 void test_backend_ir_printer_renders_structured_global_constant_initializer() {
   c4c::backend::BackendModule module;
-  module.globals.push_back(c4c::backend::BackendGlobal{
-      "g_const",
-      "",
-      c4c::backend::BackendGlobalLinkage::Default,
-      c4c::backend::BackendGlobalStorageKind::Constant,
-      "i32",
-      c4c::backend::BackendGlobalInitializer::integer_literal(7),
-      4,
-  });
+  c4c::backend::BackendGlobal global;
+  global.name = "g_const";
+  global.linkage_kind = c4c::backend::BackendGlobalLinkage::Default;
+  global.storage = c4c::backend::BackendGlobalStorageKind::Constant;
+  global.llvm_type = "i32";
+  global.initializer = c4c::backend::BackendGlobalInitializer::integer_literal(7);
+  global.align_bytes = 4;
+  module.globals.push_back(std::move(global));
 
   const auto rendered = c4c::backend::print_backend_ir(module);
   expect_contains(rendered, "@g_const = constant i32 7, align 4\n",
@@ -871,15 +898,15 @@ void test_backend_ir_printer_renders_structured_global_constant_initializer() {
 
 void test_backend_ir_printer_renders_structured_extern_global_declaration() {
   c4c::backend::BackendModule module;
-  module.globals.push_back(c4c::backend::BackendGlobal{
-      "ext_counter",
-      "external ",
-      c4c::backend::BackendGlobalLinkage::External,
-      c4c::backend::BackendGlobalStorageKind::Mutable,
-      "i32",
-      c4c::backend::BackendGlobalInitializer::declaration(),
-      4,
-  });
+  c4c::backend::BackendGlobal global;
+  global.name = "ext_counter";
+  global.linkage = "external ";
+  global.linkage_kind = c4c::backend::BackendGlobalLinkage::External;
+  global.storage = c4c::backend::BackendGlobalStorageKind::Mutable;
+  global.llvm_type = "i32";
+  global.initializer = c4c::backend::BackendGlobalInitializer::declaration();
+  global.align_bytes = 4;
+  module.globals.push_back(std::move(global));
 
   const auto rendered = c4c::backend::print_backend_ir(module);
   expect_contains(rendered, "@ext_counter = external global i32, align 4\n",
@@ -888,15 +915,13 @@ void test_backend_ir_printer_renders_structured_extern_global_declaration() {
 
 void test_backend_ir_validator_rejects_structured_defined_global_without_initializer() {
   c4c::backend::BackendModule module;
-  module.globals.push_back(c4c::backend::BackendGlobal{
-      "g_missing_init",
-      "",
-      c4c::backend::BackendGlobalLinkage::Default,
-      c4c::backend::BackendGlobalStorageKind::Mutable,
-      "i32",
-      c4c::backend::BackendGlobalInitializer::declaration(),
-      0,
-  });
+  c4c::backend::BackendGlobal global;
+  global.name = "g_missing_init";
+  global.linkage_kind = c4c::backend::BackendGlobalLinkage::Default;
+  global.storage = c4c::backend::BackendGlobalStorageKind::Mutable;
+  global.llvm_type = "i32";
+  global.initializer = c4c::backend::BackendGlobalInitializer::declaration();
+  module.globals.push_back(std::move(global));
 
   std::string error;
   expect_true(!c4c::backend::validate_backend_ir(module, &error),
@@ -1282,6 +1307,8 @@ int main(int argc, char* argv[]) {
   test_backend_ir_printer_renders_structured_global_int_pointer_diff_slice_without_type_text();
   test_backend_ir_validator_accepts_structured_global_int_pointer_diff_slice_without_type_text();
   test_backend_ir_printer_renders_lowered_extern_global_array_load_slice();
+  test_backend_ir_printer_renders_structured_extern_global_array_load_slice_without_raw_type_text();
+  test_backend_ir_validator_accepts_structured_extern_global_array_load_slice_without_raw_type_text();
   test_backend_ir_printer_renders_lowered_conditional_return_slice();
   test_backend_ir_validator_accepts_lowered_conditional_return_slice();
   test_backend_ir_printer_renders_structured_conditional_return_slice_without_type_text();

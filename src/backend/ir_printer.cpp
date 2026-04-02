@@ -27,7 +27,7 @@ std::string escape_ir_bytes(std::string_view bytes) {
 
 void render_global(std::ostringstream& out, const BackendGlobal& global) {
   out << "@" << global.name << " = " << render_backend_global_linkage(global)
-      << render_backend_global_storage(global.storage) << global.llvm_type;
+      << render_backend_global_storage(global.storage) << render_backend_global_type(global);
   if (global.initializer.kind != BackendGlobalInitializer::Kind::Declaration) {
     out << " " << render_backend_global_initializer(global.initializer);
   }

@@ -41,7 +41,7 @@ bool validate_global(const BackendGlobal& global,
   if (global.name.empty()) {
     return fail(error, std::string(context) + ": global name must not be empty");
   }
-  if (global.llvm_type.empty()) {
+  if (render_backend_global_type(global).empty()) {
     return fail(error, std::string(context) + ": global type must not be empty");
   }
   if (global.initializer.kind == BackendGlobalInitializer::Kind::Declaration &&

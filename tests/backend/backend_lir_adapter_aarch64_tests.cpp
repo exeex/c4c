@@ -52,6 +52,14 @@ void clear_backend_global_compatibility_shims(c4c::backend::BackendModule& modul
   }
 }
 
+void clear_backend_global_type_compatibility_shims(c4c::backend::BackendModule& module) {
+  for (auto& global : module.globals) {
+    if (global.array_type.has_value()) {
+      global.llvm_type.clear();
+    }
+  }
+}
+
 void clear_backend_memory_type_compatibility_shims(c4c::backend::BackendModule& module) {
   for (auto& function : module.functions) {
     for (auto& block : function.blocks) {
@@ -2153,6 +2161,23 @@ void test_aarch64_backend_scaffold_accepts_structured_extern_global_array_ir_wit
                       "aarch64 backend seam should not fall back when extern global arrays rely only on structured signature and global metadata");
 }
 
+void test_aarch64_backend_scaffold_accepts_structured_extern_global_array_ir_without_raw_type_text() {
+  auto lowered =
+      c4c::backend::lower_to_backend_ir(make_extern_global_array_load_module());
+  clear_backend_global_compatibility_shims(lowered);
+  clear_backend_global_type_compatibility_shims(lowered);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  expect_contains(rendered, ".extern ext_arr\n",
+                  "aarch64 backend seam should still recognize structured extern global arrays when raw global type text is cleared");
+  expect_contains(rendered, "ldr w0, [x8, #4]\n",
+                  "aarch64 backend seam should preserve structured extern global array offsets from stored array metadata");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should not fall back when extern global arrays rely on structured linkage and array metadata only");
+}
+
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_local_array_ir_input() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_local_array_gep_module());
   const auto rendered = c4c::backend::emit_module(
@@ -2236,6 +2261,22 @@ void test_aarch64_backend_scaffold_accepts_structured_global_char_pointer_diff_i
                   "aarch64 backend seam should still lower structured char pointer-difference compares without legacy ptrdiff type text");
   expect_not_contains(rendered, "target triple =",
                       "aarch64 backend seam should not fall back when char ptrdiff metadata is present without type shims");
+}
+
+void test_aarch64_backend_scaffold_accepts_structured_global_char_pointer_diff_ir_without_raw_global_type_text() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_global_char_pointer_diff_module());
+  clear_backend_memory_type_compatibility_shims(lowered);
+  clear_backend_global_type_compatibility_shims(lowered);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  expect_contains(rendered, "add x9, x8, #1\n",
+                  "aarch64 backend seam should still preserve structured char pointer-difference offsets when raw global array text is cleared");
+  expect_contains(rendered, "cmp x8, #1\n",
+                  "aarch64 backend seam should still lower structured char pointer-difference compares from stored array metadata");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should not fall back when char ptrdiff slices rely on structured global array metadata");
 }
 
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_global_int_pointer_diff_ir_input() {
@@ -3401,11 +3442,13 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_scaffold_accepts_explicit_lowered_extern_global_array_ir_input();
   test_aarch64_backend_scaffold_accepts_structured_extern_global_array_ir_without_compatibility_shims();
   test_aarch64_backend_scaffold_accepts_structured_extern_global_array_ir_without_compatibility_or_signature_shims();
+  test_aarch64_backend_scaffold_accepts_structured_extern_global_array_ir_without_raw_type_text();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_local_array_ir_input();
   test_aarch64_backend_scaffold_accepts_structured_local_array_ir_without_type_or_signature_shims();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_global_int_pointer_roundtrip_ir_input();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_global_char_pointer_diff_ir_input();
   test_aarch64_backend_scaffold_accepts_structured_global_char_pointer_diff_ir_without_type_shims();
+  test_aarch64_backend_scaffold_accepts_structured_global_char_pointer_diff_ir_without_raw_global_type_text();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_global_int_pointer_diff_ir_input();
   test_aarch64_backend_scaffold_accepts_structured_global_int_pointer_diff_ir_without_type_shims();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_return_ir_input();

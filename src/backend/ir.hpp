@@ -142,6 +142,13 @@ inline std::string_view render_backend_global_linkage(BackendGlobalLinkage linka
 }
 
 struct BackendGlobal {
+  struct ArrayType {
+    std::size_t element_count = 0;
+    std::string element_type;
+    BackendValueTypeKind element_type_kind = BackendValueTypeKind::Unknown;
+    BackendScalarType element_scalar_type{};
+  };
+
   enum class StorageKind : unsigned char {
     Mutable,
     Constant,
@@ -187,6 +194,7 @@ struct BackendGlobal {
   BackendGlobalLinkage linkage_kind = BackendGlobalLinkage::Default;
   StorageKind storage = StorageKind::Mutable;
   std::string llvm_type;
+  std::optional<ArrayType> array_type;
   Initializer initializer;
   int align_bytes = 0;
 
@@ -198,6 +206,68 @@ struct BackendGlobal {
 
 using BackendGlobalStorageKind = BackendGlobal::StorageKind;
 using BackendGlobalInitializer = BackendGlobal::Initializer;
+using BackendGlobalArrayType = BackendGlobal::ArrayType;
+
+inline std::optional<BackendGlobalArrayType> parse_backend_global_array_type(
+    std::string_view type) {
+  if (type.size() < 7 || type.front() != '[' || type.back() != ']') {
+    return std::nullopt;
+  }
+
+  const auto marker = type.find(" x ");
+  if (marker == std::string_view::npos || marker <= 1 || marker + 3 >= type.size() - 1) {
+    return std::nullopt;
+  }
+
+  const auto element_count_text = type.substr(1, marker - 1);
+  std::size_t element_count = 0;
+  for (const char ch : element_count_text) {
+    if (ch < '0' || ch > '9') {
+      return std::nullopt;
+    }
+    element_count = element_count * 10 + static_cast<std::size_t>(ch - '0');
+  }
+  if (element_count == 0) {
+    return std::nullopt;
+  }
+
+  const auto element_type = type.substr(marker + 3, type.size() - marker - 4);
+  if (element_type.empty()) {
+    return std::nullopt;
+  }
+
+  BackendGlobalArrayType parsed;
+  parsed.element_count = element_count;
+  parsed.element_type = std::string(element_type);
+  parsed.element_type_kind = parse_backend_value_type_kind(element_type);
+  parsed.element_scalar_type = parse_backend_value_scalar_type(element_type);
+  return parsed;
+}
+
+inline std::string render_backend_global_array_type(const BackendGlobalArrayType& array_type) {
+  if (array_type.element_type.empty() || array_type.element_count == 0) {
+    return {};
+  }
+  return "[" + std::to_string(array_type.element_count) + " x " + array_type.element_type + "]";
+}
+
+inline std::optional<BackendGlobalArrayType> backend_global_array_type(
+    const BackendGlobal& global) {
+  if (global.array_type.has_value()) {
+    return global.array_type;
+  }
+  return parse_backend_global_array_type(global.llvm_type);
+}
+
+inline std::string render_backend_global_type(const BackendGlobal& global) {
+  if (!global.llvm_type.empty()) {
+    return global.llvm_type;
+  }
+  if (global.array_type.has_value()) {
+    return render_backend_global_array_type(*global.array_type);
+  }
+  return {};
+}
 
 inline BackendGlobalLinkage backend_global_linkage(const BackendGlobal& global) {
   if (global.linkage_kind != BackendGlobalLinkage::Default) {
