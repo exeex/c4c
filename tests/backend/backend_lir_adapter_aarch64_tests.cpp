@@ -1723,6 +1723,52 @@ void test_aarch64_backend_scaffold_accepts_renamed_structured_call_crossing_dire
                       "aarch64 backend seam should not fall back when the renamed lowered call-crossing slice relies only on structured backend metadata");
 }
 
+void test_aarch64_backend_scaffold_accepts_lowered_call_crossing_source_value_rename_without_signature_shims() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_typed_call_crossing_direct_call_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  c4c::backend::BackendFunction* main_fn = nullptr;
+  for (auto& function : lowered.functions) {
+    if (function.signature.name == "main") {
+      main_fn = &function;
+      break;
+    }
+  }
+  expect_true(main_fn != nullptr,
+              "aarch64 lowered call-crossing source rename regression test needs the backend main function");
+  if (main_fn == nullptr || main_fn->blocks.empty() || main_fn->blocks.front().insts.size() != 3) {
+    return;
+  }
+
+  auto& entry = main_fn->blocks.front();
+  auto* source_add = std::get_if<c4c::backend::BackendBinaryInst>(&entry.insts[0]);
+  auto* call = std::get_if<c4c::backend::BackendCallInst>(&entry.insts[1]);
+  auto* final_add = std::get_if<c4c::backend::BackendBinaryInst>(&entry.insts[2]);
+  expect_true(source_add != nullptr && call != nullptr && final_add != nullptr,
+              "aarch64 lowered call-crossing source rename regression test needs the structured source add, direct call, and final add to mutate");
+  if (source_add == nullptr || call == nullptr || final_add == nullptr) {
+    return;
+  }
+
+  source_add->result = "%t.crossing.source.renamed";
+  call->args.front().operand = "%t.crossing.source.renamed";
+  final_add->lhs = "%t.crossing.source.renamed";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, "mov w20, #5",
+                  "aarch64 backend seam should keep using the backend-owned synthesized regalloc source when the lowered call-crossing source SSA name changes");
+  expect_contains(rendered, "mov w0, w20",
+                  "aarch64 backend seam should still marshal the renamed lowered call-crossing source through the ABI argument register");
+  expect_contains(rendered, "bl add_one",
+                  "aarch64 backend seam should keep the lowered call-crossing direct call on the asm path after a structured source-value rename");
+  expect_contains(rendered, "add w0, w20, w0",
+                  "aarch64 backend seam should still reuse the preserved call-crossing source register after the renamed lowered helper call");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should not fall back when only the lowered call-crossing source SSA name changes across the structured source-add, direct-call, and final-add seam");
+}
+
 void test_aarch64_backend_renders_typed_two_arg_direct_call_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_typed_direct_call_two_arg_module()},
@@ -4499,6 +4545,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_keeps_renamed_structured_call_crossing_slice_on_asm_path();
   test_aarch64_backend_scaffold_accepts_structured_call_crossing_direct_call_ir_without_signature_shims();
   test_aarch64_backend_scaffold_accepts_renamed_structured_call_crossing_direct_call_ir_without_signature_shims();
+  test_aarch64_backend_scaffold_accepts_lowered_call_crossing_source_value_rename_without_signature_shims();
   test_aarch64_backend_renders_typed_two_arg_direct_call_slice();
   test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_ir_without_signature_shims();
   test_aarch64_backend_scaffold_rejects_structured_two_arg_direct_call_when_helper_body_contract_disagrees();
