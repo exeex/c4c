@@ -136,4 +136,35 @@ inline std::optional<std::string_view> parse_backend_zero_arg_direct_global_type
   }
   return parsed->symbol_name;
 }
+
+inline bool matches_backend_zero_add_slot_rewrite(
+    const c4c::codegen::lir::LirLoadOp& load,
+    const c4c::codegen::lir::LirBinOp& add,
+    const c4c::codegen::lir::LirStoreOp& store,
+    std::string_view slot) {
+  using namespace c4c::codegen::lir;
+
+  if (load.type_str != "i32" || load.ptr != slot ||
+      add.opcode.typed() != LirBinaryOpcode::Add || add.type_str != "i32" ||
+      add.result.empty() || store.type_str != "i32" || store.ptr != slot ||
+      store.val != add.result) {
+    return false;
+  }
+
+  const bool add_zero_on_rhs = add.lhs == load.result && add.rhs == "0";
+  const bool add_zero_on_lhs = add.lhs == "0" && add.rhs == load.result;
+  return add_zero_on_rhs || add_zero_on_lhs;
+}
+
+inline bool matches_backend_zero_add_slot_rewrite_with_reload(
+    const c4c::codegen::lir::LirLoadOp& load,
+    const c4c::codegen::lir::LirBinOp& add,
+    const c4c::codegen::lir::LirStoreOp& store,
+    const c4c::codegen::lir::LirLoadOp& reload,
+    std::string_view slot) {
+  if (reload.type_str != "i32" || reload.ptr != slot) {
+    return false;
+  }
+  return matches_backend_zero_add_slot_rewrite(load, add, store, slot);
+}
 }  // namespace c4c::backend

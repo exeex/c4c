@@ -627,6 +627,32 @@ void test_backend_call_helpers_decode_structured_local_typed_operands() {
               "lowering-owned typed-call helper should decode structured two-operand local calls in order");
 }
 
+void test_backend_call_helpers_match_zero_add_slot_rewrite_shapes() {
+  using namespace c4c::codegen::lir;
+
+  const LirLoadOp load{"%t0", "i32", "%lv.slot"};
+  const LirBinOp add_rhs_zero{"%t1", LirBinaryOpcode::Add, "i32", "%t0", "0"};
+  const LirStoreOp store{"i32", "%t1", "%lv.slot"};
+  const LirLoadOp reload{"%t2", "i32", "%lv.slot"};
+
+  expect_true(c4c::backend::matches_backend_zero_add_slot_rewrite(
+                  load, add_rhs_zero, store, "%lv.slot"),
+              "lowering-owned slot-rewrite helper should match load-add-zero-store compatibility chains");
+  expect_true(c4c::backend::matches_backend_zero_add_slot_rewrite_with_reload(
+                  load, add_rhs_zero, store, reload, "%lv.slot"),
+              "lowering-owned slot-rewrite helper should match compatibility chains that reload the rewritten slot");
+
+  const LirBinOp add_lhs_zero{"%t1", LirBinaryOpcode::Add, "i32", "0", "%t0"};
+  expect_true(c4c::backend::matches_backend_zero_add_slot_rewrite(
+                  load, add_lhs_zero, store, "%lv.slot"),
+              "lowering-owned slot-rewrite helper should accept either zero-add operand ordering");
+
+  const LirLoadOp wrong_reload{"%t2", "i32", "%lv.other"};
+  expect_true(!c4c::backend::matches_backend_zero_add_slot_rewrite_with_reload(
+                  load, add_rhs_zero, store, wrong_reload, "%lv.slot"),
+              "lowering-owned slot-rewrite helper should reject reloads from a different slot");
+}
+
 void test_backend_call_helpers_borrow_structured_typed_call_view() {
   c4c::backend::BackendCallInst call{
       "%t2",
@@ -1293,6 +1319,7 @@ int main(int argc, char* argv[]) {
   test_backend_call_helpers_decode_single_typed_local_operand();
   test_backend_call_helpers_decode_two_typed_local_operands();
   test_backend_call_helpers_decode_structured_local_typed_operands();
+  test_backend_call_helpers_match_zero_add_slot_rewrite_shapes();
   test_backend_call_helpers_borrow_structured_typed_call_view();
   test_lir_typed_wrappers_preserve_legacy_opcode_and_predicate_strings();
   test_lir_typed_wrappers_leave_unknown_opcode_text_compatible();

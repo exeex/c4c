@@ -6,9 +6,9 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 2: extract the next decode-only local-call pattern matcher from
-      `src/backend/lir_adapter.cpp` after the typed-call operand helper wrappers
-      moved into `src/backend/lowering/call_decode.hpp`
+- Step 2: extract the remaining local-call shape recognizer that chooses
+      rewritten single-slot versus two-slot typed-call load operands from
+      `src/backend/lir_adapter.cpp`
 
 ## Incomplete Items
 
@@ -42,13 +42,17 @@ Source Plan: plan.md
       `src/backend/lir_adapter.hpp` into
       `src/backend/lowering/call_decode.hpp`, and cover structured local-call
       helper decoding directly in `backend_lir_adapter_tests`
+- [x] Step 2 slice: move the zero-add local-slot rewrite matcher out of
+      `src/backend/lir_adapter.cpp` into
+      `src/backend/lowering/call_decode.hpp`, and cover both reload and
+      non-reload compatibility shapes directly in `backend_lir_adapter_tests`
 
 ## Next Intended Slice
 
-- Extract the next decode-only local-call pattern matcher from
+- Move the remaining local-call shape recognizer that selects rewritten
+  single-slot versus two-slot typed-call load operands out of
   `src/backend/lir_adapter.cpp` without changing backend IR construction
-  behavior; the next low-risk target is the local single/two-arg slot-rewrite
-  shape recognition that still lives inline in the adapter.
+  behavior.
 
 ## Blockers
 
@@ -63,6 +67,10 @@ Source Plan: plan.md
 - Focused `backend_lir_adapter_tests` passes after the helper move; the known
   aarch64 adapter suite failure remains part of the pre-existing full-suite
   baseline.
+- The latest `ctest --test-dir build -j --output-on-failure > test_after.log`
+  run remains monotonic at 2668 passed / 3 failed / 2671 total with the same
+  three pre-existing failures recorded in `test_fail_before.log` and
+  `test_fail_after.log`.
 
 ## Resume Notes
 
@@ -71,6 +79,10 @@ Source Plan: plan.md
 - This iteration is scoped to helper ownership only: move typed-call operand
   decode wrappers into `src/backend/lowering/call_decode.hpp` and keep
   adapter/emitter behavior unchanged.
+- The current slice is the zero-add local-slot rewrite matcher that recognizes
+  `load -> add 0 -> store -> optional reload` compatibility patterns before
+  direct-call normalization; that helper now lives in
+  `src/backend/lowering/call_decode.hpp` with direct unit coverage.
 - `src/backend/lowering/call_decode.hpp` now owns both the direct-global and
   local typed-call operand matcher templates; `src/backend/lir_adapter.hpp`
   only keeps the public lowering entrypoints and adapter error surface.
