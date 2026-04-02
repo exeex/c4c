@@ -437,6 +437,32 @@ if(CLANG_EXECUTABLE)
     COMMENT "Run standalone EASTL type_traits workflow"
     VERBATIM
   )
+
+  add_custom_target(eastl_vector_simple_parse_recipe
+    COMMAND "${CMAKE_COMMAND}"
+            -DCOMPILER=$<TARGET_FILE:c4cll>
+            -DROOT=${PROJECT_SOURCE_DIR}
+            -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/eastl/eastl_vector_simple.cpp
+            "-DEXPECT_FAIL_LOC:STRING=ref/EASTL/include/EASTL/internal/type_properties.h:35:52"
+            "-DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=try_parse_record_typedef_member phase=committed expected=SEMI got='('"
+            -P "${PROJECT_SOURCE_DIR}/tests/cpp/eastl/run_eastl_vector_parse_recipe.cmake"
+    DEPENDS c4cll
+    WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+    COMMENT "Run standalone EASTL vector parse recipe"
+    VERBATIM
+  )
+
+  add_custom_target(std_vector_simple_parse_baseline
+    COMMAND "${CMAKE_COMMAND}"
+            -DCOMPILER=$<TARGET_FILE:c4cll>
+            -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/std/std_vector_simple.cpp
+            -DEXPECT_TIMEOUT_SEC=60
+            -P "${PROJECT_SOURCE_DIR}/tests/cpp/std/run_std_vector_parse_baseline.cmake"
+    DEPENDS c4cll
+    WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+    COMMENT "Run standalone std::vector parse baseline"
+    VERBATIM
+  )
 endif()
 
 include("${PROJECT_SOURCE_DIR}/tests/TestEntry.cmake")
