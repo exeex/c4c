@@ -1,86 +1,114 @@
 Status: Active
-Source Idea: ideas/open/02_backend_regression_repair_after_aarch64_refactor.md
+Source Idea: ideas/open/03_lir_to_backend_ir_refactor.md
+Activated from: ideas/open/03_lir_to_backend_ir_refactor.md
 
-# Backend Regression Recovery Runbook
+# LIR To Backend IR Refactor Runbook
 
 ## Purpose
-Recover backend regressions after the recent aarch64 backend refactor before continuing structural backend work.
+
+Resume the structural backend-boundary refactor now that the backend regression-recovery plan has been closed.
 
 ## Goal
-Stabilize backend test failures in `ctest --test-dir build -R backend` with a strictly backend-only scope.
+
+Turn the current `lir_adapter` boundary into a staged backend-lowering path that preserves behavior while moving decode/parsing responsibilities out of target emitters.
 
 ## Core Rule
-Repair one narrow slice at a time, prove it with tests, then proceed to the next.
 
-## Non-Goals
-- No API redesign.
-- No naming cleanups.
-- No broad backend architecture refactors.
+Refactor one narrow lowering seam at a time, keep backend behavior stable, and prove each slice with backend-scoped tests before broadening the migration.
 
 ## Read First
-- [`src/codegen/llvm`](src/codegen/llvm)
-- `tests/c/internal/backend_*`
+
+- `src/backend/lir_adapter.hpp`
+- `src/backend/lir_adapter.cpp`
+- `src/backend/ir.hpp`
+- `src/backend/aarch64/*`
+- `src/backend/x86_64/*`
 - `tests/backend/*`
+- `tests/c/internal/backend_*`
 
 ## Scope
-- Backend IR seam and backend path behavior impacted by the refactor.
-- Focus targets:
-  - `backend_lir_adapter_aarch64_tests`
-  - `backend_runtime_nested_member_pointer_array`
-  - `backend_runtime_nested_param_member_array`
-  - `backend_runtime_param_member_array`
-  - `c_testsuite_x86_backend_src_*_c`
-  - `ctest --test-dir build -R backend`
+
+- Production backend lowering boundary between LIR and backend IR.
+- Transitional renaming from "adapter" toward explicit lowering terminology.
+- Isolation of LIR text-surface decoding into a narrower lowering layer.
+- Backend-only validation scope during the migration.
+
+## Non-Goals
+
+- No frontend semantic changes.
+- No broad redesign of target assembly emission.
+- No one-shot replacement of the whole backend path.
+- No unrelated backend correctness work unless it blocks the current refactor slice.
+
+## Working Model
+
+The migration should proceed in four behavior-preserving stages:
+
+1. introduce an explicit lowering entrypoint and file ownership
+2. move syntax-decoding helpers behind the lowering layer
+3. reshape backend IR toward structured backend semantics
+4. let target emitters consume backend semantics without parsing LLVM-shaped text
 
 ## Execution Rules
-- Keep edits inside backend regression boundaries.
-- Use minimal targeted fixes and tests.
-- Record each slice result before moving on.
-- Do not move to a new initiative until this scope is stable.
 
-## Step 1: Baseline triage and ownership
-- Confirm whether failures cluster by shared root cause across emit/IR/lowering seam.
-- Capture one failing output per cluster:
-  - aarch64 adapter cluster
-  - at least two `c_testsuite_x86_backend_src_*_c` regressions
-  - runtime member-array regressions
-- Assign each cluster to a repair slice.
+- Keep the existing backend path working throughout the transition.
+- Prefer compatibility shims over large flag-day rewrites.
+- Do not mix BIR scaffold work into this plan.
+- When a new issue is outside this refactor scope, record it in `ideas/open/` instead of expanding the runbook.
+- Validate with backend-focused tests after each slice and use broader backend sweeps before closing major steps.
 
-Completion check:
-- [ ] Representative failure logs captured and triage notes written.
-- [ ] Slices mapped to root-cause clusters.
+## Step 1: Re-establish the lowering boundary
 
-## Step 2: Repair aarch64 adapter seam
-- Fix regressions in the aarch64 backend adapter path with minimal changes.
-- Add or adjust targeted backend tests for this slice before code changes.
+- Inspect the current production flow around `adapt_minimal_module()`.
+- Introduce a behavior-preserving lowering entrypoint with backend-lowering naming.
+- Split file ownership so the main production path is described as lowering rather than an adapter.
+- Keep existing callers working through compatibility shims if needed.
 
 Completion check:
-- [ ] Targeted tests for aarch64 adapter added/updated.
-- [ ] `ctest --test-dir build -R backend_lir_adapter_aarch64_tests --output-on-failure` passes.
+- [ ] A production lowering entrypoint exists with explicit backend-lowering intent.
+- [ ] The main production path is no longer described primarily as a "minimal adapter".
+- [ ] Backend-scoped tests covering the touched path pass.
 
-## Step 3: Repair x86/runtime metadata-related regressions
-- Fix regressions in x86 emitted-call/path behavior tied to shared metadata/seam changes.
-- Address one root cause at a time; keep tests minimal and focused.
+## Step 2: Isolate LIR syntax decoding
 
-Completion check:
-- [ ] Targeted x86/runtime tests pass:
-  - `ctest --test-dir build -R "backend.*x86_backend_src_00025_c|backend.*x86_backend_src_00156_c|backend_runtime" --output-on-failure`
-
-## Step 4: Cross-slice validation
-- Run full backend regression set after each slice and again after all slices.
-- Explicitly classify leftover failures as fixed, known baseline, or deferred with reason.
+- Identify the helper surfaces that parse LLVM-shaped text in backend code.
+- Move or wrap decode/parsing helpers so they live behind the lowering layer.
+- Keep target-facing APIs behaviorally equivalent while reducing direct syntax parsing in emitters.
 
 Completion check:
-- [ ] `ctest --test-dir build -R backend --output-on-failure` is stable for this plan.
-- [ ] Remaining failures are documented and intentionally deferred if applicable.
+- [ ] LIR decode responsibility is isolated to a narrow backend-lowering layer.
+- [ ] Target emitters do not gain new syntax-parsing dependencies during the slice.
+- [ ] Targeted backend tests for touched decode/call paths pass.
 
-## Step 5: Closeout and handoff
-- Document fixes, assumptions, and residual risks in the source idea.
-- Ensure only backend regression recovery remains in scope.
-- Mark ready to resume next refactor only when stable.
+## Step 3: Make backend IR more backend-native
+
+- Replace the highest-value stringly-typed backend IR surfaces with structured forms.
+- Start with operands/calls/addressing shapes that currently force parser-style helpers.
+- Update validation/printing/helpers only as much as needed for the migrated slice.
 
 Completion check:
-- [ ] `backend_lir_adapter_aarch64_tests` stable.
-- [ ] `backend_runtime_*member*` stable.
-- [ ] `c_testsuite_x86_backend_src_*_c` stable or explicitly managed as baseline.
-- [ ] `ctest -R backend` regains stable pass/fail boundary.
+- [ ] `src/backend/ir.hpp` is more backend-native in the migrated slice.
+- [ ] The migrated slice no longer depends on parsing call/type structure from raw text.
+- [ ] Backend-scoped regressions remain stable.
+
+## Step 4: Shift target codegen onto backend semantics
+
+- Update the AArch64 and x86 backends to consume the structured backend IR surfaces introduced in Step 3.
+- Remove now-redundant target-side parsing from the migrated slice.
+- Keep compatibility shims only where they materially reduce migration risk.
+
+Completion check:
+- [ ] Target-specific codegen in the migrated slice consumes backend semantics rather than syntax-decoding helpers.
+- [ ] No new adapter-style parsing is required in target emitters for the migrated slice.
+- [ ] Backend tests for the migrated paths pass on both supported targets in current coverage.
+
+## Step 5: Validate positioning for later BIR work
+
+- Confirm the refactor leaves a clean foundation for the later `backend_ir -> bir` scaffold.
+- Record any remaining adapter-era surfaces that must stay as transitional shims.
+- Update the source idea with completed slices, follow-ups, and residual risks.
+
+Completion check:
+- [ ] The result is clearly a foundation for later BIR migration, not a competing architecture.
+- [ ] Remaining transitional shims are documented.
+- [ ] Backend validation remains stable at the end of the active slice.
