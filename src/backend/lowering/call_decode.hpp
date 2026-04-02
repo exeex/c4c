@@ -55,6 +55,9 @@ inline std::optional<ParsedBackendTypedCallView> parse_backend_typed_call(
   return c4c::codegen::lir::parse_lir_typed_call_or_infer_params(call);
 }
 
+bool backend_lir_type_uses_nonminimal_types(std::string_view type_text);
+bool backend_lir_global_uses_nonminimal_types(const c4c::codegen::lir::LirGlobal& global);
+bool backend_lir_return_uses_nonminimal_types(const c4c::codegen::lir::LirRet& ret);
 bool backend_lir_call_uses_nonminimal_types(const c4c::codegen::lir::LirCallOp& call);
 bool backend_lir_function_signature_uses_nonminimal_types(std::string_view signature_text);
 

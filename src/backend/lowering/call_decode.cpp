@@ -29,24 +29,38 @@ bool backend_text_uses_nonminimal_types(std::string_view text) {
 
 }  // namespace
 
+bool backend_lir_type_uses_nonminimal_types(std::string_view type_text) {
+  return backend_text_uses_nonminimal_types(type_text);
+}
+
+bool backend_lir_global_uses_nonminimal_types(const c4c::codegen::lir::LirGlobal& global) {
+  return backend_lir_type_uses_nonminimal_types(global.llvm_type) ||
+         global.init_text.find("double") != std::string::npos ||
+         global.init_text.find("float") != std::string::npos;
+}
+
+bool backend_lir_return_uses_nonminimal_types(const c4c::codegen::lir::LirRet& ret) {
+  return backend_lir_type_uses_nonminimal_types(ret.type_str);
+}
+
 bool backend_lir_call_uses_nonminimal_types(const c4c::codegen::lir::LirCallOp& call) {
-  if (backend_text_uses_nonminimal_types(call.return_type)) {
+  if (backend_lir_type_uses_nonminimal_types(call.return_type)) {
     return true;
   }
 
   const auto parsed = parse_backend_typed_call(call);
   if (!parsed.has_value()) {
-    return backend_text_uses_nonminimal_types(call.callee_type_suffix) ||
-           backend_text_uses_nonminimal_types(call.args_str);
+    return backend_lir_type_uses_nonminimal_types(call.callee_type_suffix) ||
+           backend_lir_type_uses_nonminimal_types(call.args_str);
   }
 
   for (std::string_view type : parsed->param_types) {
-    if (backend_text_uses_nonminimal_types(type)) {
+    if (backend_lir_type_uses_nonminimal_types(type)) {
       return true;
     }
   }
   for (const auto& arg : parsed->args) {
-    if (backend_text_uses_nonminimal_types(arg.type)) {
+    if (backend_lir_type_uses_nonminimal_types(arg.type)) {
       return true;
     }
   }
@@ -59,19 +73,20 @@ bool backend_lir_function_signature_uses_nonminimal_types(std::string_view signa
   const auto at_pos = line.find('@');
   if (first_space == std::string_view::npos || at_pos == std::string_view::npos ||
       first_space >= at_pos) {
-    return backend_text_uses_nonminimal_types(signature_text);
+    return backend_lir_type_uses_nonminimal_types(signature_text);
   }
 
-  if (backend_text_uses_nonminimal_types(line.substr(first_space + 1, at_pos - first_space - 1))) {
+  if (backend_lir_type_uses_nonminimal_types(
+          line.substr(first_space + 1, at_pos - first_space - 1))) {
     return true;
   }
 
   const auto params = parse_backend_function_signature_params(line);
   if (!params.has_value()) {
-    return backend_text_uses_nonminimal_types(signature_text);
+    return backend_lir_type_uses_nonminimal_types(signature_text);
   }
   for (const auto& param : *params) {
-    if (!param.is_varargs && backend_text_uses_nonminimal_types(param.type)) {
+    if (!param.is_varargs && backend_lir_type_uses_nonminimal_types(param.type)) {
       return true;
     }
   }

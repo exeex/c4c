@@ -650,6 +650,34 @@ void test_backend_call_helpers_classify_lir_nonminimal_signature_types() {
       "lowering-owned nonminimal signature classifier should reject nonminimal return types through the shared decode seam");
 }
 
+void test_backend_call_helpers_classify_lir_nonminimal_global_and_return_types() {
+  c4c::codegen::lir::LirGlobal i32_global{};
+  i32_global.llvm_type = "i32";
+  i32_global.init_text = "0";
+  expect_true(
+      !c4c::backend::backend_lir_global_uses_nonminimal_types(i32_global),
+      "lowering-owned nonminimal global classifier should keep plain i32 globals on the minimal path");
+
+  c4c::codegen::lir::LirGlobal fp_global{};
+  fp_global.llvm_type = "[2 x i8]";
+  fp_global.init_text = "double 1.0";
+  expect_true(
+      c4c::backend::backend_lir_global_uses_nonminimal_types(fp_global),
+      "lowering-owned nonminimal global classifier should reject globals whose initializer still carries floating-point text");
+
+  c4c::codegen::lir::LirRet i32_ret{};
+  i32_ret.type_str = "i32";
+  expect_true(
+      !c4c::backend::backend_lir_return_uses_nonminimal_types(i32_ret),
+      "lowering-owned nonminimal return classifier should keep plain i32 returns on the minimal path");
+
+  c4c::codegen::lir::LirRet i64_ret{};
+  i64_ret.type_str = "i64";
+  expect_true(
+      c4c::backend::backend_lir_return_uses_nonminimal_types(i64_ret),
+      "lowering-owned nonminimal return classifier should reject wide integer returns through the shared decode seam");
+}
+
 void test_backend_call_helpers_decode_single_typed_local_operand() {
   auto module = make_typed_direct_call_local_arg_with_suffix_spacing_module();
   const auto& call = std::get<c4c::codegen::lir::LirCallOp>(
@@ -1535,6 +1563,7 @@ int main(int argc, char* argv[]) {
   test_backend_call_helpers_decode_lir_direct_global_vararg_prefix();
   test_backend_call_helpers_classify_lir_nonminimal_call_types();
   test_backend_call_helpers_classify_lir_nonminimal_signature_types();
+  test_backend_call_helpers_classify_lir_nonminimal_global_and_return_types();
   test_backend_call_helpers_decode_single_typed_local_operand();
   test_backend_call_helpers_decode_two_typed_local_operands();
   test_backend_call_helpers_decode_structured_local_typed_operands();

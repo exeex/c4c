@@ -99,27 +99,17 @@ bool is_i32_scalar_binary(const c4c::backend::BackendBinaryInst& inst) {
          c4c::backend::BackendScalarType::I32;
 }
 
-bool lir_type_needs_nonminimal_lowering(std::string_view type_str) {
-  return type_str.find("float") != std::string_view::npos ||
-         type_str.find("double") != std::string_view::npos ||
-         type_str.find("fp128") != std::string_view::npos ||
-         type_str.find("i64") != std::string_view::npos ||
-         type_str.find("i128") != std::string_view::npos;
-}
-
 bool lir_module_needs_nonminimal_lowering(const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
 
   for (const auto& global : module.globals) {
-    if (lir_type_needs_nonminimal_lowering(global.llvm_type) ||
-        global.init_text.find("double") != std::string::npos ||
-        global.init_text.find("float") != std::string::npos) {
+    if (c4c::backend::backend_lir_global_uses_nonminimal_types(global)) {
       return true;
     }
   }
 
   for (const auto& decl : module.extern_decls) {
-    if (lir_type_needs_nonminimal_lowering(decl.return_type_str)) {
+    if (c4c::backend::backend_lir_type_uses_nonminimal_types(decl.return_type_str)) {
       return true;
     }
   }
@@ -129,24 +119,25 @@ bool lir_module_needs_nonminimal_lowering(const c4c::codegen::lir::LirModule& mo
         [](const auto& op) -> bool {
           using T = std::decay_t<decltype(op)>;
           if constexpr (std::is_same_v<T, LirAllocaOp>) {
-            return lir_type_needs_nonminimal_lowering(op.type_str);
+            return c4c::backend::backend_lir_type_uses_nonminimal_types(op.type_str);
           } else if constexpr (std::is_same_v<T, LirLoadOp>) {
-            return lir_type_needs_nonminimal_lowering(op.type_str);
+            return c4c::backend::backend_lir_type_uses_nonminimal_types(op.type_str);
           } else if constexpr (std::is_same_v<T, LirStoreOp>) {
-            return lir_type_needs_nonminimal_lowering(op.type_str);
+            return c4c::backend::backend_lir_type_uses_nonminimal_types(op.type_str);
           } else if constexpr (std::is_same_v<T, LirBinOp>) {
-            return lir_type_needs_nonminimal_lowering(op.type_str);
+            return c4c::backend::backend_lir_type_uses_nonminimal_types(op.type_str);
           } else if constexpr (std::is_same_v<T, LirCmpOp>) {
-            return op.is_float || lir_type_needs_nonminimal_lowering(op.type_str);
+            return op.is_float ||
+                   c4c::backend::backend_lir_type_uses_nonminimal_types(op.type_str);
           } else if constexpr (std::is_same_v<T, LirCallOp>) {
             return c4c::backend::backend_lir_call_uses_nonminimal_types(op);
           } else if constexpr (std::is_same_v<T, LirGepOp>) {
-            return lir_type_needs_nonminimal_lowering(op.element_type);
+            return c4c::backend::backend_lir_type_uses_nonminimal_types(op.element_type);
           } else if constexpr (std::is_same_v<T, LirCastOp>) {
-            return lir_type_needs_nonminimal_lowering(op.from_type) ||
-                   lir_type_needs_nonminimal_lowering(op.to_type);
+            return c4c::backend::backend_lir_type_uses_nonminimal_types(op.from_type) ||
+                   c4c::backend::backend_lir_type_uses_nonminimal_types(op.to_type);
           } else if constexpr (std::is_same_v<T, LirPhiOp>) {
-            return lir_type_needs_nonminimal_lowering(op.type_str);
+            return c4c::backend::backend_lir_type_uses_nonminimal_types(op.type_str);
           } else {
             return false;
           }
@@ -171,8 +162,7 @@ bool lir_module_needs_nonminimal_lowering(const c4c::codegen::lir::LirModule& mo
         }
       }
       if (const auto* ret = std::get_if<LirRet>(&block.terminator)) {
-        if (ret->type_str == "double" || ret->type_str == "float" ||
-            ret->type_str == "i64" || ret->type_str == "i128") {
+        if (c4c::backend::backend_lir_return_uses_nonminimal_types(*ret)) {
           return true;
         }
       }
