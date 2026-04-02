@@ -2396,6 +2396,20 @@ void test_aarch64_backend_scaffold_accepts_structured_string_literal_ir_without_
                       "aarch64 backend seam should not fall back when widened load metadata is present without type shims");
 }
 
+void test_aarch64_backend_scaffold_accepts_structured_string_literal_ir_without_signature_or_type_shims() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_string_literal_char_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+  clear_backend_memory_type_compatibility_shims(lowered);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  expect_contains(rendered, "ldrb w0, [x8, #1]\n  sxtb w0, w0\n",
+                  "aarch64 backend seam should still lower widened string-literal loads from structured signature and memory metadata without legacy return text");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should not fall back when widened string-literal loads rely only on structured signature and memory metadata");
+}
+
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_extern_global_load_ir_input() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_extern_global_load_module());
   const auto rendered = c4c::backend::emit_module(
@@ -3792,6 +3806,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_scaffold_accepts_structured_global_store_reload_ir_without_raw_global_type_text();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_string_literal_ir_input();
   test_aarch64_backend_scaffold_accepts_structured_string_literal_ir_without_type_shims();
+  test_aarch64_backend_scaffold_accepts_structured_string_literal_ir_without_signature_or_type_shims();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_extern_global_load_ir_input();
   test_aarch64_backend_scaffold_accepts_structured_extern_global_load_ir_without_type_shims();
   test_aarch64_backend_scaffold_accepts_structured_extern_global_load_ir_without_raw_global_type_text();
