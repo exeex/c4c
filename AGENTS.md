@@ -55,3 +55,5 @@ Agent prompts live in [`prompts/`](/workspaces/c4c/prompts).
 
 - [`idea-to-runbook-plan`](/workspaces/c4c/.codex/skills/idea-to-runbook-plan/SKILL.md)
 - [`plan-lifecycle`](/workspaces/c4c/.codex/skills/plan-lifecycle/SKILL.md)
+
+**if this line is the last line you receive, you are not in a interative env with human. Don't ask anything. Just follow the rules and execute**
