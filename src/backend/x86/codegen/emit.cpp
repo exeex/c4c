@@ -106,6 +106,10 @@ struct MinimalLocalArraySlice {
   std::int64_t store1_imm = 0;
 };
 
+struct MinimalExternScalarGlobalLoadSlice {
+  std::string global_name;
+};
+
 struct MinimalExternGlobalArrayLoadSlice {
   std::string global_name;
   std::int64_t byte_offset = 0;
@@ -1357,6 +1361,47 @@ std::optional<MinimalExternGlobalArrayLoadSlice> parse_minimal_extern_global_arr
   }
 
   return MinimalExternGlobalArrayLoadSlice{global->name, load->address.byte_offset};
+}
+
+std::optional<MinimalExternScalarGlobalLoadSlice> parse_minimal_extern_scalar_global_load_slice(
+    const c4c::backend::BackendModule& module) {
+  if (module.functions.size() != 1 || module.globals.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto* global = find_global(module, module.globals.front().name);
+  if (global == nullptr || !c4c::backend::backend_global_is_extern_declaration(*global) ||
+      global->storage != c4c::backend::BackendGlobalStorageKind::Mutable ||
+      global->linkage != "external " || global->llvm_type != "i32") {
+    return std::nullopt;
+  }
+
+  const auto* main_fn = find_function(module, "main");
+  if (main_fn == nullptr || main_fn->is_declaration ||
+      main_fn->signature.linkage != "define" ||
+      main_fn->signature.return_type != "i32" ||
+      !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
+      main_fn->blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& block = main_fn->blocks.front();
+  if (block.label != "entry" || block.insts.size() != 1 ||
+      !block.terminator.value.has_value() ||
+      block.terminator.type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto* load = std::get_if<c4c::backend::BackendLoadInst>(&block.insts.front());
+  if (load == nullptr ||
+      c4c::backend::backend_load_value_type(*load) !=
+          c4c::backend::BackendScalarType::I32 ||
+      load->address.base_symbol != global->name || load->address.byte_offset != 0 ||
+      *block.terminator.value != load->result) {
+    return std::nullopt;
+  }
+
+  return MinimalExternScalarGlobalLoadSlice{global->name};
 }
 
 std::optional<MinimalScalarGlobalLoadSlice> parse_minimal_scalar_global_load_slice(
@@ -3029,6 +3074,23 @@ std::string emit_minimal_extern_global_array_load_asm(
   return out.str();
 }
 
+std::string emit_minimal_extern_scalar_global_load_asm(
+    const c4c::backend::BackendModule& module,
+    const MinimalExternScalarGlobalLoadSlice& slice) {
+  const std::string global_symbol = asm_symbol_name(module, slice.global_name);
+  const std::string main_symbol = asm_symbol_name(module, "main");
+
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n";
+  out << ".text\n";
+  out << ".globl " << main_symbol << "\n";
+  out << main_symbol << ":\n";
+  out << "  lea rax, " << global_symbol << "[rip]\n"
+      << "  mov eax, dword ptr [rax]\n"
+      << "  ret\n";
+  return out.str();
+}
+
 std::string emit_minimal_extern_decl_call_asm(
     const c4c::backend::BackendModule& module,
     const MinimalExternDeclCallSlice& slice) {
@@ -3342,6 +3404,10 @@ std::string remove_redundant_self_moves(std::string asm_text) {
 std::string emit_module(const c4c::backend::BackendModule& module,
                         const c4c::codegen::lir::LirModule* legacy_fallback) {
   try {
+    if (const auto slice = parse_minimal_extern_scalar_global_load_slice(module);
+        slice.has_value()) {
+      return emit_minimal_extern_scalar_global_load_asm(module, *slice);
+    }
     if (const auto slice = parse_minimal_extern_global_array_load_slice(module);
         slice.has_value()) {
       return emit_minimal_extern_global_array_load_asm(module, *slice);

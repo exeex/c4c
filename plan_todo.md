@@ -6,10 +6,10 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 4/3 slice: remove the remaining x86 and aarch64 lowered-backend seam
-      dependence on legacy `type_str` / `memory_type` compatibility shims for
-      the migrated load/store/ptrdiff paths, or prove the remaining shim usage
-      belongs to a separate follow-on idea
+- Step 3/2 slice: inventory the highest-value remaining backend-IR
+      text-carried semantics after the load/store/ptrdiff seam cleanup and
+      choose the next structured conversion that stays inside the active
+      `lir -> backend IR` refactor boundary
 
 ## Incomplete Items
 
@@ -91,14 +91,19 @@ Source Plan: plan.md
       rerunning the monotonic regression guard against
       `test_fail_before.log` and `test_fail_after.log`; result stayed at 2668
       passed / 3 failed / 2671 total with zero newly failing tests
+- [x] Step 4/5 slice: add explicit lowered-backend coverage for the remaining
+      x86 extern-scalar load seam, add structured no-`type_str`/`memory_type`
+      seam coverage for the x86/aarch64 extern-scalar and char-ptrdiff slices,
+      implement the missing x86 extern-scalar backend fast path, and confirm
+      the 2026-04-02 full-suite regression guard still stays monotonic at 2668
+      passed / 3 failed / 2671 total with zero newly failing tests
 
 ## Next Intended Slice
 
-- Audit the remaining load/store/ptrdiff target seam recognizers and migrate
-  the highest-value survivors off the legacy `type_str` / `memory_type` shims
-  where the new structured scalar metadata is already sufficient; if the
-  remaining uses are outside this plan's boundary, record that follow-on
-  explicitly under `ideas/open/` instead of silently widening this runbook.
+- Audit the remaining backend-owned IR surfaces that still carry semantics only
+  as raw text after the load/store/ptrdiff seam cleanup, then pick the
+  narrowest Step 2/3 slice that can be converted to structured metadata
+  without widening into the later BIR scaffold plan.
 
 ## Blockers
 
@@ -121,6 +126,11 @@ Source Plan: plan.md
   run remains monotonic at 2668 passed / 3 failed / 2671 total with the same
   three pre-existing failures recorded in `test_fail_before.log` and
   `test_fail_after.log`.
+- `backend_lir_adapter_x86_64_tests` now passes with the new lowered-backend
+  extern-scalar fast path and the added structured no-type-shim seam coverage;
+  `backend_lir_adapter_aarch64_tests` still fails in the same pre-existing
+  suite called out above, so the new aarch64 seam checks could not be isolated
+  through that runner in this iteration.
 - Focused `backend_lir_adapter_tests` passes with the new structured
   direct-global helper coverage for the lowered vararg-prefix backend-call
   shape.
@@ -166,6 +176,16 @@ Source Plan: plan.md
   stored `test_fail_before.log` / `test_fail_after.log` pair still satisfies
   the monotonic regression guard, so the next iteration can move back to code
   changes instead of rerunning the same guard first.
+- The x86 backend emitter now has a dedicated lowered-backend extern-scalar
+  load fast path alongside the existing extern-array path; both the explicit
+  lowered input and the cleared `type_str` compatibility-shim slice stay on
+  native assembly output instead of falling back to printed backend IR.
+- The new char-ptrdiff no-type-shim seam coverage was added for both x86 and
+  aarch64, matching the existing structured int-ptrdiff coverage and keeping
+  the migrated load/store/ptrdiff cleanup visible in tests.
+- `tests/backend/backend_lir_adapter_aarch64_tests.cpp` still runs its suite
+  through direct function calls instead of `RUN_TEST(...)`, so the binary's
+  substring filter does not isolate a single new seam check during debugging.
 - `src/backend/lowering/extern_lowering.cpp` now owns extern-call parameter
   inference and extern-declaration lowering; `src/backend/lir_adapter.cpp`
   only dispatches into that lowering helper for `module.extern_decls`.
