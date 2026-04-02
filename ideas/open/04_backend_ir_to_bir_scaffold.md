@@ -56,6 +56,8 @@ coverage.
 ## Test Strategy For This Phase
 
 Old tests should continue to validate the old backend path.
+Constrain regression scope to backend files only during this scaffold phase:
+`tests/c/internal/backend_*`, `tests/backend/*`, or a backend-regex run.
 
 New BIR work should start from new tests instead of trying to retrofit the
 existing `tests/backend/backend_lir_adapter*.cpp` files into a dual-purpose
@@ -181,7 +183,7 @@ incrementally rather than duplicating the same logic under a second subsystem.
       `bir` naming is explicit in the implementation, not left ambiguous
 - [ ] the first new-path tests live in a BIR-oriented location rather than the
       legacy backend adapter test files
-- [ ] existing default-path backend tests remain regression-free
+- [ ] existing default-path backend tests remain regression-free under backend test scope
 
 ## Non-Goals
 

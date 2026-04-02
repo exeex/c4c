@@ -226,6 +226,8 @@ The follow-on `02` idea is expected to:
 - Keep the AArch64 and x86 backends working throughout the transition
 - Prefer staged compatibility shims over wide flag-day rewrites
 - Avoid mixing unrelated backend correctness fixes into the structural refactor
+- Keep regression validation backend-scoped: prioritize `tests/c/internal/backend_*`,
+  `tests/backend/*`, or backend-regex filtered runs.
 
 ## Acceptance Criteria
 
@@ -240,7 +242,8 @@ The follow-on `02` idea is expected to:
       syntax decoding helpers
 - [ ] the result is clearly positioned as the foundation for the later BIR
       rename/migration, not as a competing permanent architecture
-- [ ] build/tests remain regression-free during each migration phase
+- [ ] build/tests remain regression-free during each migration phase (backend scope:
+      `tests/c/internal/backend_*`, `tests/backend/*`, or backend-regex runs)
 
 ## Non-Goals
 
@@ -258,3 +261,17 @@ explicit:
 - decoding legacy LIR surfaces
 - lowering into backend IR
 - keeping syntax parsing out of target codegen over time
+
+## Parked Notes (2026-04-02)
+
+### Parked / Deactivated (2026-04-02)
+
+- Source plan execution for this idea has been deactivated to isolate an active backend regression wave.
+- New blocker discovered: large regression blast after aarch64 backend refactor affecting backend scope tests.
+- Current known failed clusters:
+  - `backend_lir_adapter_aarch64_tests`
+  - `backend_runtime_nested_member_pointer_array`
+  - `backend_runtime_nested_param_member_array`
+  - `backend_runtime_param_member_array`
+  - multiple `c_testsuite_x86_backend_src_*_c` cases in the `backend` subset
+- Re-open status set to continue from this checkpoint in a dedicated repair plan before resuming structural refactor.

@@ -75,6 +75,8 @@ should finally disappear where practical, for example:
 - remove obsolete transitional-path coverage
 - ensure the surviving test layout still preserves clear responsibility
   boundaries such as lowering vs validation vs target codegen vs pipeline
+- Regression validation remains backend-only for cutover verification:
+  `tests/c/internal/backend_*`, `tests/backend/*`, or backend-regex filtered runs.
 
 ## Preconditions
 

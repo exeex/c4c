@@ -28,6 +28,8 @@ larger than originally expected. As a result:
 
 This phase should therefore grow the BIR path and improve the backend testing
 shape together.
+Regression scope is backend-only in this phase: `tests/c/internal/backend_*`,
+`tests/backend/*`, or backend-name regex filtered tests.
 
 ## Main Objectives
 
@@ -137,6 +139,8 @@ would isolate the failure faster.
 - do not rewrite the whole backend test suite in one pass
 - avoid coupling unrelated backend bug fixes to test-layout cleanup unless
   needed for correctness
+- keep implementation validation anchored to backend-focused tests while migrating
+  (`tests/c/internal/backend_*`, `tests/backend/*`, or `ctest -R backend`)
 
 ## Acceptance Criteria
 
