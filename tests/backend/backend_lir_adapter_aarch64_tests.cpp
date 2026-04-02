@@ -2228,6 +2228,19 @@ void test_aarch64_backend_scaffold_accepts_structured_conditional_return_ir_with
                       "aarch64 backend seam should not fall back when structured conditional compare metadata is present without type shims");
 }
 
+void test_aarch64_backend_scaffold_accepts_structured_conditional_return_ir_without_signature_shims() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_return_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  expect_contains(rendered, "  cmp w8, #3\n",
+                  "aarch64 backend seam should still lower structured conditional compares without legacy signature return text");
+  expect_not_contains(rendered, "br i1",
+                      "aarch64 backend seam should not fall back when lowered conditional returns rely only on structured signature metadata");
+}
+
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_ir_input() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_phi_join_module());
   const auto rendered = c4c::backend::emit_module(
@@ -3326,6 +3339,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_scaffold_accepts_structured_global_int_pointer_diff_ir_without_type_shims();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_return_ir_input();
   test_aarch64_backend_scaffold_accepts_structured_conditional_return_ir_without_type_shims();
+  test_aarch64_backend_scaffold_accepts_structured_conditional_return_ir_without_signature_shims();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_ir_input();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_add_ir_input();
   test_aarch64_backend_scaffold_accepts_structured_conditional_phi_join_add_ir_without_type_shims();
