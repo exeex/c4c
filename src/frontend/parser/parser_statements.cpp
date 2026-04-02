@@ -717,8 +717,17 @@ Node* Parser::parse_stmt() {
         if (is_cpp_mode() && check(TokenKind::Identifier) &&
             pos_ + 2 < static_cast<int>(tokens_.size()) &&
             tokens_[pos_ + 1].kind == TokenKind::ColonColon &&
-            (tokens_[pos_ + 2].kind == TokenKind::Identifier ||
-             tokens_[pos_ + 2].kind == TokenKind::KwOperator)) {
+            tokens_[pos_ + 2].kind == TokenKind::KwOperator) {
+            // `Type::operator...(...)` in block scope is an expression
+            // statement, not a local declaration. `peek_qualified_name()`
+            // only walks identifier segments, so route operator-owned
+            // statements before the generic qualified-type probe below.
+            goto expr_stmt;
+        }
+        if (is_cpp_mode() && check(TokenKind::Identifier) &&
+            pos_ + 2 < static_cast<int>(tokens_.size()) &&
+            tokens_[pos_ + 1].kind == TokenKind::ColonColon &&
+            tokens_[pos_ + 2].kind == TokenKind::Identifier) {
             // Peek the full qualified name to check if it resolves to a type.
             QualifiedNameRef qn;
             if (peek_qualified_name(&qn, false) && !qn.qualifier_segments.empty()) {

@@ -26,15 +26,15 @@ Observed with `build/c4cll` on 2026-04-02:
 | `eastl_utility_simple.cpp` | `PARSE` | `build/c4cll --parse-only -I ref/EASTL/include -I ref/EABase/include/Common tests/cpp/eastl/eastl_utility_simple.cpp` | Parse-only now succeeds after the nested variable-template parser fix, so this case is ready for canonical / semantic follow-up. |
 | `eastl_memory_simple.cpp` | `PARSE` | `build/c4cll --parser-debug --parser-debug-tentative --parse-only -I ref/EASTL/include -I ref/EABase/include/Common tests/cpp/eastl/eastl_memory_simple.cpp` | The old `function_detail.h` dot-token parser blocker is gone, but `--parse-only`, `--parser-debug`, and `--dump-canonical` still time out under the heavier libstdc++ / EASTL stack. Current progress reaches much later parser work in `/usr/include/c++/14/type_traits`, `/usr/include/c++/14/tuple`, and `/usr/include/c++/14/bits/uses_allocator_args.h` before timing out, so the next blocker is no longer the old `allocator.deallocate` statement shape. |
 | `eastl_tuple_simple.cpp` | `PARSE` | `build/c4cll --dump-canonical -I ref/EASTL/include -I ref/EABase/include/Common tests/cpp/eastl/eastl_tuple_simple.cpp` | `--dump-canonical` still times out after 20s with no terminal diagnostics, but the earlier `TupleLeaf<...>::operator=` and `function_detail.h` parser blockers are both cleared. The next actionable frontier still needs a smaller reduction from the remaining libstdc++ / EASTL parse pressure. |
-| `eastl_vector_simple.cpp` | `PARSE` | `build/c4cll --parse-only -I ref/EASTL/include -I ref/EABase/include/Common tests/cpp/eastl/eastl_vector_simple.cpp` | The old `ref/EASTL/include/EASTL/internal/function_detail.h:237:16` `unexpected token in expression: .` parser blocker is fixed. The current negative workflow is now pinned to the later `ref/EASTL/include/EASTL/internal/function.h:66:26` incomplete-type cluster (`object has incomplete type: eastl::internal::function_detail`) that surfaces before the parse-only timeout. |
+| `eastl_vector_simple.cpp` | `PARSE` | `build/c4cll --parse-only -I ref/EASTL/include -I ref/EABase/include/Common tests/cpp/eastl/eastl_vector_simple.cpp` | The old `ref/EASTL/include/EASTL/internal/function_detail.h:237:16` dot-token parser blocker and the later `ref/EASTL/include/EASTL/internal/function.h:66:26` incomplete-type cluster are both gone. The current `--parse-only` and `--dump-canonical` workflows now time out under the deeper libstdc++ / EASTL stack with no replacement terminal diagnostic yet, so the next frontier needs a fresh reduction from the heavier timeout path. |
 
 Current explicit workflow coverage:
 
 - `run_eastl_parse_recipe.cmake`: reusable parse-only recipe for expected success
   or expected parser failure.
-- `run_eastl_vector_parse_recipe.cmake`: negative workflow recipe pinned to the
-  current `eastl_vector_simple.cpp` incomplete-type frontier in
-  `ref/EASTL/include/EASTL/internal/function.h`.
+- `run_eastl_vector_parse_recipe.cmake`: negative workflow recipe for the
+  current `eastl_vector_simple.cpp` timeout-based parse frontier while the next
+  reduced blocker is still being isolated.
 - `run_eastl_type_traits_simple_workflow.cmake`: older end-to-end workflow kept
   for future reactivation once the current `is_complete_type__spec_167` /
   `function_detail.h` frontiers move.

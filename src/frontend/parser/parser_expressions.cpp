@@ -738,6 +738,7 @@ Node* Parser::parse_primary() {
         if (!is_cpp_mode()) return nullptr;
         TentativeParseGuard guard(*this);
         std::string qualified_name;
+        std::string qualifier_owner;
 
         if (match(TokenKind::ColonColon))
             qualified_name = "::";
@@ -745,6 +746,8 @@ Node* Parser::parse_primary() {
         while (check(TokenKind::Identifier) &&
                pos_ + 1 < static_cast<int>(tokens_.size()) &&
                tokens_[pos_ + 1].kind == TokenKind::ColonColon) {
+            if (qualifier_owner.empty())
+                qualifier_owner = cur().lexeme;
             if (!qualified_name.empty() &&
                 qualified_name.substr(qualified_name.size() - 2) != "::") {
                 qualified_name += "::";
@@ -761,6 +764,20 @@ Node* Parser::parse_primary() {
 
         if (qualified_name == "::")
             qualified_name.clear();
+        if (!qualifier_owner.empty() && !current_struct_tag_.empty() &&
+            check(TokenKind::LParen)) {
+            const std::string resolved_owner =
+                resolve_visible_type_name(qualifier_owner);
+            if (typedef_types_.count(qualifier_owner) > 0 ||
+                typedef_types_.count(resolved_owner) > 0) {
+                // Inside a method body, `BaseAlias::operator...(args)` names a
+                // qualified member call on the current object rather than a
+                // free function symbol. Collapse the owner spelling here so
+                // later call lowering reuses the existing implicit-`this`
+                // method path, including inherited-base lookup.
+                qualified_name.clear();
+            }
+        }
         if (!qualified_name.empty() &&
             qualified_name.substr(qualified_name.size() - 2) != "::") {
             qualified_name += "::";

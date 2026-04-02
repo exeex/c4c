@@ -674,13 +674,13 @@ ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
           n->left && n->left->kind == NK_VAR && n->left->name) {
         const std::string callee_name = n->left->name;
         if (!direct_callee_fn(callee_name)) {
-          std::string base_key = ctx->method_struct_tag + "::" + callee_name;
-          std::string const_key = base_key + "_const";
-          auto mit = struct_methods_.find(base_key);
-          if (mit == struct_methods_.end())
-            mit = struct_methods_.find(const_key);
-          if (mit != struct_methods_.end()) {
-            resolved_callee_name = mit->second;
+          auto resolved_method =
+              find_struct_method_mangled(ctx->method_struct_tag, callee_name, false);
+          if (!resolved_method)
+            resolved_method =
+                find_struct_method_mangled(ctx->method_struct_tag, callee_name, true);
+          if (resolved_method) {
+            resolved_callee_name = *resolved_method;
             DeclRef dr{};
             dr.name = resolved_callee_name;
             auto fit = module_->fn_index.find(dr.name);
