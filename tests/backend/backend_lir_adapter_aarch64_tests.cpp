@@ -1643,6 +1643,52 @@ void test_aarch64_backend_scaffold_accepts_structured_call_crossing_direct_call_
                       "aarch64 backend seam should not fall back when the lowered call-crossing slice relies only on structured backend metadata");
 }
 
+void test_aarch64_backend_scaffold_accepts_renamed_structured_call_crossing_direct_call_ir_without_signature_shims() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_typed_call_crossing_direct_call_module());
+
+  c4c::backend::BackendFunction* helper = nullptr;
+  c4c::backend::BackendFunction* main_fn = nullptr;
+  for (auto& function : lowered.functions) {
+    if (function.signature.name == "add_one") {
+      helper = &function;
+    } else if (function.signature.name == "main") {
+      main_fn = &function;
+    }
+  }
+  expect_true(helper != nullptr && main_fn != nullptr,
+              "aarch64 renamed lowered call-crossing regression test needs helper and main functions");
+  if (helper == nullptr || main_fn == nullptr) {
+    return;
+  }
+
+  helper->signature.name = "inc_value";
+  auto* call = std::get_if<c4c::backend::BackendCallInst>(&main_fn->blocks.front().insts[1]);
+  expect_true(call != nullptr,
+              "aarch64 renamed lowered call-crossing regression test needs the backend direct call to mutate");
+  if (call == nullptr) {
+    return;
+  }
+  call->callee.symbol_name = "inc_value";
+
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".type inc_value, %function",
+                  "aarch64 backend seam should key lowered call-crossing helper definitions from the structured callee symbol instead of legacy signature text");
+  expect_contains(rendered, "mov w20, #5",
+                  "aarch64 backend seam should still materialize the preserved lowered cross-call source without legacy fallback");
+  expect_contains(rendered, "mov w0, w20",
+                  "aarch64 backend seam should still marshal the renamed lowered call-crossing source through the ABI argument register");
+  expect_contains(rendered, "bl inc_value",
+                  "aarch64 backend seam should keep renamed lowered call-crossing direct calls on the asm path when legacy call/signature text is cleared");
+  expect_contains(rendered, "add w0, w20, w0",
+                  "aarch64 backend seam should still consume the renamed lowered helper result directly from w0");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should not fall back when the renamed lowered call-crossing slice relies only on structured backend metadata");
+}
+
 void test_aarch64_backend_renders_typed_two_arg_direct_call_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_typed_direct_call_two_arg_module()},
@@ -4330,6 +4376,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_keeps_spacing_tolerant_call_crossing_slice_on_asm_path();
   test_aarch64_backend_keeps_renamed_structured_call_crossing_slice_on_asm_path();
   test_aarch64_backend_scaffold_accepts_structured_call_crossing_direct_call_ir_without_signature_shims();
+  test_aarch64_backend_scaffold_accepts_renamed_structured_call_crossing_direct_call_ir_without_signature_shims();
   test_aarch64_backend_renders_typed_two_arg_direct_call_slice();
   test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_ir_without_signature_shims();
   test_aarch64_backend_scaffold_accepts_renamed_structured_two_arg_direct_call_ir_without_signature_shims();
