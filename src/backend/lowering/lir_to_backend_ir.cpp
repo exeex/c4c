@@ -1626,6 +1626,8 @@ std::optional<BackendFunction> adapt_local_array_gep_function(
 
   BackendFunction out;
   out.signature = signature;
+  out.local_slots.push_back(
+      BackendLocalSlot{alloca->result, 8, BackendScalarType::I32, 4});
   BackendBlock out_block;
   out_block.label = block.label;
   out_block.insts.push_back(BackendStoreInst{

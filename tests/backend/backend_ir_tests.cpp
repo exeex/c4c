@@ -822,6 +822,32 @@ void test_backend_ir_validator_rejects_local_slot_store_with_misaligned_offset()
                   "backend IR validator should explain when a structured local-slot store uses a misaligned byte offset");
 }
 
+void test_backend_ir_validator_rejects_local_slot_load_past_structured_bounds() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_local_array_gep_module());
+  auto& load = std::get<c4c::backend::BackendLoadInst>(
+      lowered.functions.front().blocks.front().insts[2]);
+  load.address.byte_offset = 8;
+  std::string error;
+
+  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should reject structured local-slot loads that exceed the bounded lowered local-array slot");
+  expect_contains(error, "load address: address exceeds referenced global bounds",
+                  "backend IR validator should explain when a structured local-slot load escapes the bounded local slot");
+}
+
+void test_backend_ir_validator_rejects_local_slot_store_past_structured_bounds() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_local_array_gep_module());
+  auto& store = std::get<c4c::backend::BackendStoreInst>(
+      lowered.functions.front().blocks.front().insts.front());
+  store.address.byte_offset = 8;
+  std::string error;
+
+  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should reject structured local-slot stores that exceed the bounded lowered local-array slot");
+  expect_contains(error, "store address: address exceeds referenced global bounds",
+                  "backend IR validator should explain when a structured local-slot store escapes the bounded local slot");
+}
+
 void test_backend_ir_printer_renders_lowered_global_int_pointer_roundtrip_slice() {
   const auto lowered =
       c4c::backend::lower_to_backend_ir(make_global_int_pointer_roundtrip_module());
@@ -1386,6 +1412,13 @@ void test_backend_ir_preserves_structured_local_array_slice() {
                   ((add->lhs == load0->result && add->rhs == load1->result) ||
                    (add->lhs == load1->result && add->rhs == load0->result)),
               "backend IR should preserve the bounded local-array immediate stores and add inputs");
+  expect_true(main_fn != nullptr && main_fn->local_slots.size() == 1 &&
+                  main_fn->local_slots.front().name == "%lv.arr" &&
+                  main_fn->local_slots.front().size_bytes == 8 &&
+                  main_fn->local_slots.front().element_type ==
+                      c4c::backend::BackendScalarType::I32 &&
+                  main_fn->local_slots.front().element_size_bytes == 4,
+              "backend IR should preserve structured local-slot bounds metadata for the lowered local-array slice");
 }
 
 void test_backend_ir_validator_accepts_structured_local_array_slice_without_raw_text() {
@@ -1673,6 +1706,8 @@ int main(int argc, char* argv[]) {
   test_backend_ir_validator_rejects_local_slot_store_with_negative_offset();
   test_backend_ir_validator_rejects_local_slot_load_with_misaligned_offset();
   test_backend_ir_validator_rejects_local_slot_store_with_misaligned_offset();
+  test_backend_ir_validator_rejects_local_slot_load_past_structured_bounds();
+  test_backend_ir_validator_rejects_local_slot_store_past_structured_bounds();
   test_backend_ir_printer_renders_lowered_global_int_pointer_roundtrip_slice();
   test_backend_ir_validator_accepts_lowered_global_int_pointer_roundtrip_slice();
   test_backend_ir_printer_renders_lowered_global_char_pointer_diff_slice();

@@ -149,8 +149,11 @@ bool validate_address_range(const BackendAddress& address,
   }
   if (bounds_it->second.element_size_bytes > 1 &&
       byte_offset % bounds_it->second.element_size_bytes != 0) {
-    return fail(error,
-                std::string(context) + ": address byte offset must align to global element size");
+    const auto alignment_context =
+        is_local_address_symbol(address.base_symbol)
+            ? ": address byte offset must align to local access size"
+            : ": address byte offset must align to global element size";
+    return fail(error, std::string(context) + alignment_context);
   }
   return true;
 }
@@ -212,6 +215,36 @@ bool validate_local_address_alignment(
   }
   if (static_cast<std::size_t>(address.byte_offset) % access_size_bytes != 0) {
     return fail(error, std::string(context) + ": address byte offset must align to local access size");
+  }
+  return true;
+}
+
+bool validate_local_slot(const BackendLocalSlot& local_slot,
+                         std::string* error,
+                         std::string_view context) {
+  if (local_slot.name.empty()) {
+    return fail(error, std::string(context) + ": local slot name must not be empty");
+  }
+  if (!is_local_address_symbol(local_slot.name)) {
+    return fail(error, std::string(context) + ": local slot name must start with '%'");
+  }
+  if (local_slot.size_bytes == 0) {
+    return fail(error, std::string(context) + ": local slot size must be positive");
+  }
+  if (local_slot.element_size_bytes == 0) {
+    return fail(error, std::string(context) + ": local slot element size must be positive");
+  }
+  if (local_slot.size_bytes % local_slot.element_size_bytes != 0) {
+    return fail(error,
+                std::string(context) +
+                    ": local slot size must be a multiple of the element size");
+  }
+  if (local_slot.element_type != BackendScalarType::Unknown &&
+      backend_scalar_type_size_bytes(local_slot.element_type) !=
+          local_slot.element_size_bytes) {
+    return fail(error,
+                std::string(context) +
+                    ": local slot element type must match the element size");
   }
   return true;
 }
@@ -619,6 +652,26 @@ bool validate_function(const BackendFunction& function,
     return fail(error, std::string(context) + ": definitions must have at least one block");
   }
 
+  auto function_bounds = referenced_bounds;
+  for (std::size_t index = 0; index < function.local_slots.size(); ++index) {
+    const auto& local_slot = function.local_slots[index];
+    if (!validate_local_slot(local_slot,
+                             error,
+                             std::string(context) + ": local slot " + std::to_string(index))) {
+      return false;
+    }
+    if (!function_bounds
+             .emplace(local_slot.name,
+                      ReferencedBoundsInfo{local_slot.size_bytes,
+                                           local_slot.element_type,
+                                           local_slot.element_size_bytes})
+             .second) {
+      return fail(error,
+                  std::string(context) + ": duplicate referenced object '" + local_slot.name +
+                      "'");
+    }
+  }
+
   std::unordered_set<std::string> labels;
   for (std::size_t index = 0; index < function.blocks.size(); ++index) {
     const auto& block = function.blocks[index];
@@ -629,7 +682,7 @@ bool validate_function(const BackendFunction& function,
     if (!validate_block(block,
                         referenced_objects,
                         referenced_string_constants,
-                        referenced_bounds,
+                        function_bounds,
                         error,
                         std::string(context) + ": block " + std::to_string(index))) {
       return false;

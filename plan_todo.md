@@ -22,11 +22,11 @@ Source Plan: plan.md
   - Blockers: Depends on prior steps.
 
 Current Step: Step 3
-Next Step: Re-scan backend IR validation and printing for any remaining structured address seams that still accept unbounded `%...` local-slot or pointer metadata without a matching object contract, then take the next smallest validator or printer tightening slice.
+Next Step: Re-scan Step 3 for the next smallest local-object seam beyond the bounded local-array fast path, likely another lowered local-slot or ptrdiff slice that still lacks explicit size/provenance metadata once compatibility text is cleared.
 Blockers: None
 
-Latest Iteration Note: Tightened structured local-slot validation in `validate_backend_ir(...)` so unbounded `%...` load/store addresses must align to the structured access size and local-slot `ptrdiff_eq` addresses must align to the declared element size. Added backend-IR regressions in `tests/backend/backend_ir_tests.cpp` that rewrite the lowered local-array and ptrdiff slices to use misaligned byte offset `2` and assert explicit diagnostics for the offending local-slot address operand. Validation passed via `cmake --build build -j8 --target backend_ir_tests`, `./build/backend_ir_tests`, `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log`, and `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`, with the guard holding at `2667 passed / 2 failed` before and after, preserving the same existing AArch64 object-contract failures (`backend_contract_aarch64_return_add_object`, `backend_contract_aarch64_global_load_object`) and introducing no newly failing tests.
+Latest Iteration Note: Added `BackendFunction::local_slots` metadata for the bounded local-array lowering slice, populated `%lv.arr` with `8` bytes / `i32` element size `4`, and tightened backend IR validation so structured local-slot loads/stores reject `%lv.arr + 8` as out of bounds while keeping the existing local-access alignment diagnostics.
 
-Iteration Update: Structured local-slot addresses no longer rely on "non-negative" alone; the validator now treats misaligned `%...` loads, stores, and ptrdiff slices as invalid even when there is no referenced-global bounds record to consult.
+Iteration Update: Structured local-slot addresses on the lowered local-array path now carry backend-owned bounds metadata, so validation can distinguish valid `%lv.arr + 0/4` accesses from escaped `%lv.arr + 8` accesses instead of relying only on non-negativity plus alignment.
 
-Next Slice Hint: Re-scan unbounded structured address seams for the next missing contract, especially places where local-slot or pointer-shaped metadata is accepted without explicit size, alignment, or provenance checks once compatibility text is cleared.
+Next Slice Hint: Re-scan the remaining structured local-slot and pointer-shaped seams for the next missing size/provenance contract, especially ptrdiff or additional lowered local-object cases that still lack explicit bounds metadata after the bounded local-array path.

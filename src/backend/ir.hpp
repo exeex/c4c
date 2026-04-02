@@ -520,6 +520,13 @@ struct BackendAddress {
   std::int64_t byte_offset = 0;
 };
 
+struct BackendLocalSlot {
+  std::string name;
+  std::size_t size_bytes = 0;
+  BackendScalarType element_type{};
+  std::size_t element_size_bytes = 0;
+};
+
 enum class BackendScalarType : unsigned char {
   Unknown,
   I8,
@@ -972,6 +979,7 @@ struct BackendBlock {
 struct BackendFunction {
   BackendFunctionSignature signature;
   bool is_declaration = false;
+  std::vector<BackendLocalSlot> local_slots;
   std::vector<BackendBlock> blocks;
 };
 
