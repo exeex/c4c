@@ -2570,6 +2570,24 @@ void test_aarch64_backend_scaffold_accepts_structured_local_array_ir_without_typ
                       "aarch64 backend seam should not fall back when local-array slices rely only on structured signature and memory metadata");
 }
 
+void test_aarch64_backend_scaffold_rejects_local_array_fast_path_when_local_slot_metadata_disagrees() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_local_array_gep_module());
+  auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
+  expect_true(main_fn != nullptr && !main_fn->local_slots.empty(),
+              "aarch64 local-array regression test needs a structured local slot to mutate");
+  if (main_fn != nullptr && !main_fn->local_slots.empty()) {
+    main_fn->local_slots.front().element_type = c4c::backend::BackendScalarType::I8;
+    main_fn->local_slots.front().element_size_bytes = 1;
+  }
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  expect_contains(rendered, "target triple = \"aarch64-unknown-linux-gnu\"",
+                  "aarch64 backend seam should stop matching the structured local-array asm slice when local-slot metadata no longer describes an i32 array");
+}
+
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_global_int_pointer_roundtrip_ir_input() {
   const auto lowered =
       c4c::backend::lower_to_backend_ir(make_global_int_pointer_roundtrip_module());
@@ -3820,6 +3838,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_scaffold_accepts_structured_extern_global_array_ir_without_raw_type_text();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_local_array_ir_input();
   test_aarch64_backend_scaffold_accepts_structured_local_array_ir_without_type_or_signature_shims();
+  test_aarch64_backend_scaffold_rejects_local_array_fast_path_when_local_slot_metadata_disagrees();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_global_int_pointer_roundtrip_ir_input();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_global_char_pointer_diff_ir_input();
   test_aarch64_backend_scaffold_accepts_structured_global_char_pointer_diff_ir_without_type_shims();

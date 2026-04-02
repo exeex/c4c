@@ -106,6 +106,25 @@ bool is_i32_scalar_global(const c4c::backend::BackendGlobal& global) {
              c4c::backend::BackendScalarType::I32;
 }
 
+const c4c::backend::BackendLocalSlot* find_local_slot(
+    const c4c::backend::BackendFunction& function,
+    std::string_view slot_name) {
+  for (const auto& slot : function.local_slots) {
+    if (slot.name == slot_name) {
+      return &slot;
+    }
+  }
+  return nullptr;
+}
+
+bool is_two_element_i32_local_array_slot(const c4c::backend::BackendFunction& function,
+                                         std::string_view slot_name) {
+  const auto* slot = find_local_slot(function, slot_name);
+  return slot != nullptr && slot->size_bytes == 8 &&
+         slot->element_type == c4c::backend::BackendScalarType::I32 &&
+         slot->element_size_bytes == 4;
+}
+
 bool lir_module_needs_nonminimal_lowering(const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
 
@@ -3073,6 +3092,13 @@ std::optional<MinimalLocalArraySlice> parse_minimal_local_array_slice(
       store0->address.base_symbol != load1->address.base_symbol ||
       store0->address.byte_offset != 0 || store1->address.byte_offset != 4 ||
       load0->address.byte_offset != 0 || load1->address.byte_offset != 4) {
+    return std::nullopt;
+  }
+  if (store0->address.kind != c4c::backend::BackendAddressBaseKind::LocalSlot ||
+      store1->address.kind != c4c::backend::BackendAddressBaseKind::LocalSlot ||
+      load0->address.kind != c4c::backend::BackendAddressBaseKind::LocalSlot ||
+      load1->address.kind != c4c::backend::BackendAddressBaseKind::LocalSlot ||
+      !is_two_element_i32_local_array_slot(*main_fn, store0->address.base_symbol)) {
     return std::nullopt;
   }
 
