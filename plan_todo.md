@@ -19,10 +19,12 @@ Source Plan: plan.md
 - [x] Add focused tests for tentative enter/commit/rollback visibility.
 - [x] Implement tentative lifecycle events behind targeted debug gating.
 - [x] Re-run targeted parser/debug tests for the Step 2 slice.
-- [ ] Inspect token-swap and injected-parse sites that bypass `TentativeParseGuard`.
-- [ ] Add focused coverage for injected token-stream begin/end markers.
-- [ ] Implement injected token-stream debug events around the narrowest swap site.
-- [ ] Re-run targeted parser/debug tests for the Step 3 slice.
+- [x] Inspect token-swap and injected-parse sites that bypass `TentativeParseGuard`.
+- [x] Add focused coverage for injected token-stream begin/end markers at the
+      template-base instantiation swap site.
+- [x] Implement injected token-stream debug events around the template-base
+      instantiation swap site.
+- [x] Re-run targeted parser/debug tests for the Step 3 slice.
 
 ## Completed
 
@@ -40,20 +42,27 @@ Source Plan: plan.md
       qualified-template ambiguity path.
 - [x] Validation: `ctest --test-dir build -R '^cpp_parser_debug_'` passed after
       the tentative lifecycle work.
+- [x] Step 3 slice landed at the template-base instantiation swap site:
+      `parse_base_type` token injection now emits opt-in
+      `injected_parse_begin` / `injected_parse_end` events, and
+      `cpp_parser_debug_injected_template_base_instantiation` locks the trace.
+- [x] Validation: `ctest --test-dir build -R '^cpp_parser_debug_'` passed, full
+      `ctest --test-dir build -j --output-on-failure` still had only the three
+      known unrelated failures, and the monotonic regression guard passed with
+      `before: passed=2672 failed=3` and `after: passed=2675 failed=3`.
 
 ## Next Intended Slice
 
-- Start Step 3 at the narrowest manual token-swap site called out in the
-  parser comments so `--parser-debug` can distinguish original-token parsing
-  from injected token-stream work without broadening the trace surface beyond
-  explicit debug mode.
+- Decide whether Step 3 needs the same begin/end markers at the remaining
+  manual `tokens_` swap sites in template-member lookup and cast disambiguation
+  before moving on to CLI narrowing.
 
 ## Blockers
 
 - Broader `ctest --test-dir build -j --output-on-failure` currently reports
   unrelated non-parser failures in `backend_lir_adapter_aarch64_tests`,
   `positive_sema_linux_stage2_repro_03_asm_volatile_c`, and
-  `llvm_gcc_c_torture_src_20080502_1_c`. This Step 2 slice only touched parser
+  `llvm_gcc_c_torture_src_20080502_1_c`. This Step 3 slice only touched parser
   debug code and the focused parser-debug suite stayed green.
 
 ## Resume Notes
@@ -62,5 +71,6 @@ Source Plan: plan.md
   become noisier.
 - Step 2 stayed inside the shared `TentativeParseGuard`, so speculative parse
   sites picked up lifecycle events without changing non-debug behavior.
-- Step 3 should target manual `tokens_` swap/injection helpers next, because
-  those sites are explicitly excluded from the tentative guard today.
+- Step 3 now has a focused regression around the template-base instantiation
+  injection path; the remaining manual `tokens_` swap sites still need a scope
+  decision if we want broader injected-trace coverage.

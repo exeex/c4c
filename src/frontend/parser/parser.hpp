@@ -339,6 +339,9 @@ class Parser {
   void push_parse_context(const char* function_name);
   void pop_parse_context();
   void note_parse_debug_event(const char* kind, const char* detail = nullptr);
+  void note_parse_debug_event_for(const char* kind,
+                                  const char* function_name,
+                                  const char* detail = nullptr);
   void note_tentative_parse_event(const char* kind, int start_pos, int end_pos);
   void note_parse_failure(const char* expected,
                           const char* detail = nullptr,

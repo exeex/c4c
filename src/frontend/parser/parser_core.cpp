@@ -482,6 +482,12 @@ void Parser::pop_parse_context() {
 }
 
 void Parser::note_parse_debug_event(const char* kind, const char* detail) {
+    note_parse_debug_event_for(kind, nullptr, detail);
+}
+
+void Parser::note_parse_debug_event_for(const char* kind,
+                                        const char* function_name,
+                                        const char* detail) {
     if (!parser_debug_enabled_) return;
 
     ParseDebugEvent event;
@@ -490,14 +496,20 @@ void Parser::note_parse_debug_event(const char* kind, const char* detail) {
     event.token_index = !at_end() ? pos_ : (pos_ > 0 ? pos_ - 1 : -1);
     event.line = !at_end() ? cur().line : (pos_ > 0 ? tokens_[pos_ - 1].line : 1);
     event.column = !at_end() ? cur().column : 1;
-    if (!parse_context_stack_.empty()) {
+    if (function_name && function_name[0]) {
+        event.function_name = function_name;
+    } else if (!parse_context_stack_.empty()) {
         event.function_name = parse_context_stack_.back().function_name;
     }
     parse_debug_events_.push_back(std::move(event));
     if (static_cast<int>(parse_debug_events_.size()) > max_parse_debug_events_) {
         parse_debug_events_.erase(parse_debug_events_.begin());
     }
-    if (kind && std::strncmp(kind, "tentative_", 10) == 0) return;
+    if (kind &&
+        (std::strncmp(kind, "tentative_", 10) == 0 ||
+         std::strncmp(kind, "injected_parse_", 15) == 0)) {
+        return;
+    }
     if (!parse_context_stack_.empty()) {
         const int token_index = parse_debug_events_.back().token_index;
         const int token_delta = token_index - best_parse_stack_token_index_;

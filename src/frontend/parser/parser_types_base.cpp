@@ -1441,13 +1441,24 @@ TypeSpec Parser::parse_base_type() {
                                             // TentativeParseGuard does not snapshot tokens_, so manual
                                             // save/restore of tokens_ and pos_ is intentionally kept here.
                                             int saved_pos = pos_;
+                                            const std::string injected_detail =
+                                                "reason=template_base_instantiation saved_pos=" +
+                                                std::to_string(saved_pos) +
+                                                " token_count=" +
+                                                std::to_string(inject_toks.size());
                                             auto saved_toks = std::move(tokens_);
                                             tokens_ = std::move(inject_toks);
                                             pos_ = 0;
+                                            note_parse_debug_event_for("injected_parse_begin",
+                                                                       "parse_base_type",
+                                                                       injected_detail.c_str());
                                             try {
                                                 TypeSpec resolved_base = parse_base_type();
                                                 inst->base_types[bi] = resolved_base;
                                             } catch (...) {}
+                                            note_parse_debug_event_for("injected_parse_end",
+                                                                       "parse_base_type",
+                                                                       injected_detail.c_str());
                                             tokens_ = std::move(saved_toks);
                                             pos_ = saved_pos;
                                         } else if (struct_tag_def_map_.count(base_mangled)) {
