@@ -3592,41 +3592,6 @@ std::optional<TypeSpec> Lowerer::storage_type_for_declref(
 }
 #endif
 
-bool Lowerer::eval_deferred_nttp_expr_hir(
-    const Node* owner_tpl, int param_idx,
-    const std::vector<std::pair<std::string, TypeSpec>>& type_bindings_vec,
-    const std::vector<std::pair<std::string, long long>>& nttp_bindings_vec,
-    const std::string* expr_override,
-    long long* out) {
-  if (!owner_tpl || param_idx < 0 || param_idx >= owner_tpl->n_template_params) {
-    return false;
-  }
-
-  std::string expr;
-  if (expr_override) {
-    expr = *expr_override;
-  } else {
-    if (!owner_tpl->template_param_default_exprs ||
-        !owner_tpl->template_param_default_exprs[param_idx]) {
-      return false;
-    }
-    expr = owner_tpl->template_param_default_exprs[param_idx];
-  }
-  if (expr.empty()) return false;
-
-  DeferredNttpExprEnv env =
-      DeferredNttpExprEnv::from_bindings(type_bindings_vec, nttp_bindings_vec);
-  DeferredNttpTemplateLookup template_lookup{template_struct_defs_,
-                                             template_struct_specializations_,
-                                             struct_def_nodes_};
-  DeferredNttpExprParser parser{{expr, 0}, template_lookup, env};
-  long long value = 0;
-  if (!parser.parse_or(&value)) return false;
-  if (!parser.cursor.at_end()) return false;
-  *out = value;
-  return true;
-}
-
 bool Lowerer::template_struct_has_pack_params(const Node* primary_tpl) {
   if (!primary_tpl || !primary_tpl->template_param_is_pack) return false;
   for (int pi = 0; pi < primary_tpl->n_template_params; ++pi) {
