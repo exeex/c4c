@@ -1,9 +1,9 @@
-#include "lir_adapter.hpp"
+#include "lir_to_backend_ir.hpp"
 
-#include "ir_printer.hpp"
-#include "lowering/extern_lowering.hpp"
+#include "../ir_printer.hpp"
+#include "extern_lowering.hpp"
 
-#include "../codegen/lir/call_args.hpp"
+#include "../../codegen/lir/call_args.hpp"
 
 #include <charconv>
 #include <cctype>

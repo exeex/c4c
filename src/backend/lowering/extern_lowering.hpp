@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../ir.hpp"
-#include "../lir_adapter.hpp"
+#include "lir_to_backend_ir.hpp"
 
 #include "../../codegen/lir/ir.hpp"
 

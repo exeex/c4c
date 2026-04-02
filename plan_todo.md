@@ -5,12 +5,12 @@ Source Plan: plan.md
 # Active Queue: LIR To Backend IR Refactor
 
 ## Queue
-- [ ] Step 1: Re-establish the lowering boundary
-  - Notes: Start with the narrowest behavior-preserving rename/extraction around `adapt_minimal_module()` and its callers.
+- [x] Step 1: Re-establish the lowering boundary
+  - Notes: Moved the production lowering declarations/implementation to `src/backend/lowering/lir_to_backend_ir.*`, kept `src/backend/lir_adapter.hpp` as the legacy shim, and validated `backend_lir_adapter_tests`, `backend_lir_adapter_aarch64_tests`, `backend_lir_adapter_x86_64_tests`, `backend_ir_tests`, plus a monotonic full-suite regression check.
   - Blockers: None.
 - [ ] Step 2: Isolate LIR syntax decoding
-  - Notes: Defer until the new lowering entrypoint/file ownership exists.
-  - Blockers: Depends on Step 1.
+  - Notes: The lowering entrypoint/file ownership now exists; next slice should move additional LLVM-text decode helpers behind the lowering layer without expanding target-side parsing.
+  - Blockers: None.
 - [ ] Step 3: Make backend IR more backend-native
   - Notes: Defer until decode ownership is isolated enough to expose a clean IR slice.
   - Blockers: Depends on Step 2.
@@ -21,6 +21,6 @@ Source Plan: plan.md
   - Notes: Closeout only after the active structural slice lands and backend validation is stable.
   - Blockers: Depends on prior steps.
 
-Current Step: Step 1
-Next Step: Inspect `adapt_minimal_module()` call flow and land the smallest lowering-entrypoint extraction that keeps behavior unchanged
+Current Step: Step 2
+Next Step: Identify the next backend-owned LLVM-text decode helper still exposed outside `src/backend/lowering/` and migrate that narrow slice behind the lowering layer
 Blockers: None

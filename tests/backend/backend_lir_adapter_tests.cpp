@@ -15,6 +15,7 @@
 #include "../../src/codegen/lir/verify.hpp"
 #include "../../src/backend/elf/mod.hpp"
 #include "../../src/backend/lowering/call_decode.hpp"
+#include "../../src/backend/lowering/lir_to_backend_ir.hpp"
 #include "../../src/backend/linker_common/mod.hpp"
 #include "../../src/backend/aarch64/assembler/mod.hpp"
 #include "../../src/backend/aarch64/codegen/emit.hpp"
@@ -901,6 +902,13 @@ void test_adapter_keeps_legacy_shim_aligned_with_lowering_entrypoint() {
               "adapter shim should remain behaviorally identical to the lowering-named entrypoint");
 }
 
+void test_lowering_header_exposes_behavior_without_legacy_adapter_entrypoint() {
+  const auto lowered = c4c::backend::lower_to_backend_ir(make_return_zero_module());
+
+  expect_true(lowered.functions.size() == 1,
+              "lowering-owned header should expose the production lowering entrypoint directly");
+}
+
 
 
 void test_adapter_normalizes_typed_direct_call_helper_slice() {
@@ -1487,6 +1495,7 @@ int main(int argc, char* argv[]) {
   test_adapts_direct_return();
   test_renders_return_add();
   test_adapter_keeps_legacy_shim_aligned_with_lowering_entrypoint();
+  test_lowering_header_exposes_behavior_without_legacy_adapter_entrypoint();
   test_adapter_normalizes_typed_direct_call_helper_slice();
   test_adapter_normalizes_local_temp_return_slice();
   test_adapter_normalizes_local_temp_sub_return_slice();
