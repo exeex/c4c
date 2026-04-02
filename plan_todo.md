@@ -6,9 +6,9 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 3: inventory the remaining backend IR surfaces that still carry
-      backend-owned call semantics as free-form text and choose the first
-      structured conversion slice
+- Step 4: remove the next target-codegen direct-call fast-path cluster that
+      still reaches for `parse_backend_direct_global_*` now that
+      `BackendCallInst` carries structured call-target metadata
 
 ## Incomplete Items
 
@@ -50,13 +50,20 @@ Source Plan: plan.md
       typed operand recognizers out of `src/backend/lir_adapter.cpp` into
       `src/backend/lowering/call_decode.hpp`, and cover direct-load plus
       rewritten compatibility shapes in `backend_lir_adapter_tests`
+- [x] Step 3 slice: convert `BackendCallInst` callee identity from raw
+      backend-text into structured backend-owned call-target metadata
+      (`DirectGlobal` / `DirectIntrinsic` / `Indirect`) while preserving
+      backend IR printing and validation behavior
+- [x] Step 4 slice: switch the x86 and aarch64 minimal direct-call fast paths
+      from reparsing backend call text through
+      `parse_backend_direct_global_*` to reading structured
+      `BackendCallInst::callee` metadata plus typed-call operands directly
 
 ## Next Intended Slice
 
-- Start Step 3 by inventorying which `BackendCallInst` or related backend IR
-  fields still encode backend-owned call semantics as raw strings, then land
-  the smallest structured representation that removes one meaningful text-only
-  surface without changing backend behavior.
+- Continue Step 4 by migrating another direct-call emitter cluster that still
+  depends on `parse_backend_direct_global_*`, ideally one of the remaining x86
+  minimal-call slices that pattern-match single-arg or two-arg helper calls.
 
 ## Blockers
 
@@ -100,5 +107,13 @@ Source Plan: plan.md
 - `src/backend/lowering/extern_lowering.cpp` now owns extern-call parameter
   inference and extern-declaration lowering; `src/backend/lir_adapter.cpp`
   only dispatches into that lowering helper for `module.extern_decls`.
+- `BackendCallInst` now stores structured call-target metadata in
+  `callee.kind` plus `symbol_name`/`operand` instead of carrying that call
+  identity only as raw text; `src/backend/ir_printer.cpp` reconstructs the
+  printable LIR-style call operand from that structured form.
+- The x86 and aarch64 minimal direct-call fast paths touched in this slice now
+  read structured `BackendCallInst::callee` metadata directly and only borrow
+  typed-call operands from `parse_backend_typed_call(...)`; they no longer
+  reparse direct-global callee text through `parse_backend_direct_global_*`.
 - If the work expands into a separate migration initiative, record it under
   `ideas/open/` instead of widening the active runbook.

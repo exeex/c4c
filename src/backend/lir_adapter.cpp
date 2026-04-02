@@ -297,7 +297,7 @@ std::vector<std::string> own_backend_call_param_types(
 
 BackendCallInst make_backend_call_inst(std::string result,
                                        std::string return_type,
-                                       std::string callee,
+                                       BackendCallCallee callee,
                                        const c4c::codegen::lir::ParsedLirTypedCallView& parsed,
                                        bool render_callee_type_suffix) {
   return BackendCallInst{
@@ -308,6 +308,11 @@ BackendCallInst make_backend_call_inst(std::string result,
       c4c::codegen::lir::own_lir_typed_call_args(parsed),
       render_callee_type_suffix,
   };
+}
+
+std::optional<BackendCallCallee> classify_backend_call_callee(
+    const c4c::codegen::lir::LirCallOp& call) {
+  return parse_backend_call_callee(call.callee.str());
 }
 
 BackendInst adapt_inst(const c4c::codegen::lir::LirInst& inst) {
@@ -333,9 +338,18 @@ BackendInst adapt_inst(const c4c::codegen::lir::LirInst& inst) {
           "minimal backend LIR adapter could not parse typed call operands for '" +
               std::string(call->callee.str()) + "'");
     }
+
+    const auto callee = parse_backend_call_callee(call->callee.str());
+    if (!callee.has_value()) {
+      throw LirAdapterError(
+          LirAdapterErrorKind::Malformed,
+          "minimal backend LIR adapter could not classify call callee '" +
+              std::string(call->callee.str()) + "'");
+    }
+
     return make_backend_call_inst(call->result.str(),
                                   call->return_type.str(),
-                                  call->callee.str(),
+                                  std::move(*callee),
                                   *parsed_call,
                                   !c4c::codegen::lir::trim_lir_arg_text(call->callee_type_suffix).empty());
   }
@@ -1766,9 +1780,13 @@ std::optional<BackendFunction> adapt_local_single_arg_call_function(
   out.signature = signature;
   BackendBlock out_block;
   out_block.label = block.label;
+  const auto normalized_callee = classify_backend_call_callee(*call);
+  if (!normalized_callee.has_value()) {
+    return std::nullopt;
+  }
   auto normalized_call = make_backend_call_inst(call->result.str(),
                                                 call->return_type.str(),
-                                                call->callee.str(),
+                                                std::move(*normalized_callee),
                                                 *parsed_call,
                                                 true);
   normalized_call.args.front().operand = store->val.str();
@@ -1833,10 +1851,14 @@ std::optional<BackendFunction> adapt_local_two_arg_call_function(
     if (!parsed_call.has_value() || !call_operands.has_value()) {
       return std::nullopt;
     }
+    const auto normalized_callee = classify_backend_call_callee(*call);
+    if (!normalized_callee.has_value()) {
+      return std::nullopt;
+    }
 
     normalized_call = make_backend_call_inst(call->result.str(),
                                              call->return_type.str(),
-                                             call->callee.str(),
+                                             std::move(*normalized_callee),
                                              *parsed_call,
                                              true);
     bool replaced_local = false;
@@ -1889,10 +1911,14 @@ std::optional<BackendFunction> adapt_local_two_arg_call_function(
         call_operands->second != call_arg_load1->result) {
       return std::nullopt;
     }
+    const auto normalized_callee = classify_backend_call_callee(*call);
+    if (!normalized_callee.has_value()) {
+      return std::nullopt;
+    }
 
     normalized_call = make_backend_call_inst(call->result.str(),
                                              call->return_type.str(),
-                                             call->callee.str(),
+                                             std::move(*normalized_callee),
                                              *parsed_call,
                                              true);
     normalized_call->args[0].operand = store0->val.str();
@@ -1983,9 +2009,13 @@ std::optional<BackendFunction> adapt_direct_vararg_decl_call_function(
     }
   }
 
+  const auto normalized_callee = classify_backend_call_callee(*call);
+  if (!normalized_callee.has_value()) {
+    return std::nullopt;
+  }
   auto normalized_call = make_backend_call_inst(call->result.str(),
                                                call->return_type.str(),
-                                               call->callee.str(),
+                                               std::move(*normalized_callee),
                                                parsed_call->typed_call,
                                                true);
   for (auto& arg : normalized_call.args) {

@@ -91,10 +91,73 @@ struct BackendPhiInst {
 
 using BackendCallArg = c4c::codegen::lir::OwnedLirTypedCallArg;
 
+enum class BackendCallCalleeKind : unsigned char {
+  DirectGlobal,
+  DirectIntrinsic,
+  Indirect,
+};
+
+struct BackendCallCallee {
+  BackendCallCalleeKind kind = BackendCallCalleeKind::Indirect;
+  std::string symbol_name;
+  std::string operand;
+
+  static BackendCallCallee direct_global(std::string name) {
+    BackendCallCallee callee;
+    callee.kind = BackendCallCalleeKind::DirectGlobal;
+    callee.symbol_name = std::move(name);
+    return callee;
+  }
+
+  static BackendCallCallee direct_intrinsic(std::string name) {
+    BackendCallCallee callee;
+    callee.kind = BackendCallCalleeKind::DirectIntrinsic;
+    callee.symbol_name = std::move(name);
+    return callee;
+  }
+
+  static BackendCallCallee indirect(std::string value) {
+    BackendCallCallee callee;
+    callee.kind = BackendCallCalleeKind::Indirect;
+    callee.operand = std::move(value);
+    return callee;
+  }
+};
+
+inline std::optional<BackendCallCallee> parse_backend_call_callee(std::string_view callee) {
+  const auto parsed = c4c::codegen::lir::parse_lir_call_callee(callee);
+  if (!parsed.has_value()) {
+    return std::nullopt;
+  }
+
+  switch (parsed->kind) {
+    case c4c::codegen::lir::LirCallCalleeKind::DirectGlobal:
+      return BackendCallCallee::direct_global(std::string(parsed->symbol_name));
+    case c4c::codegen::lir::LirCallCalleeKind::DirectIntrinsic:
+      return BackendCallCallee::direct_intrinsic(std::string(parsed->symbol_name));
+    case c4c::codegen::lir::LirCallCalleeKind::Indirect:
+      return BackendCallCallee::indirect(std::string(callee));
+  }
+
+  return std::nullopt;
+}
+
+inline std::string render_backend_call_callee(const BackendCallCallee& callee) {
+  switch (callee.kind) {
+    case BackendCallCalleeKind::DirectGlobal:
+    case BackendCallCalleeKind::DirectIntrinsic:
+      return "@" + callee.symbol_name;
+    case BackendCallCalleeKind::Indirect:
+      return callee.operand;
+  }
+
+  return {};
+}
+
 struct BackendCallInst {
   std::string result;
   std::string return_type;
-  std::string callee;
+  BackendCallCallee callee;
   std::vector<std::string> param_types;
   std::vector<BackendCallArg> args;
   bool render_callee_type_suffix = false;

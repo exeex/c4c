@@ -445,7 +445,7 @@ void test_backend_call_helpers_decode_structured_direct_global_call() {
   c4c::backend::BackendCallInst call{
       "%t0",
       "i32",
-      "@add_pair",
+      c4c::backend::BackendCallCallee::direct_global("add_pair"),
       {"i32", "i32"},
       {{"i32", "%lhs"}, {"i32", "%rhs"}},
   };
@@ -463,7 +463,7 @@ void test_backend_call_helpers_decode_direct_global_single_typed_operand() {
   c4c::backend::BackendCallInst call{
       "%t0",
       "i32",
-      "@add_one",
+      c4c::backend::BackendCallCallee::direct_global("add_one"),
       {" i32 "},
       {{" i32 ", " %arg "}},
   };
@@ -482,7 +482,7 @@ void test_backend_call_helpers_decode_direct_global_two_typed_operands() {
   c4c::backend::BackendCallInst call{
       "%t1",
       "i32",
-      "@add_pair",
+      c4c::backend::BackendCallCallee::direct_global("add_pair"),
       {"i32", "i32"},
       {{"i32", "%lhs"}, {"i32", "%rhs"}},
   };
@@ -502,7 +502,7 @@ void test_backend_call_helpers_decode_zero_arg_direct_global_calls() {
   c4c::backend::BackendCallInst backend_call{
       "%t2",
       "i32",
-      "@helper",
+      c4c::backend::BackendCallCallee::direct_global("helper"),
       {},
       {},
   };
@@ -603,7 +603,7 @@ void test_backend_call_helpers_decode_structured_local_typed_operands() {
   c4c::backend::BackendCallInst single{
       "%t4",
       "i32",
-      "%fn.ptr",
+      c4c::backend::BackendCallCallee::indirect("%fn.ptr"),
       {" i32 "},
       {{" i32 ", " %arg "}},
       true,
@@ -615,7 +615,7 @@ void test_backend_call_helpers_decode_structured_local_typed_operands() {
   c4c::backend::BackendCallInst two{
       "%t5",
       "i32",
-      "%fn.ptr",
+      c4c::backend::BackendCallCallee::indirect("%fn.ptr"),
       {" i32 ", " i32 "},
       {{" i32 ", " %lhs "}, {" i32 ", " %rhs "}},
       true,
@@ -716,7 +716,7 @@ void test_backend_call_helpers_borrow_structured_typed_call_view() {
   c4c::backend::BackendCallInst call{
       "%t2",
       "i32",
-      "%fn.ptr",
+      c4c::backend::BackendCallCallee::indirect("%fn.ptr"),
       {" ptr ", " i32 "},
       {{" ptr ", " %base "}, {" i32 ", " %idx "}},
       true,

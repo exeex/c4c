@@ -71,15 +71,14 @@ std::optional<ParsedBackendTypedCallView> parse_backend_typed_call(
 
 std::optional<ParsedBackendDirectGlobalTypedCallView> parse_backend_direct_global_typed_call(
     const BackendCallInst& call) {
-  const auto symbol_name = c4c::codegen::lir::parse_lir_direct_global_callee(call.callee);
-  if (!symbol_name.has_value()) {
+  if (call.callee.kind != BackendCallCalleeKind::DirectGlobal) {
     return std::nullopt;
   }
   const auto typed_call = parse_backend_typed_call(call);
   if (!typed_call.has_value()) {
     return std::nullopt;
   }
-  return ParsedBackendDirectGlobalTypedCallView{*symbol_name, std::move(*typed_call)};
+  return ParsedBackendDirectGlobalTypedCallView{call.callee.symbol_name, std::move(*typed_call)};
 }
 
 }  // namespace c4c::backend

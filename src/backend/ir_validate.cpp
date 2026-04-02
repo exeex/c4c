@@ -126,8 +126,18 @@ bool validate_inst(const BackendInst& inst, std::string* error, std::string_view
     if (call->return_type.empty()) {
       return fail(error, std::string(context) + ": call return type must not be empty");
     }
-    if (call->callee.empty()) {
-      return fail(error, std::string(context) + ": call callee must not be empty");
+    switch (call->callee.kind) {
+      case BackendCallCalleeKind::DirectGlobal:
+      case BackendCallCalleeKind::DirectIntrinsic:
+        if (call->callee.symbol_name.empty()) {
+          return fail(error, std::string(context) + ": direct call symbol must not be empty");
+        }
+        break;
+      case BackendCallCalleeKind::Indirect:
+        if (call->callee.operand.empty()) {
+          return fail(error, std::string(context) + ": indirect call operand must not be empty");
+        }
+        break;
     }
     if (call->param_types.size() != call->args.size()) {
       return fail(error,

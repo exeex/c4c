@@ -154,7 +154,7 @@ void render_inst(std::ostringstream& out, const BackendInst& inst) {
           ? c4c::codegen::lir::format_lir_call_param_types(call->param_types)
           : std::string{};
   out << c4c::codegen::lir::format_lir_call_site(
-             call->callee,
+             render_backend_call_callee(call->callee),
              callee_type_suffix,
              c4c::codegen::lir::format_lir_typed_call_args(call->args))
       << "\n";
