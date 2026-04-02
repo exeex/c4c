@@ -2281,6 +2281,26 @@ void test_x86_backend_renders_typed_two_arg_direct_call_first_local_rewrite_spac
                       "x86 backend should not fall back to LLVM text for spacing-tolerant typed two-argument calls");
 }
 
+void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_first_local_rewrite_spacing_ir_without_signature_shims() {
+  auto lowered = c4c::backend::lower_to_backend_ir(
+      make_typed_direct_call_two_arg_first_local_rewrite_with_suffix_spacing_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".type add_pair, %function",
+                  "x86 backend seam should still preserve spacing-tolerant lowered rewritten first-local helper definitions without legacy signature text");
+  expect_contains(rendered, "mov edi, 5",
+                  "x86 backend seam should still materialize the rewritten lowered first argument from structured call metadata after spacing is normalized away");
+  expect_contains(rendered, "mov esi, 7",
+                  "x86 backend seam should still preserve the lowered immediate second argument from structured call metadata for the spacing-tolerant rewritten first-local slice");
+  expect_contains(rendered, "call add_pair",
+                  "x86 backend seam should still lower spacing-tolerant structured rewritten first-local direct calls when legacy call/signature text is cleared");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back when the spacing-tolerant structured rewritten first-local slice relies only on backend-owned metadata");
+}
+
 void test_x86_backend_renders_local_array_slice() {
   auto module = make_local_array_gep_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -3454,6 +3474,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_second_local_arg_slice);
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_second_local_rewrite_slice);
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_first_local_rewrite_spacing_slice);
+  RUN_TEST(test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_first_local_rewrite_spacing_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_both_local_arg_slice);
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_both_local_first_rewrite_slice);
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_both_local_second_rewrite_slice);
