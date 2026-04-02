@@ -1257,6 +1257,21 @@ void test_aarch64_backend_renders_direct_call_slice() {
                   "aarch64 backend should tear down the minimal helper-call frame");
 }
 
+void test_aarch64_backend_scaffold_accepts_structured_direct_call_ir_without_signature_shims() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_direct_call_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  expect_contains(rendered, ".type helper, %function",
+                  "aarch64 backend seam should still preserve structured direct-call helper definitions without legacy signature return text");
+  expect_contains(rendered, "bl helper",
+                  "aarch64 backend seam should still lower structured direct calls when main relies only on structured signature metadata");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should not fall back when structured direct calls clear legacy signature return text");
+}
+
 void test_aarch64_backend_renders_zero_arg_typed_direct_call_slice_with_whitespace() {
   auto module = make_direct_call_module();
   auto& call = std::get<c4c::codegen::lir::LirCallOp>(
@@ -3277,6 +3292,7 @@ void run_aarch64_backend_tests() {
   // test_aarch64_backend_renders_compare_and_branch_uge_slice();
   test_aarch64_backend_scaffold_rejects_out_of_slice_ir();
   test_aarch64_backend_renders_direct_call_slice();
+  test_aarch64_backend_scaffold_accepts_structured_direct_call_ir_without_signature_shims();
   test_aarch64_backend_renders_zero_arg_typed_direct_call_slice_with_whitespace();
   test_aarch64_backend_rejects_intrinsic_callee_from_direct_call_fast_path();
   test_aarch64_backend_rejects_indirect_callee_from_direct_call_fast_path();
