@@ -753,6 +753,7 @@ add_test(
           -DCOMPILER=$<TARGET_FILE:c4cll>
           -DSRC=${INTERNAL_CPP_TEST_ROOT}/negative_case/parser_debug_expr_stmt_stack.cpp
           -DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=parse_primary
+          "-DEXPECT_CONTEXT_SUBSTRING:STRING=token_index=7 token_kind=SEMI token_window=\"[5] KW_return 'return' | [6] PLUS '+' | >>[7] SEMI ';' | [8] RBRACE '}' | [9] EOF ''\""
           -DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> parse_block -> parse_stmt -> parse_expr -> parse_assign_expr -> parse_ternary -> parse_unary -> parse_primary
           -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
 )

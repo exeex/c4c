@@ -179,6 +179,26 @@ std::vector<std::string> merge_leading_top_level_qualified_probe(
     return merged;
 }
 
+std::string quote_debug_lexeme(const std::string& lexeme) {
+    std::string escaped;
+    escaped.reserve(lexeme.size());
+    for (char ch : lexeme) {
+        if (ch == '\\' || ch == '\'') escaped.push_back('\\');
+        escaped.push_back(ch);
+    }
+    return escaped;
+}
+
+std::string format_debug_token_entry(const Token& token,
+                                     int index,
+                                     bool highlight) {
+    std::ostringstream oss;
+    if (highlight) oss << ">>";
+    oss << "[" << index << "] " << token_kind_name(token.kind)
+        << " '" << quote_debug_lexeme(token.lexeme) << "'";
+    return oss.str();
+}
+
 const std::string* select_best_parse_summary_leaf(
     const std::vector<std::string>& summary_stack,
     const Parser::ParseFailure& failure) {
@@ -517,6 +537,7 @@ void Parser::note_parse_failure(const char* expected,
     failure.active = true;
     failure.committed = committed;
     failure.token_index = !at_end() ? pos_ : (pos_ > 0 ? pos_ - 1 : -1);
+    failure.token_kind = !at_end() ? cur().kind : TokenKind::EndOfFile;
     failure.line = !at_end() ? cur().line : (pos_ > 0 ? tokens_[pos_ - 1].line : 1);
     failure.column = !at_end() ? cur().column : 1;
     failure.expected = expected ? expected : "";
@@ -620,6 +641,33 @@ std::string Parser::format_best_parse_failure() const {
     if (!best_parse_failure_.detail.empty()) {
         if (oss.tellp() > 0) oss << " ";
         oss << "detail=\"" << best_parse_failure_.detail << "\"";
+    }
+    if (parser_debug_enabled_) {
+        if (oss.tellp() > 0) oss << " ";
+        oss << "token_index=" << best_parse_failure_.token_index
+            << " token_kind=" << token_kind_name(best_parse_failure_.token_kind)
+            << " token_window=\""
+            << format_parse_failure_token_window(best_parse_failure_) << "\"";
+    }
+    return oss.str();
+}
+
+std::string Parser::format_parse_failure_token_window(
+    const ParseFailure& failure) const {
+    if (tokens_.empty()) return {};
+
+    const int center =
+        failure.token_index >= 0
+            ? std::min(failure.token_index, static_cast<int>(tokens_.size()) - 1)
+            : static_cast<int>(tokens_.size()) - 1;
+    const int start = std::max(0, center - 2);
+    const int end =
+        std::min(static_cast<int>(tokens_.size()) - 1, center + 2);
+
+    std::ostringstream oss;
+    for (int i = start; i <= end; ++i) {
+        if (i > start) oss << " | ";
+        oss << format_debug_token_entry(tokens_[i], i, i == center);
     }
     return oss.str();
 }

@@ -118,6 +118,7 @@ class Parser {
     bool active = false;
     bool committed = true;
     int token_index = -1;
+    TokenKind token_kind = TokenKind::EndOfFile;
     int line = 1;
     int column = 1;
     std::string function_name;
@@ -334,6 +335,7 @@ class Parser {
   std::vector<std::string> best_debug_summary_stack() const;
   std::string format_best_parse_failure() const;
   void dump_parse_debug_trace() const;
+  std::string format_parse_failure_token_window(const ParseFailure& failure) const;
 
   // ── token cursor / shared token utilities ────────────────────────────────
   const Token& cur() const;              // current token

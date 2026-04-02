@@ -37,4 +37,15 @@ if(stack_pos EQUAL -1)
     "stderr:\n${err}")
 endif()
 
+if(DEFINED EXPECT_CONTEXT_SUBSTRING AND
+   NOT "${EXPECT_CONTEXT_SUBSTRING}" STREQUAL "")
+  string(FIND "${err}" "${EXPECT_CONTEXT_SUBSTRING}" context_pos)
+  if(context_pos EQUAL -1)
+    message(FATAL_ERROR
+      "[FAIL] parser debug output missing expected context substring\n"
+      "substring: ${EXPECT_CONTEXT_SUBSTRING}\n"
+      "stderr:\n${err}")
+  endif()
+endif()
+
 message(STATUS "[PASS][parser-debug] ${SRC}")
