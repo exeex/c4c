@@ -1193,8 +1193,11 @@ void test_adapter_tracks_structured_entry_block_and_return_contract() {
               "adapter should preserve the add operands");
   expect_true(block.terminator.value.has_value() && *block.terminator.value == "%t0",
               "adapter should preserve the return value separately from the block text");
+  expect_true(c4c::backend::backend_return_scalar_type(block.terminator) ==
+                  c4c::backend::BackendScalarType::I32,
+              "adapter should preserve the structured return scalar type separately from the block text");
   expect_true(block.terminator.type_str == "i32",
-              "adapter should preserve the return type separately from the block text");
+              "adapter should keep the return type compatibility text for current backend consumers");
 }
 
 void test_adapter_tracks_structured_typed_add_entry_block_and_return_contract() {
@@ -1237,8 +1240,11 @@ void test_adapter_tracks_structured_sub_entry_block_and_return_contract() {
               "adapter should preserve the subtraction operands");
   expect_true(block.terminator.value.has_value() && *block.terminator.value == "%t0",
               "adapter should preserve the subtraction return value separately from the block text");
+  expect_true(c4c::backend::backend_return_scalar_type(block.terminator) ==
+                  c4c::backend::BackendScalarType::I32,
+              "adapter should preserve the subtraction return scalar type separately from the block text");
   expect_true(block.terminator.type_str == "i32",
-              "adapter should preserve the subtraction return type separately from the block text");
+              "adapter should keep the subtraction return type compatibility text for current backend consumers");
 }
 
 void test_adapter_normalizes_local_temp_arithmetic_chain_slice() {

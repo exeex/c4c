@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 3/2 slice: audit the remaining backend-owned IR surfaces that still
-      carry semantics only as raw text after the structured function-linkage
+      carry semantics only as raw text after the structured return-terminator
       conversion and pick the next narrow in-scope structured cleanup without
       widening into the later BIR scaffold plan
 
@@ -126,13 +126,23 @@ Source Plan: plan.md
       `backend_lir_adapter_x86_64_tests` pass while the full suite remains
       monotonic at 2668 passed / 3 failed / 2671 total with zero newly
       failing tests
+- [x] Step 3/5 slice: add structured return-type metadata for
+      `BackendReturn` / `BackendTerminator`, keep the legacy
+      `terminator.type_str` text as a compatibility shim, switch the backend
+      IR printer/validator plus the x86/aarch64 lowered seam recognizers onto
+      the structured return helpers, and confirm on 2026-04-02 that focused
+      `backend_ir_tests`, `backend_lir_adapter_tests`, and
+      `backend_lir_adapter_x86_64_tests` pass while the full suite remains
+      monotonic at 2668 passed / 3 failed / 2671 total with zero newly
+      failing tests
 
 ## Next Intended Slice
 
 - Audit the remaining backend-owned IR surfaces that still carry semantics only
-  as raw text after the structured function/global-linkage conversions, then pick the
+  as raw text after the structured return-terminator conversion, then pick the
   next narrow Step 2/3 conversion without widening into the later BIR scaffold
-  plan.
+  plan. Prioritize `BackendFunctionSignature` / `BackendCallInst` return or
+  parameter type surfaces before any broader BIR-shape work.
 
 ## Blockers
 
@@ -200,6 +210,15 @@ Source Plan: plan.md
 - Focused `backend_lir_adapter_aarch64_tests` still fails in the same broad
   pre-existing suite called out above after the global-linkage-helper cleanup;
   the full-suite rerun stayed monotonic and reported no new failures.
+- A fresh 2026-04-02 `ctest --test-dir build -j --output-on-failure >
+  test_fail_after.log` run for the structured return-terminator slice finished
+  at the same 2668 passed / 3 failed / 2671 total baseline, and
+  `check_monotonic_regression.py --before test_fail_before.log --after
+  test_fail_after.log --allow-non-decreasing-passed` passed with zero newly
+  failing tests.
+- Focused `backend_ir_tests`, `backend_lir_adapter_tests`, and
+  `backend_lir_adapter_x86_64_tests` pass with the new structured
+  return-terminator metadata slice.
 
 ## Resume Notes
 
@@ -258,6 +277,11 @@ Source Plan: plan.md
   `callee.kind` plus `symbol_name`/`operand` instead of carrying that call
   identity only as raw text; `src/backend/ir_printer.cpp` reconstructs the
   printable LIR-style call operand from that structured form.
+- `BackendReturn` / `BackendTerminator` now carry structured return-type
+  metadata (`TypeKind::{Void,Scalar}` plus `BackendScalarType`) in addition to
+  the legacy `type_str` shim; the printer/validator and x86/aarch64 lowered
+  seam recognizers now prefer the structured helpers, and the backend seam
+  tests explicitly clear `terminator.type_str` when that metadata is present.
 - `BackendGlobal` now stores structured storage/init metadata in
   `storage` plus `initializer.kind`, while `qualifier` / `init_text` /
   `is_extern_decl` remain compatibility shims for backend consumers that have

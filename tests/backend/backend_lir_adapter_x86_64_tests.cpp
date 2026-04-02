@@ -64,6 +64,10 @@ void clear_backend_global_compatibility_shims(c4c::backend::BackendModule& modul
 void clear_backend_memory_type_compatibility_shims(c4c::backend::BackendModule& module) {
   for (auto& function : module.functions) {
     for (auto& block : function.blocks) {
+      if (c4c::backend::backend_return_type_kind(block.terminator) !=
+          c4c::backend::BackendReturn::TypeKind::Unknown) {
+        block.terminator.type_str.clear();
+      }
       for (auto& inst : block.insts) {
         if (auto* phi = std::get_if<c4c::backend::BackendPhiInst>(&inst)) {
           if (phi->value_type != c4c::backend::BackendScalarType::Unknown) {

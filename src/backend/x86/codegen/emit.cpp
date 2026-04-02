@@ -443,7 +443,9 @@ std::optional<std::int64_t> parse_single_block_return_imm(
 
   const auto& block = function.blocks.front();
   if (block.label != "entry" || !block.terminator.value.has_value() ||
-      block.terminator.type_str != "i32" || !block.insts.empty()) {
+      c4c::backend::backend_return_scalar_type(block.terminator) !=
+          c4c::backend::BackendScalarType::I32 ||
+      !block.insts.empty()) {
     return std::nullopt;
   }
 
@@ -534,7 +536,8 @@ bool is_minimal_single_function_asm_slice(const c4c::backend::BackendModule& mod
 
   const auto& block = function.blocks.front();
   if (block.label != "entry" || !block.terminator.value.has_value() ||
-      block.terminator.type_str != "i32") {
+      c4c::backend::backend_return_scalar_type(block.terminator) !=
+          c4c::backend::BackendScalarType::I32) {
     return false;
   }
 
@@ -632,7 +635,10 @@ std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_sl
       true_block.terminator.kind != c4c::backend::BackendTerminatorKind::Return ||
       false_block.terminator.kind != c4c::backend::BackendTerminatorKind::Return ||
       !true_block.terminator.value.has_value() || !false_block.terminator.value.has_value() ||
-      true_block.terminator.type_str != "i32" || false_block.terminator.type_str != "i32") {
+      c4c::backend::backend_return_scalar_type(true_block.terminator) !=
+          c4c::backend::BackendScalarType::I32 ||
+      c4c::backend::backend_return_scalar_type(false_block.terminator) !=
+          c4c::backend::BackendScalarType::I32) {
     return std::nullopt;
   }
 
@@ -779,7 +785,9 @@ std::optional<MinimalCountdownLoopSlice> parse_minimal_countdown_loop_slice(
       body.terminator.kind != c4c::backend::BackendTerminatorKind::Branch ||
       body.terminator.target_label != loop.label || !exit.insts.empty() ||
       exit.terminator.kind != c4c::backend::BackendTerminatorKind::Return ||
-      !exit.terminator.value.has_value() || exit.terminator.type_str != "i32") {
+      !exit.terminator.value.has_value() ||
+      c4c::backend::backend_return_scalar_type(exit.terminator) !=
+          c4c::backend::BackendScalarType::I32) {
     return std::nullopt;
   }
 
@@ -880,7 +888,9 @@ std::optional<MinimalConditionalPhiJoinSlice> parse_minimal_conditional_phi_join
       false_block.terminator.target_label != join_block.label ||
       (join_block.insts.size() != 1 && join_block.insts.size() != 2) ||
       join_block.terminator.kind != c4c::backend::BackendTerminatorKind::Return ||
-      !join_block.terminator.value.has_value() || join_block.terminator.type_str != "i32") {
+      !join_block.terminator.value.has_value() ||
+      c4c::backend::backend_return_scalar_type(join_block.terminator) !=
+          c4c::backend::BackendScalarType::I32) {
     return std::nullopt;
   }
 
@@ -1254,7 +1264,8 @@ std::optional<MinimalExternDeclCallSlice> parse_minimal_declared_direct_call_sli
   const auto& main_block = main_fn->blocks.front();
   if (main_block.label != "entry" || main_block.insts.size() != 1 ||
       !main_block.terminator.value.has_value() ||
-      main_block.terminator.type_str != "i32") {
+      c4c::backend::backend_return_scalar_type(main_block.terminator) !=
+          c4c::backend::BackendScalarType::I32) {
     return std::nullopt;
   }
 
@@ -1362,7 +1373,8 @@ std::optional<MinimalExternGlobalArrayLoadSlice> parse_minimal_extern_global_arr
   const auto& block = main_fn->blocks.front();
   if (block.label != "entry" || block.insts.size() != 1 ||
       !block.terminator.value.has_value() ||
-      block.terminator.type_str != "i32") {
+      c4c::backend::backend_return_scalar_type(block.terminator) !=
+          c4c::backend::BackendScalarType::I32) {
     return std::nullopt;
   }
 
@@ -1405,7 +1417,8 @@ std::optional<MinimalExternScalarGlobalLoadSlice> parse_minimal_extern_scalar_gl
   const auto& block = main_fn->blocks.front();
   if (block.label != "entry" || block.insts.size() != 1 ||
       !block.terminator.value.has_value() ||
-      block.terminator.type_str != "i32") {
+      c4c::backend::backend_return_scalar_type(block.terminator) !=
+          c4c::backend::BackendScalarType::I32) {
     return std::nullopt;
   }
 
@@ -1450,7 +1463,8 @@ std::optional<MinimalScalarGlobalLoadSlice> parse_minimal_scalar_global_load_sli
   const auto& block = main_fn->blocks.front();
   if (block.label != "entry" || block.insts.size() != 1 ||
       !block.terminator.value.has_value() ||
-      block.terminator.type_str != "i32") {
+      c4c::backend::backend_return_scalar_type(block.terminator) !=
+          c4c::backend::BackendScalarType::I32) {
     return std::nullopt;
   }
 
@@ -1504,7 +1518,9 @@ std::optional<MinimalGlobalCharPointerDiffSlice> parse_minimal_global_char_point
 
   const auto& block = main_fn->blocks.front();
   if (block.label != "entry" || block.insts.size() != 1 ||
-      !block.terminator.value.has_value() || block.terminator.type_str != "i32") {
+      !block.terminator.value.has_value() ||
+      c4c::backend::backend_return_scalar_type(block.terminator) !=
+          c4c::backend::BackendScalarType::I32) {
     return std::nullopt;
   }
 
@@ -1570,7 +1586,9 @@ std::optional<MinimalGlobalIntPointerDiffSlice> parse_minimal_global_int_pointer
 
   const auto& block = main_fn->blocks.front();
   if (block.label != "entry" || block.insts.size() != 1 ||
-      !block.terminator.value.has_value() || block.terminator.type_str != "i32") {
+      !block.terminator.value.has_value() ||
+      c4c::backend::backend_return_scalar_type(block.terminator) !=
+          c4c::backend::BackendScalarType::I32) {
     return std::nullopt;
   }
 
@@ -2161,7 +2179,9 @@ std::optional<MinimalStringLiteralCharSlice> parse_minimal_string_literal_char_s
 
   const auto& block = main_fn->blocks.front();
   if (block.label != "entry" || block.insts.size() != 1 ||
-      !block.terminator.value.has_value() || block.terminator.type_str != "i32") {
+      !block.terminator.value.has_value() ||
+      c4c::backend::backend_return_scalar_type(block.terminator) !=
+          c4c::backend::BackendScalarType::I32) {
     return std::nullopt;
   }
 
@@ -2218,7 +2238,9 @@ std::optional<MinimalScalarGlobalStoreReloadSlice> parse_minimal_scalar_global_s
 
   const auto& block = main_fn->blocks.front();
   if (block.label != "entry" || block.insts.size() != 2 ||
-      !block.terminator.value.has_value() || block.terminator.type_str != "i32") {
+      !block.terminator.value.has_value() ||
+      c4c::backend::backend_return_scalar_type(block.terminator) !=
+          c4c::backend::BackendScalarType::I32) {
     return std::nullopt;
   }
 
@@ -2266,7 +2288,8 @@ std::optional<MinimalCallCrossingDirectCallSlice> parse_minimal_call_crossing_di
   const auto& helper_block = helper->blocks.front();
   if (helper_block.label != "entry" || helper_block.insts.size() != 1 ||
       !helper_block.terminator.value.has_value() ||
-      helper_block.terminator.type_str != "i32") {
+      c4c::backend::backend_return_scalar_type(helper_block.terminator) !=
+          c4c::backend::BackendScalarType::I32) {
     return std::nullopt;
   }
 
@@ -2286,7 +2309,8 @@ std::optional<MinimalCallCrossingDirectCallSlice> parse_minimal_call_crossing_di
   const auto& main_block = main_fn->blocks.front();
   if (main_block.label != "entry" || main_block.insts.size() != 3 ||
       !main_block.terminator.value.has_value() ||
-      main_block.terminator.type_str != "i32") {
+      c4c::backend::backend_return_scalar_type(main_block.terminator) !=
+          c4c::backend::BackendScalarType::I32) {
     return std::nullopt;
   }
 
@@ -2338,7 +2362,8 @@ std::optional<MinimalDirectCallSlice> parse_minimal_direct_call_slice(
   const auto& main_block = main_fn->blocks.front();
   if (main_block.label != "entry" || main_block.insts.size() != 1 ||
       !main_block.terminator.value.has_value() ||
-      main_block.terminator.type_str != "i32") {
+      c4c::backend::backend_return_scalar_type(main_block.terminator) !=
+          c4c::backend::BackendScalarType::I32) {
     return std::nullopt;
   }
 
@@ -2380,7 +2405,8 @@ std::optional<MinimalDirectCallAddImmSlice> parse_minimal_direct_call_add_imm_sl
   const auto& main_block = main_fn->blocks.front();
   if (main_block.label != "entry" || main_block.insts.size() != 1 ||
       !main_block.terminator.value.has_value() ||
-      main_block.terminator.type_str != "i32") {
+      c4c::backend::backend_return_scalar_type(main_block.terminator) !=
+          c4c::backend::BackendScalarType::I32) {
     return std::nullopt;
   }
 
@@ -2413,7 +2439,8 @@ std::optional<MinimalDirectCallAddImmSlice> parse_minimal_direct_call_add_imm_sl
   const auto& callee_block = callee_fn->blocks.front();
   if (callee_block.label != "entry" || callee_block.insts.size() != 1 ||
       !callee_block.terminator.value.has_value() ||
-      callee_block.terminator.type_str != "i32") {
+      c4c::backend::backend_return_scalar_type(callee_block.terminator) !=
+          c4c::backend::BackendScalarType::I32) {
     return std::nullopt;
   }
 

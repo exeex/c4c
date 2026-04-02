@@ -31,6 +31,10 @@
 void clear_backend_memory_type_compatibility_shims(c4c::backend::BackendModule& module) {
   for (auto& function : module.functions) {
     for (auto& block : function.blocks) {
+      if (c4c::backend::backend_return_type_kind(block.terminator) !=
+          c4c::backend::BackendReturn::TypeKind::Unknown) {
+        block.terminator.type_str.clear();
+      }
       for (auto& inst : block.insts) {
         if (auto* phi = std::get_if<c4c::backend::BackendPhiInst>(&inst)) {
           if (phi->value_type != c4c::backend::BackendScalarType::Unknown) {
@@ -871,7 +875,7 @@ void test_backend_ir_printer_renders_structured_function_linkage_without_raw_tex
   function.blocks.push_back(c4c::backend::BackendBlock{
       "entry",
       {},
-      c4c::backend::BackendReturn{std::string("0"), "i32"},
+      c4c::backend::make_backend_return(std::string("0"), "i32"),
   });
   module.functions.push_back(function);
 

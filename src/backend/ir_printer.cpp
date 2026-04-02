@@ -182,7 +182,7 @@ void render_function(std::ostringstream& out, const BackendFunction& function) {
     switch (block.terminator.kind) {
       case BackendTerminatorKind::Return:
         if (block.terminator.value.has_value()) {
-          out << "  ret " << block.terminator.type_str << " "
+          out << "  ret " << render_backend_return_type(block.terminator) << " "
               << *block.terminator.value << "\n";
         } else {
           out << "  ret void\n";

@@ -475,7 +475,7 @@ std::optional<BackendFunction> adapt_string_literal_char_function(
       BackendScalarType::I32,
       BackendScalarType::I8,
   });
-  out_block.terminator = BackendReturn{*ret->value_str, "i32"};
+  out_block.terminator = make_backend_return(*ret->value_str, "i32");
   out.blocks.push_back(std::move(out_block));
   return out;
 }
@@ -483,7 +483,7 @@ std::optional<BackendFunction> adapt_string_literal_char_function(
 BackendTerminator adapt_terminator(const c4c::codegen::lir::LirTerminator& terminator) {
   const auto* ret = std::get_if<c4c::codegen::lir::LirRet>(&terminator);
   if (!ret) fail_unsupported("non-return terminators");
-  return BackendReturn{ret->value_str, ret->type_str};
+  return make_backend_return(ret->value_str, ret->type_str);
 }
 
 std::optional<BackendFunction> adapt_conditional_return_function(
@@ -557,12 +557,12 @@ std::optional<BackendFunction> adapt_conditional_return_function(
 
   BackendBlock out_true;
   out_true.label = true_block.label;
-  out_true.terminator = BackendReturn{*true_ret->value_str, "i32"};
+  out_true.terminator = make_backend_return(*true_ret->value_str, "i32");
   out.blocks.push_back(std::move(out_true));
 
   BackendBlock out_false;
   out_false.label = false_block.label;
-  out_false.terminator = BackendReturn{*false_ret->value_str, "i32"};
+  out_false.terminator = make_backend_return(*false_ret->value_str, "i32");
   out.blocks.push_back(std::move(out_false));
 
   return out;
@@ -711,7 +711,7 @@ std::optional<BackendFunction> adapt_conditional_phi_join_function(
   if (join_compute.has_value()) {
     out_join.insts.push_back(*join_compute);
   }
-  out_join.terminator = BackendReturn{return_value, "i32"};
+  out_join.terminator = make_backend_return(return_value, "i32");
   out.blocks.push_back(std::move(out_join));
 
   return out;
@@ -771,7 +771,7 @@ std::optional<BackendFunction> adapt_single_param_add_function(
         BackendBinaryInst{BackendBinaryOpcode::Add, add.result, add.type_str,
                           signature.params.front().name, add.rhs,
                           BackendScalarType::I32});
-    out_block.terminator = BackendReturn{add.result, "i32"};
+    out_block.terminator = make_backend_return(add.result, "i32");
     out.blocks.push_back(std::move(out_block));
     return out;
   };
@@ -867,7 +867,7 @@ std::optional<BackendFunction> adapt_local_temp_return_function(
   out.signature = signature;
   BackendBlock out_block;
   out_block.label = block.label;
-  out_block.terminator = BackendReturn{store_it->second, "i32"};
+  out_block.terminator = make_backend_return(store_it->second, "i32");
   out.blocks.push_back(std::move(out_block));
   return out;
 }
@@ -914,7 +914,7 @@ std::optional<BackendFunction> adapt_local_temp_sub_return_function(
   out_block.insts.push_back(
       BackendBinaryInst{BackendBinaryOpcode::Sub, sub->result, sub->type_str, store->val, sub->rhs,
                         BackendScalarType::I32});
-  out_block.terminator = BackendReturn{sub->result, "i32"};
+  out_block.terminator = make_backend_return(sub->result, "i32");
   out.blocks.push_back(std::move(out_block));
   return out;
 }
@@ -1038,7 +1038,7 @@ std::optional<BackendFunction> adapt_local_temp_arithmetic_return_function(
   out.signature = signature;
   BackendBlock out_block;
   out_block.label = block.label;
-  out_block.terminator = BackendReturn{std::to_string(*return_value), "i32"};
+  out_block.terminator = make_backend_return(std::to_string(*return_value), "i32");
   out.blocks.push_back(std::move(out_block));
   return out;
 }
@@ -1202,7 +1202,7 @@ std::optional<BackendFunction> adapt_local_pointer_temp_return_function(
   out.signature = signature;
   BackendBlock out_block;
   out_block.label = block.label;
-  out_block.terminator = BackendReturn{value_it->second, "i32"};
+  out_block.terminator = make_backend_return(value_it->second, "i32");
   out.blocks.push_back(std::move(out_block));
   return out;
 }
@@ -1379,7 +1379,7 @@ std::optional<BackendFunction> adapt_double_indirect_local_pointer_conditional_r
       out.signature = signature;
       BackendBlock out_block;
       out_block.label = "entry";
-      out_block.terminator = BackendReturn{*resolved, "i32"};
+      out_block.terminator = make_backend_return(*resolved, "i32");
       out.blocks.push_back(std::move(out_block));
       return out;
     }
@@ -1447,7 +1447,7 @@ std::optional<BackendFunction> adapt_goto_only_constant_return_function(
       out.signature = signature;
       BackendBlock out_block;
       out_block.label = "entry";
-      out_block.terminator = BackendReturn{*ret->value_str, "i32"};
+      out_block.terminator = make_backend_return(*ret->value_str, "i32");
       out.blocks.push_back(std::move(out_block));
       return out;
     }
@@ -1629,7 +1629,7 @@ std::optional<BackendFunction> adapt_single_local_countdown_loop_function(
       out.signature = signature;
       BackendBlock out_block;
       out_block.label = "entry";
-      out_block.terminator = BackendReturn{"0", "i32"};
+      out_block.terminator = make_backend_return("0", "i32");
       out.blocks.push_back(std::move(out_block));
       return out;
     }
@@ -1773,7 +1773,7 @@ std::optional<BackendFunction> adapt_countdown_while_loop_function(
 
   BackendBlock out_exit;
   out_exit.label = exit.label;
-  out_exit.terminator = BackendReturn{"%t.iter", "i32"};
+  out_exit.terminator = make_backend_return("%t.iter", "i32");
 
   out.blocks.push_back(std::move(out_entry));
   out.blocks.push_back(std::move(out_loop));
@@ -1839,7 +1839,7 @@ std::optional<BackendFunction> adapt_local_single_arg_call_function(
                                                 true);
   normalized_call.args.front().operand = store->val.str();
   out_block.insts.push_back(std::move(normalized_call));
-  out_block.terminator = BackendReturn{call->result, "i32"};
+  out_block.terminator = make_backend_return(call->result, "i32");
   out.blocks.push_back(std::move(out_block));
   return out;
 }
@@ -1981,7 +1981,7 @@ std::optional<BackendFunction> adapt_local_two_arg_call_function(
     return std::nullopt;
   }
   out_block.insts.push_back(std::move(*normalized_call));
-  out_block.terminator = BackendReturn{*ret->value_str, "i32"};
+  out_block.terminator = make_backend_return(*ret->value_str, "i32");
   out.blocks.push_back(std::move(out_block));
   return out;
 }
@@ -2086,7 +2086,7 @@ std::optional<BackendFunction> adapt_direct_vararg_decl_call_function(
   BackendBlock out_block;
   out_block.label = block.label;
   out_block.insts.push_back(std::move(normalized_call));
-  out_block.terminator = BackendReturn{*ret->value_str, "i32"};
+  out_block.terminator = make_backend_return(*ret->value_str, "i32");
   out.blocks.push_back(std::move(out_block));
   return out;
 }
@@ -2136,7 +2136,7 @@ std::optional<BackendFunction> adapt_direct_global_load_function(
           BackendScalarType::I32,
           BackendScalarType::I32,
       });
-  out_block.terminator = BackendReturn{*ret->value_str, "i32"};
+  out_block.terminator = make_backend_return(*ret->value_str, "i32");
   out.blocks.push_back(std::move(out_block));
   return out;
 }
@@ -2198,7 +2198,7 @@ std::optional<BackendFunction> adapt_direct_global_store_reload_function(
       BackendScalarType::I32,
       BackendScalarType::I32,
   });
-  out_block.terminator = BackendReturn{*ret->value_str, "i32"};
+  out_block.terminator = make_backend_return(*ret->value_str, "i32");
   out.blocks.push_back(std::move(out_block));
   return out;
 }
@@ -2281,7 +2281,7 @@ std::optional<BackendFunction> adapt_global_int_pointer_roundtrip_function(
           BackendScalarType::I32,
           BackendScalarType::I32,
       });
-  out_block.terminator = BackendReturn{*ret->value_str, "i32"};
+  out_block.terminator = make_backend_return(*ret->value_str, "i32");
   out.blocks.push_back(std::move(out_block));
   return out;
 }
@@ -2351,7 +2351,7 @@ std::optional<BackendFunction> adapt_indexed_global_array_load_function(
       BackendScalarType::I32,
       BackendScalarType::I32,
   });
-  out_block.terminator = BackendReturn{*ret->value_str, "i32"};
+  out_block.terminator = make_backend_return(*ret->value_str, "i32");
   out.blocks.push_back(std::move(out_block));
   return out;
 }
@@ -2483,7 +2483,7 @@ std::optional<BackendFunction> adapt_global_char_pointer_diff_function(
       BackendScalarType::I32,
       BackendScalarType::I8,
   });
-  out_block.terminator = BackendReturn{*ret->value_str, "i32"};
+  out_block.terminator = make_backend_return(*ret->value_str, "i32");
   out.blocks.push_back(std::move(out_block));
   return out;
 }
@@ -2620,7 +2620,7 @@ std::optional<BackendFunction> adapt_global_int_pointer_diff_function(
       BackendScalarType::I32,
       BackendScalarType::I32,
   });
-  out_block.terminator = BackendReturn{*ret->value_str, "i32"};
+  out_block.terminator = make_backend_return(*ret->value_str, "i32");
   out.blocks.push_back(std::move(out_block));
   return out;
 }

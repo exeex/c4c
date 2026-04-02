@@ -225,14 +225,14 @@ bool validate_block(const BackendBlock& block, std::string* error, std::string_v
   }
   switch (block.terminator.kind) {
     case BackendTerminatorKind::Return:
-      if (block.terminator.type_str.empty()) {
+      if (render_backend_return_type(block.terminator).empty()) {
         return fail(error, std::string(context) + ": block terminator type must not be empty");
       }
-      if (!block.terminator.value.has_value() && block.terminator.type_str != "void") {
+      if (!block.terminator.value.has_value() && !backend_return_is_void(block.terminator)) {
         return fail(error,
                     std::string(context) + ": void terminators must use type 'void'");
       }
-      if (block.terminator.value.has_value() && block.terminator.type_str == "void") {
+      if (block.terminator.value.has_value() && backend_return_is_void(block.terminator)) {
         return fail(error,
                     std::string(context) + ": non-void terminators must not use type 'void'");
       }
