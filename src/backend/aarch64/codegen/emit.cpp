@@ -3499,10 +3499,16 @@ parse_minimal_call_crossing_direct_call_slice(
   const auto* call = std::get_if<c4c::backend::BackendCallInst>(&main_block.insts[1]);
   const auto* final_add =
       std::get_if<c4c::backend::BackendBinaryInst>(&main_block.insts[2]);
+  const auto parsed_call = call == nullptr ? std::nullopt
+                                           : c4c::backend::parse_backend_typed_call(*call);
   const auto call_operand =
-      call == nullptr ? std::nullopt
-                      : c4c::backend::parse_backend_direct_global_single_typed_call_operand(
-                            *call, "add_one", "i32");
+      parsed_call.has_value() &&
+              call->callee.kind == c4c::backend::BackendCallCalleeKind::DirectGlobal &&
+              call->callee.symbol_name == "add_one" &&
+              c4c::backend::backend_typed_call_matches(
+                  *parsed_call, std::array<std::string_view, 1>{"i32"})
+          ? std::optional<std::string_view>{parsed_call->args.front().operand}
+          : std::nullopt;
   if (source_add == nullptr || call == nullptr || final_add == nullptr ||
       source_add->opcode != c4c::backend::BackendBinaryOpcode::Add ||
       source_add->type_str != "i32" || call->return_type != "i32" ||

@@ -6,9 +6,9 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 4: remove the next target-codegen direct-call fast-path cluster that
-      still reaches for `parse_backend_direct_global_*` now that
-      `BackendCallInst` carries structured call-target metadata
+- Step 4: migrate the next emitter-side direct-call matcher that still depends
+      on `parse_backend_typed_call(...)` so target codegen keeps reading
+      backend-owned call semantics directly
 
 ## Incomplete Items
 
@@ -58,12 +58,19 @@ Source Plan: plan.md
       from reparsing backend call text through
       `parse_backend_direct_global_*` to reading structured
       `BackendCallInst::callee` metadata plus typed-call operands directly
+- [x] Step 4 slice: remove the remaining
+      `parse_backend_direct_global_*` emitter dependencies from
+      `src/backend/x86/codegen/emit.cpp` and
+      `src/backend/aarch64/codegen/emit.cpp` by moving the x86 LIR-side
+      direct-call recognizers onto shared LIR parsing and keeping the aarch64
+      backend matcher on structured `BackendCallInst::callee` metadata plus
+      borrowed typed-call operands
 
 ## Next Intended Slice
 
-- Continue Step 4 by migrating another direct-call emitter cluster that still
-  depends on `parse_backend_direct_global_*`, ideally one of the remaining x86
-  minimal-call slices that pattern-match single-arg or two-arg helper calls.
+- Continue Step 4 by migrating the remaining emitter-side
+  `parse_backend_typed_call(...)` users in the x86 and aarch64 direct-call
+  helpers onto more explicit backend-owned call semantics.
 
 ## Blockers
 
@@ -75,9 +82,9 @@ Source Plan: plan.md
 - The latest full-suite run in `test_after.log` remains monotonic with the
   recorded baseline at 2668 passed / 3 failed / 2671 total and zero newly
   failing tests.
-- Focused `backend_lir_adapter_tests` passes after the helper move; the known
-  aarch64 adapter suite failure remains part of the pre-existing full-suite
-  baseline.
+- Focused `backend_lir_adapter_x86_64_tests` passes after the emitter cleanup;
+  focused `backend_lir_adapter_aarch64_tests` still fails in the same
+  pre-existing suite called out in the full-suite baseline.
 - The latest `ctest --test-dir build -j --output-on-failure > test_after.log`
   run remains monotonic at 2668 passed / 3 failed / 2671 total with the same
   three pre-existing failures recorded in `test_fail_before.log` and
@@ -115,5 +122,12 @@ Source Plan: plan.md
   read structured `BackendCallInst::callee` metadata directly and only borrow
   typed-call operands from `parse_backend_typed_call(...)`; they no longer
   reparse direct-global callee text through `parse_backend_direct_global_*`.
+- `src/backend/x86/codegen/emit.cpp` no longer depends on
+  `parse_backend_direct_global_*` at all; its LIR-only fast-path recognizers
+  now use shared `codegen::lir` direct-global typed-call parsing instead.
+- Emitter-side `parse_backend_*` usage is now down to
+  `parse_backend_typed_call(...)` in the remaining backend-IR direct-call
+  helpers under `src/backend/x86/codegen/emit.cpp` and
+  `src/backend/aarch64/codegen/emit.cpp`.
 - If the work expands into a separate migration initiative, record it under
   `ideas/open/` instead of widening the active runbook.
