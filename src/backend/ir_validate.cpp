@@ -199,6 +199,23 @@ bool validate_address_offset(const BackendAddress& address,
   return true;
 }
 
+bool validate_local_address_alignment(
+    const BackendAddress& address,
+    std::size_t access_size_bytes,
+    const std::unordered_map<std::string, ReferencedBoundsInfo>& referenced_bounds,
+    std::string* error,
+    std::string_view context) {
+  if (!is_local_address_symbol(address.base_symbol) ||
+      referenced_bounds.find(address.base_symbol) != referenced_bounds.end() ||
+      access_size_bytes <= 1) {
+    return true;
+  }
+  if (static_cast<std::size_t>(address.byte_offset) % access_size_bytes != 0) {
+    return fail(error, std::string(context) + ": address byte offset must align to local access size");
+  }
+  return true;
+}
+
 bool validate_inst(const BackendInst& inst,
                    const std::unordered_set<std::string>& referenced_objects,
                    const std::unordered_set<std::string>& referenced_string_constants,
@@ -332,6 +349,13 @@ bool validate_inst(const BackendInst& inst,
     if (!validate_address_offset(load->address, error, std::string(context) + ": load address")) {
       return false;
     }
+    if (!validate_local_address_alignment(load->address,
+                                          backend_scalar_type_size_bytes(load_memory_type),
+                                          referenced_bounds,
+                                          error,
+                                          std::string(context) + ": load address")) {
+      return false;
+    }
     if (!validate_address_range(load->address,
                                 backend_scalar_type_size_bytes(load_memory_type),
                                 referenced_bounds,
@@ -367,6 +391,14 @@ bool validate_inst(const BackendInst& inst,
       return false;
     }
     if (!validate_address_offset(store->address, error, std::string(context) + ": store address")) {
+      return false;
+    }
+    if (!validate_local_address_alignment(store->address,
+                                          backend_scalar_type_size_bytes(
+                                              backend_store_value_type(*store)),
+                                          referenced_bounds,
+                                          error,
+                                          std::string(context) + ": store address")) {
       return false;
     }
     if (referenced_string_constants.find(store->address.base_symbol) !=
@@ -430,6 +462,20 @@ bool validate_inst(const BackendInst& inst,
   }
   if (ptrdiff->element_size <= 0) {
     return fail(error, std::string(context) + ": ptrdiff element size must be positive");
+  }
+  if (!validate_local_address_alignment(ptrdiff->lhs_address,
+                                        static_cast<std::size_t>(ptrdiff->element_size),
+                                        referenced_bounds,
+                                        error,
+                                        std::string(context) + ": ptrdiff lhs address")) {
+    return false;
+  }
+  if (!validate_local_address_alignment(ptrdiff->rhs_address,
+                                        static_cast<std::size_t>(ptrdiff->element_size),
+                                        referenced_bounds,
+                                        error,
+                                        std::string(context) + ": ptrdiff rhs address")) {
+    return false;
   }
   const auto element_type = backend_ptrdiff_element_type(*ptrdiff);
   if (element_type != BackendScalarType::Unknown &&

@@ -796,6 +796,32 @@ void test_backend_ir_validator_rejects_local_slot_store_with_negative_offset() {
                   "backend IR validator should explain when a structured local-slot store uses a negative offset");
 }
 
+void test_backend_ir_validator_rejects_local_slot_load_with_misaligned_offset() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_local_array_gep_module());
+  auto& load = std::get<c4c::backend::BackendLoadInst>(
+      lowered.functions.front().blocks.front().insts[2]);
+  load.address.byte_offset = 2;
+  std::string error;
+
+  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should reject structured local-slot loads whose byte offset is not aligned to the load memory size");
+  expect_contains(error, "load address: address byte offset must align to local access size",
+                  "backend IR validator should explain when a structured local-slot load uses a misaligned byte offset");
+}
+
+void test_backend_ir_validator_rejects_local_slot_store_with_misaligned_offset() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_local_array_gep_module());
+  auto& store = std::get<c4c::backend::BackendStoreInst>(
+      lowered.functions.front().blocks.front().insts.front());
+  store.address.byte_offset = 2;
+  std::string error;
+
+  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should reject structured local-slot stores whose byte offset is not aligned to the store value size");
+  expect_contains(error, "store address: address byte offset must align to local access size",
+                  "backend IR validator should explain when a structured local-slot store uses a misaligned byte offset");
+}
+
 void test_backend_ir_printer_renders_lowered_global_int_pointer_roundtrip_slice() {
   const auto lowered =
       c4c::backend::lower_to_backend_ir(make_global_int_pointer_roundtrip_module());
@@ -1038,6 +1064,22 @@ void test_backend_ir_validator_rejects_local_slot_ptrdiff_with_negative_offset()
               "backend IR validator should reject structured local-slot ptrdiff slices that use negative byte offsets");
   expect_contains(error, "ptrdiff lhs address: address byte offset must not be negative",
                   "backend IR validator should explain when a structured local-slot ptrdiff address uses a negative offset");
+}
+
+void test_backend_ir_validator_rejects_local_slot_ptrdiff_with_misaligned_offset() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_global_int_pointer_diff_module());
+  auto& ptrdiff = std::get<c4c::backend::BackendPtrDiffEqInst>(
+      lowered.functions.front().blocks.front().insts.back());
+  ptrdiff.lhs_address.base_symbol = "%stack_slot";
+  ptrdiff.rhs_address.base_symbol = "%stack_slot";
+  ptrdiff.lhs_address.byte_offset = 2;
+  ptrdiff.rhs_address.byte_offset = 0;
+  std::string error;
+
+  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should reject structured local-slot ptrdiff slices whose byte offsets are not aligned to the ptrdiff element size");
+  expect_contains(error, "ptrdiff lhs address: address byte offset must align to local access size",
+                  "backend IR validator should explain when a structured local-slot ptrdiff address uses a misaligned byte offset");
 }
 
 void test_backend_ir_printer_renders_return_add() {
@@ -1629,6 +1671,8 @@ int main(int argc, char* argv[]) {
   test_backend_ir_validator_rejects_store_to_unknown_global_style_symbol();
   test_backend_ir_validator_rejects_local_slot_load_with_negative_offset();
   test_backend_ir_validator_rejects_local_slot_store_with_negative_offset();
+  test_backend_ir_validator_rejects_local_slot_load_with_misaligned_offset();
+  test_backend_ir_validator_rejects_local_slot_store_with_misaligned_offset();
   test_backend_ir_printer_renders_lowered_global_int_pointer_roundtrip_slice();
   test_backend_ir_validator_accepts_lowered_global_int_pointer_roundtrip_slice();
   test_backend_ir_printer_renders_lowered_global_char_pointer_diff_slice();
@@ -1649,6 +1693,7 @@ int main(int argc, char* argv[]) {
   test_backend_ir_validator_rejects_ptrdiff_with_only_one_global_backed_address();
   test_backend_ir_validator_rejects_ptrdiff_with_unknown_global_style_symbol();
   test_backend_ir_validator_rejects_local_slot_ptrdiff_with_negative_offset();
+  test_backend_ir_validator_rejects_local_slot_ptrdiff_with_misaligned_offset();
   test_backend_ir_printer_renders_lowered_conditional_return_slice();
   test_backend_ir_validator_accepts_lowered_conditional_return_slice();
   test_backend_ir_printer_renders_structured_conditional_return_slice_without_type_text();
