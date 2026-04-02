@@ -182,9 +182,12 @@ BackendFunctionSignature parse_signature(const std::string& signature_text) {
 
   BackendFunctionSignature signature;
   signature.linkage = trim(line.substr(0, first_space));
+  signature.linkage_kind = parse_backend_function_linkage(signature.linkage)
+                               .value_or(BackendFunctionLinkage::Unknown);
   signature.return_type = trim(line.substr(first_space + 1, at_pos - first_space - 1));
   signature.name = line.substr(at_pos + 1, open_paren - at_pos - 1);
-  if (signature.linkage.empty() || signature.return_type.empty() ||
+  if (signature.linkage_kind == BackendFunctionLinkage::Unknown ||
+      signature.return_type.empty() ||
       signature.name.empty()) {
     fail_bad_signature(signature_text);
   }
@@ -216,7 +219,8 @@ BackendFunctionSignature parse_signature(const std::string& signature_text) {
 
 void render_signature(std::ostringstream& out,
                       const BackendFunctionSignature& signature) {
-  out << signature.linkage << " " << signature.return_type << " @"
+  out << render_backend_function_linkage(signature) << " "
+      << signature.return_type << " @"
       << signature.name << "(";
   bool first = true;
   for (const auto& param : signature.params) {
@@ -394,7 +398,7 @@ std::optional<BackendFunction> adapt_string_literal_char_function(
     const BackendFunctionSignature& signature) {
   using namespace c4c::codegen::lir;
 
-  if (function.is_declaration || signature.linkage != "define" ||
+  if (function.is_declaration || !backend_function_is_definition(signature) ||
       signature.return_type != "i32" || signature.name != "main" ||
       !signature.params.empty() || signature.is_vararg || function.blocks.size() != 1 ||
       !function.alloca_insts.empty() || !function.stack_objects.empty() ||
@@ -485,7 +489,7 @@ std::optional<BackendFunction> adapt_conditional_return_function(
     const BackendFunctionSignature& signature) {
   using namespace c4c::codegen::lir;
 
-  if (function.is_declaration || signature.linkage != "define" ||
+  if (function.is_declaration || !backend_function_is_definition(signature) ||
       signature.return_type != "i32" || signature.name != "main" ||
       !signature.params.empty() || signature.is_vararg || function.entry.value != 0 ||
       function.blocks.size() != 3 || !function.alloca_insts.empty() ||
@@ -567,7 +571,7 @@ std::optional<BackendFunction> adapt_conditional_phi_join_function(
     const BackendFunctionSignature& signature) {
   using namespace c4c::codegen::lir;
 
-  if (function.is_declaration || signature.linkage != "define" ||
+  if (function.is_declaration || !backend_function_is_definition(signature) ||
       signature.return_type != "i32" || signature.name != "main" ||
       !signature.params.empty() || signature.is_vararg || function.entry.value != 0 ||
       function.blocks.size() != 4 || !function.alloca_insts.empty() ||
@@ -716,7 +720,7 @@ std::optional<BackendFunction> adapt_single_param_add_function(
     const BackendFunctionSignature& signature) {
   using namespace c4c::codegen::lir;
 
-  if (function.is_declaration || signature.linkage != "define" ||
+  if (function.is_declaration || !backend_function_is_definition(signature) ||
       signature.return_type != "i32" || signature.name == "main" ||
       signature.params.size() != 1 ||
       signature.params.front().type_str != "i32" ||
@@ -801,7 +805,7 @@ std::optional<BackendFunction> adapt_local_temp_return_function(
     const BackendFunctionSignature& signature) {
   using namespace c4c::codegen::lir;
 
-  if (function.is_declaration || signature.linkage != "define" ||
+  if (function.is_declaration || !backend_function_is_definition(signature) ||
       signature.return_type != "i32" || signature.name != "main" ||
       !signature.params.empty() || signature.is_vararg ||
       function.blocks.size() != 1 || function.alloca_insts.empty() ||
@@ -871,7 +875,7 @@ std::optional<BackendFunction> adapt_local_temp_sub_return_function(
     const BackendFunctionSignature& signature) {
   using namespace c4c::codegen::lir;
 
-  if (function.is_declaration || signature.linkage != "define" ||
+  if (function.is_declaration || !backend_function_is_definition(signature) ||
       signature.return_type != "i32" || signature.name != "main" ||
       !signature.params.empty() || signature.is_vararg || function.blocks.size() != 1 ||
       function.alloca_insts.size() != 1 || !function.stack_objects.empty()) {
@@ -918,7 +922,7 @@ std::optional<BackendFunction> adapt_local_temp_arithmetic_return_function(
     const BackendFunctionSignature& signature) {
   using namespace c4c::codegen::lir;
 
-  if (function.is_declaration || signature.linkage != "define" ||
+  if (function.is_declaration || !backend_function_is_definition(signature) ||
       signature.return_type != "i32" || signature.name != "main" ||
       !signature.params.empty() || signature.is_vararg || function.blocks.size() != 1 ||
       function.alloca_insts.size() != 1 || !function.stack_objects.empty()) {
@@ -1042,7 +1046,7 @@ std::optional<BackendFunction> adapt_local_pointer_temp_return_function(
     const BackendFunctionSignature& signature) {
   using namespace c4c::codegen::lir;
 
-  if (function.is_declaration || signature.linkage != "define" ||
+  if (function.is_declaration || !backend_function_is_definition(signature) ||
       signature.return_type != "i32" || signature.name != "main" ||
       !signature.params.empty() || signature.is_vararg || function.blocks.size() != 1 ||
       function.alloca_insts.size() != 2 || !function.stack_objects.empty()) {
@@ -1206,7 +1210,7 @@ std::optional<BackendFunction> adapt_double_indirect_local_pointer_conditional_r
     const BackendFunctionSignature& signature) {
   using namespace c4c::codegen::lir;
 
-  if (function.is_declaration || signature.linkage != "define" ||
+  if (function.is_declaration || !backend_function_is_definition(signature) ||
       signature.return_type != "i32" || signature.name != "main" ||
       !signature.params.empty() || signature.is_vararg || function.blocks.empty() ||
       function.alloca_insts.size() != 3 || !function.stack_objects.empty()) {
@@ -1402,7 +1406,7 @@ std::optional<BackendFunction> adapt_goto_only_constant_return_function(
     const BackendFunctionSignature& signature) {
   using namespace c4c::codegen::lir;
 
-  if (function.is_declaration || signature.linkage != "define" ||
+  if (function.is_declaration || !backend_function_is_definition(signature) ||
       signature.return_type != "i32" || signature.name != "main" ||
       !signature.params.empty() || signature.is_vararg || function.blocks.empty() ||
       !function.alloca_insts.empty() || !function.stack_objects.empty()) {
@@ -1461,7 +1465,7 @@ std::optional<BackendFunction> adapt_single_local_countdown_loop_function(
     const BackendFunctionSignature& signature) {
   using namespace c4c::codegen::lir;
 
-  if (function.is_declaration || signature.linkage != "define" ||
+  if (function.is_declaration || !backend_function_is_definition(signature) ||
       signature.return_type != "i32" || signature.name != "main" ||
       !signature.params.empty() || signature.is_vararg || function.blocks.empty() ||
       function.alloca_insts.size() != 1 || !function.stack_objects.empty()) {
@@ -1652,7 +1656,7 @@ std::optional<BackendFunction> adapt_countdown_while_loop_function(
     const BackendFunctionSignature& signature) {
   using namespace c4c::codegen::lir;
 
-  if (function.is_declaration || signature.linkage != "define" ||
+  if (function.is_declaration || !backend_function_is_definition(signature) ||
       signature.return_type != "i32" || signature.name != "main" ||
       !signature.params.empty() || signature.is_vararg || function.blocks.size() != 4 ||
       function.alloca_insts.size() != 1 || !function.stack_objects.empty()) {
@@ -1781,7 +1785,7 @@ std::optional<BackendFunction> adapt_local_single_arg_call_function(
     const BackendFunctionSignature& signature) {
   using namespace c4c::codegen::lir;
 
-  if (function.is_declaration || signature.linkage != "define" ||
+  if (function.is_declaration || !backend_function_is_definition(signature) ||
       signature.return_type != "i32" || signature.name != "main" ||
       !signature.params.empty() || signature.is_vararg ||
       function.blocks.size() != 1 || function.alloca_insts.size() != 1 ||
@@ -1843,7 +1847,7 @@ std::optional<BackendFunction> adapt_local_two_arg_call_function(
     const BackendFunctionSignature& signature) {
   using namespace c4c::codegen::lir;
 
-  if (function.is_declaration || signature.linkage != "define" ||
+  if (function.is_declaration || !backend_function_is_definition(signature) ||
       signature.return_type != "i32" || signature.name != "main" ||
       !signature.params.empty() || signature.is_vararg ||
       function.blocks.size() != 1 ||
@@ -1985,7 +1989,7 @@ std::optional<BackendFunction> adapt_direct_vararg_decl_call_function(
     const BackendFunctionSignature& signature) {
   using namespace c4c::codegen::lir;
 
-  if (function.is_declaration || signature.linkage != "define" ||
+  if (function.is_declaration || !backend_function_is_definition(signature) ||
       signature.return_type != "i32" || signature.name != "main" ||
       !signature.params.empty() || signature.is_vararg || function.blocks.size() != 1 ||
       !function.alloca_insts.empty() || !function.stack_objects.empty()) {
@@ -2091,7 +2095,7 @@ std::optional<BackendFunction> adapt_direct_global_load_function(
     const BackendFunctionSignature& signature) {
   using namespace c4c::codegen::lir;
 
-  if (function.is_declaration || signature.linkage != "define" ||
+  if (function.is_declaration || !backend_function_is_definition(signature) ||
       signature.return_type != "i32" || signature.name != "main" ||
       !signature.params.empty() || signature.is_vararg || function.blocks.size() != 1 ||
       !function.alloca_insts.empty() || !function.stack_objects.empty()) {
@@ -2141,7 +2145,7 @@ std::optional<BackendFunction> adapt_direct_global_store_reload_function(
     const BackendFunctionSignature& signature) {
   using namespace c4c::codegen::lir;
 
-  if (function.is_declaration || signature.linkage != "define" ||
+  if (function.is_declaration || !backend_function_is_definition(signature) ||
       signature.return_type != "i32" || signature.name != "main" ||
       !signature.params.empty() || signature.is_vararg || function.blocks.size() != 1 ||
       !function.alloca_insts.empty() || !function.stack_objects.empty()) {
@@ -2203,7 +2207,7 @@ std::optional<BackendFunction> adapt_global_int_pointer_roundtrip_function(
     const BackendFunctionSignature& signature) {
   using namespace c4c::codegen::lir;
 
-  if (function.is_declaration || signature.linkage != "define" ||
+  if (function.is_declaration || !backend_function_is_definition(signature) ||
       signature.return_type != "i32" || signature.name != "main" ||
       !signature.params.empty() || signature.is_vararg || function.blocks.size() != 1 ||
       function.alloca_insts.size() != 2 || !function.stack_objects.empty()) {
@@ -2286,7 +2290,7 @@ std::optional<BackendFunction> adapt_indexed_global_array_load_function(
     const BackendFunctionSignature& signature) {
   using namespace c4c::codegen::lir;
 
-  if (function.is_declaration || signature.linkage != "define" ||
+  if (function.is_declaration || !backend_function_is_definition(signature) ||
       signature.return_type != "i32" || signature.name != "main" ||
       !signature.params.empty() || signature.is_vararg || function.blocks.size() != 1 ||
       !function.alloca_insts.empty() || !function.stack_objects.empty()) {
@@ -2356,7 +2360,7 @@ std::optional<BackendFunction> adapt_global_char_pointer_diff_function(
     const BackendFunctionSignature& signature) {
   using namespace c4c::codegen::lir;
 
-  if (function.is_declaration || signature.linkage != "define" ||
+  if (function.is_declaration || !backend_function_is_definition(signature) ||
       signature.return_type != "i32" || signature.name != "main" ||
       !signature.params.empty() || signature.is_vararg || function.blocks.size() != 1 ||
       !function.alloca_insts.empty() || !function.stack_objects.empty()) {
@@ -2488,7 +2492,7 @@ std::optional<BackendFunction> adapt_global_int_pointer_diff_function(
     const BackendFunctionSignature& signature) {
   using namespace c4c::codegen::lir;
 
-  if (function.is_declaration || signature.linkage != "define" ||
+  if (function.is_declaration || !backend_function_is_definition(signature) ||
       signature.return_type != "i32" || signature.name != "main" ||
       !signature.params.empty() || signature.is_vararg || function.blocks.size() != 1 ||
       !function.alloca_insts.empty() || !function.stack_objects.empty()) {

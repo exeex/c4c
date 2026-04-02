@@ -435,7 +435,7 @@ const c4c::backend::BackendStringConstant* find_string_constant(
 
 std::optional<std::int64_t> parse_single_block_return_imm(
     const c4c::backend::BackendFunction& function) {
-  if (function.is_declaration || function.signature.linkage != "define" ||
+  if (function.is_declaration || !backend_function_is_definition(function.signature) ||
       function.signature.return_type != "i32" || !function.signature.params.empty() ||
       function.signature.is_vararg || function.blocks.size() != 1) {
     return std::nullopt;
@@ -525,7 +525,7 @@ bool is_minimal_single_function_asm_slice(const c4c::backend::BackendModule& mod
   if (module.functions.size() != 1) return false;
 
   const auto& function = module.functions.front();
-  if (function.is_declaration || function.signature.linkage != "define" ||
+  if (function.is_declaration || !backend_function_is_definition(function.signature) ||
       function.signature.return_type != "i32" || function.signature.name != "main" ||
       !function.signature.params.empty() || function.signature.is_vararg ||
       function.blocks.size() != 1) {
@@ -614,7 +614,7 @@ std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_sl
   }
 
   const auto& function = module.functions.front();
-  if (function.is_declaration || function.signature.linkage != "define" ||
+  if (function.is_declaration || !backend_function_is_definition(function.signature) ||
       function.signature.return_type != "i32" || function.signature.name != "main" ||
       !function.signature.params.empty() || function.signature.is_vararg ||
       function.blocks.size() != 3) {
@@ -759,7 +759,7 @@ std::optional<MinimalCountdownLoopSlice> parse_minimal_countdown_loop_slice(
   }
 
   const auto& function = module.functions.front();
-  if (function.is_declaration || function.signature.linkage != "define" ||
+  if (function.is_declaration || !backend_function_is_definition(function.signature) ||
       function.signature.return_type != "i32" || function.signature.name != "main" ||
       !function.signature.params.empty() || function.signature.is_vararg ||
       function.blocks.size() != 4) {
@@ -816,7 +816,7 @@ std::optional<MinimalConditionalPhiJoinSlice> parse_minimal_conditional_phi_join
   }
 
   const auto& function = module.functions.front();
-  if (function.is_declaration || function.signature.linkage != "define" ||
+  if (function.is_declaration || !backend_function_is_definition(function.signature) ||
       function.signature.return_type != "i32" || function.signature.name != "main" ||
       !function.signature.params.empty() || function.signature.is_vararg ||
       function.blocks.size() != 4) {
@@ -1244,7 +1244,7 @@ std::optional<MinimalExternDeclCallSlice> parse_minimal_declared_direct_call_sli
 
   const auto* main_fn = find_function(module, "main");
   if (main_fn == nullptr || main_fn->is_declaration ||
-      main_fn->signature.linkage != "define" ||
+      !backend_function_is_definition(main_fn->signature) ||
       main_fn->signature.return_type != "i32" ||
       !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
       main_fn->blocks.size() != 1) {
@@ -1274,7 +1274,7 @@ std::optional<MinimalExternDeclCallSlice> parse_minimal_declared_direct_call_sli
 
   const auto* callee_fn = find_function(module, callee_name_str);
   if (callee_fn == nullptr || !callee_fn->is_declaration ||
-      callee_fn->signature.linkage != "declare" ||
+      !backend_function_is_declaration(callee_fn->signature) ||
       callee_fn->signature.return_type != "i32" ||
       callee_fn->signature.params.size() > parsed_call->typed_call.param_types.size()) {
     return std::nullopt;
@@ -1350,7 +1350,7 @@ std::optional<MinimalExternGlobalArrayLoadSlice> parse_minimal_extern_global_arr
 
   const auto* main_fn = find_function(module, "main");
   if (main_fn == nullptr || main_fn->is_declaration ||
-      main_fn->signature.linkage != "define" ||
+      !backend_function_is_definition(main_fn->signature) ||
       main_fn->signature.return_type != "i32" ||
       !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
       main_fn->blocks.size() != 1) {
@@ -1391,7 +1391,7 @@ std::optional<MinimalExternScalarGlobalLoadSlice> parse_minimal_extern_scalar_gl
 
   const auto* main_fn = find_function(module, "main");
   if (main_fn == nullptr || main_fn->is_declaration ||
-      main_fn->signature.linkage != "define" ||
+      !backend_function_is_definition(main_fn->signature) ||
       main_fn->signature.return_type != "i32" ||
       !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
       main_fn->blocks.size() != 1) {
@@ -1436,7 +1436,7 @@ std::optional<MinimalScalarGlobalLoadSlice> parse_minimal_scalar_global_load_sli
 
   const auto* main_fn = find_function(module, "main");
   if (main_fn == nullptr || main_fn->is_declaration ||
-      main_fn->signature.linkage != "define" ||
+      !backend_function_is_definition(main_fn->signature) ||
       main_fn->signature.return_type != "i32" ||
       !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
       main_fn->blocks.size() != 1) {
@@ -1491,7 +1491,7 @@ std::optional<MinimalGlobalCharPointerDiffSlice> parse_minimal_global_char_point
 
   const auto* main_fn = find_function(module, "main");
   if (main_fn == nullptr || main_fn->is_declaration ||
-      main_fn->signature.linkage != "define" ||
+      !backend_function_is_definition(main_fn->signature) ||
       main_fn->signature.return_type != "i32" ||
       !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
       main_fn->blocks.size() != 1) {
@@ -1557,7 +1557,7 @@ std::optional<MinimalGlobalIntPointerDiffSlice> parse_minimal_global_int_pointer
 
   const auto* main_fn = find_function(module, "main");
   if (main_fn == nullptr || main_fn->is_declaration ||
-      main_fn->signature.linkage != "define" ||
+      !backend_function_is_definition(main_fn->signature) ||
       main_fn->signature.return_type != "i32" ||
       !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
       main_fn->blocks.size() != 1) {
@@ -2148,7 +2148,7 @@ std::optional<MinimalStringLiteralCharSlice> parse_minimal_string_literal_char_s
       find_string_constant(module, module.string_constants.front().name);
   const auto* main_fn = find_function(module, "main");
   if (string_const == nullptr || main_fn == nullptr || main_fn->is_declaration ||
-      main_fn->signature.linkage != "define" ||
+      !backend_function_is_definition(main_fn->signature) ||
       main_fn->signature.return_type != "i32" ||
       !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
       main_fn->blocks.size() != 1) {
@@ -2205,7 +2205,7 @@ std::optional<MinimalScalarGlobalStoreReloadSlice> parse_minimal_scalar_global_s
 
   const auto* main_fn = find_function(module, "main");
   if (main_fn == nullptr || main_fn->is_declaration ||
-      main_fn->signature.linkage != "define" ||
+      !backend_function_is_definition(main_fn->signature) ||
       main_fn->signature.return_type != "i32" ||
       !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
       main_fn->blocks.size() != 1) {
@@ -2251,9 +2251,9 @@ std::optional<MinimalCallCrossingDirectCallSlice> parse_minimal_call_crossing_di
     return std::nullopt;
   }
 
-  if (helper->signature.linkage != "define" || helper->signature.return_type != "i32" ||
+  if (!backend_function_is_definition(helper->signature) || helper->signature.return_type != "i32" ||
       helper->signature.params.size() != 1 || helper->signature.params.front().type_str != "i32" ||
-      helper->signature.is_vararg || main_fn->signature.linkage != "define" ||
+      helper->signature.is_vararg || !backend_function_is_definition(main_fn->signature) ||
       main_fn->signature.return_type != "i32" || !main_fn->signature.params.empty() ||
       main_fn->signature.is_vararg) {
     return std::nullopt;
@@ -2324,7 +2324,7 @@ std::optional<MinimalDirectCallSlice> parse_minimal_direct_call_slice(
 
   const auto* main_fn = find_function(module, "main");
   if (main_fn == nullptr || main_fn->is_declaration ||
-      main_fn->signature.linkage != "define" ||
+      !backend_function_is_definition(main_fn->signature) ||
       main_fn->signature.return_type != "i32" ||
       !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
       main_fn->blocks.size() != 1) {
@@ -2366,7 +2366,7 @@ std::optional<MinimalDirectCallAddImmSlice> parse_minimal_direct_call_add_imm_sl
 
   const auto* main_fn = find_function(module, "main");
   if (main_fn == nullptr || main_fn->is_declaration ||
-      main_fn->signature.linkage != "define" ||
+      !backend_function_is_definition(main_fn->signature) ||
       main_fn->signature.return_type != "i32" ||
       !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
       main_fn->blocks.size() != 1) {
@@ -2397,7 +2397,7 @@ std::optional<MinimalDirectCallAddImmSlice> parse_minimal_direct_call_add_imm_sl
 
   const auto* callee_fn = find_function(module, "add_one");
   if (callee_fn == nullptr || callee_fn->is_declaration ||
-      callee_fn->signature.linkage != "define" ||
+      !backend_function_is_definition(callee_fn->signature) ||
       callee_fn->signature.return_type != "i32" ||
       callee_fn->signature.params.size() != 1 ||
       callee_fn->signature.params.front().type_str != "i32" ||

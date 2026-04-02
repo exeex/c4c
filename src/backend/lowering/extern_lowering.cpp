@@ -49,6 +49,7 @@ BackendFunction lower_extern_decl(const c4c::codegen::lir::LirModule& module,
   BackendFunction out;
   out.is_declaration = true;
   out.signature.linkage = "declare";
+  out.signature.linkage_kind = BackendFunctionLinkage::Declare;
   out.signature.return_type = decl.return_type_str;
   out.signature.name = decl.name;
 

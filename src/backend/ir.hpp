@@ -15,6 +15,36 @@ namespace c4c::backend {
 
 enum class BackendScalarType : unsigned char;
 
+enum class BackendFunctionLinkage : unsigned char {
+  Unknown,
+  Define,
+  Declare,
+};
+
+inline std::optional<BackendFunctionLinkage> parse_backend_function_linkage(
+    std::string_view linkage) {
+  if (linkage == "define") {
+    return BackendFunctionLinkage::Define;
+  }
+  if (linkage == "declare") {
+    return BackendFunctionLinkage::Declare;
+  }
+  return std::nullopt;
+}
+
+inline std::string_view render_backend_function_linkage(BackendFunctionLinkage linkage) {
+  switch (linkage) {
+    case BackendFunctionLinkage::Define:
+      return "define";
+    case BackendFunctionLinkage::Declare:
+      return "declare";
+    case BackendFunctionLinkage::Unknown:
+      break;
+  }
+
+  return {};
+}
+
 struct BackendParam {
   std::string type_str;
   std::string name;
@@ -22,11 +52,39 @@ struct BackendParam {
 
 struct BackendFunctionSignature {
   std::string linkage;
+  BackendFunctionLinkage linkage_kind = BackendFunctionLinkage::Unknown;
   std::string return_type;
   std::string name;
   std::vector<BackendParam> params;
   bool is_vararg = false;
 };
+
+inline BackendFunctionLinkage backend_function_linkage(
+    const BackendFunctionSignature& signature) {
+  if (signature.linkage_kind != BackendFunctionLinkage::Unknown) {
+    return signature.linkage_kind;
+  }
+  return parse_backend_function_linkage(signature.linkage)
+      .value_or(BackendFunctionLinkage::Unknown);
+}
+
+inline std::string render_backend_function_linkage(
+    const BackendFunctionSignature& signature) {
+  const auto structured = render_backend_function_linkage(
+      backend_function_linkage(signature));
+  if (!structured.empty()) {
+    return std::string(structured);
+  }
+  return signature.linkage;
+}
+
+inline bool backend_function_is_definition(const BackendFunctionSignature& signature) {
+  return backend_function_linkage(signature) == BackendFunctionLinkage::Define;
+}
+
+inline bool backend_function_is_declaration(const BackendFunctionSignature& signature) {
+  return backend_function_linkage(signature) == BackendFunctionLinkage::Declare;
+}
 
 struct BackendGlobal {
   enum class StorageKind : unsigned char {

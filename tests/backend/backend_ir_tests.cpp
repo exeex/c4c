@@ -789,6 +789,7 @@ void test_backend_ir_validator_rejects_definition_without_blocks() {
   c4c::backend::BackendModule module;
   c4c::backend::BackendFunction function;
   function.signature.linkage = "define";
+  function.signature.linkage_kind = c4c::backend::BackendFunctionLinkage::Define;
   function.signature.return_type = "i32";
   function.signature.name = "main";
   module.functions.push_back(function);
@@ -848,6 +849,24 @@ void test_backend_ir_validator_rejects_structured_defined_global_without_initial
               "backend IR validator should reject structured global definitions that omit an initializer");
   expect_contains(error, "defined globals must have an initializer",
                   "backend IR validator should explain missing structured initializers");
+}
+
+void test_backend_ir_printer_renders_structured_function_linkage_without_raw_text() {
+  c4c::backend::BackendModule module;
+  c4c::backend::BackendFunction function;
+  function.signature.linkage_kind = c4c::backend::BackendFunctionLinkage::Define;
+  function.signature.return_type = "i32";
+  function.signature.name = "main";
+  function.blocks.push_back(c4c::backend::BackendBlock{
+      "entry",
+      {},
+      c4c::backend::BackendReturn{std::string("0"), "i32"},
+  });
+  module.functions.push_back(function);
+
+  const auto rendered = c4c::backend::print_backend_ir(module);
+  expect_contains(rendered, "define i32 @main()",
+                  "backend IR printer should render structured function linkage without raw signature text");
 }
 
 void test_backend_ir_printer_renders_lowered_extern_decl_slice() {
@@ -952,6 +971,7 @@ int main(int argc, char* argv[]) {
   test_backend_ir_printer_renders_structured_global_constant_initializer();
   test_backend_ir_printer_renders_structured_extern_global_declaration();
   test_backend_ir_validator_rejects_structured_defined_global_without_initializer();
+  test_backend_ir_printer_renders_structured_function_linkage_without_raw_text();
   test_backend_ir_printer_renders_lowered_extern_decl_slice();
   test_backend_ir_validator_accepts_lowered_extern_decl_slice();
   test_backend_ir_printer_renders_lowered_global_load_slice();

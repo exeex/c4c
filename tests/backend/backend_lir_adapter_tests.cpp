@@ -1158,6 +1158,8 @@ void test_adapter_tracks_structured_signature_contract() {
   const auto& signature = adapted.functions.front().signature;
   expect_true(signature.linkage == "define",
               "adapter should preserve whether a function is defined or declared");
+  expect_true(signature.linkage_kind == c4c::backend::BackendFunctionLinkage::Define,
+              "adapter should preserve structured function linkage separately from the compatibility text");
   expect_true(signature.return_type == "i32",
               "adapter should preserve the function return type separately from the name");
   expect_true(signature.name == "main",
@@ -1261,6 +1263,9 @@ void test_adapter_infers_extern_decl_params_from_typed_calls() {
   const auto& decl = adapted.functions.front();
   expect_true(decl.is_declaration,
               "adapter should keep inferred extern signatures as declarations");
+  expect_true(decl.signature.linkage_kind ==
+                  c4c::backend::BackendFunctionLinkage::Declare,
+              "adapter should preserve inferred extern declarations as structured declaration linkage");
   expect_true(decl.signature.name == "helper_ext",
               "adapter should preserve the extern declaration symbol name");
   expect_true(decl.signature.params.size() == 2,

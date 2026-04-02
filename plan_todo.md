@@ -6,10 +6,10 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 3/2 slice: audit the remaining backend-IR text-carried semantics after
-      the structured binary/compare/phi scalar-type metadata cleanup and pick
-      the next in-scope structured conversion that stays inside the active
-      `lir -> backend IR` refactor boundary
+- Step 3/2 slice: audit the remaining backend-owned IR surfaces that still
+      carry semantics only as raw text after the structured function-linkage
+      conversion and pick the next narrow in-scope structured cleanup without
+      widening into the later BIR scaffold plan
 
 ## Incomplete Items
 
@@ -106,13 +106,23 @@ Source Plan: plan.md
       `backend_lir_adapter_x86_64_tests` pass while the full suite remains
       monotonic at 2668 passed / 3 failed / 2671 total with zero newly
       failing tests
+- [x] Step 3/5 slice: convert `BackendFunctionSignature` linkage from raw
+      `define` / `declare` text into structured backend-owned metadata
+      (`BackendFunctionLinkage::{Define,Declare}`), keep the legacy
+      `signature.linkage` string as a compatibility shim, switch the
+      lowering/printer/validator plus x86/aarch64 seam recognizers onto the
+      structured linkage helpers, and confirm on 2026-04-02 that focused
+      `backend_ir_tests`, `backend_lir_adapter_tests`, and
+      `backend_lir_adapter_x86_64_tests` pass while the full suite remains
+      monotonic at 2668 passed / 3 failed / 2671 total with zero newly
+      failing tests
 
 ## Next Intended Slice
 
 - Audit the remaining backend-owned IR surfaces that still carry semantics only
-  as raw text after the structured binary/compare/phi scalar-type cleanup,
-  then pick the narrowest Step 2/3 slice that can be converted to structured
-  metadata without widening into the later BIR scaffold plan.
+  as raw text after the structured function-linkage conversion, then pick the
+  next narrow Step 2/3 conversion without widening into the later BIR scaffold
+  plan.
 
 ## Blockers
 
@@ -157,6 +167,18 @@ Source Plan: plan.md
 - Focused `backend_lir_adapter_aarch64_tests` still fails in the same
   pre-existing suite called out above; the full-suite rerun stayed monotonic
   with no new failures after the structured global-consumer cleanup.
+- A fresh 2026-04-02 `ctest --test-dir build -j --output-on-failure >
+  test_after.log` run for the structured function-linkage slice finished at
+  the same 2668 passed / 3 failed / 2671 total baseline, and
+  `check_monotonic_regression.py --before test_fail_before.log --after
+  test_after.log --allow-non-decreasing-passed` passed with zero newly
+  failing tests.
+- Focused `backend_ir_tests`, `backend_lir_adapter_tests`, and
+  `backend_lir_adapter_x86_64_tests` pass with the new structured
+  function-linkage metadata slice.
+- Focused `backend_lir_adapter_aarch64_tests` still fails in the same broad
+  pre-existing suite called out above after the linkage-helper cleanup; the
+  full-suite rerun stayed monotonic and reported no new failures.
 
 ## Resume Notes
 
@@ -228,6 +250,10 @@ Source Plan: plan.md
   read structured `BackendCallInst::callee` metadata directly through the
   narrower direct-global helper surface; they no longer depend on generic
   backend call parsing in emitter code.
+- This iteration added `BackendFunctionLinkage` to
+  `BackendFunctionSignature`; the lowering/parser, backend IR printer,
+  validator, and the x86/aarch64 seam recognizers now prefer that structured
+  linkage metadata and only fall back to `signature.linkage` for compatibility.
 - `src/backend/x86/codegen/emit.cpp` no longer depends on
   `parse_backend_typed_call(...)` at all; its LIR-only fast-path recognizers
   now use shared `codegen::lir` direct-global typed-call parsing, while the

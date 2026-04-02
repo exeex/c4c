@@ -16,7 +16,7 @@ bool fail(std::string* error, std::string message) {
 bool validate_function_signature(const BackendFunctionSignature& signature,
                                  std::string* error,
                                  std::string_view context) {
-  if (signature.linkage.empty()) {
+  if (backend_function_linkage(signature) == BackendFunctionLinkage::Unknown) {
     return fail(error, std::string(context) + ": signature linkage must not be empty");
   }
   if (signature.return_type.empty()) {

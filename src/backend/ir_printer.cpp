@@ -46,7 +46,8 @@ void render_string_constant(std::ostringstream& out,
 
 void render_signature(std::ostringstream& out,
                       const BackendFunctionSignature& signature) {
-  out << signature.linkage << " " << signature.return_type << " @"
+  out << render_backend_function_linkage(signature) << " "
+      << signature.return_type << " @"
       << signature.name << "(";
   bool first = true;
   for (const auto& param : signature.params) {
