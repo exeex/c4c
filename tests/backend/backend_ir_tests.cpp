@@ -906,6 +906,18 @@ void test_backend_ir_validator_rejects_local_slot_store_past_structured_bounds()
                   "backend IR validator should explain when a structured local-slot store escapes the bounded local slot");
 }
 
+void test_backend_ir_validator_rejects_local_slot_without_structured_element_type() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_local_array_gep_module());
+  lowered.functions.front().local_slots.front().element_type =
+      c4c::backend::BackendScalarType::Unknown;
+  std::string error;
+
+  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should reject local slots that omit structured element-type metadata");
+  expect_contains(error, "local slot 0: local slot element type must not be empty",
+                  "backend IR validator should explain when a structured local slot omits its element type");
+}
+
 void test_backend_ir_printer_renders_lowered_global_int_pointer_roundtrip_slice() {
   const auto lowered =
       c4c::backend::lower_to_backend_ir(make_global_int_pointer_roundtrip_module());
@@ -1815,6 +1827,7 @@ int main(int argc, char* argv[]) {
   test_backend_ir_validator_rejects_local_slot_store_with_misaligned_offset();
   test_backend_ir_validator_rejects_local_slot_load_past_structured_bounds();
   test_backend_ir_validator_rejects_local_slot_store_past_structured_bounds();
+  test_backend_ir_validator_rejects_local_slot_without_structured_element_type();
   test_backend_ir_printer_renders_lowered_global_int_pointer_roundtrip_slice();
   test_backend_ir_validator_accepts_lowered_global_int_pointer_roundtrip_slice();
   test_backend_ir_printer_renders_lowered_global_char_pointer_diff_slice();

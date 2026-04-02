@@ -235,6 +235,9 @@ bool validate_local_slot(const BackendLocalSlot& local_slot,
   if (local_slot.size_bytes == 0) {
     return fail(error, std::string(context) + ": local slot size must be positive");
   }
+  if (local_slot.element_type == BackendScalarType::Unknown) {
+    return fail(error, std::string(context) + ": local slot element type must not be empty");
+  }
   if (local_slot.element_size_bytes == 0) {
     return fail(error, std::string(context) + ": local slot element size must be positive");
   }
