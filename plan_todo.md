@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 2: introduce a safe transitional source layout and build wiring
-- Current slice: continue Step 2 by extracting the next surviving callable/global owner out of `src/frontend/hir/ast_to_hir.cpp`, with `Lowerer::lower_global` as the next candidate now that `lower_struct_method` has moved into the statement split unit and validated cleanly
+- Current slice: continue Step 2 by identifying the next cohesive live owner still stranded in `src/frontend/hir/ast_to_hir.cpp`, with the remaining struct/type-heavy lowering paths such as `Lowerer::lower_struct_def` as the likely next extraction target once their helper surface is narrowed
 
 ## Todo
 
@@ -18,6 +18,8 @@ Source Plan: plan.md
 - [ ] Step 5: run final build and regression validation
 
 ## Completed
+
+- Validation on 2026-04-02 after moving `Lowerer::lower_global` into [`src/frontend/hir/hir_types.cpp`](/workspaces/c4c/src/frontend/hir/hir_types.cpp): global lowering now lives beside `lower_global_init`, `lower_init_list`, and `normalize_global_init`, while [`src/frontend/hir/ast_to_hir.cpp`](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp) dropped its last live global-lowering body owner and retained only the older `#if 0` staging copy of the related helpers. `cmake --build build -j8` succeeded; `ctest --test-dir build -j8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 historical failing tests (`positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c`); `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passed with zero new failing tests.
 
 - Validation on 2026-04-02 after moving `Lowerer::lower_struct_method` into [`src/frontend/hir/hir_stmt.cpp`](/workspaces/c4c/src/frontend/hir/hir_stmt.cpp): struct-method lowering now lives in the statement split unit beside `emit_defaulted_method_body`, `emit_member_dtor_calls`, `emit_dtor_calls`, and `lower_stmt_node`, while [`src/frontend/hir/ast_to_hir.cpp`](/workspaces/c4c/src/frontend/hir/ast_to_hir.cpp) dropped the remaining live struct-method body owner. `cmake --build build -j8` succeeded; `ctest --test-dir build -j8 --output-on-failure` again finished at 2671 total tests, 2668 passing, and the same 3 historical failing tests (`positive_sema_linux_stage2_repro_03_asm_volatile_c`, `backend_lir_adapter_aarch64_tests`, and `llvm_gcc_c_torture_src_20080502_1_c`); `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passed with zero new failing tests.
 
