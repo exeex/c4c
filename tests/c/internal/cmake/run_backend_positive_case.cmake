@@ -23,8 +23,17 @@ get_filename_component(out_c2ll_dir "${OUT_C2LL_BIN}" DIRECTORY)
 file(MAKE_DIRECTORY "${out_ll_dir}")
 file(MAKE_DIRECTORY "${out_c2ll_dir}")
 
+set(backend_output_path "${OUT_LL}")
+if(BACKEND_OUTPUT_KIND STREQUAL "asm")
+  if("${backend_output_path}" MATCHES "\\.ll$")
+    string(REGEX REPLACE "\\.ll$" ".s" backend_output_path "${backend_output_path}")
+  else()
+    set(backend_output_path "${backend_output_path}.s")
+  endif()
+endif()
+
 execute_process(
-  COMMAND "${COMPILER}" --codegen asm --target "${TARGET_TRIPLE}" "${SRC}" -o "${OUT_LL}"
+  COMMAND "${COMPILER}" --codegen asm --target "${TARGET_TRIPLE}" "${SRC}" -o "${backend_output_path}"
   TIMEOUT "${CASE_TIMEOUT_SEC}"
   RESULT_VARIABLE frontend_rc
   OUTPUT_VARIABLE frontend_out
@@ -37,8 +46,8 @@ if(NOT frontend_rc EQUAL 0)
   message(FATAL_ERROR "[BACKEND_FRONTEND_FAIL] ${SRC}\n${frontend_out}${frontend_err}")
 endif()
 
-if(NOT EXISTS "${OUT_LL}")
-  message(FATAL_ERROR "[BACKEND_OUTPUT_MISSING] ${SRC}\nexpected LLVM text at ${OUT_LL}")
+if(NOT EXISTS "${backend_output_path}")
+  message(FATAL_ERROR "[BACKEND_OUTPUT_MISSING] ${SRC}\nexpected backend output at ${backend_output_path}")
 endif()
 
 execute_process(
@@ -46,7 +55,7 @@ execute_process(
           -DCLANG=${CLANG}
           -DTARGET_TRIPLE=${TARGET_TRIPLE}
           -DBACKEND_OUTPUT_KIND=${BACKEND_OUTPUT_KIND}
-          -DBACKEND_OUTPUT_PATH=${OUT_LL}
+          -DBACKEND_OUTPUT_PATH=${backend_output_path}
           -DOUT_ARTIFACT=${OUT_C2LL_BIN}
           -DTOOLCHAIN_MODE=binary
           -DCASE_TIMEOUT_SEC=${CASE_TIMEOUT_SEC}

@@ -205,12 +205,17 @@ std::optional<std::string> lower_llvm_ir_to_asm(std::string_view ir,
 
   if (!write_text_file(*ir_path, ir)) return std::nullopt;
 
-  const std::vector<std::string> commands = {
-      "llc -mtriple=" + shell_quote(target_triple) + " -filetype=asm " +
-          shell_quote(*ir_path) + " -o " + shell_quote(*asm_path) + " >/dev/null 2>&1",
-      "clang -target " + shell_quote(target_triple) + " -x ir -S " +
-          shell_quote(*ir_path) + " -o " + shell_quote(*asm_path) + " >/dev/null 2>&1",
-  };
+  std::vector<std::string> commands;
+  std::string llc_command = "llc -mtriple=" + shell_quote(target_triple);
+  if (target_triple.find("x86_64") != std::string_view::npos) {
+    llc_command += " -relocation-model=pic";
+  }
+  llc_command += " -filetype=asm " + shell_quote(*ir_path) + " -o " +
+                 shell_quote(*asm_path) + " >/dev/null 2>&1";
+  commands.push_back(std::move(llc_command));
+  commands.push_back("clang -target " + shell_quote(target_triple) + " -x ir -S " +
+                     shell_quote(*ir_path) + " -o " + shell_quote(*asm_path) +
+                     " >/dev/null 2>&1");
 
   for (const auto& command : commands) {
     if (std::system(command.c_str()) != 0) continue;
