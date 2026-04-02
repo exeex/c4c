@@ -66,8 +66,37 @@ bool Parser::parse_next_template_argument(std::vector<TemplateArgParseResult>* o
 bool Parser::try_parse_template_type_arg(TemplateArgParseResult* out_arg) {
     ParseContextGuard trace(this, __func__);
     if (!out_arg) return false;
-    TentativeParseGuard guard(*this);
     const int start_pos = pos_;
+
+    const auto is_simple_known_template_type_head = [&]() -> bool {
+        if (check(TokenKind::KwTypename)) return true;
+        if (!check(TokenKind::Identifier)) return false;
+        const std::string resolved = resolve_visible_type_name(cur().lexeme);
+        return is_typedef_name(cur().lexeme) ||
+               is_template_scope_type_param(cur().lexeme) ||
+               typedef_types_.count(resolved) > 0;
+    };
+
+    if (is_simple_known_template_type_head()) {
+        TentativeParseGuard fast_guard(*this);
+        try {
+            TypeSpec ts = parse_base_type();
+            if (is_cpp_mode() && check(TokenKind::Ellipsis)) consume();
+            if (check(TokenKind::Comma) || check_template_close()) {
+                out_arg->is_value = false;
+                out_arg->type = ts;
+                out_arg->value = 0;
+                out_arg->nttp_name = nullptr;
+                out_arg->expr = nullptr;
+                fast_guard.commit();
+                return true;
+            }
+        } catch (...) {
+            // Fall back to the full type-name parser below.
+        }
+    }
+
+    TentativeParseGuard guard(*this);
     try {
         TypeSpec ts = parse_type_name();
         if (is_cpp_mode() && check(TokenKind::LParen)) skip_paren_group();

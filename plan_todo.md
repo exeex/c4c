@@ -7,10 +7,10 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 3: Object lifetime and tuple layer
-- Current slice: use the deeper post-`Trait<...>::value` progress to reduce the
-  remaining `eastl_memory_simple.cpp` / `eastl_tuple_simple.cpp` timeout path
-  inside the shared EASTL-to-libstdc++ trait / alias stack now that the worst
-  trait-value type-start speculation has been trimmed
+- Current slice: use the later libstdc++ `type_traits` reach earned by the new
+  simple known-type template-argument fast path to cut the next smaller
+  `eastl_memory_simple.cpp` / `eastl_tuple_simple.cpp` timeout reduction from
+  the shared post-`_FromElementType` / `typename ...` trait machinery
 
 ## Todo
 
@@ -159,16 +159,36 @@ Source Plan: plan.md
   (`positive_sema_linux_stage2_repro_03_asm_volatile_c`,
   `backend_lir_adapter_aarch64_tests`, and
   `llvm_gcc_c_torture_src_20080502_1_c`)
+- [x] Taught `try_parse_template_type_arg()` to fast-path simple known type
+  heads (`T`, resolved typedefs, and `typename`-started dependent names)
+  through `parse_base_type()` before falling back to the full
+  `parse_type_name()` probe, trimming repeated declarator work in the shared
+  EASTL / libstdc++ template stack
+- [x] Added
+  `tests/cpp/internal/postive_case/template_known_type_arg_fast_path_parse.cpp`
+  as a stable parse regression for the new simple known-type template-argument
+  fast path
+- [x] Re-ran the focused parser guardrails plus 12s Step 3 parser-debug probes:
+  `eastl_memory_simple.cpp` now reaches later `/usr/include/c++/14/type_traits`
+  work through `_FromElementType` / later `typename` paths, and
+  `eastl_tuple_simple.cpp` now reaches deeper `type_traits` pressure through
+  `typename` template arguments and later initializers before timing out
+- [x] Re-ran the full suite and monotonic regression guard after the fast-path
+  slice; the tree improved monotonically with `2696 -> 2697` passes and the
+  same three pre-existing failures
+  (`positive_sema_linux_stage2_repro_03_asm_volatile_c`,
+  `backend_lir_adapter_aarch64_tests`, and
+  `llvm_gcc_c_torture_src_20080502_1_c`)
 
 ## Next Slice
 
 - reduce the post-trait-value Step 3 frontier from the remaining
   `eastl_memory_simple.cpp` and `eastl_tuple_simple.cpp` parse-time stalls,
-  starting from the new deeper hotspots in
-  `/usr/include/c++/14/type_traits:717`,
-  `/usr/include/c++/14/type_traits:1296`,
-  `/usr/include/c++/14/type_traits:1371`, and
-  `/usr/include/c++/14/type_traits:2219`
+  starting from the new later libstdc++ hotspots now reached around
+  `/usr/include/c++/14/type_traits:1542`,
+  `/usr/include/c++/14/type_traits:2654`,
+  `/usr/include/c++/14/type_traits:2674`, and
+  `/usr/include/c++/14/type_traits:3308`
 - reduce the timeout-only `eastl_vector_simple.cpp` frontier from the later
   EASTL-side hotspots now reached in `EASTL/internal/fill_help.h`,
   `EASTL/functional.h`, and `EASTL/meta.h`, then capture the next smaller
@@ -209,6 +229,10 @@ Source Plan: plan.md
 - `eastl_memory_simple.cpp` and `eastl_tuple_simple.cpp` no longer stop on the
   old `TupleLeaf<...>::operator=` or `function_detail.h` parser failures, but
   they still time out under deeper libstdc++ / EASTL parser pressure
+- the new simple known-type template-argument fast path moved the Step 3
+  parser-debug frontier later inside `/usr/include/c++/14/type_traits`, but it
+  did not yet produce a smaller standalone reduction for the remaining timeout
+  path
 - the new file-aware parser-debug heartbeat confirms the current
   `eastl_memory_simple.cpp` timeout path reaches
   `ref/EABase/include/Common/EABase/int128.h`,
@@ -228,8 +252,9 @@ Source Plan: plan.md
   `is_arithmetic`, `is_trivially_constructible`, and nearby `_Tp`-driven trait
   aliases
 - `eastl_tuple_simple.cpp` still times out after reaching deeper
-  `/usr/include/c++/14/type_traits` work around `__strictest_alignment` and
-  related `alignof(_Tp) > ... ? ...` constexpr expressions
+  `/usr/include/c++/14/type_traits` work; the current 12s heartbeat now reaches
+  later `typename`-started template arguments near `:2674` and initializer work
+  near `:3308` before the timeout
 - `eastl_vector_simple.cpp` still times out, but the current 12s heartbeat now
   reaches later EASTL-side parser pressure in
   `ref/EASTL/include/EASTL/internal/fill_help.h`,
@@ -314,3 +339,6 @@ Source Plan: plan.md
 - `tests/cpp/internal/postive_case/qualified_variable_template_compare_parse.cpp`
   now covers the shared variable-template comparison shape trimmed out of the
   functional-cast probe while reducing the remaining Step 3 timeout pressure
+- `tests/cpp/internal/postive_case/template_known_type_arg_fast_path_parse.cpp`
+  now covers the simple known-type template-argument shapes accelerated by the
+  new fast path in `try_parse_template_type_arg()`
