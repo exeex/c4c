@@ -798,6 +798,36 @@ void test_backend_ir_validator_rejects_store_to_unknown_global_style_symbol() {
       "backend IR validator should explain when a structured store references an unknown global-style symbol");
 }
 
+void test_backend_ir_validator_rejects_load_from_unknown_local_slot_symbol() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_local_array_gep_module());
+  auto& load = std::get<c4c::backend::BackendLoadInst>(
+      lowered.functions.front().blocks.front().insts[2]);
+  load.address.base_symbol = "%lv.missing";
+  std::string error;
+
+  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should reject structured loads that target undeclared local-slot symbols");
+  expect_contains(
+      error,
+      "load address: base symbol must reference a known global, string constant, or local slot",
+      "backend IR validator should explain when a structured load references an undeclared local slot");
+}
+
+void test_backend_ir_validator_rejects_store_to_unknown_local_slot_symbol() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_local_array_gep_module());
+  auto& store = std::get<c4c::backend::BackendStoreInst>(
+      lowered.functions.front().blocks.front().insts.front());
+  store.address.base_symbol = "%lv.missing";
+  std::string error;
+
+  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should reject structured stores that target undeclared local-slot symbols");
+  expect_contains(
+      error,
+      "store address: base symbol must reference a known global, string constant, or local slot",
+      "backend IR validator should explain when a structured store references an undeclared local slot");
+}
+
 void test_backend_ir_validator_rejects_local_slot_load_with_negative_offset() {
   auto lowered = c4c::backend::lower_to_backend_ir(make_local_array_gep_module());
   auto& load = std::get<c4c::backend::BackendLoadInst>(
@@ -1076,6 +1106,8 @@ void test_backend_ir_validator_rejects_ptrdiff_across_different_structured_globa
 
 void test_backend_ir_validator_rejects_ptrdiff_with_only_one_global_backed_address() {
   auto lowered = c4c::backend::lower_to_backend_ir(make_global_int_pointer_diff_module());
+  lowered.functions.front().local_slots.push_back(
+      c4c::backend::BackendLocalSlot{"%stack_slot", 8, c4c::backend::BackendScalarType::I32, 4});
   auto& ptrdiff = std::get<c4c::backend::BackendPtrDiffEqInst>(
       lowered.functions.front().blocks.front().insts.back());
   ptrdiff.rhs_address.base_symbol = "%stack_slot";
@@ -1087,6 +1119,21 @@ void test_backend_ir_validator_rejects_ptrdiff_with_only_one_global_backed_addre
       error,
       "ptrdiff addresses must both reference the same global when either side is global-backed",
       "backend IR validator should explain mixed global-backed ptrdiff address mismatches");
+}
+
+void test_backend_ir_validator_rejects_ptrdiff_with_unknown_local_slot_symbol() {
+  auto lowered = make_structured_local_slot_ptrdiff_module();
+  auto& ptrdiff = std::get<c4c::backend::BackendPtrDiffEqInst>(
+      lowered.functions.front().blocks.front().insts.back());
+  ptrdiff.rhs_address.base_symbol = "%lv.missing";
+  std::string error;
+
+  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+              "backend IR validator should reject structured ptrdiff slices that reference undeclared local-slot symbols");
+  expect_contains(
+      error,
+      "ptrdiff rhs address: base symbol must reference a known global, string constant, or local slot",
+      "backend IR validator should explain when structured ptrdiff addresses reference an undeclared local slot");
 }
 
 void test_backend_ir_validator_rejects_ptrdiff_with_unknown_global_style_symbol() {
@@ -1105,11 +1152,9 @@ void test_backend_ir_validator_rejects_ptrdiff_with_unknown_global_style_symbol(
 }
 
 void test_backend_ir_validator_rejects_local_slot_ptrdiff_with_negative_offset() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_global_int_pointer_diff_module());
+  auto lowered = make_structured_local_slot_ptrdiff_module();
   auto& ptrdiff = std::get<c4c::backend::BackendPtrDiffEqInst>(
       lowered.functions.front().blocks.front().insts.back());
-  ptrdiff.lhs_address.base_symbol = "%stack_slot";
-  ptrdiff.rhs_address.base_symbol = "%stack_slot";
   ptrdiff.lhs_address.byte_offset = -4;
   ptrdiff.rhs_address.byte_offset = 0;
   std::string error;
@@ -1121,11 +1166,9 @@ void test_backend_ir_validator_rejects_local_slot_ptrdiff_with_negative_offset()
 }
 
 void test_backend_ir_validator_rejects_local_slot_ptrdiff_with_misaligned_offset() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_global_int_pointer_diff_module());
+  auto lowered = make_structured_local_slot_ptrdiff_module();
   auto& ptrdiff = std::get<c4c::backend::BackendPtrDiffEqInst>(
       lowered.functions.front().blocks.front().insts.back());
-  ptrdiff.lhs_address.base_symbol = "%stack_slot";
-  ptrdiff.rhs_address.base_symbol = "%stack_slot";
   ptrdiff.lhs_address.byte_offset = 2;
   ptrdiff.rhs_address.byte_offset = 0;
   std::string error;
@@ -1764,6 +1807,8 @@ int main(int argc, char* argv[]) {
   test_backend_ir_validator_rejects_load_from_unknown_global_style_symbol();
   test_backend_ir_validator_rejects_store_to_string_literal_constant();
   test_backend_ir_validator_rejects_store_to_unknown_global_style_symbol();
+  test_backend_ir_validator_rejects_load_from_unknown_local_slot_symbol();
+  test_backend_ir_validator_rejects_store_to_unknown_local_slot_symbol();
   test_backend_ir_validator_rejects_local_slot_load_with_negative_offset();
   test_backend_ir_validator_rejects_local_slot_store_with_negative_offset();
   test_backend_ir_validator_rejects_local_slot_load_with_misaligned_offset();
@@ -1788,6 +1833,7 @@ int main(int argc, char* argv[]) {
   test_backend_ir_validator_rejects_global_int_ptrdiff_past_structured_bounds();
   test_backend_ir_validator_rejects_ptrdiff_across_different_structured_globals();
   test_backend_ir_validator_rejects_ptrdiff_with_only_one_global_backed_address();
+  test_backend_ir_validator_rejects_ptrdiff_with_unknown_local_slot_symbol();
   test_backend_ir_validator_rejects_ptrdiff_with_unknown_global_style_symbol();
   test_backend_ir_validator_rejects_local_slot_ptrdiff_with_negative_offset();
   test_backend_ir_validator_rejects_local_slot_ptrdiff_with_misaligned_offset();

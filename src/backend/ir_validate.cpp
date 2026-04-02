@@ -182,10 +182,14 @@ bool validate_address_scalar_type(
 bool validate_address_base_symbol(
     const BackendAddress& address,
     const std::unordered_set<std::string>& referenced_objects,
+    const std::unordered_map<std::string, ReferencedBoundsInfo>& referenced_bounds,
     std::string* error,
     std::string_view context) {
-  if (referenced_objects.find(address.base_symbol) != referenced_objects.end() ||
-      is_local_address_symbol(address.base_symbol)) {
+  if (referenced_objects.find(address.base_symbol) != referenced_objects.end()) {
+    return true;
+  }
+  if (is_local_address_symbol(address.base_symbol) &&
+      referenced_bounds.find(address.base_symbol) != referenced_bounds.end()) {
     return true;
   }
   return fail(error,
@@ -375,6 +379,7 @@ bool validate_inst(const BackendInst& inst,
     }
     if (!validate_address_base_symbol(load->address,
                                       referenced_objects,
+                                      referenced_bounds,
                                       error,
                                       std::string(context) + ": load address")) {
       return false;
@@ -419,6 +424,7 @@ bool validate_inst(const BackendInst& inst,
     }
     if (!validate_address_base_symbol(store->address,
                                       referenced_objects,
+                                      referenced_bounds,
                                       error,
                                       std::string(context) + ": store address")) {
       return false;
@@ -473,6 +479,7 @@ bool validate_inst(const BackendInst& inst,
   }
   if (!validate_address_base_symbol(ptrdiff->lhs_address,
                                     referenced_objects,
+                                    referenced_bounds,
                                     error,
                                     std::string(context) + ": ptrdiff lhs address")) {
     return false;
@@ -484,6 +491,7 @@ bool validate_inst(const BackendInst& inst,
   }
   if (!validate_address_base_symbol(ptrdiff->rhs_address,
                                     referenced_objects,
+                                    referenced_bounds,
                                     error,
                                     std::string(context) + ": ptrdiff rhs address")) {
     return false;
