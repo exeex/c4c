@@ -1646,6 +1646,26 @@ void test_aarch64_backend_renders_typed_two_arg_direct_call_local_arg_slice() {
                   "aarch64 backend should lower the two-argument local-argument direct call with bl");
 }
 
+void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_second_local_arg_ir_without_signature_shims() {
+  auto lowered =
+      c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_second_local_arg_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".type add_pair, %function",
+                  "aarch64 backend seam should still preserve lowered two-argument second-local helper definitions without legacy signature text");
+  expect_contains(rendered, "mov w0, #5",
+                  "aarch64 backend seam should still preserve the lowered immediate first argument from structured call metadata");
+  expect_contains(rendered, "mov w1, #7",
+                  "aarch64 backend seam should still materialize the normalized lowered second argument from structured call metadata");
+  expect_contains(rendered, "bl add_pair",
+                  "aarch64 backend seam should still lower structured two-argument second-local direct calls when legacy call/signature text is cleared");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should not fall back when the structured two-argument second-local slice relies only on backend-owned metadata");
+}
+
 void test_aarch64_backend_renders_typed_two_arg_direct_call_second_local_arg_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{
@@ -1661,6 +1681,26 @@ void test_aarch64_backend_renders_typed_two_arg_direct_call_second_local_arg_sli
                   "aarch64 backend should materialize the normalized local second argument in w1 before bl");
   expect_contains(rendered, "bl add_pair",
                   "aarch64 backend should lower the two-argument second-local direct call with bl");
+}
+
+void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_second_local_rewrite_ir_without_signature_shims() {
+  auto lowered = c4c::backend::lower_to_backend_ir(
+      make_typed_direct_call_two_arg_second_local_rewrite_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".type add_pair, %function",
+                  "aarch64 backend seam should still preserve lowered rewritten second-local helper definitions without legacy signature text");
+  expect_contains(rendered, "mov w0, #5",
+                  "aarch64 backend seam should still preserve the lowered immediate first argument from structured call metadata for the rewritten second-local slice");
+  expect_contains(rendered, "mov w1, #7",
+                  "aarch64 backend seam should still materialize the rewritten lowered second argument from structured call metadata");
+  expect_contains(rendered, "bl add_pair",
+                  "aarch64 backend seam should still lower structured rewritten second-local direct calls when legacy call/signature text is cleared");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should not fall back when the structured rewritten second-local slice relies only on backend-owned metadata");
 }
 
 void test_aarch64_backend_renders_typed_two_arg_direct_call_second_local_rewrite_slice() {
@@ -1727,6 +1767,26 @@ void test_aarch64_backend_renders_typed_two_arg_direct_call_both_local_arg_slice
                   "aarch64 backend should lower the two-argument both-local direct call with bl");
 }
 
+void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_both_local_arg_ir_without_signature_shims() {
+  auto lowered =
+      c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_both_local_arg_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".type add_pair, %function",
+                  "aarch64 backend seam should still preserve lowered two-argument both-local helper definitions without legacy signature text");
+  expect_contains(rendered, "mov w0, #5",
+                  "aarch64 backend seam should still materialize the normalized lowered first local argument from structured call metadata");
+  expect_contains(rendered, "mov w1, #7",
+                  "aarch64 backend seam should still materialize the normalized lowered second local argument from structured call metadata");
+  expect_contains(rendered, "bl add_pair",
+                  "aarch64 backend seam should still lower structured two-argument both-local direct calls when legacy call/signature text is cleared");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should not fall back when the structured two-argument both-local slice relies only on backend-owned metadata");
+}
+
 void test_aarch64_backend_renders_typed_two_arg_direct_call_both_local_first_rewrite_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{
@@ -1744,6 +1804,26 @@ void test_aarch64_backend_renders_typed_two_arg_direct_call_both_local_first_rew
                   "aarch64 backend should lower the rewritten both-local direct call with bl");
 }
 
+void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_both_local_first_rewrite_ir_without_signature_shims() {
+  auto lowered = c4c::backend::lower_to_backend_ir(
+      make_typed_direct_call_two_arg_both_local_first_rewrite_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".type add_pair, %function",
+                  "aarch64 backend seam should still preserve lowered mixed rewritten both-local helper definitions without legacy signature text");
+  expect_contains(rendered, "mov w0, #5",
+                  "aarch64 backend seam should still materialize the rewritten lowered first local argument from structured call metadata");
+  expect_contains(rendered, "mov w1, #7",
+                  "aarch64 backend seam should still preserve the direct lowered second local argument from structured call metadata");
+  expect_contains(rendered, "bl add_pair",
+                  "aarch64 backend seam should still lower structured rewritten-first both-local direct calls when legacy call/signature text is cleared");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should not fall back when the structured rewritten-first both-local slice relies only on backend-owned metadata");
+}
+
 void test_aarch64_backend_renders_typed_two_arg_direct_call_both_local_second_rewrite_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{
@@ -1759,6 +1839,26 @@ void test_aarch64_backend_renders_typed_two_arg_direct_call_both_local_second_re
                   "aarch64 backend should materialize the rewritten second local argument in w1 before bl");
   expect_contains(rendered, "bl add_pair",
                   "aarch64 backend should lower the rewritten both-local second-slot direct call with bl");
+}
+
+void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_both_local_second_rewrite_ir_without_signature_shims() {
+  auto lowered = c4c::backend::lower_to_backend_ir(
+      make_typed_direct_call_two_arg_both_local_second_rewrite_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".type add_pair, %function",
+                  "aarch64 backend seam should still preserve lowered mixed rewritten both-local helper definitions without legacy signature text");
+  expect_contains(rendered, "mov w0, #5",
+                  "aarch64 backend seam should still preserve the direct lowered first local argument from structured call metadata");
+  expect_contains(rendered, "mov w1, #7",
+                  "aarch64 backend seam should still materialize the rewritten lowered second local argument from structured call metadata");
+  expect_contains(rendered, "bl add_pair",
+                  "aarch64 backend seam should still lower structured rewritten-second both-local direct calls when legacy call/signature text is cleared");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should not fall back when the structured rewritten-second both-local slice relies only on backend-owned metadata");
 }
 
 void test_aarch64_backend_renders_typed_two_arg_direct_call_both_local_double_rewrite_slice() {
@@ -3475,12 +3575,17 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_scaffold_accepts_structured_direct_call_add_imm_ir_without_signature_shims();
   test_aarch64_backend_renders_typed_direct_call_local_arg_spacing_slice();
   test_aarch64_backend_renders_typed_two_arg_direct_call_local_arg_slice();
+  test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_second_local_arg_ir_without_signature_shims();
   test_aarch64_backend_renders_typed_two_arg_direct_call_second_local_arg_slice();
+  test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_second_local_rewrite_ir_without_signature_shims();
   test_aarch64_backend_renders_typed_two_arg_direct_call_second_local_rewrite_slice();
   test_aarch64_backend_renders_typed_two_arg_direct_call_first_local_rewrite_slice();
   test_aarch64_backend_renders_typed_two_arg_direct_call_first_local_rewrite_spacing_slice();
+  test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_both_local_arg_ir_without_signature_shims();
   test_aarch64_backend_renders_typed_two_arg_direct_call_both_local_arg_slice();
+  test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_both_local_first_rewrite_ir_without_signature_shims();
   test_aarch64_backend_renders_typed_two_arg_direct_call_both_local_first_rewrite_slice();
+  test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_both_local_second_rewrite_ir_without_signature_shims();
   test_aarch64_backend_renders_typed_two_arg_direct_call_both_local_second_rewrite_slice();
   test_aarch64_backend_renders_typed_two_arg_direct_call_both_local_double_rewrite_slice();
   test_aarch64_backend_renders_double_printf_call_with_fp_register_args();
