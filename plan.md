@@ -1,195 +1,191 @@
-# Parser Debug Surface For Vector/STL Work
+# Std Vector Success-Path And STL Throughput Follow-On
 
 Status: Active
-Source Idea: ideas/open/parser_debug_surface_for_vector_stl_work.md
+Source Idea: ideas/open/std_vector_success_path_and_stl_throughput_follow_on.md
+Activated from: ideas/open/std_vector_success_path_and_stl_throughput_follow_on.md
 
 ## Purpose
 
-Improve parser-debug observability so STL-style parser bring-up can continue
-without ad hoc instrumentation or another refactor pass.
+Turn the remaining motivating STL validation pain into a measured, executable
+ runbook without reopening the completed parser-debug failure-observability
+ slice.
 
 ## Goal
 
-Make parser-debug answer, with opt-in high-signal output, which token window
-was active, which tentative branch committed or rolled back, whether injected
-token streams were involved, and at least one narrower CLI debug mode.
+Make the `std::vector` / `eastl::vector` motivating workflows usable for manual
+ parser investigation by addressing the smallest validated gap among
+ success-path visibility, throughput, and repeatable include-path setup.
 
 ## Core Rule
 
-Prefer small, behavior-preserving debug additions that directly help
-`std::vector` / `eastl::vector` parser work. Do not redesign the parser or turn
-this into a broad tracing rewrite.
+Keep this narrow and measurement-driven. Do not broaden into general parser
+ optimization or another tracing redesign unless the data shows a direct need.
 
 ## Read First
 
-- `ideas/open/parser_debug_surface_for_vector_stl_work.md`
-- parser debug CLI entrypoints and option parsing
-- parser best-failure reporting and debug event emission
-- parser sites that do speculative parsing or temporary token-stream swaps
-- motivating tests:
+- `ideas/open/std_vector_success_path_and_stl_throughput_follow_on.md`
+- `ideas/closed/parser_debug_surface_for_vector_stl_work.md`
+- `src/apps/c4cll.cpp`
+- parser debug reporting and CLI entrypoints
+- motivating files:
   - `tests/cpp/std/std_vector_simple.cpp`
   - `tests/cpp/eastl/eastl_vector_simple.cpp`
+- existing EASTL workflow:
+  - `tests/cpp/eastl/run_eastl_type_traits_simple_workflow.cmake`
 
 ## Current Targets
 
-- best-failure output should expose local token context
-- tentative parse lifecycle should be visible when explicitly enabled
-- injected token-stream parsing should be visible when explicitly enabled
-- CLI should provide at least one narrower parser-debug surface beyond the
-  current all-or-nothing mode
-- validation should cover motivating STL-style cases and focused parser-debug
-  behavior
+- establish a repeatable baseline for `std_vector_simple.cpp` timeout behavior
+- establish a repeatable manual invocation for `eastl_vector_simple.cpp`
+- decide whether the next shippable slice is:
+  - a success-path parser summary surface
+  - a targeted throughput fix
+  - a workflow wrapper for motivating library cases
+- validate the chosen slice with focused tests or workflow checks
 
 ## Non-Goals
 
-- do not redesign parser tracing infrastructure
-- do not broaden scope into unrelated STL parsing fixes unless they block this
-  work
-- do not make default parse errors noisy
-- do not overfit the output to a single testcase
+- do not reopen failure-local token window work
+- do not redesign parser debug infrastructure
+- do not claim broad parser performance improvements without case-specific
+  measurements
+- do not silently absorb unrelated STL parse failures into this runbook
 
 ## Working Model
 
 Implement this in narrow slices:
 
-1. expose the highest-signal failure-local context first
-2. add tentative/injected instrumentation behind targeted debug controls
-3. add one or more narrower CLI views only after the payload is useful
-4. validate on real STL-style cases and focused parser-debug checks
+1. measure current behavior on the motivating files
+2. choose the smallest fix that removes the most immediate validation friction
+3. add focused coverage before implementation
+4. re-run motivating workflows and nearby tests
 
 ## Execution Rules
 
-- keep richer diagnostics opt-in
-- preserve current successful parse behavior unless the step explicitly adds a
-  success-path summary mode
-- add or update focused tests before each feature slice
-- use Clang/LLVM only as behavior reference when a testcase or output shape
-  needs comparison
-- if a separate parser feature gap appears, record it as a new idea instead of
-  expanding this runbook silently
+- treat the motivating files as validation targets, not as a mandate to fix all
+  library parsing gaps in one slice
+- preserve the new parser-debug flags and current failure-output shape unless a
+  step explicitly extends success-path reporting
+- if `std_vector_simple.cpp` remains slow, record where time is spent before
+  changing parser behavior
+- if another independent parser feature gap appears, record it as a separate
+  idea instead of silently widening this plan
 
 ## Ordered Steps
 
-### Step 1: Land Failure-Local Token Context
+### Step 1: Baseline Motivating Workflows
 
-Goal: make parse failures show enough nearby token detail to localize nested
-template failures quickly.
-
-Primary targets:
-
-- parser best-failure summary/reporting
-- parser debug data structures if they need token metadata
-
-Actions:
-
-- inspect how best-failure state is stored and emitted today
-- add token index, token kind, lexeme/spelling, and a small surrounding token
-  window to the failure-local output
-- keep the default presentation concise enough for normal parser failure use
-- add or update focused tests that assert the new context is emitted
-
-Completion check:
-
-- a targeted parse failure exposes token-local context sufficient to inspect the
-  neighborhood around the failing token
-
-### Step 2: Add Tentative Parse Lifecycle Visibility
-
-Goal: surface which speculative parse branches enter, commit, or roll back.
-
-Primary targets:
-
-- speculative/tentative parse helpers
-- parser debug event definitions and emission logic
-- parser-debug CLI gating for tentative events
-
-Actions:
-
-- identify the parser helpers that save/restore position for speculation
-- add `tentative_enter`, `tentative_commit`, and `tentative_rollback` events
-- include start/end positions and a short detail where practical
-- ensure this extra trace is emitted only when the relevant debug mode is
-  enabled
-- add focused tests for at least one ambiguity case
-
-Completion check:
-
-- a targeted debug run can show tentative branch lifecycle without flooding the
-  default output
-
-### Step 3: Mark Injected Token-Stream Parsing
-
-Goal: make token-stream swaps or injected parses explicit in the debug trace.
-
-Primary targets:
-
-- parser sites that temporarily replace or inject `tokens_`
-- parser debug event emission around those hot spots
-
-Actions:
-
-- inspect known token-swap and injected-parse call sites
-- add begin/end markers for injected or swapped token streams
-- preserve original behavior and restoration semantics
-- add focused coverage for at least one injected-token site
-
-Completion check:
-
-- a targeted debug run can distinguish original-token parsing from injected or
-  swapped token-stream work
-
-### Step 4: Add Narrower CLI Debug Surfaces
-
-Goal: provide at least one higher-signal CLI entrypoint beyond `--parser-debug`.
-
-Primary targets:
-
-- command-line option parsing
-- parser debug formatting/reporting path
-
-Actions:
-
-- choose the smallest useful surface from the idea, with bias toward summary,
-  token-window, tentative, injected, filter, or limit controls
-- wire the new flag(s) into parser debug configuration
-- keep `--parser-debug` as the simple catch-all switch
-- add CLI-focused tests that lock the intended behavior
-
-Completion check:
-
-- the CLI offers at least one narrower parser-debug mode that is useful on the
-  motivating STL-style files
-
-### Step 5: Validate On Motivating STL Cases
-
-Goal: prove the new observability is useful on the stated bring-up targets.
+Goal: produce a stable reproduction recipe and timing/error baseline for both
+ motivating files.
 
 Primary targets:
 
 - `tests/cpp/std/std_vector_simple.cpp`
 - `tests/cpp/eastl/eastl_vector_simple.cpp`
-- nearby parser-debug tests
+- `tests/cpp/eastl/run_eastl_type_traits_simple_workflow.cmake`
 
 Actions:
 
-- run targeted parse-only and parser-debug commands on both motivating files
-- verify success-path or failure-path output stays readable and actionable
-- run nearby parser/debug tests and the broader regression suite expected by the
-  active slice
-- record any out-of-scope follow-on ideas back into `ideas/open/` if discovered
+- measure `std_vector_simple.cpp` with bounded `--parse-only` and, if useful,
+  bounded parser-debug invocations
+- confirm the required include-path recipe for `eastl_vector_simple.cpp`
+- record whether the EASTL motivating case currently fails in preprocessing,
+  parse-only, or later stages
+- update `plan_todo.md` with the exact observed blockers and timings
 
 Completion check:
 
-- the new parser-debug surface materially reduces the need for ad hoc
-  instrumentation during STL-style parser work
+- the repo contains a reproducible baseline for both motivating workflows
+
+### Step 2: Choose The Smallest High-Value Slice
+
+Goal: decide which single next change removes the most immediate STL
+ investigation friction.
+
+Primary targets:
+
+- parser debug CLI/reporting path
+- motivating workflow wrappers or tests
+- measured hot path from Step 1
+
+Actions:
+
+- compare the value of a success-path summary mode against a targeted
+  throughput fix or workflow wrapper
+- prefer the option that improves manual investigation with the smallest code
+  surface
+- record the chosen slice and the rejected alternatives in `plan_todo.md`
+
+Completion check:
+
+- one bounded implementation slice is selected with a clear validation target
+
+### Step 3: Add Focused Coverage For The Chosen Slice
+
+Goal: lock the intended behavior before implementation.
+
+Primary targets:
+
+- focused internal parser-debug tests
+- motivating workflow scripts or targeted CLI checks
+
+Actions:
+
+- add or update the narrowest test or workflow assertion that proves the chosen
+  slice
+- keep timeout expectations explicit when covering long-running motivating
+  cases
+
+Completion check:
+
+- a focused failing or missing validation exists for the chosen slice
+
+### Step 4: Implement The Chosen Slice
+
+Goal: make the chosen success-path, throughput, or workflow improvement work
+ without broad parser churn.
+
+Primary targets:
+
+- the smallest implementation surface justified by Steps 1-3
+
+Actions:
+
+- implement only the selected slice
+- preserve existing failure-path parser-debug behavior
+- avoid unrelated parser cleanup unless required by the slice
+
+Completion check:
+
+- the focused validation from Step 3 passes
+
+### Step 5: Revalidate Motivating Cases
+
+Goal: prove the chosen slice materially improves the motivating STL workflow.
+
+Primary targets:
+
+- `tests/cpp/std/std_vector_simple.cpp`
+- `tests/cpp/eastl/eastl_vector_simple.cpp`
+- nearby parser-debug or workflow tests
+
+Actions:
+
+- re-run the motivating commands with the chosen improvement in place
+- run nearby targeted tests and the broader regression suite appropriate to the
+  touched surface
+- record any remaining separate initiatives back into `ideas/open/`
+
+Completion check:
+
+- the motivating STL workflow is measurably more usable without reopening the
+  completed failure-observability effort
 
 ## Done Condition
 
 This runbook is complete when:
 
-- parser-debug includes useful failure-local token context
-- tentative commit/rollback behavior is observable when requested
-- injected-token parsing is visible when requested
-- the CLI exposes at least one narrower parser-debug mode
-- motivating STL-style cases can be investigated without another debug
-  observability refactor
+- the repo has a repeatable motivating-case workflow for both STL examples
+- the next highest-value friction point has been addressed in one narrow slice
+- focused validation covers that slice
+- any remaining separate work has been recorded as distinct open ideas

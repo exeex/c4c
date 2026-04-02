@@ -1,6 +1,6 @@
 # Parser Debug Surface For Vector/STL Work
 
-Status: Open
+Status: Complete
 Last Updated: 2026-04-02
 
 ## Goal
@@ -8,6 +8,35 @@ Last Updated: 2026-04-02
 Strengthen parser diagnostics, parser-debug trace output, and CLI inspection
 surfaces so that STL-like parse bring-up can continue without repeatedly
 stopping for internal refactors.
+
+Completion Notes:
+
+- Completed via the linked active runbook on 2026-04-02.
+- Parser failures now report token index, token kind, lexeme, and a local
+  token window.
+- `c4cll` now supports targeted `--parser-debug-tentative` and
+  `--parser-debug-injected` modes in addition to the existing catch-all
+  `--parser-debug` switch.
+- Tentative parse commit/rollback lifecycle is now visible when requested.
+- Injected token-stream begin/end markers are now visible at the template-base
+  instantiation swap site when requested.
+- Focused parser-debug regression coverage passed with
+  `ctest --test-dir build -R '^cpp_parser_debug_'`.
+- Manual Step 5 validation showed that
+  `tests/cpp/eastl/eastl_vector_simple.cpp` now fails with actionable
+  failure-local context and targeted tentative traces once run with
+  `-I ref/EASTL/include -I ref/EABase/include/Common`.
+
+Leftover Issues:
+
+- `tests/cpp/std/std_vector_simple.cpp` still does not complete parse-only
+  within a 60s validation timeout in this environment, so success-path
+  observability on the motivating `std::vector` case remains a separate
+  throughput / inspection follow-on rather than part of this completed debug
+  surface slice.
+- `tests/cpp/eastl/eastl_vector_simple.cpp` currently needs explicit EASTL and
+  EABase include-path flags for manual CLI validation, and it still fails in
+  `EASTL/internal/type_properties.h` on `typedef __underlying_type(T)`.
 
 Immediate motivating cases:
 
