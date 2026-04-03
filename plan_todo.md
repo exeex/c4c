@@ -22,10 +22,10 @@ Source Plan: plan.md
   - Blockers: Depends on prior steps.
 
 Current Step: Step 3
-Next Step: Find the next branch-only constant-return seam that still falls back because it needs one more bounded structured state surface beyond the current one-or-eleven local `i32` slot matcher, then capture that exact slice with shared-lowering and AArch64 parity coverage.
+Next Step: Find the next branch-only constant-return seam that still falls back because it needs one more bounded structured state surface beyond the current one-or-twelve local `i32` slot matcher, then capture that exact slice with shared-lowering and AArch64 parity coverage.
 Blockers: None
 
-Latest Iteration Note: The shared lowering now owns the bounded eleven-local-slot-backed constant-conditional goto-return slice, so the next fallback in this family will require at least one more bounded local `i32` state surface than the current matcher accepts.
+Latest Iteration Note: The shared lowering now owns the bounded twelve-local-slot-backed constant-conditional goto-return slice, so the next fallback in this family will require at least one more bounded local `i32` state surface than the current matcher accepts.
 
 Iteration Update: Added `make_seven_local_slot_constant_conditional_goto_return_module()`, widened `src/backend/lowering/lir_to_backend_ir.cpp` so the narrow local-slot constant-conditional matcher now accepts one to seven `i32` stack cells through store/load before the branch-only return chain, and extended the adapter plus AArch64 parity regressions so that seven-local-slot slice now stays on the shared structured lowering path.
 
@@ -52,5 +52,11 @@ Next Slice Hint: Keep the same branch-only constant-return family and widen shar
 Iteration Update: Added `make_eleven_local_slot_constant_conditional_goto_return_module()`, widened `src/backend/lowering/lir_to_backend_ir.cpp` so the narrow local-slot constant-conditional matcher now accepts one to eleven `i32` stack cells through store/load before the branch-only return chain, and extended the adapter plus AArch64 parity regressions so that eleven-local-slot slice now stays on the shared structured lowering path.
 
 Validation: `cmake --build build -j8 --target backend_lir_adapter_tests backend_lir_adapter_aarch64_tests` passed. `ctest --test-dir build -R '^(backend_lir_adapter_tests|backend_lir_adapter_aarch64_tests)$' --output-on-failure` passed. `cmake --build build -j8` passed. A full-suite rerun in `test_fail_after.log` finished at `2667` passed / `2` failed / `2669` total in this workspace, matching the current workspace ceiling while keeping the same two known failures. The regression guard `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed` passed with `delta : passed=82 failed=-82` and zero new failing or >30s tests. The remaining failures are `backend_contract_aarch64_return_add_object` and `backend_contract_aarch64_global_load_object`.
+
+Next Slice Hint: Keep the same branch-only constant-return family and widen shared lowering only enough to accept one more bounded local scalar state surface than the current one-or-twelve-slot matcher.
+
+Iteration Update: Added `make_twelve_local_slot_constant_conditional_goto_return_module()`, widened `src/backend/lowering/lir_to_backend_ir.cpp` so the narrow local-slot constant-conditional matcher now accepts one to twelve `i32` stack cells through store/load before the branch-only return chain, and extended the adapter plus AArch64 parity regressions so that twelve-local-slot slice now stays on the shared structured lowering path.
+
+Validation: `cmake --build build -j8 --target backend_lir_adapter_tests backend_lir_adapter_aarch64_tests` passed. `ctest --test-dir build -R '^backend_lir_adapter_tests$' --output-on-failure` failed before the production change with `minimal backend LIR adapter does not support entry allocas`, and `ctest --test-dir build -R '^backend_lir_adapter_aarch64_tests$' --output-on-failure` failed with the same error before widening the matcher; both targeted tests passed after the production change. A later full `cmake --build build -j8` also passed, but the full-suite regression guard against `test_fail_before.log` failed (`2585/84` before vs `2512/157` after) and a same-workspace `HEAD` rerun in `/tmp/test_workspace_head.log` was also unstable (`2537/132`), with the new deltas concentrated in `FRONTEND_FAIL` cases rather than backend-lowering coverage. Treat the full-suite baseline as a workspace blocker that needs separate triage outside this Step 3 slice.
 
 Iteration Target: Keep converting one fallback-only direct-LIR constant-return slice at a time into the shared lowering-owned path, but only by adding the next bounded state surface rather than broadening into a generic interpreter.
