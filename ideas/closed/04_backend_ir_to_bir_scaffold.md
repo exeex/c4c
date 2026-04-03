@@ -1,7 +1,7 @@
 # `backend_ir` -> `bir` Scaffold
 
-Status: Open
-Last Updated: 2026-04-01
+Status: Complete
+Last Updated: 2026-04-03
 
 ## Goal
 
@@ -175,15 +175,15 @@ incrementally rather than duplicating the same logic under a second subsystem.
 
 ## Acceptance Criteria
 
-- [ ] a new `bir` layer exists in source form
-- [ ] the old backend path remains the default production path
-- [ ] an explicit flag can select the new BIR flow
-- [ ] one backend test case passes end-to-end through the BIR path
-- [ ] the relationship between transitional `backend_ir` naming and the new
+- [x] a new `bir` layer exists in source form
+- [x] the old backend path remains the default production path
+- [x] an explicit flag can select the new BIR flow
+- [x] one backend test case passes end-to-end through the BIR path
+- [x] the relationship between transitional `backend_ir` naming and the new
       `bir` naming is explicit in the implementation, not left ambiguous
-- [ ] the first new-path tests live in a BIR-oriented location rather than the
+- [x] the first new-path tests live in a BIR-oriented location rather than the
       legacy backend adapter test files
-- [ ] existing default-path backend tests remain regression-free under backend test scope
+- [x] existing default-path backend tests remain regression-free under backend test scope
 
 ## Non-Goals
 
@@ -197,3 +197,31 @@ incrementally rather than duplicating the same logic under a second subsystem.
 Create the new BIR type skeleton and a flag-gated lowering/emission path that
 only supports a single tiny integer-return test, while leaving the old backend
 flow untouched and default.
+
+## Completion Notes
+
+- Added explicit `src/backend/lowering/lir_to_bir.*` and
+  `src/backend/lowering/bir_to_backend_ir.*` seams so the new `bir` path is
+  structurally separate from the transitional `backend_ir` path.
+- Added an internal `BackendPipeline::Bir` option while keeping the legacy
+  backend path as the default production flow.
+- Extended the minimal BIR scaffold just far enough to model a tiny `bir.add`
+  return-add slice and drive it through x86 backend emission end-to-end.
+- Kept the first new-path tests in `tests/backend/backend_bir_tests.cpp`,
+  including explicit coverage for default-vs-opt-in routing and the BIR smoke
+  path.
+
+## Validation Snapshot
+
+- `cmake --build build -j8`
+- `./build/backend_bir_tests`
+- `ctest --test-dir build -R 'backend_' --output-on-failure`
+- `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log`
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+
+## Leftover Issues
+
+- The BIR scaffold still only covers the tiny single-block i32 return/add path.
+- The two known AArch64 backend contract failures remain:
+  `backend_contract_aarch64_return_add_object` and
+  `backend_contract_aarch64_global_load_object`.

@@ -1,111 +1,114 @@
 Status: Active
-Source Idea: ideas/open/04_backend_ir_to_bir_scaffold.md
-Activated from: ideas/open/04_backend_ir_to_bir_scaffold.md
+Source Idea: ideas/open/05_bir_enablement_and_test_harness_refactor.md
+Activated from: ideas/open/05_bir_enablement_and_test_harness_refactor.md
 
-# Backend IR To BIR Scaffold Runbook
+# BIR Enablement And Backend Test Harness Refactor Runbook
 
 ## Purpose
 
-Establish the first explicit `bir` scaffold on top of the cleaned-up
-`lir -> backend_ir` boundary without disturbing the current production backend
-path.
+Grow the flag-gated BIR path beyond the initial scaffold while reshaping the
+backend test surface so new-path coverage can scale without overloading the
+legacy adapter-heavy files.
 
 ## Goal
 
-Create a flag-gated `LIR -> BIR -> backend emission` skeleton that proves one
-tiny end-to-end backend case while keeping the existing backend path as the
-default.
+Add one additional real behavior cluster behind the BIR flag and land the first
+clear layered BIR test-harness split that future enablement work can extend.
 
 ## Core Rule
 
-Bias toward architectural proof, not feature breadth. Land the smallest
-coherent BIR slice that demonstrates naming, wiring, and validation without
-starting a broad backend migration.
+Expand the new path and the test harness together, but keep the old backend
+flow as the default production path throughout.
 
 ## Read First
 
-- `ideas/open/04_backend_ir_to_bir_scaffold.md`
+- `ideas/open/05_bir_enablement_and_test_harness_refactor.md`
 - `src/backend/backend.hpp`
 - `src/backend/backend.cpp`
-- `src/backend/lowering/lir_to_backend_ir.*`
-- `src/backend/ir.hpp`
-- `tests/backend/*`
+- `src/backend/bir.hpp`
+- `src/backend/lowering/lir_to_bir.*`
+- `src/backend/lowering/bir_to_backend_ir.*`
+- `tests/backend/backend_bir_tests.cpp`
+- `tests/backend/backend_lir_adapter*.cpp`
 
 ## Scope
 
-- New `bir` source surfaces and naming
-- An explicit opt-in path from LIR into BIR
-- Minimal BIR data model and validation/printing support
-- One narrow backend test path that exercises the BIR flow end-to-end
+- One additional BIR behavior cluster beyond the initial return-add scaffold
+- A cleaner split between BIR lowering / validation / pipeline / emit tests
+- Small reusable BIR-aware fixture or assertion helpers where they reduce
+  duplication
 
 ## Non-Goals
 
-- No broad BIR instruction coverage
-- No default-path cutover
-- No large backend test-suite migration
-- No deletion of transitional `backend_ir` or compatibility entrypoints
+- No default-path cutover to BIR
+- No broad instruction-family rollout in one patch
+- No large migration of legacy backend tests into the new layout
+- No opportunistic unrelated backend bug-fixing unless directly blocking the
+  selected BIR slice
 
 ## Execution Rules
 
-- Keep the existing backend path as the default production flow throughout.
-- Treat the new BIR path as explicitly gated and developer-facing.
-- Add new-path tests in BIR-oriented files instead of expanding the legacy
-  adapter-heavy test files into a mixed framework.
-- Prefer compatibility shims and wrappers over invasive renames in the first
-  scaffold slice.
-- If execution reveals a separate initiative, record it under `ideas/open/`
-  instead of broadening this runbook.
+- Keep legacy tests focused on guarding the default path.
+- Add new-path tests in BIR-specific files or directories rather than extending
+  the largest legacy adapter suites further.
+- Prefer direct BIR lowering / validation / emission assertions before adding
+  end-to-end smoke tests.
+- Land one behavior cluster at a time and validate it with backend-scoped
+  regression runs.
+- If work reveals a separate initiative, record it under `ideas/open/` instead
+  of widening this plan.
 
-## Step 1: Establish the BIR type scaffold
+## Step 1: Establish the first layered BIR test harness split
 
-- Introduce the smallest coherent `bir` model needed for one tiny function path:
-  module, function, block, return terminator, and minimal scalar values.
-- Add any tiny validation or printing helpers needed to keep the scaffold
-  inspectable and testable.
-- Keep the new source surfaces clearly named `bir`.
-
-Completion check:
-- [ ] A distinct `bir` layer exists in source form.
-- [ ] The initial BIR model is intentionally minimal and coherent.
-- [ ] The new naming is explicit rather than hidden behind legacy files.
-
-## Step 2: Add a flag-gated LIR-to-BIR entrypoint
-
-- Introduce an explicit opt-in path from LIR into BIR lowering.
-- Keep the old backend flow as the default and ensure the new path is selected
-  only when requested.
-- Make the relationship between transitional `backend_ir` code and the new BIR
-  path obvious in the implementation.
+- Introduce the smallest reusable BIR-specific helper surface needed to stop
+  accumulating all new-path coverage in one monolithic test file.
+- Create or reorganize the first dedicated BIR-oriented test location(s) so
+  lowering/validation concerns are separated from route-smoke concerns.
+- Keep helper scope minimal and local to the new path.
 
 Completion check:
-- [ ] An explicit flag or equivalent narrow switch selects the BIR flow.
-- [ ] The old backend path remains the default production path.
-- [ ] The new and old ownership boundaries are easy to trace in code.
+- [ ] The BIR test surface is no longer centered on one catch-all file only.
+- [ ] At least one reusable BIR-aware helper or fixture seam exists where it
+      materially reduces duplication.
+- [ ] New-path test responsibilities are clearer than the legacy adapter files.
 
-## Step 3: Prove one end-to-end BIR backend case
+## Step 2: Expand BIR lowering for one additional behavior cluster
 
-- Choose one intentionally tiny backend case such as return-immediate or
-  single-block integer add/return.
-- Add new BIR-oriented tests in a separate location from the legacy adapter
-  suites.
-- Wire BIR lowering and backend emission only far enough to make that one case
-  pass end-to-end.
-
-Completion check:
-- [ ] One backend test case passes end-to-end through the BIR path.
-- [ ] The first new-path tests live in a BIR-oriented location.
-- [ ] Assertions describe the new path in BIR terms where practical.
-
-## Step 4: Validate scaffold stability
-
-- Re-run the touched backend tests and a backend-scoped regression slice.
-- Confirm the default path stays regression-free while the BIR path remains
-  explicitly opt-in.
-- Record any intentionally deferred coverage boundaries for the follow-on BIR
-  enablement plan.
+- Choose one narrow cluster beyond the scaffold case, such as comparisons and
+  branches, loads/stores, direct calls, or a small global/addressing shape.
+- Extend `lir_to_bir` and `bir_to_backend_ir` only far enough to support that
+  cluster coherently.
+- Keep the BIR path explicitly selected through the existing backend option.
 
 Completion check:
-- [ ] Existing default-path backend tests remain regression-free in backend scope.
-- [ ] Deferred follow-on work is documented as bounded future scope.
-- [ ] The scaffold is ready for broader BIR enablement work without immediate
-      architectural rework.
+- [ ] The BIR path supports at least one new behavior cluster beyond return-add.
+- [ ] The new support is still flag-gated and does not alter the default path.
+- [ ] The relationship between LIR, BIR, and transitional backend IR remains
+      easy to trace in code.
+
+## Step 3: Add layered BIR assertions for the new cluster
+
+- Add direct lowering-shape tests that assert BIR structure for the chosen
+  cluster.
+- Add validator or malformed-case coverage when the new shape introduces fresh
+  BIR invariants.
+- Add a narrow route-smoke or target-emission test that proves the new cluster
+  reaches backend emission under the BIR flag.
+
+Completion check:
+- [ ] New tests assert BIR structure directly, not only final asm text.
+- [ ] The new cluster is covered at the right layer instead of only through an
+      end-to-end path.
+- [ ] BIR routing tests remain separate from legacy default-path tests.
+
+## Step 4: Validate backend-scoped regression stability
+
+- Re-run the touched BIR tests and a backend-scoped regression slice.
+- Re-run the full suite and check monotonic regression status against the
+  recorded logs.
+- Record any bounded deferred coverage or layout follow-up for later BIR ideas.
+
+Completion check:
+- [ ] Backend-scoped regressions show no new failures.
+- [ ] Full-suite regression guard passes with zero new failing tests.
+- [ ] Deferred follow-on work is documented without silently expanding scope.

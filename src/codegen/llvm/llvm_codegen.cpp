@@ -18,7 +18,8 @@ std::string emit_legacy(const lir::LirModule& lir_mod) {
 
 std::string emit_via_backend(const lir::LirModule& lir_mod,
                              std::string_view target_triple) {
-  backend::BackendOptions options{backend::target_from_triple(target_triple)};
+  backend::BackendOptions options;
+  options.target = backend::target_from_triple(target_triple);
   backend::BackendModuleInput input{lir_mod};
   try {
     input = backend::BackendModuleInput{backend::lower_to_backend_ir(lir_mod), &lir_mod};

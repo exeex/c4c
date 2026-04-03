@@ -7,6 +7,8 @@
 
 namespace c4c::backend::bir {
 
+struct Module;
+
 enum class TypeKind : unsigned char {
   Void,
   I32,
@@ -29,12 +31,24 @@ struct Value {
   static Value named(TypeKind type, std::string name);
 };
 
+enum class BinaryOpcode : unsigned char {
+  Add,
+};
+
+struct BinaryInst {
+  BinaryOpcode opcode = BinaryOpcode::Add;
+  Value result;
+  Value lhs;
+  Value rhs;
+};
+
 struct ReturnTerminator {
   std::optional<Value> value;
 };
 
 struct Block {
   std::string label;
+  std::vector<BinaryInst> insts;
   ReturnTerminator terminator;
 };
 
@@ -46,9 +60,12 @@ struct Function {
 };
 
 struct Module {
+  std::string target_triple;
+  std::string data_layout;
   std::vector<Function> functions;
 };
 
 std::string render_type(TypeKind type);
+std::string render_binary_opcode(BinaryOpcode opcode);
 
 }  // namespace c4c::backend::bir

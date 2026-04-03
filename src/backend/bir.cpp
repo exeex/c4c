@@ -40,4 +40,12 @@ std::string render_type(TypeKind type) {
   return "<unknown>";
 }
 
+std::string render_binary_opcode(BinaryOpcode opcode) {
+  switch (opcode) {
+    case BinaryOpcode::Add:
+      return "add";
+  }
+  return "<unknown>";
+}
+
 }  // namespace c4c::backend::bir

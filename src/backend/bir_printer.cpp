@@ -24,6 +24,12 @@ void render_function(std::ostringstream& out, const Function& function) {
   out << " {\n";
   for (const auto& block : function.blocks) {
     out << block.label << ":\n";
+    for (const auto& inst : block.insts) {
+      out << "  " << inst.result.name << " = bir."
+          << render_binary_opcode(inst.opcode) << " "
+          << render_type(inst.result.type) << " "
+          << render_value(inst.lhs) << ", " << render_value(inst.rhs) << "\n";
+    }
     out << "  bir.ret";
     if (block.terminator.value.has_value()) {
       out << " " << render_type(block.terminator.value->type) << " "

@@ -1,7 +1,10 @@
 #include "backend.hpp"
 #include "aarch64/codegen/emit.hpp"
+#include "bir_printer.hpp"
 #include "ir_printer.hpp"
 #include "lir_adapter.hpp"
+#include "lowering/bir_to_backend_ir.hpp"
+#include "lowering/lir_to_bir.hpp"
 #include "x86/codegen/emit.hpp"
 
 #include "../codegen/lir/lir_printer.hpp"
@@ -275,6 +278,15 @@ std::string emit_module(const BackendModuleInput& input,
   if (input.module == nullptr) {
     if (input.legacy_fallback == nullptr) {
       return {};
+    }
+    if (options.pipeline == BackendPipeline::Bir) {
+      auto bir_module = c4c::backend::lower_to_bir(*input.legacy_fallback);
+      if (options.target == Target::Riscv64) {
+        return c4c::backend::bir::print(bir_module);
+      }
+      auto backend = make_backend(options.target);
+      auto lowered = c4c::backend::lower_to_backend_ir(bir_module);
+      return backend->emit(lowered, nullptr);
     }
     return emit_legacy_module(*input.legacy_fallback, options.target);
   }

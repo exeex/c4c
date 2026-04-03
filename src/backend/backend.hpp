@@ -13,6 +13,11 @@ namespace c4c::backend {
 
 BackendModule lower_to_backend_ir(const c4c::codegen::lir::LirModule& module);
 
+enum class BackendPipeline : unsigned char {
+  Legacy,
+  Bir,
+};
+
 struct BackendModuleInput {
   explicit BackendModuleInput(const BackendModule& backend_module,
                               const c4c::codegen::lir::LirModule* legacy_fallback_in = nullptr)
@@ -32,6 +37,7 @@ struct BackendModuleInput {
 
 struct BackendOptions {
   Target target;
+  BackendPipeline pipeline = BackendPipeline::Legacy;
 };
 
 std::string emit_module(const BackendModuleInput& input,
