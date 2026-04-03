@@ -13,10 +13,31 @@ Current active item: Step 2, keep auditing the bounded straight-line
 single-block/default-route surface for the next non-foldable direct-BIR
 coverage slice now that the constant-only ternary boundary has been pinned
 down.
-Next target: identify the next emitter-facing source-level/default-route case
-that still lacks BIR-route coverage and cannot be folded away before BIR
-lowering, keeping the work scoped to direct BIR text assertions without
-widening CFG support or direct-BIR emitter behavior.
+Next target: pin down the analogous source-level `i8` widened-width
+default-route gap, which still lowers through LLVM/asm rescue because the
+frontend emits `sext i8 -> i32` arithmetic plus a trailing `trunc` back to
+`i8` instead of the already-supported direct BIR `i8` chain shape.
+
+Completed this iteration:
+- Added source-level/default-route widened-width RISC-V coverage via
+  `tests/c/internal/backend_route_case/single_param_i64_add_sub_chain.c`,
+  proving `long long wide_add(long long x) { return (x + 2) - 1; }` now stays
+  on the BIR pipeline instead of falling through to LLVM/asm rescue.
+- Registered
+  `backend_codegen_route_riscv64_single_param_i64_add_sub_chain_defaults_to_bir`
+  in `tests/c/internal/InternalTests.cmake`, asserting the emitted text
+  contains `bir.func @wide_add(i64 %p.x) -> i64 {`, `%t1 = bir.add i64 %p.x, 2`,
+  `%t3 = bir.sub i64 %t1, 1`, and forbids legacy LLVM IR
+  `define i64 @wide_add(i64 %p.x)`.
+- Widened the straight-line BIR recognizer in `src/backend/lowering/lir_to_bir.cpp`
+  to fold bounded lossless immediate `sext`/`zext` casts into canonical BIR
+  immediates, which covers the frontend-emitted `sext i32 2 to i64` /
+  `sext i32 1 to i64` pattern without widening CFG support or direct-BIR
+  emitter behavior.
+- Reconfigured and rebuilt the tree, reran the new route case, reran
+  `ctest --test-dir build -R backend_bir_tests --output-on-failure`, then reran
+  `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `331/331` backend-labeled tests passing.
 
 Completed this iteration:
 - Added source-level/default-route RISC-V coverage via

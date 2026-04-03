@@ -44,6 +44,20 @@ std::optional<bir::TypeKind> lower_scalar_type_text(std::string_view text) {
   return std::nullopt;
 }
 
+unsigned scalar_type_bit_width(bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I8:
+      return 8;
+    case bir::TypeKind::I32:
+      return 32;
+    case bir::TypeKind::I64:
+      return 64;
+    case bir::TypeKind::Void:
+      return 0;
+  }
+  return 0;
+}
+
 std::optional<std::int64_t> parse_immediate(std::string_view text) {
   std::int64_t value = 0;
   const char* begin = text.data();
@@ -171,6 +185,46 @@ std::optional<bir::BinaryOpcode> lower_compare_materialization_opcode(std::strin
   }
   if (predicate == "uge") {
     return bir::BinaryOpcode::Uge;
+  }
+  return std::nullopt;
+}
+
+std::optional<bir::Value> lower_lossless_immediate_cast(
+    const c4c::codegen::lir::LirInst& inst) {
+  const auto* cast = std::get_if<c4c::codegen::lir::LirCastOp>(&inst);
+  if (cast == nullptr || cast->result.str().empty() ||
+      (cast->kind != c4c::codegen::lir::LirCastKind::SExt &&
+       cast->kind != c4c::codegen::lir::LirCastKind::ZExt)) {
+    return std::nullopt;
+  }
+
+  const auto from_type = lower_scalar_type_text(cast->from_type.str());
+  const auto to_type = lower_scalar_type_text(cast->to_type.str());
+  if (!from_type.has_value() || !to_type.has_value() ||
+      scalar_type_bit_width(*from_type) >= scalar_type_bit_width(*to_type)) {
+    return std::nullopt;
+  }
+
+  const auto source = lower_immediate_or_name(cast->operand.str(), *from_type);
+  if (!source.has_value() || source->kind != bir::Value::Kind::Immediate) {
+    return std::nullopt;
+  }
+  if (cast->kind == c4c::codegen::lir::LirCastKind::ZExt && source->immediate < 0) {
+    return std::nullopt;
+  }
+  if (!immediate_fits_type(source->immediate, *to_type)) {
+    return std::nullopt;
+  }
+
+  switch (*to_type) {
+    case bir::TypeKind::I8:
+      return bir::Value::immediate_i8(static_cast<std::int8_t>(source->immediate));
+    case bir::TypeKind::I32:
+      return bir::Value::immediate_i32(static_cast<std::int32_t>(source->immediate));
+    case bir::TypeKind::I64:
+      return bir::Value::immediate_i64(source->immediate);
+    case bir::TypeKind::Void:
+      return std::nullopt;
   }
   return std::nullopt;
 }
@@ -1027,8 +1081,11 @@ std::optional<bir::Module> try_lower_to_bir(const c4c::codegen::lir::LirModule& 
   block.label = lir_block.label;
   std::vector<std::string> defined_names;
   defined_names.reserve(function.params.size() + lir_block.insts.size());
+  std::vector<bir::Value> resolved_values;
+  resolved_values.reserve(function.params.size() + lir_block.insts.size());
   for (const auto& param : function.params) {
     defined_names.push_back(param.name);
+    resolved_values.push_back(bir::Value::named(param.type, param.name));
   }
   std::vector<AffineValue> affine_values;
   affine_values.reserve(function.params.size() + lir_block.insts.size());
@@ -1036,6 +1093,17 @@ std::optional<bir::Module> try_lower_to_bir(const c4c::codegen::lir::LirModule& 
     affine_values.push_back(
         AffineValue{index == 0, index == 1, 0});
   }
+  auto resolve_value = [&](const bir::Value& value) -> std::optional<bir::Value> {
+    if (value.kind == bir::Value::Kind::Immediate) {
+      return value;
+    }
+    for (std::size_t index = 0; index < defined_names.size(); ++index) {
+      if (defined_names[index] == value.name) {
+        return resolved_values[index];
+      }
+    }
+    return std::nullopt;
+  };
   for (std::size_t inst_index = 0; inst_index < lir_block.insts.size(); ++inst_index) {
     auto name_is_defined = [&](std::string_view name) {
       return std::find(defined_names.begin(), defined_names.end(), name) !=
@@ -1056,6 +1124,18 @@ std::optional<bir::Module> try_lower_to_bir(const c4c::codegen::lir::LirModule& 
       return std::nullopt;
     };
 
+    if (const auto* cast = std::get_if<c4c::codegen::lir::LirCastOp>(&lir_block.insts[inst_index]);
+        cast != nullptr) {
+      const auto immediate_cast = lower_lossless_immediate_cast(lir_block.insts[inst_index]);
+      if (!immediate_cast.has_value() || name_is_defined(cast->result.str())) {
+        return std::nullopt;
+      }
+      defined_names.push_back(cast->result.str());
+      resolved_values.push_back(*immediate_cast);
+      affine_values.push_back(AffineValue{false, false, immediate_cast->immediate});
+      continue;
+    }
+
     auto binary = [&]() -> std::optional<bir::BinaryInst> {
       if (inst_index + 1 < lir_block.insts.size()) {
         auto lowered_compare = lower_compare_materialization(
@@ -1068,10 +1148,14 @@ std::optional<bir::Module> try_lower_to_bir(const c4c::codegen::lir::LirModule& 
       return lower_binary(lir_block.insts[inst_index]);
     }();
     if (binary.has_value()) {
-      if (!operand_is_available(binary->lhs) || !operand_is_available(binary->rhs) ||
+      const auto lhs_value = resolve_value(binary->lhs);
+      const auto rhs_value = resolve_value(binary->rhs);
+      if (!lhs_value.has_value() || !rhs_value.has_value() ||
           name_is_defined(binary->result.name)) {
         return std::nullopt;
       }
+      binary->lhs = *lhs_value;
+      binary->rhs = *rhs_value;
       const auto lhs = lower_affine_value(binary->lhs);
       const auto rhs = lower_affine_value(binary->rhs);
       if (!lhs.has_value() || !rhs.has_value()) {
@@ -1082,6 +1166,7 @@ std::optional<bir::Module> try_lower_to_bir(const c4c::codegen::lir::LirModule& 
         return std::nullopt;
       }
       defined_names.push_back(binary->result.name);
+      resolved_values.push_back(bir::Value::named(binary->result.type, binary->result.name));
       affine_values.push_back(*combined);
       block.insts.push_back(*binary);
       continue;
@@ -1096,12 +1181,19 @@ std::optional<bir::Module> try_lower_to_bir(const c4c::codegen::lir::LirModule& 
       return std::nullopt;
     }
     ++inst_index;
-    if (!operand_is_available(select->lhs) || !operand_is_available(select->rhs) ||
-        !operand_is_available(select->true_value) ||
-        !operand_is_available(select->false_value) ||
+    const auto lhs_value = resolve_value(select->lhs);
+    const auto rhs_value = resolve_value(select->rhs);
+    const auto true_value_resolved = resolve_value(select->true_value);
+    const auto false_value_resolved = resolve_value(select->false_value);
+    if (!lhs_value.has_value() || !rhs_value.has_value() ||
+        !true_value_resolved.has_value() || !false_value_resolved.has_value() ||
         name_is_defined(select->result.name)) {
       return std::nullopt;
     }
+    select->lhs = *lhs_value;
+    select->rhs = *rhs_value;
+    select->true_value = *true_value_resolved;
+    select->false_value = *false_value_resolved;
     const auto lhs = lower_affine_value(select->lhs);
     const auto rhs = lower_affine_value(select->rhs);
     const auto true_value = lower_affine_value(select->true_value);
@@ -1115,6 +1207,7 @@ std::optional<bir::Module> try_lower_to_bir(const c4c::codegen::lir::LirModule& 
       return std::nullopt;
     }
     defined_names.push_back(select->result.name);
+    resolved_values.push_back(bir::Value::named(select->result.type, select->result.name));
     affine_values.push_back(*predicate ? *true_value : *false_value);
     block.insts.push_back(*select);
   }
@@ -1123,12 +1216,11 @@ std::optional<bir::Module> try_lower_to_bir(const c4c::codegen::lir::LirModule& 
   if (!return_value.has_value()) {
     return std::nullopt;
   }
-  if (return_value->kind == bir::Value::Kind::Named &&
-      std::find(defined_names.begin(), defined_names.end(), return_value->name) ==
-          defined_names.end()) {
+  const auto resolved_return_value = resolve_value(*return_value);
+  if (!resolved_return_value.has_value()) {
     return std::nullopt;
   }
-  block.terminator.value = *return_value;
+  block.terminator.value = *resolved_return_value;
 
   function.blocks.push_back(std::move(block));
   lowered.functions.push_back(std::move(function));
