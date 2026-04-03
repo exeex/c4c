@@ -10,11 +10,41 @@ Source Plan: plan.md
 - [ ] Revalidate backend and full-suite behavior without fallback
 
 Current active item: Step 2, widen the bounded straight-line direct-BIR matcher
-with the next missing single-block shift opcode slice from the existing LIR
-surface. Completed the constant-only integer `shl` and `lshr` routes. Next
-target: extend to adjacent `ashr`, if the same bounded matcher still holds.
-Keep that work scoped to the direct BIR text path without requiring general
-multi-block BIR CFG support or any direct-BIR emitter widening.
+with the next missing single-block opcode slice from the existing LIR surface.
+The bounded shift family now covers constant-only integer `shl`, `lshr`, and
+`ashr`. Next target: identify the next emitter-facing single-block LIR opcode
+or tiny scaffold still falling off the direct BIR path, and keep that work
+scoped to direct BIR text coverage without requiring general multi-block BIR
+CFG support or any direct-BIR emitter widening.
+
+Completed this iteration:
+- Widened the bounded straight-line BIR scaffold with the missing constant-only
+  integer `ashr` slice by adding `bir.ashr` support in `bir.hpp`, `bir.cpp`,
+  and `lir_to_bir.cpp`, keeping it bounded to immediate integer arithmetic that
+  still linearizes into one BIR block.
+- Added backend BIR printer, lowering, and explicit BIR-pipeline regressions
+  via `make_bir_return_ashr_module()`, proving the widened shift slice reaches
+  the BIR text surface as `%t0 = bir.ashr i32 -16, 2`.
+- Added source-level/default-route RISC-V coverage via
+  `tests/c/internal/backend_route_case/return_ashr.c`, proving signed right
+  shift defaults to the BIR pipeline instead of falling back to legacy LLVM IR
+  text. The frontend currently materializes the negative literal as
+  `bir.sub i32 0, 16` before the `bir.ashr`, so the route assertion records
+  that exact BIR shape.
+- Reconfigured and rebuilt the tree, reran
+  `ctest --test-dir build -R backend_bir_tests --output-on-failure`, reran the
+  new route case
+  `backend_codegen_route_riscv64_return_ashr_defaults_to_bir`, then reran
+  `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `327/327` backend-labeled tests passing.
+- Refreshed `test_before.log` and `test_after.log` with full
+  `ctest --test-dir build -j8 --output-on-failure` runs, then passed the
+  regression guard with
+  `--allow-non-decreasing-passed --timeout-threshold 30 --enforce-timeout`
+  (`2764 -> 2765` passed, `0 -> 0` failed, no newly failing tests, no new
+  `>30s` cases). The first concurrent after-run produced transient failures
+  while other binaries were still rebuilding; a clean rerun from the settled
+  build was green and is the recorded result.
 
 Completed this iteration:
 - Widened the bounded straight-line BIR scaffold with the missing constant-only

@@ -48,6 +48,7 @@ enum class BinaryOpcode : unsigned char {
   Xor,
   Shl,
   LShr,
+  AShr,
   SDiv,
   UDiv,
   SRem,

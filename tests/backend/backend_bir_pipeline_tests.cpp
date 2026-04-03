@@ -156,6 +156,19 @@ void test_backend_bir_pipeline_routes_lshr_through_bir_text_surface() {
                   "explicit BIR selection should keep the lshr result on the BIR text path");
 }
 
+void test_backend_bir_pipeline_routes_ashr_through_bir_text_surface() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_bir_return_ashr_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Riscv64));
+
+  expect_contains(rendered, "bir.func @main() -> i32 {",
+                  "explicit BIR selection should preserve the tiny ashr signature on the BIR text path");
+  expect_contains(rendered, "%t0 = bir.ashr i32 -16, 2",
+                  "explicit BIR selection should expose the widened ashr slice on the BIR text path");
+  expect_contains(rendered, "bir.ret i32 %t0",
+                  "explicit BIR selection should keep the ashr result on the BIR text path");
+}
+
 void test_backend_bir_pipeline_routes_sdiv_through_bir_text_surface() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_bir_return_sdiv_module()},
@@ -1206,6 +1219,7 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_backend_bir_pipeline_routes_xor_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_shl_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_lshr_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_routes_ashr_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_sdiv_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_udiv_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_srem_through_bir_text_surface);
