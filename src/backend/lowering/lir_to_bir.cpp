@@ -1435,6 +1435,19 @@ std::optional<bir::Function> try_lower_widened_i8_conditional_phi_select_functio
     }
     return std::nullopt;
   };
+  auto resolve_value_from = [&](const std::vector<std::string>& names,
+                                const std::vector<bir::Value>& values,
+                                const bir::Value& value) -> std::optional<bir::Value> {
+    if (value.kind == bir::Value::Kind::Immediate) {
+      return value;
+    }
+    for (std::size_t index = 0; index < names.size(); ++index) {
+      if (names[index] == value.name) {
+        return values[index];
+      }
+    }
+    return std::nullopt;
+  };
   auto narrow_i8_value = [&](const bir::Value& value) -> std::optional<bir::Value> {
     if (value.kind == bir::Value::Kind::Immediate) {
       if (!immediate_fits_type(value.immediate, bir::TypeKind::I8)) {
@@ -1526,48 +1539,129 @@ std::optional<bir::Function> try_lower_widened_i8_conditional_phi_select_functio
   const auto* phi = join_block->insts.size() > 0 ? std::get_if<LirPhiOp>(&join_block->insts[0]) : nullptr;
   const auto* ret = std::get_if<LirRet>(&join_block->terminator);
   if (phi == nullptr || ret == nullptr || phi->result.str().empty() ||
-      phi->type_str.str() != "i8" || phi->incoming.size() != 2 ||
-      !ret->value_str.has_value() || ret->type_str != "i8" ||
-      *ret->value_str != phi->result.str() ||
+      phi->incoming.size() != 2 || !ret->value_str.has_value() || ret->type_str != "i8" ||
       phi->incoming[0].second != true_phi_pred->label ||
       phi->incoming[1].second != false_phi_pred->label) {
     return std::nullopt;
   }
 
-  auto lower_branch_value = [&](const LirBlock& block, std::string_view value_text)
-      -> std::optional<bir::Value> {
-    if (block.insts.empty()) {
-      const auto value = lower_immediate_or_name(value_text, bir::TypeKind::I8);
-      if (!value.has_value()) {
+  struct LoweredWidenedChain {
+    std::vector<bir::BinaryInst> insts;
+    bir::Value final_value;
+  };
+  auto lower_widened_chain = [&](const LirBlock& first_block,
+                                 const LirBlock* second_block,
+                                 std::string_view expected_result,
+                                 bir::TypeKind expected_type)
+      -> std::optional<LoweredWidenedChain> {
+    std::vector<std::string> local_names = defined_names;
+    std::vector<bir::Value> local_values = resolved_values;
+    std::vector<bir::BinaryInst> lowered;
+
+    auto name_is_defined_local = [&](std::string_view name) {
+      return std::find(local_names.begin(), local_names.end(), name) != local_names.end();
+    };
+    auto handle_inst = [&](const LirInst& inst) -> bool {
+      if (const auto* cast = std::get_if<LirCastOp>(&inst); cast != nullptr) {
+        if (cast->result.str().empty() || name_is_defined_local(cast->result.str())) {
+          return false;
+        }
+        if ((cast->kind == LirCastKind::SExt || cast->kind == LirCastKind::ZExt) &&
+            cast->from_type.str() == "i8" && cast->to_type.str() == "i32") {
+          const auto source = lower_immediate_or_name(cast->operand.str(), bir::TypeKind::I8);
+          if (!source.has_value()) {
+            return false;
+          }
+          const auto resolved_source = resolve_value_from(local_names, local_values, *source);
+          if (!resolved_source.has_value()) {
+            return false;
+          }
+          local_names.push_back(cast->result.str());
+          local_values.push_back(*resolved_source);
+          return true;
+        }
+        if (cast->kind == LirCastKind::Trunc && cast->from_type.str() == "i32" &&
+            cast->to_type.str() == "i8") {
+          const auto source = lower_immediate_or_name(cast->operand.str(), bir::TypeKind::I32);
+          if (!source.has_value()) {
+            return false;
+          }
+          const auto resolved_source = resolve_value_from(local_names, local_values, *source);
+          const auto narrowed_source =
+              resolved_source.has_value() ? narrow_i8_value(*resolved_source) : std::nullopt;
+          if (!narrowed_source.has_value()) {
+            return false;
+          }
+          local_names.push_back(cast->result.str());
+          local_values.push_back(*narrowed_source);
+          return true;
+        }
+        return false;
+      }
+
+      auto binary = lower_binary(inst);
+      if (!binary.has_value() || binary->result.type != bir::TypeKind::I32 ||
+          (binary->opcode != bir::BinaryOpcode::Add &&
+           binary->opcode != bir::BinaryOpcode::Sub) ||
+          name_is_defined_local(binary->result.name)) {
+        return false;
+      }
+      const auto lhs_value = resolve_value_from(local_names, local_values, binary->lhs);
+      const auto rhs_value = resolve_value_from(local_names, local_values, binary->rhs);
+      const auto narrow_lhs = lhs_value.has_value() ? narrow_i8_value(*lhs_value) : std::nullopt;
+      const auto narrow_rhs = rhs_value.has_value() ? narrow_i8_value(*rhs_value) : std::nullopt;
+      if (!narrow_lhs.has_value() || !narrow_rhs.has_value()) {
+        return false;
+      }
+
+      lowered.push_back(bir::BinaryInst{
+          binary->opcode,
+          bir::Value::named(bir::TypeKind::I8, binary->result.name),
+          *narrow_lhs,
+          *narrow_rhs,
+      });
+      local_names.push_back(binary->result.name);
+      local_values.push_back(bir::Value::named(bir::TypeKind::I8, binary->result.name));
+      return true;
+    };
+
+    for (const auto& inst : first_block.insts) {
+      if (!handle_inst(inst)) {
         return std::nullopt;
       }
-      return resolve_value(*value);
     }
-    if (block.insts.size() != 1) {
-      return std::nullopt;
-    }
-
-    const auto* trunc = std::get_if<LirCastOp>(&block.insts.front());
-    if (trunc == nullptr || trunc->result.str().empty() || trunc->result.str() != value_text ||
-        trunc->kind != LirCastKind::Trunc || trunc->from_type.str() != "i32" ||
-        trunc->to_type.str() != "i8") {
-      return std::nullopt;
+    if (second_block != nullptr) {
+      for (const auto& inst : second_block->insts) {
+        if (!handle_inst(inst)) {
+          return std::nullopt;
+        }
+      }
     }
 
-    const auto widened_value = lower_immediate_or_name(trunc->operand.str(), bir::TypeKind::I32);
-    if (!widened_value.has_value()) {
+    const auto final_value = lower_immediate_or_name(expected_result, expected_type);
+    if (!final_value.has_value()) {
       return std::nullopt;
     }
-    const auto resolved_value = resolve_value(*widened_value);
-    if (!resolved_value.has_value()) {
+    const auto resolved_value = resolve_value_from(local_names, local_values, *final_value);
+    const auto narrow_value =
+        resolved_value.has_value() ? narrow_i8_value(*resolved_value) : std::nullopt;
+    if (!narrow_value.has_value()) {
       return std::nullopt;
     }
-    return narrow_i8_value(*resolved_value);
+    return LoweredWidenedChain{std::move(lowered), *narrow_value};
   };
 
-  const auto true_value = lower_branch_value(*true_value_block, phi->incoming[0].first);
-  const auto false_value = lower_branch_value(*false_value_block, phi->incoming[1].first);
-  if (!true_value.has_value() || !false_value.has_value()) {
+  const auto true_chain =
+      lower_widened_chain(*true_value_block,
+                          lir_function.blocks.size() == 4 ? nullptr : true_phi_pred,
+                          phi->incoming[0].first,
+                          phi->type_str.str() == "i8" ? bir::TypeKind::I8 : bir::TypeKind::I32);
+  const auto false_chain =
+      lower_widened_chain(*false_value_block,
+                          lir_function.blocks.size() == 4 ? nullptr : false_phi_pred,
+                          phi->incoming[1].first,
+                          phi->type_str.str() == "i8" ? bir::TypeKind::I8 : bir::TypeKind::I32);
+  if (!true_chain.has_value() || !false_chain.has_value()) {
     return std::nullopt;
   }
 
@@ -1579,9 +1673,7 @@ std::optional<bir::Function> try_lower_widened_i8_conditional_phi_select_functio
       return param.name == value.name;
     });
   };
-  if (!operand_is_param_or_immediate(*lhs) || !operand_is_param_or_immediate(*rhs) ||
-      !operand_is_param_or_immediate(*true_value) ||
-      !operand_is_param_or_immediate(*false_value)) {
+  if (!operand_is_param_or_immediate(*lhs) || !operand_is_param_or_immediate(*rhs)) {
     return std::nullopt;
   }
 
@@ -1592,15 +1684,127 @@ std::optional<bir::Function> try_lower_widened_i8_conditional_phi_select_functio
 
   bir::Block block;
   block.label = entry.label;
+  std::vector<std::string> available_names;
+  available_names.reserve(params.size() + true_chain->insts.size() + false_chain->insts.size() +
+                          join_block->insts.size());
+  for (const auto& param : params) {
+    available_names.push_back(param.name);
+  }
+  for (const auto& inst : true_chain->insts) {
+    block.insts.push_back(inst);
+    available_names.push_back(inst.result.name);
+  }
+  for (const auto& inst : false_chain->insts) {
+    if (std::find(available_names.begin(), available_names.end(), inst.result.name) !=
+        available_names.end()) {
+      return std::nullopt;
+    }
+    block.insts.push_back(inst);
+    available_names.push_back(inst.result.name);
+  }
+
   block.insts.push_back(bir::SelectInst{
       *predicate,
       bir::Value::named(bir::TypeKind::I8, phi->result.str()),
       *lhs,
       *rhs,
-      *true_value,
-      *false_value,
+      true_chain->final_value,
+      false_chain->final_value,
   });
-  block.terminator.value = bir::Value::named(bir::TypeKind::I8, phi->result.str());
+  available_names.push_back(phi->result.str());
+
+  auto operand_is_available = [&](const bir::Value& value) {
+    if (value.kind == bir::Value::Kind::Immediate) {
+      return true;
+    }
+    return std::find(available_names.begin(), available_names.end(), value.name) !=
+           available_names.end();
+  };
+
+  if (phi->type_str.str() == "i8" && join_block->insts.size() == 1 &&
+      *ret->value_str == phi->result.str()) {
+    block.terminator.value = bir::Value::named(bir::TypeKind::I8, phi->result.str());
+    function.blocks.push_back(std::move(block));
+    return function;
+  }
+
+  const auto* trunc =
+      join_block->insts.empty() ? nullptr : std::get_if<LirCastOp>(&join_block->insts.back());
+  if (phi->type_str.str() != "i32" || trunc == nullptr || trunc->result.str().empty() ||
+      trunc->kind != LirCastKind::Trunc || trunc->from_type.str() != "i32" ||
+      trunc->to_type.str() != "i8" || *ret->value_str != trunc->result.str()) {
+    return std::nullopt;
+  }
+
+  for (std::size_t inst_index = 1; inst_index + 1 < join_block->insts.size(); ++inst_index) {
+    auto binary = lower_binary(join_block->insts[inst_index]);
+    if (!binary.has_value() || binary->result.type != bir::TypeKind::I32 ||
+        (binary->opcode != bir::BinaryOpcode::Add &&
+         binary->opcode != bir::BinaryOpcode::Sub)) {
+      return std::nullopt;
+    }
+
+    const auto lhs_value =
+        binary->lhs.kind == bir::Value::Kind::Immediate
+            ? std::optional<bir::Value>(binary->lhs)
+            : (binary->lhs.name == phi->result.str()
+                   ? std::optional<bir::Value>(
+                         bir::Value::named(bir::TypeKind::I8, phi->result.str()))
+                   : std::nullopt);
+    const auto rhs_value =
+        binary->rhs.kind == bir::Value::Kind::Immediate
+            ? std::optional<bir::Value>(binary->rhs)
+            : (binary->rhs.name == phi->result.str()
+                   ? std::optional<bir::Value>(
+                         bir::Value::named(bir::TypeKind::I8, phi->result.str()))
+                   : std::nullopt);
+    const auto narrowed_lhs = lhs_value.has_value()
+                                  ? narrow_i8_value(*lhs_value)
+                                  : (operand_is_available(binary->lhs)
+                                         ? std::optional<bir::Value>(
+                                               bir::Value::named(bir::TypeKind::I8,
+                                                                 binary->lhs.name))
+                                         : std::nullopt);
+    const auto narrowed_rhs = rhs_value.has_value()
+                                  ? narrow_i8_value(*rhs_value)
+                                  : (operand_is_available(binary->rhs)
+                                         ? std::optional<bir::Value>(
+                                               bir::Value::named(bir::TypeKind::I8,
+                                                                 binary->rhs.name))
+                                         : std::nullopt);
+    if (!narrowed_lhs.has_value() || !narrowed_rhs.has_value() ||
+        std::find(available_names.begin(), available_names.end(), binary->result.name) !=
+            available_names.end()) {
+      return std::nullopt;
+    }
+    block.insts.push_back(bir::BinaryInst{
+        binary->opcode,
+        bir::Value::named(bir::TypeKind::I8, binary->result.name),
+        *narrowed_lhs,
+        *narrowed_rhs,
+    });
+    available_names.push_back(binary->result.name);
+  }
+
+  const auto widened_return_value =
+      lower_immediate_or_name(trunc->operand.str(), bir::TypeKind::I32);
+  if (!widened_return_value.has_value()) {
+    return std::nullopt;
+  }
+  bir::Value return_value;
+  if (widened_return_value->kind == bir::Value::Kind::Immediate) {
+    const auto narrowed_return = narrow_i8_value(*widened_return_value);
+    if (!narrowed_return.has_value()) {
+      return std::nullopt;
+    }
+    return_value = *narrowed_return;
+  } else if (operand_is_available(bir::Value::named(bir::TypeKind::I8, widened_return_value->name))) {
+    return_value = bir::Value::named(bir::TypeKind::I8, widened_return_value->name);
+  } else {
+    return std::nullopt;
+  }
+
+  block.terminator.value = return_value;
   function.blocks.push_back(std::move(block));
   return function;
 }
