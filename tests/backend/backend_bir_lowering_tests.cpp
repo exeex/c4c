@@ -628,6 +628,23 @@ void test_bir_lowering_accepts_two_param_select_predecessor_add_phi_slice() {
                   "BIR lowering should return the fused predecessor-compute select result instead of preserving the legacy phi join");
 }
 
+void test_bir_lowering_accepts_mixed_predecessor_select_post_join_add_slice() {
+  const auto lowered =
+      c4c::backend::lower_to_bir(make_bir_mixed_predecessor_add_phi_post_join_add_module());
+  const auto rendered = c4c::backend::bir::print(lowered);
+
+  expect_contains(rendered, "bir.func @choose_mixed_add() -> i32 {",
+                  "BIR lowering should preserve the bounded mixed predecessor/immediate conditional signature while widening the collapsed join-local arithmetic slice");
+  expect_contains(rendered, "%t3 = bir.add i32 7, 5",
+                  "BIR lowering should hoist the computed predecessor input into the fused BIR block before the select");
+  expect_contains(rendered, "%t4 = bir.select slt i32 2, 3, %t3, 9",
+                  "BIR lowering should collapse the mixed predecessor/immediate phi join into a single BIR select");
+  expect_contains(rendered, "%t5 = bir.add i32 %t4, 6",
+                  "BIR lowering should preserve the bounded post-join add on the fused select result inside the same BIR block");
+  expect_contains(rendered, "bir.ret i32 %t5",
+                  "BIR lowering should return the join-local arithmetic result instead of stopping at the fused select");
+}
+
 void test_bir_lowering_accepts_straight_line_add_sub_chain() {
   const auto lowered = c4c::backend::lower_to_bir(make_bir_return_add_sub_chain_module());
   const auto rendered = c4c::backend::bir::print(lowered);
@@ -794,6 +811,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_single_param_select_phi_slice);
   RUN_TEST(test_bir_lowering_accepts_two_param_select_phi_slice);
   RUN_TEST(test_bir_lowering_accepts_two_param_select_predecessor_add_phi_slice);
+  RUN_TEST(test_bir_lowering_accepts_mixed_predecessor_select_post_join_add_slice);
   RUN_TEST(test_bir_lowering_accepts_straight_line_add_sub_chain);
   RUN_TEST(test_bir_lowering_accepts_i8_add_sub_chain);
   RUN_TEST(test_bir_lowering_accepts_i64_add_sub_chain);

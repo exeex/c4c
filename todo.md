@@ -9,10 +9,29 @@ Source Plan: plan.md
 - [ ] Delete app-layer LLVM asm rescue from `c4cll`
 - [ ] Revalidate backend and full-suite behavior without fallback
 
-Current active item: Step 2, continue the bounded compare-fed phi-join parity
-work with the next smallest predecessor-compute ternary slice that can still be
-hoisted into a single BIR block without widening CFG support or x86/AArch64
-direct-BIR emitter coverage.
+Current active item: Step 2, continue bounded compare-fed phi-join parity with
+the next smallest source-shaped ternary slice that still collapses into one
+BIR block after the fused `bir.select`, likely by extending source-level/default-
+route coverage for join-local post-select arithmetic without widening CFG
+support or x86/AArch64 direct-BIR emitter coverage.
+
+Completed this iteration:
+- Widened `lir_to_bir.cpp` so bounded compare-fed `phi` joins can keep a
+  join-local add/sub chain after the fused `bir.select`, instead of requiring
+  the collapsed select result to return immediately.
+- Added direct BIR lowering and explicit BIR-pipeline regressions for the
+  mixed predecessor/immediate post-join arithmetic slice via
+  `make_bir_mixed_predecessor_add_phi_post_join_add_module()`, proving
+  `%t4 = bir.select slt i32 2, 3, %t3, 9`, `%t5 = bir.add i32 %t4, 6`, and the
+  final `bir.ret i32 %t5` stay on the BIR text path.
+- Rebuilt `backend_bir_tests`, reran
+  `ctest --test-dir build -R backend_bir_tests --output-on-failure`, reran
+  `ctest --test-dir build -L backend --output-on-failure -j8`, then refreshed
+  `test_fail_after.log` with a full `ctest --test-dir build -j8
+  --output-on-failure` run.
+- Passed the regression guard against `test_fail_before.log` with
+  `--allow-non-decreasing-passed` (`2743 -> 2743` passed, `0 -> 0` failed, no
+  newly failing tests, no new `>30s` cases).
 
 Completed this iteration:
 - Widened the bounded compare-fed phi-join BIR matcher so two-parameter
@@ -361,6 +380,10 @@ Resume notes:
 - `lir_to_bir.cpp` now also hoists the bounded 4-block predecessor-compute
   compare-fed phi-join shape when each arm is an add/sub-only affine chain over
   params/immediates and the join still collapses into a single `bir.select`.
+- `lir_to_bir.cpp` now also preserves bounded join-local add/sub chains after a
+  collapsed compare-fed `phi` join, as long as the whole slice still fits in
+  one BIR block and only references values made available by the fused select
+  and prior bounded instructions.
 - The next bounded gap is instruction coverage rather than another scalar type:
   the BIR scaffold still rejects straight-line integer arithmetic outside
   `add/sub/mul/sdiv/srem/urem` plus the newly added bounded

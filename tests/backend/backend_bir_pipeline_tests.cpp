@@ -329,6 +329,23 @@ void test_backend_bir_pipeline_routes_two_param_select_predecessor_add_phi_throu
                   "explicit BIR selection should keep the fused predecessor-compute select result on the BIR text path");
 }
 
+void test_backend_bir_pipeline_routes_mixed_predecessor_select_post_join_add_through_bir_text_surface() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_bir_mixed_predecessor_add_phi_post_join_add_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Riscv64));
+
+  expect_contains(rendered, "bir.func @choose_mixed_add() -> i32 {",
+                  "explicit BIR selection should preserve the bounded mixed predecessor/immediate conditional signature on the BIR text path");
+  expect_contains(rendered, "%t3 = bir.add i32 7, 5",
+                  "explicit BIR selection should keep the computed predecessor input on the fused BIR block");
+  expect_contains(rendered, "%t4 = bir.select slt i32 2, 3, %t3, 9",
+                  "explicit BIR selection should collapse the mixed predecessor/immediate phi join into a bounded BIR select");
+  expect_contains(rendered, "%t5 = bir.add i32 %t4, 6",
+                  "explicit BIR selection should preserve the bounded post-join add on the fused select result");
+  expect_contains(rendered, "bir.ret i32 %t5",
+                  "explicit BIR selection should keep the join-local arithmetic result on the BIR text path");
+}
+
 void test_backend_bir_pipeline_routes_i8_chain_through_bir_text_surface() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_bir_i8_return_add_sub_chain_module()},
@@ -707,6 +724,7 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_backend_bir_pipeline_routes_single_param_select_phi_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_two_param_select_phi_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_two_param_select_predecessor_add_phi_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_routes_mixed_predecessor_select_post_join_add_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_i8_chain_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_i64_chain_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_single_param_chain_through_bir_text_surface);
