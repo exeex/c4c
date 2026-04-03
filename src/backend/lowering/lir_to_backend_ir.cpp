@@ -2043,6 +2043,21 @@ std::optional<BackendFunction> adapt_constant_conditional_goto_return_function(
         continue;
       }
 
+      if (const auto* select = std::get_if<LirSelectOp>(&inst)) {
+        const auto bit_width = parse_integer_bit_width(select->type_str);
+        const auto cond = resolve_predicate(select->cond);
+        const auto true_value = resolve_int(select->true_val);
+        const auto false_value = resolve_int(select->false_val);
+        if (!bit_width.has_value() || !cond.has_value() || !true_value.has_value() ||
+            !false_value.has_value()) {
+          return std::nullopt;
+        }
+        const auto selected = *cond ? *true_value : *false_value;
+        integer_values[select->result] = ResolvedInteger{
+            truncate_integer_bits(selected.bits, *bit_width), *bit_width};
+        continue;
+      }
+
       return std::nullopt;
     }
 
