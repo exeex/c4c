@@ -161,6 +161,23 @@ void test_bir_printer_renders_minimal_ult_scaffold() {
                   "BIR printer should let unsigned relational compare results flow into integer returns");
 }
 
+void test_bir_printer_renders_minimal_ule_scaffold() {
+  using namespace c4c::backend::bir;
+
+  auto module = make_return_immediate_module();
+  auto& block = module.functions.front().blocks.front();
+  block.insts.push_back(
+      BinaryInst{BinaryOpcode::Ule, Value::named(TypeKind::I32, "%t0"),
+                 Value::immediate_i32(7), Value::immediate_i32(7)});
+  block.terminator.value = Value::named(TypeKind::I32, "%t0");
+
+  const auto rendered = c4c::backend::bir::print(module);
+  expect_contains(rendered, "%t0 = bir.ule i32 7, 7",
+                  "BIR printer should render unsigned less-than-or-equal compare materialization in BIR terms");
+  expect_contains(rendered, "bir.ret i32 %t0",
+                  "BIR printer should let unsigned less-than-or-equal compare results flow into integer returns");
+}
+
 void test_bir_printer_renders_minimal_return_immediate_scaffold() {
   const auto rendered = c4c::backend::bir::print(make_return_immediate_module());
 
@@ -345,6 +362,16 @@ void test_bir_lowering_accepts_tiny_return_ult_lir_slice() {
                   "BIR lowering should return the widened unsigned relational compare result instead of leaving the legacy i1/zext pair intact");
 }
 
+void test_bir_lowering_accepts_tiny_return_ule_lir_slice() {
+  const auto lowered = c4c::backend::lower_to_bir(make_bir_return_ule_module());
+  const auto rendered = c4c::backend::bir::print(lowered);
+
+  expect_contains(rendered, "%t1 = bir.ule i32 7, 7",
+                  "BIR lowering should fold an unsigned less-than-or-equal compare-plus-zext return pattern into a bounded BIR compare materialization");
+  expect_contains(rendered, "bir.ret i32 %t1",
+                  "BIR lowering should return the widened unsigned less-than-or-equal compare result instead of leaving the legacy i1/zext pair intact");
+}
+
 void test_bir_lowering_accepts_straight_line_add_sub_chain() {
   const auto lowered = c4c::backend::lower_to_bir(make_bir_return_add_sub_chain_module());
   const auto rendered = c4c::backend::bir::print(lowered);
@@ -475,6 +502,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_printer_renders_minimal_eq_scaffold);
   RUN_TEST(test_bir_printer_renders_minimal_slt_scaffold);
   RUN_TEST(test_bir_printer_renders_minimal_ult_scaffold);
+  RUN_TEST(test_bir_printer_renders_minimal_ule_scaffold);
   RUN_TEST(test_bir_printer_renders_minimal_return_immediate_scaffold);
   RUN_TEST(test_bir_printer_renders_i8_scaffold);
   RUN_TEST(test_bir_printer_renders_i64_scaffold);
@@ -490,6 +518,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_tiny_return_eq_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_slt_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_ult_lir_slice);
+  RUN_TEST(test_bir_lowering_accepts_tiny_return_ule_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_straight_line_add_sub_chain);
   RUN_TEST(test_bir_lowering_accepts_i8_add_sub_chain);
   RUN_TEST(test_bir_lowering_accepts_i64_add_sub_chain);
