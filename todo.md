@@ -49,13 +49,38 @@ Completed this iteration:
   `>30s` cases).
 
 Current active item: Step 2, continue tightening the widened-width/source-level
-`unsigned char` route matrix by locking in the next bounded compare/select
-predecessor-arm variant already covered for `i32`.
-Next target: audit the mirrored widened-`i8` mixed-then-deeper predecessor-arm
-compare/select with the adjacent join-local post-add-sub chain
-(`x == y ? x + 8 - 3 : y + 11 - 4 + 7`, then `+ 6 - 2`) and keep the slice
-within Step 2 conditional backend-route parity before extending the same
-mirrored shape to the post-add-sub-add tail.
+`unsigned char` route matrix by carrying the mirrored mixed-then-deeper
+predecessor-arm coverage forward from the now-validated post-add-sub slice to
+the remaining bounded post-add-sub-add join-chain variant already covered for
+`i32`.
+Next target: audit the widened-`i8` mirrored mixed-then-deeper predecessor-arm
+compare/select with the adjacent join-local post-add-sub-add tail
+(`x == y ? x + 8 - 3 : y + 11 - 4 + 7`, then `+ 6 - 2 + 9`) and keep the slice
+within Step 2 conditional backend-route parity.
+
+Completed this iteration:
+- Audited the mirrored widened-width/source-level two-parameter
+  `unsigned char` compare/select wrapper with a mixed-then-deeper
+  predecessor-arm shape and an adjacent join-local post-add-sub chain, and
+  confirmed the default `--codegen asm` route already stays on the direct BIR
+  pipeline for
+  `unsigned char choose2_mixed_then_deeper_post_chain_u(unsigned char x, unsigned char y) { return (unsigned char)((x == y ? x + 8 - 3 : y + 11 - 4 + 7) + 6 - 2); }`;
+  no `src/backend/lowering/lir_to_bir.cpp` change was required for this slice.
+- Added
+  `tests/c/internal/backend_route_case/two_param_u8_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_sub.c`,
+  proving the bounded two-parameter `u8` mixed-then-deeper predecessor-arm
+  post-add-sub wrapper reaches the backend through BIR instead of legacy LLVM
+  IR text.
+- Registered
+  `backend_codegen_route_riscv64_two_param_u8_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_sub_defaults_to_bir`
+  in `tests/c/internal/InternalTests.cmake`, asserting the emitted text
+  contains `bir.func @choose2_mixed_then_deeper_post_chain_u(i8 %p.x, i8 %p.y) -> i8 {`,
+  `%t11 = bir.add i8 %p.x, 8`, `%t12 = bir.sub i8 %t11, 3`,
+  `%t14 = bir.add i8 %p.y, 11`, `%t15 = bir.sub i8 %t14, 4`,
+  `%t16 = bir.add i8 %t15, 7`,
+  `%t17 = bir.select eq i8 %p.x, %p.y, %t12, %t16`,
+  `%t18 = bir.add i8 %t17, 6`, `%t19 = bir.sub i8 %t18, 2`, and forbids legacy
+  LLVM IR `define i8 @choose2_mixed_then_deeper_post_chain_u(i8 %p.x, i8 %p.y)`.
 
 Iteration note: the mirrored two-parameter widened-`i8` mixed-then-deeper
 predecessor-arm compare/select with a join-local post-add tail is now covered
