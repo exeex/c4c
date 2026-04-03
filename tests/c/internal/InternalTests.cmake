@@ -1014,6 +1014,15 @@ if(CLANG_EXECUTABLE)
     )
 
     c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_single_param_select_ne_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/single_param_select_ne.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/single_param_select_ne_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @choose_ne(i32 %p.x) -> i32 {|%t8 = bir.select ne i32 %p.x, 7, 11, 4|bir.ret i32 %t8"
+      FORBIDDEN_SNIPPETS "define i32 @choose_ne(i32 %p.x)"
+    )
+
+    c4c_add_backend_codegen_route_test(
       backend_codegen_route_riscv64_two_param_add_defaults_to_bir
       SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_add.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu

@@ -1623,11 +1623,38 @@ Completed this iteration:
   passed with `--allow-non-decreasing-passed` (`2728 -> 2737` passed, `0 -> 1`
   failed, no newly failing tests, no new `>30s` cases).
 
+Completed this iteration:
+- Audited the current Step 2 frontier against the tree and confirmed the
+  earlier `todo.md` note about the next constant-only bitwise opcode was stale:
+  the repo already contains bounded direct-BIR route coverage for
+  `or`/`xor`/`shl`/`lshr`/`ashr`, and backend validation now reports
+  `353/353` backend-labeled tests passing with those slices in place.
+- Added
+  `tests/c/internal/backend_route_case/single_param_select_ne.c`,
+  extending the compare-fed single-block select route matrix beyond `eq` with
+  the bounded one-parameter `ne` ternary
+  `int choose_ne(int x) { return x != 7 ? 11 : 4; }`.
+- Registered
+  `backend_codegen_route_riscv64_single_param_select_ne_defaults_to_bir`
+  in `tests/c/internal/InternalTests.cmake`, asserting the emitted text
+  contains `bir.func @choose_ne(i32 %p.x) -> i32 {`,
+  `%t8 = bir.select ne i32 %p.x, 7, 11, 4`, and `bir.ret i32 %t8`, while
+  forbidding legacy LLVM IR `define i32 @choose_ne(i32 %p.x)`.
+- Reconfigured and rebuilt the tree, reran
+  `backend_codegen_route_riscv64_single_param_select_ne_defaults_to_bir`,
+  reran `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `353/353` backend-labeled tests passing, then refreshed
+  `test_fail_after.log` with a full `ctest --test-dir build -j8 --output-on-failure`
+  run and passed the regression guard against `test_fail_before.log` with
+  `--allow-non-decreasing-passed --timeout-threshold 30 --enforce-timeout`
+  (`2782 -> 2791` passed, `0 -> 0` failed, no newly failing tests, no new
+  `>30s` cases).
+
 Next intended slice:
-- Continue Phase 2 parity with the next bounded straight-line instruction gap
-  that still linearizes into one BIR block, likely the next constant-only
-  bitwise opcode after `and` (`or` or `xor`) before considering shift support
-  or any broader matcher widening.
+- Continue Phase 2 parity by widening compare-fed `bir.select` predicate
+  coverage beyond the new `i32 ne` route, likely the analogous bounded
+  source-level `unsigned char` single-parameter `ne` ternary before moving on
+  to broader non-`eq` predecessor-arm select matrices.
 
 Resume notes:
 - `backend.cpp` still contains the legacy route (`emit_legacy_module`), but
@@ -1643,14 +1670,17 @@ Resume notes:
   full bounded integer predicate set
   (`eq`/`ne`/`slt`/`sle`/`sgt`/`sge`/`ult`/`ule`/`ugt`/`uge`) when the result is
   immediately widened back to the same integer type for return.
-- `lir_to_bir.cpp` now also accepts the smallest constant-only bitwise integer
-  slice for direct BIR routing via `and`; the remaining straight-line
-  instruction gap is still the rest of the bitwise/shift surface.
+- `lir_to_bir.cpp` now also accepts the bounded constant-only straight-line
+  bitwise/shift surface currently covered in-tree
+  (`and`/`or`/`xor`/`shl`/`lshr`/`ashr`) in addition to the earlier arithmetic
+  and compare-materialization slices.
 - `lir_to_bir.cpp` now also accepts the smallest source-shaped compare-driven
   ternary control-flow surfaces when they can be collapsed back into one BIR
   block: direct branch-to-return and empty branch-only goto chains feeding a
   final constant/parameter `phi` join, now covered for both one-parameter and
-  two-parameter compare-fed ternary inputs.
+  two-parameter compare-fed ternary inputs; the single-parameter scalar route
+  matrix now includes both `eq` and `ne` predicate coverage for the direct
+  `bir.select` surface.
 - `lir_to_bir.cpp` now also hoists the bounded 4-block predecessor-compute
   compare-fed phi-join shape when each arm is an add/sub-only affine chain over
   params/immediates and the join still collapses into a single `bir.select`.
@@ -1662,13 +1692,12 @@ Resume notes:
   ternary variant where each arm computes a bounded add/sub affine chain before
   an empty end block and the join still linearizes into one `bir.select`
   followed by a bounded post-join add.
-- The next bounded gap is instruction coverage rather than another scalar type:
-  the BIR scaffold still rejects straight-line integer arithmetic outside
-  `add/sub/mul/and/sdiv/udiv/srem/urem` plus the newly added bounded
-  `eq`/`ne`/`slt`/`sle`/`sgt`/`sge`/`ult`/`ule`/`ugt`/`uge` materialization
-  slices, and it still lacks the broader compare/select/control-flow clusters
-  once the branch shape stops collapsing into the bounded single-block BIR
-  `select` surface.
+- The next bounded gap is now more about predicate-matrix coverage than opcode
+  inventory: the straight-line constant-only arithmetic/bitwise/shift scaffold
+  exercised by the current route tests is in place, but broader non-`eq`
+  compare/select/control-flow clusters are still only partially regression-
+  covered once the branch shape stops collapsing into the bounded single-block
+  BIR `select` surface.
 - Auto-selection into the BIR pipeline in `llvm_codegen.cpp` is intentionally
   constrained to `Target::Riscv64`; explicit BIR pipeline options are still the
   only supported way to exercise non-RISC-V direct-BIR emitter slices.
