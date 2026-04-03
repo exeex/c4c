@@ -14,8 +14,35 @@ single-block/default-route surface for the next non-foldable direct-BIR
 coverage slice now that the source-level widened `i8` arithmetic wrapper also
 stays on the BIR route.
 Next target: audit whether the analogous source-level two-parameter widened
-`i8` affine chain already stays on direct BIR or still needs its own bounded
-route slice and lowering follow-through.
+`i8` staged-affine shape (`(x + 2) + y - 1`) already stays on direct BIR or
+still needs its own bounded route slice and lowering follow-through.
+
+Completed this iteration:
+- Audited the source-level/default-route two-parameter widened-width RISC-V
+  `i8` affine chain and confirmed it already stays on the direct BIR pipeline;
+  the missing piece was route coverage rather than additional
+  `src/backend/lowering/lir_to_bir.cpp` work.
+- Added
+  `tests/c/internal/backend_route_case/two_param_i8_add_sub_chain.c`, proving
+  `signed char tiny_mix(signed char x, signed char y) { return (signed char)(((x + y) + 2) - 1); }`
+  reaches the backend through BIR instead of falling through legacy LLVM IR
+  text.
+- Registered
+  `backend_codegen_route_riscv64_two_param_i8_add_sub_chain_defaults_to_bir`
+  in `tests/c/internal/InternalTests.cmake`, asserting the emitted text
+  contains `bir.func @tiny_mix(i8 %p.x, i8 %p.y) -> i8 {`,
+  `%t2 = bir.add i8 %p.x, %p.y`, `%t3 = bir.add i8 %t2, 2`,
+  `%t4 = bir.sub i8 %t3, 1`, and forbids legacy LLVM IR
+  `define i8 @tiny_mix(i8 %p.x, i8 %p.y)`.
+- Reconfigured and rebuilt the tree, reran
+  `backend_codegen_route_riscv64_two_param_i8_add_sub_chain_defaults_to_bir`,
+  reran `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `333/333` backend-labeled tests passing, then refreshed
+  `test_fail_after.log` with a full `ctest --test-dir build -j8 --output-on-failure`
+  run and passed the regression guard against `test_fail_before.log` with
+  `--allow-non-decreasing-passed --timeout-threshold 30 --enforce-timeout`
+  (`2760 -> 2771` passed, `0 -> 0` failed, no newly failing tests, no new
+  `>30s` cases).
 
 Completed this iteration:
 - Added source-level/default-route widened-width RISC-V coverage via
