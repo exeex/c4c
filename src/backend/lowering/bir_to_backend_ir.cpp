@@ -81,6 +81,10 @@ BackendModule lower_to_backend_ir(const bir::Module& module) {
     function.signature.return_scalar_type =
         parse_backend_value_scalar_type(function.signature.return_type);
     function.signature.name = bir_function.name;
+    for (const auto& bir_param : bir_function.params) {
+      function.signature.params.push_back(
+          BackendParam{lower_type(bir_param.type), bir_param.name});
+    }
 
     for (const auto& bir_block : bir_function.blocks) {
       BackendBlock block;

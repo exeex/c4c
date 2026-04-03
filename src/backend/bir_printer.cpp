@@ -14,8 +14,15 @@ std::string render_value(const Value& value) {
 }
 
 void render_function(std::ostringstream& out, const Function& function) {
-  out << "bir.func @" << function.name << "() -> "
-      << render_type(function.return_type);
+  out << "bir.func @" << function.name << "(";
+  for (std::size_t index = 0; index < function.params.size(); ++index) {
+    if (index != 0) {
+      out << ", ";
+    }
+    out << render_type(function.params[index].type) << " "
+        << function.params[index].name;
+  }
+  out << ") -> " << render_type(function.return_type);
   if (function.is_declaration) {
     out << "\n";
     return;

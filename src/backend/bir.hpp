@@ -31,6 +31,11 @@ struct Value {
   static Value named(TypeKind type, std::string name);
 };
 
+struct Param {
+  TypeKind type = TypeKind::Void;
+  std::string name;
+};
+
 enum class BinaryOpcode : unsigned char {
   Add,
   Sub,
@@ -56,6 +61,7 @@ struct Block {
 struct Function {
   std::string name;
   TypeKind return_type = TypeKind::Void;
+  std::vector<Param> params;
   std::vector<Block> blocks;
   bool is_declaration = false;
 };

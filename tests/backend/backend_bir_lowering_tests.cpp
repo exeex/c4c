@@ -95,6 +95,18 @@ void test_bir_lowering_accepts_straight_line_add_sub_chain() {
                   "BIR lowering should let the return use the tail of the straight-line arithmetic chain");
 }
 
+void test_bir_lowering_accepts_single_param_add_sub_chain() {
+  const auto lowered = c4c::backend::lower_to_bir(make_bir_single_param_add_sub_chain_module());
+  const auto rendered = c4c::backend::bir::print(lowered);
+
+  expect_contains(rendered, "bir.func @add_one(i32 %p.x) -> i32 {",
+                  "BIR lowering should preserve the surviving one-parameter function signature");
+  expect_contains(rendered, "%t0 = bir.add i32 %p.x, 2",
+                  "BIR lowering should allow the bounded one-parameter slice to start from the incoming BIR value");
+  expect_contains(rendered, "%t1 = bir.sub i32 %t0, 1",
+                  "BIR lowering should keep the one-parameter arithmetic chain in BIR form");
+}
+
 void test_bir_to_backend_ir_preserves_sub_opcode() {
   const auto lowered = c4c::backend::lower_to_bir(make_bir_return_sub_module());
   const auto backend_ir = c4c::backend::lower_to_backend_ir(lowered);
@@ -141,6 +153,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_tiny_return_add_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_sub_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_straight_line_add_sub_chain);
+  RUN_TEST(test_bir_lowering_accepts_single_param_add_sub_chain);
   RUN_TEST(test_bir_to_backend_ir_preserves_sub_opcode);
   RUN_TEST(test_bir_validator_rejects_returning_undefined_named_value);
   RUN_TEST(test_bir_validator_rejects_return_type_mismatch);

@@ -61,6 +61,29 @@ bool validate_binary(const Function& function,
   return true;
 }
 
+bool validate_params(const Function& function,
+                     std::vector<std::string>* defined_names,
+                     std::string* error) {
+  for (const auto& param : function.params) {
+    if (param.name.empty()) {
+      return fail(error, "bir param in @" + function.name +
+                             " must use a non-empty name");
+    }
+    if (!validate_value_type(param.type,
+                             "bir param in @" + function.name,
+                             error)) {
+      return false;
+    }
+    if (std::find(defined_names->begin(), defined_names->end(), param.name) !=
+        defined_names->end()) {
+      return fail(error, "bir param in @" + function.name +
+                             " must not reuse an existing value name");
+    }
+    defined_names->push_back(param.name);
+  }
+  return true;
+}
+
 bool validate_return(const Function& function,
                      const Block& block,
                      const std::vector<std::string>& defined_names,
@@ -122,6 +145,9 @@ bool validate(const Module& module, std::string* error) {
                                " in @" + function.name + " must have a label");
       }
       std::vector<std::string> defined_names;
+      if (!validate_params(function, &defined_names, error)) {
+        return false;
+      }
       for (const auto& inst : block.insts) {
         if (!validate_binary(function, inst, &defined_names, error)) {
           return false;

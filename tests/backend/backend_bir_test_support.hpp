@@ -38,6 +38,7 @@ inline c4c::backend::BackendOptions make_bir_pipeline_options(c4c::backend::Targ
 c4c::codegen::lir::LirModule make_bir_return_add_module();
 c4c::codegen::lir::LirModule make_bir_return_sub_module();
 c4c::codegen::lir::LirModule make_bir_return_add_sub_chain_module();
+c4c::codegen::lir::LirModule make_bir_single_param_add_sub_chain_module();
 
 void run_backend_bir_lowering_tests();
 void run_backend_bir_pipeline_tests();

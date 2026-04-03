@@ -6,13 +6,14 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 2: Flip the production `emit_module_native(...)` route to BIR-first
-  with a bounded legacy fallback and tests first.
+- Step 2: Reassess the next BIR-default slice now that the production route
+  also covers a bounded one-parameter i32 add/sub chain.
 
 ## In Progress
 
-- Reassess the next Step 2 slice now that the BIR-first production route also
-  covers straight-line single-block add/sub chains.
+- Decide whether the next Step 2 slice should widen BIR coverage to another
+  bounded LIR construct or start deleting fallback-only plumbing that no
+  longer protects an exercised route.
 
 ## Pending
 
@@ -69,6 +70,26 @@ Source Plan: plan.md
 - Full-suite regression remained monotonic:
   `test_before.log` -> `test_after.log` increased total tests from `2672` to
   `2674` with zero newly failing cases.
+- Extended `try_lower_to_bir(...)` and the BIR data model so the BIR-first
+  production route now accepts one-parameter straight-line single-block i32
+  add/sub chains in addition to constant-only slices.
+- Added backend BIR coverage for the new bounded parameter-fed slice across
+  lowering, RISC-V route text, x86 asm emission, and AArch64 asm emission.
+- Added the production-route test
+  `backend_codegen_route_riscv64_single_param_add_sub_chain_defaults_to_bir`
+  using `tests/c/internal/backend_route_case/single_param_add_sub_chain.c`.
+- Targeted validation passed:
+  `backend_bir_tests`,
+  `backend_codegen_route_riscv64_return_add_defaults_to_bir`,
+  `backend_codegen_route_riscv64_return_add_sub_chain_defaults_to_bir`,
+  `backend_codegen_route_riscv64_single_param_add_sub_chain_defaults_to_bir`,
+  `backend_codegen_route_riscv64_global_load_falls_back_to_llvm`,
+  `backend_runtime_return_add`,
+  `backend_runtime_return_add_sub_chain`, and
+  `backend_runtime_global_load`.
+- Full-suite regression guard passed:
+  `test_before.log` -> `test_after.log` increased total tests from `2674` to
+  `2675` with zero newly failing cases.
 
 ## Notes
 
@@ -81,9 +102,9 @@ Source Plan: plan.md
 
 ## Next Slice
 
-- Decide whether the next Step 2 slice should expand BIR coverage into another
-  bounded straight-line construct or remove fallback plumbing that is no longer
-  exercised by the surviving default route.
+- If the parameter-fed arithmetic slice lands cleanly, use the same route-test
+  pattern to decide whether the next Step 2 slice should widen BIR coverage to
+  another bounded LIR construct or start trimming fallback-only plumbing.
 
 ## Blockers
 

@@ -52,6 +52,19 @@ void test_backend_bir_pipeline_routes_straight_line_chain_through_bir_text_surfa
                   "explicit BIR selection should expose the chain tail on the BIR route surface");
 }
 
+void test_backend_bir_pipeline_routes_single_param_chain_through_bir_text_surface() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_bir_single_param_add_sub_chain_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Riscv64));
+
+  expect_contains(rendered, "bir.func @add_one(i32 %p.x) -> i32 {",
+                  "explicit BIR selection should preserve the bounded one-parameter signature on the BIR text path");
+  expect_contains(rendered, "%t0 = bir.add i32 %p.x, 2",
+                  "explicit BIR selection should route parameter-fed arithmetic through the BIR surface");
+  expect_contains(rendered, "%t1 = bir.sub i32 %t0, 1",
+                  "explicit BIR selection should keep the bounded parameter-fed chain in BIR text form");
+}
+
 void test_backend_bir_pipeline_drives_x86_return_add_smoke_case_end_to_end() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_bir_return_add_module()},
@@ -72,6 +85,30 @@ void test_backend_bir_pipeline_drives_x86_return_sub_smoke_case_end_to_end() {
                   "BIR pipeline should still reach x86 backend emission for the tiny sub scaffold case");
   expect_contains(rendered, "mov eax, 0",
                   "BIR pipeline should lower the tiny sub/return case to the expected x86 return-immediate asm");
+}
+
+void test_backend_bir_pipeline_drives_x86_single_param_chain_end_to_end() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_bir_single_param_add_sub_chain_module()},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl add_one",
+                  "BIR pipeline should still reach x86 backend emission for the bounded one-parameter slice");
+  expect_contains(rendered, "mov eax, edi",
+                  "x86 BIR lowering should seed the result from the incoming integer argument register");
+  expect_contains(rendered, "add eax, 1",
+                  "x86 BIR lowering should collapse the bounded parameter-fed chain into the expected affine adjustment");
+}
+
+void test_backend_bir_pipeline_drives_aarch64_single_param_chain_end_to_end() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_bir_single_param_add_sub_chain_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Aarch64));
+
+  expect_contains(rendered, ".globl add_one",
+                  "BIR pipeline should still reach aarch64 backend emission for the bounded one-parameter slice");
+  expect_contains(rendered, "add w0, w0, #1",
+                  "aarch64 BIR lowering should collapse the bounded parameter-fed chain into the expected affine adjustment");
 }
 
 void test_backend_bir_pipeline_selection_only_applies_at_lir_entry_input() {
@@ -97,7 +134,10 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_backend_bir_pipeline_is_opt_in_through_backend_options);
   RUN_TEST(test_backend_bir_pipeline_routes_sub_cluster_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_straight_line_chain_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_routes_single_param_chain_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_return_add_smoke_case_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_return_sub_smoke_case_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_single_param_chain_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_aarch64_single_param_chain_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_selection_only_applies_at_lir_entry_input);
 }
