@@ -9,14 +9,34 @@ Source Plan: plan.md
 - [ ] Delete app-layer LLVM asm rescue from `c4cll`
 - [ ] Revalidate backend and full-suite behavior without fallback
 
-Current active item: Step 2, continue auditing the bounded straight-line
-single-block/default-route surface for the next missing direct-BIR coverage
-slice now that the constant-only integer `sub` route case is covered end to
-end.
-Next target: identify the next emitter-facing single-block opcode or tiny
-scaffold that still lacks source-level/default-route BIR coverage, keeping the
-work scoped to direct BIR text assertions without widening general CFG support
-or direct-BIR emitter behavior.
+Current active item: Step 2, keep auditing the bounded straight-line
+single-block/default-route surface for the next non-foldable direct-BIR
+coverage slice now that the constant-only ternary boundary has been pinned
+down.
+Next target: identify the next emitter-facing source-level/default-route case
+that still lacks BIR-route coverage and cannot be folded away before BIR
+lowering, keeping the work scoped to direct BIR text assertions without
+widening CFG support or direct-BIR emitter behavior.
+
+Completed this iteration:
+- Added source-level/default-route RISC-V coverage via
+  `tests/c/internal/backend_route_case/return_select_eq.c`, proving
+  `return 7 == 7 ? 11 : 4;` still stays on the BIR pipeline even though the
+  frontend constant-folds the ternary before BIR lowering.
+- Registered
+  `backend_codegen_route_riscv64_return_select_eq_defaults_to_bir` in
+  `tests/c/internal/InternalTests.cmake`, asserting the emitted text contains
+  `bir.ret i32 11` and forbids legacy LLVM IR `define i32 @main()` output for
+  that folded default-route surface.
+- Audited the constant-only compare-fed `select` gap against the direct BIR
+  pipeline tests and confirmed the source-level form cannot currently exercise
+  `bir.select` because `build/c4cll --target riscv64-unknown-linux-gnu
+  --codegen llvm tests/c/internal/backend_route_case/return_select_eq.c`
+  emits a constant return directly.
+- Reconfigured and rebuilt the tree, reran
+  `backend_codegen_route_riscv64_return_select_eq_defaults_to_bir`, then reran
+  `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `330/330` backend-labeled tests passing.
 
 Completed this iteration:
 - Added source-level/default-route RISC-V coverage via
