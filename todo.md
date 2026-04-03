@@ -12,10 +12,28 @@ Source Plan: plan.md
 Current active item: Step 2, widen the bounded straight-line direct-BIR matcher
 with the next missing single-block opcode slice from the existing LIR surface.
 The bounded shift family now covers constant-only integer `shl`, `lshr`, and
-`ashr`. Next target: identify the next emitter-facing single-block LIR opcode
-or tiny scaffold still falling off the direct BIR path, and keep that work
-scoped to direct BIR text coverage without requiring general multi-block BIR
-CFG support or any direct-BIR emitter widening.
+`ashr`. The constant-only integer `mul` route slice is now covered end to end.
+Next target: identify the next emitter-facing single-block LIR opcode or tiny
+scaffold still missing source-level/default-route BIR coverage, and keep that
+work scoped to direct BIR text coverage without requiring general multi-block
+BIR CFG support or any direct-BIR emitter widening.
+
+Completed this iteration:
+- Added source-level/default-route RISC-V coverage via
+  `tests/c/internal/backend_route_case/return_mul.c`, proving
+  `return 6 * 7;` defaults to the BIR pipeline instead of falling back to
+  legacy LLVM IR text.
+- Registered
+  `backend_codegen_route_riscv64_return_mul_defaults_to_bir` in
+  `tests/c/internal/InternalTests.cmake`, asserting the emitted text contains
+  `%t0 = bir.mul i32 6, 7` and forbids legacy LLVM IR `define i32 @main()`
+  output for that route surface.
+- Reconfigured and rebuilt the tree, reran
+  `ctest --test-dir build -R backend_bir_tests --output-on-failure`, reran the
+  new route case
+  `backend_codegen_route_riscv64_return_mul_defaults_to_bir`, then reran
+  `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `328/328` backend-labeled tests passing.
 
 Completed this iteration:
 - Widened the bounded straight-line BIR scaffold with the missing constant-only
