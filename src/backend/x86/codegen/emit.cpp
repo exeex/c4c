@@ -265,21 +265,28 @@ std::optional<std::pair<std::int64_t, std::int64_t>> match_two_arg_local_rewrite
 
   LirTwoArgLocalRewriteSlotState lhs_slot{std::string(lhs_alloca)};
   LirTwoArgLocalRewriteSlotState rhs_slot{std::string(rhs_alloca)};
-  const auto lhs_store_imm = parse_store_imm(insts[0], lhs_slot.alloca_name);
-  const auto rhs_store_imm = parse_store_imm(insts[1], rhs_slot.alloca_name);
-  if (!lhs_store_imm.has_value() || !rhs_store_imm.has_value()) {
-    return std::nullopt;
-  }
-  lhs_slot.stored_imm = *lhs_store_imm;
-  lhs_slot.initialized = true;
-  rhs_slot.stored_imm = *rhs_store_imm;
-  rhs_slot.initialized = true;
-
   auto match_slot = [&](std::string_view ptr) -> LirTwoArgLocalRewriteSlotState* {
     if (ptr == lhs_slot.alloca_name) return &lhs_slot;
     if (ptr == rhs_slot.alloca_name) return &rhs_slot;
     return nullptr;
   };
+
+  for (std::size_t inst_index = 0; inst_index < 2; ++inst_index) {
+    const auto* store = std::get_if<LirStoreOp>(&insts[inst_index]);
+    if (store == nullptr || store->type_str != "i32") {
+      return std::nullopt;
+    }
+    auto* slot = match_slot(store->ptr);
+    if (slot == nullptr || slot->initialized) {
+      return std::nullopt;
+    }
+    const auto stored_imm = parse_store_imm(insts[inst_index], slot->alloca_name);
+    if (!stored_imm.has_value()) {
+      return std::nullopt;
+    }
+    slot->stored_imm = *stored_imm;
+    slot->initialized = true;
+  }
 
   for (std::size_t inst_index = 2; inst_index < insts.size(); ++inst_index) {
     const auto& inst = insts[inst_index];

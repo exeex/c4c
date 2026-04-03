@@ -3017,6 +3017,96 @@ void test_x86_backend_keeps_renamed_typed_two_arg_second_local_rewrite_slice_on_
                       "x86 backend seam should not fall back when the rewritten second-local typed two-argument local slice relies only on the local rewrite contract");
 }
 
+void test_x86_backend_keeps_renamed_typed_two_arg_double_rewrite_slice_on_asm_path() {
+  auto module = make_typed_direct_call_two_arg_both_local_double_rewrite_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  c4c::codegen::lir::LirFunction* helper = nullptr;
+  c4c::codegen::lir::LirFunction* main_fn = nullptr;
+  for (auto& function : module.functions) {
+    if (function.name == "add_pair") {
+      helper = &function;
+    } else if (function.name == "main") {
+      main_fn = &function;
+    }
+  }
+  expect_true(helper != nullptr && main_fn != nullptr,
+              "x86 renamed typed two-argument double-rewrite regression test needs helper and main functions");
+  if (helper == nullptr || main_fn == nullptr) {
+    return;
+  }
+
+  helper->name = "sum_pair";
+  helper->signature_text = "define i32 @sum_pair(i32 %p.left, i32 %p.right)\n";
+  auto& helper_add = std::get<c4c::codegen::lir::LirBinOp>(helper->blocks.front().insts.front());
+  helper_add.result = "%t.sum";
+  helper_add.lhs = "%p.left";
+  helper_add.rhs = "%p.right";
+  helper->blocks.front().terminator = c4c::codegen::lir::LirRet{std::string("%t.sum"), "i32"};
+
+  auto& lhs_local = std::get<c4c::codegen::lir::LirAllocaOp>(main_fn->alloca_insts[0]);
+  auto& rhs_local = std::get<c4c::codegen::lir::LirAllocaOp>(main_fn->alloca_insts[1]);
+  lhs_local.result = "%lv.shadow.left";
+  rhs_local.result = "%lv.shadow.right";
+
+  auto& rhs_store0 = std::get<c4c::codegen::lir::LirStoreOp>(main_fn->blocks.front().insts[0]);
+  auto& lhs_store0 = std::get<c4c::codegen::lir::LirStoreOp>(main_fn->blocks.front().insts[1]);
+  auto& lhs_load0 = std::get<c4c::codegen::lir::LirLoadOp>(main_fn->blocks.front().insts[2]);
+  auto& lhs_rewrite = std::get<c4c::codegen::lir::LirBinOp>(main_fn->blocks.front().insts[3]);
+  auto& lhs_store1 = std::get<c4c::codegen::lir::LirStoreOp>(main_fn->blocks.front().insts[4]);
+  auto& rhs_load0 = std::get<c4c::codegen::lir::LirLoadOp>(main_fn->blocks.front().insts[5]);
+  auto& rhs_rewrite = std::get<c4c::codegen::lir::LirBinOp>(main_fn->blocks.front().insts[6]);
+  auto& rhs_store1 = std::get<c4c::codegen::lir::LirStoreOp>(main_fn->blocks.front().insts[7]);
+  auto& lhs_load1 = std::get<c4c::codegen::lir::LirLoadOp>(main_fn->blocks.front().insts[8]);
+  auto& rhs_load1 = std::get<c4c::codegen::lir::LirLoadOp>(main_fn->blocks.front().insts[9]);
+  auto& call = std::get<c4c::codegen::lir::LirCallOp>(main_fn->blocks.front().insts[10]);
+
+  rhs_store0.val = "7";
+  rhs_store0.ptr = "%lv.shadow.right";
+  lhs_store0.val = "5";
+  lhs_store0.ptr = "%lv.shadow.left";
+  lhs_load0.result = "%t.load.left";
+  lhs_load0.ptr = "%lv.shadow.left";
+  lhs_rewrite.result = "%t.rewrite.left";
+  lhs_rewrite.lhs = "%t.load.left";
+  lhs_store1.val = "%t.rewrite.left";
+  lhs_store1.ptr = "%lv.shadow.left";
+  rhs_load0.result = "%t.load.right";
+  rhs_load0.ptr = "%lv.shadow.right";
+  rhs_rewrite.result = "%t.rewrite.right";
+  rhs_rewrite.lhs = "%t.load.right";
+  rhs_store1.val = "%t.rewrite.right";
+  rhs_store1.ptr = "%lv.shadow.right";
+  lhs_load1.result = "%t.call.left";
+  lhs_load1.ptr = "%lv.shadow.left";
+  rhs_load1.result = "%t.call.right";
+  rhs_load1.ptr = "%lv.shadow.right";
+  call.result = "%t.sum.result";
+  call.callee = c4c::codegen::lir::LirOperand(std::string("@sum_pair"),
+                                              c4c::codegen::lir::LirOperandKind::Global);
+  call.args_str = "i32 %t.call.left, i32 %t.call.right";
+  main_fn->blocks.front().terminator =
+      c4c::codegen::lir::LirRet{std::string("%t.sum.result"), "i32"};
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".type sum_pair, %function",
+                  "x86 backend seam should key double-rewritten typed two-argument helper definitions from the observed helper symbol instead of a fixed add_pair name");
+  expect_contains(rendered, "sum_pair:\n  mov eax, edi\n  add eax, esi\n  ret\n",
+                  "x86 backend seam should keep renamed double-rewritten typed two-argument helpers on the asm path when helper, parameter, and local SSA names change");
+  expect_contains(rendered, "mov edi, 5",
+                  "x86 backend seam should still materialize the rewritten renamed local first argument even when the initial slot stores appear in the opposite order");
+  expect_contains(rendered, "mov esi, 7",
+                  "x86 backend seam should still materialize the rewritten renamed local second argument from the observed second slot rewrite chain");
+  expect_contains(rendered, "call sum_pair",
+                  "x86 backend seam should still lower renamed double-rewritten typed two-argument direct calls without depending on fixed lowered helper names or store ordering");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back when the double-rewritten typed two-argument local slice relies only on the backend-owned rewrite contract");
+}
+
 void test_x86_backend_renders_typed_two_arg_direct_call_local_arg_slice() {
   auto module = make_typed_direct_call_two_arg_local_arg_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -4753,6 +4843,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_keeps_renamed_typed_two_arg_direct_call_slice_on_asm_path);
   RUN_TEST(test_x86_backend_keeps_renamed_typed_two_arg_first_local_rewrite_slice_on_asm_path);
   RUN_TEST(test_x86_backend_keeps_renamed_typed_two_arg_second_local_rewrite_slice_on_asm_path);
+  RUN_TEST(test_x86_backend_keeps_renamed_typed_two_arg_double_rewrite_slice_on_asm_path);
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_local_arg_slice);
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_second_local_arg_slice);
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_second_local_rewrite_slice);
