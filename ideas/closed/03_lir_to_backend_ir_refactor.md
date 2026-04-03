@@ -1,7 +1,7 @@
 # `lir -> backend_ir` Refactor
 
-Status: Open
-Last Updated: 2026-04-01
+Status: Complete
+Last Updated: 2026-04-03
 
 ## Goal
 
@@ -231,19 +231,66 @@ The follow-on `02` idea is expected to:
 
 ## Acceptance Criteria
 
-- [ ] the production lowering path is described as a backend lowering pass, not a
+- [x] the production lowering path is described as a backend lowering pass, not a
       "minimal adapter"
-- [ ] backend IR no longer requires target emitters to parse call/type structure
+- [x] backend IR no longer requires target emitters to parse call/type structure
       from LLVM-shaped text helpers
-- [ ] `src/backend/ir.hpp` is more backend-native and less stringly-typed in its
+- [x] `src/backend/ir.hpp` is more backend-native and less stringly-typed in its
       core instruction/operand model
-- [ ] the LIR decode responsibility is isolated to a narrow backend-lowering layer
-- [ ] target-specific codegen consumes backend semantics rather than backend-side
+- [x] the LIR decode responsibility is isolated to a narrow backend-lowering layer
+- [x] target-specific codegen consumes backend semantics rather than backend-side
       syntax decoding helpers
-- [ ] the result is clearly positioned as the foundation for the later BIR
+- [x] the result is clearly positioned as the foundation for the later BIR
       rename/migration, not as a competing permanent architecture
-- [ ] build/tests remain regression-free during each migration phase (backend scope:
+- [x] build/tests remain regression-free during each migration phase (backend scope:
       `tests/c/internal/backend_*`, `tests/backend/*`, or backend-regex runs)
+
+## Completion Notes (2026-04-03)
+
+This refactor is complete as a transition-step cleanup of the `lir -> backend_ir`
+boundary.
+
+Delivered outcomes:
+
+- production ownership moved to `src/backend/lowering/lir_to_backend_ir.*`
+  with `src/backend/lir_adapter.hpp` retained only as a compatibility alias
+- LIR syntax decoding for the migrated slices now lives behind lowering-owned
+  helpers such as `src/backend/lowering/call_decode.hpp`
+- backend IR carries more backend-native structure for signatures, calls,
+  linkage, globals, addresses, and local-slot state instead of relying on
+  open-ended string matching in target codegen
+- the active branch-only constant-return local-slot family now lowers as a
+  structured backend semantic path across both AArch64 and x86 coverage,
+  including non-`main` symbols, unused fixed parameters, representative
+  local-slot counts, and bounded typed-scalar support for `i8` / `i32`
+- the result is intentionally staged for the next `backend_ir -> bir` work
+  rather than trying to finish every remaining naming and compatibility cleanup
+  in this idea
+
+## Leftover Boundaries For Follow-On Ideas
+
+The following seams are intentionally retained and bounded for later work under
+the follow-on backend-IR/BIR ideas already in `ideas/open/`:
+
+- `src/backend/lir_adapter.hpp` remains as a thin compatibility entrypoint that
+  forwards directly to `lower_to_backend_ir(...)`
+- some type and helper names still carry transitional `adapter` naming such as
+  `LirAdapterError` and backend test binaries named `backend_lir_adapter_*`
+- the lowering layer still owns legacy syntax-decoding helpers; this idea did
+  not attempt to redesign all remaining LIR text surfaces at once
+- target-local direct-LIR compatibility paths that are outside the migrated
+  structural families remain future cleanup, not open work for this closed idea
+
+## Validation Snapshot (2026-04-03)
+
+- `ctest --test-dir build -j --output-on-failure` completed with
+  `2667 passed / 2 failed / 2669 total`
+- the only remaining failures are the known AArch64 contract cases:
+  `backend_contract_aarch64_return_add_object` and
+  `backend_contract_aarch64_global_load_object`
+- backend regression coverage for the migrated lowering seam remains green,
+  including `backend_lir_adapter_tests` and
+  `backend_lir_adapter_aarch64_tests`
 
 ## Non-Goals
 
