@@ -78,6 +78,8 @@ std::string render_binary_opcode(BinaryOpcode opcode) {
       return "ult";
     case BinaryOpcode::Ule:
       return "ule";
+    case BinaryOpcode::Ugt:
+      return "ugt";
   }
   return "<unknown>";
 }

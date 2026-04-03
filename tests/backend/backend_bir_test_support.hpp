@@ -76,6 +76,7 @@ c4c::codegen::lir::LirModule make_bir_return_sgt_module();
 c4c::codegen::lir::LirModule make_bir_return_sge_module();
 c4c::codegen::lir::LirModule make_bir_return_ult_module();
 c4c::codegen::lir::LirModule make_bir_return_ule_module();
+c4c::codegen::lir::LirModule make_bir_return_ugt_module();
 c4c::codegen::lir::LirModule make_bir_i8_return_add_sub_chain_module();
 c4c::codegen::lir::LirModule make_bir_i64_return_add_sub_chain_module();
 c4c::codegen::lir::LirModule make_bir_single_param_add_sub_chain_module();

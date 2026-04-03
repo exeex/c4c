@@ -10,13 +10,24 @@ Source Plan: plan.md
 - [ ] Revalidate backend and full-suite behavior without fallback
 
 Current active item: Step 2, widen the bounded BIR compare scaffold with the
-next minimal compare-materialization gap after signed greater-than-or-equal
-(`sge`), likely unsigned greater-than (`ugt`) or another constant-only
-`icmp <pred>` + `zext i1 -> i32` return slice, while keeping any new
-default-route exposure limited to RISC-V and not claiming new x86/AArch64
-direct-emitter coverage yet.
+next minimal compare-materialization gap after unsigned greater-than (`ugt`)
+by adding constant-only unsigned greater-than-or-equal (`uge`) plus
+`zext i1 -> i32` return coverage, while keeping any new default-route exposure
+limited to RISC-V and not claiming new x86/AArch64 direct-emitter coverage yet.
 
 Completed this iteration:
+- Widened the bounded BIR compare scaffold with a constant-only unsigned
+  greater-than materialization slice by folding `icmp ugt` plus
+  `zext i1 -> i32` return patterns into `bir.ugt`, with printer/lowering
+  coverage, explicit BIR pipeline coverage, and a new RISC-V default-route
+  regression for `return 7u > 3u;`.
+- Rebuilt the tree, reran `backend_bir_tests` plus the new
+  `backend_codegen_route_riscv64_return_ugt_defaults_to_bir` coverage, then
+  refreshed `test_fail_after.log` with a full `ctest --test-dir build -j
+  --output-on-failure` run.
+- Passed the regression guard against `test_fail_before.log` with
+  `--allow-non-decreasing-passed` (`2728 -> 2739` passed, `0 -> 0` failed, no
+  newly failing tests, no new `>30s` cases).
 - Refactored internal backend test registration by introducing
   `tests/c/internal/cmake/BackendTests.cmake`, centralizing the shared
   `internal;backend` labels and the repeated backend codegen-route CMake
@@ -231,9 +242,9 @@ Completed this iteration:
 
 Next intended slice:
 - Continue Phase 1/2 parity with the next bounded compare-materialization gap
-  after `sge`, likely unsigned greater-than (`ugt`) or unsigned
-  greater-than-or-equal (`uge`), while keeping default BIR auto-routing gated
-  to RISC-V until x86/AArch64 direct-BIR emitters grow native support for it.
+  after `ugt`, likely unsigned greater-than-or-equal (`uge`), while keeping
+  default BIR auto-routing gated to RISC-V until x86/AArch64 direct-BIR
+  emitters grow native support for it.
 
 Resume notes:
 - `backend.cpp` still contains the legacy route (`emit_legacy_module`), but
@@ -246,8 +257,8 @@ Resume notes:
   addition to the existing `i32` and `i64` scaffolds, but backend asm emitters
   still only consume the narrower direct-BIR affine subset.
 - `lir_to_bir.cpp` now folds constant-only compare materialization through
-  `eq/slt/sle/sgt/sge/ult/ule`, but unsigned greater-than-family predicates
-  are still missing from the bounded compare scaffold.
+  `eq/slt/sle/sgt/sge/ult/ule/ugt`, but unsigned greater-than-or-equal is still
+  missing from the bounded compare scaffold.
 - The next bounded gap is instruction coverage rather than another scalar type:
   the BIR scaffold still rejects straight-line integer arithmetic outside
   `add/sub/mul/sdiv/srem/urem` plus the newly added bounded
