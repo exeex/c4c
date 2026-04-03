@@ -3,7 +3,7 @@
 #include <string>
 #include <string_view>
 
-#include "ir.hpp"
+#include "hir_ir.hpp"
 
 namespace c4c::codegen::llvm_backend {
 

@@ -4,7 +4,7 @@
 #include <string>
 
 #include "canonical_symbol.hpp"
-#include "ir.hpp"
+#include "hir_ir.hpp"
 #include "source_profile.hpp"
 #include "validate.hpp"
 

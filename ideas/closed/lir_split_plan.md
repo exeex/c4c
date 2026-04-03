@@ -21,7 +21,7 @@ Historical note:
 
 Archive note:
 
-- detailed migration runbooks previously tracked in `plan.md` and `plan_todo.md` have been folded back into this archived design document and removed.
+- detailed migration runbooks previously tracked in `plan.md` and `todo.md` have been folded back into this archived design document and removed.
 
 ## Goal
 

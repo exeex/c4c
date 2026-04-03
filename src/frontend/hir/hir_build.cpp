@@ -1,4 +1,4 @@
-// Build/coordinator lowering cluster extracted from ast_to_hir.cpp.
+// Build/coordinator lowering cluster extracted from hir_lowering_core.cpp.
 //
 // Included here as a staging artifact for later split integration:
 // - flatten_program_items
@@ -10,13 +10,13 @@
 // - collect_function_template_specializations
 // - collect_depth0_template_instantiations
 // - get_template_param_order_from_instances
-// - record_seed
+// - record_template_seed
 // - resolve_template_call_name
 // - collect_template_instantiations
 // - collect_consteval_template_instantiations
-// - run_consteval_template_seed_fixpoint
+// - realize_consteval_template_seeds_fixpoint
 // - finalize_template_seed_realization
-// - populate_hir_template_defs
+// - materialize_hir_template_defs
 // - collect_ref_overloaded_free_functions
 // - lower_initial_program
 // - instantiate_deferred_template
@@ -26,11 +26,11 @@
 // - lower_non_method_functions_and_globals
 // - lower_pending_struct_methods
 
-#include "ast_to_hir.hpp"
+#include "hir_lowering.hpp"
 #include "hir_lowerer_internal.hpp"
 #include "consteval.hpp"
 #include "type_utils.hpp"
-#include "../parser/parser_internal.hpp"
+#include "../parser/parser.hpp"
 
 #include <algorithm>
 #include <functional>
@@ -134,10 +134,10 @@ std::vector<std::string> Lowerer::get_template_param_order_from_instances(
   return {};
 }
 
-std::string Lowerer::record_seed(const std::string& fn_name,
-                                 TypeBindings bindings,
-                                 NttpBindings nttp_bindings,
-                                 TemplateSeedOrigin origin) {
+std::string Lowerer::record_template_seed(const std::string& fn_name,
+                                          TypeBindings bindings,
+                                          NttpBindings nttp_bindings,
+                                          TemplateSeedOrigin origin) {
   const Node* primary_def = ct_state_->find_template_def(fn_name);
   auto param_order =
       get_template_param_order(primary_def, &bindings, &nttp_bindings);
@@ -180,8 +180,9 @@ void Lowerer::collect_template_instantiations(const Node* n,
                 n, n->left, fn_def, &enc_inst.bindings, enclosing_fn);
             NttpBindings call_nttp = build_call_nttp_bindings(
                 n->left, fn_def, &enc_inst.nttp_bindings);
-            record_seed(n->left->name, std::move(inner), call_nttp,
-                        TemplateSeedOrigin::EnclosingTemplateExpansion);
+            record_template_seed(
+                n->left->name, std::move(inner), call_nttp,
+                TemplateSeedOrigin::EnclosingTemplateExpansion);
           }
           goto recurse;
         }
@@ -190,9 +191,9 @@ void Lowerer::collect_template_instantiations(const Node* n,
       if (has_forwarded_nttp(n->left)) goto recurse;
       TypeBindings bindings = merge_explicit_and_deduced_type_bindings(
           n, n->left, fn_def, nullptr, enclosing_fn);
-      std::string mangled = record_seed(n->left->name, std::move(bindings),
-                                        call_nttp,
-                                        TemplateSeedOrigin::DirectCall);
+      std::string mangled = record_template_seed(
+          n->left->name, std::move(bindings), call_nttp,
+          TemplateSeedOrigin::DirectCall);
       if (fn_def->n_template_params > n->left->n_template_args) {
         TypeBindings full_bindings = merge_explicit_and_deduced_type_bindings(
             n, n->left, fn_def, nullptr, enclosing_fn);
@@ -224,7 +225,7 @@ void Lowerer::collect_template_instantiations(const Node* n,
             }
           }
         }
-        std::string mangled = record_seed(
+        std::string mangled = record_template_seed(
             n->left->name, TypeBindings(deduced), nttp,
             TemplateSeedOrigin::DeducedCall);
         deduced_template_calls_[n] = {
@@ -264,8 +265,9 @@ void Lowerer::collect_consteval_template_instantiations(
                 build_call_bindings(n->left, fn_def, &enc_inst.bindings);
             NttpBindings call_nttp = build_call_nttp_bindings(
                 n->left, fn_def, &enc_inst.nttp_bindings);
-            record_seed(n->left->name, std::move(inner), call_nttp,
-                        TemplateSeedOrigin::ConstevalEnclosingExpansion);
+            record_template_seed(
+                n->left->name, std::move(inner), call_nttp,
+                TemplateSeedOrigin::ConstevalEnclosingExpansion);
           }
           goto recurse_ce;
         }
@@ -274,8 +276,8 @@ void Lowerer::collect_consteval_template_instantiations(
       NttpBindings call_nttp = build_call_nttp_bindings(n->left, fn_def);
       if (has_forwarded_nttp(n->left)) goto recurse_ce;
       TypeBindings bindings = build_call_bindings(n->left, fn_def, nullptr);
-      record_seed(n->left->name, std::move(bindings), call_nttp,
-                  TemplateSeedOrigin::ConstevalSeed);
+      record_template_seed(n->left->name, std::move(bindings), call_nttp,
+                           TemplateSeedOrigin::ConstevalSeed);
     }
   }
 
@@ -299,7 +301,7 @@ recurse_ce:
   }
 }
 
-void Lowerer::run_consteval_template_seed_fixpoint(
+void Lowerer::realize_consteval_template_seeds_fixpoint(
     const std::vector<const Node*>& items) {
   for (int pass = 0; pass < 8; ++pass) {
     size_t prev_size = registry_.total_instance_count();
@@ -323,7 +325,7 @@ void Lowerer::finalize_template_seed_realization() {
   }
 }
 
-void Lowerer::populate_hir_template_defs(Module& m) {
+void Lowerer::materialize_hir_template_defs(Module& m) {
   ct_state_->for_each_template_def([&](const std::string& name, const Node* fn_def) {
     HirTemplateDef tdef;
     tdef.name = name;
@@ -509,9 +511,9 @@ void Lowerer::lower_initial_program(const Node* root, Module& m) {
   collect_function_template_specializations(items);
   collect_depth0_template_instantiations(items);
   registry_.realize_seeds();
-  run_consteval_template_seed_fixpoint(items);
+  realize_consteval_template_seeds_fixpoint(items);
   finalize_template_seed_realization();
-  populate_hir_template_defs(m);
+  materialize_hir_template_defs(m);
   collect_ref_overloaded_free_functions(items);
   attach_out_of_class_struct_method_defs(items, m);
   lower_non_method_functions_and_globals(items, m);

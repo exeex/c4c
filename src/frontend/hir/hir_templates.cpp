@@ -1902,13 +1902,13 @@ const Node* Lowerer::canonical_template_struct_primary(
   return find_template_struct_primary(ts.tpl_struct_origin);
 }
 
-void Lowerer::resolve_pending_tpl_struct_if_needed(
+void Lowerer::realize_template_struct_if_needed(
     TypeSpec& ts,
     const TypeBindings& tpl_bindings,
     const NttpBindings& nttp_bindings,
     const Node* primary_tpl) {
   if (!ts.tpl_struct_origin) return;
-  resolve_pending_tpl_struct(
+  realize_template_struct(
       ts, canonical_template_struct_primary(ts, primary_tpl),
       tpl_bindings, nttp_bindings);
 }
@@ -1974,7 +1974,7 @@ bool Lowerer::resolve_pending_template_owner_if_ready(
     bool spawned_owner_work,
     const char* pending_detail,
     DeferredTemplateTypeResult* out_result) {
-  resolve_pending_tpl_struct_if_needed(
+  realize_template_struct_if_needed(
       owner_ts, work_item.type_bindings, work_item.nttp_bindings,
       primary_tpl);
   if (!owner_ts.tpl_struct_origin) return true;
@@ -2040,7 +2040,7 @@ DeferredTemplateTypeResult Lowerer::resolve_deferred_member_typedef_type(
         work_item, "owner tag unavailable");
   }
   TypeSpec resolved_member{};
-  if (resolve_struct_member_typedef_hir(
+  if (resolve_struct_member_typedef_type(
           owner_ts.tag, work_item.pending_type.deferred_member_type_name,
           &resolved_member)) {
     return DeferredTemplateTypeResult::resolved();
@@ -2072,13 +2072,13 @@ void Lowerer::seed_and_resolve_pending_template_type_if_needed(
   if (!ts.tpl_struct_origin) return;
   seed_pending_template_type(
       ts, tpl_bindings, nttp_bindings, span_node, kind, context_name);
-  resolve_pending_tpl_struct_if_needed(
+  realize_template_struct_if_needed(
       ts, tpl_bindings, nttp_bindings, primary_tpl);
 }
 
-bool Lowerer::resolve_struct_member_typedef_hir(const std::string& tag,
-                                                const std::string& member,
-                                                TypeSpec* out) {
+bool Lowerer::resolve_struct_member_typedef_type(const std::string& tag,
+                                                 const std::string& member,
+                                                 TypeSpec* out) {
   if (tag.empty() || member.empty() || !out) return false;
 
   auto apply_bindings = [&](TypeSpec ts,
@@ -2128,7 +2128,7 @@ bool Lowerer::resolve_struct_member_typedef_hir(const std::string& tag,
               if (resolved->deferred_member_type_name &&
                   resolved->tag && resolved->tag[0]) {
                 TypeSpec nested{};
-                if (resolve_struct_member_typedef_hir(
+                if (resolve_struct_member_typedef_type(
                         resolved->tag, resolved->deferred_member_type_name, &nested)) {
                   *resolved = nested;
                 }
@@ -2179,7 +2179,7 @@ bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
     return false;
   }
   TypeSpec resolved_member{};
-  if (!resolve_struct_member_typedef_hir(
+  if (!resolve_struct_member_typedef_type(
           ts->tag, ts->deferred_member_type_name, &resolved_member)) {
     return false;
   }
@@ -2187,7 +2187,7 @@ bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
   return true;
 }
 
-void Lowerer::resolve_pending_tpl_struct(
+void Lowerer::realize_template_struct(
     TypeSpec& ts,
     const Node* primary_tpl,
     const TypeBindings& tpl_bindings,

@@ -8,7 +8,7 @@
 #include <optional>
 #include <string>
 
-#include "../../frontend/hir/ir.hpp"
+#include "../../frontend/hir/hir_ir.hpp"
 
 namespace c4c::codegen::llvm_helpers {
 

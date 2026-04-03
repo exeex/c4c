@@ -1,13 +1,12 @@
 // types_helpers.hpp — shared anonymous-namespace and static helper code
-// included by types_template.cpp, types_declarator.cpp, types_base.cpp,
-// types_struct.cpp.  Each translation unit gets its own copy (internal
+// included by parser_types_template.cpp, parser_types_declarator.cpp,
+// parser_types_base.cpp, parser_types_struct.cpp. Each translation unit gets its own copy (internal
 // linkage), which is intentional.
 
 #pragma once
 
 // NOTE: This file is meant to be #included inside a .cpp that has already
-// included parser.hpp, parser_internal.hpp, lexer.hpp and the standard
-// library headers needed below.
+// included parser.hpp, lexer.hpp and the standard library headers needed below.
 
 #include <cstring>
 #include <functional>
@@ -35,6 +34,151 @@ bool match_floatn_keyword_base(const std::string& name, TypeBase* out_base) {
     }
     if (out_base) *out_base = base;
     return true;
+}
+
+bool skip_balanced_template_arg_tokens(const std::vector<Token>& tokens, int* pos) {
+    if (!pos || *pos < 0 || *pos >= static_cast<int>(tokens.size()) ||
+        tokens[*pos].kind != TokenKind::Less) {
+        return false;
+    }
+
+    int depth = 0;
+    while (*pos < static_cast<int>(tokens.size())) {
+        const TokenKind kind = tokens[*pos].kind;
+        if (kind == TokenKind::Less) {
+            ++depth;
+            ++(*pos);
+            continue;
+        }
+        if (kind == TokenKind::Greater) {
+            --depth;
+            ++(*pos);
+            if (depth <= 0) return true;
+            continue;
+        }
+        if (kind == TokenKind::GreaterGreater) {
+            depth -= 2;
+            ++(*pos);
+            if (depth <= 0) return true;
+            continue;
+        }
+        ++(*pos);
+    }
+
+    return false;
+}
+
+bool token_can_follow_value_like_template_arg(TokenKind kind) {
+    switch (kind) {
+        case TokenKind::Comma:
+        case TokenKind::Greater:
+        case TokenKind::GreaterGreater:
+        case TokenKind::RParen:
+        case TokenKind::RBracket:
+        case TokenKind::RBrace:
+        case TokenKind::Semi:
+        case TokenKind::Ellipsis:
+        case TokenKind::Question:
+        case TokenKind::Colon:
+        case TokenKind::Assign:
+        case TokenKind::EqualEqual:
+        case TokenKind::BangEqual:
+        case TokenKind::Less:
+        case TokenKind::LessEqual:
+        case TokenKind::GreaterEqual:
+        case TokenKind::Plus:
+        case TokenKind::Minus:
+        case TokenKind::Star:
+        case TokenKind::Slash:
+        case TokenKind::Percent:
+        case TokenKind::Amp:
+        case TokenKind::AmpAmp:
+        case TokenKind::Pipe:
+        case TokenKind::PipePipe:
+        case TokenKind::Caret:
+        case TokenKind::Dot:
+        case TokenKind::Arrow:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool is_known_simple_type_head(const Parser& parser, const std::string& name) {
+    if (match_floatn_keyword_base(name, nullptr)) return true;
+    if (parser.is_template_scope_type_param(name)) return true;
+    if (parser.is_typedef_name(name)) return true;
+    return parser.typedef_types_.count(parser.resolve_visible_type_name(name)) > 0;
+}
+
+bool starts_with_value_like_template_expr(const Parser& parser,
+                                          const std::vector<Token>& tokens,
+                                          int pos) {
+    if (pos < 0 || pos >= static_cast<int>(tokens.size())) return false;
+
+    const int start_pos = pos;
+    if (tokens[pos].kind == TokenKind::ColonColon) ++pos;
+    if (pos >= static_cast<int>(tokens.size()) ||
+        tokens[pos].kind != TokenKind::Identifier) {
+        return false;
+    }
+
+    const auto looks_like_variable_template = [](const std::string& name) {
+        return name.size() >= 2 &&
+               name.compare(name.size() - 2, 2, "_v") == 0;
+    };
+
+    bool saw_scope = tokens[start_pos].kind == TokenKind::ColonColon;
+    const bool first_identifier_is_known_type =
+        is_known_simple_type_head(parser, tokens[pos].lexeme);
+
+    while (pos < static_cast<int>(tokens.size())) {
+        const std::string current_name = tokens[pos].lexeme;
+        ++pos;  // identifier
+        bool saw_template_args = false;
+        if (pos < static_cast<int>(tokens.size()) &&
+            tokens[pos].kind == TokenKind::Less) {
+            saw_template_args = true;
+            if (!skip_balanced_template_arg_tokens(tokens, &pos)) {
+                return false;
+            }
+        }
+
+        if (pos < static_cast<int>(tokens.size()) &&
+            tokens[pos].kind == TokenKind::LParen) {
+            return saw_scope || saw_template_args || !first_identifier_is_known_type;
+        }
+
+        if (pos >= static_cast<int>(tokens.size())) {
+            return saw_template_args &&
+                   looks_like_variable_template(current_name);
+        }
+
+        if (tokens[pos].kind != TokenKind::ColonColon) {
+            return saw_template_args &&
+                   looks_like_variable_template(current_name) &&
+                   token_can_follow_value_like_template_arg(tokens[pos].kind);
+        }
+
+        ++pos;  // ::
+        saw_scope = true;
+        if (pos < static_cast<int>(tokens.size()) &&
+            tokens[pos].kind == TokenKind::KwTemplate) {
+            ++pos;
+        }
+        if (pos >= static_cast<int>(tokens.size()) ||
+            tokens[pos].kind != TokenKind::Identifier) {
+            return false;
+        }
+
+        if (tokens[pos].lexeme == "value") {
+            ++pos;
+            if (pos >= static_cast<int>(tokens.size())) return true;
+            return token_can_follow_value_like_template_arg(tokens[pos].kind);
+        }
+    }
+
+    return false;
 }
 
 struct QualifiedTypeProbe {

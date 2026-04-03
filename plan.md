@@ -1,143 +1,181 @@
-# LIR To Backend IR Refactor
+# EASTL Container Bring-Up Runbook
 
 Status: Active
-Source Idea: ideas/open/03_lir_to_backend_ir_refactor.md
+Source Idea: ideas/open/eastl_container_bringup_plan.md
+Activated from: prompts/ACTIVATE_PLAN.md
 
 ## Purpose
 
-Refactor the LIR-to-backend boundary so backend code consumes structured backend
-IR semantics through a dedicated lowering layer instead of parsing
-LLVM-text-shaped fragments inside target codegen.
+Make `tests/cpp/eastl/*` the active library bring-up frontier, starting with the
+smallest reusable EASTL support cases and only moving to heavier container
+pressure after the earlier ladder is stable and reproducible.
 
 ## Goal
 
-Land the transition from `lir_adapter` toward explicit LIR-to-backend-IR
-lowering without changing backend behavior.
+Establish a staged, test-driven EASTL bring-up path that produces generic
+parser, sema, HIR, and harness improvements without relying on EASTL-specific
+acceptance hacks.
 
 ## Core Rule
 
-Keep changes behavior-preserving. Decode legacy LIR text in a narrow lowering
-layer; do not expand target emitters' dependence on parser-style
-`parse_backend_*` helpers.
+Treat EASTL as pressure, not as a dialect: land generic frontend fixes whenever
+the underlying issue is generic, and only tolerate narrow workarounds for
+runtime or ABI support that is explicitly out of scope for this bring-up track.
 
 ## Read First
 
-- [ideas/open/03_lir_to_backend_ir_refactor.md](/workspaces/c4c/ideas/open/03_lir_to_backend_ir_refactor.md)
-- [src/backend/lir_adapter.hpp](/workspaces/c4c/src/backend/lir_adapter.hpp)
-- [src/backend/lir_adapter.cpp](/workspaces/c4c/src/backend/lir_adapter.cpp)
-- [src/backend/ir.hpp](/workspaces/c4c/src/backend/ir.hpp)
+- [`prompts/EXECUTE_PLAN.md`](/workspaces/c4c/prompts/EXECUTE_PLAN.md)
+- [`ideas/open/eastl_container_bringup_plan.md`](/workspaces/c4c/ideas/open/eastl_container_bringup_plan.md)
+- [`tests/cpp/eastl`](/workspaces/c4c/tests/cpp/eastl)
+- existing EASTL recipes under [`tests/cpp`](/workspaces/c4c/tests/cpp)
 
-## Current Targets
+## Scope
 
-- rename the production boundary around `lir_adapter` into explicit lowering
-  entrypoints
-- isolate legacy LIR syntax decoding from backend IR construction
-- reshape backend IR interfaces toward structured backend-owned semantics
-- remove target-codegen dependence on backend text parsing over time
+- turn selected EASTL testcases into stable, reproducible recipes
+- classify each testcase by earliest failing stage
+- fix the smallest generic blockers needed to advance the current stage
+- progress in this order:
+  1. foundation headers and traits
+  2. object lifetime / utility layer
+  3. `eastl::vector` parse frontier
+  4. `eastl::vector` sema / HIR / lowering viability
+  5. follow-on EASTL containers only after the earlier ladder is healthy
 
 ## Non-Goals
 
-- full LIR redesign
-- broad semantic changes to backend behavior
-- introducing final `bir` naming in this slice
-- deleting legacy compatibility code before replacements are proven
+- broad STL or libstdc++ bring-up outside the selected EASTL path
+- header-name special cases or testcase-shaped EASTL parsing exceptions
+- full runtime or ABI ownership for `new`/`delete`, libc++abi, libunwind,
+  `virtual`, RTTI, `typeid`, or dynamic-cast-style support
+- expanding into additional container families before the current ladder is
+  stable
 
 ## Working Model
 
-1. LIR remains the source IR at this boundary.
-2. A dedicated lowering layer decodes any legacy text-heavy LIR fields.
-3. Backend IR becomes a backend-owned structured model.
-4. Target codegen should consume backend IR semantics without reparsing text.
+- For each testcase, first make the invocation reproducible.
+- Validate `--parse-only` before later pipeline stages.
+- Use `--dump-canonical` after parse succeeds.
+- Use `--dump-hir-summary` only after semantic validation progresses.
+- Only then push full compile or runtime workflows.
+- Compare behavior against Clang whenever frontend or codegen behavior is in
+  question.
 
 ## Execution Rules
 
-- Prefer narrow, testable slices.
-- Add or update targeted tests before each behavior change.
-- Preserve compatibility shims where they reduce migration risk.
-- If a separate initiative appears, record it under `ideas/open/` instead of
-  widening this plan.
+- Work from the highest-priority incomplete item in [`todo.md`](/workspaces/c4c/todo.md).
+- Add or update the narrowest validating test before implementing a fix.
+- Record the full-suite baseline before meaningful implementation changes.
+- Keep slices small enough to prove one root cause at a time.
+- If a blocker is larger or belongs to a different subsystem, spin it out into
+  `ideas/open/` instead of stretching this plan.
+- Preserve resumable execution notes in [`todo.md`](/workspaces/c4c/todo.md) whenever the active slice changes.
 
-## Step 1: Establish Lowering Entrypoints
+## Ordered Steps
 
-Goal: move the main production API away from adapter-first naming while keeping
-behavior unchanged.
+### Step 1: Inventory and recipe normalization
 
-Primary target:
-- [src/backend/lir_adapter.hpp](/workspaces/c4c/src/backend/lir_adapter.hpp)
-- [src/backend/lir_adapter.cpp](/workspaces/c4c/src/backend/lir_adapter.cpp)
+Goal: make the EASTL cases reproducible and classify their current earliest
+failing stage.
 
-Actions:
-- inspect the current `adapt_minimal_module()` call chain and all public entrypoints
-- introduce a lowering-named entrypoint such as `lower_to_backend_ir(...)`
-- keep adapter-named wrappers only as compatibility shims if needed
-- update direct callers to use the lowering-oriented API where low-risk
-
-Completion check:
-- the main path exposes a lowering-oriented entrypoint
-- tests stay green with no semantic drift
-
-## Step 2: Separate Decode From IR Construction
-
-Goal: stop one unit from acting as decoder, backend IR builder, and target
-compatibility layer all at once.
-
-Primary target:
-- [src/backend/lir_adapter.cpp](/workspaces/c4c/src/backend/lir_adapter.cpp)
-- potential new files under [src/backend/lowering](/workspaces/c4c/src/backend/lowering)
+Primary targets:
+- [`tests/cpp/eastl`](/workspaces/c4c/tests/cpp/eastl)
+- existing EASTL workflow recipes under [`tests/cpp`](/workspaces/c4c/tests/cpp)
 
 Actions:
-- identify legacy text-decoding helpers for calls, memory, and GEP-like paths
-- extract decode/canonicalize helpers into a lowering-focused location
-- keep backend IR construction logic distinct from syntax decoding
+- enumerate the current EASTL testcase set and their required include flags
+- define one bounded command per testcase
+- record whether each case currently lands in parse, sema, HIR, codegen, or
+  runtime failure
+- tighten or add recipe coverage where the current workflow is missing
 
 Completion check:
-- decode responsibilities live in a dedicated lowering-focused layer
-- backend IR construction is easier to trace independently of text parsing
+- the selected EASTL cases have reproducible commands and a recorded earliest
+  failing stage
 
-## Step 3: Tighten Backend IR Semantics
+### Step 2: Foundation headers and traits
 
-Goal: shift `src/backend/ir.hpp` toward structured backend-native semantics.
+Goal: stabilize the smallest high-leverage EASTL support cases first.
 
-Primary target:
-- [src/backend/ir.hpp](/workspaces/c4c/src/backend/ir.hpp)
+Primary targets:
+- `eastl_piecewise_construct_simple.cpp`
+- `eastl_tuple_fwd_decls_simple.cpp`
+- `eastl_integer_sequence_simple.cpp`
+- `eastl_type_traits_simple.cpp`
+- `eastl_utility_simple.cpp`
 
 Actions:
-- inventory string-carried semantics that block backend-native modeling
-- convert the highest-value surfaces into structured representations
-- update validation and printing paths as required by those changes
+- drive each case through parse-only first
+- fix the smallest generic parser or semantic blockers exposed by these files
+- add or refine targeted tests that isolate the root cause outside the full
+  header stack when possible
 
 Completion check:
-- at least one meaningful class of backend semantics is no longer represented
-  only as free-form text
-- validation/printing remain coherent
+- the foundation cases are reproducible and their current failures are either
+  resolved or narrowed to explicit later-stage blockers
 
-## Step 4: Remove Codegen Parse Dependencies
+### Step 3: Object lifetime and tuple layer
 
-Goal: keep target emitters from parsing backend-text fragments on demand.
+Goal: advance the next tier of reusable support features before container work.
 
-Primary target:
-- target emitters and helper users of `parse_backend_*`
+Primary targets:
+- `eastl_memory_simple.cpp`
+- `eastl_tuple_simple.cpp`
 
 Actions:
-- identify current emitter-side `parse_backend_*` dependencies
-- migrate one dependency cluster at a time onto structured backend IR access
-- leave any remaining compatibility parsing only in the lowering layer
+- validate parse behavior, then semantic and HIR progress
+- compare against Clang when placement-new, alignment, or tuple patterns are
+  unclear
+- keep fixes generic unless the issue is explicitly runtime-facing
 
 Completion check:
-- at least one target-side parsing dependency is removed
-- codegen reads backend IR semantics directly for the migrated slice
+- memory and tuple cases advance as far as the current frontend supports, with
+  blockers clearly classified and minimized
 
-## Step 5: Validate And Preserve Boundaries
+### Step 4: `eastl::vector` parse frontier
 
-Goal: prove the refactor is behavior-preserving and leaves a clean base for the
-later `backend_ir -> bir` scaffold.
+Goal: make `eastl_vector_simple.cpp` parse behavior stable and actionable before
+deeper lowering work.
+
+Primary targets:
+- `eastl_vector_simple.cpp`
+- parser-facing recipe support for the vector case
 
 Actions:
-- keep targeted tests aligned with each slice
-- run full regression checks after each landed slice
-- update planning state with completed slices, next slice, and blockers
+- establish a bounded parse-only recipe
+- reduce parser failures to the smallest generic missing feature
+- avoid mixing parse stabilization with runtime or ABI concerns
 
 Completion check:
-- full suite remains monotonic
-- the active plan still matches the linked source idea
-- the codebase has a clearer lowering boundary for the follow-on BIR work
+- `eastl_vector_simple.cpp` has stable parse-oriented reproduction and its next
+  blocking parser issue is either fixed or isolated
+
+### Step 5: `eastl::vector` semantic, HIR, and lowering viability
+
+Goal: advance `eastl::vector` beyond parse only after Step 4 is healthy.
+
+Primary targets:
+- semantic, HIR, and lowering support reached by `eastl_vector_simple.cpp`
+
+Actions:
+- move one stage at a time: sema, then HIR, then codegen
+- permit narrow testcase-local runtime shims only for out-of-scope ABI or
+  allocation dependencies
+- reject frontend hacks that only recognize EASTL spellings
+
+Completion check:
+- the current post-parse `eastl::vector` blocker is removed or isolated with
+  proof of stage-by-stage progress
+
+### Step 6: Follow-on container expansion
+
+Goal: extend the same bring-up method to additional EASTL containers only after
+the earlier ladder is healthy.
+
+Actions:
+- choose the next lightest container-adjacent surface
+- reuse the same reproduce, classify, narrow, and validate loop
+- spin out a new idea if the new surface becomes a separate initiative
+
+Completion check:
+- additional EASTL container work starts from a stable earlier ladder and does
+  not overload this runbook

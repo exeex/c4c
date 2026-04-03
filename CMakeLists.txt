@@ -30,16 +30,16 @@ set(FRONTEND_CXX_COMMON_SRCS
     "${PROJECT_SOURCE_DIR}/src/frontend/preprocessor/pp_macro_expand.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/preprocessor/pp_pragma.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/preprocessor/pp_predefined.cpp"
-    "${PROJECT_SOURCE_DIR}/src/frontend/parser/parse.cpp"
-    "${PROJECT_SOURCE_DIR}/src/frontend/parser/types_template.cpp"
-    "${PROJECT_SOURCE_DIR}/src/frontend/parser/types_declarator.cpp"
-    "${PROJECT_SOURCE_DIR}/src/frontend/parser/types_base.cpp"
-    "${PROJECT_SOURCE_DIR}/src/frontend/parser/types_struct.cpp"
-    "${PROJECT_SOURCE_DIR}/src/frontend/parser/expressions.cpp"
-    "${PROJECT_SOURCE_DIR}/src/frontend/parser/statements.cpp"
-    "${PROJECT_SOURCE_DIR}/src/frontend/parser/declarations.cpp"
-    "${PROJECT_SOURCE_DIR}/src/frontend/parser/common.cpp"
-    "${PROJECT_SOURCE_DIR}/src/frontend/hir/ast_to_hir.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/parser/parser_core.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/parser/parser_types_template.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/parser/parser_types_declarator.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/parser/parser_types_base.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/parser/parser_types_struct.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/parser/parser_expressions.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/parser/parser_statements.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/parser/parser_declarations.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/parser/parser_support.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_lowering_core.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_build.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_expr.cpp"
@@ -435,6 +435,32 @@ if(CLANG_EXECUTABLE)
     DEPENDS c4cll
     WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
     COMMENT "Run standalone EASTL type_traits workflow"
+    VERBATIM
+  )
+
+  add_custom_target(eastl_vector_simple_parse_recipe
+    COMMAND "${CMAKE_COMMAND}"
+            -DCOMPILER=$<TARGET_FILE:c4cll>
+            -DROOT=${PROJECT_SOURCE_DIR}
+            -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/eastl/eastl_vector_simple.cpp
+            "-DEXPECT_FAIL_LOC:STRING=ref/EASTL/include/EASTL/internal/type_properties.h:35:52"
+            "-DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=try_parse_record_typedef_member phase=committed expected=SEMI got='('"
+            -P "${PROJECT_SOURCE_DIR}/tests/cpp/eastl/run_eastl_vector_parse_recipe.cmake"
+    DEPENDS c4cll
+    WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+    COMMENT "Run standalone EASTL vector parse recipe"
+    VERBATIM
+  )
+
+  add_custom_target(std_vector_simple_parse_baseline
+    COMMAND "${CMAKE_COMMAND}"
+            -DCOMPILER=$<TARGET_FILE:c4cll>
+            -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/std/std_vector_simple.cpp
+            -DEXPECT_TIMEOUT_SEC=60
+            -P "${PROJECT_SOURCE_DIR}/tests/cpp/std/run_std_vector_parse_baseline.cmake"
+    DEPENDS c4cll
+    WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+    COMMENT "Run standalone std::vector parse baseline"
     VERBATIM
   )
 endif()

@@ -8,7 +8,7 @@
 // statement / expression lowering).
 
 #include "../lir/ir.hpp"
-#include "../../frontend/hir/ir.hpp"
+#include "../../frontend/hir/hir_ir.hpp"
 
 #include <optional>
 #include <string>
