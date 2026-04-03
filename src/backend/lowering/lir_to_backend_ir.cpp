@@ -2101,6 +2101,203 @@ std::optional<BackendFunction> adapt_constant_conditional_goto_return_function(
   return std::nullopt;
 }
 
+std::optional<BackendFunction> adapt_single_local_constant_conditional_goto_return_function(
+    const c4c::codegen::lir::LirFunction& function,
+    const BackendFunctionSignature& signature) {
+  using namespace c4c::codegen::lir;
+
+  if (function.is_declaration || !backend_function_is_definition(signature) ||
+      signature.return_type != "i32" || signature.name != "main" ||
+      !signature.params.empty() || signature.is_vararg || function.blocks.empty() ||
+      function.alloca_insts.size() != 1 || !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* scalar_alloca = std::get_if<LirAllocaOp>(&function.alloca_insts.front());
+  if (scalar_alloca == nullptr || scalar_alloca->type_str != "i32" ||
+      scalar_alloca->result.empty()) {
+    return std::nullopt;
+  }
+
+  std::unordered_map<std::string, const LirBlock*> blocks_by_label;
+  for (const auto& block : function.blocks) {
+    blocks_by_label.emplace(block.label, &block);
+  }
+
+  std::unordered_map<std::string, ResolvedInteger> integer_values;
+  std::unordered_map<std::string, bool> predicate_values;
+  std::optional<ResolvedInteger> local_value;
+
+  auto resolve_int = [&](std::string_view value) -> std::optional<ResolvedInteger> {
+    if (const auto imm = parse_i64(value); imm.has_value()) {
+      return ResolvedInteger{static_cast<std::uint64_t>(*imm), 64};
+    }
+    const auto it = integer_values.find(std::string(value));
+    if (it == integer_values.end()) {
+      return std::nullopt;
+    }
+    return it->second;
+  };
+
+  auto resolve_predicate = [&](std::string_view value) -> std::optional<bool> {
+    const auto pred_it = predicate_values.find(std::string(value));
+    if (pred_it != predicate_values.end()) {
+      return pred_it->second;
+    }
+    const auto int_it = integer_values.find(std::string(value));
+    if (int_it != integer_values.end()) {
+      return truncate_integer_bits(int_it->second.bits, int_it->second.bit_width) != 0;
+    }
+    return std::nullopt;
+  };
+
+  std::unordered_map<std::string, bool> visited;
+  std::string current_label = function.blocks.front().label;
+  bool saw_conditional_branch = false;
+  for (std::size_t steps = 0; steps < function.blocks.size(); ++steps) {
+    if (visited.find(current_label) != visited.end()) {
+      return std::nullopt;
+    }
+    visited.emplace(current_label, true);
+
+    const auto block_it = blocks_by_label.find(current_label);
+    if (block_it == blocks_by_label.end()) {
+      return std::nullopt;
+    }
+    const auto& block = *block_it->second;
+
+    for (const auto& inst : block.insts) {
+      if (const auto* cmp = std::get_if<LirCmpOp>(&inst)) {
+        const auto predicate = cmp->predicate.typed();
+        const auto lhs = resolve_int(cmp->lhs);
+        const auto rhs = resolve_int(cmp->rhs);
+        const auto compare_bit_width = parse_integer_bit_width(cmp->type_str);
+        if (cmp->is_float || !predicate.has_value() ||
+            !compare_bit_width.has_value() || !lhs.has_value() || !rhs.has_value()) {
+          return std::nullopt;
+        }
+        const auto result = evaluate_integer_compare(*predicate, *lhs, *rhs, *compare_bit_width);
+        if (!result.has_value()) {
+          return std::nullopt;
+        }
+        predicate_values[cmp->result] = *result;
+        continue;
+      }
+
+      if (const auto* bin = std::get_if<LirBinOp>(&inst)) {
+        const auto lhs = resolve_int(bin->lhs);
+        const auto rhs = resolve_int(bin->rhs);
+        if (!lhs.has_value() || !rhs.has_value()) {
+          return std::nullopt;
+        }
+        const auto bin_value = evaluate_integer_binary(*bin, *lhs, *rhs);
+        if (!bin_value.has_value()) {
+          return std::nullopt;
+        }
+        integer_values[bin->result] = *bin_value;
+        continue;
+      }
+
+      if (const auto* cast = std::get_if<LirCastOp>(&inst)) {
+        std::optional<ResolvedInteger> operand;
+        if (cast->from_type == "i1") {
+          if (const auto predicate = resolve_predicate(cast->operand); predicate.has_value()) {
+            operand = ResolvedInteger{static_cast<std::uint64_t>(*predicate ? 1 : 0), 1};
+          }
+        }
+        if (!operand.has_value()) {
+          operand = resolve_int(cast->operand);
+        }
+        const auto cast_value =
+            operand.has_value()
+                ? evaluate_integer_cast(cast->kind, *operand, cast->from_type, cast->to_type)
+                : std::nullopt;
+        if (!cast_value.has_value()) {
+          return std::nullopt;
+        }
+        integer_values[cast->result] = *cast_value;
+        continue;
+      }
+
+      if (const auto* select = std::get_if<LirSelectOp>(&inst)) {
+        const auto bit_width = parse_integer_bit_width(select->type_str);
+        const auto cond = resolve_predicate(select->cond);
+        const auto true_value = resolve_int(select->true_val);
+        const auto false_value = resolve_int(select->false_val);
+        if (!bit_width.has_value() || !cond.has_value() || !true_value.has_value() ||
+            !false_value.has_value()) {
+          return std::nullopt;
+        }
+        const auto selected = *cond ? *true_value : *false_value;
+        integer_values[select->result] = ResolvedInteger{
+            truncate_integer_bits(selected.bits, *bit_width), *bit_width};
+        continue;
+      }
+
+      if (const auto* store = std::get_if<LirStoreOp>(&inst)) {
+        if (store->type_str != "i32" || store->ptr != scalar_alloca->result) {
+          return std::nullopt;
+        }
+        const auto value = resolve_int(store->val);
+        if (!value.has_value()) {
+          return std::nullopt;
+        }
+        local_value = ResolvedInteger{truncate_integer_bits(value->bits, 32), 32};
+        continue;
+      }
+
+      if (const auto* load = std::get_if<LirLoadOp>(&inst)) {
+        if (load->type_str != "i32" || load->ptr != scalar_alloca->result ||
+            !local_value.has_value()) {
+          return std::nullopt;
+        }
+        integer_values[load->result] = *local_value;
+        continue;
+      }
+
+      return std::nullopt;
+    }
+
+    if (const auto* ret = std::get_if<LirRet>(&block.terminator)) {
+      if (!saw_conditional_branch || !ret->value_str.has_value() || ret->type_str != "i32") {
+        return std::nullopt;
+      }
+      const auto return_value = resolve_int(*ret->value_str);
+      if (!return_value.has_value()) {
+        return std::nullopt;
+      }
+
+      BackendFunction out;
+      out.signature = signature;
+      BackendBlock out_block;
+      out_block.label = "entry";
+      out_block.terminator = make_backend_return(
+          std::to_string(render_signed_integer_value(*return_value, 32)), "i32");
+      out.blocks.push_back(std::move(out_block));
+      return out;
+    }
+
+    if (const auto* br = std::get_if<LirBr>(&block.terminator)) {
+      current_label = br->target_label;
+      continue;
+    }
+
+    if (const auto* condbr = std::get_if<LirCondBr>(&block.terminator)) {
+      const auto cond = resolve_predicate(condbr->cond_name);
+      if (!cond.has_value()) {
+        return std::nullopt;
+      }
+      saw_conditional_branch = true;
+      current_label = *cond ? condbr->true_label : condbr->false_label;
+      continue;
+    }
+
+    return std::nullopt;
+  }
+
+  return std::nullopt;
+}
+
 std::optional<BackendFunction> adapt_single_local_countdown_loop_function(
     const c4c::codegen::lir::LirFunction& function,
     const BackendFunctionSignature& signature) {
@@ -3322,6 +3519,11 @@ BackendFunction adapt_function(const c4c::codegen::lir::LirFunction& function,
   }
   if (const auto normalized =
           adapt_double_indirect_local_pointer_conditional_return_function(function, signature);
+      normalized.has_value()) {
+    return *normalized;
+  }
+  if (const auto normalized =
+          adapt_single_local_constant_conditional_goto_return_function(function, signature);
       normalized.has_value()) {
     return *normalized;
   }
