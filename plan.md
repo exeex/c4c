@@ -127,13 +127,35 @@ Completion Check:
 
 ## Step 6. Final Validation
 
-Goal: prove the tree is green without legacy backend IR or LLVM rescue paths.
+Goal: prove backend behavior is green without legacy backend IR or LLVM rescue
+paths before running the full suite.
 
 Actions:
 
-- run the relevant backend and full-suite validation
+- use `ctest --test-dir build -R backend --output-on-failure` as the default
+  regression loop during this plan to keep iteration fast
+- run the relevant backend validation and confirm the active migration slice does
+  not rely on fallback anymore
 - confirm no production code path still routes through LLVM fallback
 
 Completion Check:
 
-- full validation passes and the removal is complete end-to-end
+- backend-focused validation passes and the removal is complete for the active
+  slice
+
+## Step 7. Full Regression
+
+Goal: run the slower full-suite regression only after the backend-focused plan
+work is complete.
+
+Actions:
+
+- run the complete regression suite
+- compare the result against the backend-focused validation used during
+  implementation
+- record any remaining non-backend fallout as separate follow-on work if needed
+
+Completion Check:
+
+- full regression passes, or any residual failures are explicitly documented and
+  split out rather than silently absorbed
