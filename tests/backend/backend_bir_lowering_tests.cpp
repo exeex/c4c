@@ -598,6 +598,19 @@ void test_bir_lowering_accepts_single_param_select_phi_slice() {
                   "BIR lowering should return the fused select result instead of preserving the legacy phi join");
 }
 
+void test_bir_lowering_accepts_two_param_select_phi_slice() {
+  const auto lowered =
+      c4c::backend::lower_to_bir(make_bir_two_param_select_eq_phi_module());
+  const auto rendered = c4c::backend::bir::print(lowered);
+
+  expect_contains(rendered, "bir.func @choose2(i32 %p.x, i32 %p.y) -> i32 {",
+                  "BIR lowering should preserve the two-parameter ternary signature while collapsing the bounded phi-join shape");
+  expect_contains(rendered, "%t8 = bir.select eq i32 %p.x, %p.y, %p.x, %p.y",
+                  "BIR lowering should collapse the two-parameter phi-join ternary into a single BIR select");
+  expect_contains(rendered, "bir.ret i32 %t8",
+                  "BIR lowering should return the fused two-parameter select result instead of preserving the legacy phi join");
+}
+
 void test_bir_lowering_accepts_straight_line_add_sub_chain() {
   const auto lowered = c4c::backend::lower_to_bir(make_bir_return_add_sub_chain_module());
   const auto rendered = c4c::backend::bir::print(lowered);
@@ -762,6 +775,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_tiny_return_select_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_single_param_select_branch_slice);
   RUN_TEST(test_bir_lowering_accepts_single_param_select_phi_slice);
+  RUN_TEST(test_bir_lowering_accepts_two_param_select_phi_slice);
   RUN_TEST(test_bir_lowering_accepts_straight_line_add_sub_chain);
   RUN_TEST(test_bir_lowering_accepts_i8_add_sub_chain);
   RUN_TEST(test_bir_lowering_accepts_i64_add_sub_chain);

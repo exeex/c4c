@@ -9,11 +9,22 @@ Source Plan: plan.md
 - [ ] Delete app-layer LLVM asm rescue from `c4cll`
 - [ ] Revalidate backend and full-suite behavior without fallback
 
-Current active item: Step 2, move past the completed bounded compare-fed
-integer `select` materialization slice and choose the next smallest
-compare-adjacent control-flow or instruction-shape gap that can stay on the BIR
-text path without widening x86/AArch64 direct-BIR emitter coverage
-prematurely.
+Current active item: Step 2, add regression coverage for the already-supported
+bounded two-parameter compare-fed ternary slice (`x == y ? x : y`) so the BIR
+text path proves it can collapse a source-shaped phi join into `bir.select`
+without widening CFG support or x86/AArch64 direct-BIR emitter coverage.
+
+Completed this iteration:
+- Added bounded Step 2 regression coverage for the already-supported
+  two-parameter compare-fed ternary slice (`x == y ? x : y`) across backend
+  BIR lowering, explicit BIR-pipeline text output, and a new RISC-V default
+  route case via `tests/c/internal/backend_route_case/two_param_select_eq.c`.
+- Added `make_bir_two_param_select_eq_phi_module()` so the backend BIR tests
+  exercise the source-shaped six-block phi-join form that collapses into
+  `bir.select eq i32 %p.x, %p.y, %p.x, %p.y`.
+- Reconfigured and rebuilt `backend_bir_tests`, reran the targeted new checks,
+  then reran `ctest --test-dir build -L backend --output-on-failure -j8` with
+  all `305/305` backend-labeled tests passing.
 
 Completed this iteration:
 - Widened the bounded BIR control-flow scaffold from straight-line compare-fed
@@ -305,9 +316,10 @@ Completed this iteration:
 Next intended slice:
 - Continue Phase 2 parity with the next compare-adjacent control-flow gap that
   can still stay on the BIR text path without forcing multi-block BIR CFG
-  support or widening x86/AArch64 direct-BIR emitter coverage, most likely a
-  bounded branch/phi-materialization slice or another select-adjacent form that
-  exposes more of the legacy `lir_to_backend_ir.cpp` control-flow surface.
+  support or widening x86/AArch64 direct-BIR emitter coverage, most likely the
+  next bounded compare/control-flow source form whose branch bodies still stay
+  empty and collapse cleanly into a single-block BIR `select` without needing
+  general CFG materialization.
 
 Resume notes:
 - `backend.cpp` still contains the legacy route (`emit_legacy_module`), but
@@ -326,7 +338,8 @@ Resume notes:
 - `lir_to_bir.cpp` now also accepts the smallest source-shaped compare-driven
   ternary control-flow surfaces when they can be collapsed back into one BIR
   block: direct branch-to-return and empty branch-only goto chains feeding a
-  final constant/parameter `phi` join.
+  final constant/parameter `phi` join, now covered for both one-parameter and
+  two-parameter compare-fed ternary inputs.
 - The next bounded gap is instruction coverage rather than another scalar type:
   the BIR scaffold still rejects straight-line integer arithmetic outside
   `add/sub/mul/sdiv/srem/urem` plus the newly added bounded
