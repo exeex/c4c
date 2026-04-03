@@ -788,6 +788,8 @@ std::optional<std::int64_t> parse_minimal_lir_local_pointer_return_imm(
   return parse_typed_operand(*ret->value_str);
 }
 
+// Transitional direct-LIR fallback for countdown shapes that still reach the
+// explicit LIR entrypoint after the lowering-first fast paths have been tried.
 std::optional<std::int64_t> parse_minimal_lir_single_scalar_countdown_imm(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
@@ -1010,6 +1012,8 @@ std::optional<std::int64_t> parse_minimal_lir_single_scalar_countdown_imm(
   return std::nullopt;
 }
 
+// Transitional direct-LIR fallback for bounded single-function slices that do
+// not yet have a dedicated structured backend matcher.
 // Generic constant folder / mini-interpreter.
 // Simulates execution of a no-call function by tracking all memory slots
 // (including arrays, structs, globals, string constants) and SSA values.
