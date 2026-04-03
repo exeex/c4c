@@ -9,13 +9,39 @@ Source Plan: plan.md
 - [ ] Delete app-layer LLVM asm rescue from `c4cll`
 - [ ] Revalidate backend and full-suite behavior without fallback
 
-Current active item: Step 2, continue the bounded widened-width/default-route
-route audit after closing the two-parameter unsigned-char staged-affine parity
-slice.
-Next target: probe the next adjacent widened-width/source-level unsigned-char
-wrapper beyond the staged affine `((x + 2) + y) - 1` form so the Step 2 matrix
-keeps tightening the direct-BIR coverage boundary with another bounded
-regression-only slice.
+Current active item: Step 2, close the missing single-parameter widened-width
+default-route unsigned-char add/sub-chain coverage slice.
+Next target: after landing the single-parameter `unsigned char` add/sub chain,
+probe the next adjacent widened-width/source-level unsigned-char wrapper beyond
+`(x + 2) - 1` so the Step 2 matrix keeps tightening the direct-BIR coverage
+boundary with another bounded regression-only slice.
+
+Completed this iteration:
+- Audited the missing single-parameter widened-width/default-route
+  `unsigned char` add/sub chain and confirmed the existing default
+  `--codegen asm` route already stays on the direct BIR pipeline for
+  `(x + 2) - 1`; no `src/backend/lowering/lir_to_bir.cpp` change was required
+  for the unsigned-char single-parameter wrapper.
+- Added
+  `tests/c/internal/backend_route_case/single_param_u8_add_sub_chain.c`,
+  proving `unsigned char tiny_u(unsigned char x) { return (unsigned char)((x + 2) - 1); }`
+  reaches the backend through BIR instead of falling through legacy LLVM IR
+  text.
+- Registered
+  `backend_codegen_route_riscv64_single_param_u8_add_sub_chain_defaults_to_bir`
+  in `tests/c/internal/InternalTests.cmake`, asserting the emitted text
+  contains `bir.func @tiny_u(i8 %p.x) -> i8 {`, `%t1 = bir.add i8 %p.x, 2`,
+  `%t2 = bir.sub i8 %t1, 1`, and forbids legacy LLVM IR
+  `define i8 @tiny_u(i8 %p.x)`.
+- Reconfigured and rebuilt the tree, reran
+  `backend_codegen_route_riscv64_single_param_u8_add_sub_chain_defaults_to_bir`,
+  reran `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `339/339` backend-labeled tests passing, then refreshed
+  `test_fail_after.log` with a full `ctest --test-dir build -j8 --output-on-failure`
+  run and passed the regression guard against `test_fail_before.log` with
+  `--allow-non-decreasing-passed --timeout-threshold 30 --enforce-timeout`
+  (`2773 -> 2777` passed, `0 -> 0` failed, no newly failing tests, no new
+  `>30s` cases).
 
 Completed this iteration:
 - Audited the adjacent two-parameter unsigned-char staged-affine wrapper and
