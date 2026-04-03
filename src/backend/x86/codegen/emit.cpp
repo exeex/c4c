@@ -194,6 +194,107 @@ std::optional<std::int64_t> parse_i64(std::string_view text) {
   return value;
 }
 
+struct LirTwoArgLocalRewriteSlotState {
+  std::string alloca_name;
+  std::int64_t stored_imm = 0;
+  bool initialized = false;
+  std::string last_load_result;
+  std::string rewritten_result;
+};
+
+std::optional<std::pair<std::int64_t, std::int64_t>> match_two_arg_local_rewrite_slot_slice(
+    const std::vector<c4c::codegen::lir::LirInst>& insts,
+    std::string_view lhs_alloca,
+    std::string_view rhs_alloca,
+    std::string_view lhs_call_operand,
+    std::string_view rhs_call_operand) {
+  using namespace c4c::codegen::lir;
+
+  if (insts.size() < 3) {
+    return std::nullopt;
+  }
+
+  auto parse_store_imm = [](const LirInst& inst, std::string_view expected_ptr)
+      -> std::optional<std::int64_t> {
+    const auto* store = std::get_if<LirStoreOp>(&inst);
+    if (store == nullptr || store->type_str != "i32" || store->ptr != expected_ptr) {
+      return std::nullopt;
+    }
+    return parse_i64(store->val);
+  };
+
+  LirTwoArgLocalRewriteSlotState lhs_slot{std::string(lhs_alloca)};
+  LirTwoArgLocalRewriteSlotState rhs_slot{std::string(rhs_alloca)};
+  const auto lhs_store_imm = parse_store_imm(insts[0], lhs_slot.alloca_name);
+  const auto rhs_store_imm = parse_store_imm(insts[1], rhs_slot.alloca_name);
+  if (!lhs_store_imm.has_value() || !rhs_store_imm.has_value()) {
+    return std::nullopt;
+  }
+  lhs_slot.stored_imm = *lhs_store_imm;
+  lhs_slot.initialized = true;
+  rhs_slot.stored_imm = *rhs_store_imm;
+  rhs_slot.initialized = true;
+
+  auto match_slot = [&](std::string_view ptr) -> LirTwoArgLocalRewriteSlotState* {
+    if (ptr == lhs_slot.alloca_name) return &lhs_slot;
+    if (ptr == rhs_slot.alloca_name) return &rhs_slot;
+    return nullptr;
+  };
+
+  for (std::size_t inst_index = 2; inst_index < insts.size(); ++inst_index) {
+    const auto& inst = insts[inst_index];
+
+    if (const auto* load = std::get_if<LirLoadOp>(&inst)) {
+      if (load->type_str != "i32") {
+        return std::nullopt;
+      }
+      auto* slot = match_slot(load->ptr);
+      if (slot == nullptr || !slot->initialized) {
+        return std::nullopt;
+      }
+      slot->last_load_result = load->result;
+      continue;
+    }
+
+    if (const auto* rewrite = std::get_if<LirBinOp>(&inst)) {
+      if (rewrite->opcode != "add" || rewrite->type_str != "i32" || rewrite->rhs != "0") {
+        return std::nullopt;
+      }
+      LirTwoArgLocalRewriteSlotState* matched_slot = nullptr;
+      for (auto* slot : {&lhs_slot, &rhs_slot}) {
+        if (slot->last_load_result == rewrite->lhs) {
+          matched_slot = slot;
+          break;
+        }
+      }
+      if (matched_slot == nullptr) {
+        return std::nullopt;
+      }
+      matched_slot->rewritten_result = rewrite->result;
+      continue;
+    }
+
+    if (const auto* store = std::get_if<LirStoreOp>(&inst)) {
+      if (store->type_str != "i32") {
+        return std::nullopt;
+      }
+      auto* slot = match_slot(store->ptr);
+      if (slot == nullptr || store->val != slot->rewritten_result) {
+        return std::nullopt;
+      }
+      continue;
+    }
+
+    return std::nullopt;
+  }
+
+  if (lhs_slot.last_load_result != lhs_call_operand || rhs_slot.last_load_result != rhs_call_operand) {
+    return std::nullopt;
+  }
+
+  return std::pair<std::int64_t, std::int64_t>{lhs_slot.stored_imm, rhs_slot.stored_imm};
+}
+
 bool is_i32_scalar_signature_return(const c4c::backend::BackendFunctionSignature& signature) {
   return c4c::backend::backend_signature_return_type_kind(signature) ==
              c4c::backend::BackendValueTypeKind::Scalar &&
@@ -2909,100 +3010,20 @@ std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_sl
         *main_ret->value_str != call->result) {
       return std::nullopt;
     }
-
-    struct SlotState {
-      std::string alloca_name;
-      std::int64_t stored_imm = 0;
-      bool initialized = false;
-      std::string last_load_result;
-      std::string rewritten_result;
-      bool rewrite_committed = false;
-    };
-
-    auto parse_store_imm = [](const LirInst& inst, std::string_view expected_ptr)
-        -> std::optional<std::int64_t> {
-      const auto* store = std::get_if<LirStoreOp>(&inst);
-      if (store == nullptr || store->type_str != "i32" || store->ptr != expected_ptr) {
-        return std::nullopt;
-      }
-      return parse_i64(store->val);
-    };
-
-    SlotState lhs_slot{alloca0->result};
-    SlotState rhs_slot{alloca1->result};
-    const auto lhs_store_imm = parse_store_imm(main_block.insts[0], lhs_slot.alloca_name);
-    const auto rhs_store_imm = parse_store_imm(main_block.insts[1], rhs_slot.alloca_name);
-    if (!lhs_store_imm.has_value() || !rhs_store_imm.has_value()) {
-      return std::nullopt;
-    }
-    lhs_slot.stored_imm = *lhs_store_imm;
-    lhs_slot.initialized = true;
-    rhs_slot.stored_imm = *rhs_store_imm;
-    rhs_slot.initialized = true;
-
-    auto match_slot = [&](std::string_view ptr) -> SlotState* {
-      if (ptr == lhs_slot.alloca_name) return &lhs_slot;
-      if (ptr == rhs_slot.alloca_name) return &rhs_slot;
-      return nullptr;
-    };
-
-    for (std::size_t inst_index = 2; inst_index + 1 < main_block.insts.size(); ++inst_index) {
-      const auto& inst = main_block.insts[inst_index];
-
-      if (const auto* load = std::get_if<LirLoadOp>(&inst)) {
-        if (load->type_str != "i32") {
-          return std::nullopt;
-        }
-        auto* slot = match_slot(load->ptr);
-        if (slot == nullptr || !slot->initialized) {
-          return std::nullopt;
-        }
-        slot->last_load_result = load->result;
-        continue;
-      }
-
-      if (const auto* rewrite = std::get_if<LirBinOp>(&inst)) {
-        if (rewrite->opcode != "add" || rewrite->type_str != "i32" || rewrite->rhs != "0") {
-          return std::nullopt;
-        }
-        SlotState* matched_slot = nullptr;
-        for (auto* slot : {&lhs_slot, &rhs_slot}) {
-          if (slot->last_load_result == rewrite->lhs) {
-            matched_slot = slot;
-            break;
-          }
-        }
-        if (matched_slot == nullptr) {
-          return std::nullopt;
-        }
-        matched_slot->rewritten_result = rewrite->result;
-        continue;
-      }
-
-      if (const auto* store = std::get_if<LirStoreOp>(&inst)) {
-        if (store->type_str != "i32") {
-          return std::nullopt;
-        }
-        auto* slot = match_slot(store->ptr);
-        if (slot == nullptr || store->val != slot->rewritten_result) {
-          return std::nullopt;
-        }
-        slot->rewrite_committed = true;
-        continue;
-      }
-
-      return std::nullopt;
-    }
-
-    if (call_operands->first != lhs_slot.last_load_result ||
-        call_operands->second != rhs_slot.last_load_result) {
+    const auto matched_slot_slice = match_two_arg_local_rewrite_slot_slice(
+        std::vector<LirInst>(main_block.insts.begin(), main_block.insts.end() - 1),
+        alloca0->result,
+        alloca1->result,
+        call_operands->first,
+        call_operands->second);
+    if (!matched_slot_slice.has_value()) {
       return std::nullopt;
     }
 
     return MinimalTwoArgDirectCallSlice{
         helper->name,
-        lhs_slot.stored_imm,
-        rhs_slot.stored_imm,
+        matched_slot_slice->first,
+        matched_slot_slice->second,
     };
   }
 
