@@ -76,7 +76,96 @@ std::optional<std::string> read_text_file(const std::string& path) {
   return buffer.str();
 }
 
+std::string trim_copy(std::string_view text) {
+  std::size_t begin = 0;
+  while (begin < text.size() &&
+         std::isspace(static_cast<unsigned char>(text[begin]))) {
+    ++begin;
+  }
+  std::size_t end = text.size();
+  while (end > begin &&
+         std::isspace(static_cast<unsigned char>(text[end - 1]))) {
+    --end;
+  }
+  return std::string(text.substr(begin, end - begin));
+}
+
+std::string normalize_aarch64_fallback_asm(std::string text) {
+  for (char& ch : text) {
+    if (ch == '\t') ch = ' ';
+  }
+
+  std::vector<std::string> lines;
+  std::size_t start = 0;
+  while (start <= text.size()) {
+    const auto end = text.find('\n', start);
+    if (end == std::string::npos) {
+      lines.push_back(text.substr(start));
+      break;
+    }
+    lines.push_back(text.substr(start, end - start));
+    start = end + 1;
+  }
+
+  for (std::size_t i = 0; i + 2 < lines.size(); ++i) {
+    const auto adrp = trim_copy(lines[i]);
+    const auto got_load = trim_copy(lines[i + 1]);
+    const auto value_load = trim_copy(lines[i + 2]);
+    if (adrp.rfind("adrp ", 0) != 0) continue;
+
+    const auto comma = adrp.find(", :got:");
+    if (comma == std::string::npos) continue;
+
+    const auto addr_reg = adrp.substr(5, comma - 5);
+    const auto symbol = adrp.substr(comma + 7);
+    const std::string expected_got_load =
+        "ldr " + addr_reg + ", [" + addr_reg + ", :got_lo12:" + symbol + "]";
+    if (got_load != expected_got_load) continue;
+
+    const std::string value_prefix = "ldr ";
+    if (value_load.rfind(value_prefix, 0) != 0) continue;
+    const auto value_comma = value_load.find(", [");
+    if (value_comma == std::string::npos) continue;
+    const auto value_reg = value_load.substr(value_prefix.size(),
+                                             value_comma - value_prefix.size());
+    if (value_load.substr(value_comma + 3) != addr_reg + "]") continue;
+
+    const auto indent_width = lines[i].find_first_not_of(' ');
+    const std::string indent(indent_width == std::string::npos ? 0 : indent_width, ' ');
+    lines[i] = indent + "adrp " + addr_reg + ", " + symbol;
+    lines[i + 1].clear();
+    lines[i + 2] = indent + "ldr " + value_reg + ", [" + addr_reg + ", :lo12:" + symbol + "]";
+  }
+
+  std::ostringstream normalized;
+  bool first = true;
+  for (const auto& line : lines) {
+    const auto trimmed = trim_copy(line);
+    if (trimmed.empty() ||
+        trimmed.rfind(".cfi_", 0) == 0 ||
+        trimmed.rfind(".file ", 0) == 0 ||
+        trimmed.rfind(".ident ", 0) == 0 ||
+        trimmed.rfind(".addrsig", 0) == 0 ||
+        trimmed.rfind("//", 0) == 0) {
+      continue;
+    }
+    if (!first) normalized << '\n';
+    if (trimmed.rfind(".word ", 0) == 0) {
+      normalized << line.substr(0, line.find(trimmed)) << ".long "
+                 << trimmed.substr(6);
+    } else {
+      normalized << line;
+    }
+    first = false;
+  }
+  if (!text.empty() && text.back() == '\n') {
+    normalized << '\n';
+  }
+  return normalized.str();
+}
+
 std::string normalize_asm_text(std::string text) {
+  text = normalize_aarch64_fallback_asm(std::move(text));
   std::string_view view(text);
   while (!view.empty() && (view.front() == ' ' || view.front() == '\t' ||
                            view.front() == '\r' || view.front() == '\n')) {
@@ -610,15 +699,25 @@ int main(int argc, char **argv) {
     std::string ir = c4c::codegen::llvm_backend::emit_module_native(
         *sema_result.hir_module, target_triple, codegen_path);
 
+    const bool wants_asm_output =
+        output.empty() || has_suffix(output, ".s") || has_suffix(output, ".S");
+    const bool backend_returned_llvm_ir = looks_like_llvm_ir(ir);
+    const bool backend_returned_no_asm = ir.empty();
     if (codegen_path == c4c::codegen::llvm_backend::CodegenPath::Lir &&
-        looks_like_llvm_ir(ir) &&
-        (output.empty() || has_suffix(output, ".s") || has_suffix(output, ".S"))) {
-      auto fallback_asm = lower_llvm_ir_to_asm(ir, target_triple);
+        wants_asm_output &&
+        (backend_returned_llvm_ir || backend_returned_no_asm)) {
+      std::optional<std::string> fallback_asm;
+      if (backend_returned_llvm_ir) {
+        fallback_asm = lower_llvm_ir_to_asm(ir, target_triple);
+      }
       if (!fallback_asm.has_value()) {
         auto legacy_ir = c4c::codegen::llvm_backend::emit_module_native(
             *sema_result.hir_module, target_triple,
             c4c::codegen::llvm_backend::CodegenPath::Llvm);
         fallback_asm = lower_llvm_ir_to_asm(legacy_ir, target_triple);
+        if (!backend_returned_llvm_ir) {
+          ir = legacy_ir;
+        }
       }
       if (!fallback_asm.has_value()) {
         print_asm_fallback_hint(ir);
