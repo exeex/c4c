@@ -13,8 +13,32 @@ Current active item: Step 2, continue bounded compare-fed phi-join parity with
 the next smallest source-shaped ternary slice that still collapses into one
 BIR block after the fused `bir.select`, specifically the next split-predecessor
 control-flow shape whose arms or join-local follow-on work are slightly richer
-than the newly covered bounded mixed add/sub affine chains, without widening
-CFG support or x86/AArch64 direct-BIR emitter coverage.
+than the newly covered bounded mixed add/sub affine chains, with the next
+candidate now being the symmetric deeper-chain split-predecessor case after
+the deeper-then-arm / mixed-else-arm slice validated cleanly on both the
+direct BIR text path and the source-driven default-route path.
+
+Completed this iteration:
+- Added direct BIR lowering and explicit BIR-pipeline regressions for the next
+  richer split-predecessor compare-fed phi-join slice where the then arm now
+  carries a three-op add/sub affine chain while the else arm keeps the prior
+  two-op mixed affine chain before empty end blocks and the join still keeps a
+  post-add, via
+  `make_bir_two_param_select_eq_split_predecessor_deeper_then_mixed_affine_phi_post_join_add_module()`.
+- Added source-level/default-route RISC-V coverage via
+  `tests/c/internal/backend_route_case/two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add.c`,
+  proving `(x == y ? x + 8 - 3 + 5 : y + 11 - 4) + 6` stays on the BIR
+  pipeline instead of falling back to legacy LLVM IR text.
+- Rebuilt `backend_bir_tests` and `c4cll`, reran
+  `ctest --test-dir build -R backend_bir_tests --output-on-failure`, reran the
+  new route case
+  `backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_defaults_to_bir`,
+  reran `ctest --test-dir build -L backend --output-on-failure -j8`, then
+  refreshed `test_fail_after.log` with a full `ctest --test-dir build -j8
+  --output-on-failure` run.
+- Passed the regression guard against `test_fail_before.log` with
+  `--allow-non-decreasing-passed` (`2743 -> 2746` passed, `0 -> 0` failed, no
+  newly failing tests, no new `>30s` cases).
 
 Completed this iteration:
 - Added direct BIR lowering and explicit BIR-pipeline regressions for the next
