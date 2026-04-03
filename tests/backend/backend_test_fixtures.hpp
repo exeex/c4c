@@ -1839,6 +1839,66 @@ make_local_slot_constant_conditional_goto_return_module() {
 }
 
 inline c4c::codegen::lir::LirModule
+make_i8_local_slot_constant_conditional_goto_return_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.flag", "i8", "", 1});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCmpOp{"%t0", false, "eq", "i32", "9", "9"});
+  entry.insts.push_back(LirCastOp{"%t1", LirCastKind::ZExt, "i1", "%t0", "i8"});
+  entry.insts.push_back(LirStoreOp{"i8", "%t1", "%lv.flag"});
+  entry.terminator = LirBr{"check"};
+
+  LirBlock check;
+  check.id = LirBlockId{1};
+  check.label = "check";
+  check.insts.push_back(LirLoadOp{"%t2", "i8", "%lv.flag"});
+  check.insts.push_back(LirCmpOp{"%t3", false, "ne", "i8", "%t2", "0"});
+  check.terminator = LirCondBr{"%t3", "then_path", "else_path"};
+
+  LirBlock then_path;
+  then_path.id = LirBlockId{2};
+  then_path.label = "then_path";
+  then_path.terminator = LirBr{"finish"};
+
+  LirBlock else_path;
+  else_path.id = LirBlockId{3};
+  else_path.label = "else_path";
+  else_path.terminator = LirBr{"dead_end"};
+
+  LirBlock dead_end;
+  dead_end.id = LirBlockId{4};
+  dead_end.label = "dead_end";
+  dead_end.terminator = LirBr{"finish"};
+
+  LirBlock finish;
+  finish.id = LirBlockId{5};
+  finish.label = "finish";
+  finish.terminator = LirRet{std::string("0"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(check));
+  function.blocks.push_back(std::move(then_path));
+  function.blocks.push_back(std::move(else_path));
+  function.blocks.push_back(std::move(dead_end));
+  function.blocks.push_back(std::move(finish));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+inline c4c::codegen::lir::LirModule
 make_two_local_slot_constant_conditional_goto_return_module() {
   using namespace c4c::codegen::lir;
 

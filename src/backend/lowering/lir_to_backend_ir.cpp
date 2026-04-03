@@ -2104,6 +2104,10 @@ std::optional<BackendFunction> adapt_small_local_constant_conditional_goto_retur
     const c4c::codegen::lir::LirFunction& function,
     const BackendFunctionSignature& signature) {
   using namespace c4c::codegen::lir;
+  struct LocalValueState {
+    unsigned bit_width = 0;
+    std::optional<ResolvedInteger> value;
+  };
 
   if (function.is_declaration || !backend_function_is_definition(signature) ||
       signature.return_type != "i32" || signature.is_vararg || function.blocks.empty() ||
@@ -2111,14 +2115,20 @@ std::optional<BackendFunction> adapt_small_local_constant_conditional_goto_retur
     return std::nullopt;
   }
 
-  std::unordered_map<std::string, std::optional<ResolvedInteger>> local_values;
+  std::unordered_map<std::string, LocalValueState> local_values;
   for (const auto& alloca_inst : function.alloca_insts) {
     const auto* scalar_alloca = std::get_if<LirAllocaOp>(&alloca_inst);
-    if (scalar_alloca == nullptr || scalar_alloca->type_str != "i32" ||
-        scalar_alloca->result.empty()) {
+    const auto scalar_type = scalar_alloca == nullptr
+                                 ? std::nullopt
+                                 : parse_backend_scalar_type(scalar_alloca->type_str);
+    if (scalar_alloca == nullptr || !scalar_type.has_value() || scalar_alloca->result.empty()) {
       return std::nullopt;
     }
-    local_values.emplace(scalar_alloca->result, std::nullopt);
+    local_values.emplace(
+        scalar_alloca->result,
+        LocalValueState{static_cast<unsigned>(
+                            backend_scalar_type_size_bytes(*scalar_type) * 8),
+                        std::nullopt});
   }
 
   std::unordered_map<std::string, const LirBlock*> blocks_by_label;
@@ -2236,27 +2246,31 @@ std::optional<BackendFunction> adapt_small_local_constant_conditional_goto_retur
       }
 
       if (const auto* store = std::get_if<LirStoreOp>(&inst)) {
-        if (store->type_str != "i32") {
-          return std::nullopt;
-        }
         const auto value = resolve_int(store->val);
+        const auto scalar_type = parse_backend_scalar_type(store->type_str);
         const auto local_it = local_values.find(store->ptr);
-        if (local_it == local_values.end() || !value.has_value()) {
+        if (local_it == local_values.end() || !value.has_value() ||
+            !scalar_type.has_value() ||
+            backend_scalar_type_size_bytes(*scalar_type) * 8 != local_it->second.bit_width) {
           return std::nullopt;
         }
-        local_it->second = ResolvedInteger{truncate_integer_bits(value->bits, 32), 32};
+        local_it->second.value = ResolvedInteger{
+            truncate_integer_bits(
+                value->bits,
+                static_cast<unsigned>(backend_scalar_type_size_bytes(*scalar_type) * 8)),
+            static_cast<unsigned>(backend_scalar_type_size_bytes(*scalar_type) * 8)};
         continue;
       }
 
       if (const auto* load = std::get_if<LirLoadOp>(&inst)) {
-        if (load->type_str != "i32") {
-          return std::nullopt;
-        }
+        const auto scalar_type = parse_backend_scalar_type(load->type_str);
         const auto local_it = local_values.find(load->ptr);
-        if (local_it == local_values.end() || !local_it->second.has_value()) {
+        if (local_it == local_values.end() || !scalar_type.has_value() ||
+            backend_scalar_type_size_bytes(*scalar_type) * 8 != local_it->second.bit_width ||
+            !local_it->second.value.has_value()) {
           return std::nullopt;
         }
-        integer_values[load->result] = *local_it->second;
+        integer_values[load->result] = *local_it->second.value;
         continue;
       }
 

@@ -12,7 +12,7 @@ Source Plan: plan.md
   - Notes: Shared decode/parsing helpers in `src/backend/lowering/call_decode.*` now own the staged LIR call and signature parsing previously spread across target codegen.
   - Blockers: None.
 - [ ] Step 3: Make backend IR more backend-native
-  - Notes: Step 3 has already delivered meaningful structure around call metadata, signatures, linkage, globals, address provenance, and local-slot metadata. The local-slot branch-only constant-return family is no longer blocked on the old dead-end constraints: it now lowers without a hard local-slot-count cap, and it no longer requires the function to be named `main` or to have zero fixed parameters when those parameters are irrelevant to the matched local-slot state. This topic should not consume more plan churn. Representative coverage now replaces the old slot-count regression ladder in the shared lowering and AArch64 direct-vs-lowered parity tests, while keeping the non-`main`/unused-parameter boundary regression. The only worthwhile remaining work for this family is deciding whether to generalize the current `i32`-only local-slot/value model into typed-scalar support because a real backend semantic family needs it. Do not spend more time on size-only widening, entrypoint naming, or unused-parameter gating.
+  - Notes: Step 3 has already delivered meaningful structure around call metadata, signatures, linkage, globals, address provenance, and local-slot metadata. The local-slot branch-only constant-return family is no longer blocked on the old dead-end constraints: it now lowers without a hard local-slot-count cap, and it no longer requires the function to be named `main` or to have zero fixed parameters when those parameters are irrelevant to the matched local-slot state. This topic should not consume more plan churn. Representative coverage now replaces the old slot-count regression ladder in the shared lowering and AArch64 direct-vs-lowered parity tests, while keeping the non-`main`/unused-parameter boundary regression. The latest slice added a real typed-scalar extension for this family: shared lowering now accepts `i8` local-slot load/store values alongside `i32`, with matching shared and AArch64 regression coverage. That support is intentionally bounded; widening into `i64` would wrongly absorb the mixed-width control-flow slice that is supposed to stay on the general emitter path. Do not spend more time on size-only widening, entrypoint naming, unused-parameter gating, or broad scalar-width expansion without a concrete backend-semantic need.
   - Blockers: None.
 - [ ] Step 4: Shift target codegen onto backend semantics
   - Notes: Recent AArch64 and x86 work already removed many emitter-local reshaping layers for direct-call and structured fast-path seams. Further Step 4 cleanup for this active family depends on Step 3 producing a stable structured lowering result instead of another bounded compatibility matcher.
@@ -23,11 +23,11 @@ Source Plan: plan.md
 
 ## Current Focus
 
-Step 3
+Step 3: validate whether any further typed-scalar widening is actually required
 
 ## Immediate Next Slice
 
-Do not revisit local-slot-count widening for the structurally converged constant-return family. If more work is needed in this Step 3 area, it must be driven by a real typed-scalar/backend-semantic need rather than more size-only fixture churn.
+Treat the `i8`/`i32` local-slot support as the current semantic boundary for this family unless a concrete backend use case proves that another scalar width is needed. If no such use case appears, shift the next slice to Step 4 target-codegen cleanup for already-structured backend semantics instead of widening this matcher further.
 
 ## Accomplished Context
 
@@ -39,6 +39,8 @@ Do not revisit local-slot-count widening for the structurally converged constant
 - The active local-slot family now also accepts non-`main` functions, unused fixed parameters, and more than eighteen local slots without reopening the old fallback path.
 - The remaining open question for this family is semantic typing, not entrypoint naming or local-slot cardinality.
 - Shared lowering and AArch64 parity coverage now use representative slot-count cases instead of an exhaustive regression ladder for this family.
+- Shared lowering now also normalizes the same family when the local-slot state is carried through `i8` values instead of only `i32`.
+- The typed-scalar extension is intentionally bounded to backend-supported scalar locals (`i8`/`i32`) so mixed-width `i64` control-flow slices keep using the general AArch64 emitter.
 
 ## Risks And Constraints
 
@@ -54,3 +56,4 @@ Do not revisit local-slot-count widening for the structurally converged constant
 - Targeted backend tests for `backend_lir_adapter_tests` and `backend_lir_adapter_aarch64_tests` have been passing on the recent Step 3 slices after rebuild.
 - The current full-suite workspace ceiling remains `2667 passed / 2 failed / 2669 total`.
 - The known remaining failures are `backend_contract_aarch64_return_add_object` and `backend_contract_aarch64_global_load_object`.
+- This slice revalidated `backend_lir_adapter_tests`, `backend_lir_adapter_aarch64_tests`, and a full `ctest --test-dir build -j --output-on-failure` run with the same `2667 passed / 2 failed / 2669 total` ceiling.

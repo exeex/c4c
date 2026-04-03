@@ -1121,6 +1121,22 @@ void test_aarch64_backend_scaffold_matches_direct_local_slot_constant_conditiona
   }
 }
 
+void test_aarch64_backend_scaffold_matches_direct_i8_local_slot_constant_conditional_goto_return_asm() {
+  const auto direct_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{
+          make_i8_local_slot_constant_conditional_goto_return_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  const auto lowered = c4c::backend::lower_to_backend_ir(
+      make_i8_local_slot_constant_conditional_goto_return_module());
+  const auto lowered_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  if (direct_rendered != lowered_rendered) {
+    fail("aarch64 i8 local-slot-backed constant-conditional goto regression should keep the direct LIR and explicit lowered backend seams on identical assembly output");
+  }
+}
+
 void expect_aarch64_backend_scaffold_matches_direct_local_slot_constant_conditional_goto_return_asm(
     c4c::codegen::lir::LirModule module, const char* failure_message) {
   const auto direct_rendered = c4c::backend::emit_module(
@@ -4954,6 +4970,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_scaffold_matches_direct_truncating_binop_constant_conditional_goto_return_asm();
   test_aarch64_backend_scaffold_matches_direct_select_constant_conditional_goto_return_asm();
   test_aarch64_backend_scaffold_matches_direct_local_slot_constant_conditional_goto_return_asm();
+  test_aarch64_backend_scaffold_matches_direct_i8_local_slot_constant_conditional_goto_return_asm();
   test_aarch64_backend_scaffold_matches_direct_representative_ten_local_slot_constant_conditional_goto_return_asm();
   test_aarch64_backend_scaffold_matches_direct_representative_eighteen_local_slot_constant_conditional_goto_return_asm();
   test_aarch64_backend_scaffold_matches_direct_non_main_param_nineteen_local_slot_constant_conditional_goto_return_asm();
