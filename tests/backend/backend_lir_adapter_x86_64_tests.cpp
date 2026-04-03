@@ -2436,26 +2436,37 @@ void test_x86_backend_scaffold_accepts_renamed_structured_direct_call_add_imm_ir
   }
 
   helper->signature.name = "sum_one";
+  helper->signature.params.front().name = "%p.renamed.input";
+  auto* add =
+      helper->blocks.empty() || helper->blocks.front().insts.empty()
+          ? nullptr
+          : std::get_if<c4c::backend::BackendBinaryInst>(&helper->blocks.front().insts.front());
   auto* call =
       main_fn->blocks.empty() || main_fn->blocks.front().insts.empty()
           ? nullptr
           : std::get_if<c4c::backend::BackendCallInst>(&main_fn->blocks.front().insts.front());
-  expect_true(call != nullptr,
-              "x86 renamed single-argument direct-call regression test needs the lowered backend call to mutate");
-  if (call == nullptr) {
+  expect_true(add != nullptr && call != nullptr,
+              "x86 renamed single-argument direct-call regression test needs the lowered helper add and backend call to mutate");
+  if (add == nullptr || call == nullptr) {
     return;
   }
+  add->lhs = "%p.renamed.input";
+  add->result = "%t.helper.sum_one.renamed";
+  helper->blocks.front().terminator.value = "%t.helper.sum_one.renamed";
   call->callee.symbol_name = "sum_one";
+  call->args.front().operand = "17";
+  call->result = "%t.main.sum_one.renamed";
+  main_fn->blocks.front().terminator.value = "%t.main.sum_one.renamed";
 
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
   expect_contains(rendered, ".type sum_one, %function",
                   "x86 backend seam should key the lowered single-argument helper definition from the structured callee symbol instead of a fixed helper name");
-  expect_contains(rendered, "mov edi, 5",
-                  "x86 backend seam should still materialize the renamed lowered single-argument direct-call immediate from structured call metadata");
+  expect_contains(rendered, "mov edi, 17",
+                  "x86 backend seam should still materialize renamed lowered single-argument direct-call immediates from structured call metadata after helper parameter and SSA renames");
   expect_contains(rendered, "call sum_one",
-                  "x86 backend seam should still lower renamed structured single-argument direct calls when legacy call/signature text is cleared");
+                  "x86 backend seam should still lower renamed structured single-argument direct calls when the helper body contract only survives through shared lowering-owned metadata");
   expect_not_contains(rendered, "target triple =",
                       "x86 backend seam should not fall back when a renamed single-argument direct-call slice relies only on structured metadata");
 }

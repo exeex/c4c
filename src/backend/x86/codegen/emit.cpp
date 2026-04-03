@@ -126,17 +126,6 @@ struct MinimalExternDeclCallSlice {
   std::int64_t return_imm = 0;
 };
 
-struct MatchedMinimalStructuredDirectCall {
-  const c4c::backend::BackendCallInst* call = nullptr;
-  c4c::backend::ParsedBackendDirectGlobalTypedCallView parsed_call;
-  const c4c::backend::BackendFunction* callee_fn = nullptr;
-};
-
-struct MatchedMinimalStructuredDirectCallAddImmHelper {
-  const c4c::backend::BackendFunction* callee_fn = nullptr;
-  std::int64_t add_imm = 0;
-};
-
 struct MinimalGlobalCharPointerDiffSlice {
   std::string global_name;
   std::int64_t global_size = 0;
@@ -422,53 +411,6 @@ std::optional<std::int64_t> parse_single_block_return_imm(
   }
 
   return parse_i64(*block.terminator.value);
-}
-
-std::optional<MatchedMinimalStructuredDirectCall> match_minimal_structured_direct_call(
-    const c4c::backend::BackendModule& module,
-    const c4c::backend::BackendBlock& block,
-    std::size_t inst_index,
-    std::size_t expected_arg_count) {
-  if (inst_index >= block.insts.size()) {
-    return std::nullopt;
-  }
-
-  const auto* call = std::get_if<c4c::backend::BackendCallInst>(&block.insts[inst_index]);
-  const auto parsed_call =
-      call == nullptr ? std::nullopt : c4c::backend::parse_backend_direct_global_typed_call(*call);
-  if (call == nullptr || parsed_call == std::nullopt || !is_i32_scalar_call_return(*call) ||
-      call->result.empty() || parsed_call->symbol_name.empty() ||
-      parsed_call->symbol_name == "main" || parsed_call->typed_call.args.size() != expected_arg_count) {
-    return std::nullopt;
-  }
-
-  const auto* callee_fn = find_function(module, parsed_call->symbol_name);
-  if (callee_fn == nullptr || callee_fn->is_declaration ||
-      !backend_function_is_definition(callee_fn->signature) ||
-      !is_i32_scalar_signature_return(callee_fn->signature) ||
-      !c4c::backend::backend_typed_call_matches_signature(parsed_call->typed_call,
-                                                          callee_fn->signature) ||
-      callee_fn->signature.is_vararg || callee_fn->blocks.size() != 1) {
-    return std::nullopt;
-  }
-
-  return MatchedMinimalStructuredDirectCall{call, *parsed_call, callee_fn};
-}
-
-std::optional<MatchedMinimalStructuredDirectCallAddImmHelper>
-match_minimal_structured_direct_call_add_imm_helper(
-    const c4c::backend::BackendFunction& callee_fn) {
-  const auto parsed = c4c::backend::parse_backend_structured_single_add_imm_function(callee_fn);
-  if (!parsed.has_value()) {
-    return std::nullopt;
-  }
-
-  const auto add_imm = parse_i64(parsed->add->rhs);
-  if (!add_imm.has_value()) {
-    return std::nullopt;
-  }
-
-  return MatchedMinimalStructuredDirectCallAddImmHelper{&callee_fn, *add_imm};
 }
 
 const char* x86_reg64_name(c4c::backend::PhysReg reg) {
