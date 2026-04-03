@@ -1,181 +1,155 @@
-# EASTL Container Bring-Up Runbook
+# Rvalue Reference Completeness Runbook
 
 Status: Active
-Source Idea: ideas/open/eastl_container_bringup_plan.md
-Activated from: prompts/ACTIVATE_PLAN.md
+Source Idea: ideas/open/rvalue_reference_completeness_plan.md
+Supersedes: ideas/open/eastl_container_bringup_plan.md
+Activated from: prompts/SWITCH_PLAN.md
 
 ## Purpose
 
-Make `tests/cpp/eastl/*` the active library bring-up frontier, starting with the
-smallest reusable EASTL support cases and only moving to heavier container
-pressure after the earlier ladder is stable and reproducible.
+Use the current EASTL/libstdc++ pressure to turn partial C++ reference support
+into a deliberate language-completeness track centered on `&&`, forwarding
+references, and deduction-aware `auto&&` / `auto&`.
 
 ## Goal
 
-Establish a staged, test-driven EASTL bring-up path that produces generic
-parser, sema, HIR, and harness improvements without relying on EASTL-specific
-acceptance hacks.
+Establish correct parser, sema, and HIR behavior for rvalue references,
+forwarding references, and `auto`-deduced reference forms across focused
+internal regressions and real library-facing probes.
 
 ## Core Rule
 
-Treat EASTL as pressure, not as a dialect: land generic frontend fixes whenever
-the underlying issue is generic, and only tolerate narrow workarounds for
-runtime or ABI support that is explicitly out of scope for this bring-up track.
+Treat this as a generic C++ language feature initiative, not as a library-
+specific workaround track: land reusable parser/sema/HIR fixes, and keep
+EASTL/STL header pressure only as evidence and validation.
 
 ## Read First
 
 - [`prompts/EXECUTE_PLAN.md`](/workspaces/c4c/prompts/EXECUTE_PLAN.md)
-- [`ideas/open/eastl_container_bringup_plan.md`](/workspaces/c4c/ideas/open/eastl_container_bringup_plan.md)
-- [`tests/cpp/eastl`](/workspaces/c4c/tests/cpp/eastl)
-- existing EASTL recipes under [`tests/cpp`](/workspaces/c4c/tests/cpp)
+- [`ideas/open/rvalue_reference_completeness_plan.md`](/workspaces/c4c/ideas/open/rvalue_reference_completeness_plan.md)
+- [`src/frontend/parser`](/workspaces/c4c/src/frontend/parser)
+- [`src/frontend/sema`](/workspaces/c4c/src/frontend/sema)
+- [`src/frontend/hir`](/workspaces/c4c/src/frontend/hir)
+- existing reference-heavy tests under [`tests/cpp/internal`](/workspaces/c4c/tests/cpp/internal)
 
 ## Scope
 
-- turn selected EASTL testcases into stable, reproducible recipes
-- classify each testcase by earliest failing stage
-- fix the smallest generic blockers needed to advance the current stage
-- progress in this order:
-  1. foundation headers and traits
-  2. object lifetime / utility layer
-  3. `eastl::vector` parse frontier
-  4. `eastl::vector` sema / HIR / lowering viability
-  5. follow-on EASTL containers only after the earlier ladder is healthy
+- audit current support for `T&&`, `const T&&`, `auto&&`, and `auto&`
+- classify existing tests by earliest failing stage
+- add focused regressions for missing or under-specified reference behavior
+- fix parser declaration/expression disambiguation gaps first
+- tighten sema binding rules and HIR value-category propagation afterward
+- keep EASTL/libstdc++ probes as validation pressure, not as the primary unit of work
 
 ## Non-Goals
 
-- broad STL or libstdc++ bring-up outside the selected EASTL path
-- header-name special cases or testcase-shaped EASTL parsing exceptions
-- full runtime or ABI ownership for `new`/`delete`, libc++abi, libunwind,
-  `virtual`, RTTI, `typeid`, or dynamic-cast-style support
-- expanding into additional container families before the current ladder is
-  stable
+- broad container bring-up as the primary goal while this plan is active
+- runtime/ABI ownership unrelated to reference semantics
+- header-name special cases or testcase-specific parsing exceptions
+- trying to finish every STL/EASTL issue under one reference-semantics slice
 
 ## Working Model
 
-- For each testcase, first make the invocation reproducible.
-- Validate `--parse-only` before later pipeline stages.
-- Use `--dump-canonical` after parse succeeds.
-- Use `--dump-hir-summary` only after semantic validation progresses.
-- Only then push full compile or runtime workflows.
-- Compare behavior against Clang whenever frontend or codegen behavior is in
-  question.
+- Start with the narrowest internal reduction that proves one reference bug.
+- Confirm whether the failure is parser, sema, HIR, or runtime.
+- Compare against Clang when binding or value-category behavior is unclear.
+- Re-run one or two real library-facing probes after each meaningful fix.
+- Keep `auto&&` / `auto&` under the same umbrella as `T&&` because the missing
+  behavior is shared through deduction, collapsing, and value-category rules.
 
 ## Execution Rules
 
 - Work from the highest-priority incomplete item in [`todo.md`](/workspaces/c4c/todo.md).
 - Add or update the narrowest validating test before implementing a fix.
-- Record the full-suite baseline before meaningful implementation changes.
-- Keep slices small enough to prove one root cause at a time.
-- If a blocker is larger or belongs to a different subsystem, spin it out into
-  `ideas/open/` instead of stretching this plan.
-- Preserve resumable execution notes in [`todo.md`](/workspaces/c4c/todo.md) whenever the active slice changes.
+- Keep parser-only slices separate from sema/HIR behavior slices.
+- Preserve the resumable EASTL tuple frontier in `todo.md` as a secondary validation probe.
+- If a newly found issue is library-specific rather than language-generic, record it back in the EASTL idea instead of growing this plan sideways.
 
 ## Ordered Steps
 
-### Step 1: Inventory and recipe normalization
+### Step 1: Inventory current reference support
 
-Goal: make the EASTL cases reproducible and classify their current earliest
-failing stage.
-
-Primary targets:
-- [`tests/cpp/eastl`](/workspaces/c4c/tests/cpp/eastl)
-- existing EASTL workflow recipes under [`tests/cpp`](/workspaces/c4c/tests/cpp)
-
-Actions:
-- enumerate the current EASTL testcase set and their required include flags
-- define one bounded command per testcase
-- record whether each case currently lands in parse, sema, HIR, codegen, or
-  runtime failure
-- tighten or add recipe coverage where the current workflow is missing
-
-Completion check:
-- the selected EASTL cases have reproducible commands and a recorded earliest
-  failing stage
-
-### Step 2: Foundation headers and traits
-
-Goal: stabilize the smallest high-leverage EASTL support cases first.
+Goal: classify what the tree already supports for `&&`, forwarding references,
+and `auto`-deduced reference forms.
 
 Primary targets:
-- `eastl_piecewise_construct_simple.cpp`
-- `eastl_tuple_fwd_decls_simple.cpp`
-- `eastl_integer_sequence_simple.cpp`
-- `eastl_type_traits_simple.cpp`
-- `eastl_utility_simple.cpp`
+- [`tests/cpp/internal`](/workspaces/c4c/tests/cpp/internal)
+- [`src/frontend/parser`](/workspaces/c4c/src/frontend/parser)
+- [`src/frontend/sema`](/workspaces/c4c/src/frontend/sema)
+- [`src/frontend/hir`](/workspaces/c4c/src/frontend/hir)
 
 Actions:
-- drive each case through parse-only first
-- fix the smallest generic parser or semantic blockers exposed by these files
-- add or refine targeted tests that isolate the root cause outside the full
-  header stack when possible
+- inventory existing positive and negative tests for `T&&`, move operations,
+  ref-qualified members, `auto&&`, and `auto&`
+- identify where parser, sema, and HIR each currently special-case reference behavior
+- record the biggest missing coverage clusters in `todo.md`
 
 Completion check:
-- the foundation cases are reproducible and their current failures are either
-  resolved or narrowed to explicit later-stage blockers
+- the current `&&` / `&` reference surface is classified by stage and missing coverage areas are explicit
 
-### Step 3: Object lifetime and tuple layer
+### Step 2: Parser completeness for reference-shaped declarations
 
-Goal: advance the next tier of reusable support features before container work.
+Goal: stabilize parser behavior for deduction guides, conversion operators,
+block-scope declarations, and other declaration/expression boundaries under
+reference pressure.
 
 Primary targets:
-- `eastl_memory_simple.cpp`
-- `eastl_tuple_simple.cpp`
+- [`src/frontend/parser`](/workspaces/c4c/src/frontend/parser)
+- focused parse regressions under [`tests/cpp/internal/postive_case`](/workspaces/c4c/tests/cpp/internal/postive_case)
 
 Actions:
-- validate parse behavior, then semantic and HIR progress
-- compare against Clang when placement-new, alignment, or tuple patterns are
-  unclear
-- keep fixes generic unless the issue is explicitly runtime-facing
+- add focused parse regressions for missing `auto&&`, `auto&`, and reference-heavy declaration forms
+- fix grouped-declarator, local-declaration, operator, and deduction-guide ambiguities one root cause at a time
+- validate with the current EASTL/libstdc++ tuple probe after each parser slice
 
 Completion check:
-- memory and tuple cases advance as far as the current frontend supports, with
-  blockers clearly classified and minimized
+- the current parser blockers for representative `&&` / `auto&&` / `auto&` shapes are either fixed or reduced to later stages
 
-### Step 4: `eastl::vector` parse frontier
+### Step 3: Semantic binding and overload rules
 
-Goal: make `eastl_vector_simple.cpp` parse behavior stable and actionable before
-deeper lowering work.
+Goal: make binding rules and overload choice behave correctly for lvalues,
+xvalues, and prvalues.
 
 Primary targets:
-- `eastl_vector_simple.cpp`
-- parser-facing recipe support for the vector case
+- [`src/frontend/sema`](/workspaces/c4c/src/frontend/sema)
+- focused positive/negative regressions under [`tests/cpp/internal`](/workspaces/c4c/tests/cpp/internal)
 
 Actions:
-- establish a bounded parse-only recipe
-- reduce parser failures to the smallest generic missing feature
-- avoid mixing parse stabilization with runtime or ABI concerns
+- verify direct binding rules for `T&&`, `const T&&`, `auto&&`, and `auto&`
+- tighten overload selection between `T&`, `const T&`, and `T&&`
+- compare against Clang for contentious cases such as named rvalue refs and forwarding references
 
 Completion check:
-- `eastl_vector_simple.cpp` has stable parse-oriented reproduction and its next
-  blocking parser issue is either fixed or isolated
+- key binding and overload cases match Clang on the focused regression set
 
-### Step 5: `eastl::vector` semantic, HIR, and lowering viability
+### Step 4: HIR value-category and forwarding behavior
 
-Goal: advance `eastl::vector` beyond parse only after Step 4 is healthy.
+Goal: preserve correct value category and reference semantics into lowering.
 
 Primary targets:
-- semantic, HIR, and lowering support reached by `eastl_vector_simple.cpp`
+- [`src/frontend/hir`](/workspaces/c4c/src/frontend/hir)
 
 Actions:
-- move one stage at a time: sema, then HIR, then codegen
-- permit narrow testcase-local runtime shims only for out-of-scope ABI or
-  allocation dependencies
-- reject frontend hacks that only recognize EASTL spellings
+- audit HIR handling of named rvalue refs, casts to `T&&`, `std::move`, `std::forward`, and `auto`-deduced refs
+- fix any places that still collapse behavior into a simple lvalue/non-lvalue split where xvalue matters
+- add behavior-level regressions when parser/sema already succeed
 
 Completion check:
-- the current post-parse `eastl::vector` blocker is removed or isolated with
-  proof of stage-by-stage progress
+- HIR lowering preserves the intended reference/value-category behavior for the current focused cases
 
-### Step 6: Follow-on container expansion
+### Step 5: Library-facing validation
 
-Goal: extend the same bring-up method to additional EASTL containers only after
-the earlier ladder is healthy.
+Goal: confirm that the generic fixes survive real template/header pressure.
+
+Primary targets:
+- `tests/cpp/eastl/eastl_tuple_simple.cpp`
+- `tests/cpp/eastl/eastl_memory_simple.cpp`
+- selected libstdc++-facing reductions
 
 Actions:
-- choose the next lightest container-adjacent surface
-- reuse the same reproduce, classify, narrow, and validate loop
-- spin out a new idea if the new surface becomes a separate initiative
+- re-run the current Step 3 EASTL tuple/memory probes
+- record whether the active frontier moved later, changed stage, or exposed a new generic reduction
+- only then decide whether to stay on this plan or switch back to EASTL bring-up
 
 Completion check:
-- additional EASTL container work starts from a stable earlier ladder and does
-  not overload this runbook
+- the current real-header reference frontier is either cleared or reduced to a new explicit later-stage blocker

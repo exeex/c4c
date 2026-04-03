@@ -5,9 +5,10 @@ Last Updated: 2026-04-03
 
 ## Goal
 
-Turn current partial `&&` support into a deliberate, end-to-end C++ feature
-track that covers parsing, template deduction, semantic binding rules,
-value-category propagation, HIR lowering, and regression coverage.
+Turn current partial reference support around both `&&` and `&` deduction-aware
+forms into a deliberate, end-to-end C++ feature track that covers parsing,
+template deduction, semantic binding rules, value-category propagation, HIR
+lowering, and regression coverage.
 
 ## Why This Should Be A Separate Initiative
 
@@ -20,8 +21,8 @@ libstdc++ `ranges_util.h`, including:
   `operator in_in_result<_IIter1, _IIter2>() &&`
 
 These are not EASTL-specific bugs. They point to a broader compiler-quality
-track around rvalue references, forwarding references, and reference-aware
-overload/binding behavior.
+track around rvalue references, forwarding references, `auto&&`, `auto&`, and
+reference-aware overload/binding behavior.
 
 Keeping this as its own idea avoids silently stretching the current EASTL
 bring-up plan into a repo-wide language-completeness effort.
@@ -81,6 +82,7 @@ Missing coverage likely includes:
 - qualified and dependent type spellings
 - nested template substitutions
 - constructor templates and deduction guides
+- `auto&&` and `auto&` deduction outcomes
 - return-type and intermediate-expression collapsing
 
 ### 3. Forwarding-reference completeness
@@ -91,6 +93,7 @@ just the common `template<class T> f(T&&)` case.
 Important missing or under-tested cases:
 
 - `auto&&`
+- `auto&`
 - `decltype(auto)` returns that preserve reference category
 - parameter packs such as `Args&&...`
 - forwarding through wrappers into constructors, ref-qualified methods, and
@@ -146,7 +149,7 @@ Known pressure areas:
 
 - deduction guides
 - template-id conversion operators
-- block-scope `auto&&` / `decltype(...)` declarations
+- block-scope `auto&&`, `auto&`, and `decltype(...)` declarations
 - heavy generic headers with nested templates and `requires`
 
 ### 8. Library-facing regression depth
@@ -165,7 +168,7 @@ Missing coverage should include:
 1. Audit and classify all existing `&&` tests by stage: parse, sema, HIR,
    runtime.
 2. Add a matrix of focused internal regressions for:
-   `T&&`, `const T&&`, `auto&&`, `Args&&...`, ref-qualified members,
+   `T&&`, `const T&&`, `auto&&`, `auto&`, `Args&&...`, ref-qualified members,
    conversion operators, deduction guides, `std::forward`, and
    named-rvalue-reference lvalue behavior.
 3. Repair parser declaration/expression disambiguation gaps first, because they

@@ -1,7 +1,7 @@
 # EASTL Container Bring-Up Plan
 
 Status: Open
-Last Updated: 2026-04-02
+Last Updated: 2026-04-03
 
 ## Goal
 
@@ -258,6 +258,21 @@ For each EASTL testcase:
 - then `--dump-canonical` if parse succeeds
 - then `--dump-hir-summary` if semantic validation progresses
 - only then full compile/runtime workflows
+
+## Execution Notes
+
+- Step 1 and Step 2 of the staged bring-up ladder are complete.
+- Step 3 was active when the plan was switched out in favor of the broader
+  reference-semantics initiative under
+  `ideas/open/rvalue_reference_completeness_plan.md`.
+- The latest reduced generic blockers cleared from the Step 3 tuple path were:
+  `subrange(_Rng&&) -> ...` deduction-guide parsing and
+  `operator in_in_result<_IIter1, _IIter2>() &&` template-id conversion
+  operator parsing in libstdc++ `ranges_util.h`.
+- The next resumable EASTL blocker is the later block-scope
+  declaration/expression split now reached around
+  `/usr/include/c++/14/bits/ranges_util.h:740` from
+  `tests/cpp/eastl/eastl_tuple_simple.cpp`.
 
 This keeps parser debugging from being mixed with later failures.
 
