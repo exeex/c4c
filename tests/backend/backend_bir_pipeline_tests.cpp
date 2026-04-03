@@ -63,6 +63,21 @@ void test_backend_bir_pipeline_routes_straight_line_chain_through_bir_text_surfa
                   "explicit BIR selection should expose the chain tail on the BIR route surface");
 }
 
+void test_backend_bir_pipeline_routes_zero_param_staged_constant_chain_through_bir_text_surface() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_bir_return_staged_constant_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Riscv64));
+
+  expect_contains(rendered, "bir.func @main() -> i32 {",
+                  "explicit BIR selection should preserve the zero-parameter staged constant signature on the BIR text path");
+  expect_contains(rendered, "%t0 = bir.add i32 2, 3",
+                  "explicit BIR selection should expose the staged constant head on the BIR text path");
+  expect_contains(rendered, "%t1 = bir.sub i32 %t0, 1",
+                  "explicit BIR selection should preserve the middle subtraction of the staged constant chain");
+  expect_contains(rendered, "%t2 = bir.add i32 %t1, 4",
+                  "explicit BIR selection should preserve the tail add of the staged constant chain");
+}
+
 void test_backend_bir_pipeline_routes_single_param_chain_through_bir_text_surface() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_bir_single_param_add_sub_chain_module()},
@@ -137,6 +152,18 @@ void test_backend_bir_pipeline_drives_x86_return_sub_smoke_case_end_to_end() {
                   "BIR pipeline should lower the tiny sub/return case to the expected x86 return-immediate asm");
 }
 
+void test_backend_bir_pipeline_drives_x86_direct_bir_zero_param_staged_constant_end_to_end() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{
+          c4c::backend::lower_to_bir(make_bir_return_staged_constant_module())},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl main",
+                  "direct BIR zero-parameter staged constant input should reach x86 backend emission without legacy backend IR lowering");
+  expect_contains(rendered, "mov eax, 8",
+                  "x86 direct BIR zero-parameter staged constant input should collapse the full chain to the surviving constant");
+}
+
 void test_backend_bir_pipeline_drives_x86_single_param_chain_end_to_end() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_bir_single_param_add_sub_chain_module()},
@@ -159,6 +186,18 @@ void test_backend_bir_pipeline_drives_aarch64_single_param_chain_end_to_end() {
                   "BIR pipeline should still reach aarch64 backend emission for the bounded one-parameter slice");
   expect_contains(rendered, "add w0, w0, #1",
                   "aarch64 BIR lowering should collapse the bounded parameter-fed chain into the expected affine adjustment");
+}
+
+void test_backend_bir_pipeline_drives_aarch64_direct_bir_zero_param_staged_constant_end_to_end() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{
+          c4c::backend::lower_to_bir(make_bir_return_staged_constant_module())},
+      make_bir_pipeline_options(c4c::backend::Target::Aarch64));
+
+  expect_contains(rendered, ".globl main",
+                  "direct BIR zero-parameter staged constant input should reach aarch64 backend emission without legacy backend IR lowering");
+  expect_contains(rendered, "mov w0, #8",
+                  "aarch64 direct BIR zero-parameter staged constant input should collapse the full chain to the surviving constant");
 }
 
 void test_backend_bir_pipeline_drives_x86_two_param_add_end_to_end() {
@@ -343,12 +382,14 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_backend_bir_pipeline_accepts_direct_bir_module_input);
   RUN_TEST(test_backend_bir_pipeline_routes_sub_cluster_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_straight_line_chain_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_routes_zero_param_staged_constant_chain_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_single_param_chain_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_two_param_add_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_two_param_add_sub_chain_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_two_param_staged_affine_chain_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_return_add_smoke_case_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_return_sub_smoke_case_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_zero_param_staged_constant_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_single_param_chain_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_two_param_add_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_input_end_to_end);
@@ -356,6 +397,7 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_two_param_add_sub_chain_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_two_param_staged_affine_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_single_param_chain_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_aarch64_direct_bir_zero_param_staged_constant_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_two_param_add_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_direct_bir_input_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_direct_bir_staged_affine_end_to_end);

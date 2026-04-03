@@ -40,15 +40,21 @@ Completed this iteration:
   only as the unsupported direct-BIR fallback.
 - Added direct-BIR staged-affine regression coverage for both x86 and AArch64
   emitter entry points.
-- Revalidated the full suite after this slice with `test_after.log`
-  (`2728/2728` passing) and confirmed monotonic no-regression behavior against
-  `test_before.log`.
+- Extended direct `bir::Module` affine parsing in the x86 and AArch64 emitters
+  to accept zero-parameter staged constant chains, so multi-instruction direct
+  BIR constant-return slices now emit natively instead of falling back through
+  `bir_to_backend_ir.*`.
+- Added BIR text-surface coverage plus direct-BIR x86/AArch64 end-to-end
+  regressions for the zero-parameter staged constant chain slice.
+- Revalidated the full suite after the zero-parameter staged-constant direct
+  BIR slice with `test_after.log` (`2728/2728` passing) and confirmed
+  monotonic no-regression behavior against `test_before.log`.
 
 Next intended slice:
-- Expand direct emitter-native BIR handling beyond the bounded arithmetic
-  slices so more backend-owned cases avoid `bir_to_backend_ir.*`, then delete
-  that lowering path once no production emitter entry point still depends on
-  it.
+- Audit whether the remaining direct `bir::Module` fallback in the x86/AArch64
+  emitters now only covers unsupported manual BIR inputs, then either remove
+  `bir_to_backend_ir.*` for the scaffold-supported surface or add the next
+  smallest native BIR-owned slice needed to make that deletion safe.
 
 Resume notes:
 - `backend.cpp` still contains the legacy route (`emit_legacy_module`), but
@@ -58,6 +64,7 @@ Resume notes:
   still own a last-resort `bir::Module` -> `BackendModule` lowering internally,
   but the bounded arithmetic direct-BIR slices now bypass that path and emit
   natively inside `src/backend/x86/codegen/emit.cpp` and
-  `src/backend/aarch64/codegen/emit.cpp`.
+  `src/backend/aarch64/codegen/emit.cpp`, including zero-parameter staged
+  constant chains.
 - `c4cll.cpp` still rescues `--codegen asm` through LLVM IR/asm conversion and
   a second retry via `CodegenPath::Llvm`.

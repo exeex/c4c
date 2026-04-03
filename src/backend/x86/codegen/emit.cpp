@@ -824,7 +824,7 @@ std::optional<MinimalAffineReturnSlice> parse_minimal_affine_return_slice(
   }
 
   const auto& function = module.functions.front();
-  if (function.params.size() > 2 || function.params.empty()) {
+  if (function.params.size() > 2) {
     return std::nullopt;
   }
   for (const auto& param : function.params) {

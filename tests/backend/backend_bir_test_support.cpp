@@ -20,6 +20,19 @@ c4c::codegen::lir::LirModule make_bir_return_add_sub_chain_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_bir_return_staged_constant_module() {
+  using namespace c4c::codegen::lir;
+
+  auto module = make_return_add_module();
+  auto& entry = module.functions.front().blocks.front();
+  entry.insts.clear();
+  entry.insts.push_back(LirBinOp{"%t0", "add", "i32", "2", "3"});
+  entry.insts.push_back(LirBinOp{"%t1", "sub", "i32", "%t0", "1"});
+  entry.insts.push_back(LirBinOp{"%t2", "add", "i32", "%t1", "4"});
+  entry.terminator = LirRet{std::string("%t2"), "i32"};
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_bir_single_param_add_sub_chain_module() {
   using namespace c4c::codegen::lir;
 
