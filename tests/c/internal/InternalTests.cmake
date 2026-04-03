@@ -942,6 +942,15 @@ if(CLANG_EXECUTABLE)
     )
 
     c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_two_param_u8_select_eq_split_predecessor_deeper_affine_post_add_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_u8_select_eq_split_predecessor_deeper_affine_post_add.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_u8_select_eq_split_predecessor_deeper_affine_post_add_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @choose2_deeper_both_post_u(i8 %p.x, i8 %p.y) -> i8 {|%t11 = bir.add i8 %p.x, 8|%t12 = bir.sub i8 %t11, 3|%t13 = bir.add i8 %t12, 5|%t15 = bir.add i8 %p.y, 11|%t16 = bir.sub i8 %t15, 4|%t17 = bir.add i8 %t16, 7|%t18 = bir.select eq i8 %p.x, %p.y, %t13, %t17|%t19 = bir.add i8 %t18, 6|bir.ret i8 %t19"
+      FORBIDDEN_SNIPPETS "define i8 @choose2_deeper_both_post_u(i8 %p.x, i8 %p.y)"
+    )
+
+    c4c_add_backend_codegen_route_test(
       backend_codegen_route_riscv64_two_param_u8_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_defaults_to_bir
       SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_u8_select_eq_split_predecessor_mixed_then_deeper_affine_post_add.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu

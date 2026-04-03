@@ -10,13 +10,47 @@ Source Plan: plan.md
 - [ ] Revalidate backend and full-suite behavior without fallback
 
 Current active item: Step 2, continue tightening the widened-width/source-level
-`unsigned char` route matrix by filling the remaining deeper-on-both-arms
-split-predecessor compare/select parity gap after the join-tail variant proved
-to already stay on direct BIR.
-Next target: add the bounded widened-`i8`
-`x == y ? x + 8 - 3 + 5 : y + 11 - 4 + 7`, then `+ 6` backend-route
-regression so the simpler deeper-on-both-arms post-add variant matches the
-existing `i32` matrix before moving on to another Step 2 parity slice.
+`unsigned char` route matrix by carrying the deeper-on-both-arms
+split-predecessor compare/select coverage forward from the now-validated
+simpler join-local `+ 6` variant to the remaining adjacent join-local `+ 6 - 2`
+case that still exists only in the `i32` matrix.
+Next target: audit the widened-`i8` deeper-on-both-arms predecessor-arm
+compare/select with a join-local post-add-sub chain
+(`x == y ? x + 8 - 3 + 5 : y + 11 - 4 + 7`, then `+ 6 - 2`) and keep the slice
+within Step 2 conditional backend-route parity before moving on to another
+bounded Step 2 parity gap.
+
+Completed this iteration:
+- Audited the widened-width/source-level two-parameter `unsigned char`
+  deeper-on-both-arms split-predecessor compare/select wrapper with the simpler
+  join-local post-add tail, and confirmed the default `--codegen asm` route
+  already stays on the direct BIR pipeline for
+  `unsigned char choose2_deeper_both_post_u(unsigned char x, unsigned char y) { return (unsigned char)((x == y ? x + 8 - 3 + 5 : y + 11 - 4 + 7) + 6); }`;
+  no `src/backend/lowering/lir_to_bir.cpp` change was required for this slice.
+- Added
+  `tests/c/internal/backend_route_case/two_param_u8_select_eq_split_predecessor_deeper_affine_post_add.c`,
+  proving the bounded two-parameter `u8` deeper-on-both-arms split-predecessor
+  post-add wrapper reaches the backend through BIR instead of legacy LLVM IR
+  text.
+- Registered
+  `backend_codegen_route_riscv64_two_param_u8_select_eq_split_predecessor_deeper_affine_post_add_defaults_to_bir`
+  in `tests/c/internal/InternalTests.cmake`, asserting the emitted text
+  contains `bir.func @choose2_deeper_both_post_u(i8 %p.x, i8 %p.y) -> i8 {`,
+  `%t11 = bir.add i8 %p.x, 8`, `%t12 = bir.sub i8 %t11, 3`,
+  `%t13 = bir.add i8 %t12, 5`, `%t15 = bir.add i8 %p.y, 11`,
+  `%t16 = bir.sub i8 %t15, 4`, `%t17 = bir.add i8 %t16, 7`,
+  `%t18 = bir.select eq i8 %p.x, %p.y, %t13, %t17`,
+  `%t19 = bir.add i8 %t18, 6`, and forbids legacy LLVM IR
+  `define i8 @choose2_deeper_both_post_u(i8 %p.x, i8 %p.y)`.
+- Reconfigured and rebuilt the tree, reran
+  `backend_codegen_route_riscv64_two_param_u8_select_eq_split_predecessor_deeper_affine_post_add_defaults_to_bir`,
+  reran `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `350/350` backend-labeled tests passing, then refreshed
+  `test_fail_after.log` with a full `ctest --test-dir build -j8 --output-on-failure`
+  run and passed the regression guard against `test_fail_before.log` with
+  `--allow-non-decreasing-passed --timeout-threshold 30 --enforce-timeout`
+  (`2782 -> 2788` passed, `0 -> 0` failed, no newly failing tests, no new
+  `>30s` cases).
 
 Completed this iteration:
 - Audited the widened-width/source-level two-parameter `unsigned char`
