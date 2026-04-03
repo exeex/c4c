@@ -1,7 +1,7 @@
 # BIR Enablement And Backend Test Harness Refactor
 
-Status: Open
-Last Updated: 2026-04-01
+Status: Complete
+Last Updated: 2026-04-03
 
 ## Goal
 
@@ -144,13 +144,41 @@ would isolate the failure faster.
 
 ## Acceptance Criteria
 
-- [ ] BIR path supports multiple real backend behavior clusters behind the flag
-- [ ] backend tests have a cleaner structure for new BIR-path additions
-- [ ] new tests can assert BIR lowering/validation directly, not only final asm
-- [ ] the new test framework is layered by responsibility instead of centering
+- [x] BIR path supports multiple real backend behavior clusters behind the flag
+- [x] backend tests have a cleaner structure for new BIR-path additions
+- [x] new tests can assert BIR lowering/validation directly, not only final asm
+- [x] the new test framework is layered by responsibility instead of centering
       all new cases in monolithic backend adapter files
-- [ ] legacy default-path coverage remains intact during migration
-- [ ] the test framework is demonstrably easier to extend than the current shape
+- [x] legacy default-path coverage remains intact during migration
+- [x] the test framework is demonstrably easier to extend than the current shape
+
+## Completion Notes
+
+Completed on 2026-04-03.
+
+This phase landed the first BIR-specific test-harness split by separating
+lowering/validation coverage from pipeline smoke coverage while keeping one
+`backend_bir_tests` executable. It also extended the narrow flag-gated BIR
+path from the initial return/add scaffold to support single-block `i32 sub`
+lowering and backend-IR routing.
+
+Validation at close:
+
+- `./build/backend_bir_tests` passed
+- `ctest --test-dir build -R 'backend_' --output-on-failure` ended with only
+  the two known AArch64 object-contract failures
+- `ctest --test-dir build -j8 --output-on-failure > test_after.log` ended with
+  `2668 passed / 2 failed / 2670 total`
+- regression guard:
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+  reported zero new failing tests
+
+## Leftover Issues
+
+- broader BIR cutover and legacy cleanup remain tracked separately in
+  `ideas/open/06_bir_cutover_and_legacy_cleanup.md`
+- the known AArch64 object-contract failures remain tracked separately in
+  `ideas/open/07_aarch64_object_contract_repair.md`
 
 ## Non-Goals
 

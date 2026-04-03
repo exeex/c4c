@@ -38,7 +38,14 @@ std::string lower_value(const bir::Value& value) {
 
 BackendInst lower_inst(const bir::BinaryInst& inst) {
   BackendBinaryInst lowered;
-  lowered.opcode = BackendBinaryOpcode::Add;
+  switch (inst.opcode) {
+    case bir::BinaryOpcode::Add:
+      lowered.opcode = BackendBinaryOpcode::Add;
+      break;
+    case bir::BinaryOpcode::Sub:
+      lowered.opcode = BackendBinaryOpcode::Sub;
+      break;
+  }
   lowered.result = inst.result.name;
   lowered.type_str = lower_type(inst.result.type);
   lowered.lhs = lower_value(inst.lhs);

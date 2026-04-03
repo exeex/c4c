@@ -1,114 +1,100 @@
 Status: Active
-Source Idea: ideas/open/05_bir_enablement_and_test_harness_refactor.md
-Activated from: ideas/open/05_bir_enablement_and_test_harness_refactor.md
+Source Idea: ideas/open/07_aarch64_object_contract_repair.md
+Activated from: ideas/open/07_aarch64_object_contract_repair.md
+Skipped Lower-Priority Idea: ideas/open/06_bir_cutover_and_legacy_cleanup.md
+Skip Reason: its own preconditions say not to activate until BIR coverage is broad enough for production cutover
 
-# BIR Enablement And Backend Test Harness Refactor Runbook
+# AArch64 Object Contract Repair Runbook
 
 ## Purpose
 
-Grow the flag-gated BIR path beyond the initial scaffold while reshaping the
-backend test surface so new-path coverage can scale without overloading the
-legacy adapter-heavy files.
+Repair the two remaining AArch64 backend object-contract failures without
+reopening the broader backend regression cluster that was already recovered.
 
 ## Goal
 
-Add one additional real behavior cluster behind the BIR flag and land the first
-clear layered BIR test-harness split that future enablement work can extend.
+Make the contract/object-emission path produce valid non-empty AArch64 asm for
+the return-add and global-load contract cases.
 
 ## Core Rule
 
-Expand the new path and the test harness together, but keep the old backend
-flow as the default production path throughout.
+Stay inside the AArch64 contract/object-emission path and preserve the current
+recovered x86/runtime backend boundary.
 
 ## Read First
 
-- `ideas/open/05_bir_enablement_and_test_harness_refactor.md`
-- `src/backend/backend.hpp`
+- `ideas/open/07_aarch64_object_contract_repair.md`
+- `tests/c/internal/cmake/run_backend_contract_case.cmake`
+- `tests/backend/backend_lir_adapter_aarch64_tests.cpp`
 - `src/backend/backend.cpp`
-- `src/backend/bir.hpp`
-- `src/backend/lowering/lir_to_bir.*`
-- `src/backend/lowering/bir_to_backend_ir.*`
-- `tests/backend/backend_bir_tests.cpp`
-- `tests/backend/backend_lir_adapter*.cpp`
+- `src/backend/aarch64/codegen/emit.cpp`
+- `src/backend/aarch64/assembler/mod.cpp`
+- `src/backend/aarch64/assembler/elf_writer.cpp`
 
 ## Scope
 
-- One additional BIR behavior cluster beyond the initial return-add scaffold
-- A cleaner split between BIR lowering / validation / pipeline / emit tests
-- Small reusable BIR-aware fixture or assertion helpers where they reduce
-  duplication
+- Reproduce why the two contract cases currently write empty `.s` output
+- Repair AArch64 object emission for the `return_add` and `global_load` cases
+- Add or adjust the narrowest test coverage that locks the repaired behavior
 
 ## Non-Goals
 
-- No default-path cutover to BIR
-- No broad instruction-family rollout in one patch
-- No large migration of legacy backend tests into the new layout
-- No opportunistic unrelated backend bug-fixing unless directly blocking the
-  selected BIR slice
+- No unrelated backend cleanup
+- No BIR-default cutover work
+- No broad x86/runtime backend changes unless directly required to keep the
+  repaired AArch64 path correct
 
 ## Execution Rules
 
-- Keep legacy tests focused on guarding the default path.
-- Add new-path tests in BIR-specific files or directories rather than extending
-  the largest legacy adapter suites further.
-- Prefer direct BIR lowering / validation / emission assertions before adding
-  end-to-end smoke tests.
-- Land one behavior cluster at a time and validate it with backend-scoped
-  regression runs.
-- If work reveals a separate initiative, record it under `ideas/open/` instead
-  of widening this plan.
+- Reproduce the exact contract invocation before changing code.
+- Distinguish frontend failure, backend emission failure, and toolchain handoff
+  failure before implementing a fix.
+- Prefer the smallest fix that restores non-empty AArch64 asm/object output.
+- Add or update targeted tests before widening to the full backend and full
+  suite runs.
+- If a separate AArch64 binary-utils initiative appears, record it in
+  `ideas/open/` instead of silently expanding this plan.
 
-## Step 1: Establish the first layered BIR test harness split
+## Step 1: Reproduce and classify the empty-output failure
 
-- Introduce the smallest reusable BIR-specific helper surface needed to stop
-  accumulating all new-path coverage in one monolithic test file.
-- Create or reorganize the first dedicated BIR-oriented test location(s) so
-  lowering/validation concerns are separated from route-smoke concerns.
-- Keep helper scope minimal and local to the new path.
-
-Completion check:
-- [ ] The BIR test surface is no longer centered on one catch-all file only.
-- [ ] At least one reusable BIR-aware helper or fixture seam exists where it
-      materially reduces duplication.
-- [ ] New-path test responsibilities are clearer than the legacy adapter files.
-
-## Step 2: Expand BIR lowering for one additional behavior cluster
-
-- Choose one narrow cluster beyond the scaffold case, such as comparisons and
-  branches, loads/stores, direct calls, or a small global/addressing shape.
-- Extend `lir_to_bir` and `bir_to_backend_ir` only far enough to support that
-  cluster coherently.
-- Keep the BIR path explicitly selected through the existing backend option.
+- Capture the exact command path used by
+  `tests/c/internal/cmake/run_backend_contract_case.cmake`.
+- Reproduce both failing cases locally and inspect the emitted `.s` files,
+  stderr, and exit status.
+- Decide whether the blank output originates in frontend compilation, backend
+  emission, or the external toolchain handoff.
 
 Completion check:
-- [ ] The BIR path supports at least one new behavior cluster beyond return-add.
-- [ ] The new support is still flag-gated and does not alter the default path.
-- [ ] The relationship between LIR, BIR, and transitional backend IR remains
-      easy to trace in code.
+- [ ] The failing command line is recorded in working notes or `plan_todo.md`.
+- [ ] The failure point is classified narrowly enough to choose one code path.
+- [ ] The investigation stays focused on the two contract cases only.
 
-## Step 3: Add layered BIR assertions for the new cluster
+## Step 2: Repair return/global-load object emission
 
-- Add direct lowering-shape tests that assert BIR structure for the chosen
-  cluster.
-- Add validator or malformed-case coverage when the new shape introduces fresh
-  BIR invariants.
-- Add a narrow route-smoke or target-emission test that proves the new cluster
-  reaches backend emission under the BIR flag.
-
-Completion check:
-- [ ] New tests assert BIR structure directly, not only final asm text.
-- [ ] The new cluster is covered at the right layer instead of only through an
-      end-to-end path.
-- [ ] BIR routing tests remain separate from legacy default-path tests.
-
-## Step 4: Validate backend-scoped regression stability
-
-- Re-run the touched BIR tests and a backend-scoped regression slice.
-- Re-run the full suite and check monotonic regression status against the
-  recorded logs.
-- Record any bounded deferred coverage or layout follow-up for later BIR ideas.
+- Implement the smallest AArch64-side fix that makes
+  `backend_contract_aarch64_return_add_object` produce valid asm/object output.
+- Extend the same fix, or a closely-related follow-up, to
+  `backend_contract_aarch64_global_load_object`.
+- Add or update the narrowest targeted tests needed to keep the repaired object
+  emission behavior covered.
 
 Completion check:
-- [ ] Backend-scoped regressions show no new failures.
-- [ ] Full-suite regression guard passes with zero new failing tests.
-- [ ] Deferred follow-on work is documented without silently expanding scope.
+- [ ] `backend_contract_aarch64_return_add_object` passes.
+- [ ] `backend_contract_aarch64_global_load_object` passes.
+- [ ] New tests cover the repaired emission path without widening scope.
+
+## Step 3: Validate backend and full-suite stability
+
+- Run:
+  - `ctest --test-dir build -R 'backend_contract_aarch64_(return_add_object|global_load_object)' --output-on-failure`
+  - `ctest --test-dir build -R backend --output-on-failure`
+- Re-run the full suite and compare `test_before.log` vs `test_after.log` with
+  the regression guard.
+- Record any bounded remaining AArch64 contract gaps if they are out of scope
+  for this repair.
+
+Completion check:
+- [ ] The two targeted contract cases pass.
+- [ ] `ctest --test-dir build -R backend --output-on-failure` no longer fails
+      in these two contract cases.
+- [ ] Full-suite regression guard reports zero new failing tests.

@@ -339,6 +339,9 @@ add_executable(backend_ir_tests
 )
 add_executable(backend_bir_tests
     "${PROJECT_SOURCE_DIR}/tests/backend/backend_bir_tests.cpp"
+    "${PROJECT_SOURCE_DIR}/tests/backend/backend_bir_test_support.cpp"
+    "${PROJECT_SOURCE_DIR}/tests/backend/backend_bir_lowering_tests.cpp"
+    "${PROJECT_SOURCE_DIR}/tests/backend/backend_bir_pipeline_tests.cpp"
     ${BACKEND_TEST_COMMON_SRCS}
 )
 add_executable(backend_shared_util_tests

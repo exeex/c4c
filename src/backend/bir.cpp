@@ -44,6 +44,8 @@ std::string render_binary_opcode(BinaryOpcode opcode) {
   switch (opcode) {
     case BinaryOpcode::Add:
       return "add";
+    case BinaryOpcode::Sub:
+      return "sub";
   }
   return "<unknown>";
 }

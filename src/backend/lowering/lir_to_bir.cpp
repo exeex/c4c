@@ -34,10 +34,23 @@ std::optional<bir::Value> lower_immediate_or_name(std::string_view value_text) {
   return bir::Value::immediate_i32(*immediate);
 }
 
+std::optional<bir::BinaryOpcode> lower_binary_opcode(std::string_view opcode) {
+  if (opcode == "add") {
+    return bir::BinaryOpcode::Add;
+  }
+  if (opcode == "sub") {
+    return bir::BinaryOpcode::Sub;
+  }
+  return std::nullopt;
+}
+
 std::optional<bir::BinaryInst> lower_binary(const c4c::codegen::lir::LirInst& inst) {
   const auto* bin = std::get_if<c4c::codegen::lir::LirBinOp>(&inst);
-  if (bin == nullptr || bin->opcode.str() != "add" || bin->type_str.str() != "i32" ||
-      bin->result.str().empty()) {
+  if (bin == nullptr || bin->type_str.str() != "i32" || bin->result.str().empty()) {
+    return std::nullopt;
+  }
+  const auto opcode = lower_binary_opcode(bin->opcode.str());
+  if (!opcode.has_value()) {
     return std::nullopt;
   }
 
@@ -48,7 +61,7 @@ std::optional<bir::BinaryInst> lower_binary(const c4c::codegen::lir::LirInst& in
   }
 
   bir::BinaryInst lowered;
-  lowered.opcode = bir::BinaryOpcode::Add;
+  lowered.opcode = *opcode;
   lowered.result = bir::Value::named(bir::TypeKind::I32, bin->result.str());
   lowered.lhs = *lhs;
   lowered.rhs = *rhs;
@@ -115,7 +128,7 @@ bir::Module lower_to_bir(const c4c::codegen::lir::LirModule& module) {
   auto lowered = try_lower_to_bir(module);
   if (!lowered.has_value()) {
     throw std::invalid_argument(
-        "bir scaffold lowering currently supports only single-block i32 return-immediate/add slices");
+        "bir scaffold lowering currently supports only single-block i32 return-immediate/add-sub slices");
   }
   return *lowered;
 }

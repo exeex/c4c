@@ -33,6 +33,7 @@ struct Value {
 
 enum class BinaryOpcode : unsigned char {
   Add,
+  Sub,
 };
 
 struct BinaryInst {
