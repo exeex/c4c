@@ -13,9 +13,31 @@ Current active item: Step 2, keep auditing the bounded straight-line
 single-block/default-route surface for the next non-foldable direct-BIR
 coverage slice now that the source-level widened `i8` arithmetic wrapper also
 stays on the BIR route.
-Next target: audit whether the analogous source-level two-parameter widened
-`i8` staged-affine shape (`(x + 2) + y - 1`) already stays on direct BIR or
-still needs its own bounded route slice and lowering follow-through.
+Next target: audit whether the analogous source-level widened `i64` staged
+affine shape (`(x + 2) + y - 1`) reaches the direct BIR route already or needs
+its own bounded route/lowering slice.
+
+Completed this iteration:
+- Audited the source-level/default-route widened-width RISC-V staged
+  two-parameter `i8` affine chain and confirmed it already stays on the direct
+  BIR pipeline; no new `src/backend/lowering/lir_to_bir.cpp` recognizer work
+  was needed for the `(x + 2) + y - 1` wrapper shape.
+- Added
+  `tests/c/internal/backend_route_case/two_param_i8_staged_affine.c`, proving
+  `signed char tiny_mix_staged(signed char x, signed char y) { return (signed char)(((x + 2) + y) - 1); }`
+  reaches the backend through BIR instead of falling through legacy LLVM IR
+  text.
+- Registered
+  `backend_codegen_route_riscv64_two_param_i8_staged_affine_defaults_to_bir`
+  in `tests/c/internal/InternalTests.cmake`, asserting the emitted text
+  contains `bir.func @tiny_mix_staged(i8 %p.x, i8 %p.y) -> i8 {`,
+  `%t1 = bir.add i8 %p.x, 2`, `%t3 = bir.add i8 %t1, %p.y`,
+  `%t4 = bir.sub i8 %t3, 1`, and forbids legacy LLVM IR
+  `define i8 @tiny_mix_staged(i8 %p.x, i8 %p.y)`.
+- Reconfigured and rebuilt the tree, reran
+  `backend_codegen_route_riscv64_two_param_i8_staged_affine_defaults_to_bir`,
+  then reran `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `334/334` backend-labeled tests passing.
 
 Completed this iteration:
 - Audited the source-level/default-route two-parameter widened-width RISC-V
