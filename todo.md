@@ -9,7 +9,8 @@ Source Plan: plan.md
 - [ ] Delete app-layer LLVM asm rescue from `c4cll`
 - [ ] Revalidate backend and full-suite behavior without fallback
 
-Current active item: Step 2, next parity slice after the public header/input boundary split.
+Current active item: Step 2, move the direct-BIR backend conversion seam from `backend.cpp`
+into the x86/aarch64 emitter layer for the currently supported bounded slices.
 
 Completed this iteration:
 - Audited the current production legacy boundaries in `backend.cpp`,
@@ -26,18 +27,28 @@ Completed this iteration:
   `BackendModule` at the emitter-header boundary.
 - Added a direct-BIR backend pipeline test plus a compile-time header-boundary
   regression.
+- Moved the direct-BIR conversion seam out of `backend.cpp` and into the
+  x86/aarch64 emitter layer by adding direct `bir::Module` emitter entry
+  points and routing backend BIR execution through them.
+- Added end-to-end x86/aarch64 regression coverage proving direct
+  `BackendModuleInput{bir::Module}` callers still reach backend assembly
+  emission without pre-lowering to `BackendModule`.
 
 Next intended slice:
 - Start replacing the remaining public legacy `BackendModule(ir.*)` emitter
   contract with BIR-owned seams inside the backend implementation, beginning
-  with the small emitter-facing module/type features still forcing
-  `lower_bir_to_backend_module(...)` in `backend.cpp`.
+  with direct emitter-native handling for the bounded BIR arithmetic slices
+  that still lower through `lower_bir_to_backend_module(...)` inside
+  `src/backend/x86/codegen/emit.cpp` and
+  `src/backend/aarch64/codegen/emit.cpp`.
 
 Resume notes:
-- `backend.cpp` still contains both the legacy route (`emit_legacy_module`) and
-  the BIR-to-legacy reconversion route (`lower_bir_to_backend_module`).
-- `backend.hpp` now exposes a BIR-capable input seam, but x86/aarch64 emitters
-  still consume `BackendModule` internally, so the next step is to move the
-  BIR ownership boundary deeper than the public headers.
+- `backend.cpp` still contains the legacy route (`emit_legacy_module`), but
+  direct BIR backend execution now dispatches into emitter-owned BIR entry
+  points instead of pre-lowering in the backend facade.
+- `backend.hpp` now exposes a BIR-capable input seam, and x86/aarch64 emitters
+  now own the remaining `bir::Module` -> `BackendModule` lowering internally,
+  so the next step is to replace those emitter-local lowering calls with
+  native BIR handling for supported slices.
 - `c4cll.cpp` still rescues `--codegen asm` through LLVM IR/asm conversion and
   a second retry via `CodegenPath::Llvm`.

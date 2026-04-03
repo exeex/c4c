@@ -4,7 +4,6 @@
 #include "ir.hpp"
 #include "ir_printer.hpp"
 #include "lir_adapter.hpp"
-#include "lowering/bir_to_backend_ir.hpp"
 #include "lowering/lir_to_bir.hpp"
 #include "x86/codegen/emit.hpp"
 
@@ -193,6 +192,8 @@ class BackendEmitter {
   virtual ~BackendEmitter() = default;
   virtual std::string emit(const BackendModule& module,
                            const c4c::codegen::lir::LirModule* legacy_fallback) const = 0;
+  virtual std::string emit(const bir::Module& module,
+                           const c4c::codegen::lir::LirModule* legacy_fallback) const = 0;
 };
 
 class Aarch64BackendEmitter final : public BackendEmitter {
@@ -201,11 +202,21 @@ class Aarch64BackendEmitter final : public BackendEmitter {
                    const c4c::codegen::lir::LirModule* legacy_fallback) const override {
     return c4c::backend::aarch64::emit_module(module, legacy_fallback);
   }
+
+  std::string emit(const bir::Module& module,
+                   const c4c::codegen::lir::LirModule* legacy_fallback) const override {
+    return c4c::backend::aarch64::emit_module(module, legacy_fallback);
+  }
 };
 
 class X86BackendEmitter final : public BackendEmitter {
  public:
   std::string emit(const BackendModule& module,
+                   const c4c::codegen::lir::LirModule* legacy_fallback) const override {
+    return c4c::backend::x86::emit_module(module, legacy_fallback);
+  }
+
+  std::string emit(const bir::Module& module,
                    const c4c::codegen::lir::LirModule* legacy_fallback) const override {
     return c4c::backend::x86::emit_module(module, legacy_fallback);
   }
@@ -220,6 +231,15 @@ class PassthroughBackendEmitter final : public BackendEmitter {
       return c4c::codegen::lir::print_llvm(*legacy_fallback);
     }
     return c4c::backend::print_backend_module(module);
+  }
+
+  std::string emit(const bir::Module& module,
+                   const c4c::codegen::lir::LirModule* legacy_fallback) const override {
+    if (legacy_fallback != nullptr &&
+        !c4c::backend::try_lower_to_bir(*legacy_fallback).has_value()) {
+      return c4c::codegen::lir::print_llvm(*legacy_fallback);
+    }
+    return c4c::backend::bir::print(module);
   }
 };
 
@@ -308,8 +328,7 @@ std::string emit_module(const BackendModuleInput& input,
         return c4c::backend::bir::print(bir_module);
       }
       auto backend = make_backend(options.target);
-      auto lowered = c4c::backend::lower_bir_to_backend_module(bir_module);
-      return backend->emit(lowered, nullptr);
+      return backend->emit(bir_module, nullptr);
     }
     return emit_legacy_module(*input.legacy_fallback(), options.target);
   }
@@ -319,8 +338,7 @@ std::string emit_module(const BackendModuleInput& input,
       return c4c::backend::bir::print(*input.bir_module());
     }
     auto backend = make_backend(options.target);
-    auto lowered = c4c::backend::lower_bir_to_backend_module(*input.bir_module());
-    return backend->emit(lowered, input.legacy_fallback());
+    return backend->emit(*input.bir_module(), input.legacy_fallback());
   }
 
   auto backend = make_backend(options.target);

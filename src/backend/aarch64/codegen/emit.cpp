@@ -1,6 +1,7 @@
 #include "emit.hpp"
 
 #include "../../lir_adapter.hpp"
+#include "../../lowering/bir_to_backend_ir.hpp"
 #include "../../lowering/call_decode.hpp"
 #include "../../generation.hpp"
 #include "../../ir_printer.hpp"
@@ -5654,6 +5655,11 @@ std::string emit_module(const c4c::backend::BackendModule& module,
   }
 
   return c4c::backend::print_backend_module(module);
+}
+
+std::string emit_module(const c4c::backend::bir::Module& module,
+                        const c4c::codegen::lir::LirModule* legacy_fallback) {
+  return emit_module(c4c::backend::lower_bir_to_backend_module(module), legacy_fallback);
 }
 
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {
