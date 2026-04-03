@@ -72,6 +72,10 @@ Actions:
 - fill instruction and module-surface gaps
 - port validation/printer support in lockstep
 - port lowering clusters from `lir_to_backend_ir.cpp` into `lir_to_bir.cpp`
+- use backend subset coverage such as
+  `ctest --test-dir build -L backend --output-on-failure` as the required gate
+  for Step 2 slices; do not require full-suite regression during this step
+
 
 Completion Check:
 
