@@ -3079,6 +3079,18 @@ void test_aarch64_backend_explicit_emit_surface_matches_structured_declared_dire
                       "aarch64 explicit emit surfaces should stay on assembly output for structured declared direct calls");
 }
 
+void test_aarch64_backend_lowered_ir_text_fallback_ignores_legacy_lir_metadata() {
+  const auto legacy_module = make_void_return_module();
+  auto lowered = c4c::backend::lower_to_backend_ir(legacy_module);
+  const auto expected = c4c::backend::aarch64::emit_module(lowered);
+
+  const auto rendered = c4c::backend::aarch64::emit_module(
+      lowered, &legacy_module);
+
+  expect_true(rendered == expected,
+              "once aarch64 emission falls through to backend IR text for a lowered module, legacy LIR metadata should not change that terminal text surface");
+}
+
 void test_aarch64_backend_renders_extern_global_load_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_extern_global_load_module()},
@@ -5084,6 +5096,7 @@ void run_aarch64_backend_tests() {
   // test_aarch64_backend_renders_string_pool_slice();
   test_aarch64_backend_renders_extern_decl_slice();
   test_aarch64_backend_explicit_emit_surface_matches_structured_declared_direct_call_path();
+  test_aarch64_backend_lowered_ir_text_fallback_ignores_legacy_lir_metadata();
   test_aarch64_backend_renders_extern_global_load_slice();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_global_load_ir_input();
   test_aarch64_backend_scaffold_accepts_structured_global_load_ir_without_compatibility_shims();

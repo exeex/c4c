@@ -5666,9 +5666,6 @@ std::string emit_module(const c4c::backend::BackendModule& module,
   } catch (const std::invalid_argument&) {
   }
 
-  if (legacy_fallback != nullptr) {
-    return c4c::backend::print_backend_ir(module);
-  }
   return c4c::backend::print_backend_ir(module);
 }
 

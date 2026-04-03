@@ -6,16 +6,16 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 3: Inventory the legacy fallback-only backend plumbing that still
-  remains after the now-covered staged two-parameter affine slices, and pick
-  the smallest deletion or containment change that does not affect exercised
-  BIR-default routes.
+- Step 3: Continue trimming live legacy fallback plumbing after removing the
+  inert AArch64 lowered-module text fallback branch, with the next slice aimed
+  at a remaining consumer whose behavior still genuinely depends on
+  `legacy_fallback`.
 
 ## In Progress
 
-- Identify which legacy fallback helpers are still required only for
-  unsupported non-affine slices versus which ones still protect exercised
-  backend routes.
+- Identify which remaining `legacy_fallback` consumers are still required for
+  shared regalloc or unsupported non-affine slices versus which ones can be
+  deleted or contained without affecting exercised BIR-default routes.
 
 ## Pending
 
@@ -144,6 +144,14 @@ Source Plan: plan.md
 - Full-suite regression guard passed:
   `test_fail_before.log` -> `test_fail_after.log` increased total tests from
   `2677` to `2678` with zero newly failing cases.
+- Added an AArch64 backend regression guard that pins lowered-module terminal
+  backend-IR text fallback as independent from attached legacy LIR metadata.
+- Removed the dead `legacy_fallback` branch at the end of
+  `src/backend/aarch64/codegen/emit.cpp`, leaving the same backend-IR text
+  fallback behavior with less legacy-only plumbing.
+- Targeted validation passed:
+  `aarch64_backend_lowered_ir_text_fallback_ignores_legacy_lir_metadata` and
+  `aarch64_backend_explicit_emit_surface_matches_structured_declared_direct_call_path`.
 
 ## Notes
 
@@ -157,10 +165,10 @@ Source Plan: plan.md
 
 ## Next Slice
 
-- Start Step 3 by tracing the remaining legacy fallback-only plumbing from
-  `src/codegen/llvm/llvm_codegen.cpp`, `src/backend/backend.cpp`, and the
-  target backends, then remove or contain the smallest surface that no longer
-  protects any exercised BIR-default route.
+- Continue Step 3 by tracing the remaining live `legacy_fallback` consumers in
+  `src/backend/backend.cpp`, `src/backend/x86/codegen/emit.cpp`, and the
+  AArch64 shared-regalloc call-crossing path, then remove or contain the
+  smallest surface that no longer protects any exercised BIR-default route.
 
 ## Blockers
 
