@@ -7,15 +7,16 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 3: Continue trimming live legacy fallback plumbing after removing the
-  inert AArch64 lowered-module text fallback branch, with the next slice aimed
-  at a remaining consumer whose behavior still genuinely depends on
-  `legacy_fallback`.
+  x86 lowered call-crossing dependency on attached legacy fallback metadata,
+  with the next slice aimed at one remaining AArch64 or backend-routing
+  consumer whose behavior still genuinely depends on `legacy_fallback`.
 
 ## In Progress
 
-- Identify which remaining `legacy_fallback` consumers are still required for
-  shared regalloc or unsupported non-affine slices versus which ones can be
-  deleted or contained without affecting exercised BIR-default routes.
+- Trace the remaining `legacy_fallback` consumers in
+  `src/backend/backend.cpp` and `src/backend/aarch64/codegen/emit.cpp` to
+  identify the smallest next cleanup that still preserves the necessary
+  unsupported-slice fallback coverage.
 
 ## Pending
 
@@ -152,6 +153,23 @@ Source Plan: plan.md
 - Targeted validation passed:
   `aarch64_backend_lowered_ir_text_fallback_ignores_legacy_lir_metadata` and
   `aarch64_backend_explicit_emit_surface_matches_structured_declared_direct_call_path`.
+- Added an x86 backend regression guard that pins the lowered call-crossing
+  direct-call seam as independent from attached legacy fallback `main`
+  metadata once the structured backend module already matches the minimal asm
+  contract.
+- Removed the x86 call-crossing fast path's dependency on running shared
+  regalloc over `legacy_fallback`, leaving that seam driven by backend-owned
+  structured metadata alone.
+- Targeted validation passed:
+  `test_x86_backend_scaffold_ignores_broken_legacy_fallback_for_call_crossing_slice`,
+  `test_x86_backend_uses_shared_regalloc_for_call_crossing_direct_call_slice`,
+  `test_x86_backend_keeps_renamed_call_crossing_slice_on_asm_path`,
+  `test_x86_backend_scaffold_accepts_renamed_structured_call_crossing_direct_call_ir_without_signature_shims`,
+  and
+  `test_x86_backend_scaffold_rejects_structured_call_crossing_direct_call_when_helper_body_contract_disagrees`.
+- Full-suite regression guard passed:
+  `test_before.log` -> `test_after.log` kept total tests at `2678` with zero
+  newly failing cases.
 
 ## Notes
 
@@ -166,9 +184,9 @@ Source Plan: plan.md
 ## Next Slice
 
 - Continue Step 3 by tracing the remaining live `legacy_fallback` consumers in
-  `src/backend/backend.cpp`, `src/backend/x86/codegen/emit.cpp`, and the
-  AArch64 shared-regalloc call-crossing path, then remove or contain the
-  smallest surface that no longer protects any exercised BIR-default route.
+  `src/backend/backend.cpp` and the AArch64 shared-regalloc call-crossing path,
+  then remove or contain the smallest surface that no longer protects any
+  exercised BIR-default route.
 
 ## Blockers
 

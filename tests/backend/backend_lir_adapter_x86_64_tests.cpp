@@ -4071,6 +4071,33 @@ void test_x86_backend_scaffold_accepts_renamed_lowered_call_crossing_source_valu
                       "x86 backend seam should not fall back when the lowered call-crossing slice relies only on structured metadata after both callee and source-value renames");
 }
 
+void test_x86_backend_scaffold_ignores_broken_legacy_fallback_for_call_crossing_slice() {
+  auto legacy = make_typed_call_crossing_direct_call_module();
+  legacy.target_triple = "x86_64-unknown-linux-gnu";
+  auto lowered = c4c::backend::lower_to_backend_ir(legacy);
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  for (auto& function : legacy.functions) {
+    if (function.name == "main") {
+      function.name = "legacy_main_broken";
+      function.signature_text = "define i32 @legacy_main_broken()\n";
+      break;
+    }
+  }
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered, &legacy},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".type add_one, %function",
+                  "x86 backend seam should keep the lowered call-crossing helper on the asm path even when an attached legacy fallback no longer has the matching main function");
+  expect_contains(rendered, "mov ebx, 5",
+                  "x86 backend seam should keep using backend-owned call-crossing regalloc instead of consulting a broken legacy fallback main");
+  expect_contains(rendered, "call add_one",
+                  "x86 backend seam should still emit the lowered call-crossing direct call when legacy fallback metadata is malformed");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should ignore a broken legacy fallback when the structured call-crossing slice already lowers cleanly");
+}
+
 void test_x86_backend_scaffold_rejects_structured_call_crossing_direct_call_when_helper_body_contract_disagrees() {
   auto legacy = make_typed_call_crossing_direct_call_module();
   legacy.target_triple = "x86_64-unknown-linux-gnu";
@@ -5367,6 +5394,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_scaffold_accepts_renamed_structured_call_crossing_direct_call_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_lowered_call_crossing_source_value_rename_without_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_renamed_lowered_call_crossing_source_value_rename_without_signature_shims);
+  RUN_TEST(test_x86_backend_scaffold_ignores_broken_legacy_fallback_for_call_crossing_slice);
   RUN_TEST(test_x86_backend_scaffold_rejects_structured_call_crossing_direct_call_when_helper_body_contract_disagrees);
   RUN_TEST(test_x86_backend_renders_compare_and_branch_slice);
   RUN_TEST(test_x86_backend_renders_compare_and_branch_slice_from_typed_predicates);

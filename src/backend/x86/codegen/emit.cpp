@@ -3072,16 +3072,6 @@ std::string emit_module(const c4c::backend::BackendModule& module,
     }
     if (const auto slice = parse_minimal_call_crossing_direct_call_slice(module);
         slice.has_value()) {
-      if (legacy_fallback != nullptr) {
-        const auto* main_fn = find_lir_function(*legacy_fallback, "main");
-        if (main_fn == nullptr) {
-          throw c4c::backend::LirAdapterError(
-              c4c::backend::LirAdapterErrorKind::Unsupported,
-              "main function for shared x86 call-crossing direct-call slice");
-        }
-        return remove_redundant_self_moves(emit_minimal_call_crossing_direct_call_asm(
-            module, run_shared_x86_regalloc(*main_fn), *slice));
-      }
       return remove_redundant_self_moves(emit_minimal_call_crossing_direct_call_asm(
           module, synthesize_shared_x86_call_crossing_regalloc(*slice), *slice));
     }
