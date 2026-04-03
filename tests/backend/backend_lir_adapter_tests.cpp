@@ -1143,6 +1143,65 @@ void test_adapter_normalizes_typed_direct_call_helper_slice() {
                   "adapter should preserve the typed direct-call site");
 }
 
+void test_adapter_normalizes_renamed_param_slot_helper_slice() {
+  auto module = make_typed_direct_call_module();
+
+  c4c::codegen::lir::LirFunction* helper = nullptr;
+  c4c::codegen::lir::LirFunction* main_fn = nullptr;
+  for (auto& function : module.functions) {
+    if (function.name == "add_one") {
+      helper = &function;
+    } else if (function.name == "main") {
+      main_fn = &function;
+    }
+  }
+  expect_true(helper != nullptr && main_fn != nullptr,
+              "adapter renamed param-slot regression test needs helper and main functions");
+  if (helper == nullptr || main_fn == nullptr) {
+    return;
+  }
+
+  helper->name = "inc_value";
+  helper->signature_text = "define i32 @inc_value(i32 %p.input)\n";
+  auto& helper_alloca = std::get<c4c::codegen::lir::LirAllocaOp>(helper->alloca_insts.front());
+  helper_alloca.result = "%lv.shadow.input";
+  auto& helper_arg_store = std::get<c4c::codegen::lir::LirStoreOp>(helper->alloca_insts[1]);
+  helper_arg_store.val = "%p.input";
+  helper_arg_store.ptr = "%lv.shadow.input";
+  auto& helper_load0 = std::get<c4c::codegen::lir::LirLoadOp>(helper->blocks.front().insts[0]);
+  helper_load0.result = "%t.shadow.load";
+  helper_load0.ptr = "%lv.shadow.input";
+  auto& helper_add = std::get<c4c::codegen::lir::LirBinOp>(helper->blocks.front().insts[1]);
+  helper_add.result = "%t.shadow.add";
+  helper_add.lhs = "%t.shadow.load";
+  auto& helper_store = std::get<c4c::codegen::lir::LirStoreOp>(helper->blocks.front().insts[2]);
+  helper_store.val = "%t.shadow.add";
+  helper_store.ptr = "%lv.shadow.input";
+  auto& helper_load1 = std::get<c4c::codegen::lir::LirLoadOp>(helper->blocks.front().insts[3]);
+  helper_load1.result = "%t.shadow.reload";
+  helper_load1.ptr = "%lv.shadow.input";
+  auto& helper_ret = std::get<c4c::codegen::lir::LirRet>(helper->blocks.front().terminator);
+  helper_ret.value_str = "%t.shadow.reload";
+
+  auto* call = std::get_if<c4c::codegen::lir::LirCallOp>(&main_fn->blocks.front().insts.front());
+  expect_true(call != nullptr,
+              "adapter renamed param-slot regression test needs the direct call to mutate");
+  if (call == nullptr) {
+    return;
+  }
+  call->callee = c4c::codegen::lir::LirOperand(std::string("@inc_value"),
+                                               c4c::codegen::lir::LirOperandKind::Global);
+
+  const auto adapted = c4c::backend::lower_to_backend_ir(module);
+  const auto rendered = c4c::backend::render_module(adapted);
+  expect_contains(rendered, "define i32 @inc_value(i32 %p.input)",
+                  "adapter should preserve renamed single-argument helper signatures");
+  expect_contains(rendered, "%t.shadow.add = add i32 %p.input, 1",
+                  "adapter should normalize renamed param-slot helpers through the shared slot-backed add contract");
+  expect_contains(rendered, "call i32 (i32) @inc_value(i32 5)",
+                  "adapter should keep renamed param-slot direct calls on the backend-owned direct-call surface");
+}
+
 void test_adapter_normalizes_local_temp_return_slice() {
   const auto adapted = c4c::backend::lower_to_backend_ir(make_local_temp_module());
   const auto rendered = c4c::backend::render_module(adapted);
@@ -1725,6 +1784,7 @@ int main(int argc, char* argv[]) {
   test_adapter_keeps_legacy_shim_aligned_with_lowering_entrypoint();
   test_lowering_header_exposes_behavior_without_legacy_adapter_entrypoint();
   test_adapter_normalizes_typed_direct_call_helper_slice();
+  test_adapter_normalizes_renamed_param_slot_helper_slice();
   test_adapter_normalizes_local_temp_return_slice();
   test_adapter_normalizes_local_temp_sub_return_slice();
   test_adapter_normalizes_two_local_temp_return_slice();

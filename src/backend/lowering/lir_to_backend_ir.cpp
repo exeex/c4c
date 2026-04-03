@@ -852,17 +852,13 @@ std::optional<BackendFunction> adapt_single_param_add_function(
   }
 
   if (block.insts.size() == 4) {
-    const auto* load0 = std::get_if<LirLoadOp>(&block.insts[0]);
-    const auto* add = std::get_if<LirBinOp>(&block.insts[1]);
-    const auto* store = std::get_if<LirStoreOp>(&block.insts[2]);
-    const auto* load1 = std::get_if<LirLoadOp>(&block.insts[3]);
-    if (load0 == nullptr || add == nullptr || store == nullptr || load1 == nullptr ||
-        store->type_str != "i32" || store->val != add->result ||
-        store->ptr != alloca->result || load1->type_str != "i32" ||
-        load1->ptr != alloca->result || *ret->value_str != load1->result) {
+    const auto parsed_slot_add =
+        parse_backend_single_param_slot_add_function(function, signature.name);
+    if (!parsed_slot_add.has_value()) {
       return std::nullopt;
     }
-    return match_load_add_ret(*load0, *add, store->val);
+    return match_load_add_ret(std::get<LirLoadOp>(block.insts[0]), *parsed_slot_add->add,
+                              parsed_slot_add->add->result);
   }
 
   return std::nullopt;

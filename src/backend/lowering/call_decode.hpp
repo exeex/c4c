@@ -56,6 +56,12 @@ struct ParsedBackendTwoLocalTypedCallView {
   const c4c::codegen::lir::LirCallOp* call = nullptr;
 };
 
+struct ParsedBackendSingleParamSlotAddFunctionView {
+  std::string param_name;
+  std::string slot_name;
+  const c4c::codegen::lir::LirBinOp* add = nullptr;
+};
+
 inline ParsedBackendTypedCallView make_backend_typed_call_view(
     const c4c::codegen::lir::ParsedLirTypedCallView& parsed) {
   ParsedBackendTypedCallView view;
@@ -359,5 +365,65 @@ parse_backend_two_local_typed_call(const std::vector<c4c::codegen::lir::LirInst>
     return std::nullopt;
   }
   return parsed;
+}
+
+inline std::optional<ParsedBackendSingleParamSlotAddFunctionView>
+parse_backend_single_param_slot_add_function(
+    const c4c::codegen::lir::LirFunction& function,
+    std::optional<std::string_view> expected_name = std::nullopt) {
+  using namespace c4c::codegen::lir;
+
+  const std::string_view function_name =
+      expected_name.has_value() ? *expected_name : std::string_view(function.name);
+  if (function.is_declaration ||
+      !backend_lir_signature_matches(function.signature_text, "define", "i32", function_name,
+                                     {"i32"}) ||
+      function.entry.value != 0 || function.blocks.size() != 1 || function.alloca_insts.size() != 2 ||
+      !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto helper_params = parse_backend_function_signature_params(function.signature_text);
+  if (!helper_params.has_value() || helper_params->size() != 1 || helper_params->front().is_varargs ||
+      c4c::codegen::lir::trim_lir_arg_text(helper_params->front().type) != "i32" ||
+      helper_params->front().operand.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* alloca = std::get_if<LirAllocaOp>(&function.alloca_insts[0]);
+  const auto* arg_store = std::get_if<LirStoreOp>(&function.alloca_insts[1]);
+  if (alloca == nullptr || arg_store == nullptr || alloca->result.empty() ||
+      alloca->type_str != "i32" || !alloca->count.empty() || arg_store->type_str != "i32" ||
+      arg_store->val != helper_params->front().operand || arg_store->ptr != alloca->result) {
+    return std::nullopt;
+  }
+
+  const auto& block = function.blocks.front();
+  const auto* ret = std::get_if<LirRet>(&block.terminator);
+  if (block.label != "entry" || block.insts.size() != 4 || ret == nullptr ||
+      !ret->value_str.has_value() || ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto* load_before = std::get_if<LirLoadOp>(&block.insts[0]);
+  const auto* add = std::get_if<LirBinOp>(&block.insts[1]);
+  const auto* store_rewrite = std::get_if<LirStoreOp>(&block.insts[2]);
+  const auto* reload = std::get_if<LirLoadOp>(&block.insts[3]);
+  const auto add_opcode = add == nullptr ? std::nullopt : add->opcode.typed();
+  if (load_before == nullptr || add == nullptr || store_rewrite == nullptr || reload == nullptr ||
+      load_before->type_str != "i32" || load_before->ptr != alloca->result ||
+      add_opcode != LirBinaryOpcode::Add || add->type_str != "i32" ||
+      add->lhs != load_before->result || store_rewrite->type_str != "i32" ||
+      store_rewrite->val != add->result || store_rewrite->ptr != alloca->result ||
+      reload->type_str != "i32" || reload->ptr != alloca->result ||
+      *ret->value_str != reload->result) {
+    return std::nullopt;
+  }
+
+  return ParsedBackendSingleParamSlotAddFunctionView{
+      helper_params->front().operand,
+      alloca->result,
+      add,
+  };
 }
 }  // namespace c4c::backend
