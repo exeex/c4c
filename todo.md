@@ -10,18 +10,46 @@ Source Plan: plan.md
 - [ ] Revalidate backend and full-suite behavior without fallback
 
 Current active item: Step 2, add the bounded zero-parameter `unsigned char`
-constant-return `select eq` backend-route parity slice adjacent to the existing
-`i32` `return_select_eq` route coverage.
-Next target: add the adjacent zero-parameter `unsigned char` constant-return
-`select ne` backend-route parity slice now that the trunc-only widened-`i8`
-direct-BIR fallback gap behind `select eq` is closed.
+compare-return `ne` backend-route parity slice adjacent to the now-landed
+`return_eq_u8` case and the existing `i32` `return_ne` route coverage.
+Next target: confirm the adjacent zero-parameter `unsigned char` `return_ne_u8`
+wrapper follows the direct-BIR route without legacy LLVM IR fallback before
+opening the broader widened-width compare-return family.
 
-Current active item: Step 2, re-audit the remaining adjacent compare/select
-`i32` versus widened-`u8` parity matrix after landing the zero-parameter
-constant-return `unsigned char` `select ne` backend-route slice.
-Next target: identify the next smallest uncovered widened-width/source-level
-`unsigned char` compare/select backend-route case adjacent to an already-covered
-`i32` slice before opening any broader predicate or control-flow matrix.
+Completed this iteration:
+- Re-audited the bounded `i32` versus widened-width/source-level `unsigned char`
+  compare/select backend-route inventory in `tests/c/internal/InternalTests.cmake`
+  and confirmed the previously active `select` parity matrix is now fully
+  covered; the next smallest adjacent widened-width gap moved to the plain
+  zero-parameter compare-return family at `return_eq` / `return_ne`.
+- Added `tests/c/internal/backend_route_case/return_eq_u8.c`, proving the
+  bounded zero-parameter `unsigned char` equality-return wrapper is available to
+  the backend-route harness.
+- Registered
+  `backend_codegen_route_riscv64_return_eq_u8_defaults_to_bir` in
+  `tests/c/internal/InternalTests.cmake`, asserting the emitted text contains
+  `bir.func @choose_eq_u() -> i8 {`, `%t1 = bir.eq i8 7, 7`, `bir.ret i8 %t1`,
+  and forbids legacy LLVM IR `define i8 @choose_eq_u()`.
+- Used the new route test to expose a real Step 2 direct-BIR gap: the
+  zero-parameter widened-`i8` compare-return case still lowered as legacy LLVM
+  IR `icmp i32 -> zext i32 -> trunc i8 -> ret`.
+- Fixed `src/backend/lowering/lir_to_bir.cpp` with a dedicated bounded widened
+  `i8` compare-return lowering path so the zero-parameter compare-plus-zext-plus
+  trunc shape lowers directly to `bir.eq i8`.
+- Added `make_bir_i8_return_eq_module()` to
+  `tests/backend/backend_bir_test_support.*` plus
+  `test_bir_lowering_accepts_i8_return_eq()` in
+  `tests/backend/backend_bir_lowering_tests.cpp` to keep the widened `i8`
+  compare-return shape covered below the backend-route harness.
+- Rebuilt the tree, reran `backend_bir_tests`, reran
+  `backend_codegen_route_riscv64_return_eq_u8_defaults_to_bir`, reran
+  `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `362/362` backend-labeled tests passing, then refreshed
+  `test_fail_after.log` with a full `ctest --test-dir build -j8 --output-on-failure`
+  run and passed the regression guard against `test_fail_before.log` with
+  `--allow-non-decreasing-passed --timeout-threshold 30 --enforce-timeout`
+  (`2782 -> 2800` passed, `0 -> 0` failed, no newly failing tests, no new
+  `>30s` cases).
 
 Completed this iteration:
 - Audited the immediate zero-parameter compare/select parity gap in

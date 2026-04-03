@@ -1188,6 +1188,71 @@ std::optional<bir::Function> try_lower_widened_i8_add_sub_chain_function(
   return function;
 }
 
+std::optional<bir::Function> try_lower_widened_i8_compare_return_function(
+    const c4c::codegen::lir::LirFunction& lir_function,
+    const std::vector<bir::Param>& params) {
+  using namespace c4c::codegen::lir;
+
+  if (!params.empty() || lir_function.blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& lir_block = lir_function.blocks.front();
+  if (lir_block.label.empty() || lir_block.insts.size() != 3) {
+    return std::nullopt;
+  }
+
+  const auto* ret = std::get_if<LirRet>(&lir_block.terminator);
+  const auto* trunc = std::get_if<LirCastOp>(&lir_block.insts[2]);
+  if (ret == nullptr || trunc == nullptr || !ret->value_str.has_value() ||
+      trunc->result.str().empty() || *ret->value_str != trunc->result.str() ||
+      ret->type_str != "i8" || trunc->kind != LirCastKind::Trunc ||
+      trunc->from_type.str() != "i32" || trunc->to_type.str() != "i8") {
+    return std::nullopt;
+  }
+
+  auto compare = lower_compare_materialization(lir_block.insts[0], lir_block.insts[1]);
+  if (!compare.has_value() || compare->result.name != trunc->operand.str() ||
+      compare->result.type != bir::TypeKind::I32) {
+    return std::nullopt;
+  }
+
+  auto narrow_i8_value = [&](const bir::Value& value) -> std::optional<bir::Value> {
+    if (value.kind == bir::Value::Kind::Immediate) {
+      if (!immediate_fits_type(value.immediate, bir::TypeKind::I8)) {
+        return std::nullopt;
+      }
+      return bir::Value::immediate_i8(static_cast<std::int8_t>(value.immediate));
+    }
+    if (value.type != bir::TypeKind::I8) {
+      return std::nullopt;
+    }
+    return value;
+  };
+
+  const auto narrow_lhs = narrow_i8_value(compare->lhs);
+  const auto narrow_rhs = narrow_i8_value(compare->rhs);
+  if (!narrow_lhs.has_value() || !narrow_rhs.has_value()) {
+    return std::nullopt;
+  }
+
+  bir::Function function;
+  function.name = lir_function.name;
+  function.return_type = bir::TypeKind::I8;
+  function.params = params;
+
+  bir::Block block;
+  block.label = lir_block.label;
+  compare->result = bir::Value::named(bir::TypeKind::I8, compare->result.name);
+  compare->lhs = *narrow_lhs;
+  compare->rhs = *narrow_rhs;
+  block.insts.push_back(*compare);
+  block.terminator.value = bir::Value::named(bir::TypeKind::I8, compare->result.name);
+
+  function.blocks.push_back(std::move(block));
+  return function;
+}
+
 std::optional<bir::Function> try_lower_widened_i8_conditional_return_select_function(
     const c4c::codegen::lir::LirFunction& lir_function,
     const std::vector<bir::Param>& params) {
@@ -1854,6 +1919,12 @@ std::optional<bir::Module> try_lower_to_bir(const c4c::codegen::lir::LirModule& 
           try_lower_widened_i8_conditional_return_select_function(lir_function, *params);
       widened_i8_select_function.has_value()) {
     lowered.functions.push_back(*widened_i8_select_function);
+    return lowered;
+  }
+  if (const auto widened_i8_function =
+          try_lower_widened_i8_compare_return_function(lir_function, *params);
+      widened_i8_function.has_value()) {
+    lowered.functions.push_back(*widened_i8_function);
     return lowered;
   }
   if (const auto widened_i8_function =
