@@ -64,7 +64,7 @@ BackendTerminator lower_terminator(const bir::ReturnTerminator& terminator) {
 
 }  // namespace
 
-BackendModule lower_to_backend_ir(const bir::Module& module) {
+BackendModule lower_bir_to_backend_module(const bir::Module& module) {
   BackendModule lowered;
   lowered.target_triple = module.target_triple;
   lowered.data_layout = module.data_layout;

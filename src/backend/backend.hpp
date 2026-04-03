@@ -11,7 +11,7 @@ struct LirModule;
 
 namespace c4c::backend {
 
-BackendModule lower_to_backend_ir(const c4c::codegen::lir::LirModule& module);
+BackendModule lower_lir_to_backend_module(const c4c::codegen::lir::LirModule& module);
 
 enum class BackendPipeline : unsigned char {
   Legacy,

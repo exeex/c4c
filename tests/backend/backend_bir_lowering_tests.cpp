@@ -149,9 +149,9 @@ void test_bir_lowering_accepts_two_param_staged_affine_chain() {
                   "BIR lowering should let the staged affine tail flow into the return");
 }
 
-void test_bir_to_backend_ir_preserves_sub_opcode() {
+void test_bir_to_backend_module_preserves_sub_opcode() {
   const auto lowered = c4c::backend::lower_to_bir(make_bir_return_sub_module());
-  const auto backend_ir = c4c::backend::lower_to_backend_ir(lowered);
+  const auto backend_ir = c4c::backend::lower_bir_to_backend_module(lowered);
   const auto& block = backend_ir.functions.front().blocks.front();
   const auto* inst = std::get_if<c4c::backend::BackendBinaryInst>(&block.insts.front());
 
@@ -199,7 +199,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_two_param_add);
   RUN_TEST(test_bir_lowering_accepts_two_param_add_sub_chain);
   RUN_TEST(test_bir_lowering_accepts_two_param_staged_affine_chain);
-  RUN_TEST(test_bir_to_backend_ir_preserves_sub_opcode);
+  RUN_TEST(test_bir_to_backend_module_preserves_sub_opcode);
   RUN_TEST(test_bir_validator_rejects_returning_undefined_named_value);
   RUN_TEST(test_bir_validator_rejects_return_type_mismatch);
 }

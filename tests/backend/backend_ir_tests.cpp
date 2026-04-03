@@ -136,7 +136,7 @@ void clear_backend_global_type_compatibility_shims(c4c::backend::BackendModule& 
 }
 
 c4c::backend::BackendModule make_structured_local_slot_ptrdiff_module() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_local_array_gep_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_local_array_gep_module());
   auto& block = lowered.functions.front().blocks.front();
   block.insts.resize(2);
   block.insts.push_back(c4c::backend::BackendPtrDiffEqInst{

@@ -28,7 +28,7 @@ std::string emit_via_backend(const lir::LirModule& lir_mod,
 
   backend::BackendModuleInput input{lir_mod};
   try {
-    input = backend::BackendModuleInput{backend::lower_to_backend_ir(lir_mod), &lir_mod};
+    input = backend::BackendModuleInput{backend::lower_lir_to_backend_module(lir_mod), &lir_mod};
   } catch (const backend::LirAdapterError& ex) {
     if (ex.kind() != backend::LirAdapterErrorKind::Unsupported) {
       throw;

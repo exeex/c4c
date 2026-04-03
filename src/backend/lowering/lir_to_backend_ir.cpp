@@ -3629,7 +3629,7 @@ BackendFunction adapt_function(const c4c::codegen::lir::LirFunction& function,
 
 }  // namespace
 
-BackendModule lower_to_backend_ir(const c4c::codegen::lir::LirModule& module) {
+BackendModule lower_lir_to_backend_module(const c4c::codegen::lir::LirModule& module) {
   if (module.need_va_start || module.need_va_end || module.need_va_copy ||
       module.need_memcpy || module.need_stacksave || module.need_stackrestore ||
       module.need_abs) {

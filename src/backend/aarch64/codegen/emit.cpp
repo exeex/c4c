@@ -5660,7 +5660,7 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
   const bool needs_nonminimal_lowering = lir_module_needs_nonminimal_lowering(module);
   validate_module(module);
   try {
-    const auto adapted = c4c::backend::lower_to_backend_ir(module);
+    const auto adapted = c4c::backend::lower_lir_to_backend_module(module);
     if (const auto slice = parse_minimal_local_array_slice(adapted);
         slice.has_value()) {
       return emit_minimal_local_array_asm(adapted, *slice);
@@ -5809,7 +5809,7 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
   }
   if (!needs_nonminimal_lowering) {
     try {
-      const auto adapted = c4c::backend::lower_to_backend_ir(prepared);
+      const auto adapted = c4c::backend::lower_lir_to_backend_module(prepared);
       if (const auto slice = parse_minimal_local_array_slice(adapted);
           slice.has_value()) {
         return emit_minimal_local_array_asm(adapted, *slice);

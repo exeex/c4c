@@ -7,9 +7,9 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 4: Clean up surviving names
-- Current slice: rename the lowering entrypoints away from
-  `lower_to_backend_ir(...)` where that can be done without reopening the
-  bounded legacy fallback seams
+- Current slice: separate the intentionally retained compatibility shims from
+  any remaining true Step 4 rename targets under tests and adjacent helper
+  surfaces
 
 ## Todo
 
@@ -51,15 +51,19 @@ Source Plan: plan.md
       `print_backend_module(...)` / `validate_backend_module(...)`, updated
       backend callers and tests, and isolated the old `*_backend_ir` spellings
       behind explicit compatibility shims
+- [x] renamed the shared/public lowering entrypoints to
+      `lower_lir_to_backend_module(...)` /
+      `lower_bir_to_backend_module(...)`, updated production callers, and kept
+      the old `lower_to_backend_ir(...)` spellings only as explicit lowering
+      compatibility shims
 - [x] re-ran targeted backend validation plus a clean full-suite regression
       pass with no new failures relative to the existing EASTL recipe baseline
 
 ## Next Slice
 
-- separate true Step 4 rename targets from intentionally retained compatibility
-  shims
-- rename the lowering entrypoints away from `lower_to_backend_ir(...)` where
-  that can be done without reopening the bounded legacy fallback seams
+- audit the remaining `lower_to_backend_ir(...)` hits under tests and helper
+  surfaces, then move only the stable/non-compatibility ones onto the new
+  `lower_*_to_backend_module(...)` names
 - before doing broad Step 4 renames, optionally finish the deferred AArch64 seam
   cleanup by porting the real `extern_global_array` production route off the
   remaining `legacy_fallback` early return
@@ -100,3 +104,9 @@ Source Plan: plan.md
   `backend_ir_tests` and `backend_contract_aarch64_extern_global_array_object`
   passed after the rename, and `test_before.log` vs `test_after.log` stayed
   flat at 2720 passing / 6 failing with the same EASTL recipe failures
+- regression check for the lowering-entrypoint rename slice:
+  `backend_lir_adapter_tests`, `backend_lir_adapter_aarch64_tests`,
+  `backend_lir_adapter_x86_64_tests`, `backend_ir_tests`, and
+  `backend_bir_tests` all passed after the rename; the full suite finished at
+  2720 passing / 6 failing with the same EASTL recipe failures recorded in the
+  existing baseline notes
