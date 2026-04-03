@@ -12,7 +12,7 @@ Source Plan: plan.md
   - Notes: Shared decode/parsing helpers in `src/backend/lowering/call_decode.*` now own the staged LIR call and signature parsing previously spread across target codegen.
   - Blockers: None.
 - [ ] Step 3: Make backend IR more backend-native
-  - Notes: Step 3 has already delivered meaningful structure around call metadata, signatures, linkage, globals, address provenance, and local-slot metadata. The local-slot branch-only constant-return family is no longer blocked on the old dead-end constraints: it now lowers without a hard local-slot-count cap, and it no longer requires the function to be named `main` or to have zero fixed parameters when those parameters are irrelevant to the matched local-slot state. This topic should not consume more plan churn. The only worthwhile remaining work for this family is: `1.` decide whether to generalize the current `i32`-only local-slot/value model into typed-scalar support because a real backend semantic family needs it; `2.` collapse repetitive slot-count fixtures into representative semantic coverage. Do not spend more time on size-only widening, entrypoint naming, or unused-parameter gating.
+  - Notes: Step 3 has already delivered meaningful structure around call metadata, signatures, linkage, globals, address provenance, and local-slot metadata. The local-slot branch-only constant-return family is no longer blocked on the old dead-end constraints: it now lowers without a hard local-slot-count cap, and it no longer requires the function to be named `main` or to have zero fixed parameters when those parameters are irrelevant to the matched local-slot state. This topic should not consume more plan churn. Representative coverage now replaces the old slot-count regression ladder in the shared lowering and AArch64 direct-vs-lowered parity tests, while keeping the non-`main`/unused-parameter boundary regression. The only worthwhile remaining work for this family is deciding whether to generalize the current `i32`-only local-slot/value model into typed-scalar support because a real backend semantic family needs it. Do not spend more time on size-only widening, entrypoint naming, or unused-parameter gating.
   - Blockers: None.
 - [ ] Step 4: Shift target codegen onto backend semantics
   - Notes: Recent AArch64 and x86 work already removed many emitter-local reshaping layers for direct-call and structured fast-path seams. Further Step 4 cleanup for this active family depends on Step 3 producing a stable structured lowering result instead of another bounded compatibility matcher.
@@ -27,7 +27,7 @@ Step 3
 
 ## Immediate Next Slice
 
-Do not revisit `main`/parameter/local-slot-count gating for this family. If more work is needed here, it must either `1.` generalize the `i32`-only model for a real typed-scalar/backend-semantic reason, or `2.` replace repetitive slot-count tests with representative semantic coverage.
+Do not revisit local-slot-count widening for the structurally converged constant-return family. If more work is needed in this Step 3 area, it must be driven by a real typed-scalar/backend-semantic need rather than more size-only fixture churn.
 
 ## Accomplished Context
 
@@ -38,6 +38,7 @@ Do not revisit `main`/parameter/local-slot-count gating for this family. If more
 - The active local-slot family has been proven stable across representative widening up to eighteen slots.
 - The active local-slot family now also accepts non-`main` functions, unused fixed parameters, and more than eighteen local slots without reopening the old fallback path.
 - The remaining open question for this family is semantic typing, not entrypoint naming or local-slot cardinality.
+- Shared lowering and AArch64 parity coverage now use representative slot-count cases instead of an exhaustive regression ladder for this family.
 
 ## Risks And Constraints
 
