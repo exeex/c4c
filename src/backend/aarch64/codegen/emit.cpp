@@ -259,6 +259,13 @@ c4c::codegen::lir::LirModule prepare_module_for_fallback(
   return prepared;
 }
 
+c4c::backend::BackendModule make_backend_target_stub(
+    const c4c::codegen::lir::LirModule& module) {
+  c4c::backend::BackendModule backend_module;
+  backend_module.target_triple = module.target_triple;
+  return backend_module;
+}
+
 std::string asm_symbol_name(const c4c::backend::BackendModule& module,
                             std::string_view logical_name) {
   const bool is_darwin =
@@ -3910,20 +3917,17 @@ std::string emit_minimal_conditional_phi_join_asm(
 }
 
 std::string emit_minimal_scalar_global_load_asm(
-    const c4c::codegen::lir::LirModule& module,
+    const c4c::backend::BackendModule& module,
     const MinimalScalarGlobalLoadSlice& slice) {
   if (slice.init_imm < std::numeric_limits<std::int32_t>::min() ||
       slice.init_imm > std::numeric_limits<std::int32_t>::max()) {
     fail_unsupported("scalar global initializers outside the minimal .long-supported range");
   }
 
-  c4c::backend::BackendModule backend_module;
-  backend_module.target_triple = module.target_triple;
   const bool is_darwin =
-      backend_module.target_triple.find("apple-darwin") != std::string::npos;
-  const std::string global_symbol =
-      asm_symbol_name(backend_module, slice.global_name);
-  const std::string main_symbol = asm_symbol_name(backend_module, "main");
+      module.target_triple.find("apple-darwin") != std::string::npos;
+  const std::string global_symbol = asm_symbol_name(module, slice.global_name);
+  const std::string main_symbol = asm_symbol_name(module, "main");
   const int align_pow2 = slice.align_bytes <= 1
                              ? 0
                              : (slice.align_bytes == 2 ? 1 : 2);
@@ -3942,7 +3946,7 @@ std::string emit_minimal_scalar_global_load_asm(
   }
 
   out << ".text\n";
-  emit_function_prelude(out, backend_module, main_symbol, true);
+  emit_function_prelude(out, module, main_symbol, true);
   if (is_darwin) {
     out << "  adrp x8, " << global_symbol << "@PAGE\n"
         << "  ldr w0, [x8, " << global_symbol << "@PAGEOFF]\n";
@@ -3955,7 +3959,7 @@ std::string emit_minimal_scalar_global_load_asm(
 }
 
 std::string emit_minimal_scalar_global_store_reload_asm(
-    const c4c::codegen::lir::LirModule& module,
+    const c4c::backend::BackendModule& module,
     const MinimalScalarGlobalStoreReloadSlice& slice) {
   if (slice.init_imm < std::numeric_limits<std::int32_t>::min() ||
       slice.init_imm > std::numeric_limits<std::int32_t>::max()) {
@@ -3969,13 +3973,10 @@ std::string emit_minimal_scalar_global_store_reload_asm(
     fail_unsupported("scalar global store immediates outside the minimal mov-supported range");
   }
 
-  c4c::backend::BackendModule backend_module;
-  backend_module.target_triple = module.target_triple;
   const bool is_darwin =
-      backend_module.target_triple.find("apple-darwin") != std::string::npos;
-  const std::string global_symbol =
-      asm_symbol_name(backend_module, slice.global_name);
-  const std::string main_symbol = asm_symbol_name(backend_module, "main");
+      module.target_triple.find("apple-darwin") != std::string::npos;
+  const std::string global_symbol = asm_symbol_name(module, slice.global_name);
+  const std::string main_symbol = asm_symbol_name(module, "main");
   const int align_pow2 = slice.align_bytes <= 1
                              ? 0
                              : (slice.align_bytes == 2 ? 1 : 2);
@@ -3994,7 +3995,7 @@ std::string emit_minimal_scalar_global_store_reload_asm(
   }
 
   out << ".text\n";
-  emit_function_prelude(out, backend_module, main_symbol, true);
+  emit_function_prelude(out, module, main_symbol, true);
   if (is_darwin) {
     out << "  adrp x8, " << global_symbol << "@PAGE\n"
         << "  add x8, x8, " << global_symbol << "@PAGEOFF\n";
@@ -4010,22 +4011,19 @@ std::string emit_minimal_scalar_global_store_reload_asm(
 }
 
 std::string emit_minimal_extern_scalar_global_load_asm(
-    const c4c::codegen::lir::LirModule& module,
+    const c4c::backend::BackendModule& module,
     const MinimalExternScalarGlobalLoadSlice& slice) {
-  c4c::backend::BackendModule backend_module;
-  backend_module.target_triple = module.target_triple;
   const bool is_darwin =
-      backend_module.target_triple.find("apple-darwin") != std::string::npos;
-  const std::string global_symbol =
-      asm_symbol_name(backend_module, slice.global_name);
-  const std::string main_symbol = asm_symbol_name(backend_module, "main");
+      module.target_triple.find("apple-darwin") != std::string::npos;
+  const std::string global_symbol = asm_symbol_name(module, slice.global_name);
+  const std::string main_symbol = asm_symbol_name(module, "main");
 
   std::ostringstream out;
   if (!is_darwin) {
     out << ".extern " << global_symbol << "\n";
   }
   out << ".text\n";
-  emit_function_prelude(out, backend_module, main_symbol, true);
+  emit_function_prelude(out, module, main_symbol, true);
   if (is_darwin) {
     out << "  adrp x8, " << global_symbol << "@PAGE\n"
         << "  ldr w0, [x8, " << global_symbol << "@PAGEOFF]\n";
@@ -4038,22 +4036,19 @@ std::string emit_minimal_extern_scalar_global_load_asm(
 }
 
 std::string emit_minimal_extern_global_array_load_asm(
-    const c4c::codegen::lir::LirModule& module,
+    const c4c::backend::BackendModule& module,
     const MinimalExternGlobalArrayLoadSlice& slice) {
-  c4c::backend::BackendModule backend_module;
-  backend_module.target_triple = module.target_triple;
   const bool is_darwin =
-      backend_module.target_triple.find("apple-darwin") != std::string::npos;
-  const std::string global_symbol =
-      asm_symbol_name(backend_module, slice.global_name);
-  const std::string main_symbol = asm_symbol_name(backend_module, "main");
+      module.target_triple.find("apple-darwin") != std::string::npos;
+  const std::string global_symbol = asm_symbol_name(module, slice.global_name);
+  const std::string main_symbol = asm_symbol_name(module, "main");
 
   std::ostringstream out;
   if (!is_darwin) {
     out << ".extern " << global_symbol << "\n";
   }
   out << ".text\n";
-  emit_function_prelude(out, backend_module, main_symbol, true);
+  emit_function_prelude(out, module, main_symbol, true);
   if (is_darwin) {
     out << "  adrp x8, " << global_symbol << "@PAGE\n"
         << "  add x8, x8, " << global_symbol << "@PAGEOFF\n";
@@ -4067,15 +4062,12 @@ std::string emit_minimal_extern_global_array_load_asm(
 }
 
 std::string emit_minimal_global_char_pointer_diff_asm(
-    const c4c::codegen::lir::LirModule& module,
+    const c4c::backend::BackendModule& module,
     const MinimalGlobalCharPointerDiffSlice& slice) {
-  c4c::backend::BackendModule backend_module;
-  backend_module.target_triple = module.target_triple;
   const bool is_darwin =
-      backend_module.target_triple.find("apple-darwin") != std::string::npos;
-  const std::string global_symbol =
-      asm_symbol_name(backend_module, slice.global_name);
-  const std::string main_symbol = asm_symbol_name(backend_module, "main");
+      module.target_triple.find("apple-darwin") != std::string::npos;
+  const std::string global_symbol = asm_symbol_name(module, slice.global_name);
+  const std::string main_symbol = asm_symbol_name(module, "main");
 
   std::ostringstream out;
   out << ".bss\n"
@@ -4091,7 +4083,7 @@ std::string emit_minimal_global_char_pointer_diff_asm(
   }
 
   out << ".text\n";
-  emit_function_prelude(out, backend_module, main_symbol, true);
+  emit_function_prelude(out, module, main_symbol, true);
   if (is_darwin) {
     out << "  adrp x8, " << global_symbol << "@PAGE\n"
         << "  add x8, x8, " << global_symbol << "@PAGEOFF\n";
@@ -4108,15 +4100,12 @@ std::string emit_minimal_global_char_pointer_diff_asm(
 }
 
 std::string emit_minimal_global_int_pointer_diff_asm(
-    const c4c::codegen::lir::LirModule& module,
+    const c4c::backend::BackendModule& module,
     const MinimalGlobalIntPointerDiffSlice& slice) {
-  c4c::backend::BackendModule backend_module;
-  backend_module.target_triple = module.target_triple;
   const bool is_darwin =
-      backend_module.target_triple.find("apple-darwin") != std::string::npos;
-  const std::string global_symbol =
-      asm_symbol_name(backend_module, slice.global_name);
-  const std::string main_symbol = asm_symbol_name(backend_module, "main");
+      module.target_triple.find("apple-darwin") != std::string::npos;
+  const std::string global_symbol = asm_symbol_name(module, slice.global_name);
+  const std::string main_symbol = asm_symbol_name(module, "main");
 
   std::ostringstream out;
   out << ".bss\n"
@@ -4132,7 +4121,7 @@ std::string emit_minimal_global_int_pointer_diff_asm(
   }
 
   out << ".text\n";
-  emit_function_prelude(out, backend_module, main_symbol, true);
+  emit_function_prelude(out, module, main_symbol, true);
   if (is_darwin) {
     out << "  adrp x8, " << global_symbol << "@PAGE\n"
         << "  add x8, x8, " << global_symbol << "@PAGEOFF\n";
@@ -4150,14 +4139,12 @@ std::string emit_minimal_global_int_pointer_diff_asm(
 }
 
 std::string emit_minimal_string_literal_char_asm(
-    const c4c::codegen::lir::LirModule& module,
+    const c4c::backend::BackendModule& module,
     const MinimalStringLiteralCharSlice& slice) {
-  c4c::backend::BackendModule backend_module;
-  backend_module.target_triple = module.target_triple;
   const bool is_darwin =
-      backend_module.target_triple.find("apple-darwin") != std::string::npos;
+      module.target_triple.find("apple-darwin") != std::string::npos;
   const std::string string_label = asm_private_data_label(module, slice.pool_name);
-  const std::string main_symbol = asm_symbol_name(backend_module, "main");
+  const std::string main_symbol = asm_symbol_name(module, "main");
 
   std::ostringstream out;
   if (is_darwin) {
@@ -4168,7 +4155,7 @@ std::string emit_minimal_string_literal_char_asm(
   out << string_label << ":\n"
       << "  .asciz \"" << escape_asm_string(slice.raw_bytes) << "\"\n";
   out << ".text\n";
-  emit_function_prelude(out, backend_module, main_symbol, true);
+  emit_function_prelude(out, module, main_symbol, true);
   if (is_darwin) {
     out << "  adrp x8, " << string_label << "@PAGE\n"
         << "  add x8, x8, " << string_label << "@PAGEOFF\n";
@@ -5774,27 +5761,19 @@ std::string emit_module(const c4c::backend::BackendModule& module,
   try {
     if (const auto slice = parse_minimal_scalar_global_load_slice(module);
         slice.has_value()) {
-      c4c::codegen::lir::LirModule scaffold_module;
-      scaffold_module.target_triple = module.target_triple;
-      return emit_minimal_scalar_global_load_asm(scaffold_module, *slice);
+      return emit_minimal_scalar_global_load_asm(module, *slice);
     }
     if (const auto slice = parse_minimal_scalar_global_store_reload_slice(module);
         slice.has_value()) {
-      c4c::codegen::lir::LirModule scaffold_module;
-      scaffold_module.target_triple = module.target_triple;
-      return emit_minimal_scalar_global_store_reload_asm(scaffold_module, *slice);
+      return emit_minimal_scalar_global_store_reload_asm(module, *slice);
     }
     if (const auto slice = parse_minimal_extern_scalar_global_load_slice(module);
         slice.has_value()) {
-      c4c::codegen::lir::LirModule scaffold_module;
-      scaffold_module.target_triple = module.target_triple;
-      return emit_minimal_extern_scalar_global_load_asm(scaffold_module, *slice);
+      return emit_minimal_extern_scalar_global_load_asm(module, *slice);
     }
     if (const auto slice = parse_minimal_extern_global_array_load_slice(module);
         slice.has_value()) {
-      c4c::codegen::lir::LirModule scaffold_module;
-      scaffold_module.target_triple = module.target_triple;
-      return emit_minimal_extern_global_array_load_asm(scaffold_module, *slice);
+      return emit_minimal_extern_global_array_load_asm(module, *slice);
     }
     if (const auto slice = parse_minimal_local_array_slice(module);
         slice.has_value()) {
@@ -5804,21 +5783,15 @@ std::string emit_module(const c4c::backend::BackendModule& module,
     }
     if (const auto slice = parse_minimal_global_char_pointer_diff_slice(module);
         slice.has_value()) {
-      c4c::codegen::lir::LirModule scaffold_module;
-      scaffold_module.target_triple = module.target_triple;
-      return emit_minimal_global_char_pointer_diff_asm(scaffold_module, *slice);
+      return emit_minimal_global_char_pointer_diff_asm(module, *slice);
     }
     if (const auto slice = parse_minimal_global_int_pointer_diff_slice(module);
         slice.has_value()) {
-      c4c::codegen::lir::LirModule scaffold_module;
-      scaffold_module.target_triple = module.target_triple;
-      return emit_minimal_global_int_pointer_diff_asm(scaffold_module, *slice);
+      return emit_minimal_global_int_pointer_diff_asm(module, *slice);
     }
     if (const auto slice = parse_minimal_string_literal_char_slice(module);
         slice.has_value()) {
-      c4c::codegen::lir::LirModule scaffold_module;
-      scaffold_module.target_triple = module.target_triple;
-      return emit_minimal_string_literal_char_asm(scaffold_module, *slice);
+      return emit_minimal_string_literal_char_asm(module, *slice);
     }
     if (!needs_nonminimal_lowering) {
       if (const auto slice = parse_minimal_conditional_return_slice(module);
@@ -5939,6 +5912,7 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
   }
 
   const auto prepared = prepare_module_for_fallback(module);
+  const auto prepared_backend_stub = make_backend_target_stub(prepared);
   validate_module(prepared);
   if (const auto slice = parse_minimal_local_array_slice(prepared);
       slice.has_value()) {
@@ -5952,35 +5926,35 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
   }
   if (const auto slice = parse_minimal_scalar_global_load_slice(prepared);
       slice.has_value()) {
-    return emit_minimal_scalar_global_load_asm(prepared, *slice);
+    return emit_minimal_scalar_global_load_asm(prepared_backend_stub, *slice);
   }
   if (const auto slice = parse_minimal_scalar_global_store_reload_slice(prepared);
       slice.has_value()) {
-    return emit_minimal_scalar_global_store_reload_asm(prepared, *slice);
+    return emit_minimal_scalar_global_store_reload_asm(prepared_backend_stub, *slice);
   }
   if (const auto slice = parse_minimal_global_int_pointer_roundtrip_slice(prepared);
       slice.has_value()) {
-    return emit_minimal_scalar_global_load_asm(prepared, *slice);
+    return emit_minimal_scalar_global_load_asm(prepared_backend_stub, *slice);
   }
   if (const auto slice = parse_minimal_extern_scalar_global_load_slice(prepared);
       slice.has_value()) {
-    return emit_minimal_extern_scalar_global_load_asm(prepared, *slice);
+    return emit_minimal_extern_scalar_global_load_asm(prepared_backend_stub, *slice);
   }
   if (const auto slice = parse_minimal_extern_global_array_load_slice(prepared);
       slice.has_value()) {
-    return emit_minimal_extern_global_array_load_asm(prepared, *slice);
+    return emit_minimal_extern_global_array_load_asm(prepared_backend_stub, *slice);
   }
   if (const auto slice = parse_minimal_global_char_pointer_diff_slice(prepared);
       slice.has_value()) {
-    return emit_minimal_global_char_pointer_diff_asm(prepared, *slice);
+    return emit_minimal_global_char_pointer_diff_asm(prepared_backend_stub, *slice);
   }
   if (const auto slice = parse_minimal_global_int_pointer_diff_slice(prepared);
       slice.has_value()) {
-    return emit_minimal_global_int_pointer_diff_asm(prepared, *slice);
+    return emit_minimal_global_int_pointer_diff_asm(prepared_backend_stub, *slice);
   }
   if (const auto slice = parse_minimal_string_literal_char_slice(prepared);
       slice.has_value()) {
-    return emit_minimal_string_literal_char_asm(prepared, *slice);
+    return emit_minimal_string_literal_char_asm(prepared_backend_stub, *slice);
   }
   if (!needs_nonminimal_lowering) {
     try {
