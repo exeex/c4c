@@ -2101,7 +2101,7 @@ std::optional<BackendFunction> adapt_constant_conditional_goto_return_function(
   return std::nullopt;
 }
 
-std::optional<BackendFunction> adapt_single_local_constant_conditional_goto_return_function(
+std::optional<BackendFunction> adapt_small_local_constant_conditional_goto_return_function(
     const c4c::codegen::lir::LirFunction& function,
     const BackendFunctionSignature& signature) {
   using namespace c4c::codegen::lir;
@@ -2109,14 +2109,19 @@ std::optional<BackendFunction> adapt_single_local_constant_conditional_goto_retu
   if (function.is_declaration || !backend_function_is_definition(signature) ||
       signature.return_type != "i32" || signature.name != "main" ||
       !signature.params.empty() || signature.is_vararg || function.blocks.empty() ||
-      function.alloca_insts.size() != 1 || !function.stack_objects.empty()) {
+      function.alloca_insts.empty() || function.alloca_insts.size() > 2 ||
+      !function.stack_objects.empty()) {
     return std::nullopt;
   }
 
-  const auto* scalar_alloca = std::get_if<LirAllocaOp>(&function.alloca_insts.front());
-  if (scalar_alloca == nullptr || scalar_alloca->type_str != "i32" ||
-      scalar_alloca->result.empty()) {
-    return std::nullopt;
+  std::unordered_map<std::string, std::optional<ResolvedInteger>> local_values;
+  for (const auto& alloca_inst : function.alloca_insts) {
+    const auto* scalar_alloca = std::get_if<LirAllocaOp>(&alloca_inst);
+    if (scalar_alloca == nullptr || scalar_alloca->type_str != "i32" ||
+        scalar_alloca->result.empty()) {
+      return std::nullopt;
+    }
+    local_values.emplace(scalar_alloca->result, std::nullopt);
   }
 
   std::unordered_map<std::string, const LirBlock*> blocks_by_label;
@@ -2126,7 +2131,6 @@ std::optional<BackendFunction> adapt_single_local_constant_conditional_goto_retu
 
   std::unordered_map<std::string, ResolvedInteger> integer_values;
   std::unordered_map<std::string, bool> predicate_values;
-  std::optional<ResolvedInteger> local_value;
 
   auto resolve_int = [&](std::string_view value) -> std::optional<ResolvedInteger> {
     if (const auto imm = parse_i64(value); imm.has_value()) {
@@ -2235,23 +2239,27 @@ std::optional<BackendFunction> adapt_single_local_constant_conditional_goto_retu
       }
 
       if (const auto* store = std::get_if<LirStoreOp>(&inst)) {
-        if (store->type_str != "i32" || store->ptr != scalar_alloca->result) {
+        if (store->type_str != "i32") {
           return std::nullopt;
         }
         const auto value = resolve_int(store->val);
-        if (!value.has_value()) {
+        const auto local_it = local_values.find(store->ptr);
+        if (local_it == local_values.end() || !value.has_value()) {
           return std::nullopt;
         }
-        local_value = ResolvedInteger{truncate_integer_bits(value->bits, 32), 32};
+        local_it->second = ResolvedInteger{truncate_integer_bits(value->bits, 32), 32};
         continue;
       }
 
       if (const auto* load = std::get_if<LirLoadOp>(&inst)) {
-        if (load->type_str != "i32" || load->ptr != scalar_alloca->result ||
-            !local_value.has_value()) {
+        if (load->type_str != "i32") {
           return std::nullopt;
         }
-        integer_values[load->result] = *local_value;
+        const auto local_it = local_values.find(load->ptr);
+        if (local_it == local_values.end() || !local_it->second.has_value()) {
+          return std::nullopt;
+        }
+        integer_values[load->result] = *local_it->second;
         continue;
       }
 
@@ -3523,7 +3531,7 @@ BackendFunction adapt_function(const c4c::codegen::lir::LirFunction& function,
     return *normalized;
   }
   if (const auto normalized =
-          adapt_single_local_constant_conditional_goto_return_function(function, signature);
+          adapt_small_local_constant_conditional_goto_return_function(function, signature);
       normalized.has_value()) {
     return *normalized;
   }
