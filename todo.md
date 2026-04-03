@@ -16,6 +16,41 @@ Next target: add the adjacent zero-parameter `unsigned char` constant-return
 `select ne` backend-route parity slice now that the trunc-only widened-`i8`
 direct-BIR fallback gap behind `select eq` is closed.
 
+Current active item: Step 2, re-audit the remaining adjacent compare/select
+`i32` versus widened-`u8` parity matrix after landing the zero-parameter
+constant-return `unsigned char` `select ne` backend-route slice.
+Next target: identify the next smallest uncovered widened-width/source-level
+`unsigned char` compare/select backend-route case adjacent to an already-covered
+`i32` slice before opening any broader predicate or control-flow matrix.
+
+Completed this iteration:
+- Audited the immediate zero-parameter compare/select parity gap in
+  `tests/c/internal/InternalTests.cmake` and confirmed `i32`
+  `return_select_ne` already had route coverage while widened-width/source-level
+  `unsigned char` only had the adjacent `return_select_eq_u8` case.
+- Added `tests/c/internal/backend_route_case/return_select_ne_u8.c`, proving the
+  bounded zero-parameter `unsigned char` `!=` constant-return wrapper is
+  available to the backend-route harness.
+- Registered
+  `backend_codegen_route_riscv64_return_select_ne_u8_defaults_to_bir` in
+  `tests/c/internal/InternalTests.cmake`, asserting the emitted text contains
+  `bir.func @choose_const_ne_u() -> i8 {` and `bir.ret i8 11`, and forbids
+  legacy LLVM IR `define i8 @choose_const_ne_u()`.
+- Reconfigured and rebuilt the tree, reran
+  `backend_codegen_route_riscv64_return_select_ne_u8_defaults_to_bir`, reran
+  the adjacent zero-parameter select parity quartet
+  (`backend_codegen_route_riscv64_return_select_eq_defaults_to_bir`,
+  `backend_codegen_route_riscv64_return_select_ne_defaults_to_bir`,
+  `backend_codegen_route_riscv64_return_select_eq_u8_defaults_to_bir`,
+  `backend_codegen_route_riscv64_return_select_ne_u8_defaults_to_bir`), reran
+  `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `361/361` backend-labeled tests passing, then refreshed
+  `test_fail_after.log` with a full `ctest --test-dir build -j8 --output-on-failure`
+  run and passed the regression guard against `test_fail_before.log` with
+  `--allow-non-decreasing-passed --timeout-threshold 30 --enforce-timeout`
+  (`2782 -> 2799` passed, `0 -> 0` failed, no newly failing tests, no new
+  `>30s` cases).
+
 Completed this iteration:
 - Audited the adjacent compare/select backend-route inventory and confirmed the
   smallest remaining parity gap after the single-parameter `unsigned char`
