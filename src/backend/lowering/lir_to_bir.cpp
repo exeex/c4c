@@ -18,7 +18,7 @@ std::optional<bir::TypeKind> lower_minimal_scalar_type(const c4c::TypeSpec& type
   if (type.ptr_level != 0 || type.array_rank != 0) {
     return std::nullopt;
   }
-  if (type.base == TB_CHAR) {
+  if (type.base == TB_CHAR || type.base == TB_SCHAR || type.base == TB_UCHAR) {
     return bir::TypeKind::I8;
   }
   if (type.base == TB_INT) {
@@ -1018,6 +1018,176 @@ std::optional<bir::Function> try_lower_conditional_phi_select_function(
   return function;
 }
 
+std::optional<bir::Function> try_lower_widened_i8_add_sub_chain_function(
+    const c4c::codegen::lir::LirFunction& lir_function,
+    const std::vector<bir::Param>& params) {
+  using namespace c4c::codegen::lir;
+
+  if (lir_function.blocks.size() != 1) {
+    return std::nullopt;
+  }
+  if (!std::all_of(params.begin(), params.end(), [](const bir::Param& param) {
+        return param.type == bir::TypeKind::I8;
+      })) {
+    return std::nullopt;
+  }
+
+  const auto& lir_block = lir_function.blocks.front();
+  if (lir_block.label.empty() || lir_block.insts.size() < 3) {
+    return std::nullopt;
+  }
+
+  const auto* ret = std::get_if<LirRet>(&lir_block.terminator);
+  const auto* trunc = std::get_if<LirCastOp>(&lir_block.insts.back());
+  if (ret == nullptr || trunc == nullptr || !ret->value_str.has_value() ||
+      trunc->result.str().empty() || *ret->value_str != trunc->result.str() ||
+      ret->type_str != "i8" || trunc->kind != LirCastKind::Trunc ||
+      trunc->from_type.str() != "i32" || trunc->to_type.str() != "i8") {
+    return std::nullopt;
+  }
+
+  bir::Function function;
+  function.name = lir_function.name;
+  function.return_type = bir::TypeKind::I8;
+  function.params = params;
+
+  bir::Block block;
+  block.label = lir_block.label;
+
+  std::vector<std::string> defined_names;
+  defined_names.reserve(params.size() + lir_block.insts.size());
+  std::vector<bir::Value> resolved_values;
+  resolved_values.reserve(params.size() + lir_block.insts.size());
+  std::vector<AffineValue> affine_values;
+  affine_values.reserve(params.size() + lir_block.insts.size());
+  for (std::size_t index = 0; index < params.size(); ++index) {
+    defined_names.push_back(params[index].name);
+    resolved_values.push_back(bir::Value::named(params[index].type, params[index].name));
+    affine_values.push_back(AffineValue{index == 0, index == 1, 0});
+  }
+
+  auto name_is_defined = [&](std::string_view name) {
+    return std::find(defined_names.begin(), defined_names.end(), name) !=
+           defined_names.end();
+  };
+  auto resolve_value = [&](const bir::Value& value) -> std::optional<bir::Value> {
+    if (value.kind == bir::Value::Kind::Immediate) {
+      return value;
+    }
+    for (std::size_t index = 0; index < defined_names.size(); ++index) {
+      if (defined_names[index] == value.name) {
+        return resolved_values[index];
+      }
+    }
+    return std::nullopt;
+  };
+  auto lower_affine_value = [&](const bir::Value& value) -> std::optional<AffineValue> {
+    if (value.kind == bir::Value::Kind::Immediate) {
+      return AffineValue{false, false, value.immediate};
+    }
+    for (std::size_t index = 0; index < defined_names.size(); ++index) {
+      if (defined_names[index] == value.name) {
+        return affine_values[index];
+      }
+    }
+    return std::nullopt;
+  };
+  auto narrow_i8_value = [&](const bir::Value& value) -> std::optional<bir::Value> {
+    if (value.kind == bir::Value::Kind::Immediate) {
+      if (!immediate_fits_type(value.immediate, bir::TypeKind::I8)) {
+        return std::nullopt;
+      }
+      return bir::Value::immediate_i8(static_cast<std::int8_t>(value.immediate));
+    }
+    if (value.type != bir::TypeKind::I8) {
+      return std::nullopt;
+    }
+    return value;
+  };
+
+  for (std::size_t inst_index = 0; inst_index + 1 < lir_block.insts.size(); ++inst_index) {
+    if (const auto* cast = std::get_if<LirCastOp>(&lir_block.insts[inst_index]); cast != nullptr) {
+      if (cast->result.str().empty() || name_is_defined(cast->result.str()) ||
+          (cast->kind != LirCastKind::SExt && cast->kind != LirCastKind::ZExt) ||
+          cast->from_type.str() != "i8" || cast->to_type.str() != "i32") {
+        return std::nullopt;
+      }
+      const auto source = lower_immediate_or_name(cast->operand.str(), bir::TypeKind::I8);
+      if (!source.has_value()) {
+        return std::nullopt;
+      }
+      const auto resolved_source = resolve_value(*source);
+      const auto affine_source = resolved_source.has_value()
+                                     ? lower_affine_value(*resolved_source)
+                                     : std::nullopt;
+      if (!resolved_source.has_value() || !affine_source.has_value()) {
+        return std::nullopt;
+      }
+      defined_names.push_back(cast->result.str());
+      resolved_values.push_back(*resolved_source);
+      affine_values.push_back(*affine_source);
+      continue;
+    }
+
+    auto binary = lower_binary(lir_block.insts[inst_index]);
+    if (!binary.has_value() || binary->result.type != bir::TypeKind::I32 ||
+        (binary->opcode != bir::BinaryOpcode::Add &&
+         binary->opcode != bir::BinaryOpcode::Sub) ||
+        name_is_defined(binary->result.name)) {
+      return std::nullopt;
+    }
+
+    const auto lhs_value = resolve_value(binary->lhs);
+    const auto rhs_value = resolve_value(binary->rhs);
+    if (!lhs_value.has_value() || !rhs_value.has_value()) {
+      return std::nullopt;
+    }
+    const auto narrow_lhs = narrow_i8_value(*lhs_value);
+    const auto narrow_rhs = narrow_i8_value(*rhs_value);
+    if (!narrow_lhs.has_value() || !narrow_rhs.has_value()) {
+      return std::nullopt;
+    }
+
+    const auto lhs_affine = lower_affine_value(*narrow_lhs);
+    const auto rhs_affine = lower_affine_value(*narrow_rhs);
+    if (!lhs_affine.has_value() || !rhs_affine.has_value()) {
+      return std::nullopt;
+    }
+    const auto combined = combine_affine(*lhs_affine, *rhs_affine, binary->opcode);
+    if (!combined.has_value()) {
+      return std::nullopt;
+    }
+
+    bir::BinaryInst narrowed;
+    narrowed.opcode = binary->opcode;
+    narrowed.result = bir::Value::named(bir::TypeKind::I8, binary->result.name);
+    narrowed.lhs = *narrow_lhs;
+    narrowed.rhs = *narrow_rhs;
+    block.insts.push_back(narrowed);
+
+    defined_names.push_back(binary->result.name);
+    resolved_values.push_back(bir::Value::named(bir::TypeKind::I8, binary->result.name));
+    affine_values.push_back(*combined);
+  }
+
+  const auto widened_return_value =
+      lower_immediate_or_name(trunc->operand.str(), bir::TypeKind::I32);
+  if (!widened_return_value.has_value()) {
+    return std::nullopt;
+  }
+  const auto resolved_return_value = resolve_value(*widened_return_value);
+  const auto narrow_return_value = resolved_return_value.has_value()
+                                       ? narrow_i8_value(*resolved_return_value)
+                                       : std::nullopt;
+  if (!narrow_return_value.has_value()) {
+    return std::nullopt;
+  }
+
+  block.terminator.value = *narrow_return_value;
+  function.blocks.push_back(std::move(block));
+  return function;
+}
+
 }  // namespace
 
 std::optional<bir::Module> try_lower_to_bir(const c4c::codegen::lir::LirModule& module) {
@@ -1051,6 +1221,12 @@ std::optional<bir::Module> try_lower_to_bir(const c4c::codegen::lir::LirModule& 
           try_lower_conditional_phi_select_function(lir_function, *params);
       select_function.has_value()) {
     lowered.functions.push_back(*select_function);
+    return lowered;
+  }
+  if (const auto widened_i8_function =
+          try_lower_widened_i8_add_sub_chain_function(lir_function, *params);
+      widened_i8_function.has_value()) {
+    lowered.functions.push_back(*widened_i8_function);
     return lowered;
   }
 

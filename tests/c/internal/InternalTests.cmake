@@ -816,6 +816,15 @@ if(CLANG_EXECUTABLE)
     )
 
     c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_single_param_i8_add_sub_chain_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/single_param_i8_add_sub_chain.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/single_param_i8_add_sub_chain_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @tiny_char(i8 %p.x) -> i8 {|%t1 = bir.add i8 %p.x, 2|%t2 = bir.sub i8 %t1, 1|bir.ret i8 %t2"
+      FORBIDDEN_SNIPPETS "define i8 @tiny_char(i8 %p.x)"
+    )
+
+    c4c_add_backend_codegen_route_test(
       backend_codegen_route_riscv64_single_param_select_eq_defaults_to_bir
       SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/single_param_select_eq.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu

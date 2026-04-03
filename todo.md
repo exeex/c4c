@@ -11,12 +11,34 @@ Source Plan: plan.md
 
 Current active item: Step 2, keep auditing the bounded straight-line
 single-block/default-route surface for the next non-foldable direct-BIR
-coverage slice now that the constant-only ternary boundary has been pinned
-down.
-Next target: pin down the analogous source-level `i8` widened-width
-default-route gap, which still lowers through LLVM/asm rescue because the
-frontend emits `sext i8 -> i32` arithmetic plus a trailing `trunc` back to
-`i8` instead of the already-supported direct BIR `i8` chain shape.
+coverage slice now that the source-level widened `i8` arithmetic wrapper also
+stays on the BIR route.
+Next target: audit whether the analogous source-level two-parameter widened
+`i8` affine chain already stays on direct BIR or still needs its own bounded
+route slice and lowering follow-through.
+
+Completed this iteration:
+- Added source-level/default-route widened-width RISC-V coverage via
+  `tests/c/internal/backend_route_case/single_param_i8_add_sub_chain.c`,
+  proving `signed char tiny_char(signed char x) { return (signed char)((x + 2)
+  - 1); }` now stays on the BIR pipeline instead of falling through the legacy
+  widened `sext i8 -> i32` / `trunc i32 -> i8` route.
+- Registered
+  `backend_codegen_route_riscv64_single_param_i8_add_sub_chain_defaults_to_bir`
+  in `tests/c/internal/InternalTests.cmake`, asserting the emitted text
+  contains `bir.func @tiny_char(i8 %p.x) -> i8 {`, `%t1 = bir.add i8 %p.x, 2`,
+  `%t2 = bir.sub i8 %t1, 1`, and forbids legacy LLVM IR
+  `define i8 @tiny_char(i8 %p.x)`.
+- Widened `src/backend/lowering/lir_to_bir.cpp` so minimal scalar lowering
+  accepts signed/unsigned char as `i8`, and added a bounded recognizer for the
+  source-level `i8` promotion wrapper that rewrites `sext`/`zext i8 -> i32`,
+  `add`/`sub i32`, and trailing `trunc i32 -> i8` back into the existing
+  direct BIR `i8` chain.
+- Rebuilt the tree, reran
+  `backend_codegen_route_riscv64_single_param_i8_add_sub_chain_defaults_to_bir`,
+  reran `ctest --test-dir build -R backend_bir_tests --output-on-failure`, then
+  reran `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `332/332` backend-labeled tests passing.
 
 Completed this iteration:
 - Added source-level/default-route widened-width RISC-V coverage via
