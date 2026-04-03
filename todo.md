@@ -12,11 +12,31 @@ Source Plan: plan.md
 Current active item: Step 2, continue tightening the widened-width/source-level
 `unsigned char` route matrix by locking in the next bounded compare/select
 join-chain beyond the new mixed-affine post-add-sub coverage.
-Next target: add backend-route coverage for the adjacent two-parameter
-`unsigned char` compare/select wrapper with predecessor-local mixed-affine
-arms and the next bounded join-local post-add-sub-add tail, keeping the slice
-within Step 2 widened-`i8` conditional coverage and confirming it does not
-regress back to legacy LLVM IR text.
+Next target: audit the next uncovered widened-`i8` compare/select branch-shape
+adjacent to the newly locked mixed-affine post-add-sub-add tail, preferring the
+deeper-then-mixed or mixed-then-deeper predecessor-arm variants already covered
+for `i32`, and keep the slice within Step 2 conditional backend-route parity.
+
+Completed this iteration:
+- Audited the adjacent two-parameter widened-width/source-level `unsigned char`
+  compare/select wrapper with predecessor-local mixed-affine arms and a bounded
+  join-local post-add-sub-add tail, and confirmed the default `--codegen asm`
+  route already stays on the direct BIR pipeline for
+  `unsigned char choose2_mixed_post_chain_tail_u(unsigned char x, unsigned char y) { return (unsigned char)((x == y ? x + 8 - 3 : y + 11 - 4) + 6 - 2 + 9); }`;
+  no `src/backend/lowering/lir_to_bir.cpp` change was required for this slice.
+- Added
+  `tests/c/internal/backend_route_case/two_param_u8_select_eq_split_predecessor_mixed_affine_post_add_sub_add.c`,
+  proving the bounded two-parameter `u8` predecessor-affine post-add-sub-add
+  join chain reaches the backend through BIR instead of legacy LLVM IR text.
+- Registered
+  `backend_codegen_route_riscv64_two_param_u8_select_eq_split_predecessor_mixed_affine_post_add_sub_add_defaults_to_bir`
+  in `tests/c/internal/InternalTests.cmake`, asserting the emitted text
+  contains `bir.func @choose2_mixed_post_chain_tail_u(i8 %p.x, i8 %p.y) -> i8 {`,
+  `%t11 = bir.add i8 %p.x, 8`, `%t12 = bir.sub i8 %t11, 3`,
+  `%t14 = bir.add i8 %p.y, 11`, `%t15 = bir.sub i8 %t14, 4`,
+  `%t16 = bir.select eq i8 %p.x, %p.y, %t12, %t15`, `%t17 = bir.add i8 %t16, 6`,
+  `%t18 = bir.sub i8 %t17, 2`, `%t19 = bir.add i8 %t18, 9`, and forbids legacy
+  LLVM IR `define i8 @choose2_mixed_post_chain_tail_u(i8 %p.x, i8 %p.y)`.
 
 Completed this iteration:
 - Audited the adjacent two-parameter widened-width/source-level `unsigned char`
