@@ -77,7 +77,8 @@ std::optional<bir::BinaryInst> lower_binary(const c4c::codegen::lir::LirInst& in
 }
 
 struct AffineValue {
-  bool uses_param = false;
+  bool uses_first_param = false;
+  bool uses_second_param = false;
   std::int64_t constant = 0;
 };
 
@@ -85,16 +86,20 @@ std::optional<AffineValue> combine_affine(const AffineValue& lhs,
                                           const AffineValue& rhs,
                                           bir::BinaryOpcode opcode) {
   if (opcode == bir::BinaryOpcode::Add) {
-    if (lhs.uses_param && rhs.uses_param) {
+    if ((lhs.uses_first_param && rhs.uses_first_param) ||
+        (lhs.uses_second_param && rhs.uses_second_param)) {
       return std::nullopt;
     }
-    return AffineValue{lhs.uses_param || rhs.uses_param, lhs.constant + rhs.constant};
+    return AffineValue{lhs.uses_first_param || rhs.uses_first_param,
+                       lhs.uses_second_param || rhs.uses_second_param,
+                       lhs.constant + rhs.constant};
   }
 
-  if (rhs.uses_param) {
+  if (rhs.uses_first_param || rhs.uses_second_param) {
     return std::nullopt;
   }
-  return AffineValue{lhs.uses_param, lhs.constant - rhs.constant};
+  return AffineValue{lhs.uses_first_param, lhs.uses_second_param,
+                     lhs.constant - rhs.constant};
 }
 
 }  // namespace
@@ -107,7 +112,7 @@ std::optional<bir::Module> try_lower_to_bir(const c4c::codegen::lir::LirModule& 
 
   const auto& lir_function = module.functions.front();
   if (lir_function.is_declaration || !lir_function.alloca_insts.empty() ||
-      lir_function.blocks.size() != 1 || lir_function.params.size() > 1) {
+      lir_function.blocks.size() != 1 || lir_function.params.size() > 2) {
     return std::nullopt;
   }
 
@@ -138,13 +143,13 @@ std::optional<bir::Module> try_lower_to_bir(const c4c::codegen::lir::LirModule& 
   } else if (const auto parsed_params =
                  parse_backend_function_signature_params(lir_function.signature_text);
              parsed_params.has_value()) {
-    if (parsed_params->size() > 1 || (parsed_params->size() == 1 &&
-                                      ((*parsed_params)[0].is_varargs ||
-                                       (*parsed_params)[0].type != "i32" ||
-                                       (*parsed_params)[0].operand.empty()))) {
+    if (parsed_params->size() > 2) {
       return std::nullopt;
     }
     for (const auto& param : *parsed_params) {
+      if (param.is_varargs || param.type != "i32" || param.operand.empty()) {
+        return std::nullopt;
+      }
       function.params.push_back(bir::Param{bir::TypeKind::I32, param.operand});
     }
   }
@@ -152,14 +157,15 @@ std::optional<bir::Module> try_lower_to_bir(const c4c::codegen::lir::LirModule& 
   bir::Block block;
   block.label = lir_block.label;
   std::vector<std::string> defined_names;
-  if (!function.params.empty()) {
-    defined_names.push_back(function.params.front().name);
+  defined_names.reserve(function.params.size() + lir_block.insts.size());
+  for (const auto& param : function.params) {
+    defined_names.push_back(param.name);
   }
-  defined_names.reserve(lir_block.insts.size());
   std::vector<AffineValue> affine_values;
   affine_values.reserve(function.params.size() + lir_block.insts.size());
-  if (!function.params.empty()) {
-    affine_values.push_back(AffineValue{true, 0});
+  for (std::size_t index = 0; index < function.params.size(); ++index) {
+    affine_values.push_back(
+        AffineValue{index == 0, index == 1, 0});
   }
   for (const auto& lir_inst : lir_block.insts) {
     auto binary = lower_binary(lir_inst);
@@ -179,7 +185,7 @@ std::optional<bir::Module> try_lower_to_bir(const c4c::codegen::lir::LirModule& 
     }
     auto lower_affine_value = [&](const bir::Value& value) -> std::optional<AffineValue> {
       if (value.kind == bir::Value::Kind::Immediate) {
-        return AffineValue{false, value.immediate};
+        return AffineValue{false, false, value.immediate};
       }
       for (std::size_t index = 0; index < defined_names.size(); ++index) {
         if (defined_names[index] == value.name) {
@@ -222,7 +228,7 @@ bir::Module lower_to_bir(const c4c::codegen::lir::LirModule& module) {
   auto lowered = try_lower_to_bir(module);
   if (!lowered.has_value()) {
     throw std::invalid_argument(
-        "bir scaffold lowering currently supports only straight-line single-block i32 return-immediate/add-sub slices plus one-parameter immediate-fed chains");
+        "bir scaffold lowering currently supports only straight-line single-block i32 return-immediate/add-sub slices plus bounded one- and two-parameter affine i32 chains");
   }
   return *lowered;
 }

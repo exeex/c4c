@@ -7,7 +7,7 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 2: Reassess the next BIR-default slice now that the production route
-  also covers a bounded one-parameter i32 add/sub chain.
+  also covers a bounded two-parameter i32 add helper.
 
 ## In Progress
 
@@ -90,6 +90,22 @@ Source Plan: plan.md
 - Full-suite regression guard passed:
   `test_before.log` -> `test_after.log` increased total tests from `2674` to
   `2675` with zero newly failing cases.
+- Added the narrowest failing tests for a bounded two-parameter i32 add helper
+  across BIR lowering, BIR pipeline text routing, x86 asm emission, AArch64
+  asm emission, and the production RISC-V route seam.
+- Extended the bounded affine lowering and asm fast paths from one parameter
+  to up to two distinct i32 parameters plus immediate adjustment, which keeps
+  the BIR-default route narrow while allowing `int add_pair(int x, int y) {
+  return x + y; }` to stay on the BIR path.
+- Added the internal production-route test
+  `backend_codegen_route_riscv64_two_param_add_defaults_to_bir` using
+  `tests/c/internal/backend_route_case/two_param_add.c`.
+- Targeted validation passed:
+  `backend_bir_tests` and
+  `backend_codegen_route_riscv64_two_param_add_defaults_to_bir`.
+- Full-suite regression guard passed:
+  `test_before.log` -> `test_after.log` kept total tests at `2676` with zero
+  newly failing cases.
 
 ## Notes
 
@@ -102,9 +118,10 @@ Source Plan: plan.md
 
 ## Next Slice
 
-- If the parameter-fed arithmetic slice lands cleanly, use the same route-test
-  pattern to decide whether the next Step 2 slice should widen BIR coverage to
-  another bounded LIR construct or start trimming fallback-only plumbing.
+- Use the same route-test pattern to decide whether Step 2 should widen BIR
+  coverage again to another bounded multi-parameter or memory-free LIR
+  construct, or whether Step 3 can start trimming fallback-only plumbing that
+  no longer protects an exercised route.
 
 ## Blockers
 

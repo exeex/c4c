@@ -47,3 +47,31 @@ c4c::codegen::lir::LirModule make_bir_single_param_add_sub_chain_module() {
   module.functions.push_back(std::move(function));
   return module;
 }
+
+c4c::codegen::lir::LirModule make_bir_two_param_add_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128";
+
+  LirFunction function;
+  function.name = "add_pair";
+  function.signature_text = "define i32 @add_pair(i32 %p.x, i32 %p.y)\n";
+  function.return_type.base = c4c::TB_INT;
+  c4c::TypeSpec param_type{};
+  param_type.base = c4c::TB_INT;
+  function.params.push_back({"%p.x", param_type});
+  function.params.push_back({"%p.y", param_type});
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirBinOp{"%t0", "add", "i32", "%p.x", "%p.y"});
+  entry.terminator = LirRet{std::string("%t0"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}

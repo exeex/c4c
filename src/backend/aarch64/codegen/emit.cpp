@@ -74,26 +74,32 @@ std::optional<std::int64_t> parse_i64(std::string_view text) {
   return value;
 }
 
-struct MinimalSingleParamAffineReturnSlice {
+struct MinimalAffineReturnSlice {
   std::string function_name;
-  bool uses_param = false;
+  std::size_t param_count = 0;
+  bool uses_first_param = false;
+  bool uses_second_param = false;
   std::int64_t constant = 0;
 };
 
 struct AffineValue {
-  bool uses_param = false;
+  bool uses_first_param = false;
+  bool uses_second_param = false;
   std::int64_t constant = 0;
 };
 
 std::optional<AffineValue> lower_affine_operand(
     std::string_view operand,
-    std::string_view param_name,
+    const std::vector<std::string_view>& param_names,
     const std::unordered_map<std::string, AffineValue>& values) {
   if (const auto imm = parse_i64(operand); imm.has_value()) {
-    return AffineValue{false, *imm};
+    return AffineValue{false, false, *imm};
   }
-  if (operand == param_name) {
-    return AffineValue{true, 0};
+  if (!param_names.empty() && operand == param_names[0]) {
+    return AffineValue{true, false, 0};
+  }
+  if (param_names.size() > 1 && operand == param_names[1]) {
+    return AffineValue{false, true, 0};
   }
   auto it = values.find(std::string(operand));
   if (it == values.end()) {
@@ -106,15 +112,19 @@ std::optional<AffineValue> combine_affine_values(const AffineValue& lhs,
                                                  const AffineValue& rhs,
                                                  c4c::backend::BackendBinaryOpcode opcode) {
   if (opcode == c4c::backend::BackendBinaryOpcode::Add) {
-    if (lhs.uses_param && rhs.uses_param) {
+    if ((lhs.uses_first_param && rhs.uses_first_param) ||
+        (lhs.uses_second_param && rhs.uses_second_param)) {
       return std::nullopt;
     }
-    return AffineValue{lhs.uses_param || rhs.uses_param, lhs.constant + rhs.constant};
+    return AffineValue{lhs.uses_first_param || rhs.uses_first_param,
+                       lhs.uses_second_param || rhs.uses_second_param,
+                       lhs.constant + rhs.constant};
   }
-  if (rhs.uses_param) {
+  if (rhs.uses_first_param || rhs.uses_second_param) {
     return std::nullopt;
   }
-  return AffineValue{lhs.uses_param, lhs.constant - rhs.constant};
+  return AffineValue{lhs.uses_first_param, lhs.uses_second_param,
+                     lhs.constant - rhs.constant};
 }
 
 bool is_i32_scalar_signature_return(const c4c::backend::BackendFunctionSignature& signature) {
@@ -392,19 +402,27 @@ std::optional<std::int64_t> parse_minimal_return_sub_imm(
   return *lhs - *rhs;
 }
 
-std::optional<MinimalSingleParamAffineReturnSlice> parse_minimal_single_param_affine_return_slice(
+std::optional<MinimalAffineReturnSlice> parse_minimal_affine_return_slice(
     const c4c::backend::BackendModule& module) {
   if (!is_minimal_single_function_asm_slice(module)) {
     return std::nullopt;
   }
 
   const auto& function = module.functions.front();
-  if (function.signature.params.size() != 1 ||
-      !is_i32_scalar_param(function.signature.params.front())) {
+  if (function.signature.params.size() > 2 || function.signature.params.empty()) {
     return std::nullopt;
   }
+  for (const auto& param : function.signature.params) {
+    if (!is_i32_scalar_param(param)) {
+      return std::nullopt;
+    }
+  }
 
-  const auto& param = function.signature.params.front();
+  std::vector<std::string_view> param_names;
+  param_names.reserve(function.signature.params.size());
+  for (const auto& param : function.signature.params) {
+    param_names.push_back(param.name);
+  }
   const auto& block = function.blocks.front();
   std::unordered_map<std::string, AffineValue> values;
   for (const auto& inst : block.insts) {
@@ -412,8 +430,8 @@ std::optional<MinimalSingleParamAffineReturnSlice> parse_minimal_single_param_af
     if (bin == nullptr || !is_i32_scalar_binary(*bin) || bin->result.empty()) {
       return std::nullopt;
     }
-    const auto lhs = lower_affine_operand(bin->lhs, param.name, values);
-    const auto rhs = lower_affine_operand(bin->rhs, param.name, values);
+    const auto lhs = lower_affine_operand(bin->lhs, param_names, values);
+    const auto rhs = lower_affine_operand(bin->rhs, param_names, values);
     if (!lhs.has_value() || !rhs.has_value()) {
       return std::nullopt;
     }
@@ -425,14 +443,16 @@ std::optional<MinimalSingleParamAffineReturnSlice> parse_minimal_single_param_af
   }
 
   const auto lowered_return =
-      lower_affine_operand(*block.terminator.value, param.name, values);
+      lower_affine_operand(*block.terminator.value, param_names, values);
   if (!lowered_return.has_value()) {
     return std::nullopt;
   }
 
-  return MinimalSingleParamAffineReturnSlice{
+  return MinimalAffineReturnSlice{
       function.signature.name,
-      lowered_return->uses_param,
+      function.signature.params.size(),
+      lowered_return->uses_first_param,
+      lowered_return->uses_second_param,
       lowered_return->constant,
   };
 }
@@ -3205,21 +3225,21 @@ std::string emit_minimal_return_sub_imm_asm(const c4c::backend::BackendModule& m
   return out.str();
 }
 
-std::string emit_minimal_single_param_affine_return_asm(
+std::string emit_minimal_affine_return_asm(
     const c4c::backend::BackendModule& module,
-    const MinimalSingleParamAffineReturnSlice& slice) {
+    const MinimalAffineReturnSlice& slice) {
   const std::string symbol = asm_symbol_name(module, slice.function_name);
   std::ostringstream out;
   out << ".text\n";
   emit_function_prelude(out, module, symbol, true);
-  if (!slice.uses_param) {
+  if (!slice.uses_first_param && !slice.uses_second_param) {
     if (slice.constant >= 0 && slice.constant <= std::numeric_limits<std::uint16_t>::max()) {
       out << "  mov w0, #" << slice.constant << "\n";
     } else if (slice.constant < 0 &&
                -slice.constant <= std::numeric_limits<std::uint16_t>::max()) {
       out << "  sub w0, wzr, #" << -slice.constant << "\n";
     } else {
-      fail_unsupported("single-parameter affine return constant outside the minimal mov/sub-supported range");
+      fail_unsupported("affine return constant outside the minimal mov/sub-supported range");
     }
     out << "  ret\n";
     return out.str();
@@ -3227,7 +3247,12 @@ std::string emit_minimal_single_param_affine_return_asm(
 
   if (slice.constant > std::numeric_limits<std::uint16_t>::max() ||
       slice.constant < -std::numeric_limits<std::uint16_t>::max()) {
-    fail_unsupported("single-parameter affine return adjustment outside the minimal add/sub-supported range");
+    fail_unsupported("affine return adjustment outside the minimal add/sub-supported range");
+  }
+  if (slice.uses_first_param && slice.uses_second_param) {
+    out << "  add w0, w0, w1\n";
+  } else if (!slice.uses_first_param && slice.uses_second_param) {
+    out << "  mov w0, w1\n";
   }
   if (slice.constant > 0) {
     out << "  add w0, w0, #" << slice.constant << "\n";
@@ -5613,9 +5638,9 @@ std::string emit_module(const c4c::backend::BackendModule& module,
     if (const auto imm = parse_minimal_return_sub_imm(module); imm.has_value()) {
       return emit_minimal_return_sub_imm_asm(module, *imm);
     }
-    if (const auto slice = parse_minimal_single_param_affine_return_slice(module);
+    if (const auto slice = parse_minimal_affine_return_slice(module);
         slice.has_value()) {
-      return emit_minimal_single_param_affine_return_asm(module, *slice);
+      return emit_minimal_affine_return_asm(module, *slice);
     }
     if (const auto slice = c4c::backend::parse_backend_minimal_direct_call_module(module);
         slice.has_value()) {
