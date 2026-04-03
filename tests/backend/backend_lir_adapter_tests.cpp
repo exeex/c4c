@@ -781,6 +781,39 @@ void test_backend_call_helpers_parse_single_add_imm_function() {
               "shared single-add-immediate helper parser should preserve renamed helper symbols and helper SSA values for direct single-argument add helpers");
 }
 
+void test_backend_call_helpers_parse_two_param_add_function() {
+  auto module = make_typed_direct_call_two_arg_module();
+  auto& helper = module.functions.front();
+  helper.name = "sum_pair";
+  helper.signature_text = "define i32 @sum_pair(i32 %p.left, i32 %p.right)\n";
+
+  auto* add = helper.blocks.empty() || helper.blocks.front().insts.empty()
+                  ? nullptr
+                  : std::get_if<c4c::codegen::lir::LirBinOp>(&helper.blocks.front().insts.front());
+  expect_true(add != nullptr,
+              "shared two-parameter add helper parser regression test needs the helper add instruction");
+  if (add == nullptr) {
+    return;
+  }
+  add->lhs = "%p.left";
+  add->rhs = "%p.right";
+  add->result = "%t.helper.sum.renamed";
+
+  auto* ret = std::get_if<c4c::codegen::lir::LirRet>(&helper.blocks.front().terminator);
+  expect_true(ret != nullptr && ret->value_str.has_value(),
+              "shared two-parameter add helper parser regression test needs the helper return");
+  if (ret == nullptr || !ret->value_str.has_value()) {
+    return;
+  }
+  ret->value_str = "%t.helper.sum.renamed";
+
+  const auto parsed = c4c::backend::parse_backend_two_param_add_function(helper);
+  expect_true(parsed.has_value() && parsed->lhs_param_name == "%p.left" &&
+                  parsed->rhs_param_name == "%p.right" && parsed->add != nullptr &&
+                  parsed->add->result == "%t.helper.sum.renamed",
+              "shared two-parameter add helper parser should preserve renamed helper symbols, parameter names, and helper SSA values without target-local helper-body scans");
+}
+
 void test_backend_call_helpers_decode_lir_direct_global_vararg_prefix() {
   c4c::codegen::lir::LirCallOp call{
       "%t2",
@@ -1960,6 +1993,7 @@ int main(int argc, char* argv[]) {
   test_backend_call_helpers_parse_single_helper_call_crossing_source_value();
   test_backend_call_helpers_parse_single_helper_direct_call();
   test_backend_call_helpers_parse_single_add_imm_function();
+  test_backend_call_helpers_parse_two_param_add_function();
   test_backend_call_helpers_decode_lir_direct_global_vararg_prefix();
   test_backend_call_helpers_classify_lir_nonminimal_call_types();
   test_backend_call_helpers_classify_lir_nonminimal_signature_types();

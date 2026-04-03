@@ -808,39 +808,10 @@ match_minimal_structured_two_arg_direct_call_helper(
 std::optional<MatchedMinimalLirTwoArgDirectCallHelper>
 match_minimal_lir_two_arg_direct_call_helper(
     const c4c::codegen::lir::LirFunction& helper) {
-  using namespace c4c::codegen::lir;
-
-  if (helper.is_declaration || helper.entry.value != 0 || helper.blocks.size() != 1 ||
-      !helper.alloca_insts.empty() || !helper.stack_objects.empty()) {
-    return std::nullopt;
-  }
-
-  const auto helper_params =
-      c4c::backend::parse_backend_function_signature_params(helper.signature_text);
-  if (!helper_params.has_value() || helper_params->size() != 2 || (*helper_params)[0].is_varargs ||
-      (*helper_params)[1].is_varargs ||
-      c4c::codegen::lir::trim_lir_arg_text((*helper_params)[0].type) != "i32" ||
-      c4c::codegen::lir::trim_lir_arg_text((*helper_params)[1].type) != "i32" ||
-      (*helper_params)[0].operand.empty() || (*helper_params)[1].operand.empty()) {
-    return std::nullopt;
-  }
-
-  const auto& helper_block = helper.blocks.front();
-  const auto* helper_ret = std::get_if<LirRet>(&helper_block.terminator);
-  if (helper_block.label != "entry" || helper_block.insts.size() != 1 || helper_ret == nullptr ||
-      !helper_ret->value_str.has_value() || helper_ret->type_str != "i32") {
-    return std::nullopt;
-  }
-
-  const auto* add = std::get_if<LirBinOp>(&helper_block.insts.front());
-  const auto add_opcode = add == nullptr ? std::nullopt : add->opcode.typed();
-  if (add == nullptr || add_opcode != LirBinaryOpcode::Add || add->type_str != "i32" ||
-      add->lhs != (*helper_params)[0].operand || add->rhs != (*helper_params)[1].operand ||
-      *helper_ret->value_str != add->result) {
-    return std::nullopt;
-  }
-
-  return MatchedMinimalLirTwoArgDirectCallHelper{};
+  return c4c::backend::parse_backend_two_param_add_function(helper).has_value()
+             ? std::optional<MatchedMinimalLirTwoArgDirectCallHelper>(
+                   MatchedMinimalLirTwoArgDirectCallHelper{})
+             : std::nullopt;
 }
 
 std::optional<MatchedMinimalLirTwoArgDirectCallCall>
