@@ -1,0 +1,139 @@
+# BIR Full Coverage and Legacy IR Removal
+
+Status: Active
+Source Idea: ideas/open/41_bir_full_coverage_and_ir_legacy_removal.md
+
+## Purpose
+
+Eliminate both legacy backend IR and every remaining LLVM rescue path so
+backend codegen stands on one canonical BIR-owned route.
+
+## Goal
+
+Expand BIR to full production coverage, migrate emitters to consume BIR
+directly, remove legacy backend IR, and remove app-layer LLVM fallback-to-asm
+behavior from `c4cll`.
+
+## Core Rule
+
+The finish line is not just "BIR exists." The finish line is:
+- no legacy `ir.*` route
+- no backend-to-LLVM fallback route
+- no LLVM IR-to-asm rescue route in `c4cll`
+
+## Read First
+
+- [ideas/open/41_bir_full_coverage_and_ir_legacy_removal.md](/workspaces/c4c/ideas/open/41_bir_full_coverage_and_ir_legacy_removal.md)
+- [src/backend/backend.cpp](/workspaces/c4c/src/backend/backend.cpp)
+- [src/codegen/llvm/llvm_codegen.cpp](/workspaces/c4c/src/codegen/llvm/llvm_codegen.cpp)
+- [src/apps/c4cll.cpp](/workspaces/c4c/src/apps/c4cll.cpp)
+
+## Working Model
+
+Phase order for this runbook:
+
+1. audit every remaining legacy/fallback boundary
+2. expand BIR and BIR lowering until emitters can rely on it
+3. migrate emitters off `ir.*`
+4. delete legacy backend IR conversion/routing
+5. delete app-layer LLVM asm rescue
+
+## Non-Goals
+
+- no semantic IR redesign beyond what is required for parity with `ir.*`
+- no silent reduction in test coverage to make fallback removal easier
+- no leaving LLVM rescue in place under a renamed path
+
+## Step 1. Inventory All Legacy and LLVM Rescue Paths
+
+Goal: produce the exact list of files, call sites, and test surfaces that still
+depend on legacy backend IR or LLVM rescue.
+
+Actions:
+
+- inventory `ir.*` consumers
+- inventory `lir_to_backend_ir.cpp` and `bir_to_backend_ir.cpp` dependencies
+- inventory `emit_legacy()` and legacy routing in backend/codegen
+- inventory `c4cll` LLVM IR -> asm rescue and AArch64 fallback normalization
+- record which test surfaces currently rely on those paths
+
+Completion Check:
+
+- a concrete removal checklist exists with code references and owner subsystems
+
+## Step 2. Expand BIR Coverage to Parity
+
+Goal: make BIR capable of representing every emitter-facing feature currently
+handled by `ir.*`.
+
+Actions:
+
+- fill BIR type-system gaps
+- fill instruction and module-surface gaps
+- port validation/printer support in lockstep
+- port lowering clusters from `lir_to_backend_ir.cpp` into `lir_to_bir.cpp`
+
+Completion Check:
+
+- BIR can represent the legacy emitter-facing surface without conversion back to
+  `ir.*`
+
+## Step 3. Migrate Emitters to BIR
+
+Goal: make x86 and AArch64 emitters consume BIR directly.
+
+Actions:
+
+- update emitter headers and implementation boundaries to use `bir.hpp`
+- remove any remaining emitter-side dependence on `BackendModule(ir.*)`
+- keep validation green as each emitter slice is migrated
+
+Completion Check:
+
+- emitters include and consume only BIR-owned structures
+
+## Step 4. Remove Legacy Backend IR Routing
+
+Goal: delete the old backend IR path once BIR ownership is real.
+
+Actions:
+
+- delete `ir.*`
+- delete `lir_to_backend_ir.*`
+- delete `bir_to_backend_ir.*`
+- remove legacy routing from `backend.cpp`
+
+Completion Check:
+
+- backend has one lowering route and no legacy backend IR files remain
+
+## Step 5. Remove LLVM Rescue From c4cll
+
+Goal: make unsupported backend codegen a hard backend error instead of a silent
+LLVM fallback.
+
+Actions:
+
+- remove `lower_llvm_ir_to_asm(...)`
+- remove `looks_like_llvm_ir(...)`
+- remove `infer_asm_fallback_reasons(...)`
+- remove `print_asm_fallback_hint(...)`
+- remove `normalize_aarch64_fallback_asm(...)`
+- tighten `--codegen asm` so unsupported backend surfaces fail explicitly
+
+Completion Check:
+
+- production asm output no longer depends on LLVM rescue
+
+## Step 6. Final Validation
+
+Goal: prove the tree is green without legacy backend IR or LLVM rescue paths.
+
+Actions:
+
+- run the relevant backend and full-suite validation
+- confirm no production code path still routes through LLVM fallback
+
+Completion Check:
+
+- full validation passes and the removal is complete end-to-end

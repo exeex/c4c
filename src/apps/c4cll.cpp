@@ -122,16 +122,35 @@ std::string normalize_aarch64_fallback_asm(std::string text) {
         "ldr " + addr_reg + ", [" + addr_reg + ", :got_lo12:" + symbol + "]";
     if (got_load != expected_got_load) continue;
 
+    const auto value_comma = value_load.find(", [");
     const std::string value_prefix = "ldr ";
     if (value_load.rfind(value_prefix, 0) != 0) continue;
-    const auto value_comma = value_load.find(", [");
     if (value_comma == std::string::npos) continue;
+    const auto value_reg =
+        value_load.substr(value_prefix.size(), value_comma - value_prefix.size());
     if (value_load.substr(value_comma + 3) != addr_reg + "]") continue;
+
+    bool addr_reg_reused_with_offset = false;
+    const std::string offset_addr_pattern = "[" + addr_reg + ",";
+    for (std::size_t j = i + 3; j < lines.size(); ++j) {
+      const auto future = trim_copy(lines[j]);
+      if (future.empty()) continue;
+      if (future.rfind(offset_addr_pattern, future.find('[')) != std::string::npos) {
+        addr_reg_reused_with_offset = true;
+        break;
+      }
+    }
 
     const auto indent_width = lines[i].find_first_not_of(' ');
     const std::string indent(indent_width == std::string::npos ? 0 : indent_width, ' ');
     lines[i] = indent + "adrp " + addr_reg + ", " + symbol;
-    lines[i + 1] = indent + "add " + addr_reg + ", " + addr_reg + ", :lo12:" + symbol;
+    if (addr_reg_reused_with_offset) {
+      lines[i + 1] = indent + "add " + addr_reg + ", " + addr_reg + ", :lo12:" + symbol;
+    } else {
+      lines[i + 1].clear();
+      lines[i + 2] =
+          indent + "ldr " + value_reg + ", [" + addr_reg + ", :lo12:" + symbol + "]";
+    }
   }
 
   std::ostringstream normalized;
