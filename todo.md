@@ -9,12 +9,41 @@ Source Plan: plan.md
 - [ ] Delete app-layer LLVM asm rescue from `c4cll`
 - [ ] Revalidate backend and full-suite behavior without fallback
 
-Current active item: Step 2, continue bounded compare-fed phi-join parity past
-the now-covered symmetric deeper split-predecessor post-add/sub/add tail slice
-with the next smallest still-linearizable source-shaped follow-on, preferably a
-nearby asymmetric or compare-adjacent control-flow extension that still
-collapses into the fused `bir.select` path and continues avoiding emitter-side
-direct-BIR widening unless a new test proves it necessary.
+Current active item: Step 2, continue bounded compare-fed phi-join
+`+ 6 - 2 + 9` post-tail parity from the now-covered symmetric deeper/deeper
+and mixed-then/deeper slices to the remaining nearby asymmetric sibling,
+`deeper_then_mixed_affine`, again adding bounded lowering, BIR-pipeline, and
+source-route regressions first and only widening `lir_to_bir.cpp` if the next
+coverage proves the existing matcher does not already generalize.
+
+Completed this iteration:
+- Added the mirrored asymmetric deeper-else split-predecessor `+ 6 - 2 + 9`
+  tail slice via
+  `make_bir_two_param_select_eq_split_predecessor_mixed_then_deeper_affine_phi_post_join_add_sub_add_module()`,
+  proving the already-covered `mixed_then_deeper` `+ 6 - 2` form stays on the
+  direct BIR path when the join-local tail extends to `+ 6 - 2 + 9`.
+- Added source-level/default-route RISC-V coverage via
+  `tests/c/internal/backend_route_case/two_param_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_sub_add.c`,
+  proving `(x == y ? x + 8 - 3 : y + 11 - 4 + 7) + 6 - 2 + 9` defaults to the
+  BIR pipeline instead of falling back to legacy LLVM IR text.
+- Reconfigured and rebuilt the affected tree, reran
+  `ctest --test-dir build -R backend_bir_tests --output-on-failure`, reran the
+  new route case
+  `backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_sub_add_defaults_to_bir`,
+  then reran `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `316/316` backend-labeled tests passing.
+- Refreshed `test_fail_after.log` with a full
+  `ctest --test-dir build -j8 --output-on-failure` run, then passed the
+  regression guard against `test_fail_before.log` with
+  `--allow-non-decreasing-passed --timeout-threshold 30 --enforce-timeout`
+  (`2743 -> 2754` passed, `0 -> 0` failed, no newly failing tests, no new
+  `>30s` cases). The slowest observed suite case was
+  `cpp_eastl_utility_parse_recipe` at `20.38 sec`, still below the timeout
+  threshold.
+- The mirrored extended-tail slice passed without any `lir_to_bir.cpp`
+  widening, confirming the existing bounded compare-fed phi-join matcher
+  already generalizes to this deeper-else asymmetric join-tail extension and
+  only regression coverage was missing.
 
 Completed this iteration:
 - Added the next join-local arithmetic extension on the symmetric deeper

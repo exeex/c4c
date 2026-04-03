@@ -92,6 +92,7 @@ c4c::codegen::lir::LirModule make_bir_two_param_select_eq_split_predecessor_deep
 c4c::codegen::lir::LirModule make_bir_two_param_select_eq_split_predecessor_deeper_then_mixed_affine_phi_post_join_add_sub_module();
 c4c::codegen::lir::LirModule make_bir_two_param_select_eq_split_predecessor_mixed_then_deeper_affine_phi_post_join_add_module();
 c4c::codegen::lir::LirModule make_bir_two_param_select_eq_split_predecessor_mixed_then_deeper_affine_phi_post_join_add_sub_module();
+c4c::codegen::lir::LirModule make_bir_two_param_select_eq_split_predecessor_mixed_then_deeper_affine_phi_post_join_add_sub_add_module();
 c4c::codegen::lir::LirModule make_bir_two_param_select_eq_split_predecessor_deeper_affine_phi_post_join_add_module();
 c4c::codegen::lir::LirModule make_bir_two_param_select_eq_split_predecessor_deeper_affine_phi_post_join_add_sub_add_module();
 c4c::codegen::lir::LirModule make_bir_mixed_predecessor_add_phi_post_join_add_module();
