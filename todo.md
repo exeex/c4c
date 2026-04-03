@@ -10,11 +10,11 @@ Source Plan: plan.md
 - [ ] Revalidate backend and full-suite behavior without fallback
 
 Current active item: Step 2, continue widening the bounded BIR compare
-scaffold after the landed signed less-than slice into the next minimal
-relational compare return shape, likely constant-only unsigned less-than
-(`icmp ult` + `zext i1 -> i32`), while keeping any new default-route exposure
-limited to RISC-V and not claiming new x86/AArch64 direct-emitter coverage
-yet.
+scaffold after the landed unsigned less-than slice into the next minimal
+relational compare return shape, likely another constant-only compare
+materialization (`ule`, `sgt`, or a similarly bounded `icmp <pred>` + `zext i1
+-> i32` return pattern), while keeping any new default-route exposure limited
+to RISC-V and not claiming new x86/AArch64 direct-emitter coverage yet.
 
 Completed this iteration:
 - Audited the current production legacy boundaries in `backend.cpp`,
@@ -148,6 +148,18 @@ Completed this iteration:
 - Passed the regression guard against `test_fail_before.log` with
   `--allow-non-decreasing-passed` (`2728 -> 2733` passed, `0 -> 0` failed, no
   newly failing tests).
+- Widened the BIR compare scaffold with a bounded constant-only unsigned
+  less-than materialization slice by folding `icmp ult` plus `zext i1 -> i32`
+  return patterns into `bir.ult`, with printer/lowering coverage, explicit BIR
+  pipeline coverage, and a new RISC-V default-route regression for
+  `return 3u < 7u;`.
+- Rebuilt the tree, reran `backend_bir_tests` plus the new
+  `backend_codegen_route_riscv64_return_ult_defaults_to_bir` coverage, then
+  refreshed `test_fail_after.log` with a full `ctest --test-dir build -j
+  --output-on-failure` run.
+- Passed the regression guard against `test_fail_before.log` with
+  `--allow-non-decreasing-passed` (`2728 -> 2734` passed, `0 -> 0` failed, no
+  newly failing tests).
 
 Next intended slice:
 - Continue Phase 1/2 parity with the next straight-line comparison gap after
@@ -167,8 +179,8 @@ Resume notes:
   still only consume the narrower direct-BIR affine subset.
 - The next bounded gap is instruction coverage rather than another scalar type:
   the BIR scaffold still rejects straight-line integer arithmetic outside
-  `add/sub/mul/sdiv/srem/urem` plus the newly added bounded `eq`/`slt`
-  materialization slices, and it still lacks the broader
+  `add/sub/mul/sdiv/srem/urem` plus the newly added bounded
+  `eq`/`slt`/`ult` materialization slices, and it still lacks the broader
   compare/select/control-flow clusters even when the slice can stay entirely
   on the BIR text path.
 - Auto-selection into the BIR pipeline in `llvm_codegen.cpp` is intentionally
