@@ -1424,12 +1424,6 @@ struct MinimalDirectCallSlice {
   std::int64_t callee_imm = 0;
 };
 
-struct MinimalDirectCallTwoArgAddSlice {
-  std::string callee_name;
-  std::int64_t arg0_imm = 0;
-  std::int64_t arg1_imm = 0;
-};
-
 struct MinimalCallCrossingDirectCallSlice {
   std::string callee_name;
   std::int64_t source_imm = 0;
@@ -3416,20 +3410,6 @@ std::optional<MinimalDirectCallSlice> parse_minimal_direct_call_slice(
   return MinimalDirectCallSlice{parsed->helper->signature.name, parsed->return_imm};
 }
 
-std::optional<MinimalDirectCallTwoArgAddSlice>
-parse_minimal_direct_call_two_arg_add_slice(const c4c::backend::BackendModule& module) {
-  const auto parsed = c4c::backend::parse_backend_minimal_two_arg_direct_call_module(module);
-  if (!parsed.has_value() || parsed->helper == nullptr) {
-    return std::nullopt;
-  }
-
-  return MinimalDirectCallTwoArgAddSlice{
-      parsed->helper->signature.name,
-      parsed->lhs_call_arg_imm,
-      parsed->rhs_call_arg_imm,
-  };
-}
-
 std::optional<MinimalDirectCallSlice> parse_minimal_direct_call_two_arg_folded_slice(
     const c4c::backend::BackendModule& module) {
   const auto parsed =
@@ -3575,18 +3555,22 @@ std::string emit_minimal_direct_call_add_imm_asm(
 
 std::string emit_minimal_direct_call_two_arg_add_asm(
     const c4c::backend::BackendModule& module,
-    const MinimalDirectCallTwoArgAddSlice& slice) {
-  if (slice.arg0_imm < 0 ||
-      slice.arg0_imm > std::numeric_limits<std::uint16_t>::max()) {
+    const c4c::backend::ParsedBackendMinimalTwoArgDirectCallModuleView& slice) {
+  if (slice.helper == nullptr) {
+    fail_unsupported("structured two-argument direct-call slice without helper metadata");
+  }
+
+  if (slice.lhs_call_arg_imm < 0 ||
+      slice.lhs_call_arg_imm > std::numeric_limits<std::uint16_t>::max()) {
     fail_unsupported("first direct-call argument immediates outside the minimal mov-supported range");
   }
-  if (slice.arg1_imm < 0 ||
-      slice.arg1_imm > std::numeric_limits<std::uint16_t>::max()) {
+  if (slice.rhs_call_arg_imm < 0 ||
+      slice.rhs_call_arg_imm > std::numeric_limits<std::uint16_t>::max()) {
     fail_unsupported("second direct-call argument immediates outside the minimal mov-supported range");
   }
 
   std::ostringstream out;
-  const std::string helper_symbol = asm_symbol_name(module, slice.callee_name);
+  const std::string helper_symbol = asm_symbol_name(module, slice.helper->signature.name);
   const std::string main_symbol = asm_symbol_name(module, "main");
 
   out << ".text\n";
@@ -3596,8 +3580,8 @@ std::string emit_minimal_direct_call_two_arg_add_asm(
   emit_function_prelude(out, module, main_symbol, true);
   out << "  sub sp, sp, #16\n"
       << "  str x30, [sp, #8]\n"
-      << "  mov w0, #" << slice.arg0_imm << "\n"
-      << "  mov w1, #" << slice.arg1_imm << "\n"
+      << "  mov w0, #" << slice.lhs_call_arg_imm << "\n"
+      << "  mov w1, #" << slice.rhs_call_arg_imm << "\n"
       << "  bl " << helper_symbol << "\n"
       << "  ldr x30, [sp, #8]\n"
       << "  add sp, sp, #16\n"
@@ -5763,7 +5747,7 @@ std::string emit_module(const c4c::backend::BackendModule& module,
         slice.has_value()) {
       return emit_minimal_direct_call_add_imm_asm(module, *slice);
     }
-    if (const auto slice = parse_minimal_direct_call_two_arg_add_slice(module);
+    if (const auto slice = c4c::backend::parse_backend_minimal_two_arg_direct_call_module(module);
         slice.has_value()) {
       return emit_minimal_direct_call_two_arg_add_asm(module, *slice);
     }
@@ -5890,7 +5874,7 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
           slice.has_value()) {
         return emit_minimal_direct_call_add_imm_asm(adapted, *slice);
       }
-      if (const auto slice = parse_minimal_direct_call_two_arg_add_slice(adapted);
+      if (const auto slice = c4c::backend::parse_backend_minimal_two_arg_direct_call_module(adapted);
           slice.has_value()) {
         return emit_minimal_direct_call_two_arg_add_asm(adapted, *slice);
       }

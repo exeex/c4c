@@ -1944,27 +1944,40 @@ void test_aarch64_backend_scaffold_accepts_renamed_structured_two_arg_direct_cal
   }
 
   helper->signature.name = "sum_pair";
+  helper->signature.params[0].name = "%p.left";
+  helper->signature.params[1].name = "%p.right";
+  auto* helper_add = helper->blocks.empty() || helper->blocks.front().insts.empty()
+                         ? nullptr
+                         : std::get_if<c4c::backend::BackendBinaryInst>(&helper->blocks.front().insts.front());
   auto* call = std::get_if<c4c::backend::BackendCallInst>(&main_fn->blocks.front().insts.front());
-  expect_true(call != nullptr,
-              "aarch64 renamed two-argument direct-call regression test needs the lowered backend call to mutate");
-  if (call == nullptr) {
+  expect_true(helper_add != nullptr && call != nullptr,
+              "aarch64 renamed two-argument direct-call regression test needs mutable lowered helper and main call instructions");
+  if (helper_add == nullptr || call == nullptr) {
     return;
   }
+  helper_add->lhs = "%p.left";
+  helper_add->rhs = "%p.right";
+  helper_add->result = "%t.helper.sum.structured";
+  helper->blocks.front().terminator.value = "%t.helper.sum.structured";
   call->callee.symbol_name = "sum_pair";
+  call->args[0].operand = "11";
+  call->args[1].operand = "13";
+  call->result = "%t.main.sum.structured";
+  main_fn->blocks.front().terminator.value = "%t.main.sum.structured";
 
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   expect_contains(rendered, ".type sum_pair, %function",
                   "aarch64 backend seam should key the lowered two-argument helper definition from the structured callee symbol instead of a fixed helper name");
-  expect_contains(rendered, "mov w0, #5",
-                  "aarch64 backend seam should still materialize the first lowered renamed direct-call argument from structured call metadata");
-  expect_contains(rendered, "mov w1, #7",
-                  "aarch64 backend seam should still materialize the second lowered renamed direct-call argument from structured call metadata");
+  expect_contains(rendered, "mov w0, #11",
+                  "aarch64 backend seam should still materialize the first lowered renamed direct-call argument from structured call metadata after helper parameter and SSA renames");
+  expect_contains(rendered, "mov w1, #13",
+                  "aarch64 backend seam should still materialize the second lowered renamed direct-call argument from structured call metadata after helper parameter and SSA renames");
   expect_contains(rendered, "bl sum_pair",
-                  "aarch64 backend seam should still lower renamed structured two-argument direct calls when legacy call/signature text is cleared");
+                  "aarch64 backend seam should still lower renamed structured two-argument direct calls when the parsed module view carries the renamed helper symbol directly");
   expect_not_contains(rendered, "target triple =",
-                      "aarch64 backend seam should not fall back when a renamed two-argument direct-call slice relies only on structured metadata");
+                      "aarch64 backend seam should not fall back when a renamed two-argument direct-call slice relies only on structured helper metadata after parameter and SSA renames");
 }
 
 void test_aarch64_backend_scaffold_rejects_structured_two_arg_direct_call_when_param_type_count_disagrees_with_args() {
