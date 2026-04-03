@@ -193,6 +193,18 @@ Source Plan: plan.md
   `Trait<...>::value`-style selection inside one record body; the earlier EOF
   parse failure came from a malformed generated probe rather than a stable
   frontend bug
+- [x] Cloned
+  `tests/cpp/internal/postive_case/step3_timeout_probe_baseline_parse.cpp`
+  from the validated mixed tuple-element guard so Step 3 timeout reduction can
+  grow a dedicated baseline probe without coupling future experiments to the
+  existing regression guard
+- [x] Reduced the new Step 3 timeout baseline further with `python3`-generated
+  probes: synthetic tuple-element / alias / piecewise-ctor expansions still
+  parse quickly even at large repetition counts, but switching to real
+  libstdc++ headers shows that `#include <tuple>` alone is already enough to
+  hit the current 3-second `--parse-only` timeout frontier; adding
+  `std::tuple_element_t`, `std::pair`, `std::get`, or `<type_traits>` does not
+  make the smallest reproducer smaller than the raw `<tuple>` include
 - [x] Re-ran the focused `_v` / trait-value parser guardrails plus 12s Step 3
   parser-debug probes: `eastl_memory_simple.cpp` and `eastl_tuple_simple.cpp`
   still time out, but the new shortcut is now isolated and guarded as a
@@ -323,6 +335,11 @@ Source Plan: plan.md
   `/usr/include/c++/14/type_traits` work around `:2571` and `:3244` after
   clearing earlier EASTL-side pressure, but still times out without a terminal
   diagnostic
+- a fresh reduction pass now shows the current Step 3 parser-time frontier is
+  not driven by the synthetic tuple-element / alias mix alone: the same shapes
+  stay fast when handwritten, but `#include <tuple>` by itself reproduces the
+  current 3-second `--parse-only` timeout, while equivalent `<type_traits>` and
+  `<utility>`-only probes still complete quickly
 - the new simple known-type template-argument fast path moved the Step 3
   parser-debug frontier later inside `/usr/include/c++/14/type_traits`, but it
   did not yet produce a smaller standalone reduction for the remaining timeout
@@ -459,3 +476,10 @@ Source Plan: plan.md
   the synthetic mixed `tuple_element_t` / alias-owner / trait-value Step 3
   probe in-tree after rechecking that the earlier EOF parse failure was caused
   by a malformed generated source rather than a reproducible frontend defect
+- `tests/cpp/internal/postive_case/step3_timeout_probe_baseline_parse.cpp`
+  now acts as the dedicated in-tree baseline for growing new Step 3 timeout
+  probes while leaving the existing mixed tuple-element parse guard stable
+- current reduction status: the dedicated Step 3 baseline stays fast even with
+  large synthetic expansions, but real libstdc++ `<tuple>` inclusion alone now
+  reproduces the timeout budget hit, so the next reduction should focus inside
+  `/usr/include/c++/14/tuple` rather than the earlier synthetic alias mix
