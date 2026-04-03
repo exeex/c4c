@@ -1262,6 +1262,59 @@ void test_backend_call_helpers_parse_structured_two_arg_direct_call_module() {
               "shared structured two-argument direct-call module parser should preserve renamed helper symbols and direct-call immediates without target-local backend-module scans");
 }
 
+void test_backend_call_helpers_match_structured_direct_call_module() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_module());
+
+  c4c::backend::BackendFunction* helper = nullptr;
+  c4c::backend::BackendFunction* main_fn = nullptr;
+  for (auto& function : lowered.functions) {
+    if (function.signature.name == "main") {
+      main_fn = &function;
+    } else {
+      helper = &function;
+    }
+  }
+  expect_true(helper != nullptr && main_fn != nullptr,
+              "shared structured direct-call matcher regression test needs lowered helper and main functions");
+  if (helper == nullptr || main_fn == nullptr || main_fn->blocks.empty() ||
+      main_fn->blocks.front().insts.empty()) {
+    return;
+  }
+
+  helper->signature.name = "sum_pair";
+  helper->signature.params[0].name = "%p.left";
+  helper->signature.params[1].name = "%p.right";
+
+  auto* call =
+      std::get_if<c4c::backend::BackendCallInst>(&main_fn->blocks.front().insts.front());
+  expect_true(call != nullptr,
+              "shared structured direct-call matcher regression test needs the lowered main call instruction");
+  if (call == nullptr) {
+    return;
+  }
+
+  call->callee.symbol_name = "sum_pair";
+  call->args[0].operand = "11";
+  call->args[1].operand = "13";
+  call->result = "%t.main.sum_pair.structured";
+  main_fn->blocks.front().terminator.value = "%t.main.sum_pair.structured";
+
+  const auto parsed =
+      c4c::backend::parse_backend_minimal_structured_direct_call_module(lowered, 2);
+  expect_true(parsed.has_value() && parsed->helper != nullptr && parsed->main_function != nullptr &&
+                  parsed->main_block != nullptr && parsed->call != nullptr &&
+                  parsed->helper->signature.name == "sum_pair" &&
+                  parsed->helper->signature.params[0].name == "%p.left" &&
+                  parsed->helper->signature.params[1].name == "%p.right" &&
+                  parsed->main_function->signature.name == "main" &&
+                  parsed->call->result == "%t.main.sum_pair.structured" &&
+                  parsed->parsed_call.symbol_name == "sum_pair" &&
+                  parsed->parsed_call.typed_call.args.size() == 2 &&
+                  parsed->parsed_call.typed_call.args[0].operand == "11" &&
+                  parsed->parsed_call.typed_call.args[1].operand == "13",
+              "shared structured direct-call matcher should preserve renamed helper symbols, parameters, and call operands without target-local backend-module scans");
+}
+
 void test_backend_call_helpers_decode_lir_direct_global_vararg_prefix() {
   c4c::codegen::lir::LirCallOp call{
       "%t2",
@@ -2451,6 +2504,7 @@ int main(int argc, char* argv[]) {
   test_backend_call_helpers_parse_structured_call_crossing_direct_call_module();
   test_backend_call_helpers_parse_structured_folded_two_arg_function();
   test_backend_call_helpers_parse_structured_two_arg_direct_call_module();
+  test_backend_call_helpers_match_structured_direct_call_module();
   test_backend_call_helpers_decode_lir_direct_global_vararg_prefix();
   test_backend_call_helpers_classify_lir_nonminimal_call_types();
   test_backend_call_helpers_classify_lir_nonminimal_signature_types();

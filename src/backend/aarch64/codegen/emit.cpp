@@ -3457,12 +3457,6 @@ std::optional<MinimalGlobalIntPointerDiffSlice> parse_minimal_global_int_pointer
   return MinimalGlobalIntPointerDiffSlice{global->name, global_size, 4, 2};
 }
 
-struct MatchedMinimalStructuredDirectCall {
-  const c4c::backend::BackendCallInst* call = nullptr;
-  c4c::backend::ParsedBackendDirectGlobalTypedCallView parsed_call;
-  const c4c::backend::BackendFunction* callee_fn = nullptr;
-};
-
 struct MatchedMinimalStructuredDirectCallReturnImmHelper {
   const c4c::backend::BackendFunction* callee_fn = nullptr;
   std::int64_t return_imm = 0;
@@ -3481,37 +3475,6 @@ struct MatchedMinimalStructuredDirectCallFoldedTwoArgHelper {
   const c4c::backend::BackendFunction* callee_fn = nullptr;
   std::int64_t return_imm = 0;
 };
-
-std::optional<MatchedMinimalStructuredDirectCall> match_minimal_structured_direct_call(
-    const c4c::backend::BackendModule& module,
-    const c4c::backend::BackendBlock& block,
-    std::size_t inst_index,
-    std::size_t expected_arg_count) {
-  if (inst_index >= block.insts.size()) {
-    return std::nullopt;
-  }
-
-  const auto* call = std::get_if<c4c::backend::BackendCallInst>(&block.insts[inst_index]);
-  const auto parsed_call =
-      call == nullptr ? std::nullopt : c4c::backend::parse_backend_direct_global_typed_call(*call);
-  if (call == nullptr || parsed_call == std::nullopt || !is_i32_scalar_call_return(*call) ||
-      call->result.empty() || parsed_call->symbol_name.empty() ||
-      parsed_call->symbol_name == "main" || parsed_call->typed_call.args.size() != expected_arg_count) {
-    return std::nullopt;
-  }
-
-  const auto* callee_fn = find_function(module, parsed_call->symbol_name);
-  if (callee_fn == nullptr || callee_fn->is_declaration ||
-      !backend_function_is_definition(callee_fn->signature) ||
-      !is_i32_scalar_signature_return(callee_fn->signature) ||
-      !c4c::backend::backend_typed_call_matches_signature(parsed_call->typed_call,
-                                                          callee_fn->signature) ||
-      callee_fn->signature.is_vararg || callee_fn->blocks.size() != 1) {
-    return std::nullopt;
-  }
-
-  return MatchedMinimalStructuredDirectCall{call, *parsed_call, callee_fn};
-}
 
 std::optional<MatchedMinimalStructuredDirectCallReturnImmHelper>
 match_minimal_structured_direct_call_return_imm_helper(
@@ -3567,32 +3530,13 @@ match_minimal_structured_direct_call_folded_two_arg_helper(
 
 std::optional<MinimalDirectCallSlice> parse_minimal_direct_call_slice(
     const c4c::backend::BackendModule& module) {
-  if (module.functions.size() != 2) return std::nullopt;
-
-  const auto* main_fn = find_function(module, "main");
-  if (main_fn == nullptr || main_fn->is_declaration ||
-      !backend_function_is_definition(main_fn->signature) ||
-      !is_i32_scalar_signature_return(main_fn->signature) ||
-      !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
-      main_fn->blocks.size() != 1) {
-    return std::nullopt;
-  }
-
-  const auto& main_block = main_fn->blocks.front();
-  if (main_block.label != "entry" || main_block.insts.size() != 1 ||
-      !main_block.terminator.value.has_value() ||
-      c4c::backend::backend_return_scalar_type(main_block.terminator) !=
-          c4c::backend::BackendScalarType::I32) {
-    return std::nullopt;
-  }
-
-  const auto matched = match_minimal_structured_direct_call(module, main_block, 0, 0);
-  if (!matched.has_value() || *main_block.terminator.value != matched->call->result) {
+  const auto matched = c4c::backend::parse_backend_minimal_structured_direct_call_module(module, 0);
+  if (!matched.has_value()) {
     return std::nullopt;
   }
 
   const auto helper_match =
-      match_minimal_structured_direct_call_return_imm_helper(*matched->callee_fn);
+      match_minimal_structured_direct_call_return_imm_helper(*matched->helper);
   if (!helper_match.has_value()) return std::nullopt;
 
   return MinimalDirectCallSlice{std::string(matched->parsed_call.symbol_name),
@@ -3601,27 +3545,8 @@ std::optional<MinimalDirectCallSlice> parse_minimal_direct_call_slice(
 
 std::optional<MinimalDirectCallAddImmSlice> parse_minimal_direct_call_add_imm_slice(
     const c4c::backend::BackendModule& module) {
-  if (module.functions.size() != 2) return std::nullopt;
-
-  const auto* main_fn = find_function(module, "main");
-  if (main_fn == nullptr || main_fn->is_declaration ||
-      !backend_function_is_definition(main_fn->signature) ||
-      !is_i32_scalar_signature_return(main_fn->signature) ||
-      !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
-      main_fn->blocks.size() != 1) {
-    return std::nullopt;
-  }
-
-  const auto& main_block = main_fn->blocks.front();
-  if (main_block.label != "entry" || main_block.insts.size() != 1 ||
-      !main_block.terminator.value.has_value() ||
-      c4c::backend::backend_return_scalar_type(main_block.terminator) !=
-          c4c::backend::BackendScalarType::I32) {
-    return std::nullopt;
-  }
-
-  const auto matched = match_minimal_structured_direct_call(module, main_block, 0, 1);
-  if (!matched.has_value() || *main_block.terminator.value != matched->call->result) {
+  const auto matched = c4c::backend::parse_backend_minimal_structured_direct_call_module(module, 1);
+  if (!matched.has_value()) {
     return std::nullopt;
   }
 
@@ -3631,7 +3556,7 @@ std::optional<MinimalDirectCallAddImmSlice> parse_minimal_direct_call_add_imm_sl
   }
 
   const auto helper_match =
-      match_minimal_structured_direct_call_add_imm_helper(*matched->callee_fn);
+      match_minimal_structured_direct_call_add_imm_helper(*matched->helper);
   if (!helper_match.has_value()) {
     return std::nullopt;
   }
@@ -3645,27 +3570,8 @@ std::optional<MinimalDirectCallAddImmSlice> parse_minimal_direct_call_add_imm_sl
 
 std::optional<MinimalDirectCallTwoArgAddSlice>
 parse_minimal_direct_call_two_arg_add_slice(const c4c::backend::BackendModule& module) {
-  if (module.functions.size() != 2) return std::nullopt;
-
-  const auto* main_fn = find_function(module, "main");
-  if (main_fn == nullptr || main_fn->is_declaration ||
-      !backend_function_is_definition(main_fn->signature) ||
-      !is_i32_scalar_signature_return(main_fn->signature) ||
-      !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
-      main_fn->blocks.size() != 1) {
-    return std::nullopt;
-  }
-
-  const auto& main_block = main_fn->blocks.front();
-  if (main_block.label != "entry" || main_block.insts.size() != 1 ||
-      !main_block.terminator.value.has_value() ||
-      c4c::backend::backend_return_scalar_type(main_block.terminator) !=
-          c4c::backend::BackendScalarType::I32) {
-    return std::nullopt;
-  }
-
-  const auto matched = match_minimal_structured_direct_call(module, main_block, 0, 2);
-  if (!matched.has_value() || *main_block.terminator.value != matched->call->result) {
+  const auto matched = c4c::backend::parse_backend_minimal_structured_direct_call_module(module, 2);
+  if (!matched.has_value()) {
     return std::nullopt;
   }
 
@@ -3676,7 +3582,7 @@ parse_minimal_direct_call_two_arg_add_slice(const c4c::backend::BackendModule& m
   }
 
   const auto helper_match =
-      match_minimal_structured_direct_call_two_arg_add_helper(*matched->callee_fn);
+      match_minimal_structured_direct_call_two_arg_add_helper(*matched->helper);
   if (!helper_match.has_value()) {
     return std::nullopt;
   }
@@ -3690,27 +3596,8 @@ parse_minimal_direct_call_two_arg_add_slice(const c4c::backend::BackendModule& m
 
 std::optional<MinimalDirectCallSlice> parse_minimal_direct_call_two_arg_folded_slice(
     const c4c::backend::BackendModule& module) {
-  if (module.functions.size() != 2) return std::nullopt;
-
-  const auto* main_fn = find_function(module, "main");
-  if (main_fn == nullptr || main_fn->is_declaration ||
-      !backend_function_is_definition(main_fn->signature) ||
-      !is_i32_scalar_signature_return(main_fn->signature) ||
-      !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
-      main_fn->blocks.size() != 1) {
-    return std::nullopt;
-  }
-
-  const auto& main_block = main_fn->blocks.front();
-  if (main_block.label != "entry" || main_block.insts.size() != 1 ||
-      !main_block.terminator.value.has_value() ||
-      c4c::backend::backend_return_scalar_type(main_block.terminator) !=
-          c4c::backend::BackendScalarType::I32) {
-    return std::nullopt;
-  }
-
-  const auto matched = match_minimal_structured_direct_call(module, main_block, 0, 2);
-  if (!matched.has_value() || *main_block.terminator.value != matched->call->result) {
+  const auto matched = c4c::backend::parse_backend_minimal_structured_direct_call_module(module, 2);
+  if (!matched.has_value()) {
     return std::nullopt;
   }
 
@@ -3721,7 +3608,7 @@ std::optional<MinimalDirectCallSlice> parse_minimal_direct_call_two_arg_folded_s
   }
 
   const auto helper_match = match_minimal_structured_direct_call_folded_two_arg_helper(
-      *matched->callee_fn, *arg0_imm, *arg1_imm);
+      *matched->helper, *arg0_imm, *arg1_imm);
   if (!helper_match.has_value()) {
     return std::nullopt;
   }
