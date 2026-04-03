@@ -75,3 +75,13 @@ c4c::codegen::lir::LirModule make_bir_two_param_add_module() {
   module.functions.push_back(std::move(function));
   return module;
 }
+
+c4c::codegen::lir::LirModule make_bir_two_param_add_sub_chain_module() {
+  using namespace c4c::codegen::lir;
+
+  auto module = make_bir_two_param_add_module();
+  auto& entry = module.functions.front().blocks.front();
+  entry.insts.push_back(LirBinOp{"%t1", "sub", "i32", "%t0", "1"});
+  entry.terminator = LirRet{std::string("%t1"), "i32"};
+  return module;
+}

@@ -119,6 +119,20 @@ void test_bir_lowering_accepts_two_param_add() {
                   "BIR lowering should let the two-parameter add result flow directly into the return");
 }
 
+void test_bir_lowering_accepts_two_param_add_sub_chain() {
+  const auto lowered = c4c::backend::lower_to_bir(make_bir_two_param_add_sub_chain_module());
+  const auto rendered = c4c::backend::bir::print(lowered);
+
+  expect_contains(rendered, "bir.func @add_pair(i32 %p.x, i32 %p.y) -> i32 {",
+                  "BIR lowering should preserve the bounded two-parameter signature for the affine chain");
+  expect_contains(rendered, "%t0 = bir.add i32 %p.x, %p.y",
+                  "BIR lowering should keep the two-parameter add head of the bounded affine chain in BIR form");
+  expect_contains(rendered, "%t1 = bir.sub i32 %t0, 1",
+                  "BIR lowering should allow a trailing immediate adjustment after the bounded two-parameter add");
+  expect_contains(rendered, "bir.ret i32 %t1",
+                  "BIR lowering should let the adjusted two-parameter result flow into the return");
+}
+
 void test_bir_to_backend_ir_preserves_sub_opcode() {
   const auto lowered = c4c::backend::lower_to_bir(make_bir_return_sub_module());
   const auto backend_ir = c4c::backend::lower_to_backend_ir(lowered);
@@ -167,6 +181,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_straight_line_add_sub_chain);
   RUN_TEST(test_bir_lowering_accepts_single_param_add_sub_chain);
   RUN_TEST(test_bir_lowering_accepts_two_param_add);
+  RUN_TEST(test_bir_lowering_accepts_two_param_add_sub_chain);
   RUN_TEST(test_bir_to_backend_ir_preserves_sub_opcode);
   RUN_TEST(test_bir_validator_rejects_returning_undefined_named_value);
   RUN_TEST(test_bir_validator_rejects_return_type_mismatch);

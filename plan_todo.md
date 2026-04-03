@@ -6,14 +6,15 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 2: Reassess the next BIR-default slice now that the production route
-  also covers a bounded two-parameter i32 add helper.
+- Step 2: Reassess whether the next BIR-default slice should widen bounded
+  affine coverage again or whether Step 3 can start trimming fallback-only
+  plumbing that no longer protects an exercised route.
 
 ## In Progress
 
-- Decide whether the next Step 2 slice should widen BIR coverage to another
-  bounded LIR construct or start deleting fallback-only plumbing that no
-  longer protects an exercised route.
+- Decide whether to spend one more Step 2 slice on another narrow bounded
+  affine shape or to start deleting legacy fallback plumbing that still
+  matters only for unsupported non-affine slices.
 
 ## Pending
 
@@ -106,6 +107,29 @@ Source Plan: plan.md
 - Full-suite regression guard passed:
   `test_before.log` -> `test_after.log` kept total tests at `2676` with zero
   newly failing cases.
+- Added coverage for the next bounded affine slice:
+  a two-parameter i32 add/sub chain with immediate adjustment across BIR
+  lowering, BIR text routing, x86 asm emission, AArch64 asm emission, and the
+  production RISC-V route seam.
+- The new bounded two-parameter affine chain already lowered and emitted
+  correctly on the BIR-first path, so this slice landed as missing coverage
+  rather than a code fix.
+- Added the internal production-route test
+  `backend_codegen_route_riscv64_two_param_add_sub_chain_defaults_to_bir`
+  using `tests/c/internal/backend_route_case/two_param_add_sub_chain.c`.
+- Targeted validation passed:
+  `backend_bir_tests` and
+  `backend_codegen_route_riscv64_two_param_add_sub_chain_defaults_to_bir`.
+- Nearby backend route validation passed:
+  `backend_codegen_route_riscv64_return_add_defaults_to_bir`,
+  `backend_codegen_route_riscv64_return_add_sub_chain_defaults_to_bir`,
+  `backend_codegen_route_riscv64_single_param_add_sub_chain_defaults_to_bir`,
+  `backend_codegen_route_riscv64_two_param_add_defaults_to_bir`,
+  `backend_codegen_route_riscv64_two_param_add_sub_chain_defaults_to_bir`, and
+  `backend_codegen_route_riscv64_global_load_falls_back_to_llvm`.
+- Full-suite regression guard passed:
+  `test_before.log` -> `test_after.log` increased total tests from `2676` to
+  `2677` with zero newly failing cases.
 
 ## Notes
 
@@ -114,14 +138,15 @@ Source Plan: plan.md
 - Use backend-only targeted validation before broader full-suite regression
   checks.
 - Current blocker to an unconditional default flip: `lower_to_bir(...)` still
-  only accepts straight-line single-block i32 return-immediate/add-sub slices.
+  only accepts straight-line single-block affine i32 slices with at most two
+  parameters and no memory, globals, or control flow.
 
 ## Next Slice
 
-- Use the same route-test pattern to decide whether Step 2 should widen BIR
-  coverage again to another bounded multi-parameter or memory-free LIR
-  construct, or whether Step 3 can start trimming fallback-only plumbing that
-  no longer protects an exercised route.
+- Use the now-covered affine surface to decide whether one more bounded
+  multi-parameter arithmetic slice is still needed, or whether Step 3 should
+  begin by inventorying legacy fallback plumbing that no longer protects any
+  exercised BIR-default route.
 
 ## Blockers
 
