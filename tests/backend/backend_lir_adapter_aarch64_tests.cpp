@@ -2209,19 +2209,37 @@ void test_aarch64_backend_scaffold_accepts_renamed_structured_direct_call_add_im
   }
 
   helper->signature.name = "inc_value";
-  auto* call = std::get_if<c4c::backend::BackendCallInst>(&main_fn->blocks.front().insts.front());
-  expect_true(call != nullptr,
-              "aarch64 renamed single-argument direct-call regression test needs the lowered backend call to mutate");
-  if (call == nullptr) {
+  helper->signature.params.front().name = "%p.renamed.input";
+  auto* add =
+      helper->blocks.empty() || helper->blocks.front().insts.empty()
+          ? nullptr
+          : std::get_if<c4c::backend::BackendBinaryInst>(&helper->blocks.front().insts.front());
+  auto* call =
+      main_fn->blocks.empty() || main_fn->blocks.front().insts.empty()
+          ? nullptr
+          : std::get_if<c4c::backend::BackendCallInst>(&main_fn->blocks.front().insts.front());
+  expect_true(add != nullptr && call != nullptr,
+              "aarch64 renamed single-argument direct-call regression test needs the lowered helper add and backend call to mutate");
+  if (add == nullptr || call == nullptr) {
     return;
   }
+  add->lhs = "%p.renamed.input";
+  add->result = "%t.helper.inc_value.renamed";
+  helper->blocks.front().terminator.value = "%t.helper.inc_value.renamed";
   call->callee.symbol_name = "inc_value";
+  call->args.front().operand = "17";
+  call->result = "%t.main.inc_value.renamed";
+  main_fn->blocks.front().terminator.value = "%t.main.inc_value.renamed";
 
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   expect_contains(rendered, ".type inc_value, %function",
                   "aarch64 backend seam should key the lowered single-argument helper definition from the structured callee symbol instead of a fixed helper name");
+  expect_contains(rendered, "add w0, w0, #1",
+                  "aarch64 backend seam should still key the lowered helper body from renamed structured helper metadata");
+  expect_contains(rendered, "mov w0, #17",
+                  "aarch64 backend seam should still materialize renamed lowered call immediates from structured call metadata");
   expect_contains(rendered, "bl inc_value",
                   "aarch64 backend seam should still lower renamed structured single-argument direct calls when legacy call/signature text is cleared");
   expect_not_contains(rendered, "target triple =",
