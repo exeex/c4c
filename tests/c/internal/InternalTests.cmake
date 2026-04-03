@@ -653,6 +653,20 @@ if(CLANG_EXECUTABLE)
         LABELS "internal;backend")
 
     add_test(
+      NAME backend_codegen_route_riscv64_two_param_staged_affine_defaults_to_bir
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_staged_affine.c
+              -DTARGET_TRIPLE=riscv64-unknown-linux-gnu
+              -DOUT_TEXT=${CMAKE_BINARY_DIR}/internal_backend_route/two_param_staged_affine_riscv64.ll
+              "-DREQUIRED_SNIPPETS=bir.func @add_pair(i32 %p.x, i32 %p.y) -> i32 {|%t0 = bir.add i32 %p.x, 2|%t1 = bir.add i32 %t0, %p.y|%t2 = bir.sub i32 %t1, 1|bir.ret i32 %t2"
+              "-DFORBIDDEN_SNIPPETS=define i32 @add_pair(i32 %p.x, i32 %p.y)"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_codegen_route_case.cmake"
+    )
+    set_tests_properties(backend_codegen_route_riscv64_two_param_staged_affine_defaults_to_bir PROPERTIES
+        LABELS "internal;backend")
+
+    add_test(
       NAME backend_codegen_route_riscv64_global_load_falls_back_to_llvm
       COMMAND "${CMAKE_COMMAND}"
               -DCOMPILER=$<TARGET_FILE:c4cll>

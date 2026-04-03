@@ -41,6 +41,7 @@ c4c::codegen::lir::LirModule make_bir_return_add_sub_chain_module();
 c4c::codegen::lir::LirModule make_bir_single_param_add_sub_chain_module();
 c4c::codegen::lir::LirModule make_bir_two_param_add_module();
 c4c::codegen::lir::LirModule make_bir_two_param_add_sub_chain_module();
+c4c::codegen::lir::LirModule make_bir_two_param_staged_affine_module();
 
 void run_backend_bir_lowering_tests();
 void run_backend_bir_pipeline_tests();

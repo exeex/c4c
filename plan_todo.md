@@ -6,19 +6,19 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 2: Reassess whether the next BIR-default slice should widen bounded
-  affine coverage again or whether Step 3 can start trimming fallback-only
-  plumbing that no longer protects an exercised route.
+- Step 3: Inventory the legacy fallback-only backend plumbing that still
+  remains after the now-covered staged two-parameter affine slices, and pick
+  the smallest deletion or containment change that does not affect exercised
+  BIR-default routes.
 
 ## In Progress
 
-- Decide whether to spend one more Step 2 slice on another narrow bounded
-  affine shape or to start deleting legacy fallback plumbing that still
-  matters only for unsupported non-affine slices.
+- Identify which legacy fallback helpers are still required only for
+  unsupported non-affine slices versus which ones still protect exercised
+  backend routes.
 
 ## Pending
 
-- Step 3: Remove legacy backend plumbing that is no longer exercised.
 - Step 4: Clean up surviving transitional `backend_ir` naming.
 - Step 5: Finish backend test migration around the BIR-first path.
 
@@ -130,6 +130,20 @@ Source Plan: plan.md
 - Full-suite regression guard passed:
   `test_before.log` -> `test_after.log` increased total tests from `2676` to
   `2677` with zero newly failing cases.
+- Added coverage for one more bounded affine confidence slice:
+  a staged two-parameter i32 chain where an immediate adjustment happens before
+  the second parameter enters and a final subtraction closes the chain.
+- Added backend BIR coverage for the staged affine slice across lowering,
+  RISC-V BIR text routing, x86 asm emission, and AArch64 asm emission.
+- Added the internal production-route test
+  `backend_codegen_route_riscv64_two_param_staged_affine_defaults_to_bir`
+  using `tests/c/internal/backend_route_case/two_param_staged_affine.c`.
+- Targeted validation passed:
+  `backend_bir_tests` and
+  `backend_codegen_route_riscv64_two_param_staged_affine_defaults_to_bir`.
+- Full-suite regression guard passed:
+  `test_fail_before.log` -> `test_fail_after.log` increased total tests from
+  `2677` to `2678` with zero newly failing cases.
 
 ## Notes
 
@@ -143,10 +157,10 @@ Source Plan: plan.md
 
 ## Next Slice
 
-- Use the now-covered affine surface to decide whether one more bounded
-  multi-parameter arithmetic slice is still needed, or whether Step 3 should
-  begin by inventorying legacy fallback plumbing that no longer protects any
-  exercised BIR-default route.
+- Start Step 3 by tracing the remaining legacy fallback-only plumbing from
+  `src/codegen/llvm/llvm_codegen.cpp`, `src/backend/backend.cpp`, and the
+  target backends, then remove or contain the smallest surface that no longer
+  protects any exercised BIR-default route.
 
 ## Blockers
 

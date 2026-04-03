@@ -89,6 +89,21 @@ void test_backend_bir_pipeline_routes_two_param_add_sub_chain_through_bir_text_s
                   "explicit BIR selection should expose the trailing immediate adjustment on the BIR text path");
 }
 
+void test_backend_bir_pipeline_routes_two_param_staged_affine_chain_through_bir_text_surface() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_bir_two_param_staged_affine_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Riscv64));
+
+  expect_contains(rendered, "bir.func @add_pair(i32 %p.x, i32 %p.y) -> i32 {",
+                  "explicit BIR selection should preserve the two-parameter signature for the staged affine chain");
+  expect_contains(rendered, "%t0 = bir.add i32 %p.x, 2",
+                  "explicit BIR selection should expose the staged immediate head on the BIR text path");
+  expect_contains(rendered, "%t1 = bir.add i32 %t0, %p.y",
+                  "explicit BIR selection should keep the later second-parameter add on the BIR text path");
+  expect_contains(rendered, "%t2 = bir.sub i32 %t1, 1",
+                  "explicit BIR selection should expose the trailing staged subtraction on the BIR text path");
+}
+
 void test_backend_bir_pipeline_drives_x86_return_add_smoke_case_end_to_end() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_bir_return_add_module()},
@@ -187,6 +202,34 @@ void test_backend_bir_pipeline_drives_aarch64_two_param_add_sub_chain_end_to_end
                   "aarch64 BIR lowering should preserve the trailing immediate adjustment for the bounded two-parameter affine chain");
 }
 
+void test_backend_bir_pipeline_drives_x86_two_param_staged_affine_end_to_end() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_bir_two_param_staged_affine_module()},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl add_pair",
+                  "BIR pipeline should still reach x86 backend emission for the staged two-parameter affine slice");
+  expect_contains(rendered, "mov eax, edi",
+                  "x86 BIR lowering should seed the staged affine slice from the first incoming integer argument register");
+  expect_contains(rendered, "add eax, esi",
+                  "x86 BIR lowering should still combine the second incoming integer argument register for the staged affine slice");
+  expect_contains(rendered, "add eax, 1",
+                  "x86 BIR lowering should collapse the staged immediate adjustments to the surviving affine constant");
+}
+
+void test_backend_bir_pipeline_drives_aarch64_two_param_staged_affine_end_to_end() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_bir_two_param_staged_affine_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Aarch64));
+
+  expect_contains(rendered, ".globl add_pair",
+                  "BIR pipeline should still reach aarch64 backend emission for the staged two-parameter affine slice");
+  expect_contains(rendered, "add w0, w0, w1",
+                  "aarch64 BIR lowering should combine both incoming integer argument registers for the staged affine slice");
+  expect_contains(rendered, "add w0, w0, #1",
+                  "aarch64 BIR lowering should collapse the staged immediate adjustments to the surviving affine constant");
+}
+
 void test_backend_bir_pipeline_selection_only_applies_at_lir_entry_input() {
   const auto lir_module = make_bir_return_add_module();
   const c4c::backend::BackendModule lowered_backend =
@@ -213,13 +256,16 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_backend_bir_pipeline_routes_single_param_chain_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_two_param_add_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_two_param_add_sub_chain_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_routes_two_param_staged_affine_chain_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_return_add_smoke_case_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_return_sub_smoke_case_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_single_param_chain_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_two_param_add_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_two_param_add_sub_chain_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_two_param_staged_affine_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_single_param_chain_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_two_param_add_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_two_param_add_sub_chain_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_aarch64_two_param_staged_affine_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_selection_only_applies_at_lir_entry_input);
 }
