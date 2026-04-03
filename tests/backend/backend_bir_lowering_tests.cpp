@@ -2,7 +2,6 @@
 
 #include "../../src/backend/bir_printer.hpp"
 #include "../../src/backend/bir_validate.hpp"
-#include "../../src/backend/lowering/bir_to_backend_ir.hpp"
 #include "../../src/backend/lowering/lir_to_bir.hpp"
 
 #include <string>
@@ -149,18 +148,6 @@ void test_bir_lowering_accepts_two_param_staged_affine_chain() {
                   "BIR lowering should let the staged affine tail flow into the return");
 }
 
-void test_bir_to_backend_module_preserves_sub_opcode() {
-  const auto lowered = c4c::backend::lower_to_bir(make_bir_return_sub_module());
-  const auto backend_ir = c4c::backend::lower_bir_to_backend_module(lowered);
-  const auto& block = backend_ir.functions.front().blocks.front();
-  const auto* inst = std::get_if<c4c::backend::BackendBinaryInst>(&block.insts.front());
-
-  expect_true(inst != nullptr,
-              "BIR backend lowering should keep sub arithmetic in binary backend IR form");
-  expect_true(inst != nullptr && inst->opcode == c4c::backend::BackendBinaryOpcode::Sub,
-              "BIR backend lowering should preserve the sub opcode instead of folding it into add");
-}
-
 void test_bir_validator_rejects_returning_undefined_named_value() {
   auto module = make_return_immediate_module();
   module.functions.front().blocks.front().terminator.value =
@@ -199,7 +186,6 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_two_param_add);
   RUN_TEST(test_bir_lowering_accepts_two_param_add_sub_chain);
   RUN_TEST(test_bir_lowering_accepts_two_param_staged_affine_chain);
-  RUN_TEST(test_bir_to_backend_module_preserves_sub_opcode);
   RUN_TEST(test_bir_validator_rejects_returning_undefined_named_value);
   RUN_TEST(test_bir_validator_rejects_return_type_mismatch);
 }

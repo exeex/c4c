@@ -9,9 +9,9 @@ Source Plan: plan.md
 - [ ] Delete app-layer LLVM asm rescue from `c4cll`
 - [ ] Revalidate backend and full-suite behavior without fallback
 
-Current active item: Step 2, extend direct emitter-native BIR handling beyond
-the bounded arithmetic slices, or remove `bir_to_backend_ir.*` once no
-production emitter entry point depends on that fallback.
+Current active item: Step 2, continue shrinking legacy backend-IR ownership now
+that the x86/AArch64 direct-`bir::Module` fallback through
+`bir_to_backend_ir.*` is gone.
 
 Completed this iteration:
 - Audited the current production legacy boundaries in `backend.cpp`,
@@ -49,22 +49,33 @@ Completed this iteration:
 - Revalidated the full suite after the zero-parameter staged-constant direct
   BIR slice with `test_after.log` (`2728/2728` passing) and confirmed
   monotonic no-regression behavior against `test_before.log`.
+- Removed the x86/AArch64 direct-`bir::Module` rescue path through
+  `bir_to_backend_ir.*`; unsupported manual direct-BIR input now fails
+  explicitly instead of silently converting back into legacy backend IR.
+- Deleted `src/backend/lowering/bir_to_backend_ir.cpp` and
+  `src/backend/lowering/bir_to_backend_ir.hpp`, removed their build wiring, and
+  switched the remaining bridge-style backend tests to
+  `lower_lir_to_backend_module(...)`.
+- Added direct-BIR regression coverage proving unsupported multi-function BIR
+  modules now throw explicit x86/AArch64 backend errors rather than re-entering
+  the legacy backend-IR route.
+- Rebuilt from a clean `build/` directory and reran the full suite into
+  `test_fail_after.log`; the regression guard passed against
+  `test_fail_before.log` with `after: 2728 passed, 0 failed` and no newly
+  failing tests.
 
 Next intended slice:
-- Audit whether the remaining direct `bir::Module` fallback in the x86/AArch64
-  emitters now only covers unsupported manual BIR inputs, then either remove
-  `bir_to_backend_ir.*` for the scaffold-supported surface or add the next
-  smallest native BIR-owned slice needed to make that deletion safe.
+- Audit whether Step 3 can now start by moving more emitter-owned boundaries off
+  `BackendModule(ir.*)` in favor of direct BIR data structures, or whether the
+  next smallest safe slice is removing another legacy route from
+  `src/backend/backend.cpp`.
 
 Resume notes:
 - `backend.cpp` still contains the legacy route (`emit_legacy_module`), but
   direct BIR backend execution now dispatches into emitter-owned BIR entry
   points instead of pre-lowering in the backend facade.
-- `backend.hpp` now exposes a BIR-capable input seam, and x86/aarch64 emitters
-  still own a last-resort `bir::Module` -> `BackendModule` lowering internally,
-  but the bounded arithmetic direct-BIR slices now bypass that path and emit
-  natively inside `src/backend/x86/codegen/emit.cpp` and
-  `src/backend/aarch64/codegen/emit.cpp`, including zero-parameter staged
-  constant chains.
+- `backend.hpp` still exposes both legacy `BackendModule` and BIR-capable input
+  seams, but x86/aarch64 direct-BIR entry points now have no fallback back into
+  legacy backend IR; only the native affine-return subset is accepted there.
 - `c4cll.cpp` still rescues `--codegen asm` through LLVM IR/asm conversion and
   a second retry via `CodegenPath::Llvm`.

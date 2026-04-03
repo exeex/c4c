@@ -33,6 +33,32 @@ inline c4c::backend::BackendOptions make_bir_pipeline_options(c4c::backend::Targ
   return options;
 }
 
+inline c4c::backend::bir::Module make_unsupported_multi_function_bir_module() {
+  using namespace c4c::backend::bir;
+
+  Module module;
+
+  Function first;
+  first.name = "first";
+  first.return_type = TypeKind::I32;
+  Block first_entry;
+  first_entry.label = "entry";
+  first_entry.terminator.value = Value::immediate_i32(7);
+  first.blocks.push_back(first_entry);
+
+  Function second;
+  second.name = "second";
+  second.return_type = TypeKind::I32;
+  Block second_entry;
+  second_entry.label = "entry";
+  second_entry.terminator.value = Value::immediate_i32(9);
+  second.blocks.push_back(second_entry);
+
+  module.functions.push_back(first);
+  module.functions.push_back(second);
+  return module;
+}
+
 }  // namespace
 
 c4c::codegen::lir::LirModule make_bir_return_add_module();

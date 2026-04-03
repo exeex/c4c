@@ -5,7 +5,6 @@
 #include "../../ir_printer.hpp"
 #include "../../ir_validate.hpp"
 #include "../../lir_adapter.hpp"
-#include "../../lowering/bir_to_backend_ir.hpp"
 #include "../../lowering/call_decode.hpp"
 #include "../../stack_layout/regalloc_helpers.hpp"
 #include "../../../codegen/lir/call_args.hpp"
@@ -17,6 +16,7 @@
 #include <limits>
 #include <optional>
 #include <sstream>
+#include <stdexcept>
 #include <unordered_map>
 #include <vector>
 #include <string_view>
@@ -28,6 +28,11 @@
 namespace c4c::backend::x86 {
 
 namespace {
+
+[[noreturn]] void throw_unsupported_direct_bir_module() {
+  throw std::invalid_argument(
+      "x86 backend emitter does not support this direct BIR module; only the affine-return subset lowers natively");
+}
 
 std::string asm_symbol_name(const c4c::backend::BackendModule& module,
                             std::string_view logical_name);
@@ -3365,6 +3370,7 @@ std::string emit_module(const c4c::backend::BackendModule& module,
 
 std::string emit_module(const c4c::backend::bir::Module& module,
                         const c4c::codegen::lir::LirModule* legacy_fallback) {
+  (void)legacy_fallback;
   if (const auto imm = parse_minimal_return_imm(module); imm.has_value()) {
     return emit_minimal_return_asm(module, *imm);
   }
@@ -3378,7 +3384,7 @@ std::string emit_module(const c4c::backend::bir::Module& module,
       slice.has_value()) {
     return emit_minimal_affine_return_asm(module, *slice);
   }
-  return emit_module(c4c::backend::lower_bir_to_backend_module(module), legacy_fallback);
+  throw_unsupported_direct_bir_module();
 }
 
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {

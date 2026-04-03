@@ -2,7 +2,6 @@
 
 #include "../../bir.hpp"
 #include "../../lir_adapter.hpp"
-#include "../../lowering/bir_to_backend_ir.hpp"
 #include "../../lowering/call_decode.hpp"
 #include "../../generation.hpp"
 #include "../../ir_printer.hpp"
@@ -36,6 +35,11 @@ namespace {
 [[noreturn]] void fail_unsupported(const char* detail) {
   throw std::invalid_argument(std::string("aarch64 backend emitter does not support ") +
                               detail);
+}
+
+[[noreturn]] void fail_unsupported_direct_bir_module() {
+  throw std::invalid_argument(
+      "aarch64 backend emitter does not support this direct BIR module; only the affine-return subset lowers natively");
 }
 
 void validate_inst(const c4c::codegen::lir::LirInst& inst) {
@@ -5941,6 +5945,7 @@ std::string emit_module(const c4c::backend::BackendModule& module,
 
 std::string emit_module(const c4c::backend::bir::Module& module,
                         const c4c::codegen::lir::LirModule* legacy_fallback) {
+  (void)legacy_fallback;
   if (const auto imm = parse_minimal_return_imm(module); imm.has_value()) {
     return emit_minimal_return_sub_imm_asm(module, *imm);
   }
@@ -5954,7 +5959,7 @@ std::string emit_module(const c4c::backend::bir::Module& module,
       slice.has_value()) {
     return emit_minimal_affine_return_asm(module, *slice);
   }
-  return emit_module(c4c::backend::lower_bir_to_backend_module(module), legacy_fallback);
+  fail_unsupported_direct_bir_module();
 }
 
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {

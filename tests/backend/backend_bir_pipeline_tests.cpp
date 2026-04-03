@@ -1,7 +1,7 @@
 #include "backend_bir_test_support.hpp"
 
 #include "../../src/backend/ir_printer.hpp"
-#include "../../src/backend/lowering/bir_to_backend_ir.hpp"
+#include "../../src/backend/lowering/lir_to_backend_ir.hpp"
 #include "../../src/backend/lowering/lir_to_bir.hpp"
 
 namespace {
@@ -334,10 +334,38 @@ void test_backend_bir_pipeline_drives_aarch64_two_param_staged_affine_end_to_end
                   "aarch64 BIR lowering should collapse the staged immediate adjustments to the surviving affine constant");
 }
 
+void test_backend_bir_pipeline_rejects_unsupported_direct_bir_input_on_x86() {
+  try {
+    (void)c4c::backend::emit_module(
+        c4c::backend::BackendModuleInput{make_unsupported_multi_function_bir_module()},
+        make_bir_pipeline_options(c4c::backend::Target::X86_64));
+  } catch (const std::invalid_argument& ex) {
+    expect_contains(ex.what(), "direct BIR module",
+                    "x86 direct BIR rejection should explain that unsupported direct BIR input no longer falls back through legacy backend IR");
+    return;
+  }
+
+  fail("x86 direct BIR input should fail explicitly once the emitter-side bir_to_backend_ir fallback is removed");
+}
+
+void test_backend_bir_pipeline_rejects_unsupported_direct_bir_input_on_aarch64() {
+  try {
+    (void)c4c::backend::emit_module(
+        c4c::backend::BackendModuleInput{make_unsupported_multi_function_bir_module()},
+        make_bir_pipeline_options(c4c::backend::Target::Aarch64));
+  } catch (const std::invalid_argument& ex) {
+    expect_contains(ex.what(), "direct BIR module",
+                    "aarch64 direct BIR rejection should explain that unsupported direct BIR input no longer falls back through legacy backend IR");
+    return;
+  }
+
+  fail("aarch64 direct BIR input should fail explicitly once the emitter-side bir_to_backend_ir fallback is removed");
+}
+
 void test_backend_bir_pipeline_selection_only_applies_at_lir_entry_input() {
   const auto lir_module = make_bir_return_add_module();
   const c4c::backend::BackendModule lowered_backend =
-      c4c::backend::lower_bir_to_backend_module(c4c::backend::lower_to_bir(lir_module));
+      c4c::backend::lower_lir_to_backend_module(lir_module);
   const auto expected = c4c::backend::print_backend_module(lowered_backend);
 
   const auto rendered = c4c::backend::emit_module(
@@ -353,7 +381,7 @@ void test_backend_bir_pipeline_selection_only_applies_at_lir_entry_input() {
 void test_backend_lowered_riscv_passthrough_ignores_broken_legacy_fallback() {
   auto legacy_module = make_bir_return_add_module();
   const c4c::backend::BackendModule lowered_backend =
-      c4c::backend::lower_bir_to_backend_module(c4c::backend::lower_to_bir(legacy_module));
+      c4c::backend::lower_lir_to_backend_module(legacy_module);
   const auto expected = c4c::backend::print_backend_module(lowered_backend);
 
   for (auto& function : legacy_module.functions) {
@@ -403,6 +431,8 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_direct_bir_staged_affine_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_two_param_add_sub_chain_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_two_param_staged_affine_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_rejects_unsupported_direct_bir_input_on_x86);
+  RUN_TEST(test_backend_bir_pipeline_rejects_unsupported_direct_bir_input_on_aarch64);
   RUN_TEST(test_backend_bir_pipeline_selection_only_applies_at_lir_entry_input);
   RUN_TEST(test_backend_lowered_riscv_passthrough_ignores_broken_legacy_fallback);
 }
