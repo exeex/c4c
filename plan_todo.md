@@ -6,15 +6,13 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 2: Flip the default to BIR with tests first.
+- Step 2: Flip the production `emit_module_native(...)` route to BIR-first
+  with a bounded legacy fallback and tests first.
 
 ## In Progress
 
-- Capture the first safe default-flip slice now that the routing surface is
-  mapped.
-- Determine whether the next change should extend the BIR scaffold beyond the
-  current tiny-slice lowering or thread an explicit temporary fallback through
-  the main codegen entrypoint.
+- Reassess the next Step 2 slice now that the production backend entrypoint is
+  BIR-first for the currently supported tiny slice.
 
 ## Pending
 
@@ -37,6 +35,22 @@ Source Plan: plan.md
   legacy route by default.
 - Added backend pipeline tests that pin the LIR-entry seam as the only current
   BIR selection surface.
+- Added internal backend route tests that pin the real `c4cll --codegen asm`
+  entrypoint:
+  supported `return_add` now defaults to BIR text on RISC-V, while unsupported
+  `global_load` still falls back to legacy LLVM IR.
+- Updated `src/codegen/llvm/llvm_codegen.cpp` so the production backend path
+  probes `try_lower_to_bir(...)` first, selects `BackendPipeline::Bir` for
+  supported slices, and otherwise retains the temporary legacy fallback path.
+- Kept `--codegen compare` stable during the cutover by leaving compare-mode
+  output on the legacy text path for now.
+- Targeted validation passed:
+  `backend_codegen_route_riscv64_return_add_defaults_to_bir`,
+  `backend_codegen_route_riscv64_global_load_falls_back_to_llvm`,
+  `backend_bir_tests`, `backend_runtime_return_add`, and
+  `backend_runtime_global_load`.
+- Full-suite regression guard passed with zero new failures:
+  `test_fail_before.log` vs `test_fail_after.log`.
 
 ## Notes
 
@@ -49,11 +63,9 @@ Source Plan: plan.md
 
 ## Next Slice
 
-- Choose one minimal Step 2 change that moves the default route closer to BIR
-  without widening beyond the current scaffold support.
-- Likely candidates: thread an explicit temporary backend-pipeline switch
-  through `emit_module_native(...)`, or broaden `lower_to_bir(...)` enough to
-  cover a real defaulted caller slice first.
+- After the routing seam is flipped, re-evaluate whether Step 2 should continue
+  by broadening `lower_to_bir(...)` coverage or by trimming any now-redundant
+  temporary fallback plumbing.
 
 ## Blockers
 

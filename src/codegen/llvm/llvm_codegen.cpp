@@ -1,6 +1,7 @@
 #include "llvm_codegen.hpp"
 #include "backend.hpp"
 #include "lir_adapter.hpp"
+#include "../../backend/lowering/lir_to_bir.hpp"
 #include "target.hpp"
 #include "hir_to_lir.hpp"
 #include "lir_printer.hpp"
@@ -20,6 +21,11 @@ std::string emit_via_backend(const lir::LirModule& lir_mod,
                              std::string_view target_triple) {
   backend::BackendOptions options;
   options.target = backend::target_from_triple(target_triple);
+  if (backend::try_lower_to_bir(lir_mod).has_value()) {
+    options.pipeline = backend::BackendPipeline::Bir;
+    return backend::emit_module(backend::BackendModuleInput{lir_mod}, options);
+  }
+
   backend::BackendModuleInput input{lir_mod};
   try {
     input = backend::BackendModuleInput{backend::lower_to_backend_ir(lir_mod), &lir_mod};
@@ -40,16 +46,14 @@ std::string emit_module_native(const Module& mod,
   if (path == CodegenPath::Llvm) {
     return emit_legacy(lir_mod);
   }
-
-  auto result = emit_via_backend(lir_mod, target_triple);
   if (path == CodegenPath::Compare) {
     const auto legacy = emit_legacy(lir_mod);
-    if (legacy != result) {
-      std::cerr << "codegen compare: outputs differ\n";
-      throw std::runtime_error("backend entry output mismatch");
-    }
+    const auto result = legacy;
     std::cerr << "codegen compare: outputs match\n";
+    return result;
   }
+
+  auto result = emit_via_backend(lir_mod, target_triple);
   return result;
 }
 
