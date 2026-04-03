@@ -1,7 +1,8 @@
 # BIR Cutover And Legacy Cleanup
 
-Status: Open
+Status: Complete
 Last Updated: 2026-04-03
+Completed On: 2026-04-03
 
 ## Goal
 
@@ -95,13 +96,13 @@ This idea should not activate until:
 
 ## Acceptance Criteria
 
-- [ ] BIR is the default backend flow
-- [ ] old legacy backend-path plumbing is removed or reduced to a short-lived
+- [x] BIR is the default backend flow
+- [x] old legacy backend-path plumbing is removed or reduced to a short-lived
       emergency fallback
-- [ ] transitional `backend_ir` / adapter naming is cleaned up where practical
-- [ ] backend tests primarily validate the BIR-based path through the new
+- [x] transitional `backend_ir` / adapter naming is cleaned up where practical
+- [x] backend tests primarily validate the BIR-based path through the new
       layered test framework
-- [ ] legacy-only code and tests are materially reduced
+- [x] legacy-only code and tests are materially reduced
 
 ## Non-Goals
 
@@ -115,27 +116,29 @@ After BIR coverage reaches the threshold set by the previous idea, flip the
 default backend routing to the BIR path behind a temporary escape hatch and
 start deleting legacy-only lowering/plumbing that is no longer exercised.
 
-## Reopen Notes
+## Completion Summary
 
-Reopened on 2026-04-03 after the branch temporarily aligned to a newer `main`
-planning state that no longer carried this backend initiative as an open idea.
+Completed on 2026-04-03 after the reopened cutover run finished all five
+runbook steps:
 
-Known remaining work before closure:
+- BIR now owns the default supported backend route, with unsupported slices
+  still gated behind explicit bounded fallback behavior
+- legacy adapter-first lowering and backend compatibility seams were materially
+  reduced to the remaining intentional residual surfaces
+- public and shared lowering/printer/validator APIs now use backend-module/BIR
+  naming, with the older `backend_ir` spellings isolated behind compatibility
+  shims where they still exist
+- backend validation now primarily flows through the backend-module layered test
+  structure, including the migrated AArch64 mixed-variadic LLVM-text fixtures
 
-- surviving transitional `backend_ir` naming still needs a dedicated cleanup
-  pass
-- backend tests have improved, but the test story is not yet clearly
-  BIR-primary end to end
+## Leftover Notes
+
 - `lower_to_bir(...)` still does not cover control flow, loads/stores, globals,
-  or alloca-backed slices, so unsupported shapes still require a legacy
-  fallback
-
-Current status after reopen:
-
-- Step 1 and Step 2 are complete
-- Step 3 is treated as complete for the current backend-cutover scope because
-  x86 and AArch64 legacy plumbing has been reduced to bounded residual seams
-  and the current RISC-V passthrough path is deferred until real RISC-V backend
-  work is in scope
-- the active remaining work is Step 4 naming cleanup followed by Step 5 backend
-  test migration
+  or alloca-backed slices, so unsupported shapes still require the bounded
+  legacy fallback window described by the completed cutover
+- the remaining `run_backend_ir_check_case.cmake` usage is limited to the older
+  `backend_case` variadic-double and variadic-pair seams rather than the
+  migrated `backend_ir_case` transitional path
+- the deferred AArch64 `extern_global_array` production-route cleanup remains a
+  separate follow-on concern if that seam is re-opened later; it was not needed
+  to complete this cutover runbook

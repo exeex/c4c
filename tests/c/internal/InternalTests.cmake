@@ -425,11 +425,11 @@ if(EXISTS "${EXAMPLE_C}")
       NAME backend_lir_aarch64_variadic_mixed_double_short_ir
       COMMAND "${CMAKE_COMMAND}"
               -DCOMPILER=$<TARGET_FILE:c4cll>
-              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_ir_case/variadic_mixed_double_short_bytes.c
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_module_case/variadic_mixed_double_short_bytes.c
               -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
               -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/variadic_mixed_double_short_bytes_aarch64.ll
               "-DREQUIRED_SNIPPETS=%struct.MixedDoubleShort = type { double, i16, [6 x i8] }|call void @llvm.memcpy.p0.p0.i64(|phi ptr|getelementptr %struct.__va_list_tag_, ptr %lv.ap, i32 0, i32 3|load %struct.MixedDoubleShort, ptr|trunc i32 13124 to i16"
-              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_ir_check_case.cmake"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_module_check_case.cmake"
   )
   set_tests_properties(backend_lir_aarch64_variadic_mixed_double_short_ir PROPERTIES
       LABELS "internal;backend")
