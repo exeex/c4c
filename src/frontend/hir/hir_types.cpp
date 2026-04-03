@@ -1,16 +1,16 @@
-// Unintegrated draft extracted from ast_to_hir.cpp.
+// Unintegrated draft extracted from hir_lowering_core.cpp.
 // This file is a staging artifact for the type/struct/layout/init-normalization
 // cluster and is not yet wired into the build.
 //
 // Omitted for now: the template / program coordinator paths. Those stay in
-// ast_to_hir.cpp until the shared Lowerer declaration surface is hoisted into
-// ast_to_hir.hpp.
+// hir_lowering_core.cpp until the shared Lowerer declaration surface is hoisted into
+// hir_lowering.hpp.
 
-#include "ast_to_hir.hpp"
+#include "hir_lowering.hpp"
 #include "hir_lowerer_internal.hpp"
 #include "consteval.hpp"
 #include "type_utils.hpp"
-#include "../parser/parser_internal.hpp"
+#include "../parser/parser.hpp"
 
 #include <algorithm>
 #include <cstring>

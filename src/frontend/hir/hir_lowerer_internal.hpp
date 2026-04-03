@@ -1,8 +1,25 @@
 #pragma once
 
-#include "ast_to_hir.hpp"
+// Internal HIR lowerer surface.
+//
+// Role:
+// - declares the implementation-only Lowerer engine shared across hir_*.cpp
+// - groups helper families by lowering phase and semantic responsibility
+// - provides the internal navigation index for template, callable, stmt, expr,
+//   and initializer lowering code
+//
+// Implementation map:
+// - hir_build.cpp: pipeline orchestration and AST pre-collection passes
+// - hir_templates.cpp: template-struct realization and deferred-type resolution
+// - hir_functions.cpp: callable/global lowering
+// - hir_stmt.cpp: statement lowering and cleanup emission
+// - hir_expr.cpp: expression lowering and operator dispatch
+// - hir_types.cpp: type/layout/init normalization
+// - hir_lowering_core.cpp: shared source/span/string helpers
+
+#include "hir_lowering.hpp"
 #include "type_utils.hpp"
-#include "../parser/parser_internal.hpp"
+#include "../parser/parser.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -102,11 +119,13 @@ bool eval_struct_static_member_value_hir(
 
 class Lowerer {
  public:
+  // ── pipeline entry state ──────────────────────────────────────────────────
   const sema::ResolvedTypeTable* resolved_types_ = nullptr;
 
   /// Engine-owned compile-time state, shared with the pipeline.
   std::shared_ptr<CompileTimeState> ct_state() const;
 
+  // ── deferred template-type seeding and resolution ────────────────────────
   void seed_pending_template_type(const TypeSpec& ts,
                                   const TypeBindings& tpl_bindings,
                                   const NttpBindings& nttp_bindings,
@@ -118,7 +137,7 @@ class Lowerer {
       const TypeSpec& ts,
       const Node* primary_tpl = nullptr) const;
 
-  void resolve_pending_tpl_struct_if_needed(
+  void realize_template_struct_if_needed(
       TypeSpec& ts,
       const TypeBindings& tpl_bindings,
       const NttpBindings& nttp_bindings,
@@ -186,6 +205,7 @@ class Lowerer {
 
   bool resolve_struct_member_typedef_if_ready(TypeSpec* ts);
 
+  // ── initial build orchestration and collection passes ────────────────────
   std::vector<const Node*> flatten_program_items(const Node* root) const;
 
   void collect_weak_symbol_names(const std::vector<const Node*>& items);
@@ -202,11 +222,12 @@ class Lowerer {
 
   void collect_depth0_template_instantiations(const std::vector<const Node*>& items);
 
-  void run_consteval_template_seed_fixpoint(const std::vector<const Node*>& items);
+  void realize_consteval_template_seeds_fixpoint(
+      const std::vector<const Node*>& items);
 
   void finalize_template_seed_realization();
 
-  void populate_hir_template_defs(Module& m);
+  void materialize_hir_template_defs(Module& m);
 
   void collect_ref_overloaded_free_functions(const std::vector<const Node*>& items);
 
@@ -229,6 +250,7 @@ class Lowerer {
       const PendingTemplateTypeWorkItem& work_item);
 
  private:
+  // ── per-function lowering state ──────────────────────────────────────────
   struct SwitchCtx {
     BlockId parent_block{};
     std::vector<std::pair<long long, BlockId>> cases;
@@ -286,6 +308,7 @@ class Lowerer {
 
   static TypeSpec reference_value_ts(TypeSpec ts);
 
+  // ── low-level type and id utilities ──────────────────────────────────────
   // Resolve TB_TYPEDEF to TB_STRUCT/TB_UNION when the tag matches a known
   // struct definition.  Handles the injected-class-name case where the parser
   // cannot fully resolve the typedef because the struct is still incomplete
@@ -310,6 +333,7 @@ class Lowerer {
   std::optional<TypeSpec> storage_type_for_declref(FunctionCtx* ctx,
                                                    const DeclRef& r);
 
+  // ── block / expression construction helpers ──────────────────────────────
   TypeSpec infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n);
 
   Block& ensure_block(FunctionCtx& ctx, BlockId id);
@@ -357,29 +381,18 @@ class Lowerer {
       const TypeBindings& tpl_bindings,
       const NttpBindings& nttp_bindings);
 
+  // ── template-struct realization helpers ──────────────────────────────────
   void lower_struct_def(const Node* sd);
 
-  bool resolve_struct_member_typedef_hir(const std::string& tag,
-                                         const std::string& member,
-                                         TypeSpec* out);
+  bool resolve_struct_member_typedef_type(const std::string& tag,
+                                          const std::string& member,
+                                          TypeSpec* out);
 
-  // Resolve a pending template struct type using concrete template bindings.
-  // ---------------------------------------------------------------------------
-  // Helper 2: Materialize explicit and default template args into concrete
-  // args, resolving type bindings and NTTP bindings along the way.
-  // ---------------------------------------------------------------------------
-  // ---------------------------------------------------------------------------
-  // Helper 3: Prepare identity bindings and the dedup key for a concrete
-  // template-struct instance.
-  // ---------------------------------------------------------------------------
   PreparedTemplateStructInstance prepare_template_struct_instance(
       const Node* primary_tpl,
       const char* origin,
       const ResolvedTemplateArgs& resolved);
 
-  // ---------------------------------------------------------------------------
-  // Helper 4: Build the mangled/concrete name for a template struct instance.
-  // ---------------------------------------------------------------------------
   static std::string build_template_mangled_name(
       const Node* primary_tpl,
       const Node* tpl_def,
@@ -423,9 +436,6 @@ class Lowerer {
       const TypeBindings& selected_type_bindings,
       const NttpBindings& selected_nttp_bindings_map);
 
-  // ---------------------------------------------------------------------------
-  // Helper 5: Instantiate the concrete struct body (fields, bases, methods).
-  // ---------------------------------------------------------------------------
   void instantiate_template_struct_body(
       const std::string& mangled,
       const Node* primary_tpl,
@@ -434,15 +444,12 @@ class Lowerer {
       const std::vector<HirTemplateArg>& concrete_args,
       const TemplateStructInstanceKey& instance_key);
 
-  // ---------------------------------------------------------------------------
-  // Coordinator: resolve_pending_tpl_struct — now a thin coordinator that
-  // delegates to the four helpers above.
-  // ---------------------------------------------------------------------------
-  void resolve_pending_tpl_struct(TypeSpec& ts,
-                                  const Node* primary_tpl,
-                                  const TypeBindings& tpl_bindings,
-                                  const NttpBindings& nttp_bindings);
+  void realize_template_struct(TypeSpec& ts,
+                               const Node* primary_tpl,
+                               const TypeBindings& tpl_bindings,
+                               const NttpBindings& nttp_bindings);
 
+  // ── callable and global lowering helpers ─────────────────────────────────
   TypeSpec substitute_signature_template_type(
       TypeSpec ts, const TypeBindings* tpl_bindings) const;
 
@@ -536,6 +543,7 @@ class Lowerer {
 
   ExprId lower_call_expr(FunctionCtx* ctx, const Node* n);
 
+  // ── initializer and aggregate lowering helpers ───────────────────────────
   // Reconstruct the full TypeSpec for a struct field from its HirStructField.
   static TypeSpec field_type_of(const HirStructField& f);
 
@@ -600,6 +608,7 @@ class Lowerer {
 
   ExprId lower_stmt_expr_block(FunctionCtx& ctx, const Node* block, const TypeSpec& result_ts);
 
+  // ── expression lowering helpers ──────────────────────────────────────────
   // Try to resolve an operator expression on a struct type to a member operator
   // method call.  Returns a valid ExprId if the struct has the corresponding
   // operator method, or an invalid ExprId otherwise.
@@ -735,9 +744,9 @@ class Lowerer {
   std::vector<std::string> get_template_param_order_from_instances(
       const std::string& fn_name);
 
-  // Record a template seed via the centralized registry.
+  // Record a template-instantiation seed via the centralized registry.
   // Returns the mangled name, or "" if bindings are not concrete.
-  std::string record_seed(
+  std::string record_template_seed(
       const std::string& fn_name,
       TypeBindings bindings,
       NttpBindings nttp_bindings = {},
@@ -765,6 +774,7 @@ class Lowerer {
 
   static bool has_plain_call(const Node* n, const char* fn_name);
 
+  // ── template registry and lowering-owned caches ──────────────────────────
   const Node* find_template_struct_primary(const std::string& name) const;
   const std::vector<const Node*>* find_template_struct_specializations(
       const Node* primary_tpl) const;
@@ -839,7 +849,6 @@ class Lowerer {
   // Marks lowering performed on behalf of the compile-time engine so pending
   // consteval nodes can preserve deferred-instantiation provenance.
   bool lowering_deferred_instantiation_ = false;
-
 };
 
 }  // namespace c4c::hir

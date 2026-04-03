@@ -1,6 +1,6 @@
 #include "hir_to_lir.hpp"
 #include "call_args.hpp"
-#include "ir.hpp"
+#include "hir_ir.hpp"
 #include "const_init_emitter.hpp"
 #include "stmt_emitter.hpp"
 #include "../llvm/calling_convention.hpp"

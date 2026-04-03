@@ -433,12 +433,53 @@ void seed_default_system_include_paths(c4c::SourceProfile source_profile,
 }
 
 void print_usage(const char *argv0) {
-  std::cerr << "usage: " << argv0
-            << " [--version] [--pp-only|--lex-only|--parse-only|--dump-hir|--dump-hir-summary|--dump-canonical|--parser-debug]"
-            << " [--codegen llvm|asm|compare]"
-            << " [-D macro[=val]] [-U macro] [-I dir] [-iquote dir] [-isystem dir] [-idirafter dir]"
-            << " [-O0|-O1|-O2|-O3|-Os] [-fPIC|-fpic] [-fPIE|-fpie]"
-            << " [-o output.ll] <input.c>\n";
+  std::cerr
+      << "Usage:\n"
+      << "  " << argv0 << " [options] <input>\n"
+      << "\n"
+      << "General:\n"
+      << "  -h, --help                 Show this help message\n"
+      << "  --version                  Print version information\n"
+      << "  -o <path>                  Write output to file\n"
+      << "  --target <triple>          Override target triple\n"
+      << "\n"
+      << "Frontend inspection (mutually exclusive):\n"
+      << "  --pp-only                  Run preprocessor only\n"
+      << "  --lex-only                 Run lexer only\n"
+      << "  --parse-only               Parse only; print AST summary and dump\n"
+      << "  --dump-canonical           Print semantic canonical-type information\n"
+      << "  --dump-hir                 Print full HIR plus compile-time stats\n"
+      << "  --dump-hir-summary         Print compact HIR summary\n"
+      << "\n"
+      << "Parser debug:\n"
+      << "  --parser-debug             Enable general parser debug output\n"
+      << "  --parser-debug-tentative   Include tentative parse commit/rollback events\n"
+      << "  --parser-debug-injected    Include injected-token parse events\n"
+      << "\n"
+      << "Code generation:\n"
+      << "  --codegen llvm|asm|compare Select codegen backend path\n"
+      << "\n"
+      << "Preprocessor configuration:\n"
+      << "  -D macro[=val]             Define macro\n"
+      << "  -U macro                   Undefine macro\n"
+      << "  -I <dir>                   Add include path\n"
+      << "  -iquote <dir>              Add quote include path\n"
+      << "  -isystem <dir>             Add system include path\n"
+      << "  -idirafter <dir>           Add after-include path\n"
+      << "\n"
+      << "Optimization / relocation:\n"
+      << "  -O0|-O1|-O2|-O3|-Os        Set optimization level\n"
+      << "  -fPIC|-fpic                Enable PIC generation\n"
+      << "  -fPIE|-fpie                Enable PIE generation\n"
+      << "\n"
+      << "Examples:\n"
+      << "  " << argv0 << " --parse-only test.cpp\n"
+      << "  " << argv0 << " --parser-debug --parse-only test.cpp\n"
+      << "  " << argv0 << " --parser-debug --parser-debug-tentative --parse-only test.cpp\n"
+      << "  " << argv0 << " --dump-hir test.cpp\n"
+      << "\n"
+      << "Notes:\n"
+      << "  Only one frontend inspection mode may be selected at a time.\n";
 }
 
 void print_pp_diags(const std::vector<c4c::PreprocessorDiagnostic>& diags,
@@ -462,6 +503,10 @@ int main(int argc, char **argv) {
       print_usage(argv[0]);
       return 1;
     }
+    if (args.size() == 1 && (args[0] == "--help" || args[0] == "-h")) {
+      print_usage(argv[0]);
+      return 0;
+    }
     if (args.size() == 1 && args[0] == "--version") {
       std::cout << "tiny-c2ll frontend_cxx next\n";
       return 0;
@@ -474,6 +519,8 @@ int main(int argc, char **argv) {
     bool        dump_hir = false;
     bool        dump_canonical = false;
     bool        parser_debug = false;
+    bool        parser_debug_tentative = false;
+    bool        parser_debug_injected = false;
     std::string input;
     std::string output;
     std::string target_triple = default_host_target_triple();
@@ -507,6 +554,10 @@ int main(int argc, char **argv) {
         dump_canonical = true;
       } else if (arg == "--parser-debug") {
         parser_debug = true;
+      } else if (arg == "--parser-debug-tentative") {
+        parser_debug_tentative = true;
+      } else if (arg == "--parser-debug-injected") {
+        parser_debug_injected = true;
       } else if (arg == "-o") {
         if (i + 1 < args.size()) output = args[++i];
       } else if (arg == "--target" && i + 1 < args.size()) {
@@ -560,8 +611,12 @@ int main(int argc, char **argv) {
                     << " (expected llvm, asm, or compare)\n";
           return 2;
         }
+      } else if (arg == "--help" || arg == "-h") {
+        print_usage(argv[0]);
+        return 0;
       } else if (!arg.empty() && arg[0] == '-') {
-        std::cerr << "unknown option: " << arg << "\n";
+        std::cerr << "unknown option: " << arg << "\n\n";
+        print_usage(argv[0]);
         return 2;
       } else {
         input = arg;
@@ -639,7 +694,15 @@ int main(int argc, char **argv) {
     // Parse phase
     c4c::Arena arena;
     c4c::Parser parser(std::move(tokens), arena, source_profile, input);
-    parser.set_parser_debug(parser_debug);
+    unsigned parser_debug_channels = c4c::Parser::ParseDebugNone;
+    if (parser_debug) parser_debug_channels = c4c::Parser::ParseDebugAll;
+    if (parser_debug_tentative) {
+      parser_debug_channels |= c4c::Parser::ParseDebugTentative;
+    }
+    if (parser_debug_injected) {
+      parser_debug_channels |= c4c::Parser::ParseDebugInjected;
+    }
+    parser.set_parser_debug_channels(parser_debug_channels);
     c4c::Node* prog = parser.parse();
     if (parser.had_error_) {
       return 1;

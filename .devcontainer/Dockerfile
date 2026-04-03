@@ -10,7 +10,7 @@ RUN if [ "${REINSTALL_CMAKE_VERSION_FROM_SOURCE}" != "none" ]; then \
     fi \
     && rm -f /tmp/reinstall-cmake.sh
 
-RUN sudo apt-get update && apt-get install -y flex bison bc libssl-dev
+RUN sudo apt-get update && apt-get install -y flex bison bc libssl-dev python-is-python3
 
 
 # [Optional] Uncomment this section to install additional vcpkg ports.

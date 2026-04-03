@@ -241,6 +241,18 @@ def read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
+def build_prompt(cli: str, prompt_path: Path) -> str:
+    prompt_text = read_text(prompt_path)
+    if cli == "codex" and prompt_path == REPO_ROOT / "AGENTS.md":
+        return (
+            "Follow the repository instructions already auto-loaded from the workspace "
+            "root AGENTS.md. This run was started by scripts/run_agent_common.py in "
+            "scripted agent mode, so operate autonomously and avoid unnecessary "
+            "clarifying questions unless blocked."
+        )
+    return prompt_text
+
+
 def clear_stale_test_logs() -> None:
     for stale_name in ("test_before.log", "test_after.log"):
         stale_path = REPO_ROOT / stale_name
@@ -306,11 +318,16 @@ def main() -> int:
     ensure_log_dir()
 
     mode = prompt_path.stem.lower()
-    prompt = read_text(prompt_path)
+    prompt = build_prompt(cli, prompt_path)
+    inlines_prompt_file = not (cli == "codex" and prompt_path == REPO_ROOT / "AGENTS.md")
 
     print("[harness] Starting agent loop. Stop with Ctrl+C.")
     print(f"[harness] Prompt -> {prompt_path.relative_to(REPO_ROOT)}")
     print(f"[harness] CLI -> {cli}")
+    if inlines_prompt_file:
+        print("[harness] Prompt injection -> inline file contents")
+    else:
+        print("[harness] Prompt injection -> reuse Codex auto-loaded AGENTS.md")
     if args.model:
         print(f"[harness] Model override -> {args.model}")
     print("[harness] Logs -> build/agent_state/agent_logs/")

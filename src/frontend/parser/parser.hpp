@@ -1,11 +1,26 @@
 #pragma once
 
-// Recursive-descent parser for the tiny-c2ll C++ frontend.
+#include <chrono>
+
+// Parser entry/index surface.
 //
-// Entry point: Parser::parse() returns a NK_PROGRAM Node* containing all
-// top-level declarations (functions, global variables, struct/enum defs).
+// Role:
+// - owns the recursive-descent parser state and top-level entry point
+// - declares the cross-translation-unit parser helper families
+// - acts as the navigation index for parser_*.cpp implementation files
 //
-// Design:
+// Implementation map:
+// - parser_core.cpp: token cursor, diagnostics, namespace/visibility plumbing
+// - parser_types_base.cpp: type-specifier parsing and enum parsing
+// - parser_types_declarator.cpp: declarator parsing and qualified type spelling
+// - parser_types_struct.cpp: record/struct parsing and in-record dispatch
+// - parser_types_template.cpp: template argument parsing and template metadata
+// - parser_expressions.cpp: expression parsing
+// - parser_statements.cpp: statement parsing
+// - parser_declarations.cpp: declaration and translation-unit entry points
+// - parser_support.cpp: AST builders and shared parser helpers
+//
+// Design constraints:
 //  - All AST nodes and strings are allocated from the supplied Arena.
 //  - typedef names are tracked in a std::set<std::string> for disambiguation.
 //  - Anonymous struct/union/enum definitions are collected and prepended to
@@ -29,7 +44,7 @@ namespace c4c {
 
 class Parser {
  public:
-  // ── lightweight parser-side model types ──────────────────────────────────
+  // ── parser-side model types ───────────────────────────────────────────────
   // Namespace tree node used by C++ qualified-name lookup and using-directive
   // visibility tracking.
   struct NamespaceContext {
@@ -105,6 +120,7 @@ class Parser {
     bool active = false;
     bool committed = true;
     int token_index = -1;
+    TokenKind token_kind = TokenKind::EndOfFile;
     int line = 1;
     int column = 1;
     std::string function_name;
@@ -121,6 +137,14 @@ class Parser {
     int token_index = -1;
     int line = 1;
     int column = 1;
+  };
+
+  enum ParseDebugChannel : unsigned {
+    ParseDebugNone = 0,
+    ParseDebugGeneral = 1u << 0,
+    ParseDebugTentative = 1u << 1,
+    ParseDebugInjected = 1u << 2,
+    ParseDebugAll = ParseDebugGeneral | ParseDebugTentative | ParseDebugInjected,
   };
 
   struct ParseContextGuard {
@@ -140,6 +164,7 @@ class Parser {
     std::unordered_map<std::string, TypeSpec> typedef_types;
     std::unordered_map<std::string, TypeSpec> var_types;
     std::string last_resolved_typedef;
+    int template_arg_expr_depth = 0;
   };
 
   // RAII guard that saves parser state on construction and restores it on
@@ -147,21 +172,34 @@ class Parser {
   struct TentativeParseGuard {
     Parser& parser;
     ParserSnapshot snapshot;
+    int start_pos = -1;
     bool committed = false;
 
     explicit TentativeParseGuard(Parser& p)
-        : parser(p), snapshot(p.save_state()) {}
-
-    ~TentativeParseGuard() {
-      if (!committed) parser.restore_state(snapshot);
+        : parser(p), snapshot(p.save_state()), start_pos(snapshot.pos) {
+      parser.note_tentative_parse_event("tentative_enter", start_pos, start_pos);
     }
 
-    void commit() { committed = true; }
+    ~TentativeParseGuard() {
+      if (!committed) {
+        parser.note_tentative_parse_event("tentative_rollback", start_pos,
+                                          parser.pos_);
+        parser.restore_state(snapshot);
+      }
+    }
+
+    void commit() {
+      if (committed) return;
+      parser.note_tentative_parse_event("tentative_commit", start_pos,
+                                        parser.pos_);
+      committed = true;
+    }
   };
 
   ParserSnapshot save_state() const;
   void restore_state(const ParserSnapshot& snap);
 
+  // ── public parser entry points ────────────────────────────────────────────
   // All members public (required by project coding constraints).
   explicit Parser(std::vector<Token> tokens, Arena& arena,
                   SourceProfile source_profile = SourceProfile::C,
@@ -266,6 +304,10 @@ class Parser {
   bool parsing_top_level_context_;
   // True while parsing an explicit template specialization (template<>).
   bool parsing_explicit_specialization_ = false;
+  // Nesting depth for expression parses that are constrained by template
+  // argument delimiters, so expression parsing does not consume enclosing
+  // template-close tokens as operators.
+  int template_arg_expr_depth_ = 0;
 
   // ── namespace / using-directive visibility state ─────────────────────────
   // Transitional flattened path kept only as a compatibility bridge.
@@ -284,13 +326,16 @@ class Parser {
   int parse_error_count_ = 0;
   int max_parse_errors_ = 20;
   int max_no_progress_steps_ = 8;
-  bool parser_debug_enabled_ = false;
+  unsigned parser_debug_channels_ = ParseDebugNone;
   int max_parse_debug_events_ = 256;
+  int parse_debug_progress_interval_ms_ = 1000;
   std::vector<ParseContextFrame> parse_context_stack_;
   std::vector<ParseDebugEvent> parse_debug_events_;
   ParseFailure best_parse_failure_;
   int best_parse_stack_token_index_ = -1;
   std::vector<std::string> best_parse_stack_trace_;
+  std::chrono::steady_clock::time_point parse_debug_started_at_{};
+  std::chrono::steady_clock::time_point parse_debug_last_progress_at_{};
 
   // ── pragma state ─────────────────────────────────────────────────────────
   // #pragma pack state: current packing alignment (0 = default/no packing).
@@ -307,11 +352,19 @@ class Parser {
 
   // ── parser diagnostics / debug tracing ───────────────────────────────────
   void set_parser_debug(bool enabled);
+  void set_parser_debug_channels(unsigned channels);
   bool parser_debug_enabled() const;
+  bool parse_debug_event_visible(const char* kind) const;
   void clear_parse_debug_state();
+  void reset_parse_debug_progress();
   void push_parse_context(const char* function_name);
   void pop_parse_context();
   void note_parse_debug_event(const char* kind, const char* detail = nullptr);
+  void note_parse_debug_event_for(const char* kind,
+                                  const char* function_name,
+                                  const char* detail = nullptr);
+  void maybe_emit_parse_debug_progress();
+  void note_tentative_parse_event(const char* kind, int start_pos, int end_pos);
   void note_parse_failure(const char* expected,
                           const char* detail = nullptr,
                           bool committed = true);
@@ -320,6 +373,8 @@ class Parser {
   std::vector<std::string> best_debug_summary_stack() const;
   std::string format_best_parse_failure() const;
   void dump_parse_debug_trace() const;
+  std::string format_tentative_parse_detail(int start_pos, int end_pos) const;
+  std::string format_parse_failure_token_window(const ParseFailure& failure) const;
 
   // ── token cursor / shared token utilities ────────────────────────────────
   const Token& cur() const;              // current token
@@ -327,7 +382,7 @@ class Parser {
   const Token& consume();                // consume and return current token
   bool at_end() const;
   bool check(TokenKind k) const;         // is current token kind k?
-  bool check2(TokenKind k) const;        // is next token kind k?
+  bool peek_next_is(TokenKind k) const;  // is next token kind k?
   bool match(TokenKind k);               // consume if check(k)
   void expect(TokenKind k);              // consume or throw
   const char* diag_file_at(int token_index) const;
@@ -372,7 +427,7 @@ class Parser {
   std::string resolve_visible_concept_name(const std::string& name) const;
   bool is_concept_name(const std::string& name) const;
   bool peek_qualified_name(QualifiedNameRef* out, bool allow_global = true) const;
-  bool consume_template_parameter_type_head(bool allow_typename_keyword = true);
+  bool consume_template_parameter_type_start(bool allow_typename_keyword = true);
   QualifiedNameRef parse_qualified_name(bool allow_global = true);
   void apply_qualified_name(Node* node, const QualifiedNameRef& qn,
                             const char* resolved_name = nullptr);
@@ -407,15 +462,18 @@ class Parser {
   void register_template_struct_specialization(const char* primary_name, Node* node);
   bool parse_next_template_argument(std::vector<TemplateArgParseResult>* out_args,
                                     const Node* primary_tpl, int arg_idx,
-                                    bool* out_has_more);
+                                    bool* out_has_more,
+                                    const std::vector<bool>* explicit_param_is_nttp = nullptr);
   bool try_parse_template_type_arg(TemplateArgParseResult* out_arg);
   bool try_parse_template_non_type_expr(int expr_start,
                                         TemplateArgParseResult* out_arg);
   bool try_parse_template_non_type_arg(TemplateArgParseResult* out_arg);
   bool capture_template_arg_expr(int expr_start, TemplateArgParseResult* out_arg);
-  bool is_clearly_value_template_arg(const Node* primary_tpl, int arg_idx) const;
+  bool is_clearly_value_template_arg(const Node* primary_tpl, int arg_idx,
+                                     const std::vector<bool>* explicit_param_is_nttp = nullptr) const;
   bool parse_template_argument_list(std::vector<TemplateArgParseResult>* out_args,
-                                    const Node* primary_tpl = nullptr);
+                                    const Node* primary_tpl = nullptr,
+                                    const std::vector<bool>* explicit_param_is_nttp = nullptr);
   TypenameTemplateParamKind classify_typename_template_parameter() const;
   void push_template_scope(TemplateScopeKind kind,
                            const std::vector<TemplateScopeParam>& params);
@@ -434,7 +492,7 @@ class Parser {
                                        bool consume_final_template_args,
                                        std::string* out_name = nullptr,
                                        QualifiedNameRef* out_qn = nullptr);
-  bool consume_template_args_followed_by_scope();
+  bool consume_template_args_before_scope();
   bool consume_member_pointer_owner_prefix();
   bool try_parse_declarator_member_pointer_prefix(TypeSpec& ts);
   void apply_declarator_pointer_token(TypeSpec& ts, TokenKind pointer_tok,
@@ -574,7 +632,7 @@ class Parser {
       std::vector<const char*>* member_typedef_names,
       std::vector<TypeSpec>* member_typedef_types,
       const std::function<void(const char*)>& check_dup_field);
-  bool prepare_record_member_entry();
+  bool begin_record_member_parse();
   bool try_parse_record_member_prelude(std::vector<Node*>* methods);
   bool try_parse_record_member(
       const std::string& struct_source_name,
@@ -598,7 +656,7 @@ class Parser {
   void skip_record_base_specifier_tail();
   bool try_parse_record_base_specifier(TypeSpec* base_ts);
   void parse_record_base_clause(std::vector<TypeSpec>* base_types);
-  void parse_record_prebody_setup(
+  void parse_record_definition_prelude(
       int line,
       TypeSpec* attr_ts,
       const char** tag,
@@ -611,7 +669,7 @@ class Parser {
                                const char* template_origin_name,
                                const TypeSpec& attr_ts,
                                const std::vector<TemplateArgParseResult>& specialization_args);
-  Node* initialize_record_definition(
+  Node* build_record_definition_node(
       int line,
       bool is_union,
       const char* tag,
@@ -643,10 +701,10 @@ class Parser {
   void store_record_body_members(
       Node* sd,
       const RecordBodyState& body_state);
-  void finalize_record_definition(Node* sd,
+  void register_record_definition(Node* sd,
                                   bool is_union,
                                   const char* source_tag);
-  void complete_record_definition(
+  void finalize_record_definition(
       Node* sd,
       bool is_union,
       const char* source_tag,
@@ -706,5 +764,28 @@ class Parser {
   Node* make_assign(const char* op, Node* lhs, Node* rhs, int line);
   Node* make_block(Node** stmts, int n, int line);
 };
+
+bool eval_enum_expr(Node* n, const std::unordered_map<std::string, long long>& consts,
+                    long long* out);
+bool is_dependent_enum_expr(Node* n,
+                            const std::unordered_map<std::string, long long>& consts);
+long long sizeof_base(TypeBase b);
+long long align_base(TypeBase b, int ptr_level);
+bool eval_const_int(Node* n, long long* out,
+                    const std::unordered_map<std::string, Node*>* struct_map = nullptr,
+                    const std::unordered_map<std::string, long long>* named_consts = nullptr);
+
+bool is_qualifier(TokenKind k);
+bool is_storage_class(TokenKind k);
+bool is_type_kw(TokenKind k);
+
+bool lexeme_is_imaginary(const char* s);
+long long parse_int_lexeme(const char* s);
+double parse_float_lexeme(const char* s);
+
+TypeSpec resolve_typedef_chain(TypeSpec ts,
+                               const std::unordered_map<std::string, TypeSpec>& tmap);
+bool types_compatible_p(TypeSpec a, TypeSpec b,
+                        const std::unordered_map<std::string, TypeSpec>& tmap);
 
 }  // namespace c4c

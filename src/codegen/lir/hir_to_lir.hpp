@@ -6,7 +6,7 @@
 // Module-level orchestration (dedup, type decls, target setup) lives here.
 // Per-statement lowering is still delegated to HirEmitter.
 
-#include "ir.hpp"
+#include "hir_ir.hpp"
 #include "../shared/fn_lowering_ctx.hpp"
 
 #include <cstddef>

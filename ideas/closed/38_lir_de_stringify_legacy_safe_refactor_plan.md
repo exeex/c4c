@@ -158,7 +158,7 @@ Use local files as migration references for the legacy path:
 - typed LIR verification catches malformed operand/type combinations early
 - backend and analysis code touched by the refactor compiles against typed LIR
   accessors instead of raw string protocols
-- any temporary compatibility fields are tracked explicitly in `plan_todo.md`
+- any temporary compatibility fields are tracked explicitly in `todo.md`
 
 ## Success Condition
 

@@ -1,6 +1,6 @@
-// Unintegrated draft extracted from ast_to_hir.cpp.
+// Unintegrated draft extracted from hir_lowering_core.cpp.
 // This file is not yet wired into the build; it stages callable/program-level
-// lowering helpers so they can be split further before ast_to_hir.cpp is cleaned up.
+// lowering helpers so they can be split further before hir_lowering_core.cpp is cleaned up.
 //
 // Intentionally omitted for now because they are tightly coupled to other
 // clusters that will likely move separately:
@@ -9,11 +9,11 @@
 // - initializer normalization helpers
 // - template collection / template-struct realization helpers
 
-#include "ast_to_hir.hpp"
+#include "hir_lowering.hpp"
 #include "hir_lowerer_internal.hpp"
 #include "consteval.hpp"
 #include "type_utils.hpp"
-#include "../parser/parser_internal.hpp"
+#include "../parser/parser.hpp"
 
 #include <algorithm>
 #include <stdexcept>

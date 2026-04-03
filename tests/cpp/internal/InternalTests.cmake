@@ -25,7 +25,10 @@ set(CPP_POSITIVE_PARSE_STEMS
     operator_decl_subscript_attr_parse
     operator_decl_bitwise_assign_parse
     noexcept_bool_qualified_template_call_parse
+    qualified_template_call_expr_parse
     functional_cast_shift_expr_parse
+    typedef_owned_functional_cast_parse
+    qualified_known_type_arg_fast_path_parse
     operator_decl_deref_parse
     operator_decl_arrow_parse
     operator_arrow_explicit_member_call_parse
@@ -39,6 +42,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     placement_new_expr_parse
     class_specific_new_delete_parse
     operator_conversion_out_of_class_parse
+    operator_conversion_template_id_refqual_parse
     operator_shift_static_member_call_parse
     template_anon_param_extern_cxx_parse
     template_bool_specialization_parse
@@ -52,6 +56,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     template_variadic_nested_parse
     template_variadic_qualified_parse
     template_template_param_parse
+    template_template_scope_member_parse
     template_unresolved_param_type_parse
     qualified_template_unresolved_param_type_parse
     unresolved_by_value_param_type_parse
@@ -62,6 +67,8 @@ set(CPP_POSITIVE_PARSE_STEMS
     record_base_template_member_alias_parse
     template_alias_nttp_expr_parse
     template_alias_nttp_expr_inherited_parse
+    inherited_type_alias_base_member_lookup_parse
+    namespaced_inherited_type_alias_base_member_lookup_parse
     template_argument_loop_staging_parse
     template_argument_expr_close_staging_parse
     member_template_decltype_default_parse
@@ -119,6 +126,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     cpp20_requires_expression_if_constexpr_parse
     cpp20_if_likely_stmt_attr_parse
     eastl_slice7d_qualified_declarator_parse
+    eastl_function_detail_allocator_member_call_parse
     out_of_class_member_owner_scope_parse
     eastl_probe_pack_expansion_template_arg_parse
     eastl_probe_qualified_template_scope_parse
@@ -151,6 +159,15 @@ set(CPP_POSITIVE_PARSE_STEMS
     qualified_member_function_pointer_template_owner_parse
     qualified_type_start_probe_parse
     qualified_operator_template_owner_parse
+    qualified_variable_template_compare_parse
+    qualified_trait_value_template_arg_parse
+    qualified_template_call_template_arg_parse
+    template_deduction_guide_rvalue_ref_parse
+    template_known_type_arg_fast_path_parse
+    step3_timeout_probe_baseline_parse
+    tuple_element_alias_mix_parse
+    qualified_template_operator_assign_expr_parse
+    qualified_typedef_operator_assign_expr_parse
     global_qualified_member_pointer_template_owner_parse
     declarator_array_suffix_staging_parse
     declarator_grouped_suffix_staging_parse
@@ -184,6 +201,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     record_base_clause_setup_parse
     record_tag_setup_parse
     record_definition_setup_parse
+    record_forward_specialization_decl_parse
     record_definition_dispatch_parse
     record_body_loop_parse
     record_body_member_attempt_parse
@@ -310,6 +328,15 @@ set_tests_properties(cpp_parse_unresolved_by_value_param_type_dump PROPERTIES
 )
 
 add_test(
+  NAME cpp_parse_template_template_scope_member_dump
+  COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/postive_case/template_template_scope_member_parse.cpp"
+)
+set_tests_properties(cpp_parse_template_template_scope_member_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;parse"
+  PASS_REGULAR_EXPRESSION "Decl\\(value\\)"
+)
+
+add_test(
   NAME cpp_parse_template_friend_record_member_dump
   COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/postive_case/template_friend_record_member_parse.cpp"
 )
@@ -370,6 +397,33 @@ add_test(
 set_tests_properties(cpp_parse_gcc_type_trait_type_arg_dump PROPERTIES
   LABELS "internal;positive_case;cpp;parse"
   PASS_REGULAR_EXPRESSION "Decl\\(can_fill\\)"
+)
+
+add_test(
+  NAME cpp_parse_qualified_template_operator_assign_expr_dump
+  COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/postive_case/qualified_template_operator_assign_expr_parse.cpp"
+)
+set_tests_properties(cpp_parse_qualified_template_operator_assign_expr_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;parse"
+  PASS_REGULAR_EXPRESSION "Function\\(operator_assign\\)"
+)
+
+add_test(
+  NAME cpp_parse_record_member_underlying_type_dump
+  COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/parse_only_case/record_member_underlying_type_parse.cpp"
+)
+set_tests_properties(cpp_parse_record_member_underlying_type_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;parse"
+  PASS_REGULAR_EXPRESSION "Decl\\(value\\)"
+)
+
+add_test(
+  NAME cpp_parse_record_base_variable_template_value_arg_dump
+  COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/parse_only_case/record_base_variable_template_value_arg_parse.cpp"
+)
+set_tests_properties(cpp_parse_record_base_variable_template_value_arg_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;parse"
+  PASS_REGULAR_EXPRESSION "StructDef\\(struct eastl::has_unique_object_representations_T_int\\)"
 )
 
 add_test(
@@ -742,6 +796,7 @@ add_test(
           -DCOMPILER=$<TARGET_FILE:c4cll>
           -DSRC=${INTERNAL_CPP_TEST_ROOT}/negative_case/parser_debug_expr_stmt_stack.cpp
           -DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=parse_primary
+          "-DEXPECT_CONTEXT_SUBSTRING:STRING=token_index=7 token_kind=SEMI token_window=\"[5] KW_return 'return' | [6] PLUS '+' | >>[7] SEMI ';' | [8] RBRACE '}' | [9] EOF ''\""
           -DEXPECT_STACK_SUBSTRING:STRING=[pdebug] stack: -> parse_top_level -> parse_block -> parse_stmt -> parse_expr -> parse_assign_expr -> parse_ternary -> parse_unary -> parse_primary
           -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
 )
@@ -877,6 +932,66 @@ add_test(
           -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
 )
 set_tests_properties(cpp_parser_debug_qualified_type_spelling_stack PROPERTIES
+  LABELS "internal;negative_case;cpp;diagnostic_format"
+)
+
+add_test(
+  NAME cpp_parser_debug_tentative_template_arg_lifecycle
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DSRC=${INTERNAL_CPP_TEST_ROOT}/negative_case/parser_debug_qualified_type_spelling_stack.cpp
+          "-DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=parse_top_level_parameter_list"
+          "-DEXPECT_STACK_SUBSTRING:STRING=[pdebug] kind=tentative_rollback fn=try_parse_template_type_arg"
+          "-DEXPECT_CONTEXT_SUBSTRING:STRING=[pdebug] kind=tentative_commit fn=try_parse_template_type_arg line=15 col=23 detail=\"start="
+          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
+)
+set_tests_properties(cpp_parser_debug_tentative_template_arg_lifecycle PROPERTIES
+  LABELS "internal;negative_case;cpp;diagnostic_format"
+)
+
+add_test(
+  NAME cpp_parser_debug_tentative_cli_only
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DSRC=${INTERNAL_CPP_TEST_ROOT}/negative_case/parser_debug_qualified_type_spelling_stack.cpp
+          "-DPARSER_DEBUG_ARGS:STRING=--parser-debug-tentative"
+          "-DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=parse_top_level_parameter_list"
+          "-DEXPECT_STACK_SUBSTRING:STRING=[pdebug] kind=tentative_rollback fn=try_parse_template_type_arg"
+          "-DEXPECT_CONTEXT_SUBSTRING:STRING=[pdebug] kind=tentative_commit fn=try_parse_template_type_arg line=15 col=23 detail=\"start="
+          "-DEXPECT_ABSENT_SUBSTRING:STRING=[pdebug] kind=enter fn=parse_top_level"
+          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
+)
+set_tests_properties(cpp_parser_debug_tentative_cli_only PROPERTIES
+  LABELS "internal;negative_case;cpp;diagnostic_format"
+)
+
+add_test(
+  NAME cpp_parser_debug_injected_template_base_instantiation
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DSRC=${INTERNAL_CPP_TEST_ROOT}/negative_case/parser_debug_injected_template_base_instantiation.cpp
+          "-DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=parse_top_level_parameter_list"
+          "-DEXPECT_STACK_SUBSTRING:STRING=[pdebug] kind=injected_parse_begin fn=parse_base_type"
+          "-DEXPECT_CONTEXT_SUBSTRING:STRING=[pdebug] kind=injected_parse_end fn=parse_base_type"
+          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
+)
+set_tests_properties(cpp_parser_debug_injected_template_base_instantiation PROPERTIES
+  LABELS "internal;negative_case;cpp;diagnostic_format"
+)
+
+add_test(
+  NAME cpp_parser_debug_injected_cli_only
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DSRC=${INTERNAL_CPP_TEST_ROOT}/negative_case/parser_debug_injected_template_base_instantiation.cpp
+          "-DPARSER_DEBUG_ARGS:STRING=--parser-debug-injected"
+          "-DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=parse_top_level_parameter_list"
+          "-DEXPECT_STACK_SUBSTRING:STRING=[pdebug] kind=injected_parse_begin fn=parse_base_type"
+          "-DEXPECT_CONTEXT_SUBSTRING:STRING=[pdebug] kind=injected_parse_end fn=parse_base_type"
+          "-DEXPECT_ABSENT_SUBSTRING:STRING=[pdebug] kind=enter fn=parse_top_level"
+          -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
+)
+set_tests_properties(cpp_parser_debug_injected_cli_only PROPERTIES
   LABELS "internal;negative_case;cpp;diagnostic_format"
 )
 
@@ -1085,6 +1200,15 @@ add_test(
 set_tests_properties(cpp_hir_template_member_owner_decl_and_cast PROPERTIES
   LABELS "internal;positive_case;cpp;hir"
   PASS_REGULAR_EXPRESSION "decl local: int = input#P0.*return \\(\\(int\\)local#L0\\)"
+)
+
+add_test(
+  NAME cpp_hir_template_member_owner_field_and_local
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_member_owner_field_and_local_hir.cpp"
+)
+set_tests_properties(cpp_hir_template_member_owner_field_and_local PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "field value: int llvm_idx=0 offset=0 size=4 align=4.*decl local: int = input#P0"
 )
 
 add_test(
@@ -1319,4 +1443,163 @@ add_test(
 set_tests_properties(cpp_llvm_initializer_list_runtime_materialization PROPERTIES
   LABELS "internal;positive_case;cpp;llvm"
   PASS_REGULAR_EXPRESSION "alloca \\[3 x i32\\]"
+)
+
+add_test(
+  NAME cpp_eastl_piecewise_construct_parse_recipe
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DROOT=${PROJECT_SOURCE_DIR}
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/eastl/eastl_piecewise_construct_simple.cpp
+          -DEXPECT_SUCCESS=ON
+          -P "${PROJECT_SOURCE_DIR}/tests/cpp/eastl/run_eastl_parse_recipe.cmake"
+)
+set_tests_properties(cpp_eastl_piecewise_construct_parse_recipe PROPERTIES
+  LABELS "internal;positive_case;cpp;workflow"
+  TIMEOUT 30
+)
+
+add_test(
+  NAME cpp_eastl_tuple_fwd_decls_parse_recipe
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DROOT=${PROJECT_SOURCE_DIR}
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/eastl/eastl_tuple_fwd_decls_simple.cpp
+          -DEXPECT_SUCCESS=ON
+          -P "${PROJECT_SOURCE_DIR}/tests/cpp/eastl/run_eastl_parse_recipe.cmake"
+)
+set_tests_properties(cpp_eastl_tuple_fwd_decls_parse_recipe PROPERTIES
+  LABELS "internal;positive_case;cpp;workflow"
+  TIMEOUT 30
+)
+
+add_test(
+  NAME cpp_eastl_integer_sequence_parse_recipe
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DROOT=${PROJECT_SOURCE_DIR}
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/eastl/eastl_integer_sequence_simple.cpp
+          -DEXPECT_SUCCESS=ON
+          -P "${PROJECT_SOURCE_DIR}/tests/cpp/eastl/run_eastl_parse_recipe.cmake"
+)
+set_tests_properties(cpp_eastl_integer_sequence_parse_recipe PROPERTIES
+  LABELS "internal;positive_case;cpp;workflow"
+  TIMEOUT 30
+)
+
+add_test(
+  NAME cpp_eastl_type_traits_parse_recipe
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DROOT=${PROJECT_SOURCE_DIR}
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/eastl/eastl_type_traits_simple.cpp
+          -DEXPECT_SUCCESS=ON
+          -P "${PROJECT_SOURCE_DIR}/tests/cpp/eastl/run_eastl_parse_recipe.cmake"
+)
+set_tests_properties(cpp_eastl_type_traits_parse_recipe PROPERTIES
+  LABELS "internal;positive_case;cpp;workflow"
+  TIMEOUT 30
+)
+
+add_test(
+  NAME cpp_eastl_utility_parse_recipe
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DROOT=${PROJECT_SOURCE_DIR}
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/eastl/eastl_utility_simple.cpp
+          -DEXPECT_SUCCESS=ON
+          -P "${PROJECT_SOURCE_DIR}/tests/cpp/eastl/run_eastl_parse_recipe.cmake"
+)
+set_tests_properties(cpp_eastl_utility_parse_recipe PROPERTIES
+  LABELS "internal;positive_case;cpp;workflow"
+  TIMEOUT 30
+  RUN_SERIAL TRUE
+)
+
+add_test(
+  NAME cpp_eastl_vector_parse_recipe
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DROOT=${PROJECT_SOURCE_DIR}
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/eastl/eastl_vector_simple.cpp
+          -DCASE_TIMEOUT_SEC=25
+          "-DEXPECT_FAIL_LOC:STRING=ref/EASTL/include/EASTL/internal/function.h:66:26"
+          "-DEXPECT_ERROR_SUBSTRING:STRING=object has incomplete type: eastl::internal::function_detail"
+          -P "${PROJECT_SOURCE_DIR}/tests/cpp/eastl/run_eastl_vector_parse_recipe.cmake"
+)
+set_tests_properties(cpp_eastl_vector_parse_recipe PROPERTIES
+  LABELS "internal;negative_case;cpp;workflow"
+  TIMEOUT 45
+)
+
+add_test(
+  NAME cpp_std_vector_parse_debug_progress
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/std/std_vector_simple.cpp
+          -DEXPECT_TIMEOUT_SEC=5
+          "-DPARSER_DEBUG_ARGS:STRING=--parser-debug"
+          "-DEXPECT_STDERR_SUBSTRING:STRING=[pdebug] progress"
+          -P "${PROJECT_SOURCE_DIR}/tests/cpp/std/run_std_vector_parse_baseline.cmake"
+)
+set_tests_properties(cpp_std_vector_parse_debug_progress PROPERTIES
+  LABELS "internal;positive_case;cpp;workflow;diagnostic_format"
+  TIMEOUT 15
+)
+
+add_test(
+  NAME cpp_std_vector_parse_debug_progress_file
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/std/std_vector_simple.cpp
+          -DEXPECT_TIMEOUT_SEC=5
+          "-DPARSER_DEBUG_ARGS:STRING=--parser-debug"
+          "-DEXPECT_STDERR_SUBSTRING:STRING=file="
+          -P "${PROJECT_SOURCE_DIR}/tests/cpp/std/run_std_vector_parse_baseline.cmake"
+)
+set_tests_properties(cpp_std_vector_parse_debug_progress_file PROPERTIES
+  LABELS "internal;positive_case;cpp;workflow;diagnostic_format"
+  TIMEOUT 15
+)
+
+add_test(
+  NAME cpp_typedef_owned_functional_cast_perf
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DBINARY_DIR=${PROJECT_BINARY_DIR}
+          -DREPEAT_COUNT=5000
+          -DEXPECT_TIMEOUT_SEC=5
+          -P "${PROJECT_SOURCE_DIR}/tests/cpp/internal/run_typedef_owned_functional_cast_perf.cmake"
+)
+set_tests_properties(cpp_typedef_owned_functional_cast_perf PROPERTIES
+  LABELS "internal;positive_case;cpp;workflow;parser_perf"
+  TIMEOUT 15
+)
+
+add_test(
+  NAME cpp_qualified_known_type_arg_perf
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DBINARY_DIR=${PROJECT_BINARY_DIR}
+          -DREPEAT_COUNT=5000
+          -DEXPECT_TIMEOUT_SEC=5
+          -P "${PROJECT_SOURCE_DIR}/tests/cpp/internal/run_qualified_known_type_arg_perf.cmake"
+)
+set_tests_properties(cpp_qualified_known_type_arg_perf PROPERTIES
+  LABELS "internal;positive_case;cpp;workflow;parser_perf"
+  TIMEOUT 15
+)
+
+add_test(
+  NAME cpp_qualified_template_call_template_arg_perf
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DBINARY_DIR=${PROJECT_BINARY_DIR}
+          -DREPEAT_COUNT=5000
+          -DEXPECT_TIMEOUT_SEC=5
+          -P "${PROJECT_SOURCE_DIR}/tests/cpp/internal/run_qualified_template_call_template_arg_perf.cmake"
+)
+set_tests_properties(cpp_qualified_template_call_template_arg_perf PROPERTIES
+  LABELS "internal;positive_case;cpp;workflow;parser_perf"
+  TIMEOUT 15
 )
