@@ -163,6 +163,12 @@ struct MatchedMinimalLirTwoArgDirectCallCall {
   std::pair<std::string_view, std::string_view> operands;
 };
 
+struct MatchedMinimalLirSingleArgDirectCallCall {
+  const c4c::codegen::lir::LirCallOp* call = nullptr;
+  std::string_view operand;
+  std::string_view callee_name;
+};
+
 struct MinimalGlobalCharPointerDiffSlice {
   std::string global_name;
   std::int64_t global_size = 0;
@@ -926,6 +932,35 @@ match_minimal_lir_two_arg_direct_call_call(
   }
 
   return MatchedMinimalLirTwoArgDirectCallCall{call, *call_operands};
+}
+
+std::optional<MatchedMinimalLirSingleArgDirectCallCall>
+match_minimal_lir_single_arg_direct_call_call(
+    const c4c::codegen::lir::LirInst& inst,
+    std::optional<std::string_view> expected_callee,
+    std::string_view expected_result) {
+  using namespace c4c::codegen::lir;
+
+  const auto* call = std::get_if<LirCallOp>(&inst);
+  const auto parsed_call =
+      call == nullptr ? std::nullopt : c4c::backend::parse_backend_direct_global_typed_call(*call);
+  if (call == nullptr || call->result.empty() || !parsed_call.has_value() ||
+      call->result != expected_result ||
+      parsed_call->typed_call.param_types.size() != 1 || parsed_call->typed_call.args.size() != 1 ||
+      c4c::codegen::lir::trim_lir_arg_text(parsed_call->typed_call.param_types.front()) != "i32" ||
+      c4c::codegen::lir::trim_lir_arg_text(parsed_call->typed_call.args.front().type) != "i32") {
+    return std::nullopt;
+  }
+
+  if (expected_callee.has_value() && parsed_call->symbol_name != *expected_callee) {
+    return std::nullopt;
+  }
+
+  return MatchedMinimalLirSingleArgDirectCallCall{
+      call,
+      parsed_call->typed_call.args.front().operand,
+      parsed_call->symbol_name,
+  };
 }
 
 const char* x86_reg64_name(c4c::backend::PhysReg reg) {
@@ -2921,20 +2956,20 @@ std::optional<std::string> parse_minimal_call_crossing_regalloc_source_value(
   }
 
   const auto* source_add = std::get_if<LirBinOp>(&main_block.insts[0]);
-  const auto* call = std::get_if<LirCallOp>(&main_block.insts[1]);
   const auto* final_add = std::get_if<LirBinOp>(&main_block.insts[2]);
   const auto source_add_opcode = source_add == nullptr ? std::nullopt : source_add->opcode.typed();
   const auto final_add_opcode = final_add == nullptr ? std::nullopt : final_add->opcode.typed();
-  const auto parsed_call =
-      call == nullptr ? std::nullopt : c4c::backend::parse_backend_direct_global_typed_call(*call);
-  if (source_add == nullptr || call == nullptr || final_add == nullptr ||
+  const auto matched_call =
+      final_add == nullptr
+          ? std::nullopt
+          : match_minimal_lir_single_arg_direct_call_call(main_block.insts[1],
+                                                          std::nullopt,
+                                                          final_add->rhs);
+  if (source_add == nullptr || final_add == nullptr || !matched_call.has_value() ||
       source_add_opcode != LirBinaryOpcode::Add || source_add->type_str != "i32" ||
-      call->result.empty() || !parsed_call.has_value() ||
-      parsed_call->typed_call.param_types.size() != 1 || parsed_call->typed_call.args.size() != 1 ||
-      c4c::codegen::lir::trim_lir_arg_text(parsed_call->typed_call.param_types.front()) != "i32" ||
-      parsed_call->typed_call.args.front().operand != source_add->result ||
+      matched_call->operand != source_add->result ||
       final_add_opcode != LirBinaryOpcode::Add || final_add->type_str != "i32" ||
-      final_add->lhs != source_add->result || final_add->rhs != call->result ||
+      final_add->lhs != source_add->result ||
       *main_ret->value_str != final_add->result) {
     return std::nullopt;
   }
@@ -3106,17 +3141,13 @@ std::optional<MinimalParamSlotSlice> parse_minimal_param_slot_slice(
     return std::nullopt;
   }
 
-  const auto* call = std::get_if<LirCallOp>(&main_block.insts.front());
-  const auto call_operand =
-      call == nullptr ? std::nullopt
-                      : c4c::backend::parse_backend_direct_global_single_typed_call_operand(
-                            *call, helper->name, "i32");
-  if (call == nullptr || call->result.empty() || !call_operand.has_value() ||
-      *main_ret->value_str != call->result) {
+  const auto matched_call = match_minimal_lir_single_arg_direct_call_call(
+      main_block.insts.front(), helper->name, *main_ret->value_str);
+  if (!matched_call.has_value()) {
     return std::nullopt;
   }
 
-  const auto call_arg_imm = parse_i64(*call_operand);
+  const auto call_arg_imm = parse_i64(matched_call->operand);
   if (!call_arg_imm.has_value()) {
     return std::nullopt;
   }

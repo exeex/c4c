@@ -2307,6 +2307,45 @@ void test_x86_backend_keeps_renamed_param_slot_slice_on_asm_path() {
                       "x86 backend seam should not fall back when the param-slot slice relies only on structural helper metadata");
 }
 
+void test_x86_backend_keeps_renamed_param_slot_call_result_on_asm_path() {
+  auto module = make_param_slot_runtime_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  c4c::codegen::lir::LirFunction* main_fn = nullptr;
+  for (auto& function : module.functions) {
+    if (function.name == "main") {
+      main_fn = &function;
+      break;
+    }
+  }
+  expect_true(main_fn != nullptr,
+              "x86 param-slot call-result rename regression test needs the main function");
+  if (main_fn == nullptr) {
+    return;
+  }
+
+  auto* call = std::get_if<c4c::codegen::lir::LirCallOp>(&main_fn->blocks.front().insts.front());
+  auto* ret = std::get_if<c4c::codegen::lir::LirRet>(&main_fn->blocks.front().terminator);
+  expect_true(call != nullptr && ret != nullptr && ret->value_str.has_value(),
+              "x86 param-slot call-result rename regression test needs the direct call and return to mutate");
+  if (call == nullptr || ret == nullptr || !ret->value_str.has_value()) {
+    return;
+  }
+
+  call->result = "%t.param_slot.call.renamed";
+  ret->value_str = "%t.param_slot.call.renamed";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, "call add_one",
+                  "x86 backend seam should keep the param-slot helper call on the asm path when the legacy direct-call result SSA name changes");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back when the param-slot slice relies on a renamed single-argument direct-call result");
+}
+
 void test_x86_backend_rejects_param_slot_slice_when_helper_body_contract_disagrees() {
   auto module = make_param_slot_runtime_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -3764,6 +3803,48 @@ void test_x86_backend_keeps_renamed_call_crossing_slice_on_asm_path() {
                       "x86 backend seam should not fall back when the call-crossing slice relies only on structured call and callee metadata");
 }
 
+void test_x86_backend_keeps_renamed_call_crossing_call_result_on_asm_path() {
+  auto module = make_typed_call_crossing_direct_call_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  c4c::codegen::lir::LirFunction* main_fn = nullptr;
+  for (auto& function : module.functions) {
+    if (function.name == "main") {
+      main_fn = &function;
+      break;
+    }
+  }
+  expect_true(main_fn != nullptr,
+              "x86 call-crossing call-result rename regression test needs the main function");
+  if (main_fn == nullptr || main_fn->blocks.empty() || main_fn->blocks.front().insts.size() != 3) {
+    return;
+  }
+
+  auto& entry = main_fn->blocks.front();
+  auto* call = std::get_if<c4c::codegen::lir::LirCallOp>(&entry.insts[1]);
+  auto* final_add = std::get_if<c4c::codegen::lir::LirBinOp>(&entry.insts[2]);
+  expect_true(call != nullptr && final_add != nullptr,
+              "x86 call-crossing call-result rename regression test needs the direct call and final add to mutate");
+  if (call == nullptr || final_add == nullptr) {
+    return;
+  }
+
+  call->result = "%t.call_crossing.call.renamed";
+  final_add->rhs = "%t.call_crossing.call.renamed";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, "mov edi, ebx",
+                  "x86 backend seam should still route the preserved source register through the ABI argument register when the legacy call-crossing result SSA name changes");
+  expect_contains(rendered, "call add_one",
+                  "x86 backend seam should keep the call-crossing helper call on the asm path when the legacy direct-call result SSA name changes");
+  expect_contains(rendered, "add eax, ebx",
+                  "x86 backend seam should still reuse the preserved source register after the renamed call-crossing result");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back when the call-crossing slice relies on a renamed single-argument direct-call result");
+}
+
 void test_x86_backend_scaffold_accepts_renamed_structured_call_crossing_direct_call_ir_without_signature_shims() {
   auto module = make_typed_call_crossing_direct_call_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -5089,6 +5170,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_renders_param_slot_slice);
   RUN_TEST(test_x86_backend_renders_param_slot_slice_with_spaced_helper_signature);
   RUN_TEST(test_x86_backend_keeps_renamed_param_slot_slice_on_asm_path);
+  RUN_TEST(test_x86_backend_keeps_renamed_param_slot_call_result_on_asm_path);
   RUN_TEST(test_x86_backend_rejects_param_slot_slice_when_helper_body_contract_disagrees);
   RUN_TEST(test_x86_backend_renders_typed_direct_call_local_arg_slice);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_direct_call_add_imm_ir_without_signature_shims);
@@ -5137,6 +5219,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_cleans_up_redundant_self_move_on_call_crossing_slice);
   RUN_TEST(test_x86_backend_keeps_spacing_tolerant_call_crossing_slice_on_asm_path);
   RUN_TEST(test_x86_backend_keeps_renamed_call_crossing_slice_on_asm_path);
+  RUN_TEST(test_x86_backend_keeps_renamed_call_crossing_call_result_on_asm_path);
   RUN_TEST(test_x86_backend_scaffold_accepts_renamed_structured_call_crossing_direct_call_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_lowered_call_crossing_source_value_rename_without_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_renamed_lowered_call_crossing_source_value_rename_without_signature_shims);
