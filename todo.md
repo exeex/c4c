@@ -11,7 +11,8 @@ Source Plan: plan.md
 
 Current active item: Step 2, continue shrinking legacy backend-IR ownership now
 that the x86/AArch64 direct-`bir::Module` fallback through
-`bir_to_backend_ir.*` is gone.
+`bir_to_backend_ir.*` is gone by widening BIR's scalar/type surface one
+bounded slice at a time.
 
 Completed this iteration:
 - Audited the current production legacy boundaries in `backend.cpp`,
@@ -63,12 +64,17 @@ Completed this iteration:
   `test_fail_after.log`; the regression guard passed against
   `test_fail_before.log` with `after: 2728 passed, 0 failed` and no newly
   failing tests.
+- Expanded the BIR scaffold with `i8` scalar support in `bir.hpp`,
+  `bir.cpp`, and `lir_to_bir.cpp`, including typed immediates, printer output,
+  validator acceptance, and bounded `i8` add/sub lowering coverage.
+- Added targeted BIR lowering and pipeline regressions proving the widened
+  `i8` slice reaches the RISC-V BIR text surface without re-entering the
+  legacy backend-IR route.
 
 Next intended slice:
-- Audit whether Step 3 can now start by moving more emitter-owned boundaries off
-  `BackendModule(ir.*)` in favor of direct BIR data structures, or whether the
-  next smallest safe slice is removing another legacy route from
-  `src/backend/backend.cpp`.
+- Continue Phase 1/2 parity by widening BIR beyond `i8`/`i32` arithmetic into
+  another emitter-facing type or instruction cluster that does not require
+  removing the broad `c4cll` LLVM rescue path yet.
 
 Resume notes:
 - `backend.cpp` still contains the legacy route (`emit_legacy_module`), but
@@ -77,5 +83,8 @@ Resume notes:
 - `backend.hpp` still exposes both legacy `BackendModule` and BIR-capable input
   seams, but x86/aarch64 direct-BIR entry points now have no fallback back into
   legacy backend IR; only the native affine-return subset is accepted there.
+- `lir_to_bir.cpp` now accepts bounded straight-line `i8` arithmetic slices in
+  addition to the existing `i32` scaffold, but backend asm emitters still only
+  consume the narrower direct-BIR affine subset.
 - `c4cll.cpp` still rescues `--codegen asm` through LLVM IR/asm conversion and
   a second retry via `CodegenPath::Llvm`.

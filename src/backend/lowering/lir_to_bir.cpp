@@ -3,6 +3,7 @@
 
 #include <charconv>
 #include <algorithm>
+#include <limits>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -13,12 +14,31 @@ namespace c4c::backend {
 
 namespace {
 
-bool is_minimal_i32_param_type(const c4c::TypeSpec& type) {
-  return type.base == TB_INT && type.ptr_level == 0 && type.array_rank == 0;
+std::optional<bir::TypeKind> lower_minimal_scalar_type(const c4c::TypeSpec& type) {
+  if (type.ptr_level != 0 || type.array_rank != 0) {
+    return std::nullopt;
+  }
+  if (type.base == TB_CHAR) {
+    return bir::TypeKind::I8;
+  }
+  if (type.base == TB_INT) {
+    return bir::TypeKind::I32;
+  }
+  return std::nullopt;
 }
 
-std::optional<std::int32_t> parse_i32_immediate(std::string_view text) {
-  std::int32_t value = 0;
+std::optional<bir::TypeKind> lower_scalar_type_text(std::string_view text) {
+  if (text == "i8") {
+    return bir::TypeKind::I8;
+  }
+  if (text == "i32") {
+    return bir::TypeKind::I32;
+  }
+  return std::nullopt;
+}
+
+std::optional<std::int64_t> parse_immediate(std::string_view text) {
+  std::int64_t value = 0;
   const char* begin = text.data();
   const char* end = begin + text.size();
   const auto result = std::from_chars(begin, end, value);
@@ -28,18 +48,44 @@ std::optional<std::int32_t> parse_i32_immediate(std::string_view text) {
   return value;
 }
 
-std::optional<bir::Value> lower_immediate_or_name(std::string_view value_text) {
+bool immediate_fits_type(std::int64_t value, bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I8:
+      return value >= -128 && value <= 127;
+    case bir::TypeKind::I32:
+      return value >= std::numeric_limits<std::int32_t>::min() &&
+             value <= std::numeric_limits<std::int32_t>::max();
+    case bir::TypeKind::I64:
+      return true;
+    case bir::TypeKind::Void:
+      return false;
+  }
+  return false;
+}
+
+std::optional<bir::Value> lower_immediate_or_name(std::string_view value_text,
+                                                  bir::TypeKind type) {
   if (value_text.empty()) {
     return std::nullopt;
   }
   if (value_text.front() == '%') {
-    return bir::Value::named(bir::TypeKind::I32, std::string(value_text));
+    return bir::Value::named(type, std::string(value_text));
   }
-  const auto immediate = parse_i32_immediate(value_text);
-  if (!immediate.has_value()) {
+  const auto immediate = parse_immediate(value_text);
+  if (!immediate.has_value() || !immediate_fits_type(*immediate, type)) {
     return std::nullopt;
   }
-  return bir::Value::immediate_i32(*immediate);
+  switch (type) {
+    case bir::TypeKind::I8:
+      return bir::Value::immediate_i8(static_cast<std::int8_t>(*immediate));
+    case bir::TypeKind::I32:
+      return bir::Value::immediate_i32(static_cast<std::int32_t>(*immediate));
+    case bir::TypeKind::I64:
+      return bir::Value::immediate_i64(*immediate);
+    case bir::TypeKind::Void:
+      return std::nullopt;
+  }
+  return std::nullopt;
 }
 
 std::optional<bir::BinaryOpcode> lower_binary_opcode(std::string_view opcode) {
@@ -54,7 +100,11 @@ std::optional<bir::BinaryOpcode> lower_binary_opcode(std::string_view opcode) {
 
 std::optional<bir::BinaryInst> lower_binary(const c4c::codegen::lir::LirInst& inst) {
   const auto* bin = std::get_if<c4c::codegen::lir::LirBinOp>(&inst);
-  if (bin == nullptr || bin->type_str.str() != "i32" || bin->result.str().empty()) {
+  if (bin == nullptr || bin->result.str().empty()) {
+    return std::nullopt;
+  }
+  const auto type = lower_scalar_type_text(bin->type_str.str());
+  if (!type.has_value()) {
     return std::nullopt;
   }
   const auto opcode = lower_binary_opcode(bin->opcode.str());
@@ -62,15 +112,15 @@ std::optional<bir::BinaryInst> lower_binary(const c4c::codegen::lir::LirInst& in
     return std::nullopt;
   }
 
-  const auto lhs = lower_immediate_or_name(bin->lhs.str());
-  const auto rhs = lower_immediate_or_name(bin->rhs.str());
+  const auto lhs = lower_immediate_or_name(bin->lhs.str(), *type);
+  const auto rhs = lower_immediate_or_name(bin->rhs.str(), *type);
   if (!lhs.has_value() || !rhs.has_value()) {
     return std::nullopt;
   }
 
   bir::BinaryInst lowered;
   lowered.opcode = *opcode;
-  lowered.result = bir::Value::named(bir::TypeKind::I32, bin->result.str());
+  lowered.result = bir::Value::named(*type, bin->result.str());
   lowered.lhs = *lhs;
   lowered.rhs = *rhs;
   return lowered;
@@ -122,7 +172,11 @@ std::optional<bir::Module> try_lower_to_bir(const c4c::codegen::lir::LirModule& 
   }
 
   const auto* ret = std::get_if<c4c::codegen::lir::LirRet>(&lir_block.terminator);
-  if (ret == nullptr || ret->type_str != "i32" || !ret->value_str.has_value()) {
+  if (ret == nullptr || !ret->value_str.has_value()) {
+    return std::nullopt;
+  }
+  const auto return_type = lower_scalar_type_text(ret->type_str);
+  if (!return_type.has_value()) {
     return std::nullopt;
   }
 
@@ -132,13 +186,14 @@ std::optional<bir::Module> try_lower_to_bir(const c4c::codegen::lir::LirModule& 
 
   bir::Function function;
   function.name = lir_function.name;
-  function.return_type = bir::TypeKind::I32;
+  function.return_type = *return_type;
   if (!lir_function.params.empty()) {
     for (const auto& [param_name, param_type] : lir_function.params) {
-      if (!is_minimal_i32_param_type(param_type) || param_name.empty()) {
+      const auto lowered_type = lower_minimal_scalar_type(param_type);
+      if (!lowered_type.has_value() || param_name.empty()) {
         return std::nullopt;
       }
-      function.params.push_back(bir::Param{bir::TypeKind::I32, param_name});
+      function.params.push_back(bir::Param{*lowered_type, param_name});
     }
   } else if (const auto parsed_params =
                  parse_backend_function_signature_params(lir_function.signature_text);
@@ -147,10 +202,11 @@ std::optional<bir::Module> try_lower_to_bir(const c4c::codegen::lir::LirModule& 
       return std::nullopt;
     }
     for (const auto& param : *parsed_params) {
-      if (param.is_varargs || param.type != "i32" || param.operand.empty()) {
+      const auto lowered_type = lower_scalar_type_text(param.type);
+      if (param.is_varargs || !lowered_type.has_value() || param.operand.empty()) {
         return std::nullopt;
       }
-      function.params.push_back(bir::Param{bir::TypeKind::I32, param.operand});
+      function.params.push_back(bir::Param{*lowered_type, param.operand});
     }
   }
 
@@ -208,7 +264,7 @@ std::optional<bir::Module> try_lower_to_bir(const c4c::codegen::lir::LirModule& 
     block.insts.push_back(*binary);
   }
 
-  auto return_value = lower_immediate_or_name(*ret->value_str);
+  auto return_value = lower_immediate_or_name(*ret->value_str, function.return_type);
   if (!return_value.has_value()) {
     return std::nullopt;
   }

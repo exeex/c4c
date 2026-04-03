@@ -78,6 +78,19 @@ void test_backend_bir_pipeline_routes_zero_param_staged_constant_chain_through_b
                   "explicit BIR selection should preserve the tail add of the staged constant chain");
 }
 
+void test_backend_bir_pipeline_routes_i8_chain_through_bir_text_surface() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_bir_i8_return_add_sub_chain_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Riscv64));
+
+  expect_contains(rendered, "bir.func @tiny_char(i8 %p.x) -> i8 {",
+                  "explicit BIR selection should preserve widened i8 function signatures on the BIR text path");
+  expect_contains(rendered, "%t0 = bir.add i8 %p.x, 2",
+                  "explicit BIR selection should route i8 arithmetic through the BIR text surface");
+  expect_contains(rendered, "%t1 = bir.sub i8 %t0, 1",
+                  "explicit BIR selection should preserve the trailing i8 adjustment on the BIR text path");
+}
+
 void test_backend_bir_pipeline_routes_single_param_chain_through_bir_text_surface() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_bir_single_param_add_sub_chain_module()},
@@ -411,6 +424,7 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_backend_bir_pipeline_routes_sub_cluster_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_straight_line_chain_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_zero_param_staged_constant_chain_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_routes_i8_chain_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_single_param_chain_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_two_param_add_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_two_param_add_sub_chain_through_bir_text_surface);

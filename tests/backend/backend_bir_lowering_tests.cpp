@@ -51,6 +51,33 @@ void test_bir_printer_renders_minimal_return_immediate_scaffold() {
                   "BIR printer should render the minimal return-immediate block");
 }
 
+void test_bir_printer_renders_i8_scaffold() {
+  using namespace c4c::backend::bir;
+
+  Module module;
+  Function function;
+  function.name = "tiny_char";
+  function.return_type = TypeKind::I8;
+  function.params.push_back(Param{TypeKind::I8, "%p.x"});
+
+  Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(
+      BinaryInst{BinaryOpcode::Add, Value::named(TypeKind::I8, "%t0"),
+                 Value::named(TypeKind::I8, "%p.x"), Value::immediate_i8(2)});
+  entry.terminator.value = Value::named(TypeKind::I8, "%t0");
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  const auto rendered = c4c::backend::bir::print(module);
+  expect_contains(rendered, "bir.func @tiny_char(i8 %p.x) -> i8 {",
+                  "BIR printer should render i8 function signatures once the scaffold grows beyond i32-only slices");
+  expect_contains(rendered, "%t0 = bir.add i8 %p.x, 2",
+                  "BIR printer should preserve i8 arithmetic in BIR text form");
+  expect_contains(rendered, "bir.ret i8 %t0",
+                  "BIR printer should render i8 returns using the widened type surface");
+}
+
 void test_bir_validator_accepts_minimal_return_immediate_scaffold() {
   std::string error;
 
@@ -58,6 +85,16 @@ void test_bir_validator_accepts_minimal_return_immediate_scaffold() {
               "BIR validator should accept the minimal single-block return-immediate scaffold");
   expect_true(error.empty(),
               "BIR validator should not report an error for a valid minimal scaffold");
+}
+
+void test_bir_validator_accepts_minimal_i8_scaffold() {
+  std::string error;
+
+  expect_true(c4c::backend::bir::validate(
+                  c4c::backend::lower_to_bir(make_bir_i8_return_add_sub_chain_module()), &error),
+              "BIR validator should accept the bounded i8 arithmetic scaffold once BIR grows a byte-wide scalar type");
+  expect_true(error.empty(),
+              "BIR validator should keep the widened i8 scaffold on the valid path");
 }
 
 void test_bir_lowering_accepts_tiny_return_add_lir_slice() {
@@ -92,6 +129,20 @@ void test_bir_lowering_accepts_straight_line_add_sub_chain() {
                   "BIR lowering should allow later chain instructions to reference prior BIR values");
   expect_contains(rendered, "bir.ret i32 %t1",
                   "BIR lowering should let the return use the tail of the straight-line arithmetic chain");
+}
+
+void test_bir_lowering_accepts_i8_add_sub_chain() {
+  const auto lowered = c4c::backend::lower_to_bir(make_bir_i8_return_add_sub_chain_module());
+  const auto rendered = c4c::backend::bir::print(lowered);
+
+  expect_contains(rendered, "bir.func @tiny_char(i8 %p.x) -> i8 {",
+                  "BIR lowering should preserve i8 signatures while widening the scaffold beyond i32-only arithmetic");
+  expect_contains(rendered, "%t0 = bir.add i8 %p.x, 2",
+                  "BIR lowering should materialize the i8 add head in BIR terms");
+  expect_contains(rendered, "%t1 = bir.sub i8 %t0, 1",
+                  "BIR lowering should keep trailing i8 arithmetic in the widened BIR scaffold");
+  expect_contains(rendered, "bir.ret i8 %t1",
+                  "BIR lowering should let the widened i8 value flow into the return");
 }
 
 void test_bir_lowering_accepts_single_param_add_sub_chain() {
@@ -178,10 +229,13 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_printer_renders_minimal_add_scaffold);
   RUN_TEST(test_bir_printer_renders_minimal_sub_scaffold);
   RUN_TEST(test_bir_printer_renders_minimal_return_immediate_scaffold);
+  RUN_TEST(test_bir_printer_renders_i8_scaffold);
   RUN_TEST(test_bir_validator_accepts_minimal_return_immediate_scaffold);
+  RUN_TEST(test_bir_validator_accepts_minimal_i8_scaffold);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_add_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_sub_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_straight_line_add_sub_chain);
+  RUN_TEST(test_bir_lowering_accepts_i8_add_sub_chain);
   RUN_TEST(test_bir_lowering_accepts_single_param_add_sub_chain);
   RUN_TEST(test_bir_lowering_accepts_two_param_add);
   RUN_TEST(test_bir_lowering_accepts_two_param_add_sub_chain);

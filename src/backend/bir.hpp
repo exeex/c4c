@@ -11,6 +11,7 @@ struct Module;
 
 enum class TypeKind : unsigned char {
   Void,
+  I8,
   I32,
   I64,
 };
@@ -26,6 +27,7 @@ struct Value {
   std::int64_t immediate = 0;
   std::string name;
 
+  static Value immediate_i8(std::int8_t value);
   static Value immediate_i32(std::int32_t value);
   static Value immediate_i64(std::int64_t value);
   static Value named(TypeKind type, std::string name);

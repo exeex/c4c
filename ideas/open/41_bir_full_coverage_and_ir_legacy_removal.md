@@ -129,6 +129,13 @@ What `ir.*` covers that `bir.*` does not:
 - Keep both headers alive; do not migrate callers yet
 - Add roundtrip tests: for each new BIR instruction kind, verify printer output
 
+Progress on 2026-04-03:
+- added bounded `i8` scalar support to the BIR scaffold (`bir::TypeKind`,
+  typed immediates, printer/validator coverage, and `lir_to_bir` lowering for
+  straight-line `i8` add/sub return slices)
+- this widens the Phase 1 type surface without yet claiming emitter parity;
+  backend asm emission still only accepts the narrower direct-BIR affine subset
+
 ### Phase 2: Expand lir_to_bir.cpp
 
 - Port pattern recognizers from `lir_to_backend_ir.cpp` into `lir_to_bir.cpp`

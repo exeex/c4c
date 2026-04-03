@@ -4,6 +4,14 @@
 
 namespace c4c::backend::bir {
 
+Value Value::immediate_i8(std::int8_t value) {
+  Value result;
+  result.kind = Kind::Immediate;
+  result.type = TypeKind::I8;
+  result.immediate = value;
+  return result;
+}
+
 Value Value::immediate_i32(std::int32_t value) {
   Value result;
   result.kind = Kind::Immediate;
@@ -32,6 +40,8 @@ std::string render_type(TypeKind type) {
   switch (type) {
     case TypeKind::Void:
       return "void";
+    case TypeKind::I8:
+      return "i8";
     case TypeKind::I32:
       return "i32";
     case TypeKind::I64:
