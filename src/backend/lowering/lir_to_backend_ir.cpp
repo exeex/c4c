@@ -292,9 +292,9 @@ std::optional<BackendComparePredicate> adapt_compare_predicate(
   return std::nullopt;
 }
 
-std::optional<bool> evaluate_i32_compare(LirCmpPredicate predicate,
-                                         std::int64_t lhs,
-                                         std::int64_t rhs) {
+std::optional<bool> evaluate_integer_compare(LirCmpPredicate predicate,
+                                             std::int64_t lhs,
+                                             std::int64_t rhs) {
   switch (predicate) {
     case LirCmpPredicate::Slt: return lhs < rhs;
     case LirCmpPredicate::Sle: return lhs <= rhs;
@@ -1805,11 +1805,12 @@ std::optional<BackendFunction> adapt_constant_conditional_goto_return_function(
         const auto predicate = cmp->predicate.typed();
         const auto lhs = resolve_int(cmp->lhs);
         const auto rhs = resolve_int(cmp->rhs);
-        if (cmp->is_float || !predicate.has_value() || cmp->type_str != "i32" ||
+        if (cmp->is_float || !predicate.has_value() ||
+            (cmp->type_str != "i32" && cmp->type_str != "i64") ||
             !lhs.has_value() || !rhs.has_value()) {
           return std::nullopt;
         }
-        const auto result = evaluate_i32_compare(*predicate, *lhs, *rhs);
+        const auto result = evaluate_integer_compare(*predicate, *lhs, *rhs);
         if (!result.has_value()) {
           return std::nullopt;
         }

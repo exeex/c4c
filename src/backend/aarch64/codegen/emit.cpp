@@ -5587,6 +5587,16 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
           slice.has_value()) {
         return emit_minimal_direct_call_two_arg_folded_asm(adapted, *slice);
       }
+    } else {
+      if (const auto imm = parse_minimal_return_imm(adapted); imm.has_value()) {
+        return emit_minimal_return_imm_asm(adapted, *imm);
+      }
+      if (const auto imm = parse_minimal_return_add_imm(adapted); imm.has_value()) {
+        return emit_minimal_return_imm_asm(adapted, *imm);
+      }
+      if (const auto imm = parse_minimal_return_sub_imm(adapted); imm.has_value()) {
+        return emit_minimal_return_sub_imm_asm(adapted, *imm);
+      }
     }
   } catch (const c4c::backend::LirAdapterError& ex) {
     if (ex.kind() != c4c::backend::LirAdapterErrorKind::Unsupported) {
