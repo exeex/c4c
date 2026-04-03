@@ -814,6 +814,63 @@ void test_backend_call_helpers_parse_two_param_add_function() {
               "shared two-parameter add helper parser should preserve renamed helper symbols, parameter names, and helper SSA values without target-local helper-body scans");
 }
 
+void test_backend_call_helpers_parse_minimal_two_arg_direct_call_lir_module() {
+  auto module = make_typed_direct_call_two_arg_local_arg_module();
+  std::swap(module.functions.front(), module.functions.back());
+
+  c4c::codegen::lir::LirFunction* helper = nullptr;
+  c4c::codegen::lir::LirFunction* main_fn = nullptr;
+  for (auto& function : module.functions) {
+    if (function.name == "add_pair") {
+      helper = &function;
+    } else if (function.name == "main") {
+      main_fn = &function;
+    }
+  }
+  expect_true(helper != nullptr && main_fn != nullptr,
+              "shared two-argument minimal module parser regression test needs helper and main functions");
+  if (helper == nullptr || main_fn == nullptr) {
+    return;
+  }
+
+  helper->name = "sum_pair";
+  helper->signature_text = "define i32 @sum_pair(i32 %p.left, i32 %p.right)\n";
+  auto& helper_add = std::get<c4c::codegen::lir::LirBinOp>(helper->blocks.front().insts.front());
+  helper_add.result = "%t.helper.sum";
+  helper_add.lhs = "%p.left";
+  helper_add.rhs = "%p.right";
+  helper->blocks.front().terminator = c4c::codegen::lir::LirRet{std::string("%t.helper.sum"),
+                                                                "i32"};
+
+  auto& local = std::get<c4c::codegen::lir::LirAllocaOp>(main_fn->alloca_insts.front());
+  local.result = "%lv.shadow.left";
+
+  auto& store = std::get<c4c::codegen::lir::LirStoreOp>(main_fn->blocks.front().insts[0]);
+  auto& load = std::get<c4c::codegen::lir::LirLoadOp>(main_fn->blocks.front().insts[1]);
+  store.ptr = "%lv.shadow.left";
+  load.result = "%t.call.left";
+  load.ptr = "%lv.shadow.left";
+  main_fn->blocks.front().insts.insert(
+      main_fn->blocks.front().insts.begin() + 2,
+      c4c::codegen::lir::LirLoadOp{"%t.unused.left", "i32", "%lv.shadow.left"});
+
+  auto& call = std::get<c4c::codegen::lir::LirCallOp>(main_fn->blocks.front().insts.back());
+  call.result = "%t.sum.result";
+  call.callee = c4c::codegen::lir::LirOperand(std::string("@sum_pair"),
+                                              c4c::codegen::lir::LirOperandKind::Global);
+  call.args_str = "i32 %t.call.left, i32 7";
+  main_fn->blocks.front().terminator =
+      c4c::codegen::lir::LirRet{std::string("%t.sum.result"), "i32"};
+
+  const auto parsed = c4c::backend::parse_backend_minimal_two_arg_direct_call_lir_module(module);
+  expect_true(parsed.has_value() && parsed->helper != nullptr && parsed->main_function != nullptr &&
+                  parsed->call != nullptr && parsed->helper->name == "sum_pair" &&
+                  parsed->main_function->name == "main" &&
+                  parsed->call->result == "%t.sum.result" &&
+                  parsed->lhs_call_arg_imm == 5 && parsed->rhs_call_arg_imm == 7,
+              "shared two-argument minimal module parser should preserve reordered helper discovery plus renamed local-slot call operands without target-local module-shape scans");
+}
+
 void test_backend_call_helpers_decode_lir_direct_global_vararg_prefix() {
   c4c::codegen::lir::LirCallOp call{
       "%t2",
@@ -1994,6 +2051,7 @@ int main(int argc, char* argv[]) {
   test_backend_call_helpers_parse_single_helper_direct_call();
   test_backend_call_helpers_parse_single_add_imm_function();
   test_backend_call_helpers_parse_two_param_add_function();
+  test_backend_call_helpers_parse_minimal_two_arg_direct_call_lir_module();
   test_backend_call_helpers_decode_lir_direct_global_vararg_prefix();
   test_backend_call_helpers_classify_lir_nonminimal_call_types();
   test_backend_call_helpers_classify_lir_nonminimal_signature_types();
