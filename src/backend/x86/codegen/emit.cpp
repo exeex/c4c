@@ -126,12 +126,6 @@ struct MinimalExternDeclCallSlice {
   std::int64_t return_imm = 0;
 };
 
-struct MatchedMinimalDeclaredDirectCall {
-  const c4c::backend::BackendCallInst* call = nullptr;
-  c4c::backend::ParsedBackendDirectGlobalTypedCallView parsed_call;
-  const c4c::backend::BackendFunction* callee_fn = nullptr;
-};
-
 struct MatchedMinimalStructuredDirectCall {
   const c4c::backend::BackendCallInst* call = nullptr;
   c4c::backend::ParsedBackendDirectGlobalTypedCallView parsed_call;
@@ -1279,90 +1273,17 @@ std::optional<MinimalExternDeclCallSlice> parse_minimal_extern_decl_call_slice(
 
 std::optional<MinimalExternDeclCallSlice> parse_minimal_declared_direct_call_slice(
     const c4c::backend::BackendModule& module) {
-  if (module.functions.size() < 2) {
-    return std::nullopt;
-  }
-
-  const auto* main_fn = find_function(module, "main");
-  if (main_fn == nullptr || main_fn->is_declaration ||
-      !backend_function_is_definition(main_fn->signature) ||
-      !is_i32_scalar_signature_return(main_fn->signature) ||
-      !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
-      main_fn->blocks.size() != 1) {
-    return std::nullopt;
-  }
-
-  const auto& main_block = main_fn->blocks.front();
-  if (main_block.label != "entry" || main_block.insts.size() != 1 ||
-      !main_block.terminator.value.has_value() ||
-      c4c::backend::backend_return_scalar_type(main_block.terminator) !=
-          c4c::backend::BackendScalarType::I32) {
-    return std::nullopt;
-  }
-
-  const auto match_minimal_declared_direct_call =
-      [&](std::size_t inst_index) -> std::optional<MatchedMinimalDeclaredDirectCall> {
-    if (inst_index >= main_block.insts.size()) {
-      return std::nullopt;
-    }
-
-    const auto* call = std::get_if<c4c::backend::BackendCallInst>(&main_block.insts[inst_index]);
-    const auto parsed_call =
-        call == nullptr ? std::nullopt
-                        : c4c::backend::parse_backend_direct_global_typed_call(*call);
-    if (call == nullptr || !parsed_call.has_value() || !is_i32_scalar_call_return(*call) ||
-        parsed_call->symbol_name.empty() || parsed_call->symbol_name == "main") {
-      return std::nullopt;
-    }
-
-    const auto* callee_fn = find_function(module, std::string(parsed_call->symbol_name));
-    if (callee_fn == nullptr || !callee_fn->is_declaration ||
-        !backend_function_is_declaration(callee_fn->signature) ||
-        !is_i32_scalar_signature_return(callee_fn->signature)) {
-      return std::nullopt;
-    }
-
-    if (!c4c::backend::backend_typed_call_matches_signature(
-            parsed_call->typed_call, callee_fn->signature, callee_fn->signature.is_vararg)) {
-      return std::nullopt;
-    }
-
-    return MatchedMinimalDeclaredDirectCall{call, *parsed_call, callee_fn};
-  };
-
-  const auto matched = match_minimal_declared_direct_call(0);
-  if (!matched.has_value()) {
-    return std::nullopt;
-  }
-
-  const bool returns_call_result =
-      !matched->call->result.empty() && *main_block.terminator.value == matched->call->result;
-  std::int64_t return_imm = 0;
-  if (!returns_call_result) {
-    const auto parsed_return = parse_i64(*main_block.terminator.value);
-    if (!parsed_return.has_value() ||
-        *parsed_return < std::numeric_limits<std::int32_t>::min() ||
-        *parsed_return > std::numeric_limits<std::int32_t>::max()) {
-      return std::nullopt;
-    }
-    return_imm = *parsed_return;
-  }
-
-  if (matched->parsed_call.typed_call.args.size() > 6) {
-    return std::nullopt;
-  }
-
-  auto call_args = c4c::backend::parse_backend_extern_call_args(matched->parsed_call.typed_call);
-  if (!call_args.has_value()) {
+  const auto parsed = c4c::backend::parse_backend_minimal_declared_direct_call_module(module);
+  if (!parsed.has_value() || parsed->callee == nullptr) {
     return std::nullopt;
   }
 
   return MinimalExternDeclCallSlice{
-      std::string(matched->parsed_call.symbol_name),
-      std::move(*call_args),
-      matched->callee_fn->signature.is_vararg,
-      returns_call_result,
-      return_imm,
+      std::string(parsed->parsed_call.symbol_name),
+      parsed->args,
+      parsed->callee->signature.is_vararg,
+      parsed->return_call_result,
+      parsed->return_imm,
   };
 }
 

@@ -1393,6 +1393,65 @@ void test_backend_call_helpers_parse_structured_folded_two_arg_direct_call_modul
               "shared structured folded two-argument direct-call module parser should preserve renamed helper symbols, parameters, direct-call operands, and folded return immediates without target-local helper-body scans");
 }
 
+void test_backend_call_helpers_parse_structured_declared_direct_call_module() {
+  auto lowered =
+      c4c::backend::lower_to_backend_ir(make_x86_extern_decl_inferred_param_module());
+
+  c4c::backend::BackendFunction* decl = nullptr;
+  c4c::backend::BackendFunction* main_fn = nullptr;
+  for (auto& function : lowered.functions) {
+    if (function.signature.name == "main") {
+      main_fn = &function;
+    } else {
+      decl = &function;
+    }
+  }
+  expect_true(decl != nullptr && main_fn != nullptr,
+              "shared structured declared direct-call module parser regression test needs lowered declaration and main functions");
+  if (decl == nullptr || main_fn == nullptr || main_fn->blocks.empty() ||
+      main_fn->blocks.front().insts.empty()) {
+    return;
+  }
+
+  decl->signature.name = "puts_like";
+  decl->signature.params[0].name = "%p.left";
+  decl->signature.params[1].name = "%p.right";
+  decl->signature.is_vararg = true;
+
+  auto* call =
+      std::get_if<c4c::backend::BackendCallInst>(&main_fn->blocks.front().insts.front());
+  expect_true(call != nullptr,
+              "shared structured declared direct-call module parser regression test needs the lowered main call instruction");
+  if (call == nullptr) {
+    return;
+  }
+
+  call->callee.symbol_name = "puts_like";
+  call->result = "%t.main.puts_like.structured";
+  call->args[0].operand = "17";
+  call->args[1].operand = "23";
+  main_fn->blocks.front().terminator.value = "29";
+
+  const auto parsed = c4c::backend::parse_backend_minimal_declared_direct_call_module(lowered);
+  expect_true(parsed.has_value() && parsed->callee != nullptr && parsed->main_function != nullptr &&
+                  parsed->main_block != nullptr && parsed->call != nullptr &&
+                  parsed->callee->signature.name == "puts_like" &&
+                  parsed->callee->signature.is_vararg &&
+                  parsed->main_function->signature.name == "main" &&
+                  parsed->call->result == "%t.main.puts_like.structured" &&
+                  parsed->parsed_call.symbol_name == "puts_like" &&
+                  parsed->parsed_call.typed_call.args.size() == 2 &&
+                  parsed->parsed_call.typed_call.args[0].operand == "17" &&
+                  parsed->parsed_call.typed_call.args[1].operand == "23" &&
+                  parsed->args.size() == 2 &&
+                  parsed->args[0].kind == c4c::backend::ParsedBackendExternCallArg::Kind::I32Imm &&
+                  parsed->args[0].imm == 17 &&
+                  parsed->args[1].kind == c4c::backend::ParsedBackendExternCallArg::Kind::I32Imm &&
+                  parsed->args[1].imm == 23 &&
+                  !parsed->return_call_result && parsed->return_imm == 29,
+              "shared structured declared direct-call module parser should preserve renamed declaration symbols, typed operands, vararg signatures, and fixed return immediates without target-local backend-module scans");
+}
+
 void test_backend_call_helpers_decode_lir_direct_global_vararg_prefix() {
   c4c::codegen::lir::LirCallOp call{
       "%t2",
@@ -2584,6 +2643,7 @@ int main(int argc, char* argv[]) {
   test_backend_call_helpers_parse_structured_two_arg_direct_call_module();
   test_backend_call_helpers_match_structured_direct_call_module();
   test_backend_call_helpers_parse_structured_folded_two_arg_direct_call_module();
+  test_backend_call_helpers_parse_structured_declared_direct_call_module();
   test_backend_call_helpers_decode_lir_direct_global_vararg_prefix();
   test_backend_call_helpers_classify_lir_nonminimal_call_types();
   test_backend_call_helpers_classify_lir_nonminimal_signature_types();

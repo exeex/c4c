@@ -9,6 +9,7 @@
 #include <array>
 #include <cstdint>
 #include <initializer_list>
+#include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -166,6 +167,17 @@ struct ParsedBackendMinimalCallCrossingDirectCallModuleView {
   const BackendBinaryInst* final_add = nullptr;
   std::int64_t source_imm = 0;
   std::int64_t helper_add_imm = 0;
+};
+
+struct ParsedBackendMinimalDeclaredDirectCallModuleView {
+  const BackendFunction* callee = nullptr;
+  const BackendFunction* main_function = nullptr;
+  const BackendBlock* main_block = nullptr;
+  const BackendCallInst* call = nullptr;
+  ParsedBackendDirectGlobalTypedCallView parsed_call;
+  std::vector<ParsedBackendExternCallArg> args;
+  bool return_call_result = false;
+  std::int64_t return_imm = 0;
 };
 
 inline std::optional<ParsedBackendTwoParamAddFunctionView>
@@ -1010,6 +1022,97 @@ parse_backend_minimal_call_crossing_direct_call_module(const BackendModule& modu
       final_add,
       *lhs_imm + *rhs_imm,
       *add_imm,
+  };
+}
+
+inline std::optional<ParsedBackendMinimalDeclaredDirectCallModuleView>
+parse_backend_minimal_declared_direct_call_module(const BackendModule& module) {
+  if (module.functions.size() < 2) {
+    return std::nullopt;
+  }
+
+  const BackendFunction* main_fn = nullptr;
+  for (const auto& function : module.functions) {
+    if (function.signature.name == "main") {
+      if (main_fn != nullptr) {
+        return std::nullopt;
+      }
+      main_fn = &function;
+    }
+  }
+
+  if (main_fn == nullptr || main_fn->is_declaration ||
+      !backend_function_is_definition(main_fn->signature) ||
+      backend_signature_return_scalar_type(main_fn->signature) != BackendScalarType::I32 ||
+      !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
+      main_fn->blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& main_block = main_fn->blocks.front();
+  if (main_block.label != "entry" || main_block.insts.size() != 1 ||
+      !main_block.terminator.value.has_value() ||
+      backend_return_scalar_type(main_block.terminator) != BackendScalarType::I32) {
+    return std::nullopt;
+  }
+
+  const auto* call = std::get_if<BackendCallInst>(&main_block.insts.front());
+  const auto parsed_call =
+      call == nullptr ? std::nullopt : parse_backend_direct_global_typed_call(*call);
+  if (call == nullptr || !parsed_call.has_value() ||
+      backend_call_return_type_kind(*call) != BackendValueTypeKind::Scalar ||
+      backend_call_return_scalar_type(*call) != BackendScalarType::I32 ||
+      parsed_call->symbol_name.empty() || parsed_call->symbol_name == "main" ||
+      parsed_call->typed_call.args.size() > 6) {
+    return std::nullopt;
+  }
+
+  const BackendFunction* callee = nullptr;
+  for (const auto& function : module.functions) {
+    if (function.signature.name == parsed_call->symbol_name) {
+      if (callee != nullptr) {
+        return std::nullopt;
+      }
+      callee = &function;
+    }
+  }
+
+  if (callee == nullptr || !callee->is_declaration ||
+      !backend_function_is_declaration(callee->signature) ||
+      backend_signature_return_scalar_type(callee->signature) != BackendScalarType::I32 ||
+      !backend_typed_call_matches_signature(parsed_call->typed_call,
+                                            callee->signature,
+                                            callee->signature.is_vararg)) {
+    return std::nullopt;
+  }
+
+  const bool return_call_result =
+      !call->result.empty() && *main_block.terminator.value == call->result;
+  std::int64_t return_imm = 0;
+  if (!return_call_result) {
+    const auto parsed_return = parse_backend_i64_literal(*main_block.terminator.value);
+    if (!parsed_return.has_value() ||
+        *parsed_return < std::numeric_limits<std::int32_t>::min() ||
+        *parsed_return > std::numeric_limits<std::int32_t>::max()) {
+      return std::nullopt;
+    }
+    return_imm = *parsed_return;
+  }
+
+  auto args = parse_backend_extern_call_args(parsed_call->typed_call);
+  if (!args.has_value()) {
+    return std::nullopt;
+  }
+
+  return ParsedBackendMinimalDeclaredDirectCallModuleView{
+      callee,
+      main_fn,
+      &main_block,
+      call,
+      *parsed_call,
+      std::move(*args),
+      return_call_result,
+      return_imm,
   };
 }
 
