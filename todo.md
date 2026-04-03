@@ -11,12 +11,38 @@ Source Plan: plan.md
 
 Current active item: Step 2, continue bounded compare-fed phi-join parity with
 the next smallest source-shaped ternary slice that still collapses into one
-BIR block after the fused `bir.select`, specifically the next split-predecessor
-control-flow shape whose arms or join-local follow-on work are slightly richer
-than the newly covered bounded mixed add/sub affine chains, with the next
-candidate now being the symmetric deeper-chain split-predecessor case after
-the deeper-then-arm / mixed-else-arm slice validated cleanly on both the
-direct BIR text path and the source-driven default-route path.
+BIR block after the fused `bir.select`, specifically the next compare-fed
+phi-join shape that remains linearizable without general BIR CFG support, with
+the symmetric deeper-chain split-predecessor case now covered and the next
+candidate shifting to either a richer join-local add/sub follow-on after the
+fused select or another still-linearizable split-arm affine variant that
+extends bounded control-flow parity without widening emitter-side direct-BIR
+requirements.
+
+Completed this iteration:
+- Added the missing backend BIR lowering assertions for the already-covered
+  asymmetric richer split-predecessor slice via
+  `make_bir_two_param_select_eq_split_predecessor_deeper_then_mixed_affine_phi_post_join_add_module()`,
+  so the deeper-then / mixed-else case is now checked consistently across
+  lowering, explicit BIR routing, and source-driven backend routing.
+- Added the next symmetric deeper-chain split-predecessor parity slice via
+  `make_bir_two_param_select_eq_split_predecessor_deeper_affine_phi_post_join_add_module()`
+  plus the source-level/default-route case
+  `tests/c/internal/backend_route_case/two_param_select_eq_split_predecessor_deeper_affine_post_add.c`,
+  proving `(x == y ? x + 8 - 3 + 5 : y + 11 - 4 + 7) + 6` stays on the BIR
+  pipeline instead of falling back to legacy LLVM IR text.
+- Reconfigured and rebuilt the tree, reran
+  `ctest --test-dir build -R backend_bir_tests --output-on-failure`, and reran
+  `backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_deeper_affine_post_add_defaults_to_bir`;
+  both passed without requiring any `lir_to_bir.cpp` widening, confirming the
+  bounded split-predecessor matcher was already general enough for the
+  symmetric deeper-arm case.
+- Reran `ctest --test-dir build -L backend --output-on-failure -j8` with all
+  `309/309` backend-labeled tests passing, refreshed `test_fail_after.log`
+  with a full `ctest --test-dir build -j8 --output-on-failure` run, then
+  passed the regression guard against `test_fail_before.log` with
+  `--allow-non-decreasing-passed` (`2743 -> 2747` passed, `0 -> 0` failed, no
+  newly failing tests, no new `>30s` cases).
 
 Completed this iteration:
 - Added direct BIR lowering and explicit BIR-pipeline regressions for the next

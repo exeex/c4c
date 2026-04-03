@@ -771,6 +771,15 @@ if(CLANG_EXECUTABLE)
     )
 
     c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_deeper_affine_post_add_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_select_eq_split_predecessor_deeper_affine_post_add.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_select_eq_split_predecessor_deeper_affine_post_add_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @choose2_deeper_both_post(i32 %p.x, i32 %p.y) -> i32 {|%t8 = bir.add i32 %p.x, 8|%t9 = bir.sub i32 %t8, 3|%t10 = bir.add i32 %t9, 5|%t11 = bir.add i32 %p.y, 11|%t12 = bir.sub i32 %t11, 4|%t13 = bir.add i32 %t12, 7|%t14 = bir.select eq i32 %p.x, %p.y, %t10, %t13|%t15 = bir.add i32 %t14, 6|bir.ret i32 %t15"
+      FORBIDDEN_SNIPPETS "define i32 @choose2_deeper_both_post(i32 %p.x, i32 %p.y)"
+    )
+
+    c4c_add_backend_codegen_route_test(
       backend_codegen_route_riscv64_two_param_add_sub_chain_defaults_to_bir
       SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_add_sub_chain.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu
