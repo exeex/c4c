@@ -1315,6 +1315,84 @@ void test_backend_call_helpers_match_structured_direct_call_module() {
               "shared structured direct-call matcher should preserve renamed helper symbols, parameters, and call operands without target-local backend-module scans");
 }
 
+void test_backend_call_helpers_parse_structured_folded_two_arg_direct_call_module() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_module());
+
+  c4c::backend::BackendFunction* helper = nullptr;
+  c4c::backend::BackendFunction* main_fn = nullptr;
+  for (auto& function : lowered.functions) {
+    if (function.signature.name == "main") {
+      main_fn = &function;
+    } else {
+      helper = &function;
+    }
+  }
+  expect_true(helper != nullptr && main_fn != nullptr,
+              "shared structured folded two-argument direct-call module parser regression test needs lowered helper and main functions");
+  if (helper == nullptr || main_fn == nullptr || helper->blocks.empty() ||
+      main_fn->blocks.empty()) {
+    return;
+  }
+
+  helper->signature.name = "const_pair";
+  helper->signature.params[0].name = "%p.left";
+  helper->signature.params[1].name = "%p.right";
+
+  auto& helper_entry = helper->blocks.front();
+  if (helper_entry.insts.size() < 2) {
+    helper_entry.insts.push_back(c4c::backend::BackendBinaryInst{
+        c4c::backend::BackendBinaryOpcode::Sub,
+        "%t.helper.folded.sub",
+        "i32",
+        "%t.helper.folded.add",
+        "%p.right",
+        c4c::backend::BackendScalarType::I32,
+    });
+  }
+
+  auto* add = helper_entry.insts.empty()
+                  ? nullptr
+                  : std::get_if<c4c::backend::BackendBinaryInst>(&helper_entry.insts[0]);
+  auto* sub = helper_entry.insts.size() < 2
+                  ? nullptr
+                  : std::get_if<c4c::backend::BackendBinaryInst>(&helper_entry.insts[1]);
+  auto* call =
+      main_fn->blocks.front().insts.empty()
+          ? nullptr
+          : std::get_if<c4c::backend::BackendCallInst>(&main_fn->blocks.front().insts.front());
+  expect_true(add != nullptr && sub != nullptr && call != nullptr,
+              "shared structured folded two-argument direct-call module parser regression test needs mutable helper add/sub and main call instructions");
+  if (add == nullptr || sub == nullptr || call == nullptr) {
+    return;
+  }
+
+  add->lhs = "9";
+  add->rhs = "%p.left";
+  add->result = "%t.helper.folded.add";
+  sub->lhs = "%t.helper.folded.add";
+  sub->rhs = "%p.right";
+  sub->result = "%t.helper.folded.sub";
+  helper_entry.terminator.value = "%t.helper.folded.sub";
+
+  call->callee.symbol_name = "const_pair";
+  call->args[0].operand = "11";
+  call->args[1].operand = "13";
+  call->result = "%t.main.const_pair.structured";
+  main_fn->blocks.front().terminator.value = "%t.main.const_pair.structured";
+
+  const auto parsed =
+      c4c::backend::parse_backend_minimal_folded_two_arg_direct_call_module(lowered);
+  expect_true(parsed.has_value() && parsed->helper != nullptr && parsed->main_function != nullptr &&
+                  parsed->call != nullptr && parsed->helper->signature.name == "const_pair" &&
+                  parsed->helper->signature.params[0].name == "%p.left" &&
+                  parsed->helper->signature.params[1].name == "%p.right" &&
+                  parsed->main_function->signature.name == "main" &&
+                  parsed->call->result == "%t.main.const_pair.structured" &&
+                  parsed->lhs_call_arg_imm == 11 && parsed->rhs_call_arg_imm == 13 &&
+                  parsed->return_imm == 7,
+              "shared structured folded two-argument direct-call module parser should preserve renamed helper symbols, parameters, direct-call operands, and folded return immediates without target-local helper-body scans");
+}
+
 void test_backend_call_helpers_decode_lir_direct_global_vararg_prefix() {
   c4c::codegen::lir::LirCallOp call{
       "%t2",
@@ -2505,6 +2583,7 @@ int main(int argc, char* argv[]) {
   test_backend_call_helpers_parse_structured_folded_two_arg_function();
   test_backend_call_helpers_parse_structured_two_arg_direct_call_module();
   test_backend_call_helpers_match_structured_direct_call_module();
+  test_backend_call_helpers_parse_structured_folded_two_arg_direct_call_module();
   test_backend_call_helpers_decode_lir_direct_global_vararg_prefix();
   test_backend_call_helpers_classify_lir_nonminimal_call_types();
   test_backend_call_helpers_classify_lir_nonminimal_signature_types();

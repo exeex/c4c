@@ -149,6 +149,15 @@ struct ParsedBackendMinimalDirectCallAddImmModuleView {
   std::int64_t add_imm = 0;
 };
 
+struct ParsedBackendMinimalFoldedTwoArgDirectCallModuleView {
+  const BackendFunction* helper = nullptr;
+  const BackendFunction* main_function = nullptr;
+  const BackendCallInst* call = nullptr;
+  std::int64_t lhs_call_arg_imm = 0;
+  std::int64_t rhs_call_arg_imm = 0;
+  std::int64_t return_imm = 0;
+};
+
 struct ParsedBackendMinimalCallCrossingDirectCallModuleView {
   const BackendFunction* helper = nullptr;
   const BackendFunction* main_function = nullptr;
@@ -889,6 +898,39 @@ parse_backend_minimal_direct_call_add_imm_module(const BackendModule& module) {
       parsed->call,
       *call_arg_imm,
       *add_imm,
+  };
+}
+
+inline std::optional<ParsedBackendMinimalFoldedTwoArgDirectCallModuleView>
+parse_backend_minimal_folded_two_arg_direct_call_module(const BackendModule& module) {
+  if (!module.globals.empty() || !module.string_constants.empty()) {
+    return std::nullopt;
+  }
+
+  const auto parsed = parse_backend_minimal_structured_direct_call_module(module, 2);
+  if (!parsed.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto helper_shape =
+      parse_backend_structured_folded_two_arg_function(*parsed->helper, std::nullopt);
+  if (!helper_shape.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto lhs_call_arg_imm = parse_backend_i64_literal(parsed->call->args[0].operand);
+  const auto rhs_call_arg_imm = parse_backend_i64_literal(parsed->call->args[1].operand);
+  if (!lhs_call_arg_imm.has_value() || !rhs_call_arg_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  return ParsedBackendMinimalFoldedTwoArgDirectCallModuleView{
+      parsed->helper,
+      parsed->main_function,
+      parsed->call,
+      *lhs_call_arg_imm,
+      *rhs_call_arg_imm,
+      helper_shape->base_imm + *lhs_call_arg_imm - *rhs_call_arg_imm,
   };
 }
 

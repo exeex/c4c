@@ -3457,164 +3457,53 @@ std::optional<MinimalGlobalIntPointerDiffSlice> parse_minimal_global_int_pointer
   return MinimalGlobalIntPointerDiffSlice{global->name, global_size, 4, 2};
 }
 
-struct MatchedMinimalStructuredDirectCallReturnImmHelper {
-  const c4c::backend::BackendFunction* callee_fn = nullptr;
-  std::int64_t return_imm = 0;
-};
-
-struct MatchedMinimalStructuredDirectCallAddImmHelper {
-  const c4c::backend::BackendFunction* callee_fn = nullptr;
-  std::int64_t add_imm = 0;
-};
-
-struct MatchedMinimalStructuredDirectCallTwoArgAddHelper {
-  const c4c::backend::BackendFunction* callee_fn = nullptr;
-};
-
-struct MatchedMinimalStructuredDirectCallFoldedTwoArgHelper {
-  const c4c::backend::BackendFunction* callee_fn = nullptr;
-  std::int64_t return_imm = 0;
-};
-
-std::optional<MatchedMinimalStructuredDirectCallReturnImmHelper>
-match_minimal_structured_direct_call_return_imm_helper(
-    const c4c::backend::BackendFunction& callee_fn) {
-  const auto parsed =
-      c4c::backend::parse_backend_structured_zero_arg_return_imm_function(callee_fn);
-  if (!parsed.has_value()) {
-    return std::nullopt;
-  }
-
-  return MatchedMinimalStructuredDirectCallReturnImmHelper{&callee_fn, parsed->return_imm};
-}
-
-std::optional<MatchedMinimalStructuredDirectCallAddImmHelper>
-match_minimal_structured_direct_call_add_imm_helper(
-    const c4c::backend::BackendFunction& callee_fn) {
-  const auto parsed = c4c::backend::parse_backend_structured_single_add_imm_function(callee_fn);
-  if (!parsed.has_value()) {
-    return std::nullopt;
-  }
-
-  const auto add_imm = parse_i64(parsed->add->rhs);
-  if (!add_imm.has_value()) {
-    return std::nullopt;
-  }
-
-  return MatchedMinimalStructuredDirectCallAddImmHelper{&callee_fn, *add_imm};
-}
-
-std::optional<MatchedMinimalStructuredDirectCallTwoArgAddHelper>
-match_minimal_structured_direct_call_two_arg_add_helper(
-    const c4c::backend::BackendFunction& callee_fn) {
-  if (!c4c::backend::parse_backend_structured_two_param_add_function(callee_fn).has_value()) {
-    return std::nullopt;
-  }
-
-  return MatchedMinimalStructuredDirectCallTwoArgAddHelper{&callee_fn};
-}
-
-std::optional<MatchedMinimalStructuredDirectCallFoldedTwoArgHelper>
-match_minimal_structured_direct_call_folded_two_arg_helper(
-    const c4c::backend::BackendFunction& callee_fn,
-    std::int64_t arg0_imm,
-    std::int64_t arg1_imm) {
-  const auto parsed = c4c::backend::parse_backend_structured_folded_two_arg_function(callee_fn);
-  if (!parsed.has_value()) {
-    return std::nullopt;
-  }
-
-  return MatchedMinimalStructuredDirectCallFoldedTwoArgHelper{
-      &callee_fn, parsed->base_imm + arg0_imm - arg1_imm};
-}
-
 std::optional<MinimalDirectCallSlice> parse_minimal_direct_call_slice(
     const c4c::backend::BackendModule& module) {
-  const auto matched = c4c::backend::parse_backend_minimal_structured_direct_call_module(module, 0);
-  if (!matched.has_value()) {
+  const auto parsed = c4c::backend::parse_backend_minimal_direct_call_module(module);
+  if (!parsed.has_value() || parsed->helper == nullptr) {
     return std::nullopt;
   }
 
-  const auto helper_match =
-      match_minimal_structured_direct_call_return_imm_helper(*matched->helper);
-  if (!helper_match.has_value()) return std::nullopt;
-
-  return MinimalDirectCallSlice{std::string(matched->parsed_call.symbol_name),
-                                helper_match->return_imm};
+  return MinimalDirectCallSlice{parsed->helper->signature.name, parsed->return_imm};
 }
 
 std::optional<MinimalDirectCallAddImmSlice> parse_minimal_direct_call_add_imm_slice(
     const c4c::backend::BackendModule& module) {
-  const auto matched = c4c::backend::parse_backend_minimal_structured_direct_call_module(module, 1);
-  if (!matched.has_value()) {
-    return std::nullopt;
-  }
-
-  const auto arg_imm = parse_i64(matched->call->args.front().operand);
-  if (!arg_imm.has_value()) {
-    return std::nullopt;
-  }
-
-  const auto helper_match =
-      match_minimal_structured_direct_call_add_imm_helper(*matched->helper);
-  if (!helper_match.has_value()) {
+  const auto parsed = c4c::backend::parse_backend_minimal_direct_call_add_imm_module(module);
+  if (!parsed.has_value() || parsed->helper == nullptr) {
     return std::nullopt;
   }
 
   return MinimalDirectCallAddImmSlice{
-      std::string(matched->parsed_call.symbol_name),
-      *arg_imm,
-      helper_match->add_imm,
+      parsed->helper->signature.name,
+      parsed->call_arg_imm,
+      parsed->add_imm,
   };
 }
 
 std::optional<MinimalDirectCallTwoArgAddSlice>
 parse_minimal_direct_call_two_arg_add_slice(const c4c::backend::BackendModule& module) {
-  const auto matched = c4c::backend::parse_backend_minimal_structured_direct_call_module(module, 2);
-  if (!matched.has_value()) {
-    return std::nullopt;
-  }
-
-  const auto arg0_imm = parse_i64(matched->call->args[0].operand);
-  const auto arg1_imm = parse_i64(matched->call->args[1].operand);
-  if (!arg0_imm.has_value() || !arg1_imm.has_value()) {
-    return std::nullopt;
-  }
-
-  const auto helper_match =
-      match_minimal_structured_direct_call_two_arg_add_helper(*matched->helper);
-  if (!helper_match.has_value()) {
+  const auto parsed = c4c::backend::parse_backend_minimal_two_arg_direct_call_module(module);
+  if (!parsed.has_value() || parsed->helper == nullptr) {
     return std::nullopt;
   }
 
   return MinimalDirectCallTwoArgAddSlice{
-      std::string(matched->parsed_call.symbol_name),
-      *arg0_imm,
-      *arg1_imm,
+      parsed->helper->signature.name,
+      parsed->lhs_call_arg_imm,
+      parsed->rhs_call_arg_imm,
   };
 }
 
 std::optional<MinimalDirectCallSlice> parse_minimal_direct_call_two_arg_folded_slice(
     const c4c::backend::BackendModule& module) {
-  const auto matched = c4c::backend::parse_backend_minimal_structured_direct_call_module(module, 2);
-  if (!matched.has_value()) {
+  const auto parsed =
+      c4c::backend::parse_backend_minimal_folded_two_arg_direct_call_module(module);
+  if (!parsed.has_value() || parsed->helper == nullptr) {
     return std::nullopt;
   }
 
-  const auto arg0_imm = parse_i64(matched->call->args[0].operand);
-  const auto arg1_imm = parse_i64(matched->call->args[1].operand);
-  if (!arg0_imm.has_value() || !arg1_imm.has_value()) {
-    return std::nullopt;
-  }
-
-  const auto helper_match = match_minimal_structured_direct_call_folded_two_arg_helper(
-      *matched->helper, *arg0_imm, *arg1_imm);
-  if (!helper_match.has_value()) {
-    return std::nullopt;
-  }
-
-  return MinimalDirectCallSlice{std::string(matched->parsed_call.symbol_name),
-                                helper_match->return_imm};
+  return MinimalDirectCallSlice{parsed->helper->signature.name, parsed->return_imm};
 }
 
 std::optional<MinimalCallCrossingDirectCallSlice>
