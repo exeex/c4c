@@ -1081,6 +1081,18 @@ void test_backend_call_helpers_parse_structured_single_add_imm_direct_call_modul
               "shared structured single-add-immediate direct-call module parser should preserve renamed helper symbols and direct-call immediates without target-local backend-module scans");
 }
 
+void test_backend_call_helpers_parse_param_slot_runtime_as_structured_single_add_imm_direct_call() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_param_slot_runtime_module());
+
+  const auto parsed = c4c::backend::parse_backend_minimal_direct_call_add_imm_module(lowered);
+  expect_true(parsed.has_value() && parsed->helper != nullptr && parsed->main_function != nullptr &&
+                  parsed->call != nullptr &&
+                  parsed->helper->signature.name == "add_one" &&
+                  parsed->main_function->signature.name == "main" &&
+                  parsed->call_arg_imm == 5 && parsed->add_imm == 1,
+              "shared structured single-add-immediate direct-call module parser should classify lowered param-slot runtime helpers without x86-local compatibility parsing");
+}
+
 void test_backend_call_helpers_parse_structured_call_crossing_direct_call_module() {
   auto lowered =
       c4c::backend::lower_to_backend_ir(make_typed_call_crossing_direct_call_module());
@@ -2669,6 +2681,7 @@ int main(int argc, char* argv[]) {
   test_backend_call_helpers_reconstruct_typed_call_view_from_structured_param_metadata();
   test_backend_call_helpers_match_declared_signature_prefix_and_varargs();
   test_backend_call_helpers_parse_extern_args_from_typed_call();
+  test_backend_call_helpers_parse_param_slot_runtime_as_structured_single_add_imm_direct_call();
   test_lir_typed_wrappers_preserve_legacy_opcode_and_predicate_strings();
   test_lir_typed_wrappers_leave_unknown_opcode_text_compatible();
   test_lir_printer_renders_verified_typed_ops();

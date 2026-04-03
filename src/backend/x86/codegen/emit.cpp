@@ -40,12 +40,6 @@ struct MinimalCallCrossingDirectCallSlice {
   std::string regalloc_source_value = synthetic_call_crossing_regalloc_source_value();
 };
 
-struct MinimalParamSlotSlice {
-  std::string callee_name;
-  std::int64_t call_arg_imm = 0;
-  std::int64_t helper_add_imm = 0;
-};
-
 using MinimalExternCallArgSlice = c4c::backend::ParsedBackendExternCallArg;
 
 struct MinimalTwoArgDirectCallSlice {
@@ -2257,39 +2251,6 @@ std::optional<MinimalCallCrossingDirectCallSlice> parse_minimal_call_crossing_di
   };
 }
 
-std::optional<MinimalParamSlotSlice> parse_minimal_param_slot_slice(
-    const c4c::codegen::lir::LirModule& module) {
-  const auto parsed_module =
-      c4c::backend::parse_backend_single_helper_zero_arg_main_lir_module(module, 1);
-  if (!parsed_module.has_value()) {
-    return std::nullopt;
-  }
-
-  const auto parsed_helper =
-      c4c::backend::parse_backend_single_add_imm_function(*parsed_module->helper);
-  if (!parsed_helper.has_value()) {
-    return std::nullopt;
-  }
-
-  const auto parsed_call =
-      c4c::backend::parse_backend_single_helper_direct_global_call(*parsed_module, 0);
-  if (!parsed_call.has_value() || parsed_call->call->result != *parsed_module->main_ret->value_str) {
-    return std::nullopt;
-  }
-
-  const auto call_arg_imm = parse_i64(parsed_call->operand);
-  const auto helper_add_imm = parse_i64(parsed_helper->add->rhs);
-  if (!call_arg_imm.has_value() || !helper_add_imm.has_value()) {
-    return std::nullopt;
-  }
-
-  return MinimalParamSlotSlice{
-      parsed_module->helper->name,
-      *call_arg_imm,
-      *helper_add_imm,
-  };
-}
-
 std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_slice(
     const c4c::codegen::lir::LirModule& module) {
   const auto parsed = c4c::backend::parse_backend_minimal_two_arg_direct_call_lir_module(module);
@@ -2383,34 +2344,6 @@ std::string emit_minimal_direct_call_add_imm_asm(
   emit_function_prelude(out, module, helper_symbol, false);
   out << "  mov eax, edi\n"
       << "  add eax, " << slice.add_imm << "\n"
-      << "  ret\n";
-  emit_function_prelude(out, module, main_symbol, true);
-  out << "  mov edi, " << slice.call_arg_imm << "\n"
-      << "  call " << helper_symbol << "\n"
-      << "  ret\n";
-  return out.str();
-}
-
-std::string emit_minimal_param_slot_asm(const c4c::backend::BackendModule& module,
-                                        const MinimalParamSlotSlice& slice) {
-  if (slice.call_arg_imm < std::numeric_limits<std::int32_t>::min() ||
-      slice.call_arg_imm > std::numeric_limits<std::int32_t>::max() ||
-      slice.helper_add_imm < std::numeric_limits<std::int32_t>::min() ||
-      slice.helper_add_imm > std::numeric_limits<std::int32_t>::max()) {
-    throw c4c::backend::LirAdapterError(
-        c4c::backend::LirAdapterErrorKind::Unsupported,
-        "parameter-slot immediates outside the minimal x86 slice range");
-  }
-
-  const std::string helper_symbol = asm_symbol_name(module, slice.callee_name);
-  const std::string main_symbol = asm_symbol_name(module, "main");
-
-  std::ostringstream out;
-  out << ".intel_syntax noprefix\n";
-  out << ".text\n";
-  emit_function_prelude(out, module, helper_symbol, false);
-  out << "  mov eax, edi\n"
-      << "  add eax, " << slice.helper_add_imm << "\n"
       << "  ret\n";
   emit_function_prelude(out, module, main_symbol, true);
   out << "  mov edi, " << slice.call_arg_imm << "\n"
@@ -3077,12 +3010,6 @@ std::string emit_module(const c4c::backend::BackendModule& module,
 
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {
   try {
-    if (const auto slice = parse_minimal_param_slot_slice(module);
-        slice.has_value()) {
-      c4c::backend::BackendModule scaffold_module;
-      scaffold_module.target_triple = module.target_triple;
-      return emit_minimal_param_slot_asm(scaffold_module, *slice);
-    }
     if (const auto slice = parse_minimal_two_arg_direct_call_slice(module);
         slice.has_value()) {
       c4c::backend::BackendModule scaffold_module;
