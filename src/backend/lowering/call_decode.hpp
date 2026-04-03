@@ -62,6 +62,13 @@ struct ParsedBackendSingleParamSlotAddFunctionView {
   const c4c::codegen::lir::LirBinOp* add = nullptr;
 };
 
+struct ParsedBackendSingleHelperMainLirModuleView {
+  const c4c::codegen::lir::LirFunction* helper = nullptr;
+  const c4c::codegen::lir::LirFunction* main_function = nullptr;
+  const c4c::codegen::lir::LirBlock* main_block = nullptr;
+  const c4c::codegen::lir::LirRet* main_ret = nullptr;
+};
+
 inline ParsedBackendTypedCallView make_backend_typed_call_view(
     const c4c::codegen::lir::ParsedLirTypedCallView& parsed) {
   ParsedBackendTypedCallView view;
@@ -365,6 +372,57 @@ parse_backend_two_local_typed_call(const std::vector<c4c::codegen::lir::LirInst>
     return std::nullopt;
   }
   return parsed;
+}
+
+inline std::optional<ParsedBackendSingleHelperMainLirModuleView>
+parse_backend_single_helper_zero_arg_main_lir_module(
+    const c4c::codegen::lir::LirModule& module,
+    std::size_t expected_main_inst_count) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 2 || !module.globals.empty() ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const LirFunction* main_fn = nullptr;
+  const LirFunction* helper = nullptr;
+  for (const auto& function : module.functions) {
+    if (function.name == "main") {
+      if (main_fn != nullptr) {
+        return std::nullopt;
+      }
+      main_fn = &function;
+      continue;
+    }
+
+    if (helper != nullptr) {
+      return std::nullopt;
+    }
+    helper = &function;
+  }
+
+  if (helper == nullptr || main_fn == nullptr || helper->is_declaration ||
+      main_fn->is_declaration ||
+      !backend_lir_is_zero_arg_i32_main_definition(main_fn->signature_text) ||
+      main_fn->entry.value != 0 || main_fn->blocks.size() != 1 || !main_fn->alloca_insts.empty() ||
+      !main_fn->stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& main_block = main_fn->blocks.front();
+  const auto* main_ret = std::get_if<LirRet>(&main_block.terminator);
+  if (main_block.label != "entry" || main_block.insts.size() != expected_main_inst_count ||
+      main_ret == nullptr || !main_ret->value_str.has_value() || main_ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  return ParsedBackendSingleHelperMainLirModuleView{
+      helper,
+      main_fn,
+      &main_block,
+      main_ret,
+  };
 }
 
 inline std::optional<ParsedBackendSingleParamSlotAddFunctionView>

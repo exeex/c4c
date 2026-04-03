@@ -3060,43 +3060,21 @@ std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_sl
 
 std::optional<MinimalParamSlotSlice> parse_minimal_param_slot_slice(
     const c4c::codegen::lir::LirModule& module) {
-  using namespace c4c::codegen::lir;
-
-  if (module.functions.size() != 2 || !module.globals.empty() ||
-      !module.string_pool.empty() || !module.extern_decls.empty()) {
+  const auto parsed_module =
+      c4c::backend::parse_backend_single_helper_zero_arg_main_lir_module(module, 1);
+  if (!parsed_module.has_value()) {
     return std::nullopt;
   }
 
-  const auto* main_fn = find_lir_function(module, "main");
-  const c4c::codegen::lir::LirFunction* helper = nullptr;
-  for (const auto& function : module.functions) {
-    if (function.name != "main") {
-      helper = &function;
-      break;
-    }
-  }
-  if (helper == nullptr || main_fn == nullptr || helper->is_declaration ||
-      main_fn->is_declaration ||
-      !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(main_fn->signature_text) ||
-      main_fn->entry.value != 0 || main_fn->blocks.size() != 1 || !main_fn->alloca_insts.empty() ||
-      !main_fn->stack_objects.empty()) {
-    return std::nullopt;
-  }
-
-  const auto helper_match = match_minimal_param_slot_helper(*helper);
+  const auto helper_match = match_minimal_param_slot_helper(*parsed_module->helper);
   if (!helper_match.has_value()) {
     return std::nullopt;
   }
 
-  const auto& main_block = main_fn->blocks.front();
-  const auto* main_ret = std::get_if<LirRet>(&main_block.terminator);
-  if (main_block.label != "entry" || main_block.insts.size() != 1 || main_ret == nullptr ||
-      !main_ret->value_str.has_value() || main_ret->type_str != "i32") {
-    return std::nullopt;
-  }
-
   const auto matched_call = match_minimal_lir_single_arg_direct_call_call(
-      main_block.insts.front(), helper->name, *main_ret->value_str);
+      parsed_module->main_block->insts.front(),
+      parsed_module->helper->name,
+      *parsed_module->main_ret->value_str);
   if (!matched_call.has_value()) {
     return std::nullopt;
   }
@@ -3107,7 +3085,7 @@ std::optional<MinimalParamSlotSlice> parse_minimal_param_slot_slice(
   }
 
   return MinimalParamSlotSlice{
-      helper->name,
+      parsed_module->helper->name,
       *call_arg_imm,
       helper_match->add_imm,
   };

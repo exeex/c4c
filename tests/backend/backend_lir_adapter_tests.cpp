@@ -27,6 +27,7 @@
 #include "../../src/backend/x86/codegen/emit.hpp"
 #include "../../src/backend/x86/linker/mod.hpp"
 #include "backend_test_helper.hpp"
+#include "backend_test_fixtures.hpp"
 
 
 #include <algorithm>
@@ -580,6 +581,43 @@ void test_backend_call_helpers_decode_lir_direct_global_typed_operands() {
   expect_true(two_operands.has_value() && two_operands->first == "%lhs" &&
                   two_operands->second == "%rhs",
               "shared direct-global two-operand helper should decode spacing-tolerant LIR call operands");
+}
+
+void test_backend_call_helpers_parse_single_helper_zero_arg_main_module_shape() {
+  auto module = make_param_slot_runtime_module();
+  std::swap(module.functions.front(), module.functions.back());
+
+  auto& helper = module.functions.back();
+  helper.name = "inc_value";
+  helper.signature_text = "define i32 @inc_value(i32 %p.input)\n";
+  auto& helper_alloca = std::get<c4c::codegen::lir::LirAllocaOp>(helper.alloca_insts.front());
+  helper_alloca.result = "%lv.shadow.input";
+  auto& helper_arg_store = std::get<c4c::codegen::lir::LirStoreOp>(helper.alloca_insts[1]);
+  helper_arg_store.val = "%p.input";
+  helper_arg_store.ptr = "%lv.shadow.input";
+
+  auto& main_fn = module.functions.front();
+  auto* call = std::get_if<c4c::codegen::lir::LirCallOp>(&main_fn.blocks.front().insts.front());
+  expect_true(call != nullptr,
+              "shared single-helper main-module parser regression test needs the direct call to mutate");
+  if (call == nullptr) {
+    return;
+  }
+  call->callee = c4c::codegen::lir::LirOperand(std::string("@inc_value"),
+                                               c4c::codegen::lir::LirOperandKind::Global);
+
+  const auto parsed =
+      c4c::backend::parse_backend_single_helper_zero_arg_main_lir_module(module, 1);
+  expect_true(parsed.has_value() && parsed->helper != nullptr &&
+                  parsed->main_function != nullptr && parsed->main_block != nullptr &&
+                  parsed->main_ret != nullptr,
+              "shared single-helper main-module parser should identify the minimal helper/main module contract without target-local scans");
+  expect_true(parsed.has_value() && parsed->helper->name == "inc_value" &&
+                  parsed->main_function->name == "main" &&
+                  parsed->main_block->insts.size() == 1 &&
+                  parsed->main_ret->value_str.has_value() &&
+                  *parsed->main_ret->value_str == "%t0",
+              "shared single-helper main-module parser should preserve renamed helper metadata and remain independent from function ordering");
 }
 
 void test_backend_call_helpers_decode_lir_direct_global_vararg_prefix() {
@@ -1757,6 +1795,7 @@ int main(int argc, char* argv[]) {
   test_backend_call_helpers_decode_direct_global_two_typed_operands();
   test_backend_call_helpers_decode_zero_arg_direct_global_calls();
   test_backend_call_helpers_decode_lir_direct_global_typed_operands();
+  test_backend_call_helpers_parse_single_helper_zero_arg_main_module_shape();
   test_backend_call_helpers_decode_lir_direct_global_vararg_prefix();
   test_backend_call_helpers_classify_lir_nonminimal_call_types();
   test_backend_call_helpers_classify_lir_nonminimal_signature_types();
