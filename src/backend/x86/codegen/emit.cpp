@@ -152,6 +152,10 @@ struct MatchedMinimalStructuredTwoArgDirectCallHelper {
   const c4c::backend::BackendFunction* callee_fn = nullptr;
 };
 
+struct MatchedMinimalParamSlotHelper {
+  std::int64_t add_imm = 0;
+};
+
 struct MinimalGlobalCharPointerDiffSlice {
   std::string global_name;
   std::int64_t global_size = 0;
@@ -796,6 +800,67 @@ match_minimal_structured_two_arg_direct_call_helper(
   }
 
   return MatchedMinimalStructuredTwoArgDirectCallHelper{&callee_fn};
+}
+
+std::optional<MatchedMinimalParamSlotHelper> match_minimal_param_slot_helper(
+    const c4c::codegen::lir::LirFunction& helper) {
+  using namespace c4c::codegen::lir;
+
+  if (helper.is_declaration ||
+      !c4c::backend::backend_lir_signature_matches(
+          helper.signature_text, "define", "i32", helper.name, {"i32"}) ||
+      helper.entry.value != 0 || helper.blocks.size() != 1 || helper.alloca_insts.size() != 2 ||
+      !helper.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto helper_params =
+      c4c::backend::parse_backend_function_signature_params(helper.signature_text);
+  if (!helper_params.has_value() || helper_params->size() != 1 ||
+      (*helper_params)[0].is_varargs ||
+      c4c::codegen::lir::trim_lir_arg_text((*helper_params)[0].type) != "i32" ||
+      (*helper_params)[0].operand.empty()) {
+    return std::nullopt;
+  }
+  const std::string_view helper_param = (*helper_params)[0].operand;
+
+  const auto* alloca = std::get_if<LirAllocaOp>(&helper.alloca_insts[0]);
+  const auto* arg_store = std::get_if<LirStoreOp>(&helper.alloca_insts[1]);
+  if (alloca == nullptr || arg_store == nullptr || alloca->result.empty() ||
+      alloca->type_str != "i32" || !alloca->count.empty() || arg_store->type_str != "i32" ||
+      arg_store->val != helper_param || arg_store->ptr != alloca->result) {
+    return std::nullopt;
+  }
+  const std::string_view helper_slot = alloca->result;
+
+  const auto& helper_block = helper.blocks.front();
+  const auto* helper_ret = std::get_if<LirRet>(&helper_block.terminator);
+  if (helper_block.label != "entry" || helper_block.insts.size() != 4 || helper_ret == nullptr ||
+      !helper_ret->value_str.has_value() || helper_ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto* load0 = std::get_if<LirLoadOp>(&helper_block.insts[0]);
+  const auto* add = std::get_if<LirBinOp>(&helper_block.insts[1]);
+  const auto* store = std::get_if<LirStoreOp>(&helper_block.insts[2]);
+  const auto* load1 = std::get_if<LirLoadOp>(&helper_block.insts[3]);
+  const auto add_opcode = add == nullptr ? std::nullopt : add->opcode.typed();
+  if (load0 == nullptr || add == nullptr || store == nullptr || load1 == nullptr ||
+      load0->type_str != "i32" || load0->ptr != helper_slot ||
+      add_opcode != LirBinaryOpcode::Add || add->type_str != "i32" ||
+      add->lhs != load0->result ||
+      store->type_str != "i32" || store->val != add->result || store->ptr != helper_slot ||
+      load1->type_str != "i32" || load1->ptr != helper_slot ||
+      *helper_ret->value_str != load1->result) {
+    return std::nullopt;
+  }
+
+  const auto add_imm = parse_i64(add->rhs);
+  if (!add_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  return MatchedMinimalParamSlotHelper{*add_imm};
 }
 
 const char* x86_reg64_name(c4c::backend::PhysReg reg) {
@@ -2958,59 +3023,14 @@ std::optional<MinimalParamSlotSlice> parse_minimal_param_slot_slice(
   }
   if (helper == nullptr || main_fn == nullptr || helper->is_declaration ||
       main_fn->is_declaration ||
-      !c4c::backend::backend_lir_signature_matches(
-          helper->signature_text, "define", "i32", helper->name, {"i32"}) ||
       !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(main_fn->signature_text) ||
-      helper->entry.value != 0 ||
-      main_fn->entry.value != 0 || helper->blocks.size() != 1 || main_fn->blocks.size() != 1 ||
-      helper->alloca_insts.size() != 2 || !main_fn->alloca_insts.empty() ||
-      !helper->stack_objects.empty() || !main_fn->stack_objects.empty()) {
+      main_fn->entry.value != 0 || main_fn->blocks.size() != 1 || !main_fn->alloca_insts.empty() ||
+      !main_fn->stack_objects.empty()) {
     return std::nullopt;
   }
 
-  const auto helper_params =
-      c4c::backend::parse_backend_function_signature_params(helper->signature_text);
-  if (!helper_params.has_value() || helper_params->size() != 1 ||
-      (*helper_params)[0].is_varargs ||
-      c4c::codegen::lir::trim_lir_arg_text((*helper_params)[0].type) != "i32" ||
-      (*helper_params)[0].operand.empty()) {
-    return std::nullopt;
-  }
-  const std::string_view helper_param = (*helper_params)[0].operand;
-
-  const auto* alloca = std::get_if<LirAllocaOp>(&helper->alloca_insts[0]);
-  const auto* arg_store = std::get_if<LirStoreOp>(&helper->alloca_insts[1]);
-  if (alloca == nullptr || arg_store == nullptr || alloca->result.empty() ||
-      alloca->type_str != "i32" || !alloca->count.empty() || arg_store->type_str != "i32" ||
-      arg_store->val != helper_param || arg_store->ptr != alloca->result) {
-    return std::nullopt;
-  }
-  const std::string_view helper_slot = alloca->result;
-
-  const auto& helper_block = helper->blocks.front();
-  const auto* helper_ret = std::get_if<LirRet>(&helper_block.terminator);
-  if (helper_block.label != "entry" || helper_block.insts.size() != 4 || helper_ret == nullptr ||
-      !helper_ret->value_str.has_value() || helper_ret->type_str != "i32") {
-    return std::nullopt;
-  }
-
-  const auto* load0 = std::get_if<LirLoadOp>(&helper_block.insts[0]);
-  const auto* add = std::get_if<LirBinOp>(&helper_block.insts[1]);
-  const auto* store = std::get_if<LirStoreOp>(&helper_block.insts[2]);
-  const auto* load1 = std::get_if<LirLoadOp>(&helper_block.insts[3]);
-  const auto add_opcode = add == nullptr ? std::nullopt : add->opcode.typed();
-  if (load0 == nullptr || add == nullptr || store == nullptr || load1 == nullptr ||
-      load0->type_str != "i32" || load0->ptr != helper_slot ||
-      add_opcode != LirBinaryOpcode::Add || add->type_str != "i32" ||
-      add->lhs != load0->result ||
-      store->type_str != "i32" || store->val != add->result || store->ptr != helper_slot ||
-      load1->type_str != "i32" || load1->ptr != helper_slot ||
-      *helper_ret->value_str != load1->result) {
-    return std::nullopt;
-  }
-
-  const auto helper_add_imm = parse_i64(add->rhs);
-  if (!helper_add_imm.has_value()) {
+  const auto helper_match = match_minimal_param_slot_helper(*helper);
+  if (!helper_match.has_value()) {
     return std::nullopt;
   }
 
@@ -3039,7 +3059,7 @@ std::optional<MinimalParamSlotSlice> parse_minimal_param_slot_slice(
   return MinimalParamSlotSlice{
       helper->name,
       *call_arg_imm,
-      *helper_add_imm,
+      helper_match->add_imm,
   };
 }
 
