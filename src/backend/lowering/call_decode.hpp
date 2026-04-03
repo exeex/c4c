@@ -69,6 +69,12 @@ struct ParsedBackendSingleHelperMainLirModuleView {
   const c4c::codegen::lir::LirRet* main_ret = nullptr;
 };
 
+struct ParsedBackendSingleHelperDirectGlobalCallView {
+  const c4c::codegen::lir::LirCallOp* call = nullptr;
+  std::string_view operand;
+  std::string_view callee_name;
+};
+
 inline ParsedBackendTypedCallView make_backend_typed_call_view(
     const c4c::codegen::lir::ParsedLirTypedCallView& parsed) {
   ParsedBackendTypedCallView view;
@@ -425,6 +431,34 @@ parse_backend_single_helper_zero_arg_main_lir_module(
   };
 }
 
+inline std::optional<ParsedBackendSingleHelperDirectGlobalCallView>
+parse_backend_single_helper_direct_global_call(
+    const ParsedBackendSingleHelperMainLirModuleView& module,
+    std::size_t call_inst_index) {
+  using namespace c4c::codegen::lir;
+
+  if (module.helper == nullptr || module.main_block == nullptr ||
+      call_inst_index >= module.main_block->insts.size()) {
+    return std::nullopt;
+  }
+
+  const auto* call = std::get_if<LirCallOp>(&module.main_block->insts[call_inst_index]);
+  const auto call_operand =
+      call == nullptr
+          ? std::nullopt
+          : parse_backend_direct_global_single_typed_call_operand(
+                *call, module.helper->name, "i32");
+  if (call == nullptr || !call_operand.has_value()) {
+    return std::nullopt;
+  }
+
+  return ParsedBackendSingleHelperDirectGlobalCallView{
+      call,
+      *call_operand,
+      module.helper->name,
+  };
+}
+
 inline std::optional<std::string_view> parse_backend_single_helper_call_crossing_source_value(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
@@ -436,20 +470,15 @@ inline std::optional<std::string_view> parse_backend_single_helper_call_crossing
 
   const auto& insts = parsed->main_block->insts;
   const auto* source_add = std::get_if<LirBinOp>(&insts[0]);
-  const auto* call = std::get_if<LirCallOp>(&insts[1]);
   const auto* final_add = std::get_if<LirBinOp>(&insts[2]);
   const auto source_add_opcode = source_add == nullptr ? std::nullopt : source_add->opcode.typed();
   const auto final_add_opcode = final_add == nullptr ? std::nullopt : final_add->opcode.typed();
-  const auto call_operand =
-      call == nullptr
-          ? std::nullopt
-          : parse_backend_direct_global_single_typed_call_operand(
-                *call, parsed->helper->name, "i32");
-  if (source_add == nullptr || call == nullptr || final_add == nullptr ||
+  const auto parsed_call = parse_backend_single_helper_direct_global_call(*parsed, 1);
+  if (source_add == nullptr || final_add == nullptr || !parsed_call.has_value() ||
       source_add_opcode != LirBinaryOpcode::Add || source_add->type_str != "i32" ||
-      !call_operand.has_value() || *call_operand != source_add->result ||
+      parsed_call->operand != source_add->result ||
       final_add_opcode != LirBinaryOpcode::Add || final_add->type_str != "i32" ||
-      final_add->lhs != source_add->result || final_add->rhs != call->result ||
+      final_add->lhs != source_add->result || final_add->rhs != parsed_call->call->result ||
       *parsed->main_ret->value_str != final_add->result) {
     return std::nullopt;
   }

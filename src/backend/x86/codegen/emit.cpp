@@ -163,12 +163,6 @@ struct MatchedMinimalLirTwoArgDirectCallCall {
   std::pair<std::string_view, std::string_view> operands;
 };
 
-struct MatchedMinimalLirSingleArgDirectCallCall {
-  const c4c::codegen::lir::LirCallOp* call = nullptr;
-  std::string_view operand;
-  std::string_view callee_name;
-};
-
 struct MinimalGlobalCharPointerDiffSlice {
   std::string global_name;
   std::int64_t global_size = 0;
@@ -886,35 +880,6 @@ match_minimal_lir_two_arg_direct_call_call(
   }
 
   return MatchedMinimalLirTwoArgDirectCallCall{call, *call_operands};
-}
-
-std::optional<MatchedMinimalLirSingleArgDirectCallCall>
-match_minimal_lir_single_arg_direct_call_call(
-    const c4c::codegen::lir::LirInst& inst,
-    std::optional<std::string_view> expected_callee,
-    std::string_view expected_result) {
-  using namespace c4c::codegen::lir;
-
-  const auto* call = std::get_if<LirCallOp>(&inst);
-  const auto parsed_call =
-      call == nullptr ? std::nullopt : c4c::backend::parse_backend_direct_global_typed_call(*call);
-  if (call == nullptr || call->result.empty() || !parsed_call.has_value() ||
-      call->result != expected_result ||
-      parsed_call->typed_call.param_types.size() != 1 || parsed_call->typed_call.args.size() != 1 ||
-      c4c::codegen::lir::trim_lir_arg_text(parsed_call->typed_call.param_types.front()) != "i32" ||
-      c4c::codegen::lir::trim_lir_arg_text(parsed_call->typed_call.args.front().type) != "i32") {
-    return std::nullopt;
-  }
-
-  if (expected_callee.has_value() && parsed_call->symbol_name != *expected_callee) {
-    return std::nullopt;
-  }
-
-  return MatchedMinimalLirSingleArgDirectCallCall{
-      call,
-      parsed_call->typed_call.args.front().operand,
-      parsed_call->symbol_name,
-  };
 }
 
 const char* x86_reg64_name(c4c::backend::PhysReg reg) {
@@ -3026,15 +2991,13 @@ std::optional<MinimalParamSlotSlice> parse_minimal_param_slot_slice(
     return std::nullopt;
   }
 
-  const auto matched_call = match_minimal_lir_single_arg_direct_call_call(
-      parsed_module->main_block->insts.front(),
-      parsed_module->helper->name,
-      *parsed_module->main_ret->value_str);
-  if (!matched_call.has_value()) {
+  const auto parsed_call =
+      c4c::backend::parse_backend_single_helper_direct_global_call(*parsed_module, 0);
+  if (!parsed_call.has_value() || parsed_call->call->result != *parsed_module->main_ret->value_str) {
     return std::nullopt;
   }
 
-  const auto call_arg_imm = parse_i64(matched_call->operand);
+  const auto call_arg_imm = parse_i64(parsed_call->operand);
   if (!call_arg_imm.has_value()) {
     return std::nullopt;
   }

@@ -652,6 +652,85 @@ void test_backend_call_helpers_parse_single_helper_call_crossing_source_value() 
               "shared call-crossing source parser should preserve renamed helper symbols, function ordering, and source/result SSA names without target-local main scans");
 }
 
+void test_backend_call_helpers_parse_single_helper_direct_call() {
+  auto param_slot = make_param_slot_runtime_module();
+  std::swap(param_slot.functions.front(), param_slot.functions.back());
+
+  auto& param_helper = param_slot.functions.back();
+  param_helper.name = "inc_value";
+  param_helper.signature_text = "define i32 @inc_value(i32 %p.input)\n";
+
+  auto& param_main = param_slot.functions.front();
+  auto* param_call =
+      std::get_if<c4c::codegen::lir::LirCallOp>(&param_main.blocks.front().insts.front());
+  expect_true(param_call != nullptr,
+              "shared single-helper direct-call parser regression test needs the param-slot direct call");
+  if (param_call == nullptr) {
+    return;
+  }
+  param_call->result = "%t.param_slot.call.renamed";
+  param_call->callee = c4c::codegen::lir::LirOperand(std::string("@inc_value"),
+                                                     c4c::codegen::lir::LirOperandKind::Global);
+
+  const auto parsed_param_module =
+      c4c::backend::parse_backend_single_helper_zero_arg_main_lir_module(param_slot, 1);
+  expect_true(parsed_param_module.has_value(),
+              "shared single-helper direct-call parser regression test needs the param-slot helper/main module shape");
+  if (!parsed_param_module.has_value()) {
+    return;
+  }
+
+  const auto parsed_param_call =
+      c4c::backend::parse_backend_single_helper_direct_global_call(*parsed_param_module, 0);
+  expect_true(parsed_param_call.has_value() &&
+                  parsed_param_call->callee_name == "inc_value" &&
+                  parsed_param_call->operand == "5" &&
+                  parsed_param_call->call != nullptr &&
+                  parsed_param_call->call->result == "%t.param_slot.call.renamed",
+              "shared single-helper direct-call parser should preserve renamed helper symbols and direct-call result names for the one-call param-slot module seam");
+
+  auto call_crossing = make_typed_call_crossing_direct_call_module();
+  std::swap(call_crossing.functions.front(), call_crossing.functions.back());
+
+  auto& crossing_helper = call_crossing.functions.back();
+  crossing_helper.name = "inc_value";
+  crossing_helper.signature_text = "define i32 @inc_value(i32 %p.input)\n";
+
+  auto& crossing_main = call_crossing.functions.front();
+  auto& crossing_entry = crossing_main.blocks.front();
+  auto* crossing_source_add =
+      std::get_if<c4c::codegen::lir::LirBinOp>(&crossing_entry.insts.front());
+  auto* crossing_call = std::get_if<c4c::codegen::lir::LirCallOp>(&crossing_entry.insts[1]);
+  expect_true(crossing_source_add != nullptr && crossing_call != nullptr,
+              "shared single-helper direct-call parser regression test needs the call-crossing source add and direct call");
+  if (crossing_source_add == nullptr || crossing_call == nullptr) {
+    return;
+  }
+
+  crossing_source_add->result = "%t.crossing.source.renamed";
+  crossing_call->result = "%t.crossing.call.renamed";
+  crossing_call->callee = c4c::codegen::lir::LirOperand(std::string("@inc_value"),
+                                                        c4c::codegen::lir::LirOperandKind::Global);
+  crossing_call->args_str = "i32 %t.crossing.source.renamed";
+
+  const auto parsed_crossing_module =
+      c4c::backend::parse_backend_single_helper_zero_arg_main_lir_module(call_crossing, 3);
+  expect_true(parsed_crossing_module.has_value(),
+              "shared single-helper direct-call parser regression test needs the call-crossing helper/main module shape");
+  if (!parsed_crossing_module.has_value()) {
+    return;
+  }
+
+  const auto parsed_crossing_call =
+      c4c::backend::parse_backend_single_helper_direct_global_call(*parsed_crossing_module, 1);
+  expect_true(parsed_crossing_call.has_value() &&
+                  parsed_crossing_call->callee_name == "inc_value" &&
+                  parsed_crossing_call->operand == "%t.crossing.source.renamed" &&
+                  parsed_crossing_call->call != nullptr &&
+                  parsed_crossing_call->call->result == "%t.crossing.call.renamed",
+              "shared single-helper direct-call parser should preserve renamed helper symbols plus operand/result SSA names for the call-crossing seam without target-local scans");
+}
+
 void test_backend_call_helpers_decode_lir_direct_global_vararg_prefix() {
   c4c::codegen::lir::LirCallOp call{
       "%t2",
@@ -1829,6 +1908,7 @@ int main(int argc, char* argv[]) {
   test_backend_call_helpers_decode_lir_direct_global_typed_operands();
   test_backend_call_helpers_parse_single_helper_zero_arg_main_module_shape();
   test_backend_call_helpers_parse_single_helper_call_crossing_source_value();
+  test_backend_call_helpers_parse_single_helper_direct_call();
   test_backend_call_helpers_decode_lir_direct_global_vararg_prefix();
   test_backend_call_helpers_classify_lir_nonminimal_call_types();
   test_backend_call_helpers_classify_lir_nonminimal_signature_types();
