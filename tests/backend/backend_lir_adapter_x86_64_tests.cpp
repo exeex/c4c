@@ -2903,6 +2903,36 @@ void test_x86_backend_keeps_renamed_typed_two_arg_direct_call_slice_on_asm_path(
                       "x86 backend seam should not fall back when the typed two-argument direct-call slice relies only on structural helper metadata");
 }
 
+void test_x86_backend_rejects_typed_two_arg_direct_call_slice_when_helper_body_contract_disagrees() {
+  auto module = make_typed_direct_call_two_arg_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  c4c::codegen::lir::LirFunction* helper = nullptr;
+  for (auto& function : module.functions) {
+    if (function.name == "add_pair") {
+      helper = &function;
+      break;
+    }
+  }
+  auto* add =
+      helper != nullptr && !helper->blocks.empty() && !helper->blocks.front().insts.empty()
+          ? std::get_if<c4c::codegen::lir::LirBinOp>(&helper->blocks.front().insts.front())
+          : nullptr;
+  expect_true(add != nullptr,
+              "x86 typed two-argument direct-call regression test needs the helper add instruction to mutate");
+  if (add != nullptr) {
+    add->rhs = "%p.x";
+  }
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, "target triple =",
+                  "x86 backend seam should stop matching the typed two-argument direct-call asm slice when the helper body no longer matches the shared two-parameter add contract");
+}
+
 void test_x86_backend_keeps_renamed_typed_two_arg_local_arg_slice_with_extra_reload_on_asm_path() {
   auto module = make_typed_direct_call_two_arg_local_arg_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -5083,6 +5113,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_slice);
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_slice_with_spaced_helper_signature);
   RUN_TEST(test_x86_backend_keeps_renamed_typed_two_arg_direct_call_slice_on_asm_path);
+  RUN_TEST(test_x86_backend_rejects_typed_two_arg_direct_call_slice_when_helper_body_contract_disagrees);
   RUN_TEST(test_x86_backend_keeps_renamed_typed_two_arg_local_arg_slice_with_extra_reload_on_asm_path);
   RUN_TEST(test_x86_backend_keeps_renamed_typed_two_arg_second_local_arg_slice_with_extra_reload_on_asm_path);
   RUN_TEST(test_x86_backend_keeps_renamed_typed_two_arg_first_local_rewrite_slice_on_asm_path);

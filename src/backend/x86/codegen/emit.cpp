@@ -156,6 +156,8 @@ struct MatchedMinimalParamSlotHelper {
   std::int64_t add_imm = 0;
 };
 
+struct MatchedMinimalLirTwoArgDirectCallHelper {};
+
 struct MinimalGlobalCharPointerDiffSlice {
   std::string global_name;
   std::int64_t global_size = 0;
@@ -861,6 +863,44 @@ std::optional<MatchedMinimalParamSlotHelper> match_minimal_param_slot_helper(
   }
 
   return MatchedMinimalParamSlotHelper{*add_imm};
+}
+
+std::optional<MatchedMinimalLirTwoArgDirectCallHelper>
+match_minimal_lir_two_arg_direct_call_helper(
+    const c4c::codegen::lir::LirFunction& helper) {
+  using namespace c4c::codegen::lir;
+
+  if (helper.is_declaration || helper.entry.value != 0 || helper.blocks.size() != 1 ||
+      !helper.alloca_insts.empty() || !helper.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto helper_params =
+      c4c::backend::parse_backend_function_signature_params(helper.signature_text);
+  if (!helper_params.has_value() || helper_params->size() != 2 || (*helper_params)[0].is_varargs ||
+      (*helper_params)[1].is_varargs ||
+      c4c::codegen::lir::trim_lir_arg_text((*helper_params)[0].type) != "i32" ||
+      c4c::codegen::lir::trim_lir_arg_text((*helper_params)[1].type) != "i32" ||
+      (*helper_params)[0].operand.empty() || (*helper_params)[1].operand.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& helper_block = helper.blocks.front();
+  const auto* helper_ret = std::get_if<LirRet>(&helper_block.terminator);
+  if (helper_block.label != "entry" || helper_block.insts.size() != 1 || helper_ret == nullptr ||
+      !helper_ret->value_str.has_value() || helper_ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto* add = std::get_if<LirBinOp>(&helper_block.insts.front());
+  const auto add_opcode = add == nullptr ? std::nullopt : add->opcode.typed();
+  if (add == nullptr || add_opcode != LirBinaryOpcode::Add || add->type_str != "i32" ||
+      add->lhs != (*helper_params)[0].operand || add->rhs != (*helper_params)[1].operand ||
+      *helper_ret->value_str != add->result) {
+    return std::nullopt;
+  }
+
+  return MatchedMinimalLirTwoArgDirectCallHelper{};
 }
 
 const char* x86_reg64_name(c4c::backend::PhysReg reg) {
@@ -3090,29 +3130,8 @@ std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_sl
     return std::nullopt;
   }
 
-  const auto helper_params =
-      c4c::backend::parse_backend_function_signature_params(helper->signature_text);
-  if (!helper_params.has_value() || helper_params->size() != 2 || (*helper_params)[0].is_varargs ||
-      (*helper_params)[1].is_varargs ||
-      c4c::codegen::lir::trim_lir_arg_text((*helper_params)[0].type) != "i32" ||
-      c4c::codegen::lir::trim_lir_arg_text((*helper_params)[1].type) != "i32" ||
-      (*helper_params)[0].operand.empty() || (*helper_params)[1].operand.empty()) {
-    return std::nullopt;
-  }
-  const std::string_view lhs_param = (*helper_params)[0].operand;
-  const std::string_view rhs_param = (*helper_params)[1].operand;
-
-  const auto& helper_block = helper->blocks.front();
-  const auto* helper_ret = std::get_if<LirRet>(&helper_block.terminator);
-  if (helper_block.label != "entry" || helper_block.insts.size() != 1 || helper_ret == nullptr ||
-      !helper_ret->value_str.has_value() || helper_ret->type_str != "i32") {
-    return std::nullopt;
-  }
-
-  const auto* add = std::get_if<LirBinOp>(&helper_block.insts.front());
-  const auto add_opcode = add == nullptr ? std::nullopt : add->opcode.typed();
-  if (add == nullptr || add_opcode != LirBinaryOpcode::Add || add->type_str != "i32" ||
-      add->lhs != lhs_param || add->rhs != rhs_param || *helper_ret->value_str != add->result) {
+  const auto helper_match = match_minimal_lir_two_arg_direct_call_helper(*helper);
+  if (!helper_match.has_value()) {
     return std::nullopt;
   }
 
