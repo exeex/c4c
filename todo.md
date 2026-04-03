@@ -7,10 +7,10 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 5: Finish the backend test migration
-- Current slice: move one additional internal LLVM-text check fixture off the
-  remaining `backend_ir_case` path by migrating
-  `tests/c/internal/backend_ir_case/variadic_mixed_int_double_bytes.c` and the
-  `backend_lir_aarch64_variadic_mixed_int_double_ir` wiring onto
+- Current slice: move the next remaining AArch64 mixed variadic LLVM-text check
+  off the legacy `backend_ir_case` path by migrating
+  `tests/c/internal/backend_ir_case/variadic_mixed_short_double_bytes.c` and
+  the `backend_lir_aarch64_variadic_mixed_short_double_ir` wiring onto
   `tests/c/internal/backend_module_case/` plus
   `run_backend_module_check_case.cmake` without widening into unrelated backend
   cleanup
@@ -104,14 +104,19 @@ Source Plan: plan.md
       `tests/c/internal/backend_module_case/` and switched the test wiring from
       `run_backend_ir_check_case.cmake` to
       `run_backend_module_check_case.cmake`
+- [x] moved the AArch64 `variadic_mixed_int_double` LLVM-text check off
+      `tests/c/internal/backend_ir_case/` onto
+      `tests/c/internal/backend_module_case/` and switched the test wiring from
+      `run_backend_ir_check_case.cmake` to
+      `run_backend_module_check_case.cmake`
 
 ## Next Slice
 
 - continue migrating one additional narrow
   `tests/c/internal/backend_ir_case` fixture onto
   `tests/c/internal/backend_module_case/` after
-  `variadic_mixed_int_double_bytes.c`, ideally
-  `variadic_mixed_short_double_bytes.c` as another remaining AArch64 mixed
+  `variadic_mixed_short_double_bytes.c`, ideally
+  `variadic_mixed_double_short_bytes.c` as the other remaining AArch64 mixed
   variadic LLVM-text check that can switch paths without changing test intent
 - keep the deferred AArch64 `extern_global_array` production-route cleanup out
   of scope unless it blocks a concrete Step 5 backend test migration slice
@@ -223,6 +228,14 @@ Source Plan: plan.md
   `backend_lir_aarch64_variadic_mixed_float_int_ir`, and
   `backend_lir_aarch64_variadic_mixed_char_double_ir` passed after switching
   the AArch64 fixture to `tests/c/internal/backend_module_case/` and
+  `run_backend_module_check_case.cmake`; `test_fail_before.log` vs
+  `test_fail_after.log` improved from 2719 passing / 7 failing to 2720 passing
+  / 6 failing, and the monotonic regression guard reported zero new failing
+  tests relative to the existing EASTL recipe baseline
+- regression check for the `variadic_mixed_int_double` migration slice:
+  `backend_lir_aarch64_variadic_mixed_int_double_ir` and
+  `backend_lir_aarch64_variadic_mixed_double_int_ir` passed after switching the
+  AArch64 fixture to `tests/c/internal/backend_module_case/` and
   `run_backend_module_check_case.cmake`; `test_fail_before.log` vs
   `test_fail_after.log` improved from 2719 passing / 7 failing to 2720 passing
   / 6 failing, and the monotonic regression guard reported zero new failing
