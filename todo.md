@@ -10,12 +10,40 @@ Source Plan: plan.md
 - [ ] Revalidate backend and full-suite behavior without fallback
 
 Current active item: Step 2, continue the bounded widened-width/default-route
-route audit after closing the two-parameter unsigned-char `i8` add/sub chain
-parity slice.
-Next target: probe the adjacent unsigned-char staged-affine wrapper
-`((x + 2) + y) - 1` so the widened-width/default-route matrix records whether
-the existing direct-BIR path already covers the `zext` staged form too or needs
-another bounded regression-only slice.
+route audit after closing the two-parameter unsigned-char staged-affine parity
+slice.
+Next target: probe the next adjacent widened-width/source-level unsigned-char
+wrapper beyond the staged affine `((x + 2) + y) - 1` form so the Step 2 matrix
+keeps tightening the direct-BIR coverage boundary with another bounded
+regression-only slice.
+
+Completed this iteration:
+- Audited the adjacent two-parameter unsigned-char staged-affine wrapper and
+  confirmed the existing default `--codegen asm` route already stays on the
+  direct BIR pipeline for `((x + 2) + y) - 1`; no
+  `src/backend/lowering/lir_to_bir.cpp` change was required for the `zext`
+  staged form.
+- Added
+  `tests/c/internal/backend_route_case/two_param_u8_staged_affine.c`, proving
+  `unsigned char tiny_mix_u_staged(unsigned char x, unsigned char y) { return (unsigned char)(((x + 2) + y) - 1); }`
+  reaches the backend through BIR instead of falling through legacy LLVM IR
+  text.
+- Registered
+  `backend_codegen_route_riscv64_two_param_u8_staged_affine_defaults_to_bir`
+  in `tests/c/internal/InternalTests.cmake`, asserting the emitted text
+  contains `bir.func @tiny_mix_u_staged(i8 %p.x, i8 %p.y) -> i8 {`,
+  `%t1 = bir.add i8 %p.x, 2`, `%t3 = bir.add i8 %t1, %p.y`,
+  `%t4 = bir.sub i8 %t3, 1`, and forbids legacy LLVM IR
+  `define i8 @tiny_mix_u_staged(i8 %p.x, i8 %p.y)`.
+- Reconfigured and rebuilt the tree, reran
+  `backend_codegen_route_riscv64_two_param_u8_staged_affine_defaults_to_bir`,
+  reran `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `338/338` backend-labeled tests passing, then refreshed
+  `test_fail_after.log` with a full `ctest --test-dir build -j8 --output-on-failure`
+  run and passed the regression guard against `test_fail_before.log` with
+  `--allow-non-decreasing-passed --timeout-threshold 30 --enforce-timeout`
+  (`2773 -> 2776` passed, `0 -> 0` failed, no newly failing tests, no new
+  `>30s` cases).
 
 Completed this iteration:
 - Added

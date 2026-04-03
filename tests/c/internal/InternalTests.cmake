@@ -870,6 +870,15 @@ if(CLANG_EXECUTABLE)
     )
 
     c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_two_param_u8_staged_affine_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_u8_staged_affine.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_u8_staged_affine_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @tiny_mix_u_staged(i8 %p.x, i8 %p.y) -> i8 {|%t1 = bir.add i8 %p.x, 2|%t3 = bir.add i8 %t1, %p.y|%t4 = bir.sub i8 %t3, 1|bir.ret i8 %t4"
+      FORBIDDEN_SNIPPETS "define i8 @tiny_mix_u_staged(i8 %p.x, i8 %p.y)"
+    )
+
+    c4c_add_backend_codegen_route_test(
       backend_codegen_route_riscv64_single_param_select_eq_defaults_to_bir
       SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/single_param_select_eq.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu
