@@ -66,6 +66,8 @@ std::string render_binary_opcode(BinaryOpcode opcode) {
       return "urem";
     case BinaryOpcode::Eq:
       return "eq";
+    case BinaryOpcode::Ne:
+      return "ne";
     case BinaryOpcode::Slt:
       return "slt";
     case BinaryOpcode::Sle:

@@ -9,12 +9,20 @@ Source Plan: plan.md
 - [ ] Delete app-layer LLVM asm rescue from `c4cll`
 - [ ] Revalidate backend and full-suite behavior without fallback
 
-Current active item: Step 2, finish the remaining bounded compare-materialization
-gap by adding constant-only inequality (`ne`) plus `zext i1 -> i32` return
-coverage, while keeping any new default-route exposure limited to RISC-V and
-not claiming new x86/AArch64 direct-emitter coverage yet.
+Current active item: Step 2, move past the completed bounded compare-materialization
+set and start the next parity gap on the BIR text path without widening
+x86/AArch64 direct-emitter coverage prematurely.
 
 Completed this iteration:
+- Widened the bounded BIR compare scaffold with the last constant-only
+  inequality materialization slice by folding `icmp ne` plus
+  `zext i1 -> i32` return patterns into `bir.ne`, with printer/lowering
+  coverage, explicit BIR pipeline coverage, and a new RISC-V default-route
+  regression for `return 7 != 3;`.
+- Reconfigured and rebuilt the tree, reran `backend_bir_tests` plus the new
+  `backend_codegen_route_riscv64_return_ne_defaults_to_bir` coverage, then
+  reran `ctest --test-dir build -L backend --output-on-failure -j8`; all
+  `303/303` backend-labeled tests passed.
 - Widened the bounded BIR compare scaffold with a constant-only unsigned
   greater-than-or-equal materialization slice by folding `icmp uge` plus
   `zext i1 -> i32` return patterns into `bir.uge`, with printer/lowering
@@ -254,10 +262,12 @@ Completed this iteration:
   failed, no newly failing tests, no new `>30s` cases).
 
 Next intended slice:
-- Continue Phase 1/2 parity with the last bounded compare-materialization gap
-  by adding constant-only inequality (`ne`) plus `zext i1 -> i32` return
-  coverage, while keeping default BIR auto-routing gated to RISC-V until
-  x86/AArch64 direct-BIR emitters grow native support for it.
+- Continue Phase 2 parity past the now-complete bounded compare-materialization
+  set by choosing the next smallest BIR-only feature gap that can stay on the
+  text path, most likely a bounded `select`/branch-materialization or another
+  compare-adjacent control-flow slice, while keeping default BIR auto-routing
+  gated to RISC-V until x86/AArch64 direct-BIR emitters grow native support
+  for it.
 
 Resume notes:
 - `backend.cpp` still contains the legacy route (`emit_legacy_module`), but
@@ -269,15 +279,16 @@ Resume notes:
 - `lir_to_bir.cpp` now accepts bounded straight-line `i8` arithmetic slices in
   addition to the existing `i32` and `i64` scaffolds, but backend asm emitters
   still only consume the narrower direct-BIR affine subset.
-- `lir_to_bir.cpp` now folds constant-only compare materialization through
-  `eq/slt/sle/sgt/sge/ult/ule/ugt/uge`, but inequality (`ne`) is still missing
-  from the bounded compare scaffold.
+- `lir_to_bir.cpp` now folds constant-only compare materialization through the
+  full bounded integer predicate set
+  (`eq`/`ne`/`slt`/`sle`/`sgt`/`sge`/`ult`/`ule`/`ugt`/`uge`) when the result is
+  immediately widened back to the same integer type for return.
 - The next bounded gap is instruction coverage rather than another scalar type:
   the BIR scaffold still rejects straight-line integer arithmetic outside
   `add/sub/mul/sdiv/srem/urem` plus the newly added bounded
-  `eq`/`slt`/`sle`/`sgt`/`sge`/`ult`/`ule`/`ugt`/`uge` materialization slices,
-  and it still lacks the broader compare/select/control-flow clusters even when
-  the slice can stay entirely on the BIR text path.
+  `eq`/`ne`/`slt`/`sle`/`sgt`/`sge`/`ult`/`ule`/`ugt`/`uge` materialization
+  slices, and it still lacks the broader compare/select/control-flow clusters
+  even when the slice can stay entirely on the BIR text path.
 - Auto-selection into the BIR pipeline in `llvm_codegen.cpp` is intentionally
   constrained to `Target::Riscv64`; explicit BIR pipeline options are still the
   only supported way to exercise non-RISC-V direct-BIR emitter slices.
