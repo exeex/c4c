@@ -9,13 +9,36 @@ Source Plan: plan.md
 - [ ] Delete app-layer LLVM asm rescue from `c4cll`
 - [ ] Revalidate backend and full-suite behavior without fallback
 
-Current active item: Step 2, audit the next bounded widening/parity family now
-that the single-parameter `unsigned char` `eq`/`ne` compare/select defaults-to-
-BIR coverage is aligned with the adjacent `i32` route inventory.
-Next target: inspect whether the next bounded widening/parity slice should
-cover additional single-parameter constant-return compare/select predicates
-beyond `eq`/`ne` or whether Step 2 should pivot to a different direct-BIR
-surface gap.
+Current active item: Step 2, extend the adjacent direct-BIR backend-route
+matrix after confirming the single-parameter `unsigned char` `eq`/`ne`
+compare/select family is exhausted for the current bounded parity pass.
+Next target: inspect whether the next bounded Step 2 slice should widen the
+zero-parameter constant-return compare/select family past `eq`/`ne` or pivot
+to a different nearby direct-BIR surface gap now that `return_select_ne`
+parity is recorded.
+
+Completed this iteration:
+- Audited the remaining adjacent direct-BIR compare/select inventory in
+  `tests/c/internal/InternalTests.cmake` and confirmed the
+  single-parameter constant-return `unsigned char` family is currently bounded
+  to `eq`/`ne`, so the next smallest Step 2 pivot is the zero-parameter
+  constant-return select family rather than opening a wider predicate matrix.
+- Added `tests/c/internal/backend_route_case/return_select_ne.c`, proving the
+  bounded `return 7 != 3 ? 11 : 4;` backend-route slice can be exercised
+  directly through the same RISC-V backend harness as `return_select_eq`.
+- Registered `backend_codegen_route_riscv64_return_select_ne_defaults_to_bir`
+  in `tests/c/internal/InternalTests.cmake`, asserting the emitted text
+  contains `bir.func @main() -> i32 {` and `bir.ret i32 11`, and forbids
+  legacy LLVM IR `define i32 @main()`.
+- Reconfigured and rebuilt the tree, reran
+  `backend_codegen_route_riscv64_return_select_ne_defaults_to_bir`, reran
+  `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `359/359` backend-labeled tests passing, then refreshed
+  `test_fail_after.log` with a full `ctest --test-dir build -j8 --output-on-failure`
+  run and passed the regression guard against `test_fail_before.log` with
+  `--allow-non-decreasing-passed --timeout-threshold 30 --enforce-timeout`
+  (`2782 -> 2797` passed, `0 -> 0` failed, no newly failing tests, no new
+  `>30s` cases).
 
 Completed this iteration:
 - Audited the current `i32` versus widened-width/source-level `unsigned char`
