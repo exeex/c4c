@@ -9,12 +9,41 @@ Source Plan: plan.md
 - [ ] Delete app-layer LLVM asm rescue from `c4cll`
 - [ ] Revalidate backend and full-suite behavior without fallback
 
-Current active item: Step 2, close the missing single-parameter widened-width
-default-route unsigned-char add/sub-chain coverage slice.
-Next target: after landing the single-parameter `unsigned char` add/sub chain,
-probe the next adjacent widened-width/source-level unsigned-char wrapper beyond
-`(x + 2) - 1` so the Step 2 matrix keeps tightening the direct-BIR coverage
-boundary with another bounded regression-only slice.
+Current active item: Step 2, continue tightening the widened-width/source-level
+`unsigned char` route matrix with the next bounded conditional/select wrapper
+beyond the new single-parameter `u8` select-eq slice.
+Next target: probe the adjacent two-parameter `unsigned char` compare/select
+wrapper so the widened `i8` conditional recognizer is covered beyond the
+single-parameter constant-compare case without silently expanding scope.
+
+Completed this iteration:
+- Audited the next adjacent widened-width/source-level `unsigned char`
+  conditional wrapper and confirmed the missing route was a real Step 2 gap:
+  `unsigned char choose_u(unsigned char x) { return x == 7 ? (unsigned char)11 : (unsigned char)4; }`
+  still fell through to legacy LLVM IR text on the default `--codegen asm`
+  path before this patch.
+- Added
+  `tests/c/internal/backend_route_case/single_param_u8_select_eq.c`, proving
+  the single-parameter `u8` conditional wrapper now reaches the backend through
+  BIR instead of legacy LLVM IR text.
+- Registered
+  `backend_codegen_route_riscv64_single_param_u8_select_eq_defaults_to_bir`
+  in `tests/c/internal/InternalTests.cmake`, asserting the emitted text
+  contains `bir.func @choose_u(i8 %p.x) -> i8 {`, `bir.select eq i8 %p.x, 7, 11, 4`,
+  and forbids legacy LLVM IR `define i8 @choose_u(i8 %p.x)`.
+- Extended `src/backend/lowering/lir_to_bir.cpp` with bounded widened-`i8`
+  conditional lowering for promoted compare/select slices, including the
+  compare-fed phi-join form with branch-local `trunc i32 -> i8` values and the
+  matching direct return-select form for the same promoted `i8` surface.
+- Reconfigured and rebuilt the tree, reran
+  `backend_codegen_route_riscv64_single_param_u8_select_eq_defaults_to_bir`,
+  reran `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `340/340` backend-labeled tests passing, then refreshed
+  `test_fail_after.log` with a full `ctest --test-dir build -j8 --output-on-failure`
+  run and passed the regression guard against `test_fail_before.log` with
+  `--allow-non-decreasing-passed --timeout-threshold 30 --enforce-timeout`
+  (`2773 -> 2778` passed, `0 -> 0` failed, no newly failing tests, no new
+  `>30s` cases).
 
 Completed this iteration:
 - Audited the missing single-parameter widened-width/default-route
