@@ -104,7 +104,7 @@ bool token_can_follow_value_like_template_arg(TokenKind kind) {
     }
 }
 
-bool starts_with_trait_value_template_arg(const std::vector<Token>& tokens, int pos) {
+bool starts_with_value_like_template_expr(const std::vector<Token>& tokens, int pos) {
     if (pos < 0 || pos >= static_cast<int>(tokens.size())) return false;
 
     if (tokens[pos].kind == TokenKind::ColonColon) ++pos;
@@ -113,23 +113,46 @@ bool starts_with_trait_value_template_arg(const std::vector<Token>& tokens, int 
         return false;
     }
 
+    const auto looks_like_variable_template = [](const std::string& name) {
+        return name.size() >= 2 &&
+               name.compare(name.size() - 2, 2, "_v") == 0;
+    };
+
     while (pos < static_cast<int>(tokens.size())) {
+        const std::string current_name = tokens[pos].lexeme;
         ++pos;  // identifier
+        bool saw_template_args = false;
         if (pos < static_cast<int>(tokens.size()) &&
-            tokens[pos].kind == TokenKind::Less &&
-            !skip_balanced_template_arg_tokens(tokens, &pos)) {
+            tokens[pos].kind == TokenKind::Less) {
+            saw_template_args = true;
+            if (!skip_balanced_template_arg_tokens(tokens, &pos)) {
+                return false;
+            }
+        }
+
+        if (pos >= static_cast<int>(tokens.size())) {
+            return saw_template_args &&
+                   looks_like_variable_template(current_name);
+        }
+
+        if (tokens[pos].kind != TokenKind::ColonColon) {
+            return saw_template_args &&
+                   looks_like_variable_template(current_name) &&
+                   token_can_follow_value_like_template_arg(tokens[pos].kind);
+        }
+
+        ++pos;  // ::
+        if (pos < static_cast<int>(tokens.size()) &&
+            tokens[pos].kind == TokenKind::KwTemplate) {
+            ++pos;
+        }
+        if (pos >= static_cast<int>(tokens.size()) ||
+            tokens[pos].kind != TokenKind::Identifier) {
             return false;
         }
 
-        if (pos + 1 >= static_cast<int>(tokens.size()) ||
-            tokens[pos].kind != TokenKind::ColonColon ||
-            tokens[pos + 1].kind != TokenKind::Identifier) {
-            return false;
-        }
-
-        const std::string& member_name = tokens[pos + 1].lexeme;
-        pos += 2;  // :: identifier
-        if (member_name == "value") {
+        if (tokens[pos].lexeme == "value") {
+            ++pos;
             if (pos >= static_cast<int>(tokens.size())) return true;
             return token_can_follow_value_like_template_arg(tokens[pos].kind);
         }
