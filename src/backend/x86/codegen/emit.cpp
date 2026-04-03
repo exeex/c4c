@@ -40,11 +40,6 @@ struct MinimalCallCrossingDirectCallSlice {
   std::string regalloc_source_value = synthetic_call_crossing_regalloc_source_value();
 };
 
-struct MinimalDirectCallSlice {
-  std::string callee_name;
-  std::int64_t callee_imm = 0;
-};
-
 struct MinimalDirectCallAddImmSlice {
   std::string callee_name;
   std::int64_t arg_imm = 0;
@@ -2268,19 +2263,6 @@ std::optional<MinimalCallCrossingDirectCallSlice> parse_minimal_call_crossing_di
   };
 }
 
-std::optional<MinimalDirectCallSlice> parse_minimal_direct_call_slice(
-    const c4c::backend::BackendModule& module) {
-  const auto parsed = c4c::backend::parse_backend_minimal_direct_call_module(module);
-  if (!parsed.has_value() || parsed->helper == nullptr) {
-    return std::nullopt;
-  }
-
-  return MinimalDirectCallSlice{
-      parsed->helper->signature.name,
-      parsed->return_imm,
-  };
-}
-
 std::optional<MinimalDirectCallAddImmSlice> parse_minimal_direct_call_add_imm_slice(
     const c4c::backend::BackendModule& module) {
   const auto parsed = c4c::backend::parse_backend_minimal_direct_call_add_imm_module(module);
@@ -2379,22 +2361,28 @@ std::string emit_minimal_return_asm(const c4c::backend::BackendModule& module,
 }
 
 std::string emit_minimal_direct_call_asm(const c4c::backend::BackendModule& module,
-                                         const MinimalDirectCallSlice& slice) {
-  if (slice.callee_imm < std::numeric_limits<std::int32_t>::min() ||
-      slice.callee_imm > std::numeric_limits<std::int32_t>::max()) {
+                                         const c4c::backend::ParsedBackendMinimalDirectCallModuleView& slice) {
+  if (slice.helper == nullptr) {
+    throw c4c::backend::LirAdapterError(
+        c4c::backend::LirAdapterErrorKind::Unsupported,
+        "structured zero-argument direct-call slice without helper metadata");
+  }
+
+  if (slice.return_imm < std::numeric_limits<std::int32_t>::min() ||
+      slice.return_imm > std::numeric_limits<std::int32_t>::max()) {
     throw c4c::backend::LirAdapterError(
         c4c::backend::LirAdapterErrorKind::Unsupported,
         "helper return immediates outside the minimal mov-supported range");
   }
 
-  const std::string helper_symbol = asm_symbol_name(module, slice.callee_name);
+  const std::string helper_symbol = asm_symbol_name(module, slice.helper->signature.name);
   const std::string main_symbol = asm_symbol_name(module, "main");
 
   std::ostringstream out;
   out << ".intel_syntax noprefix\n";
   out << ".text\n";
   emit_function_prelude(out, module, helper_symbol, false);
-  out << "  mov eax, " << slice.callee_imm << "\n"
+  out << "  mov eax, " << slice.return_imm << "\n"
       << "  ret\n";
   emit_function_prelude(out, module, main_symbol, true);
   out << "  call " << helper_symbol << "\n"
@@ -3033,7 +3021,7 @@ std::string emit_module(const c4c::backend::BackendModule& module,
         slice.has_value()) {
       return emit_minimal_countdown_loop_asm(module, *slice);
     }
-    if (const auto slice = parse_minimal_direct_call_slice(module);
+    if (const auto slice = c4c::backend::parse_backend_minimal_direct_call_module(module);
         slice.has_value()) {
       return emit_minimal_direct_call_asm(module, *slice);
     }
@@ -3165,7 +3153,7 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
         slice.has_value()) {
       return emit_minimal_extern_decl_call_asm(adapted, *slice);
     }
-    if (const auto slice = parse_minimal_direct_call_slice(adapted);
+    if (const auto slice = c4c::backend::parse_backend_minimal_direct_call_module(adapted);
         slice.has_value()) {
       return emit_minimal_direct_call_asm(adapted, *slice);
     }

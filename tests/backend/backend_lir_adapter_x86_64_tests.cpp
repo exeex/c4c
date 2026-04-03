@@ -2101,6 +2101,8 @@ void test_x86_backend_scaffold_accepts_renamed_structured_zero_arg_direct_call_i
     return;
   }
   call->callee.symbol_name = "const_value";
+  call->result = "%t.const_result";
+  main_fn->blocks.front().terminator.value = call->result;
 
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
