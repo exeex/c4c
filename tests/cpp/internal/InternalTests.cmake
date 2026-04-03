@@ -160,6 +160,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     qualified_variable_template_compare_parse
     qualified_trait_value_template_arg_parse
     template_known_type_arg_fast_path_parse
+    tuple_element_alias_mix_parse
     qualified_template_operator_assign_expr_parse
     qualified_typedef_operator_assign_expr_parse
     global_qualified_member_pointer_template_owner_parse

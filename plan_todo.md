@@ -186,6 +186,13 @@ Source Plan: plan.md
   inside requires clauses and generalized the existing value-like
   template-expression shortcut so both `Trait<...>::value` and `_v<...>` heads
   skip the speculative type probe
+- [x] Added
+  `tests/cpp/internal/postive_case/tuple_element_alias_mix_parse.cpp`
+  as a parse-only guardrail for the synthetic Step 3 probe shape that mixes
+  `tuple_element_t<...>`, nested `pair<...>`, alias-template owners, and
+  `Trait<...>::value`-style selection inside one record body; the earlier EOF
+  parse failure came from a malformed generated probe rather than a stable
+  frontend bug
 - [x] Re-ran the focused `_v` / trait-value parser guardrails plus 12s Step 3
   parser-debug probes: `eastl_memory_simple.cpp` and `eastl_tuple_simple.cpp`
   still time out, but the new shortcut is now isolated and guarded as a
@@ -448,3 +455,7 @@ Source Plan: plan.md
   now covers unqualified typedef-owned `Type(...)` casts in record methods, and
   `cpp_typedef_owned_functional_cast_perf` amplifies the same shape into a
   parser-perf workflow guard
+- `tests/cpp/internal/postive_case/tuple_element_alias_mix_parse.cpp` now keeps
+  the synthetic mixed `tuple_element_t` / alias-owner / trait-value Step 3
+  probe in-tree after rechecking that the earlier EOF parse failure was caused
+  by a malformed generated source rather than a reproducible frontend defect
