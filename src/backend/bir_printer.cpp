@@ -1,6 +1,7 @@
 #include "bir_printer.hpp"
 
 #include <sstream>
+#include <type_traits>
 
 namespace c4c::backend::bir {
 
@@ -32,10 +33,25 @@ void render_function(std::ostringstream& out, const Function& function) {
   for (const auto& block : function.blocks) {
     out << block.label << ":\n";
     for (const auto& inst : block.insts) {
-      out << "  " << inst.result.name << " = bir."
-          << render_binary_opcode(inst.opcode) << " "
-          << render_type(inst.result.type) << " "
-          << render_value(inst.lhs) << ", " << render_value(inst.rhs) << "\n";
+      std::visit(
+          [&](const auto& lowered) {
+            using T = std::decay_t<decltype(lowered)>;
+            if constexpr (std::is_same_v<T, BinaryInst>) {
+              out << "  " << lowered.result.name << " = bir."
+                  << render_binary_opcode(lowered.opcode) << " "
+                  << render_type(lowered.result.type) << " "
+                  << render_value(lowered.lhs) << ", " << render_value(lowered.rhs)
+                  << "\n";
+            } else if constexpr (std::is_same_v<T, SelectInst>) {
+              out << "  " << lowered.result.name << " = bir.select "
+                  << render_binary_opcode(lowered.predicate) << " "
+                  << render_type(lowered.result.type) << " "
+                  << render_value(lowered.lhs) << ", " << render_value(lowered.rhs)
+                  << ", " << render_value(lowered.true_value) << ", "
+                  << render_value(lowered.false_value) << "\n";
+            }
+          },
+          inst);
     }
     out << "  bir.ret";
     if (block.terminator.value.has_value()) {

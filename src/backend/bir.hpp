@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <variant>
 #include <vector>
 
 namespace c4c::backend::bir {
@@ -64,13 +65,24 @@ struct BinaryInst {
   Value rhs;
 };
 
+struct SelectInst {
+  BinaryOpcode predicate = BinaryOpcode::Eq;
+  Value result;
+  Value lhs;
+  Value rhs;
+  Value true_value;
+  Value false_value;
+};
+
+using Inst = std::variant<BinaryInst, SelectInst>;
+
 struct ReturnTerminator {
   std::optional<Value> value;
 };
 
 struct Block {
   std::string label;
-  std::vector<BinaryInst> insts;
+  std::vector<Inst> insts;
   ReturnTerminator terminator;
 };
 

@@ -280,6 +280,24 @@ void test_bir_printer_renders_minimal_uge_scaffold() {
                   "BIR printer should let unsigned greater-than-or-equal compare results flow into integer returns");
 }
 
+void test_bir_printer_renders_minimal_select_scaffold() {
+  using namespace c4c::backend::bir;
+
+  auto module = make_return_immediate_module();
+  auto& block = module.functions.front().blocks.front();
+  block.insts.push_back(
+      SelectInst{BinaryOpcode::Eq, Value::named(TypeKind::I32, "%t0"),
+                 Value::immediate_i32(7), Value::immediate_i32(7),
+                 Value::immediate_i32(11), Value::immediate_i32(4)});
+  block.terminator.value = Value::named(TypeKind::I32, "%t0");
+
+  const auto rendered = c4c::backend::bir::print(module);
+  expect_contains(rendered, "%t0 = bir.select eq i32 7, 7, 11, 4",
+                  "BIR printer should render bounded compare-fed select materialization in BIR terms");
+  expect_contains(rendered, "bir.ret i32 %t0",
+                  "BIR printer should let select results flow into integer returns");
+}
+
 void test_bir_printer_renders_minimal_return_immediate_scaffold() {
   const auto rendered = c4c::backend::bir::print(make_return_immediate_module());
 
@@ -370,6 +388,16 @@ void test_bir_validator_accepts_minimal_i64_scaffold() {
               "BIR validator should accept the bounded i64 arithmetic scaffold once BIR grows a word-sized scalar type");
   expect_true(error.empty(),
               "BIR validator should keep the widened i64 scaffold on the valid path");
+}
+
+void test_bir_validator_accepts_minimal_select_scaffold() {
+  std::string error;
+
+  expect_true(c4c::backend::bir::validate(
+                  c4c::backend::lower_to_bir(make_bir_return_select_eq_module()), &error),
+              "BIR validator should accept the bounded compare-fed integer select scaffold");
+  expect_true(error.empty(),
+              "BIR validator should keep the bounded select scaffold on the valid path");
 }
 
 void test_bir_lowering_accepts_tiny_return_add_lir_slice() {
@@ -534,6 +562,16 @@ void test_bir_lowering_accepts_tiny_return_uge_lir_slice() {
                   "BIR lowering should return the widened unsigned greater-than-or-equal compare result instead of leaving the legacy i1/zext pair intact");
 }
 
+void test_bir_lowering_accepts_tiny_return_select_lir_slice() {
+  const auto lowered = c4c::backend::lower_to_bir(make_bir_return_select_eq_module());
+  const auto rendered = c4c::backend::bir::print(lowered);
+
+  expect_contains(rendered, "%t1 = bir.select eq i32 7, 7, 11, 4",
+                  "BIR lowering should fuse a compare-fed integer select into the bounded BIR select materialization shape");
+  expect_contains(rendered, "bir.ret i32 %t1",
+                  "BIR lowering should return the select result instead of leaving the legacy compare-plus-select pair intact");
+}
+
 void test_bir_lowering_accepts_straight_line_add_sub_chain() {
   const auto lowered = c4c::backend::lower_to_bir(make_bir_return_add_sub_chain_module());
   const auto rendered = c4c::backend::bir::print(lowered);
@@ -671,12 +709,14 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_printer_renders_minimal_ule_scaffold);
   RUN_TEST(test_bir_printer_renders_minimal_ugt_scaffold);
   RUN_TEST(test_bir_printer_renders_minimal_uge_scaffold);
+  RUN_TEST(test_bir_printer_renders_minimal_select_scaffold);
   RUN_TEST(test_bir_printer_renders_minimal_return_immediate_scaffold);
   RUN_TEST(test_bir_printer_renders_i8_scaffold);
   RUN_TEST(test_bir_printer_renders_i64_scaffold);
   RUN_TEST(test_bir_validator_accepts_minimal_return_immediate_scaffold);
   RUN_TEST(test_bir_validator_accepts_minimal_i8_scaffold);
   RUN_TEST(test_bir_validator_accepts_minimal_i64_scaffold);
+  RUN_TEST(test_bir_validator_accepts_minimal_select_scaffold);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_add_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_sub_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_mul_lir_slice);
@@ -693,6 +733,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_tiny_return_ule_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_ugt_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_uge_lir_slice);
+  RUN_TEST(test_bir_lowering_accepts_tiny_return_select_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_straight_line_add_sub_chain);
   RUN_TEST(test_bir_lowering_accepts_i8_add_sub_chain);
   RUN_TEST(test_bir_lowering_accepts_i64_add_sub_chain);

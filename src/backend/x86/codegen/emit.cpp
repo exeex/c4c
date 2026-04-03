@@ -226,6 +226,11 @@ std::optional<AffineValue> combine_affine_values(const AffineValue& lhs,
   return std::nullopt;
 }
 
+const c4c::backend::bir::BinaryInst* get_binary_inst(
+    const c4c::backend::bir::Inst& inst) {
+  return std::get_if<c4c::backend::bir::BinaryInst>(&inst);
+}
+
 bool is_i32_scalar_signature_return(const c4c::backend::BackendFunctionSignature& signature) {
   return c4c::backend::backend_signature_return_type_kind(signature) ==
              c4c::backend::BackendValueTypeKind::Scalar &&
@@ -669,18 +674,18 @@ std::optional<std::int64_t> parse_minimal_return_add_imm(
     return std::nullopt;
   }
 
-  const auto& add = block.insts.front();
-  if (add.opcode != c4c::backend::bir::BinaryOpcode::Add ||
-      add.result.kind != c4c::backend::bir::Value::Kind::Named ||
-      add.result.type != c4c::backend::bir::TypeKind::I32 ||
+  const auto* add = get_binary_inst(block.insts.front());
+  if (add == nullptr || add->opcode != c4c::backend::bir::BinaryOpcode::Add ||
+      add->result.kind != c4c::backend::bir::Value::Kind::Named ||
+      add->result.type != c4c::backend::bir::TypeKind::I32 ||
       !block.terminator.value.has_value() ||
       block.terminator.value->kind != c4c::backend::bir::Value::Kind::Named ||
-      block.terminator.value->name != add.result.name) {
+      block.terminator.value->name != add->result.name) {
     return std::nullopt;
   }
 
-  const auto lhs = parse_i64(add.lhs);
-  const auto rhs = parse_i64(add.rhs);
+  const auto lhs = parse_i64(add->lhs);
+  const auto rhs = parse_i64(add->rhs);
   if (!lhs.has_value() || !rhs.has_value()) {
     return std::nullopt;
   }
@@ -725,18 +730,18 @@ std::optional<std::int64_t> parse_minimal_return_sub_imm(
     return std::nullopt;
   }
 
-  const auto& sub = block.insts.front();
-  if (sub.opcode != c4c::backend::bir::BinaryOpcode::Sub ||
-      sub.result.kind != c4c::backend::bir::Value::Kind::Named ||
-      sub.result.type != c4c::backend::bir::TypeKind::I32 ||
+  const auto* sub = get_binary_inst(block.insts.front());
+  if (sub == nullptr || sub->opcode != c4c::backend::bir::BinaryOpcode::Sub ||
+      sub->result.kind != c4c::backend::bir::Value::Kind::Named ||
+      sub->result.type != c4c::backend::bir::TypeKind::I32 ||
       !block.terminator.value.has_value() ||
       block.terminator.value->kind != c4c::backend::bir::Value::Kind::Named ||
-      block.terminator.value->name != sub.result.name) {
+      block.terminator.value->name != sub->result.name) {
     return std::nullopt;
   }
 
-  const auto lhs = parse_i64(sub.lhs);
-  const auto rhs = parse_i64(sub.rhs);
+  const auto lhs = parse_i64(sub->lhs);
+  const auto rhs = parse_i64(sub->rhs);
   if (!lhs.has_value() || !rhs.has_value()) {
     return std::nullopt;
   }
@@ -846,21 +851,22 @@ std::optional<MinimalAffineReturnSlice> parse_minimal_affine_return_slice(
   const auto& block = function.blocks.front();
   std::unordered_map<std::string, AffineValue> values;
   for (const auto& inst : block.insts) {
-    if (inst.result.kind != c4c::backend::bir::Value::Kind::Named ||
-        inst.result.type != c4c::backend::bir::TypeKind::I32 ||
-        inst.result.name.empty()) {
+    const auto* bin = get_binary_inst(inst);
+    if (bin == nullptr || bin->result.kind != c4c::backend::bir::Value::Kind::Named ||
+        bin->result.type != c4c::backend::bir::TypeKind::I32 ||
+        bin->result.name.empty()) {
       return std::nullopt;
     }
-    const auto lhs = lower_affine_operand(inst.lhs, param_names, values);
-    const auto rhs = lower_affine_operand(inst.rhs, param_names, values);
+    const auto lhs = lower_affine_operand(bin->lhs, param_names, values);
+    const auto rhs = lower_affine_operand(bin->rhs, param_names, values);
     if (!lhs.has_value() || !rhs.has_value()) {
       return std::nullopt;
     }
-    const auto combined = combine_affine_values(*lhs, *rhs, inst.opcode);
+    const auto combined = combine_affine_values(*lhs, *rhs, bin->opcode);
     if (!combined.has_value()) {
       return std::nullopt;
     }
-    values[inst.result.name] = *combined;
+    values[bin->result.name] = *combined;
   }
 
   const auto lowered_return =

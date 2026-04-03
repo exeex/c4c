@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <string_view>
+#include <type_traits>
 #include <vector>
 
 namespace c4c::backend::bir {
@@ -55,6 +56,57 @@ bool validate_binary(const Function& function,
   }
   if (inst.rhs.kind == Value::Kind::Named && inst.rhs.name.empty()) {
     return fail(error, "bir binary rhs in @" + function.name +
+                           " must not use an empty name");
+  }
+  defined_names->push_back(inst.result.name);
+  return true;
+}
+
+bool validate_select(const Function& function,
+                     const SelectInst& inst,
+                     std::vector<std::string>* defined_names,
+                     std::string* error) {
+  if (inst.result.kind != Value::Kind::Named || inst.result.name.empty()) {
+    return fail(error, "bir select result in @" + function.name +
+                           " must use a non-empty named value");
+  }
+  if (!validate_value_type(inst.result.type,
+                           "bir select result in @" + function.name,
+                           error) ||
+      !validate_value_type(inst.lhs.type,
+                           "bir select compare lhs in @" + function.name,
+                           error) ||
+      !validate_value_type(inst.rhs.type,
+                           "bir select compare rhs in @" + function.name,
+                           error) ||
+      !validate_value_type(inst.true_value.type,
+                           "bir select true value in @" + function.name,
+                           error) ||
+      !validate_value_type(inst.false_value.type,
+                           "bir select false value in @" + function.name,
+                           error)) {
+    return false;
+  }
+  if (inst.result.type != inst.lhs.type || inst.result.type != inst.rhs.type ||
+      inst.result.type != inst.true_value.type ||
+      inst.result.type != inst.false_value.type) {
+    return fail(error, "bir select operands in @" + function.name +
+                           " must agree on one scalar type");
+  }
+  if (inst.lhs.kind == Value::Kind::Named && inst.lhs.name.empty()) {
+    return fail(error, "bir select compare lhs in @" + function.name +
+                           " must not use an empty name");
+  }
+  if (inst.rhs.kind == Value::Kind::Named && inst.rhs.name.empty()) {
+    return fail(error, "bir select compare rhs in @" + function.name +
+                           " must not use an empty name");
+  }
+  if (inst.true_value.kind == Value::Kind::Named && inst.true_value.name.empty()) {
+    return fail(error, "bir select true value in @" + function.name +
+                           " must not use an empty name");
+  }
+  if (inst.false_value.kind == Value::Kind::Named && inst.false_value.name.empty()) {
+    return fail(error, "bir select false value in @" + function.name +
                            " must not use an empty name");
   }
   defined_names->push_back(inst.result.name);
@@ -149,7 +201,17 @@ bool validate(const Module& module, std::string* error) {
         return false;
       }
       for (const auto& inst : block.insts) {
-        if (!validate_binary(function, inst, &defined_names, error)) {
+        const bool ok = std::visit(
+            [&](const auto& lowered) {
+              using T = std::decay_t<decltype(lowered)>;
+              if constexpr (std::is_same_v<T, BinaryInst>) {
+                return validate_binary(function, lowered, &defined_names, error);
+              } else if constexpr (std::is_same_v<T, SelectInst>) {
+                return validate_select(function, lowered, &defined_names, error);
+              }
+            },
+            inst);
+        if (!ok) {
           return false;
         }
       }

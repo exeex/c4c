@@ -9,9 +9,29 @@ Source Plan: plan.md
 - [ ] Delete app-layer LLVM asm rescue from `c4cll`
 - [ ] Revalidate backend and full-suite behavior without fallback
 
-Current active item: Step 2, move past the completed bounded compare-materialization
-set and start the next parity gap on the BIR text path without widening
-x86/AArch64 direct-emitter coverage prematurely.
+Current active item: Step 2, move past the completed bounded compare-fed
+integer `select` materialization slice and choose the next smallest
+compare-adjacent control-flow or instruction-shape gap that can stay on the BIR
+text path without widening x86/AArch64 direct-BIR emitter coverage
+prematurely.
+
+Completed this iteration:
+- Added a fused `bir.select` instruction shape to the bounded BIR surface, with
+  printer and validator coverage for straight-line integer compare-fed select
+  materialization on the single-block text path.
+- Taught `lir_to_bir.cpp` to lower bounded integer `icmp` + `select` + `ret`
+  patterns into the new BIR select instruction and to keep the existing affine
+  bookkeeping valid by evaluating only constant compare predicates for this
+  slice.
+- Updated the direct-BIR affine parsers in the x86 and AArch64 emitters to
+  treat non-binary BIR instructions as unsupported rather than assuming every
+  BIR instruction is a binary op.
+- Added backend BIR lowering and explicit-BIR pipeline regressions for the new
+  select slice via `make_bir_return_select_eq_module()`, covering printer,
+  validator, lowering, and explicit RISC-V BIR-pipeline text output.
+- Rebuilt `backend_bir_tests` and reran
+  `ctest --test-dir build -L backend --output-on-failure -j8`; all `303/303`
+  backend-labeled tests passed.
 
 Completed this iteration:
 - Widened the bounded BIR compare scaffold with the last constant-only
@@ -262,12 +282,11 @@ Completed this iteration:
   failed, no newly failing tests, no new `>30s` cases).
 
 Next intended slice:
-- Continue Phase 2 parity past the now-complete bounded compare-materialization
-  set by choosing the next smallest BIR-only feature gap that can stay on the
-  text path, most likely a bounded `select`/branch-materialization or another
-  compare-adjacent control-flow slice, while keeping default BIR auto-routing
-  gated to RISC-V until x86/AArch64 direct-BIR emitters grow native support
-  for it.
+- Continue Phase 2 parity with the next compare-adjacent control-flow gap that
+  can still stay on the BIR text path without forcing multi-block BIR CFG
+  support or widening x86/AArch64 direct-BIR emitter coverage, most likely a
+  bounded branch/phi-materialization slice or another select-adjacent form that
+  exposes more of the legacy `lir_to_backend_ir.cpp` control-flow surface.
 
 Resume notes:
 - `backend.cpp` still contains the legacy route (`emit_legacy_module`), but
@@ -288,7 +307,12 @@ Resume notes:
   `add/sub/mul/sdiv/srem/urem` plus the newly added bounded
   `eq`/`ne`/`slt`/`sle`/`sgt`/`sge`/`ult`/`ule`/`ugt`/`uge` materialization
   slices, and it still lacks the broader compare/select/control-flow clusters
-  even when the slice can stay entirely on the BIR text path.
+  even when the slice can stay entirely on the BIR text path. The fused
+  compare-fed integer `select` materialization slice is now covered on the
+  single-block BIR surface, but a source-level RISC-V default-route regression
+  was intentionally deferred because the current frontend ternary lowering still
+  normalizes simple C conditional expressions into branch/phi form rather than
+  a straight-line LIR `select` slice.
 - Auto-selection into the BIR pipeline in `llvm_codegen.cpp` is intentionally
   constrained to `Target::Riscv64`; explicit BIR pipeline options are still the
   only supported way to exercise non-RISC-V direct-BIR emitter slices.
