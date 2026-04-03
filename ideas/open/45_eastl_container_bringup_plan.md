@@ -264,7 +264,7 @@ For each EASTL testcase:
 - Step 1 and Step 2 of the staged bring-up ladder are complete.
 - Step 3 was active when the plan was switched out in favor of the broader
   reference-semantics initiative under
-  `ideas/open/rvalue_reference_completeness_plan.md`.
+  `ideas/open/43_rvalue_reference_completeness_plan.md`.
 - The latest reduced generic blockers cleared from the Step 3 tuple path were:
   `subrange(_Rng&&) -> ...` deduction-guide parsing and
   `operator in_in_result<_IIter1, _IIter2>() &&` template-id conversion
