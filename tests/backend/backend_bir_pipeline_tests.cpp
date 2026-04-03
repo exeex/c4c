@@ -39,6 +39,19 @@ void test_backend_bir_pipeline_routes_sub_cluster_through_bir_text_surface() {
                   "explicit BIR selection should expose sub through the BIR-specific route surface");
 }
 
+void test_backend_bir_pipeline_routes_straight_line_chain_through_bir_text_surface() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_bir_return_add_sub_chain_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Riscv64));
+
+  expect_contains(rendered, "%t0 = bir.add i32 2, 3",
+                  "explicit BIR selection should preserve the head of the straight-line arithmetic chain");
+  expect_contains(rendered, "%t1 = bir.sub i32 %t0, 1",
+                  "explicit BIR selection should let later chain instructions consume prior BIR values");
+  expect_contains(rendered, "bir.ret i32 %t1",
+                  "explicit BIR selection should expose the chain tail on the BIR route surface");
+}
+
 void test_backend_bir_pipeline_drives_x86_return_add_smoke_case_end_to_end() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_bir_return_add_module()},
@@ -83,6 +96,7 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_backend_default_path_remains_legacy_when_bir_pipeline_is_not_selected);
   RUN_TEST(test_backend_bir_pipeline_is_opt_in_through_backend_options);
   RUN_TEST(test_backend_bir_pipeline_routes_sub_cluster_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_routes_straight_line_chain_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_return_add_smoke_case_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_return_sub_smoke_case_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_selection_only_applies_at_lir_entry_input);

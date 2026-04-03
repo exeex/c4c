@@ -1,9 +1,12 @@
 #include "lir_to_bir.hpp"
 
 #include <charconv>
+#include <algorithm>
 #include <optional>
 #include <stdexcept>
+#include <string>
 #include <string_view>
+#include <vector>
 
 namespace c4c::backend {
 
@@ -83,17 +86,12 @@ std::optional<bir::Module> try_lower_to_bir(const c4c::codegen::lir::LirModule& 
   }
 
   const auto& lir_block = lir_function.blocks.front();
-  if (lir_block.label.empty() || lir_block.insts.size() > 1) {
+  if (lir_block.label.empty()) {
     return std::nullopt;
   }
 
   const auto* ret = std::get_if<c4c::codegen::lir::LirRet>(&lir_block.terminator);
   if (ret == nullptr || ret->type_str != "i32" || !ret->value_str.has_value()) {
-    return std::nullopt;
-  }
-
-  auto return_value = lower_immediate_or_name(*ret->value_str);
-  if (!return_value.has_value()) {
     return std::nullopt;
   }
 
@@ -107,14 +105,35 @@ std::optional<bir::Module> try_lower_to_bir(const c4c::codegen::lir::LirModule& 
 
   bir::Block block;
   block.label = lir_block.label;
-  if (!lir_block.insts.empty()) {
-    auto binary = lower_binary(lir_block.insts.front());
-    if (!binary.has_value() || return_value->kind != bir::Value::Kind::Named ||
-        return_value->name != binary->result.name) {
+  std::vector<std::string> defined_names;
+  defined_names.reserve(lir_block.insts.size());
+  for (const auto& lir_inst : lir_block.insts) {
+    auto binary = lower_binary(lir_inst);
+    if (!binary.has_value()) {
       return std::nullopt;
     }
+    auto name_is_defined = [&](std::string_view name) {
+      return std::find(defined_names.begin(), defined_names.end(), name) !=
+             defined_names.end();
+    };
+    auto operand_is_available = [&](const bir::Value& value) {
+      return value.kind != bir::Value::Kind::Named || name_is_defined(value.name);
+    };
+    if (!operand_is_available(binary->lhs) || !operand_is_available(binary->rhs) ||
+        name_is_defined(binary->result.name)) {
+      return std::nullopt;
+    }
+    defined_names.push_back(binary->result.name);
     block.insts.push_back(*binary);
-  } else if (return_value->kind == bir::Value::Kind::Named) {
+  }
+
+  auto return_value = lower_immediate_or_name(*ret->value_str);
+  if (!return_value.has_value()) {
+    return std::nullopt;
+  }
+  if (return_value->kind == bir::Value::Kind::Named &&
+      std::find(defined_names.begin(), defined_names.end(), return_value->name) ==
+          defined_names.end()) {
     return std::nullopt;
   }
   block.terminator.value = *return_value;
@@ -128,7 +147,7 @@ bir::Module lower_to_bir(const c4c::codegen::lir::LirModule& module) {
   auto lowered = try_lower_to_bir(module);
   if (!lowered.has_value()) {
     throw std::invalid_argument(
-        "bir scaffold lowering currently supports only single-block i32 return-immediate/add-sub slices");
+        "bir scaffold lowering currently supports only straight-line single-block i32 return-immediate/add-sub slices");
   }
   return *lowered;
 }

@@ -597,6 +597,20 @@ if(CLANG_EXECUTABLE)
         LABELS "internal;backend")
 
     add_test(
+      NAME backend_codegen_route_riscv64_return_add_sub_chain_defaults_to_bir
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_case/return_add_sub_chain.c
+              -DTARGET_TRIPLE=riscv64-unknown-linux-gnu
+              -DOUT_TEXT=${CMAKE_BINARY_DIR}/internal_backend_route/return_add_sub_chain_riscv64.ll
+              "-DREQUIRED_SNIPPETS=bir.func @main() -> i32 {|%t0 = bir.add i32 2, 3|%t1 = bir.sub i32 %t0, 1|bir.ret i32 %t1"
+              "-DFORBIDDEN_SNIPPETS=define i32 @main()"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_codegen_route_case.cmake"
+    )
+    set_tests_properties(backend_codegen_route_riscv64_return_add_sub_chain_defaults_to_bir PROPERTIES
+        LABELS "internal;backend")
+
+    add_test(
       NAME backend_codegen_route_riscv64_global_load_falls_back_to_llvm
       COMMAND "${CMAKE_COMMAND}"
               -DCOMPILER=$<TARGET_FILE:c4cll>
@@ -629,6 +643,9 @@ if(CLANG_EXECUTABLE)
         set(backend_output_kind "asm")
       elseif(stem STREQUAL "return_add")
         set(expect_exit_code 5)
+        set(backend_output_kind "asm")
+      elseif(stem STREQUAL "return_add_sub_chain")
+        set(expect_exit_code 4)
         set(backend_output_kind "asm")
       elseif(stem STREQUAL "call_helper")
         set(expect_exit_code 7)

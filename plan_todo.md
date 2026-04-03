@@ -11,8 +11,8 @@ Source Plan: plan.md
 
 ## In Progress
 
-- Reassess the next Step 2 slice now that the production backend entrypoint is
-  BIR-first for the currently supported tiny slice.
+- Reassess the next Step 2 slice now that the BIR-first production route also
+  covers straight-line single-block add/sub chains.
 
 ## Pending
 
@@ -51,6 +51,24 @@ Source Plan: plan.md
   `backend_runtime_global_load`.
 - Full-suite regression guard passed with zero new failures:
   `test_fail_before.log` vs `test_fail_after.log`.
+- Broadened `lower_to_bir(...)` from one-op tiny slices to straight-line
+  single-block i32 add/sub chains with def-before-use checks on named values.
+- Added backend BIR unit coverage for an add/sub chain at both the lowering and
+  BIR-pipeline seams.
+- Added internal production-route coverage for
+  `backend_codegen_route_riscv64_return_add_sub_chain_defaults_to_bir` plus the
+  matching `backend_runtime_return_add_sub_chain` execution check.
+- Targeted validation passed:
+  `backend_bir_tests`,
+  `backend_codegen_route_riscv64_return_add_defaults_to_bir`,
+  `backend_codegen_route_riscv64_return_add_sub_chain_defaults_to_bir`,
+  `backend_codegen_route_riscv64_global_load_falls_back_to_llvm`,
+  `backend_runtime_return_add`,
+  `backend_runtime_return_add_sub_chain`, and
+  `backend_runtime_global_load`.
+- Full-suite regression remained monotonic:
+  `test_before.log` -> `test_after.log` increased total tests from `2672` to
+  `2674` with zero newly failing cases.
 
 ## Notes
 
@@ -59,14 +77,15 @@ Source Plan: plan.md
 - Use backend-only targeted validation before broader full-suite regression
   checks.
 - Current blocker to an unconditional default flip: `lower_to_bir(...)` still
-  only accepts narrow single-block i32 return-immediate/add-sub slices.
+  only accepts straight-line single-block i32 return-immediate/add-sub slices.
 
 ## Next Slice
 
-- After the routing seam is flipped, re-evaluate whether Step 2 should continue
-  by broadening `lower_to_bir(...)` coverage or by trimming any now-redundant
-  temporary fallback plumbing.
+- Decide whether the next Step 2 slice should expand BIR coverage into another
+  bounded straight-line construct or remove fallback plumbing that is no longer
+  exercised by the surviving default route.
 
 ## Blockers
 
-- `lower_to_bir(...)` is still too narrow for a safe global default flip.
+- `lower_to_bir(...)` still lacks control flow, loads/stores, globals, and
+  alloca-backed slices, so the legacy fallback remains necessary.
