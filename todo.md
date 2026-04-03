@@ -13,8 +13,36 @@ Current active item: Step 2, continue tightening the widened-width/source-level
 `unsigned char` route matrix with the next bounded conditional/select wrapper
 beyond the new single-parameter `u8` select-eq slice.
 Next target: probe the adjacent two-parameter `unsigned char` compare/select
-wrapper so the widened `i8` conditional recognizer is covered beyond the
-single-parameter constant-compare case without silently expanding scope.
+wrapper with predecessor-local affine arms and a join-local post-add so the
+widened `i8` conditional coverage advances one bounded step beyond the plain
+two-parameter `u8` select-eq wrapper without silently expanding scope.
+
+Completed this iteration:
+- Audited the adjacent two-parameter widened-width/source-level `unsigned char`
+  compare/select wrapper and confirmed the default `--codegen asm` route
+  already stays on the direct BIR pipeline for
+  `unsigned char choose2_u(unsigned char x, unsigned char y) { return x == y ? x : y; }`;
+  no `src/backend/lowering/lir_to_bir.cpp` change was required for the plain
+  two-parameter `u8` select-eq slice.
+- Added
+  `tests/c/internal/backend_route_case/two_param_u8_select_eq.c`, proving the
+  two-parameter `u8` compare/select wrapper reaches the backend through BIR
+  instead of falling through legacy LLVM IR text on the default asm route.
+- Registered
+  `backend_codegen_route_riscv64_two_param_u8_select_eq_defaults_to_bir` in
+  `tests/c/internal/InternalTests.cmake`, asserting the emitted text contains
+  `bir.func @choose2_u(i8 %p.x, i8 %p.y) -> i8 {`,
+  `bir.select eq i8 %p.x, %p.y, %p.x, %p.y`, and forbids legacy LLVM IR
+  `define i8 @choose2_u(i8 %p.x, i8 %p.y)`.
+- Reconfigured and rebuilt the tree, reran
+  `backend_codegen_route_riscv64_two_param_u8_select_eq_defaults_to_bir`,
+  reran `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `341/341` backend-labeled tests passing, then refreshed
+  `test_fail_after.log` with a full `ctest --test-dir build -j8 --output-on-failure`
+  run and passed the regression guard against `test_fail_before.log` with
+  `--allow-non-decreasing-passed --timeout-threshold 30 --enforce-timeout`
+  (`2773 -> 2779` passed, `0 -> 0` failed, no newly failing tests, no new
+  `>30s` cases).
 
 Completed this iteration:
 - Audited the next adjacent widened-width/source-level `unsigned char`
