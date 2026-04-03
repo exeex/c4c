@@ -4381,6 +4381,31 @@ void test_x86_backend_renders_extern_decl_inferred_param_slice() {
                       "x86 backend should not fall back to LLVM text for inferred typed extern-call slices");
 }
 
+void test_x86_backend_explicit_lir_emit_surface_matches_structured_declared_direct_call_path() {
+  const auto module = make_x86_extern_decl_inferred_param_module();
+  auto lowered = c4c::backend::lower_to_backend_ir(module);
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  const auto direct_rendered = c4c::backend::x86::emit_module(module);
+  const auto lowered_rendered = c4c::backend::x86::emit_module(lowered);
+  const auto backend_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_true(direct_rendered == lowered_rendered,
+              "x86 explicit LIR emit surface should stay aligned with the structured declared direct-call backend path");
+  expect_true(direct_rendered == backend_rendered,
+              "x86 backend selection should keep the inferred extern-decl LIR slice on the same declared direct-call asm path");
+  expect_contains(direct_rendered, "mov edi, 5\n",
+                  "x86 explicit LIR emit surface should preserve the first inferred declared direct-call argument");
+  expect_contains(direct_rendered, "mov esi, 7\n",
+                  "x86 explicit LIR emit surface should preserve the second inferred declared direct-call argument");
+  expect_contains(direct_rendered, "call helper_ext\n",
+                  "x86 explicit LIR emit surface should preserve the declared direct helper symbol");
+  expect_not_contains(direct_rendered, "target triple =",
+                      "x86 explicit LIR emit surface should stay on assembly output for inferred declared direct calls");
+}
+
 void test_x86_backend_declared_direct_call_uses_structured_vararg_metadata() {
   auto lowered = c4c::backend::lower_to_backend_ir(make_x86_extern_decl_object_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
@@ -5313,6 +5338,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_renders_extern_decl_object_slice);
   RUN_TEST(test_x86_backend_renders_extern_decl_object_slice_with_typed_zero_arg_spacing);
   RUN_TEST(test_x86_backend_renders_extern_decl_inferred_param_slice);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_structured_declared_direct_call_path);
   RUN_TEST(test_x86_backend_declared_direct_call_uses_structured_vararg_metadata);
   RUN_TEST(test_x86_backend_explicit_emit_surface_keeps_structured_declared_direct_call_backend_path);
   RUN_TEST(test_x86_backend_declared_direct_call_uses_structured_decl_signature_for_fixed_args);

@@ -101,14 +101,6 @@ struct MinimalExternGlobalArrayLoadSlice {
   std::int64_t byte_offset = 0;
 };
 
-struct MinimalExternDeclCallSlice {
-  std::string callee_name;
-  std::vector<MinimalExternCallArgSlice> args;
-  bool callee_is_vararg = false;
-  bool return_call_result = false;
-  std::int64_t return_imm = 0;
-};
-
 struct MinimalGlobalCharPointerDiffSlice {
   std::string global_name;
   std::int64_t global_size = 0;
@@ -1157,46 +1149,6 @@ std::optional<MinimalExternGlobalArrayLoadSlice> parse_minimal_extern_global_arr
   }
 
   return MinimalExternGlobalArrayLoadSlice{global.name, *element_index * 4};
-}
-
-std::optional<MinimalExternDeclCallSlice> parse_minimal_extern_decl_call_slice(
-    const c4c::codegen::lir::LirModule& module) {
-  using namespace c4c::codegen::lir;
-
-  if (module.functions.size() != 1 || module.extern_decls.size() != 1 ||
-      !module.globals.empty() || !module.string_pool.empty()) {
-    return std::nullopt;
-  }
-
-  const auto& extern_decl = module.extern_decls.front();
-  if (extern_decl.name.empty() || extern_decl.name == "main" ||
-      extern_decl.return_type_str != "i32") {
-    return std::nullopt;
-  }
-
-  const auto& function = module.functions.front();
-  if (function.name != "main" || function.is_declaration || function.blocks.size() != 1) {
-    return std::nullopt;
-  }
-
-  const auto& entry = function.blocks.front();
-  const auto* ret = std::get_if<LirRet>(&entry.terminator);
-  if (entry.label != "entry" || entry.insts.size() != 1 || ret == nullptr ||
-      !ret->value_str.has_value() || ret->type_str != "i32") {
-    return std::nullopt;
-  }
-
-  const auto* call = std::get_if<LirCallOp>(&entry.insts.front());
-  const auto callee_name =
-      call == nullptr ? std::nullopt
-                      : c4c::backend::parse_backend_zero_arg_direct_global_typed_call(*call);
-  if (call == nullptr || call->return_type != "i32" || call->result.empty() ||
-      *ret->value_str != call->result || !callee_name.has_value() ||
-      *callee_name != extern_decl.name) {
-    return std::nullopt;
-  }
-
-  return MinimalExternDeclCallSlice{extern_decl.name};
 }
 
 std::optional<MinimalExternGlobalArrayLoadSlice> parse_minimal_extern_global_array_load_slice(
@@ -2577,93 +2529,6 @@ std::string emit_minimal_extern_scalar_global_load_asm(
 
 std::string emit_minimal_extern_decl_call_asm(
     const c4c::backend::BackendModule& module,
-    const MinimalExternDeclCallSlice& slice) {
-  static constexpr const char* kArgIntRegs[6] = {"edi", "esi", "edx", "ecx", "r8d", "r9d"};
-  static constexpr const char* kArgPtrRegs[6] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
-
-  const std::string helper_symbol = asm_symbol_name(module, slice.callee_name);
-  const std::string main_symbol = asm_symbol_name(module, "main");
-
-  if (slice.args.size() > 6) {
-    throw c4c::backend::LirAdapterError(
-        c4c::backend::LirAdapterErrorKind::Unsupported,
-        "extern declaration call argument count exceeds minimal x86 register budget");
-  }
-
-  std::vector<std::string> emitted_string_constant_names;
-  for (const auto& arg : slice.args) {
-    if (arg.kind != MinimalExternCallArgSlice::Kind::Ptr || arg.operand.empty() ||
-        arg.operand.front() != '@') {
-      continue;
-    }
-    const auto* string_constant = find_string_constant(module, arg.operand.substr(1));
-    if (string_constant == nullptr) {
-      continue;
-    }
-    const auto& name = string_constant->name;
-    bool duplicate = false;
-    for (const auto& emitted : emitted_string_constant_names) {
-      if (emitted == name) {
-        duplicate = true;
-        break;
-      }
-    }
-    if (!duplicate) {
-      emitted_string_constant_names.push_back(name);
-    }
-  }
-
-  std::ostringstream out;
-  out << ".intel_syntax noprefix\n";
-  if (!emitted_string_constant_names.empty()) {
-    out << ".section .rodata\n";
-    for (const auto& name : emitted_string_constant_names) {
-      const auto* string_constant = find_string_constant(module, name);
-      if (string_constant == nullptr) {
-        continue;
-      }
-      const std::string label = asm_private_data_label(module, "@" + name);
-      out << label << ":\n"
-          << "  .asciz \"" << escape_asm_string(string_constant->raw_bytes) << "\"\n";
-    }
-  }
-  out << ".text\n";
-  out << ".globl " << main_symbol << "\n";
-  out << main_symbol << ":\n";
-  for (std::size_t index = 0; index < slice.args.size(); ++index) {
-    const auto& arg = slice.args[index];
-    switch (arg.kind) {
-      case MinimalExternCallArgSlice::Kind::I32Imm:
-        out << "  mov " << kArgIntRegs[index] << ", " << arg.imm << "\n";
-        break;
-      case MinimalExternCallArgSlice::Kind::I64Imm:
-        out << "  mov " << kArgPtrRegs[index] << ", " << arg.imm << "\n";
-        break;
-      case MinimalExternCallArgSlice::Kind::Ptr: {
-        const auto* string_constant = find_string_constant(module, arg.operand.substr(1));
-        if (string_constant == nullptr) {
-          const std::string symbol = asm_symbol_name(module, arg.operand.substr(1));
-          out << "  lea " << kArgPtrRegs[index] << ", " << symbol << "[rip]\n";
-          break;
-        }
-        const auto label = asm_private_data_label(module, arg.operand);
-        out << "  lea " << kArgPtrRegs[index] << ", " << label << "[rip]\n";
-      } break;
-    }
-  }
-  if (slice.callee_is_vararg) {
-    out << "  mov al, 0\n";
-  }
-  out << "  call " << helper_symbol << "\n";
-  if (!slice.return_call_result) {
-    out << "  mov eax, " << slice.return_imm << "\n";
-  }
-  out << "  ret\n";
-  return out.str();
-}
-
-std::string emit_minimal_extern_decl_call_asm(
-    const c4c::backend::BackendModule& module,
     const c4c::backend::ParsedBackendMinimalDeclaredDirectCallModuleView& slice) {
   static constexpr const char* kArgIntRegs[6] = {"edi", "esi", "edx", "ecx", "r8d", "r9d"};
   static constexpr const char* kArgPtrRegs[6] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
@@ -3087,12 +2952,6 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
       c4c::backend::BackendModule scaffold_module;
       scaffold_module.target_triple = module.target_triple;
       return emit_minimal_local_array_asm(scaffold_module, *slice);
-    }
-    if (const auto slice = parse_minimal_extern_decl_call_slice(module);
-        slice.has_value()) {
-      c4c::backend::BackendModule scaffold_module;
-      scaffold_module.target_triple = module.target_triple;
-      return emit_minimal_extern_decl_call_asm(scaffold_module, *slice);
     }
     if (const auto slice = parse_minimal_extern_global_array_load_slice(module);
         slice.has_value()) {
