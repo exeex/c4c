@@ -4172,7 +4172,7 @@ std::string emit_minimal_string_literal_char_asm(
 }
 
 std::string emit_minimal_local_array_asm(
-    const c4c::codegen::lir::LirModule& module,
+    const c4c::backend::BackendModule& module,
     const MinimalLocalArraySlice& slice) {
   const auto in_mov_range = [](std::int64_t imm) {
     return imm >= 0 && imm <= std::numeric_limits<std::uint16_t>::max();
@@ -4181,13 +4181,11 @@ std::string emit_minimal_local_array_asm(
     fail_unsupported("local-array store immediates outside the minimal mov-supported range");
   }
 
-  c4c::backend::BackendModule backend_module;
-  backend_module.target_triple = module.target_triple;
-  const std::string main_symbol = asm_symbol_name(backend_module, "main");
+  const std::string main_symbol = asm_symbol_name(module, "main");
 
   std::ostringstream out;
   out << ".text\n";
-  emit_function_prelude(out, backend_module, main_symbol, true);
+  emit_function_prelude(out, module, main_symbol, true);
   out << "  sub sp, sp, #16\n"
       << "  add x8, sp, #8\n"
       << "  mov w9, #" << slice.store0_imm << "\n"
@@ -5777,9 +5775,7 @@ std::string emit_module(const c4c::backend::BackendModule& module,
     }
     if (const auto slice = parse_minimal_local_array_slice(module);
         slice.has_value()) {
-      c4c::codegen::lir::LirModule scaffold_module;
-      scaffold_module.target_triple = module.target_triple;
-      return emit_minimal_local_array_asm(scaffold_module, *slice);
+      return emit_minimal_local_array_asm(module, *slice);
     }
     if (const auto slice = parse_minimal_global_char_pointer_diff_slice(module);
         slice.has_value()) {
@@ -5916,7 +5912,7 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
   validate_module(prepared);
   if (const auto slice = parse_minimal_local_array_slice(prepared);
       slice.has_value()) {
-    return emit_minimal_local_array_asm(prepared, *slice);
+    return emit_minimal_local_array_asm(prepared_backend_stub, *slice);
   }
   if (!needs_nonminimal_lowering) {
     if (const auto slice = parse_minimal_conditional_return_slice(prepared);
