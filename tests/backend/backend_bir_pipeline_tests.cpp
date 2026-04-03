@@ -312,6 +312,23 @@ void test_backend_bir_pipeline_routes_two_param_select_phi_through_bir_text_surf
                   "explicit BIR selection should keep the fused two-parameter select result on the BIR text path");
 }
 
+void test_backend_bir_pipeline_routes_two_param_select_predecessor_add_phi_through_bir_text_surface() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_bir_two_param_select_eq_predecessor_add_phi_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Riscv64));
+
+  expect_contains(rendered, "bir.func @choose2_add(i32 %p.x, i32 %p.y) -> i32 {",
+                  "explicit BIR selection should preserve the widened two-parameter predecessor-compute ternary signature on the BIR text path");
+  expect_contains(rendered, "%t3 = bir.add i32 %p.x, 5",
+                  "explicit BIR selection should keep the then-arm predecessor arithmetic on the BIR text path");
+  expect_contains(rendered, "%t4 = bir.add i32 %p.y, 9",
+                  "explicit BIR selection should keep the else-arm predecessor arithmetic on the BIR text path");
+  expect_contains(rendered, "%t5 = bir.select eq i32 %p.x, %p.y, %t3, %t4",
+                  "explicit BIR selection should collapse the predecessor-compute phi join into the bounded BIR select surface");
+  expect_contains(rendered, "bir.ret i32 %t5",
+                  "explicit BIR selection should keep the fused predecessor-compute select result on the BIR text path");
+}
+
 void test_backend_bir_pipeline_routes_i8_chain_through_bir_text_surface() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_bir_i8_return_add_sub_chain_module()},
@@ -689,6 +706,7 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_backend_bir_pipeline_routes_single_param_select_branch_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_single_param_select_phi_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_two_param_select_phi_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_routes_two_param_select_predecessor_add_phi_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_i8_chain_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_i64_chain_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_single_param_chain_through_bir_text_surface);

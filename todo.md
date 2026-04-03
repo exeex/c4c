@@ -9,10 +9,27 @@ Source Plan: plan.md
 - [ ] Delete app-layer LLVM asm rescue from `c4cll`
 - [ ] Revalidate backend and full-suite behavior without fallback
 
-Current active item: Step 2, add regression coverage for the already-supported
-bounded two-parameter compare-fed ternary slice (`x == y ? x : y`) so the BIR
-text path proves it can collapse a source-shaped phi join into `bir.select`
-without widening CFG support or x86/AArch64 direct-BIR emitter coverage.
+Current active item: Step 2, continue the bounded compare-fed phi-join parity
+work with the next smallest predecessor-compute ternary slice that can still be
+hoisted into a single BIR block without widening CFG support or x86/AArch64
+direct-BIR emitter coverage.
+
+Completed this iteration:
+- Widened the bounded compare-fed phi-join BIR matcher so two-parameter
+  predecessor-local add/sub arms can be hoisted into the single BIR block
+  before the final `bir.select`, instead of requiring empty predecessor arms.
+- Added direct BIR lowering and explicit BIR-pipeline regressions for the
+  bounded predecessor-compute ternary slice via
+  `make_bir_two_param_select_eq_predecessor_add_phi_module()`, proving
+  `%t3 = bir.add ...`, `%t4 = bir.add ...`, and the final
+  `bir.select eq i32 %p.x, %p.y, %t3, %t4` stay on the BIR text path.
+- Rebuilt the tree, reran `ctest --test-dir build -R backend_bir_tests
+  --output-on-failure`, reran `ctest --test-dir build -L backend
+  --output-on-failure -j8`, then refreshed `test_fail_after.log` with a full
+  `ctest --test-dir build -j8 --output-on-failure` run.
+- Passed the regression guard against `test_fail_before.log` with
+  `--allow-non-decreasing-passed` (`2743 -> 2743` passed, `0 -> 0` failed, no
+  newly failing tests, no new `>30s` cases).
 
 Completed this iteration:
 - Added bounded Step 2 regression coverage for the already-supported
@@ -317,9 +334,10 @@ Next intended slice:
 - Continue Phase 2 parity with the next compare-adjacent control-flow gap that
   can still stay on the BIR text path without forcing multi-block BIR CFG
   support or widening x86/AArch64 direct-BIR emitter coverage, most likely the
-  next bounded compare/control-flow source form whose branch bodies still stay
-  empty and collapse cleanly into a single-block BIR `select` without needing
-  general CFG materialization.
+  next bounded compare/control-flow source form whose predecessor arms each
+  carry a slightly richer affine chain, such as mixed add/sub staging or a
+  trailing post-join affine use that can still be linearized into one BIR block
+  without needing general CFG materialization.
 
 Resume notes:
 - `backend.cpp` still contains the legacy route (`emit_legacy_module`), but
@@ -340,6 +358,9 @@ Resume notes:
   block: direct branch-to-return and empty branch-only goto chains feeding a
   final constant/parameter `phi` join, now covered for both one-parameter and
   two-parameter compare-fed ternary inputs.
+- `lir_to_bir.cpp` now also hoists the bounded 4-block predecessor-compute
+  compare-fed phi-join shape when each arm is an add/sub-only affine chain over
+  params/immediates and the join still collapses into a single `bir.select`.
 - The next bounded gap is instruction coverage rather than another scalar type:
   the BIR scaffold still rejects straight-line integer arithmetic outside
   `add/sub/mul/sdiv/srem/urem` plus the newly added bounded

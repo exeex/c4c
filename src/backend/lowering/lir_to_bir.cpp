@@ -486,6 +486,73 @@ std::optional<bool> evaluate_predicate(const AffineValue& lhs,
   return std::nullopt;
 }
 
+std::optional<std::vector<bir::BinaryInst>> lower_bounded_predecessor_chain(
+    const c4c::codegen::lir::LirBlock& lir_block,
+    std::string_view expected_result,
+    const std::vector<bir::Param>& params,
+    bir::TypeKind type) {
+  std::vector<bir::BinaryInst> lowered;
+  lowered.reserve(lir_block.insts.size());
+
+  std::vector<std::string> available_names;
+  available_names.reserve(params.size() + lir_block.insts.size());
+  std::vector<AffineValue> affine_values;
+  affine_values.reserve(params.size() + lir_block.insts.size());
+  for (std::size_t index = 0; index < params.size(); ++index) {
+    available_names.push_back(params[index].name);
+    affine_values.push_back(AffineValue{index == 0, index == 1, 0});
+  }
+
+  auto name_is_available = [&](std::string_view name) {
+    return std::find(available_names.begin(), available_names.end(), name) !=
+           available_names.end();
+  };
+  auto operand_is_available = [&](const bir::Value& value) {
+    return value.kind != bir::Value::Kind::Named || name_is_available(value.name);
+  };
+  auto lower_affine_value = [&](const bir::Value& value) -> std::optional<AffineValue> {
+    if (value.kind == bir::Value::Kind::Immediate) {
+      return AffineValue{false, false, value.immediate};
+    }
+    for (std::size_t index = 0; index < available_names.size(); ++index) {
+      if (available_names[index] == value.name) {
+        return affine_values[index];
+      }
+    }
+    return std::nullopt;
+  };
+
+  for (const auto& inst : lir_block.insts) {
+    auto binary = lower_binary(inst);
+    if (!binary.has_value() || binary->result.type != type ||
+        (binary->opcode != bir::BinaryOpcode::Add &&
+         binary->opcode != bir::BinaryOpcode::Sub)) {
+      return std::nullopt;
+    }
+    if (!operand_is_available(binary->lhs) || !operand_is_available(binary->rhs) ||
+        name_is_available(binary->result.name)) {
+      return std::nullopt;
+    }
+    const auto lhs = lower_affine_value(binary->lhs);
+    const auto rhs = lower_affine_value(binary->rhs);
+    if (!lhs.has_value() || !rhs.has_value()) {
+      return std::nullopt;
+    }
+    const auto combined = combine_affine(*lhs, *rhs, binary->opcode);
+    if (!combined.has_value()) {
+      return std::nullopt;
+    }
+    available_names.push_back(binary->result.name);
+    affine_values.push_back(*combined);
+    lowered.push_back(*binary);
+  }
+
+  if (!lowered.empty() && lowered.back().result.name != expected_result) {
+    return std::nullopt;
+  }
+  return lowered;
+}
+
 std::optional<bir::Function> try_lower_conditional_return_select_function(
     const c4c::codegen::lir::LirFunction& lir_function,
     const std::vector<bir::Param>& params) {
@@ -617,8 +684,7 @@ std::optional<bir::Function> try_lower_conditional_phi_select_function(
   const auto& false_block = lir_function.blocks[lir_function.blocks.size() == 4 ? 2 : 3];
   const auto* true_br = std::get_if<LirBr>(&true_block.terminator);
   const auto* false_br = std::get_if<LirBr>(&false_block.terminator);
-  if (!true_block.insts.empty() || !false_block.insts.empty() || true_br == nullptr ||
-      false_br == nullptr || condbr->true_label != true_block.label ||
+  if (true_br == nullptr || false_br == nullptr || condbr->true_label != true_block.label ||
       condbr->false_label != false_block.label) {
     return std::nullopt;
   }
@@ -637,8 +703,9 @@ std::optional<bir::Function> try_lower_conditional_phi_select_function(
     const auto* true_end_br = std::get_if<LirBr>(&true_end.terminator);
     const auto* false_end_br = std::get_if<LirBr>(&false_end.terminator);
     join_block = &lir_function.blocks[5];
-    if (!true_end.insts.empty() || !false_end.insts.empty() || true_end_br == nullptr ||
-        false_end_br == nullptr || true_br->target_label != true_end.label ||
+    if (!true_block.insts.empty() || !false_block.insts.empty() || !true_end.insts.empty() ||
+        !false_end.insts.empty() || true_end_br == nullptr || false_end_br == nullptr ||
+        true_br->target_label != true_end.label ||
         false_br->target_label != false_end.label ||
         true_end_br->target_label != join_block->label ||
         false_end_br->target_label != join_block->label) {
@@ -661,10 +728,15 @@ std::optional<bir::Function> try_lower_conditional_phi_select_function(
 
   const auto lhs = lower_immediate_or_name(cmp0->lhs.str(), *compare_type);
   const auto rhs = lower_immediate_or_name(cmp0->rhs.str(), *compare_type);
-  const auto true_value = lower_immediate_or_name(phi->incoming[0].first, *compare_type);
-  const auto false_value = lower_immediate_or_name(phi->incoming[1].first, *compare_type);
-  if (!lhs.has_value() || !rhs.has_value() || !true_value.has_value() ||
-      !false_value.has_value()) {
+  if (!lhs.has_value() || !rhs.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto true_chain = lower_bounded_predecessor_chain(
+      *true_phi_pred, phi->incoming[0].first, params, *compare_type);
+  const auto false_chain = lower_bounded_predecessor_chain(
+      *false_phi_pred, phi->incoming[1].first, params, *compare_type);
+  if (!true_chain.has_value() || !false_chain.has_value()) {
     return std::nullopt;
   }
 
@@ -676,9 +748,7 @@ std::optional<bir::Function> try_lower_conditional_phi_select_function(
       return param.name == value.name;
     });
   };
-  if (!operand_is_param_or_immediate(*lhs) || !operand_is_param_or_immediate(*rhs) ||
-      !operand_is_param_or_immediate(*true_value) ||
-      !operand_is_param_or_immediate(*false_value)) {
+  if (!operand_is_param_or_immediate(*lhs) || !operand_is_param_or_immediate(*rhs)) {
     return std::nullopt;
   }
 
@@ -689,6 +759,45 @@ std::optional<bir::Function> try_lower_conditional_phi_select_function(
 
   bir::Block block;
   block.label = entry.label;
+  std::vector<std::string> available_names;
+  available_names.reserve(params.size() + true_chain->size() + false_chain->size() + 1);
+  for (const auto& param : params) {
+    available_names.push_back(param.name);
+  }
+  for (const auto& inst : *true_chain) {
+    block.insts.push_back(inst);
+    available_names.push_back(inst.result.name);
+  }
+  for (const auto& inst : *false_chain) {
+    block.insts.push_back(inst);
+    available_names.push_back(inst.result.name);
+  }
+
+  auto lower_branch_value = [&](std::string_view value_text,
+                                const std::vector<bir::BinaryInst>& chain)
+      -> std::optional<bir::Value> {
+    if (!chain.empty()) {
+      return bir::Value::named(*compare_type, std::string(value_text));
+    }
+    return lower_immediate_or_name(value_text, *compare_type);
+  };
+  const auto true_value = lower_branch_value(phi->incoming[0].first, *true_chain);
+  const auto false_value = lower_branch_value(phi->incoming[1].first, *false_chain);
+  if (!true_value.has_value() || !false_value.has_value()) {
+    return std::nullopt;
+  }
+
+  auto operand_is_available = [&](const bir::Value& value) {
+    if (value.kind == bir::Value::Kind::Immediate) {
+      return true;
+    }
+    return std::find(available_names.begin(), available_names.end(), value.name) !=
+           available_names.end();
+  };
+  if (!operand_is_available(*true_value) || !operand_is_available(*false_value)) {
+    return std::nullopt;
+  }
+
   block.insts.push_back(bir::SelectInst{
       *predicate,
       bir::Value::named(*compare_type, phi->result.str()),
@@ -877,7 +986,7 @@ bir::Module lower_to_bir(const c4c::codegen::lir::LirModule& module) {
   auto lowered = try_lower_to_bir(module);
   if (!lowered.has_value()) {
     throw std::invalid_argument(
-        "bir scaffold lowering currently supports only straight-line single-block i8/i32/i64 return-immediate/add-sub slices, constant-only mul/sdiv/srem/urem/eq/ne/slt/sle/sgt/sge/ult/ule/ugt/uge materialization slices, bounded compare-fed integer select materialization, plus bounded one- and two-parameter affine chains over those scalar types");
+        "bir scaffold lowering currently supports only straight-line single-block i8/i32/i64 return-immediate/add-sub slices, constant-only mul/sdiv/srem/urem/eq/ne/slt/sle/sgt/sge/ult/ule/ugt/uge materialization slices, bounded compare-fed integer select materialization, bounded compare-fed phi joins with empty or add/sub-only predecessor arms, plus bounded one- and two-parameter affine chains over those scalar types");
   }
   return *lowered;
 }
