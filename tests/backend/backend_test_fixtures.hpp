@@ -1620,6 +1620,59 @@ inline c4c::codegen::lir::LirModule make_mixed_cast_constant_conditional_goto_re
   return module;
 }
 
+inline c4c::codegen::lir::LirModule
+make_small_integer_cast_constant_conditional_goto_return_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCmpOp{"%t0", false, "eq", "i32", "7", "7"});
+  entry.insts.push_back(LirCastOp{"%t1", LirCastKind::ZExt, "i1", "%t0", "i8"});
+  entry.insts.push_back(LirCastOp{"%t2", LirCastKind::SExt, "i8", "%t1", "i32"});
+  entry.insts.push_back(LirCastOp{"%t3", LirCastKind::SExt, "i32", "%t2", "i64"});
+  entry.insts.push_back(LirCmpOp{"%t4", false, "ne", "i64", "%t3", "0"});
+  entry.terminator = LirCondBr{"%t4", "then_path", "else_path"};
+
+  LirBlock then_path;
+  then_path.id = LirBlockId{1};
+  then_path.label = "then_path";
+  then_path.terminator = LirBr{"finish"};
+
+  LirBlock else_path;
+  else_path.id = LirBlockId{2};
+  else_path.label = "else_path";
+  else_path.terminator = LirBr{"dead_end"};
+
+  LirBlock dead_end;
+  dead_end.id = LirBlockId{3};
+  dead_end.label = "dead_end";
+  dead_end.terminator = LirBr{"finish"};
+
+  LirBlock finish;
+  finish.id = LirBlockId{4};
+  finish.label = "finish";
+  finish.terminator = LirRet{std::string("0"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(then_path));
+  function.blocks.push_back(std::move(else_path));
+  function.blocks.push_back(std::move(dead_end));
+  function.blocks.push_back(std::move(finish));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 inline c4c::codegen::lir::LirModule make_countdown_while_return_module() {
   using namespace c4c::codegen::lir;
 

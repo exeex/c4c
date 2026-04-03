@@ -1926,18 +1926,15 @@ std::optional<BackendFunction> adapt_constant_conditional_goto_return_function(
       }
 
       if (const auto* cast = std::get_if<LirCastOp>(&inst)) {
-        if (cast->kind == LirCastKind::ZExt && cast->from_type == "i1" &&
-            cast->to_type == "i32") {
-          const auto operand = resolve_predicate(cast->operand);
-          if (!operand.has_value()) {
-            return std::nullopt;
+        std::optional<ResolvedInteger> operand;
+        if (cast->from_type == "i1") {
+          if (const auto predicate = resolve_predicate(cast->operand); predicate.has_value()) {
+            operand = ResolvedInteger{static_cast<std::uint64_t>(*predicate ? 1 : 0), 1};
           }
-          integer_values[cast->result] = ResolvedInteger{
-              static_cast<std::uint64_t>(*operand ? 1 : 0), 32};
-          continue;
         }
-
-        const auto operand = resolve_int(cast->operand);
+        if (!operand.has_value()) {
+          operand = resolve_int(cast->operand);
+        }
         const auto cast_value =
             operand.has_value()
                 ? evaluate_integer_cast(cast->kind, *operand, cast->from_type, cast->to_type)
