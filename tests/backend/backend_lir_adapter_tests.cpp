@@ -731,6 +731,56 @@ void test_backend_call_helpers_parse_single_helper_direct_call() {
               "shared single-helper direct-call parser should preserve renamed helper symbols plus operand/result SSA names for the call-crossing seam without target-local scans");
 }
 
+void test_backend_call_helpers_parse_single_add_imm_function() {
+  auto param_slot = make_param_slot_runtime_module();
+  std::swap(param_slot.functions.front(), param_slot.functions.back());
+
+  auto& slot_helper = param_slot.functions.back();
+  slot_helper.name = "inc_value";
+  slot_helper.signature_text = "define i32 @inc_value(i32 %p.input)\n";
+  auto& slot_arg_store =
+      std::get<c4c::codegen::lir::LirStoreOp>(slot_helper.alloca_insts[1]);
+  slot_arg_store.val = "%p.input";
+
+  const auto parsed_slot =
+      c4c::backend::parse_backend_single_add_imm_function(slot_helper);
+  expect_true(parsed_slot.has_value() && parsed_slot->param_name == "%p.input" &&
+                  parsed_slot->add != nullptr && parsed_slot->add->rhs == "1",
+              "shared single-add-immediate helper parser should decode slot-backed single-argument helpers without target-local helper-body scans");
+
+  auto call_crossing = make_typed_call_crossing_direct_call_module();
+  std::swap(call_crossing.functions.front(), call_crossing.functions.back());
+
+  auto& helper = call_crossing.functions.back();
+  helper.name = "inc_value";
+  helper.signature_text = "define i32 @inc_value(i32 %p.input)\n";
+  auto* add = helper.blocks.empty() || helper.blocks.front().insts.empty()
+                  ? nullptr
+                  : std::get_if<c4c::codegen::lir::LirBinOp>(&helper.blocks.front().insts.front());
+  expect_true(add != nullptr,
+              "shared single-add-immediate helper parser regression test needs the helper add instruction");
+  if (add == nullptr) {
+    return;
+  }
+  add->lhs = "%p.input";
+  add->result = "%t.helper.add.renamed";
+  auto* ret = std::get_if<c4c::codegen::lir::LirRet>(&helper.blocks.front().terminator);
+  expect_true(ret != nullptr && ret->value_str.has_value(),
+              "shared single-add-immediate helper parser regression test needs the helper return");
+  if (ret == nullptr || !ret->value_str.has_value()) {
+    return;
+  }
+  ret->value_str = "%t.helper.add.renamed";
+
+  const auto parsed_helper =
+      c4c::backend::parse_backend_single_add_imm_function(helper);
+  expect_true(parsed_helper.has_value() && parsed_helper->param_name == "%p.input" &&
+                  parsed_helper->add != nullptr &&
+                  parsed_helper->add->result == "%t.helper.add.renamed" &&
+                  parsed_helper->add->rhs == "1",
+              "shared single-add-immediate helper parser should preserve renamed helper symbols and helper SSA values for direct single-argument add helpers");
+}
+
 void test_backend_call_helpers_decode_lir_direct_global_vararg_prefix() {
   c4c::codegen::lir::LirCallOp call{
       "%t2",
@@ -1909,6 +1959,7 @@ int main(int argc, char* argv[]) {
   test_backend_call_helpers_parse_single_helper_zero_arg_main_module_shape();
   test_backend_call_helpers_parse_single_helper_call_crossing_source_value();
   test_backend_call_helpers_parse_single_helper_direct_call();
+  test_backend_call_helpers_parse_single_add_imm_function();
   test_backend_call_helpers_decode_lir_direct_global_vararg_prefix();
   test_backend_call_helpers_classify_lir_nonminimal_call_types();
   test_backend_call_helpers_classify_lir_nonminimal_signature_types();

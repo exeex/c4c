@@ -152,10 +152,6 @@ struct MatchedMinimalStructuredTwoArgDirectCallHelper {
   const c4c::backend::BackendFunction* callee_fn = nullptr;
 };
 
-struct MatchedMinimalParamSlotHelper {
-  std::int64_t add_imm = 0;
-};
-
 struct MatchedMinimalLirTwoArgDirectCallHelper {};
 
 struct MatchedMinimalLirTwoArgDirectCallCall {
@@ -807,21 +803,6 @@ match_minimal_structured_two_arg_direct_call_helper(
   }
 
   return MatchedMinimalStructuredTwoArgDirectCallHelper{&callee_fn};
-}
-
-std::optional<MatchedMinimalParamSlotHelper> match_minimal_param_slot_helper(
-    const c4c::codegen::lir::LirFunction& helper) {
-  const auto parsed = c4c::backend::parse_backend_single_param_slot_add_function(helper);
-  if (!parsed.has_value()) {
-    return std::nullopt;
-  }
-
-  const auto add_imm = parse_i64(parsed->add->rhs);
-  if (!add_imm.has_value()) {
-    return std::nullopt;
-  }
-
-  return MatchedMinimalParamSlotHelper{*add_imm};
 }
 
 std::optional<MatchedMinimalLirTwoArgDirectCallHelper>
@@ -2986,8 +2967,9 @@ std::optional<MinimalParamSlotSlice> parse_minimal_param_slot_slice(
     return std::nullopt;
   }
 
-  const auto helper_match = match_minimal_param_slot_helper(*parsed_module->helper);
-  if (!helper_match.has_value()) {
+  const auto parsed_helper =
+      c4c::backend::parse_backend_single_add_imm_function(*parsed_module->helper);
+  if (!parsed_helper.has_value()) {
     return std::nullopt;
   }
 
@@ -2998,14 +2980,15 @@ std::optional<MinimalParamSlotSlice> parse_minimal_param_slot_slice(
   }
 
   const auto call_arg_imm = parse_i64(parsed_call->operand);
-  if (!call_arg_imm.has_value()) {
+  const auto helper_add_imm = parse_i64(parsed_helper->add->rhs);
+  if (!call_arg_imm.has_value() || !helper_add_imm.has_value()) {
     return std::nullopt;
   }
 
   return MinimalParamSlotSlice{
       parsed_module->helper->name,
       *call_arg_imm,
-      helper_match->add_imm,
+      *helper_add_imm,
   };
 }
 
