@@ -977,6 +977,102 @@ void test_backend_call_helpers_parse_structured_single_add_imm_function() {
               "shared structured single-add-immediate helper parser should preserve renamed structured parameter names and helper SSA values without target-local helper-body scans");
 }
 
+void test_backend_call_helpers_parse_structured_zero_arg_direct_call_module() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_direct_call_module());
+
+  c4c::backend::BackendFunction* helper = nullptr;
+  c4c::backend::BackendFunction* main_fn = nullptr;
+  for (auto& function : lowered.functions) {
+    if (function.signature.name == "main") {
+      main_fn = &function;
+    } else {
+      helper = &function;
+    }
+  }
+  expect_true(helper != nullptr && main_fn != nullptr,
+              "shared structured zero-argument direct-call module parser regression test needs lowered helper and main functions");
+  if (helper == nullptr || main_fn == nullptr) {
+    return;
+  }
+
+  helper->signature.name = "const_value";
+  helper->blocks.front().terminator.value = "9";
+
+  auto* call =
+      main_fn->blocks.empty() || main_fn->blocks.front().insts.empty()
+          ? nullptr
+          : std::get_if<c4c::backend::BackendCallInst>(&main_fn->blocks.front().insts.front());
+  expect_true(call != nullptr,
+              "shared structured zero-argument direct-call module parser regression test needs the lowered main call instruction");
+  if (call == nullptr) {
+    return;
+  }
+
+  call->callee.symbol_name = "const_value";
+  call->result = "%t.main.const.structured";
+  main_fn->blocks.front().terminator.value = "%t.main.const.structured";
+
+  const auto parsed = c4c::backend::parse_backend_minimal_direct_call_module(lowered);
+  expect_true(parsed.has_value() && parsed->helper != nullptr && parsed->main_function != nullptr &&
+                  parsed->call != nullptr && parsed->helper->signature.name == "const_value" &&
+                  parsed->main_function->signature.name == "main" &&
+                  parsed->call->result == "%t.main.const.structured" &&
+                  parsed->return_imm == 9,
+              "shared structured zero-argument direct-call module parser should preserve renamed helper symbols and return immediates without target-local backend-module scans");
+}
+
+void test_backend_call_helpers_parse_structured_single_add_imm_direct_call_module() {
+  auto lowered =
+      c4c::backend::lower_to_backend_ir(make_typed_direct_call_local_arg_module());
+
+  c4c::backend::BackendFunction* helper = nullptr;
+  c4c::backend::BackendFunction* main_fn = nullptr;
+  for (auto& function : lowered.functions) {
+    if (function.signature.name == "main") {
+      main_fn = &function;
+    } else {
+      helper = &function;
+    }
+  }
+  expect_true(helper != nullptr && main_fn != nullptr,
+              "shared structured single-add-immediate direct-call module parser regression test needs lowered helper and main functions");
+  if (helper == nullptr || main_fn == nullptr) {
+    return;
+  }
+
+  helper->signature.name = "sum_one";
+  helper->signature.params.front().name = "%p.input";
+  auto* helper_add = helper->blocks.empty() || helper->blocks.front().insts.empty()
+                         ? nullptr
+                         : std::get_if<c4c::backend::BackendBinaryInst>(&helper->blocks.front().insts.front());
+  auto* call =
+      main_fn->blocks.empty() || main_fn->blocks.front().insts.empty()
+          ? nullptr
+          : std::get_if<c4c::backend::BackendCallInst>(&main_fn->blocks.front().insts.front());
+  expect_true(helper_add != nullptr && call != nullptr,
+              "shared structured single-add-immediate direct-call module parser regression test needs mutable helper add and main call instructions");
+  if (helper_add == nullptr || call == nullptr) {
+    return;
+  }
+
+  helper_add->lhs = "%p.input";
+  helper_add->result = "%t.helper.add.structured";
+  helper->blocks.front().terminator.value = "%t.helper.add.structured";
+
+  call->callee.symbol_name = "sum_one";
+  call->args.front().operand = "17";
+  call->result = "%t.main.sum_one.structured";
+  main_fn->blocks.front().terminator.value = "%t.main.sum_one.structured";
+
+  const auto parsed = c4c::backend::parse_backend_minimal_direct_call_add_imm_module(lowered);
+  expect_true(parsed.has_value() && parsed->helper != nullptr && parsed->main_function != nullptr &&
+                  parsed->call != nullptr && parsed->helper->signature.name == "sum_one" &&
+                  parsed->main_function->signature.name == "main" &&
+                  parsed->call->result == "%t.main.sum_one.structured" &&
+                  parsed->call_arg_imm == 17 && parsed->add_imm == 1,
+              "shared structured single-add-immediate direct-call module parser should preserve renamed helper symbols and direct-call immediates without target-local backend-module scans");
+}
+
 void test_backend_call_helpers_parse_structured_folded_two_arg_function() {
   auto lowered =
       c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_module());
@@ -2287,6 +2383,8 @@ int main(int argc, char* argv[]) {
   test_backend_call_helpers_parse_structured_two_param_add_function();
   test_backend_call_helpers_parse_structured_zero_arg_return_imm_function();
   test_backend_call_helpers_parse_structured_single_add_imm_function();
+  test_backend_call_helpers_parse_structured_zero_arg_direct_call_module();
+  test_backend_call_helpers_parse_structured_single_add_imm_direct_call_module();
   test_backend_call_helpers_parse_structured_folded_two_arg_function();
   test_backend_call_helpers_parse_structured_two_arg_direct_call_module();
   test_backend_call_helpers_decode_lir_direct_global_vararg_prefix();
