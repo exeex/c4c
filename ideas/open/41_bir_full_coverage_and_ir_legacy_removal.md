@@ -211,3 +211,100 @@ What `ir.*` covers that `bir.*` does not:
 Run Phase 0: strip the `ir.hpp` include from one emitter file and collect the
 compilation errors. This gives the exact gap list with line-level precision and
 prevents the plan from being based on a static audit that may be stale.
+
+## Phase 0 Inventory Snapshot
+
+Audited on 2026-04-03 against the current tree. This is the concrete removal
+checklist for Step 1 of the active runbook.
+
+### Production legacy backend-IR boundaries
+
+- `src/backend/backend.hpp`
+  - `BackendModule` is still the public backend contract via
+    `#include "ir.hpp"` and `BackendModuleInput`:
+    [src/backend/backend.hpp](/workspaces/c4c/src/backend/backend.hpp#L3),
+    [src/backend/backend.hpp](/workspaces/c4c/src/backend/backend.hpp#L21)
+- `src/backend/backend.cpp`
+  - still includes legacy printer/conversion headers:
+    [src/backend/backend.cpp](/workspaces/c4c/src/backend/backend.cpp#L4),
+    [src/backend/backend.cpp](/workspaces/c4c/src/backend/backend.cpp#L6)
+  - `PassthroughBackendEmitter` returns LLVM IR when BIR lowering fails:
+    [src/backend/backend.cpp](/workspaces/c4c/src/backend/backend.cpp#L213)
+  - `emit_legacy_module(...)` is the old routing branch and still calls
+    emitter LIR overloads, `lower_lir_to_backend_module(...)`, and raw
+    `print_llvm(...)` fallback:
+    [src/backend/backend.cpp](/workspaces/c4c/src/backend/backend.cpp#L238)
+  - `emit_module(...)` still switches on `BackendPipeline::{Legacy,Bir}` and
+    converts BIR back through `lower_bir_to_backend_module(...)`:
+    [src/backend/backend.cpp](/workspaces/c4c/src/backend/backend.cpp#L277)
+- `src/codegen/llvm/llvm_codegen.cpp`
+  - `emit_legacy(...)` is still the LLVM/LIR fallback producer:
+    [src/codegen/llvm/llvm_codegen.cpp](/workspaces/c4c/src/codegen/llvm/llvm_codegen.cpp#L16)
+  - `emit_via_backend(...)` still falls back from `try_lower_to_bir(...)` to
+    `lower_lir_to_backend_module(...)`:
+    [src/codegen/llvm/llvm_codegen.cpp](/workspaces/c4c/src/codegen/llvm/llvm_codegen.cpp#L20)
+  - `CodegenPath::Llvm` and `CodegenPath::Compare` still depend on legacy IR
+    emission:
+    [src/codegen/llvm/llvm_codegen.cpp](/workspaces/c4c/src/codegen/llvm/llvm_codegen.cpp#L42)
+
+### Legacy backend-IR files that must disappear
+
+- Core IR contract and support:
+  [src/backend/ir.hpp](/workspaces/c4c/src/backend/ir.hpp),
+  [src/backend/ir.cpp](/workspaces/c4c/src/backend/ir.cpp),
+  [src/backend/ir_printer.hpp](/workspaces/c4c/src/backend/ir_printer.hpp),
+  [src/backend/ir_printer.cpp](/workspaces/c4c/src/backend/ir_printer.cpp),
+  [src/backend/ir_validate.hpp](/workspaces/c4c/src/backend/ir_validate.hpp),
+  [src/backend/ir_validate.cpp](/workspaces/c4c/src/backend/ir_validate.cpp)
+- Lowering/conversion layer:
+  [src/backend/lowering/lir_to_backend_ir.hpp](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.hpp),
+  [src/backend/lowering/lir_to_backend_ir.cpp](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp),
+  [src/backend/lowering/bir_to_backend_ir.hpp](/workspaces/c4c/src/backend/lowering/bir_to_backend_ir.hpp),
+  [src/backend/lowering/bir_to_backend_ir.cpp](/workspaces/c4c/src/backend/lowering/bir_to_backend_ir.cpp)
+- Direct include/contract dependents to migrate before deletion:
+  [src/backend/x86/codegen/emit.hpp](/workspaces/c4c/src/backend/x86/codegen/emit.hpp#L4),
+  [src/backend/aarch64/codegen/emit.hpp](/workspaces/c4c/src/backend/aarch64/codegen/emit.hpp#L4),
+  [src/backend/lowering/call_decode.hpp](/workspaces/c4c/src/backend/lowering/call_decode.hpp#L3),
+  [src/backend/lowering/extern_lowering.hpp](/workspaces/c4c/src/backend/lowering/extern_lowering.hpp#L3),
+  [src/backend/lir_adapter.hpp](/workspaces/c4c/src/backend/lir_adapter.hpp#L3)
+
+### App-layer LLVM rescue paths to delete
+
+- Fallback asm normalization exists only for LLVM-produced asm:
+  [src/apps/c4cll.cpp](/workspaces/c4c/src/apps/c4cll.cpp#L93)
+- LLVM-IR detection gate:
+  [src/apps/c4cll.cpp](/workspaces/c4c/src/apps/c4cll.cpp#L196)
+- Fallback reason inference and user hinting:
+  [src/apps/c4cll.cpp](/workspaces/c4c/src/apps/c4cll.cpp#L235),
+  [src/apps/c4cll.cpp](/workspaces/c4c/src/apps/c4cll.cpp#L285)
+- LLVM IR -> asm rescue shellout:
+  [src/apps/c4cll.cpp](/workspaces/c4c/src/apps/c4cll.cpp#L295)
+- Main `--codegen asm` fallback branch that retries backend output through
+  LLVM/Clang and then through `CodegenPath::Llvm`:
+  [src/apps/c4cll.cpp](/workspaces/c4c/src/apps/c4cll.cpp#L781)
+
+### Current test surfaces coupled to the legacy contract
+
+- Legacy lowering correctness and `BackendModule` shape:
+  [tests/backend/backend_module_tests.cpp](/workspaces/c4c/tests/backend/backend_module_tests.cpp)
+  with 110 direct `lower_lir_to_backend_module(...)` or `BackendModuleInput`
+  references in the current tree audit.
+- Shared legacy lowering adapter coverage:
+  [tests/backend/backend_lir_adapter_tests.cpp](/workspaces/c4c/tests/backend/backend_lir_adapter_tests.cpp)
+  with 61 direct legacy-lowering references.
+- Emitter-facing legacy module coverage:
+  [tests/backend/backend_lir_adapter_x86_64_tests.cpp](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
+  with 280 direct legacy-lowering references.
+- Emitter-facing legacy module coverage:
+  [tests/backend/backend_lir_adapter_aarch64_tests.cpp](/workspaces/c4c/tests/backend/backend_lir_adapter_aarch64_tests.cpp)
+  with 331 direct legacy-lowering references.
+- Transitional BIR pipeline tests still assert conversion back into
+  `BackendModule` through `bir_to_backend_ir`:
+  [tests/backend/backend_bir_pipeline_tests.cpp](/workspaces/c4c/tests/backend/backend_bir_pipeline_tests.cpp#L4),
+  [tests/backend/backend_bir_pipeline_tests.cpp](/workspaces/c4c/tests/backend/backend_bir_pipeline_tests.cpp#L236)
+
+### Execution implication
+
+The first implementation slice after this audit should be to move the public
+backend contract from `BackendModule(ir.*)` toward `bir::Module` at the header
+boundary, starting with type-system parity and emitter header dependencies.
