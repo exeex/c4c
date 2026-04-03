@@ -72,6 +72,8 @@ std::string render_binary_opcode(BinaryOpcode opcode) {
       return "sle";
     case BinaryOpcode::Sgt:
       return "sgt";
+    case BinaryOpcode::Sge:
+      return "sge";
     case BinaryOpcode::Ult:
       return "ult";
     case BinaryOpcode::Ule:

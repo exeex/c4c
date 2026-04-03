@@ -10,10 +10,11 @@ Source Plan: plan.md
 - [ ] Revalidate backend and full-suite behavior without fallback
 
 Current active item: Step 2, widen the bounded BIR compare scaffold with the
-next minimal signed less-than-or-equal (`sle`) materialization slice by
-folding constant-only `icmp sle` + `zext i1 -> i32` returns into BIR, while
-keeping any new default-route exposure limited to RISC-V and not claiming new
-x86/AArch64 direct-emitter coverage yet.
+next minimal compare-materialization gap after signed greater-than-or-equal
+(`sge`), likely unsigned greater-than (`ugt`) or another constant-only
+`icmp <pred>` + `zext i1 -> i32` return slice, while keeping any new
+default-route exposure limited to RISC-V and not claiming new x86/AArch64
+direct-emitter coverage yet.
 
 Completed this iteration:
 - Audited the current production legacy boundaries in `backend.cpp`,
@@ -199,13 +200,30 @@ Completed this iteration:
   isolated `llvm_gcc_c_torture_src_pr28982b_c` failure, but all three suspect
   cases passed immediately on targeted rerun and the subsequent full rerun
   completed green.
+- Widened the BIR compare scaffold with a bounded constant-only signed
+  greater-than-or-equal materialization slice by folding `icmp sge` plus
+  `zext i1 -> i32` return patterns into `bir.sge`, with printer/lowering
+  coverage, explicit BIR pipeline coverage, and a new RISC-V default-route
+  regression for `return 7 >= 7;`.
+- Rebuilt the tree, reran `backend_bir_tests` plus the new
+  `backend_codegen_route_riscv64_return_sge_defaults_to_bir` coverage, then
+  refreshed `test_fail_after.log` with two full `ctest --test-dir build -j
+  --output-on-failure` passes.
+- On the first full-suite attempt, 20 unrelated tests failed or timed out but
+  all passed immediately under `ctest --rerun-failed --output-on-failure`,
+  indicating a transient run rather than a stable regression from the `sge`
+  slice.
+- On the refreshed full-suite pass, only `cpp_eastl_utility_parse_recipe`
+  timed out at the suite level; it passed immediately on targeted rerun
+  (`15.78 sec`), and the regression guard against `test_fail_before.log`
+  passed with `--allow-non-decreasing-passed` (`2728 -> 2737` passed, `0 -> 1`
+  failed, no newly failing tests, no new `>30s` cases).
 
 Next intended slice:
 - Continue Phase 1/2 parity with the next bounded compare-materialization gap
-  after `sle`, likely signed greater-than-or-equal (`sge`) or another minimal
-  constant-only `icmp <pred>` + `zext i1 -> i32` return shape, while keeping
-  default BIR auto-routing gated to RISC-V until x86/AArch64 direct-BIR
-  emitters grow native support for it.
+  after `sge`, likely unsigned greater-than (`ugt`) or unsigned
+  greater-than-or-equal (`uge`), while keeping default BIR auto-routing gated
+  to RISC-V until x86/AArch64 direct-BIR emitters grow native support for it.
 
 Resume notes:
 - `backend.cpp` still contains the legacy route (`emit_legacy_module`), but
@@ -217,6 +235,9 @@ Resume notes:
 - `lir_to_bir.cpp` now accepts bounded straight-line `i8` arithmetic slices in
   addition to the existing `i32` and `i64` scaffolds, but backend asm emitters
   still only consume the narrower direct-BIR affine subset.
+- `lir_to_bir.cpp` now folds constant-only compare materialization through
+  `eq/slt/sle/sgt/sge/ult/ule`, but unsigned greater-than-family predicates
+  are still missing from the bounded compare scaffold.
 - The next bounded gap is instruction coverage rather than another scalar type:
   the BIR scaffold still rejects straight-line integer arithmetic outside
   `add/sub/mul/sdiv/srem/urem` plus the newly added bounded
