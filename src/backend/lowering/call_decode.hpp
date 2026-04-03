@@ -165,6 +165,7 @@ struct ParsedBackendMinimalCallCrossingDirectCallModuleView {
   const BackendBinaryInst* source_add = nullptr;
   const BackendCallInst* call = nullptr;
   const BackendBinaryInst* final_add = nullptr;
+  std::string_view regalloc_source_value;
   std::int64_t source_imm = 0;
   std::int64_t helper_add_imm = 0;
 };
@@ -1020,6 +1021,7 @@ parse_backend_minimal_call_crossing_direct_call_module(const BackendModule& modu
       source_add,
       call,
       final_add,
+      source_add->result,
       *lhs_imm + *rhs_imm,
       *add_imm,
   };

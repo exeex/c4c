@@ -1149,11 +1149,12 @@ void test_backend_call_helpers_parse_structured_call_crossing_direct_call_module
                   parsed->final_add != nullptr &&
                   parsed->helper->signature.name == "inc_value" &&
                   parsed->main_function->signature.name == "main" &&
+                  parsed->regalloc_source_value == "%t.crossing.source.structured" &&
                   parsed->source_add->result == "%t.crossing.source.structured" &&
                   parsed->call->result == "%t.crossing.call.structured" &&
                   parsed->final_add->result == "%t.crossing.sum.structured" &&
                   parsed->source_imm == 5 && parsed->helper_add_imm == 1,
-              "shared structured call-crossing direct-call module parser should preserve renamed helper symbols, SSA names, and summed source immediates without target-local backend-module scans");
+              "shared structured call-crossing direct-call module parser should preserve renamed helper symbols, SSA names, regalloc source metadata, and summed source immediates without target-local backend-module scans");
 }
 
 void test_backend_call_helpers_parse_structured_folded_two_arg_function() {
