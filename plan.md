@@ -132,8 +132,11 @@ paths before running the full suite.
 
 Actions:
 
-- use `ctest --test-dir build -R backend --output-on-failure` as the default
-  regression loop during this plan to keep iteration fast
+- use only backend-focused validation such as
+  `ctest --test-dir build -L backend --output-on-failure` as the default
+  regression loop during plan execution to keep iteration fast
+- treat the backend subset as the required validation gate for intermediate
+  slices; do not require full-suite regression during routine Step 6 work
 - run the relevant backend validation and confirm the active migration slice does
   not rely on fallback anymore
 - confirm no production code path still routes through LLVM fallback
@@ -150,6 +153,8 @@ work is complete.
 
 Actions:
 
+- run the complete regression suite only in this final step, after the
+  backend-focused Step 6 validation is already green
 - run the complete regression suite
 - compare the result against the backend-focused validation used during
   implementation
