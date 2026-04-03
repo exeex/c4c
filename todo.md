@@ -9,12 +9,38 @@ Source Plan: plan.md
 - [ ] Delete app-layer LLVM asm rescue from `c4cll`
 - [ ] Revalidate backend and full-suite behavior without fallback
 
-Current active item: Step 2, keep auditing bounded source-level/default-route
-widened-width `i64` affine surfaces now that the staged two-parameter wrapper
-has explicit direct-BIR route coverage.
-Next target: audit whether the analogous widened-width two-parameter `i64`
-add-sub chain shape (`((x + y) + 2) - 1`) already stays on the direct BIR route
-or needs its own bounded route-coverage slice.
+Current active item: Step 2, continue the bounded widened-width/default-route
+route audit after closing the two-parameter `i64` add/sub chain slice.
+Next target: identify the next uncovered widened-width/default-route backend
+route shape that still lacks explicit direct-BIR coverage and keep the work
+test-first and bounded to route parity rather than emitter migration or
+legacy-route deletion.
+
+Completed this iteration:
+- Audited the widened-width two-parameter `i64` add/sub chain shape and
+  confirmed it already stays on the direct BIR pipeline; no
+  `src/backend/lowering/lir_to_bir.cpp` change was required for
+  `((x + y) + 2) - 1`.
+- Added
+  `tests/c/internal/backend_route_case/two_param_i64_add_sub_chain.c`,
+  proving `long long wide_mix(long long x, long long y) { return ((x + y) + 2) - 1; }`
+  reaches the backend through BIR instead of legacy LLVM IR text.
+- Registered
+  `backend_codegen_route_riscv64_two_param_i64_add_sub_chain_defaults_to_bir`
+  in `tests/c/internal/InternalTests.cmake`, asserting the emitted text
+  contains `bir.func @wide_mix(i64 %p.x, i64 %p.y) -> i64 {`,
+  `%t0 = bir.add i64 %p.x, %p.y`, `%t2 = bir.add i64 %t0, 2`,
+  `%t4 = bir.sub i64 %t2, 1`, and forbids legacy LLVM IR
+  `define i64 @wide_mix(i64 %p.x, i64 %p.y)`.
+- Reconfigured and rebuilt the tree, reran
+  `backend_codegen_route_riscv64_two_param_i64_add_sub_chain_defaults_to_bir`,
+  reran `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `336/336` backend-labeled tests passing, then refreshed
+  `test_fail_before.log` and `test_fail_after.log` with full-suite runs and
+  passed the regression guard with
+  `--allow-non-decreasing-passed --timeout-threshold 30 --enforce-timeout`
+  (`2773 -> 2774` passed, `0 -> 0` failed, no newly failing tests, no new
+  `>30s` cases).
 
 Completed this iteration:
 - Added `tests/c/internal/backend_route_case/two_param_i64_staged_affine.c`,

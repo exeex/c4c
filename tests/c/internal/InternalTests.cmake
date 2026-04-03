@@ -834,6 +834,15 @@ if(CLANG_EXECUTABLE)
     )
 
     c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_two_param_i64_add_sub_chain_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_i64_add_sub_chain.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_i64_add_sub_chain_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @wide_mix(i64 %p.x, i64 %p.y) -> i64 {|%t0 = bir.add i64 %p.x, %p.y|%t2 = bir.add i64 %t0, 2|%t4 = bir.sub i64 %t2, 1|bir.ret i64 %t4"
+      FORBIDDEN_SNIPPETS "define i64 @wide_mix(i64 %p.x, i64 %p.y)"
+    )
+
+    c4c_add_backend_codegen_route_test(
       backend_codegen_route_riscv64_two_param_i8_staged_affine_defaults_to_bir
       SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_i8_staged_affine.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu
