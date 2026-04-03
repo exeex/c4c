@@ -3776,7 +3776,7 @@ std::string emit_minimal_call_crossing_direct_call_asm(
 }
 
 std::string emit_minimal_conditional_return_asm(
-    const c4c::codegen::lir::LirModule& module,
+    const c4c::backend::BackendModule& module,
     const MinimalConditionalReturnSlice& slice) {
   const auto in_mov_range = [](std::int64_t imm) {
     return imm >= 0 && imm <= std::numeric_limits<std::uint16_t>::max();
@@ -3787,9 +3787,7 @@ std::string emit_minimal_conditional_return_asm(
   }
 
   std::ostringstream out;
-  c4c::backend::BackendModule backend_module;
-  backend_module.target_triple = module.target_triple;
-  const std::string main_symbol = asm_symbol_name(backend_module, "main");
+  const std::string main_symbol = asm_symbol_name(module, "main");
   const char* fail_branch = nullptr;
   switch (slice.predicate) {
     case c4c::codegen::lir::LirCmpPredicate::Slt: fail_branch = "b.ge"; break;
@@ -3808,7 +3806,7 @@ std::string emit_minimal_conditional_return_asm(
   }
 
   out << ".text\n";
-  emit_function_prelude(out, backend_module, main_symbol, true);
+  emit_function_prelude(out, module, main_symbol, true);
   out << "  mov w8, #" << slice.lhs_imm << "\n"
       << "  cmp w8, #" << slice.rhs_imm << "\n"
       << "  " << fail_branch << " .L" << slice.false_label << "\n"
@@ -5792,9 +5790,7 @@ std::string emit_module(const c4c::backend::BackendModule& module,
     if (!needs_nonminimal_lowering) {
       if (const auto slice = parse_minimal_conditional_return_slice(module);
           slice.has_value()) {
-        c4c::codegen::lir::LirModule scaffold_module;
-        scaffold_module.target_triple = module.target_triple;
-        return emit_minimal_conditional_return_asm(scaffold_module, *slice);
+        return emit_minimal_conditional_return_asm(module, *slice);
       }
     }
     if (!needs_nonminimal_lowering) {
@@ -5917,7 +5913,7 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
   if (!needs_nonminimal_lowering) {
     if (const auto slice = parse_minimal_conditional_return_slice(prepared);
         slice.has_value()) {
-      return emit_minimal_conditional_return_asm(prepared, *slice);
+      return emit_minimal_conditional_return_asm(prepared_backend_stub, *slice);
     }
   }
   if (const auto slice = parse_minimal_scalar_global_load_slice(prepared);

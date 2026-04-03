@@ -3640,6 +3640,20 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_return_i
                       "aarch64 backend seam should not fall back to backend IR text for lowered conditional branches");
 }
 
+void test_aarch64_backend_scaffold_matches_direct_conditional_return_asm() {
+  const auto direct_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_conditional_return_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  const auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_return_module());
+  const auto lowered_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  if (direct_rendered != lowered_rendered) {
+    fail("aarch64 conditional-return regression should keep the direct LIR and explicit lowered backend seams on identical assembly output");
+  }
+}
+
 void test_aarch64_backend_scaffold_accepts_structured_conditional_return_ir_without_type_shims() {
   auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_return_module());
   clear_backend_memory_type_compatibility_shims(lowered);
@@ -4812,6 +4826,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_scaffold_accepts_explicit_lowered_global_int_pointer_diff_ir_input();
   test_aarch64_backend_scaffold_accepts_structured_global_int_pointer_diff_ir_without_type_shims();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_return_ir_input();
+  test_aarch64_backend_scaffold_matches_direct_conditional_return_asm();
   test_aarch64_backend_scaffold_accepts_structured_conditional_return_ir_without_type_shims();
   test_aarch64_backend_scaffold_accepts_structured_conditional_return_ir_without_signature_shims();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_ir_input();
