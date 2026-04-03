@@ -2873,6 +2873,138 @@ void test_x86_backend_keeps_renamed_typed_two_arg_direct_call_slice_on_asm_path(
                       "x86 backend seam should not fall back when the typed two-argument direct-call slice relies only on structural helper metadata");
 }
 
+void test_x86_backend_keeps_renamed_typed_two_arg_local_arg_slice_with_extra_reload_on_asm_path() {
+  auto module = make_typed_direct_call_two_arg_local_arg_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  c4c::codegen::lir::LirFunction* helper = nullptr;
+  c4c::codegen::lir::LirFunction* main_fn = nullptr;
+  for (auto& function : module.functions) {
+    if (function.name == "add_pair") {
+      helper = &function;
+    } else if (function.name == "main") {
+      main_fn = &function;
+    }
+  }
+  expect_true(helper != nullptr && main_fn != nullptr,
+              "x86 renamed typed two-argument local-arg regression test needs helper and main functions");
+  if (helper == nullptr || main_fn == nullptr) {
+    return;
+  }
+
+  helper->name = "sum_pair";
+  helper->signature_text = "define i32 @sum_pair(i32 %p.left, i32 %p.right)\n";
+  auto& helper_add = std::get<c4c::codegen::lir::LirBinOp>(helper->blocks.front().insts.front());
+  helper_add.result = "%t.sum";
+  helper_add.lhs = "%p.left";
+  helper_add.rhs = "%p.right";
+  helper->blocks.front().terminator = c4c::codegen::lir::LirRet{std::string("%t.sum"), "i32"};
+
+  auto& local = std::get<c4c::codegen::lir::LirAllocaOp>(main_fn->alloca_insts.front());
+  local.result = "%lv.shadow.left";
+
+  auto& store = std::get<c4c::codegen::lir::LirStoreOp>(main_fn->blocks.front().insts[0]);
+  auto& load = std::get<c4c::codegen::lir::LirLoadOp>(main_fn->blocks.front().insts[1]);
+  store.ptr = "%lv.shadow.left";
+  load.result = "%t.call.left";
+  load.ptr = "%lv.shadow.left";
+  main_fn->blocks.front().insts.insert(
+      main_fn->blocks.front().insts.begin() + 2,
+      c4c::codegen::lir::LirLoadOp{"%t.unused.left", "i32", "%lv.shadow.left"});
+
+  auto& call = std::get<c4c::codegen::lir::LirCallOp>(main_fn->blocks.front().insts.back());
+  call.result = "%t.sum.result";
+  call.callee = c4c::codegen::lir::LirOperand(std::string("@sum_pair"),
+                                              c4c::codegen::lir::LirOperandKind::Global);
+  call.args_str = "i32 %t.call.left, i32 7";
+  main_fn->blocks.front().terminator =
+      c4c::codegen::lir::LirRet{std::string("%t.sum.result"), "i32"};
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".type sum_pair, %function",
+                  "x86 backend seam should key renamed typed two-argument local-arg helper definitions from the observed helper symbol instead of a fixed add_pair name");
+  expect_contains(rendered, "sum_pair:\n  mov eax, edi\n  add eax, esi\n  ret\n",
+                  "x86 backend seam should keep renamed typed two-argument local-arg helpers on the asm path when helper and local SSA names change");
+  expect_contains(rendered, "mov edi, 5",
+                  "x86 backend seam should still materialize the renamed local first argument from the observed slot store");
+  expect_contains(rendered, "mov esi, 7",
+                  "x86 backend seam should still preserve the immediate second argument for renamed typed two-argument local-arg slices");
+  expect_contains(rendered, "call sum_pair",
+                  "x86 backend seam should still lower renamed typed two-argument local-arg direct calls without depending on the last local reload preceding the call");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back when a renamed typed two-argument local-arg slice carries an extra unused reload before the direct call");
+}
+
+void test_x86_backend_keeps_renamed_typed_two_arg_second_local_arg_slice_with_extra_reload_on_asm_path() {
+  auto module = make_typed_direct_call_two_arg_second_local_arg_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  c4c::codegen::lir::LirFunction* helper = nullptr;
+  c4c::codegen::lir::LirFunction* main_fn = nullptr;
+  for (auto& function : module.functions) {
+    if (function.name == "add_pair") {
+      helper = &function;
+    } else if (function.name == "main") {
+      main_fn = &function;
+    }
+  }
+  expect_true(helper != nullptr && main_fn != nullptr,
+              "x86 renamed typed two-argument second-local-arg regression test needs helper and main functions");
+  if (helper == nullptr || main_fn == nullptr) {
+    return;
+  }
+
+  helper->name = "sum_pair";
+  helper->signature_text = "define i32 @sum_pair(i32 %p.left, i32 %p.right)\n";
+  auto& helper_add = std::get<c4c::codegen::lir::LirBinOp>(helper->blocks.front().insts.front());
+  helper_add.result = "%t.sum";
+  helper_add.lhs = "%p.left";
+  helper_add.rhs = "%p.right";
+  helper->blocks.front().terminator = c4c::codegen::lir::LirRet{std::string("%t.sum"), "i32"};
+
+  auto& local = std::get<c4c::codegen::lir::LirAllocaOp>(main_fn->alloca_insts.front());
+  local.result = "%lv.shadow.right";
+
+  auto& store = std::get<c4c::codegen::lir::LirStoreOp>(main_fn->blocks.front().insts[0]);
+  auto& load = std::get<c4c::codegen::lir::LirLoadOp>(main_fn->blocks.front().insts[1]);
+  store.ptr = "%lv.shadow.right";
+  load.result = "%t.call.right";
+  load.ptr = "%lv.shadow.right";
+  main_fn->blocks.front().insts.insert(
+      main_fn->blocks.front().insts.begin() + 2,
+      c4c::codegen::lir::LirLoadOp{"%t.unused.right", "i32", "%lv.shadow.right"});
+
+  auto& call = std::get<c4c::codegen::lir::LirCallOp>(main_fn->blocks.front().insts.back());
+  call.result = "%t.sum.result";
+  call.callee = c4c::codegen::lir::LirOperand(std::string("@sum_pair"),
+                                              c4c::codegen::lir::LirOperandKind::Global);
+  call.args_str = "i32 5, i32 %t.call.right";
+  main_fn->blocks.front().terminator =
+      c4c::codegen::lir::LirRet{std::string("%t.sum.result"), "i32"};
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".type sum_pair, %function",
+                  "x86 backend seam should key renamed typed two-argument second-local-arg helper definitions from the observed helper symbol instead of a fixed add_pair name");
+  expect_contains(rendered, "sum_pair:\n  mov eax, edi\n  add eax, esi\n  ret\n",
+                  "x86 backend seam should keep renamed typed two-argument second-local-arg helpers on the asm path when helper and local SSA names change");
+  expect_contains(rendered, "mov edi, 5",
+                  "x86 backend seam should still preserve the immediate first argument for renamed typed two-argument second-local-arg slices");
+  expect_contains(rendered, "mov esi, 7",
+                  "x86 backend seam should still materialize the renamed local second argument from the observed slot store");
+  expect_contains(rendered, "call sum_pair",
+                  "x86 backend seam should still lower renamed typed two-argument second-local-arg direct calls without depending on the last local reload preceding the call");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back when a renamed typed two-argument second-local-arg slice carries an extra unused reload before the direct call");
+}
+
 void test_x86_backend_keeps_renamed_typed_two_arg_first_local_rewrite_slice_on_asm_path() {
   auto module = make_typed_direct_call_two_arg_first_local_rewrite_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -2910,7 +3042,10 @@ void test_x86_backend_keeps_renamed_typed_two_arg_first_local_rewrite_slice_on_a
   auto& rewrite = std::get<c4c::codegen::lir::LirBinOp>(main_fn->blocks.front().insts[2]);
   auto& store1 = std::get<c4c::codegen::lir::LirStoreOp>(main_fn->blocks.front().insts[3]);
   auto& load1 = std::get<c4c::codegen::lir::LirLoadOp>(main_fn->blocks.front().insts[4]);
-  auto& call = std::get<c4c::codegen::lir::LirCallOp>(main_fn->blocks.front().insts[5]);
+  main_fn->blocks.front().insts.insert(
+      main_fn->blocks.front().insts.begin() + 5,
+      c4c::codegen::lir::LirLoadOp{"%t.unused.left", "i32", "%lv.shadow.left"});
+  auto& call = std::get<c4c::codegen::lir::LirCallOp>(main_fn->blocks.front().insts.back());
 
   store0.ptr = "%lv.shadow.left";
   load0.result = "%t.load.left";
@@ -2940,9 +3075,9 @@ void test_x86_backend_keeps_renamed_typed_two_arg_first_local_rewrite_slice_on_a
   expect_contains(rendered, "mov esi, 7",
                   "x86 backend seam should still preserve the immediate second argument for renamed rewritten typed two-argument local slices");
   expect_contains(rendered, "call sum_pair",
-                  "x86 backend seam should still lower renamed rewritten typed two-argument direct calls without depending on fixed lowered helper or local SSA names");
+                  "x86 backend seam should still lower renamed rewritten typed two-argument direct calls without depending on fixed lowered helper names or the last local reload preceding the call");
   expect_not_contains(rendered, "target triple =",
-                      "x86 backend seam should not fall back when the rewritten typed two-argument local slice relies only on the local rewrite contract");
+                      "x86 backend seam should not fall back when a renamed rewritten typed two-argument local slice carries an extra unused reload before the direct call");
 }
 
 void test_x86_backend_keeps_renamed_typed_two_arg_second_local_rewrite_slice_on_asm_path() {
@@ -2982,7 +3117,10 @@ void test_x86_backend_keeps_renamed_typed_two_arg_second_local_rewrite_slice_on_
   auto& rewrite = std::get<c4c::codegen::lir::LirBinOp>(main_fn->blocks.front().insts[2]);
   auto& store1 = std::get<c4c::codegen::lir::LirStoreOp>(main_fn->blocks.front().insts[3]);
   auto& load1 = std::get<c4c::codegen::lir::LirLoadOp>(main_fn->blocks.front().insts[4]);
-  auto& call = std::get<c4c::codegen::lir::LirCallOp>(main_fn->blocks.front().insts[5]);
+  main_fn->blocks.front().insts.insert(
+      main_fn->blocks.front().insts.begin() + 5,
+      c4c::codegen::lir::LirLoadOp{"%t.unused.right", "i32", "%lv.shadow.right"});
+  auto& call = std::get<c4c::codegen::lir::LirCallOp>(main_fn->blocks.front().insts.back());
 
   store0.ptr = "%lv.shadow.right";
   load0.result = "%t.load.right";
@@ -3012,9 +3150,9 @@ void test_x86_backend_keeps_renamed_typed_two_arg_second_local_rewrite_slice_on_
   expect_contains(rendered, "mov esi, 7",
                   "x86 backend seam should still materialize the rewritten renamed local second argument from the observed rewritten load chain");
   expect_contains(rendered, "call sum_pair",
-                  "x86 backend seam should still lower renamed rewritten second-local typed two-argument direct calls without depending on fixed lowered helper or local SSA names");
+                  "x86 backend seam should still lower renamed rewritten second-local typed two-argument direct calls without depending on fixed lowered helper names or the last local reload preceding the call");
   expect_not_contains(rendered, "target triple =",
-                      "x86 backend seam should not fall back when the rewritten second-local typed two-argument local slice relies only on the local rewrite contract");
+                      "x86 backend seam should not fall back when a renamed rewritten second-local typed two-argument local slice carries an extra unused reload before the direct call");
 }
 
 void test_x86_backend_keeps_renamed_typed_two_arg_both_local_arg_slice_on_asm_path() {
@@ -4914,6 +5052,8 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_slice);
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_slice_with_spaced_helper_signature);
   RUN_TEST(test_x86_backend_keeps_renamed_typed_two_arg_direct_call_slice_on_asm_path);
+  RUN_TEST(test_x86_backend_keeps_renamed_typed_two_arg_local_arg_slice_with_extra_reload_on_asm_path);
+  RUN_TEST(test_x86_backend_keeps_renamed_typed_two_arg_second_local_arg_slice_with_extra_reload_on_asm_path);
   RUN_TEST(test_x86_backend_keeps_renamed_typed_two_arg_first_local_rewrite_slice_on_asm_path);
   RUN_TEST(test_x86_backend_keeps_renamed_typed_two_arg_second_local_rewrite_slice_on_asm_path);
   RUN_TEST(test_x86_backend_keeps_renamed_typed_two_arg_both_local_arg_slice_on_asm_path);

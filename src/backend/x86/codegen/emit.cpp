@@ -211,22 +211,12 @@ std::optional<std::pair<std::int64_t, bool>> match_single_local_rewrite_slot_sli
     std::string_view rhs_call_operand) {
   using namespace c4c::codegen::lir;
 
-  if (insts.size() != 5) {
+  if (insts.size() < 5) {
     return std::nullopt;
   }
 
-  const auto* store0 = std::get_if<LirStoreOp>(&insts[0]);
-  const auto* load0 = std::get_if<LirLoadOp>(&insts[1]);
-  const auto* rewrite = std::get_if<LirBinOp>(&insts[2]);
-  const auto* store1 = std::get_if<LirStoreOp>(&insts[3]);
-  const auto* load1 = std::get_if<LirLoadOp>(&insts[4]);
-  const auto rewrite_opcode = rewrite == nullptr ? std::nullopt : rewrite->opcode.typed();
-  if (store0 == nullptr || load0 == nullptr || rewrite == nullptr || store1 == nullptr ||
-      load1 == nullptr || store0->type_str != "i32" || load0->type_str != "i32" ||
-      rewrite_opcode != LirBinaryOpcode::Add || rewrite->type_str != "i32" ||
-      store1->type_str != "i32" || load1->type_str != "i32" || store0->ptr != alloca ||
-      load0->ptr != alloca || store1->ptr != alloca || load1->ptr != alloca ||
-      rewrite->lhs != load0->result || rewrite->rhs != "0" || store1->val != rewrite->result) {
+  const auto* store0 = std::get_if<LirStoreOp>(&insts.front());
+  if (store0 == nullptr || store0->type_str != "i32" || store0->ptr != alloca) {
     return std::nullopt;
   }
 
@@ -235,10 +225,107 @@ std::optional<std::pair<std::int64_t, bool>> match_single_local_rewrite_slot_sli
     return std::nullopt;
   }
 
-  if (lhs_call_operand == load1->result) {
+  std::string last_load_result;
+  std::string rewritten_result;
+  bool saw_rewrite = false;
+  bool committed_rewrite = false;
+  bool matched_lhs_operand = false;
+  bool matched_rhs_operand = false;
+
+  for (std::size_t inst_index = 1; inst_index < insts.size(); ++inst_index) {
+    const auto& inst = insts[inst_index];
+
+    if (const auto* load = std::get_if<LirLoadOp>(&inst)) {
+      if (load->type_str != "i32" || load->ptr != alloca) {
+        return std::nullopt;
+      }
+      last_load_result = load->result;
+      if (committed_rewrite) {
+        if (load->result == lhs_call_operand) {
+          matched_lhs_operand = true;
+        }
+        if (load->result == rhs_call_operand) {
+          matched_rhs_operand = true;
+        }
+      }
+      continue;
+    }
+
+    if (const auto* rewrite = std::get_if<LirBinOp>(&inst)) {
+      const auto rewrite_opcode = rewrite->opcode.typed();
+      if (saw_rewrite || committed_rewrite || rewrite_opcode != LirBinaryOpcode::Add ||
+          rewrite->type_str != "i32" || rewrite->lhs != last_load_result || rewrite->rhs != "0") {
+        return std::nullopt;
+      }
+      rewritten_result = rewrite->result;
+      saw_rewrite = true;
+      continue;
+    }
+
+    if (const auto* store = std::get_if<LirStoreOp>(&inst)) {
+      if (!saw_rewrite || committed_rewrite || store->type_str != "i32" || store->ptr != alloca ||
+          store->val != rewritten_result) {
+        return std::nullopt;
+      }
+      committed_rewrite = true;
+      continue;
+    }
+
+    return std::nullopt;
+  }
+
+  if (!committed_rewrite) {
+    return std::nullopt;
+  }
+  if (matched_lhs_operand) {
     return std::pair<std::int64_t, bool>{*stored_imm, true};
   }
-  if (rhs_call_operand == load1->result) {
+  if (matched_rhs_operand) {
+    return std::pair<std::int64_t, bool>{*stored_imm, false};
+  }
+  return std::nullopt;
+}
+
+std::optional<std::pair<std::int64_t, bool>> match_single_local_arg_slot_slice(
+    const std::vector<c4c::codegen::lir::LirInst>& insts,
+    std::string_view alloca,
+    std::string_view lhs_call_operand,
+    std::string_view rhs_call_operand) {
+  using namespace c4c::codegen::lir;
+
+  if (insts.size() < 2) {
+    return std::nullopt;
+  }
+
+  const auto* store = std::get_if<LirStoreOp>(&insts.front());
+  if (store == nullptr || store->type_str != "i32" || store->ptr != alloca) {
+    return std::nullopt;
+  }
+
+  const auto stored_imm = parse_i64(store->val);
+  if (!stored_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  bool matched_lhs_operand = false;
+  bool matched_rhs_operand = false;
+  for (std::size_t inst_index = 1; inst_index < insts.size(); ++inst_index) {
+    const auto* load = std::get_if<LirLoadOp>(&insts[inst_index]);
+    if (load == nullptr || load->type_str != "i32" || load->ptr != alloca) {
+      return std::nullopt;
+    }
+    if (load->result == lhs_call_operand) {
+      matched_lhs_operand = true;
+    }
+    if (load->result == rhs_call_operand) {
+      matched_rhs_operand = true;
+    }
+  }
+
+  if (matched_lhs_operand) {
+    return std::pair<std::int64_t, bool>{*stored_imm, true};
+  }
+  if (matched_rhs_operand) {
     return std::pair<std::int64_t, bool>{*stored_imm, false};
   }
   return std::nullopt;
@@ -3087,46 +3174,11 @@ std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_sl
     return std::nullopt;
   }
 
-  if (main_block.insts.size() == 3) {
-    const auto* store = std::get_if<LirStoreOp>(&main_block.insts[0]);
-    const auto* load = std::get_if<LirLoadOp>(&main_block.insts[1]);
-    const auto* call = std::get_if<LirCallOp>(&main_block.insts[2]);
-    const auto call_operands =
-        call == nullptr ? std::nullopt
-                        : c4c::backend::parse_backend_direct_global_two_typed_call_operands(
-                              *call, helper->name, "i32", "i32");
-    if (store == nullptr || load == nullptr || call == nullptr || store->type_str != "i32" ||
-        load->type_str != "i32" || store->ptr != alloca->result ||
-        load->ptr != alloca->result || call->result.empty() || !call_operands.has_value() ||
-        *main_ret->value_str != call->result) {
-      return std::nullopt;
-    }
-    const auto stored_imm = parse_i64(store->val);
-    if (!stored_imm.has_value()) {
-      return std::nullopt;
-    }
-    if (call_operands->first == load->result) {
-      const auto rhs_call_arg_imm = parse_i64(call_operands->second);
-      if (!rhs_call_arg_imm.has_value()) {
-        return std::nullopt;
-      }
-      return MinimalTwoArgDirectCallSlice{helper->name, *stored_imm, *rhs_call_arg_imm};
-    }
-    if (call_operands->second == load->result) {
-      const auto lhs_call_arg_imm = parse_i64(call_operands->first);
-      if (!lhs_call_arg_imm.has_value()) {
-        return std::nullopt;
-      }
-      return MinimalTwoArgDirectCallSlice{helper->name, *lhs_call_arg_imm, *stored_imm};
-    }
+  if (main_block.insts.size() < 2) {
     return std::nullopt;
   }
 
-  if (main_block.insts.size() != 6) {
-    return std::nullopt;
-  }
-
-  const auto* call = std::get_if<LirCallOp>(&main_block.insts[5]);
+  const auto* call = std::get_if<LirCallOp>(&main_block.insts.back());
   const auto call_operands =
       call == nullptr ? std::nullopt
                       : c4c::backend::parse_backend_direct_global_two_typed_call_operands(
@@ -3136,8 +3188,39 @@ std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_sl
     return std::nullopt;
   }
 
+  const std::vector<LirInst> slot_prefix(main_block.insts.begin(), main_block.insts.end() - 1);
+
+  const auto matched_local_arg_slice = match_single_local_arg_slot_slice(
+      slot_prefix,
+      alloca->result,
+      call_operands->first,
+      call_operands->second);
+  if (matched_local_arg_slice.has_value()) {
+    if (matched_local_arg_slice->second) {
+      const auto rhs_call_arg_imm = parse_i64(call_operands->second);
+      if (!rhs_call_arg_imm.has_value()) {
+        return std::nullopt;
+      }
+      return MinimalTwoArgDirectCallSlice{
+          helper->name,
+          matched_local_arg_slice->first,
+          *rhs_call_arg_imm,
+      };
+    }
+
+    const auto lhs_call_arg_imm = parse_i64(call_operands->first);
+    if (!lhs_call_arg_imm.has_value()) {
+      return std::nullopt;
+    }
+    return MinimalTwoArgDirectCallSlice{
+        helper->name,
+        *lhs_call_arg_imm,
+        matched_local_arg_slice->first,
+    };
+  }
+
   const auto matched_slot_slice = match_single_local_rewrite_slot_slice(
-      std::vector<LirInst>(main_block.insts.begin(), main_block.insts.begin() + 5),
+      slot_prefix,
       alloca->result,
       call_operands->first,
       call_operands->second);
