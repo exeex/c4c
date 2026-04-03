@@ -977,6 +977,77 @@ void test_backend_call_helpers_parse_structured_single_add_imm_function() {
               "shared structured single-add-immediate helper parser should preserve renamed structured parameter names and helper SSA values without target-local helper-body scans");
 }
 
+void test_backend_call_helpers_parse_structured_folded_two_arg_function() {
+  auto lowered =
+      c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_module());
+
+  c4c::backend::BackendFunction* helper = nullptr;
+  for (auto& function : lowered.functions) {
+    if (function.signature.name != "main") {
+      helper = &function;
+      break;
+    }
+  }
+  expect_true(helper != nullptr,
+              "shared structured folded two-argument helper parser regression test needs the lowered helper function");
+  if (helper == nullptr) {
+    return;
+  }
+
+  helper->signature.name = "const_pair";
+  helper->signature.params[0].name = "%p.left";
+  helper->signature.params[1].name = "%p.right";
+
+  auto* add = helper->blocks.empty() || helper->blocks.front().insts.size() < 2
+                  ? nullptr
+                  : std::get_if<c4c::backend::BackendBinaryInst>(&helper->blocks.front().insts[0]);
+  auto* sub = helper->blocks.empty() || helper->blocks.front().insts.size() < 2
+                  ? nullptr
+                  : std::get_if<c4c::backend::BackendBinaryInst>(&helper->blocks.front().insts[1]);
+  if (add == nullptr || sub == nullptr) {
+    auto* entry = helper->blocks.empty() ? nullptr : &helper->blocks.front();
+    expect_true(entry != nullptr,
+                "shared structured folded two-argument helper parser regression test needs the lowered helper entry block");
+    if (entry == nullptr) {
+      return;
+    }
+
+    entry->insts.push_back(c4c::backend::BackendBinaryInst{
+        c4c::backend::BackendBinaryOpcode::Sub,
+        "%t.helper.folded.sub",
+        "i32",
+        "%t.helper.folded.add",
+        "%p.right",
+        c4c::backend::BackendScalarType::I32,
+    });
+
+    add = std::get_if<c4c::backend::BackendBinaryInst>(&entry->insts[0]);
+    sub = std::get_if<c4c::backend::BackendBinaryInst>(&entry->insts[1]);
+    expect_true(add != nullptr && sub != nullptr,
+                "shared structured folded two-argument helper parser regression test needs mutable lowered helper add/sub instructions");
+    if (add == nullptr || sub == nullptr) {
+      return;
+    }
+  }
+
+  add->lhs = "9";
+  add->rhs = "%p.left";
+  add->result = "%t.helper.folded.add";
+  sub->lhs = "%t.helper.folded.add";
+  sub->rhs = "%p.right";
+  sub->result = "%t.helper.folded.sub";
+  helper->blocks.front().terminator.value = "%t.helper.folded.sub";
+
+  const auto parsed =
+      c4c::backend::parse_backend_structured_folded_two_arg_function(*helper);
+  expect_true(parsed.has_value() && parsed->lhs_param_name == "%p.left" &&
+                  parsed->rhs_param_name == "%p.right" && parsed->base_imm == 9 &&
+                  parsed->add != nullptr && parsed->sub != nullptr &&
+                  parsed->add->result == "%t.helper.folded.add" &&
+                  parsed->sub->result == "%t.helper.folded.sub",
+              "shared structured folded two-argument helper parser should preserve renamed parameter names, helper SSA values, and folded base immediates without target-local helper-body scans");
+}
+
 void test_backend_call_helpers_decode_lir_direct_global_vararg_prefix() {
   c4c::codegen::lir::LirCallOp call{
       "%t2",
@@ -2161,6 +2232,7 @@ int main(int argc, char* argv[]) {
   test_backend_call_helpers_parse_structured_two_param_add_function();
   test_backend_call_helpers_parse_structured_zero_arg_return_imm_function();
   test_backend_call_helpers_parse_structured_single_add_imm_function();
+  test_backend_call_helpers_parse_structured_folded_two_arg_function();
   test_backend_call_helpers_decode_lir_direct_global_vararg_prefix();
   test_backend_call_helpers_classify_lir_nonminimal_call_types();
   test_backend_call_helpers_classify_lir_nonminimal_signature_types();
