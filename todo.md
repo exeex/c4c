@@ -9,9 +9,10 @@ Source Plan: plan.md
 - [ ] Delete app-layer LLVM asm rescue from `c4cll`
 - [ ] Revalidate backend and full-suite behavior without fallback
 
-Current active item: Step 2, widen the BIR straight-line arithmetic scaffold
-from `add/sub` to include bounded `mul` on the BIR text/lowering path without
-claiming new direct-emitter coverage yet.
+Current active item: Step 2, continue widening the BIR straight-line
+arithmetic scaffold beyond `add/sub/mul/sdiv` with another bounded
+non-affine integer op on the BIR text/lowering path without claiming new
+direct-emitter coverage yet.
 
 Completed this iteration:
 - Audited the current production legacy boundaries in `backend.cpp`,
@@ -90,10 +91,20 @@ Completed this iteration:
   refreshed `test_fail_after.log`, and passed the regression guard against
   `test_fail_before.log` with `--allow-non-decreasing-passed`
   (`2728/2728` before and after, no newly failing tests).
+- Widened the BIR straight-line arithmetic scaffold with bounded constant-only
+  signed division by adding `bir.sdiv` printer/lowering support, backend test
+  fixtures, and targeted BIR text-surface regressions for the explicit
+  pipeline plus the RISC-V default-route case.
+- Rebuilt from a clean `build/` directory, reran `backend_bir_tests` plus the
+  new `backend_codegen_route_riscv64_return_sdiv_defaults_to_bir` coverage,
+  refreshed `test_fail_after.log`, and passed the regression guard against
+  `test_fail_before.log` with `--allow-non-decreasing-passed`
+  (`2728 -> 2729` passed, `0 -> 0` failed, no newly failing tests).
 
 Next intended slice:
 - Continue Phase 1/2 parity by widening BIR into the next straight-line
-  arithmetic/comparison cluster, keeping any new default-route exposure gated
+  arithmetic/comparison cluster, likely another constant-only non-affine
+  integer op such as `srem`, while keeping any new default-route exposure gated
   to RISC-V until x86/AArch64 direct-BIR emitters grow native support for it.
 
 Resume notes:
@@ -108,7 +119,8 @@ Resume notes:
   still only consume the narrower direct-BIR affine subset.
 - The next bounded gap is instruction coverage rather than another scalar type:
   the BIR scaffold still rejects straight-line integer arithmetic outside
-  `add/sub/mul`, even when the slice can stay entirely on the BIR text path.
+  `add/sub/mul/sdiv`, even when the slice can stay entirely on the BIR text
+  path.
 - Auto-selection into the BIR pipeline in `llvm_codegen.cpp` is intentionally
   constrained to `Target::Riscv64`; explicit BIR pipeline options are still the
   only supported way to exercise non-RISC-V direct-BIR emitter slices.

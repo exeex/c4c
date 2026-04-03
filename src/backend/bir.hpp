@@ -42,6 +42,7 @@ enum class BinaryOpcode : unsigned char {
   Add,
   Sub,
   Mul,
+  SDiv,
 };
 
 struct BinaryInst {

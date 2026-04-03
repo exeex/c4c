@@ -44,6 +44,17 @@ c4c::codegen::lir::LirModule make_bir_return_mul_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_bir_return_sdiv_module() {
+  using namespace c4c::codegen::lir;
+
+  auto module = make_return_add_module();
+  auto& entry = module.functions.front().blocks.front();
+  entry.insts.clear();
+  entry.insts.push_back(LirBinOp{"%t0", "sdiv", "i32", "12", "3"});
+  entry.terminator = LirRet{std::string("%t0"), "i32"};
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_bir_single_param_add_sub_chain_module() {
   using namespace c4c::codegen::lir;
 
