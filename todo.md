@@ -10,9 +10,36 @@ Source Plan: plan.md
 - [ ] Revalidate backend and full-suite behavior without fallback
 
 Current active item: Step 2, continue from the now-complete
-`split_predecessor_add_phi` `+ 6 - 2` parity slice into the remaining nearby
-simple-family companion, starting with the `+ 6 - 2 + 9` join-tail extension
-before considering any further matcher widening.
+`split_predecessor_add_phi` family into the next still-bounded
+compare-adjacent control-flow or instruction-coverage gap that can stay on the
+direct BIR text path without requiring general multi-block BIR CFG support or
+direct-BIR emitter widening.
+
+Completed this iteration:
+- Added the missing simple split-predecessor compare-fed phi-join `+ 6 - 2 + 9`
+  parity slice via
+  `make_bir_two_param_select_eq_split_predecessor_add_phi_post_join_add_sub_add_module()`,
+  proving the existing `split_predecessor_add_phi` `+ 6` and `+ 6 - 2` forms
+  stay on the direct BIR path when the join-local tail extends to
+  `+ 6 - 2 + 9`.
+- Added source-level/default-route RISC-V coverage via
+  `tests/c/internal/backend_route_case/two_param_select_eq_split_predecessor_add_phi_post_add_sub_add.c`,
+  proving `(x == y ? x + 5 : y + 9) + 6 - 2 + 9` defaults to the BIR pipeline
+  instead of falling back to legacy LLVM IR text.
+- Added explicit lowering and direct-BIR pipeline coverage for the simple
+  split-predecessor `post_add_sub_add` slice, completing the nearby join-tail
+  parity matrix for the base `add_phi` family.
+- Reconfigured and rebuilt the affected tree, reran
+  `ctest --test-dir build -R backend_bir_tests --output-on-failure`, reran the
+  new route case
+  `backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_add_phi_post_add_sub_add_defaults_to_bir`,
+  then reran `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `320/320` backend-labeled tests passing.
+- The simple-family tail-extension slice passed without any `lir_to_bir.cpp`
+  widening, confirming the existing bounded compare-fed phi-join matcher
+  already generalizes across the full nearby `split_predecessor_add_phi`
+  `+ 6`, `+ 6 - 2`, and `+ 6 - 2 + 9` join-tail variants and only regression
+  coverage was missing.
 
 Completed this iteration:
 - Added the missing simple split-predecessor compare-fed phi-join `+ 6 - 2`
@@ -698,14 +725,11 @@ Completed this iteration:
   failed, no newly failing tests, no new `>30s` cases).
 
 Next intended slice:
-- Continue Phase 2 parity with the next compare-adjacent control-flow gap that
-  can still stay on the BIR text path without forcing multi-block BIR CFG
-  support or widening x86/AArch64 direct-BIR emitter coverage, most likely the
-  next asymmetric split-predecessor or compare-adjacent join-local affine
-  follow-on beyond the now-covered symmetric `+ 6 - 2 + 9` tail, such as the
-  mirrored deeper-then/mixed-else or mixed-then/deeper-else version of the
-  same longer post-select chain, or another still-linearizable split-arm
-  affine variant that does not require general CFG materialization.
+- Continue Phase 2 parity with the next bounded compare/select/control-flow or
+  straight-line instruction gap that still linearizes into one BIR block,
+  likely a nearby still-uncovered compare-adjacent source shape beyond the now
+  complete split-predecessor `post_add`, `post_add_sub`, and `post_add_sub_add`
+  family matrix, before considering any broader matcher widening.
 
 Resume notes:
 - `backend.cpp` still contains the legacy route (`emit_legacy_module`), but

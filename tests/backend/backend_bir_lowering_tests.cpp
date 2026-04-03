@@ -668,6 +668,30 @@ void test_bir_lowering_accepts_two_param_select_split_predecessor_add_phi_post_j
                   "BIR lowering should return the widened simple split-predecessor join-local add/sub chain on the BIR path");
 }
 
+void test_bir_lowering_accepts_two_param_select_split_predecessor_add_phi_post_join_add_sub_add_slice() {
+  const auto lowered = c4c::backend::lower_to_bir(
+      make_bir_two_param_select_eq_split_predecessor_add_phi_post_join_add_sub_add_module());
+  const auto rendered = c4c::backend::bir::print(lowered);
+
+  expect_contains(rendered,
+                  "bir.func @choose2_add_post_chain_tail(i32 %p.x, i32 %p.y) -> i32 {",
+                  "BIR lowering should preserve the simple split-predecessor ternary signature while extending the join-local arithmetic tail to the nearby + 6 - 2 + 9 parity shape");
+  expect_contains(rendered, "%t8 = bir.add i32 %p.x, 5",
+                  "BIR lowering should hoist the then-arm predecessor arithmetic for the simple split-predecessor tail-extension slice");
+  expect_contains(rendered, "%t9 = bir.add i32 %p.y, 9",
+                  "BIR lowering should hoist the else-arm predecessor arithmetic for the simple split-predecessor tail-extension slice");
+  expect_contains(rendered, "%t10 = bir.select eq i32 %p.x, %p.y, %t8, %t9",
+                  "BIR lowering should collapse the simple split-predecessor phi join into the bounded BIR select surface before the longer join-local tail");
+  expect_contains(rendered, "%t11 = bir.add i32 %t10, 6",
+                  "BIR lowering should preserve the first join-local arithmetic step after the simple split-predecessor select");
+  expect_contains(rendered, "%t12 = bir.sub i32 %t11, 2",
+                  "BIR lowering should preserve the middle join-local subtraction after the fused select for the simple split-predecessor family");
+  expect_contains(rendered, "%t13 = bir.add i32 %t12, 9",
+                  "BIR lowering should preserve the trailing join-local add after the fused select for the simple split-predecessor family");
+  expect_contains(rendered, "bir.ret i32 %t13",
+                  "BIR lowering should return the widened simple split-predecessor join-local add/sub/add chain on the BIR path");
+}
+
 void test_bir_lowering_accepts_two_param_select_split_predecessor_deeper_affine_phi_post_join_add_sub_slice() {
   const auto lowered = c4c::backend::lower_to_bir(
       make_bir_two_param_select_eq_split_predecessor_deeper_affine_phi_post_join_add_sub_module());
@@ -1189,6 +1213,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_two_param_select_predecessor_add_phi_slice);
   RUN_TEST(test_bir_lowering_accepts_two_param_select_split_predecessor_add_phi_post_join_add_slice);
   RUN_TEST(test_bir_lowering_accepts_two_param_select_split_predecessor_add_phi_post_join_add_sub_slice);
+  RUN_TEST(test_bir_lowering_accepts_two_param_select_split_predecessor_add_phi_post_join_add_sub_add_slice);
   RUN_TEST(test_bir_lowering_accepts_two_param_select_split_predecessor_deeper_affine_phi_post_join_add_sub_slice);
   RUN_TEST(test_bir_lowering_accepts_two_param_select_split_predecessor_mixed_affine_phi_post_join_add_sub_slice);
   RUN_TEST(test_bir_lowering_accepts_two_param_select_split_predecessor_mixed_affine_phi_post_join_add_sub_add_slice);

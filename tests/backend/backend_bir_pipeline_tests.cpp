@@ -372,6 +372,31 @@ void test_backend_bir_pipeline_routes_two_param_select_split_predecessor_add_phi
                   "explicit BIR selection should keep the widened simple split-predecessor join-local add/sub chain on the BIR text path");
 }
 
+void test_backend_bir_pipeline_routes_two_param_select_split_predecessor_add_phi_post_join_add_sub_add_through_bir_text_surface() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{
+          make_bir_two_param_select_eq_split_predecessor_add_phi_post_join_add_sub_add_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Riscv64));
+
+  expect_contains(rendered,
+                  "bir.func @choose2_add_post_chain_tail(i32 %p.x, i32 %p.y) -> i32 {",
+                  "explicit BIR selection should preserve the simple split-predecessor ternary signature while extending the join-local arithmetic tail to the nearby + 6 - 2 + 9 parity shape on the BIR text path");
+  expect_contains(rendered, "%t8 = bir.add i32 %p.x, 5",
+                  "explicit BIR selection should keep the then-arm predecessor arithmetic for the simple split-predecessor tail-extension slice on the BIR text path");
+  expect_contains(rendered, "%t9 = bir.add i32 %p.y, 9",
+                  "explicit BIR selection should keep the else-arm predecessor arithmetic for the simple split-predecessor tail-extension slice on the BIR text path");
+  expect_contains(rendered, "%t10 = bir.select eq i32 %p.x, %p.y, %t8, %t9",
+                  "explicit BIR selection should collapse the simple split-predecessor phi join into the bounded BIR select surface before the longer join-local tail");
+  expect_contains(rendered, "%t11 = bir.add i32 %t10, 6",
+                  "explicit BIR selection should preserve the first join-local arithmetic step after the simple split-predecessor form");
+  expect_contains(rendered, "%t12 = bir.sub i32 %t11, 2",
+                  "explicit BIR selection should preserve the middle join-local subtraction after the fused select for the simple split-predecessor family");
+  expect_contains(rendered, "%t13 = bir.add i32 %t12, 9",
+                  "explicit BIR selection should preserve the trailing join-local add after the fused select for the simple split-predecessor family");
+  expect_contains(rendered, "bir.ret i32 %t13",
+                  "explicit BIR selection should keep the widened simple split-predecessor join-local add/sub/add chain on the BIR text path");
+}
+
 void test_backend_bir_pipeline_routes_two_param_select_split_predecessor_deeper_affine_phi_post_join_add_sub_through_bir_text_surface() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{
@@ -1118,6 +1143,7 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_backend_bir_pipeline_routes_two_param_select_predecessor_add_phi_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_two_param_select_split_predecessor_add_phi_post_join_add_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_two_param_select_split_predecessor_add_phi_post_join_add_sub_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_routes_two_param_select_split_predecessor_add_phi_post_join_add_sub_add_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_two_param_select_split_predecessor_deeper_affine_phi_post_join_add_sub_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_two_param_select_split_predecessor_mixed_affine_phi_post_join_add_sub_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_two_param_select_split_predecessor_mixed_affine_phi_post_join_add_sub_add_through_bir_text_surface);
