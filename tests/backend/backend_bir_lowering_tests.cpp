@@ -127,6 +127,23 @@ void test_bir_printer_renders_minimal_shl_scaffold() {
                   "BIR printer should let shl results flow into returns");
 }
 
+void test_bir_printer_renders_minimal_lshr_scaffold() {
+  using namespace c4c::backend::bir;
+
+  auto module = make_return_immediate_module();
+  auto& block = module.functions.front().blocks.front();
+  block.insts.push_back(
+      BinaryInst{BinaryOpcode::LShr, Value::named(TypeKind::I32, "%t0"),
+                 Value::immediate_i32(16), Value::immediate_i32(2)});
+  block.terminator.value = Value::named(TypeKind::I32, "%t0");
+
+  const auto rendered = c4c::backend::bir::print(module);
+  expect_contains(rendered, "%t0 = bir.lshr i32 16, 2",
+                  "BIR printer should render explicit lshr instructions in BIR terms");
+  expect_contains(rendered, "bir.ret i32 %t0",
+                  "BIR printer should let lshr results flow into returns");
+}
+
 void test_bir_printer_renders_minimal_sdiv_scaffold() {
   using namespace c4c::backend::bir;
 
@@ -555,6 +572,16 @@ void test_bir_lowering_accepts_tiny_return_shl_lir_slice() {
                   "BIR lowering should materialize the tiny shl slice in BIR terms");
   expect_contains(rendered, "bir.ret i32 %t0",
                   "BIR lowering should return the named BIR shl result");
+}
+
+void test_bir_lowering_accepts_tiny_return_lshr_lir_slice() {
+  const auto lowered = c4c::backend::lower_to_bir(make_bir_return_lshr_module());
+  const auto rendered = c4c::backend::bir::print(lowered);
+
+  expect_contains(rendered, "%t0 = bir.lshr i32 16, 2",
+                  "BIR lowering should materialize the tiny lshr slice in BIR terms");
+  expect_contains(rendered, "bir.ret i32 %t0",
+                  "BIR lowering should return the named BIR lshr result");
 }
 
 void test_bir_lowering_accepts_tiny_return_sdiv_lir_slice() {
@@ -1308,6 +1335,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_printer_renders_minimal_or_scaffold);
   RUN_TEST(test_bir_printer_renders_minimal_xor_scaffold);
   RUN_TEST(test_bir_printer_renders_minimal_shl_scaffold);
+  RUN_TEST(test_bir_printer_renders_minimal_lshr_scaffold);
   RUN_TEST(test_bir_printer_renders_minimal_sdiv_scaffold);
   RUN_TEST(test_bir_printer_renders_minimal_udiv_scaffold);
   RUN_TEST(test_bir_printer_renders_minimal_srem_scaffold);
@@ -1337,6 +1365,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_tiny_return_or_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_xor_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_shl_lir_slice);
+  RUN_TEST(test_bir_lowering_accepts_tiny_return_lshr_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_sdiv_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_udiv_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_srem_lir_slice);

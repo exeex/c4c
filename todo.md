@@ -11,10 +11,35 @@ Source Plan: plan.md
 
 Current active item: Step 2, widen the bounded straight-line direct-BIR matcher
 with the next missing single-block shift opcode slice from the existing LIR
-surface. Completed the constant-only integer `shl` route. Next target: extend
-to adjacent `lshr`, then `ashr`, if the same bounded matcher still holds. Keep
-that work scoped to the direct BIR text path without requiring
-general multi-block BIR CFG support or any direct-BIR emitter widening.
+surface. Completed the constant-only integer `shl` and `lshr` routes. Next
+target: extend to adjacent `ashr`, if the same bounded matcher still holds.
+Keep that work scoped to the direct BIR text path without requiring general
+multi-block BIR CFG support or any direct-BIR emitter widening.
+
+Completed this iteration:
+- Widened the bounded straight-line BIR scaffold with the missing constant-only
+  integer `lshr` slice by adding `bir.lshr` support in `bir.hpp`, `bir.cpp`,
+  and `lir_to_bir.cpp`, keeping it bounded to immediate integer arithmetic
+  that still linearizes into one BIR block.
+- Added backend BIR printer, lowering, and explicit BIR-pipeline regressions
+  via `make_bir_return_lshr_module()`, proving the widened shift slice reaches
+  the BIR text surface as `%t0 = bir.lshr i32 16, 2`.
+- Added source-level/default-route RISC-V coverage via
+  `tests/c/internal/backend_route_case/return_lshr.c`, proving
+  `return (unsigned)16 >> 2;` defaults to the BIR pipeline instead of falling
+  back to legacy LLVM IR text.
+- Reconfigured and rebuilt the tree, reran
+  `ctest --test-dir build -R backend_bir_tests --output-on-failure`, reran the
+  new route case
+  `backend_codegen_route_riscv64_return_lshr_defaults_to_bir`, then reran
+  `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `326/326` backend-labeled tests passing.
+- Refreshed `test_fail_after.log` with a full
+  `ctest --test-dir build -j8 --output-on-failure` run, then passed the
+  regression guard against `test_fail_before.log` with
+  `--allow-non-decreasing-passed --timeout-threshold 30 --enforce-timeout`
+  (`2760 -> 2764` passed, `0 -> 0` failed, no newly failing tests, no new
+  `>30s` cases).
 
 Completed this iteration:
 - Widened the bounded straight-line BIR scaffold with the missing constant-only
