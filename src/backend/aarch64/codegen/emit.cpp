@@ -3410,17 +3410,6 @@ std::optional<MinimalDirectCallSlice> parse_minimal_direct_call_slice(
   return MinimalDirectCallSlice{parsed->helper->signature.name, parsed->return_imm};
 }
 
-std::optional<MinimalDirectCallSlice> parse_minimal_direct_call_two_arg_folded_slice(
-    const c4c::backend::BackendModule& module) {
-  const auto parsed =
-      c4c::backend::parse_backend_minimal_folded_two_arg_direct_call_module(module);
-  if (!parsed.has_value() || parsed->helper == nullptr) {
-    return std::nullopt;
-  }
-
-  return MinimalDirectCallSlice{parsed->helper->signature.name, parsed->return_imm};
-}
-
 std::optional<MinimalCallCrossingDirectCallSlice>
 parse_minimal_call_crossing_direct_call_slice(
     const c4c::backend::BackendModule& module) {
@@ -3576,6 +3565,46 @@ std::string emit_minimal_direct_call_two_arg_add_asm(
   out << ".text\n";
   emit_function_prelude(out, module, helper_symbol, false);
   out << "  add w0, w0, w1\n"
+      << "  ret\n";
+  emit_function_prelude(out, module, main_symbol, true);
+  out << "  sub sp, sp, #16\n"
+      << "  str x30, [sp, #8]\n"
+      << "  mov w0, #" << slice.lhs_call_arg_imm << "\n"
+      << "  mov w1, #" << slice.rhs_call_arg_imm << "\n"
+      << "  bl " << helper_symbol << "\n"
+      << "  ldr x30, [sp, #8]\n"
+      << "  add sp, sp, #16\n"
+      << "  ret\n";
+  return out.str();
+}
+
+std::string emit_minimal_direct_call_two_arg_folded_asm(
+    const c4c::backend::BackendModule& module,
+    const c4c::backend::ParsedBackendMinimalFoldedTwoArgDirectCallModuleView& slice) {
+  if (slice.helper == nullptr) {
+    fail_unsupported("structured folded two-argument direct-call slice without helper metadata");
+  }
+
+  if (slice.return_imm < 0 ||
+      slice.return_imm > std::numeric_limits<std::uint16_t>::max()) {
+    fail_unsupported("folded helper return immediates outside the minimal mov-supported range");
+  }
+  if (slice.lhs_call_arg_imm < 0 ||
+      slice.lhs_call_arg_imm > std::numeric_limits<std::uint16_t>::max()) {
+    fail_unsupported("first folded direct-call argument immediates outside the minimal mov-supported range");
+  }
+  if (slice.rhs_call_arg_imm < 0 ||
+      slice.rhs_call_arg_imm > std::numeric_limits<std::uint16_t>::max()) {
+    fail_unsupported("second folded direct-call argument immediates outside the minimal mov-supported range");
+  }
+
+  std::ostringstream out;
+  const std::string helper_symbol = asm_symbol_name(module, slice.helper->signature.name);
+  const std::string main_symbol = asm_symbol_name(module, "main");
+
+  out << ".text\n";
+  emit_function_prelude(out, module, helper_symbol, false);
+  out << "  mov w0, #" << slice.return_imm << "\n"
       << "  ret\n";
   emit_function_prelude(out, module, main_symbol, true);
   out << "  sub sp, sp, #16\n"
@@ -5751,9 +5780,10 @@ std::string emit_module(const c4c::backend::BackendModule& module,
         slice.has_value()) {
       return emit_minimal_direct_call_two_arg_add_asm(module, *slice);
     }
-    if (const auto slice = parse_minimal_direct_call_two_arg_folded_slice(module);
+    if (const auto slice =
+            c4c::backend::parse_backend_minimal_folded_two_arg_direct_call_module(module);
         slice.has_value()) {
-      return emit_minimal_direct_call_asm(module, *slice);
+      return emit_minimal_direct_call_two_arg_folded_asm(module, *slice);
     }
   } catch (const c4c::backend::LirAdapterError& ex) {
     if (ex.kind() != c4c::backend::LirAdapterErrorKind::Unsupported) {
@@ -5878,9 +5908,10 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
           slice.has_value()) {
         return emit_minimal_direct_call_two_arg_add_asm(adapted, *slice);
       }
-      if (const auto slice = parse_minimal_direct_call_two_arg_folded_slice(adapted);
+      if (const auto slice =
+              c4c::backend::parse_backend_minimal_folded_two_arg_direct_call_module(adapted);
           slice.has_value()) {
-        return emit_minimal_direct_call_asm(adapted, *slice);
+        return emit_minimal_direct_call_two_arg_folded_asm(adapted, *slice);
       }
       if (const auto slice = parse_minimal_countdown_loop_slice(adapted);
           slice.has_value()) {

@@ -2045,6 +2045,10 @@ void test_aarch64_backend_renders_typed_two_arg_direct_call_folded_const_slice()
                   "aarch64 backend should lower a folded two-argument constant-returning helper into a real function symbol");
   expect_contains(rendered, "foo:\n  mov w0, #0\n  ret\n",
                   "aarch64 backend should lower the folded helper return as a direct immediate");
+  expect_contains(rendered, "mov w0, #1",
+                  "aarch64 backend should still materialize the folded first direct-call argument in w0 before bl");
+  expect_contains(rendered, "mov w1, #3",
+                  "aarch64 backend should still materialize the folded second direct-call argument in w1 before bl");
   expect_not_contains(rendered, "target triple =",
                       "aarch64 backend should keep constant-folded direct calls on the asm path");
   expect_contains(rendered, "bl foo",
@@ -2061,6 +2065,10 @@ void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_folded
 
   expect_contains(rendered, ".type foo, %function",
                   "aarch64 backend seam should still preserve folded two-argument helper definitions without legacy signature return text");
+  expect_contains(rendered, "mov w0, #1",
+                  "aarch64 backend seam should still materialize the folded first direct-call immediate from structured call metadata");
+  expect_contains(rendered, "mov w1, #3",
+                  "aarch64 backend seam should still materialize the folded second direct-call immediate from structured call metadata");
   expect_contains(rendered, "bl foo",
                   "aarch64 backend seam should still lower folded two-argument direct calls when main relies only on structured signature metadata");
   expect_not_contains(rendered, "target triple =",
@@ -2088,13 +2096,32 @@ void test_aarch64_backend_scaffold_accepts_renamed_structured_two_arg_direct_cal
   }
 
   helper->signature.name = "const_pair";
+  helper->signature.params[0].name = "%p.folded.lhs";
+  helper->signature.params[1].name = "%p.folded.rhs";
+  auto* add = helper->blocks.front().insts.empty()
+                  ? nullptr
+                  : std::get_if<c4c::backend::BackendBinaryInst>(&helper->blocks.front().insts.front());
+  auto* sub =
+      helper->blocks.front().insts.size() < 2
+          ? nullptr
+          : std::get_if<c4c::backend::BackendBinaryInst>(&helper->blocks.front().insts[1]);
   auto* call = std::get_if<c4c::backend::BackendCallInst>(&main_fn->blocks.front().insts.front());
-  expect_true(call != nullptr,
-              "aarch64 renamed folded two-argument direct-call regression test needs the lowered backend call to mutate");
-  if (call == nullptr) {
+  expect_true(add != nullptr && sub != nullptr && call != nullptr,
+              "aarch64 renamed folded two-argument direct-call regression test needs mutable lowered helper and main call instructions");
+  if (add == nullptr || sub == nullptr || call == nullptr) {
     return;
   }
+  add->rhs = "%p.folded.lhs";
+  add->result = "%t.helper.folded.add";
+  sub->lhs = "%t.helper.folded.add";
+  sub->rhs = "%p.folded.rhs";
+  sub->result = "%t.helper.folded.result";
+  helper->blocks.front().terminator.value = "%t.helper.folded.result";
   call->callee.symbol_name = "const_pair";
+  call->args[0].operand = "11";
+  call->args[1].operand = "13";
+  call->result = "%t.main.folded.result";
+  main_fn->blocks.front().terminator.value = "%t.main.folded.result";
 
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -2102,10 +2129,14 @@ void test_aarch64_backend_scaffold_accepts_renamed_structured_two_arg_direct_cal
 
   expect_contains(rendered, ".type const_pair, %function",
                   "aarch64 backend seam should key folded two-argument helper definitions from the structured callee symbol instead of a fixed helper name");
+  expect_contains(rendered, "mov w0, #11",
+                  "aarch64 backend seam should still materialize the renamed folded first direct-call immediate from structured call metadata after helper parameter and SSA renames");
+  expect_contains(rendered, "mov w1, #13",
+                  "aarch64 backend seam should still materialize the renamed folded second direct-call immediate from structured call metadata after helper parameter and SSA renames");
   expect_contains(rendered, "bl const_pair",
                   "aarch64 backend seam should still lower renamed folded two-argument direct calls when legacy call and signature text are cleared");
   expect_not_contains(rendered, "target triple =",
-                      "aarch64 backend seam should not fall back when a renamed folded two-argument direct-call slice relies only on structured metadata");
+                      "aarch64 backend seam should not fall back when a renamed folded two-argument direct-call slice relies only on structured helper metadata after parameter and SSA renames");
 }
 
 void test_aarch64_backend_scaffold_rejects_structured_two_arg_direct_call_folded_const_when_helper_body_contract_disagrees() {
