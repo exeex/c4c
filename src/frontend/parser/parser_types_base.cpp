@@ -63,6 +63,12 @@ bool Parser::is_type_start() const {
                 after_pos < static_cast<int>(tokens_.size())
                     ? tokens_[after_pos].kind
                     : TokenKind::EndOfFile;
+            if (!probe.has_resolved_typedef &&
+                probe.has_unresolved_qualified_fallback &&
+                trailing_kind == TokenKind::Less &&
+                starts_with_value_like_template_expr(*this, tokens_, pos_)) {
+                return false;
+            }
             if (can_start_qualified_type_declaration(*this, probe, trailing_kind))
                 return true;
         }
@@ -81,6 +87,12 @@ bool Parser::is_type_start() const {
                 after_pos < static_cast<int>(tokens_.size())
                     ? tokens_[after_pos].kind
                     : TokenKind::EndOfFile;
+            if (!probe.has_resolved_typedef &&
+                probe.has_unresolved_qualified_fallback &&
+                trailing_kind == TokenKind::Less &&
+                starts_with_value_like_template_expr(*this, tokens_, pos_)) {
+                return false;
+            }
             if (can_start_qualified_type_declaration(*this, probe, trailing_kind))
                 return true;
         }

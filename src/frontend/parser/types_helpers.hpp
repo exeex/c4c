@@ -108,7 +108,12 @@ bool is_known_simple_type_head(const Parser& parser, const std::string& name) {
     if (match_floatn_keyword_base(name, nullptr)) return true;
     if (parser.is_template_scope_type_param(name)) return true;
     if (parser.is_typedef_name(name)) return true;
-    return parser.typedef_types_.count(parser.resolve_visible_type_name(name)) > 0;
+    const std::string resolved = parser.resolve_visible_type_name(name);
+    return parser.typedef_types_.count(resolved) > 0 ||
+           parser.template_struct_defs_.count(name) > 0 ||
+           parser.template_struct_defs_.count(resolved) > 0 ||
+           parser.defined_struct_tags_.count(name) > 0 ||
+           parser.defined_struct_tags_.count(resolved) > 0;
 }
 
 bool starts_with_value_like_template_expr(const Parser& parser,
@@ -223,11 +228,50 @@ std::string resolve_qualified_typedef_name(const Parser& parser,
     return {};
 }
 
+std::string resolve_qualified_known_type_name(
+    const Parser& parser,
+    const Parser::QualifiedNameRef& qn) {
+    std::string resolved = resolve_qualified_typedef_name(parser, qn);
+    if (!resolved.empty()) return resolved;
+
+    resolved = spell_qualified_name_for_lookup(qn);
+    if (!resolved.empty() &&
+        (parser.template_struct_defs_.count(resolved) > 0 ||
+         parser.defined_struct_tags_.count(resolved) > 0)) {
+        return resolved;
+    }
+
+    if (!qn.qualifier_segments.empty() || qn.is_global_qualified) {
+        const int context_id = parser.resolve_namespace_context(qn);
+        if (context_id >= 0) {
+            std::string canonical =
+                parser.canonical_name_in_context(context_id, qn.base_name);
+            if (parser.template_struct_defs_.count(canonical) > 0 ||
+                parser.defined_struct_tags_.count(canonical) > 0) {
+                return canonical;
+            }
+        }
+        return {};
+    }
+
+    resolved = parser.resolve_visible_type_name(qn.base_name);
+    if (parser.template_struct_defs_.count(resolved) > 0 ||
+        parser.defined_struct_tags_.count(resolved) > 0) {
+        return resolved;
+    }
+    return {};
+}
+
 QualifiedTypeProbe probe_qualified_type(const Parser& parser,
                                         const Parser::QualifiedNameRef& qn) {
     QualifiedTypeProbe probe;
-    probe.resolved_typedef_name = resolve_qualified_typedef_name(parser, qn);
+    probe.resolved_typedef_name = resolve_qualified_known_type_name(parser, qn);
     if (parser.typedef_types_.count(probe.resolved_typedef_name) > 0) {
+        probe.has_resolved_typedef = true;
+        return probe;
+    }
+    if (parser.template_struct_defs_.count(probe.resolved_typedef_name) > 0 ||
+        parser.defined_struct_tags_.count(probe.resolved_typedef_name) > 0) {
         probe.has_resolved_typedef = true;
         return probe;
     }

@@ -1423,7 +1423,12 @@ class Validator {
       case NK_CAST: {
         (void)infer_expr(n->left);
         out.valid = true;
-        out.type = n->type;
+        out.type = referred_type(n->type);
+        out.is_lvalue = n->type.is_lvalue_ref;
+        out.is_const_lvalue = out.is_lvalue &&
+                              out.type.is_const &&
+                              out.type.ptr_level == 0 &&
+                              out.type.array_rank == 0;
         if (n->type.base == TB_TYPEDEF) {
           // Suppress for template type parameters — they're resolved at instantiation.
           bool is_tpl_type_param = false;

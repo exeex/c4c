@@ -25,6 +25,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     operator_decl_subscript_attr_parse
     operator_decl_bitwise_assign_parse
     noexcept_bool_qualified_template_call_parse
+    qualified_template_call_expr_parse
     functional_cast_shift_expr_parse
     typedef_owned_functional_cast_parse
     qualified_known_type_arg_fast_path_parse
