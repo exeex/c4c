@@ -89,6 +89,18 @@ c4c::codegen::lir::LirModule make_bir_return_eq_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_bir_return_slt_module() {
+  using namespace c4c::codegen::lir;
+
+  auto module = make_return_add_module();
+  auto& entry = module.functions.front().blocks.front();
+  entry.insts.clear();
+  entry.insts.push_back(LirCmpOp{"%t0", false, "slt", "i32", "3", "7"});
+  entry.insts.push_back(LirCastOp{"%t1", LirCastKind::ZExt, "i1", "%t0", "i32"});
+  entry.terminator = LirRet{std::string("%t1"), "i32"};
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_bir_single_param_add_sub_chain_module() {
   using namespace c4c::codegen::lir;
 

@@ -120,6 +120,16 @@ std::optional<bir::BinaryOpcode> lower_binary_opcode(std::string_view opcode) {
   return std::nullopt;
 }
 
+std::optional<bir::BinaryOpcode> lower_compare_materialization_opcode(std::string_view predicate) {
+  if (predicate == "eq") {
+    return bir::BinaryOpcode::Eq;
+  }
+  if (predicate == "slt") {
+    return bir::BinaryOpcode::Slt;
+  }
+  return std::nullopt;
+}
+
 std::optional<bir::BinaryInst> lower_binary(const c4c::codegen::lir::LirInst& inst) {
   const auto* bin = std::get_if<c4c::codegen::lir::LirBinOp>(&inst);
   if (bin == nullptr || bin->result.str().empty()) {
@@ -153,10 +163,14 @@ std::optional<bir::BinaryInst> lower_compare_materialization(
     const c4c::codegen::lir::LirInst& cast_inst) {
   const auto* cmp = std::get_if<c4c::codegen::lir::LirCmpOp>(&compare_inst);
   const auto* cast = std::get_if<c4c::codegen::lir::LirCastOp>(&cast_inst);
-  if (cmp == nullptr || cast == nullptr || cmp->is_float || cmp->predicate.str() != "eq" ||
-      cmp->result.str().empty() || cast->result.str().empty() ||
+  if (cmp == nullptr || cast == nullptr || cmp->is_float || cmp->result.str().empty() ||
+      cast->result.str().empty() ||
       cast->kind != c4c::codegen::lir::LirCastKind::ZExt || cast->from_type.str() != "i1" ||
       cast->operand.str() != cmp->result.str()) {
+    return std::nullopt;
+  }
+  const auto opcode = lower_compare_materialization_opcode(cmp->predicate.str());
+  if (!opcode.has_value()) {
     return std::nullopt;
   }
 
@@ -173,7 +187,7 @@ std::optional<bir::BinaryInst> lower_compare_materialization(
   }
 
   bir::BinaryInst lowered;
-  lowered.opcode = bir::BinaryOpcode::Eq;
+  lowered.opcode = *opcode;
   lowered.result = bir::Value::named(*type, cast->result.str());
   lowered.lhs = *lhs;
   lowered.rhs = *rhs;
@@ -238,6 +252,13 @@ std::optional<AffineValue> combine_affine(const AffineValue& lhs,
       return std::nullopt;
     }
     return AffineValue{false, false, lhs.constant == rhs.constant ? 1 : 0};
+  }
+  if (opcode == bir::BinaryOpcode::Slt) {
+    if (lhs.uses_first_param || lhs.uses_second_param || rhs.uses_first_param ||
+        rhs.uses_second_param) {
+      return std::nullopt;
+    }
+    return AffineValue{false, false, lhs.constant < rhs.constant ? 1 : 0};
   }
   return AffineValue{false, false, lhs.constant * rhs.constant};
 }
@@ -384,7 +405,7 @@ bir::Module lower_to_bir(const c4c::codegen::lir::LirModule& module) {
   auto lowered = try_lower_to_bir(module);
   if (!lowered.has_value()) {
     throw std::invalid_argument(
-        "bir scaffold lowering currently supports only straight-line single-block i8/i32/i64 return-immediate/add-sub slices, constant-only mul/sdiv/srem/urem/eq materialization slices, plus bounded one- and two-parameter affine chains over those scalar types");
+        "bir scaffold lowering currently supports only straight-line single-block i8/i32/i64 return-immediate/add-sub slices, constant-only mul/sdiv/srem/urem/eq/slt materialization slices, plus bounded one- and two-parameter affine chains over those scalar types");
   }
   return *lowered;
 }

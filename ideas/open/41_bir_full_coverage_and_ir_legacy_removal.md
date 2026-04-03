@@ -139,6 +139,10 @@ Progress on 2026-04-03:
   `mul`, `sdiv`, `srem`, and `urem` slices on the BIR text/lowering path, with
   explicit BIR-pipeline regression coverage plus RISC-V-only default-route
   coverage for the newly auto-lowerable cases
+- widened the bounded compare-materialization scaffold from `eq` into signed
+  less-than by folding constant-only `icmp slt` plus `zext i1 -> i32` return
+  patterns into `bir.slt`, with printer/lowering coverage, explicit
+  BIR-pipeline coverage, and RISC-V-only default-route regression coverage
 
 ### Phase 2: Expand lir_to_bir.cpp
 
