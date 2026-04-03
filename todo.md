@@ -9,12 +9,31 @@ Source Plan: plan.md
 - [ ] Delete app-layer LLVM asm rescue from `c4cll`
 - [ ] Revalidate backend and full-suite behavior without fallback
 
-Current active item: Step 2, continue bounded compare-fed phi-join
-`+ 6 - 2 + 9` post-tail parity from the now-covered symmetric deeper/deeper
-and mixed-then/deeper slices to the remaining nearby asymmetric sibling,
-`deeper_then_mixed_affine`, again adding bounded lowering, BIR-pipeline, and
-source-route regressions first and only widening `lir_to_bir.cpp` if the next
-coverage proves the existing matcher does not already generalize.
+Current active item: Step 2, continue from the now-complete bounded compare-fed
+phi-join `+ 6 - 2 + 9` parity ring into the next uncovered Step 2 slice,
+starting by auditing whether the nearby non-deeper `mixed_affine` family needs
+the same extended join-tail coverage before widening `lir_to_bir.cpp`.
+
+Completed this iteration:
+- Added the remaining asymmetric deeper-then / mixed-else split-predecessor
+  compare-fed phi-join `+ 6 - 2 + 9` tail slice via
+  `make_bir_two_param_select_eq_split_predecessor_deeper_then_mixed_affine_phi_post_join_add_sub_add_module()`,
+  proving the already-covered `+ 6 - 2` form stays on the direct BIR path when
+  the join-local tail extends to `+ 6 - 2 + 9`.
+- Added source-level/default-route RISC-V coverage via
+  `tests/c/internal/backend_route_case/two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_add.c`,
+  proving `(x == y ? x + 8 - 3 + 5 : y + 11 - 4) + 6 - 2 + 9` defaults to the
+  BIR pipeline instead of falling back to legacy LLVM IR text.
+- Reconfigured and rebuilt the affected tree, reran
+  `ctest --test-dir build -R backend_bir_tests --output-on-failure`, reran the
+  new route case
+  `backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_add_defaults_to_bir`,
+  then reran `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `317/317` backend-labeled tests passing.
+- The extended asymmetric slice passed without any `lir_to_bir.cpp` widening,
+  confirming the existing bounded compare-fed phi-join matcher already
+  generalizes across the full nearby `+ 6`, `+ 6 - 2`, and `+ 6 - 2 + 9`
+  branch-depth variants and only regression coverage was missing.
 
 Completed this iteration:
 - Added the mirrored asymmetric deeper-else split-predecessor `+ 6 - 2 + 9`
