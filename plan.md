@@ -86,7 +86,10 @@ Actions:
 
 - update emitter headers and implementation boundaries to use `bir.hpp`
 - remove any remaining emitter-side dependence on `BackendModule(ir.*)`
-- keep validation green as each emitter slice is migrated
+- keep backend-focused validation green as each emitter slice is migrated
+- use backend subset coverage such as
+  `ctest --test-dir build -L backend --output-on-failure` as the required gate
+  for Step 3 slices; do not require full-suite regression during this step
 
 Completion Check:
 
@@ -102,6 +105,10 @@ Actions:
 - delete `lir_to_backend_ir.*`
 - delete `bir_to_backend_ir.*`
 - remove legacy routing from `backend.cpp`
+- validate Step 4 deletions with the backend subset only, using commands such as
+  `ctest --test-dir build -L backend --output-on-failure`
+- defer full-suite regression until Step 7 unless the work has already reached
+  that final validation stage
 
 Completion Check:
 
@@ -120,6 +127,10 @@ Actions:
 - remove `print_asm_fallback_hint(...)`
 - remove `normalize_aarch64_fallback_asm(...)`
 - tighten `--codegen asm` so unsupported backend surfaces fail explicitly
+- validate Step 5 slices with the backend subset only, using commands such as
+  `ctest --test-dir build -L backend --output-on-failure`
+- reserve full-suite regression for Step 7 after the backend-only rescue-removal
+  work is complete
 
 Completion Check:
 
