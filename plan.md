@@ -38,6 +38,17 @@ Phase order for this runbook:
 4. delete legacy backend IR conversion/routing
 5. delete app-layer LLVM asm rescue
 
+Backend architecture rule for the post-legacy world:
+
+- `BIR` is the one canonical target-neutral backend IR
+- target-specific lowering happens after BIR, not inside BIR
+- each production backend may introduce its own `MIR` (Machine IR) layer after
+  BIR to model ABI/calling-convention/register-constraint details
+- liveness, regalloc, stack layout, and machine-level legalization should
+  ultimately live on backend-specific `MIR`, not on raw `LIR`
+- target printers/debug dumps may exist for `MIR`, while final asm emission is
+  produced from the target `MIR` layer
+
 ## Non-Goals
 
 - no semantic IR redesign beyond what is required for parity with `ir.*`
@@ -90,6 +101,8 @@ Actions:
 
 - update emitter headers and implementation boundaries to use `bir.hpp`
 - remove any remaining emitter-side dependence on `BackendModule(ir.*)`
+- keep BIR as the target-neutral handoff point even when a backend lowers from
+  BIR into target-specific `MIR` before final asm emission
 - keep backend-focused validation green as each emitter slice is migrated
 - use backend subset coverage such as
   `ctest --test-dir build -L backend --output-on-failure` as the required gate
@@ -97,7 +110,9 @@ Actions:
 
 Completion Check:
 
-- emitters include and consume only BIR-owned structures
+- emitters include and consume only BIR-owned structures at the backend
+  boundary, with any target-specific `MIR` living strictly downstream of that
+  boundary
 
 ## Step 4. Remove Legacy Backend IR Routing
 
