@@ -681,6 +681,20 @@ if(CLANG_EXECUTABLE)
         LABELS "internal;backend")
 
     add_test(
+      NAME backend_codegen_route_riscv64_return_sgt_defaults_to_bir
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_route_case/return_sgt.c
+              -DTARGET_TRIPLE=riscv64-unknown-linux-gnu
+              -DOUT_TEXT=${CMAKE_BINARY_DIR}/internal_backend_route/return_sgt_riscv64.ll
+              "-DREQUIRED_SNIPPETS=bir.func @main() -> i32 {|%t1 = bir.sgt i32 7, 3|bir.ret i32 %t1"
+              "-DFORBIDDEN_SNIPPETS=define i32 @main()"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_codegen_route_case.cmake"
+    )
+    set_tests_properties(backend_codegen_route_riscv64_return_sgt_defaults_to_bir PROPERTIES
+        LABELS "internal;backend")
+
+    add_test(
       NAME backend_codegen_route_riscv64_return_ult_defaults_to_bir
       COMMAND "${CMAKE_COMMAND}"
               -DCOMPILER=$<TARGET_FILE:c4cll>
