@@ -10,11 +10,43 @@ Source Plan: plan.md
 - [ ] Revalidate backend and full-suite behavior without fallback
 
 Current active item: Step 2, continue the bounded zero-parameter `unsigned char`
-compare-return parity family beyond the landed `return_eq_u8` / `return_ne_u8`
-pair by walking the adjacent unsigned-relational cases one slice at a time.
-Next target: audit `return_ule_u8` as the next adjacent zero-parameter
-widened `unsigned char` compare-return parity case after the now-landed
-`return_ult_u8` slice.
+compare-return parity family by auditing `return_ugt_u8` as the next adjacent
+unsigned-relational case after `return_ule_u8`.
+Next target: if `return_ugt_u8` lands cleanly, continue forward to
+`return_uge_u8`; otherwise isolate the exact widened compare-return lowering
+gap uncovered by the new route test.
+
+Completed this iteration:
+- Re-audited the zero-parameter widened compare-return inventory in
+  `tests/c/internal/InternalTests.cmake` and confirmed the next adjacent
+  unsigned-relational parity gap after the landed `return_ult_u8` slice was
+  `return_ule_u8`.
+- Added `tests/c/internal/backend_route_case/return_ule_u8.c`, proving the
+  bounded zero-parameter `unsigned char` unsigned-less-than-or-equal wrapper is
+  available to the backend-route harness.
+- Registered
+  `backend_codegen_route_riscv64_return_ule_u8_defaults_to_bir` in
+  `tests/c/internal/InternalTests.cmake`, asserting the emitted text contains
+  `bir.func @choose_ule_u() -> i8 {`, `%t1 = bir.ule i8 7, 7`, `bir.ret i8 %t1`,
+  and forbids legacy LLVM IR `define i8 @choose_ule_u()`.
+- Added `make_bir_i8_return_ule_module()` to
+  `tests/backend/backend_bir_test_support.*` plus
+  `test_bir_lowering_accepts_i8_return_ule()` in
+  `tests/backend/backend_bir_lowering_tests.cpp` to keep the widened `i8`
+  unsigned-relational compare-return shape covered below the backend-route
+  harness.
+- Confirmed the new coverage passed without any `src/backend/lowering/lir_to_bir.cpp`
+  change; the existing widened-`i8` compare-return lowering already handled the
+  unsigned-less-than-or-equal predicate correctly.
+- Rebuilt the tree, reran `backend_bir_tests`, reran
+  `backend_codegen_route_riscv64_return_ule_u8_defaults_to_bir`, reran the
+  adjacent widened compare-return quartet
+  (`backend_codegen_route_riscv64_return_eq_u8_defaults_to_bir`,
+  `backend_codegen_route_riscv64_return_ne_u8_defaults_to_bir`,
+  `backend_codegen_route_riscv64_return_ult_u8_defaults_to_bir`,
+  `backend_codegen_route_riscv64_return_ule_u8_defaults_to_bir`), then reran
+  `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `365/365` backend-labeled tests passing.
 
 Completed this iteration:
 - Re-audited the zero-parameter widened compare-return inventory in

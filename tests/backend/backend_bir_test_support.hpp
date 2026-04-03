@@ -90,6 +90,7 @@ c4c::codegen::lir::LirModule make_bir_return_select_eq_module();
 c4c::codegen::lir::LirModule make_bir_i8_return_eq_module();
 c4c::codegen::lir::LirModule make_bir_i8_return_ne_module();
 c4c::codegen::lir::LirModule make_bir_i8_return_ult_module();
+c4c::codegen::lir::LirModule make_bir_i8_return_ule_module();
 c4c::codegen::lir::LirModule make_bir_i8_return_immediate_module();
 c4c::codegen::lir::LirModule make_bir_single_param_select_eq_branch_module();
 c4c::codegen::lir::LirModule make_bir_single_param_select_eq_phi_module();
