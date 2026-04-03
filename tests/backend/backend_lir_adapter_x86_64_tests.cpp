@@ -2465,6 +2465,8 @@ void test_x86_backend_scaffold_accepts_renamed_structured_direct_call_add_imm_ir
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
   expect_contains(rendered, ".type sum_one, %function",
                   "x86 backend seam should key the lowered single-argument helper definition from the structured callee symbol instead of a fixed helper name");
+  expect_contains(rendered, "sum_one:\n  mov eax, edi\n  add eax, 1\n  ret\n",
+                  "x86 backend seam should keep renamed lowered single-argument helpers on the asm path when only the structured helper body contract still names the add-immediate slice");
   expect_contains(rendered, "mov edi, 17",
                   "x86 backend seam should still materialize renamed lowered single-argument direct-call immediates from structured call metadata after helper parameter and SSA renames");
   expect_contains(rendered, "call sum_one",
