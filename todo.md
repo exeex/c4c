@@ -12,10 +12,35 @@ Source Plan: plan.md
 Current active item: Step 2, continue bounded compare-fed phi-join parity with
 the next smallest source-shaped ternary slice that still collapses into one
 BIR block after the fused `bir.select`, with the richer join-local add/sub
-follow-on after the symmetric deeper-chain split-predecessor case now covered
-and the next candidate shifting to another still-linearizable split-arm affine
-or join-tail variant that extends bounded control-flow parity without widening
-emitter-side direct-BIR requirements.
+follow-on after the mixed split-predecessor affine case now covered and the
+next candidate shifting to another still-linearizable asymmetric split-arm
+affine or join-tail variant that extends bounded control-flow parity without
+widening emitter-side direct-BIR requirements.
+
+Completed this iteration:
+- Added direct BIR lowering and explicit BIR-pipeline regressions for the next
+  bounded mixed split-predecessor compare-fed phi-join slice with a richer
+  join-local add/sub tail via
+  `make_bir_two_param_select_eq_split_predecessor_mixed_affine_phi_post_join_add_sub_module()`,
+  proving the fused `bir.select` can now be regression-checked with a
+  follow-on `add` plus `sub` chain instead of only a single post-join add for
+  the mixed-affine arm shape.
+- Added source-level/default-route RISC-V coverage via
+  `tests/c/internal/backend_route_case/two_param_select_eq_split_predecessor_mixed_affine_post_add_sub.c`,
+  proving `(x == y ? x + 8 - 3 : y + 11 - 4) + 6 - 2` stays on the BIR
+  pipeline instead of falling back to legacy LLVM IR text.
+- Reconfigured and rebuilt the tree so the new backend BIR support, explicit
+  BIR pipeline checks, and source-route coverage can be exercised together for
+  this bounded Step 2 slice.
+- Reran `ctest --test-dir build -R backend_bir_tests --output-on-failure`,
+  reran the new route case
+  `backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_mixed_affine_post_add_sub_defaults_to_bir`,
+  reran `ctest --test-dir build -L backend --output-on-failure -j8`, then
+  refreshed `test_fail_after.log` with a full `ctest --test-dir build -j8
+  --output-on-failure` run.
+- Passed the regression guard against `test_fail_before.log` with
+  `--allow-non-decreasing-passed` (`2743 -> 2749` passed, `0 -> 0` failed, no
+  newly failing tests, no new `>30s` cases).
 
 Completed this iteration:
 - Added direct BIR lowering and explicit BIR-pipeline regressions for the next
