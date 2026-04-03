@@ -9,10 +9,9 @@ Source Plan: plan.md
 - [ ] Delete app-layer LLVM asm rescue from `c4cll`
 - [ ] Revalidate backend and full-suite behavior without fallback
 
-Current active item: Step 2, continue shrinking legacy backend-IR ownership now
-that the x86/AArch64 direct-`bir::Module` fallback through
-`bir_to_backend_ir.*` is gone by widening BIR's scalar/type surface one
-bounded slice at a time.
+Current active item: Step 2, widen the BIR straight-line arithmetic scaffold
+from `add/sub` to include bounded `mul` on the BIR text/lowering path without
+claiming new direct-emitter coverage yet.
 
 Completed this iteration:
 - Audited the current production legacy boundaries in `backend.cpp`,
@@ -80,11 +79,22 @@ Completed this iteration:
   `test_fail_after.log`; the regression guard passed against
   `test_fail_before.log` with `after: 2728 passed, 0 failed` and no newly
   failing tests.
+- Widened the BIR straight-line arithmetic scaffold with bounded `mul`
+  coverage by adding `bir.mul` printer/lowering support plus targeted
+  regression helpers and RISC-V BIR pipeline tests for the constant-only slice.
+- Tightened `src/codegen/llvm/llvm_codegen.cpp` so automatic BIR-pipeline
+  selection remains RISC-V-only; x86/AArch64 backend codegen no longer picks up
+  newly lowerable BIR slices unless the caller explicitly requests the BIR
+  pipeline.
+- Rebuilt from a clean `build/` directory, reran targeted backend validation,
+  refreshed `test_fail_after.log`, and passed the regression guard against
+  `test_fail_before.log` with `--allow-non-decreasing-passed`
+  (`2728/2728` before and after, no newly failing tests).
 
 Next intended slice:
-- Continue Phase 1/2 parity by widening BIR beyond the current `i8`/`i32`/`i64`
-  arithmetic subset into another emitter-facing type or instruction cluster
-  that does not require removing the broad `c4cll` LLVM rescue path yet.
+- Continue Phase 1/2 parity by widening BIR into the next straight-line
+  arithmetic/comparison cluster, keeping any new default-route exposure gated
+  to RISC-V until x86/AArch64 direct-BIR emitters grow native support for it.
 
 Resume notes:
 - `backend.cpp` still contains the legacy route (`emit_legacy_module`), but
@@ -96,5 +106,11 @@ Resume notes:
 - `lir_to_bir.cpp` now accepts bounded straight-line `i8` arithmetic slices in
   addition to the existing `i32` and `i64` scaffolds, but backend asm emitters
   still only consume the narrower direct-BIR affine subset.
+- The next bounded gap is instruction coverage rather than another scalar type:
+  the BIR scaffold still rejects straight-line integer arithmetic outside
+  `add/sub/mul`, even when the slice can stay entirely on the BIR text path.
+- Auto-selection into the BIR pipeline in `llvm_codegen.cpp` is intentionally
+  constrained to `Target::Riscv64`; explicit BIR pipeline options are still the
+  only supported way to exercise non-RISC-V direct-BIR emitter slices.
 - `c4cll.cpp` still rescues `--codegen asm` through LLVM IR/asm conversion and
   a second retry via `CodegenPath::Llvm`.

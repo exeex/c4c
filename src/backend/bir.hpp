@@ -41,6 +41,7 @@ struct Param {
 enum class BinaryOpcode : unsigned char {
   Add,
   Sub,
+  Mul,
 };
 
 struct BinaryInst {

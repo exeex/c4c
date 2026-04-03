@@ -102,6 +102,9 @@ std::optional<bir::BinaryOpcode> lower_binary_opcode(std::string_view opcode) {
   if (opcode == "sub") {
     return bir::BinaryOpcode::Sub;
   }
+  if (opcode == "mul") {
+    return bir::BinaryOpcode::Mul;
+  }
   return std::nullopt;
 }
 
@@ -155,8 +158,16 @@ std::optional<AffineValue> combine_affine(const AffineValue& lhs,
   if (rhs.uses_first_param || rhs.uses_second_param) {
     return std::nullopt;
   }
-  return AffineValue{lhs.uses_first_param, lhs.uses_second_param,
-                     lhs.constant - rhs.constant};
+  if (opcode == bir::BinaryOpcode::Sub) {
+    return AffineValue{lhs.uses_first_param, lhs.uses_second_param,
+                       lhs.constant - rhs.constant};
+  }
+
+  if (lhs.uses_first_param || lhs.uses_second_param || rhs.uses_first_param ||
+      rhs.uses_second_param) {
+    return std::nullopt;
+  }
+  return AffineValue{false, false, lhs.constant * rhs.constant};
 }
 
 }  // namespace
@@ -291,7 +302,7 @@ bir::Module lower_to_bir(const c4c::codegen::lir::LirModule& module) {
   auto lowered = try_lower_to_bir(module);
   if (!lowered.has_value()) {
     throw std::invalid_argument(
-        "bir scaffold lowering currently supports only straight-line single-block i8/i32/i64 return-immediate/add-sub slices plus bounded one- and two-parameter affine chains over those scalar types");
+        "bir scaffold lowering currently supports only straight-line single-block i8/i32/i64 return-immediate/add-sub slices, constant-only mul slices, plus bounded one- and two-parameter affine chains over those scalar types");
   }
   return *lowered;
 }

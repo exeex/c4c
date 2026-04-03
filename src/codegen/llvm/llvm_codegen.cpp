@@ -21,7 +21,8 @@ std::string emit_via_backend(const lir::LirModule& lir_mod,
                              std::string_view target_triple) {
   backend::BackendOptions options;
   options.target = backend::target_from_triple(target_triple);
-  if (backend::try_lower_to_bir(lir_mod).has_value()) {
+  if (options.target == backend::Target::Riscv64 &&
+      backend::try_lower_to_bir(lir_mod).has_value()) {
     options.pipeline = backend::BackendPipeline::Bir;
     return backend::emit_module(backend::BackendModuleInput{lir_mod}, options);
   }

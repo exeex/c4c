@@ -56,6 +56,8 @@ std::string render_binary_opcode(BinaryOpcode opcode) {
       return "add";
     case BinaryOpcode::Sub:
       return "sub";
+    case BinaryOpcode::Mul:
+      return "mul";
   }
   return "<unknown>";
 }
