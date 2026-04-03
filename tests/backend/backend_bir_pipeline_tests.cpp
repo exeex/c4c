@@ -1,5 +1,9 @@
 #include "backend_bir_test_support.hpp"
 
+#include "../../src/backend/ir_printer.hpp"
+#include "../../src/backend/lowering/bir_to_backend_ir.hpp"
+#include "../../src/backend/lowering/lir_to_bir.hpp"
+
 namespace {
 
 void test_backend_default_path_remains_legacy_when_bir_pipeline_is_not_selected() {
@@ -57,6 +61,22 @@ void test_backend_bir_pipeline_drives_x86_return_sub_smoke_case_end_to_end() {
                   "BIR pipeline should lower the tiny sub/return case to the expected x86 return-immediate asm");
 }
 
+void test_backend_bir_pipeline_selection_only_applies_at_lir_entry_input() {
+  const auto lir_module = make_bir_return_add_module();
+  const c4c::backend::BackendModule lowered_backend =
+      c4c::backend::lower_to_backend_ir(c4c::backend::lower_to_bir(lir_module));
+  const auto expected = c4c::backend::print_backend_ir(lowered_backend);
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered_backend, &lir_module},
+      make_bir_pipeline_options(c4c::backend::Target::Riscv64));
+
+  expect_true(rendered == expected,
+              "once callers provide a lowered backend module, backend pipeline selection should stop at the LIR entry seam");
+  expect_not_contains(rendered, "bir.func",
+                      "pre-lowered backend-module entry should not re-enter the BIR text path");
+}
+
 }  // namespace
 
 void run_backend_bir_pipeline_tests() {
@@ -65,4 +85,5 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_backend_bir_pipeline_routes_sub_cluster_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_return_add_smoke_case_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_return_sub_smoke_case_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_selection_only_applies_at_lir_entry_input);
 }
