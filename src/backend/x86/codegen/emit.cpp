@@ -200,6 +200,8 @@ struct LirTwoArgLocalRewriteSlotState {
   bool initialized = false;
   std::string last_load_result;
   std::string rewritten_result;
+  bool matched_lhs_call_operand = false;
+  bool matched_rhs_call_operand = false;
 };
 
 std::optional<std::pair<std::int64_t, bool>> match_single_local_rewrite_slot_slice(
@@ -300,6 +302,12 @@ std::optional<std::pair<std::int64_t, std::int64_t>> match_two_arg_local_rewrite
         return std::nullopt;
       }
       slot->last_load_result = load->result;
+      if (load->result == lhs_call_operand) {
+        slot->matched_lhs_call_operand = true;
+      }
+      if (load->result == rhs_call_operand) {
+        slot->matched_rhs_call_operand = true;
+      }
       continue;
     }
 
@@ -335,7 +343,7 @@ std::optional<std::pair<std::int64_t, std::int64_t>> match_two_arg_local_rewrite
     return std::nullopt;
   }
 
-  if (lhs_slot.last_load_result != lhs_call_operand || rhs_slot.last_load_result != rhs_call_operand) {
+  if (!lhs_slot.matched_lhs_call_operand || !rhs_slot.matched_rhs_call_operand) {
     return std::nullopt;
   }
 
