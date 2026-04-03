@@ -6,17 +6,17 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 4: Clean up surviving names
-- Current slice: carry the `lower_lir_to_backend_module(...)` rename into the
-  remaining stable backend test surfaces that still use the
-  `lower_to_backend_ir(...)` compatibility shim
+- Step 5: Finish the backend test migration
+- Current slice: identify the highest-value backend test surface that still
+  frames the pipeline in transitional backend-IR terms and convert it to the
+  BIR-oriented layered story without widening scope
 
 ## Todo
 
 - [x] Step 1: Establish the cutover surface
 - [x] Step 2: Flip the default to BIR
 - [x] Step 3: Remove legacy backend plumbing
-- [ ] Step 4: Clean up surviving names
+- [x] Step 4: Clean up surviving names
 - [ ] Step 5: Finish the backend test migration
 
 ## Completed
@@ -59,26 +59,29 @@ Source Plan: plan.md
 - [x] moved the three `backend_lir_adapter*` test binaries off the
       `lower_to_backend_ir(...)` compatibility shim onto
       `lower_lir_to_backend_module(...)`
+- [x] moved the remaining stable backend test surfaces off the
+      `lower_to_backend_ir(...)` compatibility shim by switching
+      `tests/backend/backend_ir_tests.cpp` to
+      `lower_lir_to_backend_module(...)` and the BIR pipeline coverage to
+      `lower_bir_to_backend_module(...)`
 - [x] re-ran targeted backend validation plus a clean full-suite regression
       pass with no new failures relative to the existing EASTL recipe baseline
 
 ## Next Slice
 
-- move the remaining stable backend test surfaces, starting with
-  `tests/backend/backend_ir_tests.cpp`, onto
-  `lower_lir_to_backend_module(...)` / `lower_bir_to_backend_module(...)` and
-  leave only explicit compatibility-shim coverage plus plan/archive
-  documentation on `lower_to_backend_ir(...)`
-- before doing broad Step 4 renames, optionally finish the deferred AArch64 seam
-  cleanup by porting the real `extern_global_array` production route off the
-  remaining `legacy_fallback` early return
+- start Step 5 by auditing `tests/backend/*` and `tests/c/internal/backend_*`
+  for coverage that still treats transitional backend-IR compatibility shims as
+  the primary contract, then move one narrow surface to the BIR-first layered
+  story with targeted validation
+- keep the deferred AArch64 `extern_global_array` production-route cleanup out
+  of scope unless it blocks a concrete Step 5 backend test migration slice
 
 ## Blockers
 
 - `lower_to_bir(...)` still does not cover control flow, loads/stores, globals,
   or alloca-backed slices, so some unsupported modules still require legacy
   fallback behavior
-- Step 4 and Step 5 are still pending after the BIR-default cutover landed
+- Step 5 is still pending after the BIR-default cutover landed
 
 ## Notes
 
@@ -121,3 +124,8 @@ Source Plan: plan.md
   `lower_lir_to_backend_module(...)`; `test_fail_before.log` vs
   `test_fail_after.log` stayed flat at 2720 passing / 6 failing with the same
   EASTL recipe failures
+- regression check for the stable backend-test rename follow-up:
+  `backend_ir_tests` and `backend_bir_tests` passed after switching the stable
+  test surfaces to `lower_lir_to_backend_module(...)` /
+  `lower_bir_to_backend_module(...)`; `test_fail_before.log` vs `test_after.log`
+  stayed flat at 2720 passing / 6 failing with the same EASTL recipe failures

@@ -164,7 +164,7 @@ c4c::backend::BackendModule make_structured_cross_local_slot_ptrdiff_module() {
 }
 
 void test_backend_ir_printer_renders_lowered_conditional_return_slice() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_return_module());
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(make_conditional_return_module());
   const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered, "%t0 = icmp slt i32 2, 3",
@@ -178,7 +178,7 @@ void test_backend_ir_printer_renders_lowered_conditional_return_slice() {
 }
 
 void test_backend_ir_validator_accepts_lowered_conditional_return_slice() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_return_module());
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(make_conditional_return_module());
   std::string error;
 
   expect_true(c4c::backend::validate_backend_module(lowered, &error),
@@ -188,7 +188,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_return_slice() {
 }
 
 void test_backend_ir_printer_renders_structured_conditional_return_slice_without_type_text() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_return_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_conditional_return_module());
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::print_backend_module(lowered);
 
@@ -199,7 +199,7 @@ void test_backend_ir_printer_renders_structured_conditional_return_slice_without
 }
 
 void test_backend_ir_validator_accepts_structured_conditional_return_slice_without_type_text() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_return_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_conditional_return_module());
   clear_backend_memory_type_compatibility_shims(lowered);
   std::string error;
 
@@ -210,7 +210,7 @@ void test_backend_ir_validator_accepts_structured_conditional_return_slice_witho
 }
 
 void test_backend_ir_printer_renders_lowered_conditional_phi_join_slice() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_phi_join_module());
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(make_conditional_phi_join_module());
   const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered, "%t0 = icmp slt i32 2, 3",
@@ -228,7 +228,7 @@ void test_backend_ir_printer_renders_lowered_conditional_phi_join_slice() {
 }
 
 void test_backend_ir_validator_accepts_lowered_conditional_phi_join_slice() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_phi_join_module());
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(make_conditional_phi_join_module());
   std::string error;
 
   expect_true(c4c::backend::validate_backend_module(lowered, &error),
@@ -238,7 +238,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_slice() {
 }
 
 void test_backend_ir_printer_renders_lowered_conditional_phi_join_add_slice() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_phi_join_add_module());
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(make_conditional_phi_join_add_module());
   const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered, "%t0 = icmp slt i32 2, 3",
@@ -250,7 +250,7 @@ void test_backend_ir_printer_renders_lowered_conditional_phi_join_add_slice() {
 }
 
 void test_backend_ir_validator_accepts_lowered_conditional_phi_join_add_slice() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_phi_join_add_module());
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(make_conditional_phi_join_add_module());
   std::string error;
 
   expect_true(c4c::backend::validate_backend_module(lowered, &error),
@@ -260,7 +260,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_add_slice() 
 }
 
 void test_backend_ir_printer_renders_structured_conditional_phi_join_add_slice_without_type_text() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_phi_join_add_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_conditional_phi_join_add_module());
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::print_backend_module(lowered);
 
@@ -271,7 +271,7 @@ void test_backend_ir_printer_renders_structured_conditional_phi_join_add_slice_w
 }
 
 void test_backend_ir_validator_accepts_structured_conditional_phi_join_add_slice_without_type_text() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_phi_join_add_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_conditional_phi_join_add_module());
   clear_backend_memory_type_compatibility_shims(lowered);
   std::string error;
 
@@ -283,7 +283,7 @@ void test_backend_ir_validator_accepts_structured_conditional_phi_join_add_slice
 
 void test_backend_ir_printer_renders_lowered_conditional_phi_join_predecessor_add_slice() {
   const auto lowered =
-      c4c::backend::lower_to_backend_ir(make_conditional_phi_join_predecessor_add_module());
+      c4c::backend::lower_lir_to_backend_module(make_conditional_phi_join_predecessor_add_module());
   const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered, "then:\n  %t3 = add i32 7, 5\n  br label %join",
@@ -298,7 +298,7 @@ void test_backend_ir_printer_renders_lowered_conditional_phi_join_predecessor_ad
 
 void test_backend_ir_validator_accepts_lowered_conditional_phi_join_predecessor_add_slice() {
   const auto lowered =
-      c4c::backend::lower_to_backend_ir(make_conditional_phi_join_predecessor_add_module());
+      c4c::backend::lower_lir_to_backend_module(make_conditional_phi_join_predecessor_add_module());
   std::string error;
 
   expect_true(c4c::backend::validate_backend_module(lowered, &error),
@@ -309,7 +309,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_predecessor_
 
 void test_backend_ir_printer_renders_lowered_conditional_phi_join_predecessor_sub_slice() {
   const auto lowered =
-      c4c::backend::lower_to_backend_ir(make_conditional_phi_join_predecessor_sub_module());
+      c4c::backend::lower_lir_to_backend_module(make_conditional_phi_join_predecessor_sub_module());
   const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered, "then:\n  %t3 = sub i32 12, 5\n  br label %join",
@@ -324,7 +324,7 @@ void test_backend_ir_printer_renders_lowered_conditional_phi_join_predecessor_su
 
 void test_backend_ir_validator_accepts_lowered_conditional_phi_join_predecessor_sub_slice() {
   const auto lowered =
-      c4c::backend::lower_to_backend_ir(make_conditional_phi_join_predecessor_sub_module());
+      c4c::backend::lower_lir_to_backend_module(make_conditional_phi_join_predecessor_sub_module());
   std::string error;
 
   expect_true(c4c::backend::validate_backend_module(lowered, &error),
@@ -335,7 +335,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_predecessor_
 
 void test_backend_ir_printer_renders_lowered_conditional_phi_join_mixed_predecessor_add_slice() {
   const auto lowered =
-      c4c::backend::lower_to_backend_ir(make_conditional_phi_join_mixed_predecessor_add_module());
+      c4c::backend::lower_lir_to_backend_module(make_conditional_phi_join_mixed_predecessor_add_module());
   const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered, "then:\n  %t3 = add i32 7, 5\n  br label %join",
@@ -350,7 +350,7 @@ void test_backend_ir_printer_renders_lowered_conditional_phi_join_mixed_predeces
 
 void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predecessor_add_slice() {
   const auto lowered =
-      c4c::backend::lower_to_backend_ir(make_conditional_phi_join_mixed_predecessor_add_module());
+      c4c::backend::lower_lir_to_backend_module(make_conditional_phi_join_mixed_predecessor_add_module());
   std::string error;
 
   expect_true(c4c::backend::validate_backend_module(lowered, &error),
@@ -360,7 +360,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predec
 }
 
 void test_backend_ir_printer_renders_lowered_conditional_phi_join_mixed_predecessor_add_post_join_add_slice() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_add_post_join_add_module());
   const auto rendered = c4c::backend::print_backend_module(lowered);
 
@@ -374,7 +374,7 @@ void test_backend_ir_printer_renders_lowered_conditional_phi_join_mixed_predeces
 }
 
 void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predecessor_add_post_join_add_slice() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_add_post_join_add_module());
   std::string error;
 
@@ -385,7 +385,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predec
 }
 
 void test_backend_ir_printer_renders_lowered_conditional_phi_join_mixed_predecessor_sub_post_join_add_slice() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_sub_post_join_add_module());
   const auto rendered = c4c::backend::print_backend_module(lowered);
 
@@ -399,7 +399,7 @@ void test_backend_ir_printer_renders_lowered_conditional_phi_join_mixed_predeces
 }
 
 void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predecessor_sub_post_join_add_slice() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_sub_post_join_add_module());
   std::string error;
 
@@ -410,7 +410,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predec
 }
 
 void test_backend_ir_printer_renders_lowered_conditional_phi_join_mixed_predecessor_add_sub_chain_post_join_add_slice() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_add_sub_chain_post_join_add_module());
   const auto rendered = c4c::backend::print_backend_module(lowered);
 
@@ -425,7 +425,7 @@ void test_backend_ir_printer_renders_lowered_conditional_phi_join_mixed_predeces
 }
 
 void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predecessor_add_sub_chain_post_join_add_slice() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_add_sub_chain_post_join_add_module());
   std::string error;
 
@@ -436,7 +436,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predec
 }
 
 void test_backend_ir_printer_renders_lowered_conditional_phi_join_mixed_predecessor_chain_and_add_post_join_add_slice() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_chain_and_add_post_join_add_module());
   const auto rendered = c4c::backend::print_backend_module(lowered);
 
@@ -453,7 +453,7 @@ void test_backend_ir_printer_renders_lowered_conditional_phi_join_mixed_predeces
 }
 
 void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predecessor_chain_and_add_post_join_add_slice() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_chain_and_add_post_join_add_module());
   std::string error;
 
@@ -464,7 +464,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predec
 }
 
 void test_backend_ir_printer_renders_lowered_conditional_phi_join_mixed_predecessor_chain_and_chain_post_join_add_slice() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_chain_and_chain_post_join_add_module());
   const auto rendered = c4c::backend::print_backend_module(lowered);
 
@@ -482,7 +482,7 @@ void test_backend_ir_printer_renders_lowered_conditional_phi_join_mixed_predeces
 }
 
 void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predecessor_chain_and_chain_post_join_add_slice() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_chain_and_chain_post_join_add_module());
   std::string error;
 
@@ -493,7 +493,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predec
 }
 
 void test_backend_ir_printer_renders_lowered_conditional_phi_join_mixed_predecessor_deeper_chain_and_chain_post_join_add_slice() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_deeper_chain_and_chain_post_join_add_module());
   const auto rendered = c4c::backend::print_backend_module(lowered);
 
@@ -511,7 +511,7 @@ void test_backend_ir_printer_renders_lowered_conditional_phi_join_mixed_predeces
 }
 
 void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predecessor_deeper_chain_and_chain_post_join_add_slice() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_deeper_chain_and_chain_post_join_add_module());
   std::string error;
 
@@ -522,7 +522,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predec
 }
 
 void test_backend_ir_printer_renders_lowered_conditional_phi_join_mixed_predecessor_deeper_chain_and_deeper_chain_post_join_add_slice() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_deeper_chain_and_deeper_chain_post_join_add_module());
   const auto rendered = c4c::backend::print_backend_module(lowered);
 
@@ -540,7 +540,7 @@ void test_backend_ir_printer_renders_lowered_conditional_phi_join_mixed_predeces
 }
 
 void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predecessor_deeper_chain_and_deeper_chain_post_join_add_slice() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_deeper_chain_and_deeper_chain_post_join_add_module());
   std::string error;
 
@@ -551,7 +551,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predec
 }
 
 void test_backend_ir_printer_renders_lowered_conditional_phi_join_mixed_predecessor_four_op_chain_and_deeper_chain_post_join_add_slice() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_four_op_chain_and_deeper_chain_post_join_add_module());
   const auto rendered = c4c::backend::print_backend_module(lowered);
 
@@ -569,7 +569,7 @@ void test_backend_ir_printer_renders_lowered_conditional_phi_join_mixed_predeces
 }
 
 void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predecessor_four_op_chain_and_deeper_chain_post_join_add_slice() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_four_op_chain_and_deeper_chain_post_join_add_module());
   std::string error;
 
@@ -580,7 +580,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predec
 }
 
 void test_backend_ir_printer_renders_lowered_conditional_phi_join_mixed_predecessor_four_op_chain_and_four_op_chain_post_join_add_slice() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_four_op_chain_and_four_op_chain_post_join_add_module());
   const auto rendered = c4c::backend::print_backend_module(lowered);
 
@@ -598,7 +598,7 @@ void test_backend_ir_printer_renders_lowered_conditional_phi_join_mixed_predeces
 }
 
 void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predecessor_four_op_chain_and_four_op_chain_post_join_add_slice() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_four_op_chain_and_four_op_chain_post_join_add_module());
   std::string error;
 
@@ -609,7 +609,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predec
 }
 
 void test_backend_ir_printer_renders_lowered_conditional_phi_join_mixed_predecessor_five_op_chain_and_four_op_chain_post_join_add_slice() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_five_op_chain_and_four_op_chain_post_join_add_module());
   const auto rendered = c4c::backend::print_backend_module(lowered);
 
@@ -627,7 +627,7 @@ void test_backend_ir_printer_renders_lowered_conditional_phi_join_mixed_predeces
 }
 
 void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predecessor_five_op_chain_and_four_op_chain_post_join_add_slice() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_five_op_chain_and_four_op_chain_post_join_add_module());
   std::string error;
 
@@ -638,7 +638,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predec
 }
 
 void test_backend_ir_printer_renders_lowered_conditional_phi_join_mixed_predecessor_five_op_chain_and_five_op_chain_post_join_add_slice() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_five_op_chain_and_five_op_chain_post_join_add_module());
   const auto rendered = c4c::backend::print_backend_module(lowered);
 
@@ -656,7 +656,7 @@ void test_backend_ir_printer_renders_lowered_conditional_phi_join_mixed_predeces
 }
 
 void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predecessor_five_op_chain_and_five_op_chain_post_join_add_slice() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_five_op_chain_and_five_op_chain_post_join_add_module());
   std::string error;
 
@@ -667,7 +667,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predec
 }
 
 void test_backend_ir_printer_renders_lowered_countdown_while_slice() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(make_countdown_while_return_module());
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(make_countdown_while_return_module());
   const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered, "entry:\n  br label %block_1",
@@ -685,7 +685,7 @@ void test_backend_ir_printer_renders_lowered_countdown_while_slice() {
 }
 
 void test_backend_ir_validator_accepts_lowered_countdown_while_slice() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(make_countdown_while_return_module());
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(make_countdown_while_return_module());
   std::string error;
 
   expect_true(c4c::backend::validate_backend_module(lowered, &error),
@@ -695,7 +695,7 @@ void test_backend_ir_validator_accepts_lowered_countdown_while_slice() {
 }
 
 void test_backend_ir_printer_renders_lowered_string_literal_char_slice() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(make_string_literal_char_module());
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(make_string_literal_char_module());
   const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered,
@@ -708,7 +708,7 @@ void test_backend_ir_printer_renders_lowered_string_literal_char_slice() {
 }
 
 void test_backend_ir_validator_accepts_lowered_string_literal_char_slice() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(make_string_literal_char_module());
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(make_string_literal_char_module());
   std::string error;
 
   expect_true(c4c::backend::validate_backend_module(lowered, &error),
@@ -718,7 +718,7 @@ void test_backend_ir_validator_accepts_lowered_string_literal_char_slice() {
 }
 
 void test_backend_ir_printer_renders_structured_string_literal_char_slice_without_type_text() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_string_literal_char_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_string_literal_char_module());
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::print_backend_module(lowered);
 
@@ -727,7 +727,7 @@ void test_backend_ir_printer_renders_structured_string_literal_char_slice_withou
 }
 
 void test_backend_ir_validator_accepts_structured_string_literal_char_slice_without_type_text() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_string_literal_char_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_string_literal_char_module());
   clear_backend_memory_type_compatibility_shims(lowered);
   std::string error;
 
@@ -738,7 +738,7 @@ void test_backend_ir_validator_accepts_structured_string_literal_char_slice_with
 }
 
 void test_backend_ir_validator_rejects_string_literal_load_past_structured_bounds() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_string_literal_char_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_string_literal_char_module());
   auto& load = std::get<c4c::backend::BackendLoadInst>(
       lowered.functions.front().blocks.front().insts.front());
   load.address.byte_offset = 3;
@@ -751,7 +751,7 @@ void test_backend_ir_validator_rejects_string_literal_load_past_structured_bound
 }
 
 void test_backend_ir_validator_rejects_load_from_unknown_global_style_symbol() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_global_load_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_global_load_module());
   auto& load = std::get<c4c::backend::BackendLoadInst>(
       lowered.functions.front().blocks.front().insts.front());
   load.address.base_symbol = "g_missing";
@@ -766,7 +766,7 @@ void test_backend_ir_validator_rejects_load_from_unknown_global_style_symbol() {
 }
 
 void test_backend_ir_validator_rejects_store_to_string_literal_constant() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_string_literal_char_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_string_literal_char_module());
   auto& insts = lowered.functions.front().blocks.front().insts;
   insts.insert(insts.begin(),
                c4c::backend::BackendStoreInst{
@@ -784,7 +784,7 @@ void test_backend_ir_validator_rejects_store_to_string_literal_constant() {
 }
 
 void test_backend_ir_validator_rejects_store_to_unknown_global_style_symbol() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_global_store_reload_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_global_store_reload_module());
   auto& store = std::get<c4c::backend::BackendStoreInst>(
       lowered.functions.front().blocks.front().insts.front());
   store.address.base_symbol = "g_missing";
@@ -799,7 +799,7 @@ void test_backend_ir_validator_rejects_store_to_unknown_global_style_symbol() {
 }
 
 void test_backend_ir_validator_rejects_load_from_unknown_local_slot_symbol() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_local_array_gep_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_local_array_gep_module());
   auto& load = std::get<c4c::backend::BackendLoadInst>(
       lowered.functions.front().blocks.front().insts[2]);
   load.address.base_symbol = "%lv.missing";
@@ -814,7 +814,7 @@ void test_backend_ir_validator_rejects_load_from_unknown_local_slot_symbol() {
 }
 
 void test_backend_ir_validator_rejects_load_with_mismatched_structured_address_kind() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_global_load_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_global_load_module());
   auto& load = std::get<c4c::backend::BackendLoadInst>(
       lowered.functions.front().blocks.front().insts.front());
   load.address.kind = c4c::backend::BackendAddressBaseKind::LocalSlot;
@@ -828,7 +828,7 @@ void test_backend_ir_validator_rejects_load_with_mismatched_structured_address_k
 }
 
 void test_backend_ir_validator_rejects_store_to_unknown_local_slot_symbol() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_local_array_gep_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_local_array_gep_module());
   auto& store = std::get<c4c::backend::BackendStoreInst>(
       lowered.functions.front().blocks.front().insts.front());
   store.address.base_symbol = "%lv.missing";
@@ -843,7 +843,7 @@ void test_backend_ir_validator_rejects_store_to_unknown_local_slot_symbol() {
 }
 
 void test_backend_ir_validator_rejects_local_slot_load_with_negative_offset() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_local_array_gep_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_local_array_gep_module());
   auto& load = std::get<c4c::backend::BackendLoadInst>(
       lowered.functions.front().blocks.front().insts[2]);
   load.address.byte_offset = -4;
@@ -856,7 +856,7 @@ void test_backend_ir_validator_rejects_local_slot_load_with_negative_offset() {
 }
 
 void test_backend_ir_validator_rejects_local_slot_store_with_negative_offset() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_local_array_gep_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_local_array_gep_module());
   auto& store = std::get<c4c::backend::BackendStoreInst>(
       lowered.functions.front().blocks.front().insts.front());
   store.address.byte_offset = -4;
@@ -869,7 +869,7 @@ void test_backend_ir_validator_rejects_local_slot_store_with_negative_offset() {
 }
 
 void test_backend_ir_validator_rejects_local_slot_load_with_misaligned_offset() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_local_array_gep_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_local_array_gep_module());
   auto& load = std::get<c4c::backend::BackendLoadInst>(
       lowered.functions.front().blocks.front().insts[2]);
   load.address.byte_offset = 2;
@@ -882,7 +882,7 @@ void test_backend_ir_validator_rejects_local_slot_load_with_misaligned_offset() 
 }
 
 void test_backend_ir_validator_rejects_local_slot_store_with_misaligned_offset() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_local_array_gep_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_local_array_gep_module());
   auto& store = std::get<c4c::backend::BackendStoreInst>(
       lowered.functions.front().blocks.front().insts.front());
   store.address.byte_offset = 2;
@@ -895,7 +895,7 @@ void test_backend_ir_validator_rejects_local_slot_store_with_misaligned_offset()
 }
 
 void test_backend_ir_validator_rejects_local_slot_load_past_structured_bounds() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_local_array_gep_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_local_array_gep_module());
   auto& load = std::get<c4c::backend::BackendLoadInst>(
       lowered.functions.front().blocks.front().insts[2]);
   load.address.byte_offset = 8;
@@ -908,7 +908,7 @@ void test_backend_ir_validator_rejects_local_slot_load_past_structured_bounds() 
 }
 
 void test_backend_ir_validator_rejects_local_slot_store_past_structured_bounds() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_local_array_gep_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_local_array_gep_module());
   auto& store = std::get<c4c::backend::BackendStoreInst>(
       lowered.functions.front().blocks.front().insts.front());
   store.address.byte_offset = 8;
@@ -921,7 +921,7 @@ void test_backend_ir_validator_rejects_local_slot_store_past_structured_bounds()
 }
 
 void test_backend_ir_validator_rejects_local_slot_without_structured_element_type() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_local_array_gep_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_local_array_gep_module());
   lowered.functions.front().local_slots.front().element_type =
       c4c::backend::BackendScalarType::Unknown;
   std::string error;
@@ -933,7 +933,7 @@ void test_backend_ir_validator_rejects_local_slot_without_structured_element_typ
 }
 
 void test_backend_ir_validator_rejects_local_slot_load_with_mismatched_structured_memory_type() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_local_array_gep_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_local_array_gep_module());
   auto& load = std::get<c4c::backend::BackendLoadInst>(
       lowered.functions.front().blocks.front().insts[2]);
   load.memory_type = "i8";
@@ -948,7 +948,7 @@ void test_backend_ir_validator_rejects_local_slot_load_with_mismatched_structure
 }
 
 void test_backend_ir_validator_rejects_local_slot_store_with_mismatched_structured_type() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_local_array_gep_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_local_array_gep_module());
   auto& store = std::get<c4c::backend::BackendStoreInst>(
       lowered.functions.front().blocks.front().insts.front());
   store.type_str = "i8";
@@ -963,7 +963,7 @@ void test_backend_ir_validator_rejects_local_slot_store_with_mismatched_structur
 
 void test_backend_ir_printer_renders_lowered_global_int_pointer_roundtrip_slice() {
   const auto lowered =
-      c4c::backend::lower_to_backend_ir(make_global_int_pointer_roundtrip_module());
+      c4c::backend::lower_lir_to_backend_module(make_global_int_pointer_roundtrip_module());
   const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered, "@g_value = global i32 9, align 4\n",
@@ -980,7 +980,7 @@ void test_backend_ir_printer_renders_lowered_global_int_pointer_roundtrip_slice(
 
 void test_backend_ir_validator_accepts_lowered_global_int_pointer_roundtrip_slice() {
   const auto lowered =
-      c4c::backend::lower_to_backend_ir(make_global_int_pointer_roundtrip_module());
+      c4c::backend::lower_lir_to_backend_module(make_global_int_pointer_roundtrip_module());
   std::string error;
 
   expect_true(c4c::backend::validate_backend_module(lowered, &error),
@@ -991,7 +991,7 @@ void test_backend_ir_validator_accepts_lowered_global_int_pointer_roundtrip_slic
 
 void test_backend_ir_printer_renders_lowered_global_char_pointer_diff_slice() {
   const auto lowered =
-      c4c::backend::lower_to_backend_ir(make_global_char_pointer_diff_module());
+      c4c::backend::lower_lir_to_backend_module(make_global_char_pointer_diff_module());
   const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered, "@g_bytes = global [2 x i8] zeroinitializer\n",
@@ -1007,7 +1007,7 @@ void test_backend_ir_printer_renders_lowered_global_char_pointer_diff_slice() {
 
 void test_backend_ir_validator_accepts_lowered_global_char_pointer_diff_slice() {
   const auto lowered =
-      c4c::backend::lower_to_backend_ir(make_global_char_pointer_diff_module());
+      c4c::backend::lower_lir_to_backend_module(make_global_char_pointer_diff_module());
   std::string error;
 
   expect_true(c4c::backend::validate_backend_module(lowered, &error),
@@ -1018,7 +1018,7 @@ void test_backend_ir_validator_accepts_lowered_global_char_pointer_diff_slice() 
 
 void test_backend_ir_printer_renders_lowered_global_int_pointer_diff_slice() {
   const auto lowered =
-      c4c::backend::lower_to_backend_ir(make_global_int_pointer_diff_module());
+      c4c::backend::lower_lir_to_backend_module(make_global_int_pointer_diff_module());
   const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered, "@g_words = global [2 x i32] zeroinitializer, align 4\n",
@@ -1036,7 +1036,7 @@ void test_backend_ir_printer_renders_lowered_global_int_pointer_diff_slice() {
 
 void test_backend_ir_validator_accepts_lowered_global_int_pointer_diff_slice() {
   const auto lowered =
-      c4c::backend::lower_to_backend_ir(make_global_int_pointer_diff_module());
+      c4c::backend::lower_lir_to_backend_module(make_global_int_pointer_diff_module());
   std::string error;
 
   expect_true(c4c::backend::validate_backend_module(lowered, &error),
@@ -1046,7 +1046,7 @@ void test_backend_ir_validator_accepts_lowered_global_int_pointer_diff_slice() {
 }
 
 void test_backend_ir_printer_renders_structured_global_int_pointer_diff_slice_without_type_text() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_global_int_pointer_diff_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_global_int_pointer_diff_module());
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::print_backend_module(lowered);
 
@@ -1056,7 +1056,7 @@ void test_backend_ir_printer_renders_structured_global_int_pointer_diff_slice_wi
 }
 
 void test_backend_ir_validator_accepts_structured_global_int_pointer_diff_slice_without_type_text() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_global_int_pointer_diff_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_global_int_pointer_diff_module());
   clear_backend_memory_type_compatibility_shims(lowered);
   std::string error;
 
@@ -1068,7 +1068,7 @@ void test_backend_ir_validator_accepts_structured_global_int_pointer_diff_slice_
 
 void test_backend_ir_printer_renders_lowered_extern_global_array_load_slice() {
   const auto lowered =
-      c4c::backend::lower_to_backend_ir(make_extern_global_array_load_module());
+      c4c::backend::lower_lir_to_backend_module(make_extern_global_array_load_module());
   const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered, "@ext_arr = external global [2 x i32], align 4\n",
@@ -1080,7 +1080,7 @@ void test_backend_ir_printer_renders_lowered_extern_global_array_load_slice() {
 }
 
 void test_backend_ir_printer_renders_structured_extern_global_array_load_slice_without_raw_type_text() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_extern_global_array_load_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_extern_global_array_load_module());
   clear_backend_global_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::print_backend_module(lowered);
 
@@ -1089,7 +1089,7 @@ void test_backend_ir_printer_renders_structured_extern_global_array_load_slice_w
 }
 
 void test_backend_ir_validator_accepts_structured_extern_global_array_load_slice_without_raw_type_text() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_extern_global_array_load_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_extern_global_array_load_module());
   clear_backend_global_type_compatibility_shims(lowered);
   std::string error;
 
@@ -1100,7 +1100,7 @@ void test_backend_ir_validator_accepts_structured_extern_global_array_load_slice
 }
 
 void test_backend_ir_validator_rejects_structured_global_array_with_nonscalar_element_type() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_extern_global_array_load_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_extern_global_array_load_module());
   clear_backend_global_type_compatibility_shims(lowered);
   auto& global = lowered.globals.front();
   global.array_type = c4c::backend::BackendGlobalArrayType{
@@ -1118,7 +1118,7 @@ void test_backend_ir_validator_rejects_structured_global_array_with_nonscalar_el
 }
 
 void test_backend_ir_validator_rejects_extern_global_array_load_past_structured_bounds() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_extern_global_array_load_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_extern_global_array_load_module());
   auto& load = std::get<c4c::backend::BackendLoadInst>(
       lowered.functions.front().blocks.front().insts.front());
   load.address.byte_offset = 8;
@@ -1131,7 +1131,7 @@ void test_backend_ir_validator_rejects_extern_global_array_load_past_structured_
 }
 
 void test_backend_ir_validator_rejects_global_int_ptrdiff_past_structured_bounds() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_global_int_pointer_diff_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_global_int_pointer_diff_module());
   auto& ptrdiff = std::get<c4c::backend::BackendPtrDiffEqInst>(
       lowered.functions.front().blocks.front().insts.back());
   ptrdiff.lhs_address.byte_offset = 8;
@@ -1144,7 +1144,7 @@ void test_backend_ir_validator_rejects_global_int_ptrdiff_past_structured_bounds
 }
 
 void test_backend_ir_validator_rejects_ptrdiff_across_different_structured_globals() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_global_int_pointer_diff_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_global_int_pointer_diff_module());
   auto other_global = lowered.globals.front();
   other_global.name = "g_words_other";
   lowered.globals.push_back(other_global);
@@ -1160,7 +1160,7 @@ void test_backend_ir_validator_rejects_ptrdiff_across_different_structured_globa
 }
 
 void test_backend_ir_validator_rejects_ptrdiff_with_only_one_global_backed_address() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_global_int_pointer_diff_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_global_int_pointer_diff_module());
   lowered.functions.front().local_slots.push_back(
       c4c::backend::BackendLocalSlot{"%stack_slot", 8, c4c::backend::BackendScalarType::I32, 4});
   auto& ptrdiff = std::get<c4c::backend::BackendPtrDiffEqInst>(
@@ -1178,7 +1178,7 @@ void test_backend_ir_validator_rejects_ptrdiff_with_only_one_global_backed_addre
 }
 
 void test_backend_ir_validator_rejects_ptrdiff_with_mismatched_structured_address_kind() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_global_int_pointer_diff_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_global_int_pointer_diff_module());
   auto& ptrdiff = std::get<c4c::backend::BackendPtrDiffEqInst>(
       lowered.functions.front().blocks.front().insts.back());
   ptrdiff.rhs_address.kind = c4c::backend::BackendAddressBaseKind::LocalSlot;
@@ -1207,7 +1207,7 @@ void test_backend_ir_validator_rejects_ptrdiff_with_unknown_local_slot_symbol() 
 }
 
 void test_backend_ir_validator_rejects_ptrdiff_with_unknown_global_style_symbol() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_global_int_pointer_diff_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_global_int_pointer_diff_module());
   auto& ptrdiff = std::get<c4c::backend::BackendPtrDiffEqInst>(
       lowered.functions.front().blocks.front().insts.back());
   ptrdiff.rhs_address.base_symbol = "g_missing";
@@ -1284,7 +1284,7 @@ void test_backend_ir_validator_rejects_ptrdiff_across_different_structured_local
 }
 
 void test_backend_ir_printer_renders_return_add() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(make_return_add_module());
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(make_return_add_module());
   const auto rendered = c4c::backend::print_backend_module(lowered);
   expect_contains(rendered, "%t0 = add i32 2, 3",
                   "backend IR printer should render the lowered add instruction");
@@ -1293,7 +1293,7 @@ void test_backend_ir_printer_renders_return_add() {
 }
 
 void test_backend_ir_validator_accepts_lowered_slice() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(make_return_add_module());
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(make_return_add_module());
   std::string error;
   expect_true(c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should accept a lowered minimal slice");
@@ -1387,7 +1387,7 @@ void test_backend_ir_printer_renders_structured_function_linkage_without_raw_tex
 
 void test_backend_ir_printer_renders_structured_signature_and_call_types_without_raw_text() {
   auto lowered =
-      c4c::backend::lower_to_backend_ir(make_x86_extern_decl_object_module());
+      c4c::backend::lower_lir_to_backend_module(make_x86_extern_decl_object_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::print_backend_module(lowered);
@@ -1401,7 +1401,7 @@ void test_backend_ir_printer_renders_structured_signature_and_call_types_without
 
 void test_backend_ir_printer_renders_structured_call_arg_types_without_raw_text() {
   auto lowered =
-      c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_module());
+      c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_two_arg_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::print_backend_module(lowered);
@@ -1411,7 +1411,7 @@ void test_backend_ir_printer_renders_structured_call_arg_types_without_raw_text(
 
 void test_backend_ir_validator_accepts_structured_signature_and_call_types_without_raw_text() {
   auto lowered =
-      c4c::backend::lower_to_backend_ir(make_x86_extern_decl_object_module());
+      c4c::backend::lower_lir_to_backend_module(make_x86_extern_decl_object_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   std::string error;
 
@@ -1423,7 +1423,7 @@ void test_backend_ir_validator_accepts_structured_signature_and_call_types_witho
 
 void test_backend_ir_tracks_structured_two_arg_direct_call_signature_and_call_contract() {
   const auto lowered =
-      c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_module());
+      c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_two_arg_module());
   const auto find_function = [&lowered](std::string_view name)
       -> const c4c::backend::BackendFunction* {
     for (const auto& function : lowered.functions) {
@@ -1476,7 +1476,7 @@ void test_backend_ir_tracks_structured_two_arg_direct_call_signature_and_call_co
 
 void test_backend_ir_tracks_structured_single_arg_direct_call_return_contract() {
   const auto lowered =
-      c4c::backend::lower_to_backend_ir(make_typed_direct_call_module());
+      c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_module());
 
   const auto find_function = [&](std::string_view name) -> const c4c::backend::BackendFunction* {
     for (const auto& function : lowered.functions) {
@@ -1515,7 +1515,7 @@ void test_backend_ir_tracks_structured_single_arg_direct_call_return_contract() 
 
 void test_backend_ir_validator_accepts_structured_direct_call_add_imm_slice_without_raw_text() {
   auto lowered =
-      c4c::backend::lower_to_backend_ir(make_typed_direct_call_local_arg_module());
+      c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_local_arg_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   clear_backend_memory_type_compatibility_shims(lowered);
   std::string error;
@@ -1527,7 +1527,7 @@ void test_backend_ir_validator_accepts_structured_direct_call_add_imm_slice_with
 }
 
 void test_backend_ir_preserves_structured_local_array_slice() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(make_local_array_gep_module());
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(make_local_array_gep_module());
 
   const auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
   expect_true(main_fn != nullptr && c4c::backend::backend_function_is_definition(main_fn->signature) &&
@@ -1597,7 +1597,7 @@ void test_backend_ir_preserves_structured_local_array_slice() {
 }
 
 void test_backend_ir_validator_accepts_structured_local_array_slice_without_raw_text() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_local_array_gep_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_local_array_gep_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   clear_backend_memory_type_compatibility_shims(lowered);
   std::string error;
@@ -1650,7 +1650,7 @@ void test_backend_ir_validator_accepts_structured_pointer_return_without_raw_tex
 
 void test_backend_ir_printer_renders_structured_global_linkage_without_raw_text() {
   auto lowered =
-      c4c::backend::lower_to_backend_ir(make_extern_global_array_load_module());
+      c4c::backend::lower_lir_to_backend_module(make_extern_global_array_load_module());
   clear_backend_global_linkage_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::print_backend_module(lowered);
@@ -1660,7 +1660,7 @@ void test_backend_ir_printer_renders_structured_global_linkage_without_raw_text(
 
 void test_backend_ir_printer_renders_lowered_extern_decl_slice() {
   const auto lowered =
-      c4c::backend::lower_to_backend_ir(make_x86_extern_decl_object_module());
+      c4c::backend::lower_lir_to_backend_module(make_x86_extern_decl_object_module());
   const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered, "declare i32 @helper_ext()\n",
@@ -1673,7 +1673,7 @@ void test_backend_ir_printer_renders_lowered_extern_decl_slice() {
 
 void test_backend_ir_validator_accepts_lowered_extern_decl_slice() {
   const auto lowered =
-      c4c::backend::lower_to_backend_ir(make_x86_extern_decl_object_module());
+      c4c::backend::lower_lir_to_backend_module(make_x86_extern_decl_object_module());
   std::string error;
 
   expect_true(c4c::backend::validate_backend_module(lowered, &error),
@@ -1683,7 +1683,7 @@ void test_backend_ir_validator_accepts_lowered_extern_decl_slice() {
 }
 
 void test_backend_ir_tracks_structured_vararg_extern_decl_signature() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(make_printf_vararg_decl_module());
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(make_printf_vararg_decl_module());
 
   const c4c::backend::BackendFunction* printf_decl = nullptr;
   for (const auto& function : lowered.functions) {
@@ -1706,7 +1706,7 @@ void test_backend_ir_tracks_structured_vararg_extern_decl_signature() {
 }
 
 void test_backend_ir_printer_renders_structured_vararg_extern_decl_without_raw_signature_text() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_printf_vararg_decl_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_printf_vararg_decl_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::print_backend_module(lowered);
@@ -1715,7 +1715,7 @@ void test_backend_ir_printer_renders_structured_vararg_extern_decl_without_raw_s
 }
 
 void test_backend_ir_printer_renders_lowered_global_load_slice() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(make_global_load_module());
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(make_global_load_module());
   const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered, "@g_counter = global i32 11, align 4\n",
@@ -1727,7 +1727,7 @@ void test_backend_ir_printer_renders_lowered_global_load_slice() {
 }
 
 void test_backend_ir_validator_accepts_lowered_global_load_slice() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(make_global_load_module());
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(make_global_load_module());
   std::string error;
 
   expect_true(c4c::backend::validate_backend_module(lowered, &error),
@@ -1738,7 +1738,7 @@ void test_backend_ir_validator_accepts_lowered_global_load_slice() {
 
 void test_backend_ir_printer_renders_lowered_global_store_reload_slice() {
   const auto lowered =
-      c4c::backend::lower_to_backend_ir(make_global_store_reload_module());
+      c4c::backend::lower_lir_to_backend_module(make_global_store_reload_module());
   const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered, "@g_counter = global i32 11, align 4\n",
@@ -1753,7 +1753,7 @@ void test_backend_ir_printer_renders_lowered_global_store_reload_slice() {
 
 void test_backend_ir_validator_accepts_lowered_global_store_reload_slice() {
   const auto lowered =
-      c4c::backend::lower_to_backend_ir(make_global_store_reload_module());
+      c4c::backend::lower_lir_to_backend_module(make_global_store_reload_module());
   std::string error;
 
   expect_true(c4c::backend::validate_backend_module(lowered, &error),
@@ -1763,7 +1763,7 @@ void test_backend_ir_validator_accepts_lowered_global_store_reload_slice() {
 }
 
 void test_backend_ir_printer_renders_structured_global_store_reload_slice_without_type_text() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_global_store_reload_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_global_store_reload_module());
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::print_backend_module(lowered);
 
@@ -1774,7 +1774,7 @@ void test_backend_ir_printer_renders_structured_global_store_reload_slice_withou
 }
 
 void test_backend_ir_validator_accepts_structured_global_store_reload_slice_without_type_text() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_global_store_reload_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_global_store_reload_module());
   clear_backend_memory_type_compatibility_shims(lowered);
   std::string error;
 
@@ -1785,7 +1785,7 @@ void test_backend_ir_validator_accepts_structured_global_store_reload_slice_with
 }
 
 void test_backend_ir_printer_renders_structured_scalar_global_without_raw_global_type_text() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_global_load_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_global_load_module());
   clear_backend_global_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::print_backend_module(lowered);
 
@@ -1796,7 +1796,7 @@ void test_backend_ir_printer_renders_structured_scalar_global_without_raw_global
 }
 
 void test_backend_ir_validator_accepts_structured_scalar_global_without_raw_global_type_text() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_global_load_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_global_load_module());
   clear_backend_global_type_compatibility_shims(lowered);
   std::string error;
 
@@ -1807,7 +1807,7 @@ void test_backend_ir_validator_accepts_structured_scalar_global_without_raw_glob
 }
 
 void test_backend_ir_validator_rejects_scalar_global_load_with_mismatched_structured_memory_type() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_global_load_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_global_load_module());
   clear_backend_global_type_compatibility_shims(lowered);
   auto& load = std::get<c4c::backend::BackendLoadInst>(
       lowered.functions.front().blocks.front().insts.front());
@@ -1823,7 +1823,7 @@ void test_backend_ir_validator_rejects_scalar_global_load_with_mismatched_struct
 }
 
 void test_backend_ir_validator_rejects_scalar_global_store_with_mismatched_structured_type() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_global_store_reload_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_global_store_reload_module());
   clear_backend_global_type_compatibility_shims(lowered);
   auto& store = std::get<c4c::backend::BackendStoreInst>(
       lowered.functions.front().blocks.front().insts.front());
@@ -1838,7 +1838,7 @@ void test_backend_ir_validator_rejects_scalar_global_store_with_mismatched_struc
 }
 
 void test_backend_ir_validator_rejects_extern_global_array_load_with_mismatched_structured_memory_type() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_extern_global_array_load_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_extern_global_array_load_module());
   clear_backend_global_type_compatibility_shims(lowered);
   auto& load = std::get<c4c::backend::BackendLoadInst>(
       lowered.functions.front().blocks.front().insts.front());
@@ -1854,7 +1854,7 @@ void test_backend_ir_validator_rejects_extern_global_array_load_with_mismatched_
 }
 
 void test_backend_ir_validator_rejects_structured_load_extension_that_does_not_widen() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_global_load_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_global_load_module());
   clear_backend_global_type_compatibility_shims(lowered);
   auto& load = std::get<c4c::backend::BackendLoadInst>(
       lowered.functions.front().blocks.front().insts.front());
@@ -1872,7 +1872,7 @@ void test_backend_ir_validator_rejects_structured_load_extension_that_does_not_w
 }
 
 void test_backend_ir_validator_rejects_structured_direct_call_when_callee_signature_param_type_disagrees() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_two_arg_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   c4c::backend::BackendFunction* helper = nullptr;
@@ -1897,7 +1897,7 @@ void test_backend_ir_validator_rejects_structured_direct_call_when_callee_signat
 }
 
 void test_backend_ir_validator_rejects_structured_direct_call_when_call_return_type_disagrees_with_callee_signature() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_two_arg_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   c4c::backend::BackendFunction* main_fn = nullptr;
@@ -1926,7 +1926,7 @@ void test_backend_ir_validator_rejects_structured_direct_call_when_call_return_t
 }
 
 void test_backend_ir_validator_rejects_function_marked_declaration_with_define_signature() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_x86_extern_decl_object_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_x86_extern_decl_object_module());
 
   c4c::backend::BackendFunction* helper = nullptr;
   for (auto& function : lowered.functions) {
@@ -1950,7 +1950,7 @@ void test_backend_ir_validator_rejects_function_marked_declaration_with_define_s
 }
 
 void test_backend_ir_validator_rejects_function_marked_definition_with_declare_signature() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_return_add_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_return_add_module());
 
   c4c::backend::BackendFunction* main_fn = nullptr;
   for (auto& function : lowered.functions) {

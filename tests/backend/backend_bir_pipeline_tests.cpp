@@ -233,7 +233,7 @@ void test_backend_bir_pipeline_drives_aarch64_two_param_staged_affine_end_to_end
 void test_backend_bir_pipeline_selection_only_applies_at_lir_entry_input() {
   const auto lir_module = make_bir_return_add_module();
   const c4c::backend::BackendModule lowered_backend =
-      c4c::backend::lower_to_backend_ir(c4c::backend::lower_to_bir(lir_module));
+      c4c::backend::lower_bir_to_backend_module(c4c::backend::lower_to_bir(lir_module));
   const auto expected = c4c::backend::print_backend_module(lowered_backend);
 
   const auto rendered = c4c::backend::emit_module(
@@ -249,7 +249,7 @@ void test_backend_bir_pipeline_selection_only_applies_at_lir_entry_input() {
 void test_backend_lowered_riscv_passthrough_ignores_broken_legacy_fallback() {
   auto legacy_module = make_bir_return_add_module();
   const c4c::backend::BackendModule lowered_backend =
-      c4c::backend::lower_to_backend_ir(c4c::backend::lower_to_bir(legacy_module));
+      c4c::backend::lower_bir_to_backend_module(c4c::backend::lower_to_bir(legacy_module));
   const auto expected = c4c::backend::print_backend_module(lowered_backend);
 
   for (auto& function : legacy_module.functions) {
