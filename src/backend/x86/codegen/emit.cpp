@@ -2886,51 +2886,6 @@ std::optional<MinimalCallCrossingDirectCallSlice> parse_minimal_call_crossing_di
   };
 }
 
-std::optional<std::string> parse_minimal_call_crossing_regalloc_source_value(
-    const c4c::codegen::lir::LirModule& module) {
-  using namespace c4c::codegen::lir;
-
-  if (module.functions.size() != 2) {
-    return std::nullopt;
-  }
-
-  const auto* main_fn = find_lir_function(module, "main");
-  if (main_fn == nullptr || main_fn->is_declaration ||
-      !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(main_fn->signature_text) ||
-      main_fn->entry.value != 0 || main_fn->blocks.size() != 1 || !main_fn->alloca_insts.empty() ||
-      !main_fn->stack_objects.empty()) {
-    return std::nullopt;
-  }
-
-  const auto& main_block = main_fn->blocks.front();
-  const auto* main_ret = std::get_if<LirRet>(&main_block.terminator);
-  if (main_block.label != "entry" || main_block.insts.size() != 3 || main_ret == nullptr ||
-      !main_ret->value_str.has_value() || main_ret->type_str != "i32") {
-    return std::nullopt;
-  }
-
-  const auto* source_add = std::get_if<LirBinOp>(&main_block.insts[0]);
-  const auto* final_add = std::get_if<LirBinOp>(&main_block.insts[2]);
-  const auto source_add_opcode = source_add == nullptr ? std::nullopt : source_add->opcode.typed();
-  const auto final_add_opcode = final_add == nullptr ? std::nullopt : final_add->opcode.typed();
-  const auto matched_call =
-      final_add == nullptr
-          ? std::nullopt
-          : match_minimal_lir_single_arg_direct_call_call(main_block.insts[1],
-                                                          std::nullopt,
-                                                          final_add->rhs);
-  if (source_add == nullptr || final_add == nullptr || !matched_call.has_value() ||
-      source_add_opcode != LirBinaryOpcode::Add || source_add->type_str != "i32" ||
-      matched_call->operand != source_add->result ||
-      final_add_opcode != LirBinaryOpcode::Add || final_add->type_str != "i32" ||
-      final_add->lhs != source_add->result ||
-      *main_ret->value_str != final_add->result) {
-    return std::nullopt;
-  }
-
-  return source_add->result;
-}
-
 std::optional<MinimalDirectCallSlice> parse_minimal_direct_call_slice(
     const c4c::backend::BackendModule& module) {
   if (module.functions.size() != 2) return std::nullopt;
@@ -3965,14 +3920,15 @@ std::string emit_module(const c4c::backend::BackendModule& module,
               "main function for shared x86 call-crossing direct-call slice");
         }
         const auto regalloc_source_value =
-            parse_minimal_call_crossing_regalloc_source_value(*legacy_fallback);
+            c4c::backend::parse_backend_single_helper_call_crossing_source_value(
+                *legacy_fallback);
         if (!regalloc_source_value.has_value()) {
           throw c4c::backend::LirAdapterError(
               c4c::backend::LirAdapterErrorKind::Unsupported,
               "legacy x86 call-crossing source value for shared regalloc");
         }
         auto emit_slice = *slice;
-        emit_slice.regalloc_source_value = *regalloc_source_value;
+        emit_slice.regalloc_source_value = std::string(*regalloc_source_value);
         return remove_redundant_self_moves(emit_minimal_call_crossing_direct_call_asm(
             module, run_shared_x86_regalloc(*main_fn), emit_slice));
       }
@@ -4095,14 +4051,14 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
             "main function for shared x86 call-crossing direct-call slice");
       }
       const auto regalloc_source_value =
-          parse_minimal_call_crossing_regalloc_source_value(module);
+          c4c::backend::parse_backend_single_helper_call_crossing_source_value(module);
       if (!regalloc_source_value.has_value()) {
         throw c4c::backend::LirAdapterError(
             c4c::backend::LirAdapterErrorKind::Unsupported,
             "legacy x86 call-crossing source value for shared regalloc");
       }
       auto emit_slice = *slice;
-      emit_slice.regalloc_source_value = *regalloc_source_value;
+      emit_slice.regalloc_source_value = std::string(*regalloc_source_value);
       return remove_redundant_self_moves(emit_minimal_call_crossing_direct_call_asm(
           adapted, run_shared_x86_regalloc(*main_fn), emit_slice));
     }

@@ -425,6 +425,38 @@ parse_backend_single_helper_zero_arg_main_lir_module(
   };
 }
 
+inline std::optional<std::string_view> parse_backend_single_helper_call_crossing_source_value(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  const auto parsed = parse_backend_single_helper_zero_arg_main_lir_module(module, 3);
+  if (!parsed.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto& insts = parsed->main_block->insts;
+  const auto* source_add = std::get_if<LirBinOp>(&insts[0]);
+  const auto* call = std::get_if<LirCallOp>(&insts[1]);
+  const auto* final_add = std::get_if<LirBinOp>(&insts[2]);
+  const auto source_add_opcode = source_add == nullptr ? std::nullopt : source_add->opcode.typed();
+  const auto final_add_opcode = final_add == nullptr ? std::nullopt : final_add->opcode.typed();
+  const auto call_operand =
+      call == nullptr
+          ? std::nullopt
+          : parse_backend_direct_global_single_typed_call_operand(
+                *call, parsed->helper->name, "i32");
+  if (source_add == nullptr || call == nullptr || final_add == nullptr ||
+      source_add_opcode != LirBinaryOpcode::Add || source_add->type_str != "i32" ||
+      !call_operand.has_value() || *call_operand != source_add->result ||
+      final_add_opcode != LirBinaryOpcode::Add || final_add->type_str != "i32" ||
+      final_add->lhs != source_add->result || final_add->rhs != call->result ||
+      *parsed->main_ret->value_str != final_add->result) {
+    return std::nullopt;
+  }
+
+  return std::string_view(source_add->result);
+}
+
 inline std::optional<ParsedBackendSingleParamSlotAddFunctionView>
 parse_backend_single_param_slot_add_function(
     const c4c::codegen::lir::LirFunction& function,

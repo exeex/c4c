@@ -620,6 +620,38 @@ void test_backend_call_helpers_parse_single_helper_zero_arg_main_module_shape() 
               "shared single-helper main-module parser should preserve renamed helper metadata and remain independent from function ordering");
 }
 
+void test_backend_call_helpers_parse_single_helper_call_crossing_source_value() {
+  auto module = make_typed_call_crossing_direct_call_module();
+  std::swap(module.functions.front(), module.functions.back());
+
+  auto& helper = module.functions.back();
+  helper.name = "inc_value";
+  helper.signature_text = "define i32 @inc_value(i32 %x) {\n";
+
+  auto& main_fn = module.functions.front();
+  auto& entry = main_fn.blocks.front();
+  auto* source_add = std::get_if<c4c::codegen::lir::LirBinOp>(&entry.insts[0]);
+  auto* call = std::get_if<c4c::codegen::lir::LirCallOp>(&entry.insts[1]);
+  auto* final_add = std::get_if<c4c::codegen::lir::LirBinOp>(&entry.insts[2]);
+  expect_true(source_add != nullptr && call != nullptr && final_add != nullptr,
+              "shared call-crossing source parser regression test needs the source add, direct call, and final add");
+  if (source_add == nullptr || call == nullptr || final_add == nullptr) {
+    return;
+  }
+
+  source_add->result = "%t.crossing.source.renamed";
+  call->result = "%t.crossing.call.renamed";
+  call->callee = c4c::codegen::lir::LirOperand(std::string("@inc_value"),
+                                               c4c::codegen::lir::LirOperandKind::Global);
+  call->args_str = "i32 %t.crossing.source.renamed";
+  final_add->lhs = "%t.crossing.source.renamed";
+  final_add->rhs = "%t.crossing.call.renamed";
+
+  const auto parsed = c4c::backend::parse_backend_single_helper_call_crossing_source_value(module);
+  expect_true(parsed.has_value() && *parsed == "%t.crossing.source.renamed",
+              "shared call-crossing source parser should preserve renamed helper symbols, function ordering, and source/result SSA names without target-local main scans");
+}
+
 void test_backend_call_helpers_decode_lir_direct_global_vararg_prefix() {
   c4c::codegen::lir::LirCallOp call{
       "%t2",
@@ -1796,6 +1828,7 @@ int main(int argc, char* argv[]) {
   test_backend_call_helpers_decode_zero_arg_direct_global_calls();
   test_backend_call_helpers_decode_lir_direct_global_typed_operands();
   test_backend_call_helpers_parse_single_helper_zero_arg_main_module_shape();
+  test_backend_call_helpers_parse_single_helper_call_crossing_source_value();
   test_backend_call_helpers_decode_lir_direct_global_vararg_prefix();
   test_backend_call_helpers_classify_lir_nonminimal_call_types();
   test_backend_call_helpers_classify_lir_nonminimal_signature_types();
