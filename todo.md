@@ -16,6 +16,32 @@ direct BIR text path without requiring general multi-block BIR CFG support or
 direct-BIR emitter widening.
 
 Completed this iteration:
+- Widened the bounded BIR straight-line arithmetic scaffold with the missing
+  constant-only unsigned division slice by adding `bir.udiv` support in
+  `bir.hpp`, `bir.cpp`, and `lir_to_bir.cpp`, keeping it bounded to immediate
+  integer arithmetic that still linearizes into one BIR block.
+- Added backend BIR printer, lowering, and explicit BIR-pipeline regressions
+  via `make_bir_return_udiv_module()`, proving the widened unsigned-division
+  slice reaches the BIR text surface as `%t0 = bir.udiv i32 12, 3`.
+- Added source-level/default-route RISC-V coverage via
+  `tests/c/internal/backend_route_case/return_udiv.c`, proving `return 12u / 3u;`
+  defaults to the BIR pipeline instead of falling back to legacy LLVM IR text.
+- Reconfigured and rebuilt the tree, reran
+  `ctest --test-dir build -R backend_bir_tests --output-on-failure`, reran the
+  new route case
+  `backend_codegen_route_riscv64_return_udiv_defaults_to_bir`, then reran
+  `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `321/321` backend-labeled tests passing.
+- Refreshed `test_fail_after.log` with a full
+  `ctest --test-dir build -j8 --output-on-failure` run, then passed the
+  regression guard against `test_fail_before.log` with
+  `--allow-non-decreasing-passed --timeout-threshold 30 --enforce-timeout`
+  (`2743 -> 2759` passed, `0 -> 0` failed, no newly failing tests, no new
+  `>30s` cases). The slowest observed suite case was
+  `cpp_eastl_utility_parse_recipe` at `19.79 sec`, below the timeout
+  threshold.
+
+Completed this iteration:
 - Added the missing simple split-predecessor compare-fed phi-join `+ 6 - 2 + 9`
   parity slice via
   `make_bir_two_param_select_eq_split_predecessor_add_phi_post_join_add_sub_add_module()`,
@@ -727,9 +753,8 @@ Completed this iteration:
 Next intended slice:
 - Continue Phase 2 parity with the next bounded compare/select/control-flow or
   straight-line instruction gap that still linearizes into one BIR block,
-  likely a nearby still-uncovered compare-adjacent source shape beyond the now
-  complete split-predecessor `post_add`, `post_add_sub`, and `post_add_sub_add`
-  family matrix, before considering any broader matcher widening.
+  likely the next constant-only integer opcode still missing from BIR parity
+  after `udiv`, before considering any broader matcher widening.
 
 Resume notes:
 - `backend.cpp` still contains the legacy route (`emit_legacy_module`), but
@@ -763,7 +788,7 @@ Resume notes:
   followed by a bounded post-join add.
 - The next bounded gap is instruction coverage rather than another scalar type:
   the BIR scaffold still rejects straight-line integer arithmetic outside
-  `add/sub/mul/sdiv/srem/urem` plus the newly added bounded
+  `add/sub/mul/sdiv/udiv/srem/urem` plus the newly added bounded
   `eq`/`ne`/`slt`/`sle`/`sgt`/`sge`/`ult`/`ule`/`ugt`/`uge` materialization
   slices, and it still lacks the broader compare/select/control-flow clusters
   once the branch shape stops collapsing into the bounded single-block BIR

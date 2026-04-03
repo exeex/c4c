@@ -108,6 +108,9 @@ std::optional<bir::BinaryOpcode> lower_binary_opcode(std::string_view opcode) {
   if (opcode == "sdiv") {
     return bir::BinaryOpcode::SDiv;
   }
+  if (opcode == "udiv") {
+    return bir::BinaryOpcode::UDiv;
+  }
   if (opcode == "srem") {
     return bir::BinaryOpcode::SRem;
   }
@@ -326,6 +329,15 @@ std::optional<AffineValue> combine_affine(const AffineValue& lhs,
       return std::nullopt;
     }
     return AffineValue{false, false, lhs.constant / rhs.constant};
+  }
+  if (opcode == bir::BinaryOpcode::UDiv) {
+    if (lhs.constant < 0 || rhs.constant <= 0) {
+      return std::nullopt;
+    }
+    return AffineValue{
+        false, false,
+        static_cast<std::int64_t>(static_cast<std::uint64_t>(lhs.constant) /
+                                  static_cast<std::uint64_t>(rhs.constant))};
   }
   if (opcode == bir::BinaryOpcode::SRem) {
     if (rhs.constant == 0) {
@@ -1078,7 +1090,7 @@ bir::Module lower_to_bir(const c4c::codegen::lir::LirModule& module) {
   auto lowered = try_lower_to_bir(module);
   if (!lowered.has_value()) {
     throw std::invalid_argument(
-        "bir scaffold lowering currently supports only straight-line single-block i8/i32/i64 return-immediate/add-sub slices, constant-only mul/sdiv/srem/urem/eq/ne/slt/sle/sgt/sge/ult/ule/ugt/uge materialization slices, bounded compare-fed integer select materialization, bounded compare-fed phi joins with empty or add/sub-only predecessor arms including join-local add/sub chains after the fused select, plus bounded one- and two-parameter affine chains over those scalar types");
+        "bir scaffold lowering currently supports only straight-line single-block i8/i32/i64 return-immediate/add-sub slices, constant-only mul/sdiv/udiv/srem/urem/eq/ne/slt/sle/sgt/sge/ult/ule/ugt/uge materialization slices, bounded compare-fed integer select materialization, bounded compare-fed phi joins with empty or add/sub-only predecessor arms including join-local add/sub chains after the fused select, plus bounded one- and two-parameter affine chains over those scalar types");
   }
   return *lowered;
 }
