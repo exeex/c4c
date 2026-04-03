@@ -20,6 +20,7 @@
       "extensions": [
         "openai.chatgpt",
         "openai.codex",
+        "anthropic.claude-code",
         "ms-vscode.cpptools",
         "ms-vscode.cmake-tools"
       ]
