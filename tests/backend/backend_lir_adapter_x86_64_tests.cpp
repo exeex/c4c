@@ -2824,6 +2824,55 @@ void test_x86_backend_renders_typed_two_arg_direct_call_slice_with_spaced_helper
                       "x86 backend should not fall back to LLVM text for spacing-tolerant two-argument helper signatures");
 }
 
+void test_x86_backend_keeps_renamed_typed_two_arg_direct_call_slice_on_asm_path() {
+  auto module = make_typed_direct_call_two_arg_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  c4c::codegen::lir::LirFunction* helper = nullptr;
+  c4c::codegen::lir::LirFunction* main_fn = nullptr;
+  for (auto& function : module.functions) {
+    if (function.name == "add_pair") {
+      helper = &function;
+    } else if (function.name == "main") {
+      main_fn = &function;
+    }
+  }
+  expect_true(helper != nullptr && main_fn != nullptr,
+              "x86 renamed typed two-argument direct-call regression test needs helper and main functions");
+  if (helper == nullptr || main_fn == nullptr) {
+    return;
+  }
+
+  helper->name = "sum_pair";
+  helper->signature_text = "define i32 @sum_pair(i32 %p.left, i32 %p.right)\n";
+  auto& helper_add = std::get<c4c::codegen::lir::LirBinOp>(helper->blocks.front().insts.front());
+  helper_add.lhs = "%p.left";
+  helper_add.rhs = "%p.right";
+
+  auto* call = std::get_if<c4c::codegen::lir::LirCallOp>(&main_fn->blocks.front().insts.front());
+  expect_true(call != nullptr,
+              "x86 renamed typed two-argument direct-call regression test needs the direct call to mutate");
+  if (call == nullptr) {
+    return;
+  }
+  call->callee = c4c::codegen::lir::LirOperand(std::string("@sum_pair"),
+                                               c4c::codegen::lir::LirOperandKind::Global);
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".type sum_pair, %function",
+                  "x86 backend seam should key the typed two-argument helper definition from the actual helper symbol instead of a fixed add_pair name");
+  expect_contains(rendered, "sum_pair:\n  mov eax, edi\n  add eax, esi\n  ret\n",
+                  "x86 backend seam should keep the renamed typed two-argument helper on the asm path when only lowered helper and parameter names change");
+  expect_contains(rendered, "call sum_pair",
+                  "x86 backend seam should still lower renamed typed two-argument direct calls without depending on fixed lowered helper names");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back when the typed two-argument direct-call slice relies only on structural helper metadata");
+}
+
 void test_x86_backend_renders_typed_two_arg_direct_call_local_arg_slice() {
   auto module = make_typed_direct_call_two_arg_local_arg_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -4557,6 +4606,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_direct_call_local_arg_spacing_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_slice);
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_slice_with_spaced_helper_signature);
+  RUN_TEST(test_x86_backend_keeps_renamed_typed_two_arg_direct_call_slice_on_asm_path);
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_local_arg_slice);
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_second_local_arg_slice);
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_second_local_rewrite_slice);
