@@ -726,6 +726,15 @@ if(CLANG_EXECUTABLE)
     )
 
     c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_return_ne_u8_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/return_ne_u8.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/return_ne_u8_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @choose_ne_u() -> i8 {|%t1 = bir.ne i8 7, 3|bir.ret i8 %t1"
+      FORBIDDEN_SNIPPETS "define i8 @choose_ne_u()"
+    )
+
+    c4c_add_backend_codegen_route_test(
       backend_codegen_route_riscv64_return_slt_defaults_to_bir
       SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/return_slt.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu

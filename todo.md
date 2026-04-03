@@ -10,11 +10,44 @@ Source Plan: plan.md
 - [ ] Revalidate backend and full-suite behavior without fallback
 
 Current active item: Step 2, add the bounded zero-parameter `unsigned char`
-compare-return `ne` backend-route parity slice adjacent to the now-landed
-`return_eq_u8` case and the existing `i32` `return_ne` route coverage.
-Next target: confirm the adjacent zero-parameter `unsigned char` `return_ne_u8`
-wrapper follows the direct-BIR route without legacy LLVM IR fallback before
-opening the broader widened-width compare-return family.
+compare-return family beyond the now-landed zero-parameter `unsigned char`
+`eq`/`ne` parity pair.
+Next target: audit the next smallest bounded widened compare-return gap adjacent
+to `return_eq_u8` / `return_ne_u8` before opening a broader widened-width
+compare-return family.
+
+Completed this iteration:
+- Re-audited the adjacent zero-parameter compare-return backend-route inventory
+  in `tests/c/internal/InternalTests.cmake` and confirmed the smallest missing
+  widened-width parity case beside the landed `return_eq_u8` slice was
+  `return_ne_u8`.
+- Added `tests/c/internal/backend_route_case/return_ne_u8.c`, proving the
+  bounded zero-parameter `unsigned char` inequality-return wrapper is available
+  to the backend-route harness.
+- Registered
+  `backend_codegen_route_riscv64_return_ne_u8_defaults_to_bir` in
+  `tests/c/internal/InternalTests.cmake`, asserting the emitted text contains
+  `bir.func @choose_ne_u() -> i8 {`, `%t1 = bir.ne i8 7, 3`, `bir.ret i8 %t1`,
+  and forbids legacy LLVM IR `define i8 @choose_ne_u()`.
+- Added `make_bir_i8_return_ne_module()` to
+  `tests/backend/backend_bir_test_support.*` plus
+  `test_bir_lowering_accepts_i8_return_ne()` in
+  `tests/backend/backend_bir_lowering_tests.cpp` to keep the widened `i8`
+  compare-return `ne` shape covered below the backend-route harness.
+- Rebuilt the tree, reran `backend_bir_tests`, reran
+  `backend_codegen_route_riscv64_return_ne_u8_defaults_to_bir`, reran the
+  adjacent compare-return quartet
+  (`backend_codegen_route_riscv64_return_eq_defaults_to_bir`,
+  `backend_codegen_route_riscv64_return_ne_defaults_to_bir`,
+  `backend_codegen_route_riscv64_return_eq_u8_defaults_to_bir`,
+  `backend_codegen_route_riscv64_return_ne_u8_defaults_to_bir`), reran
+  `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `363/363` backend-labeled tests passing, then refreshed
+  `test_fail_after.log` with a full `ctest --test-dir build -j8 --output-on-failure`
+  run and passed the regression guard against `test_fail_before.log` with
+  `--allow-non-decreasing-passed --timeout-threshold 30 --enforce-timeout`
+  (`2800 -> 2801` passed, `0 -> 0` failed, no newly failing tests, no new
+  `>30s` cases).
 
 Completed this iteration:
 - Re-audited the bounded `i32` versus widened-width/source-level `unsigned char`
