@@ -5604,19 +5604,6 @@ std::string emit_module(const c4c::backend::BackendModule& module,
     }
     if (const auto slice = c4c::backend::parse_backend_minimal_call_crossing_direct_call_module(module);
         slice.has_value()) {
-      if (legacy_fallback != nullptr) {
-        const auto* main_fn = find_lir_function(*legacy_fallback, "main");
-        if (main_fn == nullptr) {
-          fail_unsupported("main function for shared call-crossing direct-call slice");
-        }
-        const auto regalloc_source_value =
-            c4c::backend::parse_backend_single_helper_call_crossing_source_value(*legacy_fallback);
-        if (!regalloc_source_value.has_value()) {
-          fail_unsupported("legacy call-crossing source value for shared regalloc");
-        }
-        return emit_minimal_call_crossing_direct_call_asm(
-            module, run_shared_aarch64_regalloc(*main_fn), *slice, *regalloc_source_value);
-      }
       return emit_minimal_call_crossing_direct_call_asm(
           module,
           synthesize_shared_aarch64_call_crossing_regalloc(slice->source_add->result),

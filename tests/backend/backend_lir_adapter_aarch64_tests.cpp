@@ -2064,6 +2064,33 @@ void test_aarch64_backend_scaffold_accepts_renamed_lowered_call_crossing_source_
                       "aarch64 backend seam should not fall back when the lowered call-crossing slice relies only on structured metadata after both callee and source-value renames");
 }
 
+void test_aarch64_backend_scaffold_ignores_broken_legacy_fallback_for_call_crossing_slice() {
+  auto legacy = make_typed_call_crossing_direct_call_module();
+  legacy.target_triple = "aarch64-unknown-linux-gnu";
+  auto lowered = c4c::backend::lower_to_backend_ir(legacy);
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  for (auto& function : legacy.functions) {
+    if (function.name == "main") {
+      function.name = "legacy_main_broken";
+      function.signature_text = "define i32 @legacy_main_broken()\n";
+      break;
+    }
+  }
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered, &legacy},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".type add_one, %function",
+                  "aarch64 backend seam should keep the lowered call-crossing helper on the asm path even when an attached legacy fallback no longer has the matching main function");
+  expect_contains(rendered, "mov w20, #5",
+                  "aarch64 backend seam should keep using backend-owned call-crossing regalloc instead of consulting a broken legacy fallback main");
+  expect_contains(rendered, "bl add_one",
+                  "aarch64 backend seam should still emit the lowered call-crossing direct call when legacy fallback metadata is malformed");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should ignore a broken legacy fallback when the structured call-crossing slice already lowers cleanly");
+}
+
 void test_aarch64_backend_renders_typed_two_arg_direct_call_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_typed_direct_call_two_arg_module()},
@@ -5050,6 +5077,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_scaffold_accepts_renamed_structured_call_crossing_direct_call_ir_without_signature_shims();
   test_aarch64_backend_scaffold_accepts_lowered_call_crossing_source_value_rename_without_signature_shims();
   test_aarch64_backend_scaffold_accepts_renamed_lowered_call_crossing_source_value_rename_without_signature_shims();
+  test_aarch64_backend_scaffold_ignores_broken_legacy_fallback_for_call_crossing_slice();
   test_aarch64_backend_renders_typed_two_arg_direct_call_slice();
   test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_ir_without_signature_shims();
   test_aarch64_backend_scaffold_rejects_structured_two_arg_direct_call_when_helper_body_contract_disagrees();

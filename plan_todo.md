@@ -7,16 +7,17 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 3: Continue trimming live legacy fallback plumbing after removing the
-  x86 lowered call-crossing dependency on attached legacy fallback metadata,
-  with the next slice aimed at one remaining AArch64 or backend-routing
-  consumer whose behavior still genuinely depends on `legacy_fallback`.
+  x86 and AArch64 lowered call-crossing dependency on attached legacy fallback
+  metadata, with the next slice aimed at one remaining backend-routing or
+  nonminimal-lowering consumer whose behavior still genuinely depends on
+  `legacy_fallback`.
 
 ## In Progress
 
-- Trace the remaining `legacy_fallback` consumers in
-  `src/backend/backend.cpp` and `src/backend/aarch64/codegen/emit.cpp` to
-  identify the smallest next cleanup that still preserves the necessary
-  unsupported-slice fallback coverage.
+- Trace the remaining `legacy_fallback` consumers in `src/backend/backend.cpp`
+  and the AArch64 nonminimal-lowering path to identify the smallest next
+  cleanup that still preserves the necessary unsupported-slice fallback
+  coverage.
 
 ## Pending
 
@@ -170,6 +171,18 @@ Source Plan: plan.md
 - Full-suite regression guard passed:
   `test_before.log` -> `test_after.log` kept total tests at `2678` with zero
   newly failing cases.
+- Added an AArch64 backend regression guard that pins the lowered
+  call-crossing direct-call asm path as independent from attached legacy
+  fallback `main` metadata once the structured backend module already carries
+  the required source-add and helper-call seam.
+- Removed the AArch64 call-crossing fast path's dependency on consulting
+  `legacy_fallback` for shared regalloc inputs, leaving that seam driven by
+  backend-owned synthesized regalloc metadata alone.
+- Targeted validation passed:
+  `backend_lir_adapter_aarch64_tests`.
+- Full-suite regression guard passed:
+  `test_fail_before.log` -> `test_fail_after.log` kept total tests at `2678`
+  with zero newly failing cases.
 
 ## Notes
 
@@ -184,9 +197,9 @@ Source Plan: plan.md
 ## Next Slice
 
 - Continue Step 3 by tracing the remaining live `legacy_fallback` consumers in
-  `src/backend/backend.cpp` and the AArch64 shared-regalloc call-crossing path,
-  then remove or contain the smallest surface that no longer protects any
-  exercised BIR-default route.
+  `src/backend/backend.cpp` and the AArch64 nonminimal-lowering path, then
+  remove or contain the smallest surface that no longer protects any exercised
+  BIR-default route.
 
 ## Blockers
 
