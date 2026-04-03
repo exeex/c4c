@@ -114,6 +114,9 @@ std::optional<bir::BinaryOpcode> lower_binary_opcode(std::string_view opcode) {
   if (opcode == "urem") {
     return bir::BinaryOpcode::URem;
   }
+  if (opcode == "eq") {
+    return bir::BinaryOpcode::Eq;
+  }
   return std::nullopt;
 }
 
@@ -140,6 +143,38 @@ std::optional<bir::BinaryInst> lower_binary(const c4c::codegen::lir::LirInst& in
   bir::BinaryInst lowered;
   lowered.opcode = *opcode;
   lowered.result = bir::Value::named(*type, bin->result.str());
+  lowered.lhs = *lhs;
+  lowered.rhs = *rhs;
+  return lowered;
+}
+
+std::optional<bir::BinaryInst> lower_compare_materialization(
+    const c4c::codegen::lir::LirInst& compare_inst,
+    const c4c::codegen::lir::LirInst& cast_inst) {
+  const auto* cmp = std::get_if<c4c::codegen::lir::LirCmpOp>(&compare_inst);
+  const auto* cast = std::get_if<c4c::codegen::lir::LirCastOp>(&cast_inst);
+  if (cmp == nullptr || cast == nullptr || cmp->is_float || cmp->predicate.str() != "eq" ||
+      cmp->result.str().empty() || cast->result.str().empty() ||
+      cast->kind != c4c::codegen::lir::LirCastKind::ZExt || cast->from_type.str() != "i1" ||
+      cast->operand.str() != cmp->result.str()) {
+    return std::nullopt;
+  }
+
+  const auto type = lower_scalar_type_text(cmp->type_str.str());
+  const auto widened_type = lower_scalar_type_text(cast->to_type.str());
+  if (!type.has_value() || !widened_type.has_value() || *type != *widened_type) {
+    return std::nullopt;
+  }
+
+  const auto lhs = lower_immediate_or_name(cmp->lhs.str(), *type);
+  const auto rhs = lower_immediate_or_name(cmp->rhs.str(), *type);
+  if (!lhs.has_value() || !rhs.has_value()) {
+    return std::nullopt;
+  }
+
+  bir::BinaryInst lowered;
+  lowered.opcode = bir::BinaryOpcode::Eq;
+  lowered.result = bir::Value::named(*type, cast->result.str());
   lowered.lhs = *lhs;
   lowered.rhs = *rhs;
   return lowered;
@@ -196,6 +231,13 @@ std::optional<AffineValue> combine_affine(const AffineValue& lhs,
         false, false,
         static_cast<std::int64_t>(static_cast<std::uint64_t>(lhs.constant) %
                                   static_cast<std::uint64_t>(rhs.constant))};
+  }
+  if (opcode == bir::BinaryOpcode::Eq) {
+    if (lhs.uses_first_param || lhs.uses_second_param || rhs.uses_first_param ||
+        rhs.uses_second_param) {
+      return std::nullopt;
+    }
+    return AffineValue{false, false, lhs.constant == rhs.constant ? 1 : 0};
   }
   return AffineValue{false, false, lhs.constant * rhs.constant};
 }
@@ -271,8 +313,18 @@ std::optional<bir::Module> try_lower_to_bir(const c4c::codegen::lir::LirModule& 
     affine_values.push_back(
         AffineValue{index == 0, index == 1, 0});
   }
-  for (const auto& lir_inst : lir_block.insts) {
-    auto binary = lower_binary(lir_inst);
+  for (std::size_t inst_index = 0; inst_index < lir_block.insts.size(); ++inst_index) {
+    auto binary = [&]() -> std::optional<bir::BinaryInst> {
+      if (inst_index + 1 < lir_block.insts.size()) {
+        auto lowered_compare = lower_compare_materialization(
+            lir_block.insts[inst_index], lir_block.insts[inst_index + 1]);
+        if (lowered_compare.has_value()) {
+          ++inst_index;
+          return lowered_compare;
+        }
+      }
+      return lower_binary(lir_block.insts[inst_index]);
+    }();
     if (!binary.has_value()) {
       return std::nullopt;
     }
@@ -332,7 +384,7 @@ bir::Module lower_to_bir(const c4c::codegen::lir::LirModule& module) {
   auto lowered = try_lower_to_bir(module);
   if (!lowered.has_value()) {
     throw std::invalid_argument(
-        "bir scaffold lowering currently supports only straight-line single-block i8/i32/i64 return-immediate/add-sub slices, constant-only mul/sdiv/srem slices, plus bounded one- and two-parameter affine chains over those scalar types");
+        "bir scaffold lowering currently supports only straight-line single-block i8/i32/i64 return-immediate/add-sub slices, constant-only mul/sdiv/srem/urem/eq materialization slices, plus bounded one- and two-parameter affine chains over those scalar types");
   }
   return *lowered;
 }

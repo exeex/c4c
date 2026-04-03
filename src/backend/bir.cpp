@@ -64,6 +64,8 @@ std::string render_binary_opcode(BinaryOpcode opcode) {
       return "srem";
     case BinaryOpcode::URem:
       return "urem";
+    case BinaryOpcode::Eq:
+      return "eq";
   }
   return "<unknown>";
 }
