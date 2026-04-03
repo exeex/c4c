@@ -1494,6 +1494,49 @@ void test_x86_backend_scaffold_accepts_structured_conditional_return_ir_without_
                       "x86 backend seam should not fall back when lowered conditional returns rely only on structured signature metadata");
 }
 
+void test_x86_backend_scaffold_matches_direct_non_main_local_slot_conditional_return_asm() {
+  auto module = make_eighteen_local_slot_constant_conditional_goto_return_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  auto& function = module.functions.front();
+  function.name = "helper";
+  function.signature_text = "define i32 @helper(i32 %p.unused)\n";
+  function.alloca_insts.push_back(
+      c4c::codegen::lir::LirAllocaOp{"%lv.unused", "i32", "", 4});
+
+  const auto direct_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto lowered_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  if (direct_rendered != lowered_rendered) {
+    fail("x86 non-main local-slot conditional-return regression should keep the direct LIR and explicit lowered backend seams on identical assembly output");
+  }
+}
+
+void test_x86_backend_scaffold_accepts_structured_non_main_local_slot_conditional_return_ir_without_signature_shims() {
+  auto module = make_eighteen_local_slot_constant_conditional_goto_return_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  auto& function = module.functions.front();
+  function.name = "helper";
+  function.signature_text = "define i32 @helper(i32 %p.unused)\n";
+  function.alloca_insts.push_back(
+      c4c::codegen::lir::LirAllocaOp{"%lv.unused", "i32", "", 4});
+
+  auto lowered = c4c::backend::lower_to_backend_ir(module);
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, "helper:",
+                  "x86 backend seam should still emit assembly for the structured non-main local-slot conditional-return family without signature shims");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back for the structured non-main local-slot conditional-return family once lowering owns the backend semantics");
+}
+
 void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_ir_input() {
   auto module = make_conditional_phi_join_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -5229,6 +5272,8 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_conditional_return_ir_input);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_conditional_return_ir_without_type_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_conditional_return_ir_without_signature_shims);
+  RUN_TEST(test_x86_backend_scaffold_matches_direct_non_main_local_slot_conditional_return_asm);
+  RUN_TEST(test_x86_backend_scaffold_accepts_structured_non_main_local_slot_conditional_return_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_ir_input);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_add_ir_input);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_conditional_phi_join_add_ir_without_type_shims);

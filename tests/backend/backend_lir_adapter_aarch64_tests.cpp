@@ -3897,6 +3897,26 @@ void test_aarch64_backend_scaffold_accepts_structured_conditional_return_ir_with
                       "aarch64 backend seam should not fall back when lowered conditional returns rely only on structured signature metadata");
 }
 
+void test_aarch64_backend_scaffold_accepts_structured_non_main_local_slot_conditional_return_ir_without_signature_shims() {
+  auto module = make_eighteen_local_slot_constant_conditional_goto_return_module();
+  auto& function = module.functions.front();
+  function.name = "helper";
+  function.signature_text = "define i32 @helper(i32 %p.unused)\n";
+  function.alloca_insts.push_back(
+      c4c::codegen::lir::LirAllocaOp{"%lv.unused", "i32", "", 4});
+
+  auto lowered = c4c::backend::lower_to_backend_ir(module);
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  expect_contains(rendered, "helper:",
+                  "aarch64 backend seam should still emit assembly for the structured non-main local-slot conditional-return family without signature shims");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should not fall back for the structured non-main local-slot conditional-return family once lowering owns the backend semantics");
+}
+
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_ir_input() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_phi_join_module());
   const auto rendered = c4c::backend::emit_module(
@@ -5104,6 +5124,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_scaffold_matches_direct_conditional_return_asm();
   test_aarch64_backend_scaffold_accepts_structured_conditional_return_ir_without_type_shims();
   test_aarch64_backend_scaffold_accepts_structured_conditional_return_ir_without_signature_shims();
+  test_aarch64_backend_scaffold_accepts_structured_non_main_local_slot_conditional_return_ir_without_signature_shims();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_ir_input();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_add_ir_input();
   test_aarch64_backend_scaffold_accepts_structured_conditional_phi_join_add_ir_without_type_shims();

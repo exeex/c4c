@@ -27,6 +27,9 @@ namespace c4c::backend::x86 {
 
 namespace {
 
+std::string asm_symbol_name(const c4c::backend::BackendModule& module,
+                            std::string_view logical_name);
+
 const std::string& synthetic_call_crossing_regalloc_source_value() {
   static const std::string kSyntheticCallCrossingRegallocSource =
       "%t.call_crossing.regalloc_source";
@@ -476,8 +479,7 @@ bool is_minimal_single_function_asm_slice(const c4c::backend::BackendModule& mod
 
   const auto& function = module.functions.front();
   if (function.is_declaration || !backend_function_is_definition(function.signature) ||
-      !is_i32_scalar_signature_return(function.signature) || function.signature.name != "main" ||
-      !function.signature.params.empty() || function.signature.is_vararg ||
+      !is_i32_scalar_signature_return(function.signature) || function.signature.is_vararg ||
       function.blocks.size() != 1) {
     return false;
   }
@@ -490,6 +492,10 @@ bool is_minimal_single_function_asm_slice(const c4c::backend::BackendModule& mod
   }
 
   return true;
+}
+
+std::string minimal_single_function_symbol(const c4c::backend::BackendModule& module) {
+  return asm_symbol_name(module, module.functions.front().signature.name);
 }
 
 std::optional<std::int64_t> parse_minimal_return_imm(
@@ -2217,7 +2223,7 @@ void emit_function_prelude(std::ostringstream& out,
 
 std::string emit_minimal_return_asm(const c4c::backend::BackendModule& module,
                                     std::int64_t return_imm) {
-  const std::string symbol = asm_symbol_name(module, "main");
+  const std::string symbol = minimal_single_function_symbol(module);
   std::ostringstream out;
   out << ".intel_syntax noprefix\n";
   out << ".text\n";

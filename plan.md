@@ -103,9 +103,9 @@ Exit criteria:
 - For the active migrated families, require direct and lowered emitter paths to converge on the same backend semantics.
 
 Exit criteria:
-- [ ] The active migrated family is emitted from structured backend semantics on both AArch64 and x86 paths in current coverage.
-- [ ] No new target-local parsing or fake reshaping layers are introduced for the migrated family.
-- [ ] Backend tests for the migrated paths pass on both supported targets in current coverage.
+- [x] The active migrated family is emitted from structured backend semantics on both AArch64 and x86 paths in current coverage.
+- [x] No new target-local parsing or fake reshaping layers are introduced for the migrated family.
+- [x] Backend tests for the migrated paths pass on both supported targets in current coverage.
 
 ## Step 5: Validate positioning for later BIR work
 

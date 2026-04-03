@@ -201,14 +201,15 @@ bool lir_module_needs_nonminimal_lowering(const c4c::codegen::lir::LirModule& mo
 
 std::optional<std::string_view> strip_typed_operand_prefix(std::string_view operand,
                                                            std::string_view type_prefix);
+std::string asm_symbol_name(const c4c::backend::BackendModule& module,
+                            std::string_view logical_name);
 
 bool is_minimal_single_function_asm_slice(const c4c::backend::BackendModule& module) {
   if (module.functions.size() != 1) return false;
 
   const auto& function = module.functions.front();
   if (function.is_declaration || !backend_function_is_definition(function.signature) ||
-      !is_i32_scalar_signature_return(function.signature) || function.signature.name != "main" ||
-      !function.signature.params.empty() || function.signature.is_vararg ||
+      !is_i32_scalar_signature_return(function.signature) || function.signature.is_vararg ||
       function.blocks.size() != 1) {
     return false;
   }
@@ -221,6 +222,10 @@ bool is_minimal_single_function_asm_slice(const c4c::backend::BackendModule& mod
   }
 
   return true;
+}
+
+std::string minimal_single_function_symbol(const c4c::backend::BackendModule& module) {
+  return asm_symbol_name(module, module.functions.front().signature.name);
 }
 
 constexpr std::array<c4c::backend::PhysReg, 9> kAarch64CalleeSavedRegs = {
@@ -3078,7 +3083,7 @@ std::string emit_minimal_return_imm_asm(const c4c::backend::BackendModule& modul
   }
 
   std::ostringstream out;
-  const std::string symbol = asm_symbol_name(module, "main");
+  const std::string symbol = minimal_single_function_symbol(module);
 
   out << ".text\n";
   emit_function_prelude(out, module, symbol, true);
@@ -3103,7 +3108,7 @@ std::string emit_minimal_return_sub_imm_asm(const c4c::backend::BackendModule& m
   }
 
   std::ostringstream out;
-  const std::string symbol = asm_symbol_name(module, "main");
+  const std::string symbol = minimal_single_function_symbol(module);
 
   out << ".text\n";
   emit_function_prelude(out, module, symbol, true);
