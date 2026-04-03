@@ -870,8 +870,26 @@ Node* Parser::parse_primary() {
             break;
         }
 
-        return !saw_template_args || (probe < static_cast<int>(tokens_.size()) &&
-                                      tokens_[probe].kind == TokenKind::LParen);
+        if (!saw_template_args) return true;
+        if (probe >= static_cast<int>(tokens_.size())) return false;
+
+        switch (tokens_[probe].kind) {
+            case TokenKind::LParen:
+            case TokenKind::Star:
+            case TokenKind::Amp:
+            case TokenKind::AmpAmp:
+            case TokenKind::Identifier:
+            case TokenKind::KwConst:
+            case TokenKind::KwVolatile:
+            case TokenKind::KwRestrict:
+            case TokenKind::KwAtomic:
+            case TokenKind::KwAttribute:
+            case TokenKind::KwAlignas:
+            case TokenKind::LBracket:
+                return true;
+            default:
+                return false;
+        }
     };
 
     auto parse_gcc_type_trait_builtin = [&]() -> Node* {
