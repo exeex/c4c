@@ -628,6 +628,25 @@ void test_bir_lowering_accepts_two_param_select_predecessor_add_phi_slice() {
                   "BIR lowering should return the fused predecessor-compute select result instead of preserving the legacy phi join");
 }
 
+void test_bir_lowering_accepts_two_param_select_split_predecessor_add_phi_post_join_add_slice() {
+  const auto lowered = c4c::backend::lower_to_bir(
+      make_bir_two_param_select_eq_split_predecessor_add_phi_post_join_add_module());
+  const auto rendered = c4c::backend::bir::print(lowered);
+
+  expect_contains(rendered, "bir.func @choose2_add_post(i32 %p.x, i32 %p.y) -> i32 {",
+                  "BIR lowering should preserve the widened two-parameter split-predecessor ternary signature while collapsing the empty end blocks");
+  expect_contains(rendered, "%t8 = bir.add i32 %p.x, 5",
+                  "BIR lowering should hoist the then-arm predecessor arithmetic even when the phi predecessor is a later empty end block");
+  expect_contains(rendered, "%t9 = bir.add i32 %p.y, 9",
+                  "BIR lowering should hoist the else-arm predecessor arithmetic even when the phi predecessor is a later empty end block");
+  expect_contains(rendered, "%t10 = bir.select eq i32 %p.x, %p.y, %t8, %t9",
+                  "BIR lowering should collapse the split-predecessor phi join into a single BIR select over the computed arm values");
+  expect_contains(rendered, "%t11 = bir.add i32 %t10, 6",
+                  "BIR lowering should preserve the bounded post-join add after the fused select for the split-predecessor form");
+  expect_contains(rendered, "bir.ret i32 %t11",
+                  "BIR lowering should return the split-predecessor join-local arithmetic result instead of falling back to legacy CFG form");
+}
+
 void test_bir_lowering_accepts_mixed_predecessor_select_post_join_add_slice() {
   const auto lowered =
       c4c::backend::lower_to_bir(make_bir_mixed_predecessor_add_phi_post_join_add_module());
@@ -811,6 +830,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_single_param_select_phi_slice);
   RUN_TEST(test_bir_lowering_accepts_two_param_select_phi_slice);
   RUN_TEST(test_bir_lowering_accepts_two_param_select_predecessor_add_phi_slice);
+  RUN_TEST(test_bir_lowering_accepts_two_param_select_split_predecessor_add_phi_post_join_add_slice);
   RUN_TEST(test_bir_lowering_accepts_mixed_predecessor_select_post_join_add_slice);
   RUN_TEST(test_bir_lowering_accepts_straight_line_add_sub_chain);
   RUN_TEST(test_bir_lowering_accepts_i8_add_sub_chain);

@@ -547,8 +547,62 @@ std::optional<std::vector<bir::BinaryInst>> lower_bounded_predecessor_chain(
     lowered.push_back(*binary);
   }
 
-  if (!lowered.empty() && lowered.back().result.name != expected_result) {
+  if (!lowered.empty() && !expected_result.empty() &&
+      lowered.back().result.name != expected_result) {
     return std::nullopt;
+  }
+  return lowered;
+}
+
+std::optional<std::vector<bir::BinaryInst>> lower_bounded_predecessor_chain(
+    const c4c::codegen::lir::LirBlock& first_block,
+    const c4c::codegen::lir::LirBlock& second_block,
+    std::string_view expected_result,
+    const std::vector<bir::Param>& params,
+    bir::TypeKind type) {
+  auto lowered = lower_bounded_predecessor_chain(first_block, "", params, type);
+  if (!lowered.has_value()) {
+    return std::nullopt;
+  }
+  auto tail = lower_bounded_predecessor_chain(second_block, expected_result, params, type);
+  if (!tail.has_value()) {
+    return std::nullopt;
+  }
+
+  if (lowered->empty()) {
+    return tail;
+  }
+  if (tail->empty()) {
+    if (lowered->back().result.name != expected_result) {
+      return std::nullopt;
+    }
+    return lowered;
+  }
+
+  std::vector<std::string> available_names;
+  available_names.reserve(params.size() + lowered->size());
+  for (const auto& param : params) {
+    available_names.push_back(param.name);
+  }
+  for (const auto& inst : *lowered) {
+    available_names.push_back(inst.result.name);
+  }
+
+  auto operand_is_available = [&](const bir::Value& value) {
+    if (value.kind == bir::Value::Kind::Immediate) {
+      return true;
+    }
+    return std::find(available_names.begin(), available_names.end(), value.name) !=
+           available_names.end();
+  };
+  for (const auto& inst : *tail) {
+    if (!operand_is_available(inst.lhs) || !operand_is_available(inst.rhs) ||
+        std::find(available_names.begin(), available_names.end(), inst.result.name) !=
+            available_names.end()) {
+      return std::nullopt;
+    }
+    lowered->push_back(inst);
+    available_names.push_back(inst.result.name);
   }
   return lowered;
 }
@@ -691,6 +745,8 @@ std::optional<bir::Function> try_lower_conditional_phi_select_function(
 
   const c4c::codegen::lir::LirBlock* true_phi_pred = &true_block;
   const c4c::codegen::lir::LirBlock* false_phi_pred = &false_block;
+  const c4c::codegen::lir::LirBlock* true_value_block = &true_block;
+  const c4c::codegen::lir::LirBlock* false_value_block = &false_block;
   const c4c::codegen::lir::LirBlock* join_block = nullptr;
   if (lir_function.blocks.size() == 4) {
     join_block = &lir_function.blocks[3];
@@ -703,8 +759,7 @@ std::optional<bir::Function> try_lower_conditional_phi_select_function(
     const auto* true_end_br = std::get_if<LirBr>(&true_end.terminator);
     const auto* false_end_br = std::get_if<LirBr>(&false_end.terminator);
     join_block = &lir_function.blocks[5];
-    if (!true_block.insts.empty() || !false_block.insts.empty() || !true_end.insts.empty() ||
-        !false_end.insts.empty() || true_end_br == nullptr || false_end_br == nullptr ||
+    if (true_end_br == nullptr || false_end_br == nullptr ||
         true_br->target_label != true_end.label ||
         false_br->target_label != false_end.label ||
         true_end_br->target_label != join_block->label ||
@@ -713,6 +768,8 @@ std::optional<bir::Function> try_lower_conditional_phi_select_function(
     }
     true_phi_pred = &true_end;
     false_phi_pred = &false_end;
+    true_value_block = &true_block;
+    false_value_block = &false_block;
   }
 
   const auto* phi = join_block->insts.size() > 0 ? std::get_if<LirPhiOp>(&join_block->insts[0]) : nullptr;
@@ -732,10 +789,18 @@ std::optional<bir::Function> try_lower_conditional_phi_select_function(
     return std::nullopt;
   }
 
-  const auto true_chain = lower_bounded_predecessor_chain(
-      *true_phi_pred, phi->incoming[0].first, params, *compare_type);
-  const auto false_chain = lower_bounded_predecessor_chain(
-      *false_phi_pred, phi->incoming[1].first, params, *compare_type);
+  const auto true_chain =
+      lir_function.blocks.size() == 4
+          ? lower_bounded_predecessor_chain(*true_phi_pred, phi->incoming[0].first, params,
+                                            *compare_type)
+          : lower_bounded_predecessor_chain(*true_value_block, *true_phi_pred,
+                                            phi->incoming[0].first, params, *compare_type);
+  const auto false_chain =
+      lir_function.blocks.size() == 4
+          ? lower_bounded_predecessor_chain(*false_phi_pred, phi->incoming[1].first, params,
+                                            *compare_type)
+          : lower_bounded_predecessor_chain(*false_value_block, *false_phi_pred,
+                                            phi->incoming[1].first, params, *compare_type);
   if (!true_chain.has_value() || !false_chain.has_value()) {
     return std::nullopt;
   }

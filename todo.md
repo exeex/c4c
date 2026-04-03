@@ -11,9 +11,36 @@ Source Plan: plan.md
 
 Current active item: Step 2, continue bounded compare-fed phi-join parity with
 the next smallest source-shaped ternary slice that still collapses into one
-BIR block after the fused `bir.select`, likely by extending source-level/default-
-route coverage for join-local post-select arithmetic without widening CFG
-support or x86/AArch64 direct-BIR emitter coverage.
+BIR block after the fused `bir.select`, specifically the split-predecessor
+six-block ternary where each arm computes before an empty end block and the
+join keeps a post-select add without widening CFG support or x86/AArch64
+direct-BIR emitter coverage.
+
+Completed this iteration:
+- Widened `lir_to_bir.cpp` so the bounded compare-fed phi-join matcher now
+  accepts the split-predecessor six-block ternary shape where each arm computes
+  an add/sub chain before an otherwise-empty end block that is still the direct
+  incoming `phi` predecessor.
+- Added direct BIR lowering and explicit BIR-pipeline regressions for that
+  split-predecessor join-local arithmetic slice via
+  `make_bir_two_param_select_eq_split_predecessor_add_phi_post_join_add_module()`,
+  proving `%t8 = bir.add ...`, `%t9 = bir.add ...`,
+  `%t10 = bir.select eq i32 %p.x, %p.y, %t8, %t9`, `%t11 = bir.add i32 %t10, 6`,
+  and the final `bir.ret i32 %t11` stay on the BIR text path.
+- Added source-level/default-route RISC-V coverage via
+  `tests/c/internal/backend_route_case/two_param_select_eq_predecessor_add_post_add.c`,
+  proving the frontend-produced six-block ternary now auto-selects into the BIR
+  pipeline instead of falling back to legacy LLVM IR text.
+- Rebuilt `backend_bir_tests` and `c4cll`, reran
+  `ctest --test-dir build -R backend_bir_tests --output-on-failure`, reran the
+  new route case
+  `backend_codegen_route_riscv64_two_param_select_eq_predecessor_add_post_add_defaults_to_bir`,
+  reran `ctest --test-dir build -L backend --output-on-failure -j8`, then
+  refreshed `test_fail_after.log` with a full `ctest --test-dir build -j8
+  --output-on-failure` run.
+- Passed the regression guard against `test_fail_before.log` with
+  `--allow-non-decreasing-passed` (`2743 -> 2744` passed, `0 -> 0` failed, no
+  newly failing tests, no new `>30s` cases).
 
 Completed this iteration:
 - Widened `lir_to_bir.cpp` so bounded compare-fed `phi` joins can keep a
@@ -353,10 +380,11 @@ Next intended slice:
 - Continue Phase 2 parity with the next compare-adjacent control-flow gap that
   can still stay on the BIR text path without forcing multi-block BIR CFG
   support or widening x86/AArch64 direct-BIR emitter coverage, most likely the
-  next bounded compare/control-flow source form whose predecessor arms each
-  carry a slightly richer affine chain, such as mixed add/sub staging or a
-  trailing post-join affine use that can still be linearized into one BIR block
-  without needing general CFG materialization.
+  next bounded compare/control-flow source form whose split predecessors each
+  carry a slightly richer affine chain than the current single-add arm, such as
+  mixed add/sub staging before the empty end blocks or a second bounded
+  join-local affine use that can still be linearized into one BIR block without
+  needing general CFG materialization.
 
 Resume notes:
 - `backend.cpp` still contains the legacy route (`emit_legacy_module`), but
