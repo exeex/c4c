@@ -600,6 +600,15 @@ if(CLANG_EXECUTABLE)
     )
 
     c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_return_sub_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/return_sub.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/return_sub_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t0 = bir.sub i32 3, 3|bir.ret i32 %t0"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+    )
+
+    c4c_add_backend_codegen_route_test(
       backend_codegen_route_riscv64_return_and_defaults_to_bir
       SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/return_and.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu

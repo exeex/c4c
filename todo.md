@@ -9,14 +9,35 @@ Source Plan: plan.md
 - [ ] Delete app-layer LLVM asm rescue from `c4cll`
 - [ ] Revalidate backend and full-suite behavior without fallback
 
-Current active item: Step 2, widen the bounded straight-line direct-BIR matcher
-with the next missing single-block opcode slice from the existing LIR surface.
-The bounded shift family now covers constant-only integer `shl`, `lshr`, and
-`ashr`. The constant-only integer `mul` route slice is now covered end to end.
-Next target: identify the next emitter-facing single-block LIR opcode or tiny
-scaffold still missing source-level/default-route BIR coverage, and keep that
-work scoped to direct BIR text coverage without requiring general multi-block
-BIR CFG support or any direct-BIR emitter widening.
+Current active item: Step 2, continue auditing the bounded straight-line
+single-block/default-route surface for the next missing direct-BIR coverage
+slice now that the constant-only integer `sub` route case is covered end to
+end.
+Next target: identify the next emitter-facing single-block opcode or tiny
+scaffold that still lacks source-level/default-route BIR coverage, keeping the
+work scoped to direct BIR text assertions without widening general CFG support
+or direct-BIR emitter behavior.
+
+Completed this iteration:
+- Added source-level/default-route RISC-V coverage via
+  `tests/c/internal/backend_route_case/return_sub.c`, proving `return 3 - 3;`
+  defaults to the BIR pipeline instead of falling back to legacy LLVM IR text.
+- Registered
+  `backend_codegen_route_riscv64_return_sub_defaults_to_bir` in
+  `tests/c/internal/InternalTests.cmake`, asserting the emitted text contains
+  `%t0 = bir.sub i32 3, 3` and forbids legacy LLVM IR `define i32 @main()`
+  output for that route surface.
+- Reconfigured and rebuilt the tree, reran the new route case
+  `backend_codegen_route_riscv64_return_sub_defaults_to_bir`, reran
+  `ctest --test-dir build -R backend_bir_tests --output-on-failure`, then
+  reran `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `329/329` backend-labeled tests passing.
+- Refreshed `test_fail_after.log` with a full
+  `ctest --test-dir build -j8 --output-on-failure` run, then passed the
+  regression guard against `test_fail_before.log` with
+  `--allow-non-decreasing-passed --timeout-threshold 30 --enforce-timeout`
+  (`2760 -> 2767` passed, `0 -> 0` failed, no newly failing tests, no new
+  `>30s` cases).
 
 Completed this iteration:
 - Added source-level/default-route RISC-V coverage via
