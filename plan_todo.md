@@ -6,18 +6,16 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 3: Continue trimming live legacy fallback plumbing after removing the
-  x86 and AArch64 lowered call-crossing dependency on attached legacy fallback
-  metadata, with the next slice aimed at one remaining backend-routing or
-  nonminimal-lowering consumer whose behavior still genuinely depends on
-  `legacy_fallback`.
+- Step 3: Continue trimming live legacy fallback plumbing after refining the
+  RISC-V passthrough seam so BIR-lowerable pre-lowered modules ignore attached
+  legacy LLVM text while unsupported slices still keep the legacy text
+  fallback.
 
 ## In Progress
 
-- Trace the remaining `legacy_fallback` consumers in `src/backend/backend.cpp`
-  and the AArch64 nonminimal-lowering path to identify the smallest next
-  cleanup that still preserves the necessary unsupported-slice fallback
-  coverage.
+- Trace the remaining AArch64 nonminimal-lowering branch in
+  `src/backend/aarch64/codegen/emit.cpp` and identify the smallest consumer
+  that still requires attached `legacy_fallback` for unsupported slices.
 
 ## Pending
 
@@ -183,6 +181,22 @@ Source Plan: plan.md
 - Full-suite regression guard passed:
   `test_fail_before.log` -> `test_fail_after.log` kept total tests at `2678`
   with zero newly failing cases.
+- Added a RISC-V backend pipeline regression guard that mutates attached
+  legacy LIR metadata for a pre-lowered backend-module input and pins the
+  passthrough seam to backend IR text when the attached legacy slice is still
+  BIR-lowerable.
+- Refined `src/backend/backend.cpp` so the RISC-V passthrough seam only uses
+  attached legacy LLVM text for unsupported non-BIR slices; pre-lowered
+  BIR-owned backend modules now keep their backend IR text surface even if
+  stale legacy metadata is attached.
+- Targeted validation passed:
+  `backend_bir_tests`,
+  `backend_codegen_route_riscv64_global_load_falls_back_to_llvm`,
+  `backend_lir_adapter_aarch64_tests`, and
+  `backend_lir_adapter_x86_64_tests`.
+- Full-suite regression guard passed:
+  `test_fail_before.log` -> `test_fail_after.log` kept total tests at `2678`
+  with zero newly failing cases.
 
 ## Notes
 
@@ -196,10 +210,9 @@ Source Plan: plan.md
 
 ## Next Slice
 
-- Continue Step 3 by tracing the remaining live `legacy_fallback` consumers in
-  `src/backend/backend.cpp` and the AArch64 nonminimal-lowering path, then
-  remove or contain the smallest surface that no longer protects any exercised
-  BIR-default route.
+- Continue Step 3 by reassessing the remaining AArch64 nonminimal-lowering
+  fallback branch and any still-live `legacy_fallback` entry seams that
+  protect unsupported slices.
 
 ## Blockers
 

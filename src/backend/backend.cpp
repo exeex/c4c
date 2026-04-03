@@ -214,7 +214,8 @@ class PassthroughBackendEmitter final : public BackendEmitter {
  public:
   std::string emit(const BackendModule& module,
                    const c4c::codegen::lir::LirModule* legacy_fallback) const override {
-    if (legacy_fallback != nullptr) {
+    if (legacy_fallback != nullptr &&
+        !c4c::backend::try_lower_to_bir(*legacy_fallback).has_value()) {
       return c4c::codegen::lir::print_llvm(*legacy_fallback);
     }
     return c4c::backend::print_backend_ir(module);
