@@ -656,7 +656,8 @@ bool Parser::parse_operator_declarator_name(std::string* out_name) {
     } else if (const char* extra_mangled = extra_operator_mangled_name(cur().kind)) {
         op_name = extra_mangled;
         consume();
-    } else if (is_type_start()) {
+    } else if (is_type_start() || can_start_parameter_type() ||
+               check(TokenKind::ColonColon)) {
         TypeSpec conv_ts = parse_base_type();
         parse_attributes(&conv_ts);
         while (check(TokenKind::Star)) {
@@ -750,6 +751,15 @@ bool Parser::is_grouped_declarator_start() const {
                       tokens_[pk].kind == TokenKind::Identifier;
     if (is_grouped && pk + 1 < static_cast<int>(tokens_.size())) {
         const auto next_k = tokens_[pk + 1].kind;
+        // Keep parameter-list heads such as `(T&&)` and `(Type<Args>&)` on the
+        // surrounding declaration path instead of misrouting them into grouped
+        // declarator parsing.
+        if (is_cpp_mode() && looks_like_unresolved_identifier_type_head(pk) &&
+            (next_k == TokenKind::Amp || next_k == TokenKind::AmpAmp ||
+             next_k == TokenKind::Star || next_k == TokenKind::Less ||
+             next_k == TokenKind::ColonColon || is_qualifier(next_k))) {
+            is_grouped = false;
+        }
         if (next_k == TokenKind::Comma || next_k == TokenKind::Ellipsis)
             is_grouped = false;
     }

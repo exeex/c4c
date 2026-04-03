@@ -7,10 +7,11 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 3: Object lifetime and tuple layer
-- Current slice: reduce the remaining Step 3 timeout after the new call-like
-  template-argument shortcut, starting from the still unresolved later
-  `bits/stl_pair.h`, `/usr/include/c++/14/utility`, and
-  `EASTL/tuple.h` parser pressure now reached by the Step 3 timeout probes
+- Current slice: reduce the newer Step 3 parser frontier now that the
+  deduction-guide forwarding-reference and template-id conversion-operator
+  blockers in libstdc++ `ranges_util.h` are cleared, starting from the later
+  local-declaration / expression split reached around
+  `/usr/include/c++/14/bits/ranges_util.h:740`
 
 ## Todo
 
@@ -281,15 +282,39 @@ Source Plan: plan.md
   (`positive_sema_linux_stage2_repro_03_asm_volatile_c`,
   `backend_lir_adapter_aarch64_tests`, and
   `llvm_gcc_c_torture_src_20080502_1_c`)
+- [x] Added
+  `tests/cpp/internal/postive_case/template_deduction_guide_rvalue_ref_parse.cpp`
+  as a parse-only regression for top-level deduction guides with
+  forwarding-reference parameters such as `box(T&&) -> box<T>;`
+- [x] Tightened grouped-declarator detection so parameter-list heads like
+  `(T&&)` and `(Type<Args>&)` stay on the surrounding declaration path instead
+  of being misparsed as grouped declarators
+- [x] Re-ran the focused deduction-guide guardrails plus the Step 3 tuple
+  parser-debug probe: the old `subrange(_Rng&&)` `parse_top_level ...
+  expected=RPAREN got='&&'` blocker in `/usr/include/c++/14/bits/ranges_util.h`
+  is gone, and `eastl_tuple_simple.cpp` now advances to the later
+  `operator in_in_result<_IIter1, _IIter2>() &&` conversion-operator failure
+- [x] Added
+  `tests/cpp/internal/postive_case/operator_conversion_template_id_refqual_parse.cpp`
+  as a parse-only regression for conversion operators targeting template-id
+  types before trailing ref-qualifiers
+- [x] Taught both declarator-name parsing and record-member operator parsing to
+  treat template-id / unresolved parameter-style type heads after `operator`
+  as conversion-operator targets, so `operator pair_like<int, int>() &&`
+  parses through the shared conversion-type path
+- [x] Re-ran the focused conversion-operator guardrails plus the Step 3 tuple
+  parser-debug probe: the old `unsupported operator overload token
+  'in_in_result'` blocker in `/usr/include/c++/14/bits/ranges_util.h` is gone,
+  and `eastl_tuple_simple.cpp` now advances to the later local declaration /
+  expression split around `ranges_util.h:740`
 
 ## Next Slice
 
 - reduce the post-qualified-type-fast-path Step 3 frontier from the remaining
   `eastl_memory_simple.cpp` and `eastl_tuple_simple.cpp` parse-time stalls,
-  starting from the newer 15s parser-debug hotspots in
-  `/usr/include/c++/14/bits/stl_pair.h`, `/usr/include/c++/14/utility`, and
-  `ref/EASTL/include/EASTL/tuple.h` after the call-like template-argument
-  shortcut moved the old pair-constraint probe later
+  starting from the newer `ranges_util.h` local declaration / assignment
+  frontier now reached after clearing the deduction-guide and conversion-
+  operator blockers in the shared libstdc++ ranges stack
 - reduce the timeout-only `eastl_vector_simple.cpp` frontier from the later
   EASTL-side hotspots now reached in `EASTL/internal/fill_help.h`,
   `EASTL/functional.h`, and `EASTL/meta.h`, then capture the next smaller
@@ -415,6 +440,21 @@ Source Plan: plan.md
   `/usr/include/c++/14/bits/stl_pair.h:165` / `:1269`,
   `/usr/include/c++/14/utility:130`, and later
   `ref/EASTL/include/EASTL/tuple.h:404` before timing out
+- the new deduction-guide regression is now covered by
+  `template_deduction_guide_rvalue_ref_parse.cpp`; after the grouped-
+  declarator fix, the old `subrange(_Rng&&)` parse failure in
+  `/usr/include/c++/14/bits/ranges_util.h` no longer blocks the Step 3 tuple
+  path
+- the new conversion-operator regression is now covered by
+  `operator_conversion_template_id_refqual_parse.cpp`; after the
+  conversion-type probe fix, the old `operator in_in_result<_IIter1, _IIter2>()
+  &&` blocker in `/usr/include/c++/14/bits/ranges_util.h` no longer blocks the
+  Step 3 tuple path
+- after the new Step 3 parser fixes, `eastl_tuple_simple.cpp` now advances to
+  a later local declaration / expression split in
+  `/usr/include/c++/14/bits/ranges_util.h:740`, where `__result = ...` is
+  still being treated as an expression-led path after a preceding block-scope
+  declaration
 - `eastl_vector_simple.cpp` still times out, but the current 12s heartbeat now
   reaches later EASTL-side parser pressure in
   `ref/EASTL/include/EASTL/internal/fill_help.h`,

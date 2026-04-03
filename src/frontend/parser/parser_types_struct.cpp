@@ -1065,7 +1065,8 @@ bool Parser::try_parse_record_method_or_field_member(
 
         // Determine which operator
         std::string conversion_mangled_name;
-        if (is_type_start()) {
+        if (is_type_start() || can_start_parameter_type() ||
+            check(TokenKind::ColonColon)) {
             // Conversion operator: operator T() — the token after 'operator'
             // is a type name. This covers both standalone 'operator T()' and
             // prefix forms like 'explicit operator T()' / 'constexpr explicit operator T()'.

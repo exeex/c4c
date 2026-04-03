@@ -42,6 +42,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     placement_new_expr_parse
     class_specific_new_delete_parse
     operator_conversion_out_of_class_parse
+    operator_conversion_template_id_refqual_parse
     operator_shift_static_member_call_parse
     template_anon_param_extern_cxx_parse
     template_bool_specialization_parse
@@ -161,6 +162,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     qualified_variable_template_compare_parse
     qualified_trait_value_template_arg_parse
     qualified_template_call_template_arg_parse
+    template_deduction_guide_rvalue_ref_parse
     template_known_type_arg_fast_path_parse
     step3_timeout_probe_baseline_parse
     tuple_element_alias_mix_parse
