@@ -105,6 +105,9 @@ std::optional<bir::BinaryOpcode> lower_binary_opcode(std::string_view opcode) {
   if (opcode == "mul") {
     return bir::BinaryOpcode::Mul;
   }
+  if (opcode == "and") {
+    return bir::BinaryOpcode::And;
+  }
   if (opcode == "sdiv") {
     return bir::BinaryOpcode::SDiv;
   }
@@ -324,6 +327,9 @@ std::optional<AffineValue> combine_affine(const AffineValue& lhs,
       rhs.uses_second_param) {
     return std::nullopt;
   }
+  if (opcode == bir::BinaryOpcode::And) {
+    return AffineValue{false, false, lhs.constant & rhs.constant};
+  }
   if (opcode == bir::BinaryOpcode::SDiv) {
     if (rhs.constant == 0) {
       return std::nullopt;
@@ -490,6 +496,7 @@ std::optional<bool> evaluate_predicate(const AffineValue& lhs,
     case bir::BinaryOpcode::Add:
     case bir::BinaryOpcode::Sub:
     case bir::BinaryOpcode::Mul:
+    case bir::BinaryOpcode::And:
     case bir::BinaryOpcode::SDiv:
     case bir::BinaryOpcode::SRem:
     case bir::BinaryOpcode::URem:
@@ -1090,7 +1097,7 @@ bir::Module lower_to_bir(const c4c::codegen::lir::LirModule& module) {
   auto lowered = try_lower_to_bir(module);
   if (!lowered.has_value()) {
     throw std::invalid_argument(
-        "bir scaffold lowering currently supports only straight-line single-block i8/i32/i64 return-immediate/add-sub slices, constant-only mul/sdiv/udiv/srem/urem/eq/ne/slt/sle/sgt/sge/ult/ule/ugt/uge materialization slices, bounded compare-fed integer select materialization, bounded compare-fed phi joins with empty or add/sub-only predecessor arms including join-local add/sub chains after the fused select, plus bounded one- and two-parameter affine chains over those scalar types");
+        "bir scaffold lowering currently supports only straight-line single-block i8/i32/i64 return-immediate/add-sub slices, constant-only mul/and/sdiv/udiv/srem/urem/eq/ne/slt/sle/sgt/sge/ult/ule/ugt/uge materialization slices, bounded compare-fed integer select materialization, bounded compare-fed phi joins with empty or add/sub-only predecessor arms including join-local add/sub chains after the fused select, plus bounded one- and two-parameter affine chains over those scalar types");
   }
   return *lowered;
 }

@@ -11,9 +11,38 @@ Source Plan: plan.md
 
 Current active item: Step 2, continue from the now-complete
 `split_predecessor_add_phi` family into the next still-bounded
-compare-adjacent control-flow or instruction-coverage gap that can stay on the
-direct BIR text path without requiring general multi-block BIR CFG support or
-direct-BIR emitter widening.
+instruction-coverage gap that can stay on the direct BIR text path without
+requiring general multi-block BIR CFG support or direct-BIR emitter widening.
+This iteration targets the smallest missing straight-line opcode slice:
+constant-only integer `and` parity through the direct BIR route.
+
+Completed this iteration:
+- Widened the bounded straight-line BIR scaffold with the missing constant-only
+  integer `and` slice by adding `bir.and` support in `bir.hpp`, `bir.cpp`, and
+  `lir_to_bir.cpp`, keeping it bounded to immediate integer arithmetic that
+  still linearizes into one BIR block.
+- Added backend BIR printer, lowering, and explicit BIR-pipeline regressions
+  via `make_bir_return_and_module()`, proving the widened bitwise slice reaches
+  the BIR text surface as `%t0 = bir.and i32 14, 11`.
+- Added source-level/default-route RISC-V coverage via
+  `tests/c/internal/backend_route_case/return_and.c`, proving
+  `return 14 & 11;` defaults to the BIR pipeline instead of falling back to
+  legacy LLVM IR text.
+- Reconfigured and rebuilt the tree, reran
+  `ctest --test-dir build -R backend_bir_tests --output-on-failure`, reran the
+  new route case
+  `backend_codegen_route_riscv64_return_and_defaults_to_bir`, then reran
+  `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `322/322` backend-labeled tests passing.
+- Recorded a fresh full-suite baseline in `test_before.log` (`2758/2759`
+  passed with one pre-existing timeout in `cpp_eastl_utility_parse_recipe`),
+  refreshed `test_after.log` with a full
+  `ctest --test-dir build -j8 --output-on-failure` run, then passed the
+  regression guard with
+  `--allow-non-decreasing-passed --timeout-threshold 30 --enforce-timeout`
+  (`2758 -> 2760` passed, `1 -> 0` failed, no newly failing tests, no new
+  `>30s` cases). The previously timing-out suite case
+  `cpp_eastl_utility_parse_recipe` passed in `18.50 sec`.
 
 Completed this iteration:
 - Widened the bounded BIR straight-line arithmetic scaffold with the missing
@@ -751,10 +780,10 @@ Completed this iteration:
   failed, no newly failing tests, no new `>30s` cases).
 
 Next intended slice:
-- Continue Phase 2 parity with the next bounded compare/select/control-flow or
-  straight-line instruction gap that still linearizes into one BIR block,
-  likely the next constant-only integer opcode still missing from BIR parity
-  after `udiv`, before considering any broader matcher widening.
+- Continue Phase 2 parity with the next bounded straight-line instruction gap
+  that still linearizes into one BIR block, likely the next constant-only
+  bitwise opcode after `and` (`or` or `xor`) before considering shift support
+  or any broader matcher widening.
 
 Resume notes:
 - `backend.cpp` still contains the legacy route (`emit_legacy_module`), but
@@ -770,6 +799,9 @@ Resume notes:
   full bounded integer predicate set
   (`eq`/`ne`/`slt`/`sle`/`sgt`/`sge`/`ult`/`ule`/`ugt`/`uge`) when the result is
   immediately widened back to the same integer type for return.
+- `lir_to_bir.cpp` now also accepts the smallest constant-only bitwise integer
+  slice for direct BIR routing via `and`; the remaining straight-line
+  instruction gap is still the rest of the bitwise/shift surface.
 - `lir_to_bir.cpp` now also accepts the smallest source-shaped compare-driven
   ternary control-flow surfaces when they can be collapsed back into one BIR
   block: direct branch-to-return and empty branch-only goto chains feeding a
@@ -788,7 +820,7 @@ Resume notes:
   followed by a bounded post-join add.
 - The next bounded gap is instruction coverage rather than another scalar type:
   the BIR scaffold still rejects straight-line integer arithmetic outside
-  `add/sub/mul/sdiv/udiv/srem/urem` plus the newly added bounded
+  `add/sub/mul/and/sdiv/udiv/srem/urem` plus the newly added bounded
   `eq`/`ne`/`slt`/`sle`/`sgt`/`sge`/`ult`/`ule`/`ugt`/`uge` materialization
   slices, and it still lacks the broader compare/select/control-flow clusters
   once the branch shape stops collapsing into the bounded single-block BIR
