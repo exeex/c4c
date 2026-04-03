@@ -1,10 +1,13 @@
 #pragma once
 
 #include "../assembler/mod.hpp"
-#include "../../ir.hpp"
 #include "../../../codegen/lir/ir.hpp"
 
 #include <string>
+
+namespace c4c::backend {
+struct BackendModule;
+}
 
 namespace c4c::backend::x86 {
 

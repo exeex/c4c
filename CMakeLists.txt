@@ -346,6 +346,7 @@ add_executable(backend_bir_tests
 )
 add_executable(backend_shared_util_tests
     "${PROJECT_SOURCE_DIR}/tests/backend/backend_shared_util_tests.cpp"
+    "${PROJECT_SOURCE_DIR}/tests/backend/backend_header_boundary_tests.cpp"
     ${BACKEND_TEST_COMMON_SRCS}
 )
 

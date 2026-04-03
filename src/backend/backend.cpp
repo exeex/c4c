@@ -1,6 +1,7 @@
 #include "backend.hpp"
 #include "aarch64/codegen/emit.hpp"
 #include "bir_printer.hpp"
+#include "ir.hpp"
 #include "ir_printer.hpp"
 #include "lir_adapter.hpp"
 #include "lowering/bir_to_backend_ir.hpp"
@@ -274,14 +275,35 @@ std::string emit_legacy_module(const c4c::codegen::lir::LirModule& module,
 
 }  // namespace
 
+BackendModuleInput::BackendModuleInput(
+    const BackendModule& backend_module,
+    const c4c::codegen::lir::LirModule* legacy_fallback_in)
+    : owned_legacy_module_(std::make_unique<BackendModule>(backend_module)),
+      legacy_module_(owned_legacy_module_.get()),
+      legacy_fallback_(legacy_fallback_in) {}
+
+BackendModuleInput::BackendModuleInput(
+    const bir::Module& bir_module,
+    const c4c::codegen::lir::LirModule* legacy_fallback_in)
+    : owned_bir_module_(std::make_unique<bir::Module>(bir_module)),
+      bir_module_(owned_bir_module_.get()),
+      legacy_fallback_(legacy_fallback_in) {}
+
+BackendModuleInput::BackendModuleInput(const c4c::codegen::lir::LirModule& lir_module)
+    : legacy_fallback_(&lir_module) {}
+
+BackendModuleInput::BackendModuleInput(BackendModuleInput&&) noexcept = default;
+BackendModuleInput& BackendModuleInput::operator=(BackendModuleInput&&) noexcept = default;
+BackendModuleInput::~BackendModuleInput() = default;
+
 std::string emit_module(const BackendModuleInput& input,
                         const BackendOptions& options) {
-  if (input.module == nullptr) {
-    if (input.legacy_fallback == nullptr) {
+  if (input.legacy_module() == nullptr && input.bir_module() == nullptr) {
+    if (input.legacy_fallback() == nullptr) {
       return {};
     }
     if (options.pipeline == BackendPipeline::Bir) {
-      auto bir_module = c4c::backend::lower_to_bir(*input.legacy_fallback);
+      auto bir_module = c4c::backend::lower_to_bir(*input.legacy_fallback());
       if (options.target == Target::Riscv64) {
         return c4c::backend::bir::print(bir_module);
       }
@@ -289,11 +311,20 @@ std::string emit_module(const BackendModuleInput& input,
       auto lowered = c4c::backend::lower_bir_to_backend_module(bir_module);
       return backend->emit(lowered, nullptr);
     }
-    return emit_legacy_module(*input.legacy_fallback, options.target);
+    return emit_legacy_module(*input.legacy_fallback(), options.target);
+  }
+
+  if (input.bir_module() != nullptr) {
+    if (options.target == Target::Riscv64) {
+      return c4c::backend::bir::print(*input.bir_module());
+    }
+    auto backend = make_backend(options.target);
+    auto lowered = c4c::backend::lower_bir_to_backend_module(*input.bir_module());
+    return backend->emit(lowered, input.legacy_fallback());
   }
 
   auto backend = make_backend(options.target);
-  return backend->emit(*input.module, input.legacy_fallback);
+  return backend->emit(*input.legacy_module(), input.legacy_fallback());
 }
 
 }  // namespace c4c::backend

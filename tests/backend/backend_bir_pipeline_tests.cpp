@@ -28,6 +28,17 @@ void test_backend_bir_pipeline_is_opt_in_through_backend_options() {
                   "explicit BIR selection should route the tiny add slice through the BIR lowering seam");
 }
 
+void test_backend_bir_pipeline_accepts_direct_bir_module_input() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_return_immediate_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Riscv64));
+
+  expect_contains(rendered, "bir.func @tiny_ret() -> i32 {",
+                  "backend input should accept a direct BIR module without forcing a legacy LIR wrapper");
+  expect_contains(rendered, "bir.ret i32 7",
+                  "direct BIR input should flow through the BIR text surface unchanged");
+}
+
 void test_backend_bir_pipeline_routes_sub_cluster_through_bir_text_surface() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_bir_return_sub_module()},
@@ -275,6 +286,7 @@ void test_backend_lowered_riscv_passthrough_ignores_broken_legacy_fallback() {
 void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_backend_default_path_remains_legacy_when_bir_pipeline_is_not_selected);
   RUN_TEST(test_backend_bir_pipeline_is_opt_in_through_backend_options);
+  RUN_TEST(test_backend_bir_pipeline_accepts_direct_bir_module_input);
   RUN_TEST(test_backend_bir_pipeline_routes_sub_cluster_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_straight_line_chain_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_single_param_chain_through_bir_text_surface);

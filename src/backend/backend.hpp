@@ -1,6 +1,7 @@
 #pragma once
 
-#include "ir.hpp"
+#include "bir.hpp"
+#include <memory>
 #include <string>
 
 #include "target.hpp"
@@ -11,6 +12,8 @@ struct LirModule;
 
 namespace c4c::backend {
 
+struct BackendModule;
+
 BackendModule lower_lir_to_backend_module(const c4c::codegen::lir::LirModule& module);
 
 enum class BackendPipeline : unsigned char {
@@ -20,19 +23,26 @@ enum class BackendPipeline : unsigned char {
 
 struct BackendModuleInput {
   explicit BackendModuleInput(const BackendModule& backend_module,
-                              const c4c::codegen::lir::LirModule* legacy_fallback_in = nullptr)
-      : owned_module(backend_module),
-        module(&owned_module),
-        legacy_fallback(legacy_fallback_in) {}
+                              const c4c::codegen::lir::LirModule* legacy_fallback_in = nullptr);
+  explicit BackendModuleInput(const bir::Module& bir_module,
+                              const c4c::codegen::lir::LirModule* legacy_fallback_in = nullptr);
+  explicit BackendModuleInput(const c4c::codegen::lir::LirModule& lir_module);
+  BackendModuleInput(BackendModuleInput&&) noexcept;
+  BackendModuleInput& operator=(BackendModuleInput&&) noexcept;
+  BackendModuleInput(const BackendModuleInput&) = delete;
+  BackendModuleInput& operator=(const BackendModuleInput&) = delete;
+  ~BackendModuleInput();
 
-  explicit BackendModuleInput(const c4c::codegen::lir::LirModule& lir_module)
-      : owned_module(),
-        module(nullptr),
-        legacy_fallback(&lir_module) {}
+  const BackendModule* legacy_module() const { return legacy_module_; }
+  const bir::Module* bir_module() const { return bir_module_; }
+  const c4c::codegen::lir::LirModule* legacy_fallback() const { return legacy_fallback_; }
 
-  BackendModule owned_module;
-  const BackendModule* module = nullptr;
-  const c4c::codegen::lir::LirModule* legacy_fallback = nullptr;
+ private:
+  std::unique_ptr<BackendModule> owned_legacy_module_;
+  std::unique_ptr<bir::Module> owned_bir_module_;
+  const BackendModule* legacy_module_ = nullptr;
+  const bir::Module* bir_module_ = nullptr;
+  const c4c::codegen::lir::LirModule* legacy_fallback_ = nullptr;
 };
 
 struct BackendOptions {
