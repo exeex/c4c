@@ -2,7 +2,7 @@
 
 Status: Active
 Source Idea: ideas/open/eastl_container_bringup_plan.md
-Activated from: prompts/AGENT_PROMPT_ACTIVATE_PLAN.md
+Activated from: prompts/ACTIVATE_PLAN.md
 
 ## Purpose
 
@@ -24,7 +24,7 @@ runtime or ABI support that is explicitly out of scope for this bring-up track.
 
 ## Read First
 
-- [`prompts/AGENT_PROMPT_EXECUTE_PLAN.md`](/workspaces/c4c/prompts/AGENT_PROMPT_EXECUTE_PLAN.md)
+- [`prompts/EXECUTE_PLAN.md`](/workspaces/c4c/prompts/EXECUTE_PLAN.md)
 - [`ideas/open/eastl_container_bringup_plan.md`](/workspaces/c4c/ideas/open/eastl_container_bringup_plan.md)
 - [`tests/cpp/eastl`](/workspaces/c4c/tests/cpp/eastl)
 - existing EASTL recipes under [`tests/cpp`](/workspaces/c4c/tests/cpp)
@@ -62,13 +62,13 @@ runtime or ABI support that is explicitly out of scope for this bring-up track.
 
 ## Execution Rules
 
-- Work from the highest-priority incomplete item in [`plan_todo.md`](/workspaces/c4c/plan_todo.md).
+- Work from the highest-priority incomplete item in [`todo.md`](/workspaces/c4c/todo.md).
 - Add or update the narrowest validating test before implementing a fix.
 - Record the full-suite baseline before meaningful implementation changes.
 - Keep slices small enough to prove one root cause at a time.
 - If a blocker is larger or belongs to a different subsystem, spin it out into
   `ideas/open/` instead of stretching this plan.
-- Preserve resumable execution notes in [`plan_todo.md`](/workspaces/c4c/plan_todo.md) whenever the active slice changes.
+- Preserve resumable execution notes in [`todo.md`](/workspaces/c4c/todo.md) whenever the active slice changes.
 
 ## Ordered Steps
 

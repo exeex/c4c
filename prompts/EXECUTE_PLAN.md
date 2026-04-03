@@ -7,7 +7,7 @@ Last updated: 2026-03-13
 Implement features according to [`plan.md`](../plan.md).
 Keep test case correctness intact before submitting anything to git.
 Prioritize planned feature delivery over opportunistic issue fixing.
-Maintain cross-iteration progress in `plan_todo.md` so work can resume cleanly after context resets.
+Maintain cross-iteration progress in `todo.md` so work can resume cleanly after context resets.
 Treat [`plan.md`](../plan.md) as the single active runbook derived from one source idea.
 
 ## Project Architecture
@@ -32,27 +32,27 @@ Compiler pipeline:
    - Preprocessor mode `c4cll --pp-only` should align with `clang -E`
    - Frontend/codegen mode `c4cll` should align with `clang -S -emit-llvm`
 7. If Clang cannot compile or run a test case, it is acceptable to mark that case as ignored, but only as a last resort and with an explicit reason.
-8. `plan_todo.md` is the execution state for multi-iteration work. Keep it current enough that the next iteration can continue without reconstructing progress from git history or logs.
+8. `todo.md` is the execution state for multi-iteration work. Keep it current enough that the next iteration can continue without reconstructing progress from git history or logs.
 
 ## State Tracking
 
 1. Read [`plan.md`](../plan.md) first.
-2. If `plan_todo.md` does not exist, create it from `plan.md` before making code changes.
-3. If `plan_todo.md` already exists, treat it as the current execution state and continue from it.
+2. If `todo.md` does not exist, create it from `plan.md` before making code changes.
+3. If `todo.md` already exists, treat it as the current execution state and continue from it.
 4. Confirm that [`plan.md`](../plan.md) identifies its `Source Idea` near the top before implementation.
-5. Confirm that [`plan_todo.md`](../plan_todo.md), when present, matches the same source idea.
-6. `plan_todo.md` should track at least:
+5. Confirm that [`todo.md`](../todo.md), when present, matches the same source idea.
+6. `todo.md` should track at least:
    - the current active plan item
    - completed items
    - the next intended slice
    - blockers, if any
    - short notes needed to resume in the next iteration
-7. Update `plan_todo.md` whenever the active item changes, when a meaningful sub-step is completed, and before every commit.
+7. Update `todo.md` whenever the active item changes, when a meaningful sub-step is completed, and before every commit.
 
 ## Work Selection
 
-1. Start from `plan_todo.md` if it exists; otherwise create it from [`plan.md`](../plan.md) and start there.
-2. Choose the highest-priority incomplete item recorded in `plan_todo.md`.
+1. Start from `todo.md` if it exists; otherwise create it from [`plan.md`](../plan.md) and start there.
+2. Choose the highest-priority incomplete item recorded in `todo.md`.
 3. Do not switch into issue-fixing mode unless:
    - the issue blocks the current plan item
    - the issue is directly uncovered by the current implementation work
@@ -65,14 +65,14 @@ Given a plan item or plan-blocking failure:
 
 0. Sync planning state first:
    - read [`plan.md`](../plan.md)
-   - create `plan_todo.md` if it does not exist
-   - if `plan_todo.md` exists, read it and continue from the recorded active item
-   - update `plan_todo.md` to mark the exact target for this iteration
+   - create `todo.md` if it does not exist
+   - if `todo.md` exists, read it and continue from the recorded active item
+   - update `todo.md` to mark the exact target for this iteration
 
 1. Define the immediate target:
    - identify the exact behavior, syntax, or subsystem from `plan.md` being implemented
    - define the narrowest testable slice for this iteration
-   - record that slice in `plan_todo.md`
+   - record that slice in `todo.md`
 
 2. Record the current full-suite baseline:
 
@@ -125,12 +125,12 @@ ctest --test-dir build -j --output-on-failure > test_after.log
 `=` is acceptable for feature work or refactors that preserve the current pass count.
 
 9. Update planning state before handoff or commit:
-   - mark completed sub-steps in `plan_todo.md`
-   - record the next intended slice in `plan_todo.md`
-   - record blockers or deferred work in `plan_todo.md`
-   - keep `plan_todo.md` aligned with the actual code and tests in the tree
+   - mark completed sub-steps in `todo.md`
+   - record the next intended slice in `todo.md`
+   - record blockers or deferred work in `todo.md`
+   - keep `todo.md` aligned with the actual code and tests in the tree
 
 10. Optionally update `known_issues.md` if new blockers or deferred failures are discovered.
 
-11. Commit one plan item slice per commit. Before committing, update `plan_todo.md` so the repo state clearly reflects current progress. Do not bundle unrelated fixes together.
+11. Commit one plan item slice per commit. Before committing, update `todo.md` so the repo state clearly reflects current progress. Do not bundle unrelated fixes together.
 **important** this is not an interative conversation, you must git commit after finished.

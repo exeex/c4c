@@ -20,7 +20,7 @@ Before editing:
 
 1. read the chosen source file under `ideas/open/`
 2. read the current [`plan.md`](../plan.md) if it exists
-3. read [`AGENT_PROMPT_EXECUTE_PLAN.md`](/workspaces/c4c/prompts/AGENT_PROMPT_EXECUTE_PLAN.md)
+3. read [`EXECUTE_PLAN.md`](/workspaces/c4c/prompts/EXECUTE_PLAN.md)
 
 ## Required Output
 
@@ -49,7 +49,7 @@ Rewrite [`plan.md`](../plan.md) as a stable runbook with:
 ## Guardrails
 
 1. Do not edit source code as part of this task unless the user explicitly asks.
-2. Do not update `plan_todo.md` as part of this task unless the user explicitly asks.
+2. Do not update `todo.md` as part of this task unless the user explicitly asks.
 3. Do not leave `plan.md` as a high-level proposal; it must read like a runnable checklist.
 4. Do not silently merge multiple open idea documents into one plan unless the user explicitly asks.
 
@@ -59,5 +59,5 @@ Finish only when:
 
 1. [`plan.md`](../plan.md) has been rewritten in runbook form
 2. the source idea document remains the authoritative scope source
-3. the final structure is concrete enough that [`AGENT_PROMPT_EXECUTE_PLAN.md`](/workspaces/c4c/prompts/AGENT_PROMPT_EXECUTE_PLAN.md) can execute from it directly
+3. the final structure is concrete enough that [`EXECUTE_PLAN.md`](/workspaces/c4c/prompts/EXECUTE_PLAN.md) can execute from it directly
 4. the source-idea linkage is visible near the top of [`plan.md`](../plan.md)

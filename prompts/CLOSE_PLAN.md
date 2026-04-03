@@ -10,10 +10,10 @@ Use the `plan-lifecycle` skill if available.
 
 ## Required Flow
 
-1. Review whether [`plan.md`](../plan.md), [`plan_todo.md`](../plan_todo.md), and the implementation actually match.
+1. Review whether [`plan.md`](../plan.md), [`todo.md`](../todo.md), and the implementation actually match.
 2. Read the linked source idea from [`plan.md`](../plan.md). It should live under `ideas/open/`.
 3. Update that open idea to mark it complete and optionally record leftover issues discovered during implementation.
-4. Delete [`plan_todo.md`](../plan_todo.md).
+4. Delete [`todo.md`](../todo.md).
 5. Delete [`plan.md`](../plan.md).
 6. Move the updated idea file from `ideas/open/` to `ideas/closed/`.
 

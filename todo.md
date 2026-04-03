@@ -391,7 +391,7 @@ Source Plan: plan.md
 
 ## Resume Notes
 
-- activation completed with no prior active `plan.md` or `plan_todo.md`
+- activation completed with no prior active `plan.md` or `todo.md`
 - the open idea remains the authoritative scope source
 - Step 1 inventory is now captured in `tests/cpp/eastl/README.md`
 - the foundation batch now has executable parse recipes in
