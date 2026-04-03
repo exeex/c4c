@@ -4083,6 +4083,21 @@ void test_aarch64_backend_scaffold_matches_direct_countdown_while_asm() {
   }
 }
 
+void test_aarch64_backend_scaffold_matches_direct_typed_countdown_while_asm() {
+  const auto direct_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_typed_countdown_while_return_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  const auto lowered =
+      c4c::backend::lower_to_backend_ir(make_typed_countdown_while_return_module());
+  const auto lowered_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  if (direct_rendered != lowered_rendered) {
+    fail("aarch64 typed countdown-while regression should keep the direct LIR and explicit lowered backend seams on identical assembly output");
+  }
+}
+
 void test_aarch64_backend_scaffold_matches_direct_countdown_do_while_asm() {
   const auto direct_rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_countdown_do_while_return_module()},
@@ -4925,6 +4940,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_scaffold_accepts_explicit_lowered_countdown_while_ir_input();
   test_aarch64_backend_scaffold_accepts_structured_countdown_while_ir_without_signature_shims();
   test_aarch64_backend_scaffold_matches_direct_countdown_while_asm();
+  test_aarch64_backend_scaffold_matches_direct_typed_countdown_while_asm();
   test_aarch64_backend_scaffold_matches_direct_countdown_do_while_asm();
   test_aarch64_backend_renders_extern_global_array_slice();
   test_aarch64_backend_renders_global_char_pointer_diff_slice();
