@@ -10,11 +10,38 @@ Source Plan: plan.md
 - [ ] Revalidate backend and full-suite behavior without fallback
 
 Current active item: Step 2, continue bounded compare-fed phi-join parity past
-the now-covered mirrored asymmetric branch-depth post-add slice with the next
-smallest still-linearizable source-shaped follow-on, preferably a nearby
-join-local arithmetic extension that keeps the fused `bir.select` path and
-continues avoiding emitter-side direct-BIR widening unless a new test proves it
-necessary.
+the now-covered symmetric deeper split-predecessor post-add/sub/add tail slice
+with the next smallest still-linearizable source-shaped follow-on, preferably a
+nearby asymmetric or compare-adjacent control-flow extension that still
+collapses into the fused `bir.select` path and continues avoiding emitter-side
+direct-BIR widening unless a new test proves it necessary.
+
+Completed this iteration:
+- Added the next join-local arithmetic extension on the symmetric deeper
+  split-predecessor compare-fed phi-join path via
+  `make_bir_two_param_select_eq_split_predecessor_deeper_affine_phi_post_join_add_sub_add_module()`,
+  proving the already-covered `+ 6 - 2` tail also stays on the direct BIR path
+  when extended to `+ 6 - 2 + 9`.
+- Added source-level/default-route RISC-V coverage via
+  `tests/c/internal/backend_route_case/two_param_select_eq_split_predecessor_deeper_affine_post_add_sub_add.c`,
+  proving `(x == y ? x + 8 - 3 + 5 : y + 11 - 4 + 7) + 6 - 2 + 9` defaults to
+  the BIR pipeline instead of falling back to legacy LLVM IR text.
+- Reconfigured and rebuilt the affected tree, reran
+  `ctest --test-dir build -R backend_bir_tests --output-on-failure`, reran the
+  new route case
+  `backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_deeper_affine_post_add_sub_add_defaults_to_bir`,
+  then reran `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `315/315` backend-labeled tests passing.
+- Refreshed `test_fail_after.log` with a full
+  `ctest --test-dir build -j8 --output-on-failure` run, then passed the
+  regression guard against `test_fail_before.log` with
+  `--allow-non-decreasing-passed` (`2743 -> 2753` passed, `0 -> 0` failed, no
+  newly failing tests, no new `>30s` cases). The slowest observed suite case
+  was `cpp_eastl_utility_parse_recipe` at `20.07 sec`, below the existing
+  timeout threshold.
+- The extended tail slice passed without any `lir_to_bir.cpp` widening,
+  confirming the existing join-block add/sub loop already preserves a longer
+  bounded post-select affine chain and only regression coverage was missing.
 
 Completed this iteration:
 - Added the missing mirrored asymmetric split-predecessor compare-fed phi-join
@@ -569,9 +596,10 @@ Next intended slice:
 - Continue Phase 2 parity with the next compare-adjacent control-flow gap that
   can still stay on the BIR text path without forcing multi-block BIR CFG
   support or widening x86/AArch64 direct-BIR emitter coverage, most likely the
-  next bounded compare/control-flow source form just beyond the newly covered
-  split-predecessor mixed add/sub staging, such as a second bounded join-local
-  affine use after the fused select or another still-linearizable split-arm
+  next asymmetric split-predecessor or compare-adjacent join-local affine
+  follow-on beyond the now-covered symmetric `+ 6 - 2 + 9` tail, such as the
+  mirrored deeper-then/mixed-else or mixed-then/deeper-else version of the
+  same longer post-select chain, or another still-linearizable split-arm
   affine variant that does not require general CFG materialization.
 
 Resume notes:
