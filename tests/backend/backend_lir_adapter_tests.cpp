@@ -871,6 +871,47 @@ void test_backend_call_helpers_parse_minimal_two_arg_direct_call_lir_module() {
               "shared two-argument minimal module parser should preserve reordered helper discovery plus renamed local-slot call operands without target-local module-shape scans");
 }
 
+void test_backend_call_helpers_parse_structured_two_param_add_function() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_module());
+
+  c4c::backend::BackendFunction* helper = nullptr;
+  for (auto& function : lowered.functions) {
+    if (function.signature.name != "main") {
+      helper = &function;
+      break;
+    }
+  }
+  expect_true(helper != nullptr,
+              "shared structured two-parameter add helper parser regression test needs the lowered helper function");
+  if (helper == nullptr) {
+    return;
+  }
+
+  helper->signature.name = "sum_pair";
+  helper->signature.params[0].name = "%p.left";
+  helper->signature.params[1].name = "%p.right";
+
+  auto* add = helper->blocks.empty() || helper->blocks.front().insts.empty()
+                  ? nullptr
+                  : std::get_if<c4c::backend::BackendBinaryInst>(&helper->blocks.front().insts.front());
+  expect_true(add != nullptr,
+              "shared structured two-parameter add helper parser regression test needs the lowered helper add instruction");
+  if (add == nullptr) {
+    return;
+  }
+  add->lhs = "%p.left";
+  add->rhs = "%p.right";
+  add->result = "%t.helper.sum.structured";
+
+  helper->blocks.front().terminator.value = "%t.helper.sum.structured";
+
+  const auto parsed = c4c::backend::parse_backend_structured_two_param_add_function(*helper);
+  expect_true(parsed.has_value() && parsed->lhs_param_name == "%p.left" &&
+                  parsed->rhs_param_name == "%p.right" && parsed->add != nullptr &&
+                  parsed->add->result == "%t.helper.sum.structured",
+              "shared structured two-parameter add helper parser should preserve renamed structured parameter names and helper SSA values without target-local helper-body scans");
+}
+
 void test_backend_call_helpers_decode_lir_direct_global_vararg_prefix() {
   c4c::codegen::lir::LirCallOp call{
       "%t2",
@@ -2052,6 +2093,7 @@ int main(int argc, char* argv[]) {
   test_backend_call_helpers_parse_single_add_imm_function();
   test_backend_call_helpers_parse_two_param_add_function();
   test_backend_call_helpers_parse_minimal_two_arg_direct_call_lir_module();
+  test_backend_call_helpers_parse_structured_two_param_add_function();
   test_backend_call_helpers_decode_lir_direct_global_vararg_prefix();
   test_backend_call_helpers_classify_lir_nonminimal_call_types();
   test_backend_call_helpers_classify_lir_nonminimal_signature_types();

@@ -528,27 +528,7 @@ match_minimal_structured_direct_call_return_imm_helper(
 std::optional<MatchedMinimalStructuredTwoArgDirectCallHelper>
 match_minimal_structured_two_arg_direct_call_helper(
     const c4c::backend::BackendFunction& callee_fn) {
-  if (callee_fn.signature.params.size() != 2 ||
-      !is_i32_scalar_param(callee_fn.signature.params[0]) ||
-      !is_i32_scalar_param(callee_fn.signature.params[1]) ||
-      callee_fn.signature.params[0].name.empty() ||
-      callee_fn.signature.params[1].name.empty()) {
-    return std::nullopt;
-  }
-
-  const auto& callee_block = callee_fn.blocks.front();
-  if (callee_block.label != "entry" || callee_block.insts.size() != 1 ||
-      !callee_block.terminator.value.has_value() ||
-      c4c::backend::backend_return_scalar_type(callee_block.terminator) !=
-          c4c::backend::BackendScalarType::I32) {
-    return std::nullopt;
-  }
-
-  const auto* add = std::get_if<c4c::backend::BackendBinaryInst>(&callee_block.insts.front());
-  if (add == nullptr || add->opcode != c4c::backend::BackendBinaryOpcode::Add ||
-      !is_i32_scalar_binary(*add) || *callee_block.terminator.value != add->result ||
-      add->lhs != callee_fn.signature.params[0].name ||
-      add->rhs != callee_fn.signature.params[1].name) {
+  if (!c4c::backend::parse_backend_structured_two_param_add_function(callee_fn).has_value()) {
     return std::nullopt;
   }
 

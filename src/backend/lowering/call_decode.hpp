@@ -74,6 +74,12 @@ struct ParsedBackendTwoParamAddFunctionView {
   const c4c::codegen::lir::LirBinOp* add = nullptr;
 };
 
+struct ParsedBackendStructuredTwoParamAddFunctionView {
+  std::string lhs_param_name;
+  std::string rhs_param_name;
+  const BackendBinaryInst* add = nullptr;
+};
+
 struct ParsedBackendSingleHelperMainLirModuleView {
   const c4c::codegen::lir::LirFunction* helper = nullptr;
   const c4c::codegen::lir::LirFunction* main_function = nullptr;
@@ -99,6 +105,11 @@ inline std::optional<ParsedBackendTwoParamAddFunctionView>
 parse_backend_two_param_add_function(
     const c4c::codegen::lir::LirFunction& function,
     std::optional<std::string_view> expected_name);
+
+inline std::optional<ParsedBackendStructuredTwoParamAddFunctionView>
+parse_backend_structured_two_param_add_function(
+    const BackendFunction& function,
+    std::optional<std::string_view> expected_name = std::nullopt);
 
 inline ParsedBackendTypedCallView make_backend_typed_call_view(
     const c4c::codegen::lir::ParsedLirTypedCallView& parsed) {
@@ -464,6 +475,50 @@ parse_backend_single_helper_zero_arg_main_lir_module(
       main_fn,
       &main_block,
       main_ret,
+  };
+}
+
+inline std::optional<ParsedBackendStructuredTwoParamAddFunctionView>
+parse_backend_structured_two_param_add_function(
+    const BackendFunction& function,
+    std::optional<std::string_view> expected_name) {
+  const std::string_view function_name =
+      expected_name.has_value() ? *expected_name : std::string_view(function.signature.name);
+  if (function.is_declaration || !backend_function_is_definition(function.signature) ||
+      function.signature.name != function_name ||
+      backend_signature_return_scalar_type(function.signature) != BackendScalarType::I32 ||
+      function.signature.params.size() != 2 || function.signature.is_vararg ||
+      function.blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& lhs_param = function.signature.params[0];
+  const auto& rhs_param = function.signature.params[1];
+  if (backend_param_scalar_type(lhs_param) != BackendScalarType::I32 ||
+      backend_param_scalar_type(rhs_param) != BackendScalarType::I32 ||
+      lhs_param.name.empty() || rhs_param.name.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& block = function.blocks.front();
+  if (block.label != "entry" || block.insts.size() != 1 ||
+      !block.terminator.value.has_value() ||
+      backend_return_scalar_type(block.terminator) != BackendScalarType::I32) {
+    return std::nullopt;
+  }
+
+  const auto* add = std::get_if<BackendBinaryInst>(&block.insts.front());
+  if (add == nullptr || add->opcode != BackendBinaryOpcode::Add ||
+      backend_binary_value_type(*add) != BackendScalarType::I32 || add->result.empty() ||
+      *block.terminator.value != add->result || add->lhs != lhs_param.name ||
+      add->rhs != rhs_param.name) {
+    return std::nullopt;
+  }
+
+  return ParsedBackendStructuredTwoParamAddFunctionView{
+      lhs_param.name,
+      rhs_param.name,
+      add,
   };
 }
 
