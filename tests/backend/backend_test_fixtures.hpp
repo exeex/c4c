@@ -2801,6 +2801,168 @@ make_ten_local_slot_constant_conditional_goto_return_module() {
   return module;
 }
 
+inline c4c::codegen::lir::LirModule
+make_eleven_local_slot_constant_conditional_goto_return_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.state", "i32", "", 4});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.tmp0", "i32", "", 4});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.tmp1", "i32", "", 4});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.tmp2", "i32", "", 4});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.tmp3", "i32", "", 4});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.tmp4", "i32", "", 4});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.tmp5", "i32", "", 4});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.tmp6", "i32", "", 4});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.tmp7", "i32", "", 4});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.tmp8", "i32", "", 4});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.flag", "i32", "", 4});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{"i32", "0", "%lv.state"});
+  entry.insts.push_back(LirLoadOp{"%t0", "i32", "%lv.state"});
+  entry.insts.push_back(LirCmpOp{"%t1", false, "eq", "i32", "%t0", "0"});
+  entry.insts.push_back(LirCastOp{"%t2", LirCastKind::ZExt, "i1", "%t1", "i32"});
+  entry.insts.push_back(LirStoreOp{"i32", "%t2", "%lv.tmp0"});
+  entry.terminator = LirBr{"check"};
+
+  LirBlock check;
+  check.id = LirBlockId{1};
+  check.label = "check";
+  check.insts.push_back(LirLoadOp{"%t3", "i32", "%lv.tmp0"});
+  check.insts.push_back(LirCmpOp{"%t4", false, "ne", "i32", "%t3", "0"});
+  check.insts.push_back(LirCastOp{"%t5", LirCastKind::ZExt, "i1", "%t4", "i32"});
+  check.insts.push_back(LirStoreOp{"i32", "%t5", "%lv.tmp1"});
+  check.terminator = LirBr{"branch"};
+
+  LirBlock branch;
+  branch.id = LirBlockId{2};
+  branch.label = "branch";
+  branch.insts.push_back(LirLoadOp{"%t6", "i32", "%lv.tmp1"});
+  branch.insts.push_back(LirCmpOp{"%t7", false, "ne", "i32", "%t6", "0"});
+  branch.insts.push_back(LirCastOp{"%t8", LirCastKind::ZExt, "i1", "%t7", "i32"});
+  branch.insts.push_back(LirStoreOp{"i32", "%t8", "%lv.tmp2"});
+  branch.terminator = LirBr{"finish_check"};
+
+  LirBlock finish_check;
+  finish_check.id = LirBlockId{3};
+  finish_check.label = "finish_check";
+  finish_check.insts.push_back(LirLoadOp{"%t9", "i32", "%lv.tmp2"});
+  finish_check.insts.push_back(LirCmpOp{"%t10", false, "ne", "i32", "%t9", "0"});
+  finish_check.insts.push_back(LirCastOp{"%t11", LirCastKind::ZExt, "i1", "%t10", "i32"});
+  finish_check.insts.push_back(LirStoreOp{"i32", "%t11", "%lv.tmp3"});
+  finish_check.terminator = LirBr{"flag_prep"};
+
+  LirBlock flag_prep;
+  flag_prep.id = LirBlockId{4};
+  flag_prep.label = "flag_prep";
+  flag_prep.insts.push_back(LirLoadOp{"%t12", "i32", "%lv.tmp3"});
+  flag_prep.insts.push_back(LirCmpOp{"%t13", false, "ne", "i32", "%t12", "0"});
+  flag_prep.insts.push_back(LirCastOp{"%t14", LirCastKind::ZExt, "i1", "%t13", "i32"});
+  flag_prep.insts.push_back(LirStoreOp{"i32", "%t14", "%lv.tmp4"});
+  flag_prep.terminator = LirBr{"flag_check"};
+
+  LirBlock flag_check;
+  flag_check.id = LirBlockId{5};
+  flag_check.label = "flag_check";
+  flag_check.insts.push_back(LirLoadOp{"%t15", "i32", "%lv.tmp4"});
+  flag_check.insts.push_back(LirCmpOp{"%t16", false, "ne", "i32", "%t15", "0"});
+  flag_check.insts.push_back(LirCastOp{"%t17", LirCastKind::ZExt, "i1", "%t16", "i32"});
+  flag_check.insts.push_back(LirStoreOp{"i32", "%t17", "%lv.tmp5"});
+  flag_check.terminator = LirBr{"branch_check"};
+
+  LirBlock branch_check;
+  branch_check.id = LirBlockId{6};
+  branch_check.label = "branch_check";
+  branch_check.insts.push_back(LirLoadOp{"%t18", "i32", "%lv.tmp5"});
+  branch_check.insts.push_back(LirCmpOp{"%t19", false, "ne", "i32", "%t18", "0"});
+  branch_check.insts.push_back(LirCastOp{"%t20", LirCastKind::ZExt, "i1", "%t19", "i32"});
+  branch_check.insts.push_back(LirStoreOp{"i32", "%t20", "%lv.tmp6"});
+  branch_check.terminator = LirBr{"final_check"};
+
+  LirBlock final_check;
+  final_check.id = LirBlockId{7};
+  final_check.label = "final_check";
+  final_check.insts.push_back(LirLoadOp{"%t21", "i32", "%lv.tmp6"});
+  final_check.insts.push_back(LirCmpOp{"%t22", false, "ne", "i32", "%t21", "0"});
+  final_check.insts.push_back(LirCastOp{"%t23", LirCastKind::ZExt, "i1", "%t22", "i32"});
+  final_check.insts.push_back(LirStoreOp{"i32", "%t23", "%lv.tmp7"});
+  final_check.terminator = LirBr{"decision_prep"};
+
+  LirBlock decision_prep;
+  decision_prep.id = LirBlockId{8};
+  decision_prep.label = "decision_prep";
+  decision_prep.insts.push_back(LirLoadOp{"%t24", "i32", "%lv.tmp7"});
+  decision_prep.insts.push_back(LirCmpOp{"%t25", false, "ne", "i32", "%t24", "0"});
+  decision_prep.insts.push_back(LirCastOp{"%t26", LirCastKind::ZExt, "i1", "%t25", "i32"});
+  decision_prep.insts.push_back(LirStoreOp{"i32", "%t26", "%lv.tmp8"});
+  decision_prep.terminator = LirBr{"decision"};
+
+  LirBlock decision;
+  decision.id = LirBlockId{9};
+  decision.label = "decision";
+  decision.insts.push_back(LirLoadOp{"%t27", "i32", "%lv.tmp8"});
+  decision.insts.push_back(LirCmpOp{"%t28", false, "ne", "i32", "%t27", "0"});
+  decision.insts.push_back(LirCastOp{"%t29", LirCastKind::ZExt, "i1", "%t28", "i32"});
+  decision.insts.push_back(LirStoreOp{"i32", "%t29", "%lv.flag"});
+  decision.terminator = LirBr{"branch_decision"};
+
+  LirBlock branch_decision;
+  branch_decision.id = LirBlockId{10};
+  branch_decision.label = "branch_decision";
+  branch_decision.insts.push_back(LirLoadOp{"%t30", "i32", "%lv.flag"});
+  branch_decision.insts.push_back(LirCmpOp{"%t31", false, "ne", "i32", "%t30", "0"});
+  branch_decision.terminator = LirCondBr{"%t31", "then_path", "else_path"};
+
+  LirBlock then_path;
+  then_path.id = LirBlockId{11};
+  then_path.label = "then_path";
+  then_path.terminator = LirBr{"finish"};
+
+  LirBlock else_path;
+  else_path.id = LirBlockId{12};
+  else_path.label = "else_path";
+  else_path.terminator = LirBr{"dead_end"};
+
+  LirBlock dead_end;
+  dead_end.id = LirBlockId{13};
+  dead_end.label = "dead_end";
+  dead_end.terminator = LirBr{"finish"};
+
+  LirBlock finish;
+  finish.id = LirBlockId{14};
+  finish.label = "finish";
+  finish.terminator = LirRet{std::string("0"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(check));
+  function.blocks.push_back(std::move(branch));
+  function.blocks.push_back(std::move(finish_check));
+  function.blocks.push_back(std::move(flag_prep));
+  function.blocks.push_back(std::move(flag_check));
+  function.blocks.push_back(std::move(branch_check));
+  function.blocks.push_back(std::move(final_check));
+  function.blocks.push_back(std::move(decision_prep));
+  function.blocks.push_back(std::move(decision));
+  function.blocks.push_back(std::move(branch_decision));
+  function.blocks.push_back(std::move(then_path));
+  function.blocks.push_back(std::move(else_path));
+  function.blocks.push_back(std::move(dead_end));
+  function.blocks.push_back(std::move(finish));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 inline c4c::codegen::lir::LirModule make_countdown_while_return_module() {
   using namespace c4c::codegen::lir;
 
