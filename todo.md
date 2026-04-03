@@ -8,7 +8,8 @@ Source Plan: plan.md
 
 - Step 5: Finish the backend test migration
 - Current slice: move one additional internal LLVM-text check fixture off the
-  remaining `backend_ir_case` path by reusing the new neutral
+  remaining `backend_ir_case` path by migrating the next narrow AArch64
+  variadic LLVM-text check onto `backend_module_case` and the neutral
   `run_backend_module_check_case.cmake` helper without widening into unrelated
   backend cleanup
 
@@ -73,17 +74,22 @@ Source Plan: plan.md
       test story no longer treats transitional backend-IR naming as the primary
       contract
 - [x] added a neutral `run_backend_module_check_case.cmake` helper for the
-      internal LLVM-text backend checks and moved the x86_64
-      `struct_return_indirect_byval` fixture onto
-      `tests/c/internal/backend_module_case/`
+  internal LLVM-text backend checks and moved the x86_64
+  `struct_return_indirect_byval` fixture onto
+  `tests/c/internal/backend_module_case/`
+- [x] moved the AArch64 `variadic_long_double_bytes` LLVM-text check off
+      `tests/c/internal/backend_ir_case/` onto
+      `tests/c/internal/backend_module_case/` and switched the test wiring from
+      `run_backend_ir_check_case.cmake` to
+      `run_backend_module_check_case.cmake`
 
 ## Next Slice
 
 - continue migrating one additional narrow
   `tests/c/internal/backend_ir_case` fixture onto
-  `tests/c/internal/backend_module_case/`, ideally one of the remaining
-  AArch64 variadic LLVM-text checks that can switch paths without changing test
-  intent
+  `tests/c/internal/backend_module_case/`, ideally
+  `variadic_bigints_last.c` or another remaining AArch64 variadic LLVM-text
+  check that can switch paths without changing test intent
 - keep the deferred AArch64 `extern_global_array` production-route cleanup out
   of scope unless it blocks a concrete Step 5 backend test migration slice
 
@@ -155,3 +161,10 @@ Source Plan: plan.md
   clean full suite stayed flat at 2720 passing / 6 failing, and the monotonic
   regression guard reported zero new failing tests relative to the existing
   EASTL recipe baseline
+- regression check for the `variadic_long_double_bytes` migration slice:
+  `backend_lir_aarch64_variadic_long_double_ir` and
+  `backend_lir_x86_64_struct_return_indirect_byval_ir` passed after switching
+  the AArch64 fixture to `tests/c/internal/backend_module_case/` and
+  `run_backend_module_check_case.cmake`; the clean full suite stayed flat at
+  2720 passing / 6 failing, and the monotonic regression guard reported zero
+  new failing tests relative to the existing EASTL recipe baseline
