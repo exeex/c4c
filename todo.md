@@ -9,10 +9,39 @@ Source Plan: plan.md
 - [ ] Delete app-layer LLVM asm rescue from `c4cll`
 - [ ] Revalidate backend and full-suite behavior without fallback
 
-Current active item: Step 2, continue from the now-complete bounded compare-fed
-phi-join `+ 6 - 2 + 9` parity ring into the next uncovered Step 2 slice,
-starting by auditing whether the nearby non-deeper `mixed_affine` family needs
-the same extended join-tail coverage before widening `lir_to_bir.cpp`.
+Current active item: Step 2, continue from the now-complete non-deeper
+`mixed_affine` split-predecessor compare-fed phi-join `+ 6 - 2 + 9` parity
+slice into the next uncovered compare-adjacent linearizable control-flow gap,
+starting by auditing whether the remaining nearby split-predecessor family has
+another missing parity companion before widening `lir_to_bir.cpp`.
+
+Completed this iteration:
+- Added the missing non-deeper split-predecessor compare-fed phi-join
+  `+ 6 - 2 + 9` parity slice via
+  `make_bir_two_param_select_eq_split_predecessor_mixed_affine_phi_post_join_add_sub_add_module()`,
+  proving the already-covered `mixed_affine` `+ 6` and `+ 6 - 2` forms stay on
+  the direct BIR path when the join-local tail extends to `+ 6 - 2 + 9`.
+- Added source-level/default-route RISC-V coverage via
+  `tests/c/internal/backend_route_case/two_param_select_eq_split_predecessor_mixed_affine_post_add_sub_add.c`,
+  proving `(x == y ? x + 8 - 3 : y + 11 - 4) + 6 - 2 + 9` defaults to the BIR
+  pipeline instead of falling back to legacy LLVM IR text.
+- Reconfigured and rebuilt the affected tree, reran
+  `ctest --test-dir build -R backend_bir_tests --output-on-failure`, reran the
+  new route case
+  `backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_mixed_affine_post_add_sub_add_defaults_to_bir`,
+  then reran `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `318/318` backend-labeled tests passing.
+- Refreshed `test_fail_after.log` with a full
+  `ctest --test-dir build -j8 --output-on-failure` run, then passed the
+  regression guard against `test_fail_before.log` with
+  `--allow-non-decreasing-passed --timeout-threshold 30 --enforce-timeout`
+  (`2743 -> 2756` passed, `0 -> 0` failed, no newly failing tests, no new
+  `>30s` cases).
+- The non-deeper extended-tail slice passed without any `lir_to_bir.cpp`
+  widening, confirming the existing bounded compare-fed phi-join matcher
+  already generalizes across the full nearby `mixed_affine` `+ 6`,
+  `+ 6 - 2`, and `+ 6 - 2 + 9` join-tail variants and only regression
+  coverage was missing.
 
 Completed this iteration:
 - Added the remaining asymmetric deeper-then / mixed-else split-predecessor
