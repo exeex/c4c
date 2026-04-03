@@ -1,7 +1,7 @@
 # BIR Cutover And Legacy Cleanup
 
-Status: Open
-Last Updated: 2026-04-01
+Status: Closed
+Last Updated: 2026-04-03
 
 ## Goal
 
@@ -94,13 +94,13 @@ This idea should not activate until:
 
 ## Acceptance Criteria
 
-- [ ] BIR is the default backend flow
-- [ ] old legacy backend-path plumbing is removed or reduced to a short-lived
+- [x] BIR is the default backend flow
+- [x] old legacy backend-path plumbing is removed or reduced to a short-lived
       emergency fallback
 - [ ] transitional `backend_ir` / adapter naming is cleaned up where practical
 - [ ] backend tests primarily validate the BIR-based path through the new
       layered test framework
-- [ ] legacy-only code and tests are materially reduced
+- [x] legacy-only code and tests are materially reduced
 
 ## Non-Goals
 
@@ -113,3 +113,32 @@ This idea should not activate until:
 After BIR coverage reaches the threshold set by the previous idea, flip the
 default backend routing to the BIR path behind a temporary escape hatch and
 start deleting legacy-only lowering/plumbing that is no longer exercised.
+
+## Closure Summary
+
+Closed on 2026-04-03 by operator choice after the branch completed the main
+BIR-default cutover slices but before the remaining cleanup runbook items were
+fully exhausted.
+
+Completed during this plan:
+
+- flipped the production backend route so BIR is the default path for supported
+  slices while unsupported slices still retain a bounded legacy fallback
+- expanded `lower_to_bir(...)` coverage from tiny constant-only cases to the
+  current straight-line single-block affine i32 slice family with up to two
+  parameters
+- removed multiple legacy-fallback dependencies from x86 and AArch64 lowered
+  call-crossing paths and tightened the RISC-V pre-lowered passthrough seam so
+  BIR-owned modules keep their backend text surface
+- kept targeted backend validation and full-suite regression checks monotonic
+  across the cutover slices recorded in `plan_todo.md`
+
+Leftover issues at closure:
+
+- Step 4 remains incomplete: surviving transitional `backend_ir` naming still
+  needs a dedicated cleanup pass
+- Step 5 remains incomplete: backend tests have improved, but the test story
+  has not yet been fully migrated to a clearly BIR-primary structure
+- `lower_to_bir(...)` still does not cover control flow, loads/stores, globals,
+  or alloca-backed slices, so the legacy fallback is still required for those
+  unsupported shapes
