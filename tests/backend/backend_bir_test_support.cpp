@@ -66,6 +66,17 @@ c4c::codegen::lir::LirModule make_bir_return_srem_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_bir_return_urem_module() {
+  using namespace c4c::codegen::lir;
+
+  auto module = make_return_add_module();
+  auto& entry = module.functions.front().blocks.front();
+  entry.insts.clear();
+  entry.insts.push_back(LirBinOp{"%t0", "urem", "i32", "14", "5"});
+  entry.terminator = LirRet{std::string("%t0"), "i32"};
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_bir_single_param_add_sub_chain_module() {
   using namespace c4c::codegen::lir;
 

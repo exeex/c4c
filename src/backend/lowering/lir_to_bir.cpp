@@ -111,6 +111,9 @@ std::optional<bir::BinaryOpcode> lower_binary_opcode(std::string_view opcode) {
   if (opcode == "srem") {
     return bir::BinaryOpcode::SRem;
   }
+  if (opcode == "urem") {
+    return bir::BinaryOpcode::URem;
+  }
   return std::nullopt;
 }
 
@@ -184,6 +187,15 @@ std::optional<AffineValue> combine_affine(const AffineValue& lhs,
       return std::nullopt;
     }
     return AffineValue{false, false, lhs.constant % rhs.constant};
+  }
+  if (opcode == bir::BinaryOpcode::URem) {
+    if (lhs.constant < 0 || rhs.constant <= 0) {
+      return std::nullopt;
+    }
+    return AffineValue{
+        false, false,
+        static_cast<std::int64_t>(static_cast<std::uint64_t>(lhs.constant) %
+                                  static_cast<std::uint64_t>(rhs.constant))};
   }
   return AffineValue{false, false, lhs.constant * rhs.constant};
 }

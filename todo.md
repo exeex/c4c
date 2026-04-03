@@ -10,9 +10,9 @@ Source Plan: plan.md
 - [ ] Revalidate backend and full-suite behavior without fallback
 
 Current active item: Step 2, widen the bounded BIR straight-line arithmetic
-scaffold with constant-only signed remainder (`srem`) on the BIR text/lowering
-path, while keeping any new default-route exposure limited to RISC-V and not
-claiming new x86/AArch64 direct-emitter coverage yet.
+scaffold with constant-only unsigned remainder (`urem`) on the BIR
+text/lowering path, while keeping any new default-route exposure limited to
+RISC-V and not claiming new x86/AArch64 direct-emitter coverage yet.
 
 Completed this iteration:
 - Audited the current production legacy boundaries in `backend.cpp`,
@@ -112,13 +112,23 @@ Completed this iteration:
   --output-on-failure` run and passed the regression guard against
   `test_fail_before.log` with `--allow-non-decreasing-passed`
   (`2728 -> 2730` passed, `0 -> 0` failed, no newly failing tests).
+- Widened the BIR straight-line arithmetic scaffold with bounded constant-only
+  unsigned remainder by adding `bir.urem` printer/lowering support, backend
+  test fixtures, explicit BIR pipeline coverage, and a new RISC-V
+  default-route regression for `return 14u % 5u;`.
+- Rebuilt the tree, reran `backend_bir_tests` plus the new
+  `backend_codegen_route_riscv64_return_urem_defaults_to_bir` coverage, then
+  refreshed `test_fail_after.log` with a full `ctest --test-dir build -j
+  --output-on-failure` run.
+- Passed the regression guard against `test_fail_before.log` with
+  `--allow-non-decreasing-passed` (`2728 -> 2731` passed, `0 -> 0` failed, no
+  newly failing tests).
 
 Next intended slice:
 - Continue Phase 1/2 parity by widening BIR into the next straight-line
-  arithmetic/comparison gap, likely another bounded integer op such as `urem`
-  or a minimal comparison/select slice, while keeping default BIR auto-routing
-  gated to RISC-V until x86/AArch64 direct-BIR emitters grow native support
-  for it.
+  comparison gap after `urem`, likely a minimal integer compare-and-branch or
+  compare-and-select slice, while keeping default BIR auto-routing gated to
+  RISC-V until x86/AArch64 direct-BIR emitters grow native support for it.
 
 Resume notes:
 - `backend.cpp` still contains the legacy route (`emit_legacy_module`), but
@@ -132,8 +142,8 @@ Resume notes:
   still only consume the narrower direct-BIR affine subset.
 - The next bounded gap is instruction coverage rather than another scalar type:
   the BIR scaffold still rejects straight-line integer arithmetic outside
-  `add/sub/mul/sdiv/srem`, even when the slice can stay entirely on the BIR
-  text path.
+  `add/sub/mul/sdiv/srem/urem`, plus the upcoming compare/select/control-flow
+  clusters, even when the slice can stay entirely on the BIR text path.
 - Auto-selection into the BIR pipeline in `llvm_codegen.cpp` is intentionally
   constrained to `Target::Riscv64`; explicit BIR pipeline options are still the
   only supported way to exercise non-RISC-V direct-BIR emitter slices.

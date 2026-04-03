@@ -135,6 +135,10 @@ Progress on 2026-04-03:
   straight-line `i8` add/sub return slices)
 - this widens the Phase 1 type surface without yet claiming emitter parity;
   backend asm emission still only accepts the narrower direct-BIR affine subset
+- widened the bounded straight-line arithmetic scaffold with constant-only
+  `mul`, `sdiv`, `srem`, and `urem` slices on the BIR text/lowering path, with
+  explicit BIR-pipeline regression coverage plus RISC-V-only default-route
+  coverage for the newly auto-lowerable cases
 
 ### Phase 2: Expand lir_to_bir.cpp
 
