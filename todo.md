@@ -9,13 +9,36 @@ Source Plan: plan.md
 - [ ] Delete app-layer LLVM asm rescue from `c4cll`
 - [ ] Revalidate backend and full-suite behavior without fallback
 
-Current active item: Step 2, keep auditing the bounded straight-line
-single-block/default-route surface for the next non-foldable direct-BIR
-coverage slice now that the source-level widened `i8` arithmetic wrapper also
-stays on the BIR route.
-Next target: audit whether the analogous source-level widened `i64` staged
-affine shape (`(x + 2) + y - 1`) reaches the direct BIR route already or needs
-its own bounded route/lowering slice.
+Current active item: Step 2, keep auditing bounded source-level/default-route
+widened-width `i64` affine surfaces now that the staged two-parameter wrapper
+has explicit direct-BIR route coverage.
+Next target: audit whether the analogous widened-width two-parameter `i64`
+add-sub chain shape (`((x + y) + 2) - 1`) already stays on the direct BIR route
+or needs its own bounded route-coverage slice.
+
+Completed this iteration:
+- Added `tests/c/internal/backend_route_case/two_param_i64_staged_affine.c`,
+  proving `long long wide_mix_staged(long long x, long long y) { return ((x + 2)
+  + y) - 1; }` stays on the default backend BIR route.
+- Registered
+  `backend_codegen_route_riscv64_two_param_i64_staged_affine_defaults_to_bir`
+  in `tests/c/internal/InternalTests.cmake`, asserting the emitted text
+  contains `bir.func @wide_mix_staged(i64 %p.x, i64 %p.y) -> i64 {`,
+  `%t1 = bir.add i64 %p.x, 2`, `%t2 = bir.add i64 %t1, %p.y`,
+  `%t4 = bir.sub i64 %t2, 1`, and forbids legacy LLVM IR
+  `define i64 @wide_mix_staged(i64 %p.x, i64 %p.y)`.
+- Audited the emitted output for the new route case and confirmed no
+  `src/backend/lowering/lir_to_bir.cpp` change was needed because the existing
+  bounded direct-BIR path already lowers the widened source-level staged affine
+  wrapper correctly.
+- Reconfigured the tree, reran the new route case plus nearby staged-affine and
+  widened-width route coverage, reran
+  `ctest --test-dir build -L backend --output-on-failure -j8` with `335/335`
+  backend-labeled tests passing, then refreshed `test_before.log` and
+  `test_after.log` with full-suite runs and passed the regression guard with
+  `--allow-non-decreasing-passed --timeout-threshold 30 --enforce-timeout`
+  (`2772 -> 2773` passed, `0 -> 0` failed, no newly failing tests, no new
+  `>30s` cases).
 
 Completed this iteration:
 - Audited the source-level/default-route widened-width RISC-V staged
