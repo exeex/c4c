@@ -10,11 +10,35 @@ Source Plan: plan.md
 - [ ] Revalidate backend and full-suite behavior without fallback
 
 Current active item: Step 2, continue the bounded widened-width/default-route
-route audit after closing the two-parameter `i64` add/sub chain slice.
-Next target: identify the next uncovered widened-width/default-route backend
-route shape that still lacks explicit direct-BIR coverage and keep the work
-test-first and bounded to route parity rather than emitter migration or
-legacy-route deletion.
+route audit after closing the two-parameter unsigned-char `i8` add/sub chain
+parity slice.
+Next target: probe the adjacent unsigned-char staged-affine wrapper
+`((x + 2) + y) - 1` so the widened-width/default-route matrix records whether
+the existing direct-BIR path already covers the `zext` staged form too or needs
+another bounded regression-only slice.
+
+Completed this iteration:
+- Added
+  `tests/c/internal/backend_route_case/two_param_u8_add_sub_chain.c`, proving
+  `unsigned char tiny_mix_u(unsigned char x, unsigned char y) { return (unsigned char)(((x + y) + 2) - 1); }`
+  reaches the backend through the default BIR asm route for the widened
+  unsigned-char surface.
+- Registered
+  `backend_codegen_route_riscv64_two_param_u8_add_sub_chain_defaults_to_bir`
+  in `tests/c/internal/InternalTests.cmake`, asserting the emitted asm-route
+  text contains `bir.func @tiny_mix_u(i8 %p.x, i8 %p.y) -> i8 {`,
+  `%t2 = bir.add i8 %p.x, %p.y`, `%t3 = bir.add i8 %t2, 2`,
+  `%t4 = bir.sub i8 %t3, 1`, and forbids legacy LLVM IR
+  `define i8 @tiny_mix_u(i8 %p.x, i8 %p.y)`.
+- Reconfigured and rebuilt the tree, reran
+  `backend_codegen_route_riscv64_two_param_u8_add_sub_chain_defaults_to_bir`,
+  then reran `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `337/337` backend-labeled tests passing.
+- Audited the harness behavior and confirmed this slice is coverage-only for the
+  active Step 2 backend route matrix: the backend-route test exercises
+  `--codegen asm`, which already emits direct BIR text for the unsigned-char
+  add/sub chain even though a direct `--codegen llvm` probe still prints legacy
+  LLVM IR text outside the current asm-route contract.
 
 Completed this iteration:
 - Audited the widened-width two-parameter `i64` add/sub chain shape and
