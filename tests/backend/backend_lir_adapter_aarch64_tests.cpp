@@ -1137,6 +1137,22 @@ void test_aarch64_backend_scaffold_matches_direct_two_local_slot_constant_condit
   }
 }
 
+void test_aarch64_backend_scaffold_matches_direct_three_local_slot_constant_conditional_goto_return_asm() {
+  const auto direct_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{
+          make_three_local_slot_constant_conditional_goto_return_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  const auto lowered = c4c::backend::lower_to_backend_ir(
+      make_three_local_slot_constant_conditional_goto_return_module());
+  const auto lowered_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  if (direct_rendered != lowered_rendered) {
+    fail("aarch64 three-local-slot-backed constant-conditional goto regression should keep the direct LIR and explicit lowered backend seams on identical assembly output");
+  }
+}
+
 void test_aarch64_backend_renders_void_return_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_void_return_module()},
@@ -4923,6 +4939,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_scaffold_matches_direct_select_constant_conditional_goto_return_asm();
   test_aarch64_backend_scaffold_matches_direct_local_slot_constant_conditional_goto_return_asm();
   test_aarch64_backend_scaffold_matches_direct_two_local_slot_constant_conditional_goto_return_asm();
+  test_aarch64_backend_scaffold_matches_direct_three_local_slot_constant_conditional_goto_return_asm();
   test_aarch64_backend_renders_void_return_slice();
   test_aarch64_backend_preserves_module_headers_and_declarations();
   test_aarch64_backend_propagates_malformed_signature_in_supported_slice();
