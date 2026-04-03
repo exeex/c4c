@@ -9,12 +9,36 @@ Source Plan: plan.md
 - [ ] Delete app-layer LLVM asm rescue from `c4cll`
 - [ ] Revalidate backend and full-suite behavior without fallback
 
-Current active item: Step 2, continue bounded compare-fed phi-join parity with
-the next smallest still-linearizable asymmetric split-arm or join-tail variant
-after the deeper-then / mixed-else post-add/sub slice, preferably the mirrored
-asymmetric branch-depth case or another source-shaped join-local add/sub
-follow-on that can stay on the fused `bir.select` path without widening
-emitter-side direct-BIR requirements.
+Current active item: Step 2, continue bounded compare-fed phi-join parity past
+the mirrored asymmetric branch-depth post-add/sub slice with the next smallest
+still-linearizable source-shaped follow-on, preferably another asymmetric
+split-arm parity variant that keeps the fused `bir.select` path and avoids
+widening emitter-side direct-BIR requirements.
+
+Completed this iteration:
+- Added the mirrored asymmetric split-predecessor compare-fed phi-join
+  regression slice via
+  `make_bir_two_param_select_eq_split_predecessor_mixed_then_deeper_affine_phi_post_join_add_sub_module()`,
+  proving the already-covered deeper-then / mixed-else bounded ternary is now
+  matched by the mixed-then / deeper-else branch-depth mirror on the direct BIR
+  path.
+- Added source-level/default-route RISC-V coverage via
+  `tests/c/internal/backend_route_case/two_param_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_sub.c`,
+  proving `(x == y ? x + 8 - 3 : y + 11 - 4 + 7) + 6 - 2` defaults to the BIR
+  pipeline instead of falling back to legacy LLVM IR text.
+- Reconfigured and rebuilt the affected tree, reran
+  `ctest --test-dir build -R backend_bir_tests --output-on-failure`, reran the
+  new route case
+  `backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_mixed_then_deeper_affine_post_add_sub_defaults_to_bir`,
+  then reran `ctest --test-dir build -L backend --output-on-failure -j8`.
+- Refreshed `test_fail_after.log` with a full
+  `ctest --test-dir build -j8 --output-on-failure` run, then passed the
+  regression guard against `test_fail_before.log` with
+  `--allow-non-decreasing-passed` (`2743 -> 2751` passed, `0 -> 0` failed, no
+  newly failing tests, no new `>30s` cases).
+- The mirror slice passed without any `lir_to_bir.cpp` widening, confirming the
+  bounded compare-fed phi-join matcher is already symmetric across then/else
+  branch-depth assignment for this join-local add/sub form.
 
 Completed this iteration:
 - Added the next asymmetric split-predecessor compare-fed phi-join regression
