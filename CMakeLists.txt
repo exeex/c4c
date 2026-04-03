@@ -92,6 +92,9 @@ set(FRONTEND_CXX_COMMON_SRCS
     "${PROJECT_SOURCE_DIR}/src/backend/stack_layout/regalloc_helpers.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/stack_layout/slot_assignment.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/x86_common.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/bir.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/bir_printer.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/bir_validate.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/ir.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/ir_printer.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/ir_validate.cpp"
@@ -261,6 +264,9 @@ set(BACKEND_TEST_COMMON_SRCS
     "${PROJECT_SOURCE_DIR}/src/backend/f128_softfloat.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/generation.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/inline_asm.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/bir.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/bir_printer.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/bir_validate.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/ir.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/ir_printer.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/ir_validate.cpp"
@@ -327,6 +333,10 @@ add_executable(backend_ir_tests
     "${PROJECT_SOURCE_DIR}/tests/backend/backend_ir_tests.cpp"
     ${BACKEND_TEST_COMMON_SRCS}
 )
+add_executable(backend_bir_tests
+    "${PROJECT_SOURCE_DIR}/tests/backend/backend_bir_tests.cpp"
+    ${BACKEND_TEST_COMMON_SRCS}
+)
 add_executable(backend_shared_util_tests
     "${PROJECT_SOURCE_DIR}/tests/backend/backend_shared_util_tests.cpp"
     ${BACKEND_TEST_COMMON_SRCS}
@@ -344,6 +354,9 @@ target_include_directories(backend_lir_adapter_x86_64_tests PRIVATE
 target_include_directories(backend_ir_tests PRIVATE
     ${FRONTEND_CXX_INCLUDE_DIRS}
 )
+target_include_directories(backend_bir_tests PRIVATE
+    ${FRONTEND_CXX_INCLUDE_DIRS}
+)
 target_include_directories(backend_shared_util_tests PRIVATE
     ${FRONTEND_CXX_INCLUDE_DIRS}
 )
@@ -358,6 +371,9 @@ if(CLANG_EXECUTABLE)
       C4C_TEST_CLANG_PATH="${CLANG_EXECUTABLE}"
   )
   target_compile_definitions(backend_ir_tests PRIVATE
+      C4C_TEST_CLANG_PATH="${CLANG_EXECUTABLE}"
+  )
+  target_compile_definitions(backend_bir_tests PRIVATE
       C4C_TEST_CLANG_PATH="${CLANG_EXECUTABLE}"
   )
   target_compile_definitions(backend_shared_util_tests PRIVATE
@@ -377,6 +393,9 @@ if(OBJDUMP_EXECUTABLE)
   target_compile_definitions(backend_ir_tests PRIVATE
       C4C_TEST_OBJDUMP_PATH="${OBJDUMP_EXECUTABLE}"
   )
+  target_compile_definitions(backend_bir_tests PRIVATE
+      C4C_TEST_OBJDUMP_PATH="${OBJDUMP_EXECUTABLE}"
+  )
   target_compile_definitions(backend_shared_util_tests PRIVATE
       C4C_TEST_OBJDUMP_PATH="${OBJDUMP_EXECUTABLE}"
   )
@@ -394,6 +413,10 @@ set_target_properties(backend_lir_adapter_x86_64_tests PROPERTIES
     CXX_STANDARD_REQUIRED ON
 )
 set_target_properties(backend_ir_tests PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+set_target_properties(backend_bir_tests PROPERTIES
     CXX_STANDARD 17
     CXX_STANDARD_REQUIRED ON
 )

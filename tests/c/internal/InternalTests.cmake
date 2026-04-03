@@ -221,6 +221,13 @@ set_tests_properties(backend_ir_tests PROPERTIES
     LABELS "internal;backend")
 
 add_test(
+    NAME backend_bir_tests
+    COMMAND backend_bir_tests
+)
+set_tests_properties(backend_bir_tests PROPERTIES
+    LABELS "internal;backend")
+
+add_test(
     NAME backend_shared_util_tests
     COMMAND backend_shared_util_tests
 )
