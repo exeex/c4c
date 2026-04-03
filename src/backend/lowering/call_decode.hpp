@@ -141,6 +141,16 @@ struct ParsedBackendMinimalDirectCallAddImmModuleView {
   std::int64_t add_imm = 0;
 };
 
+struct ParsedBackendMinimalCallCrossingDirectCallModuleView {
+  const BackendFunction* helper = nullptr;
+  const BackendFunction* main_function = nullptr;
+  const BackendBinaryInst* source_add = nullptr;
+  const BackendCallInst* call = nullptr;
+  const BackendBinaryInst* final_add = nullptr;
+  std::int64_t source_imm = 0;
+  std::int64_t helper_add_imm = 0;
+};
+
 inline std::optional<ParsedBackendTwoParamAddFunctionView>
 parse_backend_two_param_add_function(
     const c4c::codegen::lir::LirFunction& function,
@@ -922,6 +932,85 @@ parse_backend_minimal_direct_call_add_imm_module(const BackendModule& module) {
       main_fn,
       call,
       *call_arg_imm,
+      *add_imm,
+  };
+}
+
+inline std::optional<ParsedBackendMinimalCallCrossingDirectCallModuleView>
+parse_backend_minimal_call_crossing_direct_call_module(const BackendModule& module) {
+  if (module.functions.size() != 2) {
+    return std::nullopt;
+  }
+
+  const BackendFunction* main_fn = nullptr;
+  const BackendFunction* helper = nullptr;
+  for (const auto& function : module.functions) {
+    if (function.signature.name == "main") {
+      if (main_fn != nullptr) {
+        return std::nullopt;
+      }
+      main_fn = &function;
+      continue;
+    }
+    if (helper != nullptr) {
+      return std::nullopt;
+    }
+    helper = &function;
+  }
+
+  if (helper == nullptr || main_fn == nullptr || helper->is_declaration || main_fn->is_declaration ||
+      !backend_function_is_definition(main_fn->signature) ||
+      backend_signature_return_scalar_type(main_fn->signature) != BackendScalarType::I32 ||
+      !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
+      main_fn->blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto helper_shape =
+      parse_backend_structured_single_add_imm_function(*helper, std::nullopt);
+  if (!helper_shape.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto& main_block = main_fn->blocks.front();
+  if (main_block.label != "entry" || main_block.insts.size() != 3 ||
+      !main_block.terminator.value.has_value() ||
+      backend_return_scalar_type(main_block.terminator) != BackendScalarType::I32) {
+    return std::nullopt;
+  }
+
+  const auto* source_add = std::get_if<BackendBinaryInst>(&main_block.insts[0]);
+  const auto* call = std::get_if<BackendCallInst>(&main_block.insts[1]);
+  const auto* final_add = std::get_if<BackendBinaryInst>(&main_block.insts[2]);
+  const auto parsed_call =
+      call == nullptr ? std::nullopt : parse_backend_direct_global_typed_call(*call);
+  if (source_add == nullptr || call == nullptr || final_add == nullptr || !parsed_call.has_value() ||
+      source_add->opcode != BackendBinaryOpcode::Add ||
+      backend_binary_value_type(*source_add) != BackendScalarType::I32 ||
+      parsed_call->symbol_name != helper->signature.name ||
+      !backend_typed_call_matches(parsed_call->typed_call, std::array<std::string_view, 1>{"i32"}) ||
+      call->result.empty() || call->args.front().operand != source_add->result ||
+      final_add->opcode != BackendBinaryOpcode::Add ||
+      backend_binary_value_type(*final_add) != BackendScalarType::I32 ||
+      final_add->lhs != source_add->result || final_add->rhs != call->result ||
+      *main_block.terminator.value != final_add->result) {
+    return std::nullopt;
+  }
+
+  const auto lhs_imm = parse_backend_i64_literal(source_add->lhs);
+  const auto rhs_imm = parse_backend_i64_literal(source_add->rhs);
+  const auto add_imm = parse_backend_i64_literal(helper_shape->add->rhs);
+  if (!lhs_imm.has_value() || !rhs_imm.has_value() || !add_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  return ParsedBackendMinimalCallCrossingDirectCallModuleView{
+      helper,
+      main_fn,
+      source_add,
+      call,
+      final_add,
+      *lhs_imm + *rhs_imm,
       *add_imm,
   };
 }

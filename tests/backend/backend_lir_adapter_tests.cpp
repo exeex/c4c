@@ -1073,6 +1073,69 @@ void test_backend_call_helpers_parse_structured_single_add_imm_direct_call_modul
               "shared structured single-add-immediate direct-call module parser should preserve renamed helper symbols and direct-call immediates without target-local backend-module scans");
 }
 
+void test_backend_call_helpers_parse_structured_call_crossing_direct_call_module() {
+  auto lowered =
+      c4c::backend::lower_to_backend_ir(make_typed_call_crossing_direct_call_module());
+
+  c4c::backend::BackendFunction* helper = nullptr;
+  c4c::backend::BackendFunction* main_fn = nullptr;
+  for (auto& function : lowered.functions) {
+    if (function.signature.name == "main") {
+      main_fn = &function;
+    } else {
+      helper = &function;
+    }
+  }
+  expect_true(helper != nullptr && main_fn != nullptr,
+              "shared structured call-crossing direct-call module parser regression test needs lowered helper and main functions");
+  if (helper == nullptr || main_fn == nullptr || main_fn->blocks.empty() ||
+      main_fn->blocks.front().insts.size() != 3) {
+    return;
+  }
+
+  helper->signature.name = "inc_value";
+  helper->signature.params.front().name = "%p.input";
+  auto* helper_add = helper->blocks.front().insts.empty()
+                         ? nullptr
+                         : std::get_if<c4c::backend::BackendBinaryInst>(&helper->blocks.front().insts.front());
+  auto& entry = main_fn->blocks.front();
+  auto* source_add = std::get_if<c4c::backend::BackendBinaryInst>(&entry.insts[0]);
+  auto* call = std::get_if<c4c::backend::BackendCallInst>(&entry.insts[1]);
+  auto* final_add = std::get_if<c4c::backend::BackendBinaryInst>(&entry.insts[2]);
+  expect_true(helper_add != nullptr && source_add != nullptr && call != nullptr &&
+                  final_add != nullptr,
+              "shared structured call-crossing direct-call module parser regression test needs mutable helper/body and main seam instructions");
+  if (helper_add == nullptr || source_add == nullptr || call == nullptr || final_add == nullptr) {
+    return;
+  }
+
+  helper_add->lhs = "%p.input";
+  helper_add->result = "%t.helper.add.structured";
+  helper->blocks.front().terminator.value = "%t.helper.add.structured";
+
+  source_add->result = "%t.crossing.source.structured";
+  call->callee.symbol_name = "inc_value";
+  call->args.front().operand = "%t.crossing.source.structured";
+  call->result = "%t.crossing.call.structured";
+  final_add->lhs = "%t.crossing.source.structured";
+  final_add->rhs = "%t.crossing.call.structured";
+  final_add->result = "%t.crossing.sum.structured";
+  entry.terminator.value = "%t.crossing.sum.structured";
+
+  const auto parsed =
+      c4c::backend::parse_backend_minimal_call_crossing_direct_call_module(lowered);
+  expect_true(parsed.has_value() && parsed->helper != nullptr && parsed->main_function != nullptr &&
+                  parsed->source_add != nullptr && parsed->call != nullptr &&
+                  parsed->final_add != nullptr &&
+                  parsed->helper->signature.name == "inc_value" &&
+                  parsed->main_function->signature.name == "main" &&
+                  parsed->source_add->result == "%t.crossing.source.structured" &&
+                  parsed->call->result == "%t.crossing.call.structured" &&
+                  parsed->final_add->result == "%t.crossing.sum.structured" &&
+                  parsed->source_imm == 5 && parsed->helper_add_imm == 1,
+              "shared structured call-crossing direct-call module parser should preserve renamed helper symbols, SSA names, and summed source immediates without target-local backend-module scans");
+}
+
 void test_backend_call_helpers_parse_structured_folded_two_arg_function() {
   auto lowered =
       c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_module());
@@ -2385,6 +2448,7 @@ int main(int argc, char* argv[]) {
   test_backend_call_helpers_parse_structured_single_add_imm_function();
   test_backend_call_helpers_parse_structured_zero_arg_direct_call_module();
   test_backend_call_helpers_parse_structured_single_add_imm_direct_call_module();
+  test_backend_call_helpers_parse_structured_call_crossing_direct_call_module();
   test_backend_call_helpers_parse_structured_folded_two_arg_function();
   test_backend_call_helpers_parse_structured_two_arg_direct_call_module();
   test_backend_call_helpers_decode_lir_direct_global_vararg_prefix();

@@ -2393,56 +2393,15 @@ std::optional<MinimalScalarGlobalStoreReloadSlice> parse_minimal_scalar_global_s
 
 std::optional<MinimalCallCrossingDirectCallSlice> parse_minimal_call_crossing_direct_call_slice(
     const c4c::backend::BackendModule& module) {
-  if (module.functions.size() != 2) return std::nullopt;
-
-  const auto* main_fn = find_function(module, "main");
-  if (main_fn == nullptr || main_fn->is_declaration || main_fn->blocks.size() != 1) {
+  const auto parsed = c4c::backend::parse_backend_minimal_call_crossing_direct_call_module(module);
+  if (!parsed.has_value() || parsed->helper == nullptr) {
     return std::nullopt;
   }
-
-  if (!backend_function_is_definition(main_fn->signature) ||
-      !is_i32_scalar_signature_return(main_fn->signature) ||
-      !main_fn->signature.params.empty() || main_fn->signature.is_vararg) {
-    return std::nullopt;
-  }
-
-  const auto& main_block = main_fn->blocks.front();
-  if (main_block.label != "entry" || main_block.insts.size() != 3 ||
-      !main_block.terminator.value.has_value() ||
-      c4c::backend::backend_return_scalar_type(main_block.terminator) !=
-          c4c::backend::BackendScalarType::I32) {
-    return std::nullopt;
-  }
-
-  const auto* source_add =
-      std::get_if<c4c::backend::BackendBinaryInst>(&main_block.insts[0]);
-  const auto* final_add =
-      std::get_if<c4c::backend::BackendBinaryInst>(&main_block.insts[2]);
-  const auto matched = match_minimal_structured_direct_call(module, main_block, 1, 1);
-  const auto helper_match =
-      matched.has_value()
-          ? match_minimal_structured_direct_call_add_imm_helper(*matched->callee_fn)
-          : std::nullopt;
-  if (source_add == nullptr || !matched.has_value() || final_add == nullptr ||
-      !helper_match.has_value() ||
-      source_add->opcode != c4c::backend::BackendBinaryOpcode::Add ||
-      !is_i32_scalar_binary(*source_add) ||
-      matched->call->args.front().operand != source_add->result ||
-      final_add->opcode != c4c::backend::BackendBinaryOpcode::Add ||
-      !is_i32_scalar_binary(*final_add) || final_add->lhs != source_add->result ||
-      final_add->rhs != matched->call->result ||
-      *main_block.terminator.value != final_add->result) {
-    return std::nullopt;
-  }
-
-  const auto lhs_imm = parse_i64(source_add->lhs);
-  const auto rhs_imm = parse_i64(source_add->rhs);
-  if (!lhs_imm.has_value() || !rhs_imm.has_value()) return std::nullopt;
 
   return MinimalCallCrossingDirectCallSlice{
-      std::string(matched->parsed_call.symbol_name),
-      *lhs_imm + *rhs_imm,
-      helper_match->add_imm,
+      parsed->helper->signature.name,
+      parsed->source_imm,
+      parsed->helper_add_imm,
   };
 }
 
