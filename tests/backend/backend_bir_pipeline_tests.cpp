@@ -187,6 +187,22 @@ void test_backend_bir_pipeline_drives_x86_direct_bir_input_end_to_end() {
                   "x86 direct BIR input should still combine the second integer argument register on the backend path");
 }
 
+void test_backend_bir_pipeline_drives_x86_direct_bir_staged_affine_end_to_end() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{
+          c4c::backend::lower_to_bir(make_bir_two_param_staged_affine_module())},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl add_pair",
+                  "direct BIR staged affine input should reach x86 backend emission without caller-owned legacy backend IR");
+  expect_contains(rendered, "mov eax, edi",
+                  "x86 direct BIR staged affine input should still seed from the first integer argument register");
+  expect_contains(rendered, "add eax, esi",
+                  "x86 direct BIR staged affine input should still combine the second integer argument register");
+  expect_contains(rendered, "add eax, 1",
+                  "x86 direct BIR staged affine input should preserve the collapsed affine constant");
+}
+
 void test_backend_bir_pipeline_drives_aarch64_two_param_add_end_to_end() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_bir_two_param_add_module()},
@@ -207,6 +223,20 @@ void test_backend_bir_pipeline_drives_aarch64_direct_bir_input_end_to_end() {
                   "direct BIR module input should reach aarch64 backend emission without a caller-owned legacy backend module");
   expect_contains(rendered, "add w0, w0, w1",
                   "aarch64 direct BIR input should still combine both incoming integer argument registers on the backend path");
+}
+
+void test_backend_bir_pipeline_drives_aarch64_direct_bir_staged_affine_end_to_end() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{
+          c4c::backend::lower_to_bir(make_bir_two_param_staged_affine_module())},
+      make_bir_pipeline_options(c4c::backend::Target::Aarch64));
+
+  expect_contains(rendered, ".globl add_pair",
+                  "direct BIR staged affine input should reach aarch64 backend emission without caller-owned legacy backend IR");
+  expect_contains(rendered, "add w0, w0, w1",
+                  "aarch64 direct BIR staged affine input should still combine both incoming integer argument registers");
+  expect_contains(rendered, "add w0, w0, #1",
+                  "aarch64 direct BIR staged affine input should preserve the collapsed affine constant");
 }
 
 void test_backend_bir_pipeline_drives_x86_two_param_add_sub_chain_end_to_end() {
@@ -322,11 +352,13 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_single_param_chain_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_two_param_add_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_input_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_staged_affine_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_two_param_add_sub_chain_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_two_param_staged_affine_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_single_param_chain_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_two_param_add_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_direct_bir_input_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_aarch64_direct_bir_staged_affine_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_two_param_add_sub_chain_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_two_param_staged_affine_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_selection_only_applies_at_lir_entry_input);
