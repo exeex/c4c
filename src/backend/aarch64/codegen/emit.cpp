@@ -5746,6 +5746,68 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
         slice.has_value()) {
       return emit_minimal_local_array_asm(adapted, *slice);
     }
+    if (!needs_nonminimal_lowering) {
+      if (const auto slice = parse_minimal_conditional_return_slice(adapted);
+          slice.has_value()) {
+        return emit_minimal_conditional_return_asm(adapted, *slice);
+      }
+      if (const auto slice = parse_minimal_conditional_phi_join_slice(adapted);
+          slice.has_value()) {
+        return emit_minimal_conditional_phi_join_asm(adapted, *slice);
+      }
+      if (const auto slice = parse_minimal_countdown_loop_slice(adapted);
+          slice.has_value()) {
+        return emit_minimal_countdown_loop_asm(adapted, *slice);
+      }
+      if (const auto slice =
+              c4c::backend::parse_backend_minimal_call_crossing_direct_call_module(adapted);
+          slice.has_value()) {
+        const auto* main_fn = find_lir_function(module, "main");
+        if (main_fn == nullptr) {
+          fail_unsupported("main function for shared call-crossing direct-call slice");
+        }
+        return emit_minimal_call_crossing_direct_call_asm(
+            adapted,
+            run_shared_aarch64_regalloc(*main_fn),
+            *slice,
+            slice->source_add->result);
+      }
+      if (adapted.type_decls.empty()) {
+        if (const auto slice =
+                c4c::backend::parse_backend_minimal_declared_direct_call_module(adapted);
+            slice.has_value()) {
+          return emit_minimal_declared_direct_call_asm(adapted, *slice);
+        }
+      }
+      if (const auto imm = parse_minimal_return_imm(adapted); imm.has_value()) {
+        return emit_minimal_return_imm_asm(adapted, *imm);
+      }
+      if (const auto imm = parse_minimal_return_add_imm(adapted); imm.has_value()) {
+        return emit_minimal_return_imm_asm(adapted, *imm);
+      }
+      if (const auto imm = parse_minimal_return_sub_imm(adapted); imm.has_value()) {
+        return emit_minimal_return_sub_imm_asm(adapted, *imm);
+      }
+      if (const auto slice = c4c::backend::parse_backend_minimal_direct_call_module(adapted);
+          slice.has_value()) {
+        return emit_minimal_direct_call_asm(adapted, *slice);
+      }
+      if (const auto slice =
+              c4c::backend::parse_backend_minimal_direct_call_add_imm_module(adapted);
+          slice.has_value()) {
+        return emit_minimal_direct_call_add_imm_asm(adapted, *slice);
+      }
+      if (const auto slice =
+              c4c::backend::parse_backend_minimal_two_arg_direct_call_module(adapted);
+          slice.has_value()) {
+        return emit_minimal_direct_call_two_arg_add_asm(adapted, *slice);
+      }
+      if (const auto slice =
+              c4c::backend::parse_backend_minimal_folded_two_arg_direct_call_module(adapted);
+          slice.has_value()) {
+        return emit_minimal_direct_call_two_arg_folded_asm(adapted, *slice);
+      }
+    }
   } catch (const c4c::backend::LirAdapterError& ex) {
     if (ex.kind() != c4c::backend::LirAdapterErrorKind::Unsupported) {
       throw;

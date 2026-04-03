@@ -997,6 +997,20 @@ void test_aarch64_backend_scaffold_renders_direct_return_immediate_slice() {
                   "aarch64 scaffold should terminate direct return immediates with ret");
 }
 
+void test_aarch64_backend_scaffold_matches_direct_return_immediate_asm() {
+  const auto direct_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_return_zero_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  const auto lowered = c4c::backend::lower_to_backend_ir(make_return_zero_module());
+  const auto lowered_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  if (direct_rendered != lowered_rendered) {
+    fail("aarch64 return-immediate regression should keep the direct LIR and explicit lowered backend seams on identical assembly output");
+  }
+}
+
 void test_aarch64_backend_renders_void_return_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_void_return_module()},
@@ -1498,6 +1512,21 @@ void test_aarch64_backend_renders_local_pointer_temp_return_slice() {
                   "aarch64 backend should fold the bounded local pointer round-trip into a direct immediate return");
   expect_not_contains(rendered, "target triple =",
                       "aarch64 backend should not fall back to LLVM text for this local-pointer round-trip slice");
+}
+
+void test_aarch64_backend_scaffold_matches_direct_local_pointer_temp_return_asm() {
+  const auto direct_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_local_pointer_temp_return_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  const auto lowered =
+      c4c::backend::lower_to_backend_ir(make_local_pointer_temp_return_module());
+  const auto lowered_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  if (direct_rendered != lowered_rendered) {
+    fail("aarch64 local-pointer regression should keep the direct LIR and explicit lowered backend seams on identical assembly output");
+  }
 }
 
 void test_aarch64_backend_renders_double_indirect_local_pointer_conditional_return_slice() {
@@ -4714,6 +4743,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_scaffold_accepts_structured_single_function_ir_without_signature_shims();
   test_aarch64_backend_scaffold_accepts_structured_single_function_ir_without_signature_or_binary_type_shims();
   test_aarch64_backend_scaffold_renders_direct_return_immediate_slice();
+  test_aarch64_backend_scaffold_matches_direct_return_immediate_asm();
   test_aarch64_backend_renders_void_return_slice();
   test_aarch64_backend_preserves_module_headers_and_declarations();
   test_aarch64_backend_propagates_malformed_signature_in_supported_slice();
@@ -4743,6 +4773,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_renders_local_temp_arithmetic_chain_slice();
   test_aarch64_backend_renders_two_local_temp_return_slice();
   test_aarch64_backend_renders_local_pointer_temp_return_slice();
+  test_aarch64_backend_scaffold_matches_direct_local_pointer_temp_return_asm();
   test_aarch64_backend_renders_double_indirect_local_pointer_conditional_return_slice();
   test_aarch64_backend_renders_param_slot_memory_slice();
   test_aarch64_backend_skips_legacy_minimal_adapter_for_mixed_width_control_flow();
