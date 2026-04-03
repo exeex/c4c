@@ -660,7 +660,15 @@ TypeSpec Parser::parse_base_type() {
                         has_signed || has_unsigned || has_short || long_count > 0 ||
                         has_int_kw || has_char || has_void || has_float || has_double || has_bool ||
                         has_struct || has_union || has_enum || base_set;
-                    if (try_parse_cpp_scoped_base_type(already_have_base, &ts)) {
+                    const bool simple_unqualified_known_type_head =
+                        k == TokenKind::Identifier &&
+                        !(pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                          tokens_[pos_ + 1].kind == TokenKind::ColonColon) &&
+                        (is_typedef_name(cur().lexeme) ||
+                         is_template_scope_type_param(cur().lexeme) ||
+                         typedef_types_.count(resolve_visible_type_name(cur().lexeme)) > 0);
+                    if (!simple_unqualified_known_type_head &&
+                        try_parse_cpp_scoped_base_type(already_have_base, &ts)) {
                         has_typedef = true;
                         done = true;
                         break;

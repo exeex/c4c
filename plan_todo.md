@@ -7,10 +7,11 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 3: Object lifetime and tuple layer
-- Current slice: reduce the next shared Step 3 timeout after the new `_v`
-  variable-template expression shortcut, starting from the remaining later
-  `/usr/include/c++/14/type_traits` parser pressure now reached around the
-  `is_copy_assignable` / swappability / noexcept trait cluster
+- Current slice: reduce the next shared Step 3 timeout after the
+  typedef-owned functional-cast fast path, starting from the later
+  `EASTL/utility.h`, `EASTL/meta.h`, `/usr/include/c++/14/type_traits`, and
+  `/usr/include/c++/14/bits/stl_pair.h` parser pressure now reached past the
+  old `EASTL/numeric_limits.h` hotspot
 
 ## Todo
 
@@ -196,15 +197,37 @@ Source Plan: plan.md
   (`positive_sema_linux_stage2_repro_03_asm_volatile_c`,
   `backend_lir_adapter_aarch64_tests`, and
   `llvm_gcc_c_torture_src_20080502_1_c`)
+- [x] Added
+  `tests/cpp/internal/postive_case/typedef_owned_functional_cast_parse.cpp`
+  as a parse-only regression for unqualified typedef-owned functional casts in
+  record methods, and added `cpp_typedef_owned_functional_cast_perf` as a
+  generated parser-perf guard for the amplified `value_type()` /
+  `static_cast<value_type>(0)` timeout shape
+- [x] Taught `parse_base_type()` to skip the qualified-type fallback for simple
+  unqualified known typedef / template-type heads, and taught
+  `parse_primary()` to parse typedef-owned `Type(...)` casts directly instead
+  of reparsing the identifier path through a rewind
+- [x] Re-ran the focused typedef-cast guardrails plus 12s Step 3 parser-debug
+  probes: `eastl_memory_simple.cpp` and `eastl_tuple_simple.cpp` still time
+  out, but the old shared `EASTL/numeric_limits.h` typedef-cast hotspot is no
+  longer the terminal frontier and both cases now advance into later
+  `EASTL/utility.h`, `EASTL/meta.h`, libstdc++ `type_traits`, and
+  `bits/stl_pair.h` parser pressure
+- [x] Re-ran the full suite and monotonic regression guard after the
+  typedef-cast fast-path slice; the tree improved monotonically with
+  `2698 -> 2700` passes and the same three pre-existing failures
+  (`positive_sema_linux_stage2_repro_03_asm_volatile_c`,
+  `backend_lir_adapter_aarch64_tests`, and
+  `llvm_gcc_c_torture_src_20080502_1_c`)
 
 ## Next Slice
 
-- reduce the post-trait-value Step 3 frontier from the remaining
+- reduce the post-typedef-cast Step 3 frontier from the remaining
   `eastl_memory_simple.cpp` and `eastl_tuple_simple.cpp` parse-time stalls,
-  starting from the later libstdc++ hotspots still reached after the new `_v`
-  shortcut around `/usr/include/c++/14/type_traits:1571`,
-  `/usr/include/c++/14/type_traits:2635`, and
-  `/usr/include/c++/14/type_traits:3207`
+  starting from the later hotspots now reached after the old
+  `EASTL/numeric_limits.h` pressure: `EASTL/utility.h`,
+  `EASTL/meta.h`, `/usr/include/c++/14/type_traits`, and
+  `/usr/include/c++/14/bits/stl_pair.h`
 - reduce the timeout-only `eastl_vector_simple.cpp` frontier from the later
   EASTL-side hotspots now reached in `EASTL/internal/fill_help.h`,
   `EASTL/functional.h`, and `EASTL/meta.h`, then capture the next smaller
@@ -231,6 +254,13 @@ Source Plan: plan.md
   `tests/cpp/internal/postive_case/qualified_variable_template_requires_parse.cpp`
   green as the guardrail for qualified `_v` variable-template expressions in
   requires clauses
+- keep
+  `tests/cpp/internal/postive_case/typedef_owned_functional_cast_parse.cpp`
+  green as the syntax guardrail for typedef-owned `Type(...)` casts in record
+  methods
+- keep `cpp_typedef_owned_functional_cast_perf` green as the amplified parser
+  perf guardrail for the shared `value_type()` / `static_cast<value_type>(0)`
+  timeout shape
 
 ## Blockers
 
@@ -249,6 +279,11 @@ Source Plan: plan.md
 - `eastl_memory_simple.cpp` and `eastl_tuple_simple.cpp` no longer stop on the
   old `TupleLeaf<...>::operator=` or `function_detail.h` parser failures, but
   they still time out under deeper libstdc++ / EASTL parser pressure
+- the new typedef-owned functional-cast fast path removed the old shared
+  `EASTL/numeric_limits.h` terminal hotspot for the Step 3 timeout path, but
+  `eastl_memory_simple.cpp` and `eastl_tuple_simple.cpp` still time out once
+  they advance into later `EASTL/utility.h`, `EASTL/meta.h`,
+  `/usr/include/c++/14/type_traits`, and `bits/stl_pair.h` parser work
 - the new simple known-type template-argument fast path moved the Step 3
   parser-debug frontier later inside `/usr/include/c++/14/type_traits`, but it
   did not yet produce a smaller standalone reduction for the remaining timeout
@@ -366,3 +401,7 @@ Source Plan: plan.md
 - `tests/cpp/internal/postive_case/template_known_type_arg_fast_path_parse.cpp`
   now covers the simple known-type template-argument shapes accelerated by the
   new fast path in `try_parse_template_type_arg()`
+- `tests/cpp/internal/postive_case/typedef_owned_functional_cast_parse.cpp`
+  now covers unqualified typedef-owned `Type(...)` casts in record methods, and
+  `cpp_typedef_owned_functional_cast_perf` amplifies the same shape into a
+  parser-perf workflow guard

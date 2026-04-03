@@ -1237,6 +1237,57 @@ Node* Parser::parse_primary() {
     if (check(TokenKind::Identifier)) {
         int ident_start = pos_;
         QualifiedNameRef qn = parse_qualified_name(false);
+        const std::string direct_resolved_type_name =
+            qn.qualifier_segments.empty()
+                ? resolve_visible_type_name(qn.base_name)
+                : std::string();
+        if (is_cpp_mode() && qn.qualifier_segments.empty() &&
+            check(TokenKind::LParen) &&
+            typedef_types_.count(direct_resolved_type_name) > 0) {
+            TypeSpec cast_ts = typedef_types_.at(direct_resolved_type_name);
+            last_resolved_typedef_ = direct_resolved_type_name;
+            consume();
+            std::vector<Node*> args;
+            if (!check(TokenKind::RParen)) {
+                while (!at_end() && !check(TokenKind::RParen)) {
+                    args.push_back(parse_assign_expr());
+                    if (!match(TokenKind::Comma)) break;
+                }
+            }
+            expect(TokenKind::RParen);
+            const bool ctor_like_type =
+                cast_ts.base == TB_STRUCT || cast_ts.base == TB_UNION ||
+                cast_ts.base == TB_TYPEDEF;
+            if (ctor_like_type && args.size() != 1) {
+                Node* callee =
+                    make_var(cast_ts.tag ? cast_ts.tag
+                                         : direct_resolved_type_name.c_str(),
+                             ln);
+                Node* call = make_node(NK_CALL, ln);
+                call->left = callee;
+                call->n_children = static_cast<int>(args.size());
+                if (!args.empty()) {
+                    call->children = arena_.alloc_array<Node*>(call->n_children);
+                    for (int i = 0; i < call->n_children; ++i) {
+                        call->children[i] = args[i];
+                    }
+                }
+                return parse_postfix(call);
+            }
+            Node* operand = args.empty() ? make_int_lit(0, ln) : args[0];
+            Node* n = make_node(NK_CAST, ln);
+            n->type = cast_ts;
+            n->left = operand;
+            if (cast_ts.is_fn_ptr && !last_resolved_typedef_.empty()) {
+                auto tdit = typedef_fn_ptr_info_.find(last_resolved_typedef_);
+                if (tdit != typedef_fn_ptr_info_.end()) {
+                    n->fn_ptr_params = tdit->second.params;
+                    n->n_fn_ptr_params = tdit->second.n_params;
+                    n->fn_ptr_variadic = tdit->second.variadic;
+                }
+            }
+            return parse_postfix(n);
+        }
         auto resolve_type_name_for_qn = [&](const QualifiedNameRef& type_qn) -> std::string {
             std::string resolved;
             if (!type_qn.qualifier_segments.empty()) {
