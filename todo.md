@@ -13,8 +13,35 @@ Current active item: Step 2, continue from the now-complete
 `split_predecessor_add_phi` family into the next still-bounded
 instruction-coverage gap that can stay on the direct BIR text path without
 requiring general multi-block BIR CFG support or direct-BIR emitter widening.
-This iteration targets the smallest missing straight-line opcode slice:
-constant-only integer `and` parity through the direct BIR route.
+This iteration completed constant-only integer `or` parity through the direct
+BIR route. Next target: the adjacent constant-only integer `xor` slice, which
+should stay on the same straight-line bounded matcher without requiring general
+multi-block BIR CFG support or direct-BIR emitter widening.
+
+Completed this iteration:
+- Widened the bounded straight-line BIR scaffold with the missing constant-only
+  integer `or` slice by adding `bir.or` support in `bir.hpp`, `bir.cpp`, and
+  `lir_to_bir.cpp`, keeping it bounded to immediate integer arithmetic that
+  still linearizes into one BIR block.
+- Added backend BIR printer, lowering, and explicit BIR-pipeline regressions
+  via `make_bir_return_or_module()`, proving the widened bitwise slice reaches
+  the BIR text surface as `%t0 = bir.or i32 12, 3`.
+- Added source-level/default-route RISC-V coverage via
+  `tests/c/internal/backend_route_case/return_or.c`, proving
+  `return 12 | 3;` defaults to the BIR pipeline instead of falling back to
+  legacy LLVM IR text.
+- Reconfigured and rebuilt the tree, reran
+  `ctest --test-dir build -R backend_bir_tests --output-on-failure`, reran the
+  new route case
+  `backend_codegen_route_riscv64_return_or_defaults_to_bir`, then reran
+  `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `323/323` backend-labeled tests passing.
+- Refreshed `test_fail_before.log` and `test_fail_after.log` with full
+  `ctest --test-dir build -j8 --output-on-failure` runs, then passed the
+  regression guard with
+  `--allow-non-decreasing-passed --timeout-threshold 30 --enforce-timeout`
+  (`2760 -> 2761` passed, `0 -> 0` failed, no newly failing tests, no new
+  `>30s` cases).
 
 Completed this iteration:
 - Widened the bounded straight-line BIR scaffold with the missing constant-only

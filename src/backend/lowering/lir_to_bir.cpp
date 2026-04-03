@@ -108,6 +108,9 @@ std::optional<bir::BinaryOpcode> lower_binary_opcode(std::string_view opcode) {
   if (opcode == "and") {
     return bir::BinaryOpcode::And;
   }
+  if (opcode == "or") {
+    return bir::BinaryOpcode::Or;
+  }
   if (opcode == "sdiv") {
     return bir::BinaryOpcode::SDiv;
   }
@@ -330,6 +333,9 @@ std::optional<AffineValue> combine_affine(const AffineValue& lhs,
   if (opcode == bir::BinaryOpcode::And) {
     return AffineValue{false, false, lhs.constant & rhs.constant};
   }
+  if (opcode == bir::BinaryOpcode::Or) {
+    return AffineValue{false, false, lhs.constant | rhs.constant};
+  }
   if (opcode == bir::BinaryOpcode::SDiv) {
     if (rhs.constant == 0) {
       return std::nullopt;
@@ -497,6 +503,7 @@ std::optional<bool> evaluate_predicate(const AffineValue& lhs,
     case bir::BinaryOpcode::Sub:
     case bir::BinaryOpcode::Mul:
     case bir::BinaryOpcode::And:
+    case bir::BinaryOpcode::Or:
     case bir::BinaryOpcode::SDiv:
     case bir::BinaryOpcode::SRem:
     case bir::BinaryOpcode::URem:

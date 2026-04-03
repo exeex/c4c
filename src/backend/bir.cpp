@@ -60,6 +60,8 @@ std::string render_binary_opcode(BinaryOpcode opcode) {
       return "mul";
     case BinaryOpcode::And:
       return "and";
+    case BinaryOpcode::Or:
+      return "or";
     case BinaryOpcode::SDiv:
       return "sdiv";
     case BinaryOpcode::UDiv:
