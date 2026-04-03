@@ -202,6 +202,46 @@ struct LirTwoArgLocalRewriteSlotState {
   std::string rewritten_result;
 };
 
+std::optional<std::pair<std::int64_t, bool>> match_single_local_rewrite_slot_slice(
+    const std::vector<c4c::codegen::lir::LirInst>& insts,
+    std::string_view alloca,
+    std::string_view lhs_call_operand,
+    std::string_view rhs_call_operand) {
+  using namespace c4c::codegen::lir;
+
+  if (insts.size() != 5) {
+    return std::nullopt;
+  }
+
+  const auto* store0 = std::get_if<LirStoreOp>(&insts[0]);
+  const auto* load0 = std::get_if<LirLoadOp>(&insts[1]);
+  const auto* rewrite = std::get_if<LirBinOp>(&insts[2]);
+  const auto* store1 = std::get_if<LirStoreOp>(&insts[3]);
+  const auto* load1 = std::get_if<LirLoadOp>(&insts[4]);
+  const auto rewrite_opcode = rewrite == nullptr ? std::nullopt : rewrite->opcode.typed();
+  if (store0 == nullptr || load0 == nullptr || rewrite == nullptr || store1 == nullptr ||
+      load1 == nullptr || store0->type_str != "i32" || load0->type_str != "i32" ||
+      rewrite_opcode != LirBinaryOpcode::Add || rewrite->type_str != "i32" ||
+      store1->type_str != "i32" || load1->type_str != "i32" || store0->ptr != alloca ||
+      load0->ptr != alloca || store1->ptr != alloca || load1->ptr != alloca ||
+      rewrite->lhs != load0->result || rewrite->rhs != "0" || store1->val != rewrite->result) {
+    return std::nullopt;
+  }
+
+  const auto stored_imm = parse_i64(store0->val);
+  if (!stored_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  if (lhs_call_operand == load1->result) {
+    return std::pair<std::int64_t, bool>{*stored_imm, true};
+  }
+  if (rhs_call_operand == load1->result) {
+    return std::pair<std::int64_t, bool>{*stored_imm, false};
+  }
+  return std::nullopt;
+}
+
 std::optional<std::pair<std::int64_t, std::int64_t>> match_two_arg_local_rewrite_slot_slice(
     const std::vector<c4c::codegen::lir::LirInst>& insts,
     std::string_view lhs_alloca,
@@ -3071,50 +3111,46 @@ std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_sl
     return std::nullopt;
   }
 
-  const auto* store0 = std::get_if<LirStoreOp>(&main_block.insts[0]);
-  const auto* load0 = std::get_if<LirLoadOp>(&main_block.insts[1]);
-  const auto* rewrite = std::get_if<LirBinOp>(&main_block.insts[2]);
-  const auto* store1 = std::get_if<LirStoreOp>(&main_block.insts[3]);
-  const auto* load1 = std::get_if<LirLoadOp>(&main_block.insts[4]);
   const auto* call = std::get_if<LirCallOp>(&main_block.insts[5]);
   const auto call_operands =
       call == nullptr ? std::nullopt
                       : c4c::backend::parse_backend_direct_global_two_typed_call_operands(
                             *call, helper->name, "i32", "i32");
-  const auto rewrite_opcode = rewrite == nullptr ? std::nullopt : rewrite->opcode.typed();
-  if (store0 == nullptr || load0 == nullptr || rewrite == nullptr || store1 == nullptr ||
-      load1 == nullptr || call == nullptr || store0->type_str != "i32" ||
-      load0->type_str != "i32" || rewrite_opcode != LirBinaryOpcode::Add ||
-      rewrite->type_str != "i32" ||
-      store1->type_str != "i32" || load1->type_str != "i32" ||
-      store0->ptr != alloca->result || load0->ptr != alloca->result ||
-      store1->ptr != alloca->result || load1->ptr != alloca->result ||
-      rewrite->lhs != load0->result || rewrite->rhs != "0" || store1->val != rewrite->result ||
-      call->result.empty() || !call_operands.has_value() ||
+  if (call == nullptr || call->result.empty() || !call_operands.has_value() ||
       *main_ret->value_str != call->result) {
     return std::nullopt;
   }
 
-  const auto stored_imm = parse_i64(store0->val);
-  if (!stored_imm.has_value()) {
+  const auto matched_slot_slice = match_single_local_rewrite_slot_slice(
+      std::vector<LirInst>(main_block.insts.begin(), main_block.insts.begin() + 5),
+      alloca->result,
+      call_operands->first,
+      call_operands->second);
+  if (!matched_slot_slice.has_value()) {
     return std::nullopt;
   }
 
-  if (call_operands->first == load1->result) {
+  if (matched_slot_slice->second) {
     const auto rhs_call_arg_imm = parse_i64(call_operands->second);
     if (!rhs_call_arg_imm.has_value()) {
       return std::nullopt;
     }
-    return MinimalTwoArgDirectCallSlice{helper->name, *stored_imm, *rhs_call_arg_imm};
+    return MinimalTwoArgDirectCallSlice{
+        helper->name,
+        matched_slot_slice->first,
+        *rhs_call_arg_imm,
+    };
   }
-  if (call_operands->second == load1->result) {
-    const auto lhs_call_arg_imm = parse_i64(call_operands->first);
-    if (!lhs_call_arg_imm.has_value()) {
-      return std::nullopt;
-    }
-    return MinimalTwoArgDirectCallSlice{helper->name, *lhs_call_arg_imm, *stored_imm};
+
+  const auto lhs_call_arg_imm = parse_i64(call_operands->first);
+  if (!lhs_call_arg_imm.has_value()) {
+    return std::nullopt;
   }
-  return std::nullopt;
+  return MinimalTwoArgDirectCallSlice{
+      helper->name,
+      *lhs_call_arg_imm,
+      matched_slot_slice->first,
+  };
 }
 
 void emit_function_prelude(std::ostringstream& out,
