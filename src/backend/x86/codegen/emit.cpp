@@ -2257,20 +2257,6 @@ std::optional<MinimalCallCrossingDirectCallSlice> parse_minimal_call_crossing_di
   };
 }
 
-std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_slice(
-    const c4c::backend::BackendModule& module) {
-  const auto parsed = c4c::backend::parse_backend_minimal_two_arg_direct_call_module(module);
-  if (!parsed.has_value() || parsed->helper == nullptr) {
-    return std::nullopt;
-  }
-
-  return MinimalTwoArgDirectCallSlice{
-      parsed->helper->signature.name,
-      parsed->lhs_call_arg_imm,
-      parsed->rhs_call_arg_imm,
-  };
-}
-
 std::optional<MinimalParamSlotSlice> parse_minimal_param_slot_slice(
     const c4c::codegen::lir::LirModule& module) {
   const auto parsed_module =
@@ -2461,6 +2447,33 @@ std::string emit_minimal_two_arg_direct_call_asm(
       << "  call " << helper_symbol << "\n"
       << "  ret\n";
   return out.str();
+}
+
+std::string emit_minimal_two_arg_direct_call_asm(
+    const c4c::backend::BackendModule& module,
+    const c4c::backend::ParsedBackendMinimalTwoArgDirectCallModuleView& slice) {
+  if (slice.helper == nullptr) {
+    throw c4c::backend::LirAdapterError(
+        c4c::backend::LirAdapterErrorKind::Unsupported,
+        "structured two-argument direct-call slice without helper metadata");
+  }
+
+  if (slice.lhs_call_arg_imm < std::numeric_limits<std::int32_t>::min() ||
+      slice.lhs_call_arg_imm > std::numeric_limits<std::int32_t>::max() ||
+      slice.rhs_call_arg_imm < std::numeric_limits<std::int32_t>::min() ||
+      slice.rhs_call_arg_imm > std::numeric_limits<std::int32_t>::max()) {
+    throw c4c::backend::LirAdapterError(
+        c4c::backend::LirAdapterErrorKind::Unsupported,
+        "two-argument direct-call immediates outside the minimal x86 slice range");
+  }
+
+  return emit_minimal_two_arg_direct_call_asm(
+      module,
+      MinimalTwoArgDirectCallSlice{
+          slice.helper->signature.name,
+          slice.lhs_call_arg_imm,
+          slice.rhs_call_arg_imm,
+      });
 }
 
 std::string emit_minimal_conditional_return_asm(
@@ -3015,7 +3028,7 @@ std::string emit_module(const c4c::backend::BackendModule& module,
         slice.has_value()) {
       return emit_minimal_direct_call_add_imm_asm(module, *slice);
     }
-    if (const auto slice = parse_minimal_two_arg_direct_call_slice(module);
+    if (const auto slice = c4c::backend::parse_backend_minimal_two_arg_direct_call_module(module);
         slice.has_value()) {
       return emit_minimal_two_arg_direct_call_asm(module, *slice);
     }
@@ -3147,7 +3160,7 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
         slice.has_value()) {
       return emit_minimal_direct_call_add_imm_asm(adapted, *slice);
     }
-    if (const auto slice = parse_minimal_two_arg_direct_call_slice(adapted);
+    if (const auto slice = c4c::backend::parse_backend_minimal_two_arg_direct_call_module(adapted);
         slice.has_value()) {
       return emit_minimal_two_arg_direct_call_asm(adapted, *slice);
     }

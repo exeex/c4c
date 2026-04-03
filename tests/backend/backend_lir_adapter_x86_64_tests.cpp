@@ -2543,28 +2543,44 @@ void test_x86_backend_scaffold_accepts_renamed_structured_two_arg_direct_call_ir
   }
 
   helper->signature.name = "sum_pair";
+  helper->signature.params[0].name = "%p.renamed.left";
+  helper->signature.params[1].name = "%p.renamed.right";
+  auto* add =
+      helper->blocks.empty() || helper->blocks.front().insts.empty()
+          ? nullptr
+          : std::get_if<c4c::backend::BackendBinaryInst>(&helper->blocks.front().insts.front());
   auto* call =
       main_fn->blocks.empty() || main_fn->blocks.front().insts.empty()
           ? nullptr
           : std::get_if<c4c::backend::BackendCallInst>(&main_fn->blocks.front().insts.front());
-  expect_true(call != nullptr,
-              "x86 renamed two-argument direct-call regression test needs the lowered backend call to mutate");
-  if (call == nullptr) {
+  expect_true(add != nullptr && call != nullptr,
+              "x86 renamed two-argument direct-call regression test needs the lowered helper add and backend call to mutate");
+  if (add == nullptr || call == nullptr) {
     return;
   }
+  add->lhs = "%p.renamed.left";
+  add->rhs = "%p.renamed.right";
+  add->result = "%t.helper.sum_pair.renamed";
+  helper->blocks.front().terminator.value = "%t.helper.sum_pair.renamed";
   call->callee.symbol_name = "sum_pair";
+  call->args[0].operand = "11";
+  call->args[1].operand = "13";
+  call->result = "%t.main.sum_pair.renamed";
+  main_fn->blocks.front().terminator.value = "%t.main.sum_pair.renamed";
 
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
   expect_contains(rendered, ".type sum_pair, %function",
                   "x86 backend seam should key the lowered two-argument helper definition from the structured callee symbol instead of a fixed helper name");
-  expect_contains(rendered, "mov edi, 5",
-                  "x86 backend seam should still materialize the renamed lowered first direct-call immediate from structured call metadata");
-  expect_contains(rendered, "mov esi, 7",
-                  "x86 backend seam should still materialize the renamed lowered second direct-call immediate from structured call metadata");
+  expect_contains(rendered, "sum_pair:\n  mov eax, edi\n  add eax, esi\n  ret\n",
+                  "x86 backend seam should keep renamed lowered two-argument helpers on the asm path when only the structured helper body contract still names the add slice");
+  expect_contains(rendered, "mov edi, 11",
+                  "x86 backend seam should still materialize the renamed lowered first direct-call immediate from structured call metadata after helper parameter and SSA renames");
+  expect_contains(rendered, "mov esi, 13",
+                  "x86 backend seam should still materialize the renamed lowered second direct-call immediate from structured call metadata after helper parameter and SSA renames");
   expect_contains(rendered, "call sum_pair",
-                  "x86 backend seam should still lower renamed structured two-argument direct calls when legacy call/signature text is cleared");
+                  "x86 backend seam should still lower renamed structured two-argument direct calls when the helper body contract only survives through shared lowering-owned metadata");
   expect_not_contains(rendered, "target triple =",
                       "x86 backend seam should not fall back when a renamed two-argument direct-call slice relies only on structured metadata");
 }
