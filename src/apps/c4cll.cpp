@@ -126,15 +126,12 @@ std::string normalize_aarch64_fallback_asm(std::string text) {
     if (value_load.rfind(value_prefix, 0) != 0) continue;
     const auto value_comma = value_load.find(", [");
     if (value_comma == std::string::npos) continue;
-    const auto value_reg = value_load.substr(value_prefix.size(),
-                                             value_comma - value_prefix.size());
     if (value_load.substr(value_comma + 3) != addr_reg + "]") continue;
 
     const auto indent_width = lines[i].find_first_not_of(' ');
     const std::string indent(indent_width == std::string::npos ? 0 : indent_width, ' ');
     lines[i] = indent + "adrp " + addr_reg + ", " + symbol;
-    lines[i + 1].clear();
-    lines[i + 2] = indent + "ldr " + value_reg + ", [" + addr_reg + ", :lo12:" + symbol + "]";
+    lines[i + 1] = indent + "add " + addr_reg + ", " + addr_reg + ", :lo12:" + symbol;
   }
 
   std::ostringstream normalized;

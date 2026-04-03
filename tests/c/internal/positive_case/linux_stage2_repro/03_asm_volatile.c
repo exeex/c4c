@@ -1,7 +1,9 @@
-#if defined(__clang__)
-#define CPU_RELAX_MNEMONIC "pause"  // clang rejects 'yield', so keep the host baseline green
-#else
+#if defined(__x86_64__) || defined(__i386__)
+#define CPU_RELAX_MNEMONIC "pause"
+#elif defined(__aarch64__) || defined(__arm__)
 #define CPU_RELAX_MNEMONIC "yield"
+#else
+#define CPU_RELAX_MNEMONIC "nop"
 #endif
 
 void cpu_relax(void) {

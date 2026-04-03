@@ -901,8 +901,14 @@ std::string StmtEmitter::emit_builtin_signbit_call(FnCtx& ctx, ExprId arg_id,
     int_ty = "i32";
     shift_bits = 31;
   } else if (arg_ts.base == TB_LONGDOUBLE) {
-    int_ty = "i80";
-    shift_bits = 79;
+    const std::string long_double_ty = llvm_helpers::llvm_long_double_ty(mod_.target_triple);
+    if (long_double_ty == "x86_fp80") {
+      int_ty = "i80";
+      shift_bits = 79;
+    } else {
+      int_ty = "i128";
+      shift_bits = 127;
+    }
   }
 
   const std::string bc = fresh_tmp(ctx);
