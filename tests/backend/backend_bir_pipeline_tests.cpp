@@ -130,6 +130,19 @@ void test_backend_bir_pipeline_routes_xor_through_bir_text_surface() {
                   "explicit BIR selection should keep the xor result on the BIR text path");
 }
 
+void test_backend_bir_pipeline_routes_shl_through_bir_text_surface() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_bir_return_shl_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Riscv64));
+
+  expect_contains(rendered, "bir.func @main() -> i32 {",
+                  "explicit BIR selection should preserve the tiny shl signature on the BIR text path");
+  expect_contains(rendered, "%t0 = bir.shl i32 3, 4",
+                  "explicit BIR selection should expose the widened shl slice on the BIR text path");
+  expect_contains(rendered, "bir.ret i32 %t0",
+                  "explicit BIR selection should keep the shl result on the BIR text path");
+}
+
 void test_backend_bir_pipeline_routes_sdiv_through_bir_text_surface() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_bir_return_sdiv_module()},
@@ -1178,6 +1191,7 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_backend_bir_pipeline_routes_and_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_or_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_xor_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_routes_shl_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_sdiv_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_udiv_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_srem_through_bir_text_surface);

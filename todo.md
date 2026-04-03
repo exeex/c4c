@@ -11,10 +11,33 @@ Source Plan: plan.md
 
 Current active item: Step 2, widen the bounded straight-line direct-BIR matcher
 with the next missing single-block shift opcode slice from the existing LIR
-surface. Next target: start with the constant-only integer `shl` route, then
-extend to adjacent `lshr` / `ashr` coverage if the same bounded matcher still
-holds. Keep that work scoped to the direct BIR text path without requiring
+surface. Completed the constant-only integer `shl` route. Next target: extend
+to adjacent `lshr`, then `ashr`, if the same bounded matcher still holds. Keep
+that work scoped to the direct BIR text path without requiring
 general multi-block BIR CFG support or any direct-BIR emitter widening.
+
+Completed this iteration:
+- Widened the bounded straight-line BIR scaffold with the missing constant-only
+  integer `shl` slice by adding `bir.shl` support in `bir.hpp`, `bir.cpp`, and
+  `lir_to_bir.cpp`, keeping it bounded to immediate integer arithmetic that
+  still linearizes into one BIR block.
+- Added backend BIR printer, lowering, and explicit BIR-pipeline regressions
+  via `make_bir_return_shl_module()`, proving the widened shift slice reaches
+  the BIR text surface as `%t0 = bir.shl i32 3, 4`.
+- Added source-level/default-route RISC-V coverage via
+  `tests/c/internal/backend_route_case/return_shl.c`, proving
+  `return 3 << 4;` defaults to the BIR pipeline instead of falling back to
+  legacy LLVM IR text.
+- Reconfigured and rebuilt the tree, reran
+  `ctest --test-dir build -R backend_bir_tests --output-on-failure`, reran the
+  new route case
+  `backend_codegen_route_riscv64_return_shl_defaults_to_bir`, then reran
+  `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `325/325` backend-labeled tests passing.
+- Refreshed `test_before.log` and `test_after.log` with full
+  `ctest --test-dir build -j8 --output-on-failure` runs and preserved monotonic
+  full-suite results (`2762 -> 2763` passed, `0 -> 0` failed, no newly failing
+  tests).
 
 Completed this iteration:
 - Widened the bounded straight-line BIR scaffold with the missing constant-only

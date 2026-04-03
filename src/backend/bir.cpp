@@ -64,6 +64,8 @@ std::string render_binary_opcode(BinaryOpcode opcode) {
       return "or";
     case BinaryOpcode::Xor:
       return "xor";
+    case BinaryOpcode::Shl:
+      return "shl";
     case BinaryOpcode::SDiv:
       return "sdiv";
     case BinaryOpcode::UDiv:
