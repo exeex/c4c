@@ -104,6 +104,19 @@ void test_backend_bir_pipeline_routes_sdiv_through_bir_text_surface() {
                   "explicit BIR selection should keep the signed-division result on the BIR text path");
 }
 
+void test_backend_bir_pipeline_routes_srem_through_bir_text_surface() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_bir_return_srem_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Riscv64));
+
+  expect_contains(rendered, "bir.func @main() -> i32 {",
+                  "explicit BIR selection should preserve the tiny signed-remainder signature on the BIR text path");
+  expect_contains(rendered, "%t0 = bir.srem i32 14, 5",
+                  "explicit BIR selection should expose the widened signed-remainder slice on the BIR text path");
+  expect_contains(rendered, "bir.ret i32 %t0",
+                  "explicit BIR selection should keep the signed-remainder result on the BIR text path");
+}
+
 void test_backend_bir_pipeline_routes_i8_chain_through_bir_text_surface() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_bir_i8_return_add_sub_chain_module()},
@@ -465,6 +478,7 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_backend_bir_pipeline_routes_zero_param_staged_constant_chain_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_mul_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_sdiv_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_routes_srem_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_i8_chain_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_i64_chain_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_single_param_chain_through_bir_text_surface);

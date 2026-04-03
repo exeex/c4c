@@ -76,6 +76,23 @@ void test_bir_printer_renders_minimal_sdiv_scaffold() {
                   "BIR printer should let signed-division results flow into returns");
 }
 
+void test_bir_printer_renders_minimal_srem_scaffold() {
+  using namespace c4c::backend::bir;
+
+  auto module = make_return_immediate_module();
+  auto& block = module.functions.front().blocks.front();
+  block.insts.push_back(
+      BinaryInst{BinaryOpcode::SRem, Value::named(TypeKind::I32, "%t0"),
+                 Value::immediate_i32(14), Value::immediate_i32(5)});
+  block.terminator.value = Value::named(TypeKind::I32, "%t0");
+
+  const auto rendered = c4c::backend::bir::print(module);
+  expect_contains(rendered, "%t0 = bir.srem i32 14, 5",
+                  "BIR printer should render explicit signed remainder instructions in BIR terms");
+  expect_contains(rendered, "bir.ret i32 %t0",
+                  "BIR printer should let signed-remainder results flow into returns");
+}
+
 void test_bir_printer_renders_minimal_return_immediate_scaffold() {
   const auto rendered = c4c::backend::bir::print(make_return_immediate_module());
 
@@ -210,6 +227,16 @@ void test_bir_lowering_accepts_tiny_return_sdiv_lir_slice() {
                   "BIR lowering should return the named BIR signed-division result");
 }
 
+void test_bir_lowering_accepts_tiny_return_srem_lir_slice() {
+  const auto lowered = c4c::backend::lower_to_bir(make_bir_return_srem_module());
+  const auto rendered = c4c::backend::bir::print(lowered);
+
+  expect_contains(rendered, "%t0 = bir.srem i32 14, 5",
+                  "BIR lowering should materialize the tiny signed-remainder slice in BIR terms");
+  expect_contains(rendered, "bir.ret i32 %t0",
+                  "BIR lowering should return the named BIR signed-remainder result");
+}
+
 void test_bir_lowering_accepts_straight_line_add_sub_chain() {
   const auto lowered = c4c::backend::lower_to_bir(make_bir_return_add_sub_chain_module());
   const auto rendered = c4c::backend::bir::print(lowered);
@@ -335,6 +362,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_printer_renders_minimal_sub_scaffold);
   RUN_TEST(test_bir_printer_renders_minimal_mul_scaffold);
   RUN_TEST(test_bir_printer_renders_minimal_sdiv_scaffold);
+  RUN_TEST(test_bir_printer_renders_minimal_srem_scaffold);
   RUN_TEST(test_bir_printer_renders_minimal_return_immediate_scaffold);
   RUN_TEST(test_bir_printer_renders_i8_scaffold);
   RUN_TEST(test_bir_printer_renders_i64_scaffold);
@@ -345,6 +373,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_tiny_return_sub_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_mul_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_sdiv_lir_slice);
+  RUN_TEST(test_bir_lowering_accepts_tiny_return_srem_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_straight_line_add_sub_chain);
   RUN_TEST(test_bir_lowering_accepts_i8_add_sub_chain);
   RUN_TEST(test_bir_lowering_accepts_i64_add_sub_chain);

@@ -60,6 +60,8 @@ std::string render_binary_opcode(BinaryOpcode opcode) {
       return "mul";
     case BinaryOpcode::SDiv:
       return "sdiv";
+    case BinaryOpcode::SRem:
+      return "srem";
   }
   return "<unknown>";
 }
