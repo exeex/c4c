@@ -13,11 +13,50 @@ Current active item: Step 2, continue tightening the widened-width/source-level
 `unsigned char` route matrix by carrying the remaining `i32` split-predecessor
 compare/select join-tail variants into the `u8` route checks one bounded slice
 at a time.
-Next target: audit the widened-`i8` deeper-then-mixed predecessor-arm
-compare/select with the adjacent join-local post-add-sub-add tail
+Next target: add the widened-`i8` deeper-then-mixed predecessor-arm
+compare/select route check for the adjacent join-local post-add-sub-add tail
 (`x == y ? x + 8 - 3 + 5 : y + 11 - 4`, then `+ 6 - 2 + 9`) and keep the slice
 within Step 2 conditional backend-route parity after the now-validated
 post-add-sub variant.
+
+Completed this iteration:
+- Audited the widened-width/source-level two-parameter `unsigned char`
+  deeper-then-mixed predecessor-arm compare/select wrapper with the adjacent
+  join-local post-add-sub-add tail, and confirmed the default `--codegen asm`
+  route already stays on the direct BIR pipeline for
+  `unsigned char choose2_deeper_post_chain_tail_u(unsigned char x, unsigned char y) { return (unsigned char)((x == y ? x + 8 - 3 + 5 : y + 11 - 4) + 6 - 2 + 9); }`;
+  no `src/backend/lowering/lir_to_bir.cpp` change was required for this slice.
+- Added
+  `tests/c/internal/backend_route_case/two_param_u8_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_add.c`,
+  proving the bounded two-parameter `u8` deeper-then-mixed predecessor-arm
+  post-add-sub-add join-tail wrapper reaches the backend through BIR instead of
+  legacy LLVM IR text.
+- Registered
+  `backend_codegen_route_riscv64_two_param_u8_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_add_defaults_to_bir`
+  in `tests/c/internal/InternalTests.cmake`, asserting the emitted text
+  contains `bir.func @choose2_deeper_post_chain_tail_u(i8 %p.x, i8 %p.y) -> i8 {`,
+  `%t11 = bir.add i8 %p.x, 8`, `%t12 = bir.sub i8 %t11, 3`,
+  `%t13 = bir.add i8 %t12, 5`, `%t15 = bir.add i8 %p.y, 11`,
+  `%t16 = bir.sub i8 %t15, 4`, `%t17 = bir.select eq i8 %p.x, %p.y, %t13, %t16`,
+  `%t18 = bir.add i8 %t17, 6`, `%t19 = bir.sub i8 %t18, 2`,
+  `%t20 = bir.add i8 %t19, 9`, and forbids legacy LLVM IR
+  `define i8 @choose2_deeper_post_chain_tail_u(i8 %p.x, i8 %p.y)`.
+- Reconfigured and rebuilt the tree, reran
+  `backend_codegen_route_riscv64_two_param_u8_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_add_defaults_to_bir`,
+  reran `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `354/354` backend-labeled tests passing, then refreshed
+  `test_fail_after.log` with a full `ctest --test-dir build -j8 --output-on-failure`
+  run and passed the regression guard against `test_fail_before.log` with
+  `--allow-non-decreasing-passed --timeout-threshold 30 --enforce-timeout`
+  (`2782 -> 2792` passed, `0 -> 0` failed, no newly failing tests, no new
+  `>30s` cases).
+
+Current active item: Step 2, re-audit the widened-width/source-level
+`unsigned char` compare/select matrix against the already-covered `i32`
+split-predecessor variants and identify the next bounded parity slice.
+Next target: confirm whether any emitter-facing `i32` split-predecessor
+compare/select backend-route cases still lack widened-`u8` coverage before
+adding the next route assertion.
 
 Completed this iteration:
 - Audited the widened-width/source-level two-parameter `unsigned char`
