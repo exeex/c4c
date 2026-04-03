@@ -2207,6 +2207,20 @@ void test_adapter_normalizes_small_integer_cast_constant_conditional_goto_return
                       "adapter should eliminate the resolved small-integer-cast branch-only goto chain from the lowered backend IR");
 }
 
+void test_adapter_normalizes_truncating_binop_constant_conditional_goto_return_slice() {
+  const auto adapted = c4c::backend::lower_to_backend_ir(
+      make_truncating_binop_constant_conditional_goto_return_module());
+  const auto rendered = c4c::backend::render_module(adapted);
+  expect_contains(rendered, "define i32 @main()",
+                  "adapter should preserve the truncating-binop constant-conditional goto function signature");
+  expect_contains(rendered, "ret i32 0",
+                  "adapter should collapse the selected truncating-binop constant-conditional goto chain into a direct return");
+  expect_not_contains(rendered, "br i1",
+                      "adapter should eliminate the resolved truncating-binop conditional branch from the lowered backend IR");
+  expect_not_contains(rendered, "br label",
+                      "adapter should eliminate the resolved truncating-binop branch-only goto chain from the lowered backend IR");
+}
+
 void test_adapter_normalizes_countdown_while_return_slice() {
   const auto adapted =
       c4c::backend::lower_to_backend_ir(make_countdown_while_return_module());
@@ -2760,6 +2774,7 @@ int main(int argc, char* argv[]) {
   test_adapter_normalizes_i64_constant_conditional_goto_return_slice();
   test_adapter_normalizes_mixed_cast_constant_conditional_goto_return_slice();
   test_adapter_normalizes_small_integer_cast_constant_conditional_goto_return_slice();
+  test_adapter_normalizes_truncating_binop_constant_conditional_goto_return_slice();
   test_adapter_normalizes_countdown_while_return_slice();
   test_adapter_normalizes_typed_countdown_while_return_slice();
   test_adapter_normalizes_countdown_do_while_return_slice();

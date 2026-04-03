@@ -421,6 +421,87 @@ std::optional<ResolvedInteger> evaluate_integer_cast(c4c::codegen::lir::LirCastK
   }
 }
 
+std::optional<ResolvedInteger> evaluate_integer_binary(
+    const c4c::codegen::lir::LirBinOp& bin,
+    const ResolvedInteger& lhs,
+    const ResolvedInteger& rhs) {
+  const auto bit_width = parse_integer_bit_width(bin.type_str);
+  const auto opcode = bin.opcode.typed();
+  if (!bit_width.has_value() || !opcode.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto lhs_bits = truncate_integer_bits(lhs.bits, *bit_width);
+  const auto rhs_bits = truncate_integer_bits(rhs.bits, *bit_width);
+  const auto rhs_shift = static_cast<unsigned>(rhs_bits);
+  switch (*opcode) {
+    case c4c::codegen::lir::LirBinaryOpcode::Add:
+      return ResolvedInteger{truncate_integer_bits(lhs_bits + rhs_bits, *bit_width), *bit_width};
+    case c4c::codegen::lir::LirBinaryOpcode::Sub:
+      return ResolvedInteger{truncate_integer_bits(lhs_bits - rhs_bits, *bit_width), *bit_width};
+    case c4c::codegen::lir::LirBinaryOpcode::Mul:
+      return ResolvedInteger{truncate_integer_bits(lhs_bits * rhs_bits, *bit_width), *bit_width};
+    case c4c::codegen::lir::LirBinaryOpcode::SDiv: {
+      const auto rhs_signed = render_signed_integer_value({rhs_bits, *bit_width}, *bit_width);
+      if (rhs_signed == 0) {
+        return std::nullopt;
+      }
+      const auto lhs_signed = render_signed_integer_value({lhs_bits, *bit_width}, *bit_width);
+      const auto result = lhs_signed / rhs_signed;
+      return ResolvedInteger{truncate_integer_bits(static_cast<std::uint64_t>(result), *bit_width),
+                             *bit_width};
+    }
+    case c4c::codegen::lir::LirBinaryOpcode::UDiv:
+      if (rhs_bits == 0) {
+        return std::nullopt;
+      }
+      return ResolvedInteger{lhs_bits / rhs_bits, *bit_width};
+    case c4c::codegen::lir::LirBinaryOpcode::SRem: {
+      const auto rhs_signed = render_signed_integer_value({rhs_bits, *bit_width}, *bit_width);
+      if (rhs_signed == 0) {
+        return std::nullopt;
+      }
+      const auto lhs_signed = render_signed_integer_value({lhs_bits, *bit_width}, *bit_width);
+      const auto result = lhs_signed % rhs_signed;
+      return ResolvedInteger{truncate_integer_bits(static_cast<std::uint64_t>(result), *bit_width),
+                             *bit_width};
+    }
+    case c4c::codegen::lir::LirBinaryOpcode::URem:
+      if (rhs_bits == 0) {
+        return std::nullopt;
+      }
+      return ResolvedInteger{lhs_bits % rhs_bits, *bit_width};
+    case c4c::codegen::lir::LirBinaryOpcode::And:
+      return ResolvedInteger{lhs_bits & rhs_bits, *bit_width};
+    case c4c::codegen::lir::LirBinaryOpcode::Or:
+      return ResolvedInteger{lhs_bits | rhs_bits, *bit_width};
+    case c4c::codegen::lir::LirBinaryOpcode::Xor:
+      return ResolvedInteger{lhs_bits ^ rhs_bits, *bit_width};
+    case c4c::codegen::lir::LirBinaryOpcode::Shl:
+      if (rhs_shift >= *bit_width) {
+        return std::nullopt;
+      }
+      return ResolvedInteger{truncate_integer_bits(lhs_bits << rhs_shift, *bit_width), *bit_width};
+    case c4c::codegen::lir::LirBinaryOpcode::LShr:
+      if (rhs_shift >= *bit_width) {
+        return std::nullopt;
+      }
+      return ResolvedInteger{lhs_bits >> rhs_shift, *bit_width};
+    case c4c::codegen::lir::LirBinaryOpcode::AShr:
+      if (rhs_shift >= *bit_width) {
+        return std::nullopt;
+      }
+      return ResolvedInteger{
+          truncate_integer_bits(static_cast<std::uint64_t>(
+                                    render_signed_integer_value({lhs_bits, *bit_width}, *bit_width) >>
+                                    rhs_shift),
+                                *bit_width),
+          *bit_width};
+    default:
+      return std::nullopt;
+  }
+}
+
 std::optional<std::vector<BackendBinaryInst>> adapt_conditional_phi_join_predecessor_compute_chain(
     const c4c::codegen::lir::LirBlock& block,
     std::string_view expected_result) {
@@ -1813,6 +1894,7 @@ std::optional<BackendFunction> adapt_goto_only_constant_return_function(
 
   std::unordered_map<std::string, bool> visited;
   std::string current_label = function.blocks.front().label;
+  bool saw_conditional_branch = false;
   for (std::size_t steps = 0; steps < function.blocks.size(); ++steps) {
     if (visited.find(current_label) != visited.end()) {
       return std::nullopt;
@@ -1895,6 +1977,7 @@ std::optional<BackendFunction> adapt_constant_conditional_goto_return_function(
 
   std::unordered_map<std::string, bool> visited;
   std::string current_label = function.blocks.front().label;
+  bool saw_conditional_branch = false;
   for (std::size_t steps = 0; steps < function.blocks.size(); ++steps) {
     if (visited.find(current_label) != visited.end()) {
       return std::nullopt;
@@ -1925,6 +2008,20 @@ std::optional<BackendFunction> adapt_constant_conditional_goto_return_function(
         continue;
       }
 
+      if (const auto* bin = std::get_if<LirBinOp>(&inst)) {
+        const auto lhs = resolve_int(bin->lhs);
+        const auto rhs = resolve_int(bin->rhs);
+        if (!lhs.has_value() || !rhs.has_value()) {
+          return std::nullopt;
+        }
+        const auto bin_value = evaluate_integer_binary(*bin, *lhs, *rhs);
+        if (!bin_value.has_value()) {
+          return std::nullopt;
+        }
+        integer_values[bin->result] = *bin_value;
+        continue;
+      }
+
       if (const auto* cast = std::get_if<LirCastOp>(&inst)) {
         std::optional<ResolvedInteger> operand;
         if (cast->from_type == "i1") {
@@ -1950,7 +2047,7 @@ std::optional<BackendFunction> adapt_constant_conditional_goto_return_function(
     }
 
     if (const auto* ret = std::get_if<LirRet>(&block.terminator)) {
-      if (!ret->value_str.has_value() || ret->type_str != "i32") {
+      if (!saw_conditional_branch || !ret->value_str.has_value() || ret->type_str != "i32") {
         return std::nullopt;
       }
       const auto return_value = resolve_int(*ret->value_str);
@@ -1978,6 +2075,7 @@ std::optional<BackendFunction> adapt_constant_conditional_goto_return_function(
       if (!cond.has_value()) {
         return std::nullopt;
       }
+      saw_conditional_branch = true;
       current_label = *cond ? condbr->true_label : condbr->false_label;
       continue;
     }
