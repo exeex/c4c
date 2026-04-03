@@ -159,6 +159,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     qualified_operator_template_owner_parse
     qualified_variable_template_compare_parse
     qualified_trait_value_template_arg_parse
+    qualified_template_call_template_arg_parse
     template_known_type_arg_fast_path_parse
     step3_timeout_probe_baseline_parse
     tuple_element_alias_mix_parse
@@ -1582,6 +1583,20 @@ add_test(
           -P "${PROJECT_SOURCE_DIR}/tests/cpp/internal/run_qualified_known_type_arg_perf.cmake"
 )
 set_tests_properties(cpp_qualified_known_type_arg_perf PROPERTIES
+  LABELS "internal;positive_case;cpp;workflow;parser_perf"
+  TIMEOUT 15
+)
+
+add_test(
+  NAME cpp_qualified_template_call_template_arg_perf
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DBINARY_DIR=${PROJECT_BINARY_DIR}
+          -DREPEAT_COUNT=5000
+          -DEXPECT_TIMEOUT_SEC=5
+          -P "${PROJECT_SOURCE_DIR}/tests/cpp/internal/run_qualified_template_call_template_arg_perf.cmake"
+)
+set_tests_properties(cpp_qualified_template_call_template_arg_perf PROPERTIES
   LABELS "internal;positive_case;cpp;workflow;parser_perf"
   TIMEOUT 15
 )

@@ -255,7 +255,7 @@ bool Parser::is_clearly_value_template_arg(const Node* primary_tpl, int arg_idx,
             primary_tpl->template_param_is_nttp &&
             primary_tpl->template_param_is_nttp[arg_idx];
     }
-    if (starts_with_value_like_template_expr(tokens_, pos_)) return true;
+    if (starts_with_value_like_template_expr(*this, tokens_, pos_)) return true;
     return expect_value && (
         check(TokenKind::IntLit) || check(TokenKind::CharLit) ||
         check(TokenKind::KwTrue) || check(TokenKind::KwFalse) ||

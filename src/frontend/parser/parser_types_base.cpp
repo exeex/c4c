@@ -30,7 +30,7 @@ bool Parser::is_type_start() const {
     if (k == TokenKind::KwTypename) return true;
     if (k == TokenKind::Identifier) {
         if (is_concept_name(cur().lexeme)) return false;
-        if (starts_with_value_like_template_expr(tokens_, pos_)) return false;
+        if (starts_with_value_like_template_expr(*this, tokens_, pos_)) return false;
         if (match_floatn_keyword_base(cur().lexeme, nullptr)) return true;
         if (is_template_scope_type_param(cur().lexeme)) return true;
         if (is_typedef_name(cur().lexeme)) return true;

@@ -7,11 +7,10 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 3: Object lifetime and tuple layer
-- Current slice: reduce the remaining Step 3 timeout after the new
-  qualified-known-type template-argument fast path, starting from the still
-  unresolved `EASTL/meta.h`, `EASTL/utility.h`, and later
-  `/usr/include/c++/14/type_traits` parser pressure that remains after the new
-  parser shortcut was isolated and guarded
+- Current slice: reduce the remaining Step 3 timeout after the new call-like
+  template-argument shortcut, starting from the still unresolved later
+  `bits/stl_pair.h`, `/usr/include/c++/14/utility`, and
+  `EASTL/tuple.h` parser pressure now reached by the Step 3 timeout probes
 
 ## Todo
 
@@ -259,14 +258,38 @@ Source Plan: plan.md
   pre-existing failures (`positive_sema_linux_stage2_repro_03_asm_volatile_c`,
   `backend_lir_adapter_aarch64_tests`, and
   `llvm_gcc_c_torture_src_20080502_1_c`)
+- [x] Added
+  `tests/cpp/internal/postive_case/qualified_template_call_template_arg_parse.cpp`
+  as a parse-only regression for call-like qualified template expressions such
+  as `chooser_t<U1, U2>::template check<U1, U2>()` inside template argument
+  lists
+- [x] Added `cpp_qualified_template_call_template_arg_perf` with
+  `tests/cpp/internal/run_qualified_template_call_template_arg_perf.cmake` as a
+  parser-perf guard for repeated pair-style
+  `_PCCFP<...>::template _ConstructiblePair<...>()` argument shapes
+- [x] Generalized the shared value-like template-expression shortcut so
+  call-like identifier / qualified-template chains that end in `(` skip the
+  speculative type-id probe and go straight to non-type parsing
+- [x] Re-ran the focused new guardrails plus 15s Step 3 parser-debug probes:
+  `eastl_memory_simple.cpp` and `eastl_tuple_simple.cpp` still time out, but
+  the old `type_traits` / early `stl_pair.h` frontier now advances through
+  later `bits/stl_pair.h`, `/usr/include/c++/14/utility`, and back into
+  `EASTL/tuple.h`
+- [x] Re-ran the full suite after the call-like template-argument shortcut
+  slice; the tree stayed monotonic at 2709 total tests with 2706 passes and
+  the same three pre-existing failures
+  (`positive_sema_linux_stage2_repro_03_asm_volatile_c`,
+  `backend_lir_adapter_aarch64_tests`, and
+  `llvm_gcc_c_torture_src_20080502_1_c`)
 
 ## Next Slice
 
 - reduce the post-qualified-type-fast-path Step 3 frontier from the remaining
   `eastl_memory_simple.cpp` and `eastl_tuple_simple.cpp` parse-time stalls,
-  starting from the current 12s parser-debug hotspots in `EASTL/meta.h`,
-  `EASTL/utility.h`, and later `/usr/include/c++/14/type_traits` work around
-  `:1454`, `:2571`, and `:3244`
+  starting from the newer 15s parser-debug hotspots in
+  `/usr/include/c++/14/bits/stl_pair.h`, `/usr/include/c++/14/utility`, and
+  `ref/EASTL/include/EASTL/tuple.h` after the call-like template-argument
+  shortcut moved the old pair-constraint probe later
 - reduce the timeout-only `eastl_vector_simple.cpp` frontier from the later
   EASTL-side hotspots now reached in `EASTL/internal/fill_help.h`,
   `EASTL/functional.h`, and `EASTL/meta.h`, then capture the next smaller
@@ -290,6 +313,10 @@ Source Plan: plan.md
   green as the guardrail for the new `Trait<...>::value` template-argument /
   type-start disambiguation shortcut
 - keep
+  `tests/cpp/internal/postive_case/qualified_template_call_template_arg_parse.cpp`
+  green as the guardrail for call-like qualified template expressions inside
+  template argument lists
+- keep
   `tests/cpp/internal/postive_case/qualified_variable_template_requires_parse.cpp`
   green as the guardrail for qualified `_v` variable-template expressions in
   requires clauses
@@ -300,6 +327,9 @@ Source Plan: plan.md
 - keep `cpp_typedef_owned_functional_cast_perf` green as the amplified parser
   perf guardrail for the shared `value_type()` / `static_cast<value_type>(0)`
   timeout shape
+- keep `cpp_qualified_template_call_template_arg_perf` green as the amplified
+  parser perf guardrail for repeated pair-style template function-call
+  arguments
 
 ## Blockers
 
@@ -328,6 +358,11 @@ Source Plan: plan.md
   `cpp_qualified_known_type_arg_perf`, but the 12s Step 3 probes still time
   out after reaching later `type_traits` work rather than exposing a new small
   reproducer
+- the new call-like template-argument shortcut is now covered by
+  `qualified_template_call_template_arg_parse.cpp` plus
+  `cpp_qualified_template_call_template_arg_perf`, but the 20s
+  `--parse-only` Step 3 probes still time out with no terminal diagnostic even
+  after the frontier moved past the old pair-constraint cluster
 - after the new fast path, `eastl_memory_simple.cpp` currently reaches
   `EASTL/meta.h`, `EASTL/utility.h`, and later `/usr/include/c++/14/type_traits`
   work around `:1454` and `:2571` before timing out
@@ -370,6 +405,16 @@ Source Plan: plan.md
   `/usr/include/c++/14/type_traits` work; the current 12s heartbeat now reaches
   later `typename`-started template arguments near `:2674` and initializer work
   near `:3308` before the timeout
+- after the new call-like template-argument shortcut, the current 15s
+  `eastl_tuple_simple.cpp` heartbeat reaches
+  `/usr/include/c++/14/bits/stl_pair.h:162`,
+  `/usr/include/c++/14/utility:135`, and later
+  `ref/EASTL/include/EASTL/tuple.h:454` / `:874` before timing out
+- after the new call-like template-argument shortcut, the current 15s
+  `eastl_memory_simple.cpp` heartbeat reaches
+  `/usr/include/c++/14/bits/stl_pair.h:165` / `:1269`,
+  `/usr/include/c++/14/utility:130`, and later
+  `ref/EASTL/include/EASTL/tuple.h:404` before timing out
 - `eastl_vector_simple.cpp` still times out, but the current 12s heartbeat now
   reaches later EASTL-side parser pressure in
   `ref/EASTL/include/EASTL/internal/fill_help.h`,

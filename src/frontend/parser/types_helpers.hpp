@@ -104,9 +104,19 @@ bool token_can_follow_value_like_template_arg(TokenKind kind) {
     }
 }
 
-bool starts_with_value_like_template_expr(const std::vector<Token>& tokens, int pos) {
+bool is_known_simple_type_head(const Parser& parser, const std::string& name) {
+    if (match_floatn_keyword_base(name, nullptr)) return true;
+    if (parser.is_template_scope_type_param(name)) return true;
+    if (parser.is_typedef_name(name)) return true;
+    return parser.typedef_types_.count(parser.resolve_visible_type_name(name)) > 0;
+}
+
+bool starts_with_value_like_template_expr(const Parser& parser,
+                                          const std::vector<Token>& tokens,
+                                          int pos) {
     if (pos < 0 || pos >= static_cast<int>(tokens.size())) return false;
 
+    const int start_pos = pos;
     if (tokens[pos].kind == TokenKind::ColonColon) ++pos;
     if (pos >= static_cast<int>(tokens.size()) ||
         tokens[pos].kind != TokenKind::Identifier) {
@@ -118,6 +128,10 @@ bool starts_with_value_like_template_expr(const std::vector<Token>& tokens, int 
                name.compare(name.size() - 2, 2, "_v") == 0;
     };
 
+    bool saw_scope = tokens[start_pos].kind == TokenKind::ColonColon;
+    const bool first_identifier_is_known_type =
+        is_known_simple_type_head(parser, tokens[pos].lexeme);
+
     while (pos < static_cast<int>(tokens.size())) {
         const std::string current_name = tokens[pos].lexeme;
         ++pos;  // identifier
@@ -128,6 +142,11 @@ bool starts_with_value_like_template_expr(const std::vector<Token>& tokens, int 
             if (!skip_balanced_template_arg_tokens(tokens, &pos)) {
                 return false;
             }
+        }
+
+        if (pos < static_cast<int>(tokens.size()) &&
+            tokens[pos].kind == TokenKind::LParen) {
+            return saw_scope || saw_template_args || !first_identifier_is_known_type;
         }
 
         if (pos >= static_cast<int>(tokens.size())) {
@@ -142,6 +161,7 @@ bool starts_with_value_like_template_expr(const std::vector<Token>& tokens, int 
         }
 
         ++pos;  // ::
+        saw_scope = true;
         if (pos < static_cast<int>(tokens.size()) &&
             tokens[pos].kind == TokenKind::KwTemplate) {
             ++pos;
