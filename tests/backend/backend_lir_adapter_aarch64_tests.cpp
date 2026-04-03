@@ -2841,12 +2841,39 @@ void test_aarch64_backend_renders_extern_decl_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_extern_decl_call_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-  expect_contains(rendered, "declare i32 @helper_ext(i32)\n",
-                  "aarch64 backend should render inferred extern declaration parameter types");
-  expect_contains(rendered, "define i32 @main()\n{\nentry:\n  %t0 = call i32 @helper_ext(i32 5)\n",
-                  "aarch64 backend should preserve direct calls that target extern declarations");
-  expect_contains(rendered, "ret i32 %t0",
-                  "aarch64 backend should preserve the extern call result");
+  expect_contains(rendered, ".text\n",
+                  "aarch64 backend should keep minimal extern declarations on the direct asm path");
+  expect_contains(rendered, ".globl main\n",
+                  "aarch64 backend should still publish main as the entry symbol for direct extern calls");
+  expect_contains(rendered, "  mov w0, #5\n",
+                  "aarch64 backend should decode the inferred extern i32 argument through the shared declared direct-call path");
+  expect_contains(rendered, "  bl helper_ext\n",
+                  "aarch64 backend should preserve the direct extern helper call on the asm path");
+  expect_not_contains(rendered, "define i32 @main()",
+                      "aarch64 backend should not fall back to backend IR text for minimal extern declarations");
+}
+
+void test_aarch64_backend_explicit_emit_surface_matches_structured_declared_direct_call_path() {
+  const auto module = make_extern_decl_call_module();
+  auto lowered = c4c::backend::lower_to_backend_ir(module);
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  const auto direct_rendered = c4c::backend::aarch64::emit_module(module);
+  const auto lowered_rendered = c4c::backend::aarch64::emit_module(lowered);
+  const auto backend_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  expect_true(direct_rendered == lowered_rendered,
+              "aarch64 explicit LIR emit surface should stay aligned with the structured declared direct-call backend path");
+  expect_true(direct_rendered == backend_rendered,
+              "aarch64 backend selection should keep minimal extern-decl LIR slices on the same declared direct-call asm path");
+  expect_contains(direct_rendered, "  mov w0, #5\n",
+                  "aarch64 explicit LIR emit surface should preserve the declared direct-call argument");
+  expect_contains(direct_rendered, "  bl helper_ext\n",
+                  "aarch64 explicit LIR emit surface should preserve the declared direct helper symbol");
+  expect_not_contains(direct_rendered, "define i32 @main()",
+                      "aarch64 explicit emit surfaces should stay on assembly output for structured declared direct calls");
 }
 
 void test_aarch64_backend_renders_extern_global_load_slice() {
@@ -4748,6 +4775,7 @@ void run_aarch64_backend_tests() {
   // test_aarch64_backend_renders_global_store_reload_slice();
   // test_aarch64_backend_renders_string_pool_slice();
   test_aarch64_backend_renders_extern_decl_slice();
+  test_aarch64_backend_explicit_emit_surface_matches_structured_declared_direct_call_path();
   test_aarch64_backend_renders_extern_global_load_slice();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_global_load_ir_input();
   test_aarch64_backend_scaffold_accepts_structured_global_load_ir_without_compatibility_shims();
