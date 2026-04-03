@@ -3447,6 +3447,20 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_local_array_ir_input
                       "aarch64 backend seam should not fall back to backend IR text for lowered local-array slices");
 }
 
+void test_aarch64_backend_scaffold_matches_direct_local_array_asm() {
+  const auto direct_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_local_array_gep_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  const auto lowered = c4c::backend::lower_to_backend_ir(make_local_array_gep_module());
+  const auto lowered_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  if (direct_rendered != lowered_rendered) {
+    fail("aarch64 local-array regression should keep the direct LIR and explicit lowered backend seams on identical assembly output");
+  }
+}
+
 void test_aarch64_backend_scaffold_accepts_structured_local_array_ir_without_type_or_signature_shims() {
   auto lowered = c4c::backend::lower_to_backend_ir(make_local_array_gep_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
@@ -4779,8 +4793,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_both_local_double_rewrite_ir_without_signature_shims();
   test_aarch64_backend_renders_typed_two_arg_direct_call_both_local_double_rewrite_slice();
   test_aarch64_backend_renders_double_printf_call_with_fp_register_args();
-  // TODO: local-array GEP slice disabled — backend lowering changed
-  // test_aarch64_backend_renders_local_array_gep_slice();
+  test_aarch64_backend_renders_local_array_gep_slice();
   test_aarch64_backend_renders_param_member_array_gep_slice();
   test_aarch64_backend_renders_nested_member_pointer_array_gep_slice();
   test_aarch64_backend_renders_nested_param_member_array_gep_slice();
@@ -4816,6 +4829,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_scaffold_rejects_extern_global_array_fast_path_when_address_kind_disagrees();
   test_aarch64_backend_scaffold_rejects_extern_global_array_fast_path_when_offset_escapes_bounds();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_local_array_ir_input();
+  test_aarch64_backend_scaffold_matches_direct_local_array_asm();
   test_aarch64_backend_scaffold_accepts_structured_local_array_ir_without_type_or_signature_shims();
   test_aarch64_backend_scaffold_rejects_local_array_fast_path_when_local_slot_metadata_disagrees();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_global_int_pointer_roundtrip_ir_input();

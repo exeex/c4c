@@ -1881,138 +1881,6 @@ std::optional<MinimalStringLiteralCharSlice> parse_minimal_string_literal_char_s
   };
 }
 
-std::optional<MinimalLocalArraySlice> parse_minimal_local_array_slice(
-    const c4c::codegen::lir::LirModule& module) {
-  using namespace c4c::codegen::lir;
-
-  if (module.functions.size() != 1 || !module.globals.empty() ||
-      !module.string_pool.empty() || !module.extern_decls.empty()) {
-    return std::nullopt;
-  }
-
-  const auto& function = module.functions.front();
-  if (function.is_declaration ||
-      !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(function.signature_text) ||
-      function.entry.value != 0 || function.blocks.size() != 1 ||
-      function.alloca_insts.size() != 1 || !function.stack_objects.empty()) {
-    return std::nullopt;
-  }
-
-  const auto* alloca = std::get_if<LirAllocaOp>(&function.alloca_insts.front());
-  if (alloca == nullptr || alloca->type_str != "[2 x i32]" || !alloca->count.empty()) {
-    return std::nullopt;
-  }
-
-  const auto& entry = function.blocks.front();
-  if (entry.label != "entry" || entry.insts.empty()) {
-    return std::nullopt;
-  }
-
-  std::unordered_map<std::string, std::int64_t> widened_indices;
-  std::unordered_map<std::string, std::int64_t> local_ptr_offsets;
-  std::vector<std::pair<std::int64_t, std::int64_t>> stores;
-  std::vector<std::int64_t> loads;
-  std::string add_result;
-
-  for (const auto& inst : entry.insts) {
-    if (const auto* gep = std::get_if<LirGepOp>(&inst)) {
-      if (gep->element_type == "[2 x i32]" && gep->ptr == alloca->result &&
-          gep->indices.size() == 2 && gep->indices[0] == "i64 0" &&
-          gep->indices[1] == "i64 0") {
-        local_ptr_offsets[gep->result] = 0;
-        continue;
-      }
-
-      if (gep->element_type == "i32" && gep->indices.size() == 1) {
-        const auto base = local_ptr_offsets.find(gep->ptr);
-        const auto typed_index = strip_typed_operand_prefix(gep->indices.front(), "i64");
-        if (base == local_ptr_offsets.end() || !typed_index.has_value()) {
-          return std::nullopt;
-        }
-        std::int64_t index = 0;
-        if (const auto imm = parse_i64(*typed_index); imm.has_value()) {
-          index = *imm;
-        } else {
-          const auto widened = widened_indices.find(std::string(*typed_index));
-          if (widened == widened_indices.end()) {
-            return std::nullopt;
-          }
-          index = widened->second;
-        }
-        if (index < 0 || index > 1) {
-          return std::nullopt;
-        }
-        local_ptr_offsets[gep->result] = base->second + index * 4;
-        continue;
-      }
-
-      return std::nullopt;
-    }
-
-    if (const auto* cast = std::get_if<LirCastOp>(&inst)) {
-      if (cast->kind != LirCastKind::SExt || cast->from_type != "i32" ||
-          cast->to_type != "i64") {
-        return std::nullopt;
-      }
-      const auto imm = parse_i64(cast->operand);
-      if (!imm.has_value()) {
-        return std::nullopt;
-      }
-      widened_indices[cast->result] = *imm;
-      continue;
-    }
-
-    if (const auto* store = std::get_if<LirStoreOp>(&inst)) {
-      if (store->type_str != "i32") {
-        return std::nullopt;
-      }
-      const auto ptr = local_ptr_offsets.find(store->ptr);
-      const auto imm = parse_i64(store->val);
-      if (ptr == local_ptr_offsets.end() || !imm.has_value()) {
-        return std::nullopt;
-      }
-      stores.push_back({ptr->second, *imm});
-      continue;
-    }
-
-    if (const auto* load = std::get_if<LirLoadOp>(&inst)) {
-      if (load->type_str != "i32") {
-        return std::nullopt;
-      }
-      const auto ptr = local_ptr_offsets.find(load->ptr);
-      if (ptr == local_ptr_offsets.end()) {
-        return std::nullopt;
-      }
-      loads.push_back(ptr->second);
-      continue;
-    }
-
-    if (const auto* add = std::get_if<LirBinOp>(&inst)) {
-      if (add->opcode != "add" || add->type_str != "i32") {
-        return std::nullopt;
-      }
-      add_result = add->result;
-      continue;
-    }
-
-    return std::nullopt;
-  }
-
-  const auto* ret = std::get_if<LirRet>(&entry.terminator);
-  if (ret == nullptr || !ret->value_str.has_value() || ret->type_str != "i32" ||
-      *ret->value_str != add_result) {
-    return std::nullopt;
-  }
-
-  if (stores.size() != 2 || loads.size() != 2 ||
-      stores[0].first != 0 || stores[1].first != 4 ||
-      loads[0] != 0 || loads[1] != 4) {
-    return std::nullopt;
-  }
-
-  return MinimalLocalArraySlice{stores[0].second, stores[1].second};
-}
-
 std::string gp_reg_name(c4c::backend::PhysReg reg, bool is_32bit) {
   return std::string(is_32bit ? "w" : "x") + std::to_string(reg.index);
 }
@@ -5872,6 +5740,17 @@ std::string emit_module(const c4c::backend::BackendModule& module,
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {
   const bool needs_nonminimal_lowering = lir_module_needs_nonminimal_lowering(module);
   validate_module(module);
+  try {
+    const auto adapted = c4c::backend::lower_to_backend_ir(module);
+    if (const auto slice = parse_minimal_local_array_slice(adapted);
+        slice.has_value()) {
+      return emit_minimal_local_array_asm(adapted, *slice);
+    }
+  } catch (const c4c::backend::LirAdapterError& ex) {
+    if (ex.kind() != c4c::backend::LirAdapterErrorKind::Unsupported) {
+      throw;
+    }
+  }
   if (!needs_nonminimal_lowering) {
     if (const auto imm = parse_minimal_lir_return_imm(module); imm.has_value()) {
       c4c::backend::BackendModule scaffold_module;
@@ -5906,10 +5785,6 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
   const auto prepared = prepare_module_for_fallback(module);
   const auto prepared_backend_stub = make_backend_target_stub(prepared);
   validate_module(prepared);
-  if (const auto slice = parse_minimal_local_array_slice(prepared);
-      slice.has_value()) {
-    return emit_minimal_local_array_asm(prepared_backend_stub, *slice);
-  }
   if (!needs_nonminimal_lowering) {
     if (const auto slice = parse_minimal_conditional_return_slice(prepared);
         slice.has_value()) {
@@ -5951,6 +5826,10 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
   if (!needs_nonminimal_lowering) {
     try {
       const auto adapted = c4c::backend::lower_to_backend_ir(prepared);
+      if (const auto slice = parse_minimal_local_array_slice(adapted);
+          slice.has_value()) {
+        return emit_minimal_local_array_asm(adapted, *slice);
+      }
       if (const auto slice = c4c::backend::parse_backend_minimal_call_crossing_direct_call_module(adapted);
           slice.has_value()) {
         const auto* main_fn = find_lir_function(prepared, "main");
