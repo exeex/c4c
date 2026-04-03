@@ -647,6 +647,36 @@ void test_bir_lowering_accepts_two_param_select_split_predecessor_add_phi_post_j
                   "BIR lowering should return the split-predecessor join-local arithmetic result instead of falling back to legacy CFG form");
 }
 
+void test_bir_lowering_accepts_two_param_select_split_predecessor_deeper_affine_phi_post_join_add_sub_slice() {
+  const auto lowered = c4c::backend::lower_to_bir(
+      make_bir_two_param_select_eq_split_predecessor_deeper_affine_phi_post_join_add_sub_module());
+  const auto rendered = c4c::backend::bir::print(lowered);
+
+  expect_contains(rendered,
+                  "bir.func @choose2_deeper_both_post_chain(i32 %p.x, i32 %p.y) -> i32 {",
+                  "BIR lowering should preserve the symmetric deeper split-predecessor ternary signature while widening the join-local arithmetic tail beyond a single add");
+  expect_contains(rendered, "%t8 = bir.add i32 %p.x, 8",
+                  "BIR lowering should keep the deeper split then-arm affine head in the fused BIR block");
+  expect_contains(rendered, "%t9 = bir.sub i32 %t8, 3",
+                  "BIR lowering should keep the deeper split then-arm middle affine step in the fused BIR block");
+  expect_contains(rendered, "%t10 = bir.add i32 %t9, 5",
+                  "BIR lowering should keep the deeper split then-arm affine tail before the fused select");
+  expect_contains(rendered, "%t11 = bir.add i32 %p.y, 11",
+                  "BIR lowering should keep the deeper split else-arm affine head in the fused BIR block");
+  expect_contains(rendered, "%t12 = bir.sub i32 %t11, 4",
+                  "BIR lowering should keep the deeper split else-arm middle affine step in the fused BIR block");
+  expect_contains(rendered, "%t13 = bir.add i32 %t12, 7",
+                  "BIR lowering should keep the deeper split else-arm affine tail before the fused select");
+  expect_contains(rendered, "%t14 = bir.select eq i32 %p.x, %p.y, %t10, %t13",
+                  "BIR lowering should collapse the symmetric deeper split-predecessor phi join into the bounded BIR select surface");
+  expect_contains(rendered, "%t15 = bir.add i32 %t14, 6",
+                  "BIR lowering should preserve the first join-local arithmetic step after the symmetric deeper split-predecessor select");
+  expect_contains(rendered, "%t16 = bir.sub i32 %t15, 2",
+                  "BIR lowering should preserve the trailing join-local subtraction after the fused select");
+  expect_contains(rendered, "bir.ret i32 %t16",
+                  "BIR lowering should return the widened join-local add/sub chain on the BIR path");
+}
+
 void test_bir_lowering_accepts_two_param_select_split_predecessor_mixed_affine_phi_post_join_add_slice() {
   const auto lowered = c4c::backend::lower_to_bir(
       make_bir_two_param_select_eq_split_predecessor_mixed_affine_phi_post_join_add_module());
@@ -906,6 +936,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_two_param_select_phi_slice);
   RUN_TEST(test_bir_lowering_accepts_two_param_select_predecessor_add_phi_slice);
   RUN_TEST(test_bir_lowering_accepts_two_param_select_split_predecessor_add_phi_post_join_add_slice);
+  RUN_TEST(test_bir_lowering_accepts_two_param_select_split_predecessor_deeper_affine_phi_post_join_add_sub_slice);
   RUN_TEST(test_bir_lowering_accepts_two_param_select_split_predecessor_mixed_affine_phi_post_join_add_slice);
   RUN_TEST(test_bir_lowering_accepts_two_param_select_split_predecessor_deeper_then_mixed_affine_phi_post_join_add_slice);
   RUN_TEST(test_bir_lowering_accepts_two_param_select_split_predecessor_deeper_affine_phi_post_join_add_slice);
