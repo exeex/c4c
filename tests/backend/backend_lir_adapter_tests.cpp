@@ -626,7 +626,7 @@ void test_backend_call_helpers_parse_single_helper_call_crossing_source_value() 
 
   auto& helper = module.functions.back();
   helper.name = "inc_value";
-  helper.signature_text = "define i32 @inc_value(i32 %x) {\n";
+  helper.signature_text = "define i32 @inc_value(i32 %p.input) {\n";
 
   auto& main_fn = module.functions.front();
   auto& entry = main_fn.blocks.front();
@@ -646,10 +646,18 @@ void test_backend_call_helpers_parse_single_helper_call_crossing_source_value() 
   call->args_str = "i32 %t.crossing.source.renamed";
   final_add->lhs = "%t.crossing.source.renamed";
   final_add->rhs = "%t.crossing.call.renamed";
+  final_add->result = "%t.crossing.sum.renamed";
+  auto* ret = std::get_if<c4c::codegen::lir::LirRet>(&entry.terminator);
+  expect_true(ret != nullptr && ret->value_str.has_value(),
+              "shared call-crossing source parser regression test needs the return to mutate");
+  if (ret == nullptr || !ret->value_str.has_value()) {
+    return;
+  }
+  ret->value_str = "%t.crossing.sum.renamed";
 
   const auto parsed = c4c::backend::parse_backend_single_helper_call_crossing_source_value(module);
   expect_true(parsed.has_value() && *parsed == "%t.crossing.source.renamed",
-              "shared call-crossing source parser should preserve renamed helper symbols, function ordering, and source/result SSA names without target-local main scans");
+              "shared call-crossing source parser should preserve renamed helper symbols, function ordering, and source/call/return SSA names without target-local main scans");
 }
 
 void test_backend_call_helpers_parse_single_helper_direct_call() {
