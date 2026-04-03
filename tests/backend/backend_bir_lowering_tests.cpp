@@ -647,6 +647,29 @@ void test_bir_lowering_accepts_two_param_select_split_predecessor_add_phi_post_j
                   "BIR lowering should return the split-predecessor join-local arithmetic result instead of falling back to legacy CFG form");
 }
 
+void test_bir_lowering_accepts_two_param_select_split_predecessor_mixed_affine_phi_post_join_add_slice() {
+  const auto lowered = c4c::backend::lower_to_bir(
+      make_bir_two_param_select_eq_split_predecessor_mixed_affine_phi_post_join_add_module());
+  const auto rendered = c4c::backend::bir::print(lowered);
+
+  expect_contains(rendered, "bir.func @choose2_mixed_post(i32 %p.x, i32 %p.y) -> i32 {",
+                  "BIR lowering should preserve the split-predecessor ternary signature while widening each arm to a bounded add/sub chain");
+  expect_contains(rendered, "%t8 = bir.add i32 %p.x, 8",
+                  "BIR lowering should hoist the split then-arm affine head into the fused BIR block");
+  expect_contains(rendered, "%t9 = bir.sub i32 %t8, 3",
+                  "BIR lowering should preserve the split then-arm affine tail before the fused select");
+  expect_contains(rendered, "%t10 = bir.add i32 %p.y, 11",
+                  "BIR lowering should hoist the split else-arm affine head into the fused BIR block");
+  expect_contains(rendered, "%t11 = bir.sub i32 %t10, 4",
+                  "BIR lowering should preserve the split else-arm affine tail before the fused select");
+  expect_contains(rendered, "%t12 = bir.select eq i32 %p.x, %p.y, %t9, %t11",
+                  "BIR lowering should collapse the richer split-predecessor phi join into a single BIR select over the chain tails");
+  expect_contains(rendered, "%t13 = bir.add i32 %t12, 6",
+                  "BIR lowering should preserve the bounded post-join add after the richer split-predecessor select");
+  expect_contains(rendered, "bir.ret i32 %t13",
+                  "BIR lowering should return the richer split-predecessor join-local arithmetic result on the BIR path");
+}
+
 void test_bir_lowering_accepts_mixed_predecessor_select_post_join_add_slice() {
   const auto lowered =
       c4c::backend::lower_to_bir(make_bir_mixed_predecessor_add_phi_post_join_add_module());
@@ -831,6 +854,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_two_param_select_phi_slice);
   RUN_TEST(test_bir_lowering_accepts_two_param_select_predecessor_add_phi_slice);
   RUN_TEST(test_bir_lowering_accepts_two_param_select_split_predecessor_add_phi_post_join_add_slice);
+  RUN_TEST(test_bir_lowering_accepts_two_param_select_split_predecessor_mixed_affine_phi_post_join_add_slice);
   RUN_TEST(test_bir_lowering_accepts_mixed_predecessor_select_post_join_add_slice);
   RUN_TEST(test_bir_lowering_accepts_straight_line_add_sub_chain);
   RUN_TEST(test_bir_lowering_accepts_i8_add_sub_chain);
