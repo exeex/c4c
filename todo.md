@@ -70,11 +70,21 @@ Completed this iteration:
 - Added targeted BIR lowering and pipeline regressions proving the widened
   `i8` slice reaches the RISC-V BIR text surface without re-entering the
   legacy backend-IR route.
+- Widened `lir_to_bir.cpp` to accept `i64` scalar signatures and arithmetic
+  text operands in addition to the existing `i8`/`i32` surface, and updated
+  the scaffold failure message to reflect the new bounded type coverage.
+- Added `i64` BIR printer, validator, lowering, and RISC-V pipeline
+  regressions so the widened word-sized arithmetic slice is covered on the BIR
+  text path without implying new x86/AArch64 direct-emitter support yet.
+- Rebuilt the tree, reran focused backend BIR validation, and refreshed
+  `test_fail_after.log`; the regression guard passed against
+  `test_fail_before.log` with `after: 2728 passed, 0 failed` and no newly
+  failing tests.
 
 Next intended slice:
-- Continue Phase 1/2 parity by widening BIR beyond `i8`/`i32` arithmetic into
-  another emitter-facing type or instruction cluster that does not require
-  removing the broad `c4cll` LLVM rescue path yet.
+- Continue Phase 1/2 parity by widening BIR beyond the current `i8`/`i32`/`i64`
+  arithmetic subset into another emitter-facing type or instruction cluster
+  that does not require removing the broad `c4cll` LLVM rescue path yet.
 
 Resume notes:
 - `backend.cpp` still contains the legacy route (`emit_legacy_module`), but
@@ -84,7 +94,7 @@ Resume notes:
   seams, but x86/aarch64 direct-BIR entry points now have no fallback back into
   legacy backend IR; only the native affine-return subset is accepted there.
 - `lir_to_bir.cpp` now accepts bounded straight-line `i8` arithmetic slices in
-  addition to the existing `i32` scaffold, but backend asm emitters still only
-  consume the narrower direct-BIR affine subset.
+  addition to the existing `i32` and `i64` scaffolds, but backend asm emitters
+  still only consume the narrower direct-BIR affine subset.
 - `c4cll.cpp` still rescues `--codegen asm` through LLVM IR/asm conversion and
   a second retry via `CodegenPath::Llvm`.

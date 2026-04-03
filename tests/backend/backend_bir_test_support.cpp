@@ -89,6 +89,34 @@ c4c::codegen::lir::LirModule make_bir_i8_return_add_sub_chain_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_bir_i64_return_add_sub_chain_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "riscv64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+
+  LirFunction function;
+  function.name = "wide_add";
+  function.signature_text = "define i64 @wide_add(i64 %p.x)\n";
+  function.return_type.base = c4c::TB_LONGLONG;
+  c4c::TypeSpec param_type{};
+  param_type.base = c4c::TB_LONGLONG;
+  function.params.push_back({"%p.x", param_type});
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirBinOp{"%t0", "add", "i64", "%p.x", "2"});
+  entry.insts.push_back(LirBinOp{"%t1", "sub", "i64", "%t0", "1"});
+  entry.terminator = LirRet{std::string("%t1"), "i64"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_bir_two_param_add_module() {
   using namespace c4c::codegen::lir;
 

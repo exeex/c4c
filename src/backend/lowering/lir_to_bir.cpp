@@ -24,6 +24,10 @@ std::optional<bir::TypeKind> lower_minimal_scalar_type(const c4c::TypeSpec& type
   if (type.base == TB_INT) {
     return bir::TypeKind::I32;
   }
+  if (type.base == TB_LONG || type.base == TB_ULONG || type.base == TB_LONGLONG ||
+      type.base == TB_ULONGLONG) {
+    return bir::TypeKind::I64;
+  }
   return std::nullopt;
 }
 
@@ -33,6 +37,9 @@ std::optional<bir::TypeKind> lower_scalar_type_text(std::string_view text) {
   }
   if (text == "i32") {
     return bir::TypeKind::I32;
+  }
+  if (text == "i64") {
+    return bir::TypeKind::I64;
   }
   return std::nullopt;
 }
@@ -284,7 +291,7 @@ bir::Module lower_to_bir(const c4c::codegen::lir::LirModule& module) {
   auto lowered = try_lower_to_bir(module);
   if (!lowered.has_value()) {
     throw std::invalid_argument(
-        "bir scaffold lowering currently supports only straight-line single-block i32 return-immediate/add-sub slices plus bounded one- and two-parameter affine i32 chains");
+        "bir scaffold lowering currently supports only straight-line single-block i8/i32/i64 return-immediate/add-sub slices plus bounded one- and two-parameter affine chains over those scalar types");
   }
   return *lowered;
 }
