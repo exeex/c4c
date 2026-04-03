@@ -10,12 +10,31 @@ Source Plan: plan.md
 - [ ] Revalidate backend and full-suite behavior without fallback
 
 Current active item: Step 2, continue bounded compare-fed phi-join parity with
-the next smallest source-shaped ternary slice that still collapses into one
-BIR block after the fused `bir.select`, with the richer join-local add/sub
-follow-on after the mixed split-predecessor affine case now covered and the
-next candidate shifting to another still-linearizable asymmetric split-arm
-affine or join-tail variant that extends bounded control-flow parity without
-widening emitter-side direct-BIR requirements.
+the next smallest still-linearizable asymmetric split-arm or join-tail variant
+after the deeper-then / mixed-else post-add/sub slice, preferably the mirrored
+asymmetric branch-depth case or another source-shaped join-local add/sub
+follow-on that can stay on the fused `bir.select` path without widening
+emitter-side direct-BIR requirements.
+
+Completed this iteration:
+- Added the next asymmetric split-predecessor compare-fed phi-join regression
+  slice via
+  `make_bir_two_param_select_eq_split_predecessor_deeper_then_mixed_affine_phi_post_join_add_sub_module()`,
+  proving the already-covered deeper-then / mixed-else bounded ternary now also
+  stays on the BIR path when the join-local tail extends from `+ 6` to
+  `+ 6 - 2`.
+- Added source-level/default-route RISC-V coverage via
+  `tests/c/internal/backend_route_case/two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub.c`,
+  proving `(x == y ? x + 8 - 3 + 5 : y + 11 - 4) + 6 - 2` defaults to the BIR
+  pipeline instead of falling back to legacy LLVM IR text.
+- Reconfigured and rebuilt the affected tree, reran
+  `ctest --test-dir build -R backend_bir_tests --output-on-failure`, reran the
+  new route case
+  `backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_deeper_then_mixed_affine_post_add_sub_defaults_to_bir`,
+  then reran `ctest --test-dir build -L backend --output-on-failure -j8`.
+- The new slice passed without any `lir_to_bir.cpp` widening, confirming the
+  existing bounded matcher already generalizes to this asymmetric join-tail
+  variant; backend validation stayed green at `312/312` tests passed.
 
 Completed this iteration:
 - Added direct BIR lowering and explicit BIR-pipeline regressions for the next
