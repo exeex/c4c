@@ -17,6 +17,16 @@ default-route exposure limited to RISC-V and not claiming new x86/AArch64
 direct-emitter coverage yet.
 
 Completed this iteration:
+- Refactored internal backend test registration by introducing
+  `tests/c/internal/cmake/BackendTests.cmake`, centralizing the shared
+  `internal;backend` labels and the repeated backend codegen-route CMake
+  wiring into helper functions.
+- Added a dedicated `backend_route` label on the RISC-V backend codegen-route
+  regression cases so they can be selected independently while still
+  remaining part of the broader `backend` subset.
+- Reconfigured the tree and reran `ctest --test-dir build -L backend
+  --output-on-failure -j8`; all `300/300` backend-labeled tests passed after
+  the CMake test-registration refactor.
 - Audited the current production legacy boundaries in `backend.cpp`,
   `backend.hpp`, `llvm_codegen.cpp`, and `c4cll.cpp`.
 - Recorded the concrete removal checklist and test owners in

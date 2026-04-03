@@ -1,6 +1,8 @@
 set(INTERNAL_C_TEST_ROOT "${PROJECT_SOURCE_DIR}/tests/c/internal")
 set(INTERNAL_C_TEST_CMAKE_ROOT "${INTERNAL_C_TEST_ROOT}/cmake")
 
+include("${INTERNAL_C_TEST_CMAKE_ROOT}/BackendTests.cmake")
+
 file(GLOB INTERNAL_NEGATIVE_TEST_SRCS CONFIGURE_DEPENDS
      "${INTERNAL_C_TEST_ROOT}/negative_case/*.c")
 file(GLOB INTERNAL_VERIFY_TEST_SRCS CONFIGURE_DEPENDS
@@ -192,47 +194,35 @@ foreach(src IN LISTS INTERNAL_PREPROCESSOR_TEST_SRCS)
   set_tests_properties("${test_name}" PROPERTIES LABELS "internal;preprocessor")
 endforeach()
 
-add_test(
-    NAME backend_lir_adapter_tests
+c4c_add_backend_test(
+    backend_lir_adapter_tests
     COMMAND backend_lir_adapter_tests
 )
-set_tests_properties(backend_lir_adapter_tests PROPERTIES
-    LABELS "internal;backend")
 
-add_test(
-    NAME backend_lir_adapter_aarch64_tests
+c4c_add_backend_test(
+    backend_lir_adapter_aarch64_tests
     COMMAND backend_lir_adapter_aarch64_tests
 )
-set_tests_properties(backend_lir_adapter_aarch64_tests PROPERTIES
-    LABELS "internal;backend")
 
-add_test(
-    NAME backend_lir_adapter_x86_64_tests
+c4c_add_backend_test(
+    backend_lir_adapter_x86_64_tests
     COMMAND backend_lir_adapter_x86_64_tests
 )
-set_tests_properties(backend_lir_adapter_x86_64_tests PROPERTIES
-    LABELS "internal;backend")
 
-add_test(
-    NAME backend_module_tests
+c4c_add_backend_test(
+    backend_module_tests
     COMMAND backend_module_tests
 )
-set_tests_properties(backend_module_tests PROPERTIES
-    LABELS "internal;backend")
 
-add_test(
-    NAME backend_bir_tests
+c4c_add_backend_test(
+    backend_bir_tests
     COMMAND backend_bir_tests
 )
-set_tests_properties(backend_bir_tests PROPERTIES
-    LABELS "internal;backend")
 
-add_test(
-    NAME backend_shared_util_tests
+c4c_add_backend_test(
+    backend_shared_util_tests
     COMMAND backend_shared_util_tests
 )
-set_tests_properties(backend_shared_util_tests PROPERTIES
-    LABELS "internal;backend")
 
 add_test(
     NAME frontend_cxx_stage1_version
@@ -582,243 +572,158 @@ if(CLANG_EXECUTABLE)
     set_tests_properties(backend_contract_x86_64_extern_call_object PROPERTIES
         LABELS "internal;backend")
 
-    add_test(
-      NAME backend_codegen_route_riscv64_return_add_defaults_to_bir
-      COMMAND "${CMAKE_COMMAND}"
-              -DCOMPILER=$<TARGET_FILE:c4cll>
-              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_case/return_add.c
-              -DTARGET_TRIPLE=riscv64-unknown-linux-gnu
-              -DOUT_TEXT=${CMAKE_BINARY_DIR}/internal_backend_route/return_add_riscv64.ll
-              "-DREQUIRED_SNIPPETS=bir.func @main() -> i32 {|%t0 = bir.add i32 2, 3"
-              "-DFORBIDDEN_SNIPPETS=define i32 @main()"
-              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_codegen_route_case.cmake"
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_return_add_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/return_add.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/return_add_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t0 = bir.add i32 2, 3"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
     )
-    set_tests_properties(backend_codegen_route_riscv64_return_add_defaults_to_bir PROPERTIES
-        LABELS "internal;backend")
 
-    add_test(
-      NAME backend_codegen_route_riscv64_return_add_sub_chain_defaults_to_bir
-      COMMAND "${CMAKE_COMMAND}"
-              -DCOMPILER=$<TARGET_FILE:c4cll>
-              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_case/return_add_sub_chain.c
-              -DTARGET_TRIPLE=riscv64-unknown-linux-gnu
-              -DOUT_TEXT=${CMAKE_BINARY_DIR}/internal_backend_route/return_add_sub_chain_riscv64.ll
-              "-DREQUIRED_SNIPPETS=bir.func @main() -> i32 {|%t0 = bir.add i32 2, 3|%t1 = bir.sub i32 %t0, 1|bir.ret i32 %t1"
-              "-DFORBIDDEN_SNIPPETS=define i32 @main()"
-              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_codegen_route_case.cmake"
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_return_add_sub_chain_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/return_add_sub_chain.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/return_add_sub_chain_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t0 = bir.add i32 2, 3|%t1 = bir.sub i32 %t0, 1|bir.ret i32 %t1"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
     )
-    set_tests_properties(backend_codegen_route_riscv64_return_add_sub_chain_defaults_to_bir PROPERTIES
-        LABELS "internal;backend")
 
-    add_test(
-      NAME backend_codegen_route_riscv64_return_sdiv_defaults_to_bir
-      COMMAND "${CMAKE_COMMAND}"
-              -DCOMPILER=$<TARGET_FILE:c4cll>
-              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_route_case/return_sdiv.c
-              -DTARGET_TRIPLE=riscv64-unknown-linux-gnu
-              -DOUT_TEXT=${CMAKE_BINARY_DIR}/internal_backend_route/return_sdiv_riscv64.ll
-              "-DREQUIRED_SNIPPETS=bir.func @main() -> i32 {|%t0 = bir.sdiv i32 12, 3|bir.ret i32 %t0"
-              "-DFORBIDDEN_SNIPPETS=define i32 @main()"
-              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_codegen_route_case.cmake"
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_return_sdiv_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/return_sdiv.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/return_sdiv_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t0 = bir.sdiv i32 12, 3|bir.ret i32 %t0"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
     )
-    set_tests_properties(backend_codegen_route_riscv64_return_sdiv_defaults_to_bir PROPERTIES
-        LABELS "internal;backend")
 
-    add_test(
-      NAME backend_codegen_route_riscv64_return_srem_defaults_to_bir
-      COMMAND "${CMAKE_COMMAND}"
-              -DCOMPILER=$<TARGET_FILE:c4cll>
-              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_route_case/return_srem.c
-              -DTARGET_TRIPLE=riscv64-unknown-linux-gnu
-              -DOUT_TEXT=${CMAKE_BINARY_DIR}/internal_backend_route/return_srem_riscv64.ll
-              "-DREQUIRED_SNIPPETS=bir.func @main() -> i32 {|%t0 = bir.srem i32 14, 5|bir.ret i32 %t0"
-              "-DFORBIDDEN_SNIPPETS=define i32 @main()"
-              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_codegen_route_case.cmake"
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_return_srem_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/return_srem.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/return_srem_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t0 = bir.srem i32 14, 5|bir.ret i32 %t0"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
     )
-    set_tests_properties(backend_codegen_route_riscv64_return_srem_defaults_to_bir PROPERTIES
-        LABELS "internal;backend")
 
-    add_test(
-      NAME backend_codegen_route_riscv64_return_urem_defaults_to_bir
-      COMMAND "${CMAKE_COMMAND}"
-              -DCOMPILER=$<TARGET_FILE:c4cll>
-              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_route_case/return_urem.c
-              -DTARGET_TRIPLE=riscv64-unknown-linux-gnu
-              -DOUT_TEXT=${CMAKE_BINARY_DIR}/internal_backend_route/return_urem_riscv64.ll
-              "-DREQUIRED_SNIPPETS=bir.func @main() -> i32 {|%t0 = bir.urem i32 14, 5|bir.ret i32 %t0"
-              "-DFORBIDDEN_SNIPPETS=define i32 @main()"
-              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_codegen_route_case.cmake"
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_return_urem_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/return_urem.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/return_urem_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t0 = bir.urem i32 14, 5|bir.ret i32 %t0"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
     )
-    set_tests_properties(backend_codegen_route_riscv64_return_urem_defaults_to_bir PROPERTIES
-        LABELS "internal;backend")
 
-    add_test(
-      NAME backend_codegen_route_riscv64_return_eq_defaults_to_bir
-      COMMAND "${CMAKE_COMMAND}"
-              -DCOMPILER=$<TARGET_FILE:c4cll>
-              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_route_case/return_eq.c
-              -DTARGET_TRIPLE=riscv64-unknown-linux-gnu
-              -DOUT_TEXT=${CMAKE_BINARY_DIR}/internal_backend_route/return_eq_riscv64.ll
-              "-DREQUIRED_SNIPPETS=bir.func @main() -> i32 {|%t1 = bir.eq i32 7, 7|bir.ret i32 %t1"
-              "-DFORBIDDEN_SNIPPETS=define i32 @main()"
-              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_codegen_route_case.cmake"
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_return_eq_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/return_eq.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/return_eq_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t1 = bir.eq i32 7, 7|bir.ret i32 %t1"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
     )
-    set_tests_properties(backend_codegen_route_riscv64_return_eq_defaults_to_bir PROPERTIES
-        LABELS "internal;backend")
 
-    add_test(
-      NAME backend_codegen_route_riscv64_return_slt_defaults_to_bir
-      COMMAND "${CMAKE_COMMAND}"
-              -DCOMPILER=$<TARGET_FILE:c4cll>
-              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_route_case/return_slt.c
-              -DTARGET_TRIPLE=riscv64-unknown-linux-gnu
-              -DOUT_TEXT=${CMAKE_BINARY_DIR}/internal_backend_route/return_slt_riscv64.ll
-              "-DREQUIRED_SNIPPETS=bir.func @main() -> i32 {|%t1 = bir.slt i32 3, 7|bir.ret i32 %t1"
-              "-DFORBIDDEN_SNIPPETS=define i32 @main()"
-              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_codegen_route_case.cmake"
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_return_slt_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/return_slt.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/return_slt_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t1 = bir.slt i32 3, 7|bir.ret i32 %t1"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
     )
-    set_tests_properties(backend_codegen_route_riscv64_return_slt_defaults_to_bir PROPERTIES
-        LABELS "internal;backend")
 
-    add_test(
-      NAME backend_codegen_route_riscv64_return_sle_defaults_to_bir
-      COMMAND "${CMAKE_COMMAND}"
-              -DCOMPILER=$<TARGET_FILE:c4cll>
-              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_route_case/return_sle.c
-              -DTARGET_TRIPLE=riscv64-unknown-linux-gnu
-              -DOUT_TEXT=${CMAKE_BINARY_DIR}/internal_backend_route/return_sle_riscv64.ll
-              "-DREQUIRED_SNIPPETS=bir.func @main() -> i32 {|%t1 = bir.sle i32 7, 7|bir.ret i32 %t1"
-              "-DFORBIDDEN_SNIPPETS=define i32 @main()"
-              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_codegen_route_case.cmake"
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_return_sle_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/return_sle.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/return_sle_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t1 = bir.sle i32 7, 7|bir.ret i32 %t1"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
     )
-    set_tests_properties(backend_codegen_route_riscv64_return_sle_defaults_to_bir PROPERTIES
-        LABELS "internal;backend")
 
-    add_test(
-      NAME backend_codegen_route_riscv64_return_sgt_defaults_to_bir
-      COMMAND "${CMAKE_COMMAND}"
-              -DCOMPILER=$<TARGET_FILE:c4cll>
-              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_route_case/return_sgt.c
-              -DTARGET_TRIPLE=riscv64-unknown-linux-gnu
-              -DOUT_TEXT=${CMAKE_BINARY_DIR}/internal_backend_route/return_sgt_riscv64.ll
-              "-DREQUIRED_SNIPPETS=bir.func @main() -> i32 {|%t1 = bir.sgt i32 7, 3|bir.ret i32 %t1"
-              "-DFORBIDDEN_SNIPPETS=define i32 @main()"
-              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_codegen_route_case.cmake"
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_return_sgt_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/return_sgt.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/return_sgt_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t1 = bir.sgt i32 7, 3|bir.ret i32 %t1"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
     )
-    set_tests_properties(backend_codegen_route_riscv64_return_sgt_defaults_to_bir PROPERTIES
-        LABELS "internal;backend")
 
-    add_test(
-      NAME backend_codegen_route_riscv64_return_sge_defaults_to_bir
-      COMMAND "${CMAKE_COMMAND}"
-              -DCOMPILER=$<TARGET_FILE:c4cll>
-              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_route_case/return_sge.c
-              -DTARGET_TRIPLE=riscv64-unknown-linux-gnu
-              -DOUT_TEXT=${CMAKE_BINARY_DIR}/internal_backend_route/return_sge_riscv64.ll
-              "-DREQUIRED_SNIPPETS=bir.func @main() -> i32 {|%t1 = bir.sge i32 7, 7|bir.ret i32 %t1"
-              "-DFORBIDDEN_SNIPPETS=define i32 @main()"
-              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_codegen_route_case.cmake"
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_return_sge_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/return_sge.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/return_sge_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t1 = bir.sge i32 7, 7|bir.ret i32 %t1"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
     )
-    set_tests_properties(backend_codegen_route_riscv64_return_sge_defaults_to_bir PROPERTIES
-        LABELS "internal;backend")
 
-    add_test(
-      NAME backend_codegen_route_riscv64_return_ult_defaults_to_bir
-      COMMAND "${CMAKE_COMMAND}"
-              -DCOMPILER=$<TARGET_FILE:c4cll>
-              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_route_case/return_ult.c
-              -DTARGET_TRIPLE=riscv64-unknown-linux-gnu
-              -DOUT_TEXT=${CMAKE_BINARY_DIR}/internal_backend_route/return_ult_riscv64.ll
-              "-DREQUIRED_SNIPPETS=bir.func @main() -> i32 {|%t1 = bir.ult i32 3, 7|bir.ret i32 %t1"
-              "-DFORBIDDEN_SNIPPETS=define i32 @main()"
-              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_codegen_route_case.cmake"
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_return_ult_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/return_ult.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/return_ult_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t1 = bir.ult i32 3, 7|bir.ret i32 %t1"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
     )
-    set_tests_properties(backend_codegen_route_riscv64_return_ult_defaults_to_bir PROPERTIES
-        LABELS "internal;backend")
 
-    add_test(
-      NAME backend_codegen_route_riscv64_return_ule_defaults_to_bir
-      COMMAND "${CMAKE_COMMAND}"
-              -DCOMPILER=$<TARGET_FILE:c4cll>
-              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_route_case/return_ule.c
-              -DTARGET_TRIPLE=riscv64-unknown-linux-gnu
-              -DOUT_TEXT=${CMAKE_BINARY_DIR}/internal_backend_route/return_ule_riscv64.ll
-              "-DREQUIRED_SNIPPETS=bir.func @main() -> i32 {|%t1 = bir.ule i32 7, 7|bir.ret i32 %t1"
-              "-DFORBIDDEN_SNIPPETS=define i32 @main()"
-              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_codegen_route_case.cmake"
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_return_ule_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/return_ule.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/return_ule_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @main() -> i32 {|%t1 = bir.ule i32 7, 7|bir.ret i32 %t1"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
     )
-    set_tests_properties(backend_codegen_route_riscv64_return_ule_defaults_to_bir PROPERTIES
-        LABELS "internal;backend")
 
-    add_test(
-      NAME backend_codegen_route_riscv64_single_param_add_sub_chain_defaults_to_bir
-      COMMAND "${CMAKE_COMMAND}"
-              -DCOMPILER=$<TARGET_FILE:c4cll>
-              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_route_case/single_param_add_sub_chain.c
-              -DTARGET_TRIPLE=riscv64-unknown-linux-gnu
-              -DOUT_TEXT=${CMAKE_BINARY_DIR}/internal_backend_route/single_param_add_sub_chain_riscv64.ll
-              "-DREQUIRED_SNIPPETS=bir.func @add_one(i32 %p.x) -> i32 {|%t0 = bir.add i32 %p.x, 2|%t1 = bir.sub i32 %t0, 1|bir.ret i32 %t1"
-              "-DFORBIDDEN_SNIPPETS=define i32 @add_one(i32 %p.x)"
-              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_codegen_route_case.cmake"
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_single_param_add_sub_chain_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/single_param_add_sub_chain.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/single_param_add_sub_chain_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @add_one(i32 %p.x) -> i32 {|%t0 = bir.add i32 %p.x, 2|%t1 = bir.sub i32 %t0, 1|bir.ret i32 %t1"
+      FORBIDDEN_SNIPPETS "define i32 @add_one(i32 %p.x)"
     )
-    set_tests_properties(backend_codegen_route_riscv64_single_param_add_sub_chain_defaults_to_bir PROPERTIES
-        LABELS "internal;backend")
 
-    add_test(
-      NAME backend_codegen_route_riscv64_two_param_add_defaults_to_bir
-      COMMAND "${CMAKE_COMMAND}"
-              -DCOMPILER=$<TARGET_FILE:c4cll>
-              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_add.c
-              -DTARGET_TRIPLE=riscv64-unknown-linux-gnu
-              -DOUT_TEXT=${CMAKE_BINARY_DIR}/internal_backend_route/two_param_add_riscv64.ll
-              "-DREQUIRED_SNIPPETS=bir.func @add_pair(i32 %p.x, i32 %p.y) -> i32 {|%t0 = bir.add i32 %p.x, %p.y|bir.ret i32 %t0"
-              "-DFORBIDDEN_SNIPPETS=define i32 @add_pair(i32 %p.x, i32 %p.y)"
-              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_codegen_route_case.cmake"
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_two_param_add_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_add.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_add_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @add_pair(i32 %p.x, i32 %p.y) -> i32 {|%t0 = bir.add i32 %p.x, %p.y|bir.ret i32 %t0"
+      FORBIDDEN_SNIPPETS "define i32 @add_pair(i32 %p.x, i32 %p.y)"
     )
-    set_tests_properties(backend_codegen_route_riscv64_two_param_add_defaults_to_bir PROPERTIES
-        LABELS "internal;backend")
 
-    add_test(
-      NAME backend_codegen_route_riscv64_two_param_add_sub_chain_defaults_to_bir
-      COMMAND "${CMAKE_COMMAND}"
-              -DCOMPILER=$<TARGET_FILE:c4cll>
-              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_add_sub_chain.c
-              -DTARGET_TRIPLE=riscv64-unknown-linux-gnu
-              -DOUT_TEXT=${CMAKE_BINARY_DIR}/internal_backend_route/two_param_add_sub_chain_riscv64.ll
-              "-DREQUIRED_SNIPPETS=bir.func @add_pair(i32 %p.x, i32 %p.y) -> i32 {|%t0 = bir.add i32 %p.x, %p.y|%t1 = bir.sub i32 %t0, 1|bir.ret i32 %t1"
-              "-DFORBIDDEN_SNIPPETS=define i32 @add_pair(i32 %p.x, i32 %p.y)"
-              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_codegen_route_case.cmake"
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_two_param_add_sub_chain_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_add_sub_chain.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_add_sub_chain_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @add_pair(i32 %p.x, i32 %p.y) -> i32 {|%t0 = bir.add i32 %p.x, %p.y|%t1 = bir.sub i32 %t0, 1|bir.ret i32 %t1"
+      FORBIDDEN_SNIPPETS "define i32 @add_pair(i32 %p.x, i32 %p.y)"
     )
-    set_tests_properties(backend_codegen_route_riscv64_two_param_add_sub_chain_defaults_to_bir PROPERTIES
-        LABELS "internal;backend")
 
-    add_test(
-      NAME backend_codegen_route_riscv64_two_param_staged_affine_defaults_to_bir
-      COMMAND "${CMAKE_COMMAND}"
-              -DCOMPILER=$<TARGET_FILE:c4cll>
-              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_staged_affine.c
-              -DTARGET_TRIPLE=riscv64-unknown-linux-gnu
-              -DOUT_TEXT=${CMAKE_BINARY_DIR}/internal_backend_route/two_param_staged_affine_riscv64.ll
-              "-DREQUIRED_SNIPPETS=bir.func @add_pair(i32 %p.x, i32 %p.y) -> i32 {|%t0 = bir.add i32 %p.x, 2|%t1 = bir.add i32 %t0, %p.y|%t2 = bir.sub i32 %t1, 1|bir.ret i32 %t2"
-              "-DFORBIDDEN_SNIPPETS=define i32 @add_pair(i32 %p.x, i32 %p.y)"
-              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_codegen_route_case.cmake"
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_two_param_staged_affine_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/two_param_staged_affine.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/two_param_staged_affine_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @add_pair(i32 %p.x, i32 %p.y) -> i32 {|%t0 = bir.add i32 %p.x, 2|%t1 = bir.add i32 %t0, %p.y|%t2 = bir.sub i32 %t1, 1|bir.ret i32 %t2"
+      FORBIDDEN_SNIPPETS "define i32 @add_pair(i32 %p.x, i32 %p.y)"
     )
-    set_tests_properties(backend_codegen_route_riscv64_two_param_staged_affine_defaults_to_bir PROPERTIES
-        LABELS "internal;backend")
 
-    add_test(
-      NAME backend_codegen_route_riscv64_global_load_falls_back_to_llvm
-      COMMAND "${CMAKE_COMMAND}"
-              -DCOMPILER=$<TARGET_FILE:c4cll>
-              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_case/global_load.c
-              -DTARGET_TRIPLE=riscv64-unknown-linux-gnu
-              -DOUT_TEXT=${CMAKE_BINARY_DIR}/internal_backend_route/global_load_riscv64.ll
-              "-DREQUIRED_SNIPPETS=@g_counter = global i32 11|define i32 @main()"
-              "-DFORBIDDEN_SNIPPETS=bir.func @main()"
-              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_codegen_route_case.cmake"
+    c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_global_load_falls_back_to_llvm
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/global_load.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/global_load_riscv64.ll"
+      REQUIRED_SNIPPETS "@g_counter = global i32 11|define i32 @main()"
+      FORBIDDEN_SNIPPETS "bir.func @main()"
     )
-    set_tests_properties(backend_codegen_route_riscv64_global_load_falls_back_to_llvm PROPERTIES
-        LABELS "internal;backend")
   endif()
 
   if(BACKEND_RUNTIME_TARGET_TRIPLE)
