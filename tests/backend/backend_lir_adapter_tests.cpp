@@ -2559,6 +2559,30 @@ void test_adapter_normalizes_eighteen_local_slot_constant_conditional_goto_retur
                       "adapter should eliminate the resolved eighteen-local-slot-backed branch-only goto chain from the lowered backend IR");
 }
 
+void test_adapter_normalizes_non_main_param_nineteen_local_slot_constant_conditional_goto_return_slice() {
+  auto module = make_eighteen_local_slot_constant_conditional_goto_return_module();
+  auto& function = module.functions.front();
+  function.name = "helper";
+  function.signature_text = "define i32 @helper(i32 %p.unused)\n";
+  function.alloca_insts.push_back(
+      c4c::codegen::lir::LirAllocaOp{"%lv.unused", "i32", "", 4});
+
+  const auto adapted = c4c::backend::lower_to_backend_ir(module);
+  const auto rendered = c4c::backend::render_module(adapted);
+  expect_contains(rendered, "define i32 @helper(i32 %p.unused)",
+                  "adapter should preserve non-main signatures with unused parameters for the local-slot-backed constant-conditional goto family");
+  expect_contains(rendered, "ret i32 0",
+                  "adapter should still collapse the non-main nineteen-local-slot constant-conditional goto chain into a direct return");
+  expect_not_contains(rendered, "load i32",
+                      "adapter should eliminate local-slot reloads for the non-main nineteen-local-slot slice once the branch chain is resolved");
+  expect_not_contains(rendered, "store i32",
+                      "adapter should eliminate local-slot materialization for the non-main nineteen-local-slot slice once the branch chain is resolved");
+  expect_not_contains(rendered, "br i1",
+                      "adapter should eliminate the resolved conditional branch from the non-main nineteen-local-slot lowered backend IR");
+  expect_not_contains(rendered, "br label",
+                      "adapter should eliminate the resolved branch-only goto chain from the non-main nineteen-local-slot lowered backend IR");
+}
+
 void test_adapter_normalizes_countdown_while_return_slice() {
   const auto adapted =
       c4c::backend::lower_to_backend_ir(make_countdown_while_return_module());
@@ -3132,6 +3156,7 @@ int main(int argc, char* argv[]) {
   test_adapter_normalizes_sixteen_local_slot_constant_conditional_goto_return_slice();
   test_adapter_normalizes_seventeen_local_slot_constant_conditional_goto_return_slice();
   test_adapter_normalizes_eighteen_local_slot_constant_conditional_goto_return_slice();
+  test_adapter_normalizes_non_main_param_nineteen_local_slot_constant_conditional_goto_return_slice();
   test_adapter_normalizes_countdown_while_return_slice();
   test_adapter_normalizes_typed_countdown_while_return_slice();
   test_adapter_normalizes_countdown_do_while_return_slice();

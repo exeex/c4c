@@ -1393,6 +1393,27 @@ void test_aarch64_backend_scaffold_matches_direct_eighteen_local_slot_constant_c
   }
 }
 
+void test_aarch64_backend_scaffold_matches_direct_non_main_param_nineteen_local_slot_constant_conditional_goto_return_asm() {
+  auto module = make_eighteen_local_slot_constant_conditional_goto_return_module();
+  auto& function = module.functions.front();
+  function.name = "helper";
+  function.signature_text = "define i32 @helper(i32 %p.unused)\n";
+  function.alloca_insts.push_back(
+      c4c::codegen::lir::LirAllocaOp{"%lv.unused", "i32", "", 4});
+
+  const auto direct_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto lowered_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  if (direct_rendered != lowered_rendered) {
+    fail("aarch64 non-main nineteen-local-slot constant-conditional goto regression should keep the direct LIR and explicit lowered backend seams on identical assembly output");
+  }
+}
+
 void test_aarch64_backend_renders_void_return_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_void_return_module()},
@@ -5195,6 +5216,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_scaffold_matches_direct_sixteen_local_slot_constant_conditional_goto_return_asm();
   test_aarch64_backend_scaffold_matches_direct_seventeen_local_slot_constant_conditional_goto_return_asm();
   test_aarch64_backend_scaffold_matches_direct_eighteen_local_slot_constant_conditional_goto_return_asm();
+  test_aarch64_backend_scaffold_matches_direct_non_main_param_nineteen_local_slot_constant_conditional_goto_return_asm();
   test_aarch64_backend_renders_void_return_slice();
   test_aarch64_backend_preserves_module_headers_and_declarations();
   test_aarch64_backend_propagates_malformed_signature_in_supported_slice();

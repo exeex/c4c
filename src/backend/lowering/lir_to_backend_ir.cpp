@@ -1878,8 +1878,7 @@ std::optional<BackendFunction> adapt_goto_only_constant_return_function(
   using namespace c4c::codegen::lir;
 
   if (function.is_declaration || !backend_function_is_definition(signature) ||
-      signature.return_type != "i32" || signature.name != "main" ||
-      !signature.params.empty() || signature.is_vararg || function.blocks.empty() ||
+      signature.return_type != "i32" || signature.is_vararg || function.blocks.empty() ||
       !function.alloca_insts.empty() || !function.stack_objects.empty()) {
     return std::nullopt;
   }
@@ -2107,10 +2106,8 @@ std::optional<BackendFunction> adapt_small_local_constant_conditional_goto_retur
   using namespace c4c::codegen::lir;
 
   if (function.is_declaration || !backend_function_is_definition(signature) ||
-      signature.return_type != "i32" || signature.name != "main" ||
-      !signature.params.empty() || signature.is_vararg || function.blocks.empty() ||
-      function.alloca_insts.empty() || function.alloca_insts.size() > 18 ||
-      !function.stack_objects.empty()) {
+      signature.return_type != "i32" || signature.is_vararg || function.blocks.empty() ||
+      function.alloca_insts.empty() || !function.stack_objects.empty()) {
     return std::nullopt;
   }
 
