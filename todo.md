@@ -9,15 +9,46 @@ Source Plan: plan.md
 - [ ] Delete app-layer LLVM asm rescue from `c4cll`
 - [ ] Revalidate backend and full-suite behavior without fallback
 
-Current active item: Step 2, continue tightening the widened-width/source-level
-`unsigned char` route matrix by carrying the remaining `i32` split-predecessor
-compare/select join-tail variants into the `u8` route checks one bounded slice
+Current active item: Step 2, keep tightening the widened-width/source-level
+`unsigned char` compare/select route matrix by copying the remaining emitter-
+facing `i32` parity slices into bounded `u8` backend-route checks one variant
 at a time.
-Next target: add the widened-`i8` deeper-then-mixed predecessor-arm
-compare/select route check for the adjacent join-local post-add-sub-add tail
-(`x == y ? x + 8 - 3 + 5 : y + 11 - 4`, then `+ 6 - 2 + 9`) and keep the slice
-within Step 2 conditional backend-route parity after the now-validated
-post-add-sub variant.
+Next target: audit the remaining non-split predecessor-arm
+`unsigned char` compare/select add-phi variants against the existing `i32`
+route matrix, starting with whether the simpler
+`(x == y ? x + 5 : y + 9) + 6` shape already defaults to direct BIR before
+adding another bounded `u8` parity assertion.
+
+Completed this iteration:
+- Audited the signed `i32` versus widened-width/source-level `unsigned char`
+  split-predecessor compare/select matrix and found the actual remaining parity
+  gap was the `add_phi` family, not the already-landed deeper/mixed variants.
+- Confirmed the default `--codegen asm` route already stays on the direct BIR
+  pipeline for
+  `unsigned char choose2_add_post_chain_u(unsigned char x, unsigned char y) { return (unsigned char)((x == y ? x + 5 : y + 9) + 6 - 2); }`
+  and
+  `unsigned char choose2_add_post_chain_tail_u(unsigned char x, unsigned char y) { return (unsigned char)((x == y ? x + 5 : y + 9) + 6 - 2 + 9); }`;
+  no `src/backend/lowering/lir_to_bir.cpp` change was required for this slice.
+- Added
+  `tests/c/internal/backend_route_case/two_param_u8_select_eq_split_predecessor_add_phi_post_add_sub.c`
+  and
+  `tests/c/internal/backend_route_case/two_param_u8_select_eq_split_predecessor_add_phi_post_add_sub_add.c`,
+  proving the bounded two-parameter `u8` split-predecessor add-phi
+  post-add-sub and post-add-sub-add wrappers reach the backend through BIR
+  instead of legacy LLVM IR text.
+- Registered
+  `backend_codegen_route_riscv64_two_param_u8_select_eq_split_predecessor_add_phi_post_add_sub_defaults_to_bir`
+  and
+  `backend_codegen_route_riscv64_two_param_u8_select_eq_split_predecessor_add_phi_post_add_sub_add_defaults_to_bir`
+  in `tests/c/internal/InternalTests.cmake`, asserting the emitted text
+  contains `bir.func @choose2_add_post_chain_u(i8 %p.x, i8 %p.y) -> i8 {`,
+  `%t11 = bir.add i8 %p.x, 5`, `%t13 = bir.add i8 %p.y, 9`,
+  `%t14 = bir.select eq i8 %p.x, %p.y, %t11, %t13`,
+  `%t15 = bir.add i8 %t14, 6`, `%t16 = bir.sub i8 %t15, 2`,
+  plus `bir.func @choose2_add_post_chain_tail_u(i8 %p.x, i8 %p.y) -> i8 {`,
+  `%t17 = bir.add i8 %t16, 9`, and forbids the legacy LLVM IR
+  `define i8 @choose2_add_post_chain_u(i8 %p.x, i8 %p.y)` /
+  `define i8 @choose2_add_post_chain_tail_u(i8 %p.x, i8 %p.y)`.
 
 Completed this iteration:
 - Audited the widened-width/source-level two-parameter `unsigned char`
