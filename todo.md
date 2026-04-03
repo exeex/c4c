@@ -7,9 +7,10 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 5: Finish the backend test migration
-- Current slice: move one narrow `tests/c/internal/backend_ir_case` surface
-  onto neutral backend-module wording and wiring without widening into
-  unrelated backend cleanup
+- Current slice: move one additional internal LLVM-text check fixture off the
+  remaining `backend_ir_case` path by reusing the new neutral
+  `run_backend_module_check_case.cmake` helper without widening into unrelated
+  backend cleanup
 
 ## Todo
 
@@ -71,12 +72,18 @@ Source Plan: plan.md
       and kept the separate BIR pipeline lane unchanged so the stable backend
       test story no longer treats transitional backend-IR naming as the primary
       contract
+- [x] added a neutral `run_backend_module_check_case.cmake` helper for the
+      internal LLVM-text backend checks and moved the x86_64
+      `struct_return_indirect_byval` fixture onto
+      `tests/c/internal/backend_module_case/`
 
 ## Next Slice
 
-- after the unit-test lane rename lands, move one narrow
-  `tests/c/internal/backend_ir_case` surface onto neutral backend-module
-  wording and wiring without widening into unrelated backend cleanup
+- continue migrating one additional narrow
+  `tests/c/internal/backend_ir_case` fixture onto
+  `tests/c/internal/backend_module_case/`, ideally one of the remaining
+  AArch64 variadic LLVM-text checks that can switch paths without changing test
+  intent
 - keep the deferred AArch64 `extern_global_array` production-route cleanup out
   of scope unless it blocks a concrete Step 5 backend test migration slice
 
@@ -137,3 +144,14 @@ Source Plan: plan.md
   `backend_module_tests` passed after the rename; the clean full suite stayed
   flat at 2720 passing / 6 failing, and the monotonic regression guard reported
   zero new failing tests relative to the existing EASTL recipe baseline
+- current Step 5 target is intentionally narrow:
+  rename the internal LLVM-text check helper surface and move only the
+  x86_64 `struct_return_indirect_byval` fixture off the `backend_ir_case`
+  path first, leaving the larger AArch64 variadic cluster for later slices
+- regression check for the helper/fixture migration slice:
+  `backend_lir_x86_64_struct_return_indirect_byval_ir` passed after switching
+  to `run_backend_module_check_case.cmake` and
+  `tests/c/internal/backend_module_case/struct_return_indirect_byval.c`; the
+  clean full suite stayed flat at 2720 passing / 6 failing, and the monotonic
+  regression guard reported zero new failing tests relative to the existing
+  EASTL recipe baseline

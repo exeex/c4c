@@ -438,11 +438,11 @@ if(EXISTS "${EXAMPLE_C}")
       NAME backend_lir_x86_64_struct_return_indirect_byval_ir
       COMMAND "${CMAKE_COMMAND}"
               -DCOMPILER=$<TARGET_FILE:c4cll>
-              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_ir_case/struct_return_indirect_byval.c
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_module_case/struct_return_indirect_byval.c
               -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
               -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/struct_return_indirect_byval_x86_64.ll
               "-DREQUIRED_SNIPPETS=define %struct.Result @make_result(ptr byval(%struct.Pair) align 8 %p.left, i8 %p.tag, double %p.mid, ptr byval(%struct.Pair) align 8 %p.right)|call %struct.Result (ptr, i8, double, ptr)|ptr byval(%struct.Pair) align 8 %lv.a|ptr byval(%struct.Pair) align 8 %lv.b"
-              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_ir_check_case.cmake"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_module_check_case.cmake"
   )
   set_tests_properties(backend_lir_x86_64_struct_return_indirect_byval_ir PROPERTIES
       LABELS "internal;backend")
