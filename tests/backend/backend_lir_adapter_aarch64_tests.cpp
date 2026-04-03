@@ -953,7 +953,7 @@ void test_aarch64_backend_scaffold_renders_supported_slice() {
 }
 
 void test_aarch64_backend_scaffold_accepts_structured_single_function_ir_without_signature_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_return_add_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_return_add_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -968,7 +968,7 @@ void test_aarch64_backend_scaffold_accepts_structured_single_function_ir_without
 }
 
 void test_aarch64_backend_scaffold_accepts_structured_single_function_ir_without_signature_or_binary_type_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_return_add_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_return_add_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
@@ -1002,7 +1002,7 @@ void test_aarch64_backend_scaffold_matches_direct_return_immediate_asm() {
   const auto direct_rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_return_zero_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-  const auto lowered = c4c::backend::lower_to_backend_ir(make_return_zero_module());
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(make_return_zero_module());
   const auto lowered_rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
@@ -1017,7 +1017,7 @@ void test_aarch64_backend_scaffold_matches_direct_constant_conditional_goto_retu
       c4c::backend::BackendModuleInput{make_constant_conditional_goto_return_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   const auto lowered =
-      c4c::backend::lower_to_backend_ir(make_constant_conditional_goto_return_module());
+      c4c::backend::lower_lir_to_backend_module(make_constant_conditional_goto_return_module());
   const auto lowered_rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
@@ -1032,7 +1032,7 @@ void test_aarch64_backend_scaffold_matches_direct_i64_constant_conditional_goto_
       c4c::backend::BackendModuleInput{make_i64_constant_conditional_goto_return_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   const auto lowered =
-      c4c::backend::lower_to_backend_ir(make_i64_constant_conditional_goto_return_module());
+      c4c::backend::lower_lir_to_backend_module(make_i64_constant_conditional_goto_return_module());
   const auto lowered_rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
@@ -1046,7 +1046,7 @@ void test_aarch64_backend_scaffold_matches_direct_mixed_cast_constant_conditiona
   const auto direct_rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_mixed_cast_constant_conditional_goto_return_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-  const auto lowered = c4c::backend::lower_to_backend_ir(
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_mixed_cast_constant_conditional_goto_return_module());
   const auto lowered_rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -1062,7 +1062,7 @@ void test_aarch64_backend_scaffold_matches_direct_small_integer_cast_constant_co
       c4c::backend::BackendModuleInput{
           make_small_integer_cast_constant_conditional_goto_return_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-  const auto lowered = c4c::backend::lower_to_backend_ir(
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_small_integer_cast_constant_conditional_goto_return_module());
   const auto lowered_rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -1078,7 +1078,7 @@ void test_aarch64_backend_scaffold_matches_direct_truncating_binop_constant_cond
       c4c::backend::BackendModuleInput{
           make_truncating_binop_constant_conditional_goto_return_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-  const auto lowered = c4c::backend::lower_to_backend_ir(
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_truncating_binop_constant_conditional_goto_return_module());
   const auto lowered_rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -1094,7 +1094,7 @@ void test_aarch64_backend_scaffold_matches_direct_select_constant_conditional_go
       c4c::backend::BackendModuleInput{
           make_select_constant_conditional_goto_return_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-  const auto lowered = c4c::backend::lower_to_backend_ir(
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_select_constant_conditional_goto_return_module());
   const auto lowered_rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -1110,7 +1110,7 @@ void test_aarch64_backend_scaffold_matches_direct_local_slot_constant_conditiona
       c4c::backend::BackendModuleInput{
           make_local_slot_constant_conditional_goto_return_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-  const auto lowered = c4c::backend::lower_to_backend_ir(
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_local_slot_constant_conditional_goto_return_module());
   const auto lowered_rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -1126,7 +1126,7 @@ void test_aarch64_backend_scaffold_matches_direct_i8_local_slot_constant_conditi
       c4c::backend::BackendModuleInput{
           make_i8_local_slot_constant_conditional_goto_return_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-  const auto lowered = c4c::backend::lower_to_backend_ir(
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_i8_local_slot_constant_conditional_goto_return_module());
   const auto lowered_rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -1142,7 +1142,7 @@ void expect_aarch64_backend_scaffold_matches_direct_local_slot_constant_conditio
   const auto direct_rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{module},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto lowered_rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
@@ -1175,7 +1175,7 @@ void test_aarch64_backend_scaffold_matches_direct_non_main_param_nineteen_local_
   const auto direct_rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{module},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto lowered_rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
@@ -1471,7 +1471,7 @@ void test_aarch64_backend_renders_direct_call_slice() {
 }
 
 void test_aarch64_backend_scaffold_accepts_structured_direct_call_ir_without_signature_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_direct_call_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_direct_call_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -1486,7 +1486,7 @@ void test_aarch64_backend_scaffold_accepts_structured_direct_call_ir_without_sig
 }
 
 void test_aarch64_backend_scaffold_rejects_structured_zero_arg_direct_call_when_helper_body_contract_disagrees() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_direct_call_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_direct_call_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   c4c::backend::BackendFunction* helper = nullptr;
@@ -1542,7 +1542,7 @@ void test_aarch64_backend_scaffold_accepts_structured_zero_arg_direct_call_spaci
   call.callee_type_suffix = "( )";
   call.args_str = "  ";
 
-  auto lowered = c4c::backend::lower_to_backend_ir(std::move(module));
+  auto lowered = c4c::backend::lower_lir_to_backend_module(std::move(module));
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -1557,7 +1557,7 @@ void test_aarch64_backend_scaffold_accepts_structured_zero_arg_direct_call_spaci
 }
 
 void test_aarch64_backend_scaffold_accepts_renamed_structured_zero_arg_direct_call_ir_without_signature_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_direct_call_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_direct_call_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   c4c::backend::BackendFunction* helper = nullptr;
@@ -1693,7 +1693,7 @@ void test_aarch64_backend_scaffold_matches_direct_local_pointer_temp_return_asm(
       c4c::backend::BackendModuleInput{make_local_pointer_temp_return_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   const auto lowered =
-      c4c::backend::lower_to_backend_ir(make_local_pointer_temp_return_module());
+      c4c::backend::lower_lir_to_backend_module(make_local_pointer_temp_return_module());
   const auto lowered_rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
@@ -1897,7 +1897,7 @@ void test_aarch64_backend_keeps_renamed_structured_call_crossing_slice_on_asm_pa
 }
 
 void test_aarch64_backend_scaffold_accepts_structured_call_crossing_direct_call_ir_without_signature_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_typed_call_crossing_direct_call_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_typed_call_crossing_direct_call_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
@@ -1920,7 +1920,7 @@ void test_aarch64_backend_scaffold_accepts_structured_call_crossing_direct_call_
 }
 
 void test_aarch64_backend_scaffold_accepts_renamed_structured_call_crossing_direct_call_ir_without_signature_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_typed_call_crossing_direct_call_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_typed_call_crossing_direct_call_module());
 
   c4c::backend::BackendFunction* helper = nullptr;
   c4c::backend::BackendFunction* main_fn = nullptr;
@@ -1966,7 +1966,7 @@ void test_aarch64_backend_scaffold_accepts_renamed_structured_call_crossing_dire
 }
 
 void test_aarch64_backend_scaffold_accepts_lowered_call_crossing_source_value_rename_without_signature_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_typed_call_crossing_direct_call_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_typed_call_crossing_direct_call_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   c4c::backend::BackendFunction* main_fn = nullptr;
@@ -2012,7 +2012,7 @@ void test_aarch64_backend_scaffold_accepts_lowered_call_crossing_source_value_re
 }
 
 void test_aarch64_backend_scaffold_accepts_renamed_lowered_call_crossing_source_value_rename_without_signature_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_typed_call_crossing_direct_call_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_typed_call_crossing_direct_call_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   c4c::backend::BackendFunction* helper = nullptr;
@@ -2067,7 +2067,7 @@ void test_aarch64_backend_scaffold_accepts_renamed_lowered_call_crossing_source_
 void test_aarch64_backend_scaffold_ignores_broken_legacy_fallback_for_call_crossing_slice() {
   auto legacy = make_typed_call_crossing_direct_call_module();
   legacy.target_triple = "aarch64-unknown-linux-gnu";
-  auto lowered = c4c::backend::lower_to_backend_ir(legacy);
+  auto lowered = c4c::backend::lower_lir_to_backend_module(legacy);
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   for (auto& function : legacy.functions) {
@@ -2108,7 +2108,7 @@ void test_aarch64_backend_renders_typed_two_arg_direct_call_slice() {
 }
 
 void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_ir_without_signature_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_two_arg_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
@@ -2127,7 +2127,7 @@ void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_ir_wit
 }
 
 void test_aarch64_backend_scaffold_rejects_structured_two_arg_direct_call_when_helper_body_contract_disagrees() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_two_arg_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   c4c::backend::BackendFunction* helper = nullptr;
@@ -2155,7 +2155,7 @@ void test_aarch64_backend_scaffold_rejects_structured_two_arg_direct_call_when_h
 }
 
 void test_aarch64_backend_scaffold_accepts_renamed_structured_two_arg_direct_call_ir_without_signature_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_two_arg_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   c4c::backend::BackendFunction* helper = nullptr;
@@ -2211,7 +2211,7 @@ void test_aarch64_backend_scaffold_accepts_renamed_structured_two_arg_direct_cal
 }
 
 void test_aarch64_backend_scaffold_rejects_structured_two_arg_direct_call_when_param_type_count_disagrees_with_args() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_two_arg_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   c4c::backend::BackendFunction* main_fn = nullptr;
@@ -2243,7 +2243,7 @@ void test_aarch64_backend_scaffold_rejects_structured_two_arg_direct_call_when_p
 }
 
 void test_aarch64_backend_scaffold_rejects_structured_two_arg_direct_call_when_callee_signature_param_type_disagrees() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_two_arg_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   c4c::backend::BackendFunction* helper = nullptr;
@@ -2287,7 +2287,7 @@ void test_aarch64_backend_renders_typed_two_arg_direct_call_folded_const_slice()
 
 void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_folded_const_ir_without_signature_shims() {
   auto lowered =
-      c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_folded_const_module());
+      c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_two_arg_folded_const_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -2307,7 +2307,7 @@ void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_folded
 
 void test_aarch64_backend_scaffold_accepts_renamed_structured_two_arg_direct_call_folded_const_ir_without_signature_shims() {
   auto lowered =
-      c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_folded_const_module());
+      c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_two_arg_folded_const_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   c4c::backend::BackendFunction* helper = nullptr;
@@ -2371,7 +2371,7 @@ void test_aarch64_backend_scaffold_accepts_renamed_structured_two_arg_direct_cal
 
 void test_aarch64_backend_scaffold_rejects_structured_two_arg_direct_call_folded_const_when_helper_body_contract_disagrees() {
   auto lowered =
-      c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_folded_const_module());
+      c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_two_arg_folded_const_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   c4c::backend::BackendFunction* helper = nullptr;
@@ -2416,7 +2416,7 @@ void test_aarch64_backend_renders_typed_direct_call_local_arg_slice() {
 
 void test_aarch64_backend_scaffold_accepts_structured_direct_call_add_imm_ir_without_signature_shims() {
   auto lowered =
-      c4c::backend::lower_to_backend_ir(make_typed_direct_call_local_arg_module());
+      c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_local_arg_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
@@ -2434,7 +2434,7 @@ void test_aarch64_backend_scaffold_accepts_structured_direct_call_add_imm_ir_wit
 
 void test_aarch64_backend_scaffold_rejects_structured_direct_call_add_imm_when_helper_body_contract_disagrees() {
   auto lowered =
-      c4c::backend::lower_to_backend_ir(make_typed_direct_call_local_arg_module());
+      c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_local_arg_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   c4c::backend::BackendFunction* helper = nullptr;
@@ -2464,7 +2464,7 @@ void test_aarch64_backend_scaffold_rejects_structured_direct_call_add_imm_when_h
 
 void test_aarch64_backend_scaffold_accepts_renamed_structured_direct_call_add_imm_ir_without_signature_shims() {
   auto lowered =
-      c4c::backend::lower_to_backend_ir(make_typed_direct_call_local_arg_module());
+      c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_local_arg_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   c4c::backend::BackendFunction* helper = nullptr;
@@ -2533,7 +2533,7 @@ void test_aarch64_backend_renders_typed_direct_call_local_arg_spacing_slice() {
 
 void test_aarch64_backend_scaffold_accepts_structured_direct_call_local_arg_spacing_ir_without_signature_shims() {
   auto lowered =
-      c4c::backend::lower_to_backend_ir(make_typed_direct_call_local_arg_with_suffix_spacing_module());
+      c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_local_arg_with_suffix_spacing_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
@@ -2567,7 +2567,7 @@ void test_aarch64_backend_renders_typed_two_arg_direct_call_local_arg_slice() {
 
 void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_local_arg_ir_without_signature_shims() {
   auto lowered =
-      c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_local_arg_module());
+      c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_two_arg_local_arg_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
@@ -2587,7 +2587,7 @@ void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_local_
 
 void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_local_arg_spacing_ir_without_signature_shims() {
   auto lowered =
-      c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_local_arg_with_spacing_module());
+      c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_two_arg_local_arg_with_spacing_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
@@ -2607,7 +2607,7 @@ void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_local_
 
 void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_second_local_arg_ir_without_signature_shims() {
   auto lowered =
-      c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_second_local_arg_module());
+      c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_two_arg_second_local_arg_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
@@ -2643,7 +2643,7 @@ void test_aarch64_backend_renders_typed_two_arg_direct_call_second_local_arg_sli
 }
 
 void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_second_local_rewrite_ir_without_signature_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(
+  auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_typed_direct_call_two_arg_second_local_rewrite_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
@@ -2663,7 +2663,7 @@ void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_second
 }
 
 void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_first_local_rewrite_ir_without_signature_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(
+  auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_typed_direct_call_two_arg_first_local_rewrite_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
@@ -2730,7 +2730,7 @@ void test_aarch64_backend_renders_typed_two_arg_direct_call_first_local_rewrite_
 }
 
 void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_first_local_rewrite_spacing_ir_without_signature_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(
+  auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_typed_direct_call_two_arg_first_local_rewrite_with_suffix_spacing_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
@@ -2768,7 +2768,7 @@ void test_aarch64_backend_renders_typed_two_arg_direct_call_both_local_arg_slice
 
 void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_both_local_arg_ir_without_signature_shims() {
   auto lowered =
-      c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_both_local_arg_module());
+      c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_two_arg_both_local_arg_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
@@ -2804,7 +2804,7 @@ void test_aarch64_backend_renders_typed_two_arg_direct_call_both_local_first_rew
 }
 
 void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_both_local_first_rewrite_ir_without_signature_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(
+  auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_typed_direct_call_two_arg_both_local_first_rewrite_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
@@ -2841,7 +2841,7 @@ void test_aarch64_backend_renders_typed_two_arg_direct_call_both_local_second_re
 }
 
 void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_both_local_second_rewrite_ir_without_signature_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(
+  auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_typed_direct_call_two_arg_both_local_second_rewrite_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
@@ -2878,7 +2878,7 @@ void test_aarch64_backend_renders_typed_two_arg_direct_call_both_local_double_re
 }
 
 void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_both_local_double_rewrite_ir_without_signature_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(
+  auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_typed_direct_call_two_arg_both_local_double_rewrite_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
@@ -3085,7 +3085,7 @@ void test_aarch64_backend_renders_extern_decl_slice() {
 
 void test_aarch64_backend_explicit_emit_surface_matches_structured_declared_direct_call_path() {
   const auto module = make_extern_decl_call_module();
-  auto lowered = c4c::backend::lower_to_backend_ir(module);
+  auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto direct_rendered = c4c::backend::aarch64::emit_module(module);
@@ -3108,7 +3108,7 @@ void test_aarch64_backend_explicit_emit_surface_matches_structured_declared_dire
 
 void test_aarch64_backend_lowered_ir_text_fallback_ignores_legacy_lir_metadata() {
   const auto legacy_module = make_void_return_module();
-  auto lowered = c4c::backend::lower_to_backend_ir(legacy_module);
+  auto lowered = c4c::backend::lower_lir_to_backend_module(legacy_module);
   const auto expected = c4c::backend::aarch64::emit_module(lowered);
 
   const auto rendered = c4c::backend::aarch64::emit_module(
@@ -3135,7 +3135,7 @@ void test_aarch64_backend_renders_extern_global_load_slice() {
 }
 
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_global_load_ir_input() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(make_global_load_module());
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(make_global_load_module());
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
@@ -3150,7 +3150,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_global_load_ir_input
 
 void test_aarch64_backend_scaffold_accepts_structured_global_load_ir_without_compatibility_shims() {
   auto lowered =
-      c4c::backend::lower_to_backend_ir(make_global_int_pointer_roundtrip_module());
+      c4c::backend::lower_lir_to_backend_module(make_global_int_pointer_roundtrip_module());
   clear_backend_global_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -3168,7 +3168,7 @@ void test_aarch64_backend_scaffold_accepts_structured_global_load_ir_without_com
 
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_global_store_reload_ir_input() {
   const auto lowered =
-      c4c::backend::lower_to_backend_ir(make_global_store_reload_module());
+      c4c::backend::lower_lir_to_backend_module(make_global_store_reload_module());
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
@@ -3186,7 +3186,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_global_store_reload_
 }
 
 void test_aarch64_backend_scaffold_accepts_structured_global_store_reload_ir_without_type_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_global_store_reload_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_global_store_reload_module());
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -3201,7 +3201,7 @@ void test_aarch64_backend_scaffold_accepts_structured_global_store_reload_ir_wit
 }
 
 void test_aarch64_backend_scaffold_accepts_structured_global_store_reload_ir_without_type_or_signature_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_global_store_reload_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_global_store_reload_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
@@ -3217,7 +3217,7 @@ void test_aarch64_backend_scaffold_accepts_structured_global_store_reload_ir_wit
 }
 
 void test_aarch64_backend_scaffold_accepts_structured_global_load_ir_without_raw_global_type_text() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_global_load_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_global_load_module());
   clear_backend_global_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -3232,7 +3232,7 @@ void test_aarch64_backend_scaffold_accepts_structured_global_load_ir_without_raw
 }
 
 void test_aarch64_backend_scaffold_accepts_structured_global_store_reload_ir_without_raw_global_type_text() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_global_store_reload_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_global_store_reload_module());
   clear_backend_global_type_compatibility_shims(lowered);
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
@@ -3249,7 +3249,7 @@ void test_aarch64_backend_scaffold_accepts_structured_global_store_reload_ir_wit
 
 void test_aarch64_backend_scaffold_rejects_global_fast_paths_when_address_kind_disagrees() {
   {
-    auto lowered = c4c::backend::lower_to_backend_ir(make_global_load_module());
+    auto lowered = c4c::backend::lower_lir_to_backend_module(make_global_load_module());
     auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
     auto* load =
         main_fn != nullptr && !main_fn->blocks.empty() && !main_fn->blocks.front().insts.empty()
@@ -3270,7 +3270,7 @@ void test_aarch64_backend_scaffold_rejects_global_fast_paths_when_address_kind_d
   }
 
   {
-    auto lowered = c4c::backend::lower_to_backend_ir(make_global_store_reload_module());
+    auto lowered = c4c::backend::lower_lir_to_backend_module(make_global_store_reload_module());
     auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
     auto* store =
         main_fn != nullptr && !main_fn->blocks.empty() && !main_fn->blocks.front().insts.empty()
@@ -3298,7 +3298,7 @@ void test_aarch64_backend_scaffold_rejects_global_fast_paths_when_address_kind_d
   }
 
   {
-    auto lowered = c4c::backend::lower_to_backend_ir(make_extern_global_load_module());
+    auto lowered = c4c::backend::lower_lir_to_backend_module(make_extern_global_load_module());
     auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
     auto* load =
         main_fn != nullptr && !main_fn->blocks.empty() && !main_fn->blocks.front().insts.empty()
@@ -3321,7 +3321,7 @@ void test_aarch64_backend_scaffold_rejects_global_fast_paths_when_address_kind_d
 
 void test_aarch64_backend_scaffold_rejects_global_fast_paths_when_memory_width_disagrees() {
   {
-    auto lowered = c4c::backend::lower_to_backend_ir(make_global_load_module());
+    auto lowered = c4c::backend::lower_lir_to_backend_module(make_global_load_module());
     auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
     auto* load =
         main_fn != nullptr && !main_fn->blocks.empty() && !main_fn->blocks.front().insts.empty()
@@ -3344,7 +3344,7 @@ void test_aarch64_backend_scaffold_rejects_global_fast_paths_when_memory_width_d
   }
 
   {
-    auto lowered = c4c::backend::lower_to_backend_ir(make_global_store_reload_module());
+    auto lowered = c4c::backend::lower_lir_to_backend_module(make_global_store_reload_module());
     auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
     auto* load = main_fn != nullptr && !main_fn->blocks.empty() &&
                          main_fn->blocks.front().insts.size() > 1
@@ -3367,7 +3367,7 @@ void test_aarch64_backend_scaffold_rejects_global_fast_paths_when_memory_width_d
   }
 
   {
-    auto lowered = c4c::backend::lower_to_backend_ir(make_extern_global_load_module());
+    auto lowered = c4c::backend::lower_lir_to_backend_module(make_extern_global_load_module());
     auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
     auto* load =
         main_fn != nullptr && !main_fn->blocks.empty() && !main_fn->blocks.front().insts.empty()
@@ -3391,7 +3391,7 @@ void test_aarch64_backend_scaffold_rejects_global_fast_paths_when_memory_width_d
 
   {
     auto lowered =
-        c4c::backend::lower_to_backend_ir(make_extern_global_array_load_module());
+        c4c::backend::lower_lir_to_backend_module(make_extern_global_array_load_module());
     auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
     auto* load =
         main_fn != nullptr && !main_fn->blocks.empty() && !main_fn->blocks.front().insts.empty()
@@ -3415,7 +3415,7 @@ void test_aarch64_backend_scaffold_rejects_global_fast_paths_when_memory_width_d
 }
 
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_string_literal_ir_input() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(make_string_literal_char_module());
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(make_string_literal_char_module());
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
@@ -3435,7 +3435,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_string_literal_ir_in
 }
 
 void test_aarch64_backend_scaffold_accepts_structured_string_literal_ir_without_type_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_string_literal_char_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_string_literal_char_module());
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -3448,7 +3448,7 @@ void test_aarch64_backend_scaffold_accepts_structured_string_literal_ir_without_
 }
 
 void test_aarch64_backend_scaffold_accepts_structured_string_literal_ir_without_signature_or_type_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_string_literal_char_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_string_literal_char_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
@@ -3462,7 +3462,7 @@ void test_aarch64_backend_scaffold_accepts_structured_string_literal_ir_without_
 }
 
 void test_aarch64_backend_scaffold_rejects_string_literal_fast_path_when_address_kind_disagrees() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_string_literal_char_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_string_literal_char_module());
   auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
   auto* load =
       main_fn != nullptr && !main_fn->blocks.empty() && !main_fn->blocks.front().insts.empty()
@@ -3483,7 +3483,7 @@ void test_aarch64_backend_scaffold_rejects_string_literal_fast_path_when_address
 }
 
 void test_aarch64_backend_scaffold_rejects_string_literal_fast_path_when_byte_offset_exceeds_bounds() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_string_literal_char_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_string_literal_char_module());
   auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
   auto* load =
       main_fn != nullptr && !main_fn->blocks.empty() && !main_fn->blocks.front().insts.empty()
@@ -3504,7 +3504,7 @@ void test_aarch64_backend_scaffold_rejects_string_literal_fast_path_when_byte_of
 }
 
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_extern_global_load_ir_input() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(make_extern_global_load_module());
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(make_extern_global_load_module());
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
@@ -3518,7 +3518,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_extern_global_load_i
 }
 
 void test_aarch64_backend_scaffold_accepts_structured_extern_global_load_ir_without_type_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_extern_global_load_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_extern_global_load_module());
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -3531,7 +3531,7 @@ void test_aarch64_backend_scaffold_accepts_structured_extern_global_load_ir_with
 }
 
 void test_aarch64_backend_scaffold_accepts_structured_extern_global_load_ir_without_raw_global_type_text() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_extern_global_load_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_extern_global_load_module());
   clear_backend_global_type_compatibility_shims(lowered);
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
@@ -3545,7 +3545,7 @@ void test_aarch64_backend_scaffold_accepts_structured_extern_global_load_ir_with
 }
 
 void test_aarch64_backend_scaffold_accepts_structured_extern_global_load_ir_without_legacy_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_extern_global_load_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_extern_global_load_module());
   clear_backend_global_compatibility_shims(lowered);
   clear_backend_global_type_compatibility_shims(lowered);
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
@@ -3564,7 +3564,7 @@ void test_aarch64_backend_scaffold_accepts_structured_extern_global_load_ir_with
 
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_extern_global_array_ir_input() {
   const auto lowered =
-      c4c::backend::lower_to_backend_ir(make_extern_global_array_load_module());
+      c4c::backend::lower_lir_to_backend_module(make_extern_global_array_load_module());
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
@@ -3579,7 +3579,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_extern_global_array_
 
 void test_aarch64_backend_scaffold_accepts_structured_extern_global_array_ir_without_compatibility_shims() {
   auto lowered =
-      c4c::backend::lower_to_backend_ir(make_extern_global_array_load_module());
+      c4c::backend::lower_lir_to_backend_module(make_extern_global_array_load_module());
   clear_backend_global_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -3595,7 +3595,7 @@ void test_aarch64_backend_scaffold_accepts_structured_extern_global_array_ir_wit
 
 void test_aarch64_backend_scaffold_accepts_structured_extern_global_array_ir_without_compatibility_or_signature_shims() {
   auto lowered =
-      c4c::backend::lower_to_backend_ir(make_extern_global_array_load_module());
+      c4c::backend::lower_lir_to_backend_module(make_extern_global_array_load_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   clear_backend_global_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
@@ -3612,7 +3612,7 @@ void test_aarch64_backend_scaffold_accepts_structured_extern_global_array_ir_wit
 
 void test_aarch64_backend_scaffold_accepts_structured_extern_global_array_ir_without_raw_type_text() {
   auto lowered =
-      c4c::backend::lower_to_backend_ir(make_extern_global_array_load_module());
+      c4c::backend::lower_lir_to_backend_module(make_extern_global_array_load_module());
   clear_backend_global_compatibility_shims(lowered);
   clear_backend_global_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
@@ -3629,7 +3629,7 @@ void test_aarch64_backend_scaffold_accepts_structured_extern_global_array_ir_wit
 
 void test_aarch64_backend_scaffold_rejects_extern_global_array_fast_path_when_address_kind_disagrees() {
   auto lowered =
-      c4c::backend::lower_to_backend_ir(make_extern_global_array_load_module());
+      c4c::backend::lower_lir_to_backend_module(make_extern_global_array_load_module());
   auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
   auto* load =
       main_fn != nullptr && !main_fn->blocks.empty() && !main_fn->blocks.front().insts.empty()
@@ -3651,7 +3651,7 @@ void test_aarch64_backend_scaffold_rejects_extern_global_array_fast_path_when_ad
 
 void test_aarch64_backend_scaffold_rejects_extern_global_array_fast_path_when_offset_escapes_bounds() {
   auto lowered =
-      c4c::backend::lower_to_backend_ir(make_extern_global_array_load_module());
+      c4c::backend::lower_lir_to_backend_module(make_extern_global_array_load_module());
   auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
   auto* load =
       main_fn != nullptr && !main_fn->blocks.empty() && !main_fn->blocks.front().insts.empty()
@@ -3672,7 +3672,7 @@ void test_aarch64_backend_scaffold_rejects_extern_global_array_fast_path_when_of
 }
 
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_local_array_ir_input() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(make_local_array_gep_module());
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(make_local_array_gep_module());
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
@@ -3693,7 +3693,7 @@ void test_aarch64_backend_scaffold_matches_direct_local_array_asm() {
   const auto direct_rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_local_array_gep_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-  const auto lowered = c4c::backend::lower_to_backend_ir(make_local_array_gep_module());
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(make_local_array_gep_module());
   const auto lowered_rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
@@ -3704,7 +3704,7 @@ void test_aarch64_backend_scaffold_matches_direct_local_array_asm() {
 }
 
 void test_aarch64_backend_scaffold_accepts_structured_local_array_ir_without_type_or_signature_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_local_array_gep_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_local_array_gep_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
@@ -3722,7 +3722,7 @@ void test_aarch64_backend_scaffold_accepts_structured_local_array_ir_without_typ
 }
 
 void test_aarch64_backend_scaffold_rejects_local_array_fast_path_when_local_slot_metadata_disagrees() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_local_array_gep_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_local_array_gep_module());
   auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
   expect_true(main_fn != nullptr && !main_fn->local_slots.empty(),
               "aarch64 local-array regression test needs a structured local slot to mutate");
@@ -3741,7 +3741,7 @@ void test_aarch64_backend_scaffold_rejects_local_array_fast_path_when_local_slot
 
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_global_int_pointer_roundtrip_ir_input() {
   const auto lowered =
-      c4c::backend::lower_to_backend_ir(make_global_int_pointer_roundtrip_module());
+      c4c::backend::lower_lir_to_backend_module(make_global_int_pointer_roundtrip_module());
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
@@ -3758,7 +3758,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_global_int_pointer_r
 
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_global_char_pointer_diff_ir_input() {
   const auto lowered =
-      c4c::backend::lower_to_backend_ir(make_global_char_pointer_diff_module());
+      c4c::backend::lower_lir_to_backend_module(make_global_char_pointer_diff_module());
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
@@ -3774,7 +3774,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_global_char_pointer_
 }
 
 void test_aarch64_backend_scaffold_accepts_structured_global_char_pointer_diff_ir_without_type_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_global_char_pointer_diff_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_global_char_pointer_diff_module());
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -3789,7 +3789,7 @@ void test_aarch64_backend_scaffold_accepts_structured_global_char_pointer_diff_i
 }
 
 void test_aarch64_backend_scaffold_accepts_structured_global_char_pointer_diff_ir_without_raw_global_type_text() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_global_char_pointer_diff_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_global_char_pointer_diff_module());
   clear_backend_memory_type_compatibility_shims(lowered);
   clear_backend_global_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
@@ -3806,7 +3806,7 @@ void test_aarch64_backend_scaffold_accepts_structured_global_char_pointer_diff_i
 
 void test_aarch64_backend_scaffold_rejects_global_ptrdiff_fast_paths_when_address_kind_disagrees() {
   {
-    auto lowered = c4c::backend::lower_to_backend_ir(make_global_char_pointer_diff_module());
+    auto lowered = c4c::backend::lower_lir_to_backend_module(make_global_char_pointer_diff_module());
     auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
     auto* ptrdiff =
         main_fn != nullptr && !main_fn->blocks.empty() && !main_fn->blocks.front().insts.empty()
@@ -3829,7 +3829,7 @@ void test_aarch64_backend_scaffold_rejects_global_ptrdiff_fast_paths_when_addres
   }
 
   {
-    auto lowered = c4c::backend::lower_to_backend_ir(make_global_int_pointer_diff_module());
+    auto lowered = c4c::backend::lower_lir_to_backend_module(make_global_int_pointer_diff_module());
     auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
     auto* ptrdiff =
         main_fn != nullptr && !main_fn->blocks.empty() && !main_fn->blocks.front().insts.empty()
@@ -3854,7 +3854,7 @@ void test_aarch64_backend_scaffold_rejects_global_ptrdiff_fast_paths_when_addres
 
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_global_int_pointer_diff_ir_input() {
   const auto lowered =
-      c4c::backend::lower_to_backend_ir(make_global_int_pointer_diff_module());
+      c4c::backend::lower_lir_to_backend_module(make_global_int_pointer_diff_module());
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
@@ -3870,7 +3870,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_global_int_pointer_d
 }
 
 void test_aarch64_backend_scaffold_accepts_structured_global_int_pointer_diff_ir_without_type_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_global_int_pointer_diff_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_global_int_pointer_diff_module());
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -3883,7 +3883,7 @@ void test_aarch64_backend_scaffold_accepts_structured_global_int_pointer_diff_ir
 }
 
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_return_ir_input() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_return_module());
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(make_conditional_return_module());
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
@@ -3900,7 +3900,7 @@ void test_aarch64_backend_scaffold_matches_direct_conditional_return_asm() {
   const auto direct_rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_conditional_return_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-  const auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_return_module());
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(make_conditional_return_module());
   const auto lowered_rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
@@ -3911,7 +3911,7 @@ void test_aarch64_backend_scaffold_matches_direct_conditional_return_asm() {
 }
 
 void test_aarch64_backend_scaffold_accepts_structured_conditional_return_ir_without_type_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_return_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_conditional_return_module());
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -3924,7 +3924,7 @@ void test_aarch64_backend_scaffold_accepts_structured_conditional_return_ir_with
 }
 
 void test_aarch64_backend_scaffold_accepts_structured_conditional_return_ir_without_signature_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_return_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_conditional_return_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -3944,7 +3944,7 @@ void test_aarch64_backend_scaffold_accepts_structured_non_main_local_slot_condit
   function.alloca_insts.push_back(
       c4c::codegen::lir::LirAllocaOp{"%lv.unused", "i32", "", 4});
 
-  auto lowered = c4c::backend::lower_to_backend_ir(module);
+  auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -3957,7 +3957,7 @@ void test_aarch64_backend_scaffold_accepts_structured_non_main_local_slot_condit
 }
 
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_ir_input() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_phi_join_module());
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(make_conditional_phi_join_module());
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
@@ -3975,7 +3975,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join
 }
 
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_add_ir_input() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_phi_join_add_module());
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(make_conditional_phi_join_add_module());
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
@@ -3989,7 +3989,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join
 }
 
 void test_aarch64_backend_scaffold_accepts_structured_conditional_phi_join_add_ir_without_type_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_phi_join_add_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_conditional_phi_join_add_module());
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -4002,7 +4002,7 @@ void test_aarch64_backend_scaffold_accepts_structured_conditional_phi_join_add_i
 }
 
 void test_aarch64_backend_scaffold_accepts_structured_conditional_phi_join_add_ir_without_signature_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_phi_join_add_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_conditional_phi_join_add_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -4016,7 +4016,7 @@ void test_aarch64_backend_scaffold_accepts_structured_conditional_phi_join_add_i
 
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_predecessor_add_ir_input() {
   const auto lowered =
-      c4c::backend::lower_to_backend_ir(make_conditional_phi_join_predecessor_add_module());
+      c4c::backend::lower_lir_to_backend_module(make_conditional_phi_join_predecessor_add_module());
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
@@ -4033,7 +4033,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join
 
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_predecessor_sub_ir_input() {
   const auto lowered =
-      c4c::backend::lower_to_backend_ir(make_conditional_phi_join_predecessor_sub_module());
+      c4c::backend::lower_lir_to_backend_module(make_conditional_phi_join_predecessor_sub_module());
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
@@ -4050,7 +4050,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join
 
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_add_ir_input() {
   const auto lowered =
-      c4c::backend::lower_to_backend_ir(make_conditional_phi_join_mixed_predecessor_add_module());
+      c4c::backend::lower_lir_to_backend_module(make_conditional_phi_join_mixed_predecessor_add_module());
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
@@ -4066,7 +4066,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join
 }
 
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_add_post_join_add_ir_input() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_add_post_join_add_module());
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -4083,7 +4083,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join
 }
 
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_sub_post_join_add_ir_input() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_sub_post_join_add_module());
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -4100,7 +4100,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join
 }
 
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_add_sub_chain_post_join_add_ir_input() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_add_sub_chain_post_join_add_module());
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -4118,7 +4118,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join
 }
 
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_chain_and_add_post_join_add_ir_input() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_chain_and_add_post_join_add_module());
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -4136,7 +4136,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join
 }
 
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_chain_and_chain_post_join_add_ir_input() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_chain_and_chain_post_join_add_module());
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -4155,7 +4155,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join
 }
 
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_deeper_chain_and_chain_post_join_add_ir_input() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_deeper_chain_and_chain_post_join_add_module());
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -4174,7 +4174,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join
 }
 
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_deeper_chain_and_deeper_chain_post_join_add_ir_input() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_deeper_chain_and_deeper_chain_post_join_add_module());
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -4193,7 +4193,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join
 }
 
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_four_op_chain_and_deeper_chain_post_join_add_ir_input() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_four_op_chain_and_deeper_chain_post_join_add_module());
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -4212,7 +4212,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join
 }
 
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_four_op_chain_and_four_op_chain_post_join_add_ir_input() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_four_op_chain_and_four_op_chain_post_join_add_module());
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -4231,7 +4231,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join
 }
 
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_five_op_chain_and_four_op_chain_post_join_add_ir_input() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_five_op_chain_and_four_op_chain_post_join_add_module());
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -4250,7 +4250,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join
 }
 
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_five_op_chain_and_five_op_chain_post_join_add_ir_input() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_five_op_chain_and_five_op_chain_post_join_add_module());
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -4269,7 +4269,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join
 }
 
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_countdown_while_ir_input() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(make_countdown_while_return_module());
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(make_countdown_while_return_module());
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
@@ -4285,7 +4285,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_countdown_while_ir_i
 }
 
 void test_aarch64_backend_scaffold_accepts_structured_countdown_while_ir_without_signature_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_countdown_while_return_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_countdown_while_return_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -4306,7 +4306,7 @@ void test_aarch64_backend_scaffold_matches_direct_countdown_while_asm() {
       c4c::backend::BackendModuleInput{make_countdown_while_return_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   const auto lowered =
-      c4c::backend::lower_to_backend_ir(make_countdown_while_return_module());
+      c4c::backend::lower_lir_to_backend_module(make_countdown_while_return_module());
   const auto lowered_rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
@@ -4321,7 +4321,7 @@ void test_aarch64_backend_scaffold_matches_direct_typed_countdown_while_asm() {
       c4c::backend::BackendModuleInput{make_typed_countdown_while_return_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   const auto lowered =
-      c4c::backend::lower_to_backend_ir(make_typed_countdown_while_return_module());
+      c4c::backend::lower_lir_to_backend_module(make_typed_countdown_while_return_module());
   const auto lowered_rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
@@ -4336,7 +4336,7 @@ void test_aarch64_backend_scaffold_matches_direct_countdown_do_while_asm() {
       c4c::backend::BackendModuleInput{make_countdown_do_while_return_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   const auto lowered =
-      c4c::backend::lower_to_backend_ir(make_countdown_do_while_return_module());
+      c4c::backend::lower_lir_to_backend_module(make_countdown_do_while_return_module());
   const auto lowered_rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});

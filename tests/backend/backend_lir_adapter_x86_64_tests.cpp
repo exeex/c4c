@@ -625,7 +625,7 @@ void test_x86_backend_scaffold_routes_through_explicit_emit_surface() {
 }
 
 void test_x86_backend_scaffold_accepts_explicit_lowered_ir_input() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(make_return_add_module());
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(make_return_add_module());
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
@@ -641,7 +641,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_ir_input() {
 }
 
 void test_x86_backend_scaffold_accepts_structured_single_function_ir_without_signature_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_return_add_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_return_add_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -656,7 +656,7 @@ void test_x86_backend_scaffold_accepts_structured_single_function_ir_without_sig
 }
 
 void test_x86_backend_scaffold_accepts_structured_single_function_ir_without_signature_or_binary_type_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_return_add_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_return_add_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
@@ -673,7 +673,7 @@ void test_x86_backend_scaffold_accepts_structured_single_function_ir_without_sig
 
 void test_x86_backend_scaffold_accepts_explicit_lowered_extern_decl_ir_input() {
   const auto lowered =
-      c4c::backend::lower_to_backend_ir(make_x86_extern_decl_object_module());
+      c4c::backend::lower_lir_to_backend_module(make_x86_extern_decl_object_module());
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
@@ -690,7 +690,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_extern_decl_ir_input() {
 
 void test_x86_backend_scaffold_accepts_structured_signature_and_call_types_without_compatibility_shims() {
   auto lowered =
-      c4c::backend::lower_to_backend_ir(make_x86_extern_decl_object_module());
+      c4c::backend::lower_lir_to_backend_module(make_x86_extern_decl_object_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -711,7 +711,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_global_load_ir_input() {
   module.target_triple = "x86_64-unknown-linux-gnu";
   module.data_layout =
       "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
-  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
@@ -725,7 +725,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_global_load_ir_input() {
 }
 
 void test_x86_backend_scaffold_accepts_structured_global_load_ir_without_compatibility_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_x86_global_int_pointer_roundtrip_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_x86_global_int_pointer_roundtrip_module());
   clear_backend_global_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -743,7 +743,7 @@ void test_x86_backend_scaffold_accepts_structured_global_load_ir_without_compati
 
 void test_x86_backend_scaffold_accepts_explicit_lowered_global_store_reload_ir_input() {
   const auto lowered =
-      c4c::backend::lower_to_backend_ir(make_x86_global_store_reload_module());
+      c4c::backend::lower_lir_to_backend_module(make_x86_global_store_reload_module());
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
@@ -759,7 +759,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_global_store_reload_ir_i
 }
 
 void test_x86_backend_scaffold_accepts_structured_global_store_reload_ir_without_type_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_x86_global_store_reload_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_x86_global_store_reload_module());
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -774,7 +774,7 @@ void test_x86_backend_scaffold_accepts_structured_global_store_reload_ir_without
 }
 
 void test_x86_backend_scaffold_accepts_structured_global_store_reload_ir_without_type_or_signature_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_x86_global_store_reload_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_x86_global_store_reload_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
@@ -794,7 +794,7 @@ void test_x86_backend_scaffold_accepts_structured_global_load_ir_without_raw_glo
   module.target_triple = "x86_64-unknown-linux-gnu";
   module.data_layout =
       "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
-  auto lowered = c4c::backend::lower_to_backend_ir(module);
+  auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   clear_backend_global_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -809,7 +809,7 @@ void test_x86_backend_scaffold_accepts_structured_global_load_ir_without_raw_glo
 }
 
 void test_x86_backend_scaffold_accepts_structured_global_store_reload_ir_without_raw_global_type_text() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_x86_global_store_reload_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_x86_global_store_reload_module());
   clear_backend_global_type_compatibility_shims(lowered);
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
@@ -830,7 +830,7 @@ void test_x86_backend_scaffold_rejects_global_fast_paths_when_address_kind_disag
     module.target_triple = "x86_64-unknown-linux-gnu";
     module.data_layout =
         "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
-    auto lowered = c4c::backend::lower_to_backend_ir(module);
+    auto lowered = c4c::backend::lower_lir_to_backend_module(module);
     auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
     auto* load =
         main_fn != nullptr && !main_fn->blocks.empty() && !main_fn->blocks.front().insts.empty()
@@ -851,7 +851,7 @@ void test_x86_backend_scaffold_rejects_global_fast_paths_when_address_kind_disag
   }
 
   {
-    auto lowered = c4c::backend::lower_to_backend_ir(make_x86_global_store_reload_module());
+    auto lowered = c4c::backend::lower_lir_to_backend_module(make_x86_global_store_reload_module());
     auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
     auto* store =
         main_fn != nullptr && !main_fn->blocks.empty() && !main_fn->blocks.front().insts.empty()
@@ -879,7 +879,7 @@ void test_x86_backend_scaffold_rejects_global_fast_paths_when_address_kind_disag
   }
 
   {
-    auto lowered = c4c::backend::lower_to_backend_ir(make_x86_extern_global_load_module());
+    auto lowered = c4c::backend::lower_lir_to_backend_module(make_x86_extern_global_load_module());
     auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
     auto* load =
         main_fn != nullptr && !main_fn->blocks.empty() && !main_fn->blocks.front().insts.empty()
@@ -906,7 +906,7 @@ void test_x86_backend_scaffold_rejects_global_fast_paths_when_memory_width_disag
     module.target_triple = "x86_64-unknown-linux-gnu";
     module.data_layout =
         "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
-    auto lowered = c4c::backend::lower_to_backend_ir(module);
+    auto lowered = c4c::backend::lower_lir_to_backend_module(module);
     auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
     auto* load =
         main_fn != nullptr && !main_fn->blocks.empty() && !main_fn->blocks.front().insts.empty()
@@ -929,7 +929,7 @@ void test_x86_backend_scaffold_rejects_global_fast_paths_when_memory_width_disag
   }
 
   {
-    auto lowered = c4c::backend::lower_to_backend_ir(make_x86_global_store_reload_module());
+    auto lowered = c4c::backend::lower_lir_to_backend_module(make_x86_global_store_reload_module());
     auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
     auto* load = main_fn != nullptr && !main_fn->blocks.empty() &&
                          main_fn->blocks.front().insts.size() > 1
@@ -952,7 +952,7 @@ void test_x86_backend_scaffold_rejects_global_fast_paths_when_memory_width_disag
   }
 
   {
-    auto lowered = c4c::backend::lower_to_backend_ir(make_x86_extern_global_load_module());
+    auto lowered = c4c::backend::lower_lir_to_backend_module(make_x86_extern_global_load_module());
     auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
     auto* load =
         main_fn != nullptr && !main_fn->blocks.empty() && !main_fn->blocks.front().insts.empty()
@@ -976,7 +976,7 @@ void test_x86_backend_scaffold_rejects_global_fast_paths_when_memory_width_disag
 
   {
     auto lowered =
-        c4c::backend::lower_to_backend_ir(make_x86_extern_global_array_load_module());
+        c4c::backend::lower_lir_to_backend_module(make_x86_extern_global_array_load_module());
     auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
     auto* load =
         main_fn != nullptr && !main_fn->blocks.empty() && !main_fn->blocks.front().insts.empty()
@@ -1001,7 +1001,7 @@ void test_x86_backend_scaffold_rejects_global_fast_paths_when_memory_width_disag
 
 void test_x86_backend_scaffold_accepts_explicit_lowered_string_literal_ir_input() {
   const auto lowered =
-      c4c::backend::lower_to_backend_ir(make_x86_string_literal_char_module());
+      c4c::backend::lower_lir_to_backend_module(make_x86_string_literal_char_module());
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
@@ -1019,7 +1019,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_string_literal_ir_input(
 }
 
 void test_x86_backend_scaffold_accepts_structured_string_literal_ir_without_type_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_x86_string_literal_char_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_x86_string_literal_char_module());
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -1032,7 +1032,7 @@ void test_x86_backend_scaffold_accepts_structured_string_literal_ir_without_type
 }
 
 void test_x86_backend_scaffold_accepts_structured_string_literal_ir_without_signature_or_type_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_x86_string_literal_char_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_x86_string_literal_char_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
@@ -1046,7 +1046,7 @@ void test_x86_backend_scaffold_accepts_structured_string_literal_ir_without_sign
 }
 
 void test_x86_backend_scaffold_rejects_string_literal_fast_path_when_address_kind_disagrees() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_x86_string_literal_char_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_x86_string_literal_char_module());
   auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
   auto* load =
       main_fn != nullptr && !main_fn->blocks.empty() && !main_fn->blocks.front().insts.empty()
@@ -1068,7 +1068,7 @@ void test_x86_backend_scaffold_rejects_string_literal_fast_path_when_address_kin
 
 void test_x86_backend_scaffold_accepts_explicit_lowered_extern_global_load_ir_input() {
   const auto lowered =
-      c4c::backend::lower_to_backend_ir(make_x86_extern_global_load_module());
+      c4c::backend::lower_lir_to_backend_module(make_x86_extern_global_load_module());
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
@@ -1082,7 +1082,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_extern_global_load_ir_in
 }
 
 void test_x86_backend_scaffold_accepts_structured_extern_global_load_ir_without_type_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_x86_extern_global_load_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_x86_extern_global_load_module());
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -1097,7 +1097,7 @@ void test_x86_backend_scaffold_accepts_structured_extern_global_load_ir_without_
 }
 
 void test_x86_backend_scaffold_accepts_structured_extern_global_load_ir_without_raw_global_type_text() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_x86_extern_global_load_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_x86_extern_global_load_module());
   clear_backend_global_type_compatibility_shims(lowered);
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
@@ -1113,7 +1113,7 @@ void test_x86_backend_scaffold_accepts_structured_extern_global_load_ir_without_
 }
 
 void test_x86_backend_scaffold_accepts_structured_extern_global_load_ir_without_legacy_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_x86_extern_global_load_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_x86_extern_global_load_module());
   clear_backend_global_compatibility_shims(lowered);
   clear_backend_global_type_compatibility_shims(lowered);
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
@@ -1132,7 +1132,7 @@ void test_x86_backend_scaffold_accepts_structured_extern_global_load_ir_without_
 
 void test_x86_backend_scaffold_accepts_explicit_lowered_extern_global_array_ir_input() {
   const auto lowered =
-      c4c::backend::lower_to_backend_ir(make_x86_extern_global_array_load_module());
+      c4c::backend::lower_lir_to_backend_module(make_x86_extern_global_array_load_module());
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
@@ -1147,7 +1147,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_extern_global_array_ir_i
 
 void test_x86_backend_scaffold_accepts_structured_extern_global_array_ir_without_compatibility_shims() {
   auto lowered =
-      c4c::backend::lower_to_backend_ir(make_x86_extern_global_array_load_module());
+      c4c::backend::lower_lir_to_backend_module(make_x86_extern_global_array_load_module());
   clear_backend_global_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -1163,7 +1163,7 @@ void test_x86_backend_scaffold_accepts_structured_extern_global_array_ir_without
 
 void test_x86_backend_scaffold_accepts_structured_extern_global_array_ir_without_compatibility_or_signature_shims() {
   auto lowered =
-      c4c::backend::lower_to_backend_ir(make_x86_extern_global_array_load_module());
+      c4c::backend::lower_lir_to_backend_module(make_x86_extern_global_array_load_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   clear_backend_global_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
@@ -1180,7 +1180,7 @@ void test_x86_backend_scaffold_accepts_structured_extern_global_array_ir_without
 
 void test_x86_backend_scaffold_accepts_structured_extern_global_array_ir_without_raw_type_text() {
   auto lowered =
-      c4c::backend::lower_to_backend_ir(make_x86_extern_global_array_load_module());
+      c4c::backend::lower_lir_to_backend_module(make_x86_extern_global_array_load_module());
   clear_backend_global_compatibility_shims(lowered);
   clear_backend_global_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
@@ -1197,7 +1197,7 @@ void test_x86_backend_scaffold_accepts_structured_extern_global_array_ir_without
 
 void test_x86_backend_scaffold_rejects_extern_global_array_fast_path_when_address_kind_disagrees() {
   auto lowered =
-      c4c::backend::lower_to_backend_ir(make_x86_extern_global_array_load_module());
+      c4c::backend::lower_lir_to_backend_module(make_x86_extern_global_array_load_module());
   auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
   auto* load =
       main_fn != nullptr && !main_fn->blocks.empty() && !main_fn->blocks.front().insts.empty()
@@ -1219,7 +1219,7 @@ void test_x86_backend_scaffold_rejects_extern_global_array_fast_path_when_addres
 
 void test_x86_backend_scaffold_rejects_extern_global_array_fast_path_when_offset_escapes_bounds() {
   auto lowered =
-      c4c::backend::lower_to_backend_ir(make_x86_extern_global_array_load_module());
+      c4c::backend::lower_lir_to_backend_module(make_x86_extern_global_array_load_module());
   auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
   auto* load =
       main_fn != nullptr && !main_fn->blocks.empty() && !main_fn->blocks.front().insts.empty()
@@ -1244,7 +1244,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_local_array_ir_input() {
   module.target_triple = "x86_64-unknown-linux-gnu";
   module.data_layout =
       "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
-  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
@@ -1266,7 +1266,7 @@ void test_x86_backend_scaffold_accepts_structured_local_array_ir_without_type_or
   module.target_triple = "x86_64-unknown-linux-gnu";
   module.data_layout =
       "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
-  auto lowered = c4c::backend::lower_to_backend_ir(module);
+  auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
@@ -1288,7 +1288,7 @@ void test_x86_backend_scaffold_rejects_local_array_fast_path_when_local_slot_met
   module.target_triple = "x86_64-unknown-linux-gnu";
   module.data_layout =
       "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
-  auto lowered = c4c::backend::lower_to_backend_ir(module);
+  auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
   expect_true(main_fn != nullptr && !main_fn->local_slots.empty(),
               "x86 local-array regression test needs a structured local slot to mutate");
@@ -1307,7 +1307,7 @@ void test_x86_backend_scaffold_rejects_local_array_fast_path_when_local_slot_met
 
 void test_x86_backend_scaffold_accepts_explicit_lowered_global_int_pointer_roundtrip_ir_input() {
   const auto lowered =
-      c4c::backend::lower_to_backend_ir(make_x86_global_int_pointer_roundtrip_module());
+      c4c::backend::lower_lir_to_backend_module(make_x86_global_int_pointer_roundtrip_module());
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
@@ -1324,7 +1324,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_global_int_pointer_round
 
 void test_x86_backend_scaffold_accepts_explicit_lowered_global_char_pointer_diff_ir_input() {
   const auto lowered =
-      c4c::backend::lower_to_backend_ir(make_x86_global_char_pointer_diff_module());
+      c4c::backend::lower_lir_to_backend_module(make_x86_global_char_pointer_diff_module());
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
@@ -1340,7 +1340,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_global_char_pointer_diff
 }
 
 void test_x86_backend_scaffold_accepts_structured_global_char_pointer_diff_ir_without_type_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_x86_global_char_pointer_diff_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_x86_global_char_pointer_diff_module());
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -1355,7 +1355,7 @@ void test_x86_backend_scaffold_accepts_structured_global_char_pointer_diff_ir_wi
 }
 
 void test_x86_backend_scaffold_accepts_structured_global_char_pointer_diff_ir_without_raw_global_type_text() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_x86_global_char_pointer_diff_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_x86_global_char_pointer_diff_module());
   clear_backend_memory_type_compatibility_shims(lowered);
   clear_backend_global_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
@@ -1372,7 +1372,7 @@ void test_x86_backend_scaffold_accepts_structured_global_char_pointer_diff_ir_wi
 
 void test_x86_backend_scaffold_rejects_global_ptrdiff_fast_paths_when_address_kind_disagrees() {
   {
-    auto lowered = c4c::backend::lower_to_backend_ir(make_x86_global_char_pointer_diff_module());
+    auto lowered = c4c::backend::lower_lir_to_backend_module(make_x86_global_char_pointer_diff_module());
     auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
     auto* ptrdiff =
         main_fn != nullptr && !main_fn->blocks.empty() && !main_fn->blocks.front().insts.empty()
@@ -1395,7 +1395,7 @@ void test_x86_backend_scaffold_rejects_global_ptrdiff_fast_paths_when_address_ki
   }
 
   {
-    auto lowered = c4c::backend::lower_to_backend_ir(make_x86_global_int_pointer_diff_module());
+    auto lowered = c4c::backend::lower_lir_to_backend_module(make_x86_global_int_pointer_diff_module());
     auto* main_fn = lowered.functions.empty() ? nullptr : &lowered.functions.front();
     auto* ptrdiff =
         main_fn != nullptr && !main_fn->blocks.empty() && !main_fn->blocks.front().insts.empty()
@@ -1420,7 +1420,7 @@ void test_x86_backend_scaffold_rejects_global_ptrdiff_fast_paths_when_address_ki
 
 void test_x86_backend_scaffold_accepts_explicit_lowered_global_int_pointer_diff_ir_input() {
   const auto lowered =
-      c4c::backend::lower_to_backend_ir(make_x86_global_int_pointer_diff_module());
+      c4c::backend::lower_lir_to_backend_module(make_x86_global_int_pointer_diff_module());
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
@@ -1436,7 +1436,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_global_int_pointer_diff_
 }
 
 void test_x86_backend_scaffold_accepts_structured_global_int_pointer_diff_ir_without_type_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_x86_global_int_pointer_diff_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_x86_global_int_pointer_diff_module());
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -1451,7 +1451,7 @@ void test_x86_backend_scaffold_accepts_structured_global_int_pointer_diff_ir_wit
 void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_return_ir_input() {
   auto module = make_conditional_return_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
-  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
@@ -1467,7 +1467,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_return_ir_in
 void test_x86_backend_scaffold_accepts_structured_conditional_return_ir_without_type_shims() {
   auto module = make_conditional_return_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
-  auto lowered = c4c::backend::lower_to_backend_ir(module);
+  auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -1482,7 +1482,7 @@ void test_x86_backend_scaffold_accepts_structured_conditional_return_ir_without_
 void test_x86_backend_scaffold_accepts_structured_conditional_return_ir_without_signature_shims() {
   auto module = make_conditional_return_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
-  auto lowered = c4c::backend::lower_to_backend_ir(module);
+  auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -1506,7 +1506,7 @@ void test_x86_backend_scaffold_matches_direct_non_main_local_slot_conditional_re
   const auto direct_rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{module},
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
-  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto lowered_rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
@@ -1525,7 +1525,7 @@ void test_x86_backend_scaffold_accepts_structured_non_main_local_slot_conditiona
   function.alloca_insts.push_back(
       c4c::codegen::lir::LirAllocaOp{"%lv.unused", "i32", "", 4});
 
-  auto lowered = c4c::backend::lower_to_backend_ir(module);
+  auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -1540,7 +1540,7 @@ void test_x86_backend_scaffold_accepts_structured_non_main_local_slot_conditiona
 void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_ir_input() {
   auto module = make_conditional_phi_join_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
-  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
@@ -1560,7 +1560,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_ir_
 void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_add_ir_input() {
   auto module = make_conditional_phi_join_add_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
-  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
@@ -1576,7 +1576,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_add
 void test_x86_backend_scaffold_accepts_structured_conditional_phi_join_add_ir_without_type_shims() {
   auto module = make_conditional_phi_join_add_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
-  auto lowered = c4c::backend::lower_to_backend_ir(module);
+  auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -1591,7 +1591,7 @@ void test_x86_backend_scaffold_accepts_structured_conditional_phi_join_add_ir_wi
 void test_x86_backend_scaffold_accepts_structured_conditional_phi_join_add_ir_without_signature_shims() {
   auto module = make_conditional_phi_join_add_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
-  auto lowered = c4c::backend::lower_to_backend_ir(module);
+  auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -1606,7 +1606,7 @@ void test_x86_backend_scaffold_accepts_structured_conditional_phi_join_add_ir_wi
 void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_predecessor_add_ir_input() {
   auto module = make_conditional_phi_join_predecessor_add_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
-  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
@@ -1624,7 +1624,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_pre
 void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_predecessor_sub_ir_input() {
   auto module = make_conditional_phi_join_predecessor_sub_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
-  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
@@ -1642,7 +1642,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_pre
 void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_add_ir_input() {
   auto module = make_conditional_phi_join_mixed_predecessor_add_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
-  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
@@ -1660,7 +1660,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mix
 void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_add_post_join_add_ir_input() {
   auto module = make_conditional_phi_join_mixed_predecessor_add_post_join_add_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
-  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
@@ -1678,7 +1678,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mix
 void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_sub_post_join_add_ir_input() {
   auto module = make_conditional_phi_join_mixed_predecessor_sub_post_join_add_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
-  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
@@ -1696,7 +1696,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mix
 void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_add_sub_chain_post_join_add_ir_input() {
   auto module = make_conditional_phi_join_mixed_predecessor_add_sub_chain_post_join_add_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
-  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
@@ -1715,7 +1715,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mix
 void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_chain_and_add_post_join_add_ir_input() {
   auto module = make_conditional_phi_join_mixed_predecessor_chain_and_add_post_join_add_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
-  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
@@ -1734,7 +1734,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mix
 void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_chain_and_chain_post_join_add_ir_input() {
   auto module = make_conditional_phi_join_mixed_predecessor_chain_and_chain_post_join_add_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
-  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
@@ -1754,7 +1754,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mix
 void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_deeper_chain_and_chain_post_join_add_ir_input() {
   auto module = make_conditional_phi_join_mixed_predecessor_deeper_chain_and_chain_post_join_add_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
-  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
@@ -1774,7 +1774,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mix
 void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_deeper_chain_and_deeper_chain_post_join_add_ir_input() {
   auto module = make_conditional_phi_join_mixed_predecessor_deeper_chain_and_deeper_chain_post_join_add_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
-  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
@@ -1794,7 +1794,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mix
 void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_four_op_chain_and_deeper_chain_post_join_add_ir_input() {
   auto module = make_conditional_phi_join_mixed_predecessor_four_op_chain_and_deeper_chain_post_join_add_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
-  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
@@ -1815,7 +1815,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mix
 void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_four_op_chain_and_four_op_chain_post_join_add_ir_input() {
   auto module = make_conditional_phi_join_mixed_predecessor_four_op_chain_and_four_op_chain_post_join_add_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
-  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
@@ -1835,7 +1835,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mix
 void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_five_op_chain_and_four_op_chain_post_join_add_ir_input() {
   auto module = make_conditional_phi_join_mixed_predecessor_five_op_chain_and_four_op_chain_post_join_add_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
-  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
@@ -1855,7 +1855,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mix
 void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_five_op_chain_and_five_op_chain_post_join_add_ir_input() {
   auto module = make_conditional_phi_join_mixed_predecessor_five_op_chain_and_five_op_chain_post_join_add_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
-  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
@@ -1875,7 +1875,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mix
 void test_x86_backend_scaffold_accepts_explicit_lowered_countdown_while_ir_input() {
   auto module = make_countdown_while_return_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
-  const auto lowered = c4c::backend::lower_to_backend_ir(module);
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
@@ -1893,7 +1893,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_countdown_while_ir_input
 void test_x86_backend_scaffold_accepts_structured_countdown_while_ir_without_signature_shims() {
   auto module = make_countdown_while_return_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
-  auto lowered = c4c::backend::lower_to_backend_ir(module);
+  auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
@@ -2100,7 +2100,7 @@ void test_x86_backend_scaffold_accepts_structured_zero_arg_direct_call_spacing_i
   call.callee_type_suffix = "( )";
   call.args_str = "  ";
 
-  auto lowered = c4c::backend::lower_to_backend_ir(std::move(module));
+  auto lowered = c4c::backend::lower_lir_to_backend_module(std::move(module));
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
@@ -2115,7 +2115,7 @@ void test_x86_backend_scaffold_accepts_structured_zero_arg_direct_call_spacing_i
 }
 
 void test_x86_backend_scaffold_accepts_renamed_structured_zero_arg_direct_call_ir_without_signature_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_direct_call_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_direct_call_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   c4c::backend::BackendFunction* helper = nullptr;
@@ -2159,7 +2159,7 @@ void test_x86_backend_scaffold_accepts_renamed_structured_zero_arg_direct_call_i
 }
 
 void test_x86_backend_scaffold_rejects_structured_zero_arg_direct_call_when_callee_signature_param_type_disagrees() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_direct_call_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_direct_call_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   c4c::backend::BackendFunction* helper = nullptr;
@@ -2183,7 +2183,7 @@ void test_x86_backend_scaffold_rejects_structured_zero_arg_direct_call_when_call
 }
 
 void test_x86_backend_scaffold_rejects_structured_zero_arg_direct_call_when_helper_body_contract_disagrees() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_direct_call_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_direct_call_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   c4c::backend::BackendFunction* helper = nullptr;
@@ -2444,7 +2444,7 @@ void test_x86_backend_renders_typed_direct_call_local_arg_slice() {
 
 void test_x86_backend_scaffold_accepts_structured_direct_call_add_imm_ir_without_signature_shims() {
   auto lowered =
-      c4c::backend::lower_to_backend_ir(make_typed_direct_call_local_arg_module());
+      c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_local_arg_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
@@ -2462,7 +2462,7 @@ void test_x86_backend_scaffold_accepts_structured_direct_call_add_imm_ir_without
 
 void test_x86_backend_scaffold_accepts_renamed_structured_direct_call_add_imm_ir_without_signature_shims() {
   auto lowered =
-      c4c::backend::lower_to_backend_ir(make_typed_direct_call_local_arg_module());
+      c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_local_arg_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   c4c::backend::BackendFunction* helper = nullptr;
@@ -2520,7 +2520,7 @@ void test_x86_backend_scaffold_accepts_renamed_structured_direct_call_add_imm_ir
 
 void test_x86_backend_scaffold_rejects_structured_direct_call_add_imm_when_helper_body_contract_disagrees() {
   auto lowered =
-      c4c::backend::lower_to_backend_ir(make_typed_direct_call_local_arg_module());
+      c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_local_arg_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   c4c::backend::BackendFunction* helper = nullptr;
@@ -2548,7 +2548,7 @@ void test_x86_backend_scaffold_rejects_structured_direct_call_add_imm_when_helpe
 }
 
 void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_ir_without_signature_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_two_arg_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
@@ -2567,7 +2567,7 @@ void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_ir_without
 }
 
 void test_x86_backend_scaffold_accepts_renamed_structured_two_arg_direct_call_ir_without_signature_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_two_arg_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   c4c::backend::BackendFunction* helper = nullptr;
@@ -2629,7 +2629,7 @@ void test_x86_backend_scaffold_accepts_renamed_structured_two_arg_direct_call_ir
 }
 
 void test_x86_backend_scaffold_rejects_structured_two_arg_direct_call_when_param_type_count_disagrees_with_args() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_two_arg_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   c4c::backend::BackendFunction* main_fn = nullptr;
@@ -2661,7 +2661,7 @@ void test_x86_backend_scaffold_rejects_structured_two_arg_direct_call_when_param
 }
 
 void test_x86_backend_scaffold_rejects_structured_two_arg_direct_call_when_callee_signature_param_type_disagrees() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_two_arg_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   c4c::backend::BackendFunction* helper = nullptr;
@@ -2686,7 +2686,7 @@ void test_x86_backend_scaffold_rejects_structured_two_arg_direct_call_when_calle
 }
 
 void test_x86_backend_scaffold_rejects_structured_two_arg_direct_call_when_helper_body_contract_disagrees() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_two_arg_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   c4c::backend::BackendFunction* helper = nullptr;
@@ -2715,7 +2715,7 @@ void test_x86_backend_scaffold_rejects_structured_two_arg_direct_call_when_helpe
 
 void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_local_arg_ir_without_signature_shims() {
   auto lowered =
-      c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_local_arg_module());
+      c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_two_arg_local_arg_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
@@ -2735,7 +2735,7 @@ void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_local_arg_
 
 void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_local_arg_spacing_ir_without_signature_shims() {
   auto lowered =
-      c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_local_arg_with_spacing_module());
+      c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_two_arg_local_arg_with_spacing_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
@@ -2754,7 +2754,7 @@ void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_local_arg_
 }
 
 void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_double_rewrite_ir_without_signature_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(
+  auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_typed_direct_call_two_arg_both_local_double_rewrite_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
@@ -2775,7 +2775,7 @@ void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_double_rew
 
 void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_second_local_arg_ir_without_signature_shims() {
   auto lowered =
-      c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_second_local_arg_module());
+      c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_two_arg_second_local_arg_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
@@ -2794,7 +2794,7 @@ void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_second_loc
 }
 
 void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_second_local_rewrite_ir_without_signature_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(
+  auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_typed_direct_call_two_arg_second_local_rewrite_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
@@ -2814,7 +2814,7 @@ void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_second_loc
 }
 
 void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_first_local_rewrite_ir_without_signature_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(
+  auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_typed_direct_call_two_arg_first_local_rewrite_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
@@ -2835,7 +2835,7 @@ void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_first_loca
 
 void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_both_local_arg_ir_without_signature_shims() {
   auto lowered =
-      c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_both_local_arg_module());
+      c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_two_arg_both_local_arg_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
@@ -2854,7 +2854,7 @@ void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_both_local
 }
 
 void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_both_local_first_rewrite_ir_without_signature_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(
+  auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_typed_direct_call_two_arg_both_local_first_rewrite_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
@@ -2874,7 +2874,7 @@ void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_both_local
 }
 
 void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_both_local_second_rewrite_ir_without_signature_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(
+  auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_typed_direct_call_two_arg_both_local_second_rewrite_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
@@ -2912,7 +2912,7 @@ void test_x86_backend_renders_typed_direct_call_local_arg_spacing_slice() {
 
 void test_x86_backend_scaffold_accepts_structured_direct_call_local_arg_spacing_ir_without_signature_shims() {
   auto lowered =
-      c4c::backend::lower_to_backend_ir(make_typed_direct_call_local_arg_with_suffix_spacing_module());
+      c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_local_arg_with_suffix_spacing_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
@@ -3696,7 +3696,7 @@ void test_x86_backend_renders_typed_two_arg_direct_call_first_local_rewrite_spac
 }
 
 void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_first_local_rewrite_spacing_ir_without_signature_shims() {
-  auto lowered = c4c::backend::lower_to_backend_ir(
+  auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_typed_direct_call_two_arg_first_local_rewrite_with_suffix_spacing_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
@@ -3923,7 +3923,7 @@ void test_x86_backend_keeps_renamed_call_crossing_call_result_on_asm_path() {
 void test_x86_backend_scaffold_accepts_renamed_structured_call_crossing_direct_call_ir_without_signature_shims() {
   auto module = make_typed_call_crossing_direct_call_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
-  auto lowered = c4c::backend::lower_to_backend_ir(module);
+  auto lowered = c4c::backend::lower_lir_to_backend_module(module);
 
   c4c::backend::BackendFunction* helper = nullptr;
   c4c::backend::BackendFunction* main_fn = nullptr;
@@ -3971,7 +3971,7 @@ void test_x86_backend_scaffold_accepts_renamed_structured_call_crossing_direct_c
 void test_x86_backend_scaffold_accepts_lowered_call_crossing_source_value_rename_without_signature_shims() {
   auto module = make_typed_call_crossing_direct_call_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
-  auto lowered = c4c::backend::lower_to_backend_ir(module);
+  auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   c4c::backend::BackendFunction* main_fn = nullptr;
@@ -4019,7 +4019,7 @@ void test_x86_backend_scaffold_accepts_lowered_call_crossing_source_value_rename
 void test_x86_backend_scaffold_accepts_renamed_lowered_call_crossing_source_value_rename_without_signature_shims() {
   auto module = make_typed_call_crossing_direct_call_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
-  auto lowered = c4c::backend::lower_to_backend_ir(module);
+  auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   c4c::backend::BackendFunction* helper = nullptr;
@@ -4074,7 +4074,7 @@ void test_x86_backend_scaffold_accepts_renamed_lowered_call_crossing_source_valu
 void test_x86_backend_scaffold_ignores_broken_legacy_fallback_for_call_crossing_slice() {
   auto legacy = make_typed_call_crossing_direct_call_module();
   legacy.target_triple = "x86_64-unknown-linux-gnu";
-  auto lowered = c4c::backend::lower_to_backend_ir(legacy);
+  auto lowered = c4c::backend::lower_lir_to_backend_module(legacy);
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   for (auto& function : legacy.functions) {
@@ -4101,7 +4101,7 @@ void test_x86_backend_scaffold_ignores_broken_legacy_fallback_for_call_crossing_
 void test_x86_backend_scaffold_rejects_structured_call_crossing_direct_call_when_helper_body_contract_disagrees() {
   auto legacy = make_typed_call_crossing_direct_call_module();
   legacy.target_triple = "x86_64-unknown-linux-gnu";
-  auto lowered = c4c::backend::lower_to_backend_ir(legacy);
+  auto lowered = c4c::backend::lower_lir_to_backend_module(legacy);
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   c4c::backend::BackendFunction* helper = nullptr;
@@ -4453,7 +4453,7 @@ void test_x86_backend_renders_extern_decl_inferred_param_slice() {
 
 void test_x86_backend_explicit_lir_emit_surface_matches_structured_declared_direct_call_path() {
   const auto module = make_x86_extern_decl_inferred_param_module();
-  auto lowered = c4c::backend::lower_to_backend_ir(module);
+  auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto direct_rendered = c4c::backend::x86::emit_module(module);
@@ -4477,7 +4477,7 @@ void test_x86_backend_explicit_lir_emit_surface_matches_structured_declared_dire
 }
 
 void test_x86_backend_declared_direct_call_uses_structured_vararg_metadata() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_x86_extern_decl_object_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_x86_extern_decl_object_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   c4c::backend::BackendFunction* printf_decl = nullptr;
@@ -4516,7 +4516,7 @@ void test_x86_backend_declared_direct_call_uses_structured_vararg_metadata() {
 }
 
 void test_x86_backend_explicit_emit_surface_keeps_structured_declared_direct_call_backend_path() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_x86_extern_decl_inferred_param_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_x86_extern_decl_inferred_param_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   c4c::backend::BackendFunction* helper_decl = nullptr;
@@ -4558,7 +4558,7 @@ void test_x86_backend_explicit_emit_surface_keeps_structured_declared_direct_cal
 }
 
 void test_x86_backend_declared_direct_call_uses_structured_decl_signature_for_fixed_args() {
-  auto lowered = c4c::backend::lower_to_backend_ir(make_x86_extern_decl_inferred_param_module());
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_x86_extern_decl_inferred_param_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   c4c::backend::BackendFunction* helper_decl = nullptr;
@@ -4597,7 +4597,7 @@ void test_x86_backend_declared_direct_call_uses_structured_decl_signature_for_fi
 }
 
 void test_x86_backend_adapter_preserves_multiple_printf_calls_in_backend_ir() {
-  const auto lowered = c4c::backend::lower_to_backend_ir(make_x86_multi_printf_vararg_module());
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(make_x86_multi_printf_vararg_module());
   const c4c::backend::BackendFunction* main_fn = nullptr;
   for (const auto& function : lowered.functions) {
     if (function.signature.name == "main") {

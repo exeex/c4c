@@ -7,9 +7,9 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 4: Clean up surviving names
-- Current slice: separate the intentionally retained compatibility shims from
-  any remaining true Step 4 rename targets under tests and adjacent helper
-  surfaces
+- Current slice: carry the `lower_lir_to_backend_module(...)` rename into the
+  remaining stable backend test surfaces that still use the
+  `lower_to_backend_ir(...)` compatibility shim
 
 ## Todo
 
@@ -56,14 +56,19 @@ Source Plan: plan.md
       `lower_bir_to_backend_module(...)`, updated production callers, and kept
       the old `lower_to_backend_ir(...)` spellings only as explicit lowering
       compatibility shims
+- [x] moved the three `backend_lir_adapter*` test binaries off the
+      `lower_to_backend_ir(...)` compatibility shim onto
+      `lower_lir_to_backend_module(...)`
 - [x] re-ran targeted backend validation plus a clean full-suite regression
       pass with no new failures relative to the existing EASTL recipe baseline
 
 ## Next Slice
 
-- audit the remaining `lower_to_backend_ir(...)` hits under tests and helper
-  surfaces, then move only the stable/non-compatibility ones onto the new
-  `lower_*_to_backend_module(...)` names
+- move the remaining stable backend test surfaces, starting with
+  `tests/backend/backend_ir_tests.cpp`, onto
+  `lower_lir_to_backend_module(...)` / `lower_bir_to_backend_module(...)` and
+  leave only explicit compatibility-shim coverage plus plan/archive
+  documentation on `lower_to_backend_ir(...)`
 - before doing broad Step 4 renames, optionally finish the deferred AArch64 seam
   cleanup by porting the real `extern_global_array` production route off the
   remaining `legacy_fallback` early return
@@ -110,3 +115,9 @@ Source Plan: plan.md
   `backend_bir_tests` all passed after the rename; the full suite finished at
   2720 passing / 6 failing with the same EASTL recipe failures recorded in the
   existing baseline notes
+- regression check for the adapter-test rename follow-up:
+  `backend_lir_adapter_tests`, `backend_lir_adapter_aarch64_tests`, and
+  `backend_lir_adapter_x86_64_tests` passed after switching to
+  `lower_lir_to_backend_module(...)`; `test_fail_before.log` vs
+  `test_fail_after.log` stayed flat at 2720 passing / 6 failing with the same
+  EASTL recipe failures
