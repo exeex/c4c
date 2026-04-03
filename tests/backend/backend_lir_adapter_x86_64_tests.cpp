@@ -2250,6 +2250,63 @@ void test_x86_backend_renders_param_slot_slice_with_spaced_helper_signature() {
                       "x86 backend should not fall back to LLVM text for spacing-tolerant parameter-slot helper signatures");
 }
 
+void test_x86_backend_keeps_renamed_param_slot_slice_on_asm_path() {
+  auto module = make_param_slot_runtime_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  c4c::codegen::lir::LirFunction* helper = nullptr;
+  c4c::codegen::lir::LirFunction* main_fn = nullptr;
+  for (auto& function : module.functions) {
+    if (function.name == "add_one") {
+      helper = &function;
+    } else if (function.name == "main") {
+      main_fn = &function;
+    }
+  }
+  expect_true(helper != nullptr && main_fn != nullptr,
+              "x86 renamed param-slot regression test needs helper and main functions");
+  if (helper == nullptr || main_fn == nullptr) {
+    return;
+  }
+
+  helper->name = "inc_value";
+  helper->signature_text = "define i32 @inc_value(i32 %p.input)\n";
+  auto& helper_alloca = std::get<c4c::codegen::lir::LirAllocaOp>(helper->alloca_insts.front());
+  helper_alloca.result = "%lv.shadow.input";
+  auto& helper_arg_store = std::get<c4c::codegen::lir::LirStoreOp>(helper->alloca_insts[1]);
+  helper_arg_store.val = "%p.input";
+  helper_arg_store.ptr = "%lv.shadow.input";
+  auto& helper_load0 = std::get<c4c::codegen::lir::LirLoadOp>(helper->blocks.front().insts[0]);
+  helper_load0.ptr = "%lv.shadow.input";
+  auto& helper_store = std::get<c4c::codegen::lir::LirStoreOp>(helper->blocks.front().insts[2]);
+  helper_store.ptr = "%lv.shadow.input";
+  auto& helper_load1 = std::get<c4c::codegen::lir::LirLoadOp>(helper->blocks.front().insts[3]);
+  helper_load1.ptr = "%lv.shadow.input";
+
+  auto* call = std::get_if<c4c::codegen::lir::LirCallOp>(&main_fn->blocks.front().insts.front());
+  expect_true(call != nullptr,
+              "x86 renamed param-slot regression test needs the direct call to mutate");
+  if (call == nullptr) {
+    return;
+  }
+  call->callee = c4c::codegen::lir::LirOperand(std::string("@inc_value"),
+                                               c4c::codegen::lir::LirOperandKind::Global);
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".type inc_value, %function",
+                  "x86 backend seam should key the param-slot helper definition from the actual helper name instead of a fixed symbol");
+  expect_contains(rendered, "inc_value:\n  mov eax, edi\n  add eax, 1\n  ret\n",
+                  "x86 backend seam should keep the renamed param-slot helper on the asm path when only lowered param and slot names change");
+  expect_contains(rendered, "call inc_value",
+                  "x86 backend seam should still lower renamed param-slot direct calls without depending on fixed lowered helper names");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back when the param-slot slice relies only on structural helper metadata");
+}
+
 void test_x86_backend_renders_typed_direct_call_local_arg_slice() {
   auto module = make_typed_direct_call_local_arg_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -4477,6 +4534,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_rejects_indirect_callee_from_direct_call_fast_path);
   RUN_TEST(test_x86_backend_renders_param_slot_slice);
   RUN_TEST(test_x86_backend_renders_param_slot_slice_with_spaced_helper_signature);
+  RUN_TEST(test_x86_backend_keeps_renamed_param_slot_slice_on_asm_path);
   RUN_TEST(test_x86_backend_renders_typed_direct_call_local_arg_slice);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_direct_call_add_imm_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_renamed_structured_direct_call_add_imm_ir_without_signature_shims);

@@ -2705,12 +2705,18 @@ std::optional<MinimalParamSlotSlice> parse_minimal_param_slot_slice(
     return std::nullopt;
   }
 
-  const auto* helper = find_lir_function(module, "add_one");
   const auto* main_fn = find_lir_function(module, "main");
+  const c4c::codegen::lir::LirFunction* helper = nullptr;
+  for (const auto& function : module.functions) {
+    if (function.name != "main") {
+      helper = &function;
+      break;
+    }
+  }
   if (helper == nullptr || main_fn == nullptr || helper->is_declaration ||
       main_fn->is_declaration ||
       !c4c::backend::backend_lir_signature_matches(
-          helper->signature_text, "define", "i32", "add_one", {"i32"}) ||
+          helper->signature_text, "define", "i32", helper->name, {"i32"}) ||
       !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(main_fn->signature_text) ||
       helper->entry.value != 0 ||
       main_fn->entry.value != 0 || helper->blocks.size() != 1 || main_fn->blocks.size() != 1 ||
@@ -2719,13 +2725,24 @@ std::optional<MinimalParamSlotSlice> parse_minimal_param_slot_slice(
     return std::nullopt;
   }
 
-  const auto* alloca = std::get_if<LirAllocaOp>(&helper->alloca_insts[0]);
-  const auto* arg_store = std::get_if<LirStoreOp>(&helper->alloca_insts[1]);
-  if (alloca == nullptr || arg_store == nullptr || alloca->result != "%lv.param.x" ||
-      alloca->type_str != "i32" || !alloca->count.empty() || arg_store->type_str != "i32" ||
-      arg_store->val != "%p.x" || arg_store->ptr != "%lv.param.x") {
+  const auto helper_params =
+      c4c::backend::parse_backend_function_signature_params(helper->signature_text);
+  if (!helper_params.has_value() || helper_params->size() != 1 ||
+      (*helper_params)[0].is_varargs ||
+      c4c::codegen::lir::trim_lir_arg_text((*helper_params)[0].type) != "i32" ||
+      (*helper_params)[0].operand.empty()) {
     return std::nullopt;
   }
+  const std::string_view helper_param = (*helper_params)[0].operand;
+
+  const auto* alloca = std::get_if<LirAllocaOp>(&helper->alloca_insts[0]);
+  const auto* arg_store = std::get_if<LirStoreOp>(&helper->alloca_insts[1]);
+  if (alloca == nullptr || arg_store == nullptr || alloca->result.empty() ||
+      alloca->type_str != "i32" || !alloca->count.empty() || arg_store->type_str != "i32" ||
+      arg_store->val != helper_param || arg_store->ptr != alloca->result) {
+    return std::nullopt;
+  }
+  const std::string_view helper_slot = alloca->result;
 
   const auto& helper_block = helper->blocks.front();
   const auto* helper_ret = std::get_if<LirRet>(&helper_block.terminator);
@@ -2740,11 +2757,11 @@ std::optional<MinimalParamSlotSlice> parse_minimal_param_slot_slice(
   const auto* load1 = std::get_if<LirLoadOp>(&helper_block.insts[3]);
   const auto add_opcode = add == nullptr ? std::nullopt : add->opcode.typed();
   if (load0 == nullptr || add == nullptr || store == nullptr || load1 == nullptr ||
-      load0->type_str != "i32" || load0->ptr != "%lv.param.x" ||
+      load0->type_str != "i32" || load0->ptr != helper_slot ||
       add_opcode != LirBinaryOpcode::Add || add->type_str != "i32" ||
       add->lhs != load0->result ||
-      store->type_str != "i32" || store->val != add->result || store->ptr != "%lv.param.x" ||
-      load1->type_str != "i32" || load1->ptr != "%lv.param.x" ||
+      store->type_str != "i32" || store->val != add->result || store->ptr != helper_slot ||
+      load1->type_str != "i32" || load1->ptr != helper_slot ||
       *helper_ret->value_str != load1->result) {
     return std::nullopt;
   }
@@ -2765,7 +2782,7 @@ std::optional<MinimalParamSlotSlice> parse_minimal_param_slot_slice(
   const auto call_operand =
       call == nullptr ? std::nullopt
                       : c4c::backend::parse_backend_direct_global_single_typed_call_operand(
-                            *call, "add_one", "i32");
+                            *call, helper->name, "i32");
   if (call == nullptr || call->result.empty() || !call_operand.has_value() ||
       *main_ret->value_str != call->result) {
     return std::nullopt;
@@ -2777,7 +2794,7 @@ std::optional<MinimalParamSlotSlice> parse_minimal_param_slot_slice(
   }
 
   return MinimalParamSlotSlice{
-      "add_one",
+      helper->name,
       *call_arg_imm,
       *helper_add_imm,
   };
