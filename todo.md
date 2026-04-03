@@ -9,12 +9,44 @@ Source Plan: plan.md
 - [ ] Delete app-layer LLVM asm rescue from `c4cll`
 - [ ] Revalidate backend and full-suite behavior without fallback
 
-Current active item: Step 2, add the bounded zero-parameter `unsigned char`
-compare-return family beyond the now-landed zero-parameter `unsigned char`
-`eq`/`ne` parity pair.
-Next target: audit the next smallest bounded widened compare-return gap adjacent
-to `return_eq_u8` / `return_ne_u8` before opening a broader widened-width
-compare-return family.
+Current active item: Step 2, continue the bounded zero-parameter `unsigned char`
+compare-return parity family beyond the landed `return_eq_u8` / `return_ne_u8`
+pair by walking the adjacent unsigned-relational cases one slice at a time.
+Next target: audit `return_ule_u8` as the next adjacent zero-parameter
+widened `unsigned char` compare-return parity case after the now-landed
+`return_ult_u8` slice.
+
+Completed this iteration:
+- Re-audited the zero-parameter widened compare-return inventory in
+  `tests/c/internal/InternalTests.cmake` and confirmed the next smallest
+  adjacent parity gap after `return_eq_u8` / `return_ne_u8` was the unsigned
+  relational family starting with `return_ult_u8`.
+- Added `tests/c/internal/backend_route_case/return_ult_u8.c`, proving the
+  bounded zero-parameter `unsigned char` unsigned-less-than wrapper is
+  available to the backend-route harness.
+- Registered
+  `backend_codegen_route_riscv64_return_ult_u8_defaults_to_bir` in
+  `tests/c/internal/InternalTests.cmake`, asserting the emitted text contains
+  `bir.func @choose_ult_u() -> i8 {`, `%t1 = bir.ult i8 3, 7`, `bir.ret i8 %t1`,
+  and forbids legacy LLVM IR `define i8 @choose_ult_u()`.
+- Added `make_bir_i8_return_ult_module()` to
+  `tests/backend/backend_bir_test_support.*` plus
+  `test_bir_lowering_accepts_i8_return_ult()` in
+  `tests/backend/backend_bir_lowering_tests.cpp` to keep the widened `i8`
+  unsigned-relational compare-return shape covered below the backend-route
+  harness.
+- Confirmed the new coverage passed without any `src/backend/lowering/lir_to_bir.cpp`
+  change; the existing widened-`i8` compare-return lowering already handled the
+  unsigned-less-than predicate correctly.
+- Rebuilt the tree, reran `backend_bir_tests`, reran
+  `backend_codegen_route_riscv64_return_ult_u8_defaults_to_bir`, reran
+  `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `364/364` backend-labeled tests passing, then refreshed
+  `test_fail_after.log` with a full `ctest --test-dir build -j8 --output-on-failure`
+  run and passed the regression guard against `test_fail_before.log` with
+  `--allow-non-decreasing-passed --timeout-threshold 30 --enforce-timeout`
+  (`2800 -> 2802` passed, `0 -> 0` failed, no newly failing tests, no new
+  `>30s` cases).
 
 Completed this iteration:
 - Re-audited the adjacent zero-parameter compare-return backend-route inventory

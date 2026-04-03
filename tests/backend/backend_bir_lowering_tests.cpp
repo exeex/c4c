@@ -785,6 +785,18 @@ void test_bir_lowering_accepts_i8_return_ne() {
                   "BIR lowering should return the widened i8 not-equal compare result instead of falling back to legacy LLVM IR");
 }
 
+void test_bir_lowering_accepts_i8_return_ult() {
+  const auto lowered = c4c::backend::lower_to_bir(make_bir_i8_return_ult_module());
+  const auto rendered = c4c::backend::bir::print(lowered);
+
+  expect_contains(rendered, "bir.func @choose_ult_u() -> i8 {",
+                  "BIR lowering should preserve the zero-parameter widened i8 compare-return signature for unsigned less-than");
+  expect_contains(rendered, "%t1 = bir.ult i8 3, 7",
+                  "BIR lowering should fold the widened i8 unsigned less-than compare-return zext-plus-trunc shape into a direct BIR compare");
+  expect_contains(rendered, "bir.ret i8 %t1",
+                  "BIR lowering should return the widened i8 unsigned less-than compare result instead of falling back to legacy LLVM IR");
+}
+
 void test_bir_lowering_accepts_i8_return_immediate() {
   const auto lowered = c4c::backend::lower_to_bir(make_bir_i8_return_immediate_module());
   const auto rendered = c4c::backend::bir::print(lowered);
@@ -1446,6 +1458,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_tiny_return_select_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_i8_return_eq);
   RUN_TEST(test_bir_lowering_accepts_i8_return_ne);
+  RUN_TEST(test_bir_lowering_accepts_i8_return_ult);
   RUN_TEST(test_bir_lowering_accepts_i8_return_immediate);
   RUN_TEST(test_bir_lowering_accepts_single_param_select_branch_slice);
   RUN_TEST(test_bir_lowering_accepts_single_param_select_phi_slice);
