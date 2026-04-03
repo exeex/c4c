@@ -2451,6 +2451,24 @@ void test_adapter_normalizes_twelve_local_slot_constant_conditional_goto_return_
                       "adapter should eliminate the resolved twelve-local-slot-backed branch-only goto chain from the lowered backend IR");
 }
 
+void test_adapter_normalizes_thirteen_local_slot_constant_conditional_goto_return_slice() {
+  const auto adapted = c4c::backend::lower_to_backend_ir(
+      make_thirteen_local_slot_constant_conditional_goto_return_module());
+  const auto rendered = c4c::backend::render_module(adapted);
+  expect_contains(rendered, "define i32 @main()",
+                  "adapter should preserve the thirteen-local-slot-backed constant-conditional goto function signature");
+  expect_contains(rendered, "ret i32 0",
+                  "adapter should collapse the selected thirteen-local-slot-backed constant-conditional goto chain into a direct return");
+  expect_not_contains(rendered, "load i32",
+                      "adapter should eliminate the thirteen-local-slot reloads once the constant-backed branch chain is resolved");
+  expect_not_contains(rendered, "store i32",
+                      "adapter should eliminate the thirteen-local-slot materialization once the constant-backed branch chain is resolved");
+  expect_not_contains(rendered, "br i1",
+                      "adapter should eliminate the resolved thirteen-local-slot-backed conditional branch from the lowered backend IR");
+  expect_not_contains(rendered, "br label",
+                      "adapter should eliminate the resolved thirteen-local-slot-backed branch-only goto chain from the lowered backend IR");
+}
+
 void test_adapter_normalizes_countdown_while_return_slice() {
   const auto adapted =
       c4c::backend::lower_to_backend_ir(make_countdown_while_return_module());
@@ -3018,6 +3036,7 @@ int main(int argc, char* argv[]) {
   test_adapter_normalizes_ten_local_slot_constant_conditional_goto_return_slice();
   test_adapter_normalizes_eleven_local_slot_constant_conditional_goto_return_slice();
   test_adapter_normalizes_twelve_local_slot_constant_conditional_goto_return_slice();
+  test_adapter_normalizes_thirteen_local_slot_constant_conditional_goto_return_slice();
   test_adapter_normalizes_countdown_while_return_slice();
   test_adapter_normalizes_typed_countdown_while_return_slice();
   test_adapter_normalizes_countdown_do_while_return_slice();
