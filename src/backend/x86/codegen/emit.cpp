@@ -158,6 +158,11 @@ struct MatchedMinimalParamSlotHelper {
 
 struct MatchedMinimalLirTwoArgDirectCallHelper {};
 
+struct MatchedMinimalLirTwoArgDirectCallCall {
+  const c4c::codegen::lir::LirCallOp* call = nullptr;
+  std::pair<std::string_view, std::string_view> operands;
+};
+
 struct MinimalGlobalCharPointerDiffSlice {
   std::string global_name;
   std::int64_t global_size = 0;
@@ -901,6 +906,26 @@ match_minimal_lir_two_arg_direct_call_helper(
   }
 
   return MatchedMinimalLirTwoArgDirectCallHelper{};
+}
+
+std::optional<MatchedMinimalLirTwoArgDirectCallCall>
+match_minimal_lir_two_arg_direct_call_call(
+    const c4c::codegen::lir::LirInst& inst,
+    std::string_view expected_callee,
+    std::string_view expected_result) {
+  using namespace c4c::codegen::lir;
+
+  const auto* call = std::get_if<LirCallOp>(&inst);
+  const auto call_operands =
+      call == nullptr ? std::nullopt
+                      : c4c::backend::parse_backend_direct_global_two_typed_call_operands(
+                            *call, expected_callee, "i32", "i32");
+  if (call == nullptr || call->result.empty() || !call_operands.has_value() ||
+      call->result != expected_result) {
+    return std::nullopt;
+  }
+
+  return MatchedMinimalLirTwoArgDirectCallCall{call, *call_operands};
 }
 
 const char* x86_reg64_name(c4c::backend::PhysReg reg) {
@@ -3147,18 +3172,14 @@ std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_sl
       return std::nullopt;
     }
 
-    const auto* call = std::get_if<LirCallOp>(&main_block.insts.front());
-    const auto call_operands =
-        call == nullptr ? std::nullopt
-                        : c4c::backend::parse_backend_direct_global_two_typed_call_operands(
-                              *call, helper->name, "i32", "i32");
-    if (call == nullptr || call->result.empty() || !call_operands.has_value() ||
-        *main_ret->value_str != call->result) {
+    const auto matched_call = match_minimal_lir_two_arg_direct_call_call(
+        main_block.insts.front(), helper->name, *main_ret->value_str);
+    if (!matched_call.has_value()) {
       return std::nullopt;
     }
 
-    const auto lhs_call_arg_imm = parse_i64(call_operands->first);
-    const auto rhs_call_arg_imm = parse_i64(call_operands->second);
+    const auto lhs_call_arg_imm = parse_i64(matched_call->operands.first);
+    const auto rhs_call_arg_imm = parse_i64(matched_call->operands.second);
     if (!lhs_call_arg_imm.has_value() || !rhs_call_arg_imm.has_value()) {
       return std::nullopt;
     }
@@ -3182,21 +3203,17 @@ std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_sl
       return std::nullopt;
     }
 
-    const auto* call = std::get_if<LirCallOp>(&main_block.insts.back());
-    const auto call_operands =
-        call == nullptr ? std::nullopt
-                        : c4c::backend::parse_backend_direct_global_two_typed_call_operands(
-                              *call, helper->name, "i32", "i32");
-    if (call == nullptr || call->result.empty() || !call_operands.has_value() ||
-        *main_ret->value_str != call->result) {
+    const auto matched_call = match_minimal_lir_two_arg_direct_call_call(
+        main_block.insts.back(), helper->name, *main_ret->value_str);
+    if (!matched_call.has_value()) {
       return std::nullopt;
     }
     const auto matched_slot_slice = match_two_arg_local_rewrite_slot_slice(
         std::vector<LirInst>(main_block.insts.begin(), main_block.insts.end() - 1),
         alloca0->result,
         alloca1->result,
-        call_operands->first,
-        call_operands->second);
+        matched_call->operands.first,
+        matched_call->operands.second);
     if (!matched_slot_slice.has_value()) {
       return std::nullopt;
     }
@@ -3217,13 +3234,9 @@ std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_sl
     return std::nullopt;
   }
 
-  const auto* call = std::get_if<LirCallOp>(&main_block.insts.back());
-  const auto call_operands =
-      call == nullptr ? std::nullopt
-                      : c4c::backend::parse_backend_direct_global_two_typed_call_operands(
-                            *call, helper->name, "i32", "i32");
-  if (call == nullptr || call->result.empty() || !call_operands.has_value() ||
-      *main_ret->value_str != call->result) {
+  const auto matched_call = match_minimal_lir_two_arg_direct_call_call(
+      main_block.insts.back(), helper->name, *main_ret->value_str);
+  if (!matched_call.has_value()) {
     return std::nullopt;
   }
 
@@ -3232,11 +3245,11 @@ std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_sl
   const auto matched_local_arg_slice = match_single_local_arg_slot_slice(
       slot_prefix,
       alloca->result,
-      call_operands->first,
-      call_operands->second);
+      matched_call->operands.first,
+      matched_call->operands.second);
   if (matched_local_arg_slice.has_value()) {
     if (matched_local_arg_slice->second) {
-      const auto rhs_call_arg_imm = parse_i64(call_operands->second);
+      const auto rhs_call_arg_imm = parse_i64(matched_call->operands.second);
       if (!rhs_call_arg_imm.has_value()) {
         return std::nullopt;
       }
@@ -3247,7 +3260,7 @@ std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_sl
       };
     }
 
-    const auto lhs_call_arg_imm = parse_i64(call_operands->first);
+    const auto lhs_call_arg_imm = parse_i64(matched_call->operands.first);
     if (!lhs_call_arg_imm.has_value()) {
       return std::nullopt;
     }
@@ -3261,14 +3274,14 @@ std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_sl
   const auto matched_slot_slice = match_single_local_rewrite_slot_slice(
       slot_prefix,
       alloca->result,
-      call_operands->first,
-      call_operands->second);
+      matched_call->operands.first,
+      matched_call->operands.second);
   if (!matched_slot_slice.has_value()) {
     return std::nullopt;
   }
 
   if (matched_slot_slice->second) {
-    const auto rhs_call_arg_imm = parse_i64(call_operands->second);
+    const auto rhs_call_arg_imm = parse_i64(matched_call->operands.second);
     if (!rhs_call_arg_imm.has_value()) {
       return std::nullopt;
     }
@@ -3279,7 +3292,7 @@ std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_sl
     };
   }
 
-  const auto lhs_call_arg_imm = parse_i64(call_operands->first);
+  const auto lhs_call_arg_imm = parse_i64(matched_call->operands.first);
   if (!lhs_call_arg_imm.has_value()) {
     return std::nullopt;
   }
