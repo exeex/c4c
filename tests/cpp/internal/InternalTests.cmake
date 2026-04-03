@@ -27,6 +27,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     noexcept_bool_qualified_template_call_parse
     functional_cast_shift_expr_parse
     typedef_owned_functional_cast_parse
+    qualified_known_type_arg_fast_path_parse
     operator_decl_deref_parse
     operator_decl_arrow_parse
     operator_arrow_explicit_member_call_parse
@@ -1565,6 +1566,20 @@ add_test(
           -P "${PROJECT_SOURCE_DIR}/tests/cpp/internal/run_typedef_owned_functional_cast_perf.cmake"
 )
 set_tests_properties(cpp_typedef_owned_functional_cast_perf PROPERTIES
+  LABELS "internal;positive_case;cpp;workflow;parser_perf"
+  TIMEOUT 15
+)
+
+add_test(
+  NAME cpp_qualified_known_type_arg_perf
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DBINARY_DIR=${PROJECT_BINARY_DIR}
+          -DREPEAT_COUNT=5000
+          -DEXPECT_TIMEOUT_SEC=5
+          -P "${PROJECT_SOURCE_DIR}/tests/cpp/internal/run_qualified_known_type_arg_perf.cmake"
+)
+set_tests_properties(cpp_qualified_known_type_arg_perf PROPERTIES
   LABELS "internal;positive_case;cpp;workflow;parser_perf"
   TIMEOUT 15
 )

@@ -7,11 +7,11 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 3: Object lifetime and tuple layer
-- Current slice: reduce the next shared Step 3 timeout after the
-  typedef-owned functional-cast fast path, starting from the later
-  `EASTL/utility.h`, `EASTL/meta.h`, `/usr/include/c++/14/type_traits`, and
-  `/usr/include/c++/14/bits/stl_pair.h` parser pressure now reached past the
-  old `EASTL/numeric_limits.h` hotspot
+- Current slice: reduce the remaining Step 3 timeout after the new
+  qualified-known-type template-argument fast path, starting from the still
+  unresolved `EASTL/meta.h`, `EASTL/utility.h`, and later
+  `/usr/include/c++/14/type_traits` parser pressure that remains after the new
+  parser shortcut was isolated and guarded
 
 ## Todo
 
@@ -219,15 +219,35 @@ Source Plan: plan.md
   (`positive_sema_linux_stage2_repro_03_asm_volatile_c`,
   `backend_lir_adapter_aarch64_tests`, and
   `llvm_gcc_c_torture_src_20080502_1_c`)
+- [x] Added
+  `tests/cpp/internal/postive_case/qualified_known_type_arg_fast_path_parse.cpp`
+  as a parse-only regression for qualified alias-template and dependent
+  qualified type arguments that should stay on the lightweight
+  template-type-argument path
+- [x] Added `cpp_qualified_known_type_arg_perf` with
+  `tests/cpp/internal/run_qualified_known_type_arg_perf.cmake` as a parser-perf
+  guard for large qualified alias-template argument lists
+- [x] Extended `try_parse_template_type_arg()` to fast-path simple qualified
+  type heads with `parse_base_type()` before falling back to the broader
+  `parse_type_name()` probe
+- [x] Re-ran the focused qualified-known-type parser guardrails plus both Step
+  3 12s parser-debug probes: the new parser shortcut is covered and fast, but
+  `eastl_memory_simple.cpp` and `eastl_tuple_simple.cpp` still time out later
+  in shared EASTL / libstdc++ headers instead of yielding a smaller standalone
+  blocker yet
+- [x] Re-ran the full suite after the qualified-known-type fast-path slice; the
+  tree stayed monotonic with `2700 -> 2702` passes and the same three
+  pre-existing failures (`positive_sema_linux_stage2_repro_03_asm_volatile_c`,
+  `backend_lir_adapter_aarch64_tests`, and
+  `llvm_gcc_c_torture_src_20080502_1_c`)
 
 ## Next Slice
 
-- reduce the post-typedef-cast Step 3 frontier from the remaining
+- reduce the post-qualified-type-fast-path Step 3 frontier from the remaining
   `eastl_memory_simple.cpp` and `eastl_tuple_simple.cpp` parse-time stalls,
-  starting from the later hotspots now reached after the old
-  `EASTL/numeric_limits.h` pressure: `EASTL/utility.h`,
-  `EASTL/meta.h`, `/usr/include/c++/14/type_traits`, and
-  `/usr/include/c++/14/bits/stl_pair.h`
+  starting from the current 12s parser-debug hotspots in `EASTL/meta.h`,
+  `EASTL/utility.h`, and later `/usr/include/c++/14/type_traits` work around
+  `:1454`, `:2571`, and `:3244`
 - reduce the timeout-only `eastl_vector_simple.cpp` frontier from the later
   EASTL-side hotspots now reached in `EASTL/internal/fill_help.h`,
   `EASTL/functional.h`, and `EASTL/meta.h`, then capture the next smaller
@@ -284,6 +304,18 @@ Source Plan: plan.md
   `eastl_memory_simple.cpp` and `eastl_tuple_simple.cpp` still time out once
   they advance into later `EASTL/utility.h`, `EASTL/meta.h`,
   `/usr/include/c++/14/type_traits`, and `bits/stl_pair.h` parser work
+- the new qualified-known-type template-argument fast path is now covered by
+  `qualified_known_type_arg_fast_path_parse.cpp` plus
+  `cpp_qualified_known_type_arg_perf`, but the 12s Step 3 probes still time
+  out after reaching later `type_traits` work rather than exposing a new small
+  reproducer
+- after the new fast path, `eastl_memory_simple.cpp` currently reaches
+  `EASTL/meta.h`, `EASTL/utility.h`, and later `/usr/include/c++/14/type_traits`
+  work around `:1454` and `:2571` before timing out
+- after the new fast path, `eastl_tuple_simple.cpp` currently reaches later
+  `/usr/include/c++/14/type_traits` work around `:2571` and `:3244` after
+  clearing earlier EASTL-side pressure, but still times out without a terminal
+  diagnostic
 - the new simple known-type template-argument fast path moved the Step 3
   parser-debug frontier later inside `/usr/include/c++/14/type_traits`, but it
   did not yet produce a smaller standalone reduction for the remaining timeout
@@ -386,6 +418,10 @@ Source Plan: plan.md
   and still reports the same three pre-existing failing tests noted above; the
   repaired monotonic guard comparison against `test_fail_before.log` passes for
   this slice with one additional passing test and no newly failing tests
+- the current full-suite post-change baseline for the qualified-known-type
+  fast-path slice lives in `test_after.log` and reports the same three
+  pre-existing failures while adding the two new focused guards for a monotonic
+  `2700 -> 2702` pass-count improvement over `test_before.log`
 - parser-debug progress heartbeats now include the active logical source file;
   the new diagnostic-format guardrail is
   `cpp_std_vector_parse_debug_progress_file`
@@ -401,6 +437,13 @@ Source Plan: plan.md
 - `tests/cpp/internal/postive_case/template_known_type_arg_fast_path_parse.cpp`
   now covers the simple known-type template-argument shapes accelerated by the
   new fast path in `try_parse_template_type_arg()`
+- `tests/cpp/internal/postive_case/qualified_known_type_arg_fast_path_parse.cpp`
+  now covers qualified alias-template and dependent qualified type arguments
+  taking the lightweight `parse_base_type()` path inside
+  `try_parse_template_type_arg()`
+- `cpp_qualified_known_type_arg_perf` now covers a large single
+  `ns::pack<ns::id_t<int>, ...>` alias-template argument list so the qualified
+  type-argument shortcut stays cheap under parser-perf pressure
 - `tests/cpp/internal/postive_case/typedef_owned_functional_cast_parse.cpp`
   now covers unqualified typedef-owned `Type(...)` casts in record methods, and
   `cpp_typedef_owned_functional_cast_perf` amplifies the same shape into a

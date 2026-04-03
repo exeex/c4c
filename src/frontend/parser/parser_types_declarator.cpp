@@ -70,6 +70,15 @@ bool Parser::try_parse_template_type_arg(TemplateArgParseResult* out_arg) {
 
     const auto is_simple_known_template_type_head = [&]() -> bool {
         if (check(TokenKind::KwTypename)) return true;
+        if (check(TokenKind::ColonColon) || check(TokenKind::Identifier)) {
+            QualifiedNameRef qn;
+            if (peek_qualified_name(&qn, /*allow_global=*/true) &&
+                (qn.is_global_qualified || !qn.qualifier_segments.empty())) {
+                const QualifiedTypeProbe probe = probe_qualified_type(*this, qn);
+                if (has_qualified_type_parse_fallback(probe))
+                    return true;
+            }
+        }
         if (!check(TokenKind::Identifier)) return false;
         const std::string resolved = resolve_visible_type_name(cur().lexeme);
         return is_typedef_name(cur().lexeme) ||
