@@ -314,6 +314,113 @@ std::optional<bool> evaluate_integer_compare(LirCmpPredicate predicate,
   return std::nullopt;
 }
 
+struct ResolvedInteger {
+  std::uint64_t bits = 0;
+  unsigned bit_width = 64;
+};
+
+std::optional<unsigned> parse_integer_bit_width(std::string_view type) {
+  if (type.size() < 2 || type.front() != 'i') {
+    return std::nullopt;
+  }
+  const auto width = parse_i64(type.substr(1));
+  if (!width.has_value() || *width <= 0 || *width > 64) {
+    return std::nullopt;
+  }
+  return static_cast<unsigned>(*width);
+}
+
+std::uint64_t integer_bit_mask(unsigned bit_width) {
+  if (bit_width >= 64) {
+    return ~static_cast<std::uint64_t>(0);
+  }
+  return (static_cast<std::uint64_t>(1) << bit_width) - 1;
+}
+
+std::uint64_t truncate_integer_bits(std::uint64_t bits, unsigned bit_width) {
+  return bits & integer_bit_mask(bit_width);
+}
+
+std::uint64_t sign_extend_integer_bits(std::uint64_t bits, unsigned bit_width) {
+  const auto truncated = truncate_integer_bits(bits, bit_width);
+  if (bit_width >= 64) {
+    return truncated;
+  }
+  const auto sign_bit = static_cast<std::uint64_t>(1) << (bit_width - 1);
+  if ((truncated & sign_bit) == 0) {
+    return truncated;
+  }
+  return truncated | ~integer_bit_mask(bit_width);
+}
+
+std::int64_t render_signed_integer_value(const ResolvedInteger& value,
+                                         unsigned bit_width) {
+  return static_cast<std::int64_t>(sign_extend_integer_bits(value.bits, bit_width));
+}
+
+std::optional<bool> evaluate_integer_compare(LirCmpPredicate predicate,
+                                             const ResolvedInteger& lhs,
+                                             const ResolvedInteger& rhs,
+                                             unsigned bit_width) {
+  const auto lhs_bits = truncate_integer_bits(lhs.bits, bit_width);
+  const auto rhs_bits = truncate_integer_bits(rhs.bits, bit_width);
+  switch (predicate) {
+    case LirCmpPredicate::Slt:
+      return render_signed_integer_value({lhs_bits, bit_width}, bit_width) <
+             render_signed_integer_value({rhs_bits, bit_width}, bit_width);
+    case LirCmpPredicate::Sle:
+      return render_signed_integer_value({lhs_bits, bit_width}, bit_width) <=
+             render_signed_integer_value({rhs_bits, bit_width}, bit_width);
+    case LirCmpPredicate::Sgt:
+      return render_signed_integer_value({lhs_bits, bit_width}, bit_width) >
+             render_signed_integer_value({rhs_bits, bit_width}, bit_width);
+    case LirCmpPredicate::Sge:
+      return render_signed_integer_value({lhs_bits, bit_width}, bit_width) >=
+             render_signed_integer_value({rhs_bits, bit_width}, bit_width);
+    case LirCmpPredicate::Eq: return lhs_bits == rhs_bits;
+    case LirCmpPredicate::Ne: return lhs_bits != rhs_bits;
+    case LirCmpPredicate::Ult: return lhs_bits < rhs_bits;
+    case LirCmpPredicate::Ule: return lhs_bits <= rhs_bits;
+    case LirCmpPredicate::Ugt: return lhs_bits > rhs_bits;
+    case LirCmpPredicate::Uge: return lhs_bits >= rhs_bits;
+  }
+  return std::nullopt;
+}
+
+std::optional<ResolvedInteger> evaluate_integer_cast(c4c::codegen::lir::LirCastKind kind,
+                                                     const ResolvedInteger& operand,
+                                                     std::string_view from_type,
+                                                     std::string_view to_type) {
+  const auto from_bit_width = parse_integer_bit_width(from_type);
+  const auto to_bit_width = parse_integer_bit_width(to_type);
+  if (!from_bit_width.has_value() || !to_bit_width.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto source_bits = truncate_integer_bits(operand.bits, *from_bit_width);
+  switch (kind) {
+    case c4c::codegen::lir::LirCastKind::Trunc:
+      if (*to_bit_width >= *from_bit_width) {
+        return std::nullopt;
+      }
+      return ResolvedInteger{truncate_integer_bits(source_bits, *to_bit_width), *to_bit_width};
+    case c4c::codegen::lir::LirCastKind::ZExt:
+      if (*to_bit_width <= *from_bit_width) {
+        return std::nullopt;
+      }
+      return ResolvedInteger{source_bits, *to_bit_width};
+    case c4c::codegen::lir::LirCastKind::SExt:
+      if (*to_bit_width <= *from_bit_width) {
+        return std::nullopt;
+      }
+      return ResolvedInteger{truncate_integer_bits(sign_extend_integer_bits(source_bits,
+                                                                            *from_bit_width),
+                                                   *to_bit_width),
+                             *to_bit_width};
+    default: return std::nullopt;
+  }
+}
+
 std::optional<std::vector<BackendBinaryInst>> adapt_conditional_phi_join_predecessor_compute_chain(
     const c4c::codegen::lir::LirBlock& block,
     std::string_view expected_result) {
@@ -1760,12 +1867,12 @@ std::optional<BackendFunction> adapt_constant_conditional_goto_return_function(
     blocks_by_label.emplace(block.label, &block);
   }
 
-  std::unordered_map<std::string, std::int64_t> integer_values;
+  std::unordered_map<std::string, ResolvedInteger> integer_values;
   std::unordered_map<std::string, bool> predicate_values;
 
-  auto resolve_int = [&](std::string_view value) -> std::optional<std::int64_t> {
+  auto resolve_int = [&](std::string_view value) -> std::optional<ResolvedInteger> {
     if (const auto imm = parse_i64(value); imm.has_value()) {
-      return imm;
+      return ResolvedInteger{static_cast<std::uint64_t>(*imm), 64};
     }
     const auto it = integer_values.find(std::string(value));
     if (it == integer_values.end()) {
@@ -1781,7 +1888,7 @@ std::optional<BackendFunction> adapt_constant_conditional_goto_return_function(
     }
     const auto int_it = integer_values.find(std::string(value));
     if (int_it != integer_values.end()) {
-      return int_it->second != 0;
+      return truncate_integer_bits(int_it->second.bits, int_it->second.bit_width) != 0;
     }
     return std::nullopt;
   };
@@ -1805,12 +1912,12 @@ std::optional<BackendFunction> adapt_constant_conditional_goto_return_function(
         const auto predicate = cmp->predicate.typed();
         const auto lhs = resolve_int(cmp->lhs);
         const auto rhs = resolve_int(cmp->rhs);
+        const auto compare_bit_width = parse_integer_bit_width(cmp->type_str);
         if (cmp->is_float || !predicate.has_value() ||
-            (cmp->type_str != "i32" && cmp->type_str != "i64") ||
-            !lhs.has_value() || !rhs.has_value()) {
+            !compare_bit_width.has_value() || !lhs.has_value() || !rhs.has_value()) {
           return std::nullopt;
         }
-        const auto result = evaluate_integer_compare(*predicate, *lhs, *rhs);
+        const auto result = evaluate_integer_compare(*predicate, *lhs, *rhs, *compare_bit_width);
         if (!result.has_value()) {
           return std::nullopt;
         }
@@ -1819,12 +1926,26 @@ std::optional<BackendFunction> adapt_constant_conditional_goto_return_function(
       }
 
       if (const auto* cast = std::get_if<LirCastOp>(&inst)) {
-        const auto operand = resolve_predicate(cast->operand);
-        if (cast->kind != LirCastKind::ZExt || cast->from_type != "i1" ||
-            cast->to_type != "i32" || !operand.has_value()) {
+        if (cast->kind == LirCastKind::ZExt && cast->from_type == "i1" &&
+            cast->to_type == "i32") {
+          const auto operand = resolve_predicate(cast->operand);
+          if (!operand.has_value()) {
+            return std::nullopt;
+          }
+          integer_values[cast->result] = ResolvedInteger{
+              static_cast<std::uint64_t>(*operand ? 1 : 0), 32};
+          continue;
+        }
+
+        const auto operand = resolve_int(cast->operand);
+        const auto cast_value =
+            operand.has_value()
+                ? evaluate_integer_cast(cast->kind, *operand, cast->from_type, cast->to_type)
+                : std::nullopt;
+        if (!cast_value.has_value()) {
           return std::nullopt;
         }
-        integer_values[cast->result] = *operand ? 1 : 0;
+        integer_values[cast->result] = *cast_value;
         continue;
       }
 
@@ -1844,7 +1965,8 @@ std::optional<BackendFunction> adapt_constant_conditional_goto_return_function(
       out.signature = signature;
       BackendBlock out_block;
       out_block.label = "entry";
-      out_block.terminator = make_backend_return(std::to_string(*return_value), "i32");
+      out_block.terminator = make_backend_return(
+          std::to_string(render_signed_integer_value(*return_value, 32)), "i32");
       out.blocks.push_back(std::move(out_block));
       return out;
     }
