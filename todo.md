@@ -9,13 +9,41 @@ Source Plan: plan.md
 - [ ] Delete app-layer LLVM asm rescue from `c4cll`
 - [ ] Revalidate backend and full-suite behavior without fallback
 
-Current active item: Step 2, extend the adjacent direct-BIR backend-route
-matrix after confirming the single-parameter `unsigned char` `eq`/`ne`
-compare/select family is exhausted for the current bounded parity pass.
-Next target: inspect whether the next bounded Step 2 slice should widen the
-zero-parameter constant-return compare/select family past `eq`/`ne` or pivot
-to a different nearby direct-BIR surface gap now that `return_select_ne`
-parity is recorded.
+Current active item: Step 2, add the bounded zero-parameter `unsigned char`
+constant-return `select eq` backend-route parity slice adjacent to the existing
+`i32` `return_select_eq` route coverage.
+Next target: add the adjacent zero-parameter `unsigned char` constant-return
+`select ne` backend-route parity slice now that the trunc-only widened-`i8`
+direct-BIR fallback gap behind `select eq` is closed.
+
+Completed this iteration:
+- Audited the adjacent compare/select backend-route inventory and confirmed the
+  smallest remaining parity gap after the single-parameter `unsigned char`
+  `eq`/`ne` slice was the zero-parameter constant-return `u8` `select eq`
+  family, because `i32` already had `return_select_eq` / `return_select_ne`
+  coverage while widened `u8` had neither zero-parameter counterpart.
+- Added `tests/c/internal/backend_route_case/return_select_eq_u8.c` and
+  registered
+  `backend_codegen_route_riscv64_return_select_eq_u8_defaults_to_bir` in
+  `tests/c/internal/InternalTests.cmake`, asserting the emitted text contains
+  `bir.func @choose_const_u() -> i8 {` and `bir.ret i8 11`, and forbids legacy
+  LLVM IR `define i8 @choose_const_u()`.
+- Used the new route test to expose a real Step 2 direct-BIR gap: the
+  zero-parameter widened-`i8` case constant-folded to a trunc-only
+  `i32 -> i8` return shape that still fell back to legacy LLVM IR text.
+- Fixed `src/backend/lowering/lir_to_bir.cpp` so the widened-`i8`
+  add/sub-chain lowering path accepts the minimal trunc-only form instead of
+  requiring extra setup instructions before the final `trunc`.
+- Added `make_bir_i8_return_immediate_module()` to
+  `tests/backend/backend_bir_test_support.*` plus
+  `test_bir_lowering_accepts_i8_return_immediate()` in
+  `tests/backend/backend_bir_lowering_tests.cpp` to keep the trunc-only
+  widened-`i8` return-immediate slice covered below the backend-route harness.
+- Rebuilt the tree, reran
+  `backend_codegen_route_riscv64_return_select_eq_u8_defaults_to_bir`, reran
+  `backend_bir_tests`, then reran
+  `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `360/360` backend-labeled tests passing.
 
 Completed this iteration:
 - Audited the remaining adjacent direct-BIR compare/select inventory in

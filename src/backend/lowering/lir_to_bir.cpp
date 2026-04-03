@@ -1033,7 +1033,7 @@ std::optional<bir::Function> try_lower_widened_i8_add_sub_chain_function(
   }
 
   const auto& lir_block = lir_function.blocks.front();
-  if (lir_block.label.empty() || lir_block.insts.size() < 3) {
+  if (lir_block.label.empty() || lir_block.insts.empty()) {
     return std::nullopt;
   }
 

@@ -761,6 +761,16 @@ void test_bir_lowering_accepts_tiny_return_select_lir_slice() {
                   "BIR lowering should return the select result instead of leaving the legacy compare-plus-select pair intact");
 }
 
+void test_bir_lowering_accepts_i8_return_immediate() {
+  const auto lowered = c4c::backend::lower_to_bir(make_bir_i8_return_immediate_module());
+  const auto rendered = c4c::backend::bir::print(lowered);
+
+  expect_contains(rendered, "bir.func @choose_const_u() -> i8 {",
+                  "BIR lowering should preserve the zero-parameter widened i8 function boundary");
+  expect_contains(rendered, "bir.ret i8 11",
+                  "BIR lowering should accept the trunc-only widened i8 return-immediate slice");
+}
+
 void test_bir_lowering_accepts_single_param_select_branch_slice() {
   const auto lowered =
       c4c::backend::lower_to_bir(make_bir_single_param_select_eq_branch_module());
@@ -1410,6 +1420,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_tiny_return_ugt_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_uge_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_select_lir_slice);
+  RUN_TEST(test_bir_lowering_accepts_i8_return_immediate);
   RUN_TEST(test_bir_lowering_accepts_single_param_select_branch_slice);
   RUN_TEST(test_bir_lowering_accepts_single_param_select_phi_slice);
   RUN_TEST(test_bir_lowering_accepts_two_param_select_phi_slice);
