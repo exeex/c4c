@@ -1199,22 +1199,6 @@ std::optional<MinimalExternDeclCallSlice> parse_minimal_extern_decl_call_slice(
   return MinimalExternDeclCallSlice{extern_decl.name};
 }
 
-std::optional<MinimalExternDeclCallSlice> parse_minimal_declared_direct_call_slice(
-    const c4c::backend::BackendModule& module) {
-  const auto parsed = c4c::backend::parse_backend_minimal_declared_direct_call_module(module);
-  if (!parsed.has_value() || parsed->callee == nullptr) {
-    return std::nullopt;
-  }
-
-  return MinimalExternDeclCallSlice{
-      std::string(parsed->parsed_call.symbol_name),
-      parsed->args,
-      parsed->callee->signature.is_vararg,
-      parsed->return_call_result,
-      parsed->return_imm,
-  };
-}
-
 std::optional<MinimalExternGlobalArrayLoadSlice> parse_minimal_extern_global_array_load_slice(
     const c4c::backend::BackendModule& module) {
   if (module.functions.size() != 1 || module.globals.size() != 1) {
@@ -2678,6 +2662,93 @@ std::string emit_minimal_extern_decl_call_asm(
   return out.str();
 }
 
+std::string emit_minimal_extern_decl_call_asm(
+    const c4c::backend::BackendModule& module,
+    const c4c::backend::ParsedBackendMinimalDeclaredDirectCallModuleView& slice) {
+  static constexpr const char* kArgIntRegs[6] = {"edi", "esi", "edx", "ecx", "r8d", "r9d"};
+  static constexpr const char* kArgPtrRegs[6] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
+
+  const std::string helper_symbol = asm_symbol_name(module, slice.parsed_call.symbol_name);
+  const std::string main_symbol = asm_symbol_name(module, "main");
+
+  if (slice.args.size() > 6) {
+    throw c4c::backend::LirAdapterError(
+        c4c::backend::LirAdapterErrorKind::Unsupported,
+        "extern declaration call argument count exceeds minimal x86 register budget");
+  }
+
+  std::vector<std::string> emitted_string_constant_names;
+  for (const auto& arg : slice.args) {
+    if (arg.kind != MinimalExternCallArgSlice::Kind::Ptr || arg.operand.empty() ||
+        arg.operand.front() != '@') {
+      continue;
+    }
+    const auto* string_constant = find_string_constant(module, arg.operand.substr(1));
+    if (string_constant == nullptr) {
+      continue;
+    }
+    const auto& name = string_constant->name;
+    bool duplicate = false;
+    for (const auto& emitted : emitted_string_constant_names) {
+      if (emitted == name) {
+        duplicate = true;
+        break;
+      }
+    }
+    if (!duplicate) {
+      emitted_string_constant_names.push_back(name);
+    }
+  }
+
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n";
+  if (!emitted_string_constant_names.empty()) {
+    out << ".section .rodata\n";
+    for (const auto& name : emitted_string_constant_names) {
+      const auto* string_constant = find_string_constant(module, name);
+      if (string_constant == nullptr) {
+        continue;
+      }
+      const std::string label = asm_private_data_label(module, "@" + name);
+      out << label << ":\n"
+          << "  .asciz \"" << escape_asm_string(string_constant->raw_bytes) << "\"\n";
+    }
+  }
+  out << ".text\n";
+  out << ".globl " << main_symbol << "\n";
+  out << main_symbol << ":\n";
+  for (std::size_t index = 0; index < slice.args.size(); ++index) {
+    const auto& arg = slice.args[index];
+    switch (arg.kind) {
+      case MinimalExternCallArgSlice::Kind::I32Imm:
+        out << "  mov " << kArgIntRegs[index] << ", " << arg.imm << "\n";
+        break;
+      case MinimalExternCallArgSlice::Kind::I64Imm:
+        out << "  mov " << kArgPtrRegs[index] << ", " << arg.imm << "\n";
+        break;
+      case MinimalExternCallArgSlice::Kind::Ptr: {
+        const auto* string_constant = find_string_constant(module, arg.operand.substr(1));
+        if (string_constant == nullptr) {
+          const std::string symbol = asm_symbol_name(module, arg.operand.substr(1));
+          out << "  lea " << kArgPtrRegs[index] << ", " << symbol << "[rip]\n";
+          break;
+        }
+        const auto label = asm_private_data_label(module, arg.operand);
+        out << "  lea " << kArgPtrRegs[index] << ", " << label << "[rip]\n";
+      } break;
+    }
+  }
+  if (slice.callee != nullptr && slice.callee->signature.is_vararg) {
+    out << "  mov al, 0\n";
+  }
+  out << "  call " << helper_symbol << "\n";
+  if (!slice.return_call_result) {
+    out << "  mov eax, " << slice.return_imm << "\n";
+  }
+  out << "  ret\n";
+  return out.str();
+}
+
 std::string emit_minimal_global_char_pointer_diff_asm(
     const c4c::backend::BackendModule& module,
     const MinimalGlobalCharPointerDiffSlice& slice) {
@@ -2920,7 +2991,7 @@ std::string emit_module(const c4c::backend::BackendModule& module,
         slice.has_value()) {
       return emit_minimal_local_array_asm(module, *slice);
     }
-    if (const auto slice = parse_minimal_declared_direct_call_slice(module);
+    if (const auto slice = c4c::backend::parse_backend_minimal_declared_direct_call_module(module);
         slice.has_value()) {
       return emit_minimal_extern_decl_call_asm(module, *slice);
     }
@@ -3070,7 +3141,7 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
       return emit_minimal_conditional_return_asm(scaffold_module, *slice);
     }
     const auto adapted = c4c::backend::lower_to_backend_ir(module);
-    if (const auto slice = parse_minimal_declared_direct_call_slice(adapted);
+    if (const auto slice = c4c::backend::parse_backend_minimal_declared_direct_call_module(adapted);
         slice.has_value()) {
       return emit_minimal_extern_decl_call_asm(adapted, *slice);
     }

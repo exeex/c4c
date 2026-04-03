@@ -4420,6 +4420,48 @@ void test_x86_backend_declared_direct_call_uses_structured_vararg_metadata() {
                       "x86 backend should not fall back to backend IR text when the structured non-vararg declaration still matches the call");
 }
 
+void test_x86_backend_explicit_emit_surface_keeps_structured_declared_direct_call_backend_path() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_x86_extern_decl_inferred_param_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  c4c::backend::BackendFunction* helper_decl = nullptr;
+  c4c::backend::BackendFunction* main_fn = nullptr;
+  for (auto& function : lowered.functions) {
+    if (function.signature.name == "helper_ext") {
+      helper_decl = &function;
+    }
+    if (function.signature.name == "main") {
+      main_fn = &function;
+    }
+  }
+
+  expect_true(helper_decl != nullptr && main_fn != nullptr,
+              "x86 backend explicit emit-surface regression test needs the lowered extern declaration and main call site");
+  if (helper_decl == nullptr || main_fn == nullptr) {
+    return;
+  }
+
+  helper_decl->signature.name = "sum_ext";
+  auto& call = std::get<c4c::backend::BackendCallInst>(main_fn->blocks.front().insts.front());
+  call.callee.symbol_name = "sum_ext";
+
+  const auto direct_rendered = c4c::backend::x86::emit_module(lowered);
+  const auto backend_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{lowered},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_true(backend_rendered == direct_rendered,
+              "x86 backend selection should keep structured declared direct calls on the explicit backend emit surface");
+  expect_contains(direct_rendered, "mov edi, 5\n",
+                  "x86 explicit backend emit surface should preserve the first structured fixed argument");
+  expect_contains(direct_rendered, "mov esi, 7\n",
+                  "x86 explicit backend emit surface should preserve the second structured fixed argument");
+  expect_contains(direct_rendered, "call sum_ext\n",
+                  "x86 explicit backend emit surface should preserve the structured declared helper symbol");
+  expect_not_contains(direct_rendered, "define i32 @main()",
+                      "x86 explicit backend emit surface should stay on assembly output for structured declared direct calls");
+}
+
 void test_x86_backend_declared_direct_call_uses_structured_decl_signature_for_fixed_args() {
   auto lowered = c4c::backend::lower_to_backend_ir(make_x86_extern_decl_inferred_param_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
@@ -5272,6 +5314,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_renders_extern_decl_object_slice_with_typed_zero_arg_spacing);
   RUN_TEST(test_x86_backend_renders_extern_decl_inferred_param_slice);
   RUN_TEST(test_x86_backend_declared_direct_call_uses_structured_vararg_metadata);
+  RUN_TEST(test_x86_backend_explicit_emit_surface_keeps_structured_declared_direct_call_backend_path);
   RUN_TEST(test_x86_backend_declared_direct_call_uses_structured_decl_signature_for_fixed_args);
   RUN_TEST(test_x86_backend_adapter_preserves_multiple_printf_calls_in_backend_ir);
   RUN_TEST(test_x86_backend_renders_string_literal_char_slice);
