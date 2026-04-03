@@ -912,6 +912,71 @@ void test_backend_call_helpers_parse_structured_two_param_add_function() {
               "shared structured two-parameter add helper parser should preserve renamed structured parameter names and helper SSA values without target-local helper-body scans");
 }
 
+void test_backend_call_helpers_parse_structured_zero_arg_return_imm_function() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_direct_call_module());
+
+  c4c::backend::BackendFunction* helper = nullptr;
+  for (auto& function : lowered.functions) {
+    if (function.signature.name != "main") {
+      helper = &function;
+      break;
+    }
+  }
+  expect_true(helper != nullptr,
+              "shared structured zero-argument return helper parser regression test needs the lowered helper function");
+  if (helper == nullptr) {
+    return;
+  }
+
+  helper->signature.name = "const_value";
+  helper->blocks.front().terminator.value = "9";
+
+  const auto parsed =
+      c4c::backend::parse_backend_structured_zero_arg_return_imm_function(*helper);
+  expect_true(parsed.has_value() && parsed->return_imm == 9,
+              "shared structured zero-argument return helper parser should preserve renamed helper symbols and decode the immediate return contract without target-local helper-body scans");
+}
+
+void test_backend_call_helpers_parse_structured_single_add_imm_function() {
+  auto lowered =
+      c4c::backend::lower_to_backend_ir(make_typed_direct_call_local_arg_module());
+
+  c4c::backend::BackendFunction* helper = nullptr;
+  for (auto& function : lowered.functions) {
+    if (function.signature.name != "main") {
+      helper = &function;
+      break;
+    }
+  }
+  expect_true(helper != nullptr,
+              "shared structured single-add-immediate helper parser regression test needs the lowered helper function");
+  if (helper == nullptr) {
+    return;
+  }
+
+  helper->signature.name = "sum_one";
+  helper->signature.params.front().name = "%p.input";
+  auto* add = helper->blocks.empty() || helper->blocks.front().insts.empty()
+                  ? nullptr
+                  : std::get_if<c4c::backend::BackendBinaryInst>(&helper->blocks.front().insts.front());
+  expect_true(add != nullptr,
+              "shared structured single-add-immediate helper parser regression test needs the lowered helper add instruction");
+  if (add == nullptr) {
+    return;
+  }
+  add->lhs = "%p.input";
+  add->result = "%t.helper.add.structured";
+  helper->blocks.front().terminator.value = "%t.helper.add.structured";
+
+  const auto parsed =
+      c4c::backend::parse_backend_structured_single_add_imm_function(*helper);
+  expect_true(parsed.has_value() && parsed->param_name == "%p.input" &&
+                  parsed->add != nullptr &&
+                  parsed->add->result == "%t.helper.add.structured" &&
+                  parsed->add->rhs == "1",
+              "shared structured single-add-immediate helper parser should preserve renamed structured parameter names and helper SSA values without target-local helper-body scans");
+}
+
 void test_backend_call_helpers_decode_lir_direct_global_vararg_prefix() {
   c4c::codegen::lir::LirCallOp call{
       "%t2",
@@ -2094,6 +2159,8 @@ int main(int argc, char* argv[]) {
   test_backend_call_helpers_parse_two_param_add_function();
   test_backend_call_helpers_parse_minimal_two_arg_direct_call_lir_module();
   test_backend_call_helpers_parse_structured_two_param_add_function();
+  test_backend_call_helpers_parse_structured_zero_arg_return_imm_function();
+  test_backend_call_helpers_parse_structured_single_add_imm_function();
   test_backend_call_helpers_decode_lir_direct_global_vararg_prefix();
   test_backend_call_helpers_classify_lir_nonminimal_call_types();
   test_backend_call_helpers_classify_lir_nonminimal_signature_types();

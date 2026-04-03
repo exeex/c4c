@@ -473,28 +473,12 @@ std::optional<MatchedMinimalStructuredDirectCall> match_minimal_structured_direc
 std::optional<MatchedMinimalStructuredDirectCallAddImmHelper>
 match_minimal_structured_direct_call_add_imm_helper(
     const c4c::backend::BackendFunction& callee_fn) {
-  if (callee_fn.signature.params.size() != 1 ||
-      !is_i32_scalar_param(callee_fn.signature.params.front()) ||
-      callee_fn.signature.params.front().name.empty()) {
+  const auto parsed = c4c::backend::parse_backend_structured_single_add_imm_function(callee_fn);
+  if (!parsed.has_value()) {
     return std::nullopt;
   }
 
-  const auto& callee_block = callee_fn.blocks.front();
-  if (callee_block.label != "entry" || callee_block.insts.size() != 1 ||
-      !callee_block.terminator.value.has_value() ||
-      c4c::backend::backend_return_scalar_type(callee_block.terminator) !=
-          c4c::backend::BackendScalarType::I32) {
-    return std::nullopt;
-  }
-
-  const auto* add = std::get_if<c4c::backend::BackendBinaryInst>(&callee_block.insts.front());
-  if (add == nullptr || add->opcode != c4c::backend::BackendBinaryOpcode::Add ||
-      !is_i32_scalar_binary(*add) || *callee_block.terminator.value != add->result ||
-      add->lhs != callee_fn.signature.params.front().name) {
-    return std::nullopt;
-  }
-
-  const auto add_imm = parse_i64(add->rhs);
+  const auto add_imm = parse_i64(parsed->add->rhs);
   if (!add_imm.has_value()) {
     return std::nullopt;
   }
@@ -505,24 +489,13 @@ match_minimal_structured_direct_call_add_imm_helper(
 std::optional<MatchedMinimalStructuredDirectCallReturnImmHelper>
 match_minimal_structured_direct_call_return_imm_helper(
     const c4c::backend::BackendFunction& callee_fn) {
-  if (!callee_fn.signature.params.empty()) {
+  const auto parsed =
+      c4c::backend::parse_backend_structured_zero_arg_return_imm_function(callee_fn);
+  if (!parsed.has_value()) {
     return std::nullopt;
   }
 
-  const auto& callee_block = callee_fn.blocks.front();
-  if (callee_block.label != "entry" || !callee_block.terminator.value.has_value() ||
-      c4c::backend::backend_return_scalar_type(callee_block.terminator) !=
-          c4c::backend::BackendScalarType::I32 ||
-      !callee_block.insts.empty()) {
-    return std::nullopt;
-  }
-
-  const auto return_imm = parse_i64(*callee_block.terminator.value);
-  if (!return_imm.has_value()) {
-    return std::nullopt;
-  }
-
-  return MatchedMinimalStructuredDirectCallReturnImmHelper{&callee_fn, *return_imm};
+  return MatchedMinimalStructuredDirectCallReturnImmHelper{&callee_fn, parsed->return_imm};
 }
 
 std::optional<MatchedMinimalStructuredTwoArgDirectCallHelper>

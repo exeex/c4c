@@ -80,6 +80,15 @@ struct ParsedBackendStructuredTwoParamAddFunctionView {
   const BackendBinaryInst* add = nullptr;
 };
 
+struct ParsedBackendStructuredZeroArgReturnImmFunctionView {
+  std::int64_t return_imm = 0;
+};
+
+struct ParsedBackendStructuredSingleAddImmFunctionView {
+  std::string param_name;
+  const BackendBinaryInst* add = nullptr;
+};
+
 struct ParsedBackendSingleHelperMainLirModuleView {
   const c4c::codegen::lir::LirFunction* helper = nullptr;
   const c4c::codegen::lir::LirFunction* main_function = nullptr;
@@ -108,6 +117,16 @@ parse_backend_two_param_add_function(
 
 inline std::optional<ParsedBackendStructuredTwoParamAddFunctionView>
 parse_backend_structured_two_param_add_function(
+    const BackendFunction& function,
+    std::optional<std::string_view> expected_name = std::nullopt);
+
+inline std::optional<ParsedBackendStructuredZeroArgReturnImmFunctionView>
+parse_backend_structured_zero_arg_return_imm_function(
+    const BackendFunction& function,
+    std::optional<std::string_view> expected_name = std::nullopt);
+
+inline std::optional<ParsedBackendStructuredSingleAddImmFunctionView>
+parse_backend_structured_single_add_imm_function(
     const BackendFunction& function,
     std::optional<std::string_view> expected_name = std::nullopt);
 
@@ -520,6 +539,72 @@ parse_backend_structured_two_param_add_function(
       rhs_param.name,
       add,
   };
+}
+
+inline std::optional<ParsedBackendStructuredZeroArgReturnImmFunctionView>
+parse_backend_structured_zero_arg_return_imm_function(
+    const BackendFunction& function,
+    std::optional<std::string_view> expected_name) {
+  const std::string_view function_name =
+      expected_name.has_value() ? *expected_name : std::string_view(function.signature.name);
+  if (function.is_declaration || !backend_function_is_definition(function.signature) ||
+      function.signature.name != function_name ||
+      backend_signature_return_scalar_type(function.signature) != BackendScalarType::I32 ||
+      !function.signature.params.empty() || function.signature.is_vararg ||
+      function.blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& block = function.blocks.front();
+  if (block.label != "entry" || !block.terminator.value.has_value() ||
+      backend_return_scalar_type(block.terminator) != BackendScalarType::I32 ||
+      !block.insts.empty()) {
+    return std::nullopt;
+  }
+
+  const auto return_imm = parse_backend_i64_literal(*block.terminator.value);
+  if (!return_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  return ParsedBackendStructuredZeroArgReturnImmFunctionView{*return_imm};
+}
+
+inline std::optional<ParsedBackendStructuredSingleAddImmFunctionView>
+parse_backend_structured_single_add_imm_function(
+    const BackendFunction& function,
+    std::optional<std::string_view> expected_name) {
+  const std::string_view function_name =
+      expected_name.has_value() ? *expected_name : std::string_view(function.signature.name);
+  if (function.is_declaration || !backend_function_is_definition(function.signature) ||
+      function.signature.name != function_name ||
+      backend_signature_return_scalar_type(function.signature) != BackendScalarType::I32 ||
+      function.signature.params.size() != 1 || function.signature.is_vararg ||
+      function.blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& param = function.signature.params.front();
+  if (backend_param_scalar_type(param) != BackendScalarType::I32 || param.name.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& block = function.blocks.front();
+  if (block.label != "entry" || block.insts.size() != 1 ||
+      !block.terminator.value.has_value() ||
+      backend_return_scalar_type(block.terminator) != BackendScalarType::I32) {
+    return std::nullopt;
+  }
+
+  const auto* add = std::get_if<BackendBinaryInst>(&block.insts.front());
+  if (add == nullptr || add->opcode != BackendBinaryOpcode::Add ||
+      backend_binary_value_type(*add) != BackendScalarType::I32 || add->result.empty() ||
+      *block.terminator.value != add->result || add->lhs != param.name ||
+      !parse_backend_i64_literal(add->rhs).has_value()) {
+    return std::nullopt;
+  }
+
+  return ParsedBackendStructuredSingleAddImmFunctionView{param.name, add};
 }
 
 inline std::optional<ParsedBackendSingleHelperDirectGlobalCallView>
