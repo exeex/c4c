@@ -165,7 +165,7 @@ c4c::backend::BackendModule make_structured_cross_local_slot_ptrdiff_module() {
 
 void test_backend_ir_printer_renders_lowered_conditional_return_slice() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_return_module());
-  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered, "%t0 = icmp slt i32 2, 3",
                   "backend IR printer should render the lowered compare for the conditional-return slice");
@@ -181,7 +181,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_return_slice() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_return_module());
   std::string error;
 
-  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should accept lowered conditional-return control-flow slices");
   expect_true(error.empty(),
               "backend IR validator should not report an error for valid lowered conditional-return slices");
@@ -190,7 +190,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_return_slice() {
 void test_backend_ir_printer_renders_structured_conditional_return_slice_without_type_text() {
   auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_return_module());
   clear_backend_memory_type_compatibility_shims(lowered);
-  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered, "%t0 = icmp slt i32 2, 3",
                   "backend IR printer should render lowered conditional compares from structured compare metadata without legacy type text");
@@ -203,7 +203,7 @@ void test_backend_ir_validator_accepts_structured_conditional_return_slice_witho
   clear_backend_memory_type_compatibility_shims(lowered);
   std::string error;
 
-  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should accept lowered conditional-return slices when compare type metadata is structured and legacy text is cleared");
   expect_true(error.empty(),
               "backend IR validator should not report an error for structured conditional-return slices without compare type text");
@@ -211,7 +211,7 @@ void test_backend_ir_validator_accepts_structured_conditional_return_slice_witho
 
 void test_backend_ir_printer_renders_lowered_conditional_phi_join_slice() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_phi_join_module());
-  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered, "%t0 = icmp slt i32 2, 3",
                   "backend IR printer should render the lowered compare for the conditional-join slice");
@@ -231,7 +231,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_slice() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_phi_join_module());
   std::string error;
 
-  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should accept lowered conditional-join slices");
   expect_true(error.empty(),
               "backend IR validator should not report an error for valid lowered conditional joins");
@@ -239,7 +239,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_slice() {
 
 void test_backend_ir_printer_renders_lowered_conditional_phi_join_add_slice() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_phi_join_add_module());
-  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered, "%t0 = icmp slt i32 2, 3",
                   "backend IR printer should render the lowered compare for the computed conditional-join slice");
@@ -253,7 +253,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_add_slice() 
   const auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_phi_join_add_module());
   std::string error;
 
-  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should accept lowered conditional joins whose phi feeds a computed scalar");
   expect_true(error.empty(),
               "backend IR validator should not report an error for valid computed conditional joins");
@@ -262,7 +262,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_add_slice() 
 void test_backend_ir_printer_renders_structured_conditional_phi_join_add_slice_without_type_text() {
   auto lowered = c4c::backend::lower_to_backend_ir(make_conditional_phi_join_add_module());
   clear_backend_memory_type_compatibility_shims(lowered);
-  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered, "join:\n  %t.join = phi i32 [ 7, %then ], [ 9, %else ]\n  %t4 = add i32 %t.join, 5",
                   "backend IR printer should render structured phi and binary metadata without legacy type text");
@@ -275,7 +275,7 @@ void test_backend_ir_validator_accepts_structured_conditional_phi_join_add_slice
   clear_backend_memory_type_compatibility_shims(lowered);
   std::string error;
 
-  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should accept lowered computed conditional joins when phi and binary type metadata is structured and legacy text is cleared");
   expect_true(error.empty(),
               "backend IR validator should not report an error for structured conditional-join slices without phi/binary type text");
@@ -284,7 +284,7 @@ void test_backend_ir_validator_accepts_structured_conditional_phi_join_add_slice
 void test_backend_ir_printer_renders_lowered_conditional_phi_join_predecessor_add_slice() {
   const auto lowered =
       c4c::backend::lower_to_backend_ir(make_conditional_phi_join_predecessor_add_module());
-  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered, "then:\n  %t3 = add i32 7, 5\n  br label %join",
                   "backend IR printer should preserve predecessor-local computation before the join");
@@ -301,7 +301,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_predecessor_
       c4c::backend::lower_to_backend_ir(make_conditional_phi_join_predecessor_add_module());
   std::string error;
 
-  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should accept lowered conditional joins whose predecessors compute phi inputs");
   expect_true(error.empty(),
               "backend IR validator should not report an error for valid predecessor-computed conditional joins");
@@ -310,7 +310,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_predecessor_
 void test_backend_ir_printer_renders_lowered_conditional_phi_join_predecessor_sub_slice() {
   const auto lowered =
       c4c::backend::lower_to_backend_ir(make_conditional_phi_join_predecessor_sub_module());
-  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered, "then:\n  %t3 = sub i32 12, 5\n  br label %join",
                   "backend IR printer should preserve predecessor-local sub computation before the join");
@@ -327,7 +327,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_predecessor_
       c4c::backend::lower_to_backend_ir(make_conditional_phi_join_predecessor_sub_module());
   std::string error;
 
-  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should accept lowered conditional joins whose predecessors compute sub-based phi inputs");
   expect_true(error.empty(),
               "backend IR validator should not report an error for valid predecessor-computed sub joins");
@@ -336,7 +336,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_predecessor_
 void test_backend_ir_printer_renders_lowered_conditional_phi_join_mixed_predecessor_add_slice() {
   const auto lowered =
       c4c::backend::lower_to_backend_ir(make_conditional_phi_join_mixed_predecessor_add_module());
-  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered, "then:\n  %t3 = add i32 7, 5\n  br label %join",
                   "backend IR printer should preserve the predecessor-local add on the computed join input");
@@ -353,7 +353,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predec
       c4c::backend::lower_to_backend_ir(make_conditional_phi_join_mixed_predecessor_add_module());
   std::string error;
 
-  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should accept lowered conditional joins with mixed predecessor-computed and immediate phi inputs");
   expect_true(error.empty(),
               "backend IR validator should not report an error for valid mixed predecessor/immediate joins");
@@ -362,7 +362,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predec
 void test_backend_ir_printer_renders_lowered_conditional_phi_join_mixed_predecessor_add_post_join_add_slice() {
   const auto lowered = c4c::backend::lower_to_backend_ir(
       make_conditional_phi_join_mixed_predecessor_add_post_join_add_module());
-  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered, "then:\n  %t3 = add i32 7, 5\n  br label %join",
                   "backend IR printer should preserve the computed predecessor input before the asymmetric join");
@@ -378,7 +378,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predec
       make_conditional_phi_join_mixed_predecessor_add_post_join_add_module());
   std::string error;
 
-  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should accept mixed predecessor/immediate joins whose phi feeds a join-local add");
   expect_true(error.empty(),
               "backend IR validator should not report an error for valid mixed predecessor/immediate post-phi joins");
@@ -387,7 +387,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predec
 void test_backend_ir_printer_renders_lowered_conditional_phi_join_mixed_predecessor_sub_post_join_add_slice() {
   const auto lowered = c4c::backend::lower_to_backend_ir(
       make_conditional_phi_join_mixed_predecessor_sub_post_join_add_module());
-  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered, "then:\n  %t3 = sub i32 12, 5\n  br label %join",
                   "backend IR printer should preserve the predecessor-local sub on the asymmetric join input");
@@ -403,7 +403,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predec
       make_conditional_phi_join_mixed_predecessor_sub_post_join_add_module());
   std::string error;
 
-  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should accept mixed predecessor-sub/immediate joins whose phi feeds a join-local add");
   expect_true(error.empty(),
               "backend IR validator should not report an error for valid mixed predecessor-sub/immediate post-phi joins");
@@ -412,7 +412,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predec
 void test_backend_ir_printer_renders_lowered_conditional_phi_join_mixed_predecessor_add_sub_chain_post_join_add_slice() {
   const auto lowered = c4c::backend::lower_to_backend_ir(
       make_conditional_phi_join_mixed_predecessor_add_sub_chain_post_join_add_module());
-  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered,
                   "then:\n  %t3 = add i32 20, 5\n  %t4 = sub i32 %t3, 3\n  br label %join",
@@ -429,7 +429,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predec
       make_conditional_phi_join_mixed_predecessor_add_sub_chain_post_join_add_module());
   std::string error;
 
-  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should accept mixed predecessor/immediate joins whose computed edge uses a bounded add/sub chain before the phi");
   expect_true(error.empty(),
               "backend IR validator should not report an error for valid mixed chained predecessor/immediate post-phi joins");
@@ -438,7 +438,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predec
 void test_backend_ir_printer_renders_lowered_conditional_phi_join_mixed_predecessor_chain_and_add_post_join_add_slice() {
   const auto lowered = c4c::backend::lower_to_backend_ir(
       make_conditional_phi_join_mixed_predecessor_chain_and_add_post_join_add_module());
-  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered,
                   "then:\n  %t3 = add i32 20, 5\n  %t4 = sub i32 %t3, 3\n  br label %join",
@@ -457,7 +457,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predec
       make_conditional_phi_join_mixed_predecessor_chain_and_add_post_join_add_module());
   std::string error;
 
-  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should accept mixed predecessor joins whose primary edge uses a bounded add/sub chain and alternate edge uses a computed add");
   expect_true(error.empty(),
               "backend IR validator should not report an error for valid mixed chained predecessor/computed-edge post-phi joins");
@@ -466,7 +466,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predec
 void test_backend_ir_printer_renders_lowered_conditional_phi_join_mixed_predecessor_chain_and_chain_post_join_add_slice() {
   const auto lowered = c4c::backend::lower_to_backend_ir(
       make_conditional_phi_join_mixed_predecessor_chain_and_chain_post_join_add_module());
-  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered,
                   "then:\n  %t3 = add i32 20, 5\n  %t4 = sub i32 %t3, 3\n  br label %join",
@@ -486,7 +486,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predec
       make_conditional_phi_join_mixed_predecessor_chain_and_chain_post_join_add_module());
   std::string error;
 
-  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should accept mixed predecessor joins whose primary and alternate edges both use bounded add/sub chains");
   expect_true(error.empty(),
               "backend IR validator should not report an error for valid mixed chained predecessor/two-edge post-phi joins");
@@ -495,7 +495,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predec
 void test_backend_ir_printer_renders_lowered_conditional_phi_join_mixed_predecessor_deeper_chain_and_chain_post_join_add_slice() {
   const auto lowered = c4c::backend::lower_to_backend_ir(
       make_conditional_phi_join_mixed_predecessor_deeper_chain_and_chain_post_join_add_module());
-  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered,
                   "then:\n  %t3 = add i32 20, 5\n  %t4 = sub i32 %t3, 3\n  %t5 = add i32 %t4, 8\n  br label %join",
@@ -515,7 +515,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predec
       make_conditional_phi_join_mixed_predecessor_deeper_chain_and_chain_post_join_add_module());
   std::string error;
 
-  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should accept mixed predecessor joins whose primary edge widens beyond the current two-op chain while the alternate edge remains a bounded add/sub chain");
   expect_true(error.empty(),
               "backend IR validator should not report an error for valid mixed deeper chained predecessor/two-edge post-phi joins");
@@ -524,7 +524,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predec
 void test_backend_ir_printer_renders_lowered_conditional_phi_join_mixed_predecessor_deeper_chain_and_deeper_chain_post_join_add_slice() {
   const auto lowered = c4c::backend::lower_to_backend_ir(
       make_conditional_phi_join_mixed_predecessor_deeper_chain_and_deeper_chain_post_join_add_module());
-  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered,
                   "then:\n  %t3 = add i32 20, 5\n  %t4 = sub i32 %t3, 3\n  %t5 = add i32 %t4, 8\n  br label %join",
@@ -544,7 +544,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predec
       make_conditional_phi_join_mixed_predecessor_deeper_chain_and_deeper_chain_post_join_add_module());
   std::string error;
 
-  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should accept mixed predecessor joins whose primary and alternate edges both widen beyond the current two-op chain");
   expect_true(error.empty(),
               "backend IR validator should not report an error for valid mixed deeper chained predecessor/deeper-edge post-phi joins");
@@ -553,7 +553,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predec
 void test_backend_ir_printer_renders_lowered_conditional_phi_join_mixed_predecessor_four_op_chain_and_deeper_chain_post_join_add_slice() {
   const auto lowered = c4c::backend::lower_to_backend_ir(
       make_conditional_phi_join_mixed_predecessor_four_op_chain_and_deeper_chain_post_join_add_module());
-  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered,
                   "then:\n  %t3 = add i32 20, 5\n  %t4 = sub i32 %t3, 3\n  %t5 = add i32 %t4, 8\n  %t6 = sub i32 %t5, 4\n  br label %join",
@@ -573,7 +573,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predec
       make_conditional_phi_join_mixed_predecessor_four_op_chain_and_deeper_chain_post_join_add_module());
   std::string error;
 
-  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should accept mixed predecessor joins whose primary edge widens beyond the current three-op chain while the alternate edge remains a deeper three-op chain");
   expect_true(error.empty(),
               "backend IR validator should not report an error for valid mixed four-op predecessor/deeper-edge post-phi joins");
@@ -582,7 +582,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predec
 void test_backend_ir_printer_renders_lowered_conditional_phi_join_mixed_predecessor_four_op_chain_and_four_op_chain_post_join_add_slice() {
   const auto lowered = c4c::backend::lower_to_backend_ir(
       make_conditional_phi_join_mixed_predecessor_four_op_chain_and_four_op_chain_post_join_add_module());
-  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered,
                   "then:\n  %t3 = add i32 20, 5\n  %t4 = sub i32 %t3, 3\n  %t5 = add i32 %t4, 8\n  %t6 = sub i32 %t5, 4\n  br label %join",
@@ -602,7 +602,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predec
       make_conditional_phi_join_mixed_predecessor_four_op_chain_and_four_op_chain_post_join_add_module());
   std::string error;
 
-  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should accept mixed predecessor joins whose primary and alternate edges both widen to four-op add/sub chains");
   expect_true(error.empty(),
               "backend IR validator should not report an error for valid mixed four-op predecessor/four-op alternate post-phi joins");
@@ -611,7 +611,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predec
 void test_backend_ir_printer_renders_lowered_conditional_phi_join_mixed_predecessor_five_op_chain_and_four_op_chain_post_join_add_slice() {
   const auto lowered = c4c::backend::lower_to_backend_ir(
       make_conditional_phi_join_mixed_predecessor_five_op_chain_and_four_op_chain_post_join_add_module());
-  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered,
                   "then:\n  %t3 = add i32 20, 5\n  %t4 = sub i32 %t3, 3\n  %t5 = add i32 %t4, 8\n  %t6 = sub i32 %t5, 4\n  %t7 = add i32 %t6, 10\n  br label %join",
@@ -631,7 +631,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predec
       make_conditional_phi_join_mixed_predecessor_five_op_chain_and_four_op_chain_post_join_add_module());
   std::string error;
 
-  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should accept mixed predecessor joins whose primary edge widens beyond the current four-op chain while the alternate edge remains a bounded four-op chain");
   expect_true(error.empty(),
               "backend IR validator should not report an error for valid mixed five-op predecessor/four-op alternate post-phi joins");
@@ -640,7 +640,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predec
 void test_backend_ir_printer_renders_lowered_conditional_phi_join_mixed_predecessor_five_op_chain_and_five_op_chain_post_join_add_slice() {
   const auto lowered = c4c::backend::lower_to_backend_ir(
       make_conditional_phi_join_mixed_predecessor_five_op_chain_and_five_op_chain_post_join_add_module());
-  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered,
                   "then:\n  %t3 = add i32 20, 5\n  %t4 = sub i32 %t3, 3\n  %t5 = add i32 %t4, 8\n  %t6 = sub i32 %t5, 4\n  %t7 = add i32 %t6, 10\n  br label %join",
@@ -660,7 +660,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predec
       make_conditional_phi_join_mixed_predecessor_five_op_chain_and_five_op_chain_post_join_add_module());
   std::string error;
 
-  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should accept mixed predecessor joins whose alternate edge widens beyond the current four-op chain while the primary edge remains a bounded five-op chain");
   expect_true(error.empty(),
               "backend IR validator should not report an error for valid mixed five-op predecessor/five-op alternate post-phi joins");
@@ -668,7 +668,7 @@ void test_backend_ir_validator_accepts_lowered_conditional_phi_join_mixed_predec
 
 void test_backend_ir_printer_renders_lowered_countdown_while_slice() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_countdown_while_return_module());
-  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered, "entry:\n  br label %block_1",
                   "backend IR printer should preserve the explicit countdown-loop entry branch");
@@ -688,7 +688,7 @@ void test_backend_ir_validator_accepts_lowered_countdown_while_slice() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_countdown_while_return_module());
   std::string error;
 
-  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should accept lowered countdown-loop backedge slices");
   expect_true(error.empty(),
               "backend IR validator should not report an error for valid lowered countdown loops");
@@ -696,7 +696,7 @@ void test_backend_ir_validator_accepts_lowered_countdown_while_slice() {
 
 void test_backend_ir_printer_renders_lowered_string_literal_char_slice() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_string_literal_char_module());
-  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered,
                   "@.str0 = private unnamed_addr constant [3 x i8] c\"hi\\00\"\n",
@@ -711,7 +711,7 @@ void test_backend_ir_validator_accepts_lowered_string_literal_char_slice() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_string_literal_char_module());
   std::string error;
 
-  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should accept lowered string-literal slices");
   expect_true(error.empty(),
               "backend IR validator should not report an error for valid lowered string constants");
@@ -720,7 +720,7 @@ void test_backend_ir_validator_accepts_lowered_string_literal_char_slice() {
 void test_backend_ir_printer_renders_structured_string_literal_char_slice_without_type_text() {
   auto lowered = c4c::backend::lower_to_backend_ir(make_string_literal_char_module());
   clear_backend_memory_type_compatibility_shims(lowered);
-  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered, "%t4 = load i32 from i8 sext, ptr @.str0 + 1\n",
                   "backend IR printer should render widened string-literal loads from structured scalar metadata without legacy type text");
@@ -731,7 +731,7 @@ void test_backend_ir_validator_accepts_structured_string_literal_char_slice_with
   clear_backend_memory_type_compatibility_shims(lowered);
   std::string error;
 
-  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should accept widened string-literal loads described only by structured scalar metadata");
   expect_true(error.empty(),
               "backend IR validator should not report an error when widened string-literal load type shims are cleared");
@@ -744,7 +744,7 @@ void test_backend_ir_validator_rejects_string_literal_load_past_structured_bound
   load.address.byte_offset = 3;
   std::string error;
 
-  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(!c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should reject structured string-literal loads that exceed the referenced byte bounds");
   expect_contains(error, "load address: address exceeds referenced global bounds",
                   "backend IR validator should explain when a structured string-literal load escapes the referenced bytes");
@@ -757,7 +757,7 @@ void test_backend_ir_validator_rejects_load_from_unknown_global_style_symbol() {
   load.address.base_symbol = "g_missing";
   std::string error;
 
-  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(!c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should reject structured loads that target unknown global-style symbols");
   expect_contains(
       error,
@@ -777,7 +777,7 @@ void test_backend_ir_validator_rejects_store_to_string_literal_constant() {
                });
   std::string error;
 
-  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(!c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should reject structured stores that target immutable string constants");
   expect_contains(error, "stores must not target referenced string constants",
                   "backend IR validator should explain when a structured store targets a string constant");
@@ -790,7 +790,7 @@ void test_backend_ir_validator_rejects_store_to_unknown_global_style_symbol() {
   store.address.base_symbol = "g_missing";
   std::string error;
 
-  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(!c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should reject structured stores that target unknown global-style symbols");
   expect_contains(
       error,
@@ -805,7 +805,7 @@ void test_backend_ir_validator_rejects_load_from_unknown_local_slot_symbol() {
   load.address.base_symbol = "%lv.missing";
   std::string error;
 
-  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(!c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should reject structured loads that target undeclared local-slot symbols");
   expect_contains(
       error,
@@ -820,7 +820,7 @@ void test_backend_ir_validator_rejects_load_with_mismatched_structured_address_k
   load.address.kind = c4c::backend::BackendAddressBaseKind::LocalSlot;
   std::string error;
 
-  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(!c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should reject structured loads whose address provenance kind disagrees with the referenced symbol");
   expect_contains(error,
                   "load address: address kind local slot must match referenced global",
@@ -834,7 +834,7 @@ void test_backend_ir_validator_rejects_store_to_unknown_local_slot_symbol() {
   store.address.base_symbol = "%lv.missing";
   std::string error;
 
-  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(!c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should reject structured stores that target undeclared local-slot symbols");
   expect_contains(
       error,
@@ -849,7 +849,7 @@ void test_backend_ir_validator_rejects_local_slot_load_with_negative_offset() {
   load.address.byte_offset = -4;
   std::string error;
 
-  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(!c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should reject structured local-slot loads that use negative byte offsets");
   expect_contains(error, "load address: address byte offset must not be negative",
                   "backend IR validator should explain when a structured local-slot load uses a negative offset");
@@ -862,7 +862,7 @@ void test_backend_ir_validator_rejects_local_slot_store_with_negative_offset() {
   store.address.byte_offset = -4;
   std::string error;
 
-  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(!c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should reject structured local-slot stores that use negative byte offsets");
   expect_contains(error, "store address: address byte offset must not be negative",
                   "backend IR validator should explain when a structured local-slot store uses a negative offset");
@@ -875,7 +875,7 @@ void test_backend_ir_validator_rejects_local_slot_load_with_misaligned_offset() 
   load.address.byte_offset = 2;
   std::string error;
 
-  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(!c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should reject structured local-slot loads whose byte offset is not aligned to the load memory size");
   expect_contains(error, "load address: address byte offset must align to local access size",
                   "backend IR validator should explain when a structured local-slot load uses a misaligned byte offset");
@@ -888,7 +888,7 @@ void test_backend_ir_validator_rejects_local_slot_store_with_misaligned_offset()
   store.address.byte_offset = 2;
   std::string error;
 
-  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(!c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should reject structured local-slot stores whose byte offset is not aligned to the store value size");
   expect_contains(error, "store address: address byte offset must align to local access size",
                   "backend IR validator should explain when a structured local-slot store uses a misaligned byte offset");
@@ -901,7 +901,7 @@ void test_backend_ir_validator_rejects_local_slot_load_past_structured_bounds() 
   load.address.byte_offset = 8;
   std::string error;
 
-  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(!c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should reject structured local-slot loads that exceed the bounded lowered local-array slot");
   expect_contains(error, "load address: address exceeds referenced global bounds",
                   "backend IR validator should explain when a structured local-slot load escapes the bounded local slot");
@@ -914,7 +914,7 @@ void test_backend_ir_validator_rejects_local_slot_store_past_structured_bounds()
   store.address.byte_offset = 8;
   std::string error;
 
-  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(!c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should reject structured local-slot stores that exceed the bounded lowered local-array slot");
   expect_contains(error, "store address: address exceeds referenced global bounds",
                   "backend IR validator should explain when a structured local-slot store escapes the bounded local slot");
@@ -926,7 +926,7 @@ void test_backend_ir_validator_rejects_local_slot_without_structured_element_typ
       c4c::backend::BackendScalarType::Unknown;
   std::string error;
 
-  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(!c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should reject local slots that omit structured element-type metadata");
   expect_contains(error, "local slot 0: local slot element type must not be empty",
                   "backend IR validator should explain when a structured local slot omits its element type");
@@ -941,7 +941,7 @@ void test_backend_ir_validator_rejects_local_slot_load_with_mismatched_structure
   load.extension = c4c::backend::BackendLoadExtension::ZeroExtend;
   std::string error;
 
-  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(!c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should reject structured local-slot loads whose memory type disagrees with the referenced local-slot element type");
   expect_contains(error, "load memory type: type must match referenced local-slot element type",
                   "backend IR validator should explain local-slot load memory type mismatches");
@@ -955,7 +955,7 @@ void test_backend_ir_validator_rejects_local_slot_store_with_mismatched_structur
   store.value_type = c4c::backend::BackendScalarType::I8;
   std::string error;
 
-  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(!c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should reject structured local-slot stores whose store type disagrees with the referenced local-slot element type");
   expect_contains(error, "store type: type must match referenced local-slot element type",
                   "backend IR validator should explain local-slot store type mismatches");
@@ -964,7 +964,7 @@ void test_backend_ir_validator_rejects_local_slot_store_with_mismatched_structur
 void test_backend_ir_printer_renders_lowered_global_int_pointer_roundtrip_slice() {
   const auto lowered =
       c4c::backend::lower_to_backend_ir(make_global_int_pointer_roundtrip_module());
-  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered, "@g_value = global i32 9, align 4\n",
                   "backend IR printer should keep the bounded round-trip global definition");
@@ -983,7 +983,7 @@ void test_backend_ir_validator_accepts_lowered_global_int_pointer_roundtrip_slic
       c4c::backend::lower_to_backend_ir(make_global_int_pointer_roundtrip_module());
   std::string error;
 
-  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should accept lowered global int pointer round-trip slices");
   expect_true(error.empty(),
               "backend IR validator should not report an error for valid lowered round-trip globals");
@@ -992,7 +992,7 @@ void test_backend_ir_validator_accepts_lowered_global_int_pointer_roundtrip_slic
 void test_backend_ir_printer_renders_lowered_global_char_pointer_diff_slice() {
   const auto lowered =
       c4c::backend::lower_to_backend_ir(make_global_char_pointer_diff_module());
-  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered, "@g_bytes = global [2 x i8] zeroinitializer\n",
                   "backend IR printer should keep the bounded char pointer-difference global definition");
@@ -1010,7 +1010,7 @@ void test_backend_ir_validator_accepts_lowered_global_char_pointer_diff_slice() 
       c4c::backend::lower_to_backend_ir(make_global_char_pointer_diff_module());
   std::string error;
 
-  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should accept lowered global char pointer-difference slices");
   expect_true(error.empty(),
               "backend IR validator should not report an error for valid lowered char pointer-difference globals");
@@ -1019,7 +1019,7 @@ void test_backend_ir_validator_accepts_lowered_global_char_pointer_diff_slice() 
 void test_backend_ir_printer_renders_lowered_global_int_pointer_diff_slice() {
   const auto lowered =
       c4c::backend::lower_to_backend_ir(make_global_int_pointer_diff_module());
-  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered, "@g_words = global [2 x i32] zeroinitializer, align 4\n",
                   "backend IR printer should keep the bounded int pointer-difference global definition");
@@ -1039,7 +1039,7 @@ void test_backend_ir_validator_accepts_lowered_global_int_pointer_diff_slice() {
       c4c::backend::lower_to_backend_ir(make_global_int_pointer_diff_module());
   std::string error;
 
-  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should accept lowered global int pointer-difference slices");
   expect_true(error.empty(),
               "backend IR validator should not report an error for valid lowered int pointer-difference globals");
@@ -1048,7 +1048,7 @@ void test_backend_ir_validator_accepts_lowered_global_int_pointer_diff_slice() {
 void test_backend_ir_printer_renders_structured_global_int_pointer_diff_slice_without_type_text() {
   auto lowered = c4c::backend::lower_to_backend_ir(make_global_int_pointer_diff_module());
   clear_backend_memory_type_compatibility_shims(lowered);
-  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered,
                   "%t12 = ptrdiff_eq i32, ptr @g_words + 4, ptr @g_words, elem_size 4, expected 1\n",
@@ -1060,7 +1060,7 @@ void test_backend_ir_validator_accepts_structured_global_int_pointer_diff_slice_
   clear_backend_memory_type_compatibility_shims(lowered);
   std::string error;
 
-  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should accept ptrdiff slices described only by structured scalar metadata");
   expect_true(error.empty(),
               "backend IR validator should not report an error when ptrdiff result type shims are cleared");
@@ -1069,7 +1069,7 @@ void test_backend_ir_validator_accepts_structured_global_int_pointer_diff_slice_
 void test_backend_ir_printer_renders_lowered_extern_global_array_load_slice() {
   const auto lowered =
       c4c::backend::lower_to_backend_ir(make_extern_global_array_load_module());
-  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered, "@ext_arr = external global [2 x i32], align 4\n",
                   "backend IR printer should render lowered extern global declarations");
@@ -1082,7 +1082,7 @@ void test_backend_ir_printer_renders_lowered_extern_global_array_load_slice() {
 void test_backend_ir_printer_renders_structured_extern_global_array_load_slice_without_raw_type_text() {
   auto lowered = c4c::backend::lower_to_backend_ir(make_extern_global_array_load_module());
   clear_backend_global_type_compatibility_shims(lowered);
-  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered, "@ext_arr = external global [2 x i32], align 4\n",
                   "backend IR printer should render extern global arrays from structured array metadata when raw global type text is cleared");
@@ -1093,7 +1093,7 @@ void test_backend_ir_validator_accepts_structured_extern_global_array_load_slice
   clear_backend_global_type_compatibility_shims(lowered);
   std::string error;
 
-  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should accept extern global arrays described only by structured array metadata");
   expect_true(error.empty(),
               "backend IR validator should not report an error when raw global array type text is cleared");
@@ -1111,7 +1111,7 @@ void test_backend_ir_validator_rejects_structured_global_array_with_nonscalar_el
   };
   std::string error;
 
-  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(!c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should reject structured global arrays whose element metadata is not a sized scalar");
   expect_contains(error, "structured global arrays must use a sized scalar element type",
                   "backend IR validator should explain invalid structured global-array element metadata");
@@ -1124,7 +1124,7 @@ void test_backend_ir_validator_rejects_extern_global_array_load_past_structured_
   load.address.byte_offset = 8;
   std::string error;
 
-  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(!c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should reject structured extern global array loads that exceed the referenced array bounds");
   expect_contains(error, "address exceeds referenced global bounds",
                   "backend IR validator should explain when a structured global-array load offset exceeds the referenced array");
@@ -1137,7 +1137,7 @@ void test_backend_ir_validator_rejects_global_int_ptrdiff_past_structured_bounds
   ptrdiff.lhs_address.byte_offset = 8;
   std::string error;
 
-  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(!c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should reject structured ptrdiff slices whose referenced address escapes the global array bounds");
   expect_contains(error, "ptrdiff lhs address: address exceeds referenced global bounds",
                   "backend IR validator should explain when a structured ptrdiff address escapes the referenced global array");
@@ -1153,7 +1153,7 @@ void test_backend_ir_validator_rejects_ptrdiff_across_different_structured_globa
   ptrdiff.rhs_address.base_symbol = "g_words_other";
   std::string error;
 
-  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(!c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should reject structured ptrdiff slices that compare addresses from different globals");
   expect_contains(error, "ptrdiff addresses must reference the same global",
                   "backend IR validator should explain cross-global structured ptrdiff mismatches");
@@ -1169,7 +1169,7 @@ void test_backend_ir_validator_rejects_ptrdiff_with_only_one_global_backed_addre
   ptrdiff.rhs_address.kind = c4c::backend::BackendAddressBaseKind::LocalSlot;
   std::string error;
 
-  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(!c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should reject structured ptrdiff slices when only one address is global-backed");
   expect_contains(
       error,
@@ -1184,7 +1184,7 @@ void test_backend_ir_validator_rejects_ptrdiff_with_mismatched_structured_addres
   ptrdiff.rhs_address.kind = c4c::backend::BackendAddressBaseKind::LocalSlot;
   std::string error;
 
-  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(!c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should reject structured ptrdiff slices whose address provenance kind disagrees with the referenced symbol");
   expect_contains(error,
                   "ptrdiff rhs address: address kind local slot must match referenced global",
@@ -1198,7 +1198,7 @@ void test_backend_ir_validator_rejects_ptrdiff_with_unknown_local_slot_symbol() 
   ptrdiff.rhs_address.base_symbol = "%lv.missing";
   std::string error;
 
-  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(!c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should reject structured ptrdiff slices that reference undeclared local-slot symbols");
   expect_contains(
       error,
@@ -1213,7 +1213,7 @@ void test_backend_ir_validator_rejects_ptrdiff_with_unknown_global_style_symbol(
   ptrdiff.rhs_address.base_symbol = "g_missing";
   std::string error;
 
-  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(!c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should reject structured ptrdiff slices that reference unknown global-style symbols");
   expect_contains(
       error,
@@ -1229,7 +1229,7 @@ void test_backend_ir_validator_rejects_local_slot_ptrdiff_with_negative_offset()
   ptrdiff.rhs_address.byte_offset = 0;
   std::string error;
 
-  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(!c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should reject structured local-slot ptrdiff slices that use negative byte offsets");
   expect_contains(error, "ptrdiff lhs address: address byte offset must not be negative",
                   "backend IR validator should explain when a structured local-slot ptrdiff address uses a negative offset");
@@ -1243,7 +1243,7 @@ void test_backend_ir_validator_rejects_local_slot_ptrdiff_with_misaligned_offset
   ptrdiff.rhs_address.byte_offset = 0;
   std::string error;
 
-  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(!c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should reject structured local-slot ptrdiff slices whose byte offsets are not aligned to the ptrdiff element size");
   expect_contains(error, "ptrdiff lhs address: address byte offset must align to local access size",
                   "backend IR validator should explain when a structured local-slot ptrdiff address uses a misaligned byte offset");
@@ -1254,7 +1254,7 @@ void test_backend_ir_validator_accepts_structured_local_slot_ptrdiff_slice_witho
   clear_backend_memory_type_compatibility_shims(lowered);
   std::string error;
 
-  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should accept structured local-slot ptrdiff slices when local-slot bounds metadata and ptrdiff scalar metadata remain after clearing legacy type text");
   expect_true(error.empty(),
               "backend IR validator should not report an error for valid structured local-slot ptrdiff slices without raw type text");
@@ -1267,7 +1267,7 @@ void test_backend_ir_validator_rejects_local_slot_ptrdiff_past_structured_bounds
   ptrdiff.lhs_address.byte_offset = 8;
   std::string error;
 
-  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(!c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should reject structured local-slot ptrdiff slices whose referenced address escapes the bounded local slot");
   expect_contains(error, "ptrdiff lhs address: address exceeds referenced global bounds",
                   "backend IR validator should explain when a structured local-slot ptrdiff address escapes the bounded local slot");
@@ -1277,7 +1277,7 @@ void test_backend_ir_validator_rejects_ptrdiff_across_different_structured_local
   auto lowered = make_structured_cross_local_slot_ptrdiff_module();
   std::string error;
 
-  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(!c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should reject structured ptrdiff slices that compare addresses from different local slots");
   expect_contains(error, "ptrdiff addresses must reference the same local slot",
                   "backend IR validator should explain cross-local structured ptrdiff mismatches");
@@ -1285,7 +1285,7 @@ void test_backend_ir_validator_rejects_ptrdiff_across_different_structured_local
 
 void test_backend_ir_printer_renders_return_add() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_return_add_module());
-  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  const auto rendered = c4c::backend::print_backend_module(lowered);
   expect_contains(rendered, "%t0 = add i32 2, 3",
                   "backend IR printer should render the lowered add instruction");
   expect_contains(rendered, "ret i32 %t0",
@@ -1295,7 +1295,7 @@ void test_backend_ir_printer_renders_return_add() {
 void test_backend_ir_validator_accepts_lowered_slice() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_return_add_module());
   std::string error;
-  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should accept a lowered minimal slice");
   expect_true(error.empty(),
               "backend IR validator should not report an error for a valid module");
@@ -1311,7 +1311,7 @@ void test_backend_ir_validator_rejects_definition_without_blocks() {
   module.functions.push_back(function);
 
   std::string error;
-  expect_true(!c4c::backend::validate_backend_ir(module, &error),
+  expect_true(!c4c::backend::validate_backend_module(module, &error),
               "backend IR validator should reject definitions without blocks");
   expect_contains(error, "definitions must have at least one block",
                   "backend IR validator should explain the malformed definition");
@@ -1328,7 +1328,7 @@ void test_backend_ir_printer_renders_structured_global_constant_initializer() {
   global.align_bytes = 4;
   module.globals.push_back(std::move(global));
 
-  const auto rendered = c4c::backend::print_backend_ir(module);
+  const auto rendered = c4c::backend::print_backend_module(module);
   expect_contains(rendered, "@g_const = constant i32 7, align 4\n",
                   "backend IR printer should render structured constant globals without falling back to raw qualifier text");
 }
@@ -1345,7 +1345,7 @@ void test_backend_ir_printer_renders_structured_extern_global_declaration() {
   global.align_bytes = 4;
   module.globals.push_back(std::move(global));
 
-  const auto rendered = c4c::backend::print_backend_ir(module);
+  const auto rendered = c4c::backend::print_backend_module(module);
   expect_contains(rendered, "@ext_counter = external global i32, align 4\n",
                   "backend IR printer should render structured extern globals without a raw initializer payload");
 }
@@ -1361,7 +1361,7 @@ void test_backend_ir_validator_rejects_structured_defined_global_without_initial
   module.globals.push_back(std::move(global));
 
   std::string error;
-  expect_true(!c4c::backend::validate_backend_ir(module, &error),
+  expect_true(!c4c::backend::validate_backend_module(module, &error),
               "backend IR validator should reject structured global definitions that omit an initializer");
   expect_contains(error, "defined globals must have an initializer",
                   "backend IR validator should explain missing structured initializers");
@@ -1380,7 +1380,7 @@ void test_backend_ir_printer_renders_structured_function_linkage_without_raw_tex
   });
   module.functions.push_back(function);
 
-  const auto rendered = c4c::backend::print_backend_ir(module);
+  const auto rendered = c4c::backend::print_backend_module(module);
   expect_contains(rendered, "define i32 @main()",
                   "backend IR printer should render structured function linkage without raw signature text");
 }
@@ -1390,7 +1390,7 @@ void test_backend_ir_printer_renders_structured_signature_and_call_types_without
       c4c::backend::lower_to_backend_ir(make_x86_extern_decl_object_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
-  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  const auto rendered = c4c::backend::print_backend_module(lowered);
   expect_contains(rendered, "declare i32 @helper_ext()\n",
                   "backend IR printer should render structured declaration return types without raw signature text");
   expect_contains(rendered, "define i32 @main()",
@@ -1404,7 +1404,7 @@ void test_backend_ir_printer_renders_structured_call_arg_types_without_raw_text(
       c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
-  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  const auto rendered = c4c::backend::print_backend_module(lowered);
   expect_contains(rendered, "%t0 = call i32 (i32, i32) @add_pair(i32 5, i32 7)",
                   "backend IR printer should render typed call operands from structured call metadata when raw arg type text is cleared");
 }
@@ -1415,7 +1415,7 @@ void test_backend_ir_validator_accepts_structured_signature_and_call_types_witho
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   std::string error;
 
-  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should accept structured signature and call types when the legacy text shims are cleared");
   expect_true(error.empty(),
               "backend IR validator should not report an error for structured signature and call type metadata without compatibility text");
@@ -1520,7 +1520,7 @@ void test_backend_ir_validator_accepts_structured_direct_call_add_imm_slice_with
   clear_backend_memory_type_compatibility_shims(lowered);
   std::string error;
 
-  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should accept lowered direct-call add-immediate slices when structured signature, call, and binary type metadata remain after clearing legacy text");
   expect_true(error.empty(),
               "backend IR validator should not report an error for structured direct-call add-immediate slices without compatibility text");
@@ -1602,7 +1602,7 @@ void test_backend_ir_validator_accepts_structured_local_array_slice_without_raw_
   clear_backend_memory_type_compatibility_shims(lowered);
   std::string error;
 
-  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should accept the structured local-array slice when signature and memory compatibility text are cleared");
   expect_true(error.empty(),
               "backend IR validator should not report an error for structured local-array slices without raw type text");
@@ -1621,7 +1621,7 @@ void test_backend_ir_printer_renders_structured_pointer_return_without_raw_text(
   function.blocks.push_back(c4c::backend::BackendBlock{"entry", {}, std::move(terminator)});
   module.functions.push_back(std::move(function));
 
-  const auto rendered = c4c::backend::print_backend_ir(module);
+  const auto rendered = c4c::backend::print_backend_module(module);
   expect_contains(rendered, "define ptr @identity_ptr()",
                   "backend IR printer should render structured pointer signature returns without raw text");
   expect_contains(rendered, "ret ptr %p.ret",
@@ -1642,7 +1642,7 @@ void test_backend_ir_validator_accepts_structured_pointer_return_without_raw_tex
   module.functions.push_back(std::move(function));
 
   std::string error;
-  expect_true(c4c::backend::validate_backend_ir(module, &error),
+  expect_true(c4c::backend::validate_backend_module(module, &error),
               "backend IR validator should accept structured pointer terminators without raw text");
   expect_true(error.empty(),
               "backend IR validator should not report an error for structured pointer return metadata without compatibility text");
@@ -1653,7 +1653,7 @@ void test_backend_ir_printer_renders_structured_global_linkage_without_raw_text(
       c4c::backend::lower_to_backend_ir(make_extern_global_array_load_module());
   clear_backend_global_linkage_compatibility_shims(lowered);
 
-  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  const auto rendered = c4c::backend::print_backend_module(lowered);
   expect_contains(rendered, "@ext_arr = external global [2 x i32], align 4\n",
                   "backend IR printer should render structured global linkage without raw linkage text");
 }
@@ -1661,7 +1661,7 @@ void test_backend_ir_printer_renders_structured_global_linkage_without_raw_text(
 void test_backend_ir_printer_renders_lowered_extern_decl_slice() {
   const auto lowered =
       c4c::backend::lower_to_backend_ir(make_x86_extern_decl_object_module());
-  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered, "declare i32 @helper_ext()\n",
                   "backend IR printer should render lowered extern declarations");
@@ -1676,7 +1676,7 @@ void test_backend_ir_validator_accepts_lowered_extern_decl_slice() {
       c4c::backend::lower_to_backend_ir(make_x86_extern_decl_object_module());
   std::string error;
 
-  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should accept lowered extern declaration slices");
   expect_true(error.empty(),
               "backend IR validator should not report an error for valid lowered extern declarations");
@@ -1709,14 +1709,14 @@ void test_backend_ir_printer_renders_structured_vararg_extern_decl_without_raw_s
   auto lowered = c4c::backend::lower_to_backend_ir(make_printf_vararg_decl_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
-  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  const auto rendered = c4c::backend::print_backend_module(lowered);
   expect_contains(rendered, "declare i32 @printf(ptr, ...)\n",
                   "backend IR printer should render structured vararg extern declarations without legacy signature text");
 }
 
 void test_backend_ir_printer_renders_lowered_global_load_slice() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_global_load_module());
-  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered, "@g_counter = global i32 11, align 4\n",
                   "backend IR printer should render lowered global definitions");
@@ -1730,7 +1730,7 @@ void test_backend_ir_validator_accepts_lowered_global_load_slice() {
   const auto lowered = c4c::backend::lower_to_backend_ir(make_global_load_module());
   std::string error;
 
-  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should accept lowered global-load slices");
   expect_true(error.empty(),
               "backend IR validator should not report an error for valid lowered globals");
@@ -1739,7 +1739,7 @@ void test_backend_ir_validator_accepts_lowered_global_load_slice() {
 void test_backend_ir_printer_renders_lowered_global_store_reload_slice() {
   const auto lowered =
       c4c::backend::lower_to_backend_ir(make_global_store_reload_module());
-  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered, "@g_counter = global i32 11, align 4\n",
                   "backend IR printer should keep the bounded store-reload global definition");
@@ -1756,7 +1756,7 @@ void test_backend_ir_validator_accepts_lowered_global_store_reload_slice() {
       c4c::backend::lower_to_backend_ir(make_global_store_reload_module());
   std::string error;
 
-  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should accept lowered global store-reload slices");
   expect_true(error.empty(),
               "backend IR validator should not report an error for valid lowered scalar global stores");
@@ -1765,7 +1765,7 @@ void test_backend_ir_validator_accepts_lowered_global_store_reload_slice() {
 void test_backend_ir_printer_renders_structured_global_store_reload_slice_without_type_text() {
   auto lowered = c4c::backend::lower_to_backend_ir(make_global_store_reload_module());
   clear_backend_memory_type_compatibility_shims(lowered);
-  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered, "store i32 7, ptr @g_counter\n",
                   "backend IR printer should render structured scalar global stores without legacy store type text");
@@ -1778,7 +1778,7 @@ void test_backend_ir_validator_accepts_structured_global_store_reload_slice_with
   clear_backend_memory_type_compatibility_shims(lowered);
   std::string error;
 
-  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should accept scalar global store-reload slices described only by structured scalar metadata");
   expect_true(error.empty(),
               "backend IR validator should not report an error when scalar load/store type shims are cleared");
@@ -1787,7 +1787,7 @@ void test_backend_ir_validator_accepts_structured_global_store_reload_slice_with
 void test_backend_ir_printer_renders_structured_scalar_global_without_raw_global_type_text() {
   auto lowered = c4c::backend::lower_to_backend_ir(make_global_load_module());
   clear_backend_global_type_compatibility_shims(lowered);
-  const auto rendered = c4c::backend::print_backend_ir(lowered);
+  const auto rendered = c4c::backend::print_backend_module(lowered);
 
   expect_contains(rendered, "@g_counter = global i32 11, align 4\n",
                   "backend IR printer should render structured scalar globals after raw global type text is cleared");
@@ -1800,7 +1800,7 @@ void test_backend_ir_validator_accepts_structured_scalar_global_without_raw_glob
   clear_backend_global_type_compatibility_shims(lowered);
   std::string error;
 
-  expect_true(c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should accept scalar globals described only by structured global type metadata");
   expect_true(error.empty(),
               "backend IR validator should not report an error when raw scalar global type text is cleared");
@@ -1816,7 +1816,7 @@ void test_backend_ir_validator_rejects_scalar_global_load_with_mismatched_struct
   load.extension = c4c::backend::BackendLoadExtension::ZeroExtend;
   std::string error;
 
-  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(!c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should reject structured scalar-global loads whose memory type disagrees with the referenced global scalar type");
   expect_contains(error, "load memory type: type must match referenced global element type",
                   "backend IR validator should explain scalar-global load memory type mismatches");
@@ -1831,7 +1831,7 @@ void test_backend_ir_validator_rejects_scalar_global_store_with_mismatched_struc
   store.value_type = c4c::backend::BackendScalarType::I8;
   std::string error;
 
-  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(!c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should reject structured scalar-global stores whose store type disagrees with the referenced global scalar type");
   expect_contains(error, "store type: type must match referenced global element type",
                   "backend IR validator should explain scalar-global store type mismatches");
@@ -1847,7 +1847,7 @@ void test_backend_ir_validator_rejects_extern_global_array_load_with_mismatched_
   load.extension = c4c::backend::BackendLoadExtension::ZeroExtend;
   std::string error;
 
-  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(!c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should reject structured global-array loads whose memory type disagrees with the referenced element type");
   expect_contains(error, "load memory type: type must match referenced global element type",
                   "backend IR validator should explain global-array load memory type mismatches");
@@ -1865,7 +1865,7 @@ void test_backend_ir_validator_rejects_structured_load_extension_that_does_not_w
   load.extension = c4c::backend::BackendLoadExtension::ZeroExtend;
   std::string error;
 
-  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(!c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should reject structured loads that claim an extension without widening");
   expect_contains(error, "extended loads must widen from memory type to value type",
                   "backend IR validator should explain non-widening structured load extensions");
@@ -1890,7 +1890,7 @@ void test_backend_ir_validator_rejects_structured_direct_call_when_callee_signat
   }
 
   std::string error;
-  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(!c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should reject structured direct calls whose callee signature param types disagree with the call contract");
   expect_contains(error, "direct call param type 0 must match callee signature",
                   "backend IR validator should explain structured direct-call param mismatches against the callee signature");
@@ -1919,7 +1919,7 @@ void test_backend_ir_validator_rejects_structured_direct_call_when_call_return_t
   }
 
   std::string error;
-  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(!c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should reject structured direct calls whose return type disagrees with the callee signature");
   expect_contains(error, "direct call return type must match callee signature return type",
                   "backend IR validator should explain structured direct-call return mismatches against the callee signature");
@@ -1943,7 +1943,7 @@ void test_backend_ir_validator_rejects_function_marked_declaration_with_define_s
   }
 
   std::string error;
-  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(!c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should reject functions whose declaration bit disagrees with a define signature");
   expect_contains(error, "declaration bit must match signature linkage",
                   "backend IR validator should explain declaration/signature linkage mismatches");
@@ -1967,7 +1967,7 @@ void test_backend_ir_validator_rejects_function_marked_definition_with_declare_s
   }
 
   std::string error;
-  expect_true(!c4c::backend::validate_backend_ir(lowered, &error),
+  expect_true(!c4c::backend::validate_backend_module(lowered, &error),
               "backend IR validator should reject functions whose definition body disagrees with a declare signature");
   expect_contains(error, "declaration bit must match signature linkage",
                   "backend IR validator should explain definition/signature linkage mismatches");

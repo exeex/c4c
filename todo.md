@@ -7,9 +7,9 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 4: Clean up surviving names
-- Current slice: inventory the highest-signal surviving transitional
-  `backend_ir` names and choose the smallest rename surface that moves the
-  surviving backend path closer to HIR -> LIR -> BIR -> target emission
+- Current slice: rename the lowering entrypoints away from
+  `lower_to_backend_ir(...)` where that can be done without reopening the
+  bounded legacy fallback seams
 
 ## Todo
 
@@ -47,15 +47,19 @@ Source Plan: plan.md
       legacy-fallback seams have already been reduced to bounded, intentional
       residual surfaces, while the current RISC-V passthrough seam is deferred
       until real RISC-V backend work is in scope
+- [x] renamed the user-facing backend printer and validator APIs to
+      `print_backend_module(...)` / `validate_backend_module(...)`, updated
+      backend callers and tests, and isolated the old `*_backend_ir` spellings
+      behind explicit compatibility shims
+- [x] re-ran targeted backend validation plus a clean full-suite regression
+      pass with no new failures relative to the existing EASTL recipe baseline
 
 ## Next Slice
 
-- inventory the largest remaining user-facing and backend-internal
-  `backend_ir` names
 - separate true Step 4 rename targets from intentionally retained compatibility
   shims
-- pick the narrowest rename slice that can land with targeted backend test
-  updates and no semantic drift
+- rename the lowering entrypoints away from `lower_to_backend_ir(...)` where
+  that can be done without reopening the bounded legacy fallback seams
 - before doing broad Step 4 renames, optionally finish the deferred AArch64 seam
   cleanup by porting the real `extern_global_array` production route off the
   remaining `legacy_fallback` early return
@@ -89,3 +93,10 @@ Source Plan: plan.md
   `extern_global_array` slice lower onto the structured
   `parse_minimal_extern_global_array_load_slice(const BackendModule&)` path so
   `emit_minimal_extern_global_array_load_asm(...)` still wins
+- current Step 4 slice is intentionally narrow: user-facing
+  `print_backend_ir(...)` / `validate_backend_ir(...)` naming first, broader
+  lowering-entrypoint renames later
+- regression check for the printer/validator rename slice:
+  `backend_ir_tests` and `backend_contract_aarch64_extern_global_array_object`
+  passed after the rename, and `test_before.log` vs `test_after.log` stayed
+  flat at 2720 passing / 6 failing with the same EASTL recipe failures

@@ -3004,8 +3004,8 @@ std::string remove_redundant_self_moves(std::string asm_text) {
 std::string emit_module(const c4c::backend::BackendModule& module,
                         const c4c::codegen::lir::LirModule* legacy_fallback) {
   std::string backend_ir_error;
-  if (!c4c::backend::validate_backend_ir(module, &backend_ir_error)) {
-    return c4c::backend::print_backend_ir(module);
+  if (!c4c::backend::validate_backend_module(module, &backend_ir_error)) {
+    return c4c::backend::print_backend_module(module);
   }
   try {
     if (const auto slice = parse_minimal_extern_scalar_global_load_slice(module);
@@ -3094,7 +3094,7 @@ std::string emit_module(const c4c::backend::BackendModule& module,
   if (legacy_fallback != nullptr) {
     return emit_module(*legacy_fallback);
   }
-  return c4c::backend::print_backend_ir(module);
+  return c4c::backend::print_backend_module(module);
 }
 
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {

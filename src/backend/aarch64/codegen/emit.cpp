@@ -5550,8 +5550,8 @@ std::string emit_module(const c4c::backend::BackendModule& module,
     return emit_module(*legacy_fallback);
   }
   std::string backend_ir_error;
-  if (!c4c::backend::validate_backend_ir(module, &backend_ir_error)) {
-    return c4c::backend::print_backend_ir(module);
+  if (!c4c::backend::validate_backend_module(module, &backend_ir_error)) {
+    return c4c::backend::print_backend_module(module);
   }
   try {
     if (const auto slice = parse_minimal_scalar_global_load_slice(module);
@@ -5653,7 +5653,7 @@ std::string emit_module(const c4c::backend::BackendModule& module,
   } catch (const std::invalid_argument&) {
   }
 
-  return c4c::backend::print_backend_ir(module);
+  return c4c::backend::print_backend_module(module);
 }
 
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {

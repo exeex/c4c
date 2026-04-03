@@ -867,7 +867,7 @@ bool validate_function(const BackendFunction& function,
 
 }  // namespace
 
-bool validate_backend_ir(const BackendModule& module, std::string* error) {
+bool validate_backend_module(const BackendModule& module, std::string* error) {
   FunctionSignatureMap function_signatures;
   std::unordered_map<std::string, BackendAddressBaseKind> referenced_object_kinds;
   std::unordered_set<std::string> referenced_string_constants;

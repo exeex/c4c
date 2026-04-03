@@ -3663,7 +3663,7 @@ BackendModule lower_to_backend_ir(const c4c::codegen::lir::LirModule& module) {
 }
 
 std::string render_module(const BackendModule& module) {
-  return print_backend_ir(module);
+  return print_backend_module(module);
 }
 
 }  // namespace c4c::backend

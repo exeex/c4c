@@ -218,7 +218,7 @@ class PassthroughBackendEmitter final : public BackendEmitter {
         !c4c::backend::try_lower_to_bir(*legacy_fallback).has_value()) {
       return c4c::codegen::lir::print_llvm(*legacy_fallback);
     }
-    return c4c::backend::print_backend_ir(module);
+    return c4c::backend::print_backend_module(module);
   }
 };
 

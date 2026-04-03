@@ -222,7 +222,7 @@ void render_function(std::ostringstream& out, const BackendFunction& function) {
 
 }  // namespace
 
-std::string print_backend_ir(const BackendModule& module) {
+std::string print_backend_module(const BackendModule& module) {
   std::ostringstream out;
   if (!module.data_layout.empty()) {
     out << "target datalayout = \"" << module.data_layout << "\"\n";
