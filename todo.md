@@ -13,11 +13,42 @@ Current active item: Step 2, keep tightening the widened-width/source-level
 `unsigned char` compare/select route matrix by copying the remaining emitter-
 facing `i32` parity slices into bounded `u8` backend-route checks one variant
 at a time.
-Next target: audit the remaining non-split predecessor-arm
-`unsigned char` compare/select add-phi variants against the existing `i32`
-route matrix, starting with whether the simpler
-`(x == y ? x + 5 : y + 9) + 6` shape already defaults to direct BIR before
-adding another bounded `u8` parity assertion.
+Next target: re-audit the remaining non-split predecessor-arm
+`unsigned char` compare/select shapes against the existing `i32` route matrix
+and confirm whether any additional bounded default-route add/select parity
+slices still need explicit `u8` backend-route coverage before moving on to the
+next Step 2 family.
+
+Completed this iteration:
+- Audited the remaining non-split predecessor-arm widened-width/source-level
+  `unsigned char` compare/select add/select shape and confirmed the default
+  `--codegen asm` route already stays on the direct BIR pipeline for
+  `unsigned char choose2_add_post_u(unsigned char x, unsigned char y) { return (unsigned char)((x == y ? x + 5 : y + 9) + 6); }`;
+  no `src/backend/lowering/lir_to_bir.cpp` change was required for this slice.
+- Added
+  `tests/c/internal/backend_route_case/two_param_u8_select_eq_predecessor_add_post_add.c`,
+  proving the bounded two-parameter `u8` non-split predecessor add/select
+  post-add wrapper reaches the backend through BIR instead of legacy LLVM IR
+  text.
+- Registered
+  `backend_codegen_route_riscv64_two_param_u8_select_eq_predecessor_add_post_add_defaults_to_bir`
+  in `tests/c/internal/InternalTests.cmake`, asserting the emitted text
+  contains `bir.func @choose2_add_post_u(i8 %p.x, i8 %p.y) -> i8 {`,
+  `%t11 = bir.add i8 %p.x, 5`, `%t13 = bir.add i8 %p.y, 9`,
+  `%t14 = bir.select eq i8 %p.x, %p.y, %t11, %t13`,
+  `%t15 = bir.add i8 %t14, 6`, and forbids legacy LLVM IR
+  `define i8 @choose2_add_post_u(i8 %p.x, i8 %p.y)`.
+- Reconfigured the tree, reran the targeted parity pair
+  (`backend_codegen_route_riscv64_two_param_u8_select_eq_predecessor_add_post_add_defaults_to_bir`
+  and
+  `backend_codegen_route_riscv64_two_param_select_eq_predecessor_add_post_add_defaults_to_bir`),
+  reran `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `357/357` backend-labeled tests passing, then refreshed
+  `test_fail_after.log` with a full `ctest --test-dir build -j8 --output-on-failure`
+  run and passed the regression guard against `test_fail_before.log` with
+  `--allow-non-decreasing-passed --timeout-threshold 30 --enforce-timeout`
+  (`2782 -> 2795` passed, `0 -> 0` failed, no newly failing tests, no new
+  `>30s` cases).
 
 Completed this iteration:
 - Audited the signed `i32` versus widened-width/source-level `unsigned char`
