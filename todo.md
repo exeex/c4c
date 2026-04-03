@@ -9,11 +9,39 @@ Source Plan: plan.md
 - [ ] Delete app-layer LLVM asm rescue from `c4cll`
 - [ ] Revalidate backend and full-suite behavior without fallback
 
-Current active item: Step 2, continue from the now-complete non-deeper
-`mixed_affine` split-predecessor compare-fed phi-join `+ 6 - 2 + 9` parity
-slice into the next uncovered compare-adjacent linearizable control-flow gap,
-starting by auditing whether the remaining nearby split-predecessor family has
-another missing parity companion before widening `lir_to_bir.cpp`.
+Current active item: Step 2, continue from the now-complete
+`split_predecessor_add_phi` `+ 6 - 2` parity slice into the remaining nearby
+simple-family companion, starting with the `+ 6 - 2 + 9` join-tail extension
+before considering any further matcher widening.
+
+Completed this iteration:
+- Added the missing simple split-predecessor compare-fed phi-join `+ 6 - 2`
+  parity slice via
+  `make_bir_two_param_select_eq_split_predecessor_add_phi_post_join_add_sub_module()`,
+  proving the existing `split_predecessor_add_phi` `+ 6` form stays on the
+  direct BIR path when the join-local tail extends to `+ 6 - 2`.
+- Added source-level/default-route RISC-V coverage via
+  `tests/c/internal/backend_route_case/two_param_select_eq_split_predecessor_add_phi_post_add_sub.c`,
+  proving `(x == y ? x + 5 : y + 9) + 6 - 2` defaults to the BIR pipeline
+  instead of falling back to legacy LLVM IR text.
+- Reconfigured and rebuilt the affected tree, reran
+  `ctest --test-dir build -R backend_bir_tests --output-on-failure`, reran the
+  new route case
+  `backend_codegen_route_riscv64_two_param_select_eq_split_predecessor_add_phi_post_add_sub_defaults_to_bir`,
+  then reran `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `319/319` backend-labeled tests passing.
+- Refreshed `test_fail_after.log` with a full
+  `ctest --test-dir build -j8 --output-on-failure` run, then passed the
+  regression guard against `test_fail_before.log` with
+  `--allow-non-decreasing-passed --timeout-threshold 30 --enforce-timeout`
+  (`2743 -> 2757` passed, `0 -> 0` failed, no newly failing tests, no new
+  `>30s` cases). The slowest observed suite case was
+  `cpp_eastl_utility_parse_recipe` at `19.39 sec`, below the timeout
+  threshold.
+- The simple-family parity slice passed without any `lir_to_bir.cpp`
+  widening, confirming the existing bounded compare-fed phi-join matcher
+  already generalizes across the `split_predecessor_add_phi` `+ 6` and
+  `+ 6 - 2` join-tail variants and only regression coverage was missing.
 
 Completed this iteration:
 - Added the missing non-deeper split-predecessor compare-fed phi-join
