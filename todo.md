@@ -9,14 +9,37 @@ Source Plan: plan.md
 - [ ] Delete app-layer LLVM asm rescue from `c4cll`
 - [ ] Revalidate backend and full-suite behavior without fallback
 
-Current active item: Step 2, continue from the now-complete
-`split_predecessor_add_phi` family into the next still-bounded
-instruction-coverage gap that can stay on the direct BIR text path without
-requiring general multi-block BIR CFG support or direct-BIR emitter widening.
-This iteration completed constant-only integer `or` parity through the direct
-BIR route. Next target: the adjacent constant-only integer `xor` slice, which
-should stay on the same straight-line bounded matcher without requiring general
-multi-block BIR CFG support or direct-BIR emitter widening.
+Current active item: Step 2, widen the bounded straight-line direct-BIR matcher
+with the next missing single-block shift opcode slice from the existing LIR
+surface. Next target: start with the constant-only integer `shl` route, then
+extend to adjacent `lshr` / `ashr` coverage if the same bounded matcher still
+holds. Keep that work scoped to the direct BIR text path without requiring
+general multi-block BIR CFG support or any direct-BIR emitter widening.
+
+Completed this iteration:
+- Widened the bounded straight-line BIR scaffold with the missing constant-only
+  integer `xor` slice by adding `bir.xor` support in `bir.hpp`, `bir.cpp`, and
+  `lir_to_bir.cpp`, keeping it bounded to immediate integer arithmetic that
+  still linearizes into one BIR block.
+- Added backend BIR printer, lowering, and explicit BIR-pipeline regressions
+  via `make_bir_return_xor_module()`, proving the widened bitwise slice reaches
+  the BIR text surface as `%t0 = bir.xor i32 12, 10`.
+- Added source-level/default-route RISC-V coverage via
+  `tests/c/internal/backend_route_case/return_xor.c`, proving
+  `return 12 ^ 10;` defaults to the BIR pipeline instead of falling back to
+  legacy LLVM IR text.
+- Reconfigured and rebuilt the tree, reran
+  `ctest --test-dir build -R backend_bir_tests --output-on-failure`, reran the
+  new route case
+  `backend_codegen_route_riscv64_return_xor_defaults_to_bir`, then reran
+  `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `324/324` backend-labeled tests passing.
+- Refreshed `test_fail_after.log` with a full
+  `ctest --test-dir build -j8 --output-on-failure` run, then passed the
+  regression guard against `test_fail_before.log` with
+  `--allow-non-decreasing-passed --timeout-threshold 30 --enforce-timeout`
+  (`2760 -> 2762` passed, `0 -> 0` failed, no newly failing tests, no new
+  `>30s` cases).
 
 Completed this iteration:
 - Widened the bounded straight-line BIR scaffold with the missing constant-only

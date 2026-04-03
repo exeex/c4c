@@ -111,6 +111,9 @@ std::optional<bir::BinaryOpcode> lower_binary_opcode(std::string_view opcode) {
   if (opcode == "or") {
     return bir::BinaryOpcode::Or;
   }
+  if (opcode == "xor") {
+    return bir::BinaryOpcode::Xor;
+  }
   if (opcode == "sdiv") {
     return bir::BinaryOpcode::SDiv;
   }

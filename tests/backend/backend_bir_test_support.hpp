@@ -68,6 +68,7 @@ c4c::codegen::lir::LirModule make_bir_return_staged_constant_module();
 c4c::codegen::lir::LirModule make_bir_return_mul_module();
 c4c::codegen::lir::LirModule make_bir_return_and_module();
 c4c::codegen::lir::LirModule make_bir_return_or_module();
+c4c::codegen::lir::LirModule make_bir_return_xor_module();
 c4c::codegen::lir::LirModule make_bir_return_sdiv_module();
 c4c::codegen::lir::LirModule make_bir_return_udiv_module();
 c4c::codegen::lir::LirModule make_bir_return_srem_module();
