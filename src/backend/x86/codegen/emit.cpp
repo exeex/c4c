@@ -148,10 +148,6 @@ struct MatchedMinimalStructuredDirectCallReturnImmHelper {
   std::int64_t return_imm = 0;
 };
 
-struct MatchedMinimalStructuredTwoArgDirectCallHelper {
-  const c4c::backend::BackendFunction* callee_fn = nullptr;
-};
-
 struct MinimalGlobalCharPointerDiffSlice {
   std::string global_name;
   std::int64_t global_size = 0;
@@ -496,16 +492,6 @@ match_minimal_structured_direct_call_return_imm_helper(
   }
 
   return MatchedMinimalStructuredDirectCallReturnImmHelper{&callee_fn, parsed->return_imm};
-}
-
-std::optional<MatchedMinimalStructuredTwoArgDirectCallHelper>
-match_minimal_structured_two_arg_direct_call_helper(
-    const c4c::backend::BackendFunction& callee_fn) {
-  if (!c4c::backend::parse_backend_structured_two_param_add_function(callee_fn).has_value()) {
-    return std::nullopt;
-  }
-
-  return MatchedMinimalStructuredTwoArgDirectCallHelper{&callee_fn};
 }
 
 const char* x86_reg64_name(c4c::backend::PhysReg reg) {
@@ -2561,46 +2547,15 @@ std::optional<MinimalDirectCallAddImmSlice> parse_minimal_direct_call_add_imm_sl
 
 std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_slice(
     const c4c::backend::BackendModule& module) {
-  if (module.functions.size() != 2) return std::nullopt;
-
-  const auto* main_fn = find_function(module, "main");
-  if (main_fn == nullptr || main_fn->is_declaration ||
-      !backend_function_is_definition(main_fn->signature) ||
-      !is_i32_scalar_signature_return(main_fn->signature) ||
-      !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
-      main_fn->blocks.size() != 1) {
-    return std::nullopt;
-  }
-
-  const auto& main_block = main_fn->blocks.front();
-  if (main_block.label != "entry" || main_block.insts.size() != 1 ||
-      !main_block.terminator.value.has_value() ||
-      c4c::backend::backend_return_scalar_type(main_block.terminator) !=
-          c4c::backend::BackendScalarType::I32) {
-    return std::nullopt;
-  }
-
-  const auto matched = match_minimal_structured_direct_call(module, main_block, 0, 2);
-  if (!matched.has_value() || *main_block.terminator.value != matched->call->result) {
-    return std::nullopt;
-  }
-
-  const auto lhs_call_arg_imm = parse_i64(matched->call->args[0].operand);
-  const auto rhs_call_arg_imm = parse_i64(matched->call->args[1].operand);
-  if (!lhs_call_arg_imm.has_value() || !rhs_call_arg_imm.has_value()) {
-    return std::nullopt;
-  }
-
-  const auto helper_match =
-      match_minimal_structured_two_arg_direct_call_helper(*matched->callee_fn);
-  if (!helper_match.has_value()) {
+  const auto parsed = c4c::backend::parse_backend_minimal_two_arg_direct_call_module(module);
+  if (!parsed.has_value() || parsed->helper == nullptr) {
     return std::nullopt;
   }
 
   return MinimalTwoArgDirectCallSlice{
-      std::string(matched->parsed_call.symbol_name),
-      *lhs_call_arg_imm,
-      *rhs_call_arg_imm,
+      parsed->helper->signature.name,
+      parsed->lhs_call_arg_imm,
+      parsed->rhs_call_arg_imm,
   };
 }
 

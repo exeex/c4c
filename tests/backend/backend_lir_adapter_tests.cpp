@@ -1048,6 +1048,61 @@ void test_backend_call_helpers_parse_structured_folded_two_arg_function() {
               "shared structured folded two-argument helper parser should preserve renamed parameter names, helper SSA values, and folded base immediates without target-local helper-body scans");
 }
 
+void test_backend_call_helpers_parse_structured_two_arg_direct_call_module() {
+  auto lowered = c4c::backend::lower_to_backend_ir(make_typed_direct_call_two_arg_module());
+
+  c4c::backend::BackendFunction* helper = nullptr;
+  c4c::backend::BackendFunction* main_fn = nullptr;
+  for (auto& function : lowered.functions) {
+    if (function.signature.name == "add_pair") {
+      helper = &function;
+    } else if (function.signature.name == "main") {
+      main_fn = &function;
+    }
+  }
+  expect_true(helper != nullptr && main_fn != nullptr,
+              "shared structured two-argument direct-call module parser regression test needs lowered helper and main functions");
+  if (helper == nullptr || main_fn == nullptr) {
+    return;
+  }
+
+  helper->signature.name = "sum_pair";
+  helper->signature.params[0].name = "%p.left";
+  helper->signature.params[1].name = "%p.right";
+
+  auto* helper_add = helper->blocks.empty() || helper->blocks.front().insts.empty()
+                         ? nullptr
+                         : std::get_if<c4c::backend::BackendBinaryInst>(&helper->blocks.front().insts.front());
+  auto* call =
+      main_fn->blocks.empty() || main_fn->blocks.front().insts.empty()
+          ? nullptr
+          : std::get_if<c4c::backend::BackendCallInst>(&main_fn->blocks.front().insts.front());
+  expect_true(helper_add != nullptr && call != nullptr,
+              "shared structured two-argument direct-call module parser regression test needs mutable helper add and main call instructions");
+  if (helper_add == nullptr || call == nullptr) {
+    return;
+  }
+
+  helper_add->lhs = "%p.left";
+  helper_add->rhs = "%p.right";
+  helper_add->result = "%t.helper.sum.structured";
+  helper->blocks.front().terminator.value = "%t.helper.sum.structured";
+
+  call->callee.symbol_name = "sum_pair";
+  call->args[0].operand = "11";
+  call->args[1].operand = "13";
+  call->result = "%t.main.sum.structured";
+  main_fn->blocks.front().terminator.value = "%t.main.sum.structured";
+
+  const auto parsed = c4c::backend::parse_backend_minimal_two_arg_direct_call_module(lowered);
+  expect_true(parsed.has_value() && parsed->helper != nullptr && parsed->main_function != nullptr &&
+                  parsed->call != nullptr && parsed->helper->signature.name == "sum_pair" &&
+                  parsed->main_function->signature.name == "main" &&
+                  parsed->call->result == "%t.main.sum.structured" &&
+                  parsed->lhs_call_arg_imm == 11 && parsed->rhs_call_arg_imm == 13,
+              "shared structured two-argument direct-call module parser should preserve renamed helper symbols and direct-call immediates without target-local backend-module scans");
+}
+
 void test_backend_call_helpers_decode_lir_direct_global_vararg_prefix() {
   c4c::codegen::lir::LirCallOp call{
       "%t2",
@@ -2233,6 +2288,7 @@ int main(int argc, char* argv[]) {
   test_backend_call_helpers_parse_structured_zero_arg_return_imm_function();
   test_backend_call_helpers_parse_structured_single_add_imm_function();
   test_backend_call_helpers_parse_structured_folded_two_arg_function();
+  test_backend_call_helpers_parse_structured_two_arg_direct_call_module();
   test_backend_call_helpers_decode_lir_direct_global_vararg_prefix();
   test_backend_call_helpers_classify_lir_nonminimal_call_types();
   test_backend_call_helpers_classify_lir_nonminimal_signature_types();
