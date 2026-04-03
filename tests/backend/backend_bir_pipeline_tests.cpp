@@ -156,6 +156,19 @@ void test_backend_bir_pipeline_routes_slt_through_bir_text_surface() {
                   "explicit BIR selection should keep the widened signed relational compare result on the BIR text path");
 }
 
+void test_backend_bir_pipeline_routes_sle_through_bir_text_surface() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_bir_return_sle_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Riscv64));
+
+  expect_contains(rendered, "bir.func @main() -> i32 {",
+                  "explicit BIR selection should preserve the tiny signed less-than-or-equal compare-return signature on the BIR text path");
+  expect_contains(rendered, "%t1 = bir.sle i32 7, 7",
+                  "explicit BIR selection should expose the bounded signed less-than-or-equal compare materialization slice on the BIR text path");
+  expect_contains(rendered, "bir.ret i32 %t1",
+                  "explicit BIR selection should keep the widened signed less-than-or-equal compare result on the BIR text path");
+}
+
 void test_backend_bir_pipeline_routes_sgt_through_bir_text_surface() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_bir_return_sgt_module()},
@@ -560,6 +573,7 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_backend_bir_pipeline_routes_urem_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_eq_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_slt_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_routes_sle_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_sgt_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_ult_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_ule_through_bir_text_surface);

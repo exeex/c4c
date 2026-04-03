@@ -71,6 +71,7 @@ c4c::codegen::lir::LirModule make_bir_return_srem_module();
 c4c::codegen::lir::LirModule make_bir_return_urem_module();
 c4c::codegen::lir::LirModule make_bir_return_eq_module();
 c4c::codegen::lir::LirModule make_bir_return_slt_module();
+c4c::codegen::lir::LirModule make_bir_return_sle_module();
 c4c::codegen::lir::LirModule make_bir_return_sgt_module();
 c4c::codegen::lir::LirModule make_bir_return_ult_module();
 c4c::codegen::lir::LirModule make_bir_return_ule_module();

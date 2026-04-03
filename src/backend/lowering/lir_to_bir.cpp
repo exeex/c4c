@@ -127,6 +127,9 @@ std::optional<bir::BinaryOpcode> lower_compare_materialization_opcode(std::strin
   if (predicate == "slt") {
     return bir::BinaryOpcode::Slt;
   }
+  if (predicate == "sle") {
+    return bir::BinaryOpcode::Sle;
+  }
   if (predicate == "sgt") {
     return bir::BinaryOpcode::Sgt;
   }
@@ -268,6 +271,13 @@ std::optional<AffineValue> combine_affine(const AffineValue& lhs,
       return std::nullopt;
     }
     return AffineValue{false, false, lhs.constant < rhs.constant ? 1 : 0};
+  }
+  if (opcode == bir::BinaryOpcode::Sle) {
+    if (lhs.uses_first_param || lhs.uses_second_param || rhs.uses_first_param ||
+        rhs.uses_second_param) {
+      return std::nullopt;
+    }
+    return AffineValue{false, false, lhs.constant <= rhs.constant ? 1 : 0};
   }
   if (opcode == bir::BinaryOpcode::Sgt) {
     if (lhs.uses_first_param || lhs.uses_second_param || rhs.uses_first_param ||

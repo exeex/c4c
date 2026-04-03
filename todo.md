@@ -9,12 +9,11 @@ Source Plan: plan.md
 - [ ] Delete app-layer LLVM asm rescue from `c4cll`
 - [ ] Revalidate backend and full-suite behavior without fallback
 
-Current active item: Step 2, continue widening the bounded BIR compare
-scaffold after the landed signed greater-than slice into the next minimal
-relational compare return shape, likely signed less-than-or-equal (`sle`) or
-another similarly bounded constant-only `icmp <pred>` + `zext i1 -> i32`
-return pattern, while keeping any new default-route exposure limited to RISC-V
-and not claiming new x86/AArch64 direct-emitter coverage yet.
+Current active item: Step 2, widen the bounded BIR compare scaffold with the
+next minimal signed less-than-or-equal (`sle`) materialization slice by
+folding constant-only `icmp sle` + `zext i1 -> i32` returns into BIR, while
+keeping any new default-route exposure limited to RISC-V and not claiming new
+x86/AArch64 direct-emitter coverage yet.
 
 Completed this iteration:
 - Audited the current production legacy boundaries in `backend.cpp`,
@@ -184,12 +183,29 @@ Completed this iteration:
 - Passed the regression guard against `test_fail_before.log` with
   `--allow-non-decreasing-passed` (`2728 -> 2736` passed, `0 -> 0` failed, no
   newly failing tests).
+- Widened the BIR compare scaffold with a bounded constant-only signed
+  less-than-or-equal materialization slice by folding `icmp sle` plus
+  `zext i1 -> i32` return patterns into `bir.sle`, with printer/lowering
+  coverage, explicit BIR pipeline coverage, and a new RISC-V default-route
+  regression for `return 7 <= 7;`.
+- Rebuilt the tree, reran `backend_bir_tests` plus the new
+  `backend_codegen_route_riscv64_return_sle_defaults_to_bir` coverage, then
+  refreshed `test_after.log` and `test_fail_after.log` with a full
+  `ctest --test-dir build -j --output-on-failure` pass.
+- Passed the regression guard against `test_before.log` (`2736 -> 2737`
+  passed, `0 -> 0` failed, no newly failing tests) and against
+  `test_fail_before.log` (`2728 -> 2737` passed, `0 -> 0` failed, no newly
+  failing tests). A first full-suite attempt hit transient timeouts plus one
+  isolated `llvm_gcc_c_torture_src_pr28982b_c` failure, but all three suspect
+  cases passed immediately on targeted rerun and the subsequent full rerun
+  completed green.
 
 Next intended slice:
-- Continue Phase 1/2 parity with the next straight-line comparison gap after
-  `sgt`, likely a signed less-than-or-equal (`sle`) constant-only compare
-  materialization, while keeping default BIR auto-routing gated to RISC-V
-  until x86/AArch64 direct-BIR emitters grow native support for it.
+- Continue Phase 1/2 parity with the next bounded compare-materialization gap
+  after `sle`, likely signed greater-than-or-equal (`sge`) or another minimal
+  constant-only `icmp <pred>` + `zext i1 -> i32` return shape, while keeping
+  default BIR auto-routing gated to RISC-V until x86/AArch64 direct-BIR
+  emitters grow native support for it.
 
 Resume notes:
 - `backend.cpp` still contains the legacy route (`emit_legacy_module`), but
@@ -204,9 +220,9 @@ Resume notes:
 - The next bounded gap is instruction coverage rather than another scalar type:
   the BIR scaffold still rejects straight-line integer arithmetic outside
   `add/sub/mul/sdiv/srem/urem` plus the newly added bounded
-  `eq`/`slt`/`sgt`/`ult`/`ule` materialization slices, and it still lacks the
-  broader compare/select/control-flow clusters even when the slice can stay
-  entirely on the BIR text path.
+  `eq`/`slt`/`sle`/`sgt`/`ult`/`ule` materialization slices, and it still lacks
+  the broader compare/select/control-flow clusters even when the slice can
+  stay entirely on the BIR text path.
 - Auto-selection into the BIR pipeline in `llvm_codegen.cpp` is intentionally
   constrained to `Target::Riscv64`; explicit BIR pipeline options are still the
   only supported way to exercise non-RISC-V direct-BIR emitter slices.
