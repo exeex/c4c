@@ -10,12 +10,43 @@ Source Plan: plan.md
 - [ ] Revalidate backend and full-suite behavior without fallback
 
 Current active item: Step 2, continue the bounded zero-parameter widened
-compare-return parity family by auditing `return_slt_u8` as the next smallest
-adjacent signed-relational gap after the landed `return_uge_u8` slice.
-Next target: if `return_slt_u8` lands cleanly, continue the adjacent signed
+signed-relational compare-return parity family by auditing `return_sle_u8` as
+the next smallest adjacent gap after the landed `return_slt_u8` slice.
+Next target: if `return_sle_u8` lands cleanly, continue the adjacent signed
 relational widened compare-return matrix in `tests/c/internal/InternalTests.cmake`;
-otherwise isolate the exact widened compare-return lowering gap uncovered by
-the new route test.
+otherwise isolate the next frontend-shaped widened compare-return lowering gap
+uncovered by the new route test.
+
+Completed this iteration:
+- Re-audited the zero-parameter widened compare-return inventory in
+  `tests/c/internal/InternalTests.cmake` and confirmed the next adjacent signed
+  relational parity gap after the landed `return_uge_u8` slice was
+  `return_slt_u8`.
+- Added `tests/c/internal/backend_route_case/return_slt_u8.c`, proving the
+  bounded zero-parameter `unsigned char` wrapper around a signed-`char`
+  less-than compare is available to the backend-route harness.
+- Registered
+  `backend_codegen_route_riscv64_return_slt_u8_defaults_to_bir` in
+  `tests/c/internal/InternalTests.cmake`, asserting the emitted text contains
+  `bir.func @choose_slt_u() -> i8 {`, `bir.slt i8 3, 7`, `bir.ret i8 %t5`, and
+  forbids legacy LLVM IR `define i8 @choose_slt_u()`.
+- Added `make_bir_i8_return_slt_module()` to
+  `tests/backend/backend_bir_test_support.*` plus
+  `test_bir_lowering_accepts_i8_return_slt()` in
+  `tests/backend/backend_bir_lowering_tests.cpp` to keep the widened signed
+  compare-return shape covered below the backend-route harness.
+- Used the new route test to expose a real Step 2 direct-BIR gap: the
+  zero-parameter widened signed-`i8` compare-return case still lowered as
+  legacy LLVM IR `trunc i32 -> i8`, `sext i8 -> i32`, `icmp slt`, `zext`, and
+  final `trunc`.
+- Fixed `src/backend/lowering/lir_to_bir.cpp` so
+  `try_lower_widened_i8_compare_return_function()` now accepts the frontend's
+  signed-constant setup chain before the final compare/zext/trunc trio and
+  lowers it directly to `bir.slt i8`.
+- Rebuilt the tree, reran `backend_bir_tests`, reran
+  `backend_codegen_route_riscv64_return_slt_u8_defaults_to_bir`, and reran
+  `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `368/368` backend-labeled tests passing.
 
 Completed this iteration:
 - Re-audited the zero-parameter widened compare-return inventory in
