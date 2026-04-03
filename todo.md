@@ -7,9 +7,9 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 5: Finish the backend test migration
-- Current slice: identify the highest-value backend test surface that still
-  frames the pipeline in transitional backend-IR terms and convert it to the
-  BIR-oriented layered story without widening scope
+- Current slice: move one narrow `tests/c/internal/backend_ir_case` surface
+  onto neutral backend-module wording and wiring without widening into
+  unrelated backend cleanup
 
 ## Todo
 
@@ -66,13 +66,17 @@ Source Plan: plan.md
       `lower_bir_to_backend_module(...)`
 - [x] re-ran targeted backend validation plus a clean full-suite regression
       pass with no new failures relative to the existing EASTL recipe baseline
+- [x] renamed the standalone stable backend unit-test lane from
+      `backend_ir_tests` to `backend_module_tests`, updated CMake/CTest wiring,
+      and kept the separate BIR pipeline lane unchanged so the stable backend
+      test story no longer treats transitional backend-IR naming as the primary
+      contract
 
 ## Next Slice
 
-- start Step 5 by auditing `tests/backend/*` and `tests/c/internal/backend_*`
-  for coverage that still treats transitional backend-IR compatibility shims as
-  the primary contract, then move one narrow surface to the BIR-first layered
-  story with targeted validation
+- after the unit-test lane rename lands, move one narrow
+  `tests/c/internal/backend_ir_case` surface onto neutral backend-module
+  wording and wiring without widening into unrelated backend cleanup
 - keep the deferred AArch64 `extern_global_array` production-route cleanup out
   of scope unless it blocks a concrete Step 5 backend test migration slice
 
@@ -129,3 +133,7 @@ Source Plan: plan.md
   test surfaces to `lower_lir_to_backend_module(...)` /
   `lower_bir_to_backend_module(...)`; `test_fail_before.log` vs `test_after.log`
   stayed flat at 2720 passing / 6 failing with the same EASTL recipe failures
+- regression check for the Step 5 unit-test-lane rename slice:
+  `backend_module_tests` passed after the rename; the clean full suite stayed
+  flat at 2720 passing / 6 failing, and the monotonic regression guard reported
+  zero new failing tests relative to the existing EASTL recipe baseline

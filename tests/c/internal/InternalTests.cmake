@@ -214,10 +214,10 @@ set_tests_properties(backend_lir_adapter_x86_64_tests PROPERTIES
     LABELS "internal;backend")
 
 add_test(
-    NAME backend_ir_tests
-    COMMAND backend_ir_tests
+    NAME backend_module_tests
+    COMMAND backend_module_tests
 )
-set_tests_properties(backend_ir_tests PROPERTIES
+set_tests_properties(backend_module_tests PROPERTIES
     LABELS "internal;backend")
 
 add_test(

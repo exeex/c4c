@@ -333,8 +333,8 @@ add_executable(backend_lir_adapter_x86_64_tests
     "${PROJECT_SOURCE_DIR}/tests/backend/backend_lir_adapter_x86_64_tests.cpp"
     ${BACKEND_TEST_COMMON_SRCS}
 )
-add_executable(backend_ir_tests
-    "${PROJECT_SOURCE_DIR}/tests/backend/backend_ir_tests.cpp"
+add_executable(backend_module_tests
+    "${PROJECT_SOURCE_DIR}/tests/backend/backend_module_tests.cpp"
     ${BACKEND_TEST_COMMON_SRCS}
 )
 add_executable(backend_bir_tests
@@ -358,7 +358,7 @@ target_include_directories(backend_lir_adapter_aarch64_tests PRIVATE
 target_include_directories(backend_lir_adapter_x86_64_tests PRIVATE
     ${FRONTEND_CXX_INCLUDE_DIRS}
 )
-target_include_directories(backend_ir_tests PRIVATE
+target_include_directories(backend_module_tests PRIVATE
     ${FRONTEND_CXX_INCLUDE_DIRS}
 )
 target_include_directories(backend_bir_tests PRIVATE
@@ -377,7 +377,7 @@ if(CLANG_EXECUTABLE)
   target_compile_definitions(backend_lir_adapter_x86_64_tests PRIVATE
       C4C_TEST_CLANG_PATH="${CLANG_EXECUTABLE}"
   )
-  target_compile_definitions(backend_ir_tests PRIVATE
+  target_compile_definitions(backend_module_tests PRIVATE
       C4C_TEST_CLANG_PATH="${CLANG_EXECUTABLE}"
   )
   target_compile_definitions(backend_bir_tests PRIVATE
@@ -397,7 +397,7 @@ if(OBJDUMP_EXECUTABLE)
   target_compile_definitions(backend_lir_adapter_x86_64_tests PRIVATE
       C4C_TEST_OBJDUMP_PATH="${OBJDUMP_EXECUTABLE}"
   )
-  target_compile_definitions(backend_ir_tests PRIVATE
+  target_compile_definitions(backend_module_tests PRIVATE
       C4C_TEST_OBJDUMP_PATH="${OBJDUMP_EXECUTABLE}"
   )
   target_compile_definitions(backend_bir_tests PRIVATE
@@ -419,7 +419,7 @@ set_target_properties(backend_lir_adapter_x86_64_tests PROPERTIES
     CXX_STANDARD 17
     CXX_STANDARD_REQUIRED ON
 )
-set_target_properties(backend_ir_tests PROPERTIES
+set_target_properties(backend_module_tests PROPERTIES
     CXX_STANDARD 17
     CXX_STANDARD_REQUIRED ON
 )
