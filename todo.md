@@ -9,15 +9,37 @@ Source Plan: plan.md
 - [ ] Delete app-layer LLVM asm rescue from `c4cll`
 - [ ] Revalidate backend and full-suite behavior without fallback
 
-Current active item: Step 2, keep tightening the widened-width/source-level
-`unsigned char` compare/select route matrix by copying the remaining emitter-
-facing `i32` parity slices into bounded `u8` backend-route checks one variant
-at a time.
-Next target: re-audit the remaining non-split predecessor-arm
-`unsigned char` compare/select shapes against the existing `i32` route matrix
-and confirm whether any additional bounded default-route add/select parity
-slices still need explicit `u8` backend-route coverage before moving on to the
-next Step 2 family.
+Current active item: Step 2, audit the next bounded widening/parity family now
+that the single-parameter `unsigned char` `eq`/`ne` compare/select defaults-to-
+BIR coverage is aligned with the adjacent `i32` route inventory.
+Next target: inspect whether the next bounded widening/parity slice should
+cover additional single-parameter constant-return compare/select predicates
+beyond `eq`/`ne` or whether Step 2 should pivot to a different direct-BIR
+surface gap.
+
+Completed this iteration:
+- Audited the current `i32` versus widened-width/source-level `unsigned char`
+  compare/select route inventory in `tests/c/internal/InternalTests.cmake` and
+  confirmed the two-parameter `eq` split-predecessor matrix already has full
+  bounded `u8` parity; the remaining adjacent widening gap was the
+  single-parameter `!=` case.
+- Added `tests/c/internal/backend_route_case/single_param_u8_select_ne.c`,
+  proving the bounded single-parameter `u8` `!=` compare/select wrapper can be
+  exercised directly through the backend-route harness.
+- Registered
+  `backend_codegen_route_riscv64_single_param_u8_select_ne_defaults_to_bir` in
+  `tests/c/internal/InternalTests.cmake`, asserting the emitted text contains
+  `bir.func @choose_ne_u(i8 %p.x) -> i8 {`, `bir.select ne i8 %p.x, 7, 11, 4`,
+  and forbids legacy LLVM IR `define i8 @choose_ne_u(i8 %p.x)`.
+- Reconfigured and rebuilt the tree, reran
+  `backend_codegen_route_riscv64_single_param_u8_select_ne_defaults_to_bir`,
+  reran `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `358/358` backend-labeled tests passing, then refreshed
+  `test_fail_after.log` with a full `ctest --test-dir build -j8 --output-on-failure`
+  run and passed the regression guard against `test_fail_before.log` with
+  `--allow-non-decreasing-passed --timeout-threshold 30 --enforce-timeout`
+  (`2782 -> 2796` passed, `0 -> 0` failed, no newly failing tests, no new
+  `>30s` cases).
 
 Completed this iteration:
 - Audited the remaining non-split predecessor-arm widened-width/source-level
