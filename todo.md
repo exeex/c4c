@@ -9,13 +9,26 @@ Source Plan: plan.md
 - [ ] Delete app-layer LLVM asm rescue from `c4cll`
 - [ ] Revalidate backend and full-suite behavior without fallback
 
-Current active item: Step 2, widen the bounded BIR compare scaffold with the
-next minimal compare-materialization gap after unsigned greater-than (`ugt`)
-by adding constant-only unsigned greater-than-or-equal (`uge`) plus
-`zext i1 -> i32` return coverage, while keeping any new default-route exposure
-limited to RISC-V and not claiming new x86/AArch64 direct-emitter coverage yet.
+Current active item: Step 2, finish the remaining bounded compare-materialization
+gap by adding constant-only inequality (`ne`) plus `zext i1 -> i32` return
+coverage, while keeping any new default-route exposure limited to RISC-V and
+not claiming new x86/AArch64 direct-emitter coverage yet.
 
 Completed this iteration:
+- Widened the bounded BIR compare scaffold with a constant-only unsigned
+  greater-than-or-equal materialization slice by folding `icmp uge` plus
+  `zext i1 -> i32` return patterns into `bir.uge`, with printer/lowering
+  coverage, explicit BIR pipeline coverage, and a new RISC-V default-route
+  regression for `return 7u >= 7u;`.
+- Rebuilt the tree, reran `backend_bir_tests` plus the new
+  `backend_codegen_route_riscv64_return_uge_defaults_to_bir` coverage, then
+  reran `ctest --test-dir build -L backend --output-on-failure -j8`; all
+  `302/302` backend-labeled tests passed.
+- Refreshed `test_fail_after.log` with a full `ctest --test-dir build -j
+  --output-on-failure` run and passed the regression guard against
+  `test_fail_before.log` with `--allow-non-decreasing-passed`
+  (`2728 -> 2740` passed, `0 -> 0` failed, no newly failing tests, no new
+  `>30s` cases).
 - Widened the bounded BIR compare scaffold with a constant-only unsigned
   greater-than materialization slice by folding `icmp ugt` plus
   `zext i1 -> i32` return patterns into `bir.ugt`, with printer/lowering
@@ -241,10 +254,10 @@ Completed this iteration:
   failed, no newly failing tests, no new `>30s` cases).
 
 Next intended slice:
-- Continue Phase 1/2 parity with the next bounded compare-materialization gap
-  after `ugt`, likely unsigned greater-than-or-equal (`uge`), while keeping
-  default BIR auto-routing gated to RISC-V until x86/AArch64 direct-BIR
-  emitters grow native support for it.
+- Continue Phase 1/2 parity with the last bounded compare-materialization gap
+  by adding constant-only inequality (`ne`) plus `zext i1 -> i32` return
+  coverage, while keeping default BIR auto-routing gated to RISC-V until
+  x86/AArch64 direct-BIR emitters grow native support for it.
 
 Resume notes:
 - `backend.cpp` still contains the legacy route (`emit_legacy_module`), but
@@ -257,14 +270,14 @@ Resume notes:
   addition to the existing `i32` and `i64` scaffolds, but backend asm emitters
   still only consume the narrower direct-BIR affine subset.
 - `lir_to_bir.cpp` now folds constant-only compare materialization through
-  `eq/slt/sle/sgt/sge/ult/ule/ugt`, but unsigned greater-than-or-equal is still
-  missing from the bounded compare scaffold.
+  `eq/slt/sle/sgt/sge/ult/ule/ugt/uge`, but inequality (`ne`) is still missing
+  from the bounded compare scaffold.
 - The next bounded gap is instruction coverage rather than another scalar type:
   the BIR scaffold still rejects straight-line integer arithmetic outside
   `add/sub/mul/sdiv/srem/urem` plus the newly added bounded
-  `eq`/`slt`/`sle`/`sgt`/`ult`/`ule` materialization slices, and it still lacks
-  the broader compare/select/control-flow clusters even when the slice can
-  stay entirely on the BIR text path.
+  `eq`/`slt`/`sle`/`sgt`/`sge`/`ult`/`ule`/`ugt`/`uge` materialization slices,
+  and it still lacks the broader compare/select/control-flow clusters even when
+  the slice can stay entirely on the BIR text path.
 - Auto-selection into the BIR pipeline in `llvm_codegen.cpp` is intentionally
   constrained to `Target::Riscv64`; explicit BIR pipeline options are still the
   only supported way to exercise non-RISC-V direct-BIR emitter slices.

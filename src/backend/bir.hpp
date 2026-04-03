@@ -53,6 +53,7 @@ enum class BinaryOpcode : unsigned char {
   Ult,
   Ule,
   Ugt,
+  Uge,
 };
 
 struct BinaryInst {
