@@ -255,6 +255,41 @@ std::optional<bir::SelectInst> lower_select_materialization(
   return lowered;
 }
 
+std::optional<std::vector<bir::Param>> lower_function_params(
+    const c4c::codegen::lir::LirFunction& lir_function) {
+  std::vector<bir::Param> params;
+  if (!lir_function.params.empty()) {
+    if (lir_function.params.size() > 2) {
+      return std::nullopt;
+    }
+    params.reserve(lir_function.params.size());
+    for (const auto& [param_name, param_type] : lir_function.params) {
+      const auto lowered_type = lower_minimal_scalar_type(param_type);
+      if (!lowered_type.has_value() || param_name.empty()) {
+        return std::nullopt;
+      }
+      params.push_back(bir::Param{*lowered_type, param_name});
+    }
+    return params;
+  }
+
+  const auto parsed_params =
+      parse_backend_function_signature_params(lir_function.signature_text);
+  if (!parsed_params.has_value() || parsed_params->size() > 2) {
+    return std::nullopt;
+  }
+
+  params.reserve(parsed_params->size());
+  for (const auto& param : *parsed_params) {
+    const auto lowered_type = lower_scalar_type_text(param.type);
+    if (param.is_varargs || !lowered_type.has_value() || param.operand.empty()) {
+      return std::nullopt;
+    }
+    params.push_back(bir::Param{*lowered_type, param.operand});
+  }
+  return params;
+}
+
 struct AffineValue {
   bool uses_first_param = false;
   bool uses_second_param = false;
@@ -451,6 +486,222 @@ std::optional<bool> evaluate_predicate(const AffineValue& lhs,
   return std::nullopt;
 }
 
+std::optional<bir::Function> try_lower_conditional_return_select_function(
+    const c4c::codegen::lir::LirFunction& lir_function,
+    const std::vector<bir::Param>& params) {
+  using namespace c4c::codegen::lir;
+
+  if (lir_function.blocks.size() != 3) {
+    return std::nullopt;
+  }
+
+  const auto& entry = lir_function.blocks[0];
+  const auto& true_block = lir_function.blocks[1];
+  const auto& false_block = lir_function.blocks[2];
+  if (entry.label.empty() || entry.insts.size() != 3 || !true_block.insts.empty() ||
+      !false_block.insts.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* cmp0 = std::get_if<LirCmpOp>(&entry.insts[0]);
+  const auto* cast = std::get_if<LirCastOp>(&entry.insts[1]);
+  const auto* cmp1 = std::get_if<LirCmpOp>(&entry.insts[2]);
+  const auto* condbr = std::get_if<LirCondBr>(&entry.terminator);
+  if (cmp0 == nullptr || cast == nullptr || cmp1 == nullptr || condbr == nullptr ||
+      cmp0->is_float || cmp0->result.str().empty() ||
+      cast->result.str().empty() || cmp1->is_float || cmp1->result.str().empty() ||
+      cast->kind != LirCastKind::ZExt || cast->from_type.str() != "i1" ||
+      cast->operand.str() != cmp0->result.str() || cmp1->predicate.str() != "ne" ||
+      cmp1->lhs.str() != cast->result.str() || cmp1->rhs.str() != "0" ||
+      condbr->cond_name != cmp1->result.str() || true_block.label != condbr->true_label ||
+      false_block.label != condbr->false_label) {
+    return std::nullopt;
+  }
+
+  const auto predicate = lower_compare_materialization_opcode(cmp0->predicate.str());
+  const auto compare_type = lower_scalar_type_text(cmp0->type_str.str());
+  const auto widened_type = lower_scalar_type_text(cast->to_type.str());
+  const auto cond_type = lower_scalar_type_text(cmp1->type_str.str());
+  if (!predicate.has_value() || !compare_type.has_value() || !widened_type.has_value() ||
+      !cond_type.has_value() || *compare_type != *widened_type ||
+      *compare_type != *cond_type) {
+    return std::nullopt;
+  }
+
+  const auto* true_ret = std::get_if<LirRet>(&true_block.terminator);
+  const auto* false_ret = std::get_if<LirRet>(&false_block.terminator);
+  if (true_ret == nullptr || false_ret == nullptr || !true_ret->value_str.has_value() ||
+      !false_ret->value_str.has_value() || true_ret->type_str != cmp0->type_str ||
+      false_ret->type_str != cmp0->type_str) {
+    return std::nullopt;
+  }
+
+  const auto lhs = lower_immediate_or_name(cmp0->lhs.str(), *compare_type);
+  const auto rhs = lower_immediate_or_name(cmp0->rhs.str(), *compare_type);
+  const auto true_value = lower_immediate_or_name(*true_ret->value_str, *compare_type);
+  const auto false_value = lower_immediate_or_name(*false_ret->value_str, *compare_type);
+  if (!lhs.has_value() || !rhs.has_value() || !true_value.has_value() ||
+      !false_value.has_value()) {
+    return std::nullopt;
+  }
+
+  auto operand_is_param_or_immediate = [&](const bir::Value& value) {
+    if (value.kind == bir::Value::Kind::Immediate) {
+      return true;
+    }
+    return std::any_of(params.begin(), params.end(), [&](const bir::Param& param) {
+      return param.name == value.name;
+    });
+  };
+  if (!operand_is_param_or_immediate(*lhs) || !operand_is_param_or_immediate(*rhs) ||
+      !operand_is_param_or_immediate(*true_value) ||
+      !operand_is_param_or_immediate(*false_value)) {
+    return std::nullopt;
+  }
+
+  bir::Function function;
+  function.name = lir_function.name;
+  function.return_type = *compare_type;
+  function.params = params;
+
+  bir::Block block;
+  block.label = entry.label;
+  block.insts.push_back(bir::SelectInst{
+      *predicate,
+      bir::Value::named(*compare_type, "%t.select"),
+      *lhs,
+      *rhs,
+      *true_value,
+      *false_value,
+  });
+  block.terminator.value = bir::Value::named(*compare_type, "%t.select");
+  function.blocks.push_back(std::move(block));
+  return function;
+}
+
+std::optional<bir::Function> try_lower_conditional_phi_select_function(
+    const c4c::codegen::lir::LirFunction& lir_function,
+    const std::vector<bir::Param>& params) {
+  using namespace c4c::codegen::lir;
+
+  if (lir_function.blocks.size() != 4 && lir_function.blocks.size() != 6) {
+    return std::nullopt;
+  }
+
+  const auto& entry = lir_function.blocks[0];
+  const auto* cmp0 = entry.insts.size() > 0 ? std::get_if<LirCmpOp>(&entry.insts[0]) : nullptr;
+  const auto* cast = entry.insts.size() > 1 ? std::get_if<LirCastOp>(&entry.insts[1]) : nullptr;
+  const auto* cmp1 = entry.insts.size() > 2 ? std::get_if<LirCmpOp>(&entry.insts[2]) : nullptr;
+  const auto* condbr = std::get_if<LirCondBr>(&entry.terminator);
+  if (entry.label.empty() || entry.insts.size() != 3 || cmp0 == nullptr || cast == nullptr ||
+      cmp1 == nullptr || condbr == nullptr || cmp0->is_float || cmp0->result.str().empty() ||
+      cast->result.str().empty() || cmp1->is_float || cmp1->result.str().empty() ||
+      cast->kind != LirCastKind::ZExt || cast->from_type.str() != "i1" ||
+      cast->operand.str() != cmp0->result.str() || cmp1->predicate.str() != "ne" ||
+      cmp1->lhs.str() != cast->result.str() || cmp1->rhs.str() != "0" ||
+      condbr->cond_name != cmp1->result.str()) {
+    return std::nullopt;
+  }
+
+  const auto predicate = lower_compare_materialization_opcode(cmp0->predicate.str());
+  const auto compare_type = lower_scalar_type_text(cmp0->type_str.str());
+  const auto widened_type = lower_scalar_type_text(cast->to_type.str());
+  const auto cond_type = lower_scalar_type_text(cmp1->type_str.str());
+  if (!predicate.has_value() || !compare_type.has_value() || !widened_type.has_value() ||
+      !cond_type.has_value() || *compare_type != *widened_type ||
+      *compare_type != *cond_type) {
+    return std::nullopt;
+  }
+
+  const auto& true_block = lir_function.blocks[1];
+  const auto& false_block = lir_function.blocks[lir_function.blocks.size() == 4 ? 2 : 3];
+  const auto* true_br = std::get_if<LirBr>(&true_block.terminator);
+  const auto* false_br = std::get_if<LirBr>(&false_block.terminator);
+  if (!true_block.insts.empty() || !false_block.insts.empty() || true_br == nullptr ||
+      false_br == nullptr || condbr->true_label != true_block.label ||
+      condbr->false_label != false_block.label) {
+    return std::nullopt;
+  }
+
+  const c4c::codegen::lir::LirBlock* true_phi_pred = &true_block;
+  const c4c::codegen::lir::LirBlock* false_phi_pred = &false_block;
+  const c4c::codegen::lir::LirBlock* join_block = nullptr;
+  if (lir_function.blocks.size() == 4) {
+    join_block = &lir_function.blocks[3];
+    if (true_br->target_label != join_block->label || false_br->target_label != join_block->label) {
+      return std::nullopt;
+    }
+  } else {
+    const auto& true_end = lir_function.blocks[2];
+    const auto& false_end = lir_function.blocks[4];
+    const auto* true_end_br = std::get_if<LirBr>(&true_end.terminator);
+    const auto* false_end_br = std::get_if<LirBr>(&false_end.terminator);
+    join_block = &lir_function.blocks[5];
+    if (!true_end.insts.empty() || !false_end.insts.empty() || true_end_br == nullptr ||
+        false_end_br == nullptr || true_br->target_label != true_end.label ||
+        false_br->target_label != false_end.label ||
+        true_end_br->target_label != join_block->label ||
+        false_end_br->target_label != join_block->label) {
+      return std::nullopt;
+    }
+    true_phi_pred = &true_end;
+    false_phi_pred = &false_end;
+  }
+
+  const auto* phi = join_block->insts.size() > 0 ? std::get_if<LirPhiOp>(&join_block->insts[0]) : nullptr;
+  const auto* ret = std::get_if<LirRet>(&join_block->terminator);
+  if (phi == nullptr || ret == nullptr || join_block->insts.size() != 1 ||
+      phi->result.str().empty() || phi->type_str.str() != cmp0->type_str.str() ||
+      phi->incoming.size() != 2 || !ret->value_str.has_value() ||
+      *ret->value_str != phi->result.str() || ret->type_str != cmp0->type_str ||
+      phi->incoming[0].second != true_phi_pred->label ||
+      phi->incoming[1].second != false_phi_pred->label) {
+    return std::nullopt;
+  }
+
+  const auto lhs = lower_immediate_or_name(cmp0->lhs.str(), *compare_type);
+  const auto rhs = lower_immediate_or_name(cmp0->rhs.str(), *compare_type);
+  const auto true_value = lower_immediate_or_name(phi->incoming[0].first, *compare_type);
+  const auto false_value = lower_immediate_or_name(phi->incoming[1].first, *compare_type);
+  if (!lhs.has_value() || !rhs.has_value() || !true_value.has_value() ||
+      !false_value.has_value()) {
+    return std::nullopt;
+  }
+
+  auto operand_is_param_or_immediate = [&](const bir::Value& value) {
+    if (value.kind == bir::Value::Kind::Immediate) {
+      return true;
+    }
+    return std::any_of(params.begin(), params.end(), [&](const bir::Param& param) {
+      return param.name == value.name;
+    });
+  };
+  if (!operand_is_param_or_immediate(*lhs) || !operand_is_param_or_immediate(*rhs) ||
+      !operand_is_param_or_immediate(*true_value) ||
+      !operand_is_param_or_immediate(*false_value)) {
+    return std::nullopt;
+  }
+
+  bir::Function function;
+  function.name = lir_function.name;
+  function.return_type = *compare_type;
+  function.params = params;
+
+  bir::Block block;
+  block.label = entry.label;
+  block.insts.push_back(bir::SelectInst{
+      *predicate,
+      bir::Value::named(*compare_type, phi->result.str()),
+      *lhs,
+      *rhs,
+      *true_value,
+      *false_value,
+  });
+  block.terminator.value = bir::Value::named(*compare_type, phi->result.str());
+  function.blocks.push_back(std::move(block));
+  return function;
+}
+
 }  // namespace
 
 std::optional<bir::Module> try_lower_to_bir(const c4c::codegen::lir::LirModule& module) {
@@ -461,7 +712,33 @@ std::optional<bir::Module> try_lower_to_bir(const c4c::codegen::lir::LirModule& 
 
   const auto& lir_function = module.functions.front();
   if (lir_function.is_declaration || !lir_function.alloca_insts.empty() ||
-      lir_function.blocks.size() != 1 || lir_function.params.size() > 2) {
+      lir_function.params.size() > 2) {
+    return std::nullopt;
+  }
+
+  bir::Module lowered;
+  lowered.target_triple = module.target_triple;
+  lowered.data_layout = module.data_layout;
+
+  const auto params = lower_function_params(lir_function);
+  if (!params.has_value()) {
+    return std::nullopt;
+  }
+
+  if (const auto select_function =
+          try_lower_conditional_return_select_function(lir_function, *params);
+      select_function.has_value()) {
+    lowered.functions.push_back(*select_function);
+    return lowered;
+  }
+  if (const auto select_function =
+          try_lower_conditional_phi_select_function(lir_function, *params);
+      select_function.has_value()) {
+    lowered.functions.push_back(*select_function);
+    return lowered;
+  }
+
+  if (lir_function.blocks.size() != 1) {
     return std::nullopt;
   }
 
@@ -479,35 +756,10 @@ std::optional<bir::Module> try_lower_to_bir(const c4c::codegen::lir::LirModule& 
     return std::nullopt;
   }
 
-  bir::Module lowered;
-  lowered.target_triple = module.target_triple;
-  lowered.data_layout = module.data_layout;
-
   bir::Function function;
   function.name = lir_function.name;
   function.return_type = *return_type;
-  if (!lir_function.params.empty()) {
-    for (const auto& [param_name, param_type] : lir_function.params) {
-      const auto lowered_type = lower_minimal_scalar_type(param_type);
-      if (!lowered_type.has_value() || param_name.empty()) {
-        return std::nullopt;
-      }
-      function.params.push_back(bir::Param{*lowered_type, param_name});
-    }
-  } else if (const auto parsed_params =
-                 parse_backend_function_signature_params(lir_function.signature_text);
-             parsed_params.has_value()) {
-    if (parsed_params->size() > 2) {
-      return std::nullopt;
-    }
-    for (const auto& param : *parsed_params) {
-      const auto lowered_type = lower_scalar_type_text(param.type);
-      if (param.is_varargs || !lowered_type.has_value() || param.operand.empty()) {
-        return std::nullopt;
-      }
-      function.params.push_back(bir::Param{*lowered_type, param.operand});
-    }
-  }
+  function.params = *params;
 
   bir::Block block;
   block.label = lir_block.label;

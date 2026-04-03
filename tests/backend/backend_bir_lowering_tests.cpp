@@ -572,6 +572,32 @@ void test_bir_lowering_accepts_tiny_return_select_lir_slice() {
                   "BIR lowering should return the select result instead of leaving the legacy compare-plus-select pair intact");
 }
 
+void test_bir_lowering_accepts_single_param_select_branch_slice() {
+  const auto lowered =
+      c4c::backend::lower_to_bir(make_bir_single_param_select_eq_branch_module());
+  const auto rendered = c4c::backend::bir::print(lowered);
+
+  expect_contains(rendered, "bir.func @choose(i32 %p.x) -> i32 {",
+                  "BIR lowering should preserve the one-parameter signature while collapsing the bounded branch-return ternary");
+  expect_contains(rendered, "%t.select = bir.select eq i32 %p.x, 7, 11, 4",
+                  "BIR lowering should collapse the bounded compare-and-branch ternary into a single BIR select");
+  expect_contains(rendered, "bir.ret i32 %t.select",
+                  "BIR lowering should return the fused select result instead of preserving the legacy branch-return form");
+}
+
+void test_bir_lowering_accepts_single_param_select_phi_slice() {
+  const auto lowered =
+      c4c::backend::lower_to_bir(make_bir_single_param_select_eq_phi_module());
+  const auto rendered = c4c::backend::bir::print(lowered);
+
+  expect_contains(rendered, "bir.func @choose(i32 %p.x) -> i32 {",
+                  "BIR lowering should preserve the one-parameter signature while collapsing the bounded phi-join ternary");
+  expect_contains(rendered, "%t8 = bir.select eq i32 %p.x, 7, 11, 4",
+                  "BIR lowering should collapse the empty branch-only goto chain plus phi join into a single BIR select");
+  expect_contains(rendered, "bir.ret i32 %t8",
+                  "BIR lowering should return the fused select result instead of preserving the legacy phi join");
+}
+
 void test_bir_lowering_accepts_straight_line_add_sub_chain() {
   const auto lowered = c4c::backend::lower_to_bir(make_bir_return_add_sub_chain_module());
   const auto rendered = c4c::backend::bir::print(lowered);
@@ -734,6 +760,8 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_tiny_return_ugt_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_uge_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_select_lir_slice);
+  RUN_TEST(test_bir_lowering_accepts_single_param_select_branch_slice);
+  RUN_TEST(test_bir_lowering_accepts_single_param_select_phi_slice);
   RUN_TEST(test_bir_lowering_accepts_straight_line_add_sub_chain);
   RUN_TEST(test_bir_lowering_accepts_i8_add_sub_chain);
   RUN_TEST(test_bir_lowering_accepts_i64_add_sub_chain);

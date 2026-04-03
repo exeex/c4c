@@ -209,6 +209,108 @@ c4c::codegen::lir::LirModule make_bir_return_select_eq_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_bir_single_param_select_eq_branch_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "riscv64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+
+  LirFunction function;
+  function.name = "choose";
+  function.signature_text = "define i32 @choose(i32 %p.x)\n";
+  function.return_type.base = c4c::TB_INT;
+  c4c::TypeSpec param_type{};
+  param_type.base = c4c::TB_INT;
+  function.params.push_back({"%p.x", param_type});
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCmpOp{"%t0", false, "eq", "i32", "%p.x", "7"});
+  entry.insts.push_back(LirCastOp{"%t1", LirCastKind::ZExt, "i1", "%t0", "i32"});
+  entry.insts.push_back(LirCmpOp{"%t2", false, "ne", "i32", "%t1", "0"});
+  entry.terminator = LirCondBr{"%t2", "then", "else"};
+  function.blocks.push_back(std::move(entry));
+
+  LirBlock true_block;
+  true_block.id = LirBlockId{1};
+  true_block.label = "then";
+  true_block.terminator = LirRet{std::string("11"), "i32"};
+  function.blocks.push_back(std::move(true_block));
+
+  LirBlock false_block;
+  false_block.id = LirBlockId{2};
+  false_block.label = "else";
+  false_block.terminator = LirRet{std::string("4"), "i32"};
+  function.blocks.push_back(std::move(false_block));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_bir_single_param_select_eq_phi_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "riscv64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+
+  LirFunction function;
+  function.name = "choose";
+  function.signature_text = "define i32 @choose(i32 %p.x)\n";
+  function.return_type.base = c4c::TB_INT;
+  c4c::TypeSpec param_type{};
+  param_type.base = c4c::TB_INT;
+  function.params.push_back({"%p.x", param_type});
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCmpOp{"%t0", false, "eq", "i32", "%p.x", "7"});
+  entry.insts.push_back(LirCastOp{"%t1", LirCastKind::ZExt, "i1", "%t0", "i32"});
+  entry.insts.push_back(LirCmpOp{"%t2", false, "ne", "i32", "%t1", "0"});
+  entry.terminator = LirCondBr{"%t2", "tern.then.3", "tern.else.5"};
+  function.blocks.push_back(std::move(entry));
+
+  LirBlock true_block;
+  true_block.id = LirBlockId{1};
+  true_block.label = "tern.then.3";
+  true_block.terminator = LirBr{"tern.then.end.4"};
+  function.blocks.push_back(std::move(true_block));
+
+  LirBlock true_end_block;
+  true_end_block.id = LirBlockId{2};
+  true_end_block.label = "tern.then.end.4";
+  true_end_block.terminator = LirBr{"tern.end.7"};
+  function.blocks.push_back(std::move(true_end_block));
+
+  LirBlock false_block;
+  false_block.id = LirBlockId{3};
+  false_block.label = "tern.else.5";
+  false_block.terminator = LirBr{"tern.else.end.6"};
+  function.blocks.push_back(std::move(false_block));
+
+  LirBlock false_end_block;
+  false_end_block.id = LirBlockId{4};
+  false_end_block.label = "tern.else.end.6";
+  false_end_block.terminator = LirBr{"tern.end.7"};
+  function.blocks.push_back(std::move(false_end_block));
+
+  LirBlock join_block;
+  join_block.id = LirBlockId{5};
+  join_block.label = "tern.end.7";
+  join_block.insts.push_back(
+      LirPhiOp{"%t8", "i32", {{"11", "tern.then.end.4"}, {"4", "tern.else.end.6"}}});
+  join_block.terminator = LirRet{std::string("%t8"), "i32"};
+  function.blocks.push_back(std::move(join_block));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_bir_single_param_add_sub_chain_module() {
   using namespace c4c::codegen::lir;
 

@@ -16,6 +16,27 @@ text path without widening x86/AArch64 direct-BIR emitter coverage
 prematurely.
 
 Completed this iteration:
+- Widened the bounded BIR control-flow scaffold from straight-line compare-fed
+  `select` materialization to the smallest source-shaped ternary forms by
+  collapsing compare-driven branch-to-return and empty branch-only goto plus
+  `phi` join patterns into a single-block `bir.select` on the BIR text path.
+- Taught `lir_to_bir.cpp` to recognize the bounded one-parameter
+  `icmp`/`zext`/`icmp ne 0` conditional branch surface in both the direct
+  branch-return and empty goto-chain-plus-`phi` variants, reusing the existing
+  BIR `select` shape without introducing general BIR CFG support.
+- Added backend lowering and explicit-BIR pipeline regressions for both bounded
+  ternary variants plus a new source-level RISC-V default-route regression via
+  `tests/c/internal/backend_route_case/single_param_select_eq.c`.
+- Reconfigured and rebuilt the tree, reran the focused backend BIR and route
+  tests, reran `ctest --test-dir build -L backend --output-on-failure -j8`
+  with all `304/304` backend-labeled tests passing, then refreshed
+  `test_fail_after.log` with a full `ctest --test-dir build -j
+  --output-on-failure` run.
+- Passed the regression guard against `test_fail_before.log` with
+  `--allow-non-decreasing-passed` (`2728 -> 2742` passed, `0 -> 0` failed, no
+  newly failing tests, no new `>30s` cases).
+
+Completed this iteration:
 - Added a fused `bir.select` instruction shape to the bounded BIR surface, with
   printer and validator coverage for straight-line integer compare-fed select
   materialization on the single-block text path.
@@ -302,17 +323,17 @@ Resume notes:
   full bounded integer predicate set
   (`eq`/`ne`/`slt`/`sle`/`sgt`/`sge`/`ult`/`ule`/`ugt`/`uge`) when the result is
   immediately widened back to the same integer type for return.
+- `lir_to_bir.cpp` now also accepts the smallest source-shaped compare-driven
+  ternary control-flow surfaces when they can be collapsed back into one BIR
+  block: direct branch-to-return and empty branch-only goto chains feeding a
+  final constant/parameter `phi` join.
 - The next bounded gap is instruction coverage rather than another scalar type:
   the BIR scaffold still rejects straight-line integer arithmetic outside
   `add/sub/mul/sdiv/srem/urem` plus the newly added bounded
   `eq`/`ne`/`slt`/`sle`/`sgt`/`sge`/`ult`/`ule`/`ugt`/`uge` materialization
   slices, and it still lacks the broader compare/select/control-flow clusters
-  even when the slice can stay entirely on the BIR text path. The fused
-  compare-fed integer `select` materialization slice is now covered on the
-  single-block BIR surface, but a source-level RISC-V default-route regression
-  was intentionally deferred because the current frontend ternary lowering still
-  normalizes simple C conditional expressions into branch/phi form rather than
-  a straight-line LIR `select` slice.
+  once the branch shape stops collapsing into the bounded single-block BIR
+  `select` surface.
 - Auto-selection into the BIR pipeline in `llvm_codegen.cpp` is intentionally
   constrained to `Target::Riscv64`; explicit BIR pipeline options are still the
   only supported way to exercise non-RISC-V direct-BIR emitter slices.
