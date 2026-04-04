@@ -367,6 +367,10 @@ std::string default_split_device_output_path(const std::string& input_path) {
   return (parent / (stem + ".device.ll")).string();
 }
 
+bool target_supports_file_asm_fallback(std::string_view target_triple) {
+  return target_triple.find("aarch64") != std::string_view::npos;
+}
+
 bool execution_domain_matches(c4c::ExecutionDomain domain, bool want_device) {
   switch (domain) {
     case c4c::ExecutionDomain::Host:
@@ -898,6 +902,10 @@ int main(int argc, char **argv) {
         return 2;
       }
       if (backend_returned_no_asm) {
+        print_asm_fallback_hint(ir);
+        return 2;
+      }
+      if (!target_supports_file_asm_fallback(target_triple)) {
         print_asm_fallback_hint(ir);
         return 2;
       }

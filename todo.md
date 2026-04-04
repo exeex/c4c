@@ -9,34 +9,29 @@ Source Plan: plan.md
 - [ ] Remove legacy backend IR files and backend/app LLVM rescue paths
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
-Current active item: Step 4, finish shrinking the remaining app-layer LLVM asm
-rescue surface and prepare the final legacy backend-IR deletion pass.
+Current active item: Step 4, cut the now-explicit AArch64-only file-output asm
+fallback users and prepare the final legacy backend-IR deletion pass.
 
-Iteration target: execute one fuller Step 4 batch instead of another
-single-case probe. The next slice should finish a repo-wide audit of the
-remaining `--codegen asm -o <file>.s` callers, convert every already-native
-runtime/contract family in that audited set to stdout-native coverage, and
-then remove the matching bounded `c4cll` fallback branch if the audit shows no
-real caller still depends on it.
+Iteration target: keep external c-testsuite backend coverage on stdout-native
+asm by default, preserve file-output rescue only for the known blocked AArch64
+varargs-heavy cases, and tighten `c4cll` so non-AArch64 targets no longer get
+the file-output LLVM asm fallback.
 
 Immediate next slice:
 
-- inventory all remaining runtime and contract users of file-output asm in
-  [`tests/c/internal/InternalTests.cmake`](/workspaces/c4c/tests/c/internal/InternalTests.cmake)
-  and group them by shared seam instead of by individual testcase name
-- verify whether the remaining `call_helper` / extern-call-adjacent paths are
-  truly blocked, or were only left behind by stale test routing
-- inspect the current app fallback in
-  [`src/apps/c4cll.cpp`](/workspaces/c4c/src/apps/c4cll.cpp) and map each
-  branch to a still-live caller family
-- capture the production references that still keep legacy lowering live:
+- use the now-explicit tagged fallback set in
+  [`tests/c/external/c-testsuite/allowlist.txt`](/workspaces/c4c/tests/c/external/c-testsuite/allowlist.txt)
+  as the only remaining app-layer file-output asm rescue family
+- verify whether any of those tagged AArch64 c-testsuite cases have become
+  backend-native and can be removed from the fallback bucket
+- inspect the production references that still keep legacy lowering live:
   [`src/backend/lowering/lir_to_backend_ir.hpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.hpp),
   [`src/backend/lowering/lir_to_backend_ir.cpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp),
   [`src/backend/lir_adapter.hpp`](/workspaces/c4c/src/backend/lir_adapter.hpp),
   and
   [`src/backend/lowering/extern_lowering.hpp`](/workspaces/c4c/src/backend/lowering/extern_lowering.hpp)
-- land the slice only if it removes one bounded fallback/codepath family plus
-  the matching test assumptions in the same commit-sized batch
+- land the next Step 4 slice only if it removes one of those remaining tagged
+  fallback callers or cuts a live legacy lowering dependency in the same batch
 
 Slice deliverables:
 
@@ -98,17 +93,14 @@ Known live references from the current audit:
 - `lir_to_backend_ir.cpp` is still large enough to deserve a planned cutover
   batch on its own at roughly `3669` lines, and the old backend IR support
   files in `ir.*` still represent another large deletion batch after that
-- internal runtime and stdout-contract families no longer rely on `-o <file>.s`
-  rescue; the remaining live file-output asm rescue users observed in this
-  slice are external/backend AArch64 c-testsuite cases that still lower
-  through LLVM IR for varargs-heavy coverage, including
+- internal runtime, stdout-contract, and unblocked external c-testsuite
+  backend families now run through stdout-native asm by default
+- the remaining live file-output asm rescue users are now explicit allowlist
+  tags for external/backend AArch64 c-testsuite coverage:
   `00080`, `00108`, `00113`, `00116`, `00119`, `00121`, `00123`,
   `00174`, `00175`, and `00204`
-- the app-layer rescue branch that regenerated fresh legacy LLVM IR after a
-  backend `--codegen asm` request returned no text has now been removed;
-  `c4cll` only rescues file-output asm when the backend explicitly returns
-  LLVM IR text, and empty-output paths now fail immediately with the existing
-  unsupported-asm diagnostic
+- `c4cll` now rejects file-output LLVM asm fallback on non-AArch64 targets;
+  the app-layer rescue path is retained only for the tagged AArch64 family
 
 Recently completed milestones:
 
@@ -133,6 +125,11 @@ Recently completed milestones:
 - removed the dead `c4cll` fallback leg that regenerated legacy LLVM IR after a
   backend-native asm request produced no text, while preserving the still-live
   file-output LLVM-IR rescue used by external AArch64 varargs coverage
+- switched external c-testsuite backend registration to stdout-native asm by
+  default and made the remaining AArch64 file-output rescue callers explicit in
+  the allowlist metadata plus runner wiring
+- tightened `c4cll` so non-AArch64 `--codegen asm -o <file>.s` requests no
+  longer get LLVM-IR-to-asm rescue when the backend fails to emit native asm
 
 Validation baseline:
 
@@ -148,6 +145,6 @@ Validation baseline:
 - latest monotonic guard:
   `test_fail_before.log` vs `test_fail_after.log`
   result `PASS`,
-  `before: passed=2840 failed=0 total=2840`,
+  `before: passed=2841 failed=0 total=2841`,
   `after: passed=2841 failed=0 total=2841`,
   `new failing tests: 0`

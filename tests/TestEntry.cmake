@@ -83,19 +83,38 @@ if(CLANG_EXECUTABLE AND C_TESTSUITE_ROOT AND EXISTS "${C_TESTSUITE_ROOT}")
     endif()
 
     file(STRINGS "${C_TESTSUITE_ALLOWLIST}" C_TESTSUITE_ALLOWLIST_RAW)
-    foreach(entry IN LISTS C_TESTSUITE_ALLOWLIST_RAW)
-      string(STRIP "${entry}" entry)
+    foreach(entry_raw IN LISTS C_TESTSUITE_ALLOWLIST_RAW)
+      string(STRIP "${entry_raw}" entry)
       if(entry STREQUAL "" OR entry MATCHES "^#")
         continue()
       endif()
 
-      set(src "${C_TESTSUITE_ROOT}/${entry}")
-      if(NOT EXISTS "${src}")
-        message(WARNING "c-testsuite allowlist entry not found: ${entry}")
+      set(fields "${entry}")
+      string(REPLACE "|" ";" fields "${fields}")
+      list(LENGTH fields field_count)
+      if(field_count LESS 1)
         continue()
       endif()
 
-      string(REGEX REPLACE "[^A-Za-z0-9_]" "_" test_id "${entry}")
+      list(GET fields 0 rel_src)
+      set(backend_asm_source "stdout")
+      if(field_count GREATER 1)
+        list(GET fields 1 backend_asm_mode)
+        if(backend_asm_mode STREQUAL "backend-file")
+          set(backend_asm_source "file")
+        elseif(backend_asm_mode STREQUAL "backend-file-aarch64" AND
+               C_TESTSUITE_BACKEND_ID STREQUAL "aarch64")
+          set(backend_asm_source "file")
+        endif()
+      endif()
+
+      set(src "${C_TESTSUITE_ROOT}/${rel_src}")
+      if(NOT EXISTS "${src}")
+        message(WARNING "c-testsuite allowlist entry not found: ${rel_src}")
+        continue()
+      endif()
+
+      string(REGEX REPLACE "[^A-Za-z0-9_]" "_" test_id "${rel_src}")
       set(test_name "c_testsuite_${test_id}")
 
       add_test(
@@ -105,8 +124,8 @@ if(CLANG_EXECUTABLE AND C_TESTSUITE_ROOT AND EXISTS "${C_TESTSUITE_ROOT}")
                 -DCLANG=${CLANG_EXECUTABLE}
                 -DSRC=${src}
                 -DROOT=${C_TESTSUITE_ROOT}
-                -DOUT_LL=${CMAKE_BINARY_DIR}/c_testsuite/${entry}.ll
-                -DOUT_BIN=${CMAKE_BINARY_DIR}/c_testsuite/${entry}.bin
+                -DOUT_LL=${CMAKE_BINARY_DIR}/c_testsuite/${rel_src}.ll
+                -DOUT_BIN=${CMAKE_BINARY_DIR}/c_testsuite/${rel_src}.bin
                 -P "${C_TESTSUITE_RUN_CASE}"
       )
       set_tests_properties("${test_name}" PROPERTIES LABELS "c_testsuite")
@@ -122,8 +141,9 @@ if(CLANG_EXECUTABLE AND C_TESTSUITE_ROOT AND EXISTS "${C_TESTSUITE_ROOT}")
                   -DSRC=${src}
                   -DROOT=${C_TESTSUITE_ROOT}
                   -DTARGET_TRIPLE=${C_TESTSUITE_BACKEND_TRIPLE}
-                  -DOUT_LL=${CMAKE_BINARY_DIR}/${C_TESTSUITE_BACKEND_DIR}/${entry}.s
-                  -DOUT_BIN=${CMAKE_BINARY_DIR}/${C_TESTSUITE_BACKEND_DIR}/${entry}.bin
+                  -DBACKEND_ASM_SOURCE=${backend_asm_source}
+                  -DOUT_LL=${CMAKE_BINARY_DIR}/${C_TESTSUITE_BACKEND_DIR}/${rel_src}.s
+                  -DOUT_BIN=${CMAKE_BINARY_DIR}/${C_TESTSUITE_BACKEND_DIR}/${rel_src}.bin
                   -P "${C_TESTSUITE_RUN_CASE}"
         )
         set_tests_properties("${backend_test_name}" PROPERTIES LABELS "c_testsuite;${C_TESTSUITE_BACKEND_LABEL}")
