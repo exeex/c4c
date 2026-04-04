@@ -13,6 +13,17 @@ Current active item: Step 2, continue the bounded native-emitter coverage
 expansion for direct-BIR x86_64/aarch64 widened `i8`
 compare-fed `bir.select`/join families.
 Completed in this slice: added explicit direct-BIR x86_64 and aarch64
+pipeline coverage for the widened `i8`
+`choose2_deeper_post_chain_tail_u` split-predecessor deeper-then-mixed-affine
+join family, proving that both native emitters already preserve the bounded
+deeper predecessor-local `add`/`sub`/`add` chain plus the short post-select
+`add`/`sub`/`add` arithmetic tail without falling back to legacy backend IR.
+Completed in this slice: reran the required backend regression scope
+(`ctest --test-dir build -R backend --output-on-failure`) and the required
+monotonic full-suite guard with `test_fail_before.log` vs
+`test_fail_after.log`, with `100% tests passed, 0 tests failed out of 2833`
+before and after.
+Completed in this slice: added explicit direct-BIR x86_64 and aarch64
 pipeline coverage for the existing `choose2_add_post_chain_tail_ne_u`
 split-predecessor join family, proving that both native emitters already
 preserve the bounded post-select `add`/`sub`/`add` arithmetic tail without
@@ -100,7 +111,7 @@ monotonic full-suite guard with `test_fail_before.log` vs
 `test_fail_after.log`, with `100% tests passed, 0 tests failed out of 2833`
 before and after.
 Next target: move to the bounded widened `i8`
-`choose2_deeper_post_chain_tail_u` split-predecessor deeper-then-mixed-affine
+`choose2_deeper_both_post_chain_tail_u` split-predecessor deeper-affine
 join family and add matching direct-BIR x86_64/aarch64 pipeline coverage for
 the post-select `add`/`sub`/`add` arithmetic tail if the native emitters
 already handle that slice.
