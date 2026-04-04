@@ -1466,6 +1466,14 @@ Node* Parser::parse_top_level() {
         return nullptr;
     }
 
+    if (check(TokenKind::PragmaExec)) {
+        auto* node = make_node(NK_PRAGMA_EXEC, ln);
+        node->name = arena_.strdup(cur().lexeme);
+        handle_pragma_exec(cur().lexeme);
+        consume();
+        return node;
+    }
+
     // Don't skip_attributes() here — type-affecting attributes like
     // __attribute__((vector_size(N))) must flow to parse_base_type().
     if (at_end()) return nullptr;
@@ -1791,6 +1799,7 @@ Node* Parser::parse_top_level() {
             fn->is_const_method = is_const_method;
             fn->linkage_spec = linkage_spec;
             fn->visibility = visibility_;
+            fn->execution_domain = execution_domain_;
             fn->n_params = static_cast<int>(params.size());
             if (fn->n_params > 0) {
                 fn->params = arena_.alloc_array<Node*>(fn->n_params);
@@ -1902,6 +1911,7 @@ Node* Parser::parse_top_level() {
                 fn->is_constructor = true;
                 fn->linkage_spec = linkage_spec;
                 fn->visibility = visibility_;
+                fn->execution_domain = execution_domain_;
                 fn->n_params = static_cast<int>(params.size());
                 if (fn->n_params > 0) {
                     fn->params = arena_.alloc_array<Node*>(fn->n_params);
@@ -2533,6 +2543,7 @@ top_level_base_ready:
             fn->is_consteval = is_consteval;
             fn->linkage_spec = linkage_spec;
             fn->visibility = visibility_;
+            fn->execution_domain = execution_domain_;
             fn->body      = body;
             fn->n_params  = (int)fptr_fn_params.size();
             if (fn->n_params > 0) {
@@ -2561,6 +2572,7 @@ top_level_base_ready:
         fn->is_consteval = is_consteval;
         fn->linkage_spec = linkage_spec;
         fn->visibility = visibility_;
+        fn->execution_domain = execution_domain_;
         fn->body      = nullptr;
         fn->n_params  = (int)fptr_fn_params.size();
         if (fn->n_params > 0) {
@@ -2731,6 +2743,7 @@ top_level_base_ready:
             fn->is_const_method = is_const_method;
             fn->linkage_spec = linkage_spec;
             fn->visibility = visibility_;
+            fn->execution_domain = execution_domain_;
             fn->body      = body;
             fn->n_params  = (int)params.size();
             if (fn->n_params > 0) {
@@ -2759,6 +2772,7 @@ top_level_base_ready:
         fn->is_const_method = is_const_method;
         fn->linkage_spec = linkage_spec;
         fn->visibility = visibility_;
+        fn->execution_domain = execution_domain_;
         fn->body      = nullptr;  // declaration only
         fn->n_params  = (int)params.size();
         if (fn->n_params > 0) {
@@ -2799,6 +2813,7 @@ top_level_base_ready:
         gv->is_consteval = false;
         gv->linkage_spec = linkage_spec;
         gv->visibility = visibility_;
+        gv->execution_domain = execution_domain_;
         gv->fn_ptr_params = fn_ptr_params;
         gv->n_fn_ptr_params = n_fn_ptr_params;
         gv->fn_ptr_variadic = fn_ptr_variadic;

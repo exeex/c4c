@@ -355,6 +355,57 @@ std::string default_host_target_triple() {
 #endif
 }
 
+std::string default_split_host_output_path(const std::string& input_path) {
+  std::filesystem::path path(input_path);
+  path.replace_extension(".ll");
+  return path.string();
+}
+
+std::string default_split_device_output_path(const std::string& input_path) {
+  const std::filesystem::path path(input_path);
+  const std::filesystem::path parent = path.parent_path();
+  const std::string stem = path.stem().string();
+  return (parent / (stem + ".device.ll")).string();
+}
+
+bool execution_domain_matches(c4c::ExecutionDomain domain, bool want_device) {
+  switch (domain) {
+    case c4c::ExecutionDomain::Host:
+      return !want_device;
+    case c4c::ExecutionDomain::Device:
+      return want_device;
+    case c4c::ExecutionDomain::HostDevice:
+      return true;
+  }
+  return false;
+}
+
+c4c::hir::Module filter_hir_module_for_domain(const c4c::hir::Module& input,
+                                              c4c::ExecutionDomain domain,
+                                              std::string target_triple) {
+  c4c::hir::Module filtered = input;
+  filtered.target_triple = std::move(target_triple);
+  filtered.data_layout.clear();
+  filtered.functions.clear();
+  filtered.globals.clear();
+  filtered.fn_index.clear();
+  filtered.global_index.clear();
+
+  const bool want_device = domain == c4c::ExecutionDomain::Device;
+  for (const auto& fn : input.functions) {
+    if (!execution_domain_matches(fn.execution_domain, want_device)) continue;
+    filtered.fn_index[fn.name] = fn.id;
+    filtered.functions.push_back(fn);
+  }
+  for (const auto& gv : input.globals) {
+    if (!execution_domain_matches(gv.execution_domain, want_device)) continue;
+    filtered.global_index[gv.name] = gv.id;
+    filtered.globals.push_back(gv);
+  }
+  filtered.sync_next_ids_from_contents();
+  return filtered;
+}
+
 void append_env_include_paths(std::vector<std::string>& out,
                               std::set<std::string>& seen,
                               const char* env_name) {
@@ -458,6 +509,10 @@ void print_usage(const char *argv0) {
       << "  --version                  Print version information\n"
       << "  -o <path>                  Write output to file\n"
       << "  --target <triple>          Override target triple\n"
+      << "  --device-target <triple>   Device target triple for split LLVM output\n"
+      << "  --emit-split-llvm          Emit separate host/device LLVM IR files\n"
+      << "  --host-out <path>          Host LLVM output path for --emit-split-llvm\n"
+      << "  --device-out <path>        Device LLVM output path for --emit-split-llvm\n"
       << "\n"
       << "Frontend inspection (mutually exclusive):\n"
       << "  --pp-only                  Run preprocessor only\n"
@@ -537,9 +592,13 @@ int main(int argc, char **argv) {
     bool        parser_debug = false;
     bool        parser_debug_tentative = false;
     bool        parser_debug_injected = false;
+    bool        emit_split_llvm = false;
     std::string input;
     std::string output;
     std::string target_triple = default_host_target_triple();
+    std::string device_target_triple;
+    std::string host_output;
+    std::string device_output;
 
     // Preprocessor configuration collected from CLI flags.
     std::vector<std::string> defines;
@@ -578,6 +637,14 @@ int main(int argc, char **argv) {
         if (i + 1 < args.size()) output = args[++i];
       } else if (arg == "--target" && i + 1 < args.size()) {
         target_triple = args[++i];
+      } else if (arg == "--device-target" && i + 1 < args.size()) {
+        device_target_triple = args[++i];
+      } else if (arg == "--host-out" && i + 1 < args.size()) {
+        host_output = args[++i];
+      } else if (arg == "--device-out" && i + 1 < args.size()) {
+        device_output = args[++i];
+      } else if (arg == "--emit-split-llvm") {
+        emit_split_llvm = true;
       } else if (arg == "-D" && i + 1 < args.size()) {
         defines.push_back(args[++i]);
       } else if (arg.size() > 2 && arg[0] == '-' && arg[1] == 'D') {
@@ -642,6 +709,22 @@ int main(int argc, char **argv) {
     if (input.empty()) {
       print_usage(argv[0]);
       return 1;
+    }
+    if (emit_split_llvm) {
+      if (device_target_triple.empty()) {
+        std::cerr << "--emit-split-llvm requires --device-target <triple>\n";
+        return 2;
+      }
+      if (codegen_path != c4c::codegen::llvm_backend::CodegenPath::Llvm) {
+        std::cerr << "--emit-split-llvm cannot be combined with --codegen asm/compare\n";
+        return 2;
+      }
+      if (!output.empty()) {
+        std::cerr << "-o cannot be combined with --emit-split-llvm; use --host-out/--device-out\n";
+        return 2;
+      }
+      if (host_output.empty()) host_output = default_split_host_output_path(input);
+      if (device_output.empty()) device_output = default_split_device_output_path(input);
     }
     {
       int mode_count = (pp_only ? 1 : 0) + (lex_only ? 1 : 0) + (parse_only ? 1 : 0) +
@@ -774,6 +857,30 @@ int main(int argc, char **argv) {
     // Run semantic inline expansion pass (Phase 1: discovery only, no-op for now).
     c4c::hir::run_inline_expansion(
         *sema_result.hir_module);
+
+    if (emit_split_llvm) {
+      auto host_module = filter_hir_module_for_domain(
+          *sema_result.hir_module, c4c::ExecutionDomain::Host, target_triple);
+      auto device_module = filter_hir_module_for_domain(
+          *sema_result.hir_module, c4c::ExecutionDomain::Device, device_target_triple);
+      const std::string host_ir = c4c::codegen::llvm_backend::emit_module_native(
+          host_module, target_triple, c4c::codegen::llvm_backend::CodegenPath::Llvm);
+      const std::string device_ir = c4c::codegen::llvm_backend::emit_module_native(
+          device_module, device_target_triple, c4c::codegen::llvm_backend::CodegenPath::Llvm);
+      const auto host_parent = std::filesystem::path(host_output).parent_path();
+      const auto device_parent = std::filesystem::path(device_output).parent_path();
+      if (!host_parent.empty()) std::filesystem::create_directories(host_parent);
+      if (!device_parent.empty()) std::filesystem::create_directories(device_parent);
+      if (!write_text_file(host_output, host_ir)) {
+        std::cerr << "error: cannot open output file: " << host_output << "\n";
+        return 1;
+      }
+      if (!write_text_file(device_output, device_ir)) {
+        std::cerr << "error: cannot open output file: " << device_output << "\n";
+        return 1;
+      }
+      return 0;
+    }
 
     std::string ir = c4c::codegen::llvm_backend::emit_module_native(
         *sema_result.hir_module, target_triple, codegen_path);

@@ -291,6 +291,9 @@ const char *token_kind_name(TokenKind kind) {
     case TokenKind::KwConcept: return "KW_concept";
 
     case TokenKind::PragmaPack: return "PRAGMA_PACK";
+    case TokenKind::PragmaWeak: return "PRAGMA_WEAK";
+    case TokenKind::PragmaGccVisibility: return "PRAGMA_GCC_VISIBILITY";
+    case TokenKind::PragmaExec: return "PRAGMA_EXEC";
 
     case TokenKind::EndOfFile: return "EOF";
     case TokenKind::Invalid:   return "INVALID";

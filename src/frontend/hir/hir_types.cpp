@@ -1441,6 +1441,7 @@ void Lowerer::lower_global(const Node* gv) {
   g.fn_ptr_sig = fn_ptr_sig_from_decl_node(gv);
   g.linkage = {gv->is_static, gv->is_extern, false, weak_symbols_.count(g.name) > 0,
                static_cast<Visibility>(gv->visibility)};
+  g.execution_domain = gv->execution_domain;
   g.is_const = gv->type.is_const;
   g.span = make_span(gv);
 

@@ -226,6 +226,14 @@ Node* Parser::parse_stmt() {
             return node;
         }
 
+        case TokenKind::PragmaExec: {
+            auto* node = make_node(NK_PRAGMA_EXEC, ln);
+            node->name = arena_.strdup(cur().lexeme);
+            handle_pragma_exec(cur().lexeme);
+            consume();
+            return node;
+        }
+
         case TokenKind::KwStaticAssert: {
             return parse_static_assert_declaration();
         }

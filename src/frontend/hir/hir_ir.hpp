@@ -580,6 +580,7 @@ struct SpecializationKeyHash {
 struct Function {
   FunctionId id{};
   SymbolName name;
+  ExecutionDomain execution_domain = ExecutionDomain::Host;
   NamespaceQualifier ns_qual;  // owning namespace context from AST
   QualType return_type{};
   std::vector<Param> params;
@@ -640,6 +641,7 @@ using GlobalInit = std::variant<std::monostate, InitScalar, InitList>;
 struct GlobalVar {
   GlobalId id{};
   SymbolName name;
+  ExecutionDomain execution_domain = ExecutionDomain::Host;
   NamespaceQualifier ns_qual;  // owning namespace context from AST
   QualType type{};
   std::optional<FnPtrSig> fn_ptr_sig;

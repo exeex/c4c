@@ -28,6 +28,11 @@ std::vector<Token> Lexer::scan_all() {
       has_pending_pragma_gcc_visibility_ = false;
       continue;
     }
+    if (has_pending_pragma_exec_) {
+      out.push_back(std::move(pending_pragma_exec_));
+      has_pending_pragma_exec_ = false;
+      continue;
+    }
     if (at_end()) {
       out.push_back(make_token(TokenKind::EndOfFile, "", line_, column_));
       break;
@@ -231,6 +236,27 @@ void Lexer::skip_whitespace_and_comments() {
           if (!lexeme.empty()) {
             pending_pragma_gcc_visibility_ = make_token(TokenKind::PragmaGccVisibility, lexeme, tok_line, tok_col);
             has_pending_pragma_gcc_visibility_ = true;
+            return;
+          }
+          continue;
+        }
+        // Check if this is #pragma c4 exec host/device.
+        static const char pragma_exec[] = "#pragma c4 exec";
+        size_t pe_len = sizeof(pragma_exec) - 1;
+        if (index_ + pe_len <= source_.size() &&
+            source_.compare(index_, pe_len, pragma_exec) == 0) {
+          int tok_line = line_;
+          int tok_col = column_;
+          for (size_t j = 0; j < pe_len; ++j) advance();
+          while (!at_end() && peek() != '\n' && (peek() == ' ' || peek() == '\t')) advance();
+          std::string domain;
+          while (!at_end() && peek() != '\n' && peek() != ' ' && peek() != '\t') {
+            domain += advance();
+          }
+          while (!at_end() && peek() != '\n') advance();
+          if (domain == "host" || domain == "device") {
+            pending_pragma_exec_ = make_token(TokenKind::PragmaExec, domain, tok_line, tok_col);
+            has_pending_pragma_exec_ = true;
             return;
           }
           continue;

@@ -181,6 +181,18 @@ add_test(
 set_tests_properties(frontend_cxx_preprocessor_tests PROPERTIES
     LABELS "internal;preprocessor")
 
+add_test(
+    NAME positive_split_llvm_pragma_exec
+    COMMAND "${CMAKE_COMMAND}"
+            -DCOMPILER=$<TARGET_FILE:c4cll>
+            -DSRC=${INTERNAL_C_TEST_ROOT}/positive_case/ok_pragma_exec_split.c
+            -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+            -DDEVICE_TARGET_TRIPLE=aarch64-unknown-linux-gnu
+            -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_split_llvm_case.cmake"
+)
+set_tests_properties(positive_split_llvm_pragma_exec PROPERTIES
+    LABELS "internal;positive_case;split_llvm")
+
 foreach(src IN LISTS INTERNAL_PREPROCESSOR_TEST_SRCS)
   get_filename_component(stem "${src}" NAME_WE)
   set(test_name "preprocessor_${stem}")

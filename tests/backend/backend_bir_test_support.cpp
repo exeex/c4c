@@ -290,8 +290,7 @@ c4c::codegen::lir::LirModule make_bir_i8_return_add_module() {
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose_add_u";
@@ -315,8 +314,7 @@ c4c::codegen::lir::LirModule make_bir_i8_return_sub_module() {
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose_sub_u";
@@ -340,8 +338,7 @@ c4c::codegen::lir::LirModule make_bir_i8_return_mul_module() {
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose_mul_u";
@@ -365,8 +362,7 @@ c4c::codegen::lir::LirModule make_bir_i8_return_and_module() {
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose_and_u";
@@ -390,8 +386,7 @@ c4c::codegen::lir::LirModule make_bir_i8_return_or_module() {
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose_or_u";
@@ -415,8 +410,7 @@ c4c::codegen::lir::LirModule make_bir_i8_return_xor_module() {
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose_xor_u";
@@ -440,8 +434,7 @@ c4c::codegen::lir::LirModule make_bir_i8_return_shl_module() {
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose_shl_u";
@@ -465,8 +458,7 @@ c4c::codegen::lir::LirModule make_bir_i8_return_lshr_module() {
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose_lshr_u";
@@ -490,8 +482,7 @@ c4c::codegen::lir::LirModule make_bir_i8_return_ashr_module() {
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose_ashr_u";
@@ -515,8 +506,7 @@ c4c::codegen::lir::LirModule make_bir_i8_return_sdiv_module() {
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose_sdiv_u";
@@ -540,8 +530,7 @@ c4c::codegen::lir::LirModule make_bir_i8_return_udiv_module() {
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose_udiv_u";
@@ -565,8 +554,7 @@ c4c::codegen::lir::LirModule make_bir_i8_return_srem_module() {
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose_srem_u";
@@ -590,8 +578,7 @@ c4c::codegen::lir::LirModule make_bir_i8_return_urem_module() {
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose_urem_u";
@@ -615,8 +602,7 @@ c4c::codegen::lir::LirModule make_bir_i8_return_eq_module() {
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose_eq_u";
@@ -641,8 +627,7 @@ c4c::codegen::lir::LirModule make_bir_i8_return_ne_module() {
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose_ne_u";
@@ -667,8 +652,7 @@ c4c::codegen::lir::LirModule make_bir_i8_return_ult_module() {
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose_ult_u";
@@ -693,8 +677,7 @@ c4c::codegen::lir::LirModule make_bir_i8_return_ule_module() {
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose_ule_u";
@@ -719,8 +702,7 @@ c4c::codegen::lir::LirModule make_bir_i8_return_ugt_module() {
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose_ugt_u";
@@ -745,8 +727,7 @@ c4c::codegen::lir::LirModule make_bir_i8_return_uge_module() {
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose_uge_u";
@@ -771,8 +752,7 @@ c4c::codegen::lir::LirModule make_bir_i8_return_slt_module() {
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose_slt_u";
@@ -801,8 +781,7 @@ c4c::codegen::lir::LirModule make_bir_i8_return_sle_module() {
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose_sle_u";
@@ -831,8 +810,7 @@ c4c::codegen::lir::LirModule make_bir_i8_return_sgt_module() {
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose_sgt_u";
@@ -861,8 +839,7 @@ c4c::codegen::lir::LirModule make_bir_i8_return_sge_module() {
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose_sge_u";
@@ -891,8 +868,7 @@ c4c::codegen::lir::LirModule make_bir_i8_return_immediate_module() {
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose_const_u";
@@ -915,8 +891,7 @@ c4c::codegen::lir::LirModule make_bir_single_param_select_eq_branch_module() {
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose";
@@ -956,8 +931,7 @@ c4c::codegen::lir::LirModule make_bir_single_param_select_eq_phi_module() {
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose";
@@ -1017,8 +991,7 @@ c4c::codegen::lir::LirModule make_bir_two_param_select_eq_phi_module() {
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose2";
@@ -1079,8 +1052,7 @@ c4c::codegen::lir::LirModule make_bir_two_param_select_ne_phi_module() {
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose2_ne_u";
@@ -1144,8 +1116,7 @@ make_bir_two_param_u8_select_ne_predecessor_add_phi_post_join_add_module() {
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose2_add_post_ne_u";
@@ -1206,8 +1177,7 @@ make_bir_two_param_u8_select_ne_split_predecessor_add_phi_post_join_add_sub_modu
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose2_add_post_chain_ne_u";
@@ -1281,8 +1251,7 @@ make_bir_two_param_u8_select_ne_split_predecessor_add_phi_post_join_add_sub_add_
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose2_add_post_chain_tail_ne_u";
@@ -1357,8 +1326,7 @@ make_bir_two_param_u8_select_ne_split_predecessor_mixed_affine_phi_post_join_add
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose2_mixed_post_ne_u";
@@ -1433,8 +1401,7 @@ make_bir_two_param_u8_select_ne_split_predecessor_mixed_affine_phi_post_join_add
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose2_mixed_post_chain_ne_u";
@@ -1510,8 +1477,7 @@ make_bir_two_param_u8_select_ne_split_predecessor_mixed_then_deeper_affine_phi_p
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose2_mixed_then_deeper_post_ne_u";
@@ -1586,8 +1552,7 @@ c4c::codegen::lir::LirModule make_bir_two_param_select_eq_predecessor_add_phi_mo
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose2_add";
@@ -1639,8 +1604,7 @@ make_bir_two_param_select_eq_split_predecessor_add_phi_post_join_add_module() {
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose2_add_post";
@@ -1705,8 +1669,7 @@ make_bir_two_param_select_eq_split_predecessor_add_phi_post_join_add_sub_module(
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose2_add_post_chain";
@@ -1772,8 +1735,7 @@ make_bir_two_param_select_eq_split_predecessor_add_phi_post_join_add_sub_add_mod
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose2_add_post_chain_tail";
@@ -1840,8 +1802,7 @@ make_bir_two_param_select_eq_split_predecessor_deeper_affine_phi_post_join_add_s
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose2_deeper_both_post_chain";
@@ -1912,8 +1873,7 @@ make_bir_two_param_select_eq_split_predecessor_mixed_affine_phi_post_join_add_su
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose2_mixed_post_chain";
@@ -1982,8 +1942,7 @@ make_bir_two_param_select_eq_split_predecessor_mixed_affine_phi_post_join_add_su
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose2_mixed_post_chain_tail";
@@ -2053,8 +2012,7 @@ make_bir_two_param_select_eq_split_predecessor_mixed_affine_phi_post_join_add_mo
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose2_mixed_post";
@@ -2121,8 +2079,7 @@ make_bir_two_param_select_eq_split_predecessor_deeper_then_mixed_affine_phi_post
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose2_deeper_post";
@@ -2190,8 +2147,7 @@ make_bir_two_param_select_eq_split_predecessor_deeper_then_mixed_affine_phi_post
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose2_deeper_post_chain";
@@ -2261,8 +2217,7 @@ make_bir_two_param_select_eq_split_predecessor_deeper_then_mixed_affine_phi_post
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose2_deeper_post_chain_tail";
@@ -2333,8 +2288,7 @@ make_bir_two_param_select_eq_split_predecessor_mixed_then_deeper_affine_phi_post
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose2_mixed_then_deeper_post";
@@ -2403,8 +2357,7 @@ make_bir_two_param_select_eq_split_predecessor_mixed_then_deeper_affine_phi_post
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose2_mixed_then_deeper_post_chain";
@@ -2474,8 +2427,7 @@ make_bir_two_param_select_eq_split_predecessor_mixed_then_deeper_affine_phi_post
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose2_mixed_then_deeper_post_chain_tail";
@@ -2546,8 +2498,7 @@ make_bir_two_param_select_eq_split_predecessor_deeper_affine_phi_post_join_add_m
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose2_deeper_both_post";
@@ -2617,8 +2568,7 @@ make_bir_two_param_select_eq_split_predecessor_deeper_affine_phi_post_join_add_s
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose2_deeper_both_post_chain_tail";
@@ -2689,8 +2639,7 @@ c4c::codegen::lir::LirModule make_bir_mixed_predecessor_add_phi_post_join_add_mo
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "choose_mixed_add";
@@ -2764,8 +2713,7 @@ c4c::codegen::lir::LirModule make_bir_i8_return_add_sub_chain_module() {
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "tiny_char";
@@ -2792,8 +2740,7 @@ c4c::codegen::lir::LirModule make_bir_i64_return_add_sub_chain_module() {
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "wide_add";
@@ -2820,8 +2767,7 @@ c4c::codegen::lir::LirModule make_bir_i8_two_param_add_module() {
   using namespace c4c::codegen::lir;
 
   LirModule module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
 
   LirFunction function;
   function.name = "add_pair_u";

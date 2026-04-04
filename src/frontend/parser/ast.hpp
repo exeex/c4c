@@ -20,6 +20,12 @@
 
 namespace c4c {
 
+enum class ExecutionDomain : uint8_t {
+    Host = 0,
+    Device = 1,
+    HostDevice = 2,
+};
+
 // Forward declaration
 struct Node;
 
@@ -221,6 +227,7 @@ enum NodeKind {
     NK_OFFSETOF,        // __builtin_offsetof(type, member): type=base_type, name=field_path
 
     NK_PRAGMA_WEAK,     // #pragma weak symbol: name = symbol
+    NK_PRAGMA_EXEC,     // #pragma c4 exec host/device: name = "host" or "device"
 
     // C++ new/delete expressions
     NK_NEW_EXPR,        // new T / new T(args) / new T[n] / ::new (p) T(args)
@@ -373,6 +380,7 @@ struct Node {
     bool is_deleted;      // NK_FUNCTION: = delete (deleted function)
     bool is_defaulted;    // NK_FUNCTION: = default (defaulted special member)
     bool is_parameter_pack; // NK_DECL: function parameter pack / declarator pack
+    ExecutionDomain execution_domain; // declaration execution domain (default Host)
 
     // C++ constructor initializer list: ClassName(params) : mem1(expr1), mem2(a,b) { body }
     const char** ctor_init_names;  // arena-allocated array of member names

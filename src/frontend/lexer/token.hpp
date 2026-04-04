@@ -172,6 +172,7 @@ enum class TokenKind {
   PragmaPack,    // #pragma pack(...) — lexeme holds the arguments e.g. "1", "push,2", "pop", ""
   PragmaWeak,    // #pragma weak symbol — lexeme holds the symbol name
   PragmaGccVisibility, // #pragma GCC visibility push/pop — lexeme: "push,hidden", "push,default", "pop"
+  PragmaExec,    // #pragma c4 exec host/device — lexeme: "host" or "device"
 
   // Special
   EndOfFile,

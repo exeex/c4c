@@ -345,10 +345,12 @@ class Parser {
   // #pragma GCC visibility state: 0=default, 1=hidden, 2=protected.
   uint8_t visibility_ = 0;
   std::vector<uint8_t> visibility_stack_;  // for push/pop
+  ExecutionDomain execution_domain_ = ExecutionDomain::Host;
 
   // ── pragma helpers ────────────────────────────────────────────────────────
   void handle_pragma_pack(const std::string& args);
   void handle_pragma_gcc_visibility(const std::string& args);
+  void handle_pragma_exec(const std::string& args);
 
   // ── parser diagnostics / debug tracing ───────────────────────────────────
   void set_parser_debug(bool enabled);

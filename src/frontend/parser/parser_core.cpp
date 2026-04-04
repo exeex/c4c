@@ -453,6 +453,14 @@ void Parser::handle_pragma_pack(const std::string& args) {
     }
 }
 
+void Parser::handle_pragma_exec(const std::string& args) {
+    if (args == "host") {
+        execution_domain_ = ExecutionDomain::Host;
+    } else if (args == "device") {
+        execution_domain_ = ExecutionDomain::Device;
+    }
+}
+
 void Parser::set_parser_debug(bool enabled) {
     parser_debug_channels_ = enabled ? ParseDebugAll : ParseDebugNone;
 }
@@ -1371,6 +1379,7 @@ Node* Parser::make_node(NodeKind k, int line) {
     for (int i = 0; i < 8; ++i) n->type.array_dims[i] = -1;
     n->type.inner_rank = -1;
     n->type.is_ptr_to_array = false;
+    n->execution_domain = ExecutionDomain::Host;
     return n;
 }
 
@@ -1517,6 +1526,7 @@ const char* node_kind_name(NodeKind k) {
         case NK_ENUM_DEF:     return "EnumDef";
         case NK_OFFSETOF:     return "Offsetof";
         case NK_PRAGMA_WEAK:  return "PragmaWeak";
+        case NK_PRAGMA_EXEC:  return "PragmaExec";
         case NK_NEW_EXPR:     return "NewExpr";
         case NK_DELETE_EXPR:  return "DeleteExpr";
         case NK_REAL_PART:    return "RealPart";
@@ -1550,6 +1560,7 @@ void ast_dump(const Node* n, int indent) {
         case NK_FUNCTION:  printf("(%s)", n->name ? n->name : "?"); break;
         case NK_DECL:      printf("(%s)", n->name ? n->name : "?"); break;
         case NK_GLOBAL_VAR: printf("(%s)", n->name ? n->name : "?"); break;
+        case NK_PRAGMA_EXEC: printf("(%s)", n->name ? n->name : "?"); break;
         case NK_STRUCT_DEF: printf("(%s%s)", n->is_union ? "union " : "struct ", n->name ? n->name : "?"); break;
         case NK_ENUM_DEF:  printf("(enum %s)", n->name ? n->name : "?"); break;
         case NK_GOTO:      printf("(%s)", n->name ? n->name : "?"); break;

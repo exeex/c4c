@@ -5,6 +5,7 @@
 #include "../../src/codegen/lir/ir.hpp"
 #include "../../src/backend/elf/mod.hpp"
 #include "../../src/backend/linker_common/mod.hpp"
+#include "backend_target_profiles.hpp"
 #include "backend_test_util.hpp"
 
 namespace {

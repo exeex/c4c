@@ -336,6 +336,9 @@ void Preprocessor::process_directive(const std::string& raw_line, std::string& o
     } else if (pragma_text.size() >= 14 && pragma_text.substr(0, 14) == "GCC visibility") {
       // #pragma GCC visibility push(...) / pop — emit for parser.
       out += "#pragma " + pragma_text + "\n";
+    } else if (pragma_text.size() >= 7 && pragma_text.substr(0, 7) == "c4 exec") {
+      // #pragma c4 exec host/device — emit for parser to consume.
+      out += "#pragma " + pragma_text + "\n";
     } else {
       PragmaResult pr = dispatch_pragma(rest, current_file, line_no);
       if (pr == PragmaResult::Unhandled) {
@@ -1095,6 +1098,8 @@ std::string Preprocessor::process_pragma_text(const std::string& pragma_text) {
     return "#pragma pack" + s.substr(4) + "\n";
   } else if (s.substr(0, 4) == "weak") {
     // #pragma weak symbol — emit into output for parser to consume.
+    return "#pragma " + s + "\n";
+  } else if (s.size() >= 7 && s.substr(0, 7) == "c4 exec") {
     return "#pragma " + s + "\n";
   } else {
     // Dispatch to pragma handler (ignores unknown pragmas).

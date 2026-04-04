@@ -3,6 +3,21 @@
 Status: Open
 Last Updated: 2026-04-03
 
+## Priority Note
+
+As of 2026-04-04 this idea is intentionally parked behind
+`ideas/open/40_target_profile_and_execution_domain_foundation.md`.
+
+Reason:
+
+- current Step 2 work is increasingly relying on RISC-V passthrough route tests
+  as the easiest oracle for direct-BIR-vs-LLVM fallback behavior
+- that exposed a prerequisite architectural gap in target-profile ownership and
+  execution-domain modeling
+- resuming this idea after the target-profile foundation lands should make the
+  remaining BIR migration less coupled to raw target-triple plumbing and less
+  biased toward RISC-V-only route coverage
+
 ## Goal
 
 Complete the removal of the legacy `ir.*` backend IR by expanding BIR to full

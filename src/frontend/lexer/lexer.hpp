@@ -48,6 +48,8 @@ class Lexer {
   Token pending_pragma_weak_{};
   bool has_pending_pragma_gcc_visibility_ = false;
   Token pending_pragma_gcc_visibility_{};
+  bool has_pending_pragma_exec_ = false;
+  Token pending_pragma_exec_{};
 };
 
 }  // namespace c4c

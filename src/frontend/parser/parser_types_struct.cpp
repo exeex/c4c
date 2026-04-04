@@ -874,6 +874,7 @@ bool Parser::try_parse_record_constructor_member(
     Node* method = make_node(NK_FUNCTION, cur().line);
     method->type.base = TB_VOID;
     method->name = ctor_name;
+    method->execution_domain = execution_domain_;
     method->variadic = variadic;
     method->is_constructor = true;
     method->n_params = static_cast<int>(params.size());
@@ -972,6 +973,7 @@ bool Parser::try_parse_record_destructor_member(
     Node* method = make_node(NK_FUNCTION, cur().line);
     method->type.base = TB_VOID;
     method->name = arena_.strdup(mangled.c_str());
+    method->execution_domain = execution_domain_;
     method->is_destructor = true;
     method->n_params = 0;
     if (check(TokenKind::LBrace)) {
@@ -1245,6 +1247,7 @@ bool Parser::try_parse_record_method_or_field_member(
         Node* method = make_node(NK_FUNCTION, cur().line);
         method->type = fts;
         method->name = arena_.strdup(op_mangled);
+        method->execution_domain = execution_domain_;
         method->operator_kind = op_kind;
         method->variadic = variadic;
         method->is_const_method = is_method_const;
@@ -1358,6 +1361,7 @@ bool Parser::try_parse_record_method_or_field_member(
             Node* method = make_node(NK_FUNCTION, cur().line);
             method->type = cur_fts;
             method->name = fname;
+            method->execution_domain = execution_domain_;
             method->variadic = variadic;
             method->is_const_method = is_method_const;
             method->is_constexpr = is_method_constexpr;

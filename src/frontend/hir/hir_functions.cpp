@@ -36,7 +36,13 @@ BlockId Lowerer::begin_callable_body_lowering(Function& fn, FunctionCtx& ctx) {
   module_->fn_index[fn.name] = fn.id;
   if (fn.id.value == module_->functions.size()) {
     // Push a skeleton; callers replace it after body lowering completes.
-    module_->functions.push_back(Function{fn.id, fn.name, fn.ns_qual, fn.return_type});
+    Function skeleton{};
+    skeleton.id = fn.id;
+    skeleton.name = fn.name;
+    skeleton.execution_domain = fn.execution_domain;
+    skeleton.ns_qual = fn.ns_qual;
+    skeleton.return_type = fn.return_type;
+    module_->functions.push_back(std::move(skeleton));
   }
 
   const BlockId entry = create_block(ctx);
@@ -131,6 +137,7 @@ void Lowerer::lower_function(const Node* fn_node,
                 fn_node->is_inline,
                 weak_symbols_.count(fn.name) > 0,
                 static_cast<Visibility>(fn_node->visibility)};
+  fn.execution_domain = fn_node->execution_domain;
   fn.attrs.variadic = fn_node->variadic;
   fn.attrs.no_inline = fn_node->type.is_noinline;
   fn.attrs.always_inline = fn_node->type.is_always_inline;
