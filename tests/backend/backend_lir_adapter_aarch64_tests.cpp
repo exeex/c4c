@@ -613,6 +613,89 @@ c4c::codegen::lir::LirModule make_variadic_fp128_printf_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_variadic_nested_fp128_printf_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.type_decls.push_back("%struct.__va_list_tag_ = type { ptr, ptr, ptr, i32, i32 }");
+  module.type_decls.push_back("%struct.hfa31 = type { fp128 }");
+  module.string_pool.push_back(LirStringConst{"@.str0", "%.1Lf,%.1Lf\\00", 12});
+  module.need_va_start = true;
+  module.need_va_end = true;
+  module.need_memcpy = true;
+
+  LirFunction function;
+  function.name = "myprintf";
+  function.signature_text = "define void @myprintf(ptr %p.format, ...)\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(
+      LirAllocaOp{"%lv.ap", "%struct.__va_list_tag_", "", 8});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.x", "%struct.hfa31", "", 16});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirVaStartOp{"%lv.ap"});
+  entry.insts.push_back(
+      LirGepOp{"%t0", "%struct.__va_list_tag_", "%lv.ap", false, {"i32 0", "i32 3"}});
+  entry.insts.push_back(LirLoadOp{"%t1", "i32", "%t0"});
+  entry.insts.push_back(LirCmpOp{"%t2", false, "sge", "i32", "%t1", "0"});
+  entry.terminator = LirCondBr{"%t2", "stack", "regtry"};
+
+  LirBlock regtry;
+  regtry.id = LirBlockId{1};
+  regtry.label = "regtry";
+  regtry.insts.push_back(LirBinOp{"%t3", "add", "i32", "%t1", "16"});
+  regtry.insts.push_back(LirStoreOp{"i32", "%t3", "%t0"});
+  regtry.insts.push_back(LirCmpOp{"%t4", false, "sle", "i32", "%t3", "0"});
+  regtry.terminator = LirCondBr{"%t4", "reg", "stack"};
+
+  LirBlock reg_block;
+  reg_block.id = LirBlockId{2};
+  reg_block.label = "reg";
+  reg_block.insts.push_back(
+      LirGepOp{"%t5", "%struct.__va_list_tag_", "%lv.ap", false, {"i32 0", "i32 1"}});
+  reg_block.insts.push_back(LirLoadOp{"%t6", "ptr", "%t5"});
+  reg_block.insts.push_back(LirGepOp{"%t7", "i8", "%t6", false, {"i32 %t1"}});
+  reg_block.terminator = LirBr{"join"};
+
+  LirBlock stack_block;
+  stack_block.id = LirBlockId{3};
+  stack_block.label = "stack";
+  stack_block.insts.push_back(
+      LirGepOp{"%t8", "%struct.__va_list_tag_", "%lv.ap", false, {"i32 0", "i32 0"}});
+  stack_block.insts.push_back(LirLoadOp{"%t9", "ptr", "%t8"});
+  stack_block.insts.push_back(LirGepOp{"%t10", "i8", "%t9", false, {"i64 16"}});
+  stack_block.insts.push_back(LirStoreOp{"ptr", "%t10", "%t8"});
+  stack_block.terminator = LirBr{"join"};
+
+  LirBlock join_block;
+  join_block.id = LirBlockId{4};
+  join_block.label = "join";
+  join_block.insts.push_back(
+      LirPhiOp{"%t11", "ptr", {{"%t7", "reg"}, {"%t9", "stack"}}});
+  join_block.insts.push_back(LirMemcpyOp{"%lv.x", "%t11", "16", false});
+  join_block.insts.push_back(
+      LirGepOp{"%t12", "[12 x i8]", "@.str0", false, {"i64 0", "i64 0"}});
+  join_block.insts.push_back(
+      LirGepOp{"%t13", "%struct.hfa31", "%lv.x", false, {"i32 0", "i32 0"}});
+  join_block.insts.push_back(LirLoadOp{"%t14", "fp128", "%t13"});
+  join_block.insts.push_back(
+      LirCallOp{"%t15", "i32", "@printf", "(ptr, ...)", "ptr %t12, fp128 %t14, fp128 %t14"});
+  join_block.insts.push_back(LirVaEndOp{"%lv.ap"});
+  join_block.terminator = LirRet{};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(regtry));
+  function.blocks.push_back(std::move(reg_block));
+  function.blocks.push_back(std::move(stack_block));
+  function.blocks.push_back(std::move(join_block));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 
 
 
@@ -3150,6 +3233,20 @@ void test_aarch64_backend_renders_variadic_fp128_printf_slice() {
                       "aarch64 backend should not fall back to LLVM text for the bounded fp128 variadic forwarding slice");
 }
 
+void test_aarch64_backend_renders_nested_variadic_fp128_printf_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_variadic_nested_fp128_printf_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".globl myprintf",
+                  "aarch64 backend should keep variadic callees with nested calls on the native asm path once the bounded va_list walker slice is supported");
+  expect_contains(rendered, "bl printf",
+                  "aarch64 backend should preserve the nested variadic printf call instead of rejecting the whole variadic callee");
+  expect_contains(rendered, "str q0, [sp",
+                  "aarch64 backend should still spill fp128 nested-call payloads onto the outgoing stack area");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend should not fall back to LLVM text for bounded variadic callees that both walk va_list and make nested calls");
+}
+
 void test_aarch64_backend_renders_float_sitofp_equality_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_float_sitofp_equality_module()},
@@ -5489,6 +5586,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_renders_double_printf_call_with_fp_register_args();
   test_aarch64_backend_renders_variadic_hfa_array_call_slice();
   test_aarch64_backend_renders_variadic_fp128_printf_slice();
+  test_aarch64_backend_renders_nested_variadic_fp128_printf_slice();
   test_aarch64_backend_renders_float_sitofp_equality_slice();
   test_aarch64_backend_renders_global_double_less_than_slice();
   test_aarch64_backend_renders_fp_arithmetic_and_double_libcall_slice();

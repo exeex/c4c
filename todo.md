@@ -36,17 +36,13 @@ path and native `fp128` forwarding are implemented.
 
 Immediate next slice:
 
-- implement the remaining native AArch64 variadic call surface needed by
-  `tests/c/external/c-testsuite/src/00204.c`, specifically:
-  aggregate variadic call ownership for nested helper/`printf` calls inside a
-  variadic callee, plus native `fp128` forwarding for `printf("%.1Lf", ...)`
-- once that direct-call slice is native, delete the last `backend-file-aarch64`
-  allowlist tag and the matching `c4cll` file-output fallback branch in the
-  same bounded batch
-- keep the final `backend-file-aarch64` allowlist tag in place until the same
-  bounded batch proves backend-native stdout asm for `00204`
-- do not claim Step 4 deletion progress until that batch removes the last live
-  file-output rescue caller and the matching production fallback branch
+- keep the new bounded variadic-callee-with-nested-calls coverage on the
+  native AArch64 asm path
+- keep `00204` behind the explicit file-output fallback until the unrelated
+  aggregate return/by-value family in the same translation unit is lowered
+  correctly on the native path
+- treat the next removal slice as blocked on a focused aggregate return/by-value
+  audit plus fix batch rather than on the variadic walker itself
 
 Slice deliverables:
 
@@ -135,9 +131,9 @@ Known live references from the current audit:
   variadic HFA-array plus `fp128` forwarding payloads in adapter coverage, but
   `00204` still depends on the larger aggregate/helper variadic ABI surface:
   helper-style `__va_list_tag_` walks for composite variadics that also make
-  nested calls still stay behind the explicit stdout guard, and the full
+  nested calls now work in focused native adapter coverage, but the full
   translation unit still contains unrelated aggregate by-value arg/return seams
-  that crash if the broad `myprintf`-with-calls guard is removed prematurely
+  that crash if the module leaves the fallback route prematurely
 
 Recently completed milestones:
 
@@ -261,6 +257,16 @@ Latest bounded progress:
   slot
 - added focused AArch64 backend adapter regressions for both the bounded
   variadic HFA-array call surface and the bounded `fp128` `printf` forwarding
+- removed the broad general-emitter rejection for variadic callees that both
+  walk `__va_list_tag_` and make nested calls, and replaced it with a narrower
+  module-level guard that still forces fallback when the same translation unit
+  contains large aggregate return shapes the native path does not yet lower
+- added a focused AArch64 backend adapter regression for a variadic callee that
+  walks `va_list` and forwards `fp128` payloads through a nested `printf` call
+- re-probed `00204` after lifting the broad variadic-callee guard, confirmed
+  the next stdout-native crash comes from separate aggregate return/by-value
+  lowering rather than from the nested variadic walker, and kept the explicit
+  file-output fallback route in place for that case
   surface, while explicitly restoring the broader `00204` stdout guard after a
   direct repro showed the same translation unit still contains unrelated
   aggregate by-value seams that are not native-safe yet

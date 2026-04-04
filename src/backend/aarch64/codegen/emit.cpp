@@ -6013,6 +6013,43 @@ static GenTypeLayout gen_type_layout(const std::string& ty,
   return {gen_type_bytes(trimmed), std::max(1, gen_type_bytes(trimmed))};
 }
 
+static std::optional<std::string> gen_parse_function_return_type(
+    std::string_view signature_text) {
+  std::string line(signature_text);
+  while (!line.empty() &&
+         std::isspace(static_cast<unsigned char>(line.front()))) {
+    line.erase(line.begin());
+  }
+  while (!line.empty() &&
+         std::isspace(static_cast<unsigned char>(line.back()))) {
+    line.pop_back();
+  }
+  std::string_view view(line);
+  if (view.rfind("define ", 0) != 0 && view.rfind("declare ", 0) != 0) {
+    return std::nullopt;
+  }
+  const std::size_t keyword_len = view.rfind("define ", 0) == 0 ? 7 : 8;
+  view.remove_prefix(keyword_len);
+  const std::size_t at = view.find('@');
+  if (at == std::string_view::npos) {
+    return std::nullopt;
+  }
+  const std::size_t split = view.rfind(' ', at);
+  if (split == std::string_view::npos) {
+    return std::nullopt;
+  }
+  std::string return_type(view.substr(0, split));
+  while (!return_type.empty() &&
+         std::isspace(static_cast<unsigned char>(return_type.front()))) {
+    return_type.erase(return_type.begin());
+  }
+  while (!return_type.empty() &&
+         std::isspace(static_cast<unsigned char>(return_type.back()))) {
+    return_type.pop_back();
+  }
+  return return_type;
+}
+
 // Parse struct type "{ T1, T2, ... }" — compute byte size.
 static int gen_struct_size(const std::string& ty,
                            const std::vector<std::string>& type_decls) {
@@ -6425,9 +6462,14 @@ static std::optional<std::string> try_emit_general_lir_asm(
   // Reject unsupported features
   for (const auto& fn : module.functions) {
     if (fn.is_declaration) continue;
-    const bool is_variadic_function = fn.signature_text.find("...") != std::string::npos;
-    bool has_va_list_gep = false;
-    bool has_call = false;
+    const auto return_ty = gen_parse_function_return_type(fn.signature_text);
+    if (!return_ty.has_value()) return std::nullopt;
+    const auto return_layout = gen_type_layout(*return_ty, module.type_decls);
+    if (return_layout.size > 8 && !return_ty->empty() &&
+        (*return_ty)[0] != 'i' && *return_ty != "ptr" &&
+        !gen_is_fp_type(*return_ty) && *return_ty != "void") {
+      return std::nullopt;
+    }
     for (const auto& inst : fn.alloca_insts) {
       if (std::holds_alternative<LirInlineAsmOp>(inst)) return std::nullopt;
       if (const auto* va_arg = std::get_if<LirVaArgOp>(&inst)) {
@@ -6440,17 +6482,14 @@ static std::optional<std::string> try_emit_general_lir_asm(
     for (const auto& blk : fn.blocks) {
       for (const auto& inst : blk.insts) {
         if (std::holds_alternative<LirInlineAsmOp>(inst)) return std::nullopt;
-        if (const auto* gep = std::get_if<LirGepOp>(&inst)) {
-          if (gep->element_type.str().find("__va_list_tag_") != std::string::npos) {
-            has_va_list_gep = true;
-          }
-        }
-        if (std::holds_alternative<LirCallOp>(inst)) {
-          has_call = true;
-        }
         if (std::holds_alternative<LirInsertElementOp>(inst)) return std::nullopt;
         if (std::holds_alternative<LirExtractElementOp>(inst)) return std::nullopt;
         if (std::holds_alternative<LirShuffleVectorOp>(inst)) return std::nullopt;
+        if (const auto* call = std::get_if<LirCallOp>(&inst)) {
+          if (call->callee == "@llvm.ptrmask.p0.i64") {
+            return std::nullopt;
+          }
+        }
         if (const auto* va_arg = std::get_if<LirVaArgOp>(&inst)) {
           if (!gen_is_scalar_variadic_type(va_arg->type_str.str()) ||
               va_arg->type_str == "fp128") {
@@ -6465,9 +6504,6 @@ static std::optional<std::string> try_emit_general_lir_asm(
             ret->type_str == "float")
           return std::nullopt;
       }
-    }
-    if (is_variadic_function && has_va_list_gep && has_call) {
-      return std::nullopt;
     }
   }
 
