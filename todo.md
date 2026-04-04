@@ -22,6 +22,10 @@ Completed in this slice: batch-added widened `i8` compare-return route
 coverage (`eq/ne/ult/ule/ugt/uge/slt/sle/sgt/sge`) so this whole lowering
 cluster is now exercised at the explicit BIR pipeline seam instead of only in
 lowering-only tests.
+Completed in this slice: batch-added widened `i8` arithmetic/bitwise/immediate
+route coverage (`add/sub/mul/and/or/xor/shl/lshr/ashr/sdiv/udiv/srem/urem`
+plus immediate return), so the remaining zero-parameter widened `i8` scaffold
+family now has explicit BIR pipeline coverage.
 Next target: refresh the remaining production/test boundary inventory, then
 land the next bounded `lir_to_bir` slice with one target-neutral route/lowering
 test before any target-specific emitter assertions; use `ctest -R backend` as

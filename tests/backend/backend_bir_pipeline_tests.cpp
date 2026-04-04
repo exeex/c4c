@@ -6,6 +6,40 @@
 
 namespace {
 
+using I8ModuleFactory = c4c::codegen::lir::LirModule (*)();
+
+void expect_i8_bir_route(I8ModuleFactory make_module,
+                         std::string_view signature,
+                         std::string_view op_text,
+                         std::string_view message_prefix) {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Riscv64));
+
+  expect_contains(rendered, std::string(signature),
+                  std::string(message_prefix) +
+                      " should preserve the widened i8 signature on the BIR text path");
+  expect_contains(rendered, std::string(op_text),
+                  std::string(message_prefix) +
+                      " should expose the widened i8 operation on the BIR text path");
+}
+
+void expect_i8_bir_immediate_route(I8ModuleFactory make_module,
+                                   std::string_view signature,
+                                   std::string_view ret_text,
+                                   std::string_view message_prefix) {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Riscv64));
+
+  expect_contains(rendered, std::string(signature),
+                  std::string(message_prefix) +
+                      " should preserve the widened i8 signature on the BIR text path");
+  expect_contains(rendered, std::string(ret_text),
+                  std::string(message_prefix) +
+                      " should keep the widened i8 immediate return on the BIR text path");
+}
+
 void test_backend_default_route_stays_on_legacy_lir_entry_target_neutral() {
   const auto route = c4c::backend::select_lowering_route(
       c4c::backend::BackendModuleInput{make_bir_return_add_module()},
@@ -991,7 +1025,7 @@ void test_backend_bir_pipeline_routes_i8_slt_through_bir_text_surface() {
 
   expect_contains(rendered, "bir.func @choose_slt_u() -> i8 {",
                   "explicit BIR selection should preserve the widened i8 signed-less-than signature on the BIR text path");
-  expect_contains(rendered, "%t1 = bir.slt i8 3, 7",
+  expect_contains(rendered, "%t5 = bir.slt i8 3, 7",
                   "explicit BIR selection should expose the widened i8 signed-less-than compare materialization on the BIR text path");
 }
 
@@ -1002,7 +1036,7 @@ void test_backend_bir_pipeline_routes_i8_sle_through_bir_text_surface() {
 
   expect_contains(rendered, "bir.func @choose_sle_u() -> i8 {",
                   "explicit BIR selection should preserve the widened i8 signed-less-than-or-equal signature on the BIR text path");
-  expect_contains(rendered, "%t1 = bir.sle i8 7, 7",
+  expect_contains(rendered, "%t5 = bir.sle i8 7, 7",
                   "explicit BIR selection should expose the widened i8 signed-less-than-or-equal compare materialization on the BIR text path");
 }
 
@@ -1013,7 +1047,7 @@ void test_backend_bir_pipeline_routes_i8_sgt_through_bir_text_surface() {
 
   expect_contains(rendered, "bir.func @choose_sgt_u() -> i8 {",
                   "explicit BIR selection should preserve the widened i8 signed-greater-than signature on the BIR text path");
-  expect_contains(rendered, "%t1 = bir.sgt i8 7, 3",
+  expect_contains(rendered, "%t5 = bir.sgt i8 7, 3",
                   "explicit BIR selection should expose the widened i8 signed-greater-than compare materialization on the BIR text path");
 }
 
@@ -1024,8 +1058,106 @@ void test_backend_bir_pipeline_routes_i8_sge_through_bir_text_surface() {
 
   expect_contains(rendered, "bir.func @choose_sge_u() -> i8 {",
                   "explicit BIR selection should preserve the widened i8 signed-greater-than-or-equal signature on the BIR text path");
-  expect_contains(rendered, "%t1 = bir.sge i8 7, 7",
+  expect_contains(rendered, "%t5 = bir.sge i8 7, 7",
                   "explicit BIR selection should expose the widened i8 signed-greater-than-or-equal compare materialization on the BIR text path");
+}
+
+void test_backend_bir_pipeline_routes_i8_add_through_bir_text_surface() {
+  expect_i8_bir_route(make_bir_i8_return_add_module,
+                      "bir.func @choose_add_u() -> i8 {",
+                      "%t0 = bir.add i8 2, 3",
+                      "explicit BIR selection for widened i8 add");
+}
+
+void test_backend_bir_pipeline_routes_i8_sub_through_bir_text_surface() {
+  expect_i8_bir_route(make_bir_i8_return_sub_module,
+                      "bir.func @choose_sub_u() -> i8 {",
+                      "%t0 = bir.sub i8 9, 4",
+                      "explicit BIR selection for widened i8 sub");
+}
+
+void test_backend_bir_pipeline_routes_i8_mul_through_bir_text_surface() {
+  expect_i8_bir_route(make_bir_i8_return_mul_module,
+                      "bir.func @choose_mul_u() -> i8 {",
+                      "%t0 = bir.mul i8 6, 7",
+                      "explicit BIR selection for widened i8 mul");
+}
+
+void test_backend_bir_pipeline_routes_i8_and_through_bir_text_surface() {
+  expect_i8_bir_route(make_bir_i8_return_and_module,
+                      "bir.func @choose_and_u() -> i8 {",
+                      "%t0 = bir.and i8 14, 11",
+                      "explicit BIR selection for widened i8 and");
+}
+
+void test_backend_bir_pipeline_routes_i8_or_through_bir_text_surface() {
+  expect_i8_bir_route(make_bir_i8_return_or_module,
+                      "bir.func @choose_or_u() -> i8 {",
+                      "%t0 = bir.or i8 12, 3",
+                      "explicit BIR selection for widened i8 or");
+}
+
+void test_backend_bir_pipeline_routes_i8_xor_through_bir_text_surface() {
+  expect_i8_bir_route(make_bir_i8_return_xor_module,
+                      "bir.func @choose_xor_u() -> i8 {",
+                      "%t0 = bir.xor i8 12, 10",
+                      "explicit BIR selection for widened i8 xor");
+}
+
+void test_backend_bir_pipeline_routes_i8_shl_through_bir_text_surface() {
+  expect_i8_bir_route(make_bir_i8_return_shl_module,
+                      "bir.func @choose_shl_u() -> i8 {",
+                      "%t0 = bir.shl i8 3, 4",
+                      "explicit BIR selection for widened i8 shl");
+}
+
+void test_backend_bir_pipeline_routes_i8_lshr_through_bir_text_surface() {
+  expect_i8_bir_route(make_bir_i8_return_lshr_module,
+                      "bir.func @choose_lshr_u() -> i8 {",
+                      "%t0 = bir.lshr i8 16, 2",
+                      "explicit BIR selection for widened i8 lshr");
+}
+
+void test_backend_bir_pipeline_routes_i8_ashr_through_bir_text_surface() {
+  expect_i8_bir_route(make_bir_i8_return_ashr_module,
+                      "bir.func @choose_ashr_u() -> i8 {",
+                      "%t0 = bir.ashr i8 -16, 2",
+                      "explicit BIR selection for widened i8 ashr");
+}
+
+void test_backend_bir_pipeline_routes_i8_sdiv_through_bir_text_surface() {
+  expect_i8_bir_route(make_bir_i8_return_sdiv_module,
+                      "bir.func @choose_sdiv_u() -> i8 {",
+                      "%t0 = bir.sdiv i8 12, 3",
+                      "explicit BIR selection for widened i8 sdiv");
+}
+
+void test_backend_bir_pipeline_routes_i8_udiv_through_bir_text_surface() {
+  expect_i8_bir_route(make_bir_i8_return_udiv_module,
+                      "bir.func @choose_udiv_u() -> i8 {",
+                      "%t0 = bir.udiv i8 12, 3",
+                      "explicit BIR selection for widened i8 udiv");
+}
+
+void test_backend_bir_pipeline_routes_i8_srem_through_bir_text_surface() {
+  expect_i8_bir_route(make_bir_i8_return_srem_module,
+                      "bir.func @choose_srem_u() -> i8 {",
+                      "%t0 = bir.srem i8 14, 5",
+                      "explicit BIR selection for widened i8 srem");
+}
+
+void test_backend_bir_pipeline_routes_i8_urem_through_bir_text_surface() {
+  expect_i8_bir_route(make_bir_i8_return_urem_module,
+                      "bir.func @choose_urem_u() -> i8 {",
+                      "%t0 = bir.urem i8 14, 5",
+                      "explicit BIR selection for widened i8 urem");
+}
+
+void test_backend_bir_pipeline_routes_i8_immediate_through_bir_text_surface() {
+  expect_i8_bir_immediate_route(make_bir_i8_return_immediate_module,
+                                "bir.func @choose_const_u() -> i8 {",
+                                "bir.ret i8 11",
+                                "explicit BIR selection for widened i8 immediate");
 }
 
 void test_backend_bir_pipeline_routes_i64_chain_through_bir_text_surface() {
@@ -1200,6 +1332,20 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_backend_bir_pipeline_routes_i8_sle_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_i8_sgt_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_i8_sge_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_routes_i8_add_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_routes_i8_sub_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_routes_i8_mul_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_routes_i8_and_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_routes_i8_or_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_routes_i8_xor_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_routes_i8_shl_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_routes_i8_lshr_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_routes_i8_ashr_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_routes_i8_sdiv_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_routes_i8_udiv_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_routes_i8_srem_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_routes_i8_urem_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_routes_i8_immediate_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_i64_chain_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_single_param_chain_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_two_param_add_through_bir_text_surface);
