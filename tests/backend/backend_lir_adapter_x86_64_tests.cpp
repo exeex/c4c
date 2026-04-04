@@ -2055,6 +2055,21 @@ void test_x86_backend_renders_local_temp_arithmetic_chain_slice() {
                       "x86 backend should stop falling back to LLVM text for the supported local-slot arithmetic slice");
 }
 
+void test_x86_backend_explicit_lir_emit_surface_matches_local_temp_arithmetic_chain_path() {
+  const auto module = make_local_temp_arithmetic_chain_module();
+  const auto direct_rendered = c4c::backend::x86::emit_module(module);
+  const auto lowered_rendered =
+      c4c::backend::x86::emit_module(c4c::backend::lower_lir_to_backend_module(module));
+
+  if (direct_rendered != lowered_rendered) {
+    fail("x86 local-temp arithmetic regression should keep the direct LIR and explicit lowered backend seams on identical assembly output");
+  }
+  expect_contains(direct_rendered, "mov eax, 0\n",
+                  "x86 explicit LIR emit surface should fold the bounded local-slot arithmetic chain without adapting through backend IR first");
+  expect_not_contains(direct_rendered, "target triple =",
+                      "x86 explicit LIR emit surface should not fall back to LLVM text for the bounded local-slot arithmetic chain");
+}
+
 void test_x86_backend_renders_two_local_temp_return_slice() {
   auto module = make_two_local_temp_return_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -2070,6 +2085,25 @@ void test_x86_backend_renders_two_local_temp_return_slice() {
                   "x86 backend should fold the bounded two-local scalar slot slice into the final immediate return");
   expect_not_contains(rendered, "target triple =",
                       "x86 backend should stop falling back to LLVM text for the supported two-local scalar slot slice");
+}
+
+void test_x86_backend_explicit_lir_emit_surface_matches_two_local_temp_return_path() {
+  auto module = make_two_local_temp_return_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  const auto direct_rendered = c4c::backend::x86::emit_module(module);
+  const auto lowered_rendered =
+      c4c::backend::x86::emit_module(c4c::backend::lower_lir_to_backend_module(module));
+
+  if (direct_rendered != lowered_rendered) {
+    fail("x86 two-local return regression should keep the direct LIR and explicit lowered backend seams on identical assembly output");
+  }
+  expect_contains(direct_rendered, "mov eax, 0\n",
+                  "x86 explicit LIR emit surface should fold the bounded two-local scalar slot slice without adapting through backend IR first");
+  expect_not_contains(direct_rendered, "target triple =",
+                      "x86 explicit LIR emit surface should not fall back to LLVM text for the bounded two-local scalar slot slice");
 }
 
 void test_x86_backend_renders_local_pointer_temp_return_slice() {
@@ -5686,7 +5720,9 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_scaffold_renders_direct_return_sub_immediate_slice);
   RUN_TEST(test_x86_backend_renders_local_temp_sub_slice);
   RUN_TEST(test_x86_backend_renders_local_temp_arithmetic_chain_slice);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_local_temp_arithmetic_chain_path);
   RUN_TEST(test_x86_backend_renders_two_local_temp_return_slice);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_two_local_temp_return_path);
   RUN_TEST(test_x86_backend_renders_local_pointer_temp_return_slice);
   RUN_TEST(test_x86_backend_renders_double_indirect_local_pointer_conditional_return_slice);
   RUN_TEST(test_x86_backend_renders_goto_only_constant_return_slice);

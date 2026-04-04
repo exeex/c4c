@@ -19,6 +19,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <string_view>
 
@@ -326,6 +327,124 @@ std::optional<std::int64_t> parse_i64(const c4c::backend::bir::Value& value) {
     return std::nullopt;
   }
   return value.immediate;
+}
+
+std::optional<std::int64_t> parse_minimal_lir_return_imm(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || !module.globals.empty() ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      function.name != "main" ||
+      !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(function.signature_text) ||
+      function.entry.value != 0 || function.blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  if (entry.label != "entry") {
+    return std::nullopt;
+  }
+
+  const auto* ret = std::get_if<LirRet>(&entry.terminator);
+  if (ret == nullptr || !ret->value_str.has_value() || ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  std::unordered_map<std::string, std::int64_t> values;
+  std::unordered_map<std::string, std::int64_t> slot_values;
+  std::unordered_set<std::string> local_scalar_slots;
+  for (const auto& alloca : function.alloca_insts) {
+    const auto* alloca_inst = std::get_if<LirAllocaOp>(&alloca);
+    if (alloca_inst == nullptr || alloca_inst->type_str != "i32" ||
+        !alloca_inst->count.empty() || alloca_inst->result.empty()) {
+      continue;
+    }
+    if (!local_scalar_slots.insert(alloca_inst->result).second) {
+      return std::nullopt;
+    }
+  }
+
+  auto resolve_value = [&](std::string_view value) -> std::optional<std::int64_t> {
+    if (const auto imm = parse_i64(value); imm.has_value()) {
+      return imm;
+    }
+    const auto it = values.find(std::string(value));
+    if (it == values.end()) {
+      return std::nullopt;
+    }
+    return it->second;
+  };
+
+  for (const auto& inst : entry.insts) {
+    if (const auto* store = std::get_if<LirStoreOp>(&inst)) {
+      if (store->type_str != "i32" ||
+          local_scalar_slots.find(store->ptr) == local_scalar_slots.end()) {
+        return std::nullopt;
+      }
+      const auto value = resolve_value(store->val);
+      if (!value.has_value()) {
+        return std::nullopt;
+      }
+      slot_values[store->ptr] = *value;
+      continue;
+    }
+
+    if (const auto* load = std::get_if<LirLoadOp>(&inst)) {
+      if (load->type_str != "i32" ||
+          local_scalar_slots.find(load->ptr) == local_scalar_slots.end()) {
+        return std::nullopt;
+      }
+      const auto it = slot_values.find(load->ptr);
+      if (it == slot_values.end()) {
+        return std::nullopt;
+      }
+      values[load->result] = it->second;
+      continue;
+    }
+
+    const auto* bin = std::get_if<LirBinOp>(&inst);
+    if (bin == nullptr || bin->type_str != "i32") {
+      return std::nullopt;
+    }
+
+    const auto lhs = resolve_value(bin->lhs);
+    const auto rhs = resolve_value(bin->rhs);
+    if (!lhs.has_value() || !rhs.has_value()) {
+      return std::nullopt;
+    }
+
+    const auto opcode = bin->opcode.typed();
+    if (!opcode.has_value()) {
+      return std::nullopt;
+    }
+
+    std::optional<std::int64_t> result;
+    if (*opcode == LirBinaryOpcode::Add) {
+      result = *lhs + *rhs;
+    } else if (*opcode == LirBinaryOpcode::Sub) {
+      result = *lhs - *rhs;
+    } else if (*opcode == LirBinaryOpcode::Mul) {
+      result = *lhs * *rhs;
+    } else if (*opcode == LirBinaryOpcode::SDiv) {
+      if (*rhs == 0) return std::nullopt;
+      result = *lhs / *rhs;
+    } else if (*opcode == LirBinaryOpcode::SRem) {
+      if (*rhs == 0) return std::nullopt;
+      result = *lhs % *rhs;
+    } else {
+      return std::nullopt;
+    }
+
+    values[bin->result] = *result;
+  }
+
+  return resolve_value(*ret->value_str);
 }
 
 std::optional<c4c::codegen::lir::LirCmpPredicate> lower_bir_cmp_predicate(
@@ -3844,6 +3963,19 @@ void emit_function_prelude(std::ostringstream& out,
   out << symbol << ":\n";
 }
 
+std::string emit_minimal_return_asm(std::string_view target_triple,
+                                    std::int64_t return_imm) {
+  const std::string symbol = asm_symbol_name(target_triple, "main");
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n";
+  out << ".text\n";
+  out << ".globl " << symbol << "\n";
+  out << symbol << ":\n";
+  out << "  mov eax, " << return_imm << "\n";
+  out << "  ret\n";
+  return out.str();
+}
+
 std::string emit_minimal_return_asm(const c4c::backend::BackendModule& module,
                                     std::int64_t return_imm) {
   const std::string symbol = minimal_single_function_symbol(module);
@@ -5327,6 +5459,9 @@ std::optional<std::string> try_emit_direct_lir_module(
       }
       return remove_redundant_self_moves(emit_minimal_call_crossing_direct_call_asm(
           module.target_triple, run_shared_x86_regalloc(*main_fn), *slice));
+    }
+    if (const auto imm = parse_minimal_lir_return_imm(module); imm.has_value()) {
+      return emit_minimal_return_asm(module.target_triple, *imm);
     }
     if (const auto lowered_bir = c4c::backend::try_lower_to_bir(module);
         lowered_bir.has_value()) {
