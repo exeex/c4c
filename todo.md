@@ -10,18 +10,40 @@ Source Plan: plan.md
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
 Current active item: Step 4, keep shrinking the remaining app-layer LLVM asm
-rescue one bounded surface at a time; after re-probing the remaining
-file-routed `backend_runtime_*` cases directly through `c4cll --codegen asm`,
-move the smallest cross-target-ready slice onto the explicit stdout-native asm
-path.
-Next intended slice: convert the bounded `branch_if_*` runtime-positive family
-in `tests/c/internal/InternalTests.cmake` onto the explicit stdout-native asm
-path, then rerun a focused proving subset plus the required backend and
-monotonic regression gates before picking the next remaining file-routed
-family.
+rescue one bounded surface at a time; after converting the bounded
+`branch_if_*` runtime-positive family onto the explicit stdout-native asm
+path, continue with the next remaining file-routed runtime-positive family.
+Next intended slice: convert the bounded global pointer-difference/runtime
+family (`global_char_pointer_diff`, `global_int_pointer_diff`, and
+`global_int_pointer_roundtrip`) in `tests/c/internal/InternalTests.cmake`
+onto the explicit stdout-native asm path, then rerun a focused proving subset
+plus the required backend and monotonic regression gates before picking the
+next remaining file-routed family.
 Blocker: none. The rebuilt `backend_lir_adapter_aarch64_tests` expectation
 drift has been realigned to the current native aarch64 backend seam, and the
 required backend/full-suite acceptance gates are green again.
+Completed in this slice: converted the bounded `branch_if_*`
+runtime-positive family in `tests/c/internal/InternalTests.cmake` onto the
+explicit stdout-native asm path, so these already-native conditional branch
+runtime checks no longer depend on the app-layer `-o <file>.s` LLVM asm
+rescue route.
+Completed in this slice: probed the same `branch_if_*` family directly
+through `build/c4cll --codegen asm` and confirmed that both
+`x86_64-unknown-linux-gnu` and `aarch64-unknown-linux-gnu` already emit
+backend-native stdout assembly for all ten cases on the current backend seam.
+Completed in this slice: regenerated the build files, reran the focused
+proving tests (`backend_runtime_branch_if_eq`, `backend_runtime_branch_if_ge`,
+`backend_runtime_branch_if_gt`, `backend_runtime_branch_if_le`,
+`backend_runtime_branch_if_lt`, `backend_runtime_branch_if_ne`,
+`backend_runtime_branch_if_uge`, `backend_runtime_branch_if_ugt`,
+`backend_runtime_branch_if_ule`, and `backend_runtime_branch_if_ult`) with
+`100% tests passed, 0 tests failed out of 10`, reran the required backend
+regression scope (`ctest --test-dir build -R backend --output-on-failure`)
+with `100% tests passed, 0 tests failed out of 401`, regenerated
+`test_fail_after.log`, and reran the monotonic full-suite guard over
+`test_fail_before.log` versus the refreshed `test_fail_after.log`, with guard
+result `PASS` and `before: passed=394 failed=0 total=394`,
+`after: passed=2840 failed=0 total=2840`, and `new failing tests: 0`.
 Completed in this slice: converted the bounded `local_temp` runtime-positive
 case in `tests/c/internal/InternalTests.cmake` onto the explicit stdout-native
 asm path, so this already-native local temporary runtime check no longer
