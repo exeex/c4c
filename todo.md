@@ -9,13 +9,52 @@ Source Plan: plan.md
 - [ ] Delete app-layer LLVM asm rescue from `c4cll`
 - [ ] Revalidate backend and full-suite behavior without fallback
 
-Current active item: Step 2, add the widened two-parameter predecessor-add plus
-post-join-add `unsigned char` `select ne` parity slice and verify it stays on
-the direct BIR route.
-Next target: if the new predecessor-add `select ne` slice is coverage-only,
-continue the widened `unsigned char` select inventory into the remaining
-split-predecessor/post-join `eq`-only cases to find the next real direct-BIR
-gap.
+Current active item: Step 2, continue the widened two-parameter
+split-predecessor `unsigned char` `select ne` parity inventory with the
+adjacent post-add-sub-add tail slice and verify it stays on the direct BIR
+route.
+Next target: if the split-predecessor `select ne` post-add-sub-add slice is
+also coverage-only, continue through the remaining `eq`-only widened
+split-predecessor tail families in adjacency order until a real direct-BIR gap
+appears.
+
+Completed this iteration:
+- Re-audited the widened two-parameter `unsigned char` split-predecessor
+  select inventory after the simpler predecessor-add `select ne` slice and
+  identified the next adjacent uncovered Step 2 parity gap: the missing
+  split-predecessor add/phi/post-add-sub `two_param_u8_select_ne` route beside
+  the existing `eq` coverage.
+- Added
+  `tests/c/internal/backend_route_case/two_param_u8_select_ne_split_predecessor_add_phi_post_add_sub.c`,
+  proving the bounded two-parameter widened not-equal ternary with
+  split-predecessor arithmetic plus join-local `+ 6 - 2` stays on the backend
+  BIR route instead of falling back to legacy LLVM IR text.
+- Registered
+  `backend_codegen_route_riscv64_two_param_u8_select_ne_split_predecessor_add_phi_post_add_sub_defaults_to_bir`
+  in `tests/c/internal/InternalTests.cmake`, asserting the emitted text
+  contains `bir.func @choose2_add_post_chain_ne_u(i8 %p.x, i8 %p.y) -> i8 {`,
+  predecessor-local `bir.add` arms, `bir.select ne i8 %p.x, %p.y, %t11, %t13`,
+  the join-local `bir.add` and `bir.sub`, and forbids legacy LLVM IR
+  `define i8 @choose2_add_post_chain_ne_u(i8 %p.x, i8 %p.y)`.
+- Added
+  `make_bir_two_param_u8_select_ne_split_predecessor_add_phi_post_join_add_sub_module()`
+  to `tests/backend/backend_bir_test_support.*` plus
+  `test_bir_lowering_accepts_two_param_u8_select_ne_split_predecessor_add_phi_post_join_add_sub_slice()`
+  in `tests/backend/backend_bir_lowering_tests.cpp` to keep the widened
+  split-predecessor not-equal add/sub tail covered below the backend-route
+  harness.
+- Used the new coverage to confirm there was no hidden direct-BIR lowering gap
+  in this slice: the current widened `i8` conditional-phi select lowering
+  already accepts split predecessors, the `ne` predicate, and the join-local
+  `+ 6 - 2` tail, so this iteration advanced Step 2 by closing a parity
+  coverage hole rather than by changing `src/backend/lowering/lir_to_bir.cpp`.
+- Rebuilt `backend_bir_tests` and `c4cll`, reran `./build/backend_bir_tests`,
+  reran
+  `backend_codegen_route_riscv64_two_param_u8_select_ne_split_predecessor_add_phi_post_add_sub_defaults_to_bir`,
+  reran `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `388/388` backend-labeled tests passing, and refreshed `test_fail_after.log`
+  with a full `ctest --test-dir build -j8 --output-on-failure` run showing
+  `2826/2826` tests passing.
 
 Completed this iteration:
 - Re-audited the widened `unsigned char` predecessor/post-join select matrix in
