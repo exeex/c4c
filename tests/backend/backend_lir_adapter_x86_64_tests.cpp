@@ -2509,6 +2509,32 @@ void test_x86_backend_renders_typed_direct_call_local_arg_slice() {
                       "x86 backend should stop falling back to LLVM text for the single-local direct-call slice");
 }
 
+void test_x86_backend_explicit_lir_emit_surface_matches_structured_direct_call_add_imm_path() {
+  auto module = make_typed_direct_call_local_arg_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  const auto direct_rendered = c4c::backend::x86::emit_module(module);
+  const auto lowered =
+      c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_local_arg_module());
+  const auto lowered_rendered = c4c::backend::x86::emit_module(lowered);
+  const auto backend_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_true(direct_rendered == lowered_rendered,
+              "x86 explicit LIR emit surface should stay aligned with the structured single-argument direct-call backend path");
+  expect_true(direct_rendered == backend_rendered,
+              "x86 backend selection should keep the single-argument direct-call LIR slice on the same asm path");
+  expect_contains(direct_rendered, "mov edi, 5\n",
+                  "x86 explicit LIR emit surface should preserve the single-argument direct-call immediate");
+  expect_contains(direct_rendered, "call add_one\n",
+                  "x86 explicit LIR emit surface should preserve the single-argument direct-call helper symbol");
+  expect_not_contains(direct_rendered, "target triple =",
+                      "x86 explicit LIR emit surface should stay on assembly output for the single-argument direct-call slice");
+}
+
 void test_x86_backend_scaffold_accepts_structured_direct_call_add_imm_ir_without_signature_shims() {
   auto lowered =
       c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_local_arg_module());
@@ -5538,6 +5564,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_keeps_renamed_param_slot_call_result_on_asm_path);
   RUN_TEST(test_x86_backend_rejects_param_slot_slice_when_helper_body_contract_disagrees);
   RUN_TEST(test_x86_backend_renders_typed_direct_call_local_arg_slice);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_structured_direct_call_add_imm_path);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_direct_call_add_imm_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_renamed_structured_direct_call_add_imm_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_rejects_structured_direct_call_add_imm_when_helper_body_contract_disagrees);

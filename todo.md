@@ -59,12 +59,29 @@ Completed in this iteration:
   monotonic backend guard with `test_backend_before.log` vs
   `test_backend_after.log` staying flat at `402` passed / `0` failed with no
   new failures
+- `src/backend/lowering/call_decode.hpp` now exposes a direct LIR parser for
+  the bounded x86 single-argument direct-call-add-immediate family, covering
+  both the immediate-call and single-local-slot variants without routing
+  through `lower_lir_to_backend_module(...)`
+- `src/backend/x86/codegen/emit.cpp` now emits that single-argument helper-call
+  family directly from `codegen::lir::LirModule`, so one more live
+  emitter-local legacy lowering seam is gone before the declared-direct-call
+  and call-crossing families
+- `tests/backend/backend_lir_adapter_x86_64_tests.cpp` now includes an
+  explicit direct-LIR-vs-lowered parity regression for the x86
+  single-argument helper-call family, proving that the native LIR entry point,
+  explicit lowered backend path, and backend-selected path stay aligned on asm
+- rebuilt the tree, re-ran `backend_lir_adapter_x86_64_tests`, then re-ran
+  `ctest --test-dir build -R backend --output-on-failure`; the backend scope
+  stayed flat at `402` passed / `0` failed with no new failures, which matches
+  the Step 4 `=` acceptance bar even though the strict monotonic helper script
+  reports `FAIL` when pass count does not increase
 
 Next intended slice:
 
 - cut the next bounded x86 or aarch64 emitter-local legacy lowering seam in the
-  same style, with the strongest candidates still being the remaining compact
-  x86 zero-arg/one-arg direct-call families or the matching aarch64
+  same style, with the strongest candidates now being the remaining compact
+  x86 declared-direct-call or call-crossing families, or the matching aarch64
   zero-arg direct-call family that still re-enter through
   `lower_lir_to_backend_module(...)`
 

@@ -126,6 +126,14 @@ struct ParsedBackendMinimalDirectCallLirModuleView {
   std::int64_t return_imm = 0;
 };
 
+struct ParsedBackendMinimalDirectCallAddImmLirModuleView {
+  const c4c::codegen::lir::LirFunction* helper = nullptr;
+  const c4c::codegen::lir::LirFunction* main_function = nullptr;
+  const c4c::codegen::lir::LirCallOp* call = nullptr;
+  std::int64_t call_arg_imm = 0;
+  std::int64_t add_imm = 0;
+};
+
 struct ParsedBackendMinimalTwoArgDirectCallModuleView {
   const BackendFunction* helper = nullptr;
   const BackendFunction* main_function = nullptr;
@@ -231,6 +239,11 @@ parse_backend_structured_zero_arg_return_imm_function(
 inline std::optional<ParsedBackendStructuredSingleAddImmFunctionView>
 parse_backend_structured_single_add_imm_function(
     const BackendFunction& function,
+    std::optional<std::string_view> expected_name = std::nullopt);
+
+inline std::optional<ParsedBackendSingleAddImmFunctionView>
+parse_backend_single_add_imm_function(
+    const c4c::codegen::lir::LirFunction& function,
     std::optional<std::string_view> expected_name = std::nullopt);
 
 inline std::optional<ParsedBackendStructuredFoldedTwoArgFunctionView>
@@ -1763,6 +1776,108 @@ parse_backend_minimal_direct_call_lir_module(const c4c::codegen::lir::LirModule&
   };
 }
 
+inline std::optional<ParsedBackendMinimalDirectCallAddImmLirModuleView>
+parse_backend_minimal_direct_call_add_imm_lir_module(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 2 || !module.globals.empty() ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const LirFunction* main_fn = nullptr;
+  const LirFunction* helper = nullptr;
+  for (const auto& function : module.functions) {
+    if (function.name == "main") {
+      if (main_fn != nullptr) {
+        return std::nullopt;
+      }
+      main_fn = &function;
+      continue;
+    }
+    if (helper != nullptr) {
+      return std::nullopt;
+    }
+    helper = &function;
+  }
+
+  if (helper == nullptr || main_fn == nullptr || helper->is_declaration || main_fn->is_declaration ||
+      !backend_lir_is_zero_arg_i32_main_definition(main_fn->signature_text) ||
+      helper->entry.value != 0 || main_fn->entry.value != 0 || helper->blocks.size() != 1 ||
+      main_fn->blocks.size() != 1 || !main_fn->stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto helper_shape = parse_backend_single_add_imm_function(*helper, std::nullopt);
+  if (!helper_shape.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto& main_block = main_fn->blocks.front();
+  const auto* main_ret = std::get_if<LirRet>(&main_block.terminator);
+  if (main_block.label != "entry" || main_ret == nullptr || !main_ret->value_str.has_value() ||
+      main_ret->type_str != "i32" || main_block.insts.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* call = std::get_if<LirCallOp>(&main_block.insts.back());
+  if (call == nullptr || call->result.empty() || call->result != *main_ret->value_str) {
+    return std::nullopt;
+  }
+
+  std::optional<std::int64_t> call_arg_imm;
+  if (main_fn->alloca_insts.empty()) {
+    if (main_block.insts.size() != 1) {
+      return std::nullopt;
+    }
+    const auto operand =
+        parse_backend_direct_global_single_typed_call_operand(*call, helper->name, "i32");
+    if (!operand.has_value()) {
+      return std::nullopt;
+    }
+    call_arg_imm = parse_backend_i64_literal(*operand);
+  } else if (main_fn->alloca_insts.size() == 1) {
+    const auto* alloca = std::get_if<LirAllocaOp>(&main_fn->alloca_insts.front());
+    if (alloca == nullptr || alloca->type_str != "i32" || !alloca->count.empty()) {
+      return std::nullopt;
+    }
+
+    const auto parsed_local_call = parse_backend_single_local_typed_call(
+        main_block.insts, alloca->result);
+    if (!parsed_local_call.has_value() || parsed_local_call->arg_load == nullptr ||
+        parsed_local_call->call == nullptr) {
+      return std::nullopt;
+    }
+    const auto operand = parse_backend_direct_global_single_typed_call_operand(
+        *parsed_local_call->call, helper->name, "i32");
+    if (!operand.has_value() || *operand != parsed_local_call->arg_load->result) {
+      return std::nullopt;
+    }
+
+    const auto* store = std::get_if<LirStoreOp>(&main_block.insts.front());
+    if (store == nullptr || store->type_str != "i32" || store->ptr != alloca->result) {
+      return std::nullopt;
+    }
+    call_arg_imm = parse_backend_i64_literal(store->val);
+  } else {
+    return std::nullopt;
+  }
+
+  const auto add_imm = parse_backend_i64_literal(helper_shape->add->rhs);
+  if (!call_arg_imm.has_value() || !add_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  return ParsedBackendMinimalDirectCallAddImmLirModuleView{
+      helper,
+      main_fn,
+      call,
+      *call_arg_imm,
+      *add_imm,
+  };
+}
+
 inline std::optional<std::string_view> parse_backend_single_helper_call_crossing_source_value(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
@@ -1853,7 +1968,7 @@ parse_backend_single_param_slot_add_function(
 inline std::optional<ParsedBackendSingleAddImmFunctionView>
 parse_backend_single_add_imm_function(
     const c4c::codegen::lir::LirFunction& function,
-    std::optional<std::string_view> expected_name = std::nullopt) {
+    std::optional<std::string_view> expected_name) {
   if (const auto parsed =
           parse_backend_single_param_slot_add_function(function, expected_name);
       parsed.has_value()) {
