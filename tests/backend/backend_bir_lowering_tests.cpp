@@ -651,6 +651,18 @@ void test_bir_lowering_accepts_i8_return_srem() {
                   "BIR lowering should return the narrowed i8 srem result directly");
 }
 
+void test_bir_lowering_accepts_i8_return_urem() {
+  const auto lowered = c4c::backend::lower_to_bir(make_bir_i8_return_urem_module());
+  const auto rendered = c4c::backend::bir::print(lowered);
+
+  expect_contains(rendered, "bir.func @choose_urem_u() -> i8 {",
+                  "BIR lowering should keep widened i8 urem slices on the direct BIR route");
+  expect_contains(rendered, "%t0 = bir.urem i8 14, 5",
+                  "BIR lowering should narrow the widened urem slice back to direct i8 BIR");
+  expect_contains(rendered, "bir.ret i8 %t0",
+                  "BIR lowering should return the narrowed i8 urem result directly");
+}
+
 void test_bir_lowering_accepts_tiny_return_lshr_lir_slice() {
   const auto lowered = c4c::backend::lower_to_bir(make_bir_return_lshr_module());
   const auto rendered = c4c::backend::bir::print(lowered);
@@ -1684,6 +1696,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_i8_return_sdiv);
   RUN_TEST(test_bir_lowering_accepts_i8_return_udiv);
   RUN_TEST(test_bir_lowering_accepts_i8_return_srem);
+  RUN_TEST(test_bir_lowering_accepts_i8_return_urem);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_lshr_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_ashr_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_sdiv_lir_slice);
