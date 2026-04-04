@@ -34,6 +34,9 @@ directly, and delete legacy backend-IR plus LLVM rescue paths.
   `lir_to_bir` or fallback selection
 - use `x86_64` / `aarch64` tests when the question is really about emitter
   behavior
+- for this plan's routine validation, use `ctest -R backend` as the required
+  regression scope instead of the full `ctest` suite unless a change clearly
+  escapes backend ownership
 - keep transitional legacy-bucket tests clearly marked and delete them once
   their coverage is either migrated or made irrelevant
 

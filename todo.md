@@ -17,4 +17,5 @@ Completed in this slice: added a structured backend route-selection seam in
 legacy inputs without relying on `riscv64` passthrough text.
 Next target: refresh the remaining production/test boundary inventory, then
 land the next bounded `lir_to_bir` slice with one target-neutral route/lowering
-test before any target-specific emitter assertions.
+test before any target-specific emitter assertions; use `ctest -R backend` as
+the default regression gate for routine slices in this plan.
