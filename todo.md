@@ -11,8 +11,27 @@ Source Plan: plan.md
 
 Current active item: Step 3, remove the last aarch64 direct-LIR/direct-BIR
 helper that still fabricates a legacy-style `BackendModule` solely for
-private-data/symbol reuse, starting with the remaining string-literal label
-path before switching into Step 4 legacy-path deletion.
+private-data/symbol reuse, in this iteration by deleting the remaining
+string-literal/private-data target stub and pinning direct-LIR vs explicit
+lowered-backend asm parity before switching into Step 4 legacy-path deletion.
+Completed in this slice: removed the remaining aarch64 direct-LIR/direct-BIR
+string-literal helper `BackendModule` stub by threading `target_triple`
+directly into the private-data label and minimal string-literal asm helpers,
+while preserving the explicit lowered backend-module path for the structured
+string-pool seam.
+Completed in this slice: added an explicit aarch64 regression proving the
+direct `aarch64::emit_module(LirModule)` string-literal surface still matches
+the explicit lowered backend-module seam byte-for-byte, so the final
+string-pool scaffold removal stays pinned to identical native asm output.
+Completed in this slice: rebuilt the affected backend binaries, reran the
+focused `backend_lir_adapter_aarch64_tests` and `backend_bir_tests`, reran the
+required backend regression scope
+(`ctest --test-dir build -R backend --output-on-failure`), and reran the
+monotonic full-suite guard over `test_fail_before.log` versus a freshly
+regenerated `test_fail_after.log`, with `100% tests passed, 0 tests failed out
+of 394` for backend scope and guard result `PASS` with
+`before: passed=394 failed=0 total=394`,
+`after: passed=2833 failed=0 total=2833`, and `new failing tests: 0`.
 Completed in this slice: removed the remaining aarch64 direct-LIR fast-path
 `BackendModule` scaffolds for bounded constant-return/global-label helpers by
 threading `target_triple` directly into the minimal return, countdown, scalar
@@ -200,8 +219,8 @@ full-suite guard with `test_before.log` vs `test_after.log`, with `100%
 tests passed, 0 tests failed out of 394` for backend scope and `100% tests
 passed, 0 tests failed out of 2833` before and after the full-suite
 comparison.
-Next target: continue Step 3 by removing the remaining aarch64
-string-literal/private-data convenience helper that still manufactures a
-legacy-style target stub solely for label reuse, then reassess whether any
-other direct-BIR/native-emitter symbol helpers remain before starting Step 4
-legacy-path deletion.
+Next target: continue Step 3 by reassessing whether any other direct-BIR or
+native-emitter helper still fabricates a legacy `BackendModule` purely for
+symbol/private-data reuse on x86_64 or aarch64, then start Step 4 deletion of
+the remaining legacy backend IR and backend/app LLVM rescue paths once that
+inventory is empty.

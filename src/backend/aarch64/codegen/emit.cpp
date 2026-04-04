@@ -2393,7 +2393,7 @@ std::string escape_asm_string(std::string_view raw_bytes) {
   return escaped;
 }
 
-std::string asm_private_data_label(const c4c::codegen::lir::LirModule& module,
+std::string asm_private_data_label(std::string_view target_triple,
                                    std::string_view pool_name) {
   std::string label(pool_name);
   if (!label.empty() && label.front() == '@') {
@@ -2403,30 +2403,21 @@ std::string asm_private_data_label(const c4c::codegen::lir::LirModule& module,
     label.erase(label.begin());
   }
 
-  const bool is_darwin =
-      module.target_triple.find("apple-darwin") != std::string::npos;
+  const bool is_darwin = target_triple.find("apple-darwin") != std::string::npos;
   if (is_darwin) {
     return "L." + label;
   }
   return ".L." + label;
 }
 
+std::string asm_private_data_label(const c4c::codegen::lir::LirModule& module,
+                                   std::string_view pool_name) {
+  return asm_private_data_label(module.target_triple, pool_name);
+}
+
 std::string asm_private_data_label(const c4c::backend::BackendModule& module,
                                    std::string_view pool_name) {
-  std::string label(pool_name);
-  if (!label.empty() && label.front() == '@') {
-    label.erase(label.begin());
-  }
-  while (!label.empty() && label.front() == '.') {
-    label.erase(label.begin());
-  }
-
-  const bool is_darwin =
-      module.target_triple.find("apple-darwin") != std::string::npos;
-  if (is_darwin) {
-    return "L." + label;
-  }
-  return ".L." + label;
+  return asm_private_data_label(module.target_triple, pool_name);
 }
 
 std::optional<MinimalStringLiteralCharSlice> parse_minimal_string_literal_char_slice(
@@ -5172,12 +5163,11 @@ std::string emit_minimal_global_int_pointer_diff_asm(
 }
 
 std::string emit_minimal_string_literal_char_asm(
-    const c4c::backend::BackendModule& module,
+    std::string_view target_triple,
     const MinimalStringLiteralCharSlice& slice) {
-  const bool is_darwin =
-      module.target_triple.find("apple-darwin") != std::string::npos;
-  const std::string string_label = asm_private_data_label(module, slice.pool_name);
-  const std::string main_symbol = asm_symbol_name(module, "main");
+  const bool is_darwin = target_triple.find("apple-darwin") != std::string::npos;
+  const std::string string_label = asm_private_data_label(target_triple, slice.pool_name);
+  const std::string main_symbol = asm_symbol_name(target_triple, "main");
 
   std::ostringstream out;
   if (is_darwin) {
@@ -5188,7 +5178,7 @@ std::string emit_minimal_string_literal_char_asm(
   out << string_label << ":\n"
       << "  .asciz \"" << escape_asm_string(slice.raw_bytes) << "\"\n";
   out << ".text\n";
-  emit_function_prelude(out, module, main_symbol, true);
+  emit_function_prelude(out, target_triple, main_symbol, true);
   if (is_darwin) {
     out << "  adrp x8, " << string_label << "@PAGE\n"
         << "  add x8, x8, " << string_label << "@PAGEOFF\n";
@@ -5202,6 +5192,12 @@ std::string emit_minimal_string_literal_char_asm(
   }
   out << "  ret\n";
   return out.str();
+}
+
+std::string emit_minimal_string_literal_char_asm(
+    const c4c::backend::BackendModule& module,
+    const MinimalStringLiteralCharSlice& slice) {
+  return emit_minimal_string_literal_char_asm(module.target_triple, slice);
 }
 
 std::string emit_minimal_local_array_asm(
@@ -7067,9 +7063,7 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
   }
   if (const auto slice = parse_minimal_string_literal_char_slice(prepared);
       slice.has_value()) {
-    c4c::backend::BackendModule target_stub;
-    target_stub.target_triple = prepared.target_triple;
-    return emit_minimal_string_literal_char_asm(target_stub, *slice);
+    return emit_minimal_string_literal_char_asm(prepared.target_triple, *slice);
   }
   if (!needs_nonminimal_lowering) {
     try {
