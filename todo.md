@@ -10,15 +10,43 @@ Source Plan: plan.md
 - [ ] Revalidate backend and full-suite behavior without fallback
 
 Current active item: Step 2, continue tightening the widened-width/source-level
-arithmetic route matrix by carrying the newly landed widened two-parameter
-plain-add parity slice forward to the next smallest uncovered zero-parameter
+arithmetic route matrix by carrying the newly landed zero-parameter `u8`
+subtract parity slice forward to the next smallest uncovered zero-parameter
 `unsigned char` arithmetic-return backend-route gap.
 Next target: audit the remaining direct arithmetic-return route cases in
-`tests/c/internal/InternalTests.cmake`, continuing from the next smallest
-uncovered widened `u8` zero-parameter parity slice adjacent to the newly landed
-`return_add_u8` coverage, starting with the adjacent `return_sub_u8` family; if
-that route test fails, isolate the smallest BIR arithmetic-lowering gap it
-exposes before expanding scope.
+`tests/c/internal/InternalTests.cmake`, continuing from the next uncovered
+widened `u8` zero-parameter parity slice after the landed `return_add_u8` /
+`return_sub_u8` pair, likely starting with the adjacent `return_mul_u8`
+family; if that route test fails, isolate the smallest BIR arithmetic-lowering
+gap it exposes before expanding scope.
+
+Completed this iteration:
+- Re-audited the zero-parameter widened arithmetic-return inventory in
+  `tests/c/internal/InternalTests.cmake` and confirmed the next adjacent
+  parity gap after the landed `return_add_u8` slice was the zero-parameter
+  `return_sub_u8` route beside the existing `return_sub` family.
+- Added `tests/c/internal/backend_route_case/return_sub_u8.c`, proving the
+  bounded zero-parameter `unsigned char` direct-subtract wrapper reaches the
+  backend through BIR instead of falling back to legacy LLVM IR text.
+- Registered
+  `backend_codegen_route_riscv64_return_sub_u8_defaults_to_bir` in
+  `tests/c/internal/InternalTests.cmake`, asserting the emitted text contains
+  `bir.func @choose_sub_u() -> i8 {`, `%t0 = bir.sub i8 9, 4`, `bir.ret i8 %t0`,
+  and forbids legacy LLVM IR `define i8 @choose_sub_u()`.
+- Added `make_bir_i8_return_sub_module()` to
+  `tests/backend/backend_bir_test_support.*` plus
+  `test_bir_lowering_accepts_i8_return_sub()` in
+  `tests/backend/backend_bir_lowering_tests.cpp` to keep the widened
+  zero-parameter `i8` subtract-return shape covered below the backend-route
+  harness.
+- Confirmed the new coverage passed without any
+  `src/backend/lowering/lir_to_bir.cpp` change; the existing widened-`i8`
+  arithmetic lowering already handled the zero-parameter subtract-return shape
+  correctly.
+- Rebuilt `backend_bir_tests`, reran `./build/backend_bir_tests`, reran
+  `backend_codegen_route_riscv64_return_sub_u8_defaults_to_bir`, and reran
+  `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `374/374` backend-labeled tests passing.
 
 Completed this iteration:
 - Re-audited the zero-parameter widened arithmetic-return inventory in
