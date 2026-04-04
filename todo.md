@@ -11,8 +11,17 @@ Source Plan: plan.md
 
 Current active item: Step 2, land the bounded native-emitter coverage slice
 for direct-BIR x86_64/aarch64 handling of the existing
-`choose2_add_post_chain_ne_u` compare-fed `bir.select`/join family with a
-short post-join `add`/`sub` arithmetic tail.
+`choose2_add_post_chain_tail_ne_u` compare-fed `bir.select`/join family with a
+short post-join `add`/`sub`/`add` arithmetic tail.
+Completed in this slice: added explicit direct-BIR x86_64 and aarch64
+pipeline coverage for the existing `choose2_add_post_chain_tail_ne_u`
+split-predecessor join family, proving that both native emitters already
+preserve the bounded post-select `add`/`sub`/`add` arithmetic tail without
+falling back to legacy backend IR.
+Completed in this slice: reran the required regression checks with monotonic
+full-suite results (`100% tests passed, 0 tests failed out of 2833` in both
+`test_before.log` and `test_after.log`), so the added native-emitter coverage
+did not introduce new failures.
 Completed in this slice: taught the direct-BIR x86_64 and aarch64 emitter
 entrypoints to accept the bounded widened `i8` compare-fed `bir.select`
 family with predecessor-local add chains and a short post-select arithmetic
@@ -65,7 +74,7 @@ pipeline coverage for the existing `choose2_add_post_chain_ne_u` split-
 predecessor join family, proving that both native emitters already preserve the
 bounded post-select `add`/`sub` arithmetic tail without falling back to legacy
 backend IR.
-Next target: if the direct-BIR native emitters already handle the
-`choose2_add_post_chain_ne_u` add/sub tail once covered explicitly, move to the
-next bounded join family with a second post-join arithmetic step
-(`choose2_add_post_chain_tail_ne_u`) and extend both targets there.
+Next target: move to the bounded widened `i8`
+`choose2_mixed_post_ne_u` split-predecessor mixed-affine join family and add
+matching direct-BIR x86_64/aarch64 pipeline coverage if the native emitters
+already handle that post-select `add` slice.
