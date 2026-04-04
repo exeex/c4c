@@ -30,16 +30,15 @@ Current exact target for this iteration:
 - keep broader `lir_to_backend_ir.cpp` and `ir.*` removal for later bounded
   batches once another live emitter-local seam is actually gone
 
-This pass narrows that target to the x86 zero-arg direct-call LIR slice:
+This pass narrows that target to the x86 declared-direct-call LIR slice:
 
 - teach `src/backend/x86/codegen/emit.cpp` to recognize and emit the bounded
-  zero-argument helper-call family directly from `codegen::lir::LirModule`
-- delete the matching x86 emitter-local
-  `parse_backend_minimal_direct_call_module(adapted)` fallback leg so direct
-  x86 zero-arg helper-call assembly no longer depends on
-  `lower_lir_to_backend_module(...)`
-- keep the explicit lowered-backend zero-arg direct-call emitter path intact
-  for now, and only trim test coverage if a helper-call-specific legacy
+  declared-direct-call family directly from `codegen::lir::LirModule`
+- cover both repo-native `extern_decls` fixtures and frontend-produced
+  declaration-function LIR so the stdout-contract caller family stays native
+  while one emitter-local legacy lowering seam disappears
+- keep the explicit lowered-backend declared-direct-call emitter path intact
+  for now, and only trim test coverage if a declared-call-specific legacy
   handoff assertion becomes redundant after that deletion
 
 Completed in this iteration:
@@ -76,13 +75,34 @@ Completed in this iteration:
   stayed flat at `402` passed / `0` failed with no new failures, which matches
   the Step 4 `=` acceptance bar even though the strict monotonic helper script
   reports `FAIL` when pass count does not increase
+- `src/backend/lowering/call_decode.hpp` now exposes a direct LIR parser for
+  the bounded x86 declared-direct-call slice, covering both repo-native
+  `extern_decls` fixtures and frontend-produced declaration-function LIR
+  without routing those callers through `lower_lir_to_backend_module(...)`
+- `src/backend/x86/codegen/emit.cpp` now emits that declared-direct-call
+  family directly from `codegen::lir::LirModule`, so one more live
+  emitter-local legacy lowering seam is gone while the explicit lowered
+  backend-module path stays intact for now
+- `tests/backend/backend_x86_64_extracted_tests.cpp` now includes a focused
+  direct-LIR declared-direct-call parser regression, and
+  `tests/backend/backend_lir_adapter_x86_64_tests.cpp` now includes an
+  explicit renamed declared-direct-call LIR-entry regression that proves the
+  native x86 LIR emit surface stays on assembly without lowering through
+  backend IR
+- rebuilt the tree, re-ran `backend_x86_64_extracted_tests`,
+  `backend_lir_adapter_x86_64_tests`, the focused
+  `backend_contract_x86_64_extern_call_stdout_object` contract case, then
+  re-ran `ctest --test-dir build -R backend --output-on-failure`; the backend
+  scope stayed flat at `402` passed / `0` failed, and the monotonic backend
+  guard passed with `test_backend_before.log` vs `test_backend_after.log`
+  staying non-decreasing with no new failures
 
 Next intended slice:
 
 - cut the next bounded x86 or aarch64 emitter-local legacy lowering seam in the
   same style, with the strongest candidates now being the remaining compact
-  x86 declared-direct-call or call-crossing families, or the matching aarch64
-  zero-arg direct-call family that still re-enter through
+  x86 call-crossing family, or the matching aarch64 zero-arg /
+  declared-direct-call families that still re-enter through
   `lower_lir_to_backend_module(...)`
 
 Current bounded deletion slice: keep Step 4 focused on production deletion.

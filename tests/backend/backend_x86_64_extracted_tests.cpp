@@ -71,6 +71,38 @@ void test_x86_64_backend_call_helpers_parse_structured_declared_direct_call_modu
               "x86_64 structured declared direct-call module parser should preserve renamed helper symbols, parameters, direct-call operands, and folded return immediates without target-local helper-body scans");
 }
 
+void test_x86_64_backend_call_helpers_parse_structured_declared_direct_call_lir_module() {
+  auto module = make_x86_extern_decl_inferred_param_module();
+  auto& decl = module.extern_decls.front();
+  auto& main_fn = module.functions.front();
+  auto& call = std::get<c4c::codegen::lir::LirCallOp>(main_fn.blocks.front().insts.front());
+
+  decl.name = "puts_like";
+  call.callee = "@puts_like";
+  call.result = "%t.main.puts_like.structured";
+  call.args_str = "i32 17, i32 23";
+  main_fn.blocks.front().terminator = c4c::codegen::lir::LirRet{std::string("29"), "i32"};
+
+  const auto parsed =
+      c4c::backend::parse_backend_minimal_declared_direct_call_lir_module(module);
+  expect_true(parsed.has_value() && parsed->callee != nullptr &&
+                  parsed->main_function != nullptr && parsed->main_block != nullptr &&
+                  parsed->call != nullptr && parsed->callee->name == "puts_like" &&
+                  parsed->main_function->name == "main" &&
+                  parsed->call->result == "%t.main.puts_like.structured" &&
+                  parsed->parsed_call.symbol_name == "puts_like" &&
+                  parsed->parsed_call.typed_call.args.size() == 2 &&
+                  parsed->parsed_call.typed_call.args[0].operand == "17" &&
+                  parsed->parsed_call.typed_call.args[1].operand == "23" &&
+                  parsed->args.size() == 2 &&
+                  parsed->args[0].kind == c4c::backend::ParsedBackendExternCallArg::Kind::I32Imm &&
+                  parsed->args[0].imm == 17 &&
+                  parsed->args[1].kind == c4c::backend::ParsedBackendExternCallArg::Kind::I32Imm &&
+                  parsed->args[1].imm == 23 &&
+                  !parsed->return_call_result && parsed->return_imm == 29,
+              "x86_64 structured declared direct-call LIR parser should preserve renamed extern declarations, direct-call operands, and folded return immediates without lowering through backend IR");
+}
+
 void test_x86_64_shared_linker_parses_builtin_x86_extern_call_object() {
   const auto object_path = make_temp_output_path("c4c_x86_extern_call_parse");
   const auto staged = c4c::backend::x86::assemble_module(
@@ -133,6 +165,7 @@ void test_x86_64_shared_linker_parses_builtin_x86_extern_call_object() {
 int main(int argc, char* argv[]) {
   if (argc >= 2) test_filter() = argv[1];
   RUN_TEST(test_x86_64_backend_call_helpers_parse_structured_declared_direct_call_module);
+  RUN_TEST(test_x86_64_backend_call_helpers_parse_structured_declared_direct_call_lir_module);
   RUN_TEST(test_x86_64_shared_linker_parses_builtin_x86_extern_call_object);
   check_failures();
   return 0;

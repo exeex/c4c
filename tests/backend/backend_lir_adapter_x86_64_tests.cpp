@@ -4668,6 +4668,29 @@ void test_x86_backend_explicit_lir_emit_surface_matches_structured_declared_dire
                       "x86 explicit LIR emit surface should stay on assembly output for inferred declared direct calls");
 }
 
+void test_x86_backend_explicit_lir_emit_surface_keeps_renamed_declared_direct_call_on_asm_path() {
+  auto module = make_x86_extern_decl_inferred_param_module();
+  auto& decl = module.extern_decls.front();
+  auto& main_fn = module.functions.front();
+  auto& call = std::get<c4c::codegen::lir::LirCallOp>(main_fn.blocks.front().insts.front());
+
+  decl.name = "sum_ext";
+  call.callee = "@sum_ext";
+  call.result = "%t.sum_ext.call";
+  main_fn.blocks.front().terminator = c4c::codegen::lir::LirRet{std::string("%t.sum_ext.call"), "i32"};
+
+  const auto rendered = c4c::backend::x86::emit_module(module);
+
+  expect_contains(rendered, "mov edi, 5\n",
+                  "x86 explicit LIR emit surface should keep decoding the first fixed declared-call argument without lowering through backend IR");
+  expect_contains(rendered, "mov esi, 7\n",
+                  "x86 explicit LIR emit surface should keep decoding the second fixed declared-call argument without lowering through backend IR");
+  expect_contains(rendered, "call sum_ext\n",
+                  "x86 explicit LIR emit surface should keep renamed declared direct calls on the asm path from the native LIR entry surface");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 explicit LIR emit surface should not fall back to LLVM text for renamed declared direct calls");
+}
+
 void test_x86_backend_declared_direct_call_uses_structured_vararg_metadata() {
   auto lowered = c4c::backend::lower_lir_to_backend_module(make_x86_extern_decl_object_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
@@ -5639,6 +5662,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_renders_extern_decl_object_slice_with_typed_zero_arg_spacing);
   RUN_TEST(test_x86_backend_renders_extern_decl_inferred_param_slice);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_structured_declared_direct_call_path);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_keeps_renamed_declared_direct_call_on_asm_path);
   RUN_TEST(test_x86_backend_declared_direct_call_uses_structured_vararg_metadata);
   RUN_TEST(test_x86_backend_explicit_emit_surface_keeps_structured_declared_direct_call_backend_path);
   RUN_TEST(test_x86_backend_declared_direct_call_uses_structured_decl_signature_for_fixed_args);
