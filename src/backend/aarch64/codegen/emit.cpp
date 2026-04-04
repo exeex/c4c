@@ -371,16 +371,19 @@ void emit_function_prelude(std::ostringstream& out,
                            bool is_global);
 
 bool is_minimal_single_function_asm_slice(const c4c::backend::BackendModule& module) {
-  if (module.functions.size() != 1) return false;
-
-  const auto& function = module.functions.front();
-  if (function.is_declaration || !backend_function_is_definition(function.signature) ||
-      !is_i32_scalar_signature_return(function.signature) || function.signature.is_vararg ||
-      function.blocks.size() != 1) {
+  const c4c::backend::BackendFunction* function = nullptr;
+  for (const auto& candidate : module.functions) {
+    if (candidate.is_declaration) continue;
+    if (function != nullptr) return false;
+    function = &candidate;
+  }
+  if (function == nullptr || !backend_function_is_definition(function->signature) ||
+      !is_i32_scalar_signature_return(function->signature) || function->signature.is_vararg ||
+      function->blocks.size() != 1) {
     return false;
   }
 
-  const auto& block = function.blocks.front();
+  const auto& block = function->blocks.front();
   if (block.label != "entry" || !block.terminator.value.has_value() ||
       c4c::backend::backend_return_scalar_type(block.terminator) !=
           c4c::backend::BackendScalarType::I32) {
@@ -390,7 +393,23 @@ bool is_minimal_single_function_asm_slice(const c4c::backend::BackendModule& mod
   return true;
 }
 
+const c4c::backend::BackendFunction* minimal_single_backend_function(
+    const c4c::backend::BackendModule& module) {
+  for (const auto& function : module.functions) {
+    if (!function.is_declaration) {
+      return &function;
+    }
+  }
+  return nullptr;
+}
+
 std::string minimal_single_function_symbol(const c4c::backend::BackendModule& module) {
+  for (const auto& function : module.functions) {
+    if (!function.is_declaration) {
+      return asm_symbol_name(module, function.signature.name);
+    }
+  }
+
   return asm_symbol_name(module, module.functions.front().signature.name);
 }
 
@@ -452,7 +471,11 @@ std::optional<std::int64_t> parse_minimal_return_imm(
     return std::nullopt;
   }
 
-  const auto& block = module.functions.front().blocks.front();
+  const auto* function = minimal_single_backend_function(module);
+  if (function == nullptr) {
+    return std::nullopt;
+  }
+  const auto& block = function->blocks.front();
   if (!block.insts.empty()) {
     return std::nullopt;
   }
@@ -480,7 +503,11 @@ std::optional<std::int64_t> parse_minimal_return_add_imm(
     return std::nullopt;
   }
 
-  const auto& block = module.functions.front().blocks.front();
+  const auto* function = minimal_single_backend_function(module);
+  if (function == nullptr) {
+    return std::nullopt;
+  }
+  const auto& block = function->blocks.front();
   if (block.insts.size() != 1 ||
       !block.terminator.value.has_value() ||
       c4c::backend::backend_return_scalar_type(block.terminator) !=
@@ -537,7 +564,11 @@ std::optional<std::int64_t> parse_minimal_return_sub_imm(
     return std::nullopt;
   }
 
-  const auto& block = module.functions.front().blocks.front();
+  const auto* function = minimal_single_backend_function(module);
+  if (function == nullptr) {
+    return std::nullopt;
+  }
+  const auto& block = function->blocks.front();
   if (block.insts.size() != 1 ||
       !block.terminator.value.has_value() ||
       c4c::backend::backend_return_scalar_type(block.terminator) !=
@@ -594,22 +625,23 @@ std::optional<MinimalAffineReturnSlice> parse_minimal_affine_return_slice(
     return std::nullopt;
   }
 
-  const auto& function = module.functions.front();
-  if (function.signature.params.size() > 2 || function.signature.params.empty()) {
+  const auto* function = minimal_single_backend_function(module);
+  if (function == nullptr || function->signature.params.size() > 2 ||
+      function->signature.params.empty()) {
     return std::nullopt;
   }
-  for (const auto& param : function.signature.params) {
+  for (const auto& param : function->signature.params) {
     if (!is_i32_scalar_param(param)) {
       return std::nullopt;
     }
   }
 
   std::vector<std::string_view> param_names;
-  param_names.reserve(function.signature.params.size());
-  for (const auto& param : function.signature.params) {
+  param_names.reserve(function->signature.params.size());
+  for (const auto& param : function->signature.params) {
     param_names.push_back(param.name);
   }
-  const auto& block = function.blocks.front();
+  const auto& block = function->blocks.front();
   std::unordered_map<std::string, AffineValue> values;
   for (const auto& inst : block.insts) {
     const auto* bin = std::get_if<c4c::backend::BackendBinaryInst>(&inst);
@@ -635,8 +667,8 @@ std::optional<MinimalAffineReturnSlice> parse_minimal_affine_return_slice(
   }
 
   return MinimalAffineReturnSlice{
-      function.signature.name,
-      function.signature.params.size(),
+      function->signature.name,
+      function->signature.params.size(),
       lowered_return->uses_first_param,
       lowered_return->uses_second_param,
       lowered_return->constant,

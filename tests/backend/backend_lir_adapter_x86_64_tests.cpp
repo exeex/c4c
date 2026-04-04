@@ -1921,6 +1921,18 @@ void test_x86_backend_scaffold_renders_direct_return_immediate_slice() {
                   "x86 backend should terminate direct return immediates with ret");
 }
 
+void test_x86_backend_keeps_unused_declaration_off_direct_return_path() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_return_zero_module_with_unused_decl()},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".globl main",
+                  "x86 backend should still publish main when an unused declaration shares the module");
+  expect_contains(rendered, "mov eax, 0",
+                  "x86 backend should keep the direct return-immediate slice on the native asm path even with an unrelated declaration present");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should not fall back to LLVM text just because the module also carries an unused declaration");
+}
+
 void test_x86_backend_scaffold_renders_direct_return_sub_immediate_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_return_sub_module()},
@@ -5445,6 +5457,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_countdown_while_ir_input);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_countdown_while_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_renders_direct_return_immediate_slice);
+  RUN_TEST(test_x86_backend_keeps_unused_declaration_off_direct_return_path);
   RUN_TEST(test_x86_backend_scaffold_renders_direct_return_sub_immediate_slice);
   RUN_TEST(test_x86_backend_renders_local_temp_sub_slice);
   RUN_TEST(test_x86_backend_renders_local_temp_arithmetic_chain_slice);

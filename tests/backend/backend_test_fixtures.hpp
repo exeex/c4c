@@ -5169,6 +5169,20 @@ inline c4c::codegen::lir::LirModule make_return_zero_module() {
   return module;
 }
 
+inline c4c::codegen::lir::LirModule make_return_zero_module_with_unused_decl() {
+  using namespace c4c::codegen::lir;
+
+  auto module = make_return_zero_module();
+
+  LirFunction decl;
+  decl.name = "foo";
+  decl.signature_text = "declare i32 @foo()\n";
+  decl.is_declaration = true;
+
+  module.functions.insert(module.functions.begin(), std::move(decl));
+  return module;
+}
+
 inline c4c::codegen::lir::LirModule make_return_add_module() {
   using namespace c4c::codegen::lir;
 

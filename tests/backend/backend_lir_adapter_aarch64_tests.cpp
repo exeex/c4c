@@ -1004,6 +1004,22 @@ void test_aarch64_backend_scaffold_renders_direct_return_immediate_slice() {
                   "aarch64 scaffold should terminate direct return immediates with ret");
 }
 
+void test_aarch64_backend_keeps_unused_declaration_off_direct_return_path() {
+  auto module = make_return_zero_module_with_unused_decl();
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".globl main",
+                  "aarch64 backend should still publish main when an unused declaration shares the module");
+  expect_contains(rendered, "mov w0, #0",
+                  "aarch64 backend should keep the direct return-immediate slice on the native asm path even with an unrelated declaration present");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend should not fall back to LLVM text just because the module also carries an unused declaration");
+}
+
 void test_aarch64_backend_scaffold_matches_direct_return_immediate_asm() {
   const auto direct_rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_return_zero_module()},
@@ -5097,6 +5113,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_scaffold_accepts_structured_single_function_ir_without_signature_shims();
   test_aarch64_backend_scaffold_accepts_structured_single_function_ir_without_signature_or_binary_type_shims();
   test_aarch64_backend_scaffold_renders_direct_return_immediate_slice();
+  test_aarch64_backend_keeps_unused_declaration_off_direct_return_path();
   test_aarch64_backend_scaffold_matches_direct_return_immediate_asm();
   test_aarch64_backend_scaffold_matches_direct_constant_conditional_goto_return_asm();
   test_aarch64_backend_scaffold_matches_direct_i64_constant_conditional_goto_return_asm();

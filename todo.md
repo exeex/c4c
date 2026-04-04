@@ -97,8 +97,8 @@ Known live references from the current audit:
   backend families now run through stdout-native asm by default
 - the remaining live file-output asm rescue users are now explicit allowlist
   tags for external/backend AArch64 c-testsuite coverage:
-  `00108`, `00113`, `00116`, `00119`, `00121`, `00123`, `00174`,
-  `00175`, and `00204`
+  `00113`, `00116`, `00119`, `00121`, `00123`, `00174`, `00175`,
+  and `00204`
 - `c4cll` now rejects file-output LLVM asm fallback on non-AArch64 targets;
   the app-layer rescue path is retained only for the tagged AArch64 family
 
@@ -134,15 +134,20 @@ Recently completed milestones:
   zero-arg `void` helper-call plus immediate-`0` return shape on the backend
   asm path, and removed external/backend AArch64 c-testsuite case `00080`
   from the remaining file-output rescue bucket
+- taught the minimal single-function return matchers to ignore unrelated
+  declarations when there is exactly one real definition, added AArch64/x86
+  backend regressions for that seam, and removed external/backend AArch64
+  c-testsuite case `00108` from the remaining file-output rescue bucket
 
 Validation baseline:
 
 - blocker: none
 - latest focused proving set:
-  `backend_lir_adapter_tests void_direct_call_imm_return`,
-  `backend_lir_adapter_aarch64_tests void_direct_call_imm_return`,
+  `build/backend_lir_adapter_aarch64_tests`,
+  `build/backend_lir_adapter_x86_64_tests`,
+  `ctest --test-dir build -R "c_testsuite(_aarch64_backend)?_src_00108_c" --output-on-failure`,
   and
-  `build/c4cll --codegen asm --target aarch64-unknown-linux-gnu tests/c/external/c-testsuite/src/00080.c`
+  `build/c4cll --codegen asm --target aarch64-unknown-linux-gnu tests/c/external/c-testsuite/src/00108.c`
   with native asm emitted on stdout and exit `0`
 - latest backend regression scope:
   `ctest --test-dir build -R backend --output-on-failure`
@@ -150,6 +155,7 @@ Validation baseline:
 - latest monotonic guard:
   `test_fail_before.log` vs `test_fail_after.log`
   result `PASS`,
+  mode `--allow-non-decreasing-passed`,
   `before: passed=2841 failed=0 total=2841`,
   `after: passed=2841 failed=0 total=2841`,
   `new failing tests: 0`
