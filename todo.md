@@ -30,6 +30,36 @@ Current exact target for this iteration:
 - keep broader `lir_to_backend_ir.cpp` and `ir.*` removal for later bounded
   batches once another live emitter-local seam is actually gone
 
+This pass narrows that target to the x86 direct-LIR countdown-while slice:
+
+- teach `src/backend/x86/codegen/emit.cpp` to recognize and emit the bounded
+  countdown-while loop directly from `codegen::lir::LirModule`
+- delete the matching x86 emitter-local
+  `parse_minimal_countdown_loop_slice(adapted)` fallback leg so direct x86
+  countdown assembly no longer depends on `lower_lir_to_backend_module(...)`
+- keep the explicit lowered-backend countdown emitter path intact for now, and
+  only trim test coverage if a countdown-specific legacy handoff assertion
+  becomes redundant after that deletion
+
+Completed in this iteration:
+
+- `src/backend/x86/codegen/emit.cpp` now recognizes the bounded countdown-while
+  loop directly from `codegen::lir::LirModule` and emits native x86 asm without
+  first lowering through `lower_lir_to_backend_module(...)`
+- the x86 direct emitter no longer carries the matching
+  `parse_minimal_countdown_loop_slice(adapted)` fallback branch, so that one
+  live emitter-local legacy lowering seam is gone
+- `tests/backend/backend_lir_adapter_x86_64_tests.cpp` now includes a focused
+  direct-x86 typed countdown regression that exercises the native LIR entry
+  point instead of only the higher-level backend wrapper
+
+Next intended slice:
+
+- cut the next bounded x86 or aarch64 emitter-local legacy lowering seam in the
+  same style, with the strongest candidates still being countdown/phi-style
+  control-flow families that already have compact direct-LIR structure
+  available to the native emitters
+
 Current bounded deletion slice: keep Step 4 focused on production deletion.
 - delete the generic backend-entry `LegacyPreloweredModule` route and the stale
   `BackendPipeline` toggle that no longer changed runtime behavior
@@ -258,6 +288,11 @@ Validation baseline:
   correctness blocker in that testcase
 - latest backend regression scope:
   `ctest --test-dir build -R backend --output-on-failure`
+- refreshed backend regression guard for this slice:
+  `test_backend_before.log` vs `test_backend_after.log` both report
+  `402` passed / `0` failed, with the focused
+  `ctest --test-dir build -R backend_lir_adapter_x86_64_tests --output-on-failure`
+  regression also green
   with `100% tests passed, 0 tests failed out of 402`
 - latest monotonic guard:
   `test_backend_before.log` vs `test_backend_after.log`

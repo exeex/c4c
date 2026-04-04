@@ -1908,6 +1908,20 @@ void test_x86_backend_scaffold_accepts_structured_countdown_while_ir_without_sig
                       "x86 backend seam should not fall back when lowered countdown loops rely only on structured signature metadata");
 }
 
+void test_x86_backend_scaffold_accepts_direct_typed_countdown_while_lir_input() {
+  const auto rendered =
+      c4c::backend::x86::emit_module(make_typed_countdown_while_return_module());
+
+  expect_contains(rendered, ".Lblock_1:",
+                  "x86 direct-LIR countdown regression should keep the loop header on the native asm path");
+  expect_contains(rendered, "  sub eax, 1\n",
+                  "x86 direct-LIR countdown regression should keep the typed decrement on the native asm path");
+  expect_contains(rendered, "  jmp .Lblock_1\n",
+                  "x86 direct-LIR countdown regression should keep the loop backedge on the native asm path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 direct-LIR countdown regression should not fall back to LLVM text for the typed countdown loop");
+}
+
 void test_x86_backend_scaffold_renders_direct_return_immediate_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_return_zero_module()},
@@ -5455,6 +5469,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mixed_predecessor_five_op_chain_and_five_op_chain_post_join_add_ir_input);
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_countdown_while_ir_input);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_countdown_while_ir_without_signature_shims);
+  RUN_TEST(test_x86_backend_scaffold_accepts_direct_typed_countdown_while_lir_input);
   RUN_TEST(test_x86_backend_scaffold_renders_direct_return_immediate_slice);
   RUN_TEST(test_x86_backend_keeps_unused_declaration_off_direct_return_path);
   RUN_TEST(test_x86_backend_scaffold_renders_direct_return_sub_immediate_slice);
