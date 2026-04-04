@@ -78,7 +78,18 @@ pipeline coverage for the widened `i8` `choose2_mixed_post_ne_u`
 split-predecessor mixed-affine join family, proving that both native emitters
 already preserve the bounded predecessor-local `add`/`sub` affine chains plus
 the short post-select `add` tail without falling back to legacy backend IR.
+Completed in this slice: added explicit direct-BIR x86_64 and aarch64
+pipeline coverage for the widened `i8` `choose2_mixed_post_chain_ne_u`
+split-predecessor mixed-affine join family, proving that both native emitters
+already preserve the bounded predecessor-local `add`/`sub` affine chains plus
+the short post-select `add`/`sub` tail without falling back to legacy backend
+IR.
+Completed in this slice: reran the required regression checks with monotonic
+full-suite results (`100% tests passed, 0 tests failed out of 2833` in both
+`test_before.log` and `test_after.log`), so the added native-emitter coverage
+did not introduce new failures.
 Next target: move to the bounded widened `i8`
-`choose2_mixed_post_chain_ne_u` split-predecessor mixed-affine join family and
-add matching direct-BIR x86_64/aarch64 pipeline coverage for the post-select
-`add`/`sub` arithmetic tail if the native emitters already handle that slice.
+`choose2_mixed_post_chain_tail_u` split-predecessor mixed-affine join family
+and add matching direct-BIR x86_64/aarch64 pipeline coverage for the
+post-select `add`/`sub`/`add` arithmetic tail if the native emitters already
+handle that slice.
