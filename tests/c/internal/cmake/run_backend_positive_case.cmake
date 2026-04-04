@@ -18,6 +18,10 @@ if(NOT DEFINED BACKEND_OUTPUT_KIND OR "${BACKEND_OUTPUT_KIND}" STREQUAL "")
   set(BACKEND_OUTPUT_KIND "llvm-ir")
 endif()
 
+if(NOT DEFINED BACKEND_ASM_SOURCE OR "${BACKEND_ASM_SOURCE}" STREQUAL "")
+  set(BACKEND_ASM_SOURCE "file")
+endif()
+
 get_filename_component(out_ll_dir "${OUT_LL}" DIRECTORY)
 get_filename_component(out_c2ll_dir "${OUT_C2LL_BIN}" DIRECTORY)
 file(MAKE_DIRECTORY "${out_ll_dir}")
@@ -32,18 +36,32 @@ if(BACKEND_OUTPUT_KIND STREQUAL "asm")
   endif()
 endif()
 
-execute_process(
-  COMMAND "${COMPILER}" --codegen asm --target "${TARGET_TRIPLE}" "${SRC}" -o "${backend_output_path}"
-  TIMEOUT "${CASE_TIMEOUT_SEC}"
-  RESULT_VARIABLE frontend_rc
-  OUTPUT_VARIABLE frontend_out
-  ERROR_VARIABLE frontend_err
-)
+if(BACKEND_OUTPUT_KIND STREQUAL "asm" AND BACKEND_ASM_SOURCE STREQUAL "stdout")
+  execute_process(
+    COMMAND "${COMPILER}" --codegen asm --target "${TARGET_TRIPLE}" "${SRC}"
+    TIMEOUT "${CASE_TIMEOUT_SEC}"
+    RESULT_VARIABLE frontend_rc
+    OUTPUT_VARIABLE frontend_out
+    ERROR_VARIABLE frontend_err
+  )
+else()
+  execute_process(
+    COMMAND "${COMPILER}" --codegen asm --target "${TARGET_TRIPLE}" "${SRC}" -o "${backend_output_path}"
+    TIMEOUT "${CASE_TIMEOUT_SEC}"
+    RESULT_VARIABLE frontend_rc
+    OUTPUT_VARIABLE frontend_out
+    ERROR_VARIABLE frontend_err
+  )
+endif()
 if(frontend_rc MATCHES "timeout")
   message(FATAL_ERROR "[BACKEND_FRONTEND_TIMEOUT] ${SRC} exceeded ${CASE_TIMEOUT_SEC}s")
 endif()
 if(NOT frontend_rc EQUAL 0)
   message(FATAL_ERROR "[BACKEND_FRONTEND_FAIL] ${SRC}\n${frontend_out}${frontend_err}")
+endif()
+
+if(BACKEND_OUTPUT_KIND STREQUAL "asm" AND BACKEND_ASM_SOURCE STREQUAL "stdout")
+  file(WRITE "${backend_output_path}" "${frontend_out}")
 endif()
 
 if(NOT EXISTS "${backend_output_path}")

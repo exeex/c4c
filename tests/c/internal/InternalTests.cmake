@@ -1664,6 +1664,7 @@ if(CLANG_EXECUTABLE)
   if(BACKEND_RUNTIME_TARGET_TRIPLE)
     foreach(src IN LISTS INTERNAL_BACKEND_TEST_SRCS)
       get_filename_component(stem "${src}" NAME_WE)
+      set(backend_asm_source "file")
       if(stem STREQUAL "call_helper_def" OR stem STREQUAL "call_helper")
         continue()
       endif()
@@ -1765,9 +1766,11 @@ if(CLANG_EXECUTABLE)
       elseif(stem STREQUAL "global_load")
         set(expect_exit_code 11)
         set(backend_output_kind "asm")
+        set(backend_asm_source "stdout")
       elseif(stem STREQUAL "global_load_zero_init")
         set(expect_exit_code 0)
         set(backend_output_kind "asm")
+        set(backend_asm_source "stdout")
       elseif(stem STREQUAL "extern_global_array")
         continue()
       elseif(stem STREQUAL "extern_global_array_def")
@@ -1803,6 +1806,7 @@ if(CLANG_EXECUTABLE)
                 -DSRC=${src}
                 -DTARGET_TRIPLE=${BACKEND_RUNTIME_TARGET_TRIPLE}
                 -DBACKEND_OUTPUT_KIND=${backend_output_kind}
+                -DBACKEND_ASM_SOURCE=${backend_asm_source}
                 -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/${stem}.ll
                 -DEXPECT_EXIT_CODE=${expect_exit_code}
                 -DOUT_C2LL_BIN=${CMAKE_BINARY_DIR}/internal_backend/${stem}.bin
