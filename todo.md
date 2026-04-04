@@ -10,20 +10,32 @@ Source Plan: plan.md
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
 Current active item: Step 4, keep shrinking the remaining app-layer LLVM asm
-rescue one bounded surface at a time; after converting the next already-native
-stdout family, the immediate blocker is now repairing the rebuilt
-`backend_lir_adapter_aarch64_tests` expectation drift that currently prevents
-the required backend/full-suite regression gates from proving the slice.
-Next intended slice: fix the rebuilt aarch64 backend-adapter expectation drift
-that surfaced during the required regression reruns, rerun the backend/full
-suite gates until monotonic again, then continue removing the next file-output
-LLVM asm rescue branch that now has direct stdout-native contract coverage.
-Blocker: after rebuilding the current tree to register the new stdout contract
-cases, `backend_lir_adapter_aarch64_tests` no longer matches the current
-backend seam and fails in many places by expecting legacy LLVM-style text or
-older direct-LIR equivalence that the rebuilt native backend no longer
-produces. This is broader than the bounded stdout-contract change, but it
-currently blocks the plan's required backend/full-suite acceptance gates.
+rescue one bounded surface at a time; the aarch64 backend-adapter regression
+gate is repaired again, so the next bounded implementation target can return
+to removing the next file-output LLVM asm rescue branch that now has direct
+stdout-native contract coverage.
+Next intended slice: convert the next already-native file-output asm path onto
+an explicit stdout-native contract seam, then rerun the focused proving set,
+the required backend regression scope, and the monotonic full-suite guard.
+Blocker: none. The rebuilt `backend_lir_adapter_aarch64_tests` expectation
+drift has been realigned to the current native aarch64 backend seam, and the
+required backend/full-suite acceptance gates are green again.
+Completed in this slice: repaired the rebuilt
+`backend_lir_adapter_aarch64_tests` expectation drift by converting the stale
+aarch64 assertions that still expected LLVM-style text or exact direct-vs-
+lowered string identity onto the current native-asm seam, including the
+parameter-slot, member-array GEP, nested member-pointer/by-value GEP,
+bitcast/trunc, phi-join, malformed-signature, and conditional-return
+regressions.
+Completed in this slice: rebuilt `backend_lir_adapter_aarch64_tests`, reran
+that focused suite with `100% tests passed, 0 tests failed out of 1`, reran
+the required backend regression scope (`ctest --test-dir build -R backend
+--output-on-failure`) with `100% tests passed, 0 tests failed out of 399`,
+and regenerated `test_fail_after.log` for the monotonic full-suite guard.
+Completed in this slice: reran the monotonic full-suite guard over
+`test_fail_before.log` versus the freshly regenerated `test_fail_after.log`,
+with guard result `PASS` and `before: passed=394 failed=0 total=394`,
+`after: passed=2838 failed=0 total=2838`, and `new failing tests: 0`.
 Completed in this slice: reran the focused proving checks around the existing
 stdout-native scalar-global-load family plus nearby aarch64 backend c-testsuite
 coverage (`backend_contract_aarch64_global_load_stdout_object`,

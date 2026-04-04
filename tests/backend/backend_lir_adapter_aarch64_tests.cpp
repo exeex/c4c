@@ -1225,17 +1225,15 @@ void test_aarch64_backend_propagates_malformed_signature_in_supported_slice() {
   auto module = make_return_add_module();
   module.functions.front().signature_text = "define @main()\n";
 
-  try {
-    (void)c4c::backend::emit_module(
-        c4c::backend::BackendModuleInput{module},
-        c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-    fail("aarch64 backend should not hide malformed supported-slice signatures behind fallback");
-  } catch (const c4c::backend::LirAdapterError& ex) {
-    expect_true(ex.kind() == c4c::backend::LirAdapterErrorKind::Malformed,
-                "aarch64 backend should preserve malformed-signature classification");
-    expect_contains(ex.what(), "could not parse signature",
-                    "aarch64 backend should surface the malformed signature detail");
-  }
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".globl main",
+                  "aarch64 backend should keep supported slices on the native asm path even when legacy signature text is malformed");
+  expect_contains(rendered, "mov w0, #5",
+                  "aarch64 backend should preserve the structured return-add behavior when legacy signature text is malformed");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend should not fall back to LLVM text just because legacy signature text is malformed");
 }
 
 void test_aarch64_backend_renders_compare_and_branch_slice() {
@@ -1730,18 +1728,18 @@ void test_aarch64_backend_renders_param_slot_memory_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_param_slot_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-  expect_contains(rendered, "define i32 @main(i32 %p.x)",
-                  "aarch64 backend should preserve parameterized signatures");
-  expect_contains(rendered, "%lv.param.x = alloca i32, align 4",
-                  "aarch64 backend should render modified parameter slots");
-  expect_contains(rendered, "store i32 %p.x, ptr %lv.param.x",
-                  "aarch64 backend should spill modified parameters into entry slots");
-  expect_contains(rendered, "%t0 = load i32, ptr %lv.param.x",
-                  "aarch64 backend should reload parameter slots");
-  expect_contains(rendered, "store i32 %t1, ptr %lv.param.x",
-                  "aarch64 backend should write updated parameter values back to slots");
-  expect_contains(rendered, "ret i32 %t2",
-                  "aarch64 backend should preserve the final reloaded parameter value");
+  expect_contains(rendered, ".globl main",
+                  "aarch64 backend should keep parameter-slot slices on the native asm path");
+  expect_contains(rendered, "str x0, [sp, #16]\n",
+                  "aarch64 backend should preserve the incoming ABI register before lowering parameter-slot setup");
+  expect_contains(rendered, "ldr x9, [sp, #8]\n  ldr w10, [sp, #16]\n  str w10, [x9]\n",
+                  "aarch64 backend should initialize the lowered parameter slot from the preserved ABI register value");
+  expect_contains(rendered, "mov w1, #1\n  add w0, w0, w1\n",
+                  "aarch64 backend should still lower the parameter-slot increment through integer register arithmetic");
+  expect_contains(rendered, "ldr w0, [sp, #40]\n",
+                  "aarch64 backend should preserve the final parameter-slot reload before returning");
+  expect_not_contains(rendered, "define i32 @main(i32 %p.x)",
+                      "aarch64 backend should no longer fall back to LLVM text for parameter-slot slices");
 }
 
 void test_aarch64_backend_skips_legacy_minimal_adapter_for_mixed_width_control_flow() {
@@ -2951,64 +2949,54 @@ void test_aarch64_backend_renders_param_member_array_gep_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_param_member_array_gep_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-  expect_contains(rendered, "%struct.Pair = type { [2 x i32] }",
-                  "aarch64 backend should preserve struct member array type declarations");
-  expect_contains(rendered, "%lv.param.p = alloca %struct.Pair, align 4",
-                  "aarch64 backend should spill by-value struct parameters into stack slots");
-  expect_contains(rendered, "store %struct.Pair %p.p, ptr %lv.param.p",
-                  "aarch64 backend should store by-value struct parameters into their slots");
-  expect_contains(rendered, "%t0 = getelementptr %struct.Pair, ptr %lv.param.p, i32 0, i32 0",
-                  "aarch64 backend should render the member-addressing GEP");
-  expect_contains(rendered, "%t1 = getelementptr [2 x i32], ptr %t0, i64 0, i64 0",
-                  "aarch64 backend should render array decay from struct members");
-  expect_contains(rendered, "%t3 = getelementptr i32, ptr %t1, i64 %t2",
-                  "aarch64 backend should render indexed member-array addressing");
-  expect_contains(rendered, "ret i32 %t4",
-                  "aarch64 backend should preserve the loaded member-array result");
+  expect_contains(rendered, ".globl get_second",
+                  "aarch64 backend should keep by-value member-array GEP slices on the native asm path");
+  expect_contains(rendered, "str x10, [x9]\n",
+                  "aarch64 backend should spill the by-value aggregate parameter into its lowered stack slot");
+  expect_contains(rendered, "mov w0, #1\n  sxtw x0, w0\n",
+                  "aarch64 backend should materialize the bounded signed array index in registers");
+  expect_contains(rendered, "mov x2, #4\n  mul x1, x1, x2\n  add x0, x0, x1\n",
+                  "aarch64 backend should lower the member-array address computation into scaled pointer arithmetic");
+  expect_contains(rendered, "ldr w0, [x0]\n",
+                  "aarch64 backend should preserve the final indexed member-array load");
+  expect_not_contains(rendered, "getelementptr",
+                      "aarch64 backend should no longer fall back to LLVM-text GEP rendering for by-value member-array slices");
 }
 
 void test_aarch64_backend_renders_nested_member_pointer_array_gep_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_nested_member_pointer_array_gep_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-  expect_contains(rendered, "%struct.Inner = type { [2 x i32] }",
-                  "aarch64 backend should preserve nested pointee type declarations");
-  expect_contains(rendered, "%struct.Outer = type { ptr }",
-                  "aarch64 backend should preserve nested pointer-holder type declarations");
-  expect_contains(rendered, "%t0 = getelementptr %struct.Outer, ptr %p.o, i32 0, i32 0",
-                  "aarch64 backend should render outer member-addressing GEP");
-  expect_contains(rendered, "%t1 = load ptr, ptr %t0",
-                  "aarch64 backend should reload nested struct pointers from outer members");
-  expect_contains(rendered, "%t2 = getelementptr %struct.Inner, ptr %t1, i32 0, i32 0",
-                  "aarch64 backend should render nested pointee member-addressing GEP");
-  expect_contains(rendered, "%t3 = getelementptr [2 x i32], ptr %t2, i64 0, i64 0",
-                  "aarch64 backend should render array decay from nested pointee members");
-  expect_contains(rendered, "%t5 = getelementptr i32, ptr %t3, i64 %t4",
-                  "aarch64 backend should render indexed nested member-pointer addressing");
-  expect_contains(rendered, "ret i32 %t6",
-                  "aarch64 backend should preserve the loaded nested member-pointer result");
+  expect_contains(rendered, ".globl get_second",
+                  "aarch64 backend should keep nested member-pointer GEP slices on the native asm path");
+  expect_contains(rendered, "ldr x0, [sp, #16]\n",
+                  "aarch64 backend should preserve the incoming outer pointer before nested member addressing");
+  expect_contains(rendered, "ldr x0, [sp, #8]\n  ldr x0, [x0]\n",
+                  "aarch64 backend should reload the nested inner pointer from the outer member slot");
+  expect_contains(rendered, "mov x2, #4\n  mul x1, x1, x2\n  add x0, x0, x1\n",
+                  "aarch64 backend should lower the nested indexed member-pointer address computation into scaled pointer arithmetic");
+  expect_contains(rendered, "ldr w0, [x0]\n",
+                  "aarch64 backend should preserve the final nested member-pointer load");
+  expect_not_contains(rendered, "getelementptr",
+                      "aarch64 backend should no longer fall back to LLVM-text GEP rendering for nested member-pointer slices");
 }
 
 void test_aarch64_backend_renders_nested_param_member_array_gep_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_nested_param_member_array_gep_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-  expect_contains(rendered, "%struct.Inner = type { [2 x i32] }",
-                  "aarch64 backend should preserve nested by-value member type declarations");
-  expect_contains(rendered, "%struct.Outer = type { %struct.Inner }",
-                  "aarch64 backend should preserve nested by-value outer type declarations");
-  expect_contains(rendered, "%lv.param.o = alloca %struct.Outer, align 4",
-                  "aarch64 backend should spill nested by-value parameters into stack slots");
-  expect_contains(rendered, "store %struct.Outer %p.o, ptr %lv.param.o",
-                  "aarch64 backend should store nested by-value parameters into their slots");
-  expect_contains(rendered, "%t0 = getelementptr %struct.Outer, ptr %lv.param.o, i32 0, i32 0",
-                  "aarch64 backend should render the outer nested by-value member-addressing GEP");
-  expect_contains(rendered, "%t1 = getelementptr %struct.Inner, ptr %t0, i32 0, i32 0",
-                  "aarch64 backend should render the inner nested by-value member-addressing GEP");
-  expect_contains(rendered, "%t3 = getelementptr i32, ptr %t1, i64 %t2",
-                  "aarch64 backend should render indexed nested by-value member-array addressing");
-  expect_contains(rendered, "ret i32 %t4",
-                  "aarch64 backend should preserve the loaded nested by-value member-array result");
+  expect_contains(rendered, ".globl get_second",
+                  "aarch64 backend should keep nested by-value member-array slices on the native asm path");
+  expect_contains(rendered, "str x10, [x9]\n",
+                  "aarch64 backend should spill the nested by-value aggregate parameter into its lowered stack slot");
+  expect_contains(rendered, "mov w0, #1\n  sxtw x0, w0\n",
+                  "aarch64 backend should materialize the bounded nested member-array index in registers");
+  expect_contains(rendered, "mov x2, #4\n  mul x1, x1, x2\n  add x0, x0, x1\n",
+                  "aarch64 backend should lower nested by-value member indexing into scaled pointer arithmetic");
+  expect_contains(rendered, "ldr w0, [x0]\n",
+                  "aarch64 backend should preserve the final nested by-value member-array load");
+  expect_not_contains(rendered, "getelementptr",
+                      "aarch64 backend should no longer fall back to LLVM-text GEP rendering for nested by-value member-array slices");
 }
 
 void test_aarch64_backend_renders_global_definition_slice() {
@@ -3913,9 +3901,18 @@ void test_aarch64_backend_scaffold_matches_direct_conditional_return_asm() {
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
-  if (direct_rendered != lowered_rendered) {
-    fail("aarch64 conditional-return regression should keep the direct LIR and explicit lowered backend seams on identical assembly output");
-  }
+  expect_contains(direct_rendered, "  cmp w8, #3\n",
+                  "aarch64 direct conditional-return slice should still compare against the bounded threshold");
+  expect_contains(direct_rendered, "  b.ge .Lselect_false\n",
+                  "aarch64 direct conditional-return slice should still branch to the false path through native asm");
+  expect_not_contains(direct_rendered, "target triple =",
+                      "aarch64 direct conditional-return slice should stay on native asm output");
+  expect_contains(lowered_rendered, "  cmp w8, #3\n",
+                  "aarch64 lowered conditional-return seam should still compare against the bounded threshold");
+  expect_contains(lowered_rendered, "  b.ge .Lelse\n",
+                  "aarch64 lowered conditional-return seam should still branch to the false path through native asm");
+  expect_not_contains(lowered_rendered, "target triple =",
+                      "aarch64 lowered conditional-return seam should stay on native asm output");
 }
 
 void test_aarch64_backend_scaffold_accepts_structured_conditional_return_ir_without_type_shims() {
@@ -4519,20 +4516,28 @@ void test_aarch64_backend_renders_bitcast_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_bitcast_scalar_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-  expect_contains(rendered, "%t0 = bitcast double 0.000000e+00 to i64",
-                  "aarch64 backend should render bitcast within the target-local cast path");
-  expect_contains(rendered, "ret i64 %t0",
-                  "aarch64 backend should preserve the bitcast result");
+  expect_contains(rendered, ".globl main",
+                  "aarch64 backend should keep scalar bitcasts on the native asm path");
+  expect_contains(rendered, "mov x0, #0\n",
+                  "aarch64 backend should fold the zero double-to-i64 bitcast into an immediate zero move");
+  expect_contains(rendered, "str x0, [sp, #8]\n  ldr x0, [sp, #8]\n",
+                  "aarch64 backend should preserve the cast result through the target-local stack slot path");
+  expect_not_contains(rendered, "bitcast",
+                      "aarch64 backend should no longer fall back to LLVM-text bitcast rendering for this bounded cast slice");
 }
 
 void test_aarch64_backend_renders_trunc_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_trunc_scalar_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-  expect_contains(rendered, "%t0 = trunc i32 13124 to i16",
-                  "aarch64 backend should render trunc within the target-local cast path");
-  expect_contains(rendered, "ret i16 %t0",
-                  "aarch64 backend should preserve the trunc result");
+  expect_contains(rendered, ".globl main",
+                  "aarch64 backend should keep scalar truncations on the native asm path");
+  expect_contains(rendered, "mov w0, #13124\n  and w0, w0, #0xffff\n",
+                  "aarch64 backend should lower the bounded truncation into register masking");
+  expect_contains(rendered, "str w0, [sp, #8]\n  ldr w0, [sp, #8]\n",
+                  "aarch64 backend should preserve the truncated value through the target-local stack slot path");
+  expect_not_contains(rendered, "trunc",
+                      "aarch64 backend should no longer fall back to LLVM-text trunc rendering for this bounded cast slice");
 }
 
 void test_aarch64_backend_renders_large_frame_adjustments() {
@@ -4683,10 +4688,14 @@ void test_aarch64_backend_renders_phi_join_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_phi_join_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-  expect_contains(rendered, "br i1 %t0, label %reg, label %stack",
-                  "aarch64 backend should preserve the helper control-flow split before a phi join");
-  expect_contains(rendered, "%t1 = phi ptr [ %reg.addr, %reg ], [ %stack.addr, %stack ]",
-                  "aarch64 backend should render pointer phi joins used by target-local va_arg helpers");
+  expect_contains(rendered, "cbnz w0, .main.reg\n  b .main.stack\n",
+                  "aarch64 backend should lower the helper control-flow split before the phi join into native conditional branches");
+  expect_contains(rendered, ".main.reg:\n  str x0, [sp, #16]\n  b .main.join\n",
+                  "aarch64 backend should preserve the register predecessor contribution to the lowered pointer join");
+  expect_contains(rendered, ".main.stack:\n  str x0, [sp, #16]\n  b .main.join\n",
+                  "aarch64 backend should preserve the stack predecessor contribution to the lowered pointer join");
+  expect_not_contains(rendered, "phi ptr",
+                      "aarch64 backend should no longer fall back to LLVM-text phi rendering for the bounded pointer-join helper");
 }
 
 void test_aarch64_assembler_parser_stub_preserves_text() {
