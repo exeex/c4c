@@ -5565,6 +5565,8 @@ struct GenSlotMap {
   std::unordered_map<std::string, int> alloca_data;  // alloca SSA name → data area offset
   int next_offset = 8;  // [sp+0] reserved for lr
   int frame_size = 0;
+  int va_gp_save_offset = -1;
+  int va_fp_save_offset = -1;
 
   int get_or_alloc(const std::string& name) {
     if (name.empty()) return -1;
@@ -5584,6 +5586,16 @@ struct GenSlotMap {
     // Align to 8
     if (next_offset % 8 != 0) next_offset += 8 - (next_offset % 8);
     return off;
+  }
+
+  void reserve_variadic_save_area() {
+    if (va_gp_save_offset >= 0) return;
+    va_gp_save_offset = next_offset;
+    next_offset += 64;
+    if (next_offset % 16 != 0) next_offset += 16 - (next_offset % 16);
+    va_fp_save_offset = next_offset;
+    next_offset += 128;
+    if (next_offset % 16 != 0) next_offset += 16 - (next_offset % 16);
   }
 
   int lookup(const std::string& name) const {
@@ -5621,6 +5633,11 @@ static int gen_type_bits(const std::string& ty) {
 
 static bool gen_is_fp_type(const std::string& ty) {
   return ty == "float" || ty == "double";
+}
+
+static bool gen_is_scalar_variadic_type(const std::string& ty) {
+  return ty == "ptr" || ty == "float" || ty == "double" ||
+         (ty.size() > 1 && ty[0] == 'i');
 }
 
 static bool gen_is_64bit(const std::string& ty) { return gen_type_bits(ty) > 32; }
@@ -5698,6 +5715,33 @@ static void gen_emit_sp_adjust(std::ostringstream& out, const char* op, int amou
     out << "  " << op << " sp, sp, #" << chunk << "\n";
     remaining -= chunk;
   }
+}
+
+static void gen_emit_add_imm(std::ostringstream& out, const char* dst, const char* base,
+                             int amount, const char* scratch) {
+  if (amount == 0) {
+    out << "  mov " << dst << ", " << base << "\n";
+    return;
+  }
+  if (amount > 0 && amount < 4096) {
+    out << "  add " << dst << ", " << base << ", #" << amount << "\n";
+    return;
+  }
+  gen_emit_integer_immediate(out, scratch[1] - '0', static_cast<std::uint64_t>(amount), true);
+  out << "  add " << dst << ", " << base << ", " << scratch << "\n";
+}
+
+static void gen_emit_store_i32_constant(std::ostringstream& out, const char* addr_reg,
+                                        int byte_offset, int value) {
+  if (value < 0) {
+    gen_emit_integer_immediate(out, 9, static_cast<std::uint64_t>(-value), false);
+    out << "  neg w9, w9\n";
+  } else {
+    gen_emit_integer_immediate(out, 9, static_cast<std::uint64_t>(value), false);
+  }
+  out << "  str w9, [" << addr_reg;
+  if (byte_offset != 0) out << ", #" << byte_offset;
+  out << "]\n";
 }
 
 // Parse type byte size for GEP element sizing.
@@ -5992,6 +6036,10 @@ static GenSlotMap gen_build_slots(const c4c::codegen::lir::LirFunction& fn,
   for (const auto& blk : fn.blocks)
     for (const auto& inst : blk.insts) alloc_data_for_alloca(inst);
 
+  if (fn.signature_text.find("...") != std::string::npos) {
+    sm.reserve_variadic_save_area();
+  }
+
   sm.finalize();
   return sm;
 }
@@ -6279,20 +6327,35 @@ static std::optional<std::string> try_emit_general_lir_asm(
   // Reject unsupported features
   for (const auto& fn : module.functions) {
     if (fn.is_declaration) continue;
+    const bool is_variadic_function = fn.signature_text.find("...") != std::string::npos;
     for (const auto& inst : fn.alloca_insts) {
       if (std::holds_alternative<LirInlineAsmOp>(inst)) return std::nullopt;
-      if (std::holds_alternative<LirVaArgOp>(inst)) return std::nullopt;
+      if (const auto* va_arg = std::get_if<LirVaArgOp>(&inst)) {
+        if (!gen_is_scalar_variadic_type(va_arg->type_str.str()) ||
+            va_arg->type_str == "fp128") {
+          return std::nullopt;
+        }
+      }
     }
     for (const auto& blk : fn.blocks) {
       for (const auto& inst : blk.insts) {
         if (std::holds_alternative<LirInlineAsmOp>(inst)) return std::nullopt;
-        if (std::holds_alternative<LirVaArgOp>(inst)) return std::nullopt;
+        if (is_variadic_function) {
+          if (const auto* gep = std::get_if<LirGepOp>(&inst)) {
+            if (gep->element_type.str().find("__va_list_tag_") != std::string::npos) {
+              return std::nullopt;
+            }
+          }
+        }
         if (std::holds_alternative<LirInsertElementOp>(inst)) return std::nullopt;
         if (std::holds_alternative<LirExtractElementOp>(inst)) return std::nullopt;
         if (std::holds_alternative<LirShuffleVectorOp>(inst)) return std::nullopt;
-        if (std::holds_alternative<LirVaStartOp>(inst)) return std::nullopt;
-        if (std::holds_alternative<LirVaEndOp>(inst)) return std::nullopt;
-        if (std::holds_alternative<LirVaCopyOp>(inst)) return std::nullopt;
+        if (const auto* va_arg = std::get_if<LirVaArgOp>(&inst)) {
+          if (!gen_is_scalar_variadic_type(va_arg->type_str.str()) ||
+              va_arg->type_str == "fp128") {
+            return std::nullopt;
+          }
+        }
         if (std::holds_alternative<LirIndirectBrOp>(inst)) return std::nullopt;
       }
       // Check for fp types in terminators (fp128, etc.)
@@ -6375,6 +6438,19 @@ static std::optional<std::string> try_emit_general_lir_asm(
     GenSlotMap sm = gen_build_slots(fn, module.type_decls);
     const auto parsed_signature_params =
         c4c::backend::parse_backend_function_signature_params(fn.signature_text);
+    const bool is_variadic_function = fn.signature_text.find("...") != std::string::npos;
+    int named_gp_count = 0;
+    int named_fp_count = 0;
+    if (parsed_signature_params.has_value()) {
+      for (const auto& param : *parsed_signature_params) {
+        if (param.is_varargs) break;
+        if (gen_is_fp_type(param.type)) {
+          if (named_fp_count < 8) ++named_fp_count;
+        } else {
+          if (named_gp_count < 8) ++named_gp_count;
+        }
+      }
+    }
 
     // Keep signature decoding centralized to one shared parse per emitted function.
     {
@@ -6411,6 +6487,15 @@ static std::optional<std::string> try_emit_general_lir_asm(
             out << "  str x" << i << ", [sp, #" << off << "]\n";
           }
         }
+      }
+    }
+
+    if (is_variadic_function && sm.va_gp_save_offset >= 0 && sm.va_fp_save_offset >= 0) {
+      for (int i = 0; i < 8; ++i) {
+        out << "  str x" << i << ", [sp, #" << (sm.va_gp_save_offset + i * 8) << "]\n";
+      }
+      for (int i = 0; i < 8; ++i) {
+        out << "  str q" << i << ", [sp, #" << (sm.va_fp_save_offset + i * 16) << "]\n";
       }
     }
 
@@ -7086,6 +7171,78 @@ static std::optional<std::string> try_emit_general_lir_asm(
           out << "  str x30, [sp, #0]\n";
           out << "  bl memset\n";
           out << "  ldr x30, [sp, #0]\n";
+        }
+        else if (const auto* p = std::get_if<LirVaStartOp>(&inst)) {
+          const int ap_off = sm.lookup(p->ap_ptr.str());
+          if (ap_off < 0 || sm.va_gp_save_offset < 0 || sm.va_fp_save_offset < 0) {
+            return std::nullopt;
+          }
+          out << "  ldr x0, [sp, #" << ap_off << "]\n";
+          gen_emit_add_imm(out, "x1", "sp", sm.frame_size, "x9");
+          out << "  str x1, [x0]\n";
+          gen_emit_add_imm(out, "x1", "sp", sm.va_gp_save_offset + 64, "x9");
+          out << "  str x1, [x0, #8]\n";
+          gen_emit_add_imm(out, "x1", "sp", sm.va_fp_save_offset + 128, "x9");
+          out << "  str x1, [x0, #16]\n";
+          gen_emit_store_i32_constant(out, "x0", 24, -((8 - named_gp_count) * 8));
+          gen_emit_store_i32_constant(out, "x0", 28, -((8 - named_fp_count) * 16));
+        }
+        else if (const auto* p = std::get_if<LirVaEndOp>(&inst)) {
+          (void)p;
+        }
+        else if (const auto* p = std::get_if<LirVaCopyOp>(&inst)) {
+          const int dst_off = sm.lookup(p->dst_ptr.str());
+          const int src_off = sm.lookup(p->src_ptr.str());
+          if (dst_off < 0 || src_off < 0) return std::nullopt;
+          out << "  ldr x0, [sp, #" << dst_off << "]\n";
+          out << "  ldr x1, [sp, #" << src_off << "]\n";
+          out << "  ldp x2, x3, [x1]\n";
+          out << "  stp x2, x3, [x0]\n";
+          out << "  ldp x2, x3, [x1, #16]\n";
+          out << "  stp x2, x3, [x0, #16]\n";
+        }
+        else if (const auto* p = std::get_if<LirVaArgOp>(&inst)) {
+          const int ap_off = sm.lookup(p->ap_ptr.str());
+          const std::string ty = p->type_str.str();
+          if (ap_off < 0 || !gen_is_scalar_variadic_type(ty) || ty == "fp128") {
+            return std::nullopt;
+          }
+          const int label_id = gen_label_counter++;
+          out << "  ldr x1, [sp, #" << ap_off << "]\n";
+          if (gen_is_fp_type(ty)) {
+            out << "  ldrsw x2, [x1, #28]\n";
+            out << "  tbz x2, #63, .Lva_stack_" << label_id << "\n";
+            out << "  ldr x3, [x1, #16]\n";
+            out << "  add x3, x3, x2\n";
+            out << "  add w2, w2, #16\n";
+            out << "  str w2, [x1, #28]\n";
+            out << "  ldr " << (ty == "double" ? "d0" : "s0") << ", [x3]\n";
+            out << "  b .Lva_done_" << label_id << "\n";
+            out << ".Lva_stack_" << label_id << ":\n";
+            out << "  ldr x3, [x1]\n";
+            out << "  ldr " << (ty == "double" ? "d0" : "s0") << ", [x3]\n";
+            out << "  add x3, x3, #8\n";
+            out << "  str x3, [x1]\n";
+            out << ".Lva_done_" << label_id << ":\n";
+            out << "  fmov " << (ty == "double" ? "x0, d0" : "w0, s0") << "\n";
+          } else {
+            const int stack_step = gen_type_layout(ty, module.type_decls).size <= 8 ? 8 : 16;
+            out << "  ldrsw x2, [x1, #24]\n";
+            out << "  tbz x2, #63, .Lva_stack_" << label_id << "\n";
+            out << "  ldr x3, [x1, #8]\n";
+            out << "  add x3, x3, x2\n";
+            out << "  add w2, w2, #8\n";
+            out << "  str w2, [x1, #24]\n";
+            out << "  ldr " << (gen_is_64bit(ty) ? "x0" : "w0") << ", [x3]\n";
+            out << "  b .Lva_done_" << label_id << "\n";
+            out << ".Lva_stack_" << label_id << ":\n";
+            out << "  ldr x3, [x1]\n";
+            out << "  ldr " << (gen_is_64bit(ty) ? "x0" : "w0") << ", [x3]\n";
+            out << "  add x3, x3, #" << stack_step << "\n";
+            out << "  str x3, [x1]\n";
+            out << ".Lva_done_" << label_id << ":\n";
+          }
+          gen_store_result(out, p->result.str(), ty, sm, 0);
         }
         else if (const auto* p = std::get_if<LirAbsOp>(&inst)) {
           std::string ty = p->int_type.str();

@@ -109,13 +109,17 @@ Known live references from the current audit:
   the app-layer rescue path is retained only for the tagged AArch64 family
 - `00204` is blocked by a coupled native-backend gap rather than one isolated
   matcher miss:
-  the general AArch64 emitter still rejects `LirVaStartOp`, `LirVaEndOp`,
-  `LirVaCopyOp`, and `LirVaArgOp`; the stack-spill path still models SSA
-  values as scalar 8-byte slots rather than aggregate values such as
-  `[4 x float]`, `[4 x double]`, and `[2 x i64]`; the direct-call path still
-  lacks aggregate variadic ownership for the internal `myprintf(...)` calls;
-  and the forwarding path inside `myprintf` still needs native `fp128`
-  variadic call handling for `printf("%.1Lf", ...)`
+  the general AArch64 emitter now carries the low-coupling `LirVaStartOp`,
+  `LirVaEndOp`, `LirVaCopyOp`, and direct scalar `LirVaArgOp` slice on the
+  native asm path, but `00204` still depends on the larger aggregate/helper
+  variadic ABI surface:
+  helper-style `__va_list_tag_` walks for composite variadics still stay on
+  explicit fallback IR, the stack-spill path still models SSA values as scalar
+  8-byte slots rather than aggregate values such as `[4 x float]`,
+  `[4 x double]`, and `[2 x i64]`, the direct-call path still lacks aggregate
+  variadic ownership for the internal `myprintf(...)` calls, and the
+  forwarding path inside `myprintf` still needs native `fp128` variadic call
+  handling for `printf("%.1Lf", ...)`
 
 Recently completed milestones:
 
@@ -178,6 +182,12 @@ Recently completed milestones:
   removed external/backend AArch64 c-testsuite case `00174` from the
   remaining file-output rescue bucket so the live rescue set now shrinks to
   `00204`
+- taught the AArch64 general emitter to keep the low-coupling variadic
+  intrinsic slice (`va_start`, `va_end`, `va_copy`) plus direct scalar
+  `va_arg` on the native asm path, added focused backend regressions for those
+  helpers, and kept aggregate/helper-style variadic lowering explicitly on the
+  fallback path so `00204` remains a bounded Step 4 blocker instead of
+  silently switching to bad native asm
 
 Validation baseline:
 
@@ -188,10 +198,12 @@ Validation baseline:
 - latest focused repro set:
   `build/c4cll --codegen asm --target aarch64-unknown-linux-gnu tests/c/external/c-testsuite/src/00204.c`,
   `build/c4cll --codegen asm --target aarch64-unknown-linux-gnu tests/c/external/c-testsuite/src/00204.c -o /tmp/00204.file.s`,
+  `ctest --test-dir build -R "backend_lir_adapter_aarch64_tests|backend_lir_aarch64_variadic_|c_testsuite_aarch64_backend_src_00204_c" --output-on-failure`,
   and
-  `ctest --test-dir build -R "backend_lir_adapter_aarch64_tests|c_testsuite_aarch64_backend_src_00204_c" --output-on-failure`
+  `ctest --test-dir build -R backend --output-on-failure`
   with stdout-native asm still blocked, file-output fallback still succeeding,
-  and the focused tests passing only because `00204` remains tagged
+  the focused native/fallback variadic regression set passing, and `00204`
+  still passing only because it remains tagged
 - latest backend regression scope:
   `ctest --test-dir build -R backend --output-on-failure`
   with `100% tests passed, 0 tests failed out of 402`

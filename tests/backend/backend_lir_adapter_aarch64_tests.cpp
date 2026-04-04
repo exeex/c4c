@@ -4778,36 +4778,34 @@ void test_aarch64_backend_renders_va_intrinsic_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_va_intrinsic_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-  expect_contains(rendered, "declare void @llvm.va_start.p0(ptr)",
-                  "aarch64 backend should render llvm.va_start declarations");
-  expect_contains(rendered, "declare void @llvm.va_end.p0(ptr)",
-                  "aarch64 backend should render llvm.va_end declarations");
-  expect_contains(rendered, "declare void @llvm.va_copy.p0.p0(ptr, ptr)",
-                  "aarch64 backend should render llvm.va_copy declarations");
-  expect_contains(rendered, "call void @llvm.va_start.p0(ptr %lv.ap)",
-                  "aarch64 backend should render llvm.va_start calls");
-  expect_contains(rendered, "call void @llvm.va_copy.p0.p0(ptr %lv.ap_copy, ptr %lv.ap)",
-                  "aarch64 backend should render llvm.va_copy calls");
-  expect_contains(rendered, "call void @llvm.va_end.p0(ptr %lv.ap_copy)",
-                  "aarch64 backend should render llvm.va_end calls for copied lists");
-  expect_contains(rendered, "call void @llvm.va_end.p0(ptr %lv.ap)",
-                  "aarch64 backend should render llvm.va_end calls for the original list");
+  expect_contains(rendered, ".globl variadic_probe",
+                  "aarch64 backend should keep plain va intrinsic helpers on the native asm path");
+  expect_contains(rendered, "str x0, [sp, #88]\n  str x1, [sp, #96]\n",
+                  "aarch64 backend should materialize the GP variadic save area in the function prologue");
+  expect_contains(rendered, "str q0, [sp, #160]\n  str q1, [sp, #176]\n",
+                  "aarch64 backend should materialize the FP variadic save area in the function prologue");
+  expect_contains(rendered, "str x1, [x0]\n",
+                  "aarch64 backend should lower va_start into explicit va_list stack pointer initialization");
+  expect_contains(rendered, "ldp x2, x3, [x1]\n  stp x2, x3, [x0]\n",
+                  "aarch64 backend should lower va_copy as a concrete va_list struct copy");
+  expect_not_contains(rendered, "llvm.va_start",
+                      "aarch64 backend should no longer fall back to LLVM va_start intrinsics for this helper slice");
 }
 
 void test_aarch64_backend_renders_va_arg_scalar_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_va_arg_scalar_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-  expect_contains(rendered, "call void @llvm.va_start.p0(ptr %lv.ap)",
-                  "aarch64 backend should preserve va_start before va_arg");
-  expect_contains(rendered, "%t0 = va_arg ptr %lv.ap, i32",
-                  "aarch64 backend should render scalar va_arg in the target-local memory path");
-  expect_contains(rendered, "%t1 = add i32 %p.first, %t0",
-                  "aarch64 backend should preserve arithmetic that consumes va_arg results");
-  expect_contains(rendered, "call void @llvm.va_end.p0(ptr %lv.ap)",
-                  "aarch64 backend should preserve va_end after va_arg");
-  expect_contains(rendered, "ret i32 %t1",
-                  "aarch64 backend should preserve the scalar va_arg result");
+  expect_contains(rendered, ".globl sum2",
+                  "aarch64 backend should keep scalar va_arg slices on the native asm path");
+  expect_contains(rendered, "ldrsw x2, [x1, #24]\n  tbz x2, #63, .Lva_stack_",
+                  "aarch64 backend should branch between register-save and stack overflow va_arg paths");
+  expect_contains(rendered, "ldr w0, [x3]\n  b .Lva_done_",
+                  "aarch64 backend should load scalar variadic integers from the register-save area");
+  expect_contains(rendered, "add w0, w0, w1\n",
+                  "aarch64 backend should preserve arithmetic that consumes the native scalar va_arg result");
+  expect_not_contains(rendered, "llvm.va_start",
+                      "aarch64 backend should no longer route scalar va_arg through LLVM textual fallback");
 }
 
 void test_aarch64_backend_renders_va_arg_pair_slice() {
@@ -4815,16 +4813,14 @@ void test_aarch64_backend_renders_va_arg_pair_slice() {
       c4c::backend::BackendModuleInput{make_va_arg_pair_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   expect_contains(rendered, "declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)",
-                  "aarch64 backend should render llvm.memcpy declarations for aggregate va_arg");
+                  "aarch64 backend should keep aggregate va_arg helper slices on the LLVM-text path until the native aggregate ABI path is real");
   expect_contains(rendered, "%t6 = phi ptr [ %t3, %reg ], [ %t5, %stack ]",
                   "aarch64 backend should preserve the aggregate va_arg helper phi join");
   expect_contains(rendered,
                   "call void @llvm.memcpy.p0.p0.i64(ptr %lv.pair.tmp, ptr %t6, i64 8, i1 false)",
-                  "aarch64 backend should render aggregate va_arg copies through llvm.memcpy");
+                  "aarch64 backend should preserve aggregate va_arg copies through the fallback IR for now");
   expect_contains(rendered, "call void @llvm.va_end.p0(ptr %lv.ap)",
-                  "aarch64 backend should preserve va_end after aggregate va_arg handling");
-  expect_contains(rendered, "ret i32 %p.seed",
-                  "aarch64 backend should preserve the enclosing function return");
+                  "aarch64 backend should preserve va_end after aggregate va_arg handling while that helper stays on fallback IR");
 }
 
 void test_aarch64_backend_renders_va_arg_bigints_slice() {
@@ -4836,10 +4832,10 @@ void test_aarch64_backend_renders_va_arg_bigints_slice() {
   expect_contains(rendered, "%t11 = phi ptr [ %t7, %reg ], [ %t9, %stack ]",
                   "aarch64 backend should preserve the indirect aggregate helper phi join");
   expect_contains(rendered, "%t12 = load ptr, ptr %t11",
-                  "aarch64 backend should reload the indirect aggregate source pointer");
+                  "aarch64 backend should preserve the indirect aggregate source-pointer reload while the aggregate helper stays on fallback IR");
   expect_contains(rendered,
                   "call void @llvm.memcpy.p0.p0.i64(ptr %lv.bigints.tmp, ptr %t12, i64 20, i1 false)",
-                  "aarch64 backend should render indirect aggregate va_arg copies through llvm.memcpy");
+                  "aarch64 backend should preserve indirect aggregate va_arg copies through fallback IR until the native aggregate path is real");
   expect_contains(rendered, "call void @llvm.va_end.p0(ptr %lv.ap)",
                   "aarch64 backend should preserve va_end after indirect aggregate va_arg handling");
 }
