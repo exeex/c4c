@@ -10,17 +10,37 @@ Source Plan: plan.md
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
 Current active item: Step 4, keep shrinking the remaining app-layer LLVM asm
-rescue one bounded surface at a time; after converting the bounded global
-pointer-difference runtime-positive family onto the explicit stdout-native asm
+rescue one bounded surface at a time; after converting the bounded
+`string_literal_char` runtime-positive case onto the explicit stdout-native asm
 path, continue with the next remaining file-routed runtime-positive family.
-Next intended slice: convert the bounded `string_literal_char`
-runtime-positive case in `tests/c/internal/InternalTests.cmake` onto the
-explicit stdout-native asm path, then rerun its focused proving test plus the
-required backend and monotonic regression gates before picking between the
-remaining `call_helper` and `extern_global_array` runtime-positive families.
+Next intended slice: pick between the remaining `call_helper` and
+`extern_global_array` runtime-positive families by probing which one can move
+cleanly onto the explicit stdout-native asm path next, then land the smaller
+bounded conversion and rerun its focused proving test plus the required backend
+and monotonic regression gates.
 Blocker: none. The rebuilt `backend_lir_adapter_aarch64_tests` expectation
 drift has been realigned to the current native aarch64 backend seam, and the
 required backend/full-suite acceptance gates are green again.
+Completed in this slice: converted the bounded `string_literal_char`
+runtime-positive case in `tests/c/internal/InternalTests.cmake` onto the
+explicit stdout-native asm path, aligning the runtime-positive harness with the
+already-restored stdout object contracts for both `aarch64` and `x86_64` so
+this string-literal load case no longer depends on the app-layer
+`-o <file>.s` LLVM asm rescue route.
+Completed in this slice: probed `string_literal_char` directly through
+`build/c4cll --codegen asm` and confirmed that both
+`x86_64-unknown-linux-gnu` and `aarch64-unknown-linux-gnu` emit the expected
+backend-native stdout assembly for the string-literal load on the current
+backend seam.
+Completed in this slice: regenerated the build files, reran the focused
+proving test (`backend_runtime_string_literal_char`) with `100% tests passed,
+0 tests failed out of 1`, reran the required backend regression scope
+(`ctest --test-dir build -R backend --output-on-failure`) with `100% tests
+passed, 0 tests failed out of 401`, regenerated `test_fail_after.log`, and
+reran the monotonic full-suite guard over `test_fail_before.log` versus the
+refreshed `test_fail_after.log`, with guard result `PASS` and
+`before: passed=394 failed=0 total=394`,
+`after: passed=2840 failed=0 total=2840`, and `new failing tests: 0`.
 Completed in this slice: converted the bounded global pointer-difference
 runtime-positive family (`global_char_pointer_diff`,
 `global_int_pointer_diff`, and `global_int_pointer_roundtrip`) in
