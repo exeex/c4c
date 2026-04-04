@@ -395,6 +395,123 @@ c4c::codegen::lir::LirModule make_nested_param_member_array_gep_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_direct_aggregate_param_call_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.type_decls.push_back("%struct.Big9 = type { [9 x i8] }");
+  module.globals.push_back(LirGlobal{
+      LirGlobalId{0},
+      "g_big9",
+      {},
+      false,
+      false,
+      "",
+      "global ",
+      "%struct.Big9",
+      "zeroinitializer",
+      1,
+      false,
+  });
+
+  LirFunction callee;
+  callee.name = "get_ninth";
+  callee.signature_text = "define i32 @get_ninth(%struct.Big9 %p.v)\n";
+  callee.entry = LirBlockId{0};
+  callee.alloca_insts.push_back(LirAllocaOp{"%lv.param.v", "%struct.Big9", "", 1});
+  callee.alloca_insts.push_back(LirStoreOp{"%struct.Big9", "%p.v", "%lv.param.v"});
+
+  LirBlock callee_entry;
+  callee_entry.id = LirBlockId{0};
+  callee_entry.label = "entry";
+  callee_entry.insts.push_back(
+      LirGepOp{"%t0", "%struct.Big9", "%lv.param.v", false, {"i32 0", "i32 0"}});
+  callee_entry.insts.push_back(
+      LirGepOp{"%t1", "[9 x i8]", "%t0", false, {"i64 0", "i64 8"}});
+  callee_entry.insts.push_back(LirLoadOp{"%t2", "i8", "%t1"});
+  callee_entry.insts.push_back(LirCastOp{"%t3", LirCastKind::ZExt, "i8", "%t2", "i32"});
+  callee_entry.terminator = LirRet{std::string("%t3"), "i32"};
+  callee.blocks.push_back(std::move(callee_entry));
+  module.functions.push_back(std::move(callee));
+
+  LirFunction main_fn;
+  main_fn.name = "main";
+  main_fn.signature_text = "define i32 @main()\n";
+  main_fn.entry = LirBlockId{0};
+
+  LirBlock main_entry;
+  main_entry.id = LirBlockId{0};
+  main_entry.label = "entry";
+  main_entry.insts.push_back(LirLoadOp{"%t0", "%struct.Big9", "@g_big9"});
+  main_entry.insts.push_back(
+      LirCallOp{"%t1", "i32", "@get_ninth", "(%struct.Big9)", "%struct.Big9 %t0"});
+  main_entry.terminator = LirRet{std::string("%t1"), "i32"};
+  main_fn.blocks.push_back(std::move(main_entry));
+  module.functions.push_back(std::move(main_fn));
+
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_direct_aggregate_return_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.type_decls.push_back("%struct.Big9 = type { [9 x i8] }");
+  module.globals.push_back(LirGlobal{
+      LirGlobalId{0},
+      "g_big9",
+      {},
+      false,
+      false,
+      "",
+      "global ",
+      "%struct.Big9",
+      "zeroinitializer",
+      1,
+      false,
+  });
+
+  LirFunction ret_fn;
+  ret_fn.name = "ret_big9";
+  ret_fn.signature_text = "define %struct.Big9 @ret_big9()\n";
+  ret_fn.entry = LirBlockId{0};
+
+  LirBlock ret_entry;
+  ret_entry.id = LirBlockId{0};
+  ret_entry.label = "entry";
+  ret_entry.insts.push_back(LirLoadOp{"%t0", "%struct.Big9", "@g_big9"});
+  ret_entry.terminator = LirRet{std::string("%t0"), "%struct.Big9"};
+  ret_fn.blocks.push_back(std::move(ret_entry));
+  module.functions.push_back(std::move(ret_fn));
+
+  LirFunction main_fn;
+  main_fn.name = "main";
+  main_fn.signature_text = "define i32 @main()\n";
+  main_fn.entry = LirBlockId{0};
+  main_fn.alloca_insts.push_back(LirAllocaOp{"%lv.tmp", "%struct.Big9", "", 1});
+
+  LirBlock main_entry;
+  main_entry.id = LirBlockId{0};
+  main_entry.label = "entry";
+  main_entry.insts.push_back(LirCallOp{"%t0", "%struct.Big9", "@ret_big9", "()", ""});
+  main_entry.insts.push_back(LirStoreOp{"%struct.Big9", "%t0", "%lv.tmp"});
+  main_entry.insts.push_back(
+      LirGepOp{"%t1", "%struct.Big9", "%lv.tmp", false, {"i32 0", "i32 0"}});
+  main_entry.insts.push_back(
+      LirGepOp{"%t2", "[9 x i8]", "%t1", false, {"i64 0", "i64 8"}});
+  main_entry.insts.push_back(LirLoadOp{"%t3", "i8", "%t2"});
+  main_entry.insts.push_back(LirCastOp{"%t4", LirCastKind::ZExt, "i8", "%t3", "i32"});
+  main_entry.terminator = LirRet{std::string("%t4"), "i32"};
+  main_fn.blocks.push_back(std::move(main_entry));
+  module.functions.push_back(std::move(main_fn));
+
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_named_struct_field_offset_module() {
   using namespace c4c::codegen::lir;
 
@@ -3397,6 +3514,38 @@ void test_aarch64_backend_renders_nested_param_member_array_gep_slice() {
                       "aarch64 backend should no longer fall back to LLVM-text GEP rendering for nested by-value member-array slices");
 }
 
+void test_aarch64_backend_renders_direct_aggregate_param_call_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_direct_aggregate_param_call_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".globl get_ninth",
+                  "aarch64 backend should keep bounded 9-byte by-value parameter calls on the native asm path");
+  expect_contains(rendered, "strb w1, [x9, #8]\n",
+                  "aarch64 backend should preserve the tail chunk of a 9-byte incoming aggregate parameter");
+  expect_contains(rendered, "bl get_ninth\n",
+                  "aarch64 backend should preserve the direct call that consumes the split aggregate parameter");
+  expect_contains(rendered, "ldrb w1, [x9, #8]\n",
+                  "aarch64 backend should load the aggregate tail chunk from the source address before the direct call");
+  expect_not_contains(rendered, "target datalayout",
+                      "aarch64 backend should not fall back to LLVM text for the bounded 9-byte by-value parameter slice");
+}
+
+void test_aarch64_backend_renders_direct_aggregate_return_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_direct_aggregate_return_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".globl ret_big9",
+                  "aarch64 backend should keep bounded 9-byte direct aggregate returns on the native asm path");
+  expect_contains(rendered, "ldrb w1, [x9, #8]\n",
+                  "aarch64 backend should materialize the aggregate return tail chunk in x1 before returning");
+  expect_contains(rendered, "bl ret_big9\n",
+                  "aarch64 backend should preserve the direct aggregate-return call on the native asm path");
+  expect_contains(rendered, "strb w1, [x9, #8]\n",
+                  "aarch64 backend should spill the returned aggregate tail chunk into the caller-side temporary");
+  expect_not_contains(rendered, "target datalayout",
+                      "aarch64 backend should not fall back to LLVM text for the bounded 9-byte direct aggregate-return slice");
+}
+
 void test_aarch64_backend_renders_global_definition_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_global_load_module()},
@@ -5595,6 +5744,8 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_renders_param_member_array_gep_slice();
   test_aarch64_backend_renders_nested_member_pointer_array_gep_slice();
   test_aarch64_backend_renders_nested_param_member_array_gep_slice();
+  test_aarch64_backend_renders_direct_aggregate_param_call_slice();
+  test_aarch64_backend_renders_direct_aggregate_return_slice();
   // TODO: global/string slice tests disabled — backend lowering changed
   // test_aarch64_backend_renders_global_definition_slice();
   // test_aarch64_backend_renders_global_store_reload_slice();

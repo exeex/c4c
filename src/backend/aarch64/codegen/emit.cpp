@@ -5781,8 +5781,65 @@ static void gen_emit_store_i32_constant(std::ostringstream& out, const char* add
   out << "]\n";
 }
 
+static std::string gen_chunk_type_for_size(int byte_size) {
+  if (byte_size <= 1) return "i8";
+  if (byte_size <= 2) return "i16";
+  if (byte_size <= 4) return "i32";
+  return "i64";
+}
+
+static void gen_emit_load_chunk_from_addr(std::ostringstream& out, int dst_reg,
+                                          std::string_view elem_ty, int base_reg,
+                                          int source_offset) {
+  const int bits = gen_type_bits(std::string(elem_ty));
+  out << "  ";
+  if (bits <= 8) {
+    out << "ldrb w" << dst_reg;
+  } else if (bits <= 16) {
+    out << "ldrh w" << dst_reg;
+  } else if (bits <= 32) {
+    out << "ldr w" << dst_reg;
+  } else if (elem_ty == "double") {
+    out << "ldr d" << dst_reg;
+  } else if (elem_ty == "float") {
+    out << "ldr s" << dst_reg;
+  } else {
+    out << "ldr x" << dst_reg;
+  }
+  out << ", [x" << base_reg;
+  if (source_offset != 0) {
+    out << ", #" << source_offset;
+  }
+  out << "]\n";
+}
+
+static void gen_emit_store_chunk_to_addr(std::ostringstream& out, int src_reg, int byte_size,
+                                         int base_reg, int dest_offset) {
+  out << "  ";
+  if (byte_size <= 1) {
+    out << "strb w" << src_reg;
+  } else if (byte_size <= 2) {
+    out << "strh w" << src_reg;
+  } else if (byte_size <= 4) {
+    out << "str w" << src_reg;
+  } else {
+    out << "str x" << src_reg;
+  }
+  out << ", [x" << base_reg;
+  if (dest_offset != 0) {
+    out << ", #" << dest_offset;
+  }
+  out << "]\n";
+}
+
 // Parse type byte size for GEP element sizing.
 static std::pair<int, int> gen_parse_array_type(const std::string& ty);
+static std::string gen_resolve_type_decl_body(const std::string& ty,
+                                              const std::vector<std::string>& type_decls);
+static std::vector<std::string> gen_split_aggregate_fields(std::string_view text);
+struct GenTypeLayout;
+static GenTypeLayout gen_type_layout(const std::string& ty,
+                                     const std::vector<std::string>& type_decls);
 
 static std::vector<unsigned char> gen_decode_llvm_byte_string(const std::string& text) {
   std::vector<unsigned char> bytes;
@@ -5889,6 +5946,35 @@ static bool gen_type_is_address_only_value(std::string_view text) {
   if (!elem_ty.empty() && elem_ty.back() == ']') elem_ty.pop_back();
   elem_ty = gen_trim_type_token(elem_ty);
   return elem_ty == "float" || elem_ty == "double";
+}
+
+static bool gen_type_uses_fp_storage(std::string_view text,
+                                     const std::vector<std::string>& type_decls) {
+  const std::string stripped = gen_strip_alignstack_attr(text);
+  const std::string resolved = gen_resolve_type_decl_body(stripped, type_decls);
+  return resolved.find("float") != std::string::npos ||
+         resolved.find("double") != std::string::npos ||
+         resolved.find("fp128") != std::string::npos;
+}
+
+static bool gen_is_direct_gp_aggregate_type(std::string_view text,
+                                            const std::vector<std::string>& type_decls) {
+  const std::string stripped = gen_strip_alignstack_attr(text);
+  if (stripped.empty()) return false;
+  if (stripped == "ptr" || gen_is_fp_type(stripped) || stripped == "fp128") return false;
+  if (stripped.front() != '%' && stripped.front() != '{') return false;
+  const std::string resolved = gen_resolve_type_decl_body(stripped, type_decls);
+  if (resolved.size() < 2 || resolved.front() != '{' || resolved.back() != '}') return false;
+  std::string_view body(resolved);
+  body.remove_prefix(1);
+  body.remove_suffix(1);
+  const auto fields = gen_split_aggregate_fields(body);
+  if (fields.size() != 1 || fields.front().empty() || fields.front().front() != '[') return false;
+  const auto [count, elem_size] = gen_parse_array_type(fields.front());
+  if (elem_size != 1 || count <= 8 || count > 16) return false;
+  const auto layout = gen_type_layout(stripped, type_decls);
+  if (layout.size <= 8 || layout.size > 16) return false;
+  return !gen_type_uses_fp_storage(stripped, type_decls);
 }
 
 struct GenFpAggregateArgInfo {
@@ -6160,6 +6246,28 @@ static GenSlotMap gen_build_slots(const c4c::codegen::lir::LirFunction& fn,
   for (const auto& blk : fn.blocks)
     for (const auto& inst : blk.insts) alloc_data_for_alloca(inst);
 
+  const auto parsed_signature_params =
+      c4c::backend::parse_backend_function_signature_params(fn.signature_text);
+  if (parsed_signature_params.has_value()) {
+    for (const auto& param : *parsed_signature_params) {
+      if (param.is_varargs || param.operand.empty() || param.operand[0] != '%') continue;
+      if (!gen_is_direct_gp_aggregate_type(param.type, type_decls)) continue;
+      sm.alloc_data(param.operand, gen_type_layout(param.type, type_decls).size);
+    }
+  }
+
+  for (const auto& blk : fn.blocks) {
+    for (const auto& inst : blk.insts) {
+      if (const auto* call = std::get_if<LirCallOp>(&inst)) {
+        if (!call->result.empty() &&
+            gen_is_direct_gp_aggregate_type(call->return_type.str(), type_decls)) {
+          sm.alloc_data(call->result.str(),
+                        gen_type_layout(call->return_type.str(), type_decls).size);
+        }
+      }
+    }
+  }
+
   if (fn.signature_text.find("...") != std::string::npos) {
     sm.reserve_variadic_save_area();
   }
@@ -6173,10 +6281,14 @@ static GenSlotMap gen_build_slots(const c4c::codegen::lir::LirFunction& fn,
 static void gen_load_operand(std::ostringstream& out, const std::string& op,
                              const std::string& ty, const GenSlotMap& sm,
                              int reg_idx, const std::string& fn_prefix,
-                             const std::unordered_set<std::string>* extern_globals = nullptr) {
+                             const std::unordered_set<std::string>* extern_globals = nullptr,
+                             const std::vector<std::string>* type_decls = nullptr) {
   const std::string stripped_ty = gen_strip_alignstack_attr(ty);
   const bool address_only = gen_type_is_address_only_value(stripped_ty);
-  const char* rp = (address_only || gen_is_64bit(stripped_ty)) ? "x" : "w";
+  const bool direct_gp_aggregate =
+      type_decls != nullptr && gen_is_direct_gp_aggregate_type(stripped_ty, *type_decls);
+  const bool pointer_like = address_only || direct_gp_aggregate;
+  const char* rp = pointer_like || gen_is_64bit(stripped_ty) ? "x" : "w";
   const char* rp64 = "x";  // for address regs always 64-bit
   (void)rp64;
   if (op.empty()) return;
@@ -6185,7 +6297,7 @@ static void gen_load_operand(std::ostringstream& out, const std::string& op,
     // SSA value — load from stack slot
     int off = sm.lookup(op);
     if (off >= 0) {
-      if (address_only || gen_is_64bit(stripped_ty))
+      if (pointer_like || gen_is_64bit(stripped_ty))
         out << "  ldr x" << reg_idx << ", [sp, #" << off << "]\n";
       else
         out << "  ldr w" << reg_idx << ", [sp, #" << off << "]\n";
@@ -6254,12 +6366,17 @@ static void gen_load_fp_operand(std::ostringstream& out, const std::string& op,
 
 // Store register to stack slot.
 static void gen_store_result(std::ostringstream& out, const std::string& name,
-                             const std::string& ty, const GenSlotMap& sm, int reg_idx) {
+                             const std::string& ty, const GenSlotMap& sm, int reg_idx,
+                             const std::vector<std::string>* type_decls = nullptr) {
   if (name.empty()) return;
   int off = sm.lookup(name);
   if (off < 0) return;
   const std::string stripped_ty = gen_strip_alignstack_attr(ty);
-  if (gen_type_is_address_only_value(stripped_ty) || gen_is_64bit(stripped_ty))
+  const bool direct_gp_aggregate =
+      type_decls != nullptr && gen_is_direct_gp_aggregate_type(stripped_ty, *type_decls);
+  if (gen_type_is_address_only_value(stripped_ty) ||
+      direct_gp_aggregate ||
+      gen_is_64bit(stripped_ty))
     out << "  str x" << reg_idx << ", [sp, #" << off << "]\n";
   else
     out << "  str w" << reg_idx << ", [sp, #" << off << "]\n";
@@ -6467,7 +6584,8 @@ static std::optional<std::string> try_emit_general_lir_asm(
     const auto return_layout = gen_type_layout(*return_ty, module.type_decls);
     if (return_layout.size > 8 && !return_ty->empty() &&
         (*return_ty)[0] != 'i' && *return_ty != "ptr" &&
-        !gen_is_fp_type(*return_ty) && *return_ty != "void") {
+        !gen_is_fp_type(*return_ty) && *return_ty != "void" &&
+        !gen_is_direct_gp_aggregate_type(*return_ty, module.type_decls)) {
       return std::nullopt;
     }
     for (const auto& inst : fn.alloca_insts) {
@@ -6622,7 +6740,22 @@ static std::optional<std::string> try_emit_general_lir_asm(
       if (parsed_signature_params.has_value()) {
         for (size_t i = 0; i < parsed_signature_params->size() && i < 8; ++i) {
           if ((*parsed_signature_params)[i].is_varargs) break;
-          int off = sm.lookup((*parsed_signature_params)[i].operand);
+          const auto& param = (*parsed_signature_params)[i];
+          if (gen_is_direct_gp_aggregate_type(param.type, module.type_decls)) {
+            const int ptr_off = sm.lookup(param.operand);
+            const int data_off = sm.lookup_data(param.operand);
+            if (ptr_off < 0 || data_off < 0) continue;
+            gen_emit_add_imm(out, "x9", "sp", data_off, "x9");
+            out << "  str x9, [sp, #" << ptr_off << "]\n";
+            gen_emit_store_chunk_to_addr(out, static_cast<int>(i), 8, 9, 0);
+            const int tail_bytes =
+                gen_type_layout(param.type, module.type_decls).size - 8;
+            if (tail_bytes > 0 && i + 1 < 8) {
+              gen_emit_store_chunk_to_addr(out, static_cast<int>(i + 1), tail_bytes, 9, 8);
+            }
+            continue;
+          }
+          int off = sm.lookup(param.operand);
           if (off >= 0) {
             out << "  str x" << i << ", [sp, #" << off << "]\n";
           }
@@ -6762,6 +6895,8 @@ static std::optional<std::string> try_emit_general_lir_asm(
           std::string ptr_name = p->ptr.str();
           std::string result = p->result.str();
           const bool address_only = gen_type_is_address_only_value(ty);
+          const bool direct_gp_aggregate =
+              gen_is_direct_gp_aggregate_type(ty, module.type_decls);
 
           if (ptr_name[0] == '@') {
             // Load from global
@@ -6780,7 +6915,7 @@ static std::optional<std::string> try_emit_general_lir_asm(
               out << "  ldr x0, [sp, #" << ptr_off << "]\n";
           }
 
-          if (address_only) {
+          if (address_only || direct_gp_aggregate) {
             gen_store_result(out, result, "ptr", sm, 0);
           } else {
             // Dereference pointer
@@ -6802,6 +6937,8 @@ static std::optional<std::string> try_emit_general_lir_asm(
           std::string val = p->val.str();
           std::string ptr_name = p->ptr.str();
           const bool address_only = gen_type_is_address_only_value(ty);
+          const bool direct_gp_aggregate =
+              gen_is_direct_gp_aggregate_type(ty, module.type_decls);
 
           // Load pointer into x1
           if (ptr_name[0] == '@') {
@@ -6819,7 +6956,7 @@ static std::optional<std::string> try_emit_general_lir_asm(
               out << "  ldr x1, [sp, #" << ptr_off << "]\n";
           }
 
-          if (address_only) {
+          if (address_only || direct_gp_aggregate) {
             gen_load_operand(out, val, "ptr", sm, 0, fn.name, &extern_globals);
             gen_emit_integer_immediate(out, 2,
                                        static_cast<std::uint64_t>(
@@ -7069,35 +7206,6 @@ static std::optional<std::string> try_emit_general_lir_asm(
             gen_load_operand(out, operand, "ptr", sm, reg_idx, fn.name, &extern_globals);
           };
 
-          const auto emit_load_chunk_from_addr = [&](int dst_reg, const std::string& elem_ty,
-                                                     int base_reg, int source_offset) {
-            if (source_offset == 0) {
-              if (elem_ty == "double") {
-                out << "  ldr d" << dst_reg << ", [x" << base_reg << "]\n";
-              } else if (elem_ty == "float") {
-                out << "  ldr s" << dst_reg << ", [x" << base_reg << "]\n";
-              } else if (gen_is_64bit(elem_ty)) {
-                out << "  ldr x" << dst_reg << ", [x" << base_reg << "]\n";
-              } else {
-                out << "  ldr w" << dst_reg << ", [x" << base_reg << "]\n";
-              }
-            } else {
-              if (elem_ty == "double") {
-                out << "  ldr d" << dst_reg << ", [x" << base_reg << ", #" << source_offset
-                    << "]\n";
-              } else if (elem_ty == "float") {
-                out << "  ldr s" << dst_reg << ", [x" << base_reg << ", #" << source_offset
-                    << "]\n";
-              } else if (gen_is_64bit(elem_ty)) {
-                out << "  ldr x" << dst_reg << ", [x" << base_reg << ", #" << source_offset
-                    << "]\n";
-              } else {
-                out << "  ldr w" << dst_reg << ", [x" << base_reg << ", #" << source_offset
-                    << "]\n";
-              }
-            }
-          };
-
           std::vector<GenCallPiece> pieces;
           int next_gp_reg = 0;
           int next_fp_reg = 0;
@@ -7171,6 +7279,36 @@ static std::optional<std::string> try_emit_general_lir_asm(
               }
             }
 
+            if (gen_is_direct_gp_aggregate_type(stripped_ty, module.type_decls)) {
+              const auto layout = gen_type_layout(stripped_ty, module.type_decls);
+              const int chunk_count = (layout.size + 7) / 8;
+              for (int chunk_index = 0; chunk_index < chunk_count; ++chunk_index) {
+                const int chunk_offset = chunk_index * 8;
+                const int chunk_size = std::min(8, layout.size - chunk_offset);
+                const std::string chunk_ty = gen_chunk_type_for_size(chunk_size);
+                if (next_gp_reg < 8) {
+                  pieces.push_back({GenCallPiece::Kind::GPChunkFromAddr,
+                                    arg.operand,
+                                    chunk_ty,
+                                    next_gp_reg++,
+                                    -1,
+                                    chunk_offset,
+                                    chunk_size});
+                } else {
+                  stack_arg_bytes = align_up(stack_arg_bytes, 8);
+                  pieces.push_back({GenCallPiece::Kind::StackChunkFromAddr,
+                                    arg.operand,
+                                    chunk_ty,
+                                    -1,
+                                    stack_arg_bytes,
+                                    chunk_offset,
+                                    chunk_size});
+                  stack_arg_bytes += 8;
+                }
+              }
+              continue;
+            }
+
             if (gen_is_fp_type(stripped_ty)) {
               if (next_fp_reg < 8) {
                 pieces.push_back({GenCallPiece::Kind::FPScalar, arg.operand, stripped_ty,
@@ -7206,13 +7344,13 @@ static std::optional<std::string> try_emit_general_lir_asm(
                 break;
               case GenCallPiece::Kind::GPChunkFromAddr:
                 emit_load_address(current_piece.operand, 9);
-                emit_load_chunk_from_addr(current_piece.reg_index, current_piece.type, 9,
-                                          current_piece.source_offset);
+                gen_emit_load_chunk_from_addr(out, current_piece.reg_index, current_piece.type, 9,
+                                              current_piece.source_offset);
                 break;
               case GenCallPiece::Kind::FPChunkFromAddr:
                 emit_load_address(current_piece.operand, 9);
-                emit_load_chunk_from_addr(current_piece.reg_index, current_piece.type, 9,
-                                          current_piece.source_offset);
+                gen_emit_load_chunk_from_addr(out, current_piece.reg_index, current_piece.type, 9,
+                                              current_piece.source_offset);
                 break;
               case GenCallPiece::Kind::StackScalar:
               case GenCallPiece::Kind::StackChunkFromAddr:
@@ -7246,17 +7384,24 @@ static std::optional<std::string> try_emit_general_lir_asm(
                 case GenCallPiece::Kind::StackChunkFromAddr:
                   emit_load_address(current_piece.operand, 9);
                   if (current_piece.type == "double") {
-                    emit_load_chunk_from_addr(9, "double", 9, current_piece.source_offset);
+                    gen_emit_load_chunk_from_addr(out, 9, "double", 9,
+                                                  current_piece.source_offset);
                     out << "  str d9, [sp, #" << current_piece.stack_offset << "]\n";
                   } else if (current_piece.type == "float") {
-                    emit_load_chunk_from_addr(9, "float", 9, current_piece.source_offset);
+                    gen_emit_load_chunk_from_addr(out, 9, "float", 9,
+                                                  current_piece.source_offset);
                     out << "  str s9, [sp, #" << current_piece.stack_offset << "]\n";
                   } else {
-                    emit_load_chunk_from_addr(9, current_piece.type, 9, current_piece.source_offset);
-                    if (current_piece.byte_size > 4) {
-                      out << "  str x9, [sp, #" << current_piece.stack_offset << "]\n";
-                    } else {
+                    gen_emit_load_chunk_from_addr(out, 9, current_piece.type, 9,
+                                                  current_piece.source_offset);
+                    if (current_piece.byte_size <= 1) {
+                      out << "  strb w9, [sp, #" << current_piece.stack_offset << "]\n";
+                    } else if (current_piece.byte_size <= 2) {
+                      out << "  strh w9, [sp, #" << current_piece.stack_offset << "]\n";
+                    } else if (current_piece.byte_size <= 4) {
                       out << "  str w9, [sp, #" << current_piece.stack_offset << "]\n";
+                    } else {
+                      out << "  str x9, [sp, #" << current_piece.stack_offset << "]\n";
                     }
                   }
                   break;
@@ -7303,10 +7448,23 @@ static std::optional<std::string> try_emit_general_lir_asm(
           // Store return value
           if (!p->result.empty()) {
             std::string ret_ty = p->return_type.str();
-            if (gen_is_fp_type(ret_ty)) {
+            if (gen_is_direct_gp_aggregate_type(ret_ty, module.type_decls)) {
+              const int data_off = sm.lookup_data(p->result.str());
+              const int slot_off = sm.lookup(p->result.str());
+              if (data_off < 0 || slot_off < 0) return std::nullopt;
+              gen_emit_add_imm(out, "x9", "sp", data_off, "x9");
+              gen_emit_store_chunk_to_addr(out, 0, 8, 9, 0);
+              const int tail_bytes = gen_type_layout(ret_ty, module.type_decls).size - 8;
+              if (tail_bytes > 0) {
+                gen_emit_store_chunk_to_addr(out, 1, tail_bytes, 9, 8);
+              }
+              out << "  str x9, [sp, #" << slot_off << "]\n";
+            } else if (gen_is_fp_type(ret_ty)) {
               out << "  fmov " << (ret_ty == "double" ? "x0, d0" : "w0, s0") << "\n";
+              gen_store_result(out, p->result.str(), ret_ty, sm, 0);
+            } else {
+              gen_store_result(out, p->result.str(), ret_ty, sm, 0);
             }
-            gen_store_result(out, p->result.str(), ret_ty, sm, 0);
           }
         }
         else if (const auto* p = std::get_if<LirGepOp>(&inst)) {
@@ -7624,7 +7782,18 @@ static std::optional<std::string> try_emit_general_lir_asm(
       // Emit terminator
       if (const auto* t = std::get_if<LirRet>(&blk.terminator)) {
         if (t->value_str.has_value() && t->type_str != "void") {
-          gen_load_operand(out, *t->value_str, t->type_str, sm, 0, fn.name, &extern_globals);
+          if (gen_is_direct_gp_aggregate_type(t->type_str, module.type_decls)) {
+            gen_load_operand(out, *t->value_str, "ptr", sm, 0, fn.name, &extern_globals);
+            out << "  mov x9, x0\n";
+            out << "  ldr x0, [x9]\n";
+            const int tail_bytes = gen_type_layout(t->type_str, module.type_decls).size - 8;
+            if (tail_bytes > 0) {
+              gen_emit_load_chunk_from_addr(out, 1, gen_chunk_type_for_size(tail_bytes), 9, 8);
+            }
+          } else {
+            gen_load_operand(out, *t->value_str, t->type_str, sm, 0, fn.name,
+                             &extern_globals);
+          }
         }
         out << "  ldr x30, [sp, #0]\n";
         gen_emit_sp_adjust(out, "add", sm.frame_size);
