@@ -1959,6 +1959,24 @@ void test_x86_backend_scaffold_accepts_direct_typed_countdown_while_lir_input() 
                       "x86 direct-LIR countdown regression should not fall back to LLVM text for the typed countdown loop");
 }
 
+void test_x86_backend_explicit_lir_emit_surface_matches_countdown_do_while_path() {
+  const auto direct_rendered =
+      c4c::backend::x86::emit_module(make_countdown_do_while_return_module());
+  const auto lowered =
+      c4c::backend::lower_lir_to_backend_module(make_countdown_do_while_return_module());
+  const auto lowered_rendered = c4c::backend::x86::emit_module(lowered);
+
+  expect_contains(direct_rendered, ".globl main",
+                  "x86 direct-LIR countdown-do-while regression should keep the bounded loop family on the native asm path");
+  expect_contains(direct_rendered, "mov eax, 0",
+                  "x86 direct-LIR countdown-do-while regression should fold the bounded loop family to the same final return as the lowered seam");
+  expect_not_contains(direct_rendered, "target triple =",
+                      "x86 direct-LIR countdown-do-while regression should not fall back to LLVM text for the bounded do-while slice");
+  if (direct_rendered != lowered_rendered) {
+    fail("x86 countdown-do-while regression should keep the direct LIR and explicit lowered backend seams on identical assembly output");
+  }
+}
+
 void test_x86_backend_scaffold_accepts_direct_conditional_phi_join_add_lir_input() {
   const auto rendered =
       c4c::backend::x86::emit_module(make_conditional_phi_join_add_module());
@@ -5713,6 +5731,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_countdown_while_ir_input);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_countdown_while_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_direct_typed_countdown_while_lir_input);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_countdown_do_while_path);
   RUN_TEST(test_x86_backend_scaffold_accepts_direct_conditional_phi_join_add_lir_input);
   RUN_TEST(test_x86_backend_scaffold_prefers_direct_bir_path_for_cast_return_lir_input);
   RUN_TEST(test_x86_backend_scaffold_renders_direct_return_immediate_slice);

@@ -9,12 +9,10 @@ Source Plan: plan.md
 - [ ] Remove legacy backend IR files and backend/app LLVM rescue paths
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
-Current active item: Step 4 x86 emitter tightening. Remove the bounded
-local-slot arithmetic / two-local return dependency on
-`lower_lir_to_backend_module(...)` inside
-[`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
-so the direct x86 LIR emit surface can constant-fold that family without
-consulting legacy backend lowering first.
+Current active item: Step 4 x86 emitter tightening. Continue shrinking the
+remaining x86 emitter-local `lower_lir_to_backend_module(...)` fallback for the
+next bounded local-runtime or direct-call family that still only reaches
+assembly through legacy lowering.
 
 Completed in this slice:
 
@@ -23,6 +21,15 @@ Completed in this slice:
   to constant-fold the bounded local-slot arithmetic / two-local return family
   directly to the minimal return asm path so those slices no longer need
   `lower_lir_to_backend_module(...)` on the explicit x86 entrypoint
+- taught the direct x86 LIR emit path in
+  [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+  to recognize the bounded countdown do-while slice and fold it directly to
+  the final return asm path so that family no longer needs
+  `lower_lir_to_backend_module(...)` on the explicit x86 entrypoint
+- proved the production deletion with a new parity regression in
+  [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
+  that keeps the direct x86 LIR emit surface and the explicit lowered seam on
+  identical asm for the bounded countdown do-while family
 - proved the production deletion with new explicit-LIR parity regressions in
   [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
   for the local-slot arithmetic chain and two-local scalar-slot return slices
@@ -74,10 +81,9 @@ Next slice:
 - continue shrinking the remaining x86 emitter-local
   `lower_lir_to_backend_module(...)` fallback for the next bounded local-runtime
   or direct-call family that still only reaches assembly through legacy lowering
-- prefer the next family already exposed by the explicit x86 tests, such as the
-  do-while countdown bucket, where
-  the direct x86 LIR entrypoint can delete one more live production dependency
-  instead of only adding compatibility probes
+- after the countdown do-while family, prefer another explicit-x86 family where
+  the direct entrypoint still needs legacy lowering rather than adding more
+  compatibility-only probes
 - keep lowered-backend tests scoped to compatibility seams that still exist
   after the production deletion
 - prove the next deletion with focused x86 backend tests and
@@ -141,3 +147,6 @@ Recent baseline:
 - latest Step 4 follow-through also removes the bounded extern scalar
   global-load dependency on `lower_lir_to_backend_module(...)` from the direct
   x86 LIR entrypoint
+- latest Step 4 follow-through also removes the bounded countdown do-while
+  dependency on `lower_lir_to_backend_module(...)` from the direct x86 LIR
+  entrypoint and keeps the direct/lowered x86 seams on identical asm
