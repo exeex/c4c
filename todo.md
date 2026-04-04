@@ -22,7 +22,7 @@ Immediate next slice:
   matcher/emitter gap is still bounded enough to remove the file-output tag in
   one batch
 - otherwise continue with the next smallest still-blocked AArch64 rescue
-  family after re-probing `00174`, `00175`, and `00204`
+  family after re-probing `00174` and `00204`
 
 Slice deliverables:
 
@@ -88,7 +88,7 @@ Known live references from the current audit:
   backend families now run through stdout-native asm by default
 - the remaining live file-output asm rescue users are now explicit allowlist
   tags for external/backend AArch64 c-testsuite coverage:
-  `00121`, `00174`, `00175`, and `00204`
+  `00121`, `00174`, and `00204`
 - the small scalar/FP audit split cleanly into two buckets:
   `00113`, `00119`, and `00123` all failed because the AArch64 general
   stack-spill emitter rejected float compares and float casts
@@ -141,6 +141,10 @@ Recently completed milestones:
   cast/compare slices (`sitofp`, ordered `fcmp`, and the matching float/double
   conversion helpers) and removed external/backend AArch64 c-testsuite cases
   `00113`, `00119`, and `00123` from the remaining file-output rescue bucket
+- re-probed external/backend AArch64 c-testsuite case `00175`, confirmed it
+  already emits backend-native asm on stdout, and removed its stale
+  `backend-file-aarch64` allowlist tag so the live file-output rescue bucket
+  now shrinks to `00121`, `00174`, and `00204`
 
 Validation baseline:
 
