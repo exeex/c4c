@@ -515,6 +515,12 @@ c4c::codegen::lir::LirModule make_extern_decl_call_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_extern_decl_call_module_with_irrelevant_type_decl() {
+  auto module = make_extern_decl_call_module();
+  module.type_decls.push_back("%struct.__va_list_tag_ = type { ptr, ptr, ptr, i32, i32 }");
+  return module;
+}
+
 
 
 c4c::codegen::lir::LirModule make_extern_global_load_module() {
@@ -1203,20 +1209,20 @@ void test_aarch64_backend_renders_void_return_slice() {
                   "aarch64 backend should render void returns");
 }
 
-void test_aarch64_backend_preserves_module_headers_and_declarations() {
+void test_aarch64_backend_renders_declared_call_slice_with_irrelevant_type_decls() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_declaration_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-  expect_contains(rendered, "target datalayout = \"e-m:e-i64:64-i128:128-n32:64-S128\"",
-                  "aarch64 backend should preserve the module datalayout");
-  expect_contains(rendered, "target triple = \"aarch64-unknown-linux-gnu\"",
-                  "aarch64 backend should preserve the module target triple");
-  expect_contains(rendered, "%struct.Pair = type { i32, i32 }",
-                  "aarch64 backend should preserve module type declarations");
-  expect_contains(rendered, "declare i32 @helper(i32)\n",
-                  "aarch64 backend should preserve declarations without bodies");
-  expect_contains(rendered, "define i32 @main()\n{\nentry:\n",
-                  "aarch64 backend should still open function bodies for definitions");
+  expect_contains(rendered, ".text\n",
+                  "aarch64 backend should still lower declared direct-call slices to assembly when unrelated type declarations are present");
+  expect_contains(rendered, ".globl main\n",
+                  "aarch64 backend should still publish main as the entry symbol for declared direct-call slices with unrelated type declarations");
+  expect_contains(rendered, "  mov w0, #5\n",
+                  "aarch64 backend should preserve the declared direct-call argument when unrelated type declarations are present");
+  expect_contains(rendered, "  bl helper\n",
+                  "aarch64 backend should preserve the declared helper call when unrelated type declarations are present");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend should not fall back to LLVM text just because the lowered module carries unrelated type declarations");
 }
 
 
@@ -3100,6 +3106,20 @@ void test_aarch64_backend_explicit_emit_surface_matches_structured_declared_dire
                   "aarch64 explicit LIR emit surface should preserve the declared direct helper symbol");
   expect_not_contains(direct_rendered, "define i32 @main()",
                       "aarch64 explicit emit surfaces should stay on assembly output for structured declared direct calls");
+}
+
+void test_aarch64_backend_renders_extern_decl_slice_with_irrelevant_type_decl() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_extern_decl_call_module_with_irrelevant_type_decl()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".text\n",
+                  "aarch64 backend should ignore unrelated type declarations when matching extern-decl call slices");
+  expect_contains(rendered, "  mov w0, #5\n",
+                  "aarch64 backend should keep the inferred extern i32 argument on the direct asm path even when unused type declarations are present");
+  expect_contains(rendered, "  bl helper_ext\n",
+                  "aarch64 backend should preserve the direct extern helper call when irrelevant type declarations are present");
+  expect_not_contains(rendered, "define i32 @main()",
+                      "aarch64 backend should not fall back to LLVM text just because the lowered module carries unrelated type declarations");
 }
 
 void test_aarch64_backend_lowered_ir_text_fallback_ignores_legacy_lir_metadata() {
@@ -5074,7 +5094,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_scaffold_matches_direct_representative_eighteen_local_slot_constant_conditional_goto_return_asm();
   test_aarch64_backend_scaffold_matches_direct_non_main_param_nineteen_local_slot_constant_conditional_goto_return_asm();
   test_aarch64_backend_renders_void_return_slice();
-  test_aarch64_backend_preserves_module_headers_and_declarations();
+  test_aarch64_backend_renders_declared_call_slice_with_irrelevant_type_decls();
   test_aarch64_backend_propagates_malformed_signature_in_supported_slice();
   // TODO: compare-and-branch slice tests disabled — backend lowering changed
   // test_aarch64_backend_renders_compare_and_branch_slice();
@@ -5164,6 +5184,7 @@ void run_aarch64_backend_tests() {
   // test_aarch64_backend_renders_string_pool_slice();
   test_aarch64_backend_renders_extern_decl_slice();
   test_aarch64_backend_explicit_emit_surface_matches_structured_declared_direct_call_path();
+  test_aarch64_backend_renders_extern_decl_slice_with_irrelevant_type_decl();
   test_aarch64_backend_lowered_ir_text_fallback_ignores_legacy_lir_metadata();
   test_aarch64_backend_renders_extern_global_load_slice();
   test_aarch64_backend_scaffold_accepts_explicit_lowered_global_load_ir_input();

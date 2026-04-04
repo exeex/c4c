@@ -10,22 +10,26 @@ Source Plan: plan.md
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
 Current active item: Step 4, keep shrinking the remaining app-layer LLVM asm
-rescue one bounded surface at a time; the next bounded target should be the
-remaining already-native file-output backend contract surfaces, starting with
-the x86_64 extern-call contract while the matching aarch64 contract still
-requires the explicit stdout guard.
-Next intended slice: rerun the x86_64 extern-call contract through the explicit
-stdout runner, keep the aarch64 extern-call contract on file-output coverage
-until its backend stdout path is native, then return to the remaining rescue-
-path deletion surfaces.
-Next intended slice: probe the remaining file-output backend contract surfaces
-after the bounded x86_64 extern-call conversion, prioritize whichever family
-already emits backend-native stdout assembly without `-o <file>.s`, and keep
-any still-guarded aarch64 surfaces on file-output coverage until their stdout
-path is genuinely native.
+rescue one bounded surface at a time; after converting the last blocked
+aarch64 extern-call contract onto the explicit stdout runner, return to the
+remaining rescue-path deletion surfaces outside the backend contract family.
+Next intended slice: probe the remaining app-layer `-o <file>.s` fallback
+surfaces after the bounded aarch64 extern-call stdout conversion and
+prioritize the next family that already emits backend-native stdout assembly
+without LLVM rescue.
 Blocker: none. The rebuilt `backend_lir_adapter_aarch64_tests` expectation
 drift has been realigned to the current native aarch64 backend seam, and the
 required backend/full-suite acceptance gates are green again.
+Completed in this slice: traced the remaining aarch64 extern-call stdout block
+to an unnecessary `adapted.type_decls.empty()` gate in the aarch64 declared-
+direct-call matcher, which caused source-lowered modules carrying unrelated
+type declarations to skip the native asm path and fall back to LLVM on stdout.
+Completed in this slice: removed that aarch64 type-decl gate, added a backend
+adapter regression proving the declared-direct-call asm path still matches when
+irrelevant lowered type declarations are present, and converted the internal
+aarch64 extern-call object contract from the file-output runner onto the
+explicit stdout-native contract seam as
+`backend_contract_aarch64_extern_call_stdout_object`.
 Completed in this slice: probed the remaining `extern_call` file-output
 contract family and confirmed the bounded split in current backend behavior:
 `x86_64` already emits backend-native stdout assembly for
