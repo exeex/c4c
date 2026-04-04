@@ -1607,6 +1607,22 @@ void test_aarch64_backend_scaffold_accepts_renamed_structured_zero_arg_direct_ca
                       "aarch64 backend seam should not fall back when a renamed zero-argument direct-call slice relies only on structured metadata");
 }
 
+void test_aarch64_backend_renders_void_direct_call_imm_return_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_void_direct_call_imm_return_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".type voidfn, %function",
+                  "aarch64 backend should lower the zero-arg void helper definition into a real function symbol");
+  expect_contains(rendered, "voidfn:\n  ret\n",
+                  "aarch64 backend should emit the bounded void helper body as native assembly");
+  expect_contains(rendered, "bl voidfn",
+                  "aarch64 backend should keep the bounded void helper call on the native call path");
+  expect_contains(rendered, "mov w0, #0",
+                  "aarch64 backend should materialize the immediate main return after the void helper call");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend should not fall back to LLVM text for the bounded void helper-call slice");
+}
+
 void test_aarch64_backend_rejects_intrinsic_callee_from_direct_call_fast_path() {
   auto module = make_typed_direct_call_module();
   auto& call = std::get<c4c::codegen::lir::LirCallOp>(
@@ -5115,6 +5131,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_renders_zero_arg_typed_direct_call_slice_with_whitespace();
   test_aarch64_backend_scaffold_accepts_structured_zero_arg_direct_call_spacing_ir_without_signature_shims();
   test_aarch64_backend_scaffold_accepts_renamed_structured_zero_arg_direct_call_ir_without_signature_shims();
+  test_aarch64_backend_renders_void_direct_call_imm_return_slice();
   test_aarch64_backend_rejects_intrinsic_callee_from_direct_call_fast_path();
   test_aarch64_backend_rejects_indirect_callee_from_direct_call_fast_path();
   test_aarch64_backend_renders_local_temp_memory_slice();

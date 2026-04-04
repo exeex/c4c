@@ -4250,6 +4250,36 @@ std::string emit_minimal_direct_call_asm(const c4c::backend::BackendModule& modu
   return out.str();
 }
 
+std::string emit_minimal_void_direct_call_imm_return_asm(
+    const c4c::backend::BackendModule& module,
+    const c4c::backend::ParsedBackendMinimalVoidDirectCallImmReturnModuleView& slice) {
+  if (slice.helper == nullptr) {
+    fail_unsupported("structured zero-argument void direct-call slice without helper metadata");
+  }
+
+  if (slice.return_imm < 0 ||
+      slice.return_imm > std::numeric_limits<std::uint16_t>::max()) {
+    fail_unsupported("void direct-call return immediates outside the minimal mov-supported range");
+  }
+
+  std::ostringstream out;
+  const std::string helper_symbol = asm_symbol_name(module, slice.helper->signature.name);
+  const std::string main_symbol = asm_symbol_name(module, "main");
+
+  out << ".text\n";
+  emit_function_prelude(out, module, helper_symbol, false);
+  out << "  ret\n";
+  emit_function_prelude(out, module, main_symbol, true);
+  out << "  sub sp, sp, #16\n"
+      << "  str x30, [sp, #8]\n"
+      << "  bl " << helper_symbol << "\n"
+      << "  mov w0, #" << slice.return_imm << "\n"
+      << "  ldr x30, [sp, #8]\n"
+      << "  add sp, sp, #16\n"
+      << "  ret\n";
+  return out.str();
+}
+
 std::string emit_minimal_direct_call_add_imm_asm(
     const c4c::backend::BackendModule& module,
     const c4c::backend::ParsedBackendMinimalDirectCallAddImmModuleView& slice) {
@@ -7155,6 +7185,11 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
           slice.has_value()) {
         return emit_minimal_declared_direct_call_asm(adapted, *slice);
       }
+      if (const auto slice =
+              c4c::backend::parse_backend_minimal_void_direct_call_imm_return_module(adapted);
+          slice.has_value()) {
+        return emit_minimal_void_direct_call_imm_return_asm(adapted, *slice);
+      }
       if (const auto imm = parse_minimal_return_imm(adapted); imm.has_value()) {
         return emit_minimal_return_imm_asm(adapted, *imm);
       }
@@ -7277,6 +7312,11 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
       if (const auto slice = c4c::backend::parse_backend_minimal_declared_direct_call_module(adapted);
           slice.has_value()) {
         return emit_minimal_declared_direct_call_asm(adapted, *slice);
+      }
+      if (const auto slice =
+              c4c::backend::parse_backend_minimal_void_direct_call_imm_return_module(adapted);
+          slice.has_value()) {
+        return emit_minimal_void_direct_call_imm_return_asm(adapted, *slice);
       }
       if (const auto imm = parse_minimal_return_imm(adapted); imm.has_value()) {
         return emit_minimal_return_imm_asm(adapted, *imm);

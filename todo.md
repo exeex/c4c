@@ -97,8 +97,8 @@ Known live references from the current audit:
   backend families now run through stdout-native asm by default
 - the remaining live file-output asm rescue users are now explicit allowlist
   tags for external/backend AArch64 c-testsuite coverage:
-  `00080`, `00108`, `00113`, `00116`, `00119`, `00121`, `00123`,
-  `00174`, `00175`, and `00204`
+  `00108`, `00113`, `00116`, `00119`, `00121`, `00123`, `00174`,
+  `00175`, and `00204`
 - `c4cll` now rejects file-output LLVM asm fallback on non-AArch64 targets;
   the app-layer rescue path is retained only for the tagged AArch64 family
 
@@ -130,15 +130,20 @@ Recently completed milestones:
   the allowlist metadata plus runner wiring
 - tightened `c4cll` so non-AArch64 `--codegen asm -o <file>.s` requests no
   longer get LLVM-IR-to-asm rescue when the backend fails to emit native asm
+- taught the shared direct-call matcher plus the AArch64 emitter to keep the
+  zero-arg `void` helper-call plus immediate-`0` return shape on the backend
+  asm path, and removed external/backend AArch64 c-testsuite case `00080`
+  from the remaining file-output rescue bucket
 
 Validation baseline:
 
 - blocker: none
 - latest focused proving set:
-  `backend_contract_aarch64_extern_call_stdout_object`,
-  `backend_contract_x86_64_extern_call_stdout_object`,
-  `backend_runtime_call_helper`
-  with `100% tests passed, 0 tests failed out of 3`
+  `backend_lir_adapter_tests void_direct_call_imm_return`,
+  `backend_lir_adapter_aarch64_tests void_direct_call_imm_return`,
+  and
+  `build/c4cll --codegen asm --target aarch64-unknown-linux-gnu tests/c/external/c-testsuite/src/00080.c`
+  with native asm emitted on stdout and exit `0`
 - latest backend regression scope:
   `ctest --test-dir build -R backend --output-on-failure`
   with `100% tests passed, 0 tests failed out of 402`
