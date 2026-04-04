@@ -119,6 +119,13 @@ struct ParsedBackendMinimalTwoArgDirectCallLirModuleView {
   std::int64_t rhs_call_arg_imm = 0;
 };
 
+struct ParsedBackendMinimalDirectCallLirModuleView {
+  const c4c::codegen::lir::LirFunction* helper = nullptr;
+  const c4c::codegen::lir::LirFunction* main_function = nullptr;
+  const c4c::codegen::lir::LirCallOp* call = nullptr;
+  std::int64_t return_imm = 0;
+};
+
 struct ParsedBackendMinimalTwoArgDirectCallModuleView {
   const BackendFunction* helper = nullptr;
   const BackendFunction* main_function = nullptr;
@@ -669,6 +676,28 @@ parse_backend_structured_zero_arg_return_imm_function(
   }
 
   return ParsedBackendStructuredZeroArgReturnImmFunctionView{*return_imm};
+}
+
+inline std::optional<std::int64_t> parse_backend_lir_zero_arg_return_imm_function(
+    const c4c::codegen::lir::LirFunction& function,
+    std::optional<std::string_view> expected_name) {
+  const std::string_view function_name =
+      expected_name.has_value() ? *expected_name : std::string_view(function.name);
+  if (function.is_declaration ||
+      !backend_lir_signature_matches(function.signature_text, "define", "i32", function_name, {}) ||
+      function.entry.value != 0 || function.blocks.size() != 1 || !function.alloca_insts.empty() ||
+      !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& block = function.blocks.front();
+  const auto* ret = std::get_if<c4c::codegen::lir::LirRet>(&block.terminator);
+  if (block.label != "entry" || !block.insts.empty() || ret == nullptr ||
+      !ret->value_str.has_value() || ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  return parse_backend_i64_literal(*ret->value_str);
 }
 
 inline std::optional<ParsedBackendStructuredSingleAddImmFunctionView>
@@ -1701,6 +1730,36 @@ parse_backend_minimal_two_arg_direct_call_lir_module(
       call,
       matched_slots->first,
       matched_slots->second,
+  };
+}
+
+inline std::optional<ParsedBackendMinimalDirectCallLirModuleView>
+parse_backend_minimal_direct_call_lir_module(const c4c::codegen::lir::LirModule& module) {
+  const auto parsed = parse_backend_single_helper_zero_arg_main_lir_module(module, 1);
+  if (!parsed.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto* call = parsed->main_block == nullptr || parsed->main_block->insts.empty()
+                         ? nullptr
+                         : std::get_if<c4c::codegen::lir::LirCallOp>(&parsed->main_block->insts[0]);
+  const auto callee_name =
+      call == nullptr ? std::nullopt : parse_backend_zero_arg_direct_global_typed_call(*call);
+  const auto return_imm =
+      parsed->helper == nullptr
+          ? std::nullopt
+          : parse_backend_lir_zero_arg_return_imm_function(*parsed->helper, std::nullopt);
+  if (call == nullptr || !callee_name.has_value() || parsed->helper == nullptr ||
+      *callee_name != parsed->helper->name || !return_imm.has_value() || call->result.empty() ||
+      parsed->main_ret == nullptr || *parsed->main_ret->value_str != call->result) {
+    return std::nullopt;
+  }
+
+  return ParsedBackendMinimalDirectCallLirModuleView{
+      parsed->helper,
+      parsed->main_function,
+      call,
+      *return_imm,
   };
 }
 

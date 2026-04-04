@@ -30,30 +30,30 @@ Current exact target for this iteration:
 - keep broader `lir_to_backend_ir.cpp` and `ir.*` removal for later bounded
   batches once another live emitter-local seam is actually gone
 
-This pass narrows that target to the x86 direct-LIR conditional-phi-join slice:
+This pass narrows that target to the x86 zero-arg direct-call LIR slice:
 
 - teach `src/backend/x86/codegen/emit.cpp` to recognize and emit the bounded
-  conditional phi-join family directly from `codegen::lir::LirModule`
+  zero-argument helper-call family directly from `codegen::lir::LirModule`
 - delete the matching x86 emitter-local
-  `parse_minimal_conditional_phi_join_slice(adapted)` fallback leg so direct
-  x86 conditional-join assembly no longer depends on
+  `parse_backend_minimal_direct_call_module(adapted)` fallback leg so direct
+  x86 zero-arg helper-call assembly no longer depends on
   `lower_lir_to_backend_module(...)`
-- keep the explicit lowered-backend conditional-join emitter path intact for
-  now, and only trim test coverage if a join-specific legacy handoff assertion
-  becomes redundant after that deletion
+- keep the explicit lowered-backend zero-arg direct-call emitter path intact
+  for now, and only trim test coverage if a helper-call-specific legacy
+  handoff assertion becomes redundant after that deletion
 
 Completed in this iteration:
 
 - `src/backend/x86/codegen/emit.cpp` now recognizes the bounded
-  conditional-phi-join family directly from `codegen::lir::LirModule` and
-  emits native x86 asm without first lowering through
+  zero-argument helper-call family directly from `codegen::lir::LirModule`
+  and emits native x86 asm without first lowering through
   `lower_lir_to_backend_module(...)`
 - the x86 direct emitter no longer carries the matching
-  `parse_minimal_conditional_phi_join_slice(adapted)` fallback branch, so that
+  `parse_backend_minimal_direct_call_module(adapted)` fallback branch, so that
   one more live emitter-local legacy lowering seam is gone
 - `tests/backend/backend_lir_adapter_x86_64_tests.cpp` now includes a focused
-  direct-x86 conditional-phi-join regression that exercises the native LIR
-  entry point instead of only the higher-level backend wrapper
+  direct-x86 zero-arg helper-call regression that exercises the native LIR
+  entry point, including a renamed helper plus spacing-tolerant call surface
 - rebuilt the tree, re-ran `backend_lir_adapter_x86_64_tests`, then re-ran
   `ctest --test-dir build -R backend --output-on-failure`, and refreshed the
   monotonic backend guard with `test_backend_before.log` vs
@@ -64,8 +64,9 @@ Next intended slice:
 
 - cut the next bounded x86 or aarch64 emitter-local legacy lowering seam in the
   same style, with the strongest candidates still being the remaining compact
-  control-flow families that already have direct-LIR structure available to the
-  native emitters
+  x86 zero-arg/one-arg direct-call families or the matching aarch64
+  zero-arg direct-call family that still re-enter through
+  `lower_lir_to_backend_module(...)`
 
 Current bounded deletion slice: keep Step 4 focused on production deletion.
 - delete the generic backend-entry `LegacyPreloweredModule` route and the stale

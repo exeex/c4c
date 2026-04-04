@@ -2128,6 +2128,34 @@ void test_x86_backend_renders_zero_arg_typed_direct_call_slice_with_whitespace()
                       "x86 backend should not fall back to LLVM text for whitespace-tolerant zero-arg typed direct calls");
 }
 
+void test_x86_backend_explicit_lir_emit_surface_keeps_renamed_zero_arg_direct_call_on_asm_path() {
+  auto module = make_direct_call_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  auto& helper = module.functions.front();
+  helper.name = "const_value";
+  helper.signature_text = "define i32 @const_value( )\n";
+
+  auto& call = std::get<c4c::codegen::lir::LirCallOp>(
+      module.functions.back().blocks.front().insts.front());
+  call.callee = c4c::codegen::lir::LirOperand(std::string("@const_value"),
+                                              c4c::codegen::lir::LirOperandKind::Global);
+  call.callee_type_suffix = "( )";
+  call.args_str = " ";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".type const_value, %function",
+                  "x86 backend should keep the renamed zero-arg helper definition on the asm path from the explicit LIR entry surface");
+  expect_contains(rendered, "call const_value",
+                  "x86 backend should keep renamed zero-arg helper calls on the asm path from the explicit LIR entry surface");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should not fall back to LLVM text for the renamed zero-arg direct-call LIR surface");
+}
+
 void test_x86_backend_scaffold_accepts_structured_zero_arg_direct_call_spacing_ir_without_signature_shims() {
   auto module = make_direct_call_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -5498,6 +5526,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_renders_countdown_do_while_return_slice);
   RUN_TEST(test_x86_backend_renders_direct_call_slice);
   RUN_TEST(test_x86_backend_renders_zero_arg_typed_direct_call_slice_with_whitespace);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_keeps_renamed_zero_arg_direct_call_on_asm_path);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_zero_arg_direct_call_spacing_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_renamed_structured_zero_arg_direct_call_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_rejects_structured_zero_arg_direct_call_when_callee_signature_param_type_disagrees);
