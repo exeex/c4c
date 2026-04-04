@@ -509,22 +509,21 @@ if(CLANG_EXECUTABLE)
 
   if(OBJDUMP_EXECUTABLE)
     add_test(
-      NAME backend_contract_aarch64_return_add_object
+      NAME backend_contract_aarch64_return_add_stdout_object
       COMMAND "${CMAKE_COMMAND}"
               -DCOMPILER=$<TARGET_FILE:c4cll>
               -DCLANG=${CLANG_EXECUTABLE}
               -DOBJDUMP=${OBJDUMP_EXECUTABLE}
               -DSRC=${INTERNAL_C_TEST_ROOT}/backend_case/return_add.c
               -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
-              -DBACKEND_OUTPUT_KIND=asm
               -DBACKEND_OUTPUT_PATH=${CMAKE_BINARY_DIR}/internal_backend_contract/return_add_aarch64.s
               -DOUT_ARTIFACT=${CMAKE_BINARY_DIR}/internal_backend_contract/return_add_aarch64.o
               "-DREQUIRED_BACKEND_SNIPPETS=.text|.globl main|mov w0, #5|ret"
               "-DREQUIRED_OBJDUMP_SNIPPETS=file format elf64-littleaarch64|.text|main"
               "-DFORBIDDEN_OBJDUMP_SNIPPETS=.rela.text|R_AARCH64_"
-              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_contract_case.cmake"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_stdout_contract_case.cmake"
     )
-    set_tests_properties(backend_contract_aarch64_return_add_object PROPERTIES
+    set_tests_properties(backend_contract_aarch64_return_add_stdout_object PROPERTIES
         LABELS "internal;backend")
 
     add_test(
