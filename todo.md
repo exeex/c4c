@@ -40,17 +40,26 @@ Completed in this slice:
 - replaced the old explicit-lowered extern scalar global-load proof with a
   direct render test plus direct-vs-lowered parity coverage in
   [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
+- added a bounded direct x86 LIR parser/emitter path for the multi-`printf`
+  vararg declared-direct-call slice in
+  [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+  so the explicit x86 LIR entrypoint no longer needs
+  `lower_lir_to_backend_module(...)` before keeping that slice on the asm path
+- proved the production deletion with a new explicit-emit regression in
+  [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
+  that keeps the bounded multi-`printf` slice on assembly output from the
+  direct x86 LIR surface and the normal backend selection path
 
 Next slice:
 
 - continue shrinking the remaining x86 emitter-local
-  `lower_lir_to_backend_module(...)` fallback for the next direct-call or
-  global family that still lacks a direct-LIR parser path
+  `lower_lir_to_backend_module(...)` fallback for the next bounded direct-call
+  or global family that still only reaches assembly through legacy lowering
 - prefer the next family where the direct x86 LIR entrypoint can delete one
-  more live production dependency instead of only adding probe coverage
-- keep any remaining lowered-backend tests scoped to compatibility seams that
-  still exist after the production deletion
-- prove the deletion with focused x86 backend tests and
+  more live production dependency instead of only adding compatibility probes
+- keep lowered-backend tests scoped to compatibility seams that still exist
+  after the production deletion
+- prove the next deletion with focused x86 backend tests and
   `ctest --test-dir build -R backend -j1 --output-on-failure`
 
 Step 4 remaining surface:
@@ -88,6 +97,9 @@ Recent baseline:
 - blocker: none
 - backend regression scope is currently green at `402` passed / `0` failed via
   `ctest --test-dir build -R backend -j1 --output-on-failure`
+- latest Step 4 follow-through also removes the bounded multi-`printf` vararg
+  declared-direct-call dependency on `lower_lir_to_backend_module(...)` from
+  the direct x86 LIR entrypoint
 - plain `ctest --test-dir build -R backend --output-on-failure` was flaky in
   this run and reported transient `c_testsuite_aarch64_backend_*` failures,
   but the serial rerun was fully green

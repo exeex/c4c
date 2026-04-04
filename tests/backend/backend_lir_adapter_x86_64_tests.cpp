@@ -4895,6 +4895,31 @@ void test_x86_backend_adapter_preserves_multiple_printf_calls_in_backend_ir() {
               "x86 backend adapter should preserve the explicit zero return after the multi-printf sequence");
 }
 
+void test_x86_backend_explicit_lir_emit_surface_matches_bounded_multi_printf_vararg_path() {
+  const auto module = make_x86_multi_printf_vararg_module();
+  const auto direct_rendered = c4c::backend::x86::emit_module(module);
+  const auto backend_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_true(direct_rendered == backend_rendered,
+              "x86 backend selection should keep the bounded multi-printf vararg slice on the same direct x86 LIR emit path");
+  expect_contains(direct_rendered, ".section .rodata\n",
+                  "x86 explicit LIR emit surface should materialize the bounded printf format strings in read-only data");
+  expect_contains(direct_rendered, ".L.str0:\n  .asciz \"first\\n\"\n",
+                  "x86 explicit LIR emit surface should preserve the first bounded printf format string");
+  expect_contains(direct_rendered, ".L.str1:\n  .asciz \"second\\n\"\n",
+                  "x86 explicit LIR emit surface should preserve the second bounded printf format string");
+  expect_contains(direct_rendered, "lea rdi, .L.str0[rip]\n",
+                  "x86 explicit LIR emit surface should lower the first printf format pointer without adapting through backend IR first");
+  expect_contains(direct_rendered, "lea rdi, .L.str1[rip]\n",
+                  "x86 explicit LIR emit surface should lower the second printf format pointer without adapting through backend IR first");
+  expect_contains(direct_rendered, "call printf\n",
+                  "x86 explicit LIR emit surface should keep both bounded printf calls on the asm path");
+  expect_not_contains(direct_rendered, "getelementptr",
+                      "x86 explicit LIR emit surface should not fall back to LLVM text for the bounded multi-printf vararg slice");
+}
+
 void test_x86_backend_renders_string_literal_char_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_x86_string_literal_char_module()},
@@ -5721,6 +5746,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_explicit_emit_surface_keeps_structured_declared_direct_call_backend_path);
   RUN_TEST(test_x86_backend_declared_direct_call_uses_structured_decl_signature_for_fixed_args);
   RUN_TEST(test_x86_backend_adapter_preserves_multiple_printf_calls_in_backend_ir);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_bounded_multi_printf_vararg_path);
   RUN_TEST(test_x86_backend_renders_string_literal_char_slice);
   RUN_TEST(test_x86_backend_renders_global_char_pointer_diff_slice);
   RUN_TEST(test_x86_backend_scaffold_matches_direct_global_char_pointer_diff_asm);
