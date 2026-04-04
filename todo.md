@@ -98,6 +98,17 @@ Known live references from the current audit:
 - `lir_to_backend_ir.cpp` is still large enough to deserve a planned cutover
   batch on its own at roughly `3669` lines, and the old backend IR support
   files in `ir.*` still represent another large deletion batch after that
+- internal runtime and stdout-contract families no longer rely on `-o <file>.s`
+  rescue; the remaining live file-output asm rescue users observed in this
+  slice are external/backend AArch64 c-testsuite cases that still lower
+  through LLVM IR for varargs-heavy coverage, including
+  `00080`, `00108`, `00113`, `00116`, `00119`, `00121`, `00123`,
+  `00174`, `00175`, and `00204`
+- the app-layer rescue branch that regenerated fresh legacy LLVM IR after a
+  backend `--codegen asm` request returned no text has now been removed;
+  `c4cll` only rescues file-output asm when the backend explicitly returns
+  LLVM IR text, and empty-output paths now fail immediately with the existing
+  unsupported-asm diagnostic
 
 Recently completed milestones:
 
@@ -119,6 +130,9 @@ Recently completed milestones:
   instead of silently printing LLVM-derived fallback text
 - removed `llvm_codegen.cpp` production routing and kept fresh backend-target
   route selection on the BIR-by-default path
+- removed the dead `c4cll` fallback leg that regenerated legacy LLVM IR after a
+  backend-native asm request produced no text, while preserving the still-live
+  file-output LLVM-IR rescue used by external AArch64 varargs coverage
 
 Validation baseline:
 

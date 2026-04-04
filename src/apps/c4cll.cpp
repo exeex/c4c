@@ -1,4 +1,3 @@
-#include <cstdio>
 #include <cstdlib>
 #include <cctype>
 #include <filesystem>
@@ -898,20 +897,12 @@ int main(int argc, char **argv) {
         std::cerr << "       re-run with --codegen llvm if you need IR output.\n";
         return 2;
       }
+      if (backend_returned_no_asm) {
+        print_asm_fallback_hint(ir);
+        return 2;
+      }
 
-      std::optional<std::string> fallback_asm;
-      if (backend_returned_llvm_ir) {
-        fallback_asm = lower_llvm_ir_to_asm(ir, target_triple);
-      }
-      if (!fallback_asm.has_value()) {
-        auto legacy_ir = c4c::codegen::llvm_backend::emit_module_native(
-            *sema_result.hir_module, target_triple,
-            c4c::codegen::llvm_backend::CodegenPath::Llvm);
-        fallback_asm = lower_llvm_ir_to_asm(legacy_ir, target_triple);
-        if (!backend_returned_llvm_ir) {
-          ir = legacy_ir;
-        }
-      }
+      auto fallback_asm = lower_llvm_ir_to_asm(ir, target_triple);
       if (!fallback_asm.has_value()) {
         print_asm_fallback_hint(ir);
         return 2;

@@ -34,7 +34,8 @@ if(NOT "${frontend_out}" STREQUAL "")
     "[BACKEND_ASM_UNSUPPORTED_OUTPUT] expected no stdout backend asm output\n${frontend_out}${frontend_err}")
 endif()
 
-if(NOT frontend_err MATCHES "requires backend-native assembly output on stdout")
+if(NOT frontend_err MATCHES
+       "requires backend-native assembly output on stdout|did not emit assembly for this input and cannot write \\.s\\.")
   message(FATAL_ERROR
     "[BACKEND_ASM_UNSUPPORTED_DIAGNOSTIC] ${SRC}\nmissing expected diagnostic\n${frontend_out}${frontend_err}")
 endif()
