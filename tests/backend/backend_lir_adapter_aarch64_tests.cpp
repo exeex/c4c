@@ -512,6 +512,214 @@ c4c::codegen::lir::LirModule make_direct_aggregate_return_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_s17_sret_return_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.type_decls.push_back("%struct.S17 = type { [17 x i8] }");
+  module.globals.push_back(LirGlobal{
+      LirGlobalId{0},
+      "g_s17",
+      {},
+      false,
+      false,
+      "",
+      "global ",
+      "%struct.S17",
+      "{ [17 x i8] c\"ABCDEFGHIJKLMNOPQ\" }",
+      1,
+      false,
+  });
+
+  LirFunction ret_fn;
+  ret_fn.name = "ret_s17";
+  ret_fn.signature_text = "define %struct.S17 @ret_s17()\n";
+  ret_fn.entry = LirBlockId{0};
+
+  LirBlock ret_entry;
+  ret_entry.id = LirBlockId{0};
+  ret_entry.label = "entry";
+  ret_entry.insts.push_back(LirLoadOp{"%t0", "%struct.S17", "@g_s17"});
+  ret_entry.terminator = LirRet{std::string("%t0"), "%struct.S17"};
+  ret_fn.blocks.push_back(std::move(ret_entry));
+  module.functions.push_back(std::move(ret_fn));
+
+  LirFunction main_fn;
+  main_fn.name = "main";
+  main_fn.signature_text = "define i32 @main()\n";
+  main_fn.entry = LirBlockId{0};
+  main_fn.alloca_insts.push_back(LirAllocaOp{"%lv.tmp", "%struct.S17", "", 1});
+
+  LirBlock main_entry;
+  main_entry.id = LirBlockId{0};
+  main_entry.label = "entry";
+  main_entry.insts.push_back(LirCallOp{"%t0", "%struct.S17", "@ret_s17", "()", ""});
+  main_entry.insts.push_back(LirStoreOp{"%struct.S17", "%t0", "%lv.tmp"});
+  main_entry.insts.push_back(
+      LirGepOp{"%t1", "%struct.S17", "%lv.tmp", false, {"i32 0", "i32 0"}});
+  main_entry.insts.push_back(
+      LirGepOp{"%t2", "[17 x i8]", "%t1", false, {"i64 0", "i64 16"}});
+  main_entry.insts.push_back(LirLoadOp{"%t3", "i8", "%t2"});
+  main_entry.insts.push_back(LirCastOp{"%t4", LirCastKind::ZExt, "i8", "%t3", "i32"});
+  main_entry.terminator = LirRet{std::string("%t4"), "i32"};
+  main_fn.blocks.push_back(std::move(main_entry));
+  module.functions.push_back(std::move(main_fn));
+
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_hfa_fp128_return_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.type_decls.push_back("%struct.hfa34 = type { fp128, fp128, fp128, fp128 }");
+  module.string_pool.push_back(LirStringConst{"@.str0", "%.1Lf %.1Lf\\0A\\00", 13});
+  module.globals.push_back(LirGlobal{
+      LirGlobalId{0},
+      "g_hfa34",
+      {},
+      false,
+      false,
+      "",
+      "global ",
+      "%struct.hfa34",
+      "{ fp128 0xLA0000000000000004003F19999999999, fp128 0xLD000000000000000400400CCCCCCCCCC, fp128 0xLA0000000000000004004019999999999, fp128 0xL600000000000000040040A6666666666 }",
+      16,
+      false,
+  });
+
+  LirFunction ret_fn;
+  ret_fn.name = "ret_hfa34";
+  ret_fn.signature_text = "define %struct.hfa34 @ret_hfa34()\n";
+  ret_fn.entry = LirBlockId{0};
+
+  LirBlock ret_entry;
+  ret_entry.id = LirBlockId{0};
+  ret_entry.label = "entry";
+  ret_entry.insts.push_back(LirLoadOp{"%t0", "%struct.hfa34", "@g_hfa34"});
+  ret_entry.terminator = LirRet{std::string("%t0"), "%struct.hfa34"};
+  ret_fn.blocks.push_back(std::move(ret_entry));
+  module.functions.push_back(std::move(ret_fn));
+
+  LirFunction main_fn;
+  main_fn.name = "main";
+  main_fn.signature_text = "define void @main()\n";
+  main_fn.entry = LirBlockId{0};
+  main_fn.alloca_insts.push_back(LirAllocaOp{"%lv.tmp", "%struct.hfa34", "", 16});
+
+  LirBlock main_entry;
+  main_entry.id = LirBlockId{0};
+  main_entry.label = "entry";
+  main_entry.insts.push_back(LirCallOp{"%t0", "%struct.hfa34", "@ret_hfa34", "()", ""});
+  main_entry.insts.push_back(LirStoreOp{"%struct.hfa34", "%t0", "%lv.tmp"});
+  main_entry.insts.push_back(
+      LirGepOp{"%t1", "[13 x i8]", "@.str0", false, {"i64 0", "i64 0"}});
+  main_entry.insts.push_back(
+      LirGepOp{"%t2", "%struct.hfa34", "%lv.tmp", false, {"i32 0", "i32 0"}});
+  main_entry.insts.push_back(LirLoadOp{"%t3", "fp128", "%t2"});
+  main_entry.insts.push_back(
+      LirGepOp{"%t4", "%struct.hfa34", "%lv.tmp", false, {"i32 0", "i32 3"}});
+  main_entry.insts.push_back(LirLoadOp{"%t5", "fp128", "%t4"});
+  main_entry.insts.push_back(
+      LirCallOp{"%t6", "i32", "@printf", "(ptr, ...)", "ptr %t1, fp128 %t3, fp128 %t5"});
+  main_entry.terminator = LirRet{};
+  main_fn.blocks.push_back(std::move(main_entry));
+  module.functions.push_back(std::move(main_fn));
+
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_fixed_hfa_call_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.type_decls.push_back("%struct.hfa14 = type { float, float, float, float }");
+  module.type_decls.push_back("%struct.hfa23 = type { double, double, double }");
+  module.type_decls.push_back("%struct.hfa32 = type { fp128, fp128 }");
+  module.globals.push_back(LirGlobal{
+      LirGlobalId{0},
+      "g_hfa14",
+      {},
+      false,
+      false,
+      "",
+      "global ",
+      "%struct.hfa14",
+      "{ float 1.000000e+00, float 2.000000e+00, float 3.000000e+00, float 4.000000e+00 }",
+      4,
+      false,
+  });
+  module.globals.push_back(LirGlobal{
+      LirGlobalId{1},
+      "g_hfa23",
+      {},
+      false,
+      false,
+      "",
+      "global ",
+      "%struct.hfa23",
+      "{ double 1.000000e+00, double 2.000000e+00, double 3.000000e+00 }",
+      8,
+      false,
+  });
+  module.globals.push_back(LirGlobal{
+      LirGlobalId{2},
+      "g_hfa32",
+      {},
+      false,
+      false,
+      "",
+      "global ",
+      "%struct.hfa32",
+      "{ fp128 0xLA0000000000000004003F19999999999, fp128 0xLD000000000000000400400CCCCCCCCCC }",
+      16,
+      false,
+  });
+
+  LirFunction callee;
+  callee.name = "consume";
+  callee.signature_text =
+      "define void @consume(%struct.hfa14 %p.a, %struct.hfa23 %p.b, %struct.hfa32 %p.c)\n";
+  callee.entry = LirBlockId{0};
+
+  LirBlock callee_entry;
+  callee_entry.id = LirBlockId{0};
+  callee_entry.label = "entry";
+  callee_entry.terminator = LirRet{};
+  callee.blocks.push_back(std::move(callee_entry));
+  module.functions.push_back(std::move(callee));
+
+  LirFunction main_fn;
+  main_fn.name = "main";
+  main_fn.signature_text = "define void @main()\n";
+  main_fn.entry = LirBlockId{0};
+
+  LirBlock main_entry;
+  main_entry.id = LirBlockId{0};
+  main_entry.label = "entry";
+  main_entry.insts.push_back(LirLoadOp{"%t0", "%struct.hfa14", "@g_hfa14"});
+  main_entry.insts.push_back(LirLoadOp{"%t1", "%struct.hfa23", "@g_hfa23"});
+  main_entry.insts.push_back(LirLoadOp{"%t2", "%struct.hfa32", "@g_hfa32"});
+  main_entry.insts.push_back(LirCallOp{
+      "",
+      "void",
+      "@consume",
+      "(%struct.hfa14, %struct.hfa23, %struct.hfa32)",
+      "%struct.hfa14 %t0, %struct.hfa23 %t1, %struct.hfa32 %t2",
+  });
+  main_entry.terminator = LirRet{};
+  main_fn.blocks.push_back(std::move(main_entry));
+  module.functions.push_back(std::move(main_fn));
+
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_named_struct_field_offset_module() {
   using namespace c4c::codegen::lir;
 
@@ -3312,9 +3520,9 @@ void test_aarch64_backend_renders_double_printf_call_with_fp_register_args() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_double_printf_runtime_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-  expect_contains(rendered, "movk x0, #16424, lsl #48",
+  expect_contains(rendered, "movk x9, #16424, lsl #48",
                   "aarch64 backend should materialize the first double literal bit-pattern instead of silently zeroing it");
-  expect_contains(rendered, "movk x0, #16460, lsl #48",
+  expect_contains(rendered, "movk x9, #16460, lsl #48",
                   "aarch64 backend should materialize the second double literal bit-pattern instead of silently zeroing it");
   expect_contains(rendered, "ldr d0, [sp, #",
                   "aarch64 backend should place the first double printf argument into d0");
@@ -3344,8 +3552,8 @@ void test_aarch64_backend_renders_variadic_fp128_printf_slice() {
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   expect_contains(rendered, "bl printf",
                   "aarch64 backend should keep bounded fp128 variadic forwarding calls on the native asm path");
-  expect_contains(rendered, "str q0, [sp",
-                  "aarch64 backend should spill fp128 variadic payloads onto the outgoing stack area");
+  expect_contains(rendered, "ldr q0, [",
+                  "aarch64 backend should materialize fp128 variadic payloads into FP registers when slots are available");
   expect_not_contains(rendered, "target triple =",
                       "aarch64 backend should not fall back to LLVM text for the bounded fp128 variadic forwarding slice");
 }
@@ -3358,8 +3566,8 @@ void test_aarch64_backend_renders_nested_variadic_fp128_printf_slice() {
                   "aarch64 backend should keep variadic callees with nested calls on the native asm path once the bounded va_list walker slice is supported");
   expect_contains(rendered, "bl printf",
                   "aarch64 backend should preserve the nested variadic printf call instead of rejecting the whole variadic callee");
-  expect_contains(rendered, "str q0, [sp",
-                  "aarch64 backend should still spill fp128 nested-call payloads onto the outgoing stack area");
+  expect_contains(rendered, "ldr q0, [",
+                  "aarch64 backend should still materialize fp128 nested-call payloads into FP registers before forwarding");
   expect_not_contains(rendered, "target triple =",
                       "aarch64 backend should not fall back to LLVM text for bounded variadic callees that both walk va_list and make nested calls");
 }
@@ -3544,6 +3752,56 @@ void test_aarch64_backend_renders_direct_aggregate_return_slice() {
                   "aarch64 backend should spill the returned aggregate tail chunk into the caller-side temporary");
   expect_not_contains(rendered, "target datalayout",
                       "aarch64 backend should not fall back to LLVM text for the bounded 9-byte direct aggregate-return slice");
+}
+
+void test_aarch64_backend_renders_s17_sret_return_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_s17_sret_return_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".globl ret_s17",
+                  "aarch64 backend should keep 17-byte aggregate returns on the native asm path");
+  expect_contains(rendered, "str x8, [sp, #",
+                  "aarch64 backend should preserve the hidden sret destination register in the callee frame");
+  expect_contains(rendered, "add x8, sp, #",
+                  "aarch64 backend should materialize a caller-side destination buffer for hidden-sret aggregate calls");
+  expect_contains(rendered, "bl ret_s17\n",
+                  "aarch64 backend should preserve the direct 17-byte aggregate-return call");
+  expect_not_contains(rendered, "target datalayout",
+                      "aarch64 backend should not fall back to LLVM text for 17-byte hidden-sret returns");
+}
+
+void test_aarch64_backend_renders_hfa_fp128_return_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_hfa_fp128_return_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".globl ret_hfa34",
+                  "aarch64 backend should keep fixed fp128 HFA returns on the native asm path");
+  expect_contains(rendered, "ldr q0, [x9]\n",
+                  "aarch64 backend should materialize the first fp128 HFA return lane in q0");
+  expect_contains(rendered, "ldr q3, [x9, #48]\n",
+                  "aarch64 backend should materialize the fourth fp128 HFA return lane in q3");
+  expect_contains(rendered, "str q0, [x9]\n",
+                  "aarch64 backend should spill the first returned fp128 HFA lane into the caller-side temporary");
+  expect_contains(rendered, "str q3, [x9, #48]\n",
+                  "aarch64 backend should spill the fourth returned fp128 HFA lane into the caller-side temporary");
+  expect_not_contains(rendered, "target datalayout",
+                      "aarch64 backend should not fall back to LLVM text for fixed fp128 HFA returns");
+}
+
+void test_aarch64_backend_renders_fixed_hfa_call_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_fixed_hfa_call_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".globl consume",
+                  "aarch64 backend should keep fixed HFA callees on the native asm path");
+  expect_contains(rendered, "bl consume\n",
+                  "aarch64 backend should preserve direct fixed HFA calls on the native asm path");
+  expect_contains(rendered, "ldr q9, [x9, #16]\n",
+                  "aarch64 backend should keep the stacked fp128 HFA tail chunk materialization for fixed calls");
+  expect_contains(rendered, "str q9, [sp, #16]\n",
+                  "aarch64 backend should spill overflow fixed HFA fp128 lanes onto the outgoing stack area");
+  expect_not_contains(rendered, "target datalayout",
+                      "aarch64 backend should not fall back to LLVM text for fixed HFA call slices");
 }
 
 void test_aarch64_backend_renders_global_definition_slice() {
@@ -5746,6 +6004,9 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_renders_nested_param_member_array_gep_slice();
   test_aarch64_backend_renders_direct_aggregate_param_call_slice();
   test_aarch64_backend_renders_direct_aggregate_return_slice();
+  test_aarch64_backend_renders_s17_sret_return_slice();
+  test_aarch64_backend_renders_hfa_fp128_return_slice();
+  test_aarch64_backend_renders_fixed_hfa_call_slice();
   // TODO: global/string slice tests disabled — backend lowering changed
   // test_aarch64_backend_renders_global_definition_slice();
   // test_aarch64_backend_renders_global_store_reload_slice();

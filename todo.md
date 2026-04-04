@@ -9,41 +9,29 @@ Source Plan: plan.md
 - [ ] Remove legacy backend IR files and backend/app LLVM rescue paths
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
-Current active item: Step 4 preparation, widen the native AArch64 PCS support
-for direct non-variadic aggregate arguments and returns so the remaining
-`00204` blocker shrinks from "all aggregate/by-value PCS seams" toward the
-explicitly still-unhandled larger aggregate and long-double HFA families.
+Current active item: Step 4 cleanup, convert the last explicit AArch64
+file-output rescue user now that `00204` completes on backend-native asm
+without the old aggregate return/stdarg crashes.
 
-This iteration target: land backend-native AArch64 support for bounded
-9-16-byte direct aggregate argument/return slices on the stdout asm path,
-without claiming the final `00204` file-output fallback removal yet.
+This iteration target: finish the bounded `00204` PCS repair batch by removing
+the now-stale fallback/test wiring that kept that testcase on the file-output
+path after the native backend became correct again.
 
-Current bounded preparation slice: teach the AArch64 general emitter to carry
-the remaining direct non-variadic aggregate argument/return payloads used by
-`00204` on the native path in focused isolation:
-- direct 9-16-byte non-HFA aggregate arguments lowered across GP register
-  chunks instead of rejecting those payloads outright
-- matching direct 9-16-byte non-HFA aggregate returns lowered through
-  caller/callee-backed storage instead of forcing LLVM-text fallback
-- keep the broad `00204` stdout gate in place until the same translation unit's
-  remaining larger aggregate and long-double/HFA families are proven safe on
-  the native path, so this slice stays preparation work rather than premature
-  fallback removal
-
-Iteration target: keep the next Step 4 slice focused on the remaining
-`00204` blocker: file-output fallback stays in place until the stdout-native
-path also covers the still-live larger aggregate, long-double, and HFA
-families beyond this bounded 9-16-byte direct GP aggregate slice.
+Current bounded preparation slice: tighten the production/test surface around
+the now-native `00204` path instead of widening PCS support further:
+- remove the explicit `00204` rescue routing/tag only after the same batch
+  proves the stdout/file-output-native path is still correct
+- keep any remaining larger-aggregate or unrelated legacy cleanup as separate
+  Step 4 work instead of silently expanding this fallback-removal slice
 
 Immediate next slice:
 
-- keep the new bounded direct 9-16-byte aggregate arg/return coverage on the
-  native AArch64 asm path
-- keep `00204` behind the explicit file-output fallback until the unrelated
-  larger aggregate and long-double/HFA family in the same translation unit is
-  lowered correctly on the native path
-- treat this iteration as the focused aggregate return/by-value audit plus fix
-  batch for direct 9-16-byte PCS shapes rather than as more variadic work
+- remove the explicit `00204` file-output fallback/rescue wiring now that both
+  stdout-native and file-output-native AArch64 asm runs pass end to end
+- keep the fallback-removal batch focused on deleting the stale caller/tag and
+  proving no native/backend regressions were introduced
+- leave any follow-on Step 4 legacy IR deletion or unrelated backend cleanup in
+  separate plan slices once the `00204` rescue path is gone
 
 Slice deliverables:
 
@@ -219,13 +207,12 @@ Validation baseline:
   still exits with:
   `error: --codegen asm requires backend-native assembly output on stdout.`
 - latest focused repro set:
-  `build/c4cll --codegen asm --target aarch64-unknown-linux-gnu tests/c/external/c-testsuite/src/00204.c`,
-  `ctest --test-dir build -R "backend_lir_adapter_aarch64_tests|c_testsuite_aarch64_backend_src_00216_c" --output-on-failure`,
+  `ctest --test-dir build -R "backend_lir_adapter_aarch64_tests|c_testsuite_aarch64_backend_src_00204_c" --output-on-failure`,
   and
   `ctest --test-dir build -R backend --output-on-failure`
-  with the new direct 9-16-byte aggregate arg/return slice passing on stdout,
-  `00204` stdout-native asm still blocked, and the focused/native regression
-  set passing with the fallback guard still in place
+  with the repaired aggregate return/stdarg path passing for `00204`,
+  the focused/backend regression scope green, and no remaining native
+  correctness blocker in that testcase
 - latest backend regression scope:
   `ctest --test-dir build -R backend --output-on-failure`
   with `100% tests passed, 0 tests failed out of 402`
@@ -239,13 +226,28 @@ Validation baseline:
 
 Latest bounded progress:
 
-- taught the AArch64 general emitter to preserve `fp128` global layout and
-  initializer payloads on the native asm path by treating `fp128` as a
-  16-byte/16-byte-aligned type and materializing LLVM `0xL...` literals as two
-  `.xword` payload words instead of truncating or zero-filling them
-- added a focused AArch64 backend adapter regression that keeps a bounded
-  `fp128` global on backend-native assembly rather than silently falling back to
-  LLVM text
+- finished the `00204` return/stdarg half of the AArch64 PCS repair batch on
+  the native backend path by fixing three concrete emitter gaps together:
+  aggregate `store`/memcpy destination ordering for memory-valued stores,
+  whole-argument all-or-stack routing for variadic 9-16-byte GP and FP
+  aggregate payloads, and float-sized GEP/load/store handling in the generic
+  emitter paths that the HFA scratch walker relied on
+- re-ran the end-to-end `00204` backend testcase and confirmed the native
+  AArch64 asm path now matches the expected output instead of diverging in the
+  return-value and `myprintf` stdarg sections
+- tightened the focused AArch64 adapter regression by keeping the bounded
+  native return/stdarg coverage green alongside the refreshed double-literal
+  expectation that now permits the current scratch register choice
+- taught the AArch64 native asm path to keep the remaining fixed-call argument
+  families from `00204` on stdout-native assembly:
+  hidden-by-reference `s17`, direct 9-16-byte aggregate chunks after GP-register
+  exhaustion, mixed aggregate stack-call materialization after outgoing `sp`
+  adjustment, scalar variadic `fp128` forwarding in `q` registers when slots are
+  available, and the corrected LLVM hex-float / `fp128` global initializer
+  decoding those paths depend on
+- added focused backend adapter coverage for the hidden-sret and fixed HFA
+  return/call slices, and refreshed the variadic `fp128` adapter expectations
+  to match the corrected native register path
 - taught the AArch64 general emitter's direct-call path to keep bounded
   variadic HFA-array payloads plus `fp128` variadic forwarding in focused
   adapter slices by carrying those non-scalar call operands as address-backed
@@ -280,13 +282,8 @@ Latest bounded progress:
 
 Remaining blocker after this slice:
 
-- `00204` still depends on the file-output fallback because the native AArch64
-  path does not yet carry the remaining larger aggregate and `myprintf`
-  long-double/HFA family on stdout-native assembly, even after the bounded
-  direct 9-16-byte GP aggregate slice landed
-- even after the bounded direct-call emission support landed, removing the
-  translation-unit-level stdout guard immediately caused runtime breakage in
-  unrelated aggregate by-value functions inside `00204`; the guard was restored
-  so the external/backend AArch64 `00204` case stays on the explicit file
-  fallback route until those surrounding aggregate arg/return seams are covered
-  natively too
+- no remaining native correctness blocker is left inside `00204`; the next
+  Step 4 task is cleanup, not another PCS repair
+- the remaining work is to delete the stale `00204` rescue/fallback surface in
+  production/test wiring and keep that removal batch separate from broader
+  legacy IR deletion
