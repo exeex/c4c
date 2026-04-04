@@ -11,15 +11,43 @@ Source Plan: plan.md
 
 Current active item: Step 4, keep shrinking the remaining app-layer LLVM asm
 rescue one bounded surface at a time; the next bounded target should be the
-next already-native file-output backend contract family after the newly
-converted aarch64 `return_add` stdout seam.
-Next intended slice: probe the remaining file-output asm contract families,
-identify the next surface that already emits backend-native stdout assembly
-without `-o <file>.s`, and convert that family onto the explicit stdout
-contract runner before returning to broader rescue-path deletion.
+remaining already-native file-output backend contract surfaces, starting with
+the x86_64 extern-call contract while the matching aarch64 contract still
+requires the explicit stdout guard.
+Next intended slice: rerun the x86_64 extern-call contract through the explicit
+stdout runner, keep the aarch64 extern-call contract on file-output coverage
+until its backend stdout path is native, then return to the remaining rescue-
+path deletion surfaces.
+Next intended slice: probe the remaining file-output backend contract surfaces
+after the bounded x86_64 extern-call conversion, prioritize whichever family
+already emits backend-native stdout assembly without `-o <file>.s`, and keep
+any still-guarded aarch64 surfaces on file-output coverage until their stdout
+path is genuinely native.
 Blocker: none. The rebuilt `backend_lir_adapter_aarch64_tests` expectation
 drift has been realigned to the current native aarch64 backend seam, and the
 required backend/full-suite acceptance gates are green again.
+Completed in this slice: probed the remaining `extern_call` file-output
+contract family and confirmed the bounded split in current backend behavior:
+`x86_64` already emits backend-native stdout assembly for
+`tests/c/internal/backend_case/call_helper.c`, while `aarch64` still exits on
+the explicit stdout-only guard and therefore must remain on the file-output
+contract seam for now.
+Completed in this slice: converted the already-native
+`backend_contract_x86_64_extern_call_object` file-output contract onto the
+explicit stdout-native contract seam as
+`backend_contract_x86_64_extern_call_stdout_object`, so this bounded x86_64
+extern-call surface no longer depends on `-o <file>.s` rescue assumptions in
+the internal backend contract suite.
+Completed in this slice: rebuilt the tree, reran the focused renamed stdout
+contract (`backend_contract_x86_64_extern_call_stdout_object`) with `100%
+tests passed, 0 tests failed out of 1`, reran the required backend regression
+scope (`ctest --test-dir build -R backend --output-on-failure`) with `100%
+tests passed, 0 tests failed out of 399`, and regenerated
+`test_fail_after.log` for the monotonic full-suite guard.
+Completed in this slice: reran the monotonic full-suite guard over
+`test_fail_before.log` versus the refreshed `test_fail_after.log`, with guard
+result `PASS` and `before: passed=394 failed=0 total=394`,
+`after: passed=2838 failed=0 total=2838`, and `new failing tests: 0`.
 Completed in this slice: repaired the rebuilt
 `backend_lir_adapter_aarch64_tests` expectation drift by converting the stale
 aarch64 assertions that still expected LLVM-style text or exact direct-vs-

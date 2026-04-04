@@ -614,21 +614,20 @@ if(CLANG_EXECUTABLE)
         LABELS "internal;backend")
 
     add_test(
-      NAME backend_contract_x86_64_extern_call_object
+      NAME backend_contract_x86_64_extern_call_stdout_object
       COMMAND "${CMAKE_COMMAND}"
               -DCOMPILER=$<TARGET_FILE:c4cll>
               -DCLANG=${CLANG_EXECUTABLE}
               -DOBJDUMP=${OBJDUMP_EXECUTABLE}
               -DSRC=${INTERNAL_C_TEST_ROOT}/backend_case/call_helper.c
               -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
-              -DBACKEND_OUTPUT_KIND=asm
               -DBACKEND_OUTPUT_PATH=${CMAKE_BINARY_DIR}/internal_backend_contract/call_helper_x86_64.s
               -DOUT_ARTIFACT=${CMAKE_BINARY_DIR}/internal_backend_contract/call_helper_x86_64.o
               "-DREQUIRED_BACKEND_SNIPPETS=.globl main|call helper"
               "-DREQUIRED_OBJDUMP_SNIPPETS=file format elf64-x86-64|.text|.rela.text|main|*UND*|helper|R_X86_64_PLT32"
-              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_contract_case.cmake"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_stdout_contract_case.cmake"
     )
-    set_tests_properties(backend_contract_x86_64_extern_call_object PROPERTIES
+    set_tests_properties(backend_contract_x86_64_extern_call_stdout_object PROPERTIES
         LABELS "internal;backend")
 
     add_test(
