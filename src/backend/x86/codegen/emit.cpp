@@ -90,6 +90,13 @@ struct MinimalConditionalPhiJoinSlice {
   std::optional<std::int64_t> join_add_imm;
 };
 
+struct MinimalCastReturnSlice {
+  std::string function_name;
+  c4c::backend::bir::CastOpcode opcode = c4c::backend::bir::CastOpcode::SExt;
+  c4c::backend::bir::TypeKind operand_type = c4c::backend::bir::TypeKind::Void;
+  c4c::backend::bir::TypeKind result_type = c4c::backend::bir::TypeKind::Void;
+};
+
 struct MinimalCountdownLoopSlice {
   std::int64_t initial_imm = 0;
   std::string loop_label;
@@ -881,6 +888,49 @@ std::optional<MinimalAffineReturnSlice> parse_minimal_affine_return_slice(
       lowered_return->uses_first_param,
       lowered_return->uses_second_param,
       lowered_return->constant,
+  };
+}
+
+std::optional<MinimalCastReturnSlice> parse_minimal_cast_return_slice(
+    const c4c::backend::bir::Module& module) {
+  if (module.functions.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration || function.blocks.size() != 1 ||
+      function.params.size() != 1 || function.blocks.front().insts.size() != 1 ||
+      !function.blocks.front().terminator.value.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto& block = function.blocks.front();
+  if (block.label != "entry") {
+    return std::nullopt;
+  }
+
+  const auto& param = function.params.front();
+  if (param.name.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* cast =
+      std::get_if<c4c::backend::bir::CastInst>(&block.insts.front());
+  if (cast == nullptr || cast->result.kind != c4c::backend::bir::Value::Kind::Named ||
+      cast->result.name.empty() || cast->operand.kind != c4c::backend::bir::Value::Kind::Named ||
+      cast->operand.name != param.name || cast->operand.type != param.type ||
+      cast->result.type != function.return_type ||
+      block.terminator.value->kind != c4c::backend::bir::Value::Kind::Named ||
+      block.terminator.value->name != cast->result.name ||
+      block.terminator.value->type != cast->result.type) {
+    return std::nullopt;
+  }
+
+  return MinimalCastReturnSlice{
+      function.name,
+      cast->opcode,
+      cast->operand.type,
+      cast->result.type,
   };
 }
 
@@ -2669,6 +2719,46 @@ std::string emit_minimal_affine_return_asm(
   return out.str();
 }
 
+std::string emit_minimal_cast_return_asm(
+    const c4c::backend::bir::Module& module,
+    const MinimalCastReturnSlice& slice) {
+  c4c::backend::BackendModule target_stub;
+  target_stub.target_triple = module.target_triple;
+  if (module.target_triple.find("i686") != std::string::npos) {
+    throw_unsupported_direct_bir_module();
+  }
+
+  const std::string symbol = asm_symbol_name(target_stub, slice.function_name);
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n";
+  out << ".text\n";
+  emit_function_prelude(out, target_stub, symbol, true);
+
+  if (slice.opcode == c4c::backend::bir::CastOpcode::SExt &&
+      slice.operand_type == c4c::backend::bir::TypeKind::I32 &&
+      slice.result_type == c4c::backend::bir::TypeKind::I64) {
+    out << "  movsxd rax, edi\n";
+    out << "  ret\n";
+    return out.str();
+  }
+  if (slice.opcode == c4c::backend::bir::CastOpcode::ZExt &&
+      slice.operand_type == c4c::backend::bir::TypeKind::I8 &&
+      slice.result_type == c4c::backend::bir::TypeKind::I32) {
+    out << "  movzx eax, dil\n";
+    out << "  ret\n";
+    return out.str();
+  }
+  if (slice.opcode == c4c::backend::bir::CastOpcode::Trunc &&
+      slice.operand_type == c4c::backend::bir::TypeKind::I64 &&
+      slice.result_type == c4c::backend::bir::TypeKind::I32) {
+    out << "  mov eax, edi\n";
+    out << "  ret\n";
+    return out.str();
+  }
+
+  throw_unsupported_direct_bir_module();
+}
+
 std::string emit_minimal_direct_call_asm(const c4c::backend::BackendModule& module,
                                          const c4c::backend::ParsedBackendMinimalDirectCallModuleView& slice) {
   if (slice.helper == nullptr) {
@@ -3389,6 +3479,10 @@ std::string emit_module(const c4c::backend::bir::Module& module,
   if (const auto slice = parse_minimal_affine_return_slice(module);
       slice.has_value()) {
     return emit_minimal_affine_return_asm(module, *slice);
+  }
+  if (const auto slice = parse_minimal_cast_return_slice(module);
+      slice.has_value()) {
+    return emit_minimal_cast_return_asm(module, *slice);
   }
   throw_unsupported_direct_bir_module();
 }

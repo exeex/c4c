@@ -35,7 +35,14 @@ Completed in this slice: added explicit BIR cast support (`sext`/`zext`/`trunc`)
 to the straight-line scaffold, including printer/validator coverage plus
 target-neutral lowering and explicit BIR-pipeline tests for parameter-fed cast
 shapes that do not collapse into the older compare/immediate folds.
-Next target: add x86_64 and aarch64 BIR-pipeline assertions for the existing
-straight-line cast fixtures, then fix any emitter gaps those tests expose
-before choosing the next lowering family; keep using `ctest -R backend` as the
-default regression gate and keep this slice bounded to the current cast family.
+Completed in this slice: extended the x86_64 and aarch64 BIR-pipeline tests to
+cover straight-line `sext`/`zext`/`trunc` fixtures, and taught both direct-BIR
+native emitters to lower that bounded cast-return family instead of rejecting
+it as unsupported.
+Completed in this slice: repaired the stale backend baseline around the renamed
+`widen_signed` cast fixture, so the backend regression gate improved from
+`99%` (`1/394` failing) to `100%` (`0/394` failing).
+Next target: pick the next bounded BIR-owned lowering family after the
+straight-line casts, start with target-neutral route/lowering assertions, and
+only add x86_64/aarch64 emitter checks once that family’s direct-BIR/native
+ownership boundary is clear.

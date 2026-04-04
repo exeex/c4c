@@ -91,6 +91,39 @@ void test_backend_bir_pipeline_drives_aarch64_two_param_staged_affine_end_to_end
                   "aarch64 BIR lowering should collapse the staged immediate adjustments to the surviving affine constant");
 }
 
+void test_backend_bir_pipeline_drives_aarch64_sext_end_to_end() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_bir_return_sext_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Aarch64));
+
+  expect_contains(rendered, ".globl widen_signed",
+                  "BIR pipeline should reach aarch64 backend emission for the bounded sext slice");
+  expect_contains(rendered, "sxtw x0, w0",
+                  "aarch64 BIR lowering should sign-extend the incoming i32 argument into the i64 return register");
+}
+
+void test_backend_bir_pipeline_drives_aarch64_zext_end_to_end() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_bir_return_zext_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Aarch64));
+
+  expect_contains(rendered, ".globl widen_unsigned",
+                  "BIR pipeline should reach aarch64 backend emission for the bounded zext slice");
+  expect_contains(rendered, "and w0, w0, #0xff",
+                  "aarch64 BIR lowering should zero-extend the incoming i8 argument into the i32 return register");
+}
+
+void test_backend_bir_pipeline_drives_aarch64_trunc_end_to_end() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_bir_return_trunc_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Aarch64));
+
+  expect_contains(rendered, ".globl narrow_signed",
+                  "BIR pipeline should reach aarch64 backend emission for the bounded trunc slice");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 BIR lowering should keep the bounded trunc slice on the native asm path");
+}
+
 void test_backend_bir_pipeline_rejects_unsupported_direct_bir_input_on_aarch64() {
   try {
     (void)c4c::backend::emit_module(
@@ -115,5 +148,8 @@ void run_backend_bir_pipeline_aarch64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_direct_bir_staged_affine_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_two_param_add_sub_chain_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_two_param_staged_affine_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_aarch64_sext_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_aarch64_zext_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_aarch64_trunc_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_rejects_unsupported_direct_bir_input_on_aarch64);
 }
