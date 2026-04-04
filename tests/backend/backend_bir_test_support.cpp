@@ -286,6 +286,31 @@ c4c::codegen::lir::LirModule make_bir_return_select_eq_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_bir_i8_return_add_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "riscv64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+
+  LirFunction function;
+  function.name = "choose_add_u";
+  function.signature_text = "define i8 @choose_add_u()\n";
+  function.return_type.base = c4c::TB_UCHAR;
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirBinOp{"%t0", "add", "i32", "2", "3"});
+  entry.insts.push_back(LirCastOp{"%t1", LirCastKind::Trunc, "i32", "%t0", "i8"});
+  entry.terminator = LirRet{std::string("%t1"), "i8"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_bir_i8_return_eq_module() {
   using namespace c4c::codegen::lir;
 

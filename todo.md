@@ -14,10 +14,44 @@ arithmetic route matrix by carrying the newly landed widened two-parameter
 plain-add parity slice forward to the next smallest uncovered zero-parameter
 `unsigned char` arithmetic-return backend-route gap.
 Next target: audit the remaining direct arithmetic-return route cases in
-`tests/c/internal/InternalTests.cmake`, starting from the next smallest
-uncovered widened `u8` zero-parameter parity slice adjacent to the existing
-`return_add`/`return_sub` family; if that route test fails, isolate the
-smallest BIR arithmetic-lowering gap it exposes before expanding scope.
+`tests/c/internal/InternalTests.cmake`, continuing from the next smallest
+uncovered widened `u8` zero-parameter parity slice adjacent to the newly landed
+`return_add_u8` coverage, starting with the adjacent `return_sub_u8` family; if
+that route test fails, isolate the smallest BIR arithmetic-lowering gap it
+exposes before expanding scope.
+
+Completed this iteration:
+- Re-audited the zero-parameter widened arithmetic-return inventory in
+  `tests/c/internal/InternalTests.cmake` and confirmed the next adjacent
+  parity gap after the landed two-parameter `u8` add slice was the
+  zero-parameter `return_add_u8` route beside the existing `return_add` /
+  `return_sub` family.
+- Added `tests/c/internal/backend_route_case/return_add_u8.c`, proving the
+  bounded zero-parameter `unsigned char` direct-add wrapper reaches the backend
+  through BIR instead of falling back to legacy LLVM IR text.
+- Registered
+  `backend_codegen_route_riscv64_return_add_u8_defaults_to_bir` in
+  `tests/c/internal/InternalTests.cmake`, asserting the emitted text contains
+  `bir.func @choose_add_u() -> i8 {`, `%t0 = bir.add i8 2, 3`, `bir.ret i8 %t0`,
+  and forbids legacy LLVM IR `define i8 @choose_add_u()`.
+- Added `make_bir_i8_return_add_module()` to
+  `tests/backend/backend_bir_test_support.*` plus
+  `test_bir_lowering_accepts_i8_return_add()` in
+  `tests/backend/backend_bir_lowering_tests.cpp` to keep the widened
+  zero-parameter `i8` add-return shape covered below the backend-route harness.
+- Confirmed the new coverage passed without any
+  `src/backend/lowering/lir_to_bir.cpp` change; the existing widened-`i8`
+  arithmetic lowering already handled the zero-parameter add-return shape
+  correctly.
+- Rebuilt `backend_bir_tests`, reran `./build/backend_bir_tests`, reran
+  `backend_codegen_route_riscv64_return_add_u8_defaults_to_bir`, reran
+  `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `373/373` backend-labeled tests passing, then refreshed
+  `test_fail_after.log` with a full `ctest --test-dir build -j8 --output-on-failure`
+  run and passed the regression guard against `test_fail_before.log` with
+  `--allow-non-decreasing-passed --timeout-threshold 30 --enforce-timeout`
+  (`2800 -> 2811` passed, `0 -> 0` failed, no newly failing tests, no new
+  `>30s` cases).
 
 Completed this iteration:
 - Re-audited the widened-width/source-level arithmetic route inventory and
