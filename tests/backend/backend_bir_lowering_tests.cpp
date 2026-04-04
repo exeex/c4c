@@ -1002,6 +1002,19 @@ void test_bir_lowering_accepts_two_param_select_phi_slice() {
                   "BIR lowering should return the fused two-parameter select result instead of preserving the legacy phi join");
 }
 
+void test_bir_lowering_accepts_two_param_u8_select_ne_phi_slice() {
+  const auto lowered =
+      c4c::backend::lower_to_bir(make_bir_two_param_select_ne_phi_module());
+  const auto rendered = c4c::backend::bir::print(lowered);
+
+  expect_contains(rendered, "bir.func @choose2_ne_u(i8 %p.x, i8 %p.y) -> i8 {",
+                  "BIR lowering should preserve the widened two-parameter unsigned-char ternary signature for not-equal");
+  expect_contains(rendered, "%t5 = bir.select ne i8 %p.x, %p.y, %p.x, %p.y",
+                  "BIR lowering should collapse the widened two-parameter not-equal phi join into a direct i8 BIR select");
+  expect_contains(rendered, "bir.ret i8 %t5",
+                  "BIR lowering should return the widened select result instead of falling back to legacy LLVM IR");
+}
+
 void test_bir_lowering_accepts_two_param_select_predecessor_add_phi_slice() {
   const auto lowered =
       c4c::backend::lower_to_bir(make_bir_two_param_select_eq_predecessor_add_phi_module());

@@ -12,10 +12,40 @@ Source Plan: plan.md
 Current active item: Step 2, add the missing zero-parameter widened
 unsigned-remainder parity slice `return_urem_u8` so it lowers directly to
 `bir.urem i8` instead of falling back to legacy LLVM IR.
-Next target: re-audit the zero-parameter widened `unsigned char` route matrix
-now that `return_urem_u8` is covered and identify the next uncovered direct-BIR
-gap beyond the current arithmetic/compare/select inventory in
-`tests/c/internal/InternalTests.cmake`.
+Next target: re-audit the widened `unsigned char` select matrix beyond the new
+two-parameter `select ne` parity point and identify the next uncovered direct-
+BIR gap, likely in the still-`eq`-only predecessor/post-join `u8` select route
+inventory in `tests/c/internal/InternalTests.cmake`.
+
+Completed this iteration:
+- Re-audited the widened `unsigned char` select inventory after the
+  zero-parameter arithmetic/compare/select sweep and found the next adjacent
+  uncovered Step 2 surface was the missing two-parameter `select ne` parity
+  route beside the existing `two_param_u8_select_eq` coverage.
+- Added `tests/c/internal/backend_route_case/two_param_u8_select_ne.c`,
+  proving the bounded two-parameter `unsigned char` not-equal ternary reaches
+  the backend through BIR instead of falling back to legacy LLVM IR text.
+- Registered
+  `backend_codegen_route_riscv64_two_param_u8_select_ne_defaults_to_bir` in
+  `tests/c/internal/InternalTests.cmake`, asserting the emitted text contains
+  `bir.func @choose2_ne_u(i8 %p.x, i8 %p.y) -> i8 {`,
+  `bir.select ne i8 %p.x, %p.y, %p.x, %p.y`, and forbids legacy LLVM IR
+  `define i8 @choose2_ne_u(i8 %p.x, i8 %p.y)`.
+- Added `make_bir_two_param_select_ne_phi_module()` to
+  `tests/backend/backend_bir_test_support.*` plus
+  `test_bir_lowering_accepts_two_param_u8_select_ne_phi_slice()` in
+  `tests/backend/backend_bir_lowering_tests.cpp` to keep the widened
+  two-parameter `i8` not-equal phi-join select shape covered below the
+  backend-route harness.
+- Used the new coverage to confirm there was no hidden direct-BIR lowering gap
+  in this slice: the current widened `i8` conditional-phi select lowering
+  already accepts the `ne` predicate, so this iteration advanced Step 2 by
+  closing a parity-coverage hole rather than by changing `lir_to_bir.cpp`.
+- Rebuilt `backend_bir_tests` and `c4cll`, reran `./build/backend_bir_tests`,
+  reran
+  `backend_codegen_route_riscv64_two_param_u8_select_ne_defaults_to_bir`, and
+  reran `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `386/386` backend-labeled tests passing.
 
 Completed this iteration:
 - Re-audited the zero-parameter widened arithmetic-return inventory in
