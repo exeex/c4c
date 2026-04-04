@@ -11,11 +11,48 @@ Source Plan: plan.md
 
 Current active item: Step 2, continue tightening the widened-width/source-level
 arithmetic route matrix by carrying the landed zero-parameter widened
-unsigned-division parity from `return_udiv_u8` into the next adjacent gap,
-`return_srem_u8`.
-Next target: carry the widened zero-parameter signed-remainder parity work from
-the landed `return_udiv_u8` slice into the next adjacent gap,
-`return_srem_u8`, beside the existing plain `return_srem` route.
+signed-remainder parity from `return_srem_u8` into the next adjacent gap,
+`return_urem_u8`.
+Next target: carry the widened zero-parameter unsigned-remainder parity work
+from the landed `return_srem_u8` slice into the next adjacent gap,
+`return_urem_u8`, beside the existing plain `return_urem` route.
+
+Completed this iteration:
+- Re-audited the zero-parameter widened arithmetic-return inventory in
+  `tests/c/internal/InternalTests.cmake` and confirmed the next adjacent
+  widened arithmetic parity gap after the landed `return_udiv_u8` slice was the
+  zero-parameter `return_srem_u8` route beside the existing plain
+  `return_srem` family.
+- Added `tests/c/internal/backend_route_case/return_srem_u8.c`, proving the
+  bounded zero-parameter `unsigned char` signed-remainder wrapper reaches the
+  backend through BIR instead of falling back to legacy LLVM IR text.
+- Registered `backend_codegen_route_riscv64_return_srem_u8_defaults_to_bir` in
+  `tests/c/internal/InternalTests.cmake`, asserting the emitted text contains
+  `bir.func @choose_srem_u() -> i8 {`, `%t0 = bir.srem i8 14, 5`,
+  `bir.ret i8 %t0`, and forbids legacy LLVM IR `define i8 @choose_srem_u()`.
+- Added `make_bir_i8_return_srem_module()` to
+  `tests/backend/backend_bir_test_support.*` plus
+  `test_bir_lowering_accepts_i8_return_srem()` in
+  `tests/backend/backend_bir_lowering_tests.cpp` to keep the widened
+  zero-parameter `i8` signed-remainder return shape covered below the
+  backend-route harness.
+- Used the new coverage to expose a real Step 2 direct-BIR gap: the widened
+  zero-parameter `i8` signed-remainder return case was not admitted by the
+  existing widened-`i8` arithmetic lowering helper.
+- Fixed `src/backend/lowering/lir_to_bir.cpp` so
+  `try_lower_widened_i8_add_sub_chain_function()` now accepts widened
+  constant-only `srem`, preserving the existing parameter restrictions while
+  lowering this route directly to `bir.srem i8`.
+- Rebuilt `backend_bir_tests` and `c4cll`, reran `./build/backend_bir_tests`,
+  reran `backend_codegen_route_riscv64_return_srem_u8_defaults_to_bir` plus
+  adjacent `return_srem`/`return_udiv_u8` route coverage, reran
+  `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `384/384` backend-labeled tests passing, refreshed `test_fail_after.log`
+  with a full `ctest --test-dir build -j8 --output-on-failure` run, and passed
+  the regression guard against `test_fail_before.log` with
+  `--allow-non-decreasing-passed --timeout-threshold 30 --enforce-timeout`
+  (`2800 -> 2822` passed, `0 -> 0` failed, no newly failing tests, no new
+  `>30s` cases).
 
 Completed this iteration:
 - Re-audited the zero-parameter widened arithmetic-return inventory in
