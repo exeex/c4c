@@ -755,6 +755,86 @@ inline c4c::codegen::lir::LirModule make_global_double_less_than_one_module() {
   return module;
 }
 
+inline c4c::codegen::lir::LirModule make_fp_arithmetic_and_libcall_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.string_pool.push_back(LirStringConst{"@.str0", "%f\\0A", 4});
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.acc", "double", "", 8});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirBinOp{"%t0", "fadd", "double",
+                                 "0x4028AE147AE147AE", "0x404C63D70A3D70A4"});
+  entry.insts.push_back(LirBinOp{"%t1", "fsub", "double", "%t0", "0x4028AE147AE147AE"});
+  entry.insts.push_back(LirBinOp{"%t2", "fmul", "double", "%t1", "0x3FF0000000000000"});
+  entry.insts.push_back(LirBinOp{"%t3", "fdiv", "double", "%t2", "0x3FF0000000000000"});
+  entry.insts.push_back(LirBinOp{"%t4", "fneg", "double", "%t3", ""});
+  entry.insts.push_back(
+      LirCastOp{"%t5", LirCastKind::SIToFP, "i32", "2", "double"});
+  entry.insts.push_back(
+      LirCallOp{"%t6", "double", "@sin", "(double)", "double %t5"});
+  entry.insts.push_back(LirBinOp{"%t7", "fadd", "double", "%t4", "%t6"});
+  entry.insts.push_back(LirStoreOp{"double", "%t7", "%lv.acc"});
+  entry.insts.push_back(LirLoadOp{"%t8", "double", "%lv.acc"});
+  entry.insts.push_back(
+      LirGepOp{"%t9", "[4 x i8]", "@.str0", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(
+      LirCallOp{"%t10", "i32", "@printf", "(ptr, ...)", "ptr %t9, double %t8"});
+  entry.terminator = LirRet{std::string("0"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+inline c4c::codegen::lir::LirModule make_global_double_unequal_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.globals.push_back(LirGlobal{
+      LirGlobalId{0},
+      "x",
+      {},
+      false,
+      false,
+      "",
+      "global ",
+      "double",
+      "0x4059000000000000",
+      8,
+      false,
+  });
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirLoadOp{"%t0", "double", "@x"});
+  entry.insts.push_back(
+      LirCmpOp{"%t1", true, "une", "double", "%t0", "0x3FF0000000000000"});
+  entry.insts.push_back(LirCastOp{"%t2", LirCastKind::ZExt, "i1", "%t1", "i32"});
+  entry.terminator = LirRet{std::string("%t2"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 inline c4c::codegen::lir::LirModule make_printf_vararg_decl_module() {
   using namespace c4c::codegen::lir;
 

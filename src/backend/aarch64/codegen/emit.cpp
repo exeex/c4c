@@ -6092,7 +6092,7 @@ static void gen_store_result(std::ostringstream& out, const std::string& name,
 
 static std::optional<std::string> gen_map_float_predicate(const std::string& pred) {
   if (pred == "eq" || pred == "oeq") return "eq";
-  if (pred == "ne") return "ne";
+  if (pred == "ne" || pred == "une") return "ne";
   if (pred == "olt") return "lt";
   if (pred == "ole") return "le";
   if (pred == "ogt") return "gt";
@@ -6605,35 +6605,50 @@ static std::optional<std::string> try_emit_general_lir_asm(
         else if (const auto* p = std::get_if<LirBinOp>(&inst)) {
           std::string ty = p->type_str.str();
           const char* rp = gen_reg_prefix(ty);
-          gen_load_operand(out, p->lhs.str(), ty, sm, 0, fn.name, &extern_globals);
           std::string opc = p->opcode.str();
 
-          if (opc == "fneg") {
-            // Unary — skip rhs
-          } else {
-            gen_load_operand(out, p->rhs.str(), ty, sm, 1, fn.name, &extern_globals);
-          }
+          if (gen_is_fp_type(ty)) {
+            gen_load_fp_operand(out, p->lhs.str(), ty, sm, 0, fn.name, &extern_globals);
+            if (opc != "fneg") {
+              gen_load_fp_operand(out, p->rhs.str(), ty, sm, 1, fn.name, &extern_globals);
+            }
 
-          if (opc == "add") out << "  add " << rp << "0, " << rp << "0, " << rp << "1\n";
-          else if (opc == "sub") out << "  sub " << rp << "0, " << rp << "0, " << rp << "1\n";
-          else if (opc == "mul") out << "  mul " << rp << "0, " << rp << "0, " << rp << "1\n";
-          else if (opc == "sdiv") out << "  sdiv " << rp << "0, " << rp << "0, " << rp << "1\n";
-          else if (opc == "udiv") out << "  udiv " << rp << "0, " << rp << "0, " << rp << "1\n";
-          else if (opc == "srem") {
-            out << "  sdiv " << rp << "2, " << rp << "0, " << rp << "1\n";
-            out << "  msub " << rp << "0, " << rp << "2, " << rp << "1, " << rp << "0\n";
+            const char* fp_reg = ty == "double" ? "d" : "s";
+            if (opc == "fadd") out << "  fadd " << fp_reg << "0, " << fp_reg << "0, " << fp_reg << "1\n";
+            else if (opc == "fsub") out << "  fsub " << fp_reg << "0, " << fp_reg << "0, " << fp_reg << "1\n";
+            else if (opc == "fmul") out << "  fmul " << fp_reg << "0, " << fp_reg << "0, " << fp_reg << "1\n";
+            else if (opc == "fdiv") out << "  fdiv " << fp_reg << "0, " << fp_reg << "0, " << fp_reg << "1\n";
+            else if (opc == "fneg") out << "  fneg " << fp_reg << "0, " << fp_reg << "0\n";
+            else return std::nullopt;
+
+            out << "  fmov " << (ty == "double" ? "x0, d0" : "w0, s0") << "\n";
+          } else {
+            gen_load_operand(out, p->lhs.str(), ty, sm, 0, fn.name, &extern_globals);
+            if (opc != "fneg") {
+              gen_load_operand(out, p->rhs.str(), ty, sm, 1, fn.name, &extern_globals);
+            }
+
+            if (opc == "add") out << "  add " << rp << "0, " << rp << "0, " << rp << "1\n";
+            else if (opc == "sub") out << "  sub " << rp << "0, " << rp << "0, " << rp << "1\n";
+            else if (opc == "mul") out << "  mul " << rp << "0, " << rp << "0, " << rp << "1\n";
+            else if (opc == "sdiv") out << "  sdiv " << rp << "0, " << rp << "0, " << rp << "1\n";
+            else if (opc == "udiv") out << "  udiv " << rp << "0, " << rp << "0, " << rp << "1\n";
+            else if (opc == "srem") {
+              out << "  sdiv " << rp << "2, " << rp << "0, " << rp << "1\n";
+              out << "  msub " << rp << "0, " << rp << "2, " << rp << "1, " << rp << "0\n";
+            }
+            else if (opc == "urem") {
+              out << "  udiv " << rp << "2, " << rp << "0, " << rp << "1\n";
+              out << "  msub " << rp << "0, " << rp << "2, " << rp << "1, " << rp << "0\n";
+            }
+            else if (opc == "and") out << "  and " << rp << "0, " << rp << "0, " << rp << "1\n";
+            else if (opc == "or") out << "  orr " << rp << "0, " << rp << "0, " << rp << "1\n";
+            else if (opc == "xor") out << "  eor " << rp << "0, " << rp << "0, " << rp << "1\n";
+            else if (opc == "shl") out << "  lsl " << rp << "0, " << rp << "0, " << rp << "1\n";
+            else if (opc == "lshr") out << "  lsr " << rp << "0, " << rp << "0, " << rp << "1\n";
+            else if (opc == "ashr") out << "  asr " << rp << "0, " << rp << "0, " << rp << "1\n";
+            else return std::nullopt;  // unsupported binop
           }
-          else if (opc == "urem") {
-            out << "  udiv " << rp << "2, " << rp << "0, " << rp << "1\n";
-            out << "  msub " << rp << "0, " << rp << "2, " << rp << "1, " << rp << "0\n";
-          }
-          else if (opc == "and") out << "  and " << rp << "0, " << rp << "0, " << rp << "1\n";
-          else if (opc == "or") out << "  orr " << rp << "0, " << rp << "0, " << rp << "1\n";
-          else if (opc == "xor") out << "  eor " << rp << "0, " << rp << "0, " << rp << "1\n";
-          else if (opc == "shl") out << "  lsl " << rp << "0, " << rp << "0, " << rp << "1\n";
-          else if (opc == "lshr") out << "  lsr " << rp << "0, " << rp << "0, " << rp << "1\n";
-          else if (opc == "ashr") out << "  asr " << rp << "0, " << rp << "0, " << rp << "1\n";
-          else return std::nullopt;  // unsupported binop
 
           gen_store_result(out, p->result.str(), ty, sm, 0);
         }
@@ -6872,6 +6887,9 @@ static std::optional<std::string> try_emit_general_lir_asm(
           // Store return value
           if (!p->result.empty()) {
             std::string ret_ty = p->return_type.str();
+            if (gen_is_fp_type(ret_ty)) {
+              out << "  fmov " << (ret_ty == "double" ? "x0, d0" : "w0, s0") << "\n";
+            }
             gen_store_result(out, p->result.str(), ret_ty, sm, 0);
           }
         }

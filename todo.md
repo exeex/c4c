@@ -12,24 +12,25 @@ Source Plan: plan.md
 Current active item: Step 4, shrink the now-explicit AArch64-only file-output
 asm fallback users and prepare the final legacy backend-IR deletion pass.
 
-Iteration target: remove the bounded non-FP direct-call AArch64 file-output
-asm rescue caller `00121`, then continue with the next still-blocked family.
+Iteration target: remove the bounded float-heavy AArch64 file-output asm
+rescue caller `00174`, then continue with the remaining ABI-heavy family.
 
 Immediate next slice:
 
-- re-probe the remaining float/ABI-heavy AArch64 rescue callers `00174` and
-  `00204`
-- choose the smaller still-bounded family and batch its emitter gap fix
-  together with removing the matching file-output allowlist tag
+- re-probe the remaining ABI-heavy AArch64 rescue caller `00204`
+- identify the smallest still-bounded matcher/emitter or varargs/HFA gap that
+  keeps `00204` on file-output fallback
+- batch that backend fix together with removing the final
+  `backend-file-aarch64` allowlist tag if the slice can prove native stdout asm
 
 Slice deliverables:
 
 - a checked-in audit summary in this file that enumerates the remaining
   file-output asm users by family and by reason
-- conversion of every already-native caller in the chosen family batch from
-  file-output coverage to stdout-native coverage
-- removal or tightening of the corresponding fallback logic in
-  [`src/apps/c4cll.cpp`](/workspaces/c4c/src/apps/c4cll.cpp)
+- conversion of the remaining already-native caller in the chosen family batch
+  from file-output coverage to stdout-native coverage
+- removal or tightening of the corresponding fallback logic only if the final
+  `00204` family can be deleted in the same bounded batch
 - updated focused backend/runtime tests that prove the fallback surface is
   actually smaller after the slice
 
@@ -86,13 +87,18 @@ Known live references from the current audit:
   backend families now run through stdout-native asm by default
 - the remaining live file-output asm rescue users are now explicit allowlist
   tags for external/backend AArch64 c-testsuite coverage:
-  `00174` and `00204`
+  `00204`
 - the small scalar/FP audit split cleanly into two buckets:
   `00113`, `00119`, and `00123` all failed because the AArch64 general
   stack-spill emitter rejected float compares and float casts
   (`sitofp` plus ordered `fcmp` materialization), while the now-cleared
   `00121` direct-call family was separate and should not be grouped with the
   float slice
+- `00174` was blocked by the AArch64 direct LIR emitter rejecting FP binops
+  (`fadd`, `fsub`, `fmul`, `fdiv`, `fneg`) plus LLVM `une` float predicates,
+  and by losing `double` libcall returns when spilling back to stack; those
+  seams now emit native stdout asm and the `backend-file-aarch64` allowlist tag
+  is gone
 - `c4cll` now rejects file-output LLVM asm fallback on non-AArch64 targets;
   the app-layer rescue path is retained only for the tagged AArch64 family
 
@@ -150,15 +156,22 @@ Recently completed milestones:
   removed external/backend AArch64 c-testsuite case `00121` from the
   remaining file-output rescue bucket so the live rescue set now shrinks to
   `00174` and `00204`
+- taught the AArch64 direct LIR emitter to keep bounded FP arithmetic
+  (`fadd`, `fsub`, `fmul`, `fdiv`, `fneg`) plus `double`-return libcalls on
+  the native asm path, taught the float compare mapper to keep LLVM `une` on
+  stdout-native asm, added focused backend regressions for both seams, and
+  removed external/backend AArch64 c-testsuite case `00174` from the
+  remaining file-output rescue bucket so the live rescue set now shrinks to
+  `00204`
 
 Validation baseline:
 
 - blocker: none
 - latest focused proving set:
   `build/backend_lir_adapter_aarch64_tests`,
-  `build/c4cll --codegen asm --target aarch64-unknown-linux-gnu tests/c/external/c-testsuite/src/00121.c`,
+  `build/c4cll --codegen asm --target aarch64-unknown-linux-gnu tests/c/external/c-testsuite/src/00174.c`,
   and
-  `ctest --test-dir build -R "c_testsuite_aarch64_backend_src_00121_c" --output-on-failure`
+  `ctest --test-dir build -R "backend_lir_adapter_aarch64_tests|c_testsuite_aarch64_backend_src_00174_c" --output-on-failure`
   with native asm emitted on stdout and the regenerated AArch64 backend
   c-testsuite case passing without file-output rescue
 - latest backend regression scope:

@@ -3029,6 +3029,42 @@ void test_aarch64_backend_renders_global_double_less_than_slice() {
                       "aarch64 backend should not fall back to LLVM IR for the bounded global-double less-than slice");
 }
 
+void test_aarch64_backend_renders_fp_arithmetic_and_double_libcall_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_fp_arithmetic_and_libcall_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, "fadd d0, d0, d1",
+                  "aarch64 backend should lower bounded double addition on the native asm path");
+  expect_contains(rendered, "fsub d0, d0, d1",
+                  "aarch64 backend should lower bounded double subtraction on the native asm path");
+  expect_contains(rendered, "fmul d0, d0, d1",
+                  "aarch64 backend should lower bounded double multiplication on the native asm path");
+  expect_contains(rendered, "fdiv d0, d0, d1",
+                  "aarch64 backend should lower bounded double division on the native asm path");
+  expect_contains(rendered, "fneg d0, d0",
+                  "aarch64 backend should lower bounded double negation on the native asm path");
+  expect_contains(rendered, "bl sin",
+                  "aarch64 backend should keep direct double libcalls on the native asm path");
+  expect_contains(rendered, "fmov x0, d0",
+                  "aarch64 backend should preserve double call returns when spilling them back to stack");
+  expect_contains(rendered, "bl printf",
+                  "aarch64 backend should still lower the trailing variadic print call after the double libcall");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend should not fall back to LLVM IR for the bounded FP arithmetic plus libcall slice");
+}
+
+void test_aarch64_backend_renders_global_double_unequal_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_global_double_unequal_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, "fcmp d0, d1",
+                  "aarch64 backend should compare double operands before materializing unequal results");
+  expect_contains(rendered, "cset w0, ne",
+                  "aarch64 backend should materialize ordered-or-unordered double inequality through the native compare flags");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend should not fall back to LLVM IR for the bounded double unequal slice");
+}
+
 void test_aarch64_backend_renders_local_array_gep_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_local_array_gep_module()},
@@ -5284,6 +5320,8 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_renders_double_printf_call_with_fp_register_args();
   test_aarch64_backend_renders_float_sitofp_equality_slice();
   test_aarch64_backend_renders_global_double_less_than_slice();
+  test_aarch64_backend_renders_fp_arithmetic_and_double_libcall_slice();
+  test_aarch64_backend_renders_global_double_unequal_slice();
   test_aarch64_backend_renders_local_array_gep_slice();
   test_aarch64_backend_renders_param_member_array_gep_slice();
   test_aarch64_backend_renders_nested_member_pointer_array_gep_slice();
