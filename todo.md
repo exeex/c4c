@@ -11,8 +11,7 @@ Source Plan: plan.md
 
 Current active item: Step 4 x86 emitter tightening. Continue shrinking the
 remaining x86 emitter-local `lower_lir_to_backend_module(...)` fallback for the
-next bounded local-runtime or direct-call family that still only reaches
-assembly through legacy lowering.
+next bounded local-runtime family after the goto-only constant-return chain.
 
 Completed in this slice:
 
@@ -83,19 +82,23 @@ Completed in this slice:
 - proved the production deletion with a new explicit-LIR parity regression in
   [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
   for the bounded local pointer round-trip slice
+- added a bounded direct x86 LIR parser for the goto-only constant-return
+  branch chain in
+  [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+  so that family no longer needs `lower_lir_to_backend_module(...)` on the
+  explicit x86 entrypoint just to discover the final immediate return
+- proved the production deletion with a new explicit-LIR parity regression in
+  [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
+  for the bounded goto-only constant-return branch chain
 
 Next slice:
 
-- continue shrinking the remaining x86 emitter-local
-  `lower_lir_to_backend_module(...)` fallback for the next bounded local-runtime
-  or direct-call family that still only reaches assembly through legacy lowering
-- after the countdown do-while family, prefer another explicit-x86 family where
-  the direct entrypoint still needs legacy lowering rather than adding more
-  compatibility-only probes
-- after the local pointer round-trip slice, prefer another bounded local-runtime
-  family such as the double-indirect local-pointer conditional or goto-only
-  branch chain where the explicit x86 entrypoint still depends on legacy
-  lowering
+- revisit the double-indirect local-pointer conditional family next and
+  delete its direct-entry x86 fallback if that batch can stay similarly bounded
+- add explicit-LIR parity coverage only where it proves the production deletion
+  in the same batch
+- prefer another local-runtime family that still hits
+  `lower_lir_to_backend_module(...)` over compatibility-only probe growth
 - keep lowered-backend tests scoped to compatibility seams that still exist
   after the production deletion
 - prove the next deletion with focused x86 backend tests and
@@ -165,6 +168,10 @@ Recent baseline:
 - latest Step 4 follow-through also removes the bounded local pointer
   round-trip dependency on `lower_lir_to_backend_module(...)` from the direct
   x86 LIR entrypoint and keeps the direct/lowered x86 seams on identical asm
+- latest Step 4 follow-through also removes the bounded goto-only
+  constant-return branch-chain dependency on
+  `lower_lir_to_backend_module(...)` from the direct x86 LIR entrypoint and
+  keeps the direct/lowered x86 seams on identical asm
 - latest Step 4 prep adds explicit direct-x86 parity coverage for the bounded
   member-array runtime family so the next local-runtime deletion can target a
   concrete green direct-entry seam instead of adding more compatibility-only

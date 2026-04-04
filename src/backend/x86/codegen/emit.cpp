@@ -520,6 +520,70 @@ std::optional<std::int64_t> parse_minimal_lir_return_imm(
   return resolve_value(*ret->value_str);
 }
 
+std::optional<std::int64_t> parse_minimal_goto_only_constant_return_imm(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || !module.globals.empty() ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      function.name != "main" ||
+      !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(function.signature_text) ||
+      function.entry.value != 0 || !function.alloca_insts.empty() || function.blocks.empty()) {
+    return std::nullopt;
+  }
+
+  std::unordered_map<std::string_view, const LirBlock*> blocks_by_label;
+  for (const auto& block : function.blocks) {
+    if (!block.insts.empty() || block.label.empty()) {
+      return std::nullopt;
+    }
+    if (!blocks_by_label.emplace(block.label, &block).second) {
+      return std::nullopt;
+    }
+
+    const auto* br = std::get_if<LirBr>(&block.terminator);
+    const auto* ret = std::get_if<LirRet>(&block.terminator);
+    if (br == nullptr && ret == nullptr) {
+      return std::nullopt;
+    }
+    if (ret != nullptr) {
+      if (!ret->value_str.has_value() || ret->type_str != "i32" ||
+          !parse_i64(*ret->value_str).has_value()) {
+        return std::nullopt;
+      }
+    }
+  }
+
+  const auto* current = &function.blocks.front();
+  if (current->label != "entry") {
+    return std::nullopt;
+  }
+
+  std::unordered_set<std::string_view> visited;
+  while (true) {
+    if (!visited.insert(current->label).second) {
+      return std::nullopt;
+    }
+    if (const auto* ret = std::get_if<LirRet>(&current->terminator)) {
+      return parse_i64(*ret->value_str);
+    }
+    const auto* br = std::get_if<LirBr>(&current->terminator);
+    if (br == nullptr) {
+      return std::nullopt;
+    }
+    const auto next_it = blocks_by_label.find(br->target_label);
+    if (next_it == blocks_by_label.end()) {
+      return std::nullopt;
+    }
+    current = next_it->second;
+  }
+}
+
 std::optional<c4c::codegen::lir::LirCmpPredicate> lower_bir_cmp_predicate(
     c4c::backend::bir::BinaryOpcode predicate) {
   using BirPred = c4c::backend::bir::BinaryOpcode;
@@ -5617,6 +5681,10 @@ std::optional<std::string> try_emit_direct_lir_module(
       }
       return remove_redundant_self_moves(emit_minimal_call_crossing_direct_call_asm(
           module.target_triple, run_shared_x86_regalloc(*main_fn), *slice));
+    }
+    if (const auto imm = parse_minimal_goto_only_constant_return_imm(module);
+        imm.has_value()) {
+      return emit_minimal_return_asm(module.target_triple, *imm);
     }
     if (const auto imm = parse_minimal_lir_return_imm(module); imm.has_value()) {
       return emit_minimal_return_asm(module.target_triple, *imm);
