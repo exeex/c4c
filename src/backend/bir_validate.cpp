@@ -113,6 +113,47 @@ bool validate_select(const Function& function,
   return true;
 }
 
+bool validate_cast(const Function& function,
+                   const CastInst& inst,
+                   std::vector<std::string>* defined_names,
+                   std::string* error) {
+  if (inst.result.kind != Value::Kind::Named || inst.result.name.empty()) {
+    return fail(error, "bir cast result in @" + function.name +
+                           " must use a non-empty named value");
+  }
+  if (!validate_value_type(inst.result.type,
+                           "bir cast result in @" + function.name,
+                           error)) {
+    return false;
+  }
+  if (!validate_value_type(inst.operand.type,
+                           "bir cast operand in @" + function.name,
+                           error)) {
+    return false;
+  }
+  if (inst.operand.kind == Value::Kind::Named && inst.operand.name.empty()) {
+    return fail(error, "bir cast operand in @" + function.name +
+                           " must not use an empty name");
+  }
+  if (inst.result.type == inst.operand.type) {
+    return fail(error, "bir cast in @" + function.name +
+                           " must change the type");
+  }
+  const auto result_width = inst.result.type;
+  const auto operand_width = inst.operand.type;
+  if (inst.opcode == CastOpcode::Trunc && result_width >= operand_width) {
+    return fail(error, "bir trunc in @" + function.name +
+                           " must narrow the type");
+  }
+  if ((inst.opcode == CastOpcode::SExt || inst.opcode == CastOpcode::ZExt) &&
+      result_width <= operand_width) {
+    return fail(error, "bir sext/zext in @" + function.name +
+                           " must widen the type");
+  }
+  defined_names->push_back(inst.result.name);
+  return true;
+}
+
 bool validate_params(const Function& function,
                      std::vector<std::string>* defined_names,
                      std::string* error) {
@@ -208,6 +249,8 @@ bool validate(const Module& module, std::string* error) {
                 return validate_binary(function, lowered, &defined_names, error);
               } else if constexpr (std::is_same_v<T, SelectInst>) {
                 return validate_select(function, lowered, &defined_names, error);
+              } else if constexpr (std::is_same_v<T, CastInst>) {
+                return validate_cast(function, lowered, &defined_names, error);
               }
             },
             inst);

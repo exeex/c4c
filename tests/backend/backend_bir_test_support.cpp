@@ -44,6 +44,68 @@ c4c::codegen::lir::LirModule make_bir_return_staged_constant_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_bir_return_sext_module() {
+  using namespace c4c::codegen::lir;
+
+  auto module = make_return_add_module();
+  auto& function = module.functions.front();
+  function.signature_text = "define i64 @widen_signed(i32 %p.x)\n";
+  function.return_type.base = c4c::TB_LONGLONG;
+  function.params.clear();
+  c4c::TypeSpec sext_param_type{};
+  sext_param_type.base = c4c::TB_INT;
+  function.params.push_back({"%p.x", sext_param_type});
+  auto& entry = function.blocks.front();
+  entry.insts.clear();
+  entry.insts.push_back(LirCastOp{"%t0", LirCastKind::SExt, "i32", "%p.x", "i64"});
+  entry.terminator = LirRet{std::string("%t0"), "i64"};
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_bir_return_zext_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module = make_bir_fixture_module();
+
+  LirFunction function;
+  function.name = "widen_unsigned";
+  function.signature_text = "define i32 @widen_unsigned(i8 %p.x)\n";
+  function.return_type.base = c4c::TB_INT;
+  c4c::TypeSpec zext_param_type{};
+  zext_param_type.base = c4c::TB_UCHAR;
+  function.params.push_back({"%p.x", zext_param_type});
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCastOp{"%t0", LirCastKind::ZExt, "i8", "%p.x", "i32"});
+  entry.terminator = LirRet{std::string("%t0"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_bir_return_trunc_module() {
+  using namespace c4c::codegen::lir;
+
+  auto module = make_bir_return_sext_module();
+  auto& function = module.functions.front();
+  function.name = "narrow_signed";
+  function.signature_text = "define i32 @narrow_signed(i64 %p.x)\n";
+  function.return_type.base = c4c::TB_INT;
+  function.params.clear();
+  c4c::TypeSpec trunc_param_type{};
+  trunc_param_type.base = c4c::TB_LONGLONG;
+  function.params.push_back({"%p.x", trunc_param_type});
+  auto& entry = function.blocks.front();
+  entry.insts.clear();
+  entry.insts.push_back(LirCastOp{"%t0", LirCastKind::Trunc, "i64", "%p.x", "i32"});
+  entry.terminator = LirRet{std::string("%t0"), "i32"};
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_bir_return_mul_module() {
   using namespace c4c::codegen::lir;
 
@@ -2845,5 +2907,80 @@ c4c::codegen::lir::LirModule make_bir_two_param_staged_affine_module() {
   entry.insts.push_back(LirBinOp{"%t1", "add", "i32", "%t0", "%p.y"});
   entry.insts.push_back(LirBinOp{"%t2", "sub", "i32", "%t1", "1"});
   entry.terminator = LirRet{std::string("%t2"), "i32"};
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_bir_return_sext_module() {
+  using namespace c4c::codegen::lir;
+
+  auto module = make_bir_fixture_module(backend_test_x86_64_bir_pipeline_profile());
+
+  LirFunction function;
+  function.name = "widen_signed";
+  function.signature_text = "define i64 @widen_signed(i32 %p.x)\n";
+  function.return_type.base = c4c::TB_LONG;
+  c4c::TypeSpec param_type{};
+  param_type.base = c4c::TB_INT;
+  function.params.push_back({"%p.x", param_type});
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCastOp{"%t0", LirCastKind::SExt, "i32", "%p.x", "i64"});
+  entry.terminator = LirRet{std::string("%t0"), "i64"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_bir_return_zext_module() {
+  using namespace c4c::codegen::lir;
+
+  auto module = make_bir_fixture_module(backend_test_x86_64_bir_pipeline_profile());
+
+  LirFunction function;
+  function.name = "widen_unsigned";
+  function.signature_text = "define i32 @widen_unsigned(i8 %p.x)\n";
+  function.return_type.base = c4c::TB_INT;
+  c4c::TypeSpec param_type{};
+  param_type.base = c4c::TB_UCHAR;
+  function.params.push_back({"%p.x", param_type});
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCastOp{"%t0", LirCastKind::ZExt, "i8", "%p.x", "i32"});
+  entry.terminator = LirRet{std::string("%t0"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_bir_return_trunc_module() {
+  using namespace c4c::codegen::lir;
+
+  auto module = make_bir_fixture_module(backend_test_x86_64_bir_pipeline_profile());
+
+  LirFunction function;
+  function.name = "narrow_signed";
+  function.signature_text = "define i32 @narrow_signed(i64 %p.x)\n";
+  function.return_type.base = c4c::TB_INT;
+  c4c::TypeSpec param_type{};
+  param_type.base = c4c::TB_LONG;
+  function.params.push_back({"%p.x", param_type});
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCastOp{"%t0", LirCastKind::Trunc, "i64", "%p.x", "i32"});
+  entry.terminator = LirRet{std::string("%t0"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
   return module;
 }

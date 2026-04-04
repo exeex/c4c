@@ -480,6 +480,24 @@ void test_bir_printer_renders_i64_scaffold() {
                   "BIR printer should render i64 returns using the widened type surface");
 }
 
+void test_bir_printer_renders_minimal_cast_scaffold() {
+  using namespace c4c::backend::bir;
+
+  auto module = make_return_immediate_module();
+  auto& function = module.functions.front();
+  function.return_type = TypeKind::I64;
+  auto& block = function.blocks.front();
+  block.insts.push_back(CastInst{CastOpcode::SExt, Value::named(TypeKind::I64, "%t0"),
+                                 Value::immediate_i32(-7)});
+  block.terminator.value = Value::named(TypeKind::I64, "%t0");
+
+  const auto rendered = c4c::backend::bir::print(module);
+  expect_contains(rendered, "%t0 = bir.sext i32 -7 to i64",
+                  "BIR printer should render explicit cast instructions in BIR terms");
+  expect_contains(rendered, "bir.ret i64 %t0",
+                  "BIR printer should let cast results flow into returns");
+}
+
 void test_bir_validator_accepts_minimal_return_immediate_scaffold() {
   std::string error;
 
@@ -507,6 +525,16 @@ void test_bir_validator_accepts_minimal_i64_scaffold() {
               "BIR validator should accept the bounded i64 arithmetic scaffold once BIR grows a word-sized scalar type");
   expect_true(error.empty(),
               "BIR validator should keep the widened i64 scaffold on the valid path");
+}
+
+void test_bir_validator_accepts_minimal_cast_scaffold() {
+  std::string error;
+
+  expect_true(c4c::backend::bir::validate(
+                  c4c::backend::lower_to_bir(make_bir_return_sext_module()), &error),
+              "BIR validator should accept the bounded cast scaffold once BIR grows explicit cast instructions");
+  expect_true(error.empty(),
+              "BIR validator should keep the bounded cast scaffold on the valid path");
 }
 
 void test_bir_validator_accepts_minimal_select_scaffold() {
@@ -539,6 +567,42 @@ void test_bir_lowering_accepts_tiny_return_sub_lir_slice() {
                   "BIR lowering should materialize the tiny sub slice in BIR terms");
   expect_contains(rendered, "bir.ret i32 %t0",
                   "BIR lowering should return the named BIR sub result");
+}
+
+void test_bir_lowering_accepts_tiny_return_sext_lir_slice() {
+  const auto lowered = c4c::backend::lower_to_bir(make_bir_return_sext_module());
+  const auto rendered = c4c::backend::bir::print(lowered);
+
+  expect_contains(rendered, "bir.func @main(i32 %p.x) -> i64 {",
+                  "BIR lowering should preserve widened return signatures for straight-line sext slices");
+  expect_contains(rendered, "%t0 = bir.sext i32 %p.x to i64",
+                  "BIR lowering should materialize straight-line sext slices in BIR terms");
+  expect_contains(rendered, "bir.ret i64 %t0",
+                  "BIR lowering should return the named BIR sext result");
+}
+
+void test_bir_lowering_accepts_tiny_return_zext_lir_slice() {
+  const auto lowered = c4c::backend::lower_to_bir(make_bir_return_zext_module());
+  const auto rendered = c4c::backend::bir::print(lowered);
+
+  expect_contains(rendered, "bir.func @widen_unsigned(i8 %p.x) -> i32 {",
+                  "BIR lowering should preserve widened parameter signatures for straight-line zext slices");
+  expect_contains(rendered, "%t0 = bir.zext i8 %p.x to i32",
+                  "BIR lowering should materialize straight-line zext slices in BIR terms");
+  expect_contains(rendered, "bir.ret i32 %t0",
+                  "BIR lowering should return the named BIR zext result");
+}
+
+void test_bir_lowering_accepts_tiny_return_trunc_lir_slice() {
+  const auto lowered = c4c::backend::lower_to_bir(make_bir_return_trunc_module());
+  const auto rendered = c4c::backend::bir::print(lowered);
+
+  expect_contains(rendered, "bir.func @narrow_signed(i64 %p.x) -> i32 {",
+                  "BIR lowering should preserve narrowed parameter signatures for straight-line trunc slices");
+  expect_contains(rendered, "%t0 = bir.trunc i64 %p.x to i32",
+                  "BIR lowering should materialize straight-line trunc slices in BIR terms");
+  expect_contains(rendered, "bir.ret i32 %t0",
+                  "BIR lowering should return the named BIR trunc result");
 }
 
 void test_bir_lowering_accepts_tiny_return_mul_lir_slice() {
@@ -1805,6 +1869,24 @@ void test_bir_validator_rejects_return_type_mismatch() {
                   "BIR validator should explain return type mismatches in BIR terms");
 }
 
+void test_bir_validator_rejects_non_widening_sext() {
+  using namespace c4c::backend::bir;
+
+  auto module = make_return_immediate_module();
+  auto& function = module.functions.front();
+  function.return_type = TypeKind::I64;
+  auto& block = function.blocks.front();
+  block.insts.push_back(CastInst{CastOpcode::SExt, Value::named(TypeKind::I32, "%t0"),
+                                 Value::immediate_i64(7)});
+  block.terminator.value = Value::named(TypeKind::I64, "%t0");
+  std::string error;
+
+  expect_true(!c4c::backend::bir::validate(module, &error),
+              "BIR validator should reject sext instructions that do not widen the source type");
+  expect_contains(error, "must widen the type",
+                  "BIR validator should explain why invalid sext instructions are rejected");
+}
+
 }  // namespace
 
 void run_backend_bir_lowering_tests() {
@@ -1835,12 +1917,17 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_printer_renders_minimal_return_immediate_scaffold);
   RUN_TEST(test_bir_printer_renders_i8_scaffold);
   RUN_TEST(test_bir_printer_renders_i64_scaffold);
+  RUN_TEST(test_bir_printer_renders_minimal_cast_scaffold);
   RUN_TEST(test_bir_validator_accepts_minimal_return_immediate_scaffold);
   RUN_TEST(test_bir_validator_accepts_minimal_i8_scaffold);
   RUN_TEST(test_bir_validator_accepts_minimal_i64_scaffold);
+  RUN_TEST(test_bir_validator_accepts_minimal_cast_scaffold);
   RUN_TEST(test_bir_validator_accepts_minimal_select_scaffold);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_add_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_sub_lir_slice);
+  RUN_TEST(test_bir_lowering_accepts_tiny_return_sext_lir_slice);
+  RUN_TEST(test_bir_lowering_accepts_tiny_return_zext_lir_slice);
+  RUN_TEST(test_bir_lowering_accepts_tiny_return_trunc_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_mul_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_and_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_or_lir_slice);
@@ -1924,4 +2011,5 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_two_param_staged_affine_chain);
   RUN_TEST(test_bir_validator_rejects_returning_undefined_named_value);
   RUN_TEST(test_bir_validator_rejects_return_type_mismatch);
+  RUN_TEST(test_bir_validator_rejects_non_widening_sext);
 }

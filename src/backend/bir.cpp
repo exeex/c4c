@@ -102,4 +102,16 @@ std::string render_binary_opcode(BinaryOpcode opcode) {
   return "<unknown>";
 }
 
+std::string render_cast_opcode(CastOpcode opcode) {
+  switch (opcode) {
+    case CastOpcode::SExt:
+      return "sext";
+    case CastOpcode::ZExt:
+      return "zext";
+    case CastOpcode::Trunc:
+      return "trunc";
+  }
+  return "<unknown>";
+}
+
 }  // namespace c4c::backend::bir

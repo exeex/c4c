@@ -31,8 +31,11 @@ Completed in this slice: refreshed the Step 1 removal-map snapshot in
 current mixed BIR/legacy contract, including the cleaned header boundary, the
 remaining production legacy routes, the app-layer LLVM rescue hooks, and the
 still-legacy test buckets.
-Next target: add the next bounded `lir_to_bir` lowering family with one
-target-neutral route/lowering test first, then extend x86/aarch64 emitter
-coverage only for the shapes that become BIR-owned; use `ctest -R backend` as
-the default regression gate for routine slices in this plan, and prefer
-batching low-coupling fixture families when they share the same seam.
+Completed in this slice: added explicit BIR cast support (`sext`/`zext`/`trunc`)
+to the straight-line scaffold, including printer/validator coverage plus
+target-neutral lowering and explicit BIR-pipeline tests for parameter-fed cast
+shapes that do not collapse into the older compare/immediate folds.
+Next target: extend native x86/aarch64 emitter coverage for the new BIR-owned
+straight-line cast shapes before picking the next lowering family; keep using
+`ctest -R backend` as the default regression gate and prefer one bounded cast
+family at a time.

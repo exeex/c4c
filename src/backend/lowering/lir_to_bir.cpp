@@ -229,6 +229,44 @@ std::optional<bir::Value> lower_lossless_immediate_cast(
   return std::nullopt;
 }
 
+std::optional<bir::CastInst> lower_cast(const c4c::codegen::lir::LirInst& inst) {
+  const auto* cast = std::get_if<c4c::codegen::lir::LirCastOp>(&inst);
+  if (cast == nullptr || cast->result.str().empty()) {
+    return std::nullopt;
+  }
+  const auto from_type = lower_scalar_type_text(cast->from_type.str());
+  const auto to_type = lower_scalar_type_text(cast->to_type.str());
+  if (!from_type.has_value() || !to_type.has_value() ||
+      *from_type == *to_type) {
+    return std::nullopt;
+  }
+
+  bir::CastOpcode opcode;
+  if (cast->kind == c4c::codegen::lir::LirCastKind::SExt) {
+    if (*to_type <= *from_type) return std::nullopt;
+    opcode = bir::CastOpcode::SExt;
+  } else if (cast->kind == c4c::codegen::lir::LirCastKind::ZExt) {
+    if (*to_type <= *from_type) return std::nullopt;
+    opcode = bir::CastOpcode::ZExt;
+  } else if (cast->kind == c4c::codegen::lir::LirCastKind::Trunc) {
+    if (*to_type >= *from_type) return std::nullopt;
+    opcode = bir::CastOpcode::Trunc;
+  } else {
+    return std::nullopt;
+  }
+
+  const auto operand = lower_immediate_or_name(cast->operand.str(), *from_type);
+  if (!operand.has_value()) {
+    return std::nullopt;
+  }
+
+  bir::CastInst lowered;
+  lowered.opcode = opcode;
+  lowered.result = bir::Value::named(*to_type, cast->result.str());
+  lowered.operand = *operand;
+  return lowered;
+}
+
 std::optional<bir::BinaryInst> lower_binary(const c4c::codegen::lir::LirInst& inst) {
   const auto* bin = std::get_if<c4c::codegen::lir::LirBinOp>(&inst);
   if (bin == nullptr || bin->result.str().empty()) {
@@ -2096,13 +2134,30 @@ std::optional<bir::Module> try_lower_to_bir(const c4c::codegen::lir::LirModule& 
     if (const auto* cast = std::get_if<c4c::codegen::lir::LirCastOp>(&lir_block.insts[inst_index]);
         cast != nullptr) {
       const auto immediate_cast = lower_lossless_immediate_cast(lir_block.insts[inst_index]);
-      if (!immediate_cast.has_value() || name_is_defined(cast->result.str())) {
-        return std::nullopt;
+      if (immediate_cast.has_value() && !name_is_defined(cast->result.str())) {
+        defined_names.push_back(cast->result.str());
+        resolved_values.push_back(*immediate_cast);
+        affine_values.push_back(AffineValue{false, false, immediate_cast->immediate});
+        continue;
       }
-      defined_names.push_back(cast->result.str());
-      resolved_values.push_back(*immediate_cast);
-      affine_values.push_back(AffineValue{false, false, immediate_cast->immediate});
-      continue;
+      auto cast_inst = lower_cast(lir_block.insts[inst_index]);
+      if (cast_inst.has_value() && !name_is_defined(cast->result.str())) {
+        const auto resolved_operand = resolve_value(cast_inst->operand);
+        if (!resolved_operand.has_value()) {
+          return std::nullopt;
+        }
+        cast_inst->operand = *resolved_operand;
+        const auto operand_affine = lower_affine_value(cast_inst->operand);
+        if (!operand_affine.has_value()) {
+          return std::nullopt;
+        }
+        defined_names.push_back(cast->result.str());
+        resolved_values.push_back(bir::Value::named(cast_inst->result.type, cast->result.str()));
+        affine_values.push_back(*operand_affine);
+        block.insts.push_back(*cast_inst);
+        continue;
+      }
+      return std::nullopt;
     }
 
     auto binary = [&]() -> std::optional<bir::BinaryInst> {
@@ -2200,7 +2255,7 @@ bir::Module lower_to_bir(const c4c::codegen::lir::LirModule& module) {
   auto lowered = try_lower_to_bir(module);
   if (!lowered.has_value()) {
     throw std::invalid_argument(
-        "bir scaffold lowering currently supports only straight-line single-block i8/i32/i64 return-immediate/add-sub slices, constant-only mul/and/or/shl/lshr/ashr/sdiv/udiv/srem/urem/eq/ne/slt/sle/sgt/sge/ult/ule/ugt/uge materialization slices, bounded compare-fed integer select materialization, bounded compare-fed phi joins with empty or add/sub-only predecessor arms including join-local add/sub chains after the fused select, plus bounded one- and two-parameter affine chains over those scalar types");
+        "bir scaffold lowering currently supports only straight-line single-block i8/i32/i64 return-immediate/add-sub slices, sext/zext/trunc casts, constant-only mul/and/or/shl/lshr/ashr/sdiv/udiv/srem/urem/eq/ne/slt/sle/sgt/sge/ult/ule/ugt/uge materialization slices, bounded compare-fed integer select materialization, bounded compare-fed phi joins with empty or add/sub-only predecessor arms including join-local add/sub chains after the fused select, plus bounded one- and two-parameter affine chains over those scalar types");
   }
   return *lowered;
 }

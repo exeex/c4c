@@ -49,6 +49,12 @@ void render_function(std::ostringstream& out, const Function& function) {
                   << render_value(lowered.lhs) << ", " << render_value(lowered.rhs)
                   << ", " << render_value(lowered.true_value) << ", "
                   << render_value(lowered.false_value) << "\n";
+            } else if constexpr (std::is_same_v<T, CastInst>) {
+              out << "  " << lowered.result.name << " = bir."
+                  << render_cast_opcode(lowered.opcode) << " "
+                  << render_type(lowered.operand.type) << " "
+                  << render_value(lowered.operand) << " to "
+                  << render_type(lowered.result.type) << "\n";
             }
           },
           inst);

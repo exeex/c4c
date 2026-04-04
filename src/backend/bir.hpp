@@ -81,7 +81,19 @@ struct SelectInst {
   Value false_value;
 };
 
-using Inst = std::variant<BinaryInst, SelectInst>;
+enum class CastOpcode : unsigned char {
+  SExt,
+  ZExt,
+  Trunc,
+};
+
+struct CastInst {
+  CastOpcode opcode = CastOpcode::SExt;
+  Value result;
+  Value operand;
+};
+
+using Inst = std::variant<BinaryInst, SelectInst, CastInst>;
 
 struct ReturnTerminator {
   std::optional<Value> value;
@@ -109,5 +121,6 @@ struct Module {
 
 std::string render_type(TypeKind type);
 std::string render_binary_opcode(BinaryOpcode opcode);
+std::string render_cast_opcode(CastOpcode opcode);
 
 }  // namespace c4c::backend::bir

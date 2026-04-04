@@ -122,6 +122,45 @@ void test_backend_bir_pipeline_routes_sub_cluster_through_bir_text_surface() {
                   "explicit BIR selection should expose sub through the BIR-specific route surface");
 }
 
+void test_backend_bir_pipeline_routes_sext_through_bir_text_surface() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_bir_return_sext_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Riscv64));
+
+  expect_contains(rendered, "bir.func @main(i32 %p.x) -> i64 {",
+                  "explicit BIR selection should preserve the widened sext-return signature on the BIR text path");
+  expect_contains(rendered, "%t0 = bir.sext i32 %p.x to i64",
+                  "explicit BIR selection should expose the straight-line sext slice on the BIR text path");
+  expect_contains(rendered, "bir.ret i64 %t0",
+                  "explicit BIR selection should keep the sext result on the BIR text path");
+}
+
+void test_backend_bir_pipeline_routes_zext_through_bir_text_surface() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_bir_return_zext_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Riscv64));
+
+  expect_contains(rendered, "bir.func @widen_unsigned(i8 %p.x) -> i32 {",
+                  "explicit BIR selection should preserve the bounded zext-return signature on the BIR text path");
+  expect_contains(rendered, "%t0 = bir.zext i8 %p.x to i32",
+                  "explicit BIR selection should expose the straight-line zext slice on the BIR text path");
+  expect_contains(rendered, "bir.ret i32 %t0",
+                  "explicit BIR selection should keep the zext result on the BIR text path");
+}
+
+void test_backend_bir_pipeline_routes_trunc_through_bir_text_surface() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_bir_return_trunc_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Riscv64));
+
+  expect_contains(rendered, "bir.func @narrow_signed(i64 %p.x) -> i32 {",
+                  "explicit BIR selection should preserve the bounded trunc-return signature on the BIR text path");
+  expect_contains(rendered, "%t0 = bir.trunc i64 %p.x to i32",
+                  "explicit BIR selection should expose the straight-line trunc slice on the BIR text path");
+  expect_contains(rendered, "bir.ret i32 %t0",
+                  "explicit BIR selection should keep the trunc result on the BIR text path");
+}
+
 void test_backend_bir_pipeline_routes_straight_line_chain_through_bir_text_surface() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_bir_return_add_sub_chain_module()},
@@ -1276,6 +1315,9 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_backend_bir_pipeline_is_opt_in_through_backend_options);
   RUN_TEST(test_backend_bir_pipeline_accepts_direct_bir_module_input);
   RUN_TEST(test_backend_bir_pipeline_routes_sub_cluster_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_routes_sext_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_routes_zext_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_routes_trunc_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_straight_line_chain_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_zero_param_staged_constant_chain_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_mul_through_bir_text_surface);
