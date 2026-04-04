@@ -11,7 +11,6 @@
 #include <optional>
 #include <vector>
 #include <variant>
-#include <unistd.h>
 
 #include "arena.hpp"
 #include "ast.hpp"
@@ -34,162 +33,11 @@ bool has_suffix(std::string_view value, std::string_view suffix) {
   return value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
 }
 
-std::string shell_quote(std::string_view text) {
-  std::string quoted = "'";
-  for (const char ch : text) {
-    if (ch == '\'') {
-      quoted += "'\\''";
-    } else {
-      quoted.push_back(ch);
-    }
-  }
-  quoted.push_back('\'');
-  return quoted;
-}
-
-std::optional<std::string> make_temp_file(const std::string& name_template) {
-  const auto temp_dir = std::filesystem::temp_directory_path();
-  std::string path = (temp_dir / name_template).string();
-  std::vector<char> buffer(path.begin(), path.end());
-  buffer.push_back('\0');
-
-  const int fd = ::mkstemp(buffer.data());
-  if (fd < 0) return std::nullopt;
-  ::close(fd);
-  return std::string(buffer.data());
-}
-
 bool write_text_file(const std::string& path, std::string_view text) {
   std::ofstream out(path, std::ios::binary);
   if (!out) return false;
   out << text;
   return out.good();
-}
-
-std::optional<std::string> read_text_file(const std::string& path) {
-  std::ifstream in(path, std::ios::binary);
-  if (!in) return std::nullopt;
-  std::ostringstream buffer;
-  buffer << in.rdbuf();
-  if (!in.good() && !in.eof()) return std::nullopt;
-  return buffer.str();
-}
-
-std::string trim_copy(std::string_view text) {
-  std::size_t begin = 0;
-  while (begin < text.size() &&
-         std::isspace(static_cast<unsigned char>(text[begin]))) {
-    ++begin;
-  }
-  std::size_t end = text.size();
-  while (end > begin &&
-         std::isspace(static_cast<unsigned char>(text[end - 1]))) {
-    --end;
-  }
-  return std::string(text.substr(begin, end - begin));
-}
-
-std::string normalize_aarch64_fallback_asm(std::string text) {
-  for (char& ch : text) {
-    if (ch == '\t') ch = ' ';
-  }
-
-  std::vector<std::string> lines;
-  std::size_t start = 0;
-  while (start <= text.size()) {
-    const auto end = text.find('\n', start);
-    if (end == std::string::npos) {
-      lines.push_back(text.substr(start));
-      break;
-    }
-    lines.push_back(text.substr(start, end - start));
-    start = end + 1;
-  }
-
-  for (std::size_t i = 0; i + 2 < lines.size(); ++i) {
-    const auto adrp = trim_copy(lines[i]);
-    const auto got_load = trim_copy(lines[i + 1]);
-    const auto value_load = trim_copy(lines[i + 2]);
-    if (adrp.rfind("adrp ", 0) != 0) continue;
-
-    const auto comma = adrp.find(", :got:");
-    if (comma == std::string::npos) continue;
-
-    const auto addr_reg = adrp.substr(5, comma - 5);
-    const auto symbol = adrp.substr(comma + 7);
-    const std::string expected_got_load =
-        "ldr " + addr_reg + ", [" + addr_reg + ", :got_lo12:" + symbol + "]";
-    if (got_load != expected_got_load) continue;
-
-    const auto value_comma = value_load.find(", [");
-    const std::string value_prefix = "ldr ";
-    if (value_load.rfind(value_prefix, 0) != 0) continue;
-    if (value_comma == std::string::npos) continue;
-    const auto value_reg =
-        value_load.substr(value_prefix.size(), value_comma - value_prefix.size());
-    if (value_load.substr(value_comma + 3) != addr_reg + "]") continue;
-
-    bool addr_reg_reused_with_offset = false;
-    const std::string offset_addr_pattern = "[" + addr_reg + ",";
-    for (std::size_t j = i + 3; j < lines.size(); ++j) {
-      const auto future = trim_copy(lines[j]);
-      if (future.empty()) continue;
-      if (future.rfind(offset_addr_pattern, future.find('[')) != std::string_view::npos) {
-        addr_reg_reused_with_offset = true;
-        break;
-      }
-    }
-
-    const auto indent_width = lines[i].find_first_not_of(' ');
-    const std::string indent(indent_width == std::string::npos ? 0 : indent_width, ' ');
-    lines[i] = indent + "adrp " + addr_reg + ", " + symbol;
-    if (addr_reg_reused_with_offset) {
-      lines[i + 1] = indent + "add " + addr_reg + ", " + addr_reg + ", :lo12:" + symbol;
-    } else {
-      lines[i + 1].clear();
-      lines[i + 2] =
-          indent + "ldr " + value_reg + ", [" + addr_reg + ", :lo12:" + symbol + "]";
-    }
-  }
-
-  std::ostringstream normalized;
-  bool first = true;
-  for (const auto& line : lines) {
-    const auto trimmed = trim_copy(line);
-    if (trimmed.empty() ||
-        trimmed.rfind(".cfi_", 0) == 0 ||
-        trimmed.rfind(".file ", 0) == 0 ||
-        trimmed.rfind(".ident ", 0) == 0 ||
-        trimmed.rfind(".addrsig", 0) == 0 ||
-        trimmed.rfind("//", 0) == 0) {
-      continue;
-    }
-    if (!first) normalized << '\n';
-    if (trimmed.rfind(".word ", 0) == 0) {
-      normalized << line.substr(0, line.find(trimmed)) << ".long "
-                 << trimmed.substr(6);
-    } else {
-      normalized << line;
-    }
-    first = false;
-  }
-  if (!text.empty() && text.back() == '\n') {
-    normalized << '\n';
-  }
-  return normalized.str();
-}
-
-std::string normalize_asm_text(std::string text) {
-  text = normalize_aarch64_fallback_asm(std::move(text));
-  std::string_view view(text);
-  while (!view.empty() && (view.front() == ' ' || view.front() == '\t' ||
-                           view.front() == '\r' || view.front() == '\n')) {
-    view.remove_prefix(1);
-  }
-  if (view.rfind(".text", 0) == 0) {
-    return ".text\n" + text;
-  }
-  return text;
 }
 
 bool looks_like_llvm_ir(std::string_view text) {
@@ -291,47 +139,6 @@ void print_asm_fallback_hint(std::string_view ir) {
   std::cerr << "       Re-run with --codegen llvm if you need IR output.\n";
 }
 
-std::optional<std::string> lower_llvm_ir_to_asm(std::string_view ir,
-                                                std::string_view target_triple) {
-  auto ir_path = make_temp_file("c4c-ir-XXXXXX");
-  auto asm_path = make_temp_file("c4c-asm-XXXXXX");
-  if (!ir_path.has_value() || !asm_path.has_value()) return std::nullopt;
-
-  struct TempCleanup {
-    std::string ir_path;
-    std::string asm_path;
-    ~TempCleanup() {
-      std::error_code ignored;
-      if (!ir_path.empty()) std::filesystem::remove(ir_path, ignored);
-      if (!asm_path.empty()) std::filesystem::remove(asm_path, ignored);
-    }
-  } cleanup{*ir_path, *asm_path};
-
-  if (!write_text_file(*ir_path, ir)) return std::nullopt;
-
-  std::vector<std::string> commands;
-  std::string llc_command = "llc -mtriple=" + shell_quote(target_triple);
-  if (target_triple.find("x86_64") != std::string_view::npos) {
-    llc_command += " -relocation-model=pic";
-  }
-  llc_command += " -filetype=asm " + shell_quote(*ir_path) + " -o " +
-                 shell_quote(*asm_path) + " >/dev/null 2>&1";
-  commands.push_back(std::move(llc_command));
-  commands.push_back("clang -target " + shell_quote(target_triple) + " -x ir -S " +
-                     shell_quote(*ir_path) + " -o " + shell_quote(*asm_path) +
-                     " >/dev/null 2>&1");
-
-  for (const auto& command : commands) {
-    if (std::system(command.c_str()) != 0) continue;
-    auto asm_text = read_text_file(*asm_path);
-    if (asm_text.has_value() && !asm_text->empty()) {
-      return normalize_asm_text(*asm_text);
-    }
-  }
-
-  return std::nullopt;
-}
-
 std::string default_host_target_triple() {
 #if defined(__aarch64__) || defined(_M_ARM64)
 #if defined(__APPLE__)
@@ -365,10 +172,6 @@ std::string default_split_device_output_path(const std::string& input_path) {
   const std::filesystem::path parent = path.parent_path();
   const std::string stem = path.stem().string();
   return (parent / (stem + ".device.ll")).string();
-}
-
-bool target_supports_file_asm_fallback(std::string_view target_triple) {
-  return target_triple.find("aarch64") != std::string_view::npos;
 }
 
 bool execution_domain_matches(c4c::ExecutionDomain domain, bool want_device) {
@@ -895,27 +698,15 @@ int main(int argc, char **argv) {
     if (codegen_path == c4c::codegen::llvm_backend::CodegenPath::Lir &&
         wants_asm_output &&
         (backend_returned_llvm_ir || backend_returned_no_asm)) {
+      std::cerr << "error: --codegen asm requires backend-native assembly output.\n";
       if (output.empty()) {
-        std::cerr << "error: --codegen asm requires backend-native assembly output on stdout.\n";
-        std::cerr << "       Re-run with -o <file>.s to allow the current LLVM asm fallback, or\n";
-        std::cerr << "       re-run with --codegen llvm if you need IR output.\n";
-        return 2;
+        std::cerr << "       stdout assembly output is only available when the backend emits native asm.\n";
+      } else {
+        std::cerr << "       file output no longer falls back to LLVM-generated asm.\n";
       }
-      if (backend_returned_no_asm) {
-        print_asm_fallback_hint(ir);
-        return 2;
-      }
-      if (!target_supports_file_asm_fallback(target_triple)) {
-        print_asm_fallback_hint(ir);
-        return 2;
-      }
-
-      auto fallback_asm = lower_llvm_ir_to_asm(ir, target_triple);
-      if (!fallback_asm.has_value()) {
-        print_asm_fallback_hint(ir);
-        return 2;
-      }
-      ir = *fallback_asm;
+      std::cerr << "       Re-run with --codegen llvm if you need IR output.\n";
+      print_asm_fallback_hint(ir);
+      return 2;
     }
 
     // Write to output file or stdout

@@ -9,29 +9,28 @@ Source Plan: plan.md
 - [ ] Remove legacy backend IR files and backend/app LLVM rescue paths
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
-Current active item: Step 4 cleanup, convert the last explicit AArch64
-file-output rescue user now that `00204` completes on backend-native asm
-without the old aggregate return/stdarg crashes.
+Current active item: Step 4 follow-through after the final AArch64
+file-output rescue removal. The app-layer LLVM asm fallback is gone, and the
+next bounded Step 4 slice is the planned `lir_to_backend_ir` cutover/deletion
+batch.
 
-This iteration target: finish the bounded `00204` PCS repair batch by removing
-the now-stale fallback/test wiring that kept that testcase on the file-output
-path after the native backend became correct again.
+This iteration target: record the completed `00204` fallback-removal batch and
+leave the next iteration aimed at the still-live legacy lowering ownership in
+`lir_to_backend_ir.*`.
 
-Current bounded preparation slice: tighten the production/test surface around
-the now-native `00204` path instead of widening PCS support further:
-- remove the explicit `00204` rescue routing/tag only after the same batch
-  proves the stdout/file-output-native path is still correct
-- keep any remaining larger-aggregate or unrelated legacy cleanup as separate
-  Step 4 work instead of silently expanding this fallback-removal slice
+Current bounded preparation slice: keep Step 4 focused on production deletion.
+- treat the `00204` rescue-path cleanup as complete for this bounded batch
+- keep the next batch centered on deleting a live legacy lowering seam rather
+  than widening AArch64 PCS support again
 
 Immediate next slice:
 
-- remove the explicit `00204` file-output fallback/rescue wiring now that both
-  stdout-native and file-output-native AArch64 asm runs pass end to end
-- keep the fallback-removal batch focused on deleting the stale caller/tag and
-  proving no native/backend regressions were introduced
-- leave any follow-on Step 4 legacy IR deletion or unrelated backend cleanup in
-  separate plan slices once the `00204` rescue path is gone
+- audit the surviving production/test/build references to
+  `lir_to_backend_ir.*` and group them into one bounded cutover batch
+- keep the next Step 4 commit deleting a live legacy lowering or backend-IR
+  seam rather than doing more preparatory probing
+- leave unrelated Step 2/3 expansion and broader `ir.*` removal outside that
+  bounded deletion slice
 
 Slice deliverables:
 
@@ -67,8 +66,6 @@ Out of scope for this slice:
 
 Step 4 remaining surface:
 
-- `c4cll` still contains the app-layer LLVM asm fallback for `--codegen asm`
-  file output
 - legacy lowering is still live through
   [`src/backend/lowering/lir_to_backend_ir.cpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp)
   and
@@ -96,9 +93,9 @@ Known live references from the current audit:
   files in `ir.*` still represent another large deletion batch after that
 - internal runtime, stdout-contract, and unblocked external c-testsuite
   backend families now run through stdout-native asm by default
-- the remaining live file-output asm rescue users are now explicit allowlist
-  tags for external/backend AArch64 c-testsuite coverage:
-  `00204`
+- there are no remaining live `--codegen asm -o <file>.s` LLVM-rescue callers;
+  backend asm requests now require native backend assembly on both stdout and
+  file output
 - the small scalar/FP audit split cleanly into two buckets:
   `00113`, `00119`, and `00123` all failed because the AArch64 general
   stack-spill emitter rejected float compares and float casts
@@ -110,17 +107,9 @@ Known live references from the current audit:
   and by losing `double` libcall returns when spilling back to stack; those
   seams now emit native stdout asm and the `backend-file-aarch64` allowlist tag
   is gone
-- `c4cll` now rejects file-output LLVM asm fallback on non-AArch64 targets;
-  the app-layer rescue path is retained only for the tagged AArch64 family
-- `00204` is blocked by a coupled native-backend gap rather than one isolated
-  matcher miss:
-  the general AArch64 emitter now carries the low-coupling `LirVaStartOp`,
-  `LirVaEndOp`, `LirVaCopyOp`, direct scalar `LirVaArgOp`, helper-style
-  aggregate variadic walks, bounded variadic HFA-array payloads, bounded
-  `fp128` forwarding payloads, and the new direct 9-16-byte GP aggregate
-  argument/return slice on the native asm path, but `00204` still depends on
-  the larger aggregate and long-double/HFA ABI surface that has not yet been
-  proven safe on stdout-native assembly
+- `00204` is no longer a live Step 4 blocker; it now runs through the regular
+  stdout-native AArch64 backend coverage path and no longer needs dedicated
+  file-output rescue metadata
 
 Recently completed milestones:
 
@@ -217,11 +206,11 @@ Validation baseline:
   `ctest --test-dir build -R backend --output-on-failure`
   with `100% tests passed, 0 tests failed out of 402`
 - latest monotonic guard:
-  `test_fail_before.log` vs `test_fail_after.log`
+  `test_backend_before.log` vs `test_backend_after.log`
   result `PASS`,
   mode `--allow-non-decreasing-passed`,
-  `before: passed=2841 failed=0 total=2841`,
-  `after: passed=2841 failed=0 total=2841`,
+  `before: passed=402 failed=0 total=402`,
+  `after: passed=402 failed=0 total=402`,
   `new failing tests: 0`
 
 Latest bounded progress:
@@ -258,17 +247,16 @@ Latest bounded progress:
   variadic HFA-array call surface and the bounded `fp128` `printf` forwarding
 - removed the broad general-emitter rejection for variadic callees that both
   walk `__va_list_tag_` and make nested calls, and replaced it with a narrower
-  module-level guard that still forces fallback when the same translation unit
-  contains large aggregate return shapes the native path does not yet lower
-- added a focused AArch64 backend adapter regression for a variadic callee that
-  walks `va_list` and forwards `fp128` payloads through a nested `printf` call
-- re-probed `00204` after lifting the broad variadic-callee guard, confirmed
-  the next stdout-native crash comes from separate aggregate return/by-value
-  lowering rather than from the nested variadic walker, and kept the explicit
-  file-output fallback route in place for that case
-  surface, while explicitly restoring the broader `00204` stdout guard after a
-  direct repro showed the same translation unit still contains unrelated
-  aggregate by-value seams that are not native-safe yet
+  guard that only keeps truly unsupported shapes off the stdout-native path
+- removed the final external/backend AArch64 c-testsuite `backend-file-aarch64`
+  mode for `00204` by converting it to the normal allowlist entry, deleted the
+  now-dead test-runner file/stdout mode split, and removed the last `c4cll`
+  app-layer LLVM asm fallback so
+  `--codegen asm` now fails explicitly whenever the backend does not emit
+  native assembly
+- reconfigured the c-testsuite registration so `c_testsuite_aarch64_backend_src_00204_c`
+  remains in the backend suite as the normal stdout-native backend case instead
+  of disappearing with the old file-output tag
 - taught the AArch64 general emitter to keep bounded direct 9-16-byte
   non-variadic GP aggregate arguments and returns on the native asm path for
   the `s9`-through-`s16`-style single-field byte-array PCS family by splitting
@@ -282,8 +270,7 @@ Latest bounded progress:
 
 Remaining blocker after this slice:
 
-- no remaining native correctness blocker is left inside `00204`; the next
-  Step 4 task is cleanup, not another PCS repair
-- the remaining work is to delete the stale `00204` rescue/fallback surface in
-  production/test wiring and keep that removal batch separate from broader
-  legacy IR deletion
+- no remaining native correctness blocker is left inside `00204`; the rescue
+  path cleanup is complete
+- the next Step 4 work is broader legacy lowering/backend-IR deletion rather
+  than more AArch64 testcase-specific fallback cleanup

@@ -98,15 +98,6 @@ if(CLANG_EXECUTABLE AND C_TESTSUITE_ROOT AND EXISTS "${C_TESTSUITE_ROOT}")
 
       list(GET fields 0 rel_src)
       set(backend_asm_source "stdout")
-      if(field_count GREATER 1)
-        list(GET fields 1 backend_asm_mode)
-        if(backend_asm_mode STREQUAL "backend-file")
-          set(backend_asm_source "file")
-        elseif(backend_asm_mode STREQUAL "backend-file-aarch64" AND
-               C_TESTSUITE_BACKEND_ID STREQUAL "aarch64")
-          set(backend_asm_source "file")
-        endif()
-      endif()
 
       set(src "${C_TESTSUITE_ROOT}/${rel_src}")
       if(NOT EXISTS "${src}")
