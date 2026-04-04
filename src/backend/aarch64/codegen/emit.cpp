@@ -5869,6 +5869,55 @@ static std::string gen_trim_type_token(std::string_view text) {
   return std::string(text);
 }
 
+static std::string gen_strip_alignstack_attr(std::string_view text) {
+  const std::string trimmed = gen_trim_type_token(text);
+  const std::size_t attr_pos = trimmed.find(" alignstack(");
+  if (attr_pos == std::string::npos || trimmed.empty() || trimmed.back() != ')') {
+    return trimmed;
+  }
+  return trimmed.substr(0, attr_pos);
+}
+
+static bool gen_type_is_address_only_value(std::string_view text) {
+  const std::string stripped = gen_strip_alignstack_attr(text);
+  if (stripped == "fp128") return true;
+  if (stripped == "[2 x i64]") return true;
+  if (stripped.empty() || stripped.front() != '[') return false;
+  const std::size_t xpos = stripped.find(" x ");
+  if (xpos == std::string::npos) return false;
+  std::string elem_ty = stripped.substr(xpos + 3);
+  if (!elem_ty.empty() && elem_ty.back() == ']') elem_ty.pop_back();
+  elem_ty = gen_trim_type_token(elem_ty);
+  return elem_ty == "float" || elem_ty == "double";
+}
+
+struct GenFpAggregateArgInfo {
+  int elem_count = 0;
+  int elem_size = 0;
+  int stack_align = 0;
+  std::string elem_ty;
+};
+
+static std::optional<GenFpAggregateArgInfo> gen_try_parse_fp_aggregate_arg_type(
+    std::string_view text) {
+  const std::string stripped = gen_strip_alignstack_attr(text);
+  if (stripped.empty() || stripped.front() != '[') return std::nullopt;
+
+  const auto [count, elem_size] = gen_parse_array_type(stripped);
+  const std::size_t xpos = stripped.find(" x ");
+  if (xpos == std::string::npos) return std::nullopt;
+  std::string elem_ty = stripped.substr(xpos + 3);
+  if (!elem_ty.empty() && elem_ty.back() == ']') elem_ty.pop_back();
+  elem_ty = gen_trim_type_token(elem_ty);
+  if (elem_ty != "float" && elem_ty != "double") return std::nullopt;
+  return GenFpAggregateArgInfo{
+      count,
+      elem_size,
+      std::max(8, elem_size),
+      elem_ty,
+  };
+}
+
 static std::string gen_resolve_type_decl_body(const std::string& ty,
                                               const std::vector<std::string>& type_decls) {
   if (ty.empty() || ty[0] != '%') return ty;
@@ -5944,7 +5993,7 @@ static GenTypeLayout gen_struct_layout(const std::string& ty,
 
 static GenTypeLayout gen_type_layout(const std::string& ty,
                                      const std::vector<std::string>& type_decls) {
-  const std::string trimmed = gen_trim_type_token(ty);
+  const std::string trimmed = gen_strip_alignstack_attr(ty);
   if (trimmed.empty()) return {0, 1};
   if (trimmed == "i1" || trimmed == "i8") return {1, 1};
   if (trimmed == "i16") return {2, 2};
@@ -6088,7 +6137,9 @@ static void gen_load_operand(std::ostringstream& out, const std::string& op,
                              const std::string& ty, const GenSlotMap& sm,
                              int reg_idx, const std::string& fn_prefix,
                              const std::unordered_set<std::string>* extern_globals = nullptr) {
-  const char* rp = gen_is_64bit(ty) ? "x" : "w";
+  const std::string stripped_ty = gen_strip_alignstack_attr(ty);
+  const bool address_only = gen_type_is_address_only_value(stripped_ty);
+  const char* rp = (address_only || gen_is_64bit(stripped_ty)) ? "x" : "w";
   const char* rp64 = "x";  // for address regs always 64-bit
   (void)rp64;
   if (op.empty()) return;
@@ -6097,7 +6148,7 @@ static void gen_load_operand(std::ostringstream& out, const std::string& op,
     // SSA value — load from stack slot
     int off = sm.lookup(op);
     if (off >= 0) {
-      if (gen_is_64bit(ty))
+      if (address_only || gen_is_64bit(stripped_ty))
         out << "  ldr x" << reg_idx << ", [sp, #" << off << "]\n";
       else
         out << "  ldr w" << reg_idx << ", [sp, #" << off << "]\n";
@@ -6170,7 +6221,8 @@ static void gen_store_result(std::ostringstream& out, const std::string& name,
   if (name.empty()) return;
   int off = sm.lookup(name);
   if (off < 0) return;
-  if (gen_is_64bit(ty))
+  const std::string stripped_ty = gen_strip_alignstack_attr(ty);
+  if (gen_type_is_address_only_value(stripped_ty) || gen_is_64bit(stripped_ty))
     out << "  str x" << reg_idx << ", [sp, #" << off << "]\n";
   else
     out << "  str w" << reg_idx << ", [sp, #" << off << "]\n";
@@ -6673,6 +6725,7 @@ static std::optional<std::string> try_emit_general_lir_asm(
           std::string ty = p->type_str.str();
           std::string ptr_name = p->ptr.str();
           std::string result = p->result.str();
+          const bool address_only = gen_type_is_address_only_value(ty);
 
           if (ptr_name[0] == '@') {
             // Load from global
@@ -6691,26 +6744,28 @@ static std::optional<std::string> try_emit_general_lir_asm(
               out << "  ldr x0, [sp, #" << ptr_off << "]\n";
           }
 
-          // Dereference pointer
-          int bits = gen_type_bits(ty);
-          if (bits <= 8)
-            out << "  ldrb w0, [x0]\n";
-          else if (bits <= 16)
-            out << "  ldrh w0, [x0]\n";
-          else if (bits <= 32)
-            out << "  ldr w0, [x0]\n";
-          else
-            out << "  ldr x0, [x0]\n";
+          if (address_only) {
+            gen_store_result(out, result, "ptr", sm, 0);
+          } else {
+            // Dereference pointer
+            int bits = gen_type_bits(ty);
+            if (bits <= 8)
+              out << "  ldrb w0, [x0]\n";
+            else if (bits <= 16)
+              out << "  ldrh w0, [x0]\n";
+            else if (bits <= 32)
+              out << "  ldr w0, [x0]\n";
+            else
+              out << "  ldr x0, [x0]\n";
 
-          gen_store_result(out, result, ty, sm, 0);
+            gen_store_result(out, result, ty, sm, 0);
+          }
         }
         else if (const auto* p = std::get_if<LirStoreOp>(&inst)) {
           std::string ty = p->type_str.str();
           std::string val = p->val.str();
           std::string ptr_name = p->ptr.str();
-
-          // Load value into w0/x0
-          gen_load_operand(out, val, ty, sm, 0, fn.name, &extern_globals);
+          const bool address_only = gen_type_is_address_only_value(ty);
 
           // Load pointer into x1
           if (ptr_name[0] == '@') {
@@ -6728,16 +6783,30 @@ static std::optional<std::string> try_emit_general_lir_asm(
               out << "  ldr x1, [sp, #" << ptr_off << "]\n";
           }
 
-          // Store value through pointer
-          int bits = gen_type_bits(ty);
-          if (bits <= 8)
-            out << "  strb w0, [x1]\n";
-          else if (bits <= 16)
-            out << "  strh w0, [x1]\n";
-          else if (bits <= 32)
-            out << "  str w0, [x1]\n";
-          else
-            out << "  str x0, [x1]\n";
+          if (address_only) {
+            gen_load_operand(out, val, "ptr", sm, 0, fn.name, &extern_globals);
+            gen_emit_integer_immediate(out, 2,
+                                       static_cast<std::uint64_t>(
+                                           gen_type_layout(ty, module.type_decls).size),
+                                       true);
+            out << "  str x30, [sp, #0]\n";
+            out << "  bl memcpy\n";
+            out << "  ldr x30, [sp, #0]\n";
+          } else {
+            // Load value into w0/x0
+            gen_load_operand(out, val, ty, sm, 0, fn.name, &extern_globals);
+
+            // Store value through pointer
+            int bits = gen_type_bits(ty);
+            if (bits <= 8)
+              out << "  strb w0, [x1]\n";
+            else if (bits <= 16)
+              out << "  strh w0, [x1]\n";
+            else if (bits <= 32)
+              out << "  str w0, [x1]\n";
+            else
+              out << "  str x0, [x1]\n";
+          }
         }
         else if (const auto* p = std::get_if<LirBinOp>(&inst)) {
           std::string ty = p->type_str.str();
@@ -6931,71 +7000,245 @@ static std::optional<std::string> try_emit_general_lir_asm(
             return std::nullopt;
           }
 
-          struct GenAssignedCallArg {
-            c4c::backend::OwnedBackendTypedCallArg arg;
-            bool is_fp = false;
+          const bool is_variadic_call =
+              std::string(p->callee_type_suffix).find("...") != std::string::npos;
+
+          struct GenCallPiece {
+            enum class Kind {
+              GPScalar,
+              FPScalar,
+              GPChunkFromAddr,
+              FPChunkFromAddr,
+              StackScalar,
+              StackChunkFromAddr,
+              StackFp128FromAddr,
+            };
+
+            Kind kind = Kind::GPScalar;
+            std::string operand;
+            std::string type;
             int reg_index = -1;
-            int stack_index = -1;
+            int stack_offset = -1;
+            int source_offset = 0;
+            int byte_size = 0;
           };
 
-          std::vector<GenAssignedCallArg> assigned_args;
-          assigned_args.reserve(args->size());
+          const auto align_up = [](int value, int align) {
+            if (align <= 1) return value;
+            const int rem = value % align;
+            return rem == 0 ? value : value + (align - rem);
+          };
 
+          const auto emit_load_address = [&](const std::string& operand, int reg_idx) {
+            gen_load_operand(out, operand, "ptr", sm, reg_idx, fn.name, &extern_globals);
+          };
+
+          const auto emit_load_chunk_from_addr = [&](int dst_reg, const std::string& elem_ty,
+                                                     int base_reg, int source_offset) {
+            if (source_offset == 0) {
+              if (elem_ty == "double") {
+                out << "  ldr d" << dst_reg << ", [x" << base_reg << "]\n";
+              } else if (elem_ty == "float") {
+                out << "  ldr s" << dst_reg << ", [x" << base_reg << "]\n";
+              } else if (gen_is_64bit(elem_ty)) {
+                out << "  ldr x" << dst_reg << ", [x" << base_reg << "]\n";
+              } else {
+                out << "  ldr w" << dst_reg << ", [x" << base_reg << "]\n";
+              }
+            } else {
+              if (elem_ty == "double") {
+                out << "  ldr d" << dst_reg << ", [x" << base_reg << ", #" << source_offset
+                    << "]\n";
+              } else if (elem_ty == "float") {
+                out << "  ldr s" << dst_reg << ", [x" << base_reg << ", #" << source_offset
+                    << "]\n";
+              } else if (gen_is_64bit(elem_ty)) {
+                out << "  ldr x" << dst_reg << ", [x" << base_reg << ", #" << source_offset
+                    << "]\n";
+              } else {
+                out << "  ldr w" << dst_reg << ", [x" << base_reg << ", #" << source_offset
+                    << "]\n";
+              }
+            }
+          };
+
+          std::vector<GenCallPiece> pieces;
           int next_gp_reg = 0;
           int next_fp_reg = 0;
-          int next_stack_slot = 0;
+          int stack_arg_bytes = 0;
           for (const auto& arg : *args) {
-            GenAssignedCallArg assigned;
-            assigned.arg = arg;
-            assigned.is_fp = gen_is_fp_type(assigned.arg.type);
-            if (assigned.is_fp) {
+            const std::string stripped_ty = gen_strip_alignstack_attr(arg.type);
+
+            if (is_variadic_call && stripped_ty == "fp128") {
+              stack_arg_bytes = align_up(stack_arg_bytes, 16);
+              pieces.push_back({GenCallPiece::Kind::StackFp128FromAddr, arg.operand, stripped_ty,
+                                -1, stack_arg_bytes, 0, 16});
+              stack_arg_bytes += 16;
+              continue;
+            }
+
+            if (is_variadic_call) {
+              if (const auto fp_aggregate = gen_try_parse_fp_aggregate_arg_type(arg.type)) {
+                for (int elem_index = 0; elem_index < fp_aggregate->elem_count; ++elem_index) {
+                  if (next_fp_reg < 8) {
+                    pieces.push_back({GenCallPiece::Kind::FPChunkFromAddr,
+                                      arg.operand,
+                                      fp_aggregate->elem_ty,
+                                      next_fp_reg++,
+                                      -1,
+                                      elem_index * fp_aggregate->elem_size,
+                                      fp_aggregate->elem_size});
+                  } else {
+                    stack_arg_bytes = align_up(stack_arg_bytes, fp_aggregate->stack_align);
+                    pieces.push_back({GenCallPiece::Kind::StackChunkFromAddr,
+                                      arg.operand,
+                                      fp_aggregate->elem_ty,
+                                      -1,
+                                      stack_arg_bytes,
+                                      elem_index * fp_aggregate->elem_size,
+                                      fp_aggregate->elem_size});
+                    stack_arg_bytes += fp_aggregate->elem_size;
+                  }
+                }
+                continue;
+              }
+            }
+
+            if (is_variadic_call && gen_type_is_address_only_value(stripped_ty)) {
+              const auto layout = gen_type_layout(stripped_ty, module.type_decls);
+              if (layout.size > 0 && layout.size <= 16) {
+                const int chunk_count = (layout.size + 7) / 8;
+                for (int chunk_index = 0; chunk_index < chunk_count; ++chunk_index) {
+                  const int chunk_offset = chunk_index * 8;
+                  const int chunk_size = std::min(8, layout.size - chunk_offset);
+                  if (next_gp_reg < 8) {
+                    pieces.push_back({GenCallPiece::Kind::GPChunkFromAddr,
+                                      arg.operand,
+                                      chunk_size > 4 ? "i64" : "i32",
+                                      next_gp_reg++,
+                                      -1,
+                                      chunk_offset,
+                                      chunk_size});
+                  } else {
+                    stack_arg_bytes = align_up(stack_arg_bytes, 8);
+                    pieces.push_back({GenCallPiece::Kind::StackChunkFromAddr,
+                                      arg.operand,
+                                      chunk_size > 4 ? "i64" : "i32",
+                                      -1,
+                                      stack_arg_bytes,
+                                      chunk_offset,
+                                      chunk_size});
+                    stack_arg_bytes += 8;
+                  }
+                }
+                continue;
+              }
+            }
+
+            if (gen_is_fp_type(stripped_ty)) {
               if (next_fp_reg < 8) {
-                assigned.reg_index = next_fp_reg++;
+                pieces.push_back({GenCallPiece::Kind::FPScalar, arg.operand, stripped_ty,
+                                  next_fp_reg++, -1, 0, 0});
               } else {
-                assigned.stack_index = next_stack_slot++;
+                stack_arg_bytes = align_up(stack_arg_bytes, 8);
+                pieces.push_back({GenCallPiece::Kind::StackScalar, arg.operand, stripped_ty, -1,
+                                  stack_arg_bytes, 0, 0});
+                stack_arg_bytes += 8;
               }
             } else {
               if (next_gp_reg < 8) {
-                assigned.reg_index = next_gp_reg++;
+                pieces.push_back({GenCallPiece::Kind::GPScalar, arg.operand, stripped_ty,
+                                  next_gp_reg++, -1, 0, 0});
               } else {
-                assigned.stack_index = next_stack_slot++;
+                stack_arg_bytes = align_up(stack_arg_bytes, 8);
+                pieces.push_back({GenCallPiece::Kind::StackScalar, arg.operand, stripped_ty, -1,
+                                  stack_arg_bytes, 0, 0});
+                stack_arg_bytes += 8;
               }
             }
-            assigned_args.push_back(std::move(assigned));
           }
 
-          for (const auto& assigned : assigned_args) {
-            if (assigned.reg_index < 0) continue;
-            if (assigned.is_fp) {
-              gen_load_fp_operand(out, assigned.arg.operand, assigned.arg.type, sm,
-                                  assigned.reg_index, fn.name, &extern_globals);
-            } else {
-              gen_load_operand(out, assigned.arg.operand, assigned.arg.type, sm,
-                               assigned.reg_index, fn.name, &extern_globals);
+          for (const auto& current_piece : pieces) {
+            switch (current_piece.kind) {
+              case GenCallPiece::Kind::GPScalar:
+                gen_load_operand(out, current_piece.operand, current_piece.type, sm,
+                                 current_piece.reg_index, fn.name, &extern_globals);
+                break;
+              case GenCallPiece::Kind::FPScalar:
+                gen_load_fp_operand(out, current_piece.operand, current_piece.type, sm,
+                                    current_piece.reg_index, fn.name, &extern_globals);
+                break;
+              case GenCallPiece::Kind::GPChunkFromAddr:
+                emit_load_address(current_piece.operand, 9);
+                emit_load_chunk_from_addr(current_piece.reg_index, current_piece.type, 9,
+                                          current_piece.source_offset);
+                break;
+              case GenCallPiece::Kind::FPChunkFromAddr:
+                emit_load_address(current_piece.operand, 9);
+                emit_load_chunk_from_addr(current_piece.reg_index, current_piece.type, 9,
+                                          current_piece.source_offset);
+                break;
+              case GenCallPiece::Kind::StackScalar:
+              case GenCallPiece::Kind::StackChunkFromAddr:
+              case GenCallPiece::Kind::StackFp128FromAddr:
+                break;
             }
           }
 
-          int stack_arg_bytes = next_stack_slot * 8;
           if (stack_arg_bytes % 16 != 0) {
             stack_arg_bytes += 16 - (stack_arg_bytes % 16);
           }
           if (stack_arg_bytes > 0) {
             gen_emit_sp_adjust(out, "sub", stack_arg_bytes);
-            for (const auto& assigned : assigned_args) {
-              if (assigned.stack_index < 0) continue;
-              if (assigned.is_fp) {
-                gen_load_fp_operand(out, assigned.arg.operand, assigned.arg.type, sm, 9,
-                                    fn.name, &extern_globals);
-                if (assigned.arg.type == "double") {
-                  out << "  fmov x9, d9\n";
-                } else {
-                  out << "  fmov w9, s9\n";
-                }
-              } else {
-                gen_load_operand(out, assigned.arg.operand, assigned.arg.type, sm, 9,
-                                 fn.name, &extern_globals);
+            for (const auto& current_piece : pieces) {
+              switch (current_piece.kind) {
+                case GenCallPiece::Kind::StackScalar:
+                  if (gen_is_fp_type(current_piece.type)) {
+                    gen_load_fp_operand(out, current_piece.operand, current_piece.type, sm, 9,
+                                        fn.name, &extern_globals);
+                    if (current_piece.type == "double") {
+                      out << "  str d9, [sp, #" << current_piece.stack_offset << "]\n";
+                    } else {
+                      out << "  str s9, [sp, #" << current_piece.stack_offset << "]\n";
+                    }
+                  } else {
+                    gen_load_operand(out, current_piece.operand, current_piece.type, sm, 9,
+                                     fn.name, &extern_globals);
+                    out << "  str x9, [sp, #" << current_piece.stack_offset << "]\n";
+                  }
+                  break;
+                case GenCallPiece::Kind::StackChunkFromAddr:
+                  emit_load_address(current_piece.operand, 9);
+                  if (current_piece.type == "double") {
+                    emit_load_chunk_from_addr(9, "double", 9, current_piece.source_offset);
+                    out << "  str d9, [sp, #" << current_piece.stack_offset << "]\n";
+                  } else if (current_piece.type == "float") {
+                    emit_load_chunk_from_addr(9, "float", 9, current_piece.source_offset);
+                    out << "  str s9, [sp, #" << current_piece.stack_offset << "]\n";
+                  } else {
+                    emit_load_chunk_from_addr(9, current_piece.type, 9, current_piece.source_offset);
+                    if (current_piece.byte_size > 4) {
+                      out << "  str x9, [sp, #" << current_piece.stack_offset << "]\n";
+                    } else {
+                      out << "  str w9, [sp, #" << current_piece.stack_offset << "]\n";
+                    }
+                  }
+                  break;
+                case GenCallPiece::Kind::StackFp128FromAddr:
+                  emit_load_address(current_piece.operand, 9);
+                  if (current_piece.source_offset == 0) {
+                    out << "  ldr q0, [x9]\n";
+                  } else {
+                    out << "  ldr q0, [x9, #" << current_piece.source_offset << "]\n";
+                  }
+                  out << "  str q0, [sp, #" << current_piece.stack_offset << "]\n";
+                  break;
+                case GenCallPiece::Kind::GPScalar:
+                case GenCallPiece::Kind::FPScalar:
+                case GenCallPiece::Kind::GPChunkFromAddr:
+                case GenCallPiece::Kind::FPChunkFromAddr:
+                  break;
               }
-              out << "  str x9, [sp, #" << (assigned.stack_index * 8) << "]\n";
             }
           }
 

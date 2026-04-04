@@ -519,6 +519,100 @@ c4c::codegen::lir::LirModule make_fp128_global_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_variadic_hfa_array_call_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.string_pool.push_back(LirStringConst{"@.str0", "hfa\\00", 4});
+  module.globals.push_back(LirGlobal{
+      LirGlobalId{0},
+      "hfa",
+      {},
+      false,
+      false,
+      "",
+      "global ",
+      "[4 x double]",
+      "[double 1.000000e+00, double 2.000000e+00, double 3.000000e+00, double 4.000000e+00]",
+      8,
+      false,
+  });
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define void @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.arg0", "[4 x double]", "", 8});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.arg1", "[4 x double]", "", 8});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirMemcpyOp{"%lv.arg0", "@hfa", "32", false});
+  entry.insts.push_back(LirMemcpyOp{"%lv.arg1", "@hfa", "32", false});
+  entry.insts.push_back(LirLoadOp{"%t0", "[4 x double]", "%lv.arg0"});
+  entry.insts.push_back(LirLoadOp{"%t1", "[4 x double]", "%lv.arg1"});
+  entry.insts.push_back(
+      LirGepOp{"%t2", "[4 x i8]", "@.str0", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirCallOp{
+      "",
+      "void",
+      "@myprintf",
+      "(ptr, ...)",
+      "ptr %t2, [4 x double] alignstack(8) %t0, [4 x double] alignstack(8) %t1",
+  });
+  entry.terminator = LirRet{};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_variadic_fp128_printf_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.string_pool.push_back(LirStringConst{"@.str0", "%.1Lf\\0A\\00", 7});
+  module.globals.push_back(LirGlobal{
+      LirGlobalId{0},
+      "wide",
+      {},
+      false,
+      false,
+      "",
+      "global ",
+      "fp128",
+      "0xLA0000000000000004003F19999999999",
+      16,
+      false,
+  });
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define void @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.arg", "fp128", "", 16});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirMemcpyOp{"%lv.arg", "@wide", "16", false});
+  entry.insts.push_back(LirLoadOp{"%t0", "fp128", "%lv.arg"});
+  entry.insts.push_back(
+      LirGepOp{"%t1", "[7 x i8]", "@.str0", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(
+      LirCallOp{"%t2", "i32", "@printf", "(ptr, ...)", "ptr %t1, fp128 %t0"});
+  entry.terminator = LirRet{};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 
 
 
@@ -3030,6 +3124,32 @@ void test_aarch64_backend_renders_double_printf_call_with_fp_register_args() {
                   "aarch64 backend should still lower the direct variadic call with bl");
 }
 
+void test_aarch64_backend_renders_variadic_hfa_array_call_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_variadic_hfa_array_call_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, "bl myprintf",
+                  "aarch64 backend should keep bounded variadic HFA-array calls on the native asm path");
+  expect_contains(rendered, "ldr d0, [",
+                  "aarch64 backend should materialize the first variadic HFA double element into an FP arg register");
+  expect_contains(rendered, "ldr d7, [",
+                  "aarch64 backend should continue assigning later HFA-array elements into FP arg registers before calling");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend should not fall back to LLVM text for the bounded variadic HFA-array call slice");
+}
+
+void test_aarch64_backend_renders_variadic_fp128_printf_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_variadic_fp128_printf_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, "bl printf",
+                  "aarch64 backend should keep bounded fp128 variadic forwarding calls on the native asm path");
+  expect_contains(rendered, "str q0, [sp",
+                  "aarch64 backend should spill fp128 variadic payloads onto the outgoing stack area");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend should not fall back to LLVM text for the bounded fp128 variadic forwarding slice");
+}
+
 void test_aarch64_backend_renders_float_sitofp_equality_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_float_sitofp_equality_module()},
@@ -5367,6 +5487,8 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_both_local_double_rewrite_ir_without_signature_shims();
   test_aarch64_backend_renders_typed_two_arg_direct_call_both_local_double_rewrite_slice();
   test_aarch64_backend_renders_double_printf_call_with_fp_register_args();
+  test_aarch64_backend_renders_variadic_hfa_array_call_slice();
+  test_aarch64_backend_renders_variadic_fp128_printf_slice();
   test_aarch64_backend_renders_float_sitofp_equality_slice();
   test_aarch64_backend_renders_global_double_less_than_slice();
   test_aarch64_backend_renders_fp_arithmetic_and_double_libcall_slice();

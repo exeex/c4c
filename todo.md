@@ -17,6 +17,18 @@ This iteration target: land backend-native AArch64 `fp128` global initializer
 support as a bounded prerequisite inside the remaining `00204` long-double
 family, without claiming the final file-output fallback removal yet.
 
+Current bounded preparation slice: teach the AArch64 general emitter to carry
+the remaining direct variadic call payload forms used by `00204` on the native
+path in focused isolation:
+- variadic HFA-array call operands lowered as address-backed aggregate payloads
+  instead of collapsing to one scalar slot
+- variadic `fp128` forwarding calls lowered through explicit outgoing stack
+  payloads instead of immediate LLVM-text fallback assumptions
+- keep the broad `00204` stdout gate in place until the same translation unit's
+  unrelated aggregate by-value parameter/return families are proven safe on the
+  native path, so this slice stays preparation work rather than premature
+  fallback removal
+
 Iteration target: keep the next Step 4 slice focused on the remaining
 `00204` blocker: variadic functions that both walk `va_list` and make nested
 calls still stay on the fallback route until the direct aggregate variadic call
@@ -119,15 +131,13 @@ Known live references from the current audit:
   matcher miss:
   the general AArch64 emitter now carries the low-coupling `LirVaStartOp`,
   `LirVaEndOp`, `LirVaCopyOp`, and direct scalar `LirVaArgOp` slice on the
-  native asm path, but `00204` still depends on the larger aggregate/helper
-  variadic ABI surface:
-  helper-style `__va_list_tag_` walks for composite variadics still stay on
-  explicit fallback IR, the stack-spill path still models SSA values as scalar
-  8-byte slots rather than aggregate values such as `[4 x float]`,
-  `[4 x double]`, and `[2 x i64]`, the direct-call path still lacks aggregate
-  variadic ownership for the internal `myprintf(...)` calls, and the
-  forwarding path inside `myprintf` still needs native `fp128` variadic call
-  handling for `printf("%.1Lf", ...)`
+  native asm path, and the bounded direct-call emitter now carries focused
+  variadic HFA-array plus `fp128` forwarding payloads in adapter coverage, but
+  `00204` still depends on the larger aggregate/helper variadic ABI surface:
+  helper-style `__va_list_tag_` walks for composite variadics that also make
+  nested calls still stay behind the explicit stdout guard, and the full
+  translation unit still contains unrelated aggregate by-value arg/return seams
+  that crash if the broad `myprintf`-with-calls guard is removed prematurely
 
 Recently completed milestones:
 
@@ -243,6 +253,17 @@ Latest bounded progress:
 - added a focused AArch64 backend adapter regression that keeps a bounded
   `fp128` global on backend-native assembly rather than silently falling back to
   LLVM text
+- taught the AArch64 general emitter's direct-call path to keep bounded
+  variadic HFA-array payloads plus `fp128` variadic forwarding in focused
+  adapter slices by carrying those non-scalar call operands as address-backed
+  payloads until the call boundary, then exploding them into FP-register,
+  GP-chunk, or outgoing-stack pieces instead of collapsing them to one scalar
+  slot
+- added focused AArch64 backend adapter regressions for both the bounded
+  variadic HFA-array call surface and the bounded `fp128` `printf` forwarding
+  surface, while explicitly restoring the broader `00204` stdout guard after a
+  direct repro showed the same translation unit still contains unrelated
+  aggregate by-value seams that are not native-safe yet
 
 Remaining blocker after this slice:
 
@@ -250,3 +271,9 @@ Remaining blocker after this slice:
   path does not yet carry `alignstack` aggregate variadic forwarding plus
   nested-call argument emission for the remaining `myprintf` long-double/HFA
   family
+- even after the bounded direct-call emission support landed, removing the
+  translation-unit-level stdout guard immediately caused runtime breakage in
+  unrelated aggregate by-value functions inside `00204`; the guard was restored
+  so the external/backend AArch64 `00204` case stays on the explicit file
+  fallback route until those surrounding aggregate arg/return seams are covered
+  natively too
