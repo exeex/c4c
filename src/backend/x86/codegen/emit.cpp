@@ -59,13 +59,26 @@ struct MinimalTwoArgDirectCallSlice {
 };
 
 struct MinimalConditionalReturnSlice {
+  enum class ValueKind : unsigned char {
+    Immediate,
+    Param0,
+    Param1,
+  };
+
+  struct ValueSource {
+    ValueKind kind = ValueKind::Immediate;
+    std::int64_t imm = 0;
+  };
+
+  std::string function_name;
+  std::size_t param_count = 0;
   c4c::codegen::lir::LirCmpPredicate predicate = c4c::codegen::lir::LirCmpPredicate::Eq;
-  std::int64_t lhs_imm = 0;
-  std::int64_t rhs_imm = 0;
+  ValueSource lhs;
+  ValueSource rhs;
   std::string true_label;
   std::string false_label;
-  std::int64_t true_return_imm = 0;
-  std::int64_t false_return_imm = 0;
+  ValueSource true_value;
+  ValueSource false_value;
 };
 
 struct MinimalConditionalPhiJoinSlice {
@@ -194,6 +207,35 @@ std::optional<c4c::codegen::lir::LirCmpPredicate> lower_bir_cmp_predicate(
     case BirPred::Uge: return LirPred::Uge;
     default: return std::nullopt;
   }
+}
+
+std::optional<MinimalConditionalReturnSlice::ValueSource> lower_bir_i32_value_source(
+    const c4c::backend::bir::Value& value,
+    const std::vector<c4c::backend::bir::Param>& params) {
+  if (value.type != c4c::backend::bir::TypeKind::I32) {
+    return std::nullopt;
+  }
+  if (value.kind == c4c::backend::bir::Value::Kind::Immediate) {
+    return MinimalConditionalReturnSlice::ValueSource{
+        MinimalConditionalReturnSlice::ValueKind::Immediate,
+        value.immediate,
+    };
+  }
+  if (!params.empty() && params[0].type == c4c::backend::bir::TypeKind::I32 &&
+      value.name == params[0].name) {
+    return MinimalConditionalReturnSlice::ValueSource{
+        MinimalConditionalReturnSlice::ValueKind::Param0,
+        0,
+    };
+  }
+  if (params.size() > 1 && params[1].type == c4c::backend::bir::TypeKind::I32 &&
+      value.name == params[1].name) {
+    return MinimalConditionalReturnSlice::ValueSource{
+        MinimalConditionalReturnSlice::ValueKind::Param1,
+        0,
+    };
+  }
+  return std::nullopt;
 }
 
 struct AffineValue {
@@ -961,9 +1003,8 @@ std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_sl
   }
 
   const auto& function = module.functions.front();
-  if (function.is_declaration || function.name != "main" ||
-      function.return_type != c4c::backend::bir::TypeKind::I32 ||
-      !function.params.empty() || function.blocks.size() != 1) {
+  if (function.is_declaration || function.return_type != c4c::backend::bir::TypeKind::I32 ||
+      function.blocks.size() != 1 || function.params.size() > 2) {
     return std::nullopt;
   }
 
@@ -984,23 +1025,25 @@ std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_sl
   }
 
   const auto predicate = lower_bir_cmp_predicate(select->predicate);
-  const auto lhs_imm = parse_i64(select->lhs);
-  const auto rhs_imm = parse_i64(select->rhs);
-  const auto true_return_imm = parse_i64(select->true_value);
-  const auto false_return_imm = parse_i64(select->false_value);
-  if (!predicate.has_value() || !lhs_imm.has_value() || !rhs_imm.has_value() ||
-      !true_return_imm.has_value() || !false_return_imm.has_value()) {
+  const auto lhs = lower_bir_i32_value_source(select->lhs, function.params);
+  const auto rhs = lower_bir_i32_value_source(select->rhs, function.params);
+  const auto true_value = lower_bir_i32_value_source(select->true_value, function.params);
+  const auto false_value = lower_bir_i32_value_source(select->false_value, function.params);
+  if (!predicate.has_value() || !lhs.has_value() || !rhs.has_value() ||
+      !true_value.has_value() || !false_value.has_value()) {
     return std::nullopt;
   }
 
   return MinimalConditionalReturnSlice{
+      function.name,
+      function.params.size(),
       *predicate,
-      *lhs_imm,
-      *rhs_imm,
+      *lhs,
+      *rhs,
       "select_true",
       "select_false",
-      *true_return_imm,
-      *false_return_imm,
+      *true_value,
+      *false_value,
   };
 }
 
@@ -1070,13 +1113,17 @@ std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_sl
     case BackendPred::Uge: predicate = LirPred::Uge; break;
   }
 
-  return MinimalConditionalReturnSlice{predicate,
-                                       *lhs_imm,
-                                       *rhs_imm,
-                                       true_block.label,
-                                       false_block.label,
-                                       *true_return_imm,
-                                       *false_return_imm};
+  return MinimalConditionalReturnSlice{
+      "main",
+      0,
+      predicate,
+      {MinimalConditionalReturnSlice::ValueKind::Immediate, *lhs_imm},
+      {MinimalConditionalReturnSlice::ValueKind::Immediate, *rhs_imm},
+      true_block.label,
+      false_block.label,
+      {MinimalConditionalReturnSlice::ValueKind::Immediate, *true_return_imm},
+      {MinimalConditionalReturnSlice::ValueKind::Immediate, *false_return_imm},
+  };
 }
 
 std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_slice(
@@ -1146,13 +1193,17 @@ std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_sl
     return std::nullopt;
   }
 
-  return MinimalConditionalReturnSlice{*cmp0_predicate,
-                                       *lhs_imm,
-                                       *rhs_imm,
-                                       condbr->true_label,
-                                       condbr->false_label,
-                                       *true_return_imm,
-                                       *false_return_imm};
+  return MinimalConditionalReturnSlice{
+      "main",
+      0,
+      *cmp0_predicate,
+      {MinimalConditionalReturnSlice::ValueKind::Immediate, *lhs_imm},
+      {MinimalConditionalReturnSlice::ValueKind::Immediate, *rhs_imm},
+      condbr->true_label,
+      condbr->false_label,
+      {MinimalConditionalReturnSlice::ValueKind::Immediate, *true_return_imm},
+      {MinimalConditionalReturnSlice::ValueKind::Immediate, *false_return_imm},
+  };
 }
 
 std::optional<MinimalCountdownLoopSlice> parse_minimal_countdown_loop_slice(
@@ -2954,7 +3005,33 @@ std::string emit_minimal_two_arg_direct_call_asm(
 std::string emit_minimal_conditional_return_asm(
     const c4c::backend::BackendModule& module,
     const MinimalConditionalReturnSlice& slice) {
-  const std::string symbol = asm_symbol_name(module, "main");
+  auto emit_value_to_eax = [](std::ostringstream& out,
+                              const MinimalConditionalReturnSlice::ValueSource& value) {
+    switch (value.kind) {
+      case MinimalConditionalReturnSlice::ValueKind::Immediate:
+        out << "  mov eax, " << value.imm << "\n";
+        return;
+      case MinimalConditionalReturnSlice::ValueKind::Param0:
+        out << "  mov eax, edi\n";
+        return;
+      case MinimalConditionalReturnSlice::ValueKind::Param1:
+        out << "  mov eax, esi\n";
+        return;
+    }
+  };
+  auto cmp_rhs_operand = [](const MinimalConditionalReturnSlice::ValueSource& value) {
+    switch (value.kind) {
+      case MinimalConditionalReturnSlice::ValueKind::Immediate:
+        return std::to_string(value.imm);
+      case MinimalConditionalReturnSlice::ValueKind::Param0:
+        return std::string("edi");
+      case MinimalConditionalReturnSlice::ValueKind::Param1:
+        return std::string("esi");
+    }
+    return std::string("0");
+  };
+
+  const std::string symbol = asm_symbol_name(module, slice.function_name);
   std::ostringstream out;
   out << ".intel_syntax noprefix\n";
   out << ".text\n";
@@ -2977,14 +3054,14 @@ std::string emit_minimal_conditional_return_asm(
           c4c::backend::LirAdapterErrorKind::Unsupported,
           "conditional-return predicates outside the current compare-and-branch x86 slice");
   }
-  out << "  mov eax, " << slice.lhs_imm << "\n";
-  out << "  cmp eax, " << slice.rhs_imm << "\n";
+  emit_value_to_eax(out, slice.lhs);
+  out << "  cmp eax, " << cmp_rhs_operand(slice.rhs) << "\n";
   out << "  " << fail_branch << " .L" << slice.false_label << "\n";
   out << ".L" << slice.true_label << ":\n";
-  out << "  mov eax, " << slice.true_return_imm << "\n";
+  emit_value_to_eax(out, slice.true_value);
   out << "  ret\n";
   out << ".L" << slice.false_label << ":\n";
-  out << "  mov eax, " << slice.false_return_imm << "\n";
+  emit_value_to_eax(out, slice.false_value);
   out << "  ret\n";
   return out.str();
 }

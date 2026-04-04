@@ -1663,14 +1663,56 @@ std::optional<std::int64_t> fold_minimal_direct_call_two_arg_callee_return(
 }
 
 struct MinimalConditionalReturnSlice {
+  enum class ValueKind : unsigned char {
+    Immediate,
+    Param0,
+    Param1,
+  };
+
+  struct ValueSource {
+    ValueKind kind = ValueKind::Immediate;
+    std::int64_t imm = 0;
+  };
+
+  std::string function_name;
+  std::size_t param_count = 0;
   c4c::codegen::lir::LirCmpPredicate predicate = c4c::codegen::lir::LirCmpPredicate::Eq;
-  std::int64_t lhs_imm = 0;
-  std::int64_t rhs_imm = 0;
+  ValueSource lhs;
+  ValueSource rhs;
   std::string true_label;
   std::string false_label;
-  std::int64_t true_return_imm = 0;
-  std::int64_t false_return_imm = 0;
+  ValueSource true_value;
+  ValueSource false_value;
 };
+
+std::optional<MinimalConditionalReturnSlice::ValueSource> lower_bir_i32_value_source(
+    const c4c::backend::bir::Value& value,
+    const std::vector<c4c::backend::bir::Param>& params) {
+  if (value.type != c4c::backend::bir::TypeKind::I32) {
+    return std::nullopt;
+  }
+  if (value.kind == c4c::backend::bir::Value::Kind::Immediate) {
+    return MinimalConditionalReturnSlice::ValueSource{
+        MinimalConditionalReturnSlice::ValueKind::Immediate,
+        value.immediate,
+    };
+  }
+  if (!params.empty() && params[0].type == c4c::backend::bir::TypeKind::I32 &&
+      value.name == params[0].name) {
+    return MinimalConditionalReturnSlice::ValueSource{
+        MinimalConditionalReturnSlice::ValueKind::Param0,
+        0,
+    };
+  }
+  if (params.size() > 1 && params[1].type == c4c::backend::bir::TypeKind::I32 &&
+      value.name == params[1].name) {
+    return MinimalConditionalReturnSlice::ValueSource{
+        MinimalConditionalReturnSlice::ValueKind::Param1,
+        0,
+    };
+  }
+  return std::nullopt;
+}
 
 struct MinimalConditionalPhiJoinSlice {
   struct ArithmeticStep {
@@ -1755,9 +1797,8 @@ std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_sl
   }
 
   const auto& function = module.functions.front();
-  if (function.is_declaration || function.name != "main" ||
-      function.return_type != c4c::backend::bir::TypeKind::I32 ||
-      !function.params.empty() || function.blocks.size() != 1) {
+  if (function.is_declaration || function.return_type != c4c::backend::bir::TypeKind::I32 ||
+      function.blocks.size() != 1 || function.params.size() > 2) {
     return std::nullopt;
   }
 
@@ -1778,23 +1819,25 @@ std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_sl
   }
 
   const auto predicate = lower_bir_cmp_predicate(select->predicate);
-  const auto lhs_imm = parse_i64(select->lhs);
-  const auto rhs_imm = parse_i64(select->rhs);
-  const auto true_return_imm = parse_i64(select->true_value);
-  const auto false_return_imm = parse_i64(select->false_value);
-  if (!predicate.has_value() || !lhs_imm.has_value() || !rhs_imm.has_value() ||
-      !true_return_imm.has_value() || !false_return_imm.has_value()) {
+  const auto lhs = lower_bir_i32_value_source(select->lhs, function.params);
+  const auto rhs = lower_bir_i32_value_source(select->rhs, function.params);
+  const auto true_value = lower_bir_i32_value_source(select->true_value, function.params);
+  const auto false_value = lower_bir_i32_value_source(select->false_value, function.params);
+  if (!predicate.has_value() || !lhs.has_value() || !rhs.has_value() ||
+      !true_value.has_value() || !false_value.has_value()) {
     return std::nullopt;
   }
 
   return MinimalConditionalReturnSlice{
+      function.name,
+      function.params.size(),
       *predicate,
-      *lhs_imm,
-      *rhs_imm,
+      *lhs,
+      *rhs,
       "select_true",
       "select_false",
-      *true_return_imm,
-      *false_return_imm,
+      *true_value,
+      *false_value,
   };
 }
 
@@ -2183,13 +2226,17 @@ std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_sl
     case BackendPred::Uge: predicate = LirPred::Uge; break;
   }
 
-  return MinimalConditionalReturnSlice{predicate,
-                                       *lhs_imm,
-                                       *rhs_imm,
-                                       true_block.label,
-                                       false_block.label,
-                                       *true_return_imm,
-                                       *false_return_imm};
+  return MinimalConditionalReturnSlice{
+      "main",
+      0,
+      predicate,
+      {MinimalConditionalReturnSlice::ValueKind::Immediate, *lhs_imm},
+      {MinimalConditionalReturnSlice::ValueKind::Immediate, *rhs_imm},
+      true_block.label,
+      false_block.label,
+      {MinimalConditionalReturnSlice::ValueKind::Immediate, *true_return_imm},
+      {MinimalConditionalReturnSlice::ValueKind::Immediate, *false_return_imm},
+  };
 }
 
 std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_slice(
@@ -2259,13 +2306,17 @@ std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_sl
     return std::nullopt;
   }
 
-  return MinimalConditionalReturnSlice{*cmp0_predicate,
-                                       *lhs_imm,
-                                       *rhs_imm,
-                                       condbr->true_label,
-                                       condbr->false_label,
-                                       *true_return_imm,
-                                       *false_return_imm};
+  return MinimalConditionalReturnSlice{
+      "main",
+      0,
+      *cmp0_predicate,
+      {MinimalConditionalReturnSlice::ValueKind::Immediate, *lhs_imm},
+      {MinimalConditionalReturnSlice::ValueKind::Immediate, *rhs_imm},
+      condbr->true_label,
+      condbr->false_label,
+      {MinimalConditionalReturnSlice::ValueKind::Immediate, *true_return_imm},
+      {MinimalConditionalReturnSlice::ValueKind::Immediate, *false_return_imm},
+  };
 }
 
 std::optional<MinimalCountdownLoopSlice> parse_minimal_countdown_loop_slice(
@@ -4026,13 +4077,38 @@ std::string emit_minimal_conditional_return_asm(
   const auto in_mov_range = [](std::int64_t imm) {
     return imm >= 0 && imm <= std::numeric_limits<std::uint16_t>::max();
   };
-  if (!in_mov_range(slice.lhs_imm) || !in_mov_range(slice.rhs_imm) ||
-      !in_mov_range(slice.true_return_imm) || !in_mov_range(slice.false_return_imm)) {
+  const auto immediate_in_range =
+      [&](const MinimalConditionalReturnSlice::ValueSource& value) {
+        return value.kind != MinimalConditionalReturnSlice::ValueKind::Immediate ||
+               in_mov_range(value.imm);
+      };
+  if (!immediate_in_range(slice.lhs) || !immediate_in_range(slice.rhs) ||
+      !immediate_in_range(slice.true_value) || !immediate_in_range(slice.false_value)) {
     fail_unsupported("conditional-return immediates outside the minimal mov-supported range");
   }
 
+  auto emit_move_w = [](std::ostringstream& out,
+                        std::string_view dst,
+                        const MinimalConditionalReturnSlice::ValueSource& value) {
+    switch (value.kind) {
+      case MinimalConditionalReturnSlice::ValueKind::Immediate:
+        out << "  mov " << dst << ", #" << value.imm << "\n";
+        return;
+      case MinimalConditionalReturnSlice::ValueKind::Param0:
+        if (dst != "w0") {
+          out << "  mov " << dst << ", w0\n";
+        }
+        return;
+      case MinimalConditionalReturnSlice::ValueKind::Param1:
+        if (dst != "w1") {
+          out << "  mov " << dst << ", w1\n";
+        }
+        return;
+    }
+  };
+
   std::ostringstream out;
-  const std::string main_symbol = asm_symbol_name(module, "main");
+  const std::string main_symbol = asm_symbol_name(module, slice.function_name);
   const char* fail_branch = nullptr;
   switch (slice.predicate) {
     case c4c::codegen::lir::LirCmpPredicate::Slt: fail_branch = "b.ge"; break;
@@ -4052,15 +4128,20 @@ std::string emit_minimal_conditional_return_asm(
 
   out << ".text\n";
   emit_function_prelude(out, module, main_symbol, true);
-  out << "  mov w8, #" << slice.lhs_imm << "\n"
-      << "  cmp w8, #" << slice.rhs_imm << "\n"
-      << "  " << fail_branch << " .L" << slice.false_label << "\n"
-      << ".L" << slice.true_label << ":\n"
-      << "  mov w0, #" << slice.true_return_imm << "\n"
-      << "  ret\n"
-      << ".L" << slice.false_label << ":\n"
-      << "  mov w0, #" << slice.false_return_imm << "\n"
-      << "  ret\n";
+  emit_move_w(out, "w8", slice.lhs);
+  if (slice.rhs.kind == MinimalConditionalReturnSlice::ValueKind::Immediate) {
+    out << "  cmp w8, #" << slice.rhs.imm << "\n";
+  } else {
+    emit_move_w(out, "w9", slice.rhs);
+    out << "  cmp w8, w9\n";
+  }
+  out << "  " << fail_branch << " .L" << slice.false_label << "\n"
+      << ".L" << slice.true_label << ":\n";
+  emit_move_w(out, "w0", slice.true_value);
+  out << "  ret\n"
+      << ".L" << slice.false_label << ":\n";
+  emit_move_w(out, "w0", slice.false_value);
+  out << "  ret\n";
   return out.str();
 }
 

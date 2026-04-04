@@ -140,6 +140,42 @@ void test_backend_bir_pipeline_drives_aarch64_select_end_to_end() {
                   "aarch64 BIR lowering should materialize the false-value arm for the bounded select slice");
 }
 
+void test_backend_bir_pipeline_drives_aarch64_direct_bir_single_param_select_end_to_end() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{
+          c4c::backend::lower_to_bir(make_bir_single_param_select_eq_phi_module())},
+      make_bir_pipeline_options(c4c::backend::Target::Aarch64));
+
+  expect_contains(rendered, ".globl choose",
+                  "direct BIR single-parameter select input should reach aarch64 backend emission without legacy backend IR lowering");
+  expect_contains(rendered, "mov w8, w0",
+                  "aarch64 direct BIR single-parameter select input should stage the incoming integer argument into the compare scratch register");
+  expect_contains(rendered, "cmp w8, #7",
+                  "aarch64 direct BIR single-parameter select input should compare the staged integer argument against the bounded immediate");
+  expect_contains(rendered, "mov w0, #11",
+                  "aarch64 direct BIR single-parameter select input should materialize the true-value arm for the bounded parameter-fed select slice");
+  expect_contains(rendered, "mov w0, #4",
+                  "aarch64 direct BIR single-parameter select input should materialize the false-value arm for the bounded parameter-fed select slice");
+}
+
+void test_backend_bir_pipeline_drives_aarch64_direct_bir_two_param_select_end_to_end() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{
+          c4c::backend::lower_to_bir(make_bir_two_param_select_eq_phi_module())},
+      make_bir_pipeline_options(c4c::backend::Target::Aarch64));
+
+  expect_contains(rendered, ".globl choose2",
+                  "direct BIR two-parameter select input should reach aarch64 backend emission without legacy backend IR lowering");
+  expect_contains(rendered, "mov w8, w0",
+                  "aarch64 direct BIR two-parameter select input should stage the first incoming integer argument into the compare scratch register");
+  expect_contains(rendered, "mov w9, w1",
+                  "aarch64 direct BIR two-parameter select input should stage the second incoming integer argument into the compare scratch register");
+  expect_contains(rendered, "cmp w8, w9",
+                  "aarch64 direct BIR two-parameter select input should compare both staged integer argument registers on the native backend path");
+  expect_contains(rendered, "mov w0, w1",
+                  "aarch64 direct BIR two-parameter select input should materialize the false-value arm from the second incoming integer argument register");
+}
+
 void test_backend_bir_pipeline_rejects_unsupported_direct_bir_input_on_aarch64() {
   try {
     (void)c4c::backend::emit_module(
@@ -168,5 +204,7 @@ void run_backend_bir_pipeline_aarch64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_zext_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_trunc_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_select_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_aarch64_direct_bir_single_param_select_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_aarch64_direct_bir_two_param_select_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_rejects_unsupported_direct_bir_input_on_aarch64);
 }

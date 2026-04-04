@@ -46,6 +46,12 @@ Completed in this slice: taught both direct-BIR native emitters to accept the
 bounded constant compare-fed `bir.select` return shape by routing it through
 their existing minimal conditional-return asm path, and added explicit direct-
 BIR x86_64/aarch64 pipeline coverage for that family.
-Next target: extend direct native-emitter ownership to the next select-shaped
-family that already lowers through BIR, likely the bounded parameter-fed
-select or phi-join slice, before widening the legacy-IR removal surface.
+Completed in this slice: generalized the direct-BIR x86_64/aarch64
+conditional-select path so the native emitters now accept the bounded
+parameter-fed `bir.select` family as direct input, including one-parameter
+immediate-arm and two-parameter value-select shapes, with explicit pipeline
+coverage for both targets.
+Next target: extend direct native-emitter ownership from the current pure
+`bir.select` return family to the next join-shaped BIR slice, likely a bounded
+post-select arithmetic tail or richer phi-join-derived select family, before
+widening the legacy-IR removal surface.
