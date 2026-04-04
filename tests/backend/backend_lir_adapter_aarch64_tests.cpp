@@ -2458,6 +2458,22 @@ void test_aarch64_backend_renders_typed_direct_call_local_arg_slice() {
                       "aarch64 backend should not fall back to LLVM text for the single-local direct-call slice");
 }
 
+void test_aarch64_backend_renders_typed_direct_call_identity_arg_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_typed_direct_call_identity_arg_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".type f, %function",
+                  "aarch64 backend should lower the identity helper into a real function symbol");
+  expect_contains(rendered, "f:\n  ret\n",
+                  "aarch64 backend should keep the bounded identity helper on the register passthrough path");
+  expect_contains(rendered, "mov w0, wzr",
+                  "aarch64 backend should materialize the immediate-zero direct-call argument in w0 before bl");
+  expect_contains(rendered, "bl f",
+                  "aarch64 backend should lower the bounded identity direct call with bl");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend should not fall back to LLVM text for the bounded identity direct-call slice");
+}
+
 void test_aarch64_backend_scaffold_accepts_structured_direct_call_add_imm_ir_without_signature_shims() {
   auto lowered =
       c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_local_arg_module());
@@ -5183,6 +5199,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_scaffold_accepts_renamed_structured_two_arg_direct_call_folded_const_ir_without_signature_shims();
   test_aarch64_backend_scaffold_rejects_structured_two_arg_direct_call_folded_const_when_helper_body_contract_disagrees();
   test_aarch64_backend_renders_typed_direct_call_local_arg_slice();
+  test_aarch64_backend_renders_typed_direct_call_identity_arg_slice();
   test_aarch64_backend_scaffold_accepts_structured_direct_call_add_imm_ir_without_signature_shims();
   test_aarch64_backend_scaffold_rejects_structured_direct_call_add_imm_when_helper_body_contract_disagrees();
   test_aarch64_backend_scaffold_accepts_renamed_structured_direct_call_add_imm_ir_without_signature_shims();

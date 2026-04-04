@@ -157,6 +157,13 @@ struct ParsedBackendMinimalDirectCallAddImmModuleView {
   std::int64_t add_imm = 0;
 };
 
+struct ParsedBackendMinimalDirectCallIdentityArgModuleView {
+  const BackendFunction* helper = nullptr;
+  const BackendFunction* main_function = nullptr;
+  const BackendCallInst* call = nullptr;
+  std::int64_t call_arg_imm = 0;
+};
+
 struct ParsedBackendMinimalFoldedTwoArgDirectCallModuleView {
   const BackendFunction* helper = nullptr;
   const BackendFunction* main_function = nullptr;
@@ -690,6 +697,34 @@ parse_backend_structured_single_add_imm_function(
   return ParsedBackendStructuredSingleAddImmFunctionView{param.name, add};
 }
 
+inline std::optional<std::string_view> parse_backend_structured_single_identity_function(
+    const BackendFunction& function,
+    std::optional<std::string_view> expected_name) {
+  const std::string_view function_name =
+      expected_name.has_value() ? *expected_name : std::string_view(function.signature.name);
+  if (function.is_declaration || !backend_function_is_definition(function.signature) ||
+      function.signature.name != function_name ||
+      backend_signature_return_scalar_type(function.signature) != BackendScalarType::I32 ||
+      function.signature.params.size() != 1 || function.signature.is_vararg ||
+      function.blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& param = function.signature.params.front();
+  if (backend_param_scalar_type(param) != BackendScalarType::I32 || param.name.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& block = function.blocks.front();
+  if (block.label != "entry" || !block.insts.empty() || !block.terminator.value.has_value() ||
+      backend_return_scalar_type(block.terminator) != BackendScalarType::I32 ||
+      *block.terminator.value != param.name) {
+    return std::nullopt;
+  }
+
+  return param.name;
+}
+
 inline std::optional<ParsedBackendStructuredFoldedTwoArgFunctionView>
 parse_backend_structured_folded_two_arg_function(
     const BackendFunction& function,
@@ -1022,6 +1057,32 @@ parse_backend_minimal_folded_two_arg_direct_call_module(const BackendModule& mod
       *lhs_call_arg_imm,
       *rhs_call_arg_imm,
       helper_shape->base_imm + *lhs_call_arg_imm - *rhs_call_arg_imm,
+  };
+}
+
+inline std::optional<ParsedBackendMinimalDirectCallIdentityArgModuleView>
+parse_backend_minimal_direct_call_identity_arg_module(const BackendModule& module) {
+  if (!module.globals.empty() || !module.string_constants.empty()) {
+    return std::nullopt;
+  }
+
+  const auto parsed = parse_backend_minimal_structured_direct_call_module(module, 1);
+  if (!parsed.has_value() ||
+      !parse_backend_structured_single_identity_function(*parsed->helper, std::nullopt)
+           .has_value()) {
+    return std::nullopt;
+  }
+
+  const auto call_arg_imm = parse_backend_i64_literal(parsed->call->args.front().operand);
+  if (!call_arg_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  return ParsedBackendMinimalDirectCallIdentityArgModuleView{
+      parsed->helper,
+      parsed->main_function,
+      parsed->call,
+      *call_arg_imm,
   };
 }
 

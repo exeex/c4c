@@ -12,26 +12,21 @@ Source Plan: plan.md
 Current active item: Step 4, cut the now-explicit AArch64-only file-output asm
 fallback users and prepare the final legacy backend-IR deletion pass.
 
-Iteration target: keep external c-testsuite backend coverage on stdout-native
-asm by default, preserve file-output rescue only for the known blocked AArch64
-varargs-heavy cases, and tighten `c4cll` so non-AArch64 targets no longer get
-the file-output LLVM asm fallback.
+Iteration target: continue removing explicit AArch64 file-output asm rescue
+callers one bounded family at a time, with the immediate follow-up target
+being the next smallest still-blocked caller family after the `00116`
+single-argument identity-helper conversion.
 
 Immediate next slice:
 
-- use the now-explicit tagged fallback set in
+- audit whether the remaining small scalar/FP AArch64 rescue callers
+  `00113`, `00119`, `00121`, and `00123` share a bounded matcher/emitter gap
+  that can remove more than one fallback tag in the same batch
+- prefer the next slice that deletes another explicit
+  `backend-file-aarch64` tag from
   [`tests/c/external/c-testsuite/allowlist.txt`](/workspaces/c4c/tests/c/external/c-testsuite/allowlist.txt)
-  as the only remaining app-layer file-output asm rescue family
-- verify whether any of those tagged AArch64 c-testsuite cases have become
-  backend-native and can be removed from the fallback bucket
-- inspect the production references that still keep legacy lowering live:
-  [`src/backend/lowering/lir_to_backend_ir.hpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.hpp),
-  [`src/backend/lowering/lir_to_backend_ir.cpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp),
-  [`src/backend/lir_adapter.hpp`](/workspaces/c4c/src/backend/lir_adapter.hpp),
-  and
-  [`src/backend/lowering/extern_lowering.hpp`](/workspaces/c4c/src/backend/lowering/extern_lowering.hpp)
-- land the next Step 4 slice only if it removes one of those remaining tagged
-  fallback callers or cuts a live legacy lowering dependency in the same batch
+  together with the production backend change that makes stdout-native asm
+  possible
 
 Slice deliverables:
 
@@ -97,7 +92,7 @@ Known live references from the current audit:
   backend families now run through stdout-native asm by default
 - the remaining live file-output asm rescue users are now explicit allowlist
   tags for external/backend AArch64 c-testsuite coverage:
-  `00113`, `00116`, `00119`, `00121`, `00123`, `00174`, `00175`,
+  `00113`, `00119`, `00121`, `00123`, `00174`, `00175`,
   and `00204`
 - `c4cll` now rejects file-output LLVM asm fallback on non-AArch64 targets;
   the app-layer rescue path is retained only for the tagged AArch64 family
@@ -138,17 +133,21 @@ Recently completed milestones:
   declarations when there is exactly one real definition, added AArch64/x86
   backend regressions for that seam, and removed external/backend AArch64
   c-testsuite case `00108` from the remaining file-output rescue bucket
+- taught the AArch64 backend/native asm path to keep the bounded
+  single-argument identity-helper direct-call shape on stdout-native asm and
+  removed external/backend AArch64 c-testsuite case `00116` from the remaining
+  file-output rescue bucket
 
 Validation baseline:
 
 - blocker: none
 - latest focused proving set:
   `build/backend_lir_adapter_aarch64_tests`,
-  `build/backend_lir_adapter_x86_64_tests`,
-  `ctest --test-dir build -R "c_testsuite(_aarch64_backend)?_src_00108_c" --output-on-failure`,
+  `build/c4cll --codegen asm --target aarch64-unknown-linux-gnu tests/c/external/c-testsuite/src/00116.c`,
   and
-  `build/c4cll --codegen asm --target aarch64-unknown-linux-gnu tests/c/external/c-testsuite/src/00108.c`
-  with native asm emitted on stdout and exit `0`
+  `ctest --test-dir build -R "c_testsuite_aarch64_backend_src_00116_c" --output-on-failure`
+  with native asm emitted on stdout and the regenerated AArch64 backend
+  c-testsuite case passing without file-output rescue
 - latest backend regression scope:
   `ctest --test-dir build -R backend --output-on-failure`
   with `100% tests passed, 0 tests failed out of 402`
