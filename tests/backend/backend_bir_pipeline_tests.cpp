@@ -918,6 +918,116 @@ void test_backend_bir_pipeline_routes_i8_two_param_add_through_bir_text_surface(
                   "explicit BIR selection should keep the widened i8 two-parameter result on the BIR text path");
 }
 
+void test_backend_bir_pipeline_routes_i8_eq_through_bir_text_surface() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_bir_i8_return_eq_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Riscv64));
+
+  expect_contains(rendered, "bir.func @choose_eq_u() -> i8 {",
+                  "explicit BIR selection should preserve the widened i8 equality signature on the BIR text path");
+  expect_contains(rendered, "%t1 = bir.eq i8 7, 7",
+                  "explicit BIR selection should expose the widened i8 equality compare materialization on the BIR text path");
+}
+
+void test_backend_bir_pipeline_routes_i8_ne_through_bir_text_surface() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_bir_i8_return_ne_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Riscv64));
+
+  expect_contains(rendered, "bir.func @choose_ne_u() -> i8 {",
+                  "explicit BIR selection should preserve the widened i8 inequality signature on the BIR text path");
+  expect_contains(rendered, "%t1 = bir.ne i8 7, 3",
+                  "explicit BIR selection should expose the widened i8 inequality compare materialization on the BIR text path");
+}
+
+void test_backend_bir_pipeline_routes_i8_ult_through_bir_text_surface() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_bir_i8_return_ult_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Riscv64));
+
+  expect_contains(rendered, "bir.func @choose_ult_u() -> i8 {",
+                  "explicit BIR selection should preserve the widened i8 unsigned-less-than signature on the BIR text path");
+  expect_contains(rendered, "%t1 = bir.ult i8 3, 7",
+                  "explicit BIR selection should expose the widened i8 unsigned-less-than compare materialization on the BIR text path");
+}
+
+void test_backend_bir_pipeline_routes_i8_ule_through_bir_text_surface() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_bir_i8_return_ule_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Riscv64));
+
+  expect_contains(rendered, "bir.func @choose_ule_u() -> i8 {",
+                  "explicit BIR selection should preserve the widened i8 unsigned-less-than-or-equal signature on the BIR text path");
+  expect_contains(rendered, "%t1 = bir.ule i8 7, 7",
+                  "explicit BIR selection should expose the widened i8 unsigned-less-than-or-equal compare materialization on the BIR text path");
+}
+
+void test_backend_bir_pipeline_routes_i8_ugt_through_bir_text_surface() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_bir_i8_return_ugt_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Riscv64));
+
+  expect_contains(rendered, "bir.func @choose_ugt_u() -> i8 {",
+                  "explicit BIR selection should preserve the widened i8 unsigned-greater-than signature on the BIR text path");
+  expect_contains(rendered, "%t1 = bir.ugt i8 7, 3",
+                  "explicit BIR selection should expose the widened i8 unsigned-greater-than compare materialization on the BIR text path");
+}
+
+void test_backend_bir_pipeline_routes_i8_uge_through_bir_text_surface() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_bir_i8_return_uge_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Riscv64));
+
+  expect_contains(rendered, "bir.func @choose_uge_u() -> i8 {",
+                  "explicit BIR selection should preserve the widened i8 unsigned-greater-than-or-equal signature on the BIR text path");
+  expect_contains(rendered, "%t1 = bir.uge i8 7, 7",
+                  "explicit BIR selection should expose the widened i8 unsigned-greater-than-or-equal compare materialization on the BIR text path");
+}
+
+void test_backend_bir_pipeline_routes_i8_slt_through_bir_text_surface() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_bir_i8_return_slt_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Riscv64));
+
+  expect_contains(rendered, "bir.func @choose_slt_u() -> i8 {",
+                  "explicit BIR selection should preserve the widened i8 signed-less-than signature on the BIR text path");
+  expect_contains(rendered, "%t1 = bir.slt i8 3, 7",
+                  "explicit BIR selection should expose the widened i8 signed-less-than compare materialization on the BIR text path");
+}
+
+void test_backend_bir_pipeline_routes_i8_sle_through_bir_text_surface() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_bir_i8_return_sle_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Riscv64));
+
+  expect_contains(rendered, "bir.func @choose_sle_u() -> i8 {",
+                  "explicit BIR selection should preserve the widened i8 signed-less-than-or-equal signature on the BIR text path");
+  expect_contains(rendered, "%t1 = bir.sle i8 7, 7",
+                  "explicit BIR selection should expose the widened i8 signed-less-than-or-equal compare materialization on the BIR text path");
+}
+
+void test_backend_bir_pipeline_routes_i8_sgt_through_bir_text_surface() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_bir_i8_return_sgt_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Riscv64));
+
+  expect_contains(rendered, "bir.func @choose_sgt_u() -> i8 {",
+                  "explicit BIR selection should preserve the widened i8 signed-greater-than signature on the BIR text path");
+  expect_contains(rendered, "%t1 = bir.sgt i8 7, 3",
+                  "explicit BIR selection should expose the widened i8 signed-greater-than compare materialization on the BIR text path");
+}
+
+void test_backend_bir_pipeline_routes_i8_sge_through_bir_text_surface() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_bir_i8_return_sge_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Riscv64));
+
+  expect_contains(rendered, "bir.func @choose_sge_u() -> i8 {",
+                  "explicit BIR selection should preserve the widened i8 signed-greater-than-or-equal signature on the BIR text path");
+  expect_contains(rendered, "%t1 = bir.sge i8 7, 7",
+                  "explicit BIR selection should expose the widened i8 signed-greater-than-or-equal compare materialization on the BIR text path");
+}
+
 void test_backend_bir_pipeline_routes_i64_chain_through_bir_text_surface() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_bir_i64_return_add_sub_chain_module()},
@@ -1080,6 +1190,16 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_backend_bir_pipeline_routes_mixed_predecessor_select_post_join_add_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_i8_chain_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_i8_two_param_add_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_routes_i8_eq_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_routes_i8_ne_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_routes_i8_ult_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_routes_i8_ule_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_routes_i8_ugt_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_routes_i8_uge_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_routes_i8_slt_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_routes_i8_sle_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_routes_i8_sgt_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_routes_i8_sge_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_i64_chain_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_single_param_chain_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_two_param_add_through_bir_text_surface);
