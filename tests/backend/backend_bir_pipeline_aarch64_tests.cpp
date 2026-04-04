@@ -347,6 +347,28 @@ void test_backend_bir_pipeline_drives_aarch64_direct_bir_u8_select_deeper_affine
                   "aarch64 direct BIR u8 deeper-affine-both-sides select-plus-add/sub/add-tail input should preserve the bounded post-select add/sub/add arithmetic tail on the native backend path");
 }
 
+void test_backend_bir_pipeline_drives_aarch64_direct_bir_u8_select_mixed_then_deeper_affine_post_join_add_end_to_end() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{
+          c4c::backend::lower_to_bir(
+              make_bir_two_param_u8_select_ne_split_predecessor_mixed_then_deeper_affine_phi_post_join_add_module())},
+      make_bir_pipeline_options(c4c::backend::Target::Aarch64));
+
+  expect_contains(rendered, ".globl choose2_mixed_then_deeper_post_ne_u",
+                  "direct BIR u8 mixed-then-deeper-affine select-plus-tail input should reach aarch64 backend emission without legacy backend IR lowering");
+  expect_contains(rendered, "and w8, w0, #0xff",
+                  "aarch64 direct BIR u8 mixed-then-deeper-affine select-plus-tail input should mask the first incoming byte before comparison");
+  expect_contains(rendered, "and w9, w1, #0xff\n  cmp w8, w9\n",
+                  "aarch64 direct BIR u8 mixed-then-deeper-affine select-plus-tail input should compare the masked incoming bytes on the native backend path");
+  expect_contains(rendered, ".Lselect_true:\n  and w0, w0, #0xff\n  add w0, w0, #8\n  sub w0, w0, #3\n  b .Lselect_join\n",
+                  "aarch64 direct BIR u8 mixed-then-deeper-affine select-plus-tail input should materialize the bounded then-arm mixed arithmetic before the synthetic join");
+  expect_contains(rendered,
+                  ".Lselect_false:\n  and w0, w1, #0xff\n  add w0, w0, #11\n  sub w0, w0, #4\n  add w0, w0, #7\n",
+                  "aarch64 direct BIR u8 mixed-then-deeper-affine select-plus-tail input should materialize the bounded else-arm deeper arithmetic before the synthetic join");
+  expect_contains(rendered, ".Lselect_join:\n  add w0, w0, #6\n  ret\n",
+                  "aarch64 direct BIR u8 mixed-then-deeper-affine select-plus-tail input should preserve the bounded post-select add arithmetic tail on the native backend path");
+}
+
 void test_backend_bir_pipeline_rejects_unsupported_direct_bir_input_on_aarch64() {
   try {
     (void)c4c::backend::emit_module(
@@ -385,5 +407,6 @@ void run_backend_bir_pipeline_aarch64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_direct_bir_u8_select_mixed_affine_post_join_add_sub_add_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_direct_bir_u8_select_deeper_then_mixed_affine_post_join_add_sub_add_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_direct_bir_u8_select_deeper_affine_on_both_sides_post_join_add_sub_add_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_aarch64_direct_bir_u8_select_mixed_then_deeper_affine_post_join_add_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_rejects_unsupported_direct_bir_input_on_aarch64);
 }
