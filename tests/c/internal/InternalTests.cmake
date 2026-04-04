@@ -1858,6 +1858,7 @@ if(CLANG_EXECUTABLE)
               -DSRC=${INTERNAL_C_TEST_ROOT}/backend_case/extern_global_array.c
               -DTARGET_TRIPLE=${BACKEND_RUNTIME_TARGET_TRIPLE}
               -DBACKEND_OUTPUT_KIND=asm
+              -DBACKEND_ASM_SOURCE=stdout
               -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/extern_global_array.ll
               -DEXPECT_EXIT_CODE=7
               -DOUT_C2LL_BIN=${CMAKE_BINARY_DIR}/internal_backend/extern_global_array.bin
