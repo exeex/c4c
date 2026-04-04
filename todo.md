@@ -10,17 +10,42 @@ Source Plan: plan.md
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
 Current active item: Step 4, keep shrinking the remaining app-layer LLVM asm
-rescue one bounded surface at a time; with the simple return family now off the
-`-o <file>.s` rescue path, continue probing the remaining already-native
-runtime/file-output families and promote the next bounded stdout-native slice
-without widening scope.
-Next intended slice: probe the local call/parameter runtime family
-(`local_arg_call`, `param_slot`, and adjacent two-arg parameter cases) on the
-explicit stdout-native asm path, then convert the next bounded subset that is
-already backend-native on stdout while keeping rescue-dependent cases isolated.
+rescue one bounded surface at a time; with the local call/parameter runtime
+family now moved onto the explicit stdout-native asm path, probe the next
+still-file-based runtime family and promote only the subset that is already
+backend-native on stdout for both `x86_64` and `aarch64`.
+Next intended slice: inspect the remaining file-output runtime families around
+local aggregate/member access cases, check which ones already emit backend-native
+stdout asm on both supported native targets, and convert only the first bounded
+ready subset.
 Blocker: none. The rebuilt `backend_lir_adapter_aarch64_tests` expectation
 drift has been realigned to the current native aarch64 backend seam, and the
 required backend/full-suite acceptance gates are green again.
+Completed in this slice: converted the bounded local call/parameter runtime
+family (`param_slot`, `local_arg_call`, `two_arg_helper`,
+`two_arg_local_arg`, `two_arg_second_local_arg`,
+`two_arg_first_local_rewrite`, `two_arg_second_local_rewrite`,
+`two_arg_both_local_arg`, `two_arg_both_local_first_rewrite`,
+`two_arg_both_local_second_rewrite`, and
+`two_arg_both_local_double_rewrite`) in
+`tests/c/internal/InternalTests.cmake` onto the explicit stdout-native asm
+path, so these already-native runtime checks no longer depend on the app-layer
+`-o <file>.s` LLVM asm rescue route.
+Completed in this slice: probed that same local call/parameter family directly
+through `c4cll --codegen asm` and confirmed that both
+`aarch64-unknown-linux-gnu` and `x86_64-unknown-linux-gnu` already emit
+backend-native stdout assembly for the entire bounded slice on the current
+backend seam.
+Completed in this slice: rebuilt `c4cll`, reran the focused proving tests
+(`backend_runtime_param_slot`, `backend_runtime_local_arg_call`, and the nine
+adjacent `backend_runtime_two_arg_*` cases) with `100% tests passed, 0 tests
+failed out of 11`, reran the required backend regression scope
+(`ctest --test-dir build -R backend --output-on-failure`) with `100% tests
+passed, 0 tests failed out of 401`, regenerated `test_fail_after.log`, and
+reran the monotonic full-suite guard over `test_fail_before.log` versus the
+refreshed `test_fail_after.log`, with guard result `PASS` and
+`before: passed=394 failed=0 total=394`,
+`after: passed=2840 failed=0 total=2840`, and `new failing tests: 0`.
 Completed in this slice: converted the bounded runtime-positive simple return
 family (`return_zero`, `return_add`, and `return_add_sub_chain`) in
 `tests/c/internal/InternalTests.cmake` onto the explicit stdout-native asm
