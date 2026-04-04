@@ -1132,7 +1132,8 @@ std::optional<bir::Function> try_lower_widened_i8_add_sub_chain_function(
     auto binary = lower_binary(lir_block.insts[inst_index]);
     if (!binary.has_value() || binary->result.type != bir::TypeKind::I32 ||
         (binary->opcode != bir::BinaryOpcode::Add &&
-         binary->opcode != bir::BinaryOpcode::Sub) ||
+         binary->opcode != bir::BinaryOpcode::Sub &&
+         binary->opcode != bir::BinaryOpcode::Mul) ||
         name_is_defined(binary->result.name)) {
       return std::nullopt;
     }
@@ -1151,6 +1152,11 @@ std::optional<bir::Function> try_lower_widened_i8_add_sub_chain_function(
     const auto lhs_affine = lower_affine_value(*narrow_lhs);
     const auto rhs_affine = lower_affine_value(*narrow_rhs);
     if (!lhs_affine.has_value() || !rhs_affine.has_value()) {
+      return std::nullopt;
+    }
+    if (binary->opcode == bir::BinaryOpcode::Mul &&
+        (lhs_affine->uses_first_param || lhs_affine->uses_second_param ||
+         rhs_affine->uses_first_param || rhs_affine->uses_second_param)) {
       return std::nullopt;
     }
     const auto combined = combine_affine(*lhs_affine, *rhs_affine, binary->opcode);

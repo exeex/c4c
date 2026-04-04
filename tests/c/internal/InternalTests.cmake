@@ -735,6 +735,15 @@ if(CLANG_EXECUTABLE)
     )
 
     c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_return_mul_u8_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/return_mul_u8.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/return_mul_u8_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @choose_mul_u() -> i8 {|%t0 = bir.mul i8 6, 7|bir.ret i8 %t0"
+      FORBIDDEN_SNIPPETS "define i8 @choose_mul_u()"
+    )
+
+    c4c_add_backend_codegen_route_test(
       backend_codegen_route_riscv64_return_eq_u8_defaults_to_bir
       SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/return_eq_u8.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu

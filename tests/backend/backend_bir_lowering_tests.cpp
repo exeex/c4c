@@ -1400,6 +1400,18 @@ void test_bir_lowering_accepts_i8_return_sub() {
                   "BIR lowering should let the widened zero-parameter i8 subtract flow directly into the return");
 }
 
+void test_bir_lowering_accepts_i8_return_mul() {
+  const auto lowered = c4c::backend::lower_to_bir(make_bir_i8_return_mul_module());
+  const auto rendered = c4c::backend::bir::print(lowered);
+
+  expect_contains(rendered, "bir.func @choose_mul_u() -> i8 {",
+                  "BIR lowering should preserve the widened zero-parameter i8 multiply return signature");
+  expect_contains(rendered, "%t0 = bir.mul i8 6, 7",
+                  "BIR lowering should materialize the widened zero-parameter i8 multiply directly in BIR terms");
+  expect_contains(rendered, "bir.ret i8 %t0",
+                  "BIR lowering should let the widened zero-parameter i8 multiply flow directly into the return");
+}
+
 void test_bir_lowering_accepts_i8_add_sub_chain() {
   const auto lowered = c4c::backend::lower_to_bir(make_bir_i8_return_add_sub_chain_module());
   const auto rendered = c4c::backend::bir::print(lowered);
@@ -1610,6 +1622,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_straight_line_add_sub_chain);
   RUN_TEST(test_bir_lowering_accepts_i8_return_add);
   RUN_TEST(test_bir_lowering_accepts_i8_return_sub);
+  RUN_TEST(test_bir_lowering_accepts_i8_return_mul);
   RUN_TEST(test_bir_lowering_accepts_i8_add_sub_chain);
   RUN_TEST(test_bir_lowering_accepts_i64_add_sub_chain);
   RUN_TEST(test_bir_lowering_accepts_i8_two_param_add);
