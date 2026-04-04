@@ -6,6 +6,44 @@
 
 namespace {
 
+void test_backend_default_route_stays_on_legacy_lir_entry_target_neutral() {
+  const auto route = c4c::backend::select_lowering_route(
+      c4c::backend::BackendModuleInput{make_bir_return_add_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_true(route == c4c::backend::BackendLoweringRoute::LegacyFromLirEntry,
+              "default backend entry should stay on the legacy LIR route until callers explicitly select the BIR pipeline");
+}
+
+void test_backend_bir_pipeline_selects_bir_lir_entry_route_target_neutral() {
+  const auto route = c4c::backend::select_lowering_route(
+      c4c::backend::BackendModuleInput{make_bir_return_add_module()},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_true(route == c4c::backend::BackendLoweringRoute::BirFromLirEntry,
+              "explicit BIR backend options should switch the entry seam onto the BIR lowering route before any target-specific emission is observed");
+}
+
+void test_backend_prelowered_legacy_module_route_ignores_pipeline_override_target_neutral() {
+  const auto lir_module = make_bir_return_add_module();
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(lir_module);
+  const auto route = c4c::backend::select_lowering_route(
+      c4c::backend::BackendModuleInput{lowered, &lir_module},
+      make_bir_pipeline_options(c4c::backend::Target::Riscv64));
+
+  expect_true(route == c4c::backend::BackendLoweringRoute::LegacyPreloweredModule,
+              "once callers provide a pre-lowered legacy backend module, pipeline selection should stop at that structured route seam instead of re-entering LIR routing");
+}
+
+void test_backend_direct_bir_module_route_ignores_legacy_pipeline_default_target_neutral() {
+  const auto route = c4c::backend::select_lowering_route(
+      c4c::backend::BackendModuleInput{make_return_immediate_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  expect_true(route == c4c::backend::BackendLoweringRoute::BirPreloweredModule,
+              "direct BIR input should remain observable as a BIR-owned route even when callers do not opt into the LIR-entry BIR pipeline");
+}
+
 void test_backend_default_path_remains_legacy_when_bir_pipeline_is_not_selected() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_bir_return_add_module()},
@@ -975,6 +1013,10 @@ void test_backend_lowered_riscv_passthrough_ignores_broken_legacy_fallback() {
 }  // namespace
 
 void run_backend_bir_pipeline_tests() {
+  RUN_TEST(test_backend_default_route_stays_on_legacy_lir_entry_target_neutral);
+  RUN_TEST(test_backend_bir_pipeline_selects_bir_lir_entry_route_target_neutral);
+  RUN_TEST(test_backend_prelowered_legacy_module_route_ignores_pipeline_override_target_neutral);
+  RUN_TEST(test_backend_direct_bir_module_route_ignores_legacy_pipeline_default_target_neutral);
   RUN_TEST(test_backend_default_path_remains_legacy_when_bir_pipeline_is_not_selected);
   RUN_TEST(test_backend_bir_pipeline_is_opt_in_through_backend_options);
   RUN_TEST(test_backend_bir_pipeline_accepts_direct_bir_module_input);

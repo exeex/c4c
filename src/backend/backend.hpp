@@ -21,6 +21,13 @@ enum class BackendPipeline : unsigned char {
   Bir,
 };
 
+enum class BackendLoweringRoute : unsigned char {
+  LegacyPreloweredModule,
+  BirPreloweredModule,
+  LegacyFromLirEntry,
+  BirFromLirEntry,
+};
+
 struct BackendModuleInput {
   explicit BackendModuleInput(const BackendModule& backend_module,
                               const c4c::codegen::lir::LirModule* legacy_fallback_in = nullptr);
@@ -49,6 +56,9 @@ struct BackendOptions {
   Target target;
   BackendPipeline pipeline = BackendPipeline::Legacy;
 };
+
+BackendLoweringRoute select_lowering_route(const BackendModuleInput& input,
+                                           const BackendOptions& options);
 
 std::string emit_module(const BackendModuleInput& input,
                         const BackendOptions& options);

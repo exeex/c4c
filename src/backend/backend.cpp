@@ -316,13 +316,29 @@ BackendModuleInput::BackendModuleInput(BackendModuleInput&&) noexcept = default;
 BackendModuleInput& BackendModuleInput::operator=(BackendModuleInput&&) noexcept = default;
 BackendModuleInput::~BackendModuleInput() = default;
 
+BackendLoweringRoute select_lowering_route(const BackendModuleInput& input,
+                                           const BackendOptions& options) {
+  if (input.bir_module() != nullptr) {
+    return BackendLoweringRoute::BirPreloweredModule;
+  }
+  if (input.legacy_module() != nullptr) {
+    return BackendLoweringRoute::LegacyPreloweredModule;
+  }
+  if (options.pipeline == BackendPipeline::Bir) {
+    return BackendLoweringRoute::BirFromLirEntry;
+  }
+  return BackendLoweringRoute::LegacyFromLirEntry;
+}
+
 std::string emit_module(const BackendModuleInput& input,
                         const BackendOptions& options) {
-  if (input.legacy_module() == nullptr && input.bir_module() == nullptr) {
+  const auto route = select_lowering_route(input, options);
+  if (route == BackendLoweringRoute::LegacyFromLirEntry ||
+      route == BackendLoweringRoute::BirFromLirEntry) {
     if (input.legacy_fallback() == nullptr) {
       return {};
     }
-    if (options.pipeline == BackendPipeline::Bir) {
+    if (route == BackendLoweringRoute::BirFromLirEntry) {
       auto bir_module = c4c::backend::lower_to_bir(*input.legacy_fallback());
       if (options.target == Target::Riscv64) {
         return c4c::backend::bir::print(bir_module);
@@ -333,7 +349,7 @@ std::string emit_module(const BackendModuleInput& input,
     return emit_legacy_module(*input.legacy_fallback(), options.target);
   }
 
-  if (input.bir_module() != nullptr) {
+  if (route == BackendLoweringRoute::BirPreloweredModule) {
     if (options.target == Target::Riscv64) {
       return c4c::backend::bir::print(*input.bir_module());
     }
