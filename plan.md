@@ -37,6 +37,9 @@ directly, and delete legacy backend-IR plus LLVM rescue paths.
 - for this plan's routine validation, use `ctest -R backend` as the required
   regression scope instead of the full `ctest` suite unless a change clearly
   escapes backend ownership
+- when a lowering or route surface has multiple low-coupling fixture variants
+  in the same family, prefer landing that family as one bounded batch instead
+  of one test at a time
 - keep transitional legacy-bucket tests clearly marked and delete them once
   their coverage is either migrated or made irrelevant
 
@@ -68,6 +71,8 @@ Actions:
 
 - port missing lowering clusters one bounded slice at a time
 - add target-neutral lowering/route tests where possible
+- prefer batching same-shape fixture families together when they share the same
+  route/lowering seam and are unlikely to interfere with each other
 - keep any `riscv64` route tests explicitly temporary and bounded
 - extend native x86/aarch64 emitter coverage for slices that are now BIR-owned
 

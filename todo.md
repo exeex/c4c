@@ -29,4 +29,5 @@ family now has explicit BIR pipeline coverage.
 Next target: refresh the remaining production/test boundary inventory, then
 land the next bounded `lir_to_bir` slice with one target-neutral route/lowering
 test before any target-specific emitter assertions; use `ctest -R backend` as
-the default regression gate for routine slices in this plan.
+the default regression gate for routine slices in this plan, and prefer
+batching low-coupling fixture families when they share the same seam.
