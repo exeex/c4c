@@ -1134,7 +1134,8 @@ std::optional<bir::Function> try_lower_widened_i8_add_sub_chain_function(
         (binary->opcode != bir::BinaryOpcode::Add &&
          binary->opcode != bir::BinaryOpcode::Sub &&
          binary->opcode != bir::BinaryOpcode::Mul &&
-         binary->opcode != bir::BinaryOpcode::And) ||
+         binary->opcode != bir::BinaryOpcode::And &&
+         binary->opcode != bir::BinaryOpcode::Or) ||
         name_is_defined(binary->result.name)) {
       return std::nullopt;
     }
@@ -2191,7 +2192,7 @@ bir::Module lower_to_bir(const c4c::codegen::lir::LirModule& module) {
   auto lowered = try_lower_to_bir(module);
   if (!lowered.has_value()) {
     throw std::invalid_argument(
-        "bir scaffold lowering currently supports only straight-line single-block i8/i32/i64 return-immediate/add-sub slices, constant-only mul/and/shl/lshr/ashr/sdiv/udiv/srem/urem/eq/ne/slt/sle/sgt/sge/ult/ule/ugt/uge materialization slices, bounded compare-fed integer select materialization, bounded compare-fed phi joins with empty or add/sub-only predecessor arms including join-local add/sub chains after the fused select, plus bounded one- and two-parameter affine chains over those scalar types");
+        "bir scaffold lowering currently supports only straight-line single-block i8/i32/i64 return-immediate/add-sub slices, constant-only mul/and/or/shl/lshr/ashr/sdiv/udiv/srem/urem/eq/ne/slt/sle/sgt/sge/ult/ule/ugt/uge materialization slices, bounded compare-fed integer select materialization, bounded compare-fed phi joins with empty or add/sub-only predecessor arms including join-local add/sub chains after the fused select, plus bounded one- and two-parameter affine chains over those scalar types");
   }
   return *lowered;
 }
