@@ -11,11 +11,43 @@ Source Plan: plan.md
 
 Current active item: Step 2, continue tightening the widened-width/source-level
 arithmetic route matrix by carrying the landed zero-parameter widened
-left-shift parity from `return_shl_u8` into the next adjacent gap,
-`return_lshr_u8`.
+logical-right-shift parity from `return_lshr_u8` into the next adjacent gap,
+`return_ashr_u8`.
 Next target: carry the widened zero-parameter shift-return parity work from the
-landed `return_shl_u8` slice into the next adjacent gap, `return_lshr_u8`,
-beside the existing plain `return_lshr` route.
+landed `return_lshr_u8` slice into the next adjacent gap, `return_ashr_u8`,
+beside the existing plain `return_ashr` route.
+
+Completed this iteration:
+- Re-audited the zero-parameter widened arithmetic-return inventory in
+  `tests/c/internal/InternalTests.cmake` and confirmed the next adjacent
+  widened shift parity gap after the landed `return_shl_u8` slice was the
+  zero-parameter `return_lshr_u8` route beside the existing plain
+  `return_lshr` family.
+- Added `tests/c/internal/backend_route_case/return_lshr_u8.c`, proving the
+  bounded zero-parameter `unsigned char` direct-logical-right-shift wrapper
+  reaches the backend through BIR instead of falling back to legacy LLVM IR
+  text.
+- Registered `backend_codegen_route_riscv64_return_lshr_u8_defaults_to_bir` in
+  `tests/c/internal/InternalTests.cmake`, asserting the emitted text contains
+  `bir.func @choose_lshr_u() -> i8 {`, `%t0 = bir.lshr i8 16, 2`,
+  `bir.ret i8 %t0`, and forbids legacy LLVM IR `define i8 @choose_lshr_u()`.
+- Added `make_bir_i8_return_lshr_module()` to
+  `tests/backend/backend_bir_test_support.*` plus
+  `test_bir_lowering_accepts_i8_return_lshr()` in
+  `tests/backend/backend_bir_lowering_tests.cpp` to keep the widened
+  zero-parameter `i8` logical-right-shift return shape covered below the
+  backend-route harness.
+- Used the new coverage to expose a real Step 2 direct-BIR gap: the widened
+  zero-parameter `i8` logical-right-shift return case still lowered as legacy
+  LLVM IR `lshr i32` plus `trunc i32 -> i8`.
+- Fixed `src/backend/lowering/lir_to_bir.cpp` so
+  `try_lower_widened_i8_add_sub_chain_function()` now accepts widened
+  constant-only `lshr`, preserving the existing parameter restrictions while
+  lowering this route directly to `bir.lshr i8`.
+- Rebuilt `backend_bir_tests` and `c4cll`, reran `./build/backend_bir_tests`,
+  reran `backend_codegen_route_riscv64_return_lshr_u8_defaults_to_bir`, and
+  reran `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `380/380` backend-labeled tests passing.
 
 Completed this iteration:
 - Re-audited the zero-parameter widened arithmetic-return inventory in

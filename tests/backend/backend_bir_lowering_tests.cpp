@@ -591,6 +591,18 @@ void test_bir_lowering_accepts_tiny_return_shl_lir_slice() {
                   "BIR lowering should return the named BIR shl result");
 }
 
+void test_bir_lowering_accepts_i8_return_lshr() {
+  const auto lowered = c4c::backend::lower_to_bir(make_bir_i8_return_lshr_module());
+  const auto rendered = c4c::backend::bir::print(lowered);
+
+  expect_contains(rendered, "bir.func @choose_lshr_u() -> i8 {",
+                  "BIR lowering should preserve the widened i8 lshr wrapper signature");
+  expect_contains(rendered, "%t0 = bir.lshr i8 16, 2",
+                  "BIR lowering should narrow the widened lshr slice back to direct i8 BIR");
+  expect_contains(rendered, "bir.ret i8 %t0",
+                  "BIR lowering should return the narrowed i8 lshr result directly");
+}
+
 void test_bir_lowering_accepts_tiny_return_lshr_lir_slice() {
   const auto lowered = c4c::backend::lower_to_bir(make_bir_return_lshr_module());
   const auto rendered = c4c::backend::bir::print(lowered);
@@ -1619,6 +1631,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_tiny_return_or_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_xor_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_shl_lir_slice);
+  RUN_TEST(test_bir_lowering_accepts_i8_return_lshr);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_lshr_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_ashr_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_sdiv_lir_slice);

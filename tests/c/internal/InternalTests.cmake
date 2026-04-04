@@ -672,6 +672,15 @@ if(CLANG_EXECUTABLE)
     )
 
     c4c_add_backend_codegen_route_test(
+      backend_codegen_route_riscv64_return_lshr_u8_defaults_to_bir
+      SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/return_lshr_u8.c"
+      TARGET_TRIPLE riscv64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/return_lshr_u8_riscv64.ll"
+      REQUIRED_SNIPPETS "bir.func @choose_lshr_u() -> i8 {|%t0 = bir.lshr i8 16, 2|bir.ret i8 %t0"
+      FORBIDDEN_SNIPPETS "define i8 @choose_lshr_u()"
+    )
+
+    c4c_add_backend_codegen_route_test(
       backend_codegen_route_riscv64_return_ashr_defaults_to_bir
       SRC "${INTERNAL_C_TEST_ROOT}/backend_route_case/return_ashr.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu
