@@ -9,10 +9,28 @@ Source Plan: plan.md
 - [ ] Remove legacy backend IR files and backend/app LLVM rescue paths
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
-Current active item: Step 3, remove the direct-BIR conditional-return
-`BackendModule` scaffold crutch in the x86_64/aarch64 emitters and tighten the
-emit-header boundary so this slice no longer needs a legacy backend-module
-stand-in just to reuse target-triple symbol/prelude helpers.
+Current active item: Step 3, remove the last aarch64 direct-LIR/direct-BIR
+helper that still fabricates a legacy-style `BackendModule` solely for
+private-data/symbol reuse, starting with the remaining string-literal label
+path before switching into Step 4 legacy-path deletion.
+Completed in this slice: removed the remaining aarch64 direct-LIR fast-path
+`BackendModule` scaffolds for bounded constant-return/global-label helpers by
+threading `target_triple` directly into the minimal return, countdown, scalar
+global, extern-global, and global-pointer-diff asm helpers, while preserving
+the original backend-module symbol path for non-`main` lowered functions.
+Completed in this slice: added an explicit aarch64 regression proving the
+direct `aarch64::emit_module(LirModule)` extern-global-array surface still
+matches the explicit lowered backend-module seam byte-for-byte, so the
+scaffold-removal refactor stays pinned to the same native asm output.
+Completed in this slice: rebuilt the affected backend test binaries, reran the
+targeted `backend_lir_adapter_aarch64_tests` and `backend_bir_tests`, reran
+the required backend regression scope
+(`ctest --test-dir build -R backend --output-on-failure`), and reran the
+monotonic full-suite guard over `test_fail_before.log` versus a freshly
+regenerated `test_fail_after.log`, with `100% tests passed, 0 tests failed out
+of 394` for backend scope and guard result `PASS` with
+`before: passed=394 failed=0 total=394`,
+`after: passed=2833 failed=0 total=2833`, and `new failing tests: 0`.
 Completed in this slice: tightened both native emitter headers so
 `x86/codegen/emit.hpp` and `aarch64/codegen/emit.hpp` now forward-declare
 `c4c::codegen::lir::LirModule` instead of completing the full frontend LIR IR
@@ -182,8 +200,8 @@ full-suite guard with `test_before.log` vs `test_after.log`, with `100%
 tests passed, 0 tests failed out of 394` for backend scope and `100% tests
 passed, 0 tests failed out of 2833` before and after the full-suite
 comparison.
-Next target: if this scaffold-removal slice lands cleanly, continue Step 3 by
-removing the next direct-BIR emitter helper that still manufactures a legacy
-`BackendModule` solely for symbol/global-label/prelude reuse, starting with the
-remaining aarch64 direct-BIR affine/global-label convenience paths before
-starting Step 4 legacy-path deletion.
+Next target: continue Step 3 by removing the remaining aarch64
+string-literal/private-data convenience helper that still manufactures a
+legacy-style target stub solely for label reuse, then reassess whether any
+other direct-BIR/native-emitter symbol helpers remain before starting Step 4
+legacy-path deletion.
