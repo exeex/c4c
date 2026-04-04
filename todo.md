@@ -9,9 +9,9 @@ Source Plan: plan.md
 - [ ] Remove legacy backend IR files and backend/app LLVM rescue paths
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
-Current active item: Step 2, land the next bounded `lir_to_bir` coverage slice
-using a target-neutral route/lowering test before any target-specific emitter
-assertions.
+Current active item: Step 2, land the bounded native-emitter coverage slice
+for the new straight-line BIR cast family (`sext`/`zext`/`trunc`) on x86_64
+and aarch64.
 Completed in this slice: added a structured backend route-selection seam in
 `backend.hpp/.cpp` and covered legacy-LIR, BIR-LIR, direct-BIR, and pre-lowered
 legacy inputs without relying on `riscv64` passthrough text.
@@ -35,7 +35,7 @@ Completed in this slice: added explicit BIR cast support (`sext`/`zext`/`trunc`)
 to the straight-line scaffold, including printer/validator coverage plus
 target-neutral lowering and explicit BIR-pipeline tests for parameter-fed cast
 shapes that do not collapse into the older compare/immediate folds.
-Next target: extend native x86/aarch64 emitter coverage for the new BIR-owned
-straight-line cast shapes before picking the next lowering family; keep using
-`ctest -R backend` as the default regression gate and prefer one bounded cast
-family at a time.
+Next target: add x86_64 and aarch64 BIR-pipeline assertions for the existing
+straight-line cast fixtures, then fix any emitter gaps those tests expose
+before choosing the next lowering family; keep using `ctest -R backend` as the
+default regression gate and keep this slice bounded to the current cast family.

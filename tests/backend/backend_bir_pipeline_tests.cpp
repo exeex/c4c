@@ -127,7 +127,7 @@ void test_backend_bir_pipeline_routes_sext_through_bir_text_surface() {
       c4c::backend::BackendModuleInput{make_bir_return_sext_module()},
       make_bir_pipeline_options(c4c::backend::Target::Riscv64));
 
-  expect_contains(rendered, "bir.func @main(i32 %p.x) -> i64 {",
+  expect_contains(rendered, "bir.func @widen_signed(i32 %p.x) -> i64 {",
                   "explicit BIR selection should preserve the widened sext-return signature on the BIR text path");
   expect_contains(rendered, "%t0 = bir.sext i32 %p.x to i64",
                   "explicit BIR selection should expose the straight-line sext slice on the BIR text path");

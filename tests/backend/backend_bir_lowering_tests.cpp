@@ -573,7 +573,7 @@ void test_bir_lowering_accepts_tiny_return_sext_lir_slice() {
   const auto lowered = c4c::backend::lower_to_bir(make_bir_return_sext_module());
   const auto rendered = c4c::backend::bir::print(lowered);
 
-  expect_contains(rendered, "bir.func @main(i32 %p.x) -> i64 {",
+  expect_contains(rendered, "bir.func @widen_signed(i32 %p.x) -> i64 {",
                   "BIR lowering should preserve widened return signatures for straight-line sext slices");
   expect_contains(rendered, "%t0 = bir.sext i32 %p.x to i64",
                   "BIR lowering should materialize straight-line sext slices in BIR terms");
