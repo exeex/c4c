@@ -100,10 +100,50 @@ Goal: remove the now-obsolete backend IR and app-layer LLVM rescue behavior.
 
 Actions:
 
-- delete `lir_to_backend_ir.*`, `bir_to_backend_ir.*`, `ir.*`
-- remove legacy routing from `backend.cpp`
-- remove backend-facing LLVM rescue helpers from `c4cll`
-- convert unsupported backend asm into explicit backend errors
+- first remove bounded `c4cll` file-output LLVM asm fallback callers until no
+  real runtime/contract family still needs `--codegen asm -o <file>.s` rescue
+- then cut the production dependency chain rooted at
+  `lir_to_backend_ir.*`, including `lir_adapter.hpp`,
+  `extern_lowering.hpp`, and any remaining backend route selectors that still
+  manufacture or consume `BackendModule(ir.*)`
+- delete `lir_to_backend_ir.*`, any now-dead `bir_to_backend_ir.*` remnants,
+  and `ir.*` only after the surviving x86_64/aarch64 paths are proven BIR-only
+- remove legacy routing from `backend.cpp` and matching tests/build wiring in
+  the same bounded batch when those references become dead
+- keep unsupported backend asm behavior explicit and non-fallbacking on stdout
+  and file output throughout the cutover
+
+Current next slice for Step 4:
+
+- audit every remaining `--codegen asm -o <file>.s` caller in runtime tests,
+  contract tests, and app-layer code paths
+- classify each remaining file-output user as either:
+  already backend-native and ready to convert,
+  still blocked on a bounded backend matcher/emitter gap, or
+  obsolete once `c4cll` fallback is removed
+- land one bounded cleanup batch that does all of the following together:
+  rehome every already-native caller to stdout-native coverage,
+  remove the corresponding `c4cll` fallback branch if no real caller remains,
+  and update focused tests so the batch proves an actual surface reduction
+
+Batch completion check:
+
+- the remaining file-output rescue users are enumerated explicitly
+- at least one non-trivial fallback branch or caller family disappears in the
+  same slice
+- the slice reduces both production fallback code and its matching test
+  assumptions, rather than only renaming or probing one case
+
+Step 4 commit quality bar:
+
+- do not treat test-only or probe-only commits as meaningful Step 4 progress
+- every Step 4 implementation commit should remove or tighten at least one
+  live production legacy path, fallback branch, or build-wired legacy caller
+- when tests are added or migrated in Step 4, they should accompany the
+  production deletion in the same bounded batch rather than stand alone as the
+  whole slice
+- if a slice cannot yet delete a production seam, keep it framed as audit or
+  preparation work rather than claiming Step 4 removal progress
 
 Completion Check:
 
