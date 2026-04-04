@@ -1087,19 +1087,34 @@ void test_x86_backend_scaffold_rejects_string_literal_fast_path_when_address_kin
                   "x86 backend seam should stop matching the string-literal asm slice when structured address provenance no longer names a string constant");
 }
 
-void test_x86_backend_scaffold_accepts_explicit_lowered_extern_global_load_ir_input() {
-  const auto lowered =
-      c4c::backend::lower_lir_to_backend_module(make_x86_extern_global_load_module());
+void test_x86_backend_renders_extern_global_load_slice() {
   const auto rendered = c4c::backend::emit_module(
-      lowered,
+      c4c::backend::BackendModuleInput{make_x86_extern_global_load_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
+  expect_contains(rendered, ".intel_syntax noprefix\n",
+                  "x86 backend should lower the extern scalar global-load slice to assembly");
+  expect_contains(rendered, ".globl main\n",
+                  "x86 backend should still publish main as the entry symbol for extern scalar loads");
   expect_contains(rendered, "lea rax, ext_counter[rip]\n",
-                  "x86 backend seam should materialize explicit backend-IR extern scalar globals directly");
+                  "x86 backend should materialize extern scalar globals through RIP-relative addressing");
   expect_contains(rendered, "mov eax, dword ptr [rax]\n",
-                  "x86 backend seam should lower explicit backend-IR extern scalar loads directly");
+                  "x86 backend should load the extern scalar global value into eax");
+  expect_contains(rendered, "ret\n",
+                  "x86 backend should return the bounded extern scalar global-load result");
   expect_not_contains(rendered, "target triple =",
-                      "x86 backend seam should not fall back to backend IR text for lowered extern scalar loads");
+                      "x86 backend should no longer fall back to LLVM text for the bounded extern scalar global-load slice");
+}
+
+void test_x86_backend_scaffold_matches_direct_extern_global_load_asm() {
+  const auto direct_rendered = c4c::backend::x86::emit_module(make_x86_extern_global_load_module());
+  const auto lowered =
+      c4c::backend::lower_lir_to_backend_module(make_x86_extern_global_load_module());
+  const auto lowered_rendered = c4c::backend::x86::emit_module(lowered);
+
+  if (direct_rendered != lowered_rendered) {
+    fail("x86 extern-global-load regression should keep the direct LIR and explicit lowered backend seams on identical assembly output");
+  }
 }
 
 void test_x86_backend_scaffold_accepts_structured_extern_global_load_ir_without_type_shims() {
@@ -5552,7 +5567,8 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_string_literal_ir_without_type_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_string_literal_ir_without_signature_or_type_shims);
   RUN_TEST(test_x86_backend_scaffold_rejects_string_literal_fast_path_when_address_kind_disagrees);
-  RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_extern_global_load_ir_input);
+  RUN_TEST(test_x86_backend_renders_extern_global_load_slice);
+  RUN_TEST(test_x86_backend_scaffold_matches_direct_extern_global_load_asm);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_extern_global_load_ir_without_type_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_extern_global_load_ir_without_raw_global_type_text);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_extern_global_load_ir_without_legacy_shims);

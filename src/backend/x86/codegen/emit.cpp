@@ -202,6 +202,7 @@ struct MinimalCountdownLoopSlice {
 };
 
 struct MinimalLocalArraySlice;
+struct MinimalExternScalarGlobalLoadSlice;
 struct MinimalExternGlobalArrayLoadSlice;
 struct MinimalGlobalCharPointerDiffSlice;
 struct MinimalGlobalIntPointerDiffSlice;
@@ -219,6 +220,9 @@ std::string emit_minimal_local_array_asm(std::string_view target_triple,
 std::string emit_minimal_extern_global_array_load_asm(
     std::string_view target_triple,
     const MinimalExternGlobalArrayLoadSlice& slice);
+std::string emit_minimal_extern_scalar_global_load_asm(
+    std::string_view target_triple,
+    const MinimalExternScalarGlobalLoadSlice& slice);
 std::string emit_minimal_global_char_pointer_diff_asm(
     std::string_view target_triple,
     const MinimalGlobalCharPointerDiffSlice& slice);
@@ -2376,6 +2380,44 @@ std::optional<MinimalExternGlobalArrayLoadSlice> parse_minimal_extern_global_arr
   return MinimalExternGlobalArrayLoadSlice{global.name, *element_index * 4};
 }
 
+std::optional<MinimalExternScalarGlobalLoadSlice> parse_minimal_extern_scalar_global_load_slice(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || module.globals.size() != 1 ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& global = module.globals.front();
+  if (global.is_internal || global.is_const || !global.is_extern_decl ||
+      global.linkage_vis != "external " || global.qualifier != "global " ||
+      global.llvm_type != "i32" || !global.init_text.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(function.signature_text) ||
+      function.entry.value != 0 || function.blocks.size() != 1 ||
+      !function.alloca_insts.empty() || !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  const auto* load =
+      entry.insts.size() == 1 ? std::get_if<LirLoadOp>(&entry.insts.front()) : nullptr;
+  const auto* ret = std::get_if<LirRet>(&entry.terminator);
+  if (entry.label != "entry" || load == nullptr || ret == nullptr ||
+      load->type_str != "i32" || load->ptr != ("@" + global.name) ||
+      !ret->value_str.has_value() || *ret->value_str != load->result ||
+      ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  return MinimalExternScalarGlobalLoadSlice{global.name};
+}
+
 std::optional<MinimalExternGlobalArrayLoadSlice> parse_minimal_extern_global_array_load_slice(
     const c4c::backend::BackendModule& module) {
   if (module.functions.size() != 1 || module.globals.size() != 1) {
@@ -4441,8 +4483,14 @@ std::string emit_minimal_extern_global_array_load_asm(
 std::string emit_minimal_extern_scalar_global_load_asm(
     const c4c::backend::BackendModule& module,
     const MinimalExternScalarGlobalLoadSlice& slice) {
-  const std::string global_symbol = asm_symbol_name(module, slice.global_name);
-  const std::string main_symbol = asm_symbol_name(module, "main");
+  return emit_minimal_extern_scalar_global_load_asm(module.target_triple, slice);
+}
+
+std::string emit_minimal_extern_scalar_global_load_asm(
+    std::string_view target_triple,
+    const MinimalExternScalarGlobalLoadSlice& slice) {
+  const std::string global_symbol = asm_symbol_name(target_triple, slice.global_name);
+  const std::string main_symbol = asm_symbol_name(target_triple, "main");
 
   std::ostringstream out;
   out << ".intel_syntax noprefix\n";
@@ -4956,6 +5004,10 @@ std::optional<std::string> try_emit_direct_lir_module(
     if (const auto slice = parse_minimal_local_array_slice(module);
         slice.has_value()) {
       return emit_minimal_local_array_asm(module.target_triple, *slice);
+    }
+    if (const auto slice = parse_minimal_extern_scalar_global_load_slice(module);
+        slice.has_value()) {
+      return emit_minimal_extern_scalar_global_load_asm(module.target_triple, *slice);
     }
     if (const auto slice = parse_minimal_extern_global_array_load_slice(module);
         slice.has_value()) {

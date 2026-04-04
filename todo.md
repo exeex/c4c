@@ -9,11 +9,11 @@ Source Plan: plan.md
 - [ ] Remove legacy backend IR files and backend/app LLVM rescue paths
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
-Current active item: Step 4 x86 emitter tightening. Remove the bounded
-return-immediate/add/sub dependency on `lower_lir_to_backend_module(...)`
+Current active item: Step 4 x86 emitter tightening. Remove the next bounded
+direct-call or global-family dependency on `lower_lir_to_backend_module(...)`
 inside [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
-so the explicit x86 LIR emit surface can stay on BIR/native parsing for those
-shapes instead of using legacy backend IR as the recognizer.
+so the direct x86 LIR emit surface keeps shrinking live legacy-lowering
+ownership one production seam at a time.
 
 Completed in this slice:
 
@@ -32,17 +32,26 @@ Completed in this slice:
   longer depend on legacy backend IR as their first fallback
 - proved the new BIR-first direct-LIR seam with a cast-return regression in
   [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
+- added a direct-LIR x86 parser/emitter path for the bounded extern scalar
+  global-load family in
+  [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+  so that family no longer needs `lower_lir_to_backend_module(...)` on the
+  direct x86 entrypoint
+- replaced the old explicit-lowered extern scalar global-load proof with a
+  direct render test plus direct-vs-lowered parity coverage in
+  [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
 
 Next slice:
 
-- continue shrinking the remaining x86 emitter-local `lower_lir_to_backend_module(...)`
-  fallback for direct-call/global families that are still not covered by the
-  direct-LIR parser set or the direct-BIR emit path
-- prefer the next family where one explicit x86 emitter-local
-  `lower_lir_to_backend_module(...)` dependency can be deleted entirely rather
-  than only bypassed for BIR-lowerable slices
+- continue shrinking the remaining x86 emitter-local
+  `lower_lir_to_backend_module(...)` fallback for the next direct-call or
+  global family that still lacks a direct-LIR parser path
+- prefer the next family where the direct x86 LIR entrypoint can delete one
+  more live production dependency instead of only adding probe coverage
+- keep any remaining lowered-backend tests scoped to compatibility seams that
+  still exist after the production deletion
 - prove the deletion with focused x86 backend tests and
-  `ctest --test-dir build -R backend --output-on-failure`
+  `ctest --test-dir build -R backend -j1 --output-on-failure`
 
 Step 4 remaining surface:
 
@@ -77,7 +86,11 @@ Acceptance bar for the next Step 4 commit:
 Recent baseline:
 
 - blocker: none
-- backend regression scope is currently green at `402` passed / `0` failed
+- backend regression scope is currently green at `402` passed / `0` failed via
+  `ctest --test-dir build -R backend -j1 --output-on-failure`
+- plain `ctest --test-dir build -R backend --output-on-failure` was flaky in
+  this run and reported transient `c_testsuite_aarch64_backend_*` failures,
+  but the serial rerun was fully green
 - this slice kept the backend scope monotonic at `402` passed / `0` failed
 - latest Step 4 follow-through tightened the x86 explicit LIR surface so
   bounded return families no longer need the x86 post-adaptation legacy
@@ -86,3 +99,6 @@ Recent baseline:
   BIR emission before legacy backend-IR lowering, which removes one live
   production dependency on `lower_lir_to_backend_module(...)` for
   BIR-lowerable cast/return slices
+- latest Step 4 follow-through also removes the bounded extern scalar
+  global-load dependency on `lower_lir_to_backend_module(...)` from the direct
+  x86 LIR entrypoint
