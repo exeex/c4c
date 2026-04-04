@@ -10,8 +10,16 @@ Source Plan: plan.md
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
 Current active item: Step 2, land the bounded native-emitter coverage slice
-for the direct-BIR compare-fed integer `select` return family on x86_64 and
-aarch64.
+for direct-BIR x86_64/aarch64 handling of a compare-fed `bir.select`/join shape
+with a short post-join arithmetic tail.
+Completed in this slice: taught the direct-BIR x86_64 and aarch64 emitter
+entrypoints to accept the bounded widened `i8` compare-fed `bir.select`
+family with predecessor-local add chains and a short post-select arithmetic
+tail, without routing through legacy backend IR adaptation.
+Completed in this slice: added explicit direct-BIR x86_64 and aarch64
+pipeline coverage for the narrow `choose2_add_post_ne_u` fixture so the new
+native path is exercised at the backend seam instead of only through the
+legacy-backend-module surface.
 Completed in this slice: added a structured backend route-selection seam in
 `backend.hpp/.cpp` and covered legacy-LIR, BIR-LIR, direct-BIR, and pre-lowered
 legacy inputs without relying on `riscv64` passthrough text.
@@ -51,7 +59,8 @@ conditional-select path so the native emitters now accept the bounded
 parameter-fed `bir.select` family as direct input, including one-parameter
 immediate-arm and two-parameter value-select shapes, with explicit pipeline
 coverage for both targets.
-Next target: extend direct native-emitter ownership from the current pure
-`bir.select` return family to the next join-shaped BIR slice, likely a bounded
-post-select arithmetic tail or richer phi-join-derived select family, before
-widening the legacy-IR removal surface.
+Next target: start with the narrowest existing bounded join fixture family that
+already has target-neutral BIR route coverage beyond the single-add `u8`
+slice, add explicit direct-BIR x86_64 and aarch64 pipeline tests for it, then
+extend both native emitters to cover the next short post-select tail shape
+without falling back to legacy backend IR.

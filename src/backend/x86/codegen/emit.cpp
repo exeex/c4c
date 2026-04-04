@@ -103,6 +103,36 @@ struct MinimalConditionalPhiJoinSlice {
   std::optional<std::int64_t> join_add_imm;
 };
 
+struct MinimalConditionalAffineI8ReturnSlice {
+  enum class ValueKind : unsigned char {
+    Immediate,
+    Param0,
+    Param1,
+  };
+
+  struct ArithmeticStep {
+    c4c::backend::bir::BinaryOpcode opcode = c4c::backend::bir::BinaryOpcode::Add;
+    std::int64_t imm = 0;
+  };
+
+  struct ValueExpr {
+    ValueKind kind = ValueKind::Immediate;
+    std::int64_t imm = 0;
+    std::vector<ArithmeticStep> steps;
+  };
+
+  std::string function_name;
+  c4c::codegen::lir::LirCmpPredicate predicate = c4c::codegen::lir::LirCmpPredicate::Eq;
+  ValueExpr lhs;
+  ValueExpr rhs;
+  std::string true_label;
+  std::string false_label;
+  std::string join_label;
+  ValueExpr true_value;
+  ValueExpr false_value;
+  std::vector<ArithmeticStep> post_steps;
+};
+
 struct MinimalCastReturnSlice {
   std::string function_name;
   c4c::backend::bir::CastOpcode opcode = c4c::backend::bir::CastOpcode::SExt;
@@ -236,6 +266,35 @@ std::optional<MinimalConditionalReturnSlice::ValueSource> lower_bir_i32_value_so
     };
   }
   return std::nullopt;
+}
+
+std::optional<MinimalConditionalAffineI8ReturnSlice::ValueExpr> lower_bir_i8_value_expr(
+    const c4c::backend::bir::Value& value,
+    const std::vector<c4c::backend::bir::Param>& params,
+    const std::unordered_map<std::string, MinimalConditionalAffineI8ReturnSlice::ValueExpr>&
+        values) {
+  using ValueExpr = MinimalConditionalAffineI8ReturnSlice::ValueExpr;
+  using ValueKind = MinimalConditionalAffineI8ReturnSlice::ValueKind;
+
+  if (value.type != c4c::backend::bir::TypeKind::I8) {
+    return std::nullopt;
+  }
+  if (value.kind == c4c::backend::bir::Value::Kind::Immediate) {
+    return ValueExpr{ValueKind::Immediate, value.immediate, {}};
+  }
+  if (!params.empty() && params[0].type == c4c::backend::bir::TypeKind::I8 &&
+      value.name == params[0].name) {
+    return ValueExpr{ValueKind::Param0, 0, {}};
+  }
+  if (params.size() > 1 && params[1].type == c4c::backend::bir::TypeKind::I8 &&
+      value.name == params[1].name) {
+    return ValueExpr{ValueKind::Param1, 0, {}};
+  }
+  const auto it = values.find(value.name);
+  if (it == values.end()) {
+    return std::nullopt;
+  }
+  return it->second;
 }
 
 struct AffineValue {
@@ -1044,6 +1103,140 @@ std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_sl
       "select_false",
       *true_value,
       *false_value,
+  };
+}
+
+std::optional<MinimalConditionalAffineI8ReturnSlice> parse_minimal_conditional_affine_i8_return_slice(
+    const c4c::backend::bir::Module& module) {
+  using Slice = MinimalConditionalAffineI8ReturnSlice;
+  using ValueExpr = MinimalConditionalAffineI8ReturnSlice::ValueExpr;
+
+  if (module.functions.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration || function.return_type != c4c::backend::bir::TypeKind::I8 ||
+      function.blocks.size() != 1 || function.params.size() != 2) {
+    return std::nullopt;
+  }
+  for (const auto& param : function.params) {
+    if (param.type != c4c::backend::bir::TypeKind::I8 || param.name.empty()) {
+      return std::nullopt;
+    }
+  }
+
+  const auto& block = function.blocks.front();
+  if (block.label != "entry" || block.insts.empty() || !block.terminator.value.has_value()) {
+    return std::nullopt;
+  }
+
+  std::unordered_map<std::string, ValueExpr> prefix_values;
+  std::size_t select_index = 0;
+  const c4c::backend::bir::SelectInst* select = nullptr;
+  for (; select_index < block.insts.size(); ++select_index) {
+    if (const auto* current_select =
+            std::get_if<c4c::backend::bir::SelectInst>(&block.insts[select_index])) {
+      select = current_select;
+      break;
+    }
+
+    const auto* binary = get_binary_inst(block.insts[select_index]);
+    if (binary == nullptr || binary->result.kind != c4c::backend::bir::Value::Kind::Named ||
+        binary->result.type != c4c::backend::bir::TypeKind::I8 || binary->result.name.empty()) {
+      return std::nullopt;
+    }
+    auto lhs = lower_bir_i8_value_expr(binary->lhs, function.params, prefix_values);
+    auto rhs = lower_bir_i8_value_expr(binary->rhs, function.params, prefix_values);
+    if (!lhs.has_value() || !rhs.has_value()) {
+      return std::nullopt;
+    }
+
+    ValueExpr combined;
+    if (rhs->kind == Slice::ValueKind::Immediate && rhs->steps.empty()) {
+      combined = *lhs;
+      combined.steps.push_back({binary->opcode, rhs->imm});
+    } else if (binary->opcode == c4c::backend::bir::BinaryOpcode::Add &&
+               lhs->kind == Slice::ValueKind::Immediate && lhs->steps.empty()) {
+      combined = *rhs;
+      combined.steps.push_back({binary->opcode, lhs->imm});
+    } else {
+      return std::nullopt;
+    }
+    prefix_values[binary->result.name] = std::move(combined);
+  }
+
+  if (select == nullptr || select_index >= block.insts.size() ||
+      select->result.kind != c4c::backend::bir::Value::Kind::Named ||
+      select->result.type != c4c::backend::bir::TypeKind::I8 || select->result.name.empty()) {
+    return std::nullopt;
+  }
+
+  const auto predicate = lower_bir_cmp_predicate(select->predicate);
+  const auto lhs = lower_bir_i8_value_expr(select->lhs, function.params, prefix_values);
+  const auto rhs = lower_bir_i8_value_expr(select->rhs, function.params, prefix_values);
+  const auto true_value =
+      lower_bir_i8_value_expr(select->true_value, function.params, prefix_values);
+  const auto false_value =
+      lower_bir_i8_value_expr(select->false_value, function.params, prefix_values);
+  if (!predicate.has_value() || !lhs.has_value() || !rhs.has_value() ||
+      !true_value.has_value() || !false_value.has_value() || !lhs->steps.empty() ||
+      !rhs->steps.empty()) {
+    return std::nullopt;
+  }
+
+  std::string current_name = select->result.name;
+  std::vector<Slice::ArithmeticStep> post_steps;
+  for (std::size_t index = select_index + 1; index < block.insts.size(); ++index) {
+    const auto* binary = get_binary_inst(block.insts[index]);
+    if (binary == nullptr || binary->result.kind != c4c::backend::bir::Value::Kind::Named ||
+        binary->result.type != c4c::backend::bir::TypeKind::I8 || binary->result.name.empty()) {
+      return std::nullopt;
+    }
+
+    const bool lhs_is_current =
+        binary->lhs.kind == c4c::backend::bir::Value::Kind::Named &&
+        binary->lhs.type == c4c::backend::bir::TypeKind::I8 && binary->lhs.name == current_name;
+    const bool rhs_is_current =
+        binary->rhs.kind == c4c::backend::bir::Value::Kind::Named &&
+        binary->rhs.type == c4c::backend::bir::TypeKind::I8 && binary->rhs.name == current_name;
+    if (lhs_is_current == rhs_is_current) {
+      return std::nullopt;
+    }
+
+    std::optional<std::int64_t> immediate;
+    if (lhs_is_current && binary->rhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+        binary->rhs.type == c4c::backend::bir::TypeKind::I8) {
+      immediate = binary->rhs.immediate;
+    } else if (rhs_is_current && binary->opcode == c4c::backend::bir::BinaryOpcode::Add &&
+               binary->lhs.kind == c4c::backend::bir::Value::Kind::Immediate &&
+               binary->lhs.type == c4c::backend::bir::TypeKind::I8) {
+      immediate = binary->lhs.immediate;
+    } else {
+      return std::nullopt;
+    }
+
+    post_steps.push_back({binary->opcode, *immediate});
+    current_name = binary->result.name;
+  }
+
+  if (block.terminator.value->kind != c4c::backend::bir::Value::Kind::Named ||
+      block.terminator.value->type != c4c::backend::bir::TypeKind::I8 ||
+      block.terminator.value->name != current_name) {
+    return std::nullopt;
+  }
+
+  return Slice{
+      function.name,
+      *predicate,
+      *lhs,
+      *rhs,
+      "select_true",
+      "select_false",
+      "select_join",
+      *true_value,
+      *false_value,
+      std::move(post_steps),
   };
 }
 
@@ -3066,6 +3259,96 @@ std::string emit_minimal_conditional_return_asm(
   return out.str();
 }
 
+std::string emit_minimal_conditional_affine_i8_return_asm(
+    const c4c::backend::BackendModule& module,
+    const MinimalConditionalAffineI8ReturnSlice& slice) {
+  auto emit_compare_source_to_al = [](std::ostringstream& out,
+                                      const MinimalConditionalAffineI8ReturnSlice::ValueExpr& value) {
+    switch (value.kind) {
+      case MinimalConditionalAffineI8ReturnSlice::ValueKind::Immediate:
+        out << "  mov al, " << value.imm << "\n";
+        return;
+      case MinimalConditionalAffineI8ReturnSlice::ValueKind::Param0:
+        out << "  mov al, dil\n";
+        return;
+      case MinimalConditionalAffineI8ReturnSlice::ValueKind::Param1:
+        out << "  mov al, sil\n";
+        return;
+    }
+  };
+  auto cmp_rhs_operand = [](const MinimalConditionalAffineI8ReturnSlice::ValueExpr& value) {
+    switch (value.kind) {
+      case MinimalConditionalAffineI8ReturnSlice::ValueKind::Immediate:
+        return std::to_string(value.imm);
+      case MinimalConditionalAffineI8ReturnSlice::ValueKind::Param0:
+        return std::string("dil");
+      case MinimalConditionalAffineI8ReturnSlice::ValueKind::Param1:
+        return std::string("sil");
+    }
+    return std::string("0");
+  };
+  auto emit_value_expr_to_eax =
+      [](std::ostringstream& out, const MinimalConditionalAffineI8ReturnSlice::ValueExpr& value) {
+        switch (value.kind) {
+          case MinimalConditionalAffineI8ReturnSlice::ValueKind::Immediate:
+            out << "  mov eax, " << value.imm << "\n";
+            break;
+          case MinimalConditionalAffineI8ReturnSlice::ValueKind::Param0:
+            out << "  movzx eax, dil\n";
+            break;
+          case MinimalConditionalAffineI8ReturnSlice::ValueKind::Param1:
+            out << "  movzx eax, sil\n";
+            break;
+        }
+        for (const auto& step : value.steps) {
+          out << "  "
+              << (step.opcode == c4c::backend::bir::BinaryOpcode::Sub ? "sub" : "add")
+              << " eax, " << step.imm << "\n";
+        }
+      };
+
+  const std::string symbol = asm_symbol_name(module, slice.function_name);
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n";
+  out << ".text\n";
+  out << ".globl " << symbol << "\n";
+  out << symbol << ":\n";
+
+  const char* fail_branch = nullptr;
+  switch (slice.predicate) {
+    case c4c::codegen::lir::LirCmpPredicate::Slt: fail_branch = "jge"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Sle: fail_branch = "jg"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Sgt: fail_branch = "jle"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Sge: fail_branch = "jl"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Eq: fail_branch = "jne"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Ne: fail_branch = "je"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Ult: fail_branch = "jae"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Ule: fail_branch = "ja"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Ugt: fail_branch = "jbe"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Uge: fail_branch = "jb"; break;
+    default:
+      throw c4c::backend::LirAdapterError(
+          c4c::backend::LirAdapterErrorKind::Unsupported,
+          "conditional-i8-affine-return predicates outside the current compare-and-branch x86 slice");
+  }
+
+  emit_compare_source_to_al(out, slice.lhs);
+  out << "  cmp al, " << cmp_rhs_operand(slice.rhs) << "\n";
+  out << "  " << fail_branch << " .L" << slice.false_label << "\n";
+  out << ".L" << slice.true_label << ":\n";
+  emit_value_expr_to_eax(out, slice.true_value);
+  out << "  jmp .L" << slice.join_label << "\n";
+  out << ".L" << slice.false_label << ":\n";
+  emit_value_expr_to_eax(out, slice.false_value);
+  out << ".L" << slice.join_label << ":\n";
+  for (const auto& step : slice.post_steps) {
+    out << "  " << (step.opcode == c4c::backend::bir::BinaryOpcode::Sub ? "sub" : "add")
+        << " eax, " << step.imm << "\n";
+  }
+  out << "  ret\n";
+  return out.str();
+}
+
 std::string emit_minimal_countdown_loop_asm(const c4c::backend::BackendModule& module,
                                             const MinimalCountdownLoopSlice& slice) {
   const std::string symbol = asm_symbol_name(module, "main");
@@ -3636,6 +3919,12 @@ std::string emit_module(const c4c::backend::bir::Module& module,
     c4c::backend::BackendModule scaffold_module;
     scaffold_module.target_triple = module.target_triple;
     return emit_minimal_conditional_return_asm(scaffold_module, *slice);
+  }
+  if (const auto slice = parse_minimal_conditional_affine_i8_return_slice(module);
+      slice.has_value()) {
+    c4c::backend::BackendModule scaffold_module;
+    scaffold_module.target_triple = module.target_triple;
+    return emit_minimal_conditional_affine_i8_return_asm(scaffold_module, *slice);
   }
   throw_unsupported_direct_bir_module();
 }
