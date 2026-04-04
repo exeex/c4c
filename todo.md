@@ -10,12 +10,45 @@ Source Plan: plan.md
 - [ ] Revalidate backend and full-suite behavior without fallback
 
 Current active item: Step 2, continue the bounded zero-parameter widened
-signed-relational compare-return parity family by auditing `return_sgt_u8` as
-the next smallest adjacent gap after the landed `return_sle_u8` slice.
-Next target: if `return_sgt_u8` lands cleanly, continue the adjacent signed
-relational widened compare-return matrix in `tests/c/internal/InternalTests.cmake`
-toward `return_sge_u8`; otherwise isolate the next frontend-shaped widened
-compare-return lowering gap uncovered by the new route test.
+signed-relational compare-return parity family by auditing `return_sge_u8` as
+the next smallest adjacent gap after the landed `return_sgt_u8` slice.
+Next target: if `return_sge_u8` lands cleanly, continue auditing the remaining
+adjacent widened signed compare-return matrix in
+`tests/c/internal/InternalTests.cmake`; otherwise isolate the next
+frontend-shaped widened compare-return lowering gap uncovered by the new route
+test.
+
+Completed this iteration:
+- Re-audited the zero-parameter widened compare-return inventory in
+  `tests/c/internal/InternalTests.cmake` and confirmed the next adjacent signed
+  relational parity gap after the landed `return_sle_u8` slice was
+  `return_sgt_u8`.
+- Added `tests/c/internal/backend_route_case/return_sgt_u8.c`, proving the
+  bounded zero-parameter `unsigned char` wrapper around a signed-`char`
+  greater-than compare is available to the backend-route harness.
+- Registered
+  `backend_codegen_route_riscv64_return_sgt_u8_defaults_to_bir` in
+  `tests/c/internal/InternalTests.cmake`, asserting the emitted text contains
+  `bir.func @choose_sgt_u() -> i8 {`, `bir.sgt i8 7, 3`, `bir.ret i8 %t5`, and
+  forbids legacy LLVM IR `define i8 @choose_sgt_u()`.
+- Added `make_bir_i8_return_sgt_module()` to
+  `tests/backend/backend_bir_test_support.*` plus
+  `test_bir_lowering_accepts_i8_return_sgt()` in
+  `tests/backend/backend_bir_lowering_tests.cpp` to keep the widened signed
+  compare-return `sgt` shape covered below the backend-route harness.
+- Confirmed the new coverage passed without any
+  `src/backend/lowering/lir_to_bir.cpp` change; the existing widened-`i8`
+  compare-return lowering already handled the signed-greater-than predicate
+  correctly.
+- Rebuilt the tree, reran `backend_bir_tests`, reran
+  `backend_codegen_route_riscv64_return_sgt_u8_defaults_to_bir`, reran
+  `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `370/370` backend-labeled tests passing, then refreshed
+  `test_fail_after.log` with a full `ctest --test-dir build -j8 --output-on-failure`
+  run and passed the regression guard against `test_fail_before.log` with
+  `--allow-non-decreasing-passed --timeout-threshold 30 --enforce-timeout`
+  (`2800 -> 2808` passed, `0 -> 0` failed, no newly failing tests, no new
+  `>30s` cases).
 
 Completed this iteration:
 - Re-audited the zero-parameter widened compare-return inventory in

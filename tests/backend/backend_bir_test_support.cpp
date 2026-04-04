@@ -502,6 +502,36 @@ c4c::codegen::lir::LirModule make_bir_i8_return_sle_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_bir_i8_return_sgt_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "riscv64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+
+  LirFunction function;
+  function.name = "choose_sgt_u";
+  function.signature_text = "define i8 @choose_sgt_u()\n";
+  function.return_type.base = c4c::TB_UCHAR;
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCastOp{"%t0", LirCastKind::Trunc, "i32", "7", "i8"});
+  entry.insts.push_back(LirCastOp{"%t1", LirCastKind::Trunc, "i32", "3", "i8"});
+  entry.insts.push_back(LirCastOp{"%t2", LirCastKind::SExt, "i8", "%t0", "i32"});
+  entry.insts.push_back(LirCastOp{"%t3", LirCastKind::SExt, "i8", "%t1", "i32"});
+  entry.insts.push_back(LirCmpOp{"%t4", false, "sgt", "i32", "%t2", "%t3"});
+  entry.insts.push_back(LirCastOp{"%t5", LirCastKind::ZExt, "i1", "%t4", "i32"});
+  entry.insts.push_back(LirCastOp{"%t6", LirCastKind::Trunc, "i32", "%t5", "i8"});
+  entry.terminator = LirRet{std::string("%t6"), "i8"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_bir_i8_return_immediate_module() {
   using namespace c4c::codegen::lir;
 
