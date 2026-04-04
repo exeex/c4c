@@ -3742,6 +3742,16 @@ void test_x86_backend_renders_local_array_slice() {
                       "x86 backend should stop falling back to LLVM text for the bounded local-array slice");
 }
 
+void test_x86_backend_scaffold_matches_direct_local_array_asm() {
+  const auto direct_rendered = c4c::backend::x86::emit_module(make_local_array_gep_module());
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(make_local_array_gep_module());
+  const auto lowered_rendered = c4c::backend::x86::emit_module(lowered);
+
+  if (direct_rendered != lowered_rendered) {
+    fail("x86 local-array regression should keep the direct LIR and explicit lowered backend seams on identical assembly output");
+  }
+}
+
 void test_x86_backend_renders_global_load_slice() {
   auto module = make_global_load_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -3781,6 +3791,17 @@ void test_x86_backend_renders_global_store_reload_slice() {
                   "x86 backend should reload the scalar global value after the store");
   expect_not_contains(rendered, "target triple =",
                       "x86 backend should stop falling back to LLVM text for the bounded global store-reload slice");
+}
+
+void test_x86_backend_scaffold_matches_direct_global_store_reload_asm() {
+  const auto direct_rendered = c4c::backend::x86::emit_module(make_x86_global_store_reload_module());
+  const auto lowered =
+      c4c::backend::lower_lir_to_backend_module(make_x86_global_store_reload_module());
+  const auto lowered_rendered = c4c::backend::x86::emit_module(lowered);
+
+  if (direct_rendered != lowered_rendered) {
+    fail("x86 global-store-reload regression should keep the direct LIR and explicit lowered backend seams on identical assembly output");
+  }
 }
 
 void test_x86_backend_uses_shared_regalloc_for_call_crossing_direct_call_slice() {
@@ -4402,6 +4423,18 @@ void test_x86_backend_renders_extern_global_array_slice() {
                       "x86 backend should no longer fall back to LLVM text for the extern global array slice");
 }
 
+void test_x86_backend_scaffold_matches_direct_extern_global_array_asm() {
+  const auto direct_rendered =
+      c4c::backend::x86::emit_module(make_x86_extern_global_array_load_module());
+  const auto lowered =
+      c4c::backend::lower_lir_to_backend_module(make_x86_extern_global_array_load_module());
+  const auto lowered_rendered = c4c::backend::x86::emit_module(lowered);
+
+  if (direct_rendered != lowered_rendered) {
+    fail("x86 extern-global-array regression should keep the direct LIR and explicit lowered backend seams on identical assembly output");
+  }
+}
+
 void test_x86_backend_renders_extern_decl_object_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_x86_extern_decl_object_module()},
@@ -4688,6 +4721,18 @@ void test_x86_backend_renders_global_char_pointer_diff_slice() {
                       "x86 backend should no longer fall back to LLVM text for the bounded global char pointer-difference slice");
 }
 
+void test_x86_backend_scaffold_matches_direct_global_char_pointer_diff_asm() {
+  const auto direct_rendered =
+      c4c::backend::x86::emit_module(make_x86_global_char_pointer_diff_module());
+  const auto lowered =
+      c4c::backend::lower_lir_to_backend_module(make_x86_global_char_pointer_diff_module());
+  const auto lowered_rendered = c4c::backend::x86::emit_module(lowered);
+
+  if (direct_rendered != lowered_rendered) {
+    fail("x86 global-char-pointer-diff regression should keep the direct LIR and explicit lowered backend seams on identical assembly output");
+  }
+}
+
 void test_x86_backend_renders_global_char_pointer_diff_slice_from_typed_ops() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_typed_x86_global_char_pointer_diff_module()},
@@ -4738,6 +4783,18 @@ void test_x86_backend_renders_global_int_pointer_diff_slice() {
                   "x86 backend should return the bounded scaled pointer-difference comparison result");
   expect_not_contains(rendered, "getelementptr",
                       "x86 backend should no longer fall back to LLVM text for the bounded global int pointer-difference slice");
+}
+
+void test_x86_backend_scaffold_matches_direct_global_int_pointer_diff_asm() {
+  const auto direct_rendered =
+      c4c::backend::x86::emit_module(make_x86_global_int_pointer_diff_module());
+  const auto lowered =
+      c4c::backend::lower_lir_to_backend_module(make_x86_global_int_pointer_diff_module());
+  const auto lowered_rendered = c4c::backend::x86::emit_module(lowered);
+
+  if (direct_rendered != lowered_rendered) {
+    fail("x86 global-int-pointer-diff regression should keep the direct LIR and explicit lowered backend seams on identical assembly output");
+  }
 }
 
 void test_x86_backend_renders_global_int_pointer_diff_slice_from_typed_ops() {
@@ -5384,8 +5441,10 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_both_local_second_rewrite_slice);
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_both_local_double_rewrite_slice);
   RUN_TEST(test_x86_backend_renders_local_array_slice);
+  RUN_TEST(test_x86_backend_scaffold_matches_direct_local_array_asm);
   RUN_TEST(test_x86_backend_renders_global_load_slice);
   RUN_TEST(test_x86_backend_renders_global_store_reload_slice);
+  RUN_TEST(test_x86_backend_scaffold_matches_direct_global_store_reload_asm);
   RUN_TEST(test_x86_backend_uses_shared_regalloc_for_call_crossing_direct_call_slice);
   RUN_TEST(test_x86_backend_cleans_up_redundant_self_move_on_call_crossing_slice);
   RUN_TEST(test_x86_backend_keeps_spacing_tolerant_call_crossing_slice_on_asm_path);
@@ -5408,6 +5467,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_renders_compare_and_branch_ugt_slice);
   RUN_TEST(test_x86_backend_renders_compare_and_branch_uge_slice);
   RUN_TEST(test_x86_backend_renders_extern_global_array_slice);
+  RUN_TEST(test_x86_backend_scaffold_matches_direct_extern_global_array_asm);
   RUN_TEST(test_x86_backend_renders_extern_decl_object_slice);
   RUN_TEST(test_x86_backend_renders_extern_decl_object_slice_with_typed_zero_arg_spacing);
   RUN_TEST(test_x86_backend_renders_extern_decl_inferred_param_slice);
@@ -5418,8 +5478,10 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_adapter_preserves_multiple_printf_calls_in_backend_ir);
   RUN_TEST(test_x86_backend_renders_string_literal_char_slice);
   RUN_TEST(test_x86_backend_renders_global_char_pointer_diff_slice);
+  RUN_TEST(test_x86_backend_scaffold_matches_direct_global_char_pointer_diff_asm);
   RUN_TEST(test_x86_backend_renders_global_char_pointer_diff_slice_from_typed_ops);
   RUN_TEST(test_x86_backend_renders_global_int_pointer_diff_slice);
+  RUN_TEST(test_x86_backend_scaffold_matches_direct_global_int_pointer_diff_asm);
   RUN_TEST(test_x86_backend_renders_global_int_pointer_diff_slice_from_typed_ops);
   RUN_TEST(test_x86_backend_renders_global_int_pointer_roundtrip_slice);
   RUN_TEST(test_x86_assembler_parser_accepts_bounded_return_add_slice);

@@ -9,11 +9,25 @@ Source Plan: plan.md
 - [ ] Remove legacy backend IR files and backend/app LLVM rescue paths
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
-Current active item: Step 3, remove the last aarch64 direct-LIR/direct-BIR
-helper that still fabricates a legacy-style `BackendModule` solely for
-private-data/symbol reuse, in this iteration by deleting the remaining
-string-literal/private-data target stub and pinning direct-LIR vs explicit
-lowered-backend asm parity before switching into Step 4 legacy-path deletion.
+Current active item: Step 3, keep removing direct native-emitter helper
+`BackendModule` fabrications that only survive for target-triple/symbol reuse,
+in this iteration by deleting the x86 direct-LIR scaffolds for bounded
+two-arg direct-call, local-array, extern-global-array, scalar-global, and
+global-pointer-diff slices while pinning direct-LIR vs explicit lowered-backend
+asm parity on the affected surfaces before switching into Step 4 legacy-path
+deletion.
+Completed in this slice: added explicit x86 regressions proving the direct
+`x86::emit_module(LirModule)` local-array, global-store-reload,
+extern-global-array, global-char-pointer-diff, and global-int-pointer-diff
+surfaces still match the explicit lowered backend-module seam byte-for-byte,
+so the remaining x86 scaffold removals stay pinned to identical native asm
+output.
+Completed in this slice: removed the matching x86 direct-LIR `BackendModule`
+scaffolds for bounded two-arg direct-call, local-array,
+extern-global-array, scalar-global-load/store-reload, and global
+pointer-difference helpers by threading `target_triple` directly into the
+minimal asm helpers instead of fabricating legacy backend modules just for
+symbol selection.
 Completed in this slice: removed the remaining aarch64 direct-LIR/direct-BIR
 string-literal helper `BackendModule` stub by threading `target_triple`
 directly into the private-data label and minimal string-literal asm helpers,
@@ -219,8 +233,8 @@ full-suite guard with `test_before.log` vs `test_after.log`, with `100%
 tests passed, 0 tests failed out of 394` for backend scope and `100% tests
 passed, 0 tests failed out of 2833` before and after the full-suite
 comparison.
-Next target: continue Step 3 by reassessing whether any other direct-BIR or
-native-emitter helper still fabricates a legacy `BackendModule` purely for
-symbol/private-data reuse on x86_64 or aarch64, then start Step 4 deletion of
-the remaining legacy backend IR and backend/app LLVM rescue paths once that
-inventory is empty.
+Next target: rerun the focused backend proof for this x86 scaffold-removal
+slice, then reassess whether any other direct-BIR or native-emitter helper
+still fabricates a legacy `BackendModule` purely for symbol/private-data reuse
+on x86_64 or aarch64 before switching into Step 4 deletion of the remaining
+legacy backend IR and backend/app LLVM rescue paths.

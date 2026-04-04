@@ -179,6 +179,34 @@ struct MinimalCountdownLoopSlice {
   std::string exit_label;
 };
 
+struct MinimalLocalArraySlice;
+struct MinimalExternGlobalArrayLoadSlice;
+struct MinimalGlobalCharPointerDiffSlice;
+struct MinimalGlobalIntPointerDiffSlice;
+struct MinimalScalarGlobalLoadSlice;
+struct MinimalScalarGlobalStoreReloadSlice;
+
+std::string emit_minimal_two_arg_direct_call_asm(
+    std::string_view target_triple,
+    const MinimalTwoArgDirectCallSlice& slice);
+std::string emit_minimal_local_array_asm(std::string_view target_triple,
+                                         const MinimalLocalArraySlice& slice);
+std::string emit_minimal_extern_global_array_load_asm(
+    std::string_view target_triple,
+    const MinimalExternGlobalArrayLoadSlice& slice);
+std::string emit_minimal_global_char_pointer_diff_asm(
+    std::string_view target_triple,
+    const MinimalGlobalCharPointerDiffSlice& slice);
+std::string emit_minimal_global_int_pointer_diff_asm(
+    std::string_view target_triple,
+    const MinimalGlobalIntPointerDiffSlice& slice);
+std::string emit_minimal_scalar_global_load_asm(
+    std::string_view target_triple,
+    const MinimalScalarGlobalLoadSlice& slice);
+std::string emit_minimal_scalar_global_store_reload_asm(
+    std::string_view target_triple,
+    const MinimalScalarGlobalStoreReloadSlice& slice);
+
 struct MinimalLocalArraySlice {
   std::int64_t store0_imm = 0;
   std::int64_t store1_imm = 0;
@@ -3342,7 +3370,7 @@ std::string emit_minimal_direct_call_add_imm_asm(
 }
 
 std::string emit_minimal_two_arg_direct_call_asm(
-    const c4c::backend::BackendModule& module,
+    std::string_view target_triple,
     const MinimalTwoArgDirectCallSlice& slice) {
   if (slice.lhs_call_arg_imm < std::numeric_limits<std::int32_t>::min() ||
       slice.lhs_call_arg_imm > std::numeric_limits<std::int32_t>::max() ||
@@ -3353,22 +3381,28 @@ std::string emit_minimal_two_arg_direct_call_asm(
         "two-argument direct-call immediates outside the minimal x86 slice range");
   }
 
-  const std::string helper_symbol = asm_symbol_name(module, slice.callee_name);
-  const std::string main_symbol = asm_symbol_name(module, "main");
+  const std::string helper_symbol = asm_symbol_name(target_triple, slice.callee_name);
+  const std::string main_symbol = asm_symbol_name(target_triple, "main");
 
   std::ostringstream out;
   out << ".intel_syntax noprefix\n";
   out << ".text\n";
-  emit_function_prelude(out, module, helper_symbol, false);
+  emit_function_prelude(out, helper_symbol, false);
   out << "  mov eax, edi\n"
       << "  add eax, esi\n"
       << "  ret\n";
-  emit_function_prelude(out, module, main_symbol, true);
+  emit_function_prelude(out, main_symbol, true);
   out << "  mov edi, " << slice.lhs_call_arg_imm << "\n"
       << "  mov esi, " << slice.rhs_call_arg_imm << "\n"
       << "  call " << helper_symbol << "\n"
       << "  ret\n";
   return out.str();
+}
+
+std::string emit_minimal_two_arg_direct_call_asm(
+    const c4c::backend::BackendModule& module,
+    const MinimalTwoArgDirectCallSlice& slice) {
+  return emit_minimal_two_arg_direct_call_asm(module.target_triple, slice);
 }
 
 std::string emit_minimal_two_arg_direct_call_asm(
@@ -3736,6 +3770,11 @@ std::string emit_minimal_conditional_phi_join_asm(
 
 std::string emit_minimal_local_array_asm(const c4c::backend::BackendModule& module,
                                          const MinimalLocalArraySlice& slice) {
+  return emit_minimal_local_array_asm(module.target_triple, slice);
+}
+
+std::string emit_minimal_local_array_asm(std::string_view target_triple,
+                                         const MinimalLocalArraySlice& slice) {
   if (slice.store0_imm < std::numeric_limits<std::int32_t>::min() ||
       slice.store0_imm > std::numeric_limits<std::int32_t>::max() ||
       slice.store1_imm < std::numeric_limits<std::int32_t>::min() ||
@@ -3745,7 +3784,7 @@ std::string emit_minimal_local_array_asm(const c4c::backend::BackendModule& modu
         "local-array store immediates outside the minimal mov-supported range");
   }
 
-  const std::string symbol = asm_symbol_name(module, "main");
+  const std::string symbol = asm_symbol_name(target_triple, "main");
   std::ostringstream out;
   out << ".intel_syntax noprefix\n";
   out << ".text\n";
@@ -3768,8 +3807,14 @@ std::string emit_minimal_local_array_asm(const c4c::backend::BackendModule& modu
 std::string emit_minimal_extern_global_array_load_asm(
     const c4c::backend::BackendModule& module,
     const MinimalExternGlobalArrayLoadSlice& slice) {
-  const std::string global_symbol = asm_symbol_name(module, slice.global_name);
-  const std::string main_symbol = asm_symbol_name(module, "main");
+  return emit_minimal_extern_global_array_load_asm(module.target_triple, slice);
+}
+
+std::string emit_minimal_extern_global_array_load_asm(
+    std::string_view target_triple,
+    const MinimalExternGlobalArrayLoadSlice& slice) {
+  const std::string global_symbol = asm_symbol_name(target_triple, slice.global_name);
+  const std::string main_symbol = asm_symbol_name(target_triple, "main");
 
   std::ostringstream out;
   out << ".intel_syntax noprefix\n";
@@ -3889,8 +3934,14 @@ std::string emit_minimal_extern_decl_call_asm(
 std::string emit_minimal_global_char_pointer_diff_asm(
     const c4c::backend::BackendModule& module,
     const MinimalGlobalCharPointerDiffSlice& slice) {
-  const std::string global_symbol = asm_symbol_name(module, slice.global_name);
-  const std::string main_symbol = asm_symbol_name(module, "main");
+  return emit_minimal_global_char_pointer_diff_asm(module.target_triple, slice);
+}
+
+std::string emit_minimal_global_char_pointer_diff_asm(
+    std::string_view target_triple,
+    const MinimalGlobalCharPointerDiffSlice& slice) {
+  const std::string global_symbol = asm_symbol_name(target_triple, slice.global_name);
+  const std::string main_symbol = asm_symbol_name(target_triple, "main");
 
   std::ostringstream out;
   out << ".intel_syntax noprefix\n";
@@ -3914,8 +3965,14 @@ std::string emit_minimal_global_char_pointer_diff_asm(
 std::string emit_minimal_global_int_pointer_diff_asm(
     const c4c::backend::BackendModule& module,
     const MinimalGlobalIntPointerDiffSlice& slice) {
-  const std::string global_symbol = asm_symbol_name(module, slice.global_name);
-  const std::string main_symbol = asm_symbol_name(module, "main");
+  return emit_minimal_global_int_pointer_diff_asm(module.target_triple, slice);
+}
+
+std::string emit_minimal_global_int_pointer_diff_asm(
+    std::string_view target_triple,
+    const MinimalGlobalIntPointerDiffSlice& slice) {
+  const std::string global_symbol = asm_symbol_name(target_triple, slice.global_name);
+  const std::string main_symbol = asm_symbol_name(target_triple, "main");
 
   std::ostringstream out;
   out << ".intel_syntax noprefix\n";
@@ -3940,8 +3997,14 @@ std::string emit_minimal_global_int_pointer_diff_asm(
 std::string emit_minimal_scalar_global_load_asm(
     const c4c::backend::BackendModule& module,
     const MinimalScalarGlobalLoadSlice& slice) {
-  const std::string global_symbol = asm_symbol_name(module, slice.global_name);
-  const std::string main_symbol = asm_symbol_name(module, "main");
+  return emit_minimal_scalar_global_load_asm(module.target_triple, slice);
+}
+
+std::string emit_minimal_scalar_global_load_asm(
+    std::string_view target_triple,
+    const MinimalScalarGlobalLoadSlice& slice) {
+  const std::string global_symbol = asm_symbol_name(target_triple, slice.global_name);
+  const std::string main_symbol = asm_symbol_name(target_triple, "main");
 
   std::ostringstream out;
   out << ".intel_syntax noprefix\n";
@@ -3961,8 +4024,14 @@ std::string emit_minimal_scalar_global_load_asm(
 std::string emit_minimal_scalar_global_store_reload_asm(
     const c4c::backend::BackendModule& module,
     const MinimalScalarGlobalStoreReloadSlice& slice) {
-  const std::string global_symbol = asm_symbol_name(module, slice.global_name);
-  const std::string main_symbol = asm_symbol_name(module, "main");
+  return emit_minimal_scalar_global_store_reload_asm(module.target_triple, slice);
+}
+
+std::string emit_minimal_scalar_global_store_reload_asm(
+    std::string_view target_triple,
+    const MinimalScalarGlobalStoreReloadSlice& slice) {
+  const std::string global_symbol = asm_symbol_name(target_triple, slice.global_name);
+  const std::string main_symbol = asm_symbol_name(target_triple, "main");
 
   std::ostringstream out;
   out << ".intel_syntax noprefix\n";
@@ -4244,51 +4313,35 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
   try {
     if (const auto slice = parse_minimal_two_arg_direct_call_slice(module);
         slice.has_value()) {
-      c4c::backend::BackendModule scaffold_module;
-      scaffold_module.target_triple = module.target_triple;
-      return emit_minimal_two_arg_direct_call_asm(scaffold_module, *slice);
+      return emit_minimal_two_arg_direct_call_asm(module.target_triple, *slice);
     }
     if (const auto slice = parse_minimal_local_array_slice(module);
         slice.has_value()) {
-      c4c::backend::BackendModule scaffold_module;
-      scaffold_module.target_triple = module.target_triple;
-      return emit_minimal_local_array_asm(scaffold_module, *slice);
+      return emit_minimal_local_array_asm(module.target_triple, *slice);
     }
     if (const auto slice = parse_minimal_extern_global_array_load_slice(module);
         slice.has_value()) {
-      c4c::backend::BackendModule scaffold_module;
-      scaffold_module.target_triple = module.target_triple;
-      return emit_minimal_extern_global_array_load_asm(scaffold_module, *slice);
+      return emit_minimal_extern_global_array_load_asm(module.target_triple, *slice);
     }
     if (const auto slice = parse_minimal_global_char_pointer_diff_slice(module);
         slice.has_value()) {
-      c4c::backend::BackendModule scaffold_module;
-      scaffold_module.target_triple = module.target_triple;
-      return emit_minimal_global_char_pointer_diff_asm(scaffold_module, *slice);
+      return emit_minimal_global_char_pointer_diff_asm(module.target_triple, *slice);
     }
     if (const auto slice = parse_minimal_global_int_pointer_diff_slice(module);
         slice.has_value()) {
-      c4c::backend::BackendModule scaffold_module;
-      scaffold_module.target_triple = module.target_triple;
-      return emit_minimal_global_int_pointer_diff_asm(scaffold_module, *slice);
+      return emit_minimal_global_int_pointer_diff_asm(module.target_triple, *slice);
     }
     if (const auto slice = parse_minimal_global_int_pointer_roundtrip_slice(module);
         slice.has_value()) {
-      c4c::backend::BackendModule scaffold_module;
-      scaffold_module.target_triple = module.target_triple;
-      return emit_minimal_scalar_global_load_asm(scaffold_module, *slice);
+      return emit_minimal_scalar_global_load_asm(module.target_triple, *slice);
     }
     if (const auto slice = parse_minimal_scalar_global_load_slice(module);
         slice.has_value()) {
-      c4c::backend::BackendModule scaffold_module;
-      scaffold_module.target_triple = module.target_triple;
-      return emit_minimal_scalar_global_load_asm(scaffold_module, *slice);
+      return emit_minimal_scalar_global_load_asm(module.target_triple, *slice);
     }
     if (const auto slice = parse_minimal_scalar_global_store_reload_slice(module);
         slice.has_value()) {
-      c4c::backend::BackendModule scaffold_module;
-      scaffold_module.target_triple = module.target_triple;
-      return emit_minimal_scalar_global_store_reload_asm(scaffold_module, *slice);
+      return emit_minimal_scalar_global_store_reload_asm(module.target_triple, *slice);
     }
     if (const auto slice = parse_minimal_string_literal_char_slice(module);
         slice.has_value()) {
