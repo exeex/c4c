@@ -26,15 +26,22 @@ Completed in this slice:
   recognition branches and replaced them with the BIR-first direct-LIR path
 - proved the shared parser with a new regression test in
   [`tests/backend/backend_lir_adapter_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_tests.cpp)
+- routed the direct x86 LIR emit entrypoint through
+  `try_lower_to_bir(...)` before
+  `lower_lir_to_backend_module(...)` so BIR-lowerable explicit-LIR slices no
+  longer depend on legacy backend IR as their first fallback
+- proved the new BIR-first direct-LIR seam with a cast-return regression in
+  [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
 
 Next slice:
 
 - continue shrinking the remaining x86 emitter-local `lower_lir_to_backend_module(...)`
-  fallback by porting another legacy-only structured family off the adapted
-  backend-module path
-- prefer families where the shared parser already exists or can be introduced
-  once in `call_decode.hpp` and reused by both x86 and aarch64
-- prove the deletion with focused backend tests and
+  fallback for direct-call/global families that are still not covered by the
+  direct-LIR parser set or the direct-BIR emit path
+- prefer the next family where one explicit x86 emitter-local
+  `lower_lir_to_backend_module(...)` dependency can be deleted entirely rather
+  than only bypassed for BIR-lowerable slices
+- prove the deletion with focused x86 backend tests and
   `ctest --test-dir build -R backend --output-on-failure`
 
 Step 4 remaining surface:
@@ -75,3 +82,7 @@ Recent baseline:
 - latest Step 4 follow-through tightened the x86 explicit LIR surface so
   bounded return families no longer need the x86 post-adaptation legacy
   recognition branches
+- latest Step 4 follow-through also makes the direct x86 LIR entrypoint try
+  BIR emission before legacy backend-IR lowering, which removes one live
+  production dependency on `lower_lir_to_backend_module(...)` for
+  BIR-lowerable cast/return slices

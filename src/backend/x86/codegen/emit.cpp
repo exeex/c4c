@@ -35,6 +35,11 @@ namespace {
       "x86 backend emitter does not support this direct BIR module; only the affine-return subset lowers natively");
 }
 
+bool is_direct_bir_subset_error(const std::invalid_argument& ex) {
+  return std::string_view(ex.what()).find("does not support this direct BIR module") !=
+         std::string_view::npos;
+}
+
 std::string asm_symbol_name(const c4c::backend::BackendModule& module,
                             std::string_view logical_name);
 std::string asm_symbol_name(std::string_view target_triple,
@@ -5170,6 +5175,16 @@ std::string emit_module(const c4c::backend::bir::Module& module,
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {
   if (const auto rendered = try_emit_direct_lir_module(module); rendered.has_value()) {
     return *rendered;
+  }
+
+  if (const auto bir_module = c4c::backend::try_lower_to_bir(module); bir_module.has_value()) {
+    try {
+      return emit_module(*bir_module, &module);
+    } catch (const std::invalid_argument& ex) {
+      if (!is_direct_bir_subset_error(ex)) {
+        throw;
+      }
+    }
   }
 
   try {

@@ -22,6 +22,7 @@
 #include "../../src/backend/x86/assembler/encoder/mod.hpp"
 #include "../../src/backend/x86/assembler/parser.hpp"
 #include "../../src/backend/x86/codegen/emit.hpp"
+#include "../../src/backend/lowering/lir_to_bir.hpp"
 #include "../../src/backend/x86/linker/mod.hpp"
 
 #include "backend_test_helper.hpp"
@@ -46,6 +47,27 @@ c4c::codegen::lir::LirModule make_x86_local_pointer_temp_return_module() {
   module.target_triple = "x86_64-unknown-linux-gnu";
   module.data_layout =
       "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_x86_direct_bir_sext_return_module() {
+  auto module = make_return_add_module();
+  auto& function = module.functions.front();
+  function.name = "widen_signed";
+  function.signature_text = "define i64 @widen_signed(i32 %p.x)\n";
+  function.return_type.base = c4c::TB_LONGLONG;
+  function.params.clear();
+
+  c4c::TypeSpec param_type{};
+  param_type.base = c4c::TB_INT;
+  function.params.push_back({"%p.x", param_type});
+
+  auto& entry = function.blocks.front();
+  entry.insts.clear();
+  entry.insts.push_back(
+      c4c::codegen::lir::LirCastOp{"%t0", c4c::codegen::lir::LirCastKind::SExt, "i32", "%p.x",
+                                   "i64"});
+  entry.terminator = c4c::codegen::lir::LirRet{std::string("%t0"), "i64"};
   return module;
 }
 
@@ -1934,6 +1956,21 @@ void test_x86_backend_scaffold_accepts_direct_conditional_phi_join_add_lir_input
                   "x86 direct-LIR phi-join regression should keep the post-join add on the native asm path");
   expect_not_contains(rendered, "target triple =",
                       "x86 direct-LIR phi-join regression should not fall back to LLVM text for the bounded join slice");
+}
+
+void test_x86_backend_scaffold_prefers_direct_bir_path_for_cast_return_lir_input() {
+  const auto module = make_x86_direct_bir_sext_return_module();
+  const auto direct_rendered = c4c::backend::x86::emit_module(module);
+  const auto bir_rendered = c4c::backend::x86::emit_module(c4c::backend::lower_to_bir(module));
+
+  expect_true(direct_rendered == bir_rendered,
+              "x86 direct-LIR cast regression should stay aligned with the direct BIR emit path before legacy backend-IR fallback");
+  expect_contains(direct_rendered, ".globl widen_signed\n",
+                  "x86 direct-LIR cast regression should preserve the widened helper symbol on the asm path");
+  expect_contains(direct_rendered, "  movsxd rax, edi\n",
+                  "x86 direct-LIR cast regression should lower the sign-extension cast through the direct BIR asm path");
+  expect_not_contains(direct_rendered, "target triple =",
+                      "x86 direct-LIR cast regression should not fall back to LLVM text for a BIR-lowerable cast slice");
 }
 
 void test_x86_backend_scaffold_renders_direct_return_immediate_slice() {
@@ -5562,6 +5599,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_countdown_while_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_direct_typed_countdown_while_lir_input);
   RUN_TEST(test_x86_backend_scaffold_accepts_direct_conditional_phi_join_add_lir_input);
+  RUN_TEST(test_x86_backend_scaffold_prefers_direct_bir_path_for_cast_return_lir_input);
   RUN_TEST(test_x86_backend_scaffold_renders_direct_return_immediate_slice);
   RUN_TEST(test_x86_backend_keeps_unused_declaration_off_direct_return_path);
   RUN_TEST(test_x86_backend_scaffold_renders_direct_return_sub_immediate_slice);
