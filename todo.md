@@ -11,7 +11,24 @@ Source Plan: plan.md
 
 Current active item: Step 2, continue the bounded native-emitter coverage
 expansion for direct-BIR x86_64/aarch64 widened `i8`
-compare-fed `bir.select`/join families.
+compare-fed `bir.select`/join families by adding explicit native pipeline
+coverage for the existing `choose2_deeper_both_post_chain_tail_u`
+split-predecessor deeper-affine join family.
+Completed in this slice: added explicit direct-BIR x86_64 and aarch64
+pipeline coverage for the widened `i8`
+`choose2_deeper_both_post_chain_tail_u` split-predecessor deeper-affine join
+family, proving that both native emitters already preserve the bounded
+predecessor-local `add`/`sub`/`add` chains on both sides plus the short
+post-select `add`/`sub`/`add` arithmetic tail without falling back to legacy
+backend IR.
+Completed in this slice: reran the focused direct-BIR backend BIR suite
+(`ctest --test-dir build -R backend_bir_tests --output-on-failure`), the
+required backend regression scope
+(`ctest --test-dir build -R backend --output-on-failure`), and the monotonic
+full-suite guard with `test_fail_before.log` vs `test_fail_after.log`, with
+`100% tests passed, 0 tests failed out of 394` for backend scope and `100%
+tests passed, 0 tests failed out of 2833` before and after the full-suite
+comparison.
 Completed in this slice: added explicit direct-BIR x86_64 and aarch64
 pipeline coverage for the widened `i8`
 `choose2_deeper_post_chain_tail_u` split-predecessor deeper-then-mixed-affine
@@ -110,8 +127,7 @@ Completed in this slice: reran the required backend regression scope
 monotonic full-suite guard with `test_fail_before.log` vs
 `test_fail_after.log`, with `100% tests passed, 0 tests failed out of 2833`
 before and after.
-Next target: move to the bounded widened `i8`
-`choose2_deeper_both_post_chain_tail_u` split-predecessor deeper-affine
-join family and add matching direct-BIR x86_64/aarch64 pipeline coverage for
-the post-select `add`/`sub`/`add` arithmetic tail if the native emitters
-already handle that slice.
+Next target: add matching direct-BIR x86_64/aarch64 pipeline coverage for the
+remaining uncovered widened `i8`
+`choose2_mixed_then_deeper_post_ne_u` split-predecessor mixed-then-deeper
+join family before widening Step 3 emitter-contract work.
