@@ -10,14 +10,29 @@ Source Plan: plan.md
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
 Current active item: Step 4, keep shrinking the remaining app-layer LLVM asm
-rescue one bounded surface at a time, in this iteration by teaching the native
-aarch64/x86 direct asm path to accept the zero-initialized scalar-global load
-family that currently still succeeds only through file-based `.s` fallback.
+rescue one bounded surface at a time, in this iteration by moving the proven
+native scalar-global-load stdout path onto explicit contract coverage so the
+non-zero initialized global-load family stops depending on file-output rescue
+assumptions in the internal backend contract suite.
 Next intended slice: rerun the focused backend contracts and c-testsuite cases
-that currently depend on stdout-vs-file asm rescue behavior, then either keep
-landing more zero-init global/load-store family members natively or move the
-next still-green LLVM-rescued family onto an explicit non-asm observation seam
-before deleting that specific rescue dependency.
+around scalar global loads, then either convert the next already-native family
+from `-o <file>.s` coverage to stdout-native coverage or delete the matching
+app-layer LLVM asm rescue branch once the affected family has direct coverage.
+Completed in this slice: moved the existing non-zero scalar-global-load
+contract off the file-output runner and onto the explicit stdout-native
+contract seam for aarch64, and added the matching x86_64 stdout-native object
+contract so this family no longer relies on `-o <file>.s` rescue assumptions in
+the internal backend suite.
+Completed in this slice: rebuilt `c4cll`, reran the focused proving checks
+(`backend_contract_aarch64_global_load_stdout_object`,
+`backend_contract_aarch64_global_load_zero_init_stdout_object`, and
+`backend_contract_x86_64_global_load_stdout_object`), reran the required
+backend regression scope (`ctest --test-dir build -R backend
+--output-on-failure`) with `100% tests passed, 0 tests failed out of 398`, and
+reran the monotonic full-suite guard over `test_fail_before.log` versus a
+freshly regenerated `test_fail_after.log`, with guard result `PASS` and
+`before: passed=394 failed=0 total=394`,
+`after: passed=2837 failed=0 total=2837`, and `new failing tests: 0`.
 Completed in this slice: made unsupported stdout-only `c4cll --codegen asm`
 requests fail explicitly instead of silently printing LLVM-derived fallback
 assembly, while preserving the current file-based `.s` fallback path that

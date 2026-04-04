@@ -528,21 +528,20 @@ if(CLANG_EXECUTABLE)
         LABELS "internal;backend")
 
     add_test(
-      NAME backend_contract_aarch64_global_load_object
+      NAME backend_contract_aarch64_global_load_stdout_object
       COMMAND "${CMAKE_COMMAND}"
               -DCOMPILER=$<TARGET_FILE:c4cll>
               -DCLANG=${CLANG_EXECUTABLE}
               -DOBJDUMP=${OBJDUMP_EXECUTABLE}
               -DSRC=${INTERNAL_C_TEST_ROOT}/backend_case/global_load.c
               -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
-              -DBACKEND_OUTPUT_KIND=asm
               -DBACKEND_OUTPUT_PATH=${CMAKE_BINARY_DIR}/internal_backend_contract/global_load_aarch64.s
               -DOUT_ARTIFACT=${CMAKE_BINARY_DIR}/internal_backend_contract/global_load_aarch64.o
               "-DREQUIRED_BACKEND_SNIPPETS=.data|.globl g_counter|g_counter:|.long 11|adrp x8, g_counter|ldr w0, [x8, :lo12:g_counter]"
               "-DREQUIRED_OBJDUMP_SNIPPETS=file format elf64-littleaarch64|.data|.text|.rela.text|g_counter|main|R_AARCH64_ADR_PREL_PG_HI21|R_AARCH64_LDST32_ABS_LO12_NC"
-              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_contract_case.cmake"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_stdout_contract_case.cmake"
     )
-    set_tests_properties(backend_contract_aarch64_global_load_object PROPERTIES
+    set_tests_properties(backend_contract_aarch64_global_load_stdout_object PROPERTIES
         LABELS "internal;backend")
 
     add_test(
@@ -615,6 +614,23 @@ if(CLANG_EXECUTABLE)
               -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_contract_case.cmake"
     )
     set_tests_properties(backend_contract_x86_64_extern_call_object PROPERTIES
+        LABELS "internal;backend")
+
+    add_test(
+      NAME backend_contract_x86_64_global_load_stdout_object
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DCLANG=${CLANG_EXECUTABLE}
+              -DOBJDUMP=${OBJDUMP_EXECUTABLE}
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_case/global_load.c
+              -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+              -DBACKEND_OUTPUT_PATH=${CMAKE_BINARY_DIR}/internal_backend_contract/global_load_x86_64.s
+              -DOUT_ARTIFACT=${CMAKE_BINARY_DIR}/internal_backend_contract/global_load_x86_64.o
+              "-DREQUIRED_BACKEND_SNIPPETS=.intel_syntax noprefix|.data|.globl g_counter|g_counter:|.long 11|.text|.globl main|lea rax, g_counter[rip]|mov eax, dword ptr [rax]|ret"
+              "-DREQUIRED_OBJDUMP_SNIPPETS=file format elf64-x86-64|.data|.text|.rela.text|g_counter|main|R_X86_64_PC32"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_stdout_contract_case.cmake"
+    )
+    set_tests_properties(backend_contract_x86_64_global_load_stdout_object PROPERTIES
         LABELS "internal;backend")
 
     c4c_add_backend_codegen_route_test(
