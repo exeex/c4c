@@ -24,7 +24,6 @@ enum class BackendPipeline : unsigned char {
 enum class BackendLoweringRoute : unsigned char {
   LegacyPreloweredModule,
   BirPreloweredModule,
-  LegacyFromLirEntry,
   BirFromLirEntry,
 };
 

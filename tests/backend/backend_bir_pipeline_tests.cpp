@@ -8,6 +8,40 @@ namespace {
 
 using I8ModuleFactory = c4c::codegen::lir::LirModule (*)();
 
+c4c::codegen::lir::LirModule make_unsupported_local_array_gep_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.arr", "[2 x i32]", "", 4});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{"%t0", "[2 x i32]", "%lv.arr", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirCastOp{"%t1", LirCastKind::SExt, "i32", "0", "i64"});
+  entry.insts.push_back(LirGepOp{"%t2", "i32", "%t0", false, {"i64 %t1"}});
+  entry.insts.push_back(LirStoreOp{"i32", "4", "%t2"});
+  entry.insts.push_back(LirGepOp{"%t3", "[2 x i32]", "%lv.arr", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirCastOp{"%t4", LirCastKind::SExt, "i32", "1", "i64"});
+  entry.insts.push_back(LirGepOp{"%t5", "i32", "%t3", false, {"i64 %t4"}});
+  entry.insts.push_back(LirStoreOp{"i32", "3", "%t5"});
+  entry.insts.push_back(LirLoadOp{"%t6", "i32", "%t2"});
+  entry.insts.push_back(LirLoadOp{"%t7", "i32", "%t5"});
+  entry.insts.push_back(LirBinOp{"%t8", "add", "i32", "%t6", "%t7"});
+  entry.terminator = LirRet{std::string("%t8"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 void expect_i8_bir_route(I8ModuleFactory make_module,
                          std::string_view signature,
                          std::string_view op_text,
@@ -45,8 +79,8 @@ void test_backend_default_route_stays_on_legacy_lir_entry_target_neutral() {
       c4c::backend::BackendModuleInput{make_bir_return_add_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
-  expect_true(route == c4c::backend::BackendLoweringRoute::LegacyFromLirEntry,
-              "default backend entry should stay on the legacy LIR route until callers explicitly select the BIR pipeline");
+  expect_true(route == c4c::backend::BackendLoweringRoute::BirFromLirEntry,
+              "default backend entry should now start from the BIR lowering seam instead of routing fresh LIR input through legacy backend IR");
 }
 
 void test_backend_bir_pipeline_selects_bir_lir_entry_route_target_neutral() {
@@ -83,10 +117,21 @@ void test_backend_default_path_remains_legacy_when_bir_pipeline_is_not_selected(
       c4c::backend::BackendModuleInput{make_bir_return_add_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Riscv64});
 
+  expect_contains(rendered, "bir.func @main() -> i32 {",
+                  "default backend flow should expose the supported tiny add slice on the BIR text path");
+  expect_contains(rendered, "%t0 = bir.add i32 2, 3",
+                  "default backend flow should lower supported LIR input directly through the BIR seam");
+}
+
+void test_backend_default_path_keeps_unsupported_lir_on_llvm_text_surface() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_unsupported_local_array_gep_lir_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Riscv64});
+
   expect_contains(rendered, "define i32 @main()",
-                  "default backend flow should keep returning legacy LLVM text when the BIR path is not selected");
+                  "default backend flow should keep unsupported LIR input on the LLVM text fallback surface until the app-layer rescue path is deleted");
   expect_not_contains(rendered, "bir.func",
-                      "default backend flow should not silently switch into the BIR scaffold");
+                      "unsupported LIR input should not pretend to have lowered through the BIR scaffold");
 }
 
 void test_backend_bir_pipeline_is_opt_in_through_backend_options() {
@@ -1312,6 +1357,7 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_backend_prelowered_legacy_module_route_ignores_pipeline_override_target_neutral);
   RUN_TEST(test_backend_direct_bir_module_route_ignores_legacy_pipeline_default_target_neutral);
   RUN_TEST(test_backend_default_path_remains_legacy_when_bir_pipeline_is_not_selected);
+  RUN_TEST(test_backend_default_path_keeps_unsupported_lir_on_llvm_text_surface);
   RUN_TEST(test_backend_bir_pipeline_is_opt_in_through_backend_options);
   RUN_TEST(test_backend_bir_pipeline_accepts_direct_bir_module_input);
   RUN_TEST(test_backend_bir_pipeline_routes_sub_cluster_through_bir_text_surface);

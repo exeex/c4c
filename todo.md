@@ -9,13 +9,39 @@ Source Plan: plan.md
 - [ ] Remove legacy backend IR files and backend/app LLVM rescue paths
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
-Current active item: Step 3, keep removing direct native-emitter helper
-`BackendModule` fabrications that only survive for target-triple/symbol reuse,
-in this iteration by deleting the x86 direct-LIR scaffolds for bounded
-two-arg direct-call, local-array, extern-global-array, scalar-global, and
-global-pointer-diff slices while pinning direct-LIR vs explicit lowered-backend
-asm parity on the affected surfaces before switching into Step 4 legacy-path
-deletion.
+Current active item: Step 4, keep deleting the remaining production
+legacy-backend-IR entry path one bounded seam at a time, in this iteration by
+removing the `llvm_codegen.cpp` pre-lowering route through
+`lower_lir_to_backend_module(...)` while keeping supported x86_64/aarch64
+native asm on the existing direct-LIR emitters and keeping unsupported slices
+observable on the LLVM-text fallback surface.
+Completed in this slice: changed the backend LIR-entry route selector so fresh
+LIR input now enters through the BIR-owned route by default, deleted the old
+`LegacyFromLirEntry` branch from `backend.hpp/.cpp`, and updated the
+target-neutral backend route tests to pin both the new supported-slice BIR
+default and the still-temporary unsupported-LIR LLVM-text fallback on RISC-V.
+Completed in this slice: removed the production `llvm_codegen.cpp`
+pre-lowering path that fabricated legacy `BackendModule(ir.*)` state before asm
+codegen, so production callers now hand fresh LIR directly to
+`backend::emit_module(...)` instead of routing through
+`lower_lir_to_backend_module(...)`.
+Completed in this slice: preserved current x86_64/aarch64 asm behavior while
+removing that production legacy-IR route by teaching the BIR-first LIR entry
+path to fall back to the existing direct-LIR native emitters when BIR lowering
+is unsupported or when the current direct-BIR native subset rejects an
+otherwise-lowerable module.
+Completed in this slice: rebuilt `backend_bir_tests` and `c4cll`, reran the
+focused `backend_bir_tests`, reran the proving contract regressions
+(`backend_contract_aarch64_extern_global_array_object`,
+`backend_contract_x86_64_extern_call_object`,
+`c_testsuite_aarch64_backend_src_00012_c`, and
+`c_testsuite_aarch64_backend_src_00064_c`), reran the required backend
+regression scope (`ctest --test-dir build -R backend --output-on-failure`),
+and reran the monotonic full-suite guard over `test_fail_before.log` versus a
+freshly regenerated `test_fail_after.log`, with `100% tests passed, 0 tests
+failed out of 394` for backend scope and guard result `PASS` with
+`before: passed=394 failed=0 total=394`,
+`after: passed=2833 failed=0 total=2833`, and `new failing tests: 0`.
 Completed in this slice: added explicit x86 regressions proving the direct
 `x86::emit_module(LirModule)` local-array, global-store-reload,
 extern-global-array, global-char-pointer-diff, and global-int-pointer-diff
@@ -248,7 +274,8 @@ reran the monotonic guard script over `test_fail_before.log` vs a freshly
 regenerated `test_fail_after.log`, with guard result `PASS` and
 `before: passed=394 failed=0 total=394`,
 `after: passed=2833 failed=0 total=2833`, and `new failing tests: 0`.
-Next target: reassess whether any remaining direct-BIR or native-emitter helper
-still fabricates legacy `BackendModule` state for symbol/private-data reuse on
-x86_64 or aarch64; if none remain, switch into Step 4 deletion of the
-remaining legacy backend IR and backend/app LLVM rescue paths.
+Next target: continue Step 4 by auditing whether any other production caller or
+route still depends on `BackendModule(ir.*)` ownership after this
+`llvm_codegen.cpp` cutover, then start deleting the remaining legacy pre-
+lowered route/data structures and the app-layer LLVM asm rescue helpers in
+bounded slices that keep current x86_64/aarch64 asm behavior pinned.
