@@ -75,6 +75,14 @@ Completed in this slice:
   [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
   so those bounded global families stay pinned to identical direct-vs-lowered
   assembly output while Step 4 keeps shrinking legacy owners
+- taught the direct x86 LIR return-immediate parser in
+  [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+  to track bounded local pointer-slot aliases through the local round-trip
+  store/load pattern so that slice no longer needs
+  `lower_lir_to_backend_module(...)` on the explicit x86 entrypoint
+- proved the production deletion with a new explicit-LIR parity regression in
+  [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
+  for the bounded local pointer round-trip slice
 
 Next slice:
 
@@ -84,6 +92,10 @@ Next slice:
 - after the countdown do-while family, prefer another explicit-x86 family where
   the direct entrypoint still needs legacy lowering rather than adding more
   compatibility-only probes
+- after the local pointer round-trip slice, prefer another bounded local-runtime
+  family such as the double-indirect local-pointer conditional or goto-only
+  branch chain where the explicit x86 entrypoint still depends on legacy
+  lowering
 - keep lowered-backend tests scoped to compatibility seams that still exist
   after the production deletion
 - prove the next deletion with focused x86 backend tests and
@@ -150,3 +162,6 @@ Recent baseline:
 - latest Step 4 follow-through also removes the bounded countdown do-while
   dependency on `lower_lir_to_backend_module(...)` from the direct x86 LIR
   entrypoint and keeps the direct/lowered x86 seams on identical asm
+- latest Step 4 follow-through also removes the bounded local pointer
+  round-trip dependency on `lower_lir_to_backend_module(...)` from the direct
+  x86 LIR entrypoint and keeps the direct/lowered x86 seams on identical asm

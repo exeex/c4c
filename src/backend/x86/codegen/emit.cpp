@@ -359,14 +359,24 @@ std::optional<std::int64_t> parse_minimal_lir_return_imm(
   std::unordered_map<std::string, std::int64_t> values;
   std::unordered_map<std::string, std::int64_t> slot_values;
   std::unordered_set<std::string> local_scalar_slots;
+  std::unordered_map<std::string, std::string> pointer_values;
+  std::unordered_map<std::string, std::string> pointer_slot_values;
+  std::unordered_set<std::string> local_pointer_slots;
   for (const auto& alloca : function.alloca_insts) {
     const auto* alloca_inst = std::get_if<LirAllocaOp>(&alloca);
-    if (alloca_inst == nullptr || alloca_inst->type_str != "i32" ||
-        !alloca_inst->count.empty() || alloca_inst->result.empty()) {
+    if (alloca_inst == nullptr || !alloca_inst->count.empty() || alloca_inst->result.empty()) {
       continue;
     }
-    if (!local_scalar_slots.insert(alloca_inst->result).second) {
-      return std::nullopt;
+    if (alloca_inst->type_str == "i32") {
+      if (!local_scalar_slots.insert(alloca_inst->result).second) {
+        return std::nullopt;
+      }
+      continue;
+    }
+    if (alloca_inst->type_str == "ptr") {
+      if (!local_pointer_slots.insert(alloca_inst->result).second) {
+        return std::nullopt;
+      }
     }
   }
 
@@ -381,30 +391,93 @@ std::optional<std::int64_t> parse_minimal_lir_return_imm(
     return it->second;
   };
 
-  for (const auto& inst : entry.insts) {
-    if (const auto* store = std::get_if<LirStoreOp>(&inst)) {
-      if (store->type_str != "i32" ||
-          local_scalar_slots.find(store->ptr) == local_scalar_slots.end()) {
+  auto resolve_pointer_target = [&](std::string_view operand) -> std::optional<std::string> {
+    if (local_scalar_slots.find(std::string(operand)) != local_scalar_slots.end()) {
+      return std::string(operand);
+    }
+
+    std::string current(operand);
+    std::unordered_set<std::string> visited;
+    while (true) {
+      if (!visited.insert(current).second) {
         return std::nullopt;
       }
-      const auto value = resolve_value(store->val);
+      if (local_scalar_slots.find(current) != local_scalar_slots.end()) {
+        return current;
+      }
+      const auto value_it = pointer_values.find(current);
+      if (value_it != pointer_values.end()) {
+        current = value_it->second;
+        continue;
+      }
+      const auto slot_it = pointer_slot_values.find(current);
+      if (slot_it != pointer_slot_values.end()) {
+        current = slot_it->second;
+        continue;
+      }
+      return std::nullopt;
+    }
+  };
+
+  auto resolve_pointer_source = [&](std::string_view operand) -> std::optional<std::string> {
+    if (local_scalar_slots.find(std::string(operand)) != local_scalar_slots.end() ||
+        local_pointer_slots.find(std::string(operand)) != local_pointer_slots.end()) {
+      return std::string(operand);
+    }
+    const auto it = pointer_values.find(std::string(operand));
+    if (it == pointer_values.end()) {
+      return std::nullopt;
+    }
+    return it->second;
+  };
+
+  for (const auto& inst : entry.insts) {
+    if (const auto* store = std::get_if<LirStoreOp>(&inst)) {
+      if (store->type_str == "i32") {
+        const auto target = resolve_pointer_target(store->ptr);
+        if (!target.has_value()) {
+          return std::nullopt;
+        }
+        const auto value = resolve_value(store->val);
+        if (!value.has_value()) {
+          return std::nullopt;
+        }
+        slot_values[*target] = *value;
+        continue;
+      }
+      if (store->type_str != "ptr" ||
+          local_pointer_slots.find(store->ptr) == local_pointer_slots.end()) {
+        return std::nullopt;
+      }
+      const auto value = resolve_pointer_source(store->val);
       if (!value.has_value()) {
         return std::nullopt;
       }
-      slot_values[store->ptr] = *value;
+      pointer_slot_values[store->ptr] = *value;
       continue;
     }
 
     if (const auto* load = std::get_if<LirLoadOp>(&inst)) {
-      if (load->type_str != "i32" ||
-          local_scalar_slots.find(load->ptr) == local_scalar_slots.end()) {
+      if (load->type_str == "i32") {
+        const auto target = resolve_pointer_target(load->ptr);
+        if (!target.has_value()) {
+          return std::nullopt;
+        }
+        const auto it = slot_values.find(*target);
+        if (it == slot_values.end()) {
+          return std::nullopt;
+        }
+        values[load->result] = it->second;
+        continue;
+      }
+      if (load->type_str != "ptr") {
         return std::nullopt;
       }
-      const auto it = slot_values.find(load->ptr);
-      if (it == slot_values.end()) {
+      const auto target = resolve_pointer_target(load->ptr);
+      if (!target.has_value()) {
         return std::nullopt;
       }
-      values[load->result] = it->second;
+      pointer_values[load->result] = *target;
       continue;
     }
 
