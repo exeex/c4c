@@ -12,24 +12,23 @@ Source Plan: plan.md
 Current active item: Step 4 follow-through after deleting the generic
 backend-entry legacy-prelowered route. The app-layer LLVM asm fallback is
 gone, the caller-owned `BackendModuleInput(BackendModule, ...)` seam is gone,
-and the next bounded Step 4 slice should keep shrinking live
-`lir_to_backend_ir.*` ownership inside target emitters and tests.
+and the next bounded Step 4 slice should keep shrinking the remaining
+emitter-local `lir_to_backend_ir.*` ownership now that `llvm_codegen.cpp` no
+longer re-enters the generic LIR-entry backend adapter.
 
-This iteration target: delete one live production legacy-lowering seam instead
-of stopping at audit-only work, then leave the next iteration aimed at the
-remaining emitter-local and test-local `lir_to_backend_ir.*` ownership.
+This iteration target: cut one remaining live emitter-local
+`lower_lir_to_backend_module(...)` ownership seam, then bundle the matching
+test/include cleanup in the same bounded Step 4 deletion batch.
 
 Current exact target for this iteration:
 
-- delete the redundant production `src/backend/lir_adapter.hpp` shim so
-  emitter code and backend tests stop depending on a header whose only purpose
-  is to re-export `lower_lir_to_backend_module(...)` from
-  `lir_to_backend_ir.hpp`
-- remove the no-op backend test includes of that shim and switch the remaining
-  direct callsite over to `lower_lir_to_backend_module(...)`
-- keep the next slice aimed at the still-live direct
-  `lir_to_backend_ir.hpp` includes in the BIR-pipeline/adapter tests plus the
-  emitter-local lowering ownership that still cannot be removed yet
+- choose one concrete production seam in `src/backend/x86/codegen/emit.cpp` or
+  `src/backend/aarch64/codegen/emit.cpp` where direct BIR ownership can replace
+  one `lower_lir_to_backend_module(...)` fallback block without widening scope
+- remove the matching direct `lir_to_backend_ir.hpp` include or test seam in
+  the same family when that production deletion makes it dead
+- keep broader `lir_to_backend_ir.cpp` and `ir.*` removal for later bounded
+  batches once another live emitter-local seam is actually gone
 
 Current bounded deletion slice: keep Step 4 focused on production deletion.
 - delete the generic backend-entry `LegacyPreloweredModule` route and the stale
@@ -110,6 +109,10 @@ Known live references from the current audit:
   modules; explicit lowered backend-module emission now uses
   `emit_module(const BackendModule&, ...)` directly, so the remaining live
   legacy ownership is narrower and easier to cut in a later Step 4 batch
+- `src/codegen/llvm/llvm_codegen.cpp` now lowers to BIR first and only falls
+  back through target-local emitters when direct BIR emission rejects the
+  module, so that app-layer code no longer calls
+  `backend::emit_module(BackendModuleInput{lir_mod}, ...)`
 - `lir_to_backend_ir.cpp` is still large enough to deserve a planned cutover
   batch on its own at roughly `3669` lines, and the old backend IR support
   files in `ir.*` still represent another large deletion batch after that
@@ -135,6 +138,18 @@ Known live references from the current audit:
 
 Recently completed milestones:
 
+- changed `src/codegen/llvm/llvm_codegen.cpp` to try BIR lowering first and
+  route successful native codegen through prelowered
+  `BackendModuleInput{*bir_module}` instead of re-entering the generic
+  LIR-entry backend adapter
+- preserved the prior target-specific behavior in that app-layer caller by
+  keeping x86/aarch64 on their existing emitter-local LIR fallback when direct
+  BIR emission rejects a module, while keeping `riscv64` on backend-owned BIR
+  text when BIR lowering succeeds
+- removed the stale
+  `test_adapter_keeps_legacy_shim_aligned_with_lowering_entrypoint()` call
+  from `backend_lir_adapter_tests.cpp` so the current tree builds cleanly after
+  the earlier shim deletion
 - deleted the redundant production `src/backend/lir_adapter.hpp` shim, updated
   the x86/aarch64 emitters and the no-op backend test includes to depend on
   direct legacy-lowering headers instead of the re-export layer, and switched
@@ -251,6 +266,9 @@ Validation baseline:
   `before: passed=402 failed=0 total=402`,
   `after: passed=402 failed=0 total=402`,
   `new failing tests: 0`
+- latest focused slice validation:
+  `ctest --test-dir build --output-on-failure -R "backend_lir_adapter_tests|backend_lir_adapter_aarch64_tests|backend_lir_adapter_x86_64_tests|backend_codegen_route_riscv64_return_add_defaults_to_bir|backend_runtime_return_add|backend_contract_aarch64_return_add_stdout_object|backend_contract_x86_64_global_load_stdout_object"`
+  with `100% tests passed, 0 tests failed out of 8`
 
 Latest bounded progress:
 

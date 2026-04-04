@@ -1,8 +1,12 @@
 #include "llvm_codegen.hpp"
+#include "aarch64/codegen/emit.hpp"
 #include "backend.hpp"
+#include "bir_printer.hpp"
+#include "lowering/lir_to_bir.hpp"
 #include "target.hpp"
 #include "hir_to_lir.hpp"
 #include "lir_printer.hpp"
+#include "x86/codegen/emit.hpp"
 
 #include <iostream>
 #include <stdexcept>
@@ -15,11 +19,43 @@ std::string emit_legacy(const lir::LirModule& lir_mod) {
   return lir::print_llvm(lir_mod);
 }
 
+bool is_direct_bir_subset_error(const std::invalid_argument& ex) {
+  return std::string_view(ex.what()).find("does not support this direct BIR module") !=
+         std::string_view::npos;
+}
+
+std::string emit_target_legacy_fallback(const lir::LirModule& lir_mod,
+                                        backend::Target target) {
+  switch (target) {
+    case backend::Target::X86_64:
+    case backend::Target::I686:
+      return backend::x86::emit_module(lir_mod);
+    case backend::Target::Aarch64:
+      return backend::aarch64::emit_module(lir_mod);
+    case backend::Target::Riscv64:
+      return emit_legacy(lir_mod);
+  }
+  return emit_legacy(lir_mod);
+}
+
 std::string emit_via_backend(const lir::LirModule& lir_mod,
                              std::string_view target_triple) {
+  const auto target = backend::target_from_triple(target_triple);
+  const auto bir_module = backend::try_lower_to_bir(lir_mod);
+  if (!bir_module.has_value()) {
+    return emit_target_legacy_fallback(lir_mod, target);
+  }
+
   backend::BackendOptions options;
-  options.target = backend::target_from_triple(target_triple);
-  return backend::emit_module(backend::BackendModuleInput{lir_mod}, options);
+  options.target = target;
+  try {
+    return backend::emit_module(backend::BackendModuleInput{*bir_module}, options);
+  } catch (const std::invalid_argument& ex) {
+    if (!is_direct_bir_subset_error(ex)) {
+      throw;
+    }
+    return emit_target_legacy_fallback(lir_mod, target);
+  }
 }
 
 }  // namespace
