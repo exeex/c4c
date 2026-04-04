@@ -4695,9 +4695,95 @@ std::string emit_minimal_conditional_affine_i8_return_asm(
 std::string emit_minimal_conditional_affine_i8_return_asm(
     std::string_view target_triple,
     const MinimalConditionalAffineI8ReturnSlice& slice) {
-  c4c::backend::BackendModule target_stub;
-  target_stub.target_triple = std::string(target_triple);
-  return emit_minimal_conditional_affine_i8_return_asm(target_stub, slice);
+  const std::string main_symbol = asm_symbol_name(target_triple, slice.function_name);
+  const auto in_mov_range = [](std::int64_t imm) {
+    return imm >= 0 && imm <= std::numeric_limits<std::uint16_t>::max();
+  };
+  const auto in_add_sub_range = [](std::int64_t imm) {
+    return imm >= 0 && imm <= 4095;
+  };
+  const auto value_immediates_in_range =
+      [&](const MinimalConditionalAffineI8ReturnSlice::ValueExpr& value) {
+        if (value.kind == MinimalConditionalAffineI8ReturnSlice::ValueKind::Immediate &&
+            !in_mov_range(value.imm)) {
+          return false;
+        }
+        for (const auto& step : value.steps) {
+          if (!in_add_sub_range(step.imm)) {
+            return false;
+          }
+        }
+        return true;
+      };
+  if (!value_immediates_in_range(slice.lhs) || !value_immediates_in_range(slice.rhs) ||
+      !value_immediates_in_range(slice.true_value) ||
+      !value_immediates_in_range(slice.false_value)) {
+    fail_unsupported("conditional-i8-affine-return immediates outside the minimal aarch64 slice range");
+  }
+  for (const auto& step : slice.post_steps) {
+    if (!in_add_sub_range(step.imm)) {
+      fail_unsupported("conditional-i8-affine-return post-select arithmetic outside the minimal aarch64 slice range");
+    }
+  }
+
+  auto emit_value_expr_to_w =
+      [](std::ostringstream& out,
+         std::string_view dst,
+         const MinimalConditionalAffineI8ReturnSlice::ValueExpr& value) {
+        switch (value.kind) {
+          case MinimalConditionalAffineI8ReturnSlice::ValueKind::Immediate:
+            out << "  mov " << dst << ", #" << value.imm << "\n";
+            break;
+          case MinimalConditionalAffineI8ReturnSlice::ValueKind::Param0:
+            out << "  and " << dst << ", w0, #0xff\n";
+            break;
+          case MinimalConditionalAffineI8ReturnSlice::ValueKind::Param1:
+            out << "  and " << dst << ", w1, #0xff\n";
+            break;
+        }
+        for (const auto& step : value.steps) {
+          out << "  "
+              << (step.opcode == c4c::backend::bir::BinaryOpcode::Sub ? "sub" : "add")
+              << " " << dst << ", " << dst << ", #" << step.imm << "\n";
+        }
+      };
+
+  std::ostringstream out;
+  const char* fail_branch = nullptr;
+  switch (slice.predicate) {
+    case c4c::codegen::lir::LirCmpPredicate::Slt: fail_branch = "b.ge"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Sle: fail_branch = "b.gt"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Sgt: fail_branch = "b.le"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Sge: fail_branch = "b.lt"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Ult: fail_branch = "b.hs"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Ule: fail_branch = "b.hi"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Ugt: fail_branch = "b.ls"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Uge: fail_branch = "b.lo"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Eq: fail_branch = "b.ne"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Ne: fail_branch = "b.eq"; break;
+    default:
+      fail_unsupported(
+          "conditional-i8-affine-return predicates outside the current compare-and-branch slice");
+  }
+
+  out << ".text\n";
+  emit_function_prelude(out, target_triple, main_symbol, true);
+  emit_value_expr_to_w(out, "w8", slice.lhs);
+  emit_value_expr_to_w(out, "w9", slice.rhs);
+  out << "  cmp w8, w9\n"
+      << "  " << fail_branch << " .L" << slice.false_label << "\n"
+      << ".L" << slice.true_label << ":\n";
+  emit_value_expr_to_w(out, "w0", slice.true_value);
+  out << "  b .L" << slice.join_label << "\n"
+      << ".L" << slice.false_label << ":\n";
+  emit_value_expr_to_w(out, "w0", slice.false_value);
+  out << ".L" << slice.join_label << ":\n";
+  for (const auto& step : slice.post_steps) {
+    out << "  " << (step.opcode == c4c::backend::bir::BinaryOpcode::Sub ? "sub" : "add")
+        << " w0, w0, #" << step.imm << "\n";
+  }
+  out << "  ret\n";
+  return out.str();
 }
 
 std::string emit_minimal_conditional_affine_i32_return_asm(
@@ -4799,9 +4885,97 @@ std::string emit_minimal_conditional_affine_i32_return_asm(
 std::string emit_minimal_conditional_affine_i32_return_asm(
     std::string_view target_triple,
     const MinimalConditionalAffineI32ReturnSlice& slice) {
-  c4c::backend::BackendModule target_stub;
-  target_stub.target_triple = std::string(target_triple);
-  return emit_minimal_conditional_affine_i32_return_asm(target_stub, slice);
+  const auto in_mov_range = [](std::int64_t imm) {
+    return imm >= 0 && imm <= std::numeric_limits<std::uint16_t>::max();
+  };
+  const auto in_add_sub_range = [](std::int64_t imm) {
+    return imm >= 0 && imm <= 4095;
+  };
+  const auto value_immediates_in_range =
+      [&](const MinimalConditionalAffineI32ReturnSlice::ValueExpr& value) {
+        if (value.kind == MinimalConditionalAffineI32ReturnSlice::ValueKind::Immediate &&
+            !in_mov_range(value.imm)) {
+          return false;
+        }
+        for (const auto& step : value.steps) {
+          if (!in_add_sub_range(step.imm)) {
+            return false;
+          }
+        }
+        return true;
+      };
+  if (!value_immediates_in_range(slice.lhs) || !value_immediates_in_range(slice.rhs) ||
+      !value_immediates_in_range(slice.true_value) ||
+      !value_immediates_in_range(slice.false_value)) {
+    fail_unsupported("conditional-i32-affine-return immediates outside the minimal aarch64 slice range");
+  }
+  for (const auto& step : slice.post_steps) {
+    if (!in_add_sub_range(step.imm)) {
+      fail_unsupported("conditional-i32-affine-return post-select arithmetic outside the minimal aarch64 slice range");
+    }
+  }
+
+  auto emit_value_expr_to_w =
+      [](std::ostringstream& out,
+         std::string_view dst,
+         const MinimalConditionalAffineI32ReturnSlice::ValueExpr& value) {
+        switch (value.kind) {
+          case MinimalConditionalAffineI32ReturnSlice::ValueKind::Immediate:
+            out << "  mov " << dst << ", #" << value.imm << "\n";
+            break;
+          case MinimalConditionalAffineI32ReturnSlice::ValueKind::Param0:
+            if (dst != "w0") {
+              out << "  mov " << dst << ", w0\n";
+            }
+            break;
+          case MinimalConditionalAffineI32ReturnSlice::ValueKind::Param1:
+            out << "  mov " << dst << ", w1\n";
+            break;
+        }
+        for (const auto& step : value.steps) {
+          out << "  "
+              << (step.opcode == c4c::backend::bir::BinaryOpcode::Sub ? "sub" : "add")
+              << " " << dst << ", " << dst << ", #" << step.imm << "\n";
+        }
+      };
+
+  std::ostringstream out;
+  const std::string main_symbol = asm_symbol_name(target_triple, slice.function_name);
+  const char* fail_branch = nullptr;
+  switch (slice.predicate) {
+    case c4c::codegen::lir::LirCmpPredicate::Slt: fail_branch = "b.ge"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Sle: fail_branch = "b.gt"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Sgt: fail_branch = "b.le"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Sge: fail_branch = "b.lt"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Ult: fail_branch = "b.hs"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Ule: fail_branch = "b.hi"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Ugt: fail_branch = "b.ls"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Uge: fail_branch = "b.lo"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Eq: fail_branch = "b.ne"; break;
+    case c4c::codegen::lir::LirCmpPredicate::Ne: fail_branch = "b.eq"; break;
+    default:
+      fail_unsupported(
+          "conditional-i32-affine-return predicates outside the current compare-and-branch slice");
+  }
+
+  out << ".text\n";
+  emit_function_prelude(out, target_triple, main_symbol, true);
+  emit_value_expr_to_w(out, "w8", slice.lhs);
+  emit_value_expr_to_w(out, "w9", slice.rhs);
+  out << "  cmp w8, w9\n"
+      << "  " << fail_branch << " .L" << slice.false_label << "\n"
+      << ".L" << slice.true_label << ":\n";
+  emit_value_expr_to_w(out, "w0", slice.true_value);
+  out << "  b .L" << slice.join_label << "\n"
+      << ".L" << slice.false_label << ":\n";
+  emit_value_expr_to_w(out, "w0", slice.false_value);
+  out << ".L" << slice.join_label << ":\n";
+  for (const auto& step : slice.post_steps) {
+    out << "  " << (step.opcode == c4c::backend::bir::BinaryOpcode::Sub ? "sub" : "add")
+        << " w0, w0, #" << step.imm << "\n";
+  }
+  out << "  ret\n";
+  return out.str();
 }
 
 std::string emit_minimal_countdown_loop_asm(const c4c::backend::BackendModule& module,

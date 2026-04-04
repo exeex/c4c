@@ -38,6 +38,10 @@ std::string asm_symbol_name(const c4c::backend::BackendModule& module,
                             std::string_view logical_name);
 std::string asm_symbol_name(std::string_view target_triple,
                             std::string_view logical_name);
+std::string asm_private_data_label(const c4c::backend::BackendModule& module,
+                                   std::string_view pool_name);
+std::string asm_private_data_label(std::string_view target_triple,
+                                   std::string_view pool_name);
 
 const std::string& synthetic_call_crossing_regalloc_source_value() {
   static const std::string kSyntheticCallCrossingRegallocSource =
@@ -524,6 +528,11 @@ std::string asm_symbol_name(std::string_view target_triple,
 
 std::string asm_private_data_label(const c4c::backend::BackendModule& module,
                                    std::string_view pool_name) {
+  return asm_private_data_label(module.target_triple, pool_name);
+}
+
+std::string asm_private_data_label(std::string_view target_triple,
+                                   std::string_view pool_name) {
   std::string label(pool_name);
   if (!label.empty() && label.front() == '@') {
     label.erase(label.begin());
@@ -532,8 +541,7 @@ std::string asm_private_data_label(const c4c::backend::BackendModule& module,
     label.erase(label.begin());
   }
 
-  const bool is_darwin =
-      module.target_triple.find("apple-darwin") != std::string::npos;
+  const bool is_darwin = target_triple.find("apple-darwin") != std::string::npos;
   if (is_darwin) {
     return "L." + label;
   }
@@ -4050,12 +4058,10 @@ std::string emit_minimal_scalar_global_store_reload_asm(
 }
 
 std::string emit_minimal_string_literal_char_asm(
-    const c4c::codegen::lir::LirModule& module,
+    std::string_view target_triple,
     const MinimalStringLiteralCharSlice& slice) {
-  c4c::backend::BackendModule backend_module;
-  backend_module.target_triple = module.target_triple;
-  const std::string string_label = asm_private_data_label(backend_module, slice.pool_name);
-  const std::string main_symbol = asm_symbol_name(backend_module, "main");
+  const std::string string_label = asm_private_data_label(target_triple, slice.pool_name);
+  const std::string main_symbol = asm_symbol_name(target_triple, "main");
 
   std::ostringstream out;
   out << ".intel_syntax noprefix\n";
@@ -4221,7 +4227,7 @@ std::string emit_module(const c4c::backend::BackendModule& module,
         slice.has_value()) {
       c4c::codegen::lir::LirModule scaffold_module;
       scaffold_module.target_triple = module.target_triple;
-      return emit_minimal_string_literal_char_asm(scaffold_module, *slice);
+      return emit_minimal_string_literal_char_asm(module.target_triple, *slice);
     }
     if (const auto slice = parse_minimal_conditional_return_slice(module);
         slice.has_value()) {
@@ -4345,13 +4351,11 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
     }
     if (const auto slice = parse_minimal_string_literal_char_slice(module);
         slice.has_value()) {
-      return emit_minimal_string_literal_char_asm(module, *slice);
+      return emit_minimal_string_literal_char_asm(module.target_triple, *slice);
     }
     if (const auto slice = parse_minimal_conditional_return_slice(module);
         slice.has_value()) {
-      c4c::backend::BackendModule scaffold_module;
-      scaffold_module.target_triple = module.target_triple;
-      return emit_minimal_conditional_return_asm(scaffold_module, *slice);
+      return emit_minimal_conditional_return_asm(module.target_triple, *slice);
     }
     const auto adapted = c4c::backend::lower_lir_to_backend_module(module);
     if (const auto slice = c4c::backend::parse_backend_minimal_declared_direct_call_module(adapted);

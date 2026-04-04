@@ -233,8 +233,22 @@ full-suite guard with `test_before.log` vs `test_after.log`, with `100%
 tests passed, 0 tests failed out of 394` for backend scope and `100% tests
 passed, 0 tests failed out of 2833` before and after the full-suite
 comparison.
-Next target: rerun the focused backend proof for this x86 scaffold-removal
-slice, then reassess whether any other direct-BIR or native-emitter helper
-still fabricates a legacy `BackendModule` purely for symbol/private-data reuse
-on x86_64 or aarch64 before switching into Step 4 deletion of the remaining
-legacy backend IR and backend/app LLVM rescue paths.
+Completed in this slice: removed the last emitter-local one-field
+`BackendModule` fabrication helpers from x86_64/aarch64 native emission by
+teaching the x86 string-literal path and the x86 direct-LIR conditional-return
+path to call target-triple helpers directly, and by flattening the aarch64
+direct-BIR conditional-affine i8/i32 target-triple overloads so they no longer
+wrap a synthetic legacy backend module just to reuse symbol/prelude logic.
+Completed in this slice: rebuilt the affected backend binaries, reran the
+focused `backend_lir_adapter_x86_64_tests`,
+`backend_lir_adapter_aarch64_tests`, and `backend_bir_tests`, reran the
+required backend regression scope (`ctest --test-dir build -R backend
+--output-on-failure`) with `100% tests passed, 0 tests failed out of 394`, and
+reran the monotonic guard script over `test_fail_before.log` vs a freshly
+regenerated `test_fail_after.log`, with guard result `PASS` and
+`before: passed=394 failed=0 total=394`,
+`after: passed=2833 failed=0 total=2833`, and `new failing tests: 0`.
+Next target: reassess whether any remaining direct-BIR or native-emitter helper
+still fabricates legacy `BackendModule` state for symbol/private-data reuse on
+x86_64 or aarch64; if none remain, switch into Step 4 deletion of the
+remaining legacy backend IR and backend/app LLVM rescue paths.
