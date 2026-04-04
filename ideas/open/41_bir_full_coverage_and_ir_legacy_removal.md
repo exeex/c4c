@@ -269,34 +269,41 @@ prevents the plan from being based on a static audit that may be stale.
 
 ## Phase 0 Inventory Snapshot
 
-Audited on 2026-04-03 against the current tree. This is the concrete removal
+Audited on 2026-04-04 against the current tree. This is the concrete removal
 checklist for Step 1 of the active runbook.
 
 ### Production legacy backend-IR boundaries
 
 - `src/backend/backend.hpp`
-  - `BackendModule` is still the public backend contract via
-    `#include "ir.hpp"` and `BackendModuleInput`:
+  - the header-level include boundary is now BIR-first (`#include "bir.hpp"`),
+    but the public API is still a mixed contract because it forward-declares
+    `BackendModule`, still exposes `lower_lir_to_backend_module(...)`, and keeps
+    `BackendModuleInput` constructors for both legacy and BIR entry points:
     [src/backend/backend.hpp](/workspaces/c4c/src/backend/backend.hpp#L3),
-    [src/backend/backend.hpp](/workspaces/c4c/src/backend/backend.hpp#L21)
+    [src/backend/backend.hpp](/workspaces/c4c/src/backend/backend.hpp#L15),
+    [src/backend/backend.hpp](/workspaces/c4c/src/backend/backend.hpp#L17),
+    [src/backend/backend.hpp](/workspaces/c4c/src/backend/backend.hpp#L31)
 - `src/backend/backend.cpp`
-  - still includes legacy printer/conversion headers:
+  - still includes legacy IR and legacy printer headers:
     [src/backend/backend.cpp](/workspaces/c4c/src/backend/backend.cpp#L4),
-    [src/backend/backend.cpp](/workspaces/c4c/src/backend/backend.cpp#L6)
-  - `PassthroughBackendEmitter` returns LLVM IR when BIR lowering fails:
-    [src/backend/backend.cpp](/workspaces/c4c/src/backend/backend.cpp#L213)
+    [src/backend/backend.cpp](/workspaces/c4c/src/backend/backend.cpp#L5)
+  - `PassthroughBackendEmitter` still returns LLVM IR when LIR cannot lower to
+    BIR, so the RISC-V passthrough backend remains coupled to the legacy/LIR
+    text fallback behavior:
+    [src/backend/backend.cpp](/workspaces/c4c/src/backend/backend.cpp#L225)
   - `emit_legacy_module(...)` is the old routing branch and still calls
     emitter LIR overloads, `lower_lir_to_backend_module(...)`, and raw
     `print_llvm(...)` fallback:
-    [src/backend/backend.cpp](/workspaces/c4c/src/backend/backend.cpp#L238)
+    [src/backend/backend.cpp](/workspaces/c4c/src/backend/backend.cpp#L259)
   - `emit_module(...)` still switches on `BackendPipeline::{Legacy,Bir}` and
-    converts BIR back through `lower_bir_to_backend_module(...)`:
-    [src/backend/backend.cpp](/workspaces/c4c/src/backend/backend.cpp#L277)
+    keeps the legacy-from-LIR route as a first-class production path:
+    [src/backend/backend.cpp](/workspaces/c4c/src/backend/backend.cpp#L333)
 - `src/codegen/llvm/llvm_codegen.cpp`
   - `emit_legacy(...)` is still the LLVM/LIR fallback producer:
     [src/codegen/llvm/llvm_codegen.cpp](/workspaces/c4c/src/codegen/llvm/llvm_codegen.cpp#L16)
-  - `emit_via_backend(...)` still falls back from `try_lower_to_bir(...)` to
-    `lower_lir_to_backend_module(...)`:
+  - `emit_via_backend(...)` still pre-lowers through
+    `lower_lir_to_backend_module(...)` for the non-RISC-V path when BIR is not
+    explicitly selected:
     [src/codegen/llvm/llvm_codegen.cpp](/workspaces/c4c/src/codegen/llvm/llvm_codegen.cpp#L20)
   - `CodegenPath::Llvm` and `CodegenPath::Compare` still depend on legacy IR
     emission:
@@ -317,11 +324,18 @@ checklist for Step 1 of the active runbook.
   [src/backend/lowering/bir_to_backend_ir.hpp](/workspaces/c4c/src/backend/lowering/bir_to_backend_ir.hpp),
   [src/backend/lowering/bir_to_backend_ir.cpp](/workspaces/c4c/src/backend/lowering/bir_to_backend_ir.cpp)
 - Direct include/contract dependents to migrate before deletion:
-  [src/backend/x86/codegen/emit.hpp](/workspaces/c4c/src/backend/x86/codegen/emit.hpp#L4),
-  [src/backend/aarch64/codegen/emit.hpp](/workspaces/c4c/src/backend/aarch64/codegen/emit.hpp#L4),
+  [src/backend/x86/codegen/emit.hpp](/workspaces/c4c/src/backend/x86/codegen/emit.hpp#L17),
+  [src/backend/aarch64/codegen/emit.hpp](/workspaces/c4c/src/backend/aarch64/codegen/emit.hpp#L17),
   [src/backend/lowering/call_decode.hpp](/workspaces/c4c/src/backend/lowering/call_decode.hpp#L3),
   [src/backend/lowering/extern_lowering.hpp](/workspaces/c4c/src/backend/lowering/extern_lowering.hpp#L3),
   [src/backend/lir_adapter.hpp](/workspaces/c4c/src/backend/lir_adapter.hpp#L3)
+  - both emitter headers have already stopped including `src/backend/ir.hpp`,
+    but they still expose a `BackendModule` overload plus direct-LIR fallback
+    overloads, so the public emitter contract is not yet BIR-only:
+    [src/backend/x86/codegen/emit.hpp](/workspaces/c4c/src/backend/x86/codegen/emit.hpp#L17),
+    [src/backend/x86/codegen/emit.hpp](/workspaces/c4c/src/backend/x86/codegen/emit.hpp#L21),
+    [src/backend/aarch64/codegen/emit.hpp](/workspaces/c4c/src/backend/aarch64/codegen/emit.hpp#L17),
+    [src/backend/aarch64/codegen/emit.hpp](/workspaces/c4c/src/backend/aarch64/codegen/emit.hpp#L21)
 
 ### App-layer LLVM rescue paths to delete
 
@@ -336,7 +350,7 @@ checklist for Step 1 of the active runbook.
   [src/apps/c4cll.cpp](/workspaces/c4c/src/apps/c4cll.cpp#L295)
 - Main `--codegen asm` fallback branch that retries backend output through
   LLVM/Clang and then through `CodegenPath::Llvm`:
-  [src/apps/c4cll.cpp](/workspaces/c4c/src/apps/c4cll.cpp#L781)
+  [src/apps/c4cll.cpp](/workspaces/c4c/src/apps/c4cll.cpp#L892)
 
 ### Current test surfaces coupled to the legacy contract
 
@@ -362,13 +376,20 @@ checklist for Step 1 of the active runbook.
   this file is not a target end-state and should disappear with the same
   legacy-surface cleanup once those test families are either migrated to BIR-era
   coverage or deleted under this idea.
-- Transitional BIR pipeline tests still assert conversion back into
-  `BackendModule` through `bir_to_backend_ir`:
-  [tests/backend/backend_bir_pipeline_tests.cpp](/workspaces/c4c/tests/backend/backend_bir_pipeline_tests.cpp#L4),
-  [tests/backend/backend_bir_pipeline_tests.cpp](/workspaces/c4c/tests/backend/backend_bir_pipeline_tests.cpp#L236)
+- Header-boundary regression coverage exists now and should stay green while
+  Step 3 migrates the remaining contracts:
+  [tests/backend/backend_header_boundary_tests.cpp](/workspaces/c4c/tests/backend/backend_header_boundary_tests.cpp)
+- Transitional BIR pipeline coverage is no longer primarily about
+  `bir_to_backend_ir`, but it still keeps legacy pre-lowered entry assertions
+  alive alongside the BIR route seam:
+  [tests/backend/backend_bir_pipeline_tests.cpp](/workspaces/c4c/tests/backend/backend_bir_pipeline_tests.cpp#L63),
+  [tests/backend/backend_bir_pipeline_tests.cpp](/workspaces/c4c/tests/backend/backend_bir_pipeline_tests.cpp#L1231),
+  [tests/backend/backend_bir_pipeline_riscv64_tests.cpp](/workspaces/c4c/tests/backend/backend_bir_pipeline_riscv64_tests.cpp#L12)
 
 ### Execution implication
 
-The first implementation slice after this audit should be to move the public
-backend contract from `BackendModule(ir.*)` toward `bir::Module` at the header
-boundary, starting with type-system parity and emitter header dependencies.
+The header include boundary is now partly cleaned up, so the next implementation
+slice after this audit should move from boundary pinning into actual contract
+removal: keep expanding target-neutral `lir_to_bir` coverage, then delete the
+remaining `BackendModule` and direct-LIR emitter entry points once BIR-side
+emitter parity is ready.
