@@ -9,10 +9,9 @@ Source Plan: plan.md
 - [ ] Remove legacy backend IR files and backend/app LLVM rescue paths
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
-Current active item: Step 2, land the bounded native-emitter coverage slice
-for direct-BIR x86_64/aarch64 handling of the existing
-`choose2_add_post_chain_tail_ne_u` compare-fed `bir.select`/join family with a
-short post-join `add`/`sub`/`add` arithmetic tail.
+Current active item: Step 2, continue the bounded native-emitter coverage
+expansion for direct-BIR x86_64/aarch64 widened `i8`
+compare-fed `bir.select`/join families.
 Completed in this slice: added explicit direct-BIR x86_64 and aarch64
 pipeline coverage for the existing `choose2_add_post_chain_tail_ne_u`
 split-predecessor join family, proving that both native emitters already
@@ -74,7 +73,12 @@ pipeline coverage for the existing `choose2_add_post_chain_ne_u` split-
 predecessor join family, proving that both native emitters already preserve the
 bounded post-select `add`/`sub` arithmetic tail without falling back to legacy
 backend IR.
+Completed in this slice: added explicit direct-BIR x86_64 and aarch64
+pipeline coverage for the widened `i8` `choose2_mixed_post_ne_u`
+split-predecessor mixed-affine join family, proving that both native emitters
+already preserve the bounded predecessor-local `add`/`sub` affine chains plus
+the short post-select `add` tail without falling back to legacy backend IR.
 Next target: move to the bounded widened `i8`
-`choose2_mixed_post_ne_u` split-predecessor mixed-affine join family and add
-matching direct-BIR x86_64/aarch64 pipeline coverage if the native emitters
-already handle that post-select `add` slice.
+`choose2_mixed_post_chain_ne_u` split-predecessor mixed-affine join family and
+add matching direct-BIR x86_64/aarch64 pipeline coverage for the post-select
+`add`/`sub` arithmetic tail if the native emitters already handle that slice.
