@@ -334,6 +334,12 @@ std::optional<std::string_view> strip_typed_operand_prefix(std::string_view oper
                                                            std::string_view type_prefix);
 std::string asm_symbol_name(const c4c::backend::BackendModule& module,
                             std::string_view logical_name);
+std::string asm_symbol_name(std::string_view target_triple,
+                            std::string_view logical_name);
+void emit_function_prelude(std::ostringstream& out,
+                           std::string_view target_triple,
+                           std::string_view symbol,
+                           bool is_global);
 
 bool is_minimal_single_function_asm_slice(const c4c::backend::BackendModule& module) {
   if (module.functions.size() != 1) return false;
@@ -402,21 +408,18 @@ c4c::backend::BackendModule make_backend_target_stub(
   return backend_module;
 }
 
-c4c::backend::BackendModule make_backend_target_stub(
-    const c4c::backend::bir::Module& module) {
-  c4c::backend::BackendModule backend_module;
-  backend_module.target_triple = module.target_triple;
-  return backend_module;
-}
-
 std::string minimal_single_function_symbol(const c4c::backend::bir::Module& module) {
-  return asm_symbol_name(make_backend_target_stub(module), module.functions.front().name);
+  return asm_symbol_name(module.target_triple, module.functions.front().name);
 }
 
 std::string asm_symbol_name(const c4c::backend::BackendModule& module,
                             std::string_view logical_name) {
-  const bool is_darwin =
-      module.target_triple.find("apple-darwin") != std::string::npos;
+  return asm_symbol_name(module.target_triple, logical_name);
+}
+
+std::string asm_symbol_name(std::string_view target_triple,
+                            std::string_view logical_name) {
+  const bool is_darwin = target_triple.find("apple-darwin") != std::string::npos;
   if (!is_darwin) return std::string(logical_name);
   return std::string("_") + std::string(logical_name);
 }
@@ -3943,8 +3946,14 @@ void emit_function_prelude(std::ostringstream& out,
                            const c4c::backend::BackendModule& module,
                            std::string_view symbol,
                            bool is_global) {
-  const bool is_darwin =
-      module.target_triple.find("apple-darwin") != std::string::npos;
+  emit_function_prelude(out, module.target_triple, symbol, is_global);
+}
+
+void emit_function_prelude(std::ostringstream& out,
+                           std::string_view target_triple,
+                           std::string_view symbol,
+                           bool is_global) {
+  const bool is_darwin = target_triple.find("apple-darwin") != std::string::npos;
   if (is_global) {
     out << ".globl " << symbol << "\n";
   }
@@ -3983,7 +3992,7 @@ std::string emit_minimal_return_imm_asm(const c4c::backend::bir::Module& module,
   const std::string symbol = minimal_single_function_symbol(module);
 
   out << ".text\n";
-  emit_function_prelude(out, make_backend_target_stub(module), symbol, true);
+  emit_function_prelude(out, module.target_triple, symbol, true);
   out << "  mov w0, #" << imm << "\n"
       << "  ret\n";
   return out.str();
@@ -4031,7 +4040,7 @@ std::string emit_minimal_return_sub_imm_asm(const c4c::backend::bir::Module& mod
   const std::string symbol = minimal_single_function_symbol(module);
 
   out << ".text\n";
-  emit_function_prelude(out, make_backend_target_stub(module), symbol, true);
+  emit_function_prelude(out, module.target_triple, symbol, true);
   out << "  sub w0, wzr, #" << neg_imm << "\n"
       << "  ret\n";
   return out.str();
@@ -4078,11 +4087,10 @@ std::string emit_minimal_affine_return_asm(
 std::string emit_minimal_affine_return_asm(
     const c4c::backend::bir::Module& module,
     const MinimalAffineReturnSlice& slice) {
-  const auto target_stub = make_backend_target_stub(module);
-  const std::string symbol = asm_symbol_name(target_stub, slice.function_name);
+  const std::string symbol = asm_symbol_name(module.target_triple, slice.function_name);
   std::ostringstream out;
   out << ".text\n";
-  emit_function_prelude(out, target_stub, symbol, true);
+  emit_function_prelude(out, module.target_triple, symbol, true);
   if (!slice.uses_first_param && !slice.uses_second_param) {
     if (slice.constant >= 0 && slice.constant <= std::numeric_limits<std::uint16_t>::max()) {
       out << "  mov w0, #" << slice.constant << "\n";
@@ -4117,11 +4125,10 @@ std::string emit_minimal_affine_return_asm(
 std::string emit_minimal_cast_return_asm(
     const c4c::backend::bir::Module& module,
     const MinimalCastReturnSlice& slice) {
-  const auto target_stub = make_backend_target_stub(module);
-  const std::string symbol = asm_symbol_name(target_stub, slice.function_name);
+  const std::string symbol = asm_symbol_name(module.target_triple, slice.function_name);
   std::ostringstream out;
   out << ".text\n";
-  emit_function_prelude(out, target_stub, symbol, true);
+  emit_function_prelude(out, module.target_triple, symbol, true);
 
   if (slice.opcode == c4c::backend::bir::CastOpcode::SExt &&
       slice.operand_type == c4c::backend::bir::TypeKind::I32 &&
@@ -4459,7 +4466,7 @@ std::string emit_minimal_call_crossing_direct_call_asm(
 }
 
 std::string emit_minimal_conditional_return_asm(
-    const c4c::backend::BackendModule& module,
+    std::string_view target_triple,
     const MinimalConditionalReturnSlice& slice) {
   const auto in_mov_range = [](std::int64_t imm) {
     return imm >= 0 && imm <= std::numeric_limits<std::uint16_t>::max();
@@ -4495,7 +4502,7 @@ std::string emit_minimal_conditional_return_asm(
   };
 
   std::ostringstream out;
-  const std::string main_symbol = asm_symbol_name(module, slice.function_name);
+  const std::string main_symbol = asm_symbol_name(target_triple, slice.function_name);
   const char* fail_branch = nullptr;
   switch (slice.predicate) {
     case c4c::codegen::lir::LirCmpPredicate::Slt: fail_branch = "b.ge"; break;
@@ -4514,7 +4521,7 @@ std::string emit_minimal_conditional_return_asm(
   }
 
   out << ".text\n";
-  emit_function_prelude(out, module, main_symbol, true);
+  emit_function_prelude(out, target_triple, main_symbol, true);
   emit_move_w(out, "w8", slice.lhs);
   if (slice.rhs.kind == MinimalConditionalReturnSlice::ValueKind::Immediate) {
     out << "  cmp w8, #" << slice.rhs.imm << "\n";
@@ -4530,6 +4537,12 @@ std::string emit_minimal_conditional_return_asm(
   emit_move_w(out, "w0", slice.false_value);
   out << "  ret\n";
   return out.str();
+}
+
+std::string emit_minimal_conditional_return_asm(
+    const c4c::backend::BackendModule& module,
+    const MinimalConditionalReturnSlice& slice) {
+  return emit_minimal_conditional_return_asm(module.target_triple, slice);
 }
 
 std::string emit_minimal_conditional_affine_i8_return_asm(
@@ -4626,6 +4639,14 @@ std::string emit_minimal_conditional_affine_i8_return_asm(
   return out.str();
 }
 
+std::string emit_minimal_conditional_affine_i8_return_asm(
+    std::string_view target_triple,
+    const MinimalConditionalAffineI8ReturnSlice& slice) {
+  c4c::backend::BackendModule target_stub;
+  target_stub.target_triple = std::string(target_triple);
+  return emit_minimal_conditional_affine_i8_return_asm(target_stub, slice);
+}
+
 std::string emit_minimal_conditional_affine_i32_return_asm(
     const c4c::backend::BackendModule& module,
     const MinimalConditionalAffineI32ReturnSlice& slice) {
@@ -4720,6 +4741,14 @@ std::string emit_minimal_conditional_affine_i32_return_asm(
   }
   out << "  ret\n";
   return out.str();
+}
+
+std::string emit_minimal_conditional_affine_i32_return_asm(
+    std::string_view target_triple,
+    const MinimalConditionalAffineI32ReturnSlice& slice) {
+  c4c::backend::BackendModule target_stub;
+  target_stub.target_triple = std::string(target_triple);
+  return emit_minimal_conditional_affine_i32_return_asm(target_stub, slice);
 }
 
 std::string emit_minimal_countdown_loop_asm(const c4c::backend::BackendModule& module,
@@ -6782,21 +6811,15 @@ std::string emit_module(const c4c::backend::bir::Module& module,
   }
   if (const auto slice = parse_minimal_conditional_return_slice(module);
       slice.has_value()) {
-    c4c::backend::BackendModule scaffold_module;
-    scaffold_module.target_triple = module.target_triple;
-    return emit_minimal_conditional_return_asm(scaffold_module, *slice);
+    return emit_minimal_conditional_return_asm(module.target_triple, *slice);
   }
   if (const auto slice = parse_minimal_conditional_affine_i8_return_slice(module);
       slice.has_value()) {
-    c4c::backend::BackendModule scaffold_module;
-    scaffold_module.target_triple = module.target_triple;
-    return emit_minimal_conditional_affine_i8_return_asm(scaffold_module, *slice);
+    return emit_minimal_conditional_affine_i8_return_asm(module.target_triple, *slice);
   }
   if (const auto slice = parse_minimal_conditional_affine_i32_return_slice(module);
       slice.has_value()) {
-    c4c::backend::BackendModule scaffold_module;
-    scaffold_module.target_triple = module.target_triple;
-    return emit_minimal_conditional_affine_i32_return_asm(scaffold_module, *slice);
+    return emit_minimal_conditional_affine_i32_return_asm(module.target_triple, *slice);
   }
   fail_unsupported_direct_bir_module();
 }

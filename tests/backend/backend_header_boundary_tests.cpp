@@ -16,11 +16,15 @@ static_assert(!IsCompleteType<c4c::backend::BackendModule>::value,
 
 static_assert(!IsCompleteType<c4c::backend::BackendModule>::value,
               "x86 emit header should not force the legacy backend IR include boundary");
+static_assert(!IsCompleteType<c4c::codegen::lir::LirModule>::value,
+              "x86 emit header should not complete the frontend LIR module just to expose emitter entrypoints");
 
 #include "../../src/backend/aarch64/codegen/emit.hpp"
 
 static_assert(!IsCompleteType<c4c::backend::BackendModule>::value,
               "aarch64 emit header should not force the legacy backend IR include boundary");
+static_assert(!IsCompleteType<c4c::codegen::lir::LirModule>::value,
+              "aarch64 emit header should not complete the frontend LIR module just to expose emitter entrypoints");
 
 #include "../../src/backend/bir.hpp"
 

@@ -1,9 +1,12 @@
 #pragma once
 
 #include "../assembler/mod.hpp"
-#include "../../../codegen/lir/ir.hpp"
 
 #include <string>
+
+namespace c4c::codegen::lir {
+struct LirModule;
+}
 
 namespace c4c::backend {
 struct BackendModule;

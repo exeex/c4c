@@ -9,10 +9,29 @@ Source Plan: plan.md
 - [ ] Remove legacy backend IR files and backend/app LLVM rescue paths
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
-Current active item: Step 3, start the first bounded emitter-contract slice
-that removes remaining x86_64/aarch64 direct-BIR `ir.*` dependence now that
-the existing `i32` mixed-then-deeper split-predecessor join family is covered
-and accepted on both native emitters.
+Current active item: Step 3, remove the direct-BIR conditional-return
+`BackendModule` scaffold crutch in the x86_64/aarch64 emitters and tighten the
+emit-header boundary so this slice no longer needs a legacy backend-module
+stand-in just to reuse target-triple symbol/prelude helpers.
+Completed in this slice: tightened both native emitter headers so
+`x86/codegen/emit.hpp` and `aarch64/codegen/emit.hpp` now forward-declare
+`c4c::codegen::lir::LirModule` instead of completing the full frontend LIR IR
+surface just to expose emitter entrypoints, with a header-boundary regression
+assertion proving those includes no longer complete `LirModule`.
+Completed in this slice: removed the direct-BIR x86_64/aarch64 conditional-
+return `BackendModule` scaffold usage from the BIR emitter path by threading
+`target_triple` directly into the symbol/prelude helpers for the bounded
+conditional-return family, and also dropped the same stand-in from the direct-
+BIR minimal symbol/return/affine/cast helper path where the target triple was
+the only required legacy-field input.
+Completed in this slice: rebuilt and reran the proving tests
+(`backend_shared_util_tests` and `backend_bir_tests`), the required backend
+regression scope (`ctest --test-dir build -R backend --output-on-failure`),
+and the monotonic full-suite guard over the existing
+`test_fail_before.log` versus a freshly regenerated `test_fail_after.log`,
+with `100% tests passed, 0 tests failed out of 394` for backend scope and guard
+result `PASS` with `before: passed=394 failed=0 total=394`,
+`after: passed=2833 failed=0 total=2833`, and `new failing tests: 0`.
 Completed in this slice: added explicit direct-BIR x86_64 and aarch64
 pipeline coverage for the existing `i32`
 `choose2_mixed_then_deeper_post` / `choose2_mixed_then_deeper_post_chain` /
@@ -163,7 +182,8 @@ full-suite guard with `test_before.log` vs `test_after.log`, with `100%
 tests passed, 0 tests failed out of 394` for backend scope and `100% tests
 passed, 0 tests failed out of 2833` before and after the full-suite
 comparison.
-Next target: identify the first remaining x86_64/aarch64 emitter-facing
-contract that still depends on `ir.*` or a direct-BIR adapter crutch, then
-land the smallest BIR-native replacement slice with explicit native-emitter
-coverage before starting Step 4 legacy-path deletion.
+Next target: if this scaffold-removal slice lands cleanly, continue Step 3 by
+removing the next direct-BIR emitter helper that still manufactures a legacy
+`BackendModule` solely for symbol/global-label/prelude reuse, starting with the
+remaining aarch64 direct-BIR affine/global-label convenience paths before
+starting Step 4 legacy-path deletion.
