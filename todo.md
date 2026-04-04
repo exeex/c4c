@@ -12,14 +12,37 @@ Source Plan: plan.md
 Current active item: Step 4, keep shrinking the remaining app-layer LLVM asm
 rescue surface one bounded family at a time; the next target is the remaining
 `call_helper` runtime/contract seam.
-Next intended slice: re-probe `call_helper` through both stdout-native runtime
-and contract paths, identify whether the remaining gap is isolated to one
-target/backend matcher, then land the smallest enabling conversion and rerun
-its focused proving test plus the required backend and monotonic regression
-gates.
+Iteration target: probe the remaining `call_helper` stdout-native runtime and
+contract split on both `x86_64` and `aarch64`, then land the smallest enabling
+conversion that removes another bounded `-o <file>.s` rescue dependency.
+Next intended slice: re-audit the remaining `--codegen asm -o <file>.s`
+ callsites and backend tests, then start deleting the app-layer LLVM asm
+ rescue path from `c4cll` if no bounded caller still requires it.
 Blocker: none. The rebuilt `backend_lir_adapter_aarch64_tests` expectation
 drift has been realigned to the current native aarch64 backend seam, and the
 required backend/full-suite acceptance gates are green again.
+Completed in this slice: removed the stale `call_helper` skip from the backend
+ runtime test loop in `tests/c/internal/InternalTests.cmake` and converted the
+ bounded `backend_runtime_call_helper` case onto the explicit stdout-native asm
+ path with the existing `call_helper_def.c` toolchain input, so this extern-
+ call runtime-positive seam no longer depends on the app-layer
+ `-o <file>.s` LLVM asm rescue route.
+Completed in this slice: re-probed `tests/c/internal/backend_case/call_helper.c`
+ directly through `build/c4cll --codegen asm` and confirmed that both
+ `x86_64-unknown-linux-gnu` and `aarch64-unknown-linux-gnu` already emit
+ backend-native stdout assembly for this helper-call case on the current
+ backend seam.
+Completed in this slice: reran the focused proving set
+ (`backend_contract_aarch64_extern_call_stdout_object`,
+ `backend_contract_x86_64_extern_call_stdout_object`, and
+ `backend_runtime_call_helper`) with `100% tests passed, 0 tests failed out of
+ 3`, reran the required backend regression scope
+ (`ctest --test-dir build -R backend --output-on-failure`) with `100% tests
+ passed, 0 tests failed out of 402`, regenerated `test_fail_after.log`, and
+ reran the monotonic full-suite guard over `test_fail_before.log` versus the
+ refreshed `test_fail_after.log`, with guard result `PASS` and
+ `before: passed=2840 failed=0 total=2840`,
+ `after: passed=2841 failed=0 total=2841`, and `new failing tests: 0`.
 Completed in this slice: converted the bounded
 `backend_runtime_extern_global_array` runtime-positive family in
 `tests/c/internal/InternalTests.cmake` onto the explicit stdout-native asm
