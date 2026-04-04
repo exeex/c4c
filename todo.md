@@ -13,11 +13,46 @@ Current active item: Step 2, continue tightening the widened-width/source-level
 arithmetic route matrix by carrying the newly landed zero-parameter
 `return_mul_u8` parity slice forward into the next uncovered widened bitwise
 arithmetic-return gap.
-Next target: add the adjacent zero-parameter widened `return_and_u8`
-backend-route and backend-lowering coverage beside the existing plain
-`return_and` route, then rerun the targeted route/lowering checks to determine
-whether the widened `i8` direct-BIR lowering already covers constant-only
-bitwise `and` or needs another narrow `lir_to_bir.cpp` extension.
+Next target: carry the widened zero-parameter bitwise-return parity work from
+the landed `return_and_u8` slice into the next adjacent gap,
+`return_or_u8`, beside the existing plain `return_or` route.
+
+Completed this iteration:
+- Re-audited the zero-parameter widened arithmetic-return inventory in
+  `tests/c/internal/InternalTests.cmake` and confirmed the next adjacent
+  widened bitwise parity gap after the landed `return_mul_u8` slice was the
+  zero-parameter `return_and_u8` route beside the existing plain `return_and`
+  family.
+- Added `tests/c/internal/backend_route_case/return_and_u8.c`, proving the
+  bounded zero-parameter `unsigned char` direct-bitwise-and wrapper reaches the
+  backend through BIR instead of falling back to legacy LLVM IR text.
+- Registered
+  `backend_codegen_route_riscv64_return_and_u8_defaults_to_bir` in
+  `tests/c/internal/InternalTests.cmake`, asserting the emitted text contains
+  `bir.func @choose_and_u() -> i8 {`, `%t0 = bir.and i8 14, 11`, `bir.ret i8 %t0`,
+  and forbids legacy LLVM IR `define i8 @choose_and_u()`.
+- Added `make_bir_i8_return_and_module()` to
+  `tests/backend/backend_bir_test_support.*` plus
+  `test_bir_lowering_accepts_i8_return_and()` in
+  `tests/backend/backend_bir_lowering_tests.cpp` to keep the widened
+  zero-parameter `i8` bitwise-and return shape covered below the
+  backend-route harness.
+- Used the new coverage to expose a real Step 2 direct-BIR gap: the widened
+  zero-parameter `i8` bitwise-and return case still lowered as legacy LLVM IR
+  `and i32` plus `trunc i32 -> i8`.
+- Fixed `src/backend/lowering/lir_to_bir.cpp` so
+  `try_lower_widened_i8_add_sub_chain_function()` now accepts widened constant-only
+  `and`, preserving the existing parameter restrictions while lowering this
+  route directly to `bir.and i8`.
+- Rebuilt `backend_bir_tests` and `c4cll`, reran `./build/backend_bir_tests`,
+  reran `backend_codegen_route_riscv64_return_and_u8_defaults_to_bir`, reran
+  `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `376/376` backend-labeled tests passing, then refreshed
+  `test_fail_after.log` with a full `ctest --test-dir build -j8 --output-on-failure`
+  run and passed the regression guard against `test_fail_before.log` with
+  `--allow-non-decreasing-passed --timeout-threshold 30 --enforce-timeout`
+  (`2800 -> 2814` passed, `0 -> 0` failed, no newly failing tests, no new
+  `>30s` cases).
 
 Completed this iteration:
 - Re-audited the zero-parameter widened arithmetic-return inventory in

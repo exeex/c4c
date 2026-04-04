@@ -1133,7 +1133,8 @@ std::optional<bir::Function> try_lower_widened_i8_add_sub_chain_function(
     if (!binary.has_value() || binary->result.type != bir::TypeKind::I32 ||
         (binary->opcode != bir::BinaryOpcode::Add &&
          binary->opcode != bir::BinaryOpcode::Sub &&
-         binary->opcode != bir::BinaryOpcode::Mul) ||
+         binary->opcode != bir::BinaryOpcode::Mul &&
+         binary->opcode != bir::BinaryOpcode::And) ||
         name_is_defined(binary->result.name)) {
       return std::nullopt;
     }
