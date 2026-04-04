@@ -10,18 +10,36 @@ Source Plan: plan.md
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
 Current active item: Step 4, keep shrinking the remaining app-layer LLVM asm
-rescue one bounded surface at a time; promote the runtime-positive
-`global_load` / `global_load_zero_init` family off the `-o <file>.s` rescue
-path because both cases already emit backend-native stdout asm on the current
-backend/native toolchain seam.
-Next intended slice: with the runtime-positive backend harness now supporting
-an explicit stdout-native asm path for bounded asm cases, probe the remaining
-already-native runtime/file-output families (for example simple return/call or
-adjacent data cases), promote the next bounded family onto that path, and keep
-the remaining rescue-dependent surfaces isolated for later follow-up slices.
+rescue one bounded surface at a time; with the simple return family now off the
+`-o <file>.s` rescue path, continue probing the remaining already-native
+runtime/file-output families and promote the next bounded stdout-native slice
+without widening scope.
+Next intended slice: probe the local call/parameter runtime family
+(`local_arg_call`, `param_slot`, and adjacent two-arg parameter cases) on the
+explicit stdout-native asm path, then convert the next bounded subset that is
+already backend-native on stdout while keeping rescue-dependent cases isolated.
 Blocker: none. The rebuilt `backend_lir_adapter_aarch64_tests` expectation
 drift has been realigned to the current native aarch64 backend seam, and the
 required backend/full-suite acceptance gates are green again.
+Completed in this slice: converted the bounded runtime-positive simple return
+family (`return_zero`, `return_add`, and `return_add_sub_chain`) in
+`tests/c/internal/InternalTests.cmake` onto the explicit stdout-native asm
+path, so these backend-native runtime checks no longer depend on the app-layer
+`-o <file>.s` LLVM asm rescue route.
+Completed in this slice: probed the same simple return family directly through
+`c4cll --codegen asm` and confirmed that both `aarch64-unknown-linux-gnu` and
+`x86_64-unknown-linux-gnu` already emit backend-native stdout assembly for
+these cases on the current backend seam.
+Completed in this slice: regenerated the build files, reran the focused
+runtime-positive proving tests (`backend_runtime_return_add`,
+`backend_runtime_return_add_sub_chain`, and `backend_runtime_return_zero`) with
+`100% tests passed, 0 tests failed out of 3`, reran the required backend
+regression scope (`ctest --test-dir build -R backend --output-on-failure`)
+with `100% tests passed, 0 tests failed out of 401`, regenerated
+`test_fail_after.log`, and reran the monotonic full-suite guard over
+`test_fail_before.log` versus the refreshed `test_fail_after.log`, with guard
+result `PASS` and `before: passed=394 failed=0 total=394`,
+`after: passed=2840 failed=0 total=2840`, and `new failing tests: 0`.
 Completed in this slice: taught the runtime-positive backend harness
 (`tests/c/internal/cmake/run_backend_positive_case.cmake`) an explicit
 stdout-native asm path for bounded `--codegen asm` runtime cases, while
