@@ -1436,6 +1436,18 @@ void test_bir_lowering_accepts_i8_return_or() {
                   "BIR lowering should let the widened zero-parameter i8 bitwise-or flow directly into the return");
 }
 
+void test_bir_lowering_accepts_i8_return_xor() {
+  const auto lowered = c4c::backend::lower_to_bir(make_bir_i8_return_xor_module());
+  const auto rendered = c4c::backend::bir::print(lowered);
+
+  expect_contains(rendered, "bir.func @choose_xor_u() -> i8 {",
+                  "BIR lowering should preserve the widened zero-parameter i8 bitwise-xor return signature");
+  expect_contains(rendered, "%t0 = bir.xor i8 12, 10",
+                  "BIR lowering should materialize the widened zero-parameter i8 bitwise-xor directly in BIR terms");
+  expect_contains(rendered, "bir.ret i8 %t0",
+                  "BIR lowering should let the widened zero-parameter i8 bitwise-xor flow directly into the return");
+}
+
 void test_bir_lowering_accepts_i8_add_sub_chain() {
   const auto lowered = c4c::backend::lower_to_bir(make_bir_i8_return_add_sub_chain_module());
   const auto rendered = c4c::backend::bir::print(lowered);
@@ -1649,6 +1661,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_i8_return_mul);
   RUN_TEST(test_bir_lowering_accepts_i8_return_and);
   RUN_TEST(test_bir_lowering_accepts_i8_return_or);
+  RUN_TEST(test_bir_lowering_accepts_i8_return_xor);
   RUN_TEST(test_bir_lowering_accepts_i8_add_sub_chain);
   RUN_TEST(test_bir_lowering_accepts_i64_add_sub_chain);
   RUN_TEST(test_bir_lowering_accepts_i8_two_param_add);
