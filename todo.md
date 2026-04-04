@@ -19,6 +19,18 @@ This iteration target: delete one live production legacy-lowering seam instead
 of stopping at audit-only work, then leave the next iteration aimed at the
 remaining emitter-local and test-local `lir_to_backend_ir.*` ownership.
 
+Current exact target for this iteration:
+
+- delete the redundant production `src/backend/lir_adapter.hpp` shim so
+  emitter code and backend tests stop depending on a header whose only purpose
+  is to re-export `lower_lir_to_backend_module(...)` from
+  `lir_to_backend_ir.hpp`
+- remove the no-op backend test includes of that shim and switch the remaining
+  direct callsite over to `lower_lir_to_backend_module(...)`
+- keep the next slice aimed at the still-live direct
+  `lir_to_backend_ir.hpp` includes in the BIR-pipeline/adapter tests plus the
+  emitter-local lowering ownership that still cannot be removed yet
+
 Current bounded deletion slice: keep Step 4 focused on production deletion.
 - delete the generic backend-entry `LegacyPreloweredModule` route and the stale
   `BackendPipeline` toggle that no longer changed runtime behavior
@@ -30,9 +42,9 @@ Current bounded deletion slice: keep Step 4 focused on production deletion.
 
 Immediate next slice:
 
-- cut one emitter-local `lower_lir_to_backend_module(...)` ownership seam or
-  one direct `lir_to_backend_ir.hpp` test/include family instead of keeping the
-  generic backend entry responsible for both BIR and legacy-prelowered routes
+- cut one remaining direct `lir_to_backend_ir.hpp` test/include family
+  (`backend_bir_pipeline*` or `backend_lir_adapter_tests`) or one
+  emitter-local `lower_lir_to_backend_module(...)` ownership seam
 - keep the next Step 4 commit deleting a live legacy lowering or backend-IR
   seam rather than doing more preparatory probing
 - leave unrelated Step 2/3 expansion and broader `ir.*` removal outside that
@@ -123,6 +135,15 @@ Known live references from the current audit:
 
 Recently completed milestones:
 
+- deleted the redundant production `src/backend/lir_adapter.hpp` shim, updated
+  the x86/aarch64 emitters and the no-op backend test includes to depend on
+  direct legacy-lowering headers instead of the re-export layer, and switched
+  the last shim callsite over to `lower_lir_to_backend_module(...)`
+- re-ran `backend_lir_adapter_tests`, then re-ran
+  `ctest --test-dir build -R backend --output-on-failure`, and refreshed the
+  monotonic backend guard with
+  `test_backend_before.log` vs `test_backend_after.log` staying flat at
+  `402` passed / `0` failed with no new failures
 - deleted the generic backend-entry legacy-prelowered route by removing
   `BackendModuleInput(const BackendModule&, ...)`, removing
   `BackendLoweringRoute::LegacyPreloweredModule`, and collapsing the stale

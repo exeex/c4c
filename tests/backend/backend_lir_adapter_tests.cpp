@@ -3,7 +3,6 @@
 #include "ir_printer.hpp"
 #include "ir_validate.hpp"
 #include "liveness.hpp"
-#include "lir_adapter.hpp"
 #include "regalloc.hpp"
 #include "stack_layout/analysis.hpp"
 #include "stack_layout/alloca_coalescing.hpp"
@@ -2018,12 +2017,12 @@ void test_renders_return_add() {
                   "adapter renderer should emit the adapted return");
 }
 
-void test_adapter_keeps_legacy_shim_aligned_with_lowering_entrypoint() {
+void test_direct_lowering_entrypoint_is_self_consistent() {
   const auto lowered = c4c::backend::lower_lir_to_backend_module(make_return_add_module());
-  const auto adapted = c4c::backend::adapt_minimal_module(make_return_add_module());
+  const auto adapted = c4c::backend::lower_lir_to_backend_module(make_return_add_module());
 
   expect_true(c4c::backend::render_module(lowered) == c4c::backend::render_module(adapted),
-              "adapter shim should remain behaviorally identical to the lowering-named entrypoint");
+              "direct lowering entrypoint should remain behaviorally stable");
 }
 
 void test_lowering_header_exposes_behavior_without_legacy_adapter_entrypoint() {

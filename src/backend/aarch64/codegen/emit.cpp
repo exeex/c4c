@@ -1,8 +1,8 @@
 #include "emit.hpp"
 
 #include "../../bir.hpp"
-#include "../../lir_adapter.hpp"
 #include "../../lowering/call_decode.hpp"
+#include "../../lowering/lir_to_backend_ir.hpp"
 #include "../../generation.hpp"
 #include "../../ir_printer.hpp"
 #include "../../ir_validate.hpp"

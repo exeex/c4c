@@ -3,7 +3,7 @@
 #include "bir_printer.hpp"
 #include "ir.hpp"
 #include "ir_printer.hpp"
-#include "lir_adapter.hpp"
+#include "lowering/lir_to_backend_ir.hpp"
 #include "lowering/lir_to_bir.hpp"
 #include "x86/codegen/emit.hpp"
 

@@ -5,7 +5,6 @@
 #include "ir_printer.hpp"
 #include "ir_validate.hpp"
 #include "liveness.hpp"
-#include "lir_adapter.hpp"
 #include "regalloc.hpp"
 #include "stack_layout/analysis.hpp"
 #include "stack_layout/alloca_coalescing.hpp"
