@@ -1131,6 +1131,32 @@ void test_bir_lowering_accepts_two_param_u8_select_ne_split_predecessor_mixed_af
                   "BIR lowering should return the widened split-predecessor mixed-affine not-equal post-add/sub result on the direct BIR path");
 }
 
+void test_bir_lowering_accepts_two_param_u8_select_ne_split_predecessor_mixed_then_deeper_affine_phi_post_join_add_slice() {
+  const auto lowered = c4c::backend::lower_to_bir(
+      make_bir_two_param_u8_select_ne_split_predecessor_mixed_then_deeper_affine_phi_post_join_add_module());
+  const auto rendered = c4c::backend::bir::print(lowered);
+
+  expect_contains(rendered,
+                  "bir.func @choose2_mixed_then_deeper_post_ne_u(i8 %p.x, i8 %p.y) -> i8 {",
+                  "BIR lowering should preserve the widened unsigned-char split-predecessor mixed-then-deeper-affine ternary signature for the adjacent not-equal post-add slice");
+  expect_contains(rendered, "%t6 = bir.add i8 %p.x, 8",
+                  "BIR lowering should hoist the widened then-arm mixed-affine head for the split-predecessor not-equal mixed-then-deeper slice");
+  expect_contains(rendered, "%t7 = bir.sub i8 %t6, 3",
+                  "BIR lowering should preserve the widened then-arm mixed-affine tail before the fused not-equal select in the mixed-then-deeper slice");
+  expect_contains(rendered, "%t10 = bir.add i8 %p.y, 11",
+                  "BIR lowering should hoist the widened else-arm deeper-affine head for the split-predecessor not-equal mixed-then-deeper slice");
+  expect_contains(rendered, "%t11 = bir.sub i8 %t10, 4",
+                  "BIR lowering should preserve the widened else-arm deeper-affine middle step before the fused not-equal select in the mixed-then-deeper slice");
+  expect_contains(rendered, "%t12 = bir.add i8 %t11, 7",
+                  "BIR lowering should preserve the widened else-arm deeper-affine tail before the fused not-equal select in the mixed-then-deeper slice");
+  expect_contains(rendered, "%t14 = bir.select ne i8 %p.x, %p.y, %t7, %t12",
+                  "BIR lowering should collapse the widened split-predecessor mixed-then-deeper-affine phi join into a direct i8 not-equal select");
+  expect_contains(rendered, "%t15 = bir.add i8 %t14, 6",
+                  "BIR lowering should preserve the widened join-local add after the fused split-predecessor mixed-then-deeper-affine not-equal select");
+  expect_contains(rendered, "bir.ret i8 %t15",
+                  "BIR lowering should return the widened split-predecessor mixed-then-deeper-affine not-equal post-add result on the direct BIR path");
+}
+
 void test_bir_lowering_accepts_two_param_select_predecessor_add_phi_slice() {
   const auto lowered =
       c4c::backend::lower_to_bir(make_bir_two_param_select_eq_predecessor_add_phi_module());
@@ -1863,6 +1889,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_two_param_u8_select_ne_split_predecessor_add_phi_post_join_add_sub_add_slice);
   RUN_TEST(test_bir_lowering_accepts_two_param_u8_select_ne_split_predecessor_mixed_affine_phi_post_join_add_slice);
   RUN_TEST(test_bir_lowering_accepts_two_param_u8_select_ne_split_predecessor_mixed_affine_phi_post_join_add_sub_slice);
+  RUN_TEST(test_bir_lowering_accepts_two_param_u8_select_ne_split_predecessor_mixed_then_deeper_affine_phi_post_join_add_slice);
   RUN_TEST(test_bir_lowering_accepts_two_param_select_predecessor_add_phi_slice);
   RUN_TEST(test_bir_lowering_accepts_two_param_select_split_predecessor_add_phi_post_join_add_slice);
   RUN_TEST(test_bir_lowering_accepts_two_param_select_split_predecessor_add_phi_post_join_add_sub_slice);
