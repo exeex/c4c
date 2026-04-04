@@ -237,6 +237,29 @@ Progress on 2026-04-03:
 - Do not remove the app-layer LLVM asm fallback until backend coverage is high
   enough that current green surfaces stay green without it
 
+## Step 4 Follow-up Note
+
+Update on 2026-04-04:
+
+- the last explicit AArch64 file-output asm rescue caller remains
+  `tests/c/external/c-testsuite/src/00204.c`
+- this is no longer a narrow float-emitter cleanup like `00174`; it is the
+  first remaining case that needs native variadic aggregate ownership end to
+  end
+- the current AArch64 native emitter still rejects `LirVaStartOp`,
+  `LirVaEndOp`, `LirVaCopyOp`, and `LirVaArgOp`, still assumes scalar SSA slots
+  in the stack-spill path, and still lacks the aggregate variadic direct-call
+  ABI handling needed by the internal `myprintf(...)` callers in `00204`
+- `myprintf` also forwards long-double values to external `printf`, so the same
+  batch will need native `fp128` variadic call handling once the internal
+  variadic path exists
+
+Implication:
+
+- keep the final `backend-file-aarch64` allowlist entry explicit until a single
+  production batch can convert `00204` to stdout-native asm and remove the
+  matching fallback surface honestly
+
 ## Acceptance Criteria
 
 - [ ] `bir.hpp` covers the same type and instruction surface as `ir.hpp` did

@@ -9,28 +9,34 @@ Source Plan: plan.md
 - [ ] Remove legacy backend IR files and backend/app LLVM rescue paths
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
-Current active item: Step 4, shrink the now-explicit AArch64-only file-output
-asm fallback users and prepare the final legacy backend-IR deletion pass.
+Current active item: Step 4, keep the final AArch64-only file-output asm
+fallback user `00204` explicitly blocked until the native backend grows the
+remaining variadic aggregate ABI surface needed to remove it cleanly.
 
-Iteration target: remove the bounded float-heavy AArch64 file-output asm
-rescue caller `00174`, then continue with the remaining ABI-heavy family.
+Iteration target: re-probe the last live file-output rescue case `00204`,
+confirm whether it is still a bounded deletion batch or now a larger backend
+gap, and record the exact blocker so the next Step 4 slice starts from the
+real native-asm requirements instead of repeating the audit.
 
 Immediate next slice:
 
-- re-probe the remaining ABI-heavy AArch64 rescue caller `00204`
-- identify the smallest still-bounded matcher/emitter or varargs/HFA gap that
-  keeps `00204` on file-output fallback
-- batch that backend fix together with removing the final
-  `backend-file-aarch64` allowlist tag if the slice can prove native stdout asm
+- implement the missing AArch64 native-asm variadic surface needed by
+  `tests/c/external/c-testsuite/src/00204.c`, starting with the lowest-coupling
+  production gap rather than retesting the file-output fallback
+- keep the final `backend-file-aarch64` allowlist tag in place until the same
+  bounded batch proves backend-native stdout asm for `00204`
+- do not claim Step 4 deletion progress until that batch removes the last live
+  file-output rescue caller and the matching production fallback branch
 
 Slice deliverables:
 
 - a checked-in audit summary in this file that enumerates the remaining
   file-output asm users by family and by reason
-- conversion of the remaining already-native caller in the chosen family batch
-  from file-output coverage to stdout-native coverage
-- removal or tightening of the corresponding fallback logic only if the final
-  `00204` family can be deleted in the same bounded batch
+- conversion of the final remaining caller from file-output coverage to
+  stdout-native coverage once the native backend can carry the full `00204`
+  variadic aggregate family
+- removal or tightening of the corresponding fallback logic only when the same
+  batch deletes the final `00204` rescue path in production and test wiring
 - updated focused backend/runtime tests that prove the fallback surface is
   actually smaller after the slice
 
@@ -101,6 +107,15 @@ Known live references from the current audit:
   is gone
 - `c4cll` now rejects file-output LLVM asm fallback on non-AArch64 targets;
   the app-layer rescue path is retained only for the tagged AArch64 family
+- `00204` is blocked by a coupled native-backend gap rather than one isolated
+  matcher miss:
+  the general AArch64 emitter still rejects `LirVaStartOp`, `LirVaEndOp`,
+  `LirVaCopyOp`, and `LirVaArgOp`; the stack-spill path still models SSA
+  values as scalar 8-byte slots rather than aggregate values such as
+  `[4 x float]`, `[4 x double]`, and `[2 x i64]`; the direct-call path still
+  lacks aggregate variadic ownership for the internal `myprintf(...)` calls;
+  and the forwarding path inside `myprintf` still needs native `fp128`
+  variadic call handling for `printf("%.1Lf", ...)`
 
 Recently completed milestones:
 
@@ -166,14 +181,17 @@ Recently completed milestones:
 
 Validation baseline:
 
-- blocker: none
-- latest focused proving set:
-  `build/backend_lir_adapter_aarch64_tests`,
-  `build/c4cll --codegen asm --target aarch64-unknown-linux-gnu tests/c/external/c-testsuite/src/00174.c`,
+- blocker:
+  `build/c4cll --codegen asm --target aarch64-unknown-linux-gnu tests/c/external/c-testsuite/src/00204.c`
+  still exits with:
+  `error: --codegen asm requires backend-native assembly output on stdout.`
+- latest focused repro set:
+  `build/c4cll --codegen asm --target aarch64-unknown-linux-gnu tests/c/external/c-testsuite/src/00204.c`,
+  `build/c4cll --codegen asm --target aarch64-unknown-linux-gnu tests/c/external/c-testsuite/src/00204.c -o /tmp/00204.file.s`,
   and
-  `ctest --test-dir build -R "backend_lir_adapter_aarch64_tests|c_testsuite_aarch64_backend_src_00174_c" --output-on-failure`
-  with native asm emitted on stdout and the regenerated AArch64 backend
-  c-testsuite case passing without file-output rescue
+  `ctest --test-dir build -R "backend_lir_adapter_aarch64_tests|c_testsuite_aarch64_backend_src_00204_c" --output-on-failure`
+  with stdout-native asm still blocked, file-output fallback still succeeding,
+  and the focused tests passing only because `00204` remains tagged
 - latest backend regression scope:
   `ctest --test-dir build -R backend --output-on-failure`
   with `100% tests passed, 0 tests failed out of 402`
