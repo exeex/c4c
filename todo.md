@@ -18,7 +18,7 @@ longer re-enters the generic LIR-entry backend adapter.
 
 This iteration target: cut one remaining live emitter-local
 `lower_lir_to_backend_module(...)` ownership seam, then bundle the matching
-test/include cleanup in the same bounded Step 4 deletion batch.
+test cleanup in the same bounded Step 4 deletion batch.
 
 Current exact target for this iteration:
 
@@ -30,35 +30,42 @@ Current exact target for this iteration:
 - keep broader `lir_to_backend_ir.cpp` and `ir.*` removal for later bounded
   batches once another live emitter-local seam is actually gone
 
-This pass narrows that target to the x86 direct-LIR countdown-while slice:
+This pass narrows that target to the x86 direct-LIR conditional-phi-join slice:
 
 - teach `src/backend/x86/codegen/emit.cpp` to recognize and emit the bounded
-  countdown-while loop directly from `codegen::lir::LirModule`
+  conditional phi-join family directly from `codegen::lir::LirModule`
 - delete the matching x86 emitter-local
-  `parse_minimal_countdown_loop_slice(adapted)` fallback leg so direct x86
-  countdown assembly no longer depends on `lower_lir_to_backend_module(...)`
-- keep the explicit lowered-backend countdown emitter path intact for now, and
-  only trim test coverage if a countdown-specific legacy handoff assertion
+  `parse_minimal_conditional_phi_join_slice(adapted)` fallback leg so direct
+  x86 conditional-join assembly no longer depends on
+  `lower_lir_to_backend_module(...)`
+- keep the explicit lowered-backend conditional-join emitter path intact for
+  now, and only trim test coverage if a join-specific legacy handoff assertion
   becomes redundant after that deletion
 
 Completed in this iteration:
 
-- `src/backend/x86/codegen/emit.cpp` now recognizes the bounded countdown-while
-  loop directly from `codegen::lir::LirModule` and emits native x86 asm without
-  first lowering through `lower_lir_to_backend_module(...)`
+- `src/backend/x86/codegen/emit.cpp` now recognizes the bounded
+  conditional-phi-join family directly from `codegen::lir::LirModule` and
+  emits native x86 asm without first lowering through
+  `lower_lir_to_backend_module(...)`
 - the x86 direct emitter no longer carries the matching
-  `parse_minimal_countdown_loop_slice(adapted)` fallback branch, so that one
-  live emitter-local legacy lowering seam is gone
+  `parse_minimal_conditional_phi_join_slice(adapted)` fallback branch, so that
+  one more live emitter-local legacy lowering seam is gone
 - `tests/backend/backend_lir_adapter_x86_64_tests.cpp` now includes a focused
-  direct-x86 typed countdown regression that exercises the native LIR entry
-  point instead of only the higher-level backend wrapper
+  direct-x86 conditional-phi-join regression that exercises the native LIR
+  entry point instead of only the higher-level backend wrapper
+- rebuilt the tree, re-ran `backend_lir_adapter_x86_64_tests`, then re-ran
+  `ctest --test-dir build -R backend --output-on-failure`, and refreshed the
+  monotonic backend guard with `test_backend_before.log` vs
+  `test_backend_after.log` staying flat at `402` passed / `0` failed with no
+  new failures
 
 Next intended slice:
 
 - cut the next bounded x86 or aarch64 emitter-local legacy lowering seam in the
-  same style, with the strongest candidates still being countdown/phi-style
-  control-flow families that already have compact direct-LIR structure
-  available to the native emitters
+  same style, with the strongest candidates still being the remaining compact
+  control-flow families that already have direct-LIR structure available to the
+  native emitters
 
 Current bounded deletion slice: keep Step 4 focused on production deletion.
 - delete the generic backend-entry `LegacyPreloweredModule` route and the stale

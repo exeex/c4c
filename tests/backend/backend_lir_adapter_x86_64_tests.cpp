@@ -1922,6 +1922,20 @@ void test_x86_backend_scaffold_accepts_direct_typed_countdown_while_lir_input() 
                       "x86 direct-LIR countdown regression should not fall back to LLVM text for the typed countdown loop");
 }
 
+void test_x86_backend_scaffold_accepts_direct_conditional_phi_join_add_lir_input() {
+  const auto rendered =
+      c4c::backend::x86::emit_module(make_conditional_phi_join_add_module());
+
+  expect_contains(rendered, "  jge .Lelse\n",
+                  "x86 direct-LIR phi-join regression should branch to the false predecessor on the native asm path");
+  expect_contains(rendered, ".Lthen:\n  mov eax, 7\n  jmp .Ljoin\n",
+                  "x86 direct-LIR phi-join regression should materialize the then predecessor on the native asm path");
+  expect_contains(rendered, ".Ljoin:\n  add eax, 5\n  ret\n",
+                  "x86 direct-LIR phi-join regression should keep the post-join add on the native asm path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 direct-LIR phi-join regression should not fall back to LLVM text for the bounded join slice");
+}
+
 void test_x86_backend_scaffold_renders_direct_return_immediate_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_return_zero_module()},
@@ -5470,6 +5484,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_countdown_while_ir_input);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_countdown_while_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_direct_typed_countdown_while_lir_input);
+  RUN_TEST(test_x86_backend_scaffold_accepts_direct_conditional_phi_join_add_lir_input);
   RUN_TEST(test_x86_backend_scaffold_renders_direct_return_immediate_slice);
   RUN_TEST(test_x86_backend_keeps_unused_declaration_off_direct_return_path);
   RUN_TEST(test_x86_backend_scaffold_renders_direct_return_sub_immediate_slice);
