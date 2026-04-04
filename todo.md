@@ -165,3 +165,7 @@ Recent baseline:
 - latest Step 4 follow-through also removes the bounded local pointer
   round-trip dependency on `lower_lir_to_backend_module(...)` from the direct
   x86 LIR entrypoint and keeps the direct/lowered x86 seams on identical asm
+- latest Step 4 prep adds explicit direct-x86 parity coverage for the bounded
+  member-array runtime family so the next local-runtime deletion can target a
+  concrete green direct-entry seam instead of adding more compatibility-only
+  probes

@@ -4034,6 +4034,81 @@ void test_x86_backend_renders_nested_member_pointer_array_runtime_slice() {
                       "x86 backend should stop falling back to LLVM text for the nested member-pointer runtime slice");
 }
 
+void test_x86_backend_explicit_lir_emit_surface_matches_param_member_array_runtime_path() {
+  auto module = make_param_member_array_runtime_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  const auto direct_rendered = c4c::backend::x86::emit_module(module);
+  const auto backend_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_true(direct_rendered == backend_rendered,
+              "x86 backend selection should keep the bounded by-value member-array runtime slice on the same direct x86 LIR emit path");
+  expect_contains(direct_rendered, ".globl get_second\n",
+                  "x86 explicit LIR emit surface should publish the bounded by-value member-array helper directly");
+  expect_contains(direct_rendered, "mov eax, esi\n",
+                  "x86 explicit LIR emit surface should return the second split aggregate register without adapting through backend IR first");
+  expect_contains(direct_rendered, "mov edi, 4\n",
+                  "x86 explicit LIR emit surface should materialize the first bounded member-array element in the helper call setup");
+  expect_contains(direct_rendered, "mov esi, 6\n",
+                  "x86 explicit LIR emit surface should materialize the second bounded member-array element in the helper call setup");
+  expect_not_contains(direct_rendered, "target triple =",
+                      "x86 explicit LIR emit surface should not fall back to LLVM text for the bounded by-value member-array runtime slice");
+}
+
+void test_x86_backend_explicit_lir_emit_surface_matches_nested_param_member_array_runtime_path() {
+  auto module = make_nested_param_member_array_runtime_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  const auto direct_rendered = c4c::backend::x86::emit_module(module);
+  const auto backend_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_true(direct_rendered == backend_rendered,
+              "x86 backend selection should keep the nested by-value member-array runtime slice on the same direct x86 LIR emit path");
+  expect_contains(direct_rendered, ".globl get_second\n",
+                  "x86 explicit LIR emit surface should publish the nested bounded member-array helper directly");
+  expect_contains(direct_rendered, "mov eax, esi\n",
+                  "x86 explicit LIR emit surface should still return the nested second split aggregate register without adapting through backend IR first");
+  expect_contains(direct_rendered, "mov edi, 4\n",
+                  "x86 explicit LIR emit surface should materialize the nested first bounded member-array element in the helper call setup");
+  expect_contains(direct_rendered, "mov esi, 9\n",
+                  "x86 explicit LIR emit surface should materialize the nested second bounded member-array element in the helper call setup");
+  expect_not_contains(direct_rendered, "target triple =",
+                      "x86 explicit LIR emit surface should not fall back to LLVM text for the nested by-value member-array runtime slice");
+}
+
+void test_x86_backend_explicit_lir_emit_surface_matches_nested_member_pointer_array_runtime_path() {
+  auto module = make_nested_member_pointer_array_runtime_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  const auto direct_rendered = c4c::backend::x86::emit_module(module);
+  const auto backend_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_true(direct_rendered == backend_rendered,
+              "x86 backend selection should keep the nested member-pointer runtime slice on the same direct x86 LIR emit path");
+  expect_contains(direct_rendered, "mov rax, qword ptr [rdi]\n",
+                  "x86 explicit LIR emit surface should reload the nested inner pointer directly from the aggregate member");
+  expect_contains(direct_rendered, "mov eax, dword ptr [rax + 4]\n",
+                  "x86 explicit LIR emit surface should fold the nested second member-array load without adapting through backend IR first");
+  expect_contains(direct_rendered, "mov dword ptr [rsp + 16], 4\n",
+                  "x86 explicit LIR emit surface should materialize the nested first bounded local array element directly");
+  expect_contains(direct_rendered, "mov dword ptr [rsp + 20], 8\n",
+                  "x86 explicit LIR emit surface should materialize the nested second bounded local array element directly");
+  expect_not_contains(direct_rendered, "target triple =",
+                      "x86 explicit LIR emit surface should not fall back to LLVM text for the nested member-pointer runtime slice");
+}
+
 void test_x86_backend_renders_global_load_slice() {
   auto module = make_global_load_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -5826,6 +5901,9 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_renders_param_member_array_runtime_slice);
   RUN_TEST(test_x86_backend_renders_nested_param_member_array_runtime_slice);
   RUN_TEST(test_x86_backend_renders_nested_member_pointer_array_runtime_slice);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_param_member_array_runtime_path);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_nested_param_member_array_runtime_path);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_nested_member_pointer_array_runtime_path);
   RUN_TEST(test_x86_backend_renders_global_load_slice);
   RUN_TEST(test_x86_backend_renders_global_store_reload_slice);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_bounded_scalar_global_load_path);
