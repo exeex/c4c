@@ -6,6 +6,7 @@
 #include "../../ir_validate.hpp"
 #include "../../lowering/call_decode.hpp"
 #include "../../lowering/lir_to_backend_ir.hpp"
+#include "../../lowering/lir_to_bir.hpp"
 #include "../../stack_layout/regalloc_helpers.hpp"
 #include "../../../codegen/lir/call_args.hpp"
 #include "../../../codegen/lir/lir_printer.hpp"
@@ -3421,6 +3422,22 @@ std::optional<MinimalCallCrossingDirectCallSlice> parse_minimal_call_crossing_di
   };
 }
 
+std::optional<MinimalCallCrossingDirectCallSlice> parse_minimal_call_crossing_direct_call_slice(
+    const c4c::codegen::lir::LirModule& module) {
+  const auto parsed =
+      c4c::backend::parse_backend_minimal_call_crossing_direct_call_lir_module(module);
+  if (!parsed.has_value() || parsed->helper == nullptr || parsed->regalloc_source_value.empty()) {
+    return std::nullopt;
+  }
+
+  return MinimalCallCrossingDirectCallSlice{
+      parsed->helper->name,
+      parsed->source_imm,
+      parsed->helper_add_imm,
+      std::string(parsed->regalloc_source_value),
+  };
+}
+
 std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_slice(
     const c4c::codegen::lir::LirModule& module) {
   const auto parsed = c4c::backend::parse_backend_minimal_two_arg_direct_call_lir_module(module);
@@ -4816,6 +4833,72 @@ std::string emit_minimal_call_crossing_direct_call_asm(
   return out.str();
 }
 
+std::string emit_minimal_call_crossing_direct_call_asm(
+    std::string_view target_triple,
+    const c4c::backend::RegAllocIntegrationResult& regalloc,
+    const MinimalCallCrossingDirectCallSlice& slice) {
+  if (slice.source_imm < std::numeric_limits<std::int32_t>::min() ||
+      slice.source_imm > std::numeric_limits<std::int32_t>::max()) {
+    throw c4c::backend::LirAdapterError(
+        c4c::backend::LirAdapterErrorKind::Unsupported,
+        "call-crossing source immediates outside the minimal mov-supported range");
+  }
+  if (slice.helper_add_imm < std::numeric_limits<std::int32_t>::min() ||
+      slice.helper_add_imm > std::numeric_limits<std::int32_t>::max()) {
+    throw c4c::backend::LirAdapterError(
+        c4c::backend::LirAdapterErrorKind::Unsupported,
+        "call-crossing helper add immediates outside the minimal add-supported range");
+  }
+
+  const auto* source_reg =
+      c4c::backend::stack_layout::find_assigned_reg(regalloc, slice.regalloc_source_value);
+  if (source_reg == nullptr ||
+      !c4c::backend::stack_layout::uses_callee_saved_reg(regalloc, *source_reg)) {
+    throw c4c::backend::LirAdapterError(
+        c4c::backend::LirAdapterErrorKind::Unsupported,
+        "shared call-crossing regalloc state for the minimal x86 direct-call slice");
+  }
+
+  const char* reg64 = x86_reg64_name(*source_reg);
+  const char* reg32 = x86_reg32_name(*source_reg);
+  if (reg64 == nullptr || reg32 == nullptr) {
+    throw c4c::backend::LirAdapterError(
+        c4c::backend::LirAdapterErrorKind::Unsupported,
+        "minimal x86 direct-call slice received an unknown physical register");
+  }
+
+  const auto frame_size = aligned_frame_size(1);
+  const auto helper_symbol = asm_symbol_name(target_triple, slice.callee_name);
+  const auto main_symbol = asm_symbol_name(target_triple, "main");
+
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n";
+  out << ".text\n";
+  emit_function_prelude(out, helper_symbol, false);
+  out << "  mov eax, edi\n"
+      << "  add eax, " << slice.helper_add_imm << "\n"
+      << "  ret\n";
+  emit_function_prelude(out, main_symbol, true);
+  out << "  push rbp\n"
+      << "  mov rbp, rsp\n";
+  if (frame_size > 0) {
+    out << "  sub rsp, " << frame_size << "\n"
+        << "  mov qword ptr [rbp - " << frame_size << "], " << reg64 << "\n";
+  }
+  out << "  mov " << reg32 << ", " << slice.source_imm << "\n"
+      << "  mov edi, " << reg32 << "\n"
+      << "  call " << helper_symbol << "\n"
+      << "  mov eax, eax\n"
+      << "  add eax, " << reg32 << "\n";
+  if (frame_size > 0) {
+    out << "  mov " << reg64 << ", qword ptr [rbp - " << frame_size << "]\n";
+  }
+  out << "  mov rsp, rbp\n"
+      << "  pop rbp\n"
+      << "  ret\n";
+  return out.str();
+}
+
 std::string remove_redundant_self_moves(std::string asm_text) {
   std::string optimized;
   optimized.reserve(asm_text.size());
@@ -4852,6 +4935,99 @@ std::string remove_redundant_self_moves(std::string asm_text) {
   }
 
   return optimized;
+}
+
+std::optional<std::string> try_emit_direct_lir_module(
+    const c4c::codegen::lir::LirModule& module) {
+  try {
+    if (const auto slice = parse_minimal_member_array_runtime_slice(module);
+        slice.has_value()) {
+      return emit_minimal_member_array_runtime_asm(module.target_triple, *slice);
+    }
+    if (const auto slice = parse_minimal_two_arg_direct_call_slice(module);
+        slice.has_value()) {
+      return emit_minimal_two_arg_direct_call_asm(module.target_triple, *slice);
+    }
+    if (const auto slice = parse_minimal_local_array_slice(module);
+        slice.has_value()) {
+      return emit_minimal_local_array_asm(module.target_triple, *slice);
+    }
+    if (const auto slice = parse_minimal_extern_global_array_load_slice(module);
+        slice.has_value()) {
+      return emit_minimal_extern_global_array_load_asm(module.target_triple, *slice);
+    }
+    if (const auto slice = parse_minimal_global_char_pointer_diff_slice(module);
+        slice.has_value()) {
+      return emit_minimal_global_char_pointer_diff_asm(module.target_triple, *slice);
+    }
+    if (const auto slice = parse_minimal_global_int_pointer_diff_slice(module);
+        slice.has_value()) {
+      return emit_minimal_global_int_pointer_diff_asm(module.target_triple, *slice);
+    }
+    if (const auto slice = parse_minimal_global_int_pointer_roundtrip_slice(module);
+        slice.has_value()) {
+      return emit_minimal_scalar_global_load_asm(module.target_triple, *slice);
+    }
+    if (const auto slice = parse_minimal_scalar_global_load_slice(module);
+        slice.has_value()) {
+      return emit_minimal_scalar_global_load_asm(module.target_triple, *slice);
+    }
+    if (const auto slice = parse_minimal_scalar_global_store_reload_slice(module);
+        slice.has_value()) {
+      return emit_minimal_scalar_global_store_reload_asm(module.target_triple, *slice);
+    }
+    if (const auto slice = parse_minimal_string_literal_char_slice(module);
+        slice.has_value()) {
+      return emit_minimal_string_literal_char_asm(module.target_triple, *slice);
+    }
+    if (const auto slice = parse_minimal_conditional_return_slice(module);
+        slice.has_value()) {
+      return emit_minimal_conditional_return_asm(module.target_triple, *slice);
+    }
+    if (const auto slice = parse_minimal_countdown_loop_slice(module);
+        slice.has_value()) {
+      return emit_minimal_countdown_loop_asm(module.target_triple, *slice);
+    }
+    if (const auto slice = parse_minimal_conditional_phi_join_slice(module);
+        slice.has_value()) {
+      return emit_minimal_conditional_phi_join_asm(module.target_triple, *slice);
+    }
+    if (const auto slice = c4c::backend::parse_backend_minimal_direct_call_lir_module(module);
+        slice.has_value()) {
+      return emit_minimal_direct_call_asm(module.target_triple, *slice);
+    }
+    if (const auto slice =
+            c4c::backend::parse_backend_minimal_direct_call_add_imm_lir_module(module);
+        slice.has_value()) {
+      return emit_minimal_direct_call_add_imm_asm(module.target_triple, *slice);
+    }
+    if (const auto slice =
+            c4c::backend::parse_backend_minimal_declared_direct_call_lir_module(module);
+        slice.has_value()) {
+      return emit_minimal_extern_decl_call_asm(module, *slice);
+    }
+    if (const auto slice = parse_minimal_call_crossing_direct_call_slice(module);
+        slice.has_value()) {
+      const auto* main_fn = find_lir_function(module, "main");
+      if (main_fn == nullptr) {
+        throw c4c::backend::LirAdapterError(
+            c4c::backend::LirAdapterErrorKind::Unsupported,
+            "main function for shared x86 call-crossing direct-call slice");
+      }
+      return remove_redundant_self_moves(emit_minimal_call_crossing_direct_call_asm(
+          module.target_triple, run_shared_x86_regalloc(*main_fn), *slice));
+    }
+    if (const auto lowered_bir = c4c::backend::try_lower_to_bir(module);
+        lowered_bir.has_value()) {
+      try {
+        return emit_module(*lowered_bir);
+      } catch (const std::invalid_argument&) {
+      }
+    }
+  } catch (const c4c::backend::LirAdapterError&) {
+  }
+
+  return std::nullopt;
 }
 
 }  // namespace
@@ -4947,7 +5123,11 @@ std::string emit_module(const c4c::backend::BackendModule& module,
   }
 
   if (legacy_fallback != nullptr) {
-    return emit_module(*legacy_fallback);
+    if (const auto rendered = try_emit_direct_lir_module(*legacy_fallback);
+        rendered.has_value()) {
+      return *rendered;
+    }
+    return c4c::codegen::lir::print_llvm(*legacy_fallback);
   }
   return c4c::backend::print_backend_module(module);
 }
@@ -4988,106 +5168,16 @@ std::string emit_module(const c4c::backend::bir::Module& module,
 }
 
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {
-  try {
-    if (const auto slice = parse_minimal_member_array_runtime_slice(module);
-        slice.has_value()) {
-      return emit_minimal_member_array_runtime_asm(module.target_triple, *slice);
-    }
-    if (const auto slice = parse_minimal_two_arg_direct_call_slice(module);
-        slice.has_value()) {
-      return emit_minimal_two_arg_direct_call_asm(module.target_triple, *slice);
-    }
-    if (const auto slice = parse_minimal_local_array_slice(module);
-        slice.has_value()) {
-      return emit_minimal_local_array_asm(module.target_triple, *slice);
-    }
-    if (const auto slice = parse_minimal_extern_global_array_load_slice(module);
-        slice.has_value()) {
-      return emit_minimal_extern_global_array_load_asm(module.target_triple, *slice);
-    }
-    if (const auto slice = parse_minimal_global_char_pointer_diff_slice(module);
-        slice.has_value()) {
-      return emit_minimal_global_char_pointer_diff_asm(module.target_triple, *slice);
-    }
-    if (const auto slice = parse_minimal_global_int_pointer_diff_slice(module);
-        slice.has_value()) {
-      return emit_minimal_global_int_pointer_diff_asm(module.target_triple, *slice);
-    }
-    if (const auto slice = parse_minimal_global_int_pointer_roundtrip_slice(module);
-        slice.has_value()) {
-      return emit_minimal_scalar_global_load_asm(module.target_triple, *slice);
-    }
-    if (const auto slice = parse_minimal_scalar_global_load_slice(module);
-        slice.has_value()) {
-      return emit_minimal_scalar_global_load_asm(module.target_triple, *slice);
-    }
-    if (const auto slice = parse_minimal_scalar_global_store_reload_slice(module);
-        slice.has_value()) {
-      return emit_minimal_scalar_global_store_reload_asm(module.target_triple, *slice);
-    }
-    if (const auto slice = parse_minimal_string_literal_char_slice(module);
-        slice.has_value()) {
-      return emit_minimal_string_literal_char_asm(module.target_triple, *slice);
-    }
-    if (const auto slice = parse_minimal_conditional_return_slice(module);
-        slice.has_value()) {
-      return emit_minimal_conditional_return_asm(module.target_triple, *slice);
-    }
-    if (const auto slice = parse_minimal_countdown_loop_slice(module);
-        slice.has_value()) {
-      return emit_minimal_countdown_loop_asm(module.target_triple, *slice);
-    }
-    if (const auto slice = parse_minimal_conditional_phi_join_slice(module);
-        slice.has_value()) {
-      return emit_minimal_conditional_phi_join_asm(module.target_triple, *slice);
-    }
-    if (const auto slice = c4c::backend::parse_backend_minimal_direct_call_lir_module(module);
-        slice.has_value()) {
-      return emit_minimal_direct_call_asm(module.target_triple, *slice);
-    }
-    if (const auto slice =
-            c4c::backend::parse_backend_minimal_direct_call_add_imm_lir_module(module);
-        slice.has_value()) {
-      return emit_minimal_direct_call_add_imm_asm(module.target_triple, *slice);
-    }
-    if (const auto slice =
-            c4c::backend::parse_backend_minimal_declared_direct_call_lir_module(module);
-        slice.has_value()) {
-      return emit_minimal_extern_decl_call_asm(module, *slice);
-    }
-    const auto adapted = c4c::backend::lower_lir_to_backend_module(module);
-    if (const auto slice = c4c::backend::parse_backend_minimal_direct_call_add_imm_module(adapted);
-        slice.has_value()) {
-      return emit_minimal_direct_call_add_imm_asm(adapted, *slice);
-    }
-    if (const auto slice = c4c::backend::parse_backend_minimal_two_arg_direct_call_module(adapted);
-        slice.has_value()) {
-      return emit_minimal_two_arg_direct_call_asm(adapted, *slice);
-    }
-    if (const auto slice = parse_minimal_call_crossing_direct_call_slice(adapted);
-        slice.has_value()) {
-      const auto* main_fn = find_lir_function(module, "main");
-      if (main_fn == nullptr) {
-        throw c4c::backend::LirAdapterError(
-            c4c::backend::LirAdapterErrorKind::Unsupported,
-            "main function for shared x86 call-crossing direct-call slice");
-      }
-      return remove_redundant_self_moves(emit_minimal_call_crossing_direct_call_asm(
-          adapted, run_shared_x86_regalloc(*main_fn), *slice));
-    }
-    if (const auto imm = parse_minimal_return_imm(adapted); imm.has_value()) {
-      return emit_minimal_return_asm(adapted, *imm);
-    }
-    if (const auto imm = parse_minimal_return_add_imm(adapted); imm.has_value()) {
-      return emit_minimal_return_asm(adapted, *imm);
-    }
-    if (const auto imm = parse_minimal_return_sub_imm(adapted); imm.has_value()) {
-      return emit_minimal_return_asm(adapted, *imm);
-    }
-  } catch (const c4c::backend::LirAdapterError&) {
+  if (const auto rendered = try_emit_direct_lir_module(module); rendered.has_value()) {
+    return *rendered;
   }
 
-  return c4c::codegen::lir::print_llvm(module);
+  try {
+    const auto adapted = c4c::backend::lower_lir_to_backend_module(module);
+    return emit_module(adapted, &module);
+  } catch (const c4c::backend::LirAdapterError&) {
+    return c4c::codegen::lir::print_llvm(module);
+  }
 }
 
 assembler::AssembleResult assemble_module(const c4c::codegen::lir::LirModule& module,

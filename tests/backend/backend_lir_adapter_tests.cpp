@@ -1170,6 +1170,61 @@ void test_backend_call_helpers_parse_structured_call_crossing_direct_call_module
               "shared structured call-crossing direct-call module parser should preserve renamed helper symbols, SSA names, regalloc source metadata, and summed source immediates without target-local backend-module scans");
 }
 
+void test_backend_call_helpers_parse_structured_call_crossing_direct_call_lir_module() {
+  auto module = make_typed_call_crossing_direct_call_module();
+  std::swap(module.functions.front(), module.functions.back());
+
+  auto& main_fn = module.functions.front();
+  auto& helper = module.functions.back();
+  helper.name = "inc_value";
+  helper.signature_text = "define i32 @inc_value(i32 %p.input)\n";
+
+  auto& helper_entry = helper.blocks.front();
+  auto* helper_add =
+      helper_entry.insts.empty() ? nullptr : std::get_if<c4c::codegen::lir::LirBinOp>(&helper_entry.insts.front());
+  auto& entry = main_fn.blocks.front();
+  auto* source_add = std::get_if<c4c::codegen::lir::LirBinOp>(&entry.insts[0]);
+  auto* call = std::get_if<c4c::codegen::lir::LirCallOp>(&entry.insts[1]);
+  auto* final_add = std::get_if<c4c::codegen::lir::LirBinOp>(&entry.insts[2]);
+  auto* ret = std::get_if<c4c::codegen::lir::LirRet>(&entry.terminator);
+  expect_true(helper_add != nullptr && source_add != nullptr && call != nullptr &&
+                  final_add != nullptr && ret != nullptr && ret->value_str.has_value(),
+              "shared structured call-crossing direct-call LIR parser regression test needs mutable helper/body and main seam instructions");
+  if (helper_add == nullptr || source_add == nullptr || call == nullptr ||
+      final_add == nullptr || ret == nullptr || !ret->value_str.has_value()) {
+    return;
+  }
+
+  helper_add->lhs = "%p.input";
+  helper_add->result = "%t.helper.add.structured";
+  helper_entry.terminator = c4c::codegen::lir::LirRet{std::string("%t.helper.add.structured"),
+                                                      "i32"};
+
+  source_add->result = "%t.crossing.source.structured";
+  call->callee = c4c::codegen::lir::LirOperand(std::string("@inc_value"),
+                                               c4c::codegen::lir::LirOperandKind::Global);
+  call->args_str = "i32 %t.crossing.source.structured";
+  call->result = "%t.crossing.call.structured";
+  final_add->lhs = "%t.crossing.source.structured";
+  final_add->rhs = "%t.crossing.call.structured";
+  final_add->result = "%t.crossing.sum.structured";
+  ret->value_str = "%t.crossing.sum.structured";
+
+  const auto parsed =
+      c4c::backend::parse_backend_minimal_call_crossing_direct_call_lir_module(module);
+  expect_true(parsed.has_value() && parsed->helper != nullptr &&
+                  parsed->main_function != nullptr && parsed->source_add != nullptr &&
+                  parsed->call != nullptr && parsed->final_add != nullptr &&
+                  parsed->helper->name == "inc_value" &&
+                  parsed->main_function->name == "main" &&
+                  parsed->regalloc_source_value == "%t.crossing.source.structured" &&
+                  parsed->source_add->result == "%t.crossing.source.structured" &&
+                  parsed->call->result == "%t.crossing.call.structured" &&
+                  parsed->final_add->result == "%t.crossing.sum.structured" &&
+                  parsed->source_imm == 5 && parsed->helper_add_imm == 1,
+              "shared structured call-crossing direct-call LIR parser should preserve renamed helper symbols, SSA names, regalloc source metadata, and summed source immediates without backend-IR lowering");
+}
+
 void test_backend_call_helpers_parse_structured_folded_two_arg_function() {
   auto lowered =
       c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_two_arg_module());
@@ -2850,6 +2905,7 @@ int main(int argc, char* argv[]) {
   test_backend_call_helpers_parse_structured_void_direct_call_imm_return_module();
   test_backend_call_helpers_parse_structured_single_add_imm_direct_call_module();
   test_backend_call_helpers_parse_structured_call_crossing_direct_call_module();
+  test_backend_call_helpers_parse_structured_call_crossing_direct_call_lir_module();
   test_backend_call_helpers_parse_structured_folded_two_arg_function();
   test_backend_call_helpers_parse_structured_two_arg_direct_call_module();
   test_backend_call_helpers_match_structured_direct_call_module();

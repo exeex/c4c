@@ -9,20 +9,31 @@ Source Plan: plan.md
 - [ ] Remove legacy backend IR files and backend/app LLVM rescue paths
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
-Current active item: Step 4 deletion follow-through. The app-layer asm rescue
-path is no longer the main blocker; the next meaningful progress is removing
-another live production owner of `lir_to_backend_ir.*`.
+Current active item: Step 4 x86 emitter tightening. Remove the bounded
+return-immediate/add/sub dependency on `lower_lir_to_backend_module(...)`
+inside [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+so the explicit x86 LIR emit surface can stay on BIR/native parsing for those
+shapes instead of using legacy backend IR as the recognizer.
+
+Completed in this slice:
+
+- added a shared LIR-native structured parser for the x86 call-crossing
+  direct-call seam in
+  [`src/backend/lowering/call_decode.hpp`](/workspaces/c4c/src/backend/lowering/call_decode.hpp)
+- switched the x86 explicit LIR emit surface to try direct LIR parsers and
+  `try_lower_to_bir(...)` before falling back to legacy backend IR
+- removed the old x86 emitter-local post-adaptation return-immediate/add/sub
+  recognition branches and replaced them with the BIR-first direct-LIR path
+- proved the shared parser with a new regression test in
+  [`tests/backend/backend_lir_adapter_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_tests.cpp)
 
 Next slice:
 
-- delete one remaining emitter-local
-  `lower_lir_to_backend_module(...)` seam from
-  [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
-  or
-  [`src/backend/aarch64/codegen/emit.cpp`](/workspaces/c4c/src/backend/aarch64/codegen/emit.cpp)
-- delete or narrow the matching direct test/include dependency on
-  [`src/backend/lowering/lir_to_backend_ir.hpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.hpp)
-  in the same batch
+- continue shrinking the remaining x86 emitter-local `lower_lir_to_backend_module(...)`
+  fallback by porting another legacy-only structured family off the adapted
+  backend-module path
+- prefer families where the shared parser already exists or can be introduced
+  once in `call_decode.hpp` and reused by both x86 and aarch64
 - prove the deletion with focused backend tests and
   `ctest --test-dir build -R backend --output-on-failure`
 
@@ -60,5 +71,7 @@ Recent baseline:
 
 - blocker: none
 - backend regression scope is currently green at `402` passed / `0` failed
-- latest Step 4 follow-through already removed the generic backend-entry
-  prelowered route; the next slice should remove another emitter-local seam
+- this slice kept the backend scope monotonic at `402` passed / `0` failed
+- latest Step 4 follow-through tightened the x86 explicit LIR surface so
+  bounded return families no longer need the x86 post-adaptation legacy
+  recognition branches
