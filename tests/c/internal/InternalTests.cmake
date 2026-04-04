@@ -298,10 +298,15 @@ if(EXISTS "${EXAMPLE_C}")
       NAME backend_lir_aarch64_variadic_double_ir
       COMMAND "${CMAKE_COMMAND}"
               -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DCLANG=${CLANG_EXECUTABLE}
+              -DOBJDUMP=${OBJDUMP_EXECUTABLE}
               -DSRC=${INTERNAL_C_TEST_ROOT}/backend_case/variadic_double_bytes.c
               -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
-              -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/variadic_double_bytes_aarch64.ll
-              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_ir_check_case.cmake"
+              -DBACKEND_OUTPUT_PATH=${CMAKE_BINARY_DIR}/internal_backend/variadic_double_bytes_aarch64.s
+              -DOUT_ARTIFACT=${CMAKE_BINARY_DIR}/internal_backend/variadic_double_bytes_aarch64.o
+              "-DREQUIRED_BACKEND_SNIPPETS=.variadic_double_bytes.vaarg.fp.reg.4:|add x0, x0, #16|.variadic_double_bytes.vaarg.fp.join.5:"
+              "-DREQUIRED_OBJDUMP_SNIPPETS=file format elf64-littleaarch64|.text|main"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_stdout_contract_case.cmake"
   )
   set_tests_properties(backend_lir_aarch64_variadic_double_ir PROPERTIES
       LABELS "internal;backend")
@@ -310,9 +315,15 @@ if(EXISTS "${EXAMPLE_C}")
       NAME backend_lir_aarch64_variadic_double_asm_unsupported
       COMMAND "${CMAKE_COMMAND}"
               -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DCLANG=${CLANG_EXECUTABLE}
+              -DOBJDUMP=${OBJDUMP_EXECUTABLE}
               -DSRC=${INTERNAL_C_TEST_ROOT}/backend_case/variadic_double_bytes.c
               -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
-              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_unsupported_asm_case.cmake"
+              -DBACKEND_OUTPUT_PATH=${CMAKE_BINARY_DIR}/internal_backend/variadic_double_bytes_aarch64_stdout.s
+              -DOUT_ARTIFACT=${CMAKE_BINARY_DIR}/internal_backend/variadic_double_bytes_aarch64_stdout.o
+              "-DREQUIRED_BACKEND_SNIPPETS=.variadic_double_bytes.vaarg.fp.reg.4:|add x0, x0, #16|.variadic_double_bytes.vaarg.fp.join.5:"
+              "-DREQUIRED_OBJDUMP_SNIPPETS=file format elf64-littleaarch64|.text|main"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_stdout_contract_case.cmake"
   )
   set_tests_properties(backend_lir_aarch64_variadic_double_asm_unsupported PROPERTIES
       LABELS "internal;backend")
@@ -334,11 +345,15 @@ if(EXISTS "${EXAMPLE_C}")
       NAME backend_lir_aarch64_variadic_pair_ir
       COMMAND "${CMAKE_COMMAND}"
               -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DCLANG=${CLANG_EXECUTABLE}
+              -DOBJDUMP=${OBJDUMP_EXECUTABLE}
               -DSRC=${INTERNAL_C_TEST_ROOT}/backend_case/variadic_pair_second.c
               -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
-              -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/variadic_pair_second_aarch64.ll
-              "-DREQUIRED_SNIPPETS=call void @llvm.memcpy.p0.p0.i64(|phi ptr|getelementptr %struct.__va_list_tag_, ptr %lv.ap, i32 0, i32 3|load %struct.Pair, ptr"
-              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_ir_check_case.cmake"
+              -DBACKEND_OUTPUT_PATH=${CMAKE_BINARY_DIR}/internal_backend/variadic_pair_second_aarch64.s
+              -DOUT_ARTIFACT=${CMAKE_BINARY_DIR}/internal_backend/variadic_pair_second_aarch64.o
+              "-DREQUIRED_BACKEND_SNIPPETS=.variadic_pair_second.entry:|str x1, [x0]|bl memcpy"
+              "-DREQUIRED_OBJDUMP_SNIPPETS=file format elf64-littleaarch64|.text|main|variadic_pair_second"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_stdout_contract_case.cmake"
   )
   set_tests_properties(backend_lir_aarch64_variadic_pair_ir PROPERTIES
       LABELS "internal;backend")
@@ -347,11 +362,15 @@ if(EXISTS "${EXAMPLE_C}")
       NAME backend_lir_aarch64_variadic_bigints_ir
       COMMAND "${CMAKE_COMMAND}"
               -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DCLANG=${CLANG_EXECUTABLE}
+              -DOBJDUMP=${OBJDUMP_EXECUTABLE}
               -DSRC=${INTERNAL_C_TEST_ROOT}/backend_module_case/variadic_bigints_last.c
               -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
-              -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/variadic_bigints_last_aarch64.ll
-              "-DREQUIRED_SNIPPETS=call void @llvm.memcpy.p0.p0.i64(|load ptr, ptr|phi ptr|getelementptr %struct.__va_list_tag_, ptr %lv.ap, i32 0, i32 3|load %struct.BigInts, ptr"
-              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_module_check_case.cmake"
+              -DBACKEND_OUTPUT_PATH=${CMAKE_BINARY_DIR}/internal_backend/variadic_bigints_last_aarch64.s
+              -DOUT_ARTIFACT=${CMAKE_BINARY_DIR}/internal_backend/variadic_bigints_last_aarch64.o
+              "-DREQUIRED_BACKEND_SNIPPETS=.variadic_bigints_last.entry:|bl memcpy"
+              "-DREQUIRED_OBJDUMP_SNIPPETS=file format elf64-littleaarch64|.text|main|variadic_bigints_last"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_stdout_contract_case.cmake"
   )
   set_tests_properties(backend_lir_aarch64_variadic_bigints_ir PROPERTIES
       LABELS "internal;backend")
@@ -378,11 +397,15 @@ if(EXISTS "${EXAMPLE_C}")
       NAME backend_lir_aarch64_variadic_mixed_char_double_ir
       COMMAND "${CMAKE_COMMAND}"
               -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DCLANG=${CLANG_EXECUTABLE}
+              -DOBJDUMP=${OBJDUMP_EXECUTABLE}
               -DSRC=${INTERNAL_C_TEST_ROOT}/backend_module_case/variadic_mixed_char_double_bytes.c
               -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
-              -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/variadic_mixed_char_double_bytes_aarch64.ll
-              "-DREQUIRED_SNIPPETS=%struct.MixedCharDouble = type { i8, [7 x i8], double }|call void @llvm.memcpy.p0.p0.i64(|phi ptr|getelementptr %struct.__va_list_tag_, ptr %lv.ap, i32 0, i32 3|load %struct.MixedCharDouble, ptr|trunc i32 68 to i8"
-              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_module_check_case.cmake"
+              -DBACKEND_OUTPUT_PATH=${CMAKE_BINARY_DIR}/internal_backend/variadic_mixed_char_double_bytes_aarch64.s
+              -DOUT_ARTIFACT=${CMAKE_BINARY_DIR}/internal_backend/variadic_mixed_char_double_bytes_aarch64.o
+              "-DREQUIRED_BACKEND_SNIPPETS=.variadic_mixed_char_double_bytes.vaarg.regtry.3:|bl memcpy"
+              "-DREQUIRED_OBJDUMP_SNIPPETS=file format elf64-littleaarch64|.text|main|variadic_mixed_char_double_bytes"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_stdout_contract_case.cmake"
   )
   set_tests_properties(backend_lir_aarch64_variadic_mixed_char_double_ir PROPERTIES
       LABELS "internal;backend")
@@ -391,11 +414,15 @@ if(EXISTS "${EXAMPLE_C}")
       NAME backend_lir_aarch64_variadic_mixed_float_int_ir
       COMMAND "${CMAKE_COMMAND}"
               -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DCLANG=${CLANG_EXECUTABLE}
+              -DOBJDUMP=${OBJDUMP_EXECUTABLE}
               -DSRC=${INTERNAL_C_TEST_ROOT}/backend_module_case/variadic_mixed_float_int_bytes.c
               -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
-              -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/variadic_mixed_float_int_bytes_aarch64.ll
-              "-DREQUIRED_SNIPPETS=%struct.MixedFloatInt = type { float, i32 }|call void @llvm.memcpy.p0.p0.i64(|phi ptr|getelementptr %struct.__va_list_tag_, ptr %lv.ap, i32 0, i32 3|load %struct.MixedFloatInt, ptr"
-              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_module_check_case.cmake"
+              -DBACKEND_OUTPUT_PATH=${CMAKE_BINARY_DIR}/internal_backend/variadic_mixed_float_int_bytes_aarch64.s
+              -DOUT_ARTIFACT=${CMAKE_BINARY_DIR}/internal_backend/variadic_mixed_float_int_bytes_aarch64.o
+              "-DREQUIRED_BACKEND_SNIPPETS=.variadic_mixed_float_int_bytes.vaarg.regtry.3:|bl memcpy"
+              "-DREQUIRED_OBJDUMP_SNIPPETS=file format elf64-littleaarch64|.text|main|variadic_mixed_float_int_bytes"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_stdout_contract_case.cmake"
   )
   set_tests_properties(backend_lir_aarch64_variadic_mixed_float_int_ir PROPERTIES
       LABELS "internal;backend")
@@ -404,11 +431,15 @@ if(EXISTS "${EXAMPLE_C}")
       NAME backend_lir_aarch64_variadic_mixed_double_int_ir
       COMMAND "${CMAKE_COMMAND}"
               -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DCLANG=${CLANG_EXECUTABLE}
+              -DOBJDUMP=${OBJDUMP_EXECUTABLE}
               -DSRC=${INTERNAL_C_TEST_ROOT}/backend_module_case/variadic_mixed_double_int_bytes.c
               -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
-              -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/variadic_mixed_double_int_bytes_aarch64.ll
-              "-DREQUIRED_SNIPPETS=%struct.MixedDoubleInt = type { double, i32, [4 x i8] }|call void @llvm.memcpy.p0.p0.i64(|phi ptr|getelementptr %struct.__va_list_tag_, ptr %lv.ap, i32 0, i32 3|load %struct.MixedDoubleInt, ptr"
-              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_module_check_case.cmake"
+              -DBACKEND_OUTPUT_PATH=${CMAKE_BINARY_DIR}/internal_backend/variadic_mixed_double_int_bytes_aarch64.s
+              -DOUT_ARTIFACT=${CMAKE_BINARY_DIR}/internal_backend/variadic_mixed_double_int_bytes_aarch64.o
+              "-DREQUIRED_BACKEND_SNIPPETS=.variadic_mixed_double_int_bytes.vaarg.regtry.3:|bl memcpy"
+              "-DREQUIRED_OBJDUMP_SNIPPETS=file format elf64-littleaarch64|.text|main|variadic_mixed_double_int_bytes"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_stdout_contract_case.cmake"
   )
   set_tests_properties(backend_lir_aarch64_variadic_mixed_double_int_ir PROPERTIES
       LABELS "internal;backend")
@@ -417,11 +448,15 @@ if(EXISTS "${EXAMPLE_C}")
       NAME backend_lir_aarch64_variadic_mixed_int_double_ir
       COMMAND "${CMAKE_COMMAND}"
               -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DCLANG=${CLANG_EXECUTABLE}
+              -DOBJDUMP=${OBJDUMP_EXECUTABLE}
               -DSRC=${INTERNAL_C_TEST_ROOT}/backend_module_case/variadic_mixed_int_double_bytes.c
               -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
-              -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/variadic_mixed_int_double_bytes_aarch64.ll
-              "-DREQUIRED_SNIPPETS=%struct.MixedIntDouble = type { i32, [4 x i8], double }|call void @llvm.memcpy.p0.p0.i64(|phi ptr|getelementptr %struct.__va_list_tag_, ptr %lv.ap, i32 0, i32 3|load %struct.MixedIntDouble, ptr"
-              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_module_check_case.cmake"
+              -DBACKEND_OUTPUT_PATH=${CMAKE_BINARY_DIR}/internal_backend/variadic_mixed_int_double_bytes_aarch64.s
+              -DOUT_ARTIFACT=${CMAKE_BINARY_DIR}/internal_backend/variadic_mixed_int_double_bytes_aarch64.o
+              "-DREQUIRED_BACKEND_SNIPPETS=.variadic_mixed_int_double_bytes.vaarg.regtry.3:|bl memcpy"
+              "-DREQUIRED_OBJDUMP_SNIPPETS=file format elf64-littleaarch64|.text|main|variadic_mixed_int_double_bytes"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_stdout_contract_case.cmake"
   )
   set_tests_properties(backend_lir_aarch64_variadic_mixed_int_double_ir PROPERTIES
       LABELS "internal;backend")
@@ -430,11 +465,15 @@ if(EXISTS "${EXAMPLE_C}")
       NAME backend_lir_aarch64_variadic_mixed_short_double_ir
       COMMAND "${CMAKE_COMMAND}"
               -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DCLANG=${CLANG_EXECUTABLE}
+              -DOBJDUMP=${OBJDUMP_EXECUTABLE}
               -DSRC=${INTERNAL_C_TEST_ROOT}/backend_module_case/variadic_mixed_short_double_bytes.c
               -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
-              -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/variadic_mixed_short_double_bytes_aarch64.ll
-              "-DREQUIRED_SNIPPETS=%struct.MixedShortDouble = type { i16, [6 x i8], double }|call void @llvm.memcpy.p0.p0.i64(|phi ptr|getelementptr %struct.__va_list_tag_, ptr %lv.ap, i32 0, i32 3|load %struct.MixedShortDouble, ptr"
-              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_module_check_case.cmake"
+              -DBACKEND_OUTPUT_PATH=${CMAKE_BINARY_DIR}/internal_backend/variadic_mixed_short_double_bytes_aarch64.s
+              -DOUT_ARTIFACT=${CMAKE_BINARY_DIR}/internal_backend/variadic_mixed_short_double_bytes_aarch64.o
+              "-DREQUIRED_BACKEND_SNIPPETS=.variadic_mixed_short_double_bytes.vaarg.regtry.3:|bl memcpy"
+              "-DREQUIRED_OBJDUMP_SNIPPETS=file format elf64-littleaarch64|.text|main|variadic_mixed_short_double_bytes"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_stdout_contract_case.cmake"
   )
   set_tests_properties(backend_lir_aarch64_variadic_mixed_short_double_ir PROPERTIES
       LABELS "internal;backend")
@@ -443,11 +482,15 @@ if(EXISTS "${EXAMPLE_C}")
       NAME backend_lir_aarch64_variadic_mixed_double_short_ir
       COMMAND "${CMAKE_COMMAND}"
               -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DCLANG=${CLANG_EXECUTABLE}
+              -DOBJDUMP=${OBJDUMP_EXECUTABLE}
               -DSRC=${INTERNAL_C_TEST_ROOT}/backend_module_case/variadic_mixed_double_short_bytes.c
               -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
-              -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/variadic_mixed_double_short_bytes_aarch64.ll
-              "-DREQUIRED_SNIPPETS=%struct.MixedDoubleShort = type { double, i16, [6 x i8] }|call void @llvm.memcpy.p0.p0.i64(|phi ptr|getelementptr %struct.__va_list_tag_, ptr %lv.ap, i32 0, i32 3|load %struct.MixedDoubleShort, ptr|trunc i32 13124 to i16"
-              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_module_check_case.cmake"
+              -DBACKEND_OUTPUT_PATH=${CMAKE_BINARY_DIR}/internal_backend/variadic_mixed_double_short_bytes_aarch64.s
+              -DOUT_ARTIFACT=${CMAKE_BINARY_DIR}/internal_backend/variadic_mixed_double_short_bytes_aarch64.o
+              "-DREQUIRED_BACKEND_SNIPPETS=.variadic_mixed_double_short_bytes.vaarg.regtry.3:|bl memcpy"
+              "-DREQUIRED_OBJDUMP_SNIPPETS=file format elf64-littleaarch64|.text|main|variadic_mixed_double_short_bytes"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_stdout_contract_case.cmake"
   )
   set_tests_properties(backend_lir_aarch64_variadic_mixed_double_short_ir PROPERTIES
       LABELS "internal;backend")
@@ -1822,10 +1865,16 @@ if(CLANG_EXECUTABLE)
         set(backend_asm_source "stdout")
       elseif(stem STREQUAL "variadic_sum2")
         set(expect_exit_code 42)
+        set(backend_output_kind "asm")
+        set(backend_asm_source "stdout")
       elseif(stem STREQUAL "variadic_double_bytes")
         set(expect_exit_code 67)
+        set(backend_output_kind "asm")
+        set(backend_asm_source "stdout")
       elseif(stem STREQUAL "variadic_pair_second")
         set(expect_exit_code 9)
+        set(backend_output_kind "asm")
+        set(backend_asm_source "stdout")
       elseif(stem STREQUAL "param_member_array")
         set(expect_exit_code 6)
         set(backend_output_kind "asm")

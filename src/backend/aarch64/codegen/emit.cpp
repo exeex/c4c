@@ -6328,6 +6328,8 @@ static std::optional<std::string> try_emit_general_lir_asm(
   for (const auto& fn : module.functions) {
     if (fn.is_declaration) continue;
     const bool is_variadic_function = fn.signature_text.find("...") != std::string::npos;
+    bool has_va_list_gep = false;
+    bool has_call = false;
     for (const auto& inst : fn.alloca_insts) {
       if (std::holds_alternative<LirInlineAsmOp>(inst)) return std::nullopt;
       if (const auto* va_arg = std::get_if<LirVaArgOp>(&inst)) {
@@ -6340,12 +6342,13 @@ static std::optional<std::string> try_emit_general_lir_asm(
     for (const auto& blk : fn.blocks) {
       for (const auto& inst : blk.insts) {
         if (std::holds_alternative<LirInlineAsmOp>(inst)) return std::nullopt;
-        if (is_variadic_function) {
-          if (const auto* gep = std::get_if<LirGepOp>(&inst)) {
-            if (gep->element_type.str().find("__va_list_tag_") != std::string::npos) {
-              return std::nullopt;
-            }
+        if (const auto* gep = std::get_if<LirGepOp>(&inst)) {
+          if (gep->element_type.str().find("__va_list_tag_") != std::string::npos) {
+            has_va_list_gep = true;
           }
+        }
+        if (std::holds_alternative<LirCallOp>(inst)) {
+          has_call = true;
         }
         if (std::holds_alternative<LirInsertElementOp>(inst)) return std::nullopt;
         if (std::holds_alternative<LirExtractElementOp>(inst)) return std::nullopt;
@@ -6364,6 +6367,9 @@ static std::optional<std::string> try_emit_general_lir_asm(
             ret->type_str == "float")
           return std::nullopt;
       }
+    }
+    if (is_variadic_function && has_va_list_gep && has_call) {
+      return std::nullopt;
     }
   }
 

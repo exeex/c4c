@@ -4812,32 +4812,40 @@ void test_aarch64_backend_renders_va_arg_pair_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_va_arg_pair_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-  expect_contains(rendered, "declare void @llvm.memcpy.p0.p0.i64(ptr, ptr, i64, i1)",
-                  "aarch64 backend should keep aggregate va_arg helper slices on the LLVM-text path until the native aggregate ABI path is real");
-  expect_contains(rendered, "%t6 = phi ptr [ %t3, %reg ], [ %t5, %stack ]",
-                  "aarch64 backend should preserve the aggregate va_arg helper phi join");
-  expect_contains(rendered,
-                  "call void @llvm.memcpy.p0.p0.i64(ptr %lv.pair.tmp, ptr %t6, i64 8, i1 false)",
-                  "aarch64 backend should preserve aggregate va_arg copies through the fallback IR for now");
-  expect_contains(rendered, "call void @llvm.va_end.p0(ptr %lv.ap)",
-                  "aarch64 backend should preserve va_end after aggregate va_arg handling while that helper stays on fallback IR");
+  expect_contains(rendered, ".globl pair_sum",
+                  "aarch64 backend should keep aggregate va_arg helper slices on the native asm path once the lowered helper operations are supported");
+  expect_contains(rendered, ".pair_sum.reg:\n",
+                  "aarch64 backend should preserve the register-side helper path for aggregate va_arg joins");
+  expect_contains(rendered, "mov x1, #-8\n  add x0, x0, x1\n",
+                  "aarch64 backend should keep the negative register-save offset adjustment in native asm");
+  expect_contains(rendered, ".pair_sum.stack:\n",
+                  "aarch64 backend should preserve the stack-side helper path for aggregate va_arg joins");
+  expect_contains(rendered, "str x0, [sp, #72]\n  b .pair_sum.join\n",
+                  "aarch64 backend should still merge the helper pointer path through the native phi copy");
+  expect_contains(rendered, "bl memcpy",
+                  "aarch64 backend should lower aggregate helper copies through the native memcpy call sequence");
+  expect_not_contains(rendered, "llvm.va_end",
+                      "aarch64 backend should no longer fall back to LLVM va_end intrinsics for aggregate helper slices");
 }
 
 void test_aarch64_backend_renders_va_arg_bigints_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_va_arg_bigints_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-  expect_contains(rendered, "%struct.BigInts = type { i32, i32, i32, i32, i32 }",
-                  "aarch64 backend should preserve larger aggregate type declarations");
-  expect_contains(rendered, "%t11 = phi ptr [ %t7, %reg ], [ %t9, %stack ]",
-                  "aarch64 backend should preserve the indirect aggregate helper phi join");
-  expect_contains(rendered, "%t12 = load ptr, ptr %t11",
-                  "aarch64 backend should preserve the indirect aggregate source-pointer reload while the aggregate helper stays on fallback IR");
-  expect_contains(rendered,
-                  "call void @llvm.memcpy.p0.p0.i64(ptr %lv.bigints.tmp, ptr %t12, i64 20, i1 false)",
-                  "aarch64 backend should preserve indirect aggregate va_arg copies through fallback IR until the native aggregate path is real");
-  expect_contains(rendered, "call void @llvm.va_end.p0(ptr %lv.ap)",
-                  "aarch64 backend should preserve va_end after indirect aggregate va_arg handling");
+  expect_contains(rendered, ".globl bigints_sum",
+                  "aarch64 backend should keep indirect aggregate va_arg helpers on the native asm path once the lowered helper operations are supported");
+  expect_contains(rendered, ".bigints_sum.regtry:\n",
+                  "aarch64 backend should preserve the register-save offset update for indirect aggregate va_arg helpers");
+  expect_contains(rendered, "add w0, w0, w1\n  str w0, [sp, #48]\n",
+                  "aarch64 backend should update the indirect aggregate register-save offset on the native path");
+  expect_contains(rendered, ".bigints_sum.join:\n",
+                  "aarch64 backend should preserve the indirect aggregate source-pointer reload before copying the payload");
+  expect_contains(rendered, "ldr x0, [x0]\n  str x0, [sp, #120]\n",
+                  "aarch64 backend should reload the indirect aggregate source pointer before the native memcpy");
+  expect_contains(rendered, "mov x2, #20\n  str x30, [sp, #0]\n  bl memcpy\n",
+                  "aarch64 backend should lower indirect aggregate va_arg copies through the native memcpy call sequence");
+  expect_not_contains(rendered, "llvm.va_end",
+                      "aarch64 backend should no longer fall back to LLVM va_end intrinsics for indirect aggregate helper slices");
 }
 
 void test_aarch64_backend_renders_phi_join_slice() {

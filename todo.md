@@ -9,20 +9,24 @@ Source Plan: plan.md
 - [ ] Remove legacy backend IR files and backend/app LLVM rescue paths
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
-Current active item: Step 4, keep the final AArch64-only file-output asm
-fallback user `00204` explicitly blocked until the native backend grows the
-remaining variadic aggregate ABI surface needed to remove it cleanly.
+Current active item: Step 4, remove the native AArch64 fallback seam for
+aggregate/helper-style `va_arg` lowering so `00204` is blocked only on the
+remaining direct aggregate variadic call plus `fp128` forwarding gaps.
 
-Iteration target: re-probe the last live file-output rescue case `00204`,
-confirm whether it is still a bounded deletion batch or now a larger backend
-gap, and record the exact blocker so the next Step 4 slice starts from the
-real native-asm requirements instead of repeating the audit.
+Iteration target: keep the next Step 4 slice focused on the remaining
+`00204` blocker: variadic functions that both walk `va_list` and make nested
+calls still stay on the fallback route until the direct aggregate variadic call
+path and native `fp128` forwarding are implemented.
 
 Immediate next slice:
 
-- implement the missing AArch64 native-asm variadic surface needed by
-  `tests/c/external/c-testsuite/src/00204.c`, starting with the lowest-coupling
-  production gap rather than retesting the file-output fallback
+- implement the remaining native AArch64 variadic call surface needed by
+  `tests/c/external/c-testsuite/src/00204.c`, specifically:
+  aggregate variadic call ownership for nested helper/`printf` calls inside a
+  variadic callee, plus native `fp128` forwarding for `printf("%.1Lf", ...)`
+- once that direct-call slice is native, delete the last `backend-file-aarch64`
+  allowlist tag and the matching `c4cll` file-output fallback branch in the
+  same bounded batch
 - keep the final `backend-file-aarch64` allowlist tag in place until the same
   bounded batch proves backend-native stdout asm for `00204`
 - do not claim Step 4 deletion progress until that batch removes the last live
@@ -188,6 +192,16 @@ Recently completed milestones:
   helpers, and kept aggregate/helper-style variadic lowering explicitly on the
   fallback path so `00204` remains a bounded Step 4 blocker instead of
   silently switching to bad native asm
+- taught the AArch64 native asm path to keep helper-only aggregate `va_arg`
+  lowering on stdout-native assembly when the variadic callee only walks
+  `__va_list_tag_` and copies aggregate payloads, while still forcing fallback
+  for the remaining `00204` class where a variadic callee also makes nested
+  calls
+- converted the bounded internal AArch64 variadic regression set
+  (`variadic_double_bytes`, `variadic_pair_second`, `variadic_sum2`, and the
+  mixed aggregate helper family) from LLVM-text fallback expectations to
+  stdout-native asm contracts/runtime coverage, and updated the focused backend
+  adapter tests to assert native aggregate helper asm
 
 Validation baseline:
 
@@ -201,9 +215,10 @@ Validation baseline:
   `ctest --test-dir build -R "backend_lir_adapter_aarch64_tests|backend_lir_aarch64_variadic_|c_testsuite_aarch64_backend_src_00204_c" --output-on-failure`,
   and
   `ctest --test-dir build -R backend --output-on-failure`
-  with stdout-native asm still blocked, file-output fallback still succeeding,
-  the focused native/fallback variadic regression set passing, and `00204`
-  still passing only because it remains tagged
+  with helper-only aggregate/native variadic coverage now passing on stdout,
+  `00204` stdout-native asm still blocked, file-output fallback still
+  succeeding for `00204`, and the focused/native fallback regression set
+  passing with the nested-call guard in place
 - latest backend regression scope:
   `ctest --test-dir build -R backend --output-on-failure`
   with `100% tests passed, 0 tests failed out of 402`
