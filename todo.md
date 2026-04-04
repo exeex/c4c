@@ -13,6 +13,10 @@ Current active item: Step 4, remove the native AArch64 fallback seam for
 aggregate/helper-style `va_arg` lowering so `00204` is blocked only on the
 remaining direct aggregate variadic call plus `fp128` forwarding gaps.
 
+This iteration target: land backend-native AArch64 `fp128` global initializer
+support as a bounded prerequisite inside the remaining `00204` long-double
+family, without claiming the final file-output fallback removal yet.
+
 Iteration target: keep the next Step 4 slice focused on the remaining
 `00204` blocker: variadic functions that both walk `va_list` and make nested
 calls still stay on the fallback route until the direct aggregate variadic call
@@ -229,3 +233,20 @@ Validation baseline:
   `before: passed=2841 failed=0 total=2841`,
   `after: passed=2841 failed=0 total=2841`,
   `new failing tests: 0`
+
+Latest bounded progress:
+
+- taught the AArch64 general emitter to preserve `fp128` global layout and
+  initializer payloads on the native asm path by treating `fp128` as a
+  16-byte/16-byte-aligned type and materializing LLVM `0xL...` literals as two
+  `.xword` payload words instead of truncating or zero-filling them
+- added a focused AArch64 backend adapter regression that keeps a bounded
+  `fp128` global on backend-native assembly rather than silently falling back to
+  LLVM text
+
+Remaining blocker after this slice:
+
+- `00204` still depends on the file-output fallback because the native AArch64
+  path does not yet carry `alignstack` aggregate variadic forwarding plus
+  nested-call argument emission for the remaining `myprintf` long-double/HFA
+  family

@@ -484,6 +484,41 @@ c4c::codegen::lir::LirModule make_array_of_named_struct_stride_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_fp128_global_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.globals.push_back(LirGlobal{
+      LirGlobalId{0},
+      "wide",
+      {},
+      false,
+      false,
+      "",
+      "global ",
+      "fp128",
+      "0xLA0000000000000004003F19999999999",
+      16,
+      false,
+  });
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.terminator = LirRet{std::string("0"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 
 
 
@@ -4772,6 +4807,16 @@ void test_aarch64_backend_uses_real_array_of_struct_stride() {
                   "aarch64 general emitter should use the real field offset inside the named struct element");
   expect_not_contains(rendered, "mov x2, #16\n",
                       "aarch64 general emitter should not reuse rounded-up pseudo-slot sizes for array-of-struct indexing");
+}
+
+void test_aarch64_backend_renders_fp128_global_initializer() {
+  const auto rendered = c4c::backend::aarch64::emit_module(make_fp128_global_module());
+  expect_contains(rendered, ".globl wide",
+                  "aarch64 general emitter should keep fp128 globals on the native asm path");
+  expect_contains(rendered, "wide:\n  .xword 4612796085366790553\n  .xword 11529215046068469760\n",
+                  "aarch64 general emitter should materialize the full 16-byte fp128 payload instead of truncating the initializer");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 general emitter should not fall back to LLVM text for bounded fp128 global initializers");
 }
 
 void test_aarch64_backend_renders_va_intrinsic_slice() {

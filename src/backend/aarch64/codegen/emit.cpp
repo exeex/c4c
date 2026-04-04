@@ -5620,6 +5620,7 @@ struct GenSlotMap {
 // Parse type width in bits from LLVM type string.
 static int gen_type_bits(const std::string& ty) {
   if (ty == "ptr") return 64;
+  if (ty == "fp128") return 128;
   if (ty.size() > 1 && ty[0] == 'i') {
     int v = 0;
     for (size_t i = 1; i < ty.size(); ++i) {
@@ -5633,6 +5634,42 @@ static int gen_type_bits(const std::string& ty) {
 
 static bool gen_is_fp_type(const std::string& ty) {
   return ty == "float" || ty == "double";
+}
+
+static bool gen_try_parse_fp128_immediate_words(const std::string& op,
+                                                std::uint64_t& low_word,
+                                                std::uint64_t& high_word) {
+  std::string_view text = op;
+  if (text.rfind("0xL", 0) != 0 && text.rfind("0XL", 0) != 0) {
+    return false;
+  }
+
+  text.remove_prefix(3);
+  if (text.empty() || text.size() > 32) {
+    return false;
+  }
+
+  std::uint64_t hi = 0;
+  std::uint64_t lo = 0;
+  for (char c : text) {
+    unsigned digit = 0;
+    if (c >= '0' && c <= '9') {
+      digit = static_cast<unsigned>(c - '0');
+    } else if (c >= 'a' && c <= 'f') {
+      digit = static_cast<unsigned>(c - 'a' + 10);
+    } else if (c >= 'A' && c <= 'F') {
+      digit = static_cast<unsigned>(c - 'A' + 10);
+    } else {
+      return false;
+    }
+
+    hi = (hi << 4) | (lo >> 60);
+    lo = (lo << 4) | digit;
+  }
+
+  high_word = hi;
+  low_word = lo;
+  return true;
 }
 
 static bool gen_is_scalar_variadic_type(const std::string& ty) {
@@ -5913,6 +5950,7 @@ static GenTypeLayout gen_type_layout(const std::string& ty,
   if (trimmed == "i16") return {2, 2};
   if (trimmed == "i32" || trimmed == "float") return {4, 4};
   if (trimmed == "i64" || trimmed == "ptr" || trimmed == "double") return {8, 8};
+  if (trimmed == "fp128") return {16, 16};
   if (trimmed.front() == '[') {
     const auto [count, elem_size] = gen_parse_array_type(trimmed);
     std::string elem = trimmed.substr(trimmed.find(" x ") + 3);
@@ -6184,6 +6222,14 @@ static void gen_emit_global_init(std::ostringstream& out, const std::string& ini
     } else {
       out << "  .xword " << fp_bits << "\n";
     }
+    return;
+  }
+
+  std::uint64_t fp128_low = 0;
+  std::uint64_t fp128_high = 0;
+  if (ty == "fp128" && gen_try_parse_fp128_immediate_words(init, fp128_low, fp128_high)) {
+    out << "  .xword " << fp128_low << "\n";
+    out << "  .xword " << fp128_high << "\n";
     return;
   }
 
