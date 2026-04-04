@@ -6052,6 +6052,18 @@ static void gen_store_result(std::ostringstream& out, const std::string& name,
     out << "  str w" << reg_idx << ", [sp, #" << off << "]\n";
 }
 
+static std::optional<std::string> gen_map_float_predicate(const std::string& pred) {
+  if (pred == "eq" || pred == "oeq") return "eq";
+  if (pred == "ne") return "ne";
+  if (pred == "olt") return "lt";
+  if (pred == "ole") return "le";
+  if (pred == "ogt") return "gt";
+  if (pred == "oge") return "ge";
+  if (pred == "ord") return "vc";
+  if (pred == "uno") return "vs";
+  return std::nullopt;
+}
+
 // Parse GEP index string "type value" → (type, value).
 static std::pair<std::string, std::string> gen_parse_index(const std::string& idx) {
   size_t sp = idx.find(' ');
@@ -6074,6 +6086,18 @@ static void gen_emit_global_init(std::ostringstream& out, const std::string& ini
   if (init.size() >= 3 && init[0] == 'c' && init[1] == '"' && init.back() == '"') {
     const auto bytes = gen_decode_llvm_byte_string(init.substr(2, init.size() - 3));
     gen_emit_ascii_bytes(out, bytes);
+    return;
+  }
+
+  std::uint64_t fp_bits = 0;
+  if (gen_try_parse_fp_immediate_bits(init, ty, fp_bits)) {
+    if (ty == "float") {
+      out << "  .word " << static_cast<std::uint32_t>(fp_bits) << "\n";
+    } else if (ty == "double") {
+      out << "  .xword " << fp_bits << "\n";
+    } else {
+      out << "  .xword " << fp_bits << "\n";
+    }
     return;
   }
 
@@ -6576,29 +6600,38 @@ static std::optional<std::string> try_emit_general_lir_asm(
           gen_store_result(out, p->result.str(), ty, sm, 0);
         }
         else if (const auto* p = std::get_if<LirCmpOp>(&inst)) {
-          if (p->is_float) return std::nullopt;  // no float support yet
-          std::string ty = p->type_str.str();
-          const char* rp = gen_reg_prefix(ty);
-          gen_load_operand(out, p->lhs.str(), ty, sm, 0, fn.name, &extern_globals);
-          gen_load_operand(out, p->rhs.str(), ty, sm, 1, fn.name, &extern_globals);
-
-          out << "  cmp " << rp << "0, " << rp << "1\n";
-
           std::string pred = p->predicate.str();
-          std::string cond;
-          if (pred == "eq") cond = "eq";
-          else if (pred == "ne") cond = "ne";
-          else if (pred == "slt") cond = "lt";
-          else if (pred == "sle") cond = "le";
-          else if (pred == "sgt") cond = "gt";
-          else if (pred == "sge") cond = "ge";
-          else if (pred == "ult") cond = "lo";
-          else if (pred == "ule") cond = "ls";
-          else if (pred == "ugt") cond = "hi";
-          else if (pred == "uge") cond = "hs";
-          else return std::nullopt;
+          if (p->is_float) {
+            std::string ty = p->type_str.str();
+            gen_load_fp_operand(out, p->lhs.str(), ty, sm, 0, fn.name, &extern_globals);
+            gen_load_fp_operand(out, p->rhs.str(), ty, sm, 1, fn.name, &extern_globals);
+            out << "  fcmp " << (ty == "double" ? "d" : "s") << "0, "
+                << (ty == "double" ? "d" : "s") << "1\n";
+            auto cond = gen_map_float_predicate(pred);
+            if (!cond.has_value()) return std::nullopt;
+            out << "  cset w0, " << *cond << "\n";
+          } else {
+            std::string ty = p->type_str.str();
+            const char* rp = gen_reg_prefix(ty);
+            gen_load_operand(out, p->lhs.str(), ty, sm, 0, fn.name, &extern_globals);
+            gen_load_operand(out, p->rhs.str(), ty, sm, 1, fn.name, &extern_globals);
+            out << "  cmp " << rp << "0, " << rp << "1\n";
 
-          out << "  cset w0, " << cond << "\n";
+            std::string cond;
+            if (pred == "eq") cond = "eq";
+            else if (pred == "ne") cond = "ne";
+            else if (pred == "slt") cond = "lt";
+            else if (pred == "sle") cond = "le";
+            else if (pred == "sgt") cond = "gt";
+            else if (pred == "sge") cond = "ge";
+            else if (pred == "ult") cond = "lo";
+            else if (pred == "ule") cond = "ls";
+            else if (pred == "ugt") cond = "hi";
+            else if (pred == "uge") cond = "hs";
+            else return std::nullopt;
+
+            out << "  cset w0, " << cond << "\n";
+          }
           gen_store_result(out, p->result.str(), "i32", sm, 0);
         }
         else if (const auto* p = std::get_if<LirCastOp>(&inst)) {
@@ -6661,8 +6694,41 @@ static std::optional<std::string> try_emit_general_lir_asm(
               gen_store_result(out, p->result.str(), "i64", sm, 0);
               break;
             }
+            case LirCastKind::SIToFP:
+            case LirCastKind::UIToFP: {
+              gen_load_operand(out, p->operand.str(), from_ty, sm, 0, fn.name, &extern_globals);
+              const bool to_double = to_ty == "double";
+              const bool from_64 = gen_is_64bit(from_ty);
+              out << "  " << (p->kind == LirCastKind::SIToFP ? "scvtf " : "ucvtf ")
+                  << (to_double ? "d0, " : "s0, ")
+                  << (from_64 ? "x0" : "w0") << "\n";
+              out << "  fmov " << (to_double ? "x0, d0" : "w0, s0") << "\n";
+              gen_store_result(out, p->result.str(), to_ty, sm, 0);
+              break;
+            }
+            case LirCastKind::FPToSI:
+            case LirCastKind::FPToUI: {
+              gen_load_fp_operand(out, p->operand.str(), from_ty, sm, 0, fn.name,
+                                  &extern_globals);
+              const bool from_double = from_ty == "double";
+              const bool to_64 = gen_is_64bit(to_ty);
+              out << "  " << (p->kind == LirCastKind::FPToSI ? "fcvtzs " : "fcvtzu ")
+                  << (to_64 ? "x0, " : "w0, ")
+                  << (from_double ? "d0" : "s0") << "\n";
+              gen_store_result(out, p->result.str(), to_ty, sm, 0);
+              break;
+            }
+            case LirCastKind::FPExt:
+            case LirCastKind::FPTrunc: {
+              gen_load_fp_operand(out, p->operand.str(), from_ty, sm, 0, fn.name,
+                                  &extern_globals);
+              out << "  fcvt " << (to_ty == "double" ? "d0, s0" : "s0, d0") << "\n";
+              out << "  fmov " << (to_ty == "double" ? "x0, d0" : "w0, s0") << "\n";
+              gen_store_result(out, p->result.str(), to_ty, sm, 0);
+              break;
+            }
             default:
-              return std::nullopt;  // FP casts not supported
+              return std::nullopt;
           }
         }
         else if (const auto* p = std::get_if<LirCallOp>(&inst)) {

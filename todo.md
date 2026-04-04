@@ -12,21 +12,17 @@ Source Plan: plan.md
 Current active item: Step 4, cut the now-explicit AArch64-only file-output asm
 fallback users and prepare the final legacy backend-IR deletion pass.
 
-Iteration target: continue removing explicit AArch64 file-output asm rescue
-callers one bounded family at a time, with the immediate follow-up target
-being the next smallest still-blocked caller family after the `00116`
-single-argument identity-helper conversion.
+Iteration target: remove the small scalar/FP AArch64 file-output asm rescue
+family that is blocked only by the general stack-spill emitter's missing float
+cast/compare support, then continue with the next still-blocked family.
 
 Immediate next slice:
 
-- audit whether the remaining small scalar/FP AArch64 rescue callers
-  `00113`, `00119`, `00121`, and `00123` share a bounded matcher/emitter gap
-  that can remove more than one fallback tag in the same batch
-- prefer the next slice that deletes another explicit
-  `backend-file-aarch64` tag from
-  [`tests/c/external/c-testsuite/allowlist.txt`](/workspaces/c4c/tests/c/external/c-testsuite/allowlist.txt)
-  together with the production backend change that makes stdout-native asm
-  possible
+- convert the remaining non-FP direct-call rescue caller `00121` if its
+  matcher/emitter gap is still bounded enough to remove the file-output tag in
+  one batch
+- otherwise continue with the next smallest still-blocked AArch64 rescue
+  family after re-probing `00174`, `00175`, and `00204`
 
 Slice deliverables:
 
@@ -92,8 +88,12 @@ Known live references from the current audit:
   backend families now run through stdout-native asm by default
 - the remaining live file-output asm rescue users are now explicit allowlist
   tags for external/backend AArch64 c-testsuite coverage:
-  `00113`, `00119`, `00121`, `00123`, `00174`, `00175`,
-  and `00204`
+  `00121`, `00174`, `00175`, and `00204`
+- the small scalar/FP audit split cleanly into two buckets:
+  `00113`, `00119`, and `00123` all failed because the AArch64 general
+  stack-spill emitter rejected float compares and float casts
+  (`sitofp` plus ordered `fcmp` materialization), while `00121` is a separate
+  direct-call family and should not be grouped with the float slice
 - `c4cll` now rejects file-output LLVM asm fallback on non-AArch64 targets;
   the app-layer rescue path is retained only for the tagged AArch64 family
 
@@ -137,6 +137,10 @@ Recently completed milestones:
   single-argument identity-helper direct-call shape on stdout-native asm and
   removed external/backend AArch64 c-testsuite case `00116` from the remaining
   file-output rescue bucket
+- taught the AArch64 general stack-spill emitter to lower bounded float
+  cast/compare slices (`sitofp`, ordered `fcmp`, and the matching float/double
+  conversion helpers) and removed external/backend AArch64 c-testsuite cases
+  `00113`, `00119`, and `00123` from the remaining file-output rescue bucket
 
 Validation baseline:
 

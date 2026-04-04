@@ -629,6 +629,82 @@ inline c4c::codegen::lir::LirModule make_double_printf_runtime_module() {
   return module;
 }
 
+inline c4c::codegen::lir::LirModule make_float_sitofp_equality_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.a", "i32", "", 4});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.f", "float", "", 4});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{"i32", "0", "%lv.a"});
+  entry.insts.push_back(LirLoadOp{"%t0", "i32", "%lv.a"});
+  entry.insts.push_back(LirBinOp{"%t1", "add", "i32", "%t0", "1"});
+  entry.insts.push_back(
+      LirCastOp{"%t2", LirCastKind::SIToFP, "i32", "%t1", "float"});
+  entry.insts.push_back(LirStoreOp{"float", "%t2", "%lv.f"});
+  entry.insts.push_back(LirLoadOp{"%t3", "float", "%lv.f"});
+  entry.insts.push_back(LirLoadOp{"%t4", "i32", "%lv.a"});
+  entry.insts.push_back(
+      LirCastOp{"%t5", LirCastKind::SIToFP, "i32", "%t4", "float"});
+  entry.insts.push_back(LirCmpOp{"%t6", true, "oeq", "float", "%t3", "%t5"});
+  entry.insts.push_back(LirCastOp{"%t7", LirCastKind::ZExt, "i1", "%t6", "i32"});
+  entry.terminator = LirRet{std::string("%t7"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+inline c4c::codegen::lir::LirModule make_global_double_less_than_one_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.globals.push_back(LirGlobal{
+      LirGlobalId{0},
+      "x",
+      {},
+      false,
+      false,
+      "",
+      "global ",
+      "double",
+      "0x4059000000000000",
+      8,
+      false,
+  });
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirLoadOp{"%t0", "double", "@x"});
+  entry.insts.push_back(
+      LirCastOp{"%t1", LirCastKind::SIToFP, "i32", "1", "double"});
+  entry.insts.push_back(LirCmpOp{"%t2", true, "olt", "double", "%t0", "%t1"});
+  entry.insts.push_back(LirCastOp{"%t3", LirCastKind::ZExt, "i1", "%t2", "i32"});
+  entry.terminator = LirRet{std::string("%t3"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 inline c4c::codegen::lir::LirModule make_printf_vararg_decl_module() {
   using namespace c4c::codegen::lir;
 

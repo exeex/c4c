@@ -2973,6 +2973,40 @@ void test_aarch64_backend_renders_double_printf_call_with_fp_register_args() {
                   "aarch64 backend should still lower the direct variadic call with bl");
 }
 
+void test_aarch64_backend_renders_float_sitofp_equality_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_float_sitofp_equality_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, "scvtf s0, w0",
+                  "aarch64 backend should lower signed i32-to-float casts through scvtf on the stdout-native asm path");
+  expect_contains(rendered, "fmov w0, s0",
+                  "aarch64 backend should preserve float cast results as scalar stack values without falling back to LLVM text");
+  expect_contains(rendered, "fcmp s0, s1",
+                  "aarch64 backend should compare float operands with fcmp instead of rejecting the stack-spill path");
+  expect_contains(rendered, "cset w0, eq",
+                  "aarch64 backend should materialize ordered float equality through the native compare flags");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend should not fall back to LLVM IR for the bounded float sitofp equality slice");
+}
+
+void test_aarch64_backend_renders_global_double_less_than_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_global_double_less_than_one_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".xword 4636737291354636288",
+                  "aarch64 backend should preserve the global double initializer bit-pattern instead of zeroing the scalar global");
+  expect_contains(rendered, "adrp x0, x",
+                  "aarch64 backend should keep the scalar global double load on the native asm path");
+  expect_contains(rendered, "scvtf d0, w0",
+                  "aarch64 backend should lower the bounded signed-int-to-double compare constant through scvtf");
+  expect_contains(rendered, "fcmp d0, d1",
+                  "aarch64 backend should compare double operands with fcmp on the general stack-spill path");
+  expect_contains(rendered, "cset w0, lt",
+                  "aarch64 backend should materialize the ordered less-than result from the double compare flags");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend should not fall back to LLVM IR for the bounded global-double less-than slice");
+}
+
 void test_aarch64_backend_renders_local_array_gep_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_local_array_gep_module()},
@@ -5225,6 +5259,8 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_both_local_double_rewrite_ir_without_signature_shims();
   test_aarch64_backend_renders_typed_two_arg_direct_call_both_local_double_rewrite_slice();
   test_aarch64_backend_renders_double_printf_call_with_fp_register_args();
+  test_aarch64_backend_renders_float_sitofp_equality_slice();
+  test_aarch64_backend_renders_global_double_less_than_slice();
   test_aarch64_backend_renders_local_array_gep_slice();
   test_aarch64_backend_renders_param_member_array_gep_slice();
   test_aarch64_backend_renders_nested_member_pointer_array_gep_slice();
