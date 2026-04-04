@@ -307,6 +307,17 @@ if(EXISTS "${EXAMPLE_C}")
       LABELS "internal;backend")
 
   add_test(
+      NAME backend_lir_aarch64_variadic_double_asm_unsupported
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_case/variadic_double_bytes.c
+              -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_unsupported_asm_case.cmake"
+  )
+  set_tests_properties(backend_lir_aarch64_variadic_double_asm_unsupported PROPERTIES
+      LABELS "internal;backend")
+
+  add_test(
       NAME backend_lir_aarch64_variadic_long_double_ir
       COMMAND "${CMAKE_COMMAND}"
               -DCOMPILER=$<TARGET_FILE:c4cll>

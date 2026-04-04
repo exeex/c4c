@@ -135,7 +135,7 @@ std::string normalize_aarch64_fallback_asm(std::string text) {
     for (std::size_t j = i + 3; j < lines.size(); ++j) {
       const auto future = trim_copy(lines[j]);
       if (future.empty()) continue;
-      if (future.rfind(offset_addr_pattern, future.find('[')) != std::string::npos) {
+      if (future.rfind(offset_addr_pattern, future.find('[')) != std::string_view::npos) {
         addr_reg_reused_with_offset = true;
         break;
       }
@@ -892,6 +892,13 @@ int main(int argc, char **argv) {
     if (codegen_path == c4c::codegen::llvm_backend::CodegenPath::Lir &&
         wants_asm_output &&
         (backend_returned_llvm_ir || backend_returned_no_asm)) {
+      if (output.empty()) {
+        std::cerr << "error: --codegen asm requires backend-native assembly output on stdout.\n";
+        std::cerr << "       Re-run with -o <file>.s to allow the current LLVM asm fallback, or\n";
+        std::cerr << "       re-run with --codegen llvm if you need IR output.\n";
+        return 2;
+      }
+
       std::optional<std::string> fallback_asm;
       if (backend_returned_llvm_ir) {
         fallback_asm = lower_llvm_ir_to_asm(ir, target_triple);

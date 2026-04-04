@@ -15,6 +15,25 @@ removing the `llvm_codegen.cpp` pre-lowering route through
 `lower_lir_to_backend_module(...)` while keeping supported x86_64/aarch64
 native asm on the existing direct-LIR emitters and keeping unsupported slices
 observable on the LLVM-text fallback surface.
+Next intended slice: keep shrinking the app-layer LLVM asm rescue one bounded
+surface at a time by inventorying the still-green backend cases that rely on
+file-based `.s` fallback today, then either lower one such family natively or
+move it onto a more explicit non-asm observation seam before deleting that
+specific rescue dependency.
+Completed in this slice: made unsupported stdout-only `c4cll --codegen asm`
+requests fail explicitly instead of silently printing LLVM-derived fallback
+assembly, while preserving the current file-based `.s` fallback path that
+still keeps the backend and c-testsuite regressions green.
+Completed in this slice: added an internal backend regression proving the
+aarch64 variadic-double case now exits non-zero on stdout-only asm requests
+with a clear diagnostic instead of silently rescuing through LLVM.
+Completed in this slice: rebuilt `c4cll`, reran the focused proving tests
+(`backend_lir_aarch64_variadic_double_ir`,
+`backend_lir_aarch64_variadic_double_asm_unsupported`,
+`backend_lir_aarch64_variadic_long_double_ir`, and
+`c_testsuite_aarch64_backend_src_00080_c`), reran the required backend
+regression scope (`ctest --test-dir build -R backend --output-on-failure`),
+and regenerated `test_fail_after.log` for the monotonic full-suite guard.
 Completed in this slice: changed the backend LIR-entry route selector so fresh
 LIR input now enters through the BIR-owned route by default, deleted the old
 `LegacyFromLirEntry` branch from `backend.hpp/.cpp`, and updated the
