@@ -401,6 +401,69 @@ void test_backend_bir_pipeline_drives_x86_direct_bir_u8_select_mixed_then_deeper
                   "x86 direct BIR u8 mixed-then-deeper-affine select-plus-tail input should preserve the bounded post-select add arithmetic tail on the native backend path");
 }
 
+void test_backend_bir_pipeline_drives_x86_direct_bir_i32_select_mixed_then_deeper_affine_post_join_add_end_to_end() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{
+          c4c::backend::lower_to_bir(
+              make_bir_two_param_select_eq_split_predecessor_mixed_then_deeper_affine_phi_post_join_add_module())},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl choose2_mixed_then_deeper_post",
+                  "direct BIR i32 mixed-then-deeper-affine select-plus-tail input should reach x86 backend emission without legacy backend IR lowering");
+  expect_contains(rendered, "mov eax, edi",
+                  "x86 direct BIR i32 mixed-then-deeper-affine select-plus-tail input should seed the compare from the first incoming integer argument register");
+  expect_contains(rendered, "cmp eax, esi",
+                  "x86 direct BIR i32 mixed-then-deeper-affine select-plus-tail input should compare both incoming integer argument registers on the native backend path");
+  expect_contains(rendered, ".Lselect_true:\n  mov eax, edi\n  add eax, 8\n  sub eax, 3\n  jmp .Lselect_join\n",
+                  "x86 direct BIR i32 mixed-then-deeper-affine select-plus-tail input should materialize the bounded then-arm mixed arithmetic before the synthetic join");
+  expect_contains(rendered, ".Lselect_false:\n  mov eax, esi\n  add eax, 11\n  sub eax, 4\n  add eax, 7\n",
+                  "x86 direct BIR i32 mixed-then-deeper-affine select-plus-tail input should materialize the bounded else-arm deeper arithmetic before the synthetic join");
+  expect_contains(rendered, ".Lselect_join:\n  add eax, 6\n  ret\n",
+                  "x86 direct BIR i32 mixed-then-deeper-affine select-plus-tail input should preserve the bounded post-select add arithmetic tail on the native backend path");
+}
+
+void test_backend_bir_pipeline_drives_x86_direct_bir_i32_select_mixed_then_deeper_affine_post_join_add_sub_end_to_end() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{
+          c4c::backend::lower_to_bir(
+              make_bir_two_param_select_eq_split_predecessor_mixed_then_deeper_affine_phi_post_join_add_sub_module())},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl choose2_mixed_then_deeper_post_chain",
+                  "direct BIR i32 mixed-then-deeper-affine select-plus-add/sub-tail input should reach x86 backend emission without legacy backend IR lowering");
+  expect_contains(rendered, "mov eax, edi",
+                  "x86 direct BIR i32 mixed-then-deeper-affine select-plus-add/sub-tail input should seed the compare from the first incoming integer argument register");
+  expect_contains(rendered, "cmp eax, esi",
+                  "x86 direct BIR i32 mixed-then-deeper-affine select-plus-add/sub-tail input should compare both incoming integer argument registers on the native backend path");
+  expect_contains(rendered, ".Lselect_true:\n  mov eax, edi\n  add eax, 8\n  sub eax, 3\n  jmp .Lselect_join\n",
+                  "x86 direct BIR i32 mixed-then-deeper-affine select-plus-add/sub-tail input should materialize the bounded then-arm mixed arithmetic before the synthetic join");
+  expect_contains(rendered, ".Lselect_false:\n  mov eax, esi\n  add eax, 11\n  sub eax, 4\n  add eax, 7\n",
+                  "x86 direct BIR i32 mixed-then-deeper-affine select-plus-add/sub-tail input should materialize the bounded else-arm deeper arithmetic before the synthetic join");
+  expect_contains(rendered, ".Lselect_join:\n  add eax, 6\n  sub eax, 2\n  ret\n",
+                  "x86 direct BIR i32 mixed-then-deeper-affine select-plus-add/sub-tail input should preserve the bounded post-select add/sub arithmetic tail on the native backend path");
+}
+
+void test_backend_bir_pipeline_drives_x86_direct_bir_i32_select_mixed_then_deeper_affine_post_join_add_sub_add_end_to_end() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{
+          c4c::backend::lower_to_bir(
+              make_bir_two_param_select_eq_split_predecessor_mixed_then_deeper_affine_phi_post_join_add_sub_add_module())},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl choose2_mixed_then_deeper_post_chain_tail",
+                  "direct BIR i32 mixed-then-deeper-affine select-plus-add/sub/add-tail input should reach x86 backend emission without legacy backend IR lowering");
+  expect_contains(rendered, "mov eax, edi",
+                  "x86 direct BIR i32 mixed-then-deeper-affine select-plus-add/sub/add-tail input should seed the compare from the first incoming integer argument register");
+  expect_contains(rendered, "cmp eax, esi",
+                  "x86 direct BIR i32 mixed-then-deeper-affine select-plus-add/sub/add-tail input should compare both incoming integer argument registers on the native backend path");
+  expect_contains(rendered, ".Lselect_true:\n  mov eax, edi\n  add eax, 8\n  sub eax, 3\n  jmp .Lselect_join\n",
+                  "x86 direct BIR i32 mixed-then-deeper-affine select-plus-add/sub/add-tail input should materialize the bounded then-arm mixed arithmetic before the synthetic join");
+  expect_contains(rendered, ".Lselect_false:\n  mov eax, esi\n  add eax, 11\n  sub eax, 4\n  add eax, 7\n",
+                  "x86 direct BIR i32 mixed-then-deeper-affine select-plus-add/sub/add-tail input should materialize the bounded else-arm deeper arithmetic before the synthetic join");
+  expect_contains(rendered, ".Lselect_join:\n  add eax, 6\n  sub eax, 2\n  add eax, 9\n  ret\n",
+                  "x86 direct BIR i32 mixed-then-deeper-affine select-plus-add/sub/add-tail input should preserve the bounded post-select add/sub/add arithmetic tail on the native backend path");
+}
+
 void test_backend_bir_pipeline_rejects_unsupported_direct_bir_input_on_x86() {
   try {
     (void)c4c::backend::emit_module(
@@ -442,5 +505,8 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_u8_select_deeper_then_mixed_affine_post_join_add_sub_add_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_u8_select_deeper_affine_on_both_sides_post_join_add_sub_add_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_u8_select_mixed_then_deeper_affine_post_join_add_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_i32_select_mixed_then_deeper_affine_post_join_add_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_i32_select_mixed_then_deeper_affine_post_join_add_sub_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_i32_select_mixed_then_deeper_affine_post_join_add_sub_add_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_rejects_unsupported_direct_bir_input_on_x86);
 }

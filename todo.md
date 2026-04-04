@@ -9,12 +9,32 @@ Source Plan: plan.md
 - [ ] Remove legacy backend IR files and backend/app LLVM rescue paths
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
-Current active item: Step 2, start the next bounded native-emitter coverage
-batch for direct-BIR x86_64/aarch64 `i32` compare-fed `bir.select`/join
-families by adding explicit native pipeline coverage for the existing
+Current active item: Step 3, start the first bounded emitter-contract slice
+that removes remaining x86_64/aarch64 direct-BIR `ir.*` dependence now that
+the existing `i32` mixed-then-deeper split-predecessor join family is covered
+and accepted on both native emitters.
+Completed in this slice: added explicit direct-BIR x86_64 and aarch64
+pipeline coverage for the existing `i32`
 `choose2_mixed_then_deeper_post` / `choose2_mixed_then_deeper_post_chain` /
 `choose2_mixed_then_deeper_post_chain_tail` split-predecessor
-mixed-then-deeper join family before widening Step 3 emitter-contract work.
+mixed-then-deeper join family, proving that both native emitters now accept
+the bounded then-arm `add`/`sub` arithmetic, the bounded else-arm
+`add`/`sub`/`add` deeper arithmetic, and the short post-select
+`add` / `add`-`sub` / `add`-`sub`-`add` tails without falling back to legacy
+backend IR.
+Completed in this slice: extended the minimal direct-BIR x86_64 and aarch64
+native emitter entrypoints to accept the bounded `i32` compare-fed
+split-predecessor `bir.select` family with predecessor-local affine chains and
+short post-select arithmetic tails, mirroring the already-supported widened
+`i8` path instead of rejecting the module as outside the affine-return subset.
+Completed in this slice: reran the focused direct-BIR backend BIR suite
+(`ctest --test-dir build -R backend_bir_tests --output-on-failure`), the
+required backend regression scope
+(`ctest --test-dir build -R backend --output-on-failure`), and the monotonic
+guard script over `test_fail_before.log` vs `test_fail_after.log`, with
+`100% tests passed, 0 tests failed out of 394` for backend scope and guard
+result `PASS` with `before: passed=394 failed=0 total=394`,
+`after: passed=2833 failed=0 total=2833`, and `new failing tests: 0`.
 Completed in this slice: added explicit direct-BIR x86_64 and aarch64
 pipeline coverage for the widened `i8`
 `choose2_deeper_both_post_chain_tail_u` split-predecessor deeper-affine join
@@ -143,8 +163,7 @@ full-suite guard with `test_before.log` vs `test_after.log`, with `100%
 tests passed, 0 tests failed out of 394` for backend scope and `100% tests
 passed, 0 tests failed out of 2833` before and after the full-suite
 comparison.
-Next target: add matching direct-BIR x86_64/aarch64 pipeline coverage for the
-existing `i32` `choose2_mixed_then_deeper_post`,
-`choose2_mixed_then_deeper_post_chain`, and
-`choose2_mixed_then_deeper_post_chain_tail` split-predecessor
-mixed-then-deeper join family before widening Step 3 emitter-contract work.
+Next target: identify the first remaining x86_64/aarch64 emitter-facing
+contract that still depends on `ir.*` or a direct-BIR adapter crutch, then
+land the smallest BIR-native replacement slice with explicit native-emitter
+coverage before starting Step 4 legacy-path deletion.
