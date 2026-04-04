@@ -1140,7 +1140,8 @@ std::optional<bir::Function> try_lower_widened_i8_add_sub_chain_function(
          binary->opcode != bir::BinaryOpcode::Shl &&
          binary->opcode != bir::BinaryOpcode::LShr &&
          binary->opcode != bir::BinaryOpcode::AShr &&
-         binary->opcode != bir::BinaryOpcode::SDiv) ||
+         binary->opcode != bir::BinaryOpcode::SDiv &&
+         binary->opcode != bir::BinaryOpcode::UDiv) ||
         name_is_defined(binary->result.name)) {
       return std::nullopt;
     }
