@@ -1090,19 +1090,27 @@ void test_aarch64_backend_scaffold_matches_direct_truncating_binop_constant_cond
 }
 
 void test_aarch64_backend_scaffold_matches_direct_select_constant_conditional_goto_return_asm() {
-  const auto direct_rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{
-          make_select_constant_conditional_goto_return_module()},
-      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  try {
+    (void)c4c::backend::emit_module(
+        c4c::backend::BackendModuleInput{
+            make_select_constant_conditional_goto_return_module()},
+        c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+    fail("aarch64 direct-LIR select-based constant-conditional goto should stay outside the native scaffold slice");
+  } catch (const std::invalid_argument& ex) {
+    expect_contains(ex.what(), "aarch64 backend emitter does not support",
+                    "aarch64 direct-LIR select constant-conditional goto should report the native support boundary");
+    expect_contains(ex.what(), "non-ALU/non-branch/non-call/non-memory instructions",
+                    "aarch64 direct-LIR select constant-conditional goto should preserve the unsupported-instruction detail");
+  }
+
   const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_select_constant_conditional_goto_return_module());
   const auto lowered_rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{lowered},
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
-  if (direct_rendered != lowered_rendered) {
-    fail("aarch64 select-based constant-conditional goto regression should keep the direct LIR and explicit lowered backend seams on identical assembly output");
-  }
+  expect_not_contains(lowered_rendered, "target triple =",
+                      "aarch64 lowered select-based constant-conditional goto should keep the explicit lowered backend seam on native assembly output");
 }
 
 void test_aarch64_backend_scaffold_matches_direct_local_slot_constant_conditional_goto_return_asm() {

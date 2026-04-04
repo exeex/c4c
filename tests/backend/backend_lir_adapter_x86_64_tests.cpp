@@ -4179,11 +4179,11 @@ void test_x86_backend_renders_compare_and_branch_slice() {
                   "x86 backend should materialize the first compare immediate");
   expect_contains(rendered, "  cmp eax, 3\n",
                   "x86 backend should compare the materialized value against the second immediate");
-  expect_contains(rendered, "  jge .Lelse\n",
+  expect_contains(rendered, "  jge .Lselect_false\n",
                   "x86 backend should branch to the else label when the signed less-than test fails");
-  expect_contains(rendered, ".Lthen:\n  mov eax, 0\n  ret\n",
+  expect_contains(rendered, ".Lselect_true:\n  mov eax, 0\n  ret\n",
                   "x86 backend should lower the then return block directly in assembly");
-  expect_contains(rendered, ".Lelse:\n  mov eax, 1\n  ret\n",
+  expect_contains(rendered, ".Lselect_false:\n  mov eax, 1\n  ret\n",
                   "x86 backend should lower the else return block directly in assembly");
   expect_not_contains(rendered, "target triple =",
                       "x86 backend should stop falling back to LLVM text for the conditional-return slice");
@@ -4201,7 +4201,7 @@ void test_x86_backend_renders_compare_and_branch_slice_from_typed_predicates() {
                   "x86 backend should still materialize the typed compare lhs immediate");
   expect_contains(rendered, "  cmp eax, 3\n",
                   "x86 backend should still compare the typed predicate slice against the rhs immediate");
-  expect_contains(rendered, "  jge .Lelse\n",
+  expect_contains(rendered, "  jge .Lselect_false\n",
                   "x86 backend should map typed signed less-than predicates onto the same fail branch");
   expect_not_contains(rendered, "target triple =",
                       "x86 backend should keep typed compare-and-branch lowering on the asm path");
@@ -4219,11 +4219,11 @@ void test_x86_backend_renders_compare_and_branch_le_slice() {
                   "x86 backend should materialize the first signed less-or-equal compare immediate");
   expect_contains(rendered, "  cmp eax, 3\n",
                   "x86 backend should compare the materialized less-or-equal lhs against the rhs immediate");
-  expect_contains(rendered, "  jg .Lelse\n",
+  expect_contains(rendered, "  jg .Lselect_false\n",
                   "x86 backend should branch to the else label when the signed less-or-equal test fails");
-  expect_contains(rendered, ".Lthen:\n  mov eax, 0\n  ret\n",
+  expect_contains(rendered, ".Lselect_true:\n  mov eax, 0\n  ret\n",
                   "x86 backend should lower the signed less-or-equal then block directly in assembly");
-  expect_contains(rendered, ".Lelse:\n  mov eax, 1\n  ret\n",
+  expect_contains(rendered, ".Lselect_false:\n  mov eax, 1\n  ret\n",
                   "x86 backend should lower the signed less-or-equal else block directly in assembly");
   expect_not_contains(rendered, "target triple =",
                       "x86 backend should stop falling back to LLVM text for the signed less-or-equal slice");
@@ -4241,11 +4241,11 @@ void test_x86_backend_renders_compare_and_branch_gt_slice() {
                   "x86 backend should materialize the first signed greater-than compare immediate");
   expect_contains(rendered, "  cmp eax, 2\n",
                   "x86 backend should compare the materialized greater-than lhs against the rhs immediate");
-  expect_contains(rendered, "  jle .Lelse\n",
+  expect_contains(rendered, "  jle .Lselect_false\n",
                   "x86 backend should branch to the else label when the signed greater-than test fails");
-  expect_contains(rendered, ".Lthen:\n  mov eax, 0\n  ret\n",
+  expect_contains(rendered, ".Lselect_true:\n  mov eax, 0\n  ret\n",
                   "x86 backend should lower the signed greater-than then block directly in assembly");
-  expect_contains(rendered, ".Lelse:\n  mov eax, 1\n  ret\n",
+  expect_contains(rendered, ".Lselect_false:\n  mov eax, 1\n  ret\n",
                   "x86 backend should lower the signed greater-than else block directly in assembly");
   expect_not_contains(rendered, "target triple =",
                       "x86 backend should stop falling back to LLVM text for the signed greater-than slice");
@@ -4263,11 +4263,11 @@ void test_x86_backend_renders_compare_and_branch_ge_slice() {
                   "x86 backend should materialize the first signed greater-or-equal compare immediate");
   expect_contains(rendered, "  cmp eax, 2\n",
                   "x86 backend should compare the materialized greater-or-equal lhs against the rhs immediate");
-  expect_contains(rendered, "  jl .Lelse\n",
+  expect_contains(rendered, "  jl .Lselect_false\n",
                   "x86 backend should branch to the else label when the signed greater-or-equal test fails");
-  expect_contains(rendered, ".Lthen:\n  mov eax, 0\n  ret\n",
+  expect_contains(rendered, ".Lselect_true:\n  mov eax, 0\n  ret\n",
                   "x86 backend should lower the signed greater-or-equal then block directly in assembly");
-  expect_contains(rendered, ".Lelse:\n  mov eax, 1\n  ret\n",
+  expect_contains(rendered, ".Lselect_false:\n  mov eax, 1\n  ret\n",
                   "x86 backend should lower the signed greater-or-equal else block directly in assembly");
   expect_not_contains(rendered, "target triple =",
                       "x86 backend should stop falling back to LLVM text for the signed greater-or-equal slice");
@@ -4285,11 +4285,11 @@ void test_x86_backend_renders_compare_and_branch_eq_slice() {
                   "x86 backend should materialize the first equal compare immediate");
   expect_contains(rendered, "  cmp eax, 2\n",
                   "x86 backend should compare the materialized equal lhs against the rhs immediate");
-  expect_contains(rendered, "  jne .Lelse\n",
+  expect_contains(rendered, "  jne .Lselect_false\n",
                   "x86 backend should branch to the else label when the equality test fails");
-  expect_contains(rendered, ".Lthen:\n  mov eax, 0\n  ret\n",
+  expect_contains(rendered, ".Lselect_true:\n  mov eax, 0\n  ret\n",
                   "x86 backend should lower the equal then block directly in assembly");
-  expect_contains(rendered, ".Lelse:\n  mov eax, 1\n  ret\n",
+  expect_contains(rendered, ".Lselect_false:\n  mov eax, 1\n  ret\n",
                   "x86 backend should lower the equal else block directly in assembly");
   expect_not_contains(rendered, "target triple =",
                       "x86 backend should stop falling back to LLVM text for the equal slice");
@@ -4307,11 +4307,11 @@ void test_x86_backend_renders_compare_and_branch_ne_slice() {
                   "x86 backend should materialize the first not-equal compare immediate");
   expect_contains(rendered, "  cmp eax, 3\n",
                   "x86 backend should compare the materialized not-equal lhs against the rhs immediate");
-  expect_contains(rendered, "  je .Lelse\n",
+  expect_contains(rendered, "  je .Lselect_false\n",
                   "x86 backend should branch to the else label when the not-equal test fails");
-  expect_contains(rendered, ".Lthen:\n  mov eax, 0\n  ret\n",
+  expect_contains(rendered, ".Lselect_true:\n  mov eax, 0\n  ret\n",
                   "x86 backend should lower the not-equal then block directly in assembly");
-  expect_contains(rendered, ".Lelse:\n  mov eax, 1\n  ret\n",
+  expect_contains(rendered, ".Lselect_false:\n  mov eax, 1\n  ret\n",
                   "x86 backend should lower the not-equal else block directly in assembly");
   expect_not_contains(rendered, "target triple =",
                       "x86 backend should stop falling back to LLVM text for the not-equal slice");
@@ -4329,11 +4329,11 @@ void test_x86_backend_renders_compare_and_branch_ult_slice() {
                   "x86 backend should materialize the first unsigned less-than compare immediate");
   expect_contains(rendered, "  cmp eax, 3\n",
                   "x86 backend should compare the materialized unsigned less-than lhs against the rhs immediate");
-  expect_contains(rendered, "  jae .Lelse\n",
+  expect_contains(rendered, "  jae .Lselect_false\n",
                   "x86 backend should branch to the else label when the unsigned less-than test fails");
-  expect_contains(rendered, ".Lthen:\n  mov eax, 0\n  ret\n",
+  expect_contains(rendered, ".Lselect_true:\n  mov eax, 0\n  ret\n",
                   "x86 backend should lower the unsigned less-than then block directly in assembly");
-  expect_contains(rendered, ".Lelse:\n  mov eax, 1\n  ret\n",
+  expect_contains(rendered, ".Lselect_false:\n  mov eax, 1\n  ret\n",
                   "x86 backend should lower the unsigned less-than else block directly in assembly");
   expect_not_contains(rendered, "target triple =",
                       "x86 backend should stop falling back to LLVM text for the unsigned less-than slice");
@@ -4351,11 +4351,11 @@ void test_x86_backend_renders_compare_and_branch_ule_slice() {
                   "x86 backend should materialize the first unsigned less-or-equal compare immediate");
   expect_contains(rendered, "  cmp eax, 3\n",
                   "x86 backend should compare the materialized unsigned less-or-equal lhs against the rhs immediate");
-  expect_contains(rendered, "  ja .Lelse\n",
+  expect_contains(rendered, "  ja .Lselect_false\n",
                   "x86 backend should branch to the else label when the unsigned less-or-equal test fails");
-  expect_contains(rendered, ".Lthen:\n  mov eax, 0\n  ret\n",
+  expect_contains(rendered, ".Lselect_true:\n  mov eax, 0\n  ret\n",
                   "x86 backend should lower the unsigned less-or-equal then block directly in assembly");
-  expect_contains(rendered, ".Lelse:\n  mov eax, 1\n  ret\n",
+  expect_contains(rendered, ".Lselect_false:\n  mov eax, 1\n  ret\n",
                   "x86 backend should lower the unsigned less-or-equal else block directly in assembly");
   expect_not_contains(rendered, "target triple =",
                       "x86 backend should stop falling back to LLVM text for the unsigned less-or-equal slice");
@@ -4373,11 +4373,11 @@ void test_x86_backend_renders_compare_and_branch_ugt_slice() {
                   "x86 backend should materialize the first unsigned greater-than compare immediate");
   expect_contains(rendered, "  cmp eax, 2\n",
                   "x86 backend should compare the materialized unsigned greater-than lhs against the rhs immediate");
-  expect_contains(rendered, "  jbe .Lelse\n",
+  expect_contains(rendered, "  jbe .Lselect_false\n",
                   "x86 backend should branch to the else label when the unsigned greater-than test fails");
-  expect_contains(rendered, ".Lthen:\n  mov eax, 0\n  ret\n",
+  expect_contains(rendered, ".Lselect_true:\n  mov eax, 0\n  ret\n",
                   "x86 backend should lower the unsigned greater-than then block directly in assembly");
-  expect_contains(rendered, ".Lelse:\n  mov eax, 1\n  ret\n",
+  expect_contains(rendered, ".Lselect_false:\n  mov eax, 1\n  ret\n",
                   "x86 backend should lower the unsigned greater-than else block directly in assembly");
   expect_not_contains(rendered, "target triple =",
                       "x86 backend should stop falling back to LLVM text for the unsigned greater-than slice");
@@ -4395,11 +4395,11 @@ void test_x86_backend_renders_compare_and_branch_uge_slice() {
                   "x86 backend should materialize the first unsigned greater-or-equal compare immediate");
   expect_contains(rendered, "  cmp eax, 2\n",
                   "x86 backend should compare the materialized unsigned greater-or-equal lhs against the rhs immediate");
-  expect_contains(rendered, "  jb .Lelse\n",
+  expect_contains(rendered, "  jb .Lselect_false\n",
                   "x86 backend should branch to the else label when the unsigned greater-or-equal test fails");
-  expect_contains(rendered, ".Lthen:\n  mov eax, 0\n  ret\n",
+  expect_contains(rendered, ".Lselect_true:\n  mov eax, 0\n  ret\n",
                   "x86 backend should lower the unsigned greater-or-equal then block directly in assembly");
-  expect_contains(rendered, ".Lelse:\n  mov eax, 1\n  ret\n",
+  expect_contains(rendered, ".Lselect_false:\n  mov eax, 1\n  ret\n",
                   "x86 backend should lower the unsigned greater-or-equal else block directly in assembly");
   expect_not_contains(rendered, "target triple =",
                       "x86 backend should stop falling back to LLVM text for the unsigned greater-or-equal slice");

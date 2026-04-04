@@ -10,14 +10,46 @@ Source Plan: plan.md
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
 Current active item: Step 4, keep shrinking the remaining app-layer LLVM asm
-rescue one bounded surface at a time, in this iteration by moving the proven
-native scalar-global-load stdout path onto explicit contract coverage so the
-non-zero initialized global-load family stops depending on file-output rescue
+rescue one bounded surface at a time; after converting the next already-native
+stdout family, the immediate blocker is now repairing the rebuilt
+`backend_lir_adapter_aarch64_tests` expectation drift that currently prevents
+the required backend/full-suite regression gates from proving the slice.
+Next intended slice: fix the rebuilt aarch64 backend-adapter expectation drift
+that surfaced during the required regression reruns, rerun the backend/full
+suite gates until monotonic again, then continue removing the next file-output
+LLVM asm rescue branch that now has direct stdout-native contract coverage.
+Blocker: after rebuilding the current tree to register the new stdout contract
+cases, `backend_lir_adapter_aarch64_tests` no longer matches the current
+backend seam and fails in many places by expecting legacy LLVM-style text or
+older direct-LIR equivalence that the rebuilt native backend no longer
+produces. This is broader than the bounded stdout-contract change, but it
+currently blocks the plan's required backend/full-suite acceptance gates.
+Completed in this slice: reran the focused proving checks around the existing
+stdout-native scalar-global-load family plus nearby aarch64 backend c-testsuite
+coverage (`backend_contract_aarch64_global_load_stdout_object`,
+`backend_contract_aarch64_global_load_zero_init_stdout_object`,
+`backend_contract_x86_64_global_load_stdout_object`,
+`c_testsuite_aarch64_backend_src_00012_c`,
+`c_testsuite_aarch64_backend_src_00064_c`, and
+`c_testsuite_aarch64_backend_src_00080_c`) and confirmed they all stayed green
+before extending the next stdout-native contract family.
+Completed in this slice: converted the already-native `extern_global_array`
+backend contract family from file-output coverage onto the explicit stdout
+contract seam for `aarch64`, and added the matching `x86_64` stdout-native
+object contract so this family no longer depends on `-o <file>.s` rescue
 assumptions in the internal backend contract suite.
-Next intended slice: rerun the focused backend contracts and c-testsuite cases
-around scalar global loads, then either convert the next already-native family
-from `-o <file>.s` coverage to stdout-native coverage or delete the matching
-app-layer LLVM asm rescue branch once the affected family has direct coverage.
+Completed in this slice: rebuilt the affected targets and reran the focused
+stdout-contract proving set
+(`backend_contract_aarch64_extern_global_array_stdout_object`,
+`backend_contract_x86_64_extern_global_array_stdout_object`, plus the adjacent
+scalar-global-load stdout contracts and aarch64 backend c-testsuite cases),
+with `100% tests passed, 0 tests failed out of 8`.
+Completed in this slice: refreshed stale x86_64 compare-and-branch label
+expectations and one aarch64 select-based direct-LIR scaffold expectation in
+the backend adapter suites while investigating the broader regression gate;
+`backend_lir_adapter_x86_64_tests` is green again, but the rebuilt
+`backend_lir_adapter_aarch64_tests` still has wider expectation drift that must
+be repaired before the backend and full-suite monotonic gates can pass.
 Completed in this slice: moved the existing non-zero scalar-global-load
 contract off the file-output runner and onto the explicit stdout-native
 contract seam for aarch64, and added the matching x86_64 stdout-native object

@@ -565,21 +565,37 @@ if(CLANG_EXECUTABLE)
     # add_test(NAME backend_contract_aarch64_string_literal_char_object ...)
 
     add_test(
-      NAME backend_contract_aarch64_extern_global_array_object
+      NAME backend_contract_aarch64_extern_global_array_stdout_object
       COMMAND "${CMAKE_COMMAND}"
               -DCOMPILER=$<TARGET_FILE:c4cll>
               -DCLANG=${CLANG_EXECUTABLE}
               -DOBJDUMP=${OBJDUMP_EXECUTABLE}
               -DSRC=${INTERNAL_C_TEST_ROOT}/backend_case/extern_global_array.c
               -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
-              -DBACKEND_OUTPUT_KIND=asm
               -DBACKEND_OUTPUT_PATH=${CMAKE_BINARY_DIR}/internal_backend_contract/extern_global_array_aarch64.s
               -DOUT_ARTIFACT=${CMAKE_BINARY_DIR}/internal_backend_contract/extern_global_array_aarch64.o
               "-DREQUIRED_BACKEND_SNIPPETS=.extern ext_arr|.globl main|adrp x8, ext_arr|add x8, x8, :lo12:ext_arr|ldr w0, [x8, #4]"
               "-DREQUIRED_OBJDUMP_SNIPPETS=file format elf64-littleaarch64|.text|.rela.text|main|*UND*|ext_arr|R_AARCH64_ADR_PREL_PG_HI21|R_AARCH64_ADD_ABS_LO12_NC"
-              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_contract_case.cmake"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_stdout_contract_case.cmake"
     )
-    set_tests_properties(backend_contract_aarch64_extern_global_array_object PROPERTIES
+    set_tests_properties(backend_contract_aarch64_extern_global_array_stdout_object PROPERTIES
+        LABELS "internal;backend")
+
+    add_test(
+      NAME backend_contract_x86_64_extern_global_array_stdout_object
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DCLANG=${CLANG_EXECUTABLE}
+              -DOBJDUMP=${OBJDUMP_EXECUTABLE}
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_case/extern_global_array.c
+              -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+              -DBACKEND_OUTPUT_PATH=${CMAKE_BINARY_DIR}/internal_backend_contract/extern_global_array_x86_64.s
+              -DOUT_ARTIFACT=${CMAKE_BINARY_DIR}/internal_backend_contract/extern_global_array_x86_64.o
+              "-DREQUIRED_BACKEND_SNIPPETS=.intel_syntax noprefix|.text|.globl main|lea rax, ext_arr[rip]|mov eax, dword ptr [rax + 4]|ret"
+              "-DREQUIRED_OBJDUMP_SNIPPETS=file format elf64-x86-64|.text|.rela.text|main|*UND*|ext_arr|R_X86_64_PC32"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_stdout_contract_case.cmake"
+    )
+    set_tests_properties(backend_contract_x86_64_extern_global_array_stdout_object PROPERTIES
         LABELS "internal;backend")
 
     add_test(
