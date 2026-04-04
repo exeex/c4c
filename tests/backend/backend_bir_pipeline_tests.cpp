@@ -905,6 +905,19 @@ void test_backend_bir_pipeline_routes_i8_chain_through_bir_text_surface() {
                   "explicit BIR selection should preserve the trailing i8 adjustment on the BIR text path");
 }
 
+void test_backend_bir_pipeline_routes_i8_two_param_add_through_bir_text_surface() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_bir_i8_two_param_add_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Riscv64));
+
+  expect_contains(rendered, "bir.func @add_pair_u(i8 %p.x, i8 %p.y) -> i8 {",
+                  "explicit BIR selection should preserve the widened i8 two-parameter signature on the BIR text path");
+  expect_contains(rendered, "%t0 = bir.add i8 %p.x, %p.y",
+                  "explicit BIR selection should route widened i8 two-parameter arithmetic through the BIR surface");
+  expect_contains(rendered, "bir.ret i8 %t0",
+                  "explicit BIR selection should keep the widened i8 two-parameter result on the BIR text path");
+}
+
 void test_backend_bir_pipeline_routes_i64_chain_through_bir_text_surface() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_bir_i64_return_add_sub_chain_module()},
@@ -1066,6 +1079,7 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_backend_bir_pipeline_routes_two_param_select_split_predecessor_deeper_affine_phi_post_join_add_sub_add_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_mixed_predecessor_select_post_join_add_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_i8_chain_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_routes_i8_two_param_add_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_i64_chain_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_single_param_chain_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_two_param_add_through_bir_text_surface);

@@ -15,6 +15,9 @@ the entry route seam has a structured observation helper
 Completed in this slice: added a structured backend route-selection seam in
 `backend.hpp/.cpp` and covered legacy-LIR, BIR-LIR, direct-BIR, and pre-lowered
 legacy inputs without relying on `riscv64` passthrough text.
+Completed in this slice: extended target-neutral BIR pipeline coverage so the
+existing widened `i8` two-parameter add lowering is now exercised through the
+explicit BIR route surface instead of living only in lowering-level tests.
 Next target: refresh the remaining production/test boundary inventory, then
 land the next bounded `lir_to_bir` slice with one target-neutral route/lowering
 test before any target-specific emitter assertions; use `ctest -R backend` as
