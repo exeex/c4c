@@ -1890,6 +1890,7 @@ struct MinimalScalarGlobalLoadSlice {
   std::string global_name;
   std::int64_t init_imm = 0;
   int align_bytes = 4;
+  bool zero_initializer = false;
 };
 
 struct MinimalScalarGlobalStoreReloadSlice {
@@ -2947,9 +2948,16 @@ std::optional<MinimalScalarGlobalLoadSlice> parse_minimal_scalar_global_load_sli
       global.llvm_type != "i32") {
     return std::nullopt;
   }
-  const auto init_imm = parse_i64(global.init_text);
-  if (!init_imm.has_value()) {
-    return std::nullopt;
+  bool zero_initializer = false;
+  std::int64_t init_imm = 0;
+  if (global.init_text == "zeroinitializer") {
+    zero_initializer = true;
+  } else {
+    const auto parsed_init = parse_i64(global.init_text);
+    if (!parsed_init.has_value()) {
+      return std::nullopt;
+    }
+    init_imm = *parsed_init;
   }
 
   const auto& function = module.functions.front();
@@ -2973,8 +2981,10 @@ std::optional<MinimalScalarGlobalLoadSlice> parse_minimal_scalar_global_load_sli
     return std::nullopt;
   }
 
-  return MinimalScalarGlobalLoadSlice{global.name, *init_imm,
-                                      global.align_bytes > 0 ? global.align_bytes : 4};
+  return MinimalScalarGlobalLoadSlice{global.name,
+                                      init_imm,
+                                      global.align_bytes > 0 ? global.align_bytes : 4,
+                                      zero_initializer};
 }
 
 std::optional<MinimalScalarGlobalStoreReloadSlice> parse_minimal_scalar_global_store_reload_slice(
@@ -3541,9 +3551,12 @@ std::optional<MinimalScalarGlobalLoadSlice> parse_minimal_scalar_global_load_sli
       !is_i32_scalar_global(*global)) {
     return std::nullopt;
   }
+  bool zero_initializer = false;
   std::int64_t init_imm = 0;
-  if (!c4c::backend::backend_global_has_integer_initializer(*global, &init_imm)) {
-    return std::nullopt;
+  if (c4c::backend::backend_global_has_zero_initializer(*global)) {
+    zero_initializer = true;
+  } else if (!c4c::backend::backend_global_has_integer_initializer(*global, &init_imm)) {
+      return std::nullopt;
   }
 
   const auto* main_fn = find_function(module, "main");
@@ -3579,6 +3592,7 @@ std::optional<MinimalScalarGlobalLoadSlice> parse_minimal_scalar_global_load_sli
       global->name,
       init_imm,
       global->align_bytes > 0 ? global->align_bytes : 4,
+      zero_initializer,
   };
 }
 
@@ -5101,14 +5115,18 @@ std::string emit_minimal_scalar_global_load_asm(
                              : (slice.align_bytes == 2 ? 1 : 2);
 
   std::ostringstream out;
-  out << ".data\n"
+  out << (slice.zero_initializer ? ".bss\n" : ".data\n")
       << ".globl " << global_symbol << "\n";
   if (!is_darwin) {
     out << ".type " << global_symbol << ", %object\n";
   }
   out << ".p2align " << align_pow2 << "\n"
-      << global_symbol << ":\n"
-      << "  .long " << slice.init_imm << "\n";
+      << global_symbol << ":\n";
+  if (slice.zero_initializer) {
+    out << "  .zero 4\n";
+  } else {
+    out << "  .long " << slice.init_imm << "\n";
+  }
   if (!is_darwin) {
     out << ".size " << global_symbol << ", 4\n";
   }

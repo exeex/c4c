@@ -545,6 +545,23 @@ if(CLANG_EXECUTABLE)
     set_tests_properties(backend_contract_aarch64_global_load_object PROPERTIES
         LABELS "internal;backend")
 
+    add_test(
+      NAME backend_contract_aarch64_global_load_zero_init_stdout_object
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DCLANG=${CLANG_EXECUTABLE}
+              -DOBJDUMP=${OBJDUMP_EXECUTABLE}
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_case/global_load_zero_init.c
+              -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
+              -DBACKEND_OUTPUT_PATH=${CMAKE_BINARY_DIR}/internal_backend_contract/global_load_zero_init_stdout_aarch64.s
+              -DOUT_ARTIFACT=${CMAKE_BINARY_DIR}/internal_backend_contract/global_load_zero_init_stdout_aarch64.o
+              "-DREQUIRED_BACKEND_SNIPPETS=.bss|.globl g_counter|g_counter:|.zero 4|.text|adrp x8, g_counter|ldr w0, [x8, :lo12:g_counter]"
+              "-DREQUIRED_OBJDUMP_SNIPPETS=file format elf64-littleaarch64|.bss|.text|.rela.text|g_counter|main|R_AARCH64_ADR_PREL_PG_HI21|R_AARCH64_LDST32_ABS_LO12_NC"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_stdout_contract_case.cmake"
+    )
+    set_tests_properties(backend_contract_aarch64_global_load_zero_init_stdout_object PROPERTIES
+        LABELS "internal;backend")
+
     # TODO: string_literal_char contract disabled — backend .rodata lowering changed
     # add_test(NAME backend_contract_aarch64_string_literal_char_object ...)
 
@@ -1685,6 +1702,9 @@ if(CLANG_EXECUTABLE)
         set(backend_output_kind "asm")
       elseif(stem STREQUAL "global_load")
         set(expect_exit_code 11)
+        set(backend_output_kind "asm")
+      elseif(stem STREQUAL "global_load_zero_init")
+        set(expect_exit_code 0)
         set(backend_output_kind "asm")
       elseif(stem STREQUAL "extern_global_array")
         continue()

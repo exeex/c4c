@@ -9,17 +9,15 @@ Source Plan: plan.md
 - [ ] Remove legacy backend IR files and backend/app LLVM rescue paths
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
-Current active item: Step 4, keep deleting the remaining production
-legacy-backend-IR entry path one bounded seam at a time, in this iteration by
-removing the `llvm_codegen.cpp` pre-lowering route through
-`lower_lir_to_backend_module(...)` while keeping supported x86_64/aarch64
-native asm on the existing direct-LIR emitters and keeping unsupported slices
-observable on the LLVM-text fallback surface.
-Next intended slice: keep shrinking the app-layer LLVM asm rescue one bounded
-surface at a time by inventorying the still-green backend cases that rely on
-file-based `.s` fallback today, then either lower one such family natively or
-move it onto a more explicit non-asm observation seam before deleting that
-specific rescue dependency.
+Current active item: Step 4, keep shrinking the remaining app-layer LLVM asm
+rescue one bounded surface at a time, in this iteration by teaching the native
+aarch64/x86 direct asm path to accept the zero-initialized scalar-global load
+family that currently still succeeds only through file-based `.s` fallback.
+Next intended slice: rerun the focused backend contracts and c-testsuite cases
+that currently depend on stdout-vs-file asm rescue behavior, then either keep
+landing more zero-init global/load-store family members natively or move the
+next still-green LLVM-rescued family onto an explicit non-asm observation seam
+before deleting that specific rescue dependency.
 Completed in this slice: made unsupported stdout-only `c4cll --codegen asm`
 requests fail explicitly instead of silently printing LLVM-derived fallback
 assembly, while preserving the current file-based `.s` fallback path that
@@ -258,6 +256,28 @@ split-predecessor mixed-affine join family, proving that both native emitters
 already preserve the bounded predecessor-local `add`/`sub` affine chains plus
 the short post-select `add`/`sub`/`add` tail without falling back to legacy
 backend IR.
+Completed in this slice: taught the direct aarch64/x86 scalar-global-load
+parsers and emitters to treat `i32 zeroinitializer` globals as native asm-owned
+input instead of rejecting them until the app-layer `.s` LLVM rescue took over,
+including emitting `.bss`/`.zero 4` for that bounded family rather than
+printing LLVM IR on stdout.
+Completed in this slice: added an internal aarch64 stdout-only backend
+contract for `global_load_zero_init.c`, proving that `c4cll --codegen asm`
+now emits backend-native assembly directly to stdout for the zero-init scalar
+global-load family and assembles to the expected relocatable object without the
+file-based fallback path.
+Completed in this slice: rebuilt `c4cll`, reran the focused proving checks
+(`backend_contract_aarch64_global_load_zero_init_stdout_object`,
+`backend_contract_aarch64_global_load_object`,
+`backend_runtime_global_load_zero_init`,
+`c_testsuite_aarch64_backend_src_00110_c`, and
+`c_testsuite_aarch64_backend_src_00142_c`), reran the required backend
+regression scope (`ctest --test-dir build -R backend --output-on-failure`),
+and reran the monotonic full-suite guard over `test_fail_before.log` versus a
+freshly regenerated `test_fail_after.log`, with `100% tests passed, 0 tests
+failed out of 397` for backend scope and guard result `PASS` with
+`before: passed=394 failed=0 total=394`,
+`after: passed=2836 failed=0 total=2836`, and `new failing tests: 0`.
 Completed in this slice: reran the required backend regression scope
 (`ctest --test-dir build -R backend --output-on-failure`) and the required
 monotonic full-suite guard with `test_fail_before.log` vs
