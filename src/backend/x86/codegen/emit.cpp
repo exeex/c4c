@@ -70,6 +70,12 @@ struct MinimalTwoArgDirectCallSlice {
   std::int64_t rhs_call_arg_imm = 0;
 };
 
+struct MinimalLocalArgDirectCallAddImmSlice {
+  std::string callee_name;
+  std::int64_t call_arg_imm = 0;
+  std::int64_t add_imm = 0;
+};
+
 struct MinimalMemberArrayRuntimeSlice {
   enum class Kind : unsigned char {
     ByValueParam,
@@ -213,6 +219,9 @@ struct MinimalMultiPrintfVarargSlice;
 std::string emit_minimal_two_arg_direct_call_asm(
     std::string_view target_triple,
     const MinimalTwoArgDirectCallSlice& slice);
+std::string emit_minimal_local_arg_direct_call_add_imm_asm(
+    std::string_view target_triple,
+    const MinimalLocalArgDirectCallAddImmSlice& slice);
 std::string emit_minimal_member_array_runtime_asm(
     std::string_view target_triple,
     const MinimalMemberArrayRuntimeSlice& slice);
@@ -3589,6 +3598,86 @@ std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_sl
   };
 }
 
+std::optional<MinimalLocalArgDirectCallAddImmSlice> parse_minimal_local_arg_direct_call_add_imm_slice(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 2 || !module.globals.empty() ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const LirFunction* main_fn = nullptr;
+  const LirFunction* helper = nullptr;
+  for (const auto& function : module.functions) {
+    if (function.name == "main") {
+      if (main_fn != nullptr) {
+        return std::nullopt;
+      }
+      main_fn = &function;
+      continue;
+    }
+    if (helper != nullptr) {
+      return std::nullopt;
+    }
+    helper = &function;
+  }
+
+  if (helper == nullptr || main_fn == nullptr || helper->is_declaration || main_fn->is_declaration ||
+      !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(main_fn->signature_text) ||
+      helper->entry.value != 0 || main_fn->entry.value != 0 || helper->blocks.size() != 1 ||
+      main_fn->blocks.size() != 1 || main_fn->alloca_insts.size() != 1 ||
+      !main_fn->stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto helper_shape = c4c::backend::parse_backend_single_add_imm_function(*helper, std::nullopt);
+  if (!helper_shape.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto* alloca = std::get_if<LirAllocaOp>(&main_fn->alloca_insts.front());
+  if (alloca == nullptr || alloca->type_str != "i32" || !alloca->count.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& main_block = main_fn->blocks.front();
+  const auto* main_ret = std::get_if<LirRet>(&main_block.terminator);
+  if (main_block.label != "entry" || main_ret == nullptr || !main_ret->value_str.has_value() ||
+      main_ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto parsed_local_call =
+      c4c::backend::parse_backend_single_local_typed_call(main_block.insts, alloca->result);
+  if (!parsed_local_call.has_value() || parsed_local_call->arg_load == nullptr ||
+      parsed_local_call->call == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto* store = std::get_if<LirStoreOp>(&main_block.insts.front());
+  if (store == nullptr || store->type_str != "i32" || store->ptr != alloca->result ||
+      parsed_local_call->call->result.empty() ||
+      parsed_local_call->call->result != *main_ret->value_str) {
+    return std::nullopt;
+  }
+
+  const auto operand = c4c::backend::parse_backend_direct_global_single_typed_call_operand(
+      *parsed_local_call->call, helper->name, "i32");
+  const auto call_arg_imm = c4c::backend::parse_backend_i64_literal(store->val);
+  const auto add_imm = c4c::backend::parse_backend_i64_literal(helper_shape->add->rhs);
+  if (!operand.has_value() || *operand != parsed_local_call->arg_load->result ||
+      !call_arg_imm.has_value() || !add_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  return MinimalLocalArgDirectCallAddImmSlice{
+      helper->name,
+      *call_arg_imm,
+      *add_imm,
+  };
+}
+
 std::optional<MinimalMemberArrayRuntimeSlice> parse_minimal_member_array_runtime_slice(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
@@ -4034,6 +4123,35 @@ std::string emit_minimal_direct_call_add_imm_asm(
   }
 
   const std::string helper_symbol = asm_symbol_name(target_triple, slice.helper->name);
+  const std::string main_symbol = asm_symbol_name(target_triple, "main");
+
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n";
+  out << ".text\n";
+  emit_function_prelude(out, helper_symbol, false);
+  out << "  mov eax, edi\n"
+      << "  add eax, " << slice.add_imm << "\n"
+      << "  ret\n";
+  emit_function_prelude(out, main_symbol, true);
+  out << "  mov edi, " << slice.call_arg_imm << "\n"
+      << "  call " << helper_symbol << "\n"
+      << "  ret\n";
+  return out.str();
+}
+
+std::string emit_minimal_local_arg_direct_call_add_imm_asm(
+    std::string_view target_triple,
+    const MinimalLocalArgDirectCallAddImmSlice& slice) {
+  if (slice.call_arg_imm < std::numeric_limits<std::int32_t>::min() ||
+      slice.call_arg_imm > std::numeric_limits<std::int32_t>::max() ||
+      slice.add_imm < std::numeric_limits<std::int32_t>::min() ||
+      slice.add_imm > std::numeric_limits<std::int32_t>::max()) {
+    throw c4c::backend::LirAdapterError(
+        c4c::backend::LirAdapterErrorKind::Unsupported,
+        "single-local direct-call immediates outside the minimal x86 slice range");
+  }
+
+  const std::string helper_symbol = asm_symbol_name(target_triple, slice.callee_name);
   const std::string main_symbol = asm_symbol_name(target_triple, "main");
 
   std::ostringstream out;
@@ -5128,6 +5246,10 @@ std::optional<std::string> try_emit_direct_lir_module(
     if (const auto slice = parse_minimal_two_arg_direct_call_slice(module);
         slice.has_value()) {
       return emit_minimal_two_arg_direct_call_asm(module.target_triple, *slice);
+    }
+    if (const auto slice = parse_minimal_local_arg_direct_call_add_imm_slice(module);
+        slice.has_value()) {
+      return emit_minimal_local_arg_direct_call_add_imm_asm(module.target_triple, *slice);
     }
     if (const auto slice = parse_minimal_local_array_slice(module);
         slice.has_value()) {

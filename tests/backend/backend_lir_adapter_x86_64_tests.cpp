@@ -4004,6 +4004,46 @@ void test_x86_backend_renders_global_store_reload_slice() {
                       "x86 backend should stop falling back to LLVM text for the bounded global store-reload slice");
 }
 
+void test_x86_backend_explicit_lir_emit_surface_matches_bounded_scalar_global_load_path() {
+  auto module = make_global_load_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  const auto direct_rendered = c4c::backend::x86::emit_module(module);
+  const auto lowered_rendered = c4c::backend::x86::emit_module(
+      c4c::backend::lower_lir_to_backend_module(module));
+
+  if (direct_rendered != lowered_rendered) {
+    fail("x86 scalar-global-load regression should keep the direct LIR and explicit lowered backend seams on identical assembly output");
+  }
+  expect_contains(direct_rendered, "g_counter:\n  .long 11\n",
+                  "x86 explicit LIR emit surface should preserve the bounded scalar global initializer");
+  expect_contains(direct_rendered, "mov eax, dword ptr [rax]\n",
+                  "x86 explicit LIR emit surface should reload the bounded scalar global directly");
+  expect_not_contains(direct_rendered, "target triple =",
+                      "x86 explicit LIR emit surface should not fall back to LLVM text for the bounded scalar global-load slice");
+}
+
+void test_x86_backend_explicit_lir_emit_surface_matches_bounded_global_store_reload_path() {
+  const auto module = make_x86_global_store_reload_module();
+  const auto direct_rendered = c4c::backend::x86::emit_module(module);
+  const auto lowered_rendered =
+      c4c::backend::x86::emit_module(c4c::backend::lower_lir_to_backend_module(module));
+
+  if (direct_rendered != lowered_rendered) {
+    fail("x86 global-store-reload regression should keep the direct LIR and explicit lowered backend seams on identical assembly output");
+  }
+  expect_contains(direct_rendered, "g_counter:\n  .long 11\n",
+                  "x86 explicit LIR emit surface should preserve the bounded scalar global definition");
+  expect_contains(direct_rendered, "mov dword ptr [rax], 7\n",
+                  "x86 explicit LIR emit surface should keep the bounded scalar global store on the asm path");
+  expect_contains(direct_rendered, "mov eax, dword ptr [rax]\n",
+                  "x86 explicit LIR emit surface should keep the bounded scalar global reload on the asm path");
+  expect_not_contains(direct_rendered, "target triple =",
+                      "x86 explicit LIR emit surface should not fall back to LLVM text for the bounded global store-reload slice");
+}
+
 void test_x86_backend_scaffold_matches_direct_global_store_reload_asm() {
   const auto direct_rendered = c4c::backend::x86::emit_module(make_x86_global_store_reload_module());
   const auto lowered =
@@ -5713,6 +5753,8 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_renders_nested_member_pointer_array_runtime_slice);
   RUN_TEST(test_x86_backend_renders_global_load_slice);
   RUN_TEST(test_x86_backend_renders_global_store_reload_slice);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_bounded_scalar_global_load_path);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_bounded_global_store_reload_path);
   RUN_TEST(test_x86_backend_scaffold_matches_direct_global_store_reload_asm);
   RUN_TEST(test_x86_backend_uses_shared_regalloc_for_call_crossing_direct_call_slice);
   RUN_TEST(test_x86_backend_cleans_up_redundant_self_move_on_call_crossing_slice);
