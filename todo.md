@@ -9,14 +9,41 @@ Source Plan: plan.md
 - [ ] Delete app-layer LLVM asm rescue from `c4cll`
 - [ ] Revalidate backend and full-suite behavior without fallback
 
-Current active item: Step 2, add and audit the bounded zero-parameter widened
-signed-relational compare-return `return_sge_u8` slice as the next smallest
-adjacent gap after the landed `return_sgt_u8` coverage.
-Next target: continue auditing the remaining adjacent widened signed
-compare-return matrix in `tests/c/internal/InternalTests.cmake`, starting from
-the next smallest uncovered signed-return parity slice after
-`return_sge_u8`; if that route test fails, isolate the next
-frontend-shaped widened compare-return lowering gap it exposes.
+Current active item: Step 2, continue tightening the widened-width/source-level
+arithmetic route matrix by carrying the newly landed widened two-parameter
+plain-add parity slice forward to the next smallest uncovered zero-parameter
+`unsigned char` arithmetic-return backend-route gap.
+Next target: audit the remaining direct arithmetic-return route cases in
+`tests/c/internal/InternalTests.cmake`, starting from the next smallest
+uncovered widened `u8` zero-parameter parity slice adjacent to the existing
+`return_add`/`return_sub` family; if that route test fails, isolate the
+smallest BIR arithmetic-lowering gap it exposes before expanding scope.
+
+Completed this iteration:
+- Re-audited the widened-width/source-level arithmetic route inventory and
+  confirmed the next smallest uncovered parity gap after the landed widened
+  add-sub/staged-affine slices was the plain two-parameter `unsigned char` add
+  surface corresponding to `two_param_add.c`.
+- Added `tests/c/internal/backend_route_case/two_param_u8_add.c`, proving the
+  bounded two-parameter `u8` direct-add wrapper reaches the backend through BIR
+  instead of falling back to legacy LLVM IR text.
+- Registered `backend_codegen_route_riscv64_two_param_u8_add_defaults_to_bir`
+  in `tests/c/internal/InternalTests.cmake`, asserting the emitted text
+  contains `bir.func @add_pair_u(i8 %p.x, i8 %p.y) -> i8 {`,
+  `%t2 = bir.add i8 %p.x, %p.y`, `bir.ret i8 %t2`, and forbids legacy LLVM IR
+  `define i8 @add_pair_u(i8 %p.x, i8 %p.y)`.
+- Added `make_bir_i8_two_param_add_module()` to
+  `tests/backend/backend_bir_test_support.*` plus
+  `test_bir_lowering_accepts_i8_two_param_add()` in
+  `tests/backend/backend_bir_lowering_tests.cpp` to keep the widened
+  two-parameter `i8` add shape covered below the backend-route harness.
+- Confirmed the new coverage passed without any `src/backend/lowering/lir_to_bir.cpp`
+  change; the existing widened-`i8` arithmetic lowering already handled the
+  plain two-parameter add correctly.
+- Reconfigured and rebuilt the tree, reran `./build/backend_bir_tests`, reran
+  `backend_codegen_route_riscv64_two_param_u8_add_defaults_to_bir`, then reran
+  `ctest --test-dir build -L backend --output-on-failure -j8` with `372/372`
+  backend-labeled tests passing.
 
 Completed this iteration:
 - Re-audited the zero-parameter widened compare-return inventory in

@@ -1404,6 +1404,18 @@ void test_bir_lowering_accepts_i64_add_sub_chain() {
                   "BIR lowering should let the widened i64 value flow into the return");
 }
 
+void test_bir_lowering_accepts_i8_two_param_add() {
+  const auto lowered = c4c::backend::lower_to_bir(make_bir_i8_two_param_add_module());
+  const auto rendered = c4c::backend::bir::print(lowered);
+
+  expect_contains(rendered, "bir.func @add_pair_u(i8 %p.x, i8 %p.y) -> i8 {",
+                  "BIR lowering should preserve the widened i8 two-parameter function signature");
+  expect_contains(rendered, "%t0 = bir.add i8 %p.x, %p.y",
+                  "BIR lowering should materialize the widened i8 two-parameter add in BIR terms");
+  expect_contains(rendered, "bir.ret i8 %t0",
+                  "BIR lowering should let the widened i8 two-parameter add result flow directly into the return");
+}
+
 void test_bir_lowering_accepts_single_param_add_sub_chain() {
   const auto lowered = c4c::backend::lower_to_bir(make_bir_single_param_add_sub_chain_module());
   const auto rendered = c4c::backend::bir::print(lowered);
@@ -1574,6 +1586,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_straight_line_add_sub_chain);
   RUN_TEST(test_bir_lowering_accepts_i8_add_sub_chain);
   RUN_TEST(test_bir_lowering_accepts_i64_add_sub_chain);
+  RUN_TEST(test_bir_lowering_accepts_i8_two_param_add);
   RUN_TEST(test_bir_lowering_accepts_single_param_add_sub_chain);
   RUN_TEST(test_bir_lowering_accepts_two_param_add);
   RUN_TEST(test_bir_lowering_accepts_two_param_add_sub_chain);

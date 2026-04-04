@@ -1984,6 +1984,34 @@ c4c::codegen::lir::LirModule make_bir_i64_return_add_sub_chain_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_bir_i8_two_param_add_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "riscv64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+
+  LirFunction function;
+  function.name = "add_pair_u";
+  function.signature_text = "define i8 @add_pair_u(i8 %p.x, i8 %p.y)\n";
+  function.return_type.base = c4c::TB_UCHAR;
+  c4c::TypeSpec param_type{};
+  param_type.base = c4c::TB_UCHAR;
+  function.params.push_back({"%p.x", param_type});
+  function.params.push_back({"%p.y", param_type});
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirBinOp{"%t0", "add", "i8", "%p.x", "%p.y"});
+  entry.terminator = LirRet{std::string("%t0"), "i8"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_bir_two_param_add_module() {
   using namespace c4c::codegen::lir;
 
