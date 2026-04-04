@@ -164,6 +164,17 @@ struct ParsedBackendMinimalDirectCallIdentityArgModuleView {
   std::int64_t call_arg_imm = 0;
 };
 
+struct ParsedBackendMinimalDualIdentityDirectCallSubModuleView {
+  const BackendFunction* lhs_helper = nullptr;
+  const BackendFunction* rhs_helper = nullptr;
+  const BackendFunction* main_function = nullptr;
+  const BackendCallInst* lhs_call = nullptr;
+  const BackendCallInst* rhs_call = nullptr;
+  const BackendBinaryInst* sub = nullptr;
+  std::int64_t lhs_call_arg_imm = 0;
+  std::int64_t rhs_call_arg_imm = 0;
+};
+
 struct ParsedBackendMinimalFoldedTwoArgDirectCallModuleView {
   const BackendFunction* helper = nullptr;
   const BackendFunction* main_function = nullptr;
@@ -1083,6 +1094,106 @@ parse_backend_minimal_direct_call_identity_arg_module(const BackendModule& modul
       parsed->main_function,
       parsed->call,
       *call_arg_imm,
+  };
+}
+
+inline std::optional<ParsedBackendMinimalDualIdentityDirectCallSubModuleView>
+parse_backend_minimal_dual_identity_direct_call_sub_module(const BackendModule& module) {
+  if (!module.globals.empty() || !module.string_constants.empty() ||
+      module.functions.size() != 3) {
+    return std::nullopt;
+  }
+
+  const BackendFunction* main_fn = nullptr;
+  std::vector<const BackendFunction*> helpers;
+  helpers.reserve(2);
+  for (const auto& function : module.functions) {
+    if (function.signature.name == "main") {
+      if (main_fn != nullptr) {
+        return std::nullopt;
+      }
+      main_fn = &function;
+      continue;
+    }
+    helpers.push_back(&function);
+  }
+
+  if (main_fn == nullptr || helpers.size() != 2 || main_fn->is_declaration ||
+      !backend_function_is_definition(main_fn->signature) ||
+      backend_signature_return_scalar_type(main_fn->signature) != BackendScalarType::I32 ||
+      !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
+      main_fn->blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  for (const auto* helper : helpers) {
+    if (helper == nullptr || helper->is_declaration ||
+        !parse_backend_structured_single_identity_function(*helper, std::nullopt).has_value()) {
+      return std::nullopt;
+    }
+  }
+
+  const auto& main_block = main_fn->blocks.front();
+  if (main_block.label != "entry" || main_block.insts.size() != 3 ||
+      !main_block.terminator.value.has_value() ||
+      backend_return_scalar_type(main_block.terminator) != BackendScalarType::I32) {
+    return std::nullopt;
+  }
+
+  const auto* lhs_call = std::get_if<BackendCallInst>(&main_block.insts[0]);
+  const auto* rhs_call = std::get_if<BackendCallInst>(&main_block.insts[1]);
+  const auto* sub = std::get_if<BackendBinaryInst>(&main_block.insts[2]);
+  const auto parsed_lhs =
+      lhs_call == nullptr ? std::nullopt : parse_backend_direct_global_typed_call(*lhs_call);
+  const auto parsed_rhs =
+      rhs_call == nullptr ? std::nullopt : parse_backend_direct_global_typed_call(*rhs_call);
+  if (lhs_call == nullptr || rhs_call == nullptr || sub == nullptr ||
+      !parsed_lhs.has_value() || !parsed_rhs.has_value() ||
+      sub->opcode != BackendBinaryOpcode::Sub ||
+      backend_binary_value_type(*sub) != BackendScalarType::I32 ||
+      lhs_call->result.empty() || rhs_call->result.empty() || sub->result.empty() ||
+      sub->lhs != lhs_call->result || sub->rhs != rhs_call->result ||
+      *main_block.terminator.value != sub->result) {
+    return std::nullopt;
+  }
+
+  const BackendFunction* lhs_helper = nullptr;
+  const BackendFunction* rhs_helper = nullptr;
+  for (const auto* helper : helpers) {
+    if (helper->signature.name == parsed_lhs->symbol_name) {
+      lhs_helper = helper;
+    }
+    if (helper->signature.name == parsed_rhs->symbol_name) {
+      rhs_helper = helper;
+    }
+  }
+
+  if (lhs_helper == nullptr || rhs_helper == nullptr || lhs_helper == rhs_helper ||
+      !backend_typed_call_matches_signature(parsed_lhs->typed_call, lhs_helper->signature) ||
+      !backend_typed_call_matches_signature(parsed_rhs->typed_call, rhs_helper->signature) ||
+      parsed_lhs->typed_call.args.size() != 1 || parsed_rhs->typed_call.args.size() != 1 ||
+      backend_call_return_type_kind(*lhs_call) != BackendValueTypeKind::Scalar ||
+      backend_call_return_type_kind(*rhs_call) != BackendValueTypeKind::Scalar ||
+      backend_call_return_scalar_type(*lhs_call) != BackendScalarType::I32 ||
+      backend_call_return_scalar_type(*rhs_call) != BackendScalarType::I32) {
+    return std::nullopt;
+  }
+
+  const auto lhs_call_arg_imm = parse_backend_i64_literal(lhs_call->args.front().operand);
+  const auto rhs_call_arg_imm = parse_backend_i64_literal(rhs_call->args.front().operand);
+  if (!lhs_call_arg_imm.has_value() || !rhs_call_arg_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  return ParsedBackendMinimalDualIdentityDirectCallSubModuleView{
+      lhs_helper,
+      rhs_helper,
+      main_fn,
+      lhs_call,
+      rhs_call,
+      sub,
+      *lhs_call_arg_imm,
+      *rhs_call_arg_imm,
   };
 }
 

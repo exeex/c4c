@@ -1847,6 +1847,28 @@ void test_aarch64_backend_renders_typed_direct_call_slice() {
                   "aarch64 backend should lower the typed direct call with bl");
 }
 
+void test_aarch64_backend_renders_dual_identity_direct_call_sub_slice() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_typed_dual_identity_direct_call_sub_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".type f, %function",
+                  "aarch64 backend should lower the first identity helper into a real function symbol");
+  expect_contains(rendered, ".type g, %function",
+                  "aarch64 backend should lower the second identity helper into a real function symbol");
+  expect_contains(rendered, "f:\n  ret\n",
+                  "aarch64 backend should lower the first identity helper directly from w0");
+  expect_contains(rendered, "g:\n  ret\n",
+                  "aarch64 backend should lower the second identity helper directly from w0");
+  expect_contains(rendered, "stp x30, x19, [sp, #-16]!",
+                  "aarch64 backend should preserve lr and the cross-call scratch register for the dual-call subtraction slice");
+  expect_contains(rendered, "mov w0, #1\n  bl f\n  mov w19, w0\n  mov w0, #1\n  bl g\n  sub w0, w19, w0\n",
+                  "aarch64 backend should keep both identity helper calls on the native asm path and subtract their results without LLVM fallback");
+  expect_contains(rendered, "ldp x30, x19, [sp], #16",
+                  "aarch64 backend should restore the preserved registers after the dual-call subtraction slice");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend should not fall back to LLVM text for the bounded dual identity direct-call subtraction slice");
+}
+
 void test_aarch64_backend_uses_shared_regalloc_for_call_crossing_direct_call_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_typed_call_crossing_direct_call_module()},
@@ -5213,6 +5235,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_renders_param_slot_direct_call_slice();
   test_aarch64_backend_keeps_spaced_param_slot_call_decode_on_asm_path();
   test_aarch64_backend_renders_typed_direct_call_slice();
+  test_aarch64_backend_renders_dual_identity_direct_call_sub_slice();
   test_aarch64_backend_uses_shared_regalloc_for_call_crossing_direct_call_slice();
   test_aarch64_backend_cleans_up_redundant_call_result_traffic_on_call_crossing_slice();
   test_aarch64_backend_keeps_spacing_tolerant_call_crossing_slice_on_asm_path();

@@ -4380,6 +4380,44 @@ std::string emit_minimal_direct_call_identity_arg_asm(
   return out.str();
 }
 
+std::string emit_minimal_dual_identity_direct_call_sub_asm(
+    const c4c::backend::BackendModule& module,
+    const c4c::backend::ParsedBackendMinimalDualIdentityDirectCallSubModuleView& slice) {
+  if (slice.lhs_helper == nullptr || slice.rhs_helper == nullptr) {
+    fail_unsupported("structured dual identity direct-call subtraction slice without helper metadata");
+  }
+
+  if (slice.lhs_call_arg_imm < 0 ||
+      slice.lhs_call_arg_imm > std::numeric_limits<std::uint16_t>::max() ||
+      slice.rhs_call_arg_imm < 0 ||
+      slice.rhs_call_arg_imm > std::numeric_limits<std::uint16_t>::max()) {
+    fail_unsupported(
+        "dual identity direct-call subtraction argument immediates outside the minimal mov-supported range");
+  }
+
+  std::ostringstream out;
+  const std::string lhs_symbol = asm_symbol_name(module, slice.lhs_helper->signature.name);
+  const std::string rhs_symbol = asm_symbol_name(module, slice.rhs_helper->signature.name);
+  const std::string main_symbol = asm_symbol_name(module, "main");
+
+  out << ".text\n";
+  emit_function_prelude(out, module, lhs_symbol, false);
+  out << "  ret\n";
+  emit_function_prelude(out, module, rhs_symbol, false);
+  out << "  ret\n";
+  emit_function_prelude(out, module, main_symbol, true);
+  out << "  stp x30, x19, [sp, #-16]!\n"
+      << "  mov w0, #" << slice.lhs_call_arg_imm << "\n"
+      << "  bl " << lhs_symbol << "\n"
+      << "  mov w19, w0\n"
+      << "  mov w0, #" << slice.rhs_call_arg_imm << "\n"
+      << "  bl " << rhs_symbol << "\n"
+      << "  sub w0, w19, w0\n"
+      << "  ldp x30, x19, [sp], #16\n"
+      << "  ret\n";
+  return out.str();
+}
+
 std::string emit_minimal_direct_call_two_arg_add_asm(
     const c4c::backend::BackendModule& module,
     const c4c::backend::ParsedBackendMinimalTwoArgDirectCallModuleView& slice) {
@@ -7228,6 +7266,11 @@ std::string emit_module(const c4c::backend::BackendModule& module,
         slice.has_value()) {
       return emit_minimal_direct_call_identity_arg_asm(module, *slice);
     }
+    if (const auto slice =
+            c4c::backend::parse_backend_minimal_dual_identity_direct_call_sub_module(module);
+        slice.has_value()) {
+      return emit_minimal_dual_identity_direct_call_sub_asm(module, *slice);
+    }
     if (const auto slice = c4c::backend::parse_backend_minimal_two_arg_direct_call_module(module);
         slice.has_value()) {
       return emit_minimal_direct_call_two_arg_add_asm(module, *slice);
@@ -7349,6 +7392,11 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
               c4c::backend::parse_backend_minimal_direct_call_identity_arg_module(adapted);
           slice.has_value()) {
         return emit_minimal_direct_call_identity_arg_asm(adapted, *slice);
+      }
+      if (const auto slice =
+              c4c::backend::parse_backend_minimal_dual_identity_direct_call_sub_module(adapted);
+          slice.has_value()) {
+        return emit_minimal_dual_identity_direct_call_sub_asm(adapted, *slice);
       }
       if (const auto slice =
               c4c::backend::parse_backend_minimal_two_arg_direct_call_module(adapted);
@@ -7481,6 +7529,11 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
               c4c::backend::parse_backend_minimal_direct_call_identity_arg_module(adapted);
           slice.has_value()) {
         return emit_minimal_direct_call_identity_arg_asm(adapted, *slice);
+      }
+      if (const auto slice =
+              c4c::backend::parse_backend_minimal_dual_identity_direct_call_sub_module(adapted);
+          slice.has_value()) {
+        return emit_minimal_dual_identity_direct_call_sub_asm(adapted, *slice);
       }
       if (const auto slice = c4c::backend::parse_backend_minimal_two_arg_direct_call_module(adapted);
           slice.has_value()) {

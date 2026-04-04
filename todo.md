@@ -9,20 +9,18 @@ Source Plan: plan.md
 - [ ] Remove legacy backend IR files and backend/app LLVM rescue paths
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
-Current active item: Step 4, cut the now-explicit AArch64-only file-output asm
-fallback users and prepare the final legacy backend-IR deletion pass.
+Current active item: Step 4, shrink the now-explicit AArch64-only file-output
+asm fallback users and prepare the final legacy backend-IR deletion pass.
 
-Iteration target: remove the small scalar/FP AArch64 file-output asm rescue
-family that is blocked only by the general stack-spill emitter's missing float
-cast/compare support, then continue with the next still-blocked family.
+Iteration target: remove the bounded non-FP direct-call AArch64 file-output
+asm rescue caller `00121`, then continue with the next still-blocked family.
 
 Immediate next slice:
 
-- convert the remaining non-FP direct-call rescue caller `00121` if its
-  matcher/emitter gap is still bounded enough to remove the file-output tag in
-  one batch
-- otherwise continue with the next smallest still-blocked AArch64 rescue
-  family after re-probing `00174` and `00204`
+- re-probe the remaining float/ABI-heavy AArch64 rescue callers `00174` and
+  `00204`
+- choose the smaller still-bounded family and batch its emitter gap fix
+  together with removing the matching file-output allowlist tag
 
 Slice deliverables:
 
@@ -88,12 +86,13 @@ Known live references from the current audit:
   backend families now run through stdout-native asm by default
 - the remaining live file-output asm rescue users are now explicit allowlist
   tags for external/backend AArch64 c-testsuite coverage:
-  `00121`, `00174`, and `00204`
+  `00174` and `00204`
 - the small scalar/FP audit split cleanly into two buckets:
   `00113`, `00119`, and `00123` all failed because the AArch64 general
   stack-spill emitter rejected float compares and float casts
-  (`sitofp` plus ordered `fcmp` materialization), while `00121` is a separate
-  direct-call family and should not be grouped with the float slice
+  (`sitofp` plus ordered `fcmp` materialization), while the now-cleared
+  `00121` direct-call family was separate and should not be grouped with the
+  float slice
 - `c4cll` now rejects file-output LLVM asm fallback on non-AArch64 targets;
   the app-layer rescue path is retained only for the tagged AArch64 family
 
@@ -145,15 +144,21 @@ Recently completed milestones:
   already emits backend-native asm on stdout, and removed its stale
   `backend-file-aarch64` allowlist tag so the live file-output rescue bucket
   now shrinks to `00121`, `00174`, and `00204`
+- taught the shared AArch64/native-asm path to keep the bounded dual
+  identity-helper direct-call subtraction shape (`main = f(1) - g(1)`) on
+  stdout-native asm, added a focused backend regression for that slice, and
+  removed external/backend AArch64 c-testsuite case `00121` from the
+  remaining file-output rescue bucket so the live rescue set now shrinks to
+  `00174` and `00204`
 
 Validation baseline:
 
 - blocker: none
 - latest focused proving set:
   `build/backend_lir_adapter_aarch64_tests`,
-  `build/c4cll --codegen asm --target aarch64-unknown-linux-gnu tests/c/external/c-testsuite/src/00116.c`,
+  `build/c4cll --codegen asm --target aarch64-unknown-linux-gnu tests/c/external/c-testsuite/src/00121.c`,
   and
-  `ctest --test-dir build -R "c_testsuite_aarch64_backend_src_00116_c" --output-on-failure`
+  `ctest --test-dir build -R "c_testsuite_aarch64_backend_src_00121_c" --output-on-failure`
   with native asm emitted on stdout and the regenerated AArch64 backend
   c-testsuite case passing without file-output rescue
 - latest backend regression scope:

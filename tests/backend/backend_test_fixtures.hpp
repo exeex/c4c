@@ -241,6 +241,56 @@ inline c4c::codegen::lir::LirModule make_typed_direct_call_identity_arg_module()
   return module;
 }
 
+inline c4c::codegen::lir::LirModule make_typed_dual_identity_direct_call_sub_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.type_decls.push_back("%struct.__va_list_tag_ = type { ptr, ptr, ptr, i32, i32 }");
+
+  LirFunction lhs;
+  lhs.name = "f";
+  lhs.signature_text = "define i32 @f(i32 %p.a)\n";
+  lhs.entry = LirBlockId{0};
+
+  LirBlock lhs_entry;
+  lhs_entry.id = LirBlockId{0};
+  lhs_entry.label = "entry";
+  lhs_entry.terminator = LirRet{std::string("%p.a"), "i32"};
+  lhs.blocks.push_back(std::move(lhs_entry));
+
+  LirFunction rhs;
+  rhs.name = "g";
+  rhs.signature_text = "define i32 @g(i32 %p.a)\n";
+  rhs.entry = LirBlockId{0};
+
+  LirBlock rhs_entry;
+  rhs_entry.id = LirBlockId{0};
+  rhs_entry.label = "entry";
+  rhs_entry.terminator = LirRet{std::string("%p.a"), "i32"};
+  rhs.blocks.push_back(std::move(rhs_entry));
+
+  LirFunction main_fn;
+  main_fn.name = "main";
+  main_fn.signature_text = "define i32 @main()\n";
+  main_fn.entry = LirBlockId{0};
+
+  LirBlock main_entry;
+  main_entry.id = LirBlockId{0};
+  main_entry.label = "entry";
+  main_entry.insts.push_back(LirCallOp{"%t0", "i32", "@f", "(i32)", "i32 1"});
+  main_entry.insts.push_back(LirCallOp{"%t1", "i32", "@g", "(i32)", "i32 1"});
+  main_entry.insts.push_back(LirBinOp{"%t2", "sub", "i32", "%t0", "%t1"});
+  main_entry.terminator = LirRet{std::string("%t2"), "i32"};
+  main_fn.blocks.push_back(std::move(main_entry));
+
+  module.functions.push_back(std::move(lhs));
+  module.functions.push_back(std::move(rhs));
+  module.functions.push_back(std::move(main_fn));
+  return module;
+}
+
 inline c4c::codegen::lir::LirModule make_typed_direct_call_two_arg_local_arg_module() {
   using namespace c4c::codegen::lir;
 
