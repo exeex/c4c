@@ -1,6 +1,6 @@
 # Target Profile and Execution-Domain Foundation
 
-Status: Open
+Status: Closed
 Last Updated: 2026-04-04
 
 ## Goal
@@ -205,3 +205,22 @@ This idea intentionally precedes and de-risks:
 Once this foundation is in place, idea 41 should resume with cleaner ownership
 boundaries between target-neutral backend IR, target profile, and
 target-specific emission.
+
+## Completion Note
+
+Closed on 2026-04-04 after the foundation slice reached the point needed to
+unblock idea 41:
+
+- `ExecutionDomain` metadata now exists on declaration/HIR surfaces with the
+  current host-only/default-host path intact
+- `c4cll` has a minimal split-LLVM path with separate host/device target
+  triples and default paired outputs (`xxx.ll`, `xxx.device.ll`)
+- backend test ownership started moving away from one mixed target bucket
+  toward explicit per-platform test files and centralized target-profile
+  helpers
+
+Remaining follow-through that builds on this foundation is intentionally left
+to:
+
+- `ideas/open/41_bir_full_coverage_and_ir_legacy_removal.md`
+- `ideas/open/42_typed_lir_type_ref_and_bir_ownership_follow_through.md`

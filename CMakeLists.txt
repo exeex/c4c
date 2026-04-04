@@ -331,6 +331,10 @@ add_executable(backend_lir_adapter_x86_64_tests
     "${PROJECT_SOURCE_DIR}/tests/backend/backend_lir_adapter_x86_64_tests.cpp"
     ${BACKEND_TEST_COMMON_SRCS}
 )
+add_executable(backend_x86_64_extracted_tests
+    "${PROJECT_SOURCE_DIR}/tests/backend/backend_x86_64_extracted_tests.cpp"
+    ${BACKEND_TEST_COMMON_SRCS}
+)
 add_executable(backend_module_tests
     "${PROJECT_SOURCE_DIR}/tests/backend/backend_module_tests.cpp"
     ${BACKEND_TEST_COMMON_SRCS}
@@ -340,6 +344,9 @@ add_executable(backend_bir_tests
     "${PROJECT_SOURCE_DIR}/tests/backend/backend_bir_test_support.cpp"
     "${PROJECT_SOURCE_DIR}/tests/backend/backend_bir_lowering_tests.cpp"
     "${PROJECT_SOURCE_DIR}/tests/backend/backend_bir_pipeline_tests.cpp"
+    "${PROJECT_SOURCE_DIR}/tests/backend/backend_bir_pipeline_aarch64_tests.cpp"
+    "${PROJECT_SOURCE_DIR}/tests/backend/backend_bir_pipeline_x86_64_tests.cpp"
+    "${PROJECT_SOURCE_DIR}/tests/backend/backend_bir_pipeline_riscv64_tests.cpp"
     ${BACKEND_TEST_COMMON_SRCS}
 )
 add_executable(backend_shared_util_tests
@@ -355,6 +362,9 @@ target_include_directories(backend_lir_adapter_aarch64_tests PRIVATE
     ${FRONTEND_CXX_INCLUDE_DIRS}
 )
 target_include_directories(backend_lir_adapter_x86_64_tests PRIVATE
+    ${FRONTEND_CXX_INCLUDE_DIRS}
+)
+target_include_directories(backend_x86_64_extracted_tests PRIVATE
     ${FRONTEND_CXX_INCLUDE_DIRS}
 )
 target_include_directories(backend_module_tests PRIVATE
@@ -376,6 +386,9 @@ if(CLANG_EXECUTABLE)
   target_compile_definitions(backend_lir_adapter_x86_64_tests PRIVATE
       C4C_TEST_CLANG_PATH="${CLANG_EXECUTABLE}"
   )
+  target_compile_definitions(backend_x86_64_extracted_tests PRIVATE
+      C4C_TEST_CLANG_PATH="${CLANG_EXECUTABLE}"
+  )
   target_compile_definitions(backend_module_tests PRIVATE
       C4C_TEST_CLANG_PATH="${CLANG_EXECUTABLE}"
   )
@@ -394,6 +407,9 @@ if(OBJDUMP_EXECUTABLE)
       C4C_TEST_OBJDUMP_PATH="${OBJDUMP_EXECUTABLE}"
   )
   target_compile_definitions(backend_lir_adapter_x86_64_tests PRIVATE
+      C4C_TEST_OBJDUMP_PATH="${OBJDUMP_EXECUTABLE}"
+  )
+  target_compile_definitions(backend_x86_64_extracted_tests PRIVATE
       C4C_TEST_OBJDUMP_PATH="${OBJDUMP_EXECUTABLE}"
   )
   target_compile_definitions(backend_module_tests PRIVATE

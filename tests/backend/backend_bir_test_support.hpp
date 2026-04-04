@@ -156,3 +156,6 @@ c4c::codegen::lir::LirModule make_bir_two_param_staged_affine_module();
 
 void run_backend_bir_lowering_tests();
 void run_backend_bir_pipeline_tests();
+void run_backend_bir_pipeline_x86_64_tests();
+void run_backend_bir_pipeline_aarch64_tests();
+void run_backend_bir_pipeline_riscv64_tests();

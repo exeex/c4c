@@ -2,6 +2,17 @@
 
 #include "backend_test_fixtures.hpp"
 
+namespace {
+
+c4c::codegen::lir::LirModule make_bir_fixture_module(
+    const TestLirTargetProfile& profile = backend_test_riscv64_profile()) {
+  c4c::codegen::lir::LirModule module;
+  apply_test_lir_target_profile(module, profile);
+  return module;
+}
+
+}  // namespace
+
 c4c::codegen::lir::LirModule make_bir_return_add_module() {
   return make_return_add_module();
 }
@@ -2684,9 +2695,7 @@ c4c::codegen::lir::LirModule make_bir_mixed_predecessor_add_phi_post_join_add_mo
 c4c::codegen::lir::LirModule make_bir_single_param_add_sub_chain_module() {
   using namespace c4c::codegen::lir;
 
-  LirModule module;
-  module.target_triple = "x86_64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128";
+  auto module = make_bir_fixture_module(backend_test_x86_64_bir_pipeline_profile());
 
   LirFunction function;
   function.name = "add_one";
@@ -2793,9 +2802,7 @@ c4c::codegen::lir::LirModule make_bir_i8_two_param_add_module() {
 c4c::codegen::lir::LirModule make_bir_two_param_add_module() {
   using namespace c4c::codegen::lir;
 
-  LirModule module;
-  module.target_triple = "x86_64-unknown-linux-gnu";
-  module.data_layout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128";
+  auto module = make_bir_fixture_module(backend_test_x86_64_bir_pipeline_profile());
 
   LirFunction function;
   function.name = "add_pair";

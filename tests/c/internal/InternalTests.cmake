@@ -222,6 +222,11 @@ c4c_add_backend_test(
 )
 
 c4c_add_backend_test(
+    backend_x86_64_extracted_tests
+    COMMAND backend_x86_64_extracted_tests
+)
+
+c4c_add_backend_test(
     backend_module_tests
     COMMAND backend_module_tests
 )

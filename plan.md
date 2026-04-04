@@ -1,171 +1,118 @@
-# Target Profile and Execution-Domain Foundation
+# BIR Full Coverage and Legacy IR Removal
 
 Status: Active
-Source Idea: ideas/open/40_target_profile_and_execution_domain_foundation.md
-Supersedes: ideas/open/41_bir_full_coverage_and_ir_legacy_removal.md (temporarily parked)
+Source Idea: ideas/open/41_bir_full_coverage_and_ir_legacy_removal.md
+Activated from: ideas/closed/40_target_profile_and_execution_domain_foundation.md
 
 ## Purpose
 
-Establish one authoritative target/ABI profile and declaration-level
-execution-domain model before more backend migration work hardens around the
-current raw-triple, single-target assumptions.
+Resume the BIR migration now that the minimal target/execution-domain
+foundation is in place, and remove both legacy backend IR and backend-facing
+LLVM rescue behavior without letting test coverage collapse back onto the
+`riscv64` passthrough oracle.
 
 ## Goal
 
-Introduce a shared `TargetProfile`, preserve `ExecutionDomain` in HIR, and make
-`HIR -> LIR` ready for future multi-target splitting while keeping current
-behavior host-only.
+Make BIR the only backend IR, migrate x86/aarch64 emitters to consume it
+directly, and delete legacy backend-IR plus LLVM rescue paths.
 
 ## Read First
 
-- [ideas/open/40_target_profile_and_execution_domain_foundation.md](/workspaces/c4c/ideas/open/40_target_profile_and_execution_domain_foundation.md)
+- [ideas/open/41_bir_full_coverage_and_ir_legacy_removal.md](/workspaces/c4c/ideas/open/41_bir_full_coverage_and_ir_legacy_removal.md)
+- [src/backend/backend.cpp](/workspaces/c4c/src/backend/backend.cpp)
+- [src/backend/backend.hpp](/workspaces/c4c/src/backend/backend.hpp)
+- [src/backend/bir.hpp](/workspaces/c4c/src/backend/bir.hpp)
+- [src/backend/lowering/lir_to_bir.cpp](/workspaces/c4c/src/backend/lowering/lir_to_bir.cpp)
+- [src/backend/lowering/lir_to_backend_ir.cpp](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp)
 - [src/apps/c4cll.cpp](/workspaces/c4c/src/apps/c4cll.cpp)
-- [src/frontend/sema/sema.cpp](/workspaces/c4c/src/frontend/sema/sema.cpp)
-- [src/frontend/hir/hir.cpp](/workspaces/c4c/src/frontend/hir/hir.cpp)
-- [src/codegen/lir/hir_to_lir.cpp](/workspaces/c4c/src/codegen/lir/hir_to_lir.cpp)
-- [src/codegen/llvm/llvm_codegen.cpp](/workspaces/c4c/src/codegen/llvm/llvm_codegen.cpp)
-- [src/codegen/shared/llvm_helpers.hpp](/workspaces/c4c/src/codegen/shared/llvm_helpers.hpp)
 
-## Working Model
+## Execution Rules
 
-Execution should move in small, test-backed slices:
+- do not use `riscv64` passthrough output as the default proof that BIR stayed
+  off fallback paths
+- prefer target-neutral route/lowering checks when the question is about
+  `lir_to_bir` or fallback selection
+- use `x86_64` / `aarch64` tests when the question is really about emitter
+  behavior
+- keep transitional legacy-bucket tests clearly marked and delete them once
+  their coverage is either migrated or made irrelevant
 
-1. inventory current target/data-layout ownership
-2. introduce canonical `TargetProfile`
-3. thread it through frontend/codegen boundaries
-4. introduce declaration-level `ExecutionDomain`
-5. prepare `HIR -> LIR` for future split lowering
-6. realign tests around centralized target/layout fixtures
+## Step 1. Re-audit legacy boundaries
 
-Architecture rules for this runbook:
-
-- `SourceProfile` remains a language/front-end mode, not a target/ABI profile
-- `TargetProfile` owns target triple, data layout, and target traits
-- `ExecutionDomain` is a declaration property, not a lexical IR block
-- the architecture must be ready for one HIR module to lower into more than one
-  target-specific LIR product in the future
-- current implementation may remain host-only while these ownership boundaries
-  are introduced
-
-## Non-Goals
-
-- no full host/device implementation yet
-- no GPU backend bring-up yet
-- no cross-domain runtime/link layer yet
-- no silent continuation of idea 41 work if the current slice depends on the old
-  raw-triple architecture staying in place
-
-## Step 1. Inventory Target Ownership
-
-Goal: produce the exact list of places that own, derive, or reinterpret target
-triple, data layout, and ABI traits today.
+Goal: refresh the exact production and test seams that still depend on
+`BackendModule(ir.*)` or backend-facing LLVM rescue.
 
 Actions:
 
-- inventory CLI target selection and propagation
-- inventory preprocessor target-triple use
-- inventory HIR/LIR ownership of target metadata
-- inventory backend target parsing and data-layout derivation
-- inventory helper functions that should become target-profile trait queries
-- inventory tests with hard-coded target/layout literals
+- refresh the code boundary inventory in `backend.*`, lowering, emitters, and
+  `c4cll`
+- refresh the legacy-coupled test inventory, including temporary extracted
+  buckets
+- identify which seams need structured route/fallback observation instead of
+  `riscv64` text inference
 
 Completion Check:
 
-- a concrete file-by-file ownership map exists for target profile data
+- the current removal map is concrete enough to drive implementation without
+  leaning on stale assumptions
 
-## Step 2. Introduce Shared `TargetProfile`
+## Step 2. Expand BIR coverage without RV64 overfitting
 
-Goal: replace raw target-string plumbing with a canonical target-profile model.
+Goal: keep porting `lir_to_backend_ir` behavior into `lir_to_bir`, but validate
+through target-neutral seams first and use per-target emitters second.
 
 Actions:
 
-- add a shared `TargetProfile` type and canonical resolver
-- include triple, data layout, and target/ABI traits in that type
-- thread the profile through the main compile entry points
-- convert at least one target-trait query cluster away from raw triple/layout
-  string checks
-- use backend subset coverage such as
-  `ctest --test-dir build -L backend --output-on-failure` plus focused
-  frontend/codegen tests as the required gate for Step 2 slices
+- port missing lowering clusters one bounded slice at a time
+- add target-neutral lowering/route tests where possible
+- keep any `riscv64` route tests explicitly temporary and bounded
+- extend native x86/aarch64 emitter coverage for slices that are now BIR-owned
 
 Completion Check:
 
-- new code can obtain canonical target/data-layout information from one shared
-  profile object
+- new BIR coverage no longer depends primarily on `riscv64` passthrough tests
 
-## Step 3. Preserve `ExecutionDomain`
+## Step 3. Migrate emitter-facing contracts
 
-Goal: introduce declaration-level execution-domain ownership without changing
-current host-only behavior.
+Goal: move x86/aarch64 emission off `ir.*` and onto BIR-native structures.
 
 Actions:
 
-- add execution-domain metadata to frontend/HIR-facing declaration structures
-- default all current code paths to `Host`
-- define the semantic model for future `Host`, `Device`, and `HostDevice`
-- keep existing emitted output stable while the metadata is threaded through
-- use backend subset coverage such as
-  `ctest --test-dir build -L backend --output-on-failure` and relevant
-  frontend/codegen unit coverage as the required gate for Step 3 slices
+- port printer/validator/data-structure parity needed by emitters
+- switch emitter includes and call sites from `ir.*` to BIR
+- remove `bir_to_backend_ir` usage as emitter-side crutch
 
 Completion Check:
 
-- HIR can represent execution-domain ownership explicitly even though only the
-  host path is active
+- x86/aarch64 emission works from BIR-native ownership
 
-## Step 4. Prepare `HIR -> LIR` Split Lowering
+## Step 4. Delete legacy/backend LLVM rescue paths
 
-Goal: separate "lower one target-specific module" from "choose how many target
-products to emit" without enabling full multi-target output yet.
+Goal: remove the now-obsolete backend IR and app-layer LLVM rescue behavior.
 
 Actions:
 
-- refactor lowering boundaries so the architecture no longer hardcodes "one HIR
-  module always becomes exactly one LIR module forever"
-- keep the public behavior host-only for now
-- make per-target module metadata come from `TargetProfile` ownership
-- validate with focused frontend/codegen/backend coverage
+- delete `lir_to_backend_ir.*`, `bir_to_backend_ir.*`, `ir.*`
+- remove legacy routing from `backend.cpp`
+- remove backend-facing LLVM rescue helpers from `c4cll`
+- convert unsupported backend asm into explicit backend errors
 
 Completion Check:
 
-- the lowering architecture is ready for future host/device splitting without
-  reworking the entire HIR/LIR ownership model
+- there is only one backend IR path and no backend-to-LLVM rescue path left
 
-## Step 5. Realign Test Ownership
+## Step 5. Final test cleanup
 
-Goal: reduce accidental dependence on ad hoc per-file target/layout literals and
-clarify which tests assert target-neutral contracts versus target-specific
-emission.
+Goal: remove transitional test buckets and align test families with the new
+BIR-only architecture.
 
 Actions:
 
-- centralize target/layout fixtures in tests where practical
-- reduce direct hard-coded module target/layout duplication
-- document which tests are route oracles and which test real emitters/contracts
-- leave idea 41 in a good state to resume after this plan completes
+- delete temporary extracted legacy test buckets once coverage is migrated
+- retire legacy adapter/shared-util tests that only existed for `BackendModule`
+- keep platform-specific test files only where they still assert real
+  platform-specific behavior
 
 Completion Check:
 
-- tests stop using raw target/layout literals as a scattered pseudo-architecture
-  layer
-
-## Step 6. Final Validation
-
-Goal: prove the target-profile foundation is stable before resuming idea 41.
-
-Actions:
-
-- use only backend-focused validation such as
-  `ctest --test-dir build -L backend --output-on-failure` as the default
-  regression loop during plan execution when backend surfaces change
-- pair backend subset runs with relevant frontend/codegen tests when target
-  propagation changes
-- confirm current host-only outputs stay stable under the new target-profile
-  ownership path
-- confirm idea 41 can resume on top of the new architecture without depending
-  on scattered raw target/layout plumbing
-
-Completion Check:
-
-- backend-focused and relevant frontend/codegen validation pass for the active
-  slice, and the new foundation is ready for follow-on plans
+- test layout reflects the new architecture instead of the migration scaffolding

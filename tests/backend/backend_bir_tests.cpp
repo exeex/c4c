@@ -5,6 +5,9 @@ int main(int argc, char** argv) {
 
   run_backend_bir_lowering_tests();
   run_backend_bir_pipeline_tests();
+  run_backend_bir_pipeline_x86_64_tests();
+  run_backend_bir_pipeline_aarch64_tests();
+  run_backend_bir_pipeline_riscv64_tests();
 
   check_failures();
   return 0;

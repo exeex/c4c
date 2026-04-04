@@ -33,6 +33,14 @@ inline const TestLirTargetProfile& backend_test_x86_64_profile() {
   return profile;
 }
 
+inline const TestLirTargetProfile& backend_test_x86_64_bir_pipeline_profile() {
+  static const TestLirTargetProfile profile{
+      "x86_64-unknown-linux-gnu",
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128",
+  };
+  return profile;
+}
+
 inline void apply_test_lir_target_profile(
     c4c::codegen::lir::LirModule& module,
     const TestLirTargetProfile& profile) {

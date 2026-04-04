@@ -1,7 +1,7 @@
 # BIR Full Coverage and Legacy IR Removal
 
 Status: Open
-Last Updated: 2026-04-03
+Last Updated: 2026-04-04
 
 ## Priority Note
 
@@ -17,6 +17,31 @@ Reason:
 - resuming this idea after the target-profile foundation lands should make the
   remaining BIR migration less coupled to raw target-triple plumbing and less
   biased toward RISC-V-only route coverage
+
+Update on 2026-04-04:
+
+- the minimal target/execution-domain foundation has now landed far enough to
+  resume this idea
+- this note remains as historical context only; it is no longer a reason to
+  keep idea 41 parked
+
+## Test Strategy Guardrail
+
+Do not continue expanding idea 41 by treating `riscv64` passthrough behavior as
+the default oracle for "did we stay on direct BIR or fall back to legacy/LLVM".
+
+`riscv64` route tests are acceptable as a narrow temporary observation seam, but
+they must not become the architectural center of backend migration coverage.
+When verifying "BIR did not fall back", prefer one of:
+
+- target-neutral lowering tests at the `lir_to_bir` or route-selection seam
+- structured route/fallback indicators instead of target-specific text
+  inference
+- per-target emitter tests for `x86_64` / `aarch64` when the question is really
+  about native backend behavior
+
+If a test only exists because `riscv64` is the easiest text oracle, treat that
+as migration scaffolding and keep it clearly bounded.
 
 ## Goal
 
@@ -328,6 +353,15 @@ checklist for Step 1 of the active runbook.
 - Emitter-facing legacy module coverage:
   [tests/backend/backend_lir_adapter_aarch64_tests.cpp](/workspaces/c4c/tests/backend/backend_lir_adapter_aarch64_tests.cpp)
   with 331 direct legacy-lowering references.
+- Transitional platform-only legacy buckets extracted during test reshaping:
+  [tests/backend/backend_x86_64_extracted_tests.cpp](/workspaces/c4c/tests/backend/backend_x86_64_extracted_tests.cpp)
+  currently holds x86-only cases copied out of
+  [tests/backend/backend_lir_adapter_tests.cpp](/workspaces/c4c/tests/backend/backend_lir_adapter_tests.cpp)
+  and
+  [tests/backend/backend_shared_util_tests.cpp](/workspaces/c4c/tests/backend/backend_shared_util_tests.cpp);
+  this file is not a target end-state and should disappear with the same
+  legacy-surface cleanup once those test families are either migrated to BIR-era
+  coverage or deleted under this idea.
 - Transitional BIR pipeline tests still assert conversion back into
   `BackendModule` through `bir_to_backend_ir`:
   [tests/backend/backend_bir_pipeline_tests.cpp](/workspaces/c4c/tests/backend/backend_bir_pipeline_tests.cpp#L4),
