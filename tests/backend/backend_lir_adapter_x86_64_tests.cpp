@@ -3752,6 +3752,72 @@ void test_x86_backend_scaffold_matches_direct_local_array_asm() {
   }
 }
 
+void test_x86_backend_renders_param_member_array_runtime_slice() {
+  auto module = make_param_member_array_runtime_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, ".globl get_second\n",
+                  "x86 backend should publish the by-value member-array helper on the native asm path");
+  expect_contains(rendered, "mov eax, esi\n",
+                  "x86 backend should return the second split aggregate register for the bounded by-value member-array slice");
+  expect_contains(rendered, "mov edi, 4\n",
+                  "x86 backend should lower the first member-array initializer into the helper call setup");
+  expect_contains(rendered, "mov esi, 6\n",
+                  "x86 backend should lower the second member-array initializer into the helper call setup");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the bounded by-value member-array runtime slice");
+}
+
+void test_x86_backend_renders_nested_param_member_array_runtime_slice() {
+  auto module = make_nested_param_member_array_runtime_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, ".globl get_second\n",
+                  "x86 backend should publish the nested by-value member-array helper on the native asm path");
+  expect_contains(rendered, "mov eax, esi\n",
+                  "x86 backend should still return the second split aggregate register for the nested by-value member-array slice");
+  expect_contains(rendered, "mov edi, 4\n",
+                  "x86 backend should lower the nested first member-array initializer into the helper call setup");
+  expect_contains(rendered, "mov esi, 9\n",
+                  "x86 backend should lower the nested second member-array initializer into the helper call setup");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the nested by-value member-array runtime slice");
+}
+
+void test_x86_backend_renders_nested_member_pointer_array_runtime_slice() {
+  auto module = make_nested_member_pointer_array_runtime_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(rendered, "mov rax, qword ptr [rdi]\n",
+                  "x86 backend should reload the nested inner pointer directly from the outer aggregate member");
+  expect_contains(rendered, "mov eax, dword ptr [rax + 4]\n",
+                  "x86 backend should fold the second nested member-array load into the bounded helper slice");
+  expect_contains(rendered, "mov dword ptr [rsp + 16], 4\n",
+                  "x86 backend should materialize the first nested local array element in the bounded main slice");
+  expect_contains(rendered, "mov dword ptr [rsp + 20], 8\n",
+                  "x86 backend should materialize the second nested local array element in the bounded main slice");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should stop falling back to LLVM text for the nested member-pointer runtime slice");
+}
+
 void test_x86_backend_renders_global_load_slice() {
   auto module = make_global_load_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -5442,6 +5508,9 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_both_local_double_rewrite_slice);
   RUN_TEST(test_x86_backend_renders_local_array_slice);
   RUN_TEST(test_x86_backend_scaffold_matches_direct_local_array_asm);
+  RUN_TEST(test_x86_backend_renders_param_member_array_runtime_slice);
+  RUN_TEST(test_x86_backend_renders_nested_param_member_array_runtime_slice);
+  RUN_TEST(test_x86_backend_renders_nested_member_pointer_array_runtime_slice);
   RUN_TEST(test_x86_backend_renders_global_load_slice);
   RUN_TEST(test_x86_backend_renders_global_store_reload_slice);
   RUN_TEST(test_x86_backend_scaffold_matches_direct_global_store_reload_asm);

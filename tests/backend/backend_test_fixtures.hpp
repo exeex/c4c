@@ -657,6 +657,221 @@ inline c4c::codegen::lir::LirModule make_local_array_gep_module() {
   return module;
 }
 
+inline c4c::codegen::lir::LirModule make_param_member_array_runtime_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.type_decls.push_back("%struct.Pair = type { [2 x i32] }");
+
+  LirFunction get_second;
+  get_second.name = "get_second";
+  get_second.signature_text = "define i32 @get_second(%struct.Pair %p.p)\n";
+  get_second.entry = LirBlockId{0};
+  get_second.alloca_insts.push_back(LirAllocaOp{"%lv.param.p", "%struct.Pair", "", 4});
+  get_second.alloca_insts.push_back(LirStoreOp{"%struct.Pair", "%p.p", "%lv.param.p"});
+
+  LirBlock get_second_entry;
+  get_second_entry.id = LirBlockId{0};
+  get_second_entry.label = "entry";
+  get_second_entry.insts.push_back(
+      LirGepOp{"%t0", "%struct.Pair", "%lv.param.p", false, {"i32 0", "i32 0"}});
+  get_second_entry.insts.push_back(
+      LirGepOp{"%t1", "[2 x i32]", "%t0", false, {"i64 0", "i64 0"}});
+  get_second_entry.insts.push_back(
+      LirCastOp{"%t2", LirCastKind::SExt, "i32", "1", "i64"});
+  get_second_entry.insts.push_back(LirGepOp{"%t3", "i32", "%t1", false, {"i64 %t2"}});
+  get_second_entry.insts.push_back(LirLoadOp{"%t4", "i32", "%t3"});
+  get_second_entry.terminator = LirRet{std::string("%t4"), "i32"};
+  get_second.blocks.push_back(std::move(get_second_entry));
+  module.functions.push_back(std::move(get_second));
+
+  LirFunction main_fn;
+  main_fn.name = "main";
+  main_fn.signature_text = "define i32 @main()\n";
+  main_fn.entry = LirBlockId{0};
+  main_fn.alloca_insts.push_back(LirAllocaOp{"%lv.p", "%struct.Pair", "", 4});
+
+  LirBlock main_entry;
+  main_entry.id = LirBlockId{0};
+  main_entry.label = "entry";
+  main_entry.insts.push_back(
+      LirGepOp{"%t0", "%struct.Pair", "%lv.p", false, {"i32 0", "i32 0"}});
+  main_entry.insts.push_back(
+      LirGepOp{"%t1", "[2 x i32]", "%t0", false, {"i64 0", "i64 0"}});
+  main_entry.insts.push_back(
+      LirCastOp{"%t2", LirCastKind::SExt, "i32", "0", "i64"});
+  main_entry.insts.push_back(LirGepOp{"%t3", "i32", "%t1", false, {"i64 %t2"}});
+  main_entry.insts.push_back(LirStoreOp{"i32", "4", "%t3"});
+  main_entry.insts.push_back(
+      LirGepOp{"%t4", "%struct.Pair", "%lv.p", false, {"i32 0", "i32 0"}});
+  main_entry.insts.push_back(
+      LirGepOp{"%t5", "[2 x i32]", "%t4", false, {"i64 0", "i64 0"}});
+  main_entry.insts.push_back(
+      LirCastOp{"%t6", LirCastKind::SExt, "i32", "1", "i64"});
+  main_entry.insts.push_back(LirGepOp{"%t7", "i32", "%t5", false, {"i64 %t6"}});
+  main_entry.insts.push_back(LirStoreOp{"i32", "6", "%t7"});
+  main_entry.insts.push_back(LirLoadOp{"%t8", "%struct.Pair", "%lv.p"});
+  main_entry.insts.push_back(
+      LirCallOp{"%t9", "i32", "@get_second", "(%struct.Pair)", "%struct.Pair %t8"});
+  main_entry.terminator = LirRet{std::string("%t9"), "i32"};
+  main_fn.blocks.push_back(std::move(main_entry));
+  module.functions.push_back(std::move(main_fn));
+
+  return module;
+}
+
+inline c4c::codegen::lir::LirModule make_nested_param_member_array_runtime_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.type_decls.push_back("%struct.Inner = type { [2 x i32] }");
+  module.type_decls.push_back("%struct.Outer = type { %struct.Inner }");
+
+  LirFunction get_second;
+  get_second.name = "get_second";
+  get_second.signature_text = "define i32 @get_second(%struct.Outer %p.o)\n";
+  get_second.entry = LirBlockId{0};
+  get_second.alloca_insts.push_back(LirAllocaOp{"%lv.param.o", "%struct.Outer", "", 4});
+  get_second.alloca_insts.push_back(LirStoreOp{"%struct.Outer", "%p.o", "%lv.param.o"});
+
+  LirBlock get_second_entry;
+  get_second_entry.id = LirBlockId{0};
+  get_second_entry.label = "entry";
+  get_second_entry.insts.push_back(
+      LirGepOp{"%t0", "%struct.Outer", "%lv.param.o", false, {"i32 0", "i32 0"}});
+  get_second_entry.insts.push_back(
+      LirGepOp{"%t1", "%struct.Inner", "%t0", false, {"i32 0", "i32 0"}});
+  get_second_entry.insts.push_back(
+      LirGepOp{"%t2", "[2 x i32]", "%t1", false, {"i64 0", "i64 0"}});
+  get_second_entry.insts.push_back(
+      LirCastOp{"%t3", LirCastKind::SExt, "i32", "1", "i64"});
+  get_second_entry.insts.push_back(
+      LirGepOp{"%t4", "i32", "%t2", false, {"i64 %t3"}});
+  get_second_entry.insts.push_back(LirLoadOp{"%t5", "i32", "%t4"});
+  get_second_entry.terminator = LirRet{std::string("%t5"), "i32"};
+  get_second.blocks.push_back(std::move(get_second_entry));
+  module.functions.push_back(std::move(get_second));
+
+  LirFunction main_fn;
+  main_fn.name = "main";
+  main_fn.signature_text = "define i32 @main()\n";
+  main_fn.entry = LirBlockId{0};
+  main_fn.alloca_insts.push_back(LirAllocaOp{"%lv.outer", "%struct.Outer", "", 4});
+
+  LirBlock main_entry;
+  main_entry.id = LirBlockId{0};
+  main_entry.label = "entry";
+  main_entry.insts.push_back(LirMemsetOp{"%lv.outer", "0", "8", false});
+  main_entry.insts.push_back(
+      LirGepOp{"%t0", "%struct.Outer", "%lv.outer", false, {"i32 0", "i32 0"}});
+  main_entry.insts.push_back(
+      LirGepOp{"%t1", "%struct.Inner", "%t0", false, {"i32 0", "i32 0"}});
+  main_entry.insts.push_back(
+      LirGepOp{"%t2", "[2 x i32]", "%t1", false, {"i64 0", "i64 0"}});
+  main_entry.insts.push_back(
+      LirCastOp{"%t3", LirCastKind::SExt, "i32", "0", "i64"});
+  main_entry.insts.push_back(
+      LirGepOp{"%t4", "i32", "%t2", false, {"i64 %t3"}});
+  main_entry.insts.push_back(LirStoreOp{"i32", "4", "%t4"});
+  main_entry.insts.push_back(
+      LirGepOp{"%t5", "%struct.Outer", "%lv.outer", false, {"i32 0", "i32 0"}});
+  main_entry.insts.push_back(
+      LirGepOp{"%t6", "%struct.Inner", "%t5", false, {"i32 0", "i32 0"}});
+  main_entry.insts.push_back(
+      LirGepOp{"%t7", "[2 x i32]", "%t6", false, {"i64 0", "i64 0"}});
+  main_entry.insts.push_back(
+      LirCastOp{"%t8", LirCastKind::SExt, "i32", "1", "i64"});
+  main_entry.insts.push_back(
+      LirGepOp{"%t9", "i32", "%t7", false, {"i64 %t8"}});
+  main_entry.insts.push_back(LirStoreOp{"i32", "9", "%t9"});
+  main_entry.insts.push_back(LirLoadOp{"%t10", "%struct.Outer", "%lv.outer"});
+  main_entry.insts.push_back(
+      LirCallOp{"%t11", "i32", "@get_second", "(%struct.Outer)", "%struct.Outer %t10"});
+  main_entry.terminator = LirRet{std::string("%t11"), "i32"};
+  main_fn.blocks.push_back(std::move(main_entry));
+  module.functions.push_back(std::move(main_fn));
+
+  return module;
+}
+
+inline c4c::codegen::lir::LirModule make_nested_member_pointer_array_runtime_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.type_decls.push_back("%struct.Inner = type { [2 x i32] }");
+  module.type_decls.push_back("%struct.Outer = type { ptr }");
+
+  LirFunction get_second;
+  get_second.name = "get_second";
+  get_second.signature_text = "define i32 @get_second(ptr %p.o)\n";
+  get_second.entry = LirBlockId{0};
+
+  LirBlock get_second_entry;
+  get_second_entry.id = LirBlockId{0};
+  get_second_entry.label = "entry";
+  get_second_entry.insts.push_back(
+      LirGepOp{"%t0", "%struct.Outer", "%p.o", false, {"i32 0", "i32 0"}});
+  get_second_entry.insts.push_back(LirLoadOp{"%t1", "ptr", "%t0"});
+  get_second_entry.insts.push_back(
+      LirGepOp{"%t2", "%struct.Inner", "%t1", false, {"i32 0", "i32 0"}});
+  get_second_entry.insts.push_back(
+      LirGepOp{"%t3", "[2 x i32]", "%t2", false, {"i64 0", "i64 0"}});
+  get_second_entry.insts.push_back(
+      LirCastOp{"%t4", LirCastKind::SExt, "i32", "1", "i64"});
+  get_second_entry.insts.push_back(
+      LirGepOp{"%t5", "i32", "%t3", false, {"i64 %t4"}});
+  get_second_entry.insts.push_back(LirLoadOp{"%t6", "i32", "%t5"});
+  get_second_entry.terminator = LirRet{std::string("%t6"), "i32"};
+  get_second.blocks.push_back(std::move(get_second_entry));
+  module.functions.push_back(std::move(get_second));
+
+  LirFunction main_fn;
+  main_fn.name = "main";
+  main_fn.signature_text = "define i32 @main()\n";
+  main_fn.entry = LirBlockId{0};
+  main_fn.alloca_insts.push_back(LirAllocaOp{"%lv.inner", "%struct.Inner", "", 4});
+  main_fn.alloca_insts.push_back(LirAllocaOp{"%lv.outer", "%struct.Outer", "", 8});
+
+  LirBlock main_entry;
+  main_entry.id = LirBlockId{0};
+  main_entry.label = "entry";
+  main_entry.insts.push_back(LirMemsetOp{"%lv.inner", "0", "8", false});
+  main_entry.insts.push_back(
+      LirGepOp{"%t0", "%struct.Inner", "%lv.inner", false, {"i32 0", "i32 0"}});
+  main_entry.insts.push_back(
+      LirGepOp{"%t1", "[2 x i32]", "%t0", false, {"i64 0", "i64 0"}});
+  main_entry.insts.push_back(
+      LirCastOp{"%t2", LirCastKind::SExt, "i32", "0", "i64"});
+  main_entry.insts.push_back(
+      LirGepOp{"%t3", "i32", "%t1", false, {"i64 %t2"}});
+  main_entry.insts.push_back(LirStoreOp{"i32", "4", "%t3"});
+  main_entry.insts.push_back(
+      LirGepOp{"%t4", "%struct.Inner", "%lv.inner", false, {"i32 0", "i32 0"}});
+  main_entry.insts.push_back(
+      LirGepOp{"%t5", "[2 x i32]", "%t4", false, {"i64 0", "i64 0"}});
+  main_entry.insts.push_back(
+      LirCastOp{"%t6", LirCastKind::SExt, "i32", "1", "i64"});
+  main_entry.insts.push_back(
+      LirGepOp{"%t7", "i32", "%t5", false, {"i64 %t6"}});
+  main_entry.insts.push_back(LirStoreOp{"i32", "8", "%t7"});
+  main_entry.insts.push_back(LirMemsetOp{"%lv.outer", "0", "8", false});
+  main_entry.insts.push_back(
+      LirGepOp{"%t8", "%struct.Outer", "%lv.outer", false, {"i32 0", "i32 0"}});
+  main_entry.insts.push_back(LirStoreOp{"ptr", "%lv.inner", "%t8"});
+  main_entry.insts.push_back(LirCallOp{"%t9", "i32", "@get_second", "(ptr)", "ptr %lv.outer"});
+  main_entry.terminator = LirRet{std::string("%t9"), "i32"};
+  main_fn.blocks.push_back(std::move(main_entry));
+  module.functions.push_back(std::move(main_fn));
+
+  return module;
+}
+
 inline c4c::codegen::lir::LirModule make_global_load_module() {
   using namespace c4c::codegen::lir;
 

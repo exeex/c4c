@@ -10,19 +10,15 @@ Source Plan: plan.md
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
 Current active item: Step 4, keep shrinking the remaining app-layer LLVM asm
-rescue one bounded surface at a time; with the bounded `local_array`
-runtime-positive case now moved onto the explicit stdout-native asm path,
-re-probe the remaining local aggregate/member access runtime families and
-either promote the next cross-target-ready subset or leave the still-x86-file-
-dependent cases on the file-output rescue seam with a recorded reason.
-Next intended slice: revisit `nested_member_pointer_array`,
-`nested_param_member_array`, and `param_member_array`; current direct stdout
-probes show each case is already backend-native on
-`aarch64-unknown-linux-gnu` but still exits with the explicit stdout-only
-unsupported diagnostic on `x86_64-unknown-linux-gnu`, so the next slice should
-either land the smallest x86-native backend fix for one bounded family or keep
-them file-routed and move to another already-cross-target-ready rescue-
-dependent family.
+rescue one bounded surface at a time; with the bounded local
+aggregate/member-array family now moved onto the explicit stdout-native asm
+path for both `x86_64` and `aarch64`, re-probe the remaining rescue-dependent
+runtime-positive families and pick the next smallest cross-target-ready slice.
+Next intended slice: inventory the remaining `backend_runtime_*` cases that
+still route `--codegen asm` through `-o <file>.s`, probe them directly on
+`x86_64-unknown-linux-gnu` and `aarch64-unknown-linux-gnu`, and either land
+the next smallest x86-native backend slice or record a concrete reason to keep
+that family file-routed for now.
 Blocker: none. The rebuilt `backend_lir_adapter_aarch64_tests` expectation
 drift has been realigned to the current native aarch64 backend seam, and the
 required backend/full-suite acceptance gates are green again.
@@ -30,6 +26,28 @@ Completed in this slice: converted the bounded `local_array` runtime-positive
 case in `tests/c/internal/InternalTests.cmake` onto the explicit stdout-native
 asm path, so this already-native local aggregate runtime check no longer
 depends on the app-layer `-o <file>.s` LLVM asm rescue route.
+Completed in this slice: added a bounded x86_64 direct-emitter slice for the
+whole-module member-array helper/main shapes currently emitted for
+`param_member_array`, `nested_param_member_array`, and
+`nested_member_pointer_array`, so these runtime-positive local
+aggregate/member-access cases now emit backend-native stdout assembly instead
+of exiting through the explicit stdout-only unsupported diagnostic.
+Completed in this slice: added focused x86 backend adapter coverage for those
+three member-array runtime shapes and converted the matching runtime-positive
+cases in `tests/c/internal/InternalTests.cmake` onto the explicit
+stdout-native asm path.
+Completed in this slice: rebuilt `backend_lir_adapter_x86_64_tests` and
+`c4cll`, reran the focused proving set (`backend_lir_adapter_x86_64_tests`,
+`backend_runtime_param_member_array`,
+`backend_runtime_nested_param_member_array`, and
+`backend_runtime_nested_member_pointer_array`) with `100% tests passed, 0
+tests failed out of 4`, reran the required backend regression scope
+(`ctest --test-dir build -R backend --output-on-failure`) with `100% tests
+passed, 0 tests failed out of 401`, regenerated `test_fail_after.log`, and
+reran the monotonic full-suite guard over `test_fail_before.log` versus the
+refreshed `test_fail_after.log`, with guard result `PASS` and
+`before: passed=394 failed=0 total=394`,
+`after: passed=2840 failed=0 total=2840`, and `new failing tests: 0`.
 Completed in this slice: probed the local aggregate/member access family
 directly through `c4cll --codegen asm` and confirmed that `local_array`
 already emits backend-native stdout assembly for both

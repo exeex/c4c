@@ -64,6 +64,18 @@ struct MinimalTwoArgDirectCallSlice {
   std::int64_t rhs_call_arg_imm = 0;
 };
 
+struct MinimalMemberArrayRuntimeSlice {
+  enum class Kind : unsigned char {
+    ByValueParam,
+    NestedMemberPointer,
+  };
+
+  Kind kind = Kind::ByValueParam;
+  std::string helper_name;
+  std::int64_t first_imm = 0;
+  std::int64_t second_imm = 0;
+};
+
 struct MinimalConditionalReturnSlice {
   enum class ValueKind : unsigned char {
     Immediate,
@@ -193,6 +205,9 @@ struct MinimalScalarGlobalStoreReloadSlice;
 std::string emit_minimal_two_arg_direct_call_asm(
     std::string_view target_triple,
     const MinimalTwoArgDirectCallSlice& slice);
+std::string emit_minimal_member_array_runtime_asm(
+    std::string_view target_triple,
+    const MinimalMemberArrayRuntimeSlice& slice);
 std::string emit_minimal_local_array_asm(std::string_view target_triple,
                                          const MinimalLocalArraySlice& slice);
 std::string emit_minimal_extern_global_array_load_asm(
@@ -3141,6 +3156,154 @@ std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_sl
   };
 }
 
+std::optional<MinimalMemberArrayRuntimeSlice> parse_minimal_member_array_runtime_slice(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 2 || !module.globals.empty() || !module.string_pool.empty() ||
+      !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* helper = find_lir_function(module, "get_second");
+  const auto* main_fn = find_lir_function(module, "main");
+  if (helper == nullptr || main_fn == nullptr || helper->is_declaration || main_fn->is_declaration ||
+      helper->entry.value != 0 || main_fn->entry.value != 0 || helper->blocks.size() != 1 ||
+      main_fn->blocks.size() != 1 ||
+      !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(main_fn->signature_text)) {
+    return std::nullopt;
+  }
+
+  MinimalMemberArrayRuntimeSlice slice;
+  const auto& helper_block = helper->blocks.front();
+  const auto* helper_ret = std::get_if<LirRet>(&helper_block.terminator);
+  if (helper_block.label != "entry" || helper_ret == nullptr ||
+      !helper_ret->value_str.has_value() || helper_ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  if (helper->signature_text == "define i32 @get_second(%struct.Pair %p.p)\n" &&
+      helper->alloca_insts.size() == 2 && helper_block.insts.size() == 5) {
+    const auto* alloca = std::get_if<LirAllocaOp>(&helper->alloca_insts[0]);
+    const auto* store = std::get_if<LirStoreOp>(&helper->alloca_insts[1]);
+    const auto* field_gep = std::get_if<LirGepOp>(&helper_block.insts[0]);
+    const auto* array_gep = std::get_if<LirGepOp>(&helper_block.insts[1]);
+    const auto* index_cast = std::get_if<LirCastOp>(&helper_block.insts[2]);
+    const auto* elem_gep = std::get_if<LirGepOp>(&helper_block.insts[3]);
+    const auto* load = std::get_if<LirLoadOp>(&helper_block.insts[4]);
+    if (alloca == nullptr || store == nullptr || field_gep == nullptr || array_gep == nullptr ||
+        index_cast == nullptr || elem_gep == nullptr || load == nullptr ||
+        alloca->result != "%lv.param.p" || alloca->type_str != "%struct.Pair" ||
+        store->type_str != "%struct.Pair" || store->val != "%p.p" || store->ptr != "%lv.param.p" ||
+        field_gep->element_type != "%struct.Pair" || field_gep->ptr != "%lv.param.p" ||
+        field_gep->indices != std::vector<std::string>{"i32 0", "i32 0"} ||
+        array_gep->element_type != "[2 x i32]" || array_gep->ptr != field_gep->result ||
+        array_gep->indices != std::vector<std::string>{"i64 0", "i64 0"} ||
+        index_cast->kind != LirCastKind::SExt || index_cast->from_type != "i32" ||
+        index_cast->operand != "1" || index_cast->to_type != "i64" ||
+        elem_gep->element_type != "i32" || elem_gep->ptr != array_gep->result ||
+        elem_gep->indices != std::vector<std::string>{"i64 " + index_cast->result} ||
+        load->type_str != "i32" || load->ptr != elem_gep->result ||
+        *helper_ret->value_str != load->result) {
+      return std::nullopt;
+    }
+    slice.kind = MinimalMemberArrayRuntimeSlice::Kind::ByValueParam;
+  } else if (helper->signature_text == "define i32 @get_second(%struct.Outer %p.o)\n" &&
+             helper->alloca_insts.size() == 2 && helper_block.insts.size() == 6) {
+    const auto* alloca = std::get_if<LirAllocaOp>(&helper->alloca_insts[0]);
+    const auto* store = std::get_if<LirStoreOp>(&helper->alloca_insts[1]);
+    const auto* outer_gep = std::get_if<LirGepOp>(&helper_block.insts[0]);
+    const auto* inner_gep = std::get_if<LirGepOp>(&helper_block.insts[1]);
+    const auto* array_gep = std::get_if<LirGepOp>(&helper_block.insts[2]);
+    const auto* index_cast = std::get_if<LirCastOp>(&helper_block.insts[3]);
+    const auto* elem_gep = std::get_if<LirGepOp>(&helper_block.insts[4]);
+    const auto* load = std::get_if<LirLoadOp>(&helper_block.insts[5]);
+    if (alloca == nullptr || store == nullptr || outer_gep == nullptr || inner_gep == nullptr ||
+        array_gep == nullptr || index_cast == nullptr || elem_gep == nullptr ||
+        load == nullptr || alloca->result != "%lv.param.o" || alloca->type_str != "%struct.Outer" ||
+        store->type_str != "%struct.Outer" || store->val != "%p.o" || store->ptr != "%lv.param.o" ||
+        outer_gep->element_type != "%struct.Outer" || outer_gep->ptr != "%lv.param.o" ||
+        outer_gep->indices != std::vector<std::string>{"i32 0", "i32 0"} ||
+        inner_gep->element_type != "%struct.Inner" || inner_gep->ptr != outer_gep->result ||
+        inner_gep->indices != std::vector<std::string>{"i32 0", "i32 0"} ||
+        array_gep->element_type != "[2 x i32]" || array_gep->ptr != inner_gep->result ||
+        array_gep->indices != std::vector<std::string>{"i64 0", "i64 0"} ||
+        index_cast->kind != LirCastKind::SExt || index_cast->from_type != "i32" ||
+        index_cast->operand != "1" || index_cast->to_type != "i64" ||
+        elem_gep->element_type != "i32" || elem_gep->ptr != array_gep->result ||
+        elem_gep->indices != std::vector<std::string>{"i64 " + index_cast->result} ||
+        load->type_str != "i32" || load->ptr != elem_gep->result ||
+        *helper_ret->value_str != load->result) {
+      return std::nullopt;
+    }
+    slice.kind = MinimalMemberArrayRuntimeSlice::Kind::ByValueParam;
+  } else if (helper->signature_text == "define i32 @get_second(ptr %p.o)\n" &&
+             helper->alloca_insts.empty() && helper_block.insts.size() == 7) {
+    const auto* outer_gep = std::get_if<LirGepOp>(&helper_block.insts[0]);
+    const auto* load_inner = std::get_if<LirLoadOp>(&helper_block.insts[1]);
+    const auto* inner_gep = std::get_if<LirGepOp>(&helper_block.insts[2]);
+    const auto* array_gep = std::get_if<LirGepOp>(&helper_block.insts[3]);
+    const auto* index_cast = std::get_if<LirCastOp>(&helper_block.insts[4]);
+    const auto* elem_gep = std::get_if<LirGepOp>(&helper_block.insts[5]);
+    const auto* load = std::get_if<LirLoadOp>(&helper_block.insts[6]);
+    if (outer_gep == nullptr || load_inner == nullptr || inner_gep == nullptr ||
+        array_gep == nullptr || index_cast == nullptr || elem_gep == nullptr ||
+        load == nullptr || outer_gep->element_type != "%struct.Outer" ||
+        outer_gep->ptr != "%p.o" ||
+        outer_gep->indices != std::vector<std::string>{"i32 0", "i32 0"} ||
+        load_inner->type_str != "ptr" || load_inner->ptr != outer_gep->result ||
+        inner_gep->element_type != "%struct.Inner" || inner_gep->ptr != load_inner->result ||
+        inner_gep->indices != std::vector<std::string>{"i32 0", "i32 0"} ||
+        array_gep->element_type != "[2 x i32]" || array_gep->ptr != inner_gep->result ||
+        array_gep->indices != std::vector<std::string>{"i64 0", "i64 0"} ||
+        index_cast->kind != LirCastKind::SExt || index_cast->from_type != "i32" ||
+        index_cast->operand != "1" || index_cast->to_type != "i64" ||
+        elem_gep->element_type != "i32" || elem_gep->ptr != array_gep->result ||
+        elem_gep->indices != std::vector<std::string>{"i64 " + index_cast->result} ||
+        load->type_str != "i32" || load->ptr != elem_gep->result ||
+        *helper_ret->value_str != load->result) {
+      return std::nullopt;
+    }
+    slice.kind = MinimalMemberArrayRuntimeSlice::Kind::NestedMemberPointer;
+  } else {
+    return std::nullopt;
+  }
+
+  const auto& main_block = main_fn->blocks.front();
+  const auto* main_ret = std::get_if<LirRet>(&main_block.terminator);
+  if (main_block.label != "entry" || main_ret == nullptr || !main_ret->value_str.has_value() ||
+      main_ret->type_str != "i32" || main_block.insts.size() < 3) {
+    return std::nullopt;
+  }
+
+  std::vector<std::int64_t> element_imms;
+  for (const auto& inst : main_block.insts) {
+    const auto* store = std::get_if<LirStoreOp>(&inst);
+    if (store == nullptr || store->type_str != "i32") {
+      continue;
+    }
+    const auto imm = parse_i64(store->val);
+    if (!imm.has_value()) {
+      return std::nullopt;
+    }
+    element_imms.push_back(*imm);
+  }
+  if (element_imms.size() != 2) {
+    return std::nullopt;
+  }
+
+  const auto* call = std::get_if<LirCallOp>(&main_block.insts.back());
+  if (call == nullptr || call->return_type != "i32" || call->callee != "@get_second" ||
+      *main_ret->value_str != call->result) {
+    return std::nullopt;
+  }
+
+  slice.helper_name = helper->name;
+  slice.first_imm = element_imms[0];
+  slice.second_imm = element_imms[1];
+  return slice;
+}
+
 void emit_function_prelude(std::ostringstream& out,
                            const c4c::backend::BackendModule& module,
                            std::string_view symbol,
@@ -3422,6 +3585,57 @@ std::string emit_minimal_two_arg_direct_call_asm(
     const c4c::backend::BackendModule& module,
     const MinimalTwoArgDirectCallSlice& slice) {
   return emit_minimal_two_arg_direct_call_asm(module.target_triple, slice);
+}
+
+std::string emit_minimal_member_array_runtime_asm(
+    std::string_view target_triple,
+    const MinimalMemberArrayRuntimeSlice& slice) {
+  auto ensure_i32_imm = [](std::int64_t value, std::string_view label) {
+    if (value < std::numeric_limits<std::int32_t>::min() ||
+        value > std::numeric_limits<std::int32_t>::max()) {
+      throw c4c::backend::LirAdapterError(
+          c4c::backend::LirAdapterErrorKind::Unsupported,
+          std::string(label) + " immediate outside the minimal x86 member-array slice range");
+    }
+  };
+  ensure_i32_imm(slice.first_imm, "first member-array");
+  ensure_i32_imm(slice.second_imm, "second member-array");
+
+  const std::string helper_symbol = asm_symbol_name(target_triple, slice.helper_name);
+  const std::string main_symbol = asm_symbol_name(target_triple, "main");
+
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n";
+  out << ".text\n";
+  emit_function_prelude(out, helper_symbol, true);
+  if (slice.kind == MinimalMemberArrayRuntimeSlice::Kind::ByValueParam) {
+    out << "  mov eax, esi\n"
+        << "  ret\n";
+  } else {
+    out << "  mov rax, qword ptr [rdi]\n"
+        << "  mov eax, dword ptr [rax + 4]\n"
+        << "  ret\n";
+  }
+  emit_function_prelude(out, main_symbol, true);
+  if (slice.kind == MinimalMemberArrayRuntimeSlice::Kind::ByValueParam) {
+    out << "  sub rsp, 8\n"
+        << "  mov edi, " << slice.first_imm << "\n"
+        << "  mov esi, " << slice.second_imm << "\n"
+        << "  call " << helper_symbol << "\n"
+        << "  add rsp, 8\n"
+        << "  ret\n";
+  } else {
+    out << "  sub rsp, 24\n"
+        << "  mov dword ptr [rsp + 16], " << slice.first_imm << "\n"
+        << "  mov dword ptr [rsp + 20], " << slice.second_imm << "\n"
+        << "  lea rax, [rsp + 16]\n"
+        << "  mov qword ptr [rsp + 8], rax\n"
+        << "  lea rdi, [rsp + 8]\n"
+        << "  call " << helper_symbol << "\n"
+        << "  add rsp, 24\n"
+        << "  ret\n";
+  }
+  return out.str();
 }
 
 std::string emit_minimal_two_arg_direct_call_asm(
@@ -4332,6 +4546,10 @@ std::string emit_module(const c4c::backend::bir::Module& module,
 
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {
   try {
+    if (const auto slice = parse_minimal_member_array_runtime_slice(module);
+        slice.has_value()) {
+      return emit_minimal_member_array_runtime_asm(module.target_triple, *slice);
+    }
     if (const auto slice = parse_minimal_two_arg_direct_call_slice(module);
         slice.has_value()) {
       return emit_minimal_two_arg_direct_call_asm(module.target_triple, *slice);
