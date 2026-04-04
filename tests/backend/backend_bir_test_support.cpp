@@ -1352,6 +1352,82 @@ make_bir_two_param_u8_select_ne_split_predecessor_add_phi_post_join_add_sub_add_
   return module;
 }
 
+c4c::codegen::lir::LirModule
+make_bir_two_param_u8_select_ne_split_predecessor_mixed_affine_phi_post_join_add_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "riscv64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-p:64:64-i64:64-n32:64-S128";
+
+  LirFunction function;
+  function.name = "choose2_mixed_post_ne_u";
+  function.signature_text =
+      "define i8 @choose2_mixed_post_ne_u(i8 %p.x, i8 %p.y)\n";
+  function.return_type.base = c4c::TB_UCHAR;
+  c4c::TypeSpec param_type{};
+  param_type.base = c4c::TB_UCHAR;
+  function.params.push_back({"%p.x", param_type});
+  function.params.push_back({"%p.y", param_type});
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCastOp{"%t0", LirCastKind::ZExt, "i8", "%p.x", "i32"});
+  entry.insts.push_back(LirCastOp{"%t1", LirCastKind::ZExt, "i8", "%p.y", "i32"});
+  entry.insts.push_back(LirCmpOp{"%t2", false, "ne", "i32", "%t0", "%t1"});
+  entry.insts.push_back(LirCastOp{"%t3", LirCastKind::ZExt, "i1", "%t2", "i32"});
+  entry.insts.push_back(LirCmpOp{"%t4", false, "ne", "i32", "%t3", "0"});
+  entry.terminator = LirCondBr{"%t4", "tern.then.3", "tern.else.5"};
+  function.blocks.push_back(std::move(entry));
+
+  LirBlock true_block;
+  true_block.id = LirBlockId{1};
+  true_block.label = "tern.then.3";
+  true_block.insts.push_back(LirCastOp{"%t5", LirCastKind::ZExt, "i8", "%p.x", "i32"});
+  true_block.insts.push_back(LirBinOp{"%t6", "add", "i32", "%t5", "8"});
+  true_block.insts.push_back(LirBinOp{"%t7", "sub", "i32", "%t6", "3"});
+  true_block.insts.push_back(LirCastOp{"%t8", LirCastKind::Trunc, "i32", "%t7", "i8"});
+  true_block.terminator = LirBr{"tern.then.end.4"};
+  function.blocks.push_back(std::move(true_block));
+
+  LirBlock true_end_block;
+  true_end_block.id = LirBlockId{2};
+  true_end_block.label = "tern.then.end.4";
+  true_end_block.terminator = LirBr{"tern.end.7"};
+  function.blocks.push_back(std::move(true_end_block));
+
+  LirBlock false_block;
+  false_block.id = LirBlockId{3};
+  false_block.label = "tern.else.5";
+  false_block.insts.push_back(LirCastOp{"%t9", LirCastKind::ZExt, "i8", "%p.y", "i32"});
+  false_block.insts.push_back(LirBinOp{"%t10", "add", "i32", "%t9", "11"});
+  false_block.insts.push_back(LirBinOp{"%t11", "sub", "i32", "%t10", "4"});
+  false_block.insts.push_back(LirCastOp{"%t12", LirCastKind::Trunc, "i32", "%t11", "i8"});
+  false_block.terminator = LirBr{"tern.else.end.6"};
+  function.blocks.push_back(std::move(false_block));
+
+  LirBlock false_end_block;
+  false_end_block.id = LirBlockId{4};
+  false_end_block.label = "tern.else.end.6";
+  false_end_block.terminator = LirBr{"tern.end.7"};
+  function.blocks.push_back(std::move(false_end_block));
+
+  LirBlock join_block;
+  join_block.id = LirBlockId{5};
+  join_block.label = "tern.end.7";
+  join_block.insts.push_back(
+      LirPhiOp{"%t13", "i32", {{"%t8", "tern.then.end.4"}, {"%t12", "tern.else.end.6"}}});
+  join_block.insts.push_back(LirBinOp{"%t14", "add", "i32", "%t13", "6"});
+  join_block.insts.push_back(LirCastOp{"%t15", LirCastKind::Trunc, "i32", "%t14", "i8"});
+  join_block.terminator = LirRet{std::string("%t15"), "i8"};
+  function.blocks.push_back(std::move(join_block));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_bir_two_param_select_eq_predecessor_add_phi_module() {
   using namespace c4c::codegen::lir;
 

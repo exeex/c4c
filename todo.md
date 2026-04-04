@@ -10,12 +10,58 @@ Source Plan: plan.md
 - [ ] Revalidate backend and full-suite behavior without fallback
 
 Current active item: Step 2, continue the widened two-parameter
-split-predecessor `unsigned char` `select ne` parity inventory with the
-adjacent mixed-affine post-add slice and verify it stays on the direct BIR
-route.
-Next target: if the split-predecessor mixed-affine `select ne` post-add slice
-is also coverage-only, continue through the matching post-add-sub and
-post-add-sub-add tails in adjacency order until a real direct-BIR gap appears.
+split-predecessor `unsigned char` mixed-affine `select ne` parity inventory
+with the adjacent post-add-sub slice and verify whether it stays on the direct
+BIR route.
+Next target: if the split-predecessor mixed-affine `select ne` post-add-sub
+slice is also coverage-only, continue into the matching post-add-sub-add tail;
+if both land cleanly, advance to the next adjacent widened `select ne`
+mixed-affine/deeper-affine parity gap until a real direct-BIR lowering gap
+appears.
+
+Completed this iteration:
+- Re-audited the widened two-parameter `unsigned char` split-predecessor select
+  inventory after the add/phi/post-add-sub-add slice and confirmed the next
+  adjacent uncovered Step 2 parity gap was the missing mixed-affine
+  split-predecessor `two_param_u8_select_ne` post-add route beside the
+  existing `eq` coverage.
+- Added
+  `tests/c/internal/backend_route_case/two_param_u8_select_ne_split_predecessor_mixed_affine_post_add.c`,
+  proving the bounded two-parameter widened not-equal ternary with
+  split-predecessor mixed-affine `x + 8 - 3` / `y + 11 - 4` arms plus a
+  join-local `+ 6` tail stays on the backend BIR route instead of falling back
+  to legacy LLVM IR text.
+- Registered
+  `backend_codegen_route_riscv64_two_param_u8_select_ne_split_predecessor_mixed_affine_post_add_defaults_to_bir`
+  in `tests/c/internal/InternalTests.cmake`, asserting the emitted text
+  contains `bir.func @choose2_mixed_post_ne_u(i8 %p.x, i8 %p.y) -> i8 {`, the
+  split-predecessor mixed-affine `bir.add`/`bir.sub` arms,
+  `bir.select ne i8 %p.x, %p.y, %t12, %t15`, the trailing join-local
+  `bir.add`, and forbids legacy LLVM IR
+  `define i8 @choose2_mixed_post_ne_u(i8 %p.x, i8 %p.y)`.
+- Added
+  `make_bir_two_param_u8_select_ne_split_predecessor_mixed_affine_phi_post_join_add_module()`
+  to `tests/backend/backend_bir_test_support.*` plus
+  `test_bir_lowering_accepts_two_param_u8_select_ne_split_predecessor_mixed_affine_phi_post_join_add_slice()`
+  in `tests/backend/backend_bir_lowering_tests.cpp` to keep the widened
+  split-predecessor mixed-affine not-equal post-add shape covered below the
+  backend-route harness.
+- Used the new coverage to confirm there was no hidden direct-BIR lowering gap
+  in this slice: the current widened `i8` conditional-phi select lowering
+  already accepts split predecessors, mixed-affine arm arithmetic, the `ne`
+  predicate, and the join-local `+ 6` tail, so this iteration advanced Step 2
+  by closing a parity-coverage hole rather than by changing
+  `src/backend/lowering/lir_to_bir.cpp`.
+- Rebuilt `backend_bir_tests` and `c4cll`, reran `./build/backend_bir_tests`,
+  reran
+  `backend_codegen_route_riscv64_two_param_u8_select_ne_split_predecessor_mixed_affine_post_add_defaults_to_bir`,
+  reran `ctest --test-dir build -L backend --output-on-failure -j8` with
+  `390/390` backend-labeled tests passing, refreshed `test_fail_after.log`
+  with a full `ctest --test-dir build -j8 --output-on-failure` run, and passed
+  the regression guard against `test_fail_before.log` with
+  `--allow-non-decreasing-passed --timeout-threshold 30 --enforce-timeout`
+  (`2822 -> 2828` passed, `0 -> 0` failed, no newly failing tests, no new
+  `>30s` cases).
 
 Completed this iteration:
 - Re-audited the widened two-parameter `unsigned char` split-predecessor
