@@ -10,13 +10,14 @@ Source Plan: plan.md
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
 Current active item: Step 4, keep shrinking the remaining app-layer LLVM asm
-rescue one bounded surface at a time; after converting the last blocked
-aarch64 extern-call contract onto the explicit stdout runner, return to the
-remaining rescue-path deletion surfaces outside the backend contract family.
-Next intended slice: probe the remaining app-layer `-o <file>.s` fallback
-surfaces after the bounded aarch64 extern-call stdout conversion and
-prioritize the next family that already emits backend-native stdout assembly
-without LLVM rescue.
+rescue one bounded surface at a time; with the `string_literal_char` stdout
+object contracts now restored, return to the remaining `-o <file>.s` rescue
+surfaces outside this contract family.
+Next intended slice: probe the remaining runtime-positive/file-output backend
+families that already emit backend-native stdout asm today (for example other
+minimal data/memory surfaces), promote the next bounded family onto the
+explicit stdout object runner, and keep app-layer LLVM rescue usage shrinking
+without widening plan scope.
 Blocker: none. The rebuilt `backend_lir_adapter_aarch64_tests` expectation
 drift has been realigned to the current native aarch64 backend seam, and the
 required backend/full-suite acceptance gates are green again.
@@ -68,6 +69,21 @@ Completed in this slice: reran the monotonic full-suite guard over
 `test_fail_before.log` versus the freshly regenerated `test_fail_after.log`,
 with guard result `PASS` and `before: passed=394 failed=0 total=394`,
 `after: passed=2838 failed=0 total=2838`, and `new failing tests: 0`.
+Completed in this slice: restored the previously disabled
+`string_literal_char` backend object contract coverage as explicit stdout-native
+contract tests for both `aarch64` and `x86_64`, proving that this bounded
+family no longer needs the app-layer `-o <file>.s` LLVM asm rescue path to
+assemble into object files.
+Completed in this slice: rebuilt `c4cll`, reran the focused stdout object
+contracts (`backend_contract_aarch64_string_literal_char_stdout_object` and
+`backend_contract_x86_64_string_literal_char_stdout_object`) with `100% tests
+passed, 0 tests failed out of 1` for each, reran the required backend
+regression scope (`ctest --test-dir build -R backend --output-on-failure`)
+with `100% tests passed, 0 tests failed out of 401`, regenerated
+`test_fail_after.log`, and reran the monotonic full-suite guard over
+`test_fail_before.log` versus the refreshed `test_fail_after.log`, with guard
+result `PASS` and `before: passed=394 failed=0 total=394`,
+`after: passed=2840 failed=0 total=2840`, and `new failing tests: 0`.
 Completed in this slice: reran the focused proving checks around the existing
 stdout-native scalar-global-load family plus nearby aarch64 backend c-testsuite
 coverage (`backend_contract_aarch64_global_load_stdout_object`,

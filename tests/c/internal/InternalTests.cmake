@@ -560,8 +560,39 @@ if(CLANG_EXECUTABLE)
     set_tests_properties(backend_contract_aarch64_global_load_zero_init_stdout_object PROPERTIES
         LABELS "internal;backend")
 
-    # TODO: string_literal_char contract disabled — backend .rodata lowering changed
-    # add_test(NAME backend_contract_aarch64_string_literal_char_object ...)
+    add_test(
+      NAME backend_contract_aarch64_string_literal_char_stdout_object
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DCLANG=${CLANG_EXECUTABLE}
+              -DOBJDUMP=${OBJDUMP_EXECUTABLE}
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_case/string_literal_char.c
+              -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
+              -DBACKEND_OUTPUT_PATH=${CMAKE_BINARY_DIR}/internal_backend_contract/string_literal_char_aarch64.s
+              -DOUT_ARTIFACT=${CMAKE_BINARY_DIR}/internal_backend_contract/string_literal_char_aarch64.o
+              "-DREQUIRED_BACKEND_SNIPPETS=.section .rodata|.L.str0:|.asciz \"hi\"|.text|.globl main|adrp x8, .L.str0|add x8, x8, :lo12:.L.str0|ldrb w0, [x8, #1]|sxtb w0, w0|ret"
+              "-DREQUIRED_OBJDUMP_SNIPPETS=file format elf64-littleaarch64|.text|.rodata|main|R_AARCH64_ADR_PREL_PG_HI21|R_AARCH64_ADD_ABS_LO12_NC"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_stdout_contract_case.cmake"
+    )
+    set_tests_properties(backend_contract_aarch64_string_literal_char_stdout_object PROPERTIES
+        LABELS "internal;backend")
+
+    add_test(
+      NAME backend_contract_x86_64_string_literal_char_stdout_object
+      COMMAND "${CMAKE_COMMAND}"
+              -DCOMPILER=$<TARGET_FILE:c4cll>
+              -DCLANG=${CLANG_EXECUTABLE}
+              -DOBJDUMP=${OBJDUMP_EXECUTABLE}
+              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_case/string_literal_char.c
+              -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
+              -DBACKEND_OUTPUT_PATH=${CMAKE_BINARY_DIR}/internal_backend_contract/string_literal_char_x86_64.s
+              -DOUT_ARTIFACT=${CMAKE_BINARY_DIR}/internal_backend_contract/string_literal_char_x86_64.o
+              "-DREQUIRED_BACKEND_SNIPPETS=.intel_syntax noprefix|.section .rodata|.L.str0:|.asciz \"hi\"|.text|.globl main|lea rax, .L.str0[rip]|movsx eax, byte ptr [rax + 1]|ret"
+              "-DREQUIRED_OBJDUMP_SNIPPETS=.text|.rodata|main"
+              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_stdout_contract_case.cmake"
+    )
+    set_tests_properties(backend_contract_x86_64_string_literal_char_stdout_object PROPERTIES
+        LABELS "internal;backend")
 
     add_test(
       NAME backend_contract_aarch64_extern_global_array_stdout_object
