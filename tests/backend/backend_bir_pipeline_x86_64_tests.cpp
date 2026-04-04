@@ -158,6 +158,22 @@ void test_backend_bir_pipeline_drives_x86_trunc_end_to_end() {
                   "x86 BIR lowering should truncate the incoming i64 argument by returning its low i32 half");
 }
 
+void test_backend_bir_pipeline_drives_x86_select_end_to_end() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{
+          c4c::backend::lower_to_bir(make_bir_return_select_eq_module())},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl main",
+                  "direct BIR select input should reach x86 backend emission without a caller-owned legacy backend module");
+  expect_contains(rendered, "cmp eax, 7",
+                  "x86 BIR lowering should compare the bounded select operands on the native backend path");
+  expect_contains(rendered, "mov eax, 11",
+                  "x86 BIR lowering should materialize the true-value arm for the bounded select slice");
+  expect_contains(rendered, "mov eax, 4",
+                  "x86 BIR lowering should materialize the false-value arm for the bounded select slice");
+}
+
 void test_backend_bir_pipeline_rejects_unsupported_direct_bir_input_on_x86() {
   try {
     (void)c4c::backend::emit_module(
@@ -187,5 +203,6 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_sext_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_zext_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_trunc_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_select_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_rejects_unsupported_direct_bir_input_on_x86);
 }

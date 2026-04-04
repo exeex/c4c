@@ -124,6 +124,22 @@ void test_backend_bir_pipeline_drives_aarch64_trunc_end_to_end() {
                       "aarch64 BIR lowering should keep the bounded trunc slice on the native asm path");
 }
 
+void test_backend_bir_pipeline_drives_aarch64_select_end_to_end() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{
+          c4c::backend::lower_to_bir(make_bir_return_select_eq_module())},
+      make_bir_pipeline_options(c4c::backend::Target::Aarch64));
+
+  expect_contains(rendered, ".globl main",
+                  "direct BIR select input should reach aarch64 backend emission without a caller-owned legacy backend module");
+  expect_contains(rendered, "cmp w8, #7",
+                  "aarch64 BIR lowering should compare the bounded select operands on the native backend path");
+  expect_contains(rendered, "mov w0, #11",
+                  "aarch64 BIR lowering should materialize the true-value arm for the bounded select slice");
+  expect_contains(rendered, "mov w0, #4",
+                  "aarch64 BIR lowering should materialize the false-value arm for the bounded select slice");
+}
+
 void test_backend_bir_pipeline_rejects_unsupported_direct_bir_input_on_aarch64() {
   try {
     (void)c4c::backend::emit_module(
@@ -151,5 +167,6 @@ void run_backend_bir_pipeline_aarch64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_sext_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_zext_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_trunc_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_aarch64_select_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_rejects_unsupported_direct_bir_input_on_aarch64);
 }

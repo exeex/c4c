@@ -176,6 +176,26 @@ std::optional<std::int64_t> parse_i64(const c4c::backend::bir::Value& value) {
   return value.immediate;
 }
 
+std::optional<c4c::codegen::lir::LirCmpPredicate> lower_bir_cmp_predicate(
+    c4c::backend::bir::BinaryOpcode predicate) {
+  using BirPred = c4c::backend::bir::BinaryOpcode;
+  using LirPred = c4c::codegen::lir::LirCmpPredicate;
+
+  switch (predicate) {
+    case BirPred::Eq: return LirPred::Eq;
+    case BirPred::Ne: return LirPred::Ne;
+    case BirPred::Slt: return LirPred::Slt;
+    case BirPred::Sle: return LirPred::Sle;
+    case BirPred::Sgt: return LirPred::Sgt;
+    case BirPred::Sge: return LirPred::Sge;
+    case BirPred::Ult: return LirPred::Ult;
+    case BirPred::Ule: return LirPred::Ule;
+    case BirPred::Ugt: return LirPred::Ugt;
+    case BirPred::Uge: return LirPred::Uge;
+    default: return std::nullopt;
+  }
+}
+
 struct AffineValue {
   bool uses_first_param = false;
   bool uses_second_param = false;
@@ -931,6 +951,56 @@ std::optional<MinimalCastReturnSlice> parse_minimal_cast_return_slice(
       cast->opcode,
       cast->operand.type,
       cast->result.type,
+  };
+}
+
+std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_slice(
+    const c4c::backend::bir::Module& module) {
+  if (module.functions.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration || function.name != "main" ||
+      function.return_type != c4c::backend::bir::TypeKind::I32 ||
+      !function.params.empty() || function.blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& block = function.blocks.front();
+  if (block.label != "entry" || block.insts.size() != 1 ||
+      !block.terminator.value.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto* select = std::get_if<c4c::backend::bir::SelectInst>(&block.insts.front());
+  if (select == nullptr ||
+      select->result.kind != c4c::backend::bir::Value::Kind::Named ||
+      select->result.type != c4c::backend::bir::TypeKind::I32 ||
+      block.terminator.value->kind != c4c::backend::bir::Value::Kind::Named ||
+      block.terminator.value->name != select->result.name ||
+      block.terminator.value->type != select->result.type) {
+    return std::nullopt;
+  }
+
+  const auto predicate = lower_bir_cmp_predicate(select->predicate);
+  const auto lhs_imm = parse_i64(select->lhs);
+  const auto rhs_imm = parse_i64(select->rhs);
+  const auto true_return_imm = parse_i64(select->true_value);
+  const auto false_return_imm = parse_i64(select->false_value);
+  if (!predicate.has_value() || !lhs_imm.has_value() || !rhs_imm.has_value() ||
+      !true_return_imm.has_value() || !false_return_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  return MinimalConditionalReturnSlice{
+      *predicate,
+      *lhs_imm,
+      *rhs_imm,
+      "select_true",
+      "select_false",
+      *true_return_imm,
+      *false_return_imm,
   };
 }
 
@@ -3483,6 +3553,12 @@ std::string emit_module(const c4c::backend::bir::Module& module,
   if (const auto slice = parse_minimal_cast_return_slice(module);
       slice.has_value()) {
     return emit_minimal_cast_return_asm(module, *slice);
+  }
+  if (const auto slice = parse_minimal_conditional_return_slice(module);
+      slice.has_value()) {
+    c4c::backend::BackendModule scaffold_module;
+    scaffold_module.target_triple = module.target_triple;
+    return emit_minimal_conditional_return_asm(scaffold_module, *slice);
   }
   throw_unsupported_direct_bir_module();
 }

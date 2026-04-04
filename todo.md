@@ -10,8 +10,8 @@ Source Plan: plan.md
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
 Current active item: Step 2, land the bounded native-emitter coverage slice
-for the new straight-line BIR cast family (`sext`/`zext`/`trunc`) on x86_64
-and aarch64.
+for the direct-BIR compare-fed integer `select` return family on x86_64 and
+aarch64.
 Completed in this slice: added a structured backend route-selection seam in
 `backend.hpp/.cpp` and covered legacy-LIR, BIR-LIR, direct-BIR, and pre-lowered
 legacy inputs without relying on `riscv64` passthrough text.
@@ -42,7 +42,10 @@ it as unsupported.
 Completed in this slice: repaired the stale backend baseline around the renamed
 `widen_signed` cast fixture, so the backend regression gate improved from
 `99%` (`1/394` failing) to `100%` (`0/394` failing).
-Next target: pick the next bounded BIR-owned lowering family after the
-straight-line casts, start with target-neutral route/lowering assertions, and
-only add x86_64/aarch64 emitter checks once that family’s direct-BIR/native
-ownership boundary is clear.
+Completed in this slice: taught both direct-BIR native emitters to accept the
+bounded constant compare-fed `bir.select` return shape by routing it through
+their existing minimal conditional-return asm path, and added explicit direct-
+BIR x86_64/aarch64 pipeline coverage for that family.
+Next target: extend direct native-emitter ownership to the next select-shaped
+family that already lowers through BIR, likely the bounded parameter-fed
+select or phi-join slice, before widening the legacy-IR removal surface.
