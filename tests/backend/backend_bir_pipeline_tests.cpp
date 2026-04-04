@@ -74,7 +74,7 @@ void expect_i8_bir_immediate_route(I8ModuleFactory make_module,
                       " should keep the widened i8 immediate return on the BIR text path");
 }
 
-void test_backend_default_route_stays_on_legacy_lir_entry_target_neutral() {
+void test_backend_default_route_stays_on_bir_lir_entry_target_neutral() {
   const auto route = c4c::backend::select_lowering_route(
       c4c::backend::BackendModuleInput{make_bir_return_add_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
@@ -83,24 +83,13 @@ void test_backend_default_route_stays_on_legacy_lir_entry_target_neutral() {
               "default backend entry should now start from the BIR lowering seam instead of routing fresh LIR input through legacy backend IR");
 }
 
-void test_backend_bir_pipeline_selects_bir_lir_entry_route_target_neutral() {
+void test_backend_bir_pipeline_options_keep_bir_lir_entry_route_target_neutral() {
   const auto route = c4c::backend::select_lowering_route(
       c4c::backend::BackendModuleInput{make_bir_return_add_module()},
       make_bir_pipeline_options(c4c::backend::Target::X86_64));
 
   expect_true(route == c4c::backend::BackendLoweringRoute::BirFromLirEntry,
-              "explicit BIR backend options should switch the entry seam onto the BIR lowering route before any target-specific emission is observed");
-}
-
-void test_backend_prelowered_legacy_module_route_ignores_pipeline_override_target_neutral() {
-  const auto lir_module = make_bir_return_add_module();
-  const auto lowered = c4c::backend::lower_lir_to_backend_module(lir_module);
-  const auto route = c4c::backend::select_lowering_route(
-      c4c::backend::BackendModuleInput{lowered, &lir_module},
-      make_bir_pipeline_options(c4c::backend::Target::Riscv64));
-
-  expect_true(route == c4c::backend::BackendLoweringRoute::LegacyPreloweredModule,
-              "once callers provide a pre-lowered legacy backend module, pipeline selection should stop at that structured route seam instead of re-entering LIR routing");
+              "BIR-focused backend options should keep the LIR entry seam on the BIR lowering route before any target-specific emission is observed");
 }
 
 void test_backend_direct_bir_module_route_ignores_legacy_pipeline_default_target_neutral() {
@@ -112,7 +101,7 @@ void test_backend_direct_bir_module_route_ignores_legacy_pipeline_default_target
               "direct BIR input should remain observable as a BIR-owned route even when callers do not opt into the LIR-entry BIR pipeline");
 }
 
-void test_backend_default_path_remains_legacy_when_bir_pipeline_is_not_selected() {
+void test_backend_default_path_uses_bir_when_bir_pipeline_is_not_selected() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_bir_return_add_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Riscv64});
@@ -1315,48 +1304,38 @@ void test_backend_bir_pipeline_selection_only_applies_at_lir_entry_input() {
       c4c::backend::lower_lir_to_backend_module(lir_module);
   const auto expected = c4c::backend::print_backend_module(lowered_backend);
 
-  const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered_backend, &lir_module},
-      make_bir_pipeline_options(c4c::backend::Target::Riscv64));
+  const auto rendered =
+      c4c::backend::emit_module(lowered_backend,
+                                make_bir_pipeline_options(c4c::backend::Target::Riscv64));
 
   expect_true(rendered == expected,
-              "once callers provide a lowered backend module, backend pipeline selection should stop at the LIR entry seam");
+              "explicit lowered backend-module emission should stay on the backend-owned passthrough text surface");
   expect_not_contains(rendered, "bir.func",
-                      "pre-lowered backend-module entry should not re-enter the BIR text path");
+                      "explicit lowered backend-module emission should not re-enter the BIR text path");
 }
 
-void test_backend_lowered_riscv_passthrough_ignores_broken_legacy_fallback() {
-  auto legacy_module = make_bir_return_add_module();
-  const c4c::backend::BackendModule lowered_backend =
-      c4c::backend::lower_lir_to_backend_module(legacy_module);
+void test_backend_lowered_riscv_passthrough_is_detached_from_lir_metadata() {
+  const auto lowered_backend =
+      c4c::backend::lower_lir_to_backend_module(make_bir_return_add_module());
   const auto expected = c4c::backend::print_backend_module(lowered_backend);
 
-  for (auto& function : legacy_module.functions) {
-    if (function.name == "main") {
-      function.name = "legacy_main_broken";
-      function.signature_text = "define i32 @legacy_main_broken()\n";
-      break;
-    }
-  }
-
-  const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered_backend, &legacy_module},
-      make_bir_pipeline_options(c4c::backend::Target::Riscv64));
+  const auto rendered =
+      c4c::backend::emit_module(lowered_backend,
+                                make_bir_pipeline_options(c4c::backend::Target::Riscv64));
 
   expect_true(rendered == expected,
-              "once callers provide a lowered RISC-V backend module, malformed attached legacy fallback metadata should not override the backend-owned passthrough text surface");
-  expect_not_contains(rendered, "define i32 @legacy_main_broken()",
-                      "pre-lowered RISC-V backend-module emission should ignore broken legacy fallback LLVM text");
+              "once callers emit an explicit lowered RISC-V backend module, the output should come only from the backend-owned passthrough text surface");
+  expect_not_contains(rendered, "bir.func",
+                      "explicit lowered RISC-V backend-module emission should stay off the BIR text surface");
 }
 
 }  // namespace
 
 void run_backend_bir_pipeline_tests() {
-  RUN_TEST(test_backend_default_route_stays_on_legacy_lir_entry_target_neutral);
-  RUN_TEST(test_backend_bir_pipeline_selects_bir_lir_entry_route_target_neutral);
-  RUN_TEST(test_backend_prelowered_legacy_module_route_ignores_pipeline_override_target_neutral);
+  RUN_TEST(test_backend_default_route_stays_on_bir_lir_entry_target_neutral);
+  RUN_TEST(test_backend_bir_pipeline_options_keep_bir_lir_entry_route_target_neutral);
   RUN_TEST(test_backend_direct_bir_module_route_ignores_legacy_pipeline_default_target_neutral);
-  RUN_TEST(test_backend_default_path_remains_legacy_when_bir_pipeline_is_not_selected);
+  RUN_TEST(test_backend_default_path_uses_bir_when_bir_pipeline_is_not_selected);
   RUN_TEST(test_backend_default_path_keeps_unsupported_lir_on_llvm_text_surface);
   RUN_TEST(test_backend_bir_pipeline_is_opt_in_through_backend_options);
   RUN_TEST(test_backend_bir_pipeline_accepts_direct_bir_module_input);
@@ -1439,4 +1418,6 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_backend_bir_pipeline_routes_two_param_add_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_two_param_add_sub_chain_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_two_param_staged_affine_chain_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_selection_only_applies_at_lir_entry_input);
+  RUN_TEST(test_backend_lowered_riscv_passthrough_is_detached_from_lir_metadata);
 }

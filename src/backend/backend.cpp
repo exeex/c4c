@@ -114,13 +114,6 @@ bool is_direct_bir_subset_error(const std::invalid_argument& ex) {
 }  // namespace
 
 BackendModuleInput::BackendModuleInput(
-    const BackendModule& backend_module,
-    const c4c::codegen::lir::LirModule* legacy_fallback_in)
-    : owned_legacy_module_(std::make_unique<BackendModule>(backend_module)),
-      legacy_module_(owned_legacy_module_.get()),
-      legacy_fallback_(legacy_fallback_in) {}
-
-BackendModuleInput::BackendModuleInput(
     const bir::Module& bir_module,
     const c4c::codegen::lir::LirModule* legacy_fallback_in)
     : owned_bir_module_(std::make_unique<bir::Module>(bir_module)),
@@ -140,10 +133,16 @@ BackendLoweringRoute select_lowering_route(const BackendModuleInput& input,
   if (input.bir_module() != nullptr) {
     return BackendLoweringRoute::BirPreloweredModule;
   }
-  if (input.legacy_module() != nullptr) {
-    return BackendLoweringRoute::LegacyPreloweredModule;
-  }
   return BackendLoweringRoute::BirFromLirEntry;
+}
+
+std::string emit_module(const BackendModule& module,
+                        const BackendOptions& options) {
+  if (options.target == Target::Riscv64) {
+    return c4c::backend::print_backend_module(module);
+  }
+  auto backend = make_backend(options.target);
+  return backend->emit(module, nullptr);
 }
 
 std::string emit_module(const BackendModuleInput& input,
@@ -179,8 +178,7 @@ std::string emit_module(const BackendModuleInput& input,
     return backend->emit(*input.bir_module(), input.legacy_fallback());
   }
 
-  auto backend = make_backend(options.target);
-  return backend->emit(*input.legacy_module(), input.legacy_fallback());
+  throw std::logic_error("unreachable backend lowering route");
 }
 
 }  // namespace c4c::backend

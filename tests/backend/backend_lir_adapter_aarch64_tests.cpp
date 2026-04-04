@@ -1499,7 +1499,7 @@ void test_aarch64_backend_scaffold_accepts_structured_single_function_ir_without
   auto lowered = c4c::backend::lower_lir_to_backend_module(make_return_add_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, ".text\n",
@@ -1515,7 +1515,7 @@ void test_aarch64_backend_scaffold_accepts_structured_single_function_ir_without
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, ".text\n",
@@ -1563,7 +1563,7 @@ void test_aarch64_backend_scaffold_matches_direct_return_immediate_asm() {
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   const auto lowered = c4c::backend::lower_lir_to_backend_module(make_return_zero_module());
   const auto lowered_rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   if (direct_rendered != lowered_rendered) {
@@ -1578,7 +1578,7 @@ void test_aarch64_backend_scaffold_matches_direct_constant_conditional_goto_retu
   const auto lowered =
       c4c::backend::lower_lir_to_backend_module(make_constant_conditional_goto_return_module());
   const auto lowered_rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   if (direct_rendered != lowered_rendered) {
@@ -1593,7 +1593,7 @@ void test_aarch64_backend_scaffold_matches_direct_i64_constant_conditional_goto_
   const auto lowered =
       c4c::backend::lower_lir_to_backend_module(make_i64_constant_conditional_goto_return_module());
   const auto lowered_rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   if (direct_rendered != lowered_rendered) {
@@ -1608,7 +1608,7 @@ void test_aarch64_backend_scaffold_matches_direct_mixed_cast_constant_conditiona
   const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_mixed_cast_constant_conditional_goto_return_module());
   const auto lowered_rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   if (direct_rendered != lowered_rendered) {
@@ -1624,7 +1624,7 @@ void test_aarch64_backend_scaffold_matches_direct_small_integer_cast_constant_co
   const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_small_integer_cast_constant_conditional_goto_return_module());
   const auto lowered_rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   if (direct_rendered != lowered_rendered) {
@@ -1640,7 +1640,7 @@ void test_aarch64_backend_scaffold_matches_direct_truncating_binop_constant_cond
   const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_truncating_binop_constant_conditional_goto_return_module());
   const auto lowered_rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   if (direct_rendered != lowered_rendered) {
@@ -1665,7 +1665,7 @@ void test_aarch64_backend_scaffold_matches_direct_select_constant_conditional_go
   const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_select_constant_conditional_goto_return_module());
   const auto lowered_rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_not_contains(lowered_rendered, "target triple =",
@@ -1680,7 +1680,7 @@ void test_aarch64_backend_scaffold_matches_direct_local_slot_constant_conditiona
   const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_local_slot_constant_conditional_goto_return_module());
   const auto lowered_rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   if (direct_rendered != lowered_rendered) {
@@ -1696,7 +1696,7 @@ void test_aarch64_backend_scaffold_matches_direct_i8_local_slot_constant_conditi
   const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_i8_local_slot_constant_conditional_goto_return_module());
   const auto lowered_rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   if (direct_rendered != lowered_rendered) {
@@ -1711,7 +1711,7 @@ void expect_aarch64_backend_scaffold_matches_direct_local_slot_constant_conditio
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto lowered_rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   if (direct_rendered != lowered_rendered) {
@@ -1744,7 +1744,7 @@ void test_aarch64_backend_scaffold_matches_direct_non_main_param_nineteen_local_
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto lowered_rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   if (direct_rendered != lowered_rendered) {
@@ -2039,7 +2039,7 @@ void test_aarch64_backend_scaffold_accepts_structured_direct_call_ir_without_sig
   auto lowered = c4c::backend::lower_lir_to_backend_module(make_direct_call_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, ".type helper, %function",
@@ -2078,7 +2078,7 @@ void test_aarch64_backend_scaffold_rejects_structured_zero_arg_direct_call_when_
   }
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   expect_contains(rendered, "target triple =",
                   "aarch64 backend seam should stop matching the structured zero-argument direct-call asm slice when the lowered helper body no longer matches the shared immediate-return contract");
@@ -2110,7 +2110,7 @@ void test_aarch64_backend_scaffold_accepts_structured_zero_arg_direct_call_spaci
   auto lowered = c4c::backend::lower_lir_to_backend_module(std::move(module));
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, ".type helper, %function",
@@ -2150,7 +2150,7 @@ void test_aarch64_backend_scaffold_accepts_renamed_structured_zero_arg_direct_ca
   call->callee.symbol_name = "const_value";
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   expect_contains(rendered, ".type const_value, %function",
                   "aarch64 backend seam should key the lowered zero-argument helper definition from the structured callee symbol instead of a fixed helper name");
@@ -2276,7 +2276,7 @@ void test_aarch64_backend_scaffold_matches_direct_local_pointer_temp_return_asm(
   const auto lowered =
       c4c::backend::lower_lir_to_backend_module(make_local_pointer_temp_return_module());
   const auto lowered_rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   if (direct_rendered != lowered_rendered) {
@@ -2504,7 +2504,7 @@ void test_aarch64_backend_scaffold_accepts_structured_call_crossing_direct_call_
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   expect_contains(rendered, ".type add_one, %function",
                   "aarch64 backend seam should still preserve lowered call-crossing helper definitions without legacy signature text");
@@ -2552,7 +2552,7 @@ void test_aarch64_backend_scaffold_accepts_renamed_structured_call_crossing_dire
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   expect_contains(rendered, ".type inc_value, %function",
                   "aarch64 backend seam should key lowered call-crossing helper definitions from the structured callee symbol instead of legacy signature text");
@@ -2600,7 +2600,7 @@ void test_aarch64_backend_scaffold_accepts_lowered_call_crossing_source_value_re
   final_add->lhs = "%t.crossing.source.renamed";
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   expect_contains(rendered, "mov w20, #5",
                   "aarch64 backend seam should keep using the backend-owned synthesized regalloc source when the lowered call-crossing source SSA name changes");
@@ -2651,7 +2651,7 @@ void test_aarch64_backend_scaffold_accepts_renamed_lowered_call_crossing_source_
   final_add->lhs = "%t.crossing.source.renamed";
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   expect_contains(rendered, ".type inc_value, %function",
                   "aarch64 backend seam should still key the lowered call-crossing helper definition from the renamed structured callee symbol");
@@ -2682,7 +2682,7 @@ void test_aarch64_backend_scaffold_ignores_broken_legacy_fallback_for_call_cross
   }
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered, &legacy},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   expect_contains(rendered, ".type add_one, %function",
                   "aarch64 backend seam should keep the lowered call-crossing helper on the asm path even when an attached legacy fallback no longer has the matching main function");
@@ -2715,7 +2715,7 @@ void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_ir_wit
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   expect_contains(rendered, ".type add_pair, %function",
                   "aarch64 backend seam should still preserve lowered two-argument helper definitions without legacy signature text");
@@ -2751,7 +2751,7 @@ void test_aarch64_backend_scaffold_rejects_structured_two_arg_direct_call_when_h
   }
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   expect_contains(rendered, "target triple =",
                   "aarch64 backend seam should stop matching the structured two-argument direct-call asm slice when the lowered helper body no longer matches the shared two-argument add-helper contract");
@@ -2799,7 +2799,7 @@ void test_aarch64_backend_scaffold_accepts_renamed_structured_two_arg_direct_cal
   main_fn->blocks.front().terminator.value = "%t.main.sum.structured";
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   expect_contains(rendered, ".type sum_pair, %function",
                   "aarch64 backend seam should key the lowered two-argument helper definition from the structured callee symbol instead of a fixed helper name");
@@ -2839,7 +2839,7 @@ void test_aarch64_backend_scaffold_rejects_structured_two_arg_direct_call_when_p
   }
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   expect_contains(rendered, "target triple = \"aarch64-unknown-linux-gnu\"",
                   "aarch64 backend seam should stop matching the structured two-argument direct-call asm slice when call param type count no longer matches arg count");
@@ -2864,7 +2864,7 @@ void test_aarch64_backend_scaffold_rejects_structured_two_arg_direct_call_when_c
   }
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   expect_contains(rendered, "target triple = \"aarch64-unknown-linux-gnu\"",
                   "aarch64 backend seam should stop matching the structured two-argument direct-call asm slice when the callee signature param type disagrees with the call contract");
@@ -2893,7 +2893,7 @@ void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_folded
       c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_two_arg_folded_const_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, ".type foo, %function",
@@ -2957,7 +2957,7 @@ void test_aarch64_backend_scaffold_accepts_renamed_structured_two_arg_direct_cal
   main_fn->blocks.front().terminator.value = "%t.main.folded.result";
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, ".type const_pair, %function",
@@ -2995,7 +2995,7 @@ void test_aarch64_backend_scaffold_rejects_structured_two_arg_direct_call_folded
   }
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   expect_contains(rendered, "target triple =",
                   "aarch64 backend seam should stop matching the structured folded two-argument direct-call asm slice when the lowered helper body no longer matches the shared folded-helper contract");
@@ -3039,7 +3039,7 @@ void test_aarch64_backend_scaffold_accepts_structured_direct_call_add_imm_ir_wit
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   expect_contains(rendered, ".type add_one, %function",
                   "aarch64 backend seam should still preserve lowered single-argument helper definitions without legacy signature text");
@@ -3075,7 +3075,7 @@ void test_aarch64_backend_scaffold_rejects_structured_direct_call_add_imm_when_h
   }
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   expect_contains(rendered, "target triple =",
                   "aarch64 backend seam should stop matching the structured single-argument direct-call asm slice when the lowered helper body no longer matches the shared add-immediate helper contract");
@@ -3125,7 +3125,7 @@ void test_aarch64_backend_scaffold_accepts_renamed_structured_direct_call_add_im
   main_fn->blocks.front().terminator.value = "%t.main.inc_value.renamed";
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   expect_contains(rendered, ".type inc_value, %function",
                   "aarch64 backend seam should key the lowered single-argument helper definition from the structured callee symbol instead of a fixed helper name");
@@ -3156,7 +3156,7 @@ void test_aarch64_backend_scaffold_accepts_structured_direct_call_local_arg_spac
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   expect_contains(rendered, ".type add_one, %function",
                   "aarch64 backend seam should still preserve spacing-tolerant lowered single-argument helper definitions without legacy signature text");
@@ -3190,7 +3190,7 @@ void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_local_
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   expect_contains(rendered, ".type add_pair, %function",
                   "aarch64 backend seam should still preserve lowered two-argument local-argument helper definitions without legacy signature text");
@@ -3210,7 +3210,7 @@ void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_local_
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   expect_contains(rendered, ".type add_pair, %function",
                   "aarch64 backend seam should still preserve spacing-tolerant lowered two-argument local-argument helper definitions without legacy signature text");
@@ -3230,7 +3230,7 @@ void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_second
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   expect_contains(rendered, ".type add_pair, %function",
                   "aarch64 backend seam should still preserve lowered two-argument second-local helper definitions without legacy signature text");
@@ -3267,7 +3267,7 @@ void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_second
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   expect_contains(rendered, ".type add_pair, %function",
                   "aarch64 backend seam should still preserve lowered rewritten second-local helper definitions without legacy signature text");
@@ -3287,7 +3287,7 @@ void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_first_
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   expect_contains(rendered, ".type add_pair, %function",
                   "aarch64 backend seam should still preserve lowered rewritten first-local helper definitions without legacy signature text");
@@ -3354,7 +3354,7 @@ void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_first_
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   expect_contains(rendered, ".type add_pair, %function",
                   "aarch64 backend seam should still preserve spacing-tolerant lowered rewritten first-local helper definitions without legacy signature text");
@@ -3391,7 +3391,7 @@ void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_both_l
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   expect_contains(rendered, ".type add_pair, %function",
                   "aarch64 backend seam should still preserve lowered two-argument both-local helper definitions without legacy signature text");
@@ -3428,7 +3428,7 @@ void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_both_l
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   expect_contains(rendered, ".type add_pair, %function",
                   "aarch64 backend seam should still preserve lowered mixed rewritten both-local helper definitions without legacy signature text");
@@ -3465,7 +3465,7 @@ void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_both_l
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   expect_contains(rendered, ".type add_pair, %function",
                   "aarch64 backend seam should still preserve lowered mixed rewritten both-local helper definitions without legacy signature text");
@@ -3502,7 +3502,7 @@ void test_aarch64_backend_scaffold_accepts_structured_two_arg_direct_call_both_l
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   expect_contains(rendered, ".type add_pair, %function",
                   "aarch64 backend seam should still preserve lowered fully rewritten both-local helper definitions without legacy signature text");
@@ -3952,7 +3952,7 @@ void test_aarch64_backend_renders_extern_global_load_slice() {
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_global_load_ir_input() {
   const auto lowered = c4c::backend::lower_lir_to_backend_module(make_global_load_module());
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, ".globl g_counter\n",
@@ -3968,7 +3968,7 @@ void test_aarch64_backend_scaffold_accepts_structured_global_load_ir_without_com
       c4c::backend::lower_lir_to_backend_module(make_global_int_pointer_roundtrip_module());
   clear_backend_global_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, ".globl g_value\n",
@@ -3985,7 +3985,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_global_store_reload_
   const auto lowered =
       c4c::backend::lower_lir_to_backend_module(make_global_store_reload_module());
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, ".globl g_counter\n",
@@ -4004,7 +4004,7 @@ void test_aarch64_backend_scaffold_accepts_structured_global_store_reload_ir_wit
   auto lowered = c4c::backend::lower_lir_to_backend_module(make_global_store_reload_module());
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, "str w9, [x8]\n",
@@ -4020,7 +4020,7 @@ void test_aarch64_backend_scaffold_accepts_structured_global_store_reload_ir_wit
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, "str w9, [x8]\n",
@@ -4035,7 +4035,7 @@ void test_aarch64_backend_scaffold_accepts_structured_global_load_ir_without_raw
   auto lowered = c4c::backend::lower_lir_to_backend_module(make_global_load_module());
   clear_backend_global_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, ".globl g_counter\n",
@@ -4051,7 +4051,7 @@ void test_aarch64_backend_scaffold_accepts_structured_global_store_reload_ir_wit
   clear_backend_global_type_compatibility_shims(lowered);
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, "str w9, [x8]\n",
@@ -4077,7 +4077,7 @@ void test_aarch64_backend_scaffold_rejects_global_fast_paths_when_address_kind_d
     }
 
     const auto rendered = c4c::backend::emit_module(
-        c4c::backend::BackendModuleInput{lowered},
+      lowered,
         c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
     expect_contains(rendered, "target triple = \"aarch64-unknown-linux-gnu\"",
@@ -4105,7 +4105,7 @@ void test_aarch64_backend_scaffold_rejects_global_fast_paths_when_address_kind_d
     }
 
     const auto rendered = c4c::backend::emit_module(
-        c4c::backend::BackendModuleInput{lowered},
+      lowered,
         c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
     expect_contains(rendered, "target triple = \"aarch64-unknown-linux-gnu\"",
@@ -4126,7 +4126,7 @@ void test_aarch64_backend_scaffold_rejects_global_fast_paths_when_address_kind_d
     }
 
     const auto rendered = c4c::backend::emit_module(
-        c4c::backend::BackendModuleInput{lowered},
+      lowered,
         c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
     expect_contains(rendered, "target triple = \"aarch64-unknown-linux-gnu\"",
@@ -4151,7 +4151,7 @@ void test_aarch64_backend_scaffold_rejects_global_fast_paths_when_memory_width_d
     }
 
     const auto rendered = c4c::backend::emit_module(
-        c4c::backend::BackendModuleInput{lowered},
+      lowered,
         c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
     expect_contains(rendered, "target triple = \"aarch64-unknown-linux-gnu\"",
@@ -4174,7 +4174,7 @@ void test_aarch64_backend_scaffold_rejects_global_fast_paths_when_memory_width_d
     }
 
     const auto rendered = c4c::backend::emit_module(
-        c4c::backend::BackendModuleInput{lowered},
+      lowered,
         c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
     expect_contains(rendered, "target triple = \"aarch64-unknown-linux-gnu\"",
@@ -4197,7 +4197,7 @@ void test_aarch64_backend_scaffold_rejects_global_fast_paths_when_memory_width_d
     }
 
     const auto rendered = c4c::backend::emit_module(
-        c4c::backend::BackendModuleInput{lowered},
+      lowered,
         c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
     expect_contains(rendered, "target triple = \"aarch64-unknown-linux-gnu\"",
@@ -4221,7 +4221,7 @@ void test_aarch64_backend_scaffold_rejects_global_fast_paths_when_memory_width_d
     }
 
     const auto rendered = c4c::backend::emit_module(
-        c4c::backend::BackendModuleInput{lowered},
+      lowered,
         c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
     expect_contains(rendered, "target triple = \"aarch64-unknown-linux-gnu\"",
@@ -4232,7 +4232,7 @@ void test_aarch64_backend_scaffold_rejects_global_fast_paths_when_memory_width_d
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_string_literal_ir_input() {
   const auto lowered = c4c::backend::lower_lir_to_backend_module(make_string_literal_char_module());
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, ".section .rodata\n",
@@ -4253,7 +4253,7 @@ void test_aarch64_backend_scaffold_accepts_structured_string_literal_ir_without_
   auto lowered = c4c::backend::lower_lir_to_backend_module(make_string_literal_char_module());
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, "ldrb w0, [x8, #1]\n  sxtb w0, w0\n",
@@ -4267,7 +4267,7 @@ void test_aarch64_backend_scaffold_accepts_structured_string_literal_ir_without_
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, "ldrb w0, [x8, #1]\n  sxtb w0, w0\n",
@@ -4290,7 +4290,7 @@ void test_aarch64_backend_scaffold_rejects_string_literal_fast_path_when_address
   }
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, "target triple = \"aarch64-unknown-linux-gnu\"",
@@ -4311,7 +4311,7 @@ void test_aarch64_backend_scaffold_rejects_string_literal_fast_path_when_byte_of
   }
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, "target triple = \"aarch64-unknown-linux-gnu\"",
@@ -4321,7 +4321,7 @@ void test_aarch64_backend_scaffold_rejects_string_literal_fast_path_when_byte_of
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_extern_global_load_ir_input() {
   const auto lowered = c4c::backend::lower_lir_to_backend_module(make_extern_global_load_module());
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, ".extern ext_counter\n",
@@ -4336,7 +4336,7 @@ void test_aarch64_backend_scaffold_accepts_structured_extern_global_load_ir_with
   auto lowered = c4c::backend::lower_lir_to_backend_module(make_extern_global_load_module());
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, "ldr w0, [x8, :lo12:ext_counter]\n",
@@ -4350,7 +4350,7 @@ void test_aarch64_backend_scaffold_accepts_structured_extern_global_load_ir_with
   clear_backend_global_type_compatibility_shims(lowered);
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, "ldr w0, [x8, :lo12:ext_counter]\n",
@@ -4366,7 +4366,7 @@ void test_aarch64_backend_scaffold_accepts_structured_extern_global_load_ir_with
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, ".extern ext_counter\n",
@@ -4381,7 +4381,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_extern_global_array_
   const auto lowered =
       c4c::backend::lower_lir_to_backend_module(make_extern_global_array_load_module());
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, ".extern ext_arr\n",
@@ -4397,7 +4397,7 @@ void test_aarch64_backend_scaffold_accepts_structured_extern_global_array_ir_wit
       c4c::backend::lower_lir_to_backend_module(make_extern_global_array_load_module());
   clear_backend_global_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, ".extern ext_arr\n",
@@ -4414,7 +4414,7 @@ void test_aarch64_backend_scaffold_accepts_structured_extern_global_array_ir_wit
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   clear_backend_global_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, ".extern ext_arr\n",
@@ -4431,7 +4431,7 @@ void test_aarch64_backend_scaffold_accepts_structured_extern_global_array_ir_wit
   clear_backend_global_compatibility_shims(lowered);
   clear_backend_global_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, ".extern ext_arr\n",
@@ -4457,7 +4457,7 @@ void test_aarch64_backend_scaffold_rejects_extern_global_array_fast_path_when_ad
   }
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, "target triple = \"aarch64-unknown-linux-gnu\"",
@@ -4479,7 +4479,7 @@ void test_aarch64_backend_scaffold_rejects_extern_global_array_fast_path_when_of
   }
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, "target triple = \"aarch64-unknown-linux-gnu\"",
@@ -4489,7 +4489,7 @@ void test_aarch64_backend_scaffold_rejects_extern_global_array_fast_path_when_of
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_local_array_ir_input() {
   const auto lowered = c4c::backend::lower_lir_to_backend_module(make_local_array_gep_module());
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, "add x8, sp, #8",
@@ -4510,7 +4510,7 @@ void test_aarch64_backend_scaffold_matches_direct_local_array_asm() {
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   const auto lowered = c4c::backend::lower_lir_to_backend_module(make_local_array_gep_module());
   const auto lowered_rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   if (direct_rendered != lowered_rendered) {
@@ -4523,7 +4523,7 @@ void test_aarch64_backend_scaffold_accepts_structured_local_array_ir_without_typ
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, "add x8, sp, #8",
@@ -4547,7 +4547,7 @@ void test_aarch64_backend_scaffold_rejects_local_array_fast_path_when_local_slot
   }
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, "target triple = \"aarch64-unknown-linux-gnu\"",
@@ -4558,7 +4558,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_global_int_pointer_r
   const auto lowered =
       c4c::backend::lower_lir_to_backend_module(make_global_int_pointer_roundtrip_module());
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, ".globl g_value\n",
@@ -4575,7 +4575,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_global_char_pointer_
   const auto lowered =
       c4c::backend::lower_lir_to_backend_module(make_global_char_pointer_diff_module());
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, "adrp x8, g_bytes\n",
@@ -4592,7 +4592,7 @@ void test_aarch64_backend_scaffold_accepts_structured_global_char_pointer_diff_i
   auto lowered = c4c::backend::lower_lir_to_backend_module(make_global_char_pointer_diff_module());
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, "add x9, x8, #1\n",
@@ -4608,7 +4608,7 @@ void test_aarch64_backend_scaffold_accepts_structured_global_char_pointer_diff_i
   clear_backend_memory_type_compatibility_shims(lowered);
   clear_backend_global_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, "add x9, x8, #1\n",
@@ -4636,7 +4636,7 @@ void test_aarch64_backend_scaffold_rejects_global_ptrdiff_fast_paths_when_addres
     }
 
     const auto rendered = c4c::backend::emit_module(
-        c4c::backend::BackendModuleInput{lowered},
+      lowered,
         c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
     expect_contains(rendered, "target triple = \"aarch64-unknown-linux-gnu\"",
@@ -4659,7 +4659,7 @@ void test_aarch64_backend_scaffold_rejects_global_ptrdiff_fast_paths_when_addres
     }
 
     const auto rendered = c4c::backend::emit_module(
-        c4c::backend::BackendModuleInput{lowered},
+      lowered,
         c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
     expect_contains(rendered, "target triple = \"aarch64-unknown-linux-gnu\"",
@@ -4671,7 +4671,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_global_int_pointer_d
   const auto lowered =
       c4c::backend::lower_lir_to_backend_module(make_global_int_pointer_diff_module());
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, "adrp x8, g_words\n",
@@ -4688,7 +4688,7 @@ void test_aarch64_backend_scaffold_accepts_structured_global_int_pointer_diff_ir
   auto lowered = c4c::backend::lower_lir_to_backend_module(make_global_int_pointer_diff_module());
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, "lsr x8, x8, #2\n",
@@ -4700,7 +4700,7 @@ void test_aarch64_backend_scaffold_accepts_structured_global_int_pointer_diff_ir
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_return_ir_input() {
   const auto lowered = c4c::backend::lower_lir_to_backend_module(make_conditional_return_module());
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, "  cmp w8, #3\n",
@@ -4717,7 +4717,7 @@ void test_aarch64_backend_scaffold_matches_direct_conditional_return_asm() {
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   const auto lowered = c4c::backend::lower_lir_to_backend_module(make_conditional_return_module());
   const auto lowered_rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(direct_rendered, "  cmp w8, #3\n",
@@ -4738,7 +4738,7 @@ void test_aarch64_backend_scaffold_accepts_structured_conditional_return_ir_with
   auto lowered = c4c::backend::lower_lir_to_backend_module(make_conditional_return_module());
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, "  cmp w8, #3\n",
@@ -4751,7 +4751,7 @@ void test_aarch64_backend_scaffold_accepts_structured_conditional_return_ir_with
   auto lowered = c4c::backend::lower_lir_to_backend_module(make_conditional_return_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, "  cmp w8, #3\n",
@@ -4771,7 +4771,7 @@ void test_aarch64_backend_scaffold_accepts_structured_non_main_local_slot_condit
   auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, "helper:",
@@ -4783,7 +4783,7 @@ void test_aarch64_backend_scaffold_accepts_structured_non_main_local_slot_condit
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_ir_input() {
   const auto lowered = c4c::backend::lower_lir_to_backend_module(make_conditional_phi_join_module());
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, "  b.ge .Lelse\n",
@@ -4801,7 +4801,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_add_ir_input() {
   const auto lowered = c4c::backend::lower_lir_to_backend_module(make_conditional_phi_join_add_module());
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, ".Lthen:\n  mov w0, #7\n  b .Ljoin\n",
@@ -4816,7 +4816,7 @@ void test_aarch64_backend_scaffold_accepts_structured_conditional_phi_join_add_i
   auto lowered = c4c::backend::lower_lir_to_backend_module(make_conditional_phi_join_add_module());
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, ".Ljoin:\n  add w0, w0, #5\n  ret\n",
@@ -4829,7 +4829,7 @@ void test_aarch64_backend_scaffold_accepts_structured_conditional_phi_join_add_i
   auto lowered = c4c::backend::lower_lir_to_backend_module(make_conditional_phi_join_add_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, ".Ljoin:\n  add w0, w0, #5\n  ret\n",
@@ -4842,7 +4842,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join
   const auto lowered =
       c4c::backend::lower_lir_to_backend_module(make_conditional_phi_join_predecessor_add_module());
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, ".Lthen:\n  mov w0, #7\n  add w0, w0, #5\n  b .Ljoin\n",
@@ -4859,7 +4859,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join
   const auto lowered =
       c4c::backend::lower_lir_to_backend_module(make_conditional_phi_join_predecessor_sub_module());
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, ".Lthen:\n  mov w0, #12\n  sub w0, w0, #5\n  b .Ljoin\n",
@@ -4876,7 +4876,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join
   const auto lowered =
       c4c::backend::lower_lir_to_backend_module(make_conditional_phi_join_mixed_predecessor_add_module());
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, ".Lthen:\n  mov w0, #7\n  add w0, w0, #5\n  b .Ljoin\n",
@@ -4893,7 +4893,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join
   const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_add_post_join_add_module());
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, ".Lthen:\n  mov w0, #7\n  add w0, w0, #5\n  b .Ljoin\n",
@@ -4910,7 +4910,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join
   const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_sub_post_join_add_module());
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, ".Lthen:\n  mov w0, #12\n  sub w0, w0, #5\n  b .Ljoin\n",
@@ -4927,7 +4927,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join
   const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_add_sub_chain_post_join_add_module());
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered,
@@ -4945,7 +4945,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join
   const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_chain_and_add_post_join_add_module());
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered,
@@ -4963,7 +4963,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join
   const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_chain_and_chain_post_join_add_module());
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered,
@@ -4982,7 +4982,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join
   const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_deeper_chain_and_chain_post_join_add_module());
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered,
@@ -5001,7 +5001,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join
   const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_deeper_chain_and_deeper_chain_post_join_add_module());
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered,
@@ -5020,7 +5020,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join
   const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_four_op_chain_and_deeper_chain_post_join_add_module());
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered,
@@ -5039,7 +5039,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join
   const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_four_op_chain_and_four_op_chain_post_join_add_module());
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered,
@@ -5058,7 +5058,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join
   const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_five_op_chain_and_four_op_chain_post_join_add_module());
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered,
@@ -5077,7 +5077,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join
   const auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_conditional_phi_join_mixed_predecessor_five_op_chain_and_five_op_chain_post_join_add_module());
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered,
@@ -5095,7 +5095,7 @@ void test_aarch64_backend_scaffold_accepts_explicit_lowered_conditional_phi_join
 void test_aarch64_backend_scaffold_accepts_explicit_lowered_countdown_while_ir_input() {
   const auto lowered = c4c::backend::lower_lir_to_backend_module(make_countdown_while_return_module());
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, ".Lblock_1:",
@@ -5112,7 +5112,7 @@ void test_aarch64_backend_scaffold_accepts_structured_countdown_while_ir_without
   auto lowered = c4c::backend::lower_lir_to_backend_module(make_countdown_while_return_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   expect_contains(rendered, ".Lblock_1:",
@@ -5132,7 +5132,7 @@ void test_aarch64_backend_scaffold_matches_direct_countdown_while_asm() {
   const auto lowered =
       c4c::backend::lower_lir_to_backend_module(make_countdown_while_return_module());
   const auto lowered_rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   if (direct_rendered != lowered_rendered) {
@@ -5147,7 +5147,7 @@ void test_aarch64_backend_scaffold_matches_direct_typed_countdown_while_asm() {
   const auto lowered =
       c4c::backend::lower_lir_to_backend_module(make_typed_countdown_while_return_module());
   const auto lowered_rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   if (direct_rendered != lowered_rendered) {
@@ -5162,7 +5162,7 @@ void test_aarch64_backend_scaffold_matches_direct_countdown_do_while_asm() {
   const auto lowered =
       c4c::backend::lower_lir_to_backend_module(make_countdown_do_while_return_module());
   const auto lowered_rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
 
   if (direct_rendered != lowered_rendered) {

@@ -9,24 +9,30 @@ Source Plan: plan.md
 - [ ] Remove legacy backend IR files and backend/app LLVM rescue paths
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
-Current active item: Step 4 follow-through after the final AArch64
-file-output rescue removal. The app-layer LLVM asm fallback is gone, and the
-next bounded Step 4 slice is the planned `lir_to_backend_ir` cutover/deletion
-batch.
+Current active item: Step 4 follow-through after deleting the generic
+backend-entry legacy-prelowered route. The app-layer LLVM asm fallback is
+gone, the caller-owned `BackendModuleInput(BackendModule, ...)` seam is gone,
+and the next bounded Step 4 slice should keep shrinking live
+`lir_to_backend_ir.*` ownership inside target emitters and tests.
 
-This iteration target: record the completed `00204` fallback-removal batch and
-leave the next iteration aimed at the still-live legacy lowering ownership in
-`lir_to_backend_ir.*`.
+This iteration target: delete one live production legacy-lowering seam instead
+of stopping at audit-only work, then leave the next iteration aimed at the
+remaining emitter-local and test-local `lir_to_backend_ir.*` ownership.
 
-Current bounded preparation slice: keep Step 4 focused on production deletion.
-- treat the `00204` rescue-path cleanup as complete for this bounded batch
-- keep the next batch centered on deleting a live legacy lowering seam rather
-  than widening AArch64 PCS support again
+Current bounded deletion slice: keep Step 4 focused on production deletion.
+- delete the generic backend-entry `LegacyPreloweredModule` route and the stale
+  `BackendPipeline` toggle that no longer changed runtime behavior
+- move explicit lowered-backend coverage onto a direct
+  `emit_module(const BackendModule&, ...)` helper instead of routing lowered
+  backend IR back through `BackendModuleInput`
+- keep the next batch centered on deleting another live legacy lowering seam
+  rather than widening unrelated backend support
 
 Immediate next slice:
 
-- audit the surviving production/test/build references to
-  `lir_to_backend_ir.*` and group them into one bounded cutover batch
+- cut one emitter-local `lower_lir_to_backend_module(...)` ownership seam or
+  one direct `lir_to_backend_ir.hpp` test/include family instead of keeping the
+  generic backend entry responsible for both BIR and legacy-prelowered routes
 - keep the next Step 4 commit deleting a live legacy lowering or backend-IR
   seam rather than doing more preparatory probing
 - leave unrelated Step 2/3 expansion and broader `ir.*` removal outside that
@@ -88,6 +94,10 @@ Known live references from the current audit:
   [`tests/backend/backend_bir_pipeline_riscv64_tests.cpp`](/workspaces/c4c/tests/backend/backend_bir_pipeline_riscv64_tests.cpp),
   and
   [`tests/backend/backend_lir_adapter_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_tests.cpp)
+- the generic backend entry no longer accepts caller-owned prelowered legacy
+  modules; explicit lowered backend-module emission now uses
+  `emit_module(const BackendModule&, ...)` directly, so the remaining live
+  legacy ownership is narrower and easier to cut in a later Step 4 batch
 - `lir_to_backend_ir.cpp` is still large enough to deserve a planned cutover
   batch on its own at roughly `3669` lines, and the old backend IR support
   files in `ir.*` still represent another large deletion batch after that
@@ -113,6 +123,14 @@ Known live references from the current audit:
 
 Recently completed milestones:
 
+- deleted the generic backend-entry legacy-prelowered route by removing
+  `BackendModuleInput(const BackendModule&, ...)`, removing
+  `BackendLoweringRoute::LegacyPreloweredModule`, and collapsing the stale
+  `BackendPipeline` option that no longer changed LIR-entry behavior
+- moved explicit lowered-backend coverage onto
+  `emit_module(const BackendModule&, ...)` so backend-owned IR tests no longer
+  route lowered legacy modules back through the generic BIR-vs-legacy entry
+  selection surface
 - converted `backend_runtime_call_helper` onto the explicit stdout-native asm
   path and removed the stale runtime skip for that case
 - re-probed `call_helper` through `build/c4cll --codegen asm` and confirmed

@@ -627,7 +627,7 @@ void test_x86_backend_scaffold_routes_through_explicit_emit_surface() {
 void test_x86_backend_scaffold_accepts_explicit_lowered_ir_input() {
   const auto lowered = c4c::backend::lower_lir_to_backend_module(make_return_add_module());
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, ".text",
@@ -644,7 +644,7 @@ void test_x86_backend_scaffold_accepts_structured_single_function_ir_without_sig
   auto lowered = c4c::backend::lower_lir_to_backend_module(make_return_add_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, ".text",
@@ -660,7 +660,7 @@ void test_x86_backend_scaffold_accepts_structured_single_function_ir_without_sig
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, ".text",
@@ -675,7 +675,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_extern_decl_ir_input() {
   const auto lowered =
       c4c::backend::lower_lir_to_backend_module(make_x86_extern_decl_object_module());
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, ".intel_syntax noprefix\n",
@@ -693,7 +693,7 @@ void test_x86_backend_scaffold_accepts_structured_signature_and_call_types_witho
       c4c::backend::lower_lir_to_backend_module(make_x86_extern_decl_object_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, ".intel_syntax noprefix\n",
@@ -713,7 +713,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_global_load_ir_input() {
       "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
   const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, ".globl g_counter\n",
@@ -728,7 +728,7 @@ void test_x86_backend_scaffold_accepts_structured_global_load_ir_without_compati
   auto lowered = c4c::backend::lower_lir_to_backend_module(make_x86_global_int_pointer_roundtrip_module());
   clear_backend_global_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, ".globl g_value\n",
@@ -745,7 +745,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_global_store_reload_ir_i
   const auto lowered =
       c4c::backend::lower_lir_to_backend_module(make_x86_global_store_reload_module());
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, ".globl g_counter\n",
@@ -762,7 +762,7 @@ void test_x86_backend_scaffold_accepts_structured_global_store_reload_ir_without
   auto lowered = c4c::backend::lower_lir_to_backend_module(make_x86_global_store_reload_module());
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, "mov dword ptr [rax], 7\n",
@@ -778,7 +778,7 @@ void test_x86_backend_scaffold_accepts_structured_global_store_reload_ir_without
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, "mov dword ptr [rax], 7\n",
@@ -797,7 +797,7 @@ void test_x86_backend_scaffold_accepts_structured_global_load_ir_without_raw_glo
   auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   clear_backend_global_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, ".globl g_counter\n",
@@ -813,7 +813,7 @@ void test_x86_backend_scaffold_accepts_structured_global_store_reload_ir_without
   clear_backend_global_type_compatibility_shims(lowered);
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, "mov dword ptr [rax], 7\n",
@@ -843,7 +843,7 @@ void test_x86_backend_scaffold_rejects_global_fast_paths_when_address_kind_disag
     }
 
     const auto rendered = c4c::backend::emit_module(
-        c4c::backend::BackendModuleInput{lowered},
+      lowered,
         c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
     expect_contains(rendered, "target triple = \"x86_64-unknown-linux-gnu\"",
@@ -871,7 +871,7 @@ void test_x86_backend_scaffold_rejects_global_fast_paths_when_address_kind_disag
     }
 
     const auto rendered = c4c::backend::emit_module(
-        c4c::backend::BackendModuleInput{lowered},
+      lowered,
         c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
     expect_contains(rendered, "target triple = \"x86_64-unknown-linux-gnu\"",
@@ -892,7 +892,7 @@ void test_x86_backend_scaffold_rejects_global_fast_paths_when_address_kind_disag
     }
 
     const auto rendered = c4c::backend::emit_module(
-        c4c::backend::BackendModuleInput{lowered},
+      lowered,
         c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
     expect_contains(rendered, "target triple = \"x86_64-unknown-linux-gnu\"",
@@ -921,7 +921,7 @@ void test_x86_backend_scaffold_rejects_global_fast_paths_when_memory_width_disag
     }
 
     const auto rendered = c4c::backend::emit_module(
-        c4c::backend::BackendModuleInput{lowered},
+      lowered,
         c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
     expect_contains(rendered, "target triple = \"x86_64-unknown-linux-gnu\"",
@@ -944,7 +944,7 @@ void test_x86_backend_scaffold_rejects_global_fast_paths_when_memory_width_disag
     }
 
     const auto rendered = c4c::backend::emit_module(
-        c4c::backend::BackendModuleInput{lowered},
+      lowered,
         c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
     expect_contains(rendered, "target triple = \"x86_64-unknown-linux-gnu\"",
@@ -967,7 +967,7 @@ void test_x86_backend_scaffold_rejects_global_fast_paths_when_memory_width_disag
     }
 
     const auto rendered = c4c::backend::emit_module(
-        c4c::backend::BackendModuleInput{lowered},
+      lowered,
         c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
     expect_contains(rendered, "target triple = \"x86_64-unknown-linux-gnu\"",
@@ -991,7 +991,7 @@ void test_x86_backend_scaffold_rejects_global_fast_paths_when_memory_width_disag
     }
 
     const auto rendered = c4c::backend::emit_module(
-        c4c::backend::BackendModuleInput{lowered},
+      lowered,
         c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
     expect_contains(rendered, "target triple = \"x86_64-unknown-linux-gnu\"",
@@ -1003,7 +1003,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_string_literal_ir_input(
   const auto lowered =
       c4c::backend::lower_lir_to_backend_module(make_x86_string_literal_char_module());
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, ".section .rodata\n",
@@ -1022,7 +1022,7 @@ void test_x86_backend_scaffold_accepts_structured_string_literal_ir_without_type
   auto lowered = c4c::backend::lower_lir_to_backend_module(make_x86_string_literal_char_module());
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, "movsx eax, byte ptr [rax + 1]\n",
@@ -1036,7 +1036,7 @@ void test_x86_backend_scaffold_accepts_structured_string_literal_ir_without_sign
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, "movsx eax, byte ptr [rax + 1]\n",
@@ -1059,7 +1059,7 @@ void test_x86_backend_scaffold_rejects_string_literal_fast_path_when_address_kin
   }
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, "target triple = \"x86_64-unknown-linux-gnu\"",
@@ -1070,7 +1070,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_extern_global_load_ir_in
   const auto lowered =
       c4c::backend::lower_lir_to_backend_module(make_x86_extern_global_load_module());
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, "lea rax, ext_counter[rip]\n",
@@ -1085,7 +1085,7 @@ void test_x86_backend_scaffold_accepts_structured_extern_global_load_ir_without_
   auto lowered = c4c::backend::lower_lir_to_backend_module(make_x86_extern_global_load_module());
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, "lea rax, ext_counter[rip]\n",
@@ -1101,7 +1101,7 @@ void test_x86_backend_scaffold_accepts_structured_extern_global_load_ir_without_
   clear_backend_global_type_compatibility_shims(lowered);
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, "lea rax, ext_counter[rip]\n",
@@ -1119,7 +1119,7 @@ void test_x86_backend_scaffold_accepts_structured_extern_global_load_ir_without_
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, "lea rax, ext_counter[rip]\n",
@@ -1134,7 +1134,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_extern_global_array_ir_i
   const auto lowered =
       c4c::backend::lower_lir_to_backend_module(make_x86_extern_global_array_load_module());
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, "lea rax, ext_arr[rip]\n",
@@ -1150,7 +1150,7 @@ void test_x86_backend_scaffold_accepts_structured_extern_global_array_ir_without
       c4c::backend::lower_lir_to_backend_module(make_x86_extern_global_array_load_module());
   clear_backend_global_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, "lea rax, ext_arr[rip]\n",
@@ -1167,7 +1167,7 @@ void test_x86_backend_scaffold_accepts_structured_extern_global_array_ir_without
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   clear_backend_global_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, "lea rax, ext_arr[rip]\n",
@@ -1184,7 +1184,7 @@ void test_x86_backend_scaffold_accepts_structured_extern_global_array_ir_without
   clear_backend_global_compatibility_shims(lowered);
   clear_backend_global_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, "lea rax, ext_arr[rip]\n",
@@ -1210,7 +1210,7 @@ void test_x86_backend_scaffold_rejects_extern_global_array_fast_path_when_addres
   }
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, "target triple = \"x86_64-unknown-linux-gnu\"",
@@ -1232,7 +1232,7 @@ void test_x86_backend_scaffold_rejects_extern_global_array_fast_path_when_offset
   }
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, "target triple = \"x86_64-unknown-linux-gnu\"",
@@ -1246,7 +1246,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_local_array_ir_input() {
       "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
   const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, "lea rcx, [rbp - 8]",
@@ -1270,7 +1270,7 @@ void test_x86_backend_scaffold_accepts_structured_local_array_ir_without_type_or
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, "lea rcx, [rbp - 8]",
@@ -1298,7 +1298,7 @@ void test_x86_backend_scaffold_rejects_local_array_fast_path_when_local_slot_met
   }
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, "target triple = \"x86_64-unknown-linux-gnu\"",
@@ -1309,7 +1309,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_global_int_pointer_round
   const auto lowered =
       c4c::backend::lower_lir_to_backend_module(make_x86_global_int_pointer_roundtrip_module());
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, ".globl g_value\n",
@@ -1326,7 +1326,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_global_char_pointer_diff
   const auto lowered =
       c4c::backend::lower_lir_to_backend_module(make_x86_global_char_pointer_diff_module());
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, "lea rax, g_bytes[rip]\n",
@@ -1343,7 +1343,7 @@ void test_x86_backend_scaffold_accepts_structured_global_char_pointer_diff_ir_wi
   auto lowered = c4c::backend::lower_lir_to_backend_module(make_x86_global_char_pointer_diff_module());
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, "lea rcx, [rax + 1]\n",
@@ -1359,7 +1359,7 @@ void test_x86_backend_scaffold_accepts_structured_global_char_pointer_diff_ir_wi
   clear_backend_memory_type_compatibility_shims(lowered);
   clear_backend_global_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, "lea rcx, [rax + 1]\n",
@@ -1387,7 +1387,7 @@ void test_x86_backend_scaffold_rejects_global_ptrdiff_fast_paths_when_address_ki
     }
 
     const auto rendered = c4c::backend::emit_module(
-        c4c::backend::BackendModuleInput{lowered},
+      lowered,
         c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
     expect_contains(rendered, "target triple = \"x86_64-unknown-linux-gnu\"",
@@ -1410,7 +1410,7 @@ void test_x86_backend_scaffold_rejects_global_ptrdiff_fast_paths_when_address_ki
     }
 
     const auto rendered = c4c::backend::emit_module(
-        c4c::backend::BackendModuleInput{lowered},
+      lowered,
         c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
     expect_contains(rendered, "target triple = \"x86_64-unknown-linux-gnu\"",
@@ -1422,7 +1422,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_global_int_pointer_diff_
   const auto lowered =
       c4c::backend::lower_lir_to_backend_module(make_x86_global_int_pointer_diff_module());
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, "lea rax, g_words[rip]\n",
@@ -1439,7 +1439,7 @@ void test_x86_backend_scaffold_accepts_structured_global_int_pointer_diff_ir_wit
   auto lowered = c4c::backend::lower_lir_to_backend_module(make_x86_global_int_pointer_diff_module());
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, "sar rcx, 2\n",
@@ -1453,7 +1453,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_return_ir_in
   module.target_triple = "x86_64-unknown-linux-gnu";
   const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, "  cmp eax, 3\n",
@@ -1470,7 +1470,7 @@ void test_x86_backend_scaffold_accepts_structured_conditional_return_ir_without_
   auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, "  cmp eax, 3\n",
@@ -1485,7 +1485,7 @@ void test_x86_backend_scaffold_accepts_structured_conditional_return_ir_without_
   auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, "  cmp eax, 3\n",
@@ -1508,7 +1508,7 @@ void test_x86_backend_scaffold_matches_direct_non_main_local_slot_conditional_re
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
   const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto lowered_rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   if (direct_rendered != lowered_rendered) {
@@ -1528,7 +1528,7 @@ void test_x86_backend_scaffold_accepts_structured_non_main_local_slot_conditiona
   auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, "helper:",
@@ -1542,7 +1542,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_ir_
   module.target_triple = "x86_64-unknown-linux-gnu";
   const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, "  jge .Lelse\n",
@@ -1562,7 +1562,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_add
   module.target_triple = "x86_64-unknown-linux-gnu";
   const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, ".Lthen:\n  mov eax, 7\n  jmp .Ljoin\n",
@@ -1579,7 +1579,7 @@ void test_x86_backend_scaffold_accepts_structured_conditional_phi_join_add_ir_wi
   auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   clear_backend_memory_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, ".Ljoin:\n  add eax, 5\n  ret\n",
@@ -1594,7 +1594,7 @@ void test_x86_backend_scaffold_accepts_structured_conditional_phi_join_add_ir_wi
   auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, ".Ljoin:\n  add eax, 5\n  ret\n",
@@ -1608,7 +1608,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_pre
   module.target_triple = "x86_64-unknown-linux-gnu";
   const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, ".Lthen:\n  mov eax, 7\n  add eax, 5\n  jmp .Ljoin\n",
@@ -1626,7 +1626,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_pre
   module.target_triple = "x86_64-unknown-linux-gnu";
   const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, ".Lthen:\n  mov eax, 12\n  sub eax, 5\n  jmp .Ljoin\n",
@@ -1644,7 +1644,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mix
   module.target_triple = "x86_64-unknown-linux-gnu";
   const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, ".Lthen:\n  mov eax, 7\n  add eax, 5\n  jmp .Ljoin\n",
@@ -1662,7 +1662,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mix
   module.target_triple = "x86_64-unknown-linux-gnu";
   const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, ".Lthen:\n  mov eax, 7\n  add eax, 5\n  jmp .Ljoin\n",
@@ -1680,7 +1680,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mix
   module.target_triple = "x86_64-unknown-linux-gnu";
   const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, ".Lthen:\n  mov eax, 12\n  sub eax, 5\n  jmp .Ljoin\n",
@@ -1698,7 +1698,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mix
   module.target_triple = "x86_64-unknown-linux-gnu";
   const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered,
@@ -1717,7 +1717,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mix
   module.target_triple = "x86_64-unknown-linux-gnu";
   const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered,
@@ -1736,7 +1736,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mix
   module.target_triple = "x86_64-unknown-linux-gnu";
   const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered,
@@ -1756,7 +1756,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mix
   module.target_triple = "x86_64-unknown-linux-gnu";
   const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered,
@@ -1776,7 +1776,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mix
   module.target_triple = "x86_64-unknown-linux-gnu";
   const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered,
@@ -1796,7 +1796,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mix
   module.target_triple = "x86_64-unknown-linux-gnu";
   const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered,
@@ -1817,7 +1817,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mix
   module.target_triple = "x86_64-unknown-linux-gnu";
   const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered,
@@ -1837,7 +1837,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mix
   module.target_triple = "x86_64-unknown-linux-gnu";
   const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered,
@@ -1857,7 +1857,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_conditional_phi_join_mix
   module.target_triple = "x86_64-unknown-linux-gnu";
   const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered,
@@ -1877,7 +1877,7 @@ void test_x86_backend_scaffold_accepts_explicit_lowered_countdown_while_ir_input
   module.target_triple = "x86_64-unknown-linux-gnu";
   const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, ".Lblock_1:",
@@ -1896,7 +1896,7 @@ void test_x86_backend_scaffold_accepts_structured_countdown_while_ir_without_sig
   auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, ".Lblock_1:",
@@ -2116,7 +2116,7 @@ void test_x86_backend_scaffold_accepts_structured_zero_arg_direct_call_spacing_i
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
   expect_contains(rendered, ".type helper, %function",
                   "x86 backend seam should still preserve spacing-tolerant lowered zero-arg helper definitions without legacy signature text");
@@ -2160,7 +2160,7 @@ void test_x86_backend_scaffold_accepts_renamed_structured_zero_arg_direct_call_i
   main_fn->blocks.front().terminator.value = call->result;
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
   expect_contains(rendered, ".type const_value, %function",
                   "x86 backend seam should key the lowered zero-argument helper definition from the structured callee symbol instead of a fixed helper name");
@@ -2188,7 +2188,7 @@ void test_x86_backend_scaffold_rejects_structured_zero_arg_direct_call_when_call
   }
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
   expect_contains(rendered, "target triple =",
                   "x86 backend seam should stop matching the structured zero-argument direct-call asm slice when the callee signature no longer matches the call contract");
@@ -2222,7 +2222,7 @@ void test_x86_backend_scaffold_rejects_structured_zero_arg_direct_call_when_help
   }
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
   expect_contains(rendered, "target triple =",
                   "x86 backend seam should stop matching the structured zero-argument direct-call asm slice when the lowered helper body no longer matches the shared immediate-return contract");
@@ -2460,7 +2460,7 @@ void test_x86_backend_scaffold_accepts_structured_direct_call_add_imm_ir_without
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
   expect_contains(rendered, ".type add_one, %function",
                   "x86 backend seam should still preserve lowered single-argument helper definitions without legacy signature text");
@@ -2516,7 +2516,7 @@ void test_x86_backend_scaffold_accepts_renamed_structured_direct_call_add_imm_ir
   main_fn->blocks.front().terminator.value = "%t.main.sum_one.renamed";
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
   expect_contains(rendered, ".type sum_one, %function",
                   "x86 backend seam should key the lowered single-argument helper definition from the structured callee symbol instead of a fixed helper name");
@@ -2553,7 +2553,7 @@ void test_x86_backend_scaffold_rejects_structured_direct_call_add_imm_when_helpe
   }
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
   expect_contains(rendered, "target triple =",
                   "x86 backend seam should stop matching the structured single-argument direct-call asm slice when the lowered helper body no longer matches the shared add-immediate contract");
@@ -2564,7 +2564,7 @@ void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_ir_without
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
   expect_contains(rendered, ".type add_pair, %function",
                   "x86 backend seam should still preserve lowered two-argument helper definitions without legacy signature text");
@@ -2624,7 +2624,7 @@ void test_x86_backend_scaffold_accepts_renamed_structured_two_arg_direct_call_ir
   main_fn->blocks.front().terminator.value = "%t.main.sum_pair.renamed";
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
   expect_contains(rendered, ".type sum_pair, %function",
                   "x86 backend seam should key the lowered two-argument helper definition from the structured callee symbol instead of a fixed helper name");
@@ -2666,7 +2666,7 @@ void test_x86_backend_scaffold_rejects_structured_two_arg_direct_call_when_param
   }
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
   expect_contains(rendered, "target triple =",
                   "x86 backend seam should stop matching the structured two-argument direct-call asm slice when call param type count no longer matches arg count");
@@ -2691,7 +2691,7 @@ void test_x86_backend_scaffold_rejects_structured_two_arg_direct_call_when_calle
   }
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
   expect_contains(rendered, "target triple =",
                   "x86 backend seam should stop matching the structured two-argument direct-call asm slice when the callee signature param type disagrees with the call contract");
@@ -2719,7 +2719,7 @@ void test_x86_backend_scaffold_rejects_structured_two_arg_direct_call_when_helpe
   }
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
   expect_contains(rendered, "target triple =",
                   "x86 backend seam should stop matching the structured two-argument direct-call asm slice when the lowered helper body no longer matches the shared two-parameter add contract");
@@ -2731,7 +2731,7 @@ void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_local_arg_
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
   expect_contains(rendered, ".type add_pair, %function",
                   "x86 backend seam should still preserve lowered two-argument local-argument helper definitions without legacy signature text");
@@ -2751,7 +2751,7 @@ void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_local_arg_
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
   expect_contains(rendered, ".type add_pair, %function",
                   "x86 backend seam should still preserve spacing-tolerant lowered two-argument local-argument helper definitions without legacy signature text");
@@ -2771,7 +2771,7 @@ void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_double_rew
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
   expect_contains(rendered, ".type add_pair, %function",
                   "x86 backend seam should still preserve lowered two-argument rewritten helper definitions without legacy signature text");
@@ -2791,7 +2791,7 @@ void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_second_loc
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
   expect_contains(rendered, ".type add_pair, %function",
                   "x86 backend seam should still preserve lowered two-argument second-local helper definitions without legacy signature text");
@@ -2811,7 +2811,7 @@ void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_second_loc
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
   expect_contains(rendered, ".type add_pair, %function",
                   "x86 backend seam should still preserve lowered rewritten second-local helper definitions without legacy signature text");
@@ -2831,7 +2831,7 @@ void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_first_loca
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
   expect_contains(rendered, ".type add_pair, %function",
                   "x86 backend seam should still preserve lowered rewritten first-local helper definitions without legacy signature text");
@@ -2851,7 +2851,7 @@ void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_both_local
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
   expect_contains(rendered, ".type add_pair, %function",
                   "x86 backend seam should still preserve lowered two-argument both-local helper definitions without legacy signature text");
@@ -2871,7 +2871,7 @@ void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_both_local
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
   expect_contains(rendered, ".type add_pair, %function",
                   "x86 backend seam should still preserve lowered mixed rewritten both-local helper definitions without legacy signature text");
@@ -2891,7 +2891,7 @@ void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_both_local
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
   expect_contains(rendered, ".type add_pair, %function",
                   "x86 backend seam should still preserve lowered mixed rewritten both-local helper definitions without legacy signature text");
@@ -2928,7 +2928,7 @@ void test_x86_backend_scaffold_accepts_structured_direct_call_local_arg_spacing_
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
   expect_contains(rendered, ".type add_one, %function",
                   "x86 backend seam should still preserve spacing-tolerant lowered single-argument helper definitions without legacy signature text");
@@ -3713,7 +3713,7 @@ void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_first_loca
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
   expect_contains(rendered, ".type add_pair, %function",
                   "x86 backend seam should still preserve spacing-tolerant lowered rewritten first-local helper definitions without legacy signature text");
@@ -4051,7 +4051,7 @@ void test_x86_backend_scaffold_accepts_renamed_structured_call_crossing_direct_c
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
   expect_contains(rendered, ".type inc_value, %function",
                   "x86 backend seam should key lowered call-crossing helper definitions from the structured callee symbol instead of legacy signature text");
@@ -4101,7 +4101,7 @@ void test_x86_backend_scaffold_accepts_lowered_call_crossing_source_value_rename
   final_add->lhs = "%t.crossing.source.renamed";
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
   expect_contains(rendered, "mov ebx, 5",
                   "x86 backend seam should keep using a backend-owned shared regalloc source when the lowered call-crossing source SSA name changes");
@@ -4154,7 +4154,7 @@ void test_x86_backend_scaffold_accepts_renamed_lowered_call_crossing_source_valu
   final_add->lhs = "%t.crossing.source.renamed";
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
   expect_contains(rendered, ".type inc_value, %function",
                   "x86 backend seam should still key the lowered call-crossing helper definition from the renamed structured callee symbol");
@@ -4185,7 +4185,7 @@ void test_x86_backend_scaffold_ignores_broken_legacy_fallback_for_call_crossing_
   }
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered, &legacy},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
   expect_contains(rendered, ".type add_one, %function",
                   "x86 backend seam should keep the lowered call-crossing helper on the asm path even when an attached legacy fallback no longer has the matching main function");
@@ -4239,7 +4239,7 @@ void test_x86_backend_scaffold_rejects_structured_call_crossing_direct_call_when
   }
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered, &legacy},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
   expect_contains(rendered, "target triple = \"x86_64-unknown-linux-gnu\"",
                   "x86 backend seam should stop matching the structured call-crossing asm slice when the lowered helper body no longer matches the shared add-immediate helper contract");
@@ -4615,7 +4615,7 @@ void test_x86_backend_declared_direct_call_uses_structured_vararg_metadata() {
   call.callee.symbol_name = "printf";
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, "call printf\n",
@@ -4653,7 +4653,7 @@ void test_x86_backend_explicit_emit_surface_keeps_structured_declared_direct_cal
 
   const auto direct_rendered = c4c::backend::x86::emit_module(lowered);
   const auto backend_rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_true(backend_rendered == direct_rendered,
@@ -4694,7 +4694,7 @@ void test_x86_backend_declared_direct_call_uses_structured_decl_signature_for_fi
   call.callee.symbol_name = "sum_ext";
 
   const auto rendered = c4c::backend::emit_module(
-      c4c::backend::BackendModuleInput{lowered},
+      lowered,
       c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
 
   expect_contains(rendered, "mov edi, 5\n",

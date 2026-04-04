@@ -30,7 +30,6 @@ inline c4c::backend::bir::Module make_return_immediate_module() {
 inline c4c::backend::BackendOptions make_bir_pipeline_options(c4c::backend::Target target) {
   c4c::backend::BackendOptions options;
   options.target = target;
-  options.pipeline = c4c::backend::BackendPipeline::Bir;
   return options;
 }
 
