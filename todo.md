@@ -11,7 +11,8 @@ Source Plan: plan.md
 
 Current active item: Step 4 x86 emitter tightening. Continue shrinking the
 remaining x86 emitter-local `lower_lir_to_backend_module(...)` fallback for the
-next bounded local-runtime family after the goto-only constant-return chain.
+next bounded local-runtime family after the double-indirect local-pointer
+conditional chain.
 
 Completed in this slice:
 
@@ -90,13 +91,19 @@ Completed in this slice:
 - proved the production deletion with a new explicit-LIR parity regression in
   [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
   for the bounded goto-only constant-return branch chain
+- added a bounded direct x86 LIR constant-fold interpreter for the
+  double-indirect local-pointer conditional family in
+  [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+  so that family no longer needs `lower_lir_to_backend_module(...)` on the
+  explicit x86 entrypoint — the interpreter tracks local alloca slots, pointer
+  aliases, stores, loads, comparisons, and conditional branches to fold the
+  entire computation to a constant return value
+- proved the production deletion with a new explicit-LIR parity regression in
+  [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
+  for the bounded double-indirect local-pointer conditional family
 
 Next slice:
 
-- revisit the double-indirect local-pointer conditional family next and
-  delete its direct-entry x86 fallback if that batch can stay similarly bounded
-- add explicit-LIR parity coverage only where it proves the production deletion
-  in the same batch
 - prefer another local-runtime family that still hits
   `lower_lir_to_backend_module(...)` over compatibility-only probe growth
 - keep lowered-backend tests scoped to compatibility seams that still exist
@@ -176,3 +183,7 @@ Recent baseline:
   member-array runtime family so the next local-runtime deletion can target a
   concrete green direct-entry seam instead of adding more compatibility-only
   probes
+- latest Step 4 follow-through also removes the bounded double-indirect
+  local-pointer conditional dependency on `lower_lir_to_backend_module(...)` from
+  the direct x86 LIR entrypoint via a mini constant-fold interpreter that tracks
+  alloca slots, pointer aliases, and conditional branches

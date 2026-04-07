@@ -584,6 +584,138 @@ std::optional<std::int64_t> parse_minimal_goto_only_constant_return_imm(
   }
 }
 
+std::optional<std::int64_t> parse_minimal_double_indirect_local_pointer_conditional_return_imm(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || !module.globals.empty() ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      function.name != "main" ||
+      !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(function.signature_text) ||
+      function.entry.value != 0 || function.blocks.empty()) {
+    return std::nullopt;
+  }
+
+  // Abstract value: either an i64 scalar or a pointer alias to an alloca name.
+  struct AbsVal {
+    bool is_ptr = false;
+    std::int64_t ival = 0;
+    std::string ptr_target;  // alloca name when is_ptr
+  };
+
+  // Initialize alloca slots.
+  std::unordered_map<std::string, AbsVal> slots;
+  for (const auto& inst : function.alloca_insts) {
+    const auto* a = std::get_if<LirAllocaOp>(&inst);
+    if (a == nullptr) return std::nullopt;
+    slots[a->result] = AbsVal{};
+  }
+
+  // SSA temporary values.
+  std::unordered_map<std::string, AbsVal> temps;
+
+  auto resolve = [&](const std::string& name) -> std::optional<AbsVal> {
+    if (auto it = temps.find(name); it != temps.end()) return it->second;
+    if (auto v = parse_i64(name); v.has_value()) return AbsVal{false, *v, {}};
+    return std::nullopt;
+  };
+
+  // Build block index.
+  std::unordered_map<std::string_view, const LirBlock*> blocks_by_label;
+  for (const auto& block : function.blocks) {
+    if (block.label.empty()) return std::nullopt;
+    if (!blocks_by_label.emplace(block.label, &block).second) return std::nullopt;
+  }
+
+  const auto* current = &function.blocks.front();
+  if (current->label != "entry") return std::nullopt;
+
+  std::size_t step_limit = 200;
+  while (step_limit-- > 0) {
+    // Interpret instructions.
+    for (const auto& inst : current->insts) {
+      if (const auto* store = std::get_if<LirStoreOp>(&inst)) {
+        auto it = slots.find(store->ptr);
+        if (it == slots.end()) {
+          // Store through a pointer temp (indirect store).
+          auto ptr_val = resolve(store->ptr);
+          if (!ptr_val || !ptr_val->is_ptr) return std::nullopt;
+          it = slots.find(ptr_val->ptr_target);
+          if (it == slots.end()) return std::nullopt;
+        }
+        // Value is either a literal, a temp, or an alloca name (address-of).
+        if (auto sit = slots.find(store->val); sit != slots.end()) {
+          // Storing the address of an alloca.
+          it->second = AbsVal{true, 0, store->val};
+        } else {
+          auto val = resolve(store->val);
+          if (!val) return std::nullopt;
+          it->second = *val;
+        }
+      } else if (const auto* load = std::get_if<LirLoadOp>(&inst)) {
+        // Direct load from alloca or through a pointer temp.
+        auto sit = slots.find(load->ptr);
+        if (sit != slots.end()) {
+          temps[load->result] = sit->second;
+        } else {
+          auto ptr_val = resolve(load->ptr);
+          if (!ptr_val || !ptr_val->is_ptr) return std::nullopt;
+          sit = slots.find(ptr_val->ptr_target);
+          if (sit == slots.end()) return std::nullopt;
+          temps[load->result] = sit->second;
+        }
+      } else if (const auto* cmp = std::get_if<LirCmpOp>(&inst)) {
+        if (cmp->is_float) return std::nullopt;
+        auto lhs = resolve(cmp->lhs);
+        auto rhs = resolve(cmp->rhs);
+        if (!lhs || !rhs || lhs->is_ptr || rhs->is_ptr) return std::nullopt;
+        bool result = false;
+        std::string_view pred = cmp->predicate;
+        if (pred == "eq") result = (lhs->ival == rhs->ival);
+        else if (pred == "ne") result = (lhs->ival != rhs->ival);
+        else if (pred == "slt") result = (lhs->ival < rhs->ival);
+        else if (pred == "sle") result = (lhs->ival <= rhs->ival);
+        else if (pred == "sgt") result = (lhs->ival > rhs->ival);
+        else if (pred == "sge") result = (lhs->ival >= rhs->ival);
+        else return std::nullopt;
+        temps[cmp->result] = AbsVal{false, result ? 1 : 0, {}};
+      } else {
+        return std::nullopt;
+      }
+    }
+
+    // Interpret terminator.
+    if (const auto* ret = std::get_if<LirRet>(&current->terminator)) {
+      if (!ret->value_str.has_value() || ret->type_str != "i32") return std::nullopt;
+      auto val = resolve(*ret->value_str);
+      if (!val || val->is_ptr) return std::nullopt;
+      return val->ival;
+    }
+    if (const auto* br = std::get_if<LirBr>(&current->terminator)) {
+      auto it = blocks_by_label.find(br->target_label);
+      if (it == blocks_by_label.end()) return std::nullopt;
+      current = it->second;
+      continue;
+    }
+    if (const auto* cbr = std::get_if<LirCondBr>(&current->terminator)) {
+      auto cond = resolve(cbr->cond_name);
+      if (!cond || cond->is_ptr) return std::nullopt;
+      const auto& target = (cond->ival != 0) ? cbr->true_label : cbr->false_label;
+      auto it = blocks_by_label.find(target);
+      if (it == blocks_by_label.end()) return std::nullopt;
+      current = it->second;
+      continue;
+    }
+    return std::nullopt;
+  }
+  return std::nullopt;
+}
+
 std::optional<c4c::codegen::lir::LirCmpPredicate> lower_bir_cmp_predicate(
     c4c::backend::bir::BinaryOpcode predicate) {
   using BirPred = c4c::backend::bir::BinaryOpcode;
@@ -5681,6 +5813,10 @@ std::optional<std::string> try_emit_direct_lir_module(
       }
       return remove_redundant_self_moves(emit_minimal_call_crossing_direct_call_asm(
           module.target_triple, run_shared_x86_regalloc(*main_fn), *slice));
+    }
+    if (const auto imm = parse_minimal_double_indirect_local_pointer_conditional_return_imm(module);
+        imm.has_value()) {
+      return emit_minimal_return_asm(module.target_triple, *imm);
     }
     if (const auto imm = parse_minimal_goto_only_constant_return_imm(module);
         imm.has_value()) {
