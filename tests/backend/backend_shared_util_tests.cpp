@@ -11,6 +11,7 @@
 #include "../../src/codegen/lir/call_args.hpp"
 #include "../../src/codegen/lir/lir_printer.hpp"
 #include "../../src/codegen/lir/verify.hpp"
+#include "../../src/backend/lowering/call_decode.hpp"
 #include "../../src/backend/elf/mod.hpp"
 #include "../../src/backend/linker_common/mod.hpp"
 #include "../../src/backend/aarch64/assembler/mod.hpp"
@@ -23,6 +24,94 @@
 #include "../../src/backend/x86/codegen/emit.hpp"
 #include "../../src/backend/x86/linker/mod.hpp"
 #include "backend_test_helper.hpp"
+
+void test_backend_shared_call_decode_parses_bir_minimal_direct_call_module() {
+  c4c::backend::bir::Module module;
+  module.functions.push_back(c4c::backend::bir::Function{
+      .name = "helper",
+      .return_type = c4c::backend::bir::TypeKind::I32,
+      .params = {},
+      .local_slots = {},
+      .blocks = {c4c::backend::bir::Block{
+          .label = "entry",
+          .insts = {},
+          .terminator = c4c::backend::bir::ReturnTerminator{
+              .value = c4c::backend::bir::Value::immediate_i32(42),
+          },
+      }},
+      .is_declaration = false,
+  });
+  module.functions.push_back(c4c::backend::bir::Function{
+      .name = "main",
+      .return_type = c4c::backend::bir::TypeKind::I32,
+      .params = {},
+      .local_slots = {},
+      .blocks = {c4c::backend::bir::Block{
+          .label = "entry",
+          .insts = {c4c::backend::bir::CallInst{
+              .result = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%t0"),
+              .callee = "helper",
+              .args = {},
+              .return_type_name = "i32",
+          }},
+          .terminator = c4c::backend::bir::ReturnTerminator{
+              .value = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%t0"),
+          },
+      }},
+      .is_declaration = false,
+  });
+
+  const auto parsed = c4c::backend::parse_bir_minimal_direct_call_module(module);
+  expect_true(parsed.has_value(),
+              "shared call-decode surface should parse a BIR helper definition plus main direct call module");
+  expect_true(parsed->helper != nullptr && parsed->helper->name == "helper" &&
+                  parsed->main_function != nullptr && parsed->main_function->name == "main",
+              "shared call-decode surface should preserve the helper and main function identities for BIR direct-call modules");
+  expect_true(parsed->call != nullptr && parsed->call->callee == "helper" &&
+                  parsed->return_imm == 42,
+              "shared call-decode surface should recover the helper return immediate for minimal BIR direct-call modules");
+}
+
+void test_backend_shared_call_decode_parses_bir_minimal_declared_direct_call_module() {
+  c4c::backend::bir::Module module;
+  module.functions.push_back(c4c::backend::bir::Function{
+      .name = "puts_like",
+      .return_type = c4c::backend::bir::TypeKind::I32,
+      .params = {},
+      .local_slots = {},
+      .blocks = {},
+      .is_declaration = true,
+  });
+  module.functions.push_back(c4c::backend::bir::Function{
+      .name = "main",
+      .return_type = c4c::backend::bir::TypeKind::I32,
+      .params = {},
+      .local_slots = {},
+      .blocks = {c4c::backend::bir::Block{
+          .label = "entry",
+          .insts = {c4c::backend::bir::CallInst{
+              .result = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%t0"),
+              .callee = "puts_like",
+              .args = {},
+              .return_type_name = "i32",
+          }},
+          .terminator = c4c::backend::bir::ReturnTerminator{
+              .value = c4c::backend::bir::Value::immediate_i32(7),
+          },
+      }},
+      .is_declaration = false,
+  });
+
+  const auto parsed = c4c::backend::parse_bir_minimal_declared_direct_call_module(module);
+  expect_true(parsed.has_value(),
+              "shared call-decode surface should parse a BIR declared direct-call module");
+  expect_true(parsed->callee != nullptr && parsed->callee->name == "puts_like" &&
+                  parsed->main_function != nullptr && parsed->main_function->name == "main",
+              "shared call-decode surface should preserve declaration and caller identities for BIR declared direct-call modules");
+  expect_true(parsed->call != nullptr && parsed->call->callee == "puts_like" &&
+                  !parsed->return_call_result && parsed->return_imm == 7,
+              "shared call-decode surface should allow BIR declared direct-call modules to return a fixed immediate after the call");
+}
 
 
 void test_backend_shared_liveness_surface_tracks_result_names() {
@@ -844,6 +933,8 @@ void test_shared_linker_parses_single_member_archive_fixture() {
 
 int main(int argc, char* argv[]) {
   if (argc >= 2) test_filter() = argv[1];
+  test_backend_shared_call_decode_parses_bir_minimal_direct_call_module();
+  test_backend_shared_call_decode_parses_bir_minimal_declared_direct_call_module();
   test_backend_shared_liveness_surface_tracks_result_names();
   test_backend_shared_liveness_surface_tracks_call_crossing_ranges();
   test_backend_shared_liveness_surface_tracks_phi_join_ranges();

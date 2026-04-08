@@ -113,6 +113,7 @@ struct ParsedBirMinimalDirectCallModuleView {
   const bir::Function* main_function = nullptr;
   const bir::Block* main_block = nullptr;
   const bir::CallInst* call = nullptr;
+  std::int64_t return_imm = 0;
 };
 
 struct ParsedBirMinimalDeclaredDirectCallModuleView {
@@ -120,6 +121,8 @@ struct ParsedBirMinimalDeclaredDirectCallModuleView {
   const bir::Function* main_function = nullptr;
   const bir::Block* main_block = nullptr;
   const bir::CallInst* call = nullptr;
+  bool return_call_result = false;
+  std::int64_t return_imm = 0;
 };
 
 struct ParsedBackendMinimalTwoArgDirectCallLirModuleView {
@@ -943,55 +946,57 @@ parse_bir_minimal_direct_call_module(const bir::Module& module) {
     return std::nullopt;
   }
 
-  const bir::Function* helper = nullptr;
-  const bir::Function* main_fn = nullptr;
-  for (const auto& function : module.functions) {
-    if (function.is_declaration) {
-      if (helper != nullptr || !function.blocks.empty() || !function.local_slots.empty()) {
+  const auto try_match =
+      [](const bir::Function& caller,
+         const bir::Function& helper) -> std::optional<ParsedBirMinimalDirectCallModuleView> {
+    if (caller.is_declaration || helper.is_declaration ||
+        caller.return_type != bir::TypeKind::I32 ||
+        helper.return_type != bir::TypeKind::I32 || !caller.params.empty() ||
+        !helper.params.empty() || !caller.local_slots.empty() ||
+        !helper.local_slots.empty() || caller.blocks.size() != 1 ||
+        helper.blocks.size() != 1 || caller.name.empty() || helper.name.empty() ||
+        caller.name == helper.name) {
+      return std::nullopt;
+    }
+
+    const auto helper_return_imm = bir::parse_i32_return_immediate(helper);
+    if (!helper_return_imm.has_value()) {
+      return std::nullopt;
+    }
+
+    const auto& main_block = caller.blocks.front();
+    if (main_block.label != "entry" || main_block.insts.size() != 1 ||
+        caller.return_type != bir::TypeKind::I32) {
+      return std::nullopt;
+    }
+
+    const auto* call = std::get_if<bir::CallInst>(&main_block.insts.front());
+    if (call == nullptr || call->callee != helper.name) {
+      return std::nullopt;
+    }
+    if (call->result.has_value()) {
+      if (!main_block.terminator.value.has_value() ||
+          main_block.terminator.value->kind != bir::Value::Kind::Named ||
+          main_block.terminator.value->name != call->result->name) {
         return std::nullopt;
       }
-      helper = &function;
-      continue;
-    }
-    if (main_fn != nullptr || function.return_type != bir::TypeKind::I32 ||
-        !function.local_slots.empty() || function.blocks.size() != 1) {
+    } else if (main_block.terminator.value.has_value()) {
       return std::nullopt;
     }
-    main_fn = &function;
-  }
 
-  if (helper == nullptr || main_fn == nullptr || helper->name.empty() || main_fn->name.empty() ||
-      helper->return_type != bir::TypeKind::I32 || main_fn->name == helper->name) {
-    return std::nullopt;
-  }
-
-  const auto& main_block = main_fn->blocks.front();
-  if (main_block.label != "entry" || main_block.insts.size() != 1 ||
-      main_fn->return_type != bir::TypeKind::I32) {
-    return std::nullopt;
-  }
-
-  const auto* call = std::get_if<bir::CallInst>(&main_block.insts.front());
-  if (call == nullptr ||
-      call->callee != helper->name) {
-    return std::nullopt;
-  }
-  if (call->result.has_value()) {
-    if (!main_block.terminator.value.has_value() ||
-        main_block.terminator.value->kind != bir::Value::Kind::Named ||
-        main_block.terminator.value->name != call->result->name) {
-      return std::nullopt;
-    }
-  } else if (main_block.terminator.value.has_value()) {
-    return std::nullopt;
-  }
-
-  return ParsedBirMinimalDirectCallModuleView{
-      helper,
-      main_fn,
-      &main_block,
-      call,
+    return ParsedBirMinimalDirectCallModuleView{
+        &helper,
+        &caller,
+        &main_block,
+        call,
+        *helper_return_imm,
+    };
   };
+
+  if (const auto parsed = try_match(module.functions[0], module.functions[1]); parsed.has_value()) {
+    return parsed;
+  }
+  return try_match(module.functions[1], module.functions[0]);
 }
 
 inline std::optional<ParsedBirMinimalDeclaredDirectCallModuleView>
@@ -1033,26 +1038,40 @@ parse_bir_minimal_declared_direct_call_module(const bir::Module& module) {
   const auto* call = std::get_if<bir::CallInst>(&main_block.insts.front());
   if (call == nullptr || call->callee != callee->name || !call->result.has_value() ||
       call->result->kind != bir::Value::Kind::Named ||
-      call->result->name != main_block.terminator.value->name ||
-      call->result->type != bir::TypeKind::I32 ||
-      main_block.terminator.value->kind != bir::Value::Kind::Named ||
-      main_block.terminator.value->type != bir::TypeKind::I32) {
+      call->result->type != bir::TypeKind::I32) {
     return std::nullopt;
   }
 
   if (call->return_type_name != "i32" || call->args.size() > 6) {
     return std::nullopt;
   }
+
+  const bool return_call_result =
+      main_block.terminator.value->kind == bir::Value::Kind::Named &&
+      main_block.terminator.value->type == bir::TypeKind::I32 &&
+      main_block.terminator.value->name == call->result->name;
+  std::int64_t return_imm = 0;
+  if (!return_call_result) {
+    if (main_block.terminator.value->kind != bir::Value::Kind::Immediate ||
+        main_block.terminator.value->type != bir::TypeKind::I32) {
+      return std::nullopt;
+    }
+    return_imm = main_block.terminator.value->immediate;
+  }
+
   return ParsedBirMinimalDeclaredDirectCallModuleView{
       callee,
       main_fn,
       &main_block,
       call,
+      return_call_result,
+      return_imm,
   };
 }
 
-// Legacy BackendModule seams that remain because BIR does not yet model calls,
-// extern declarations, or the direct-call module surface.
+// Legacy BackendModule seams that remain for direct-call families that still
+// need richer typed-call, extern-arg, or mixed module-surface detail than the
+// current BIR helper views expose.
 inline std::optional<ParsedBackendMinimalStructuredDirectCallModuleView>
 parse_backend_minimal_structured_direct_call_module(const BackendModule& module,
                                                     std::size_t expected_arg_count) {
