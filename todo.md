@@ -6,16 +6,35 @@ Source Plan: plan.md
 
 - Step 4 cleanup: keep shrinking adapter-only legacy-lowering surface now that
   `src/backend/ir.hpp` and `lir_to_backend_ir.*` are already gone
-- Current slice: re-inventory the remaining `src/backend/backend.cpp`
-  `BackendModuleInput` LIR-entry and prelowered-BIR branches now that the
-  dead direct-BIR subset catch/rethrow helper is gone, then identify whether
-  any target split still duplicates the same native-BIR dispatch
-- Next intended slice: compare the riscv64 explicit-BIR text branch against
-  the LIR-through-BIR riscv64 branch in `src/backend/backend.cpp`, and remove
-  any remaining adapter-only conditional or helper that no longer changes
-  observable backend behavior
+- Current slice: re-inventory `src/backend/backend.cpp` after the shared
+  riscv64 BIR render cleanup and identify whether the remaining
+  `select_lowering_route(...)` / route split is still carrying any dead
+  adapter-only branching
+- Next intended slice: compare the surviving route split against current test
+  coverage and remove it only if one route can disappear without changing the
+  explicit riscv64 LLVM fallback behavior for unsupported LIR input
 
 # Completed
+
+- Collapsed the remaining duplicated riscv64 BIR-render branch in
+  `src/backend/backend.cpp` behind one shared `render_bir_module(...)` helper
+  so supported prelowered-BIR input and LIR-through-BIR input now use the same
+  target-owned BIR render path before native targets fan out
+- Added focused coverage in `tests/backend/backend_bir_pipeline_tests.cpp`
+  proving supported riscv64 backend entry renders identical BIR text whether
+  callers pass fresh LIR or explicit prelowered BIR
+- Rebuilt `backend_bir_tests`, `backend_shared_util_tests`, and `c4cll`
+  successfully after the `backend.cpp` cleanup
+- Reran focused
+  `ctest --test-dir build -R '^backend_bir_tests$' --output-on-failure`
+  successfully after the shared riscv64 BIR render cleanup
+- Reran the full `ctest --test-dir build -j8 --output-on-failure` suite and
+  refreshed `test_after.log` / `test_fail_after.log`; the workspace moved from
+  `2831/2834` passing with 3 failures in the refreshed baseline to
+  `2834/2834` passing with 0 failures
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=3 failed=-3`
+  and zero newly failing tests against the refreshed `test_fail_before.log`
 
 - Re-inventoried the remaining `src/backend/backend.cpp`
   `BackendModuleInput` direct-BIR/LIR-through-BIR branch logic, confirmed the

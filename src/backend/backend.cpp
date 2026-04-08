@@ -27,6 +27,13 @@ std::string emit_native_bir_module(const bir::Module& module, Target target) {
   throw std::logic_error("unreachable backend target");
 }
 
+std::string render_bir_module(const bir::Module& module, Target target) {
+  if (target == Target::Riscv64) {
+    return c4c::backend::bir::print(module);
+  }
+  return emit_native_bir_module(module, target);
+}
+
 }  // namespace
 
 BackendModuleInput::BackendModuleInput(const bir::Module& bir_module)
@@ -76,16 +83,12 @@ std::string emit_module(const BackendModuleInput& input,
           !lir_module.extern_decls.empty()) {
         return c4c::codegen::lir::print_llvm(lir_module);
       }
-      return c4c::backend::bir::print(*bir_module);
     }
-    return emit_native_bir_module(*bir_module, options.target);
+    return render_bir_module(*bir_module, options.target);
   }
 
   if (route == BackendLoweringRoute::BirPreloweredModule) {
-    if (options.target == Target::Riscv64) {
-      return c4c::backend::bir::print(*input.bir_module());
-    }
-    return emit_native_bir_module(*input.bir_module(), options.target);
+    return render_bir_module(*input.bir_module(), options.target);
   }
 
   throw std::logic_error("unreachable backend lowering route");

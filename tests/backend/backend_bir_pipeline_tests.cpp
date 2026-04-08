@@ -1414,6 +1414,22 @@ void test_backend_lowered_riscv_passthrough_is_detached_from_lir_metadata() {
                   "explicit prelowered RISC-V BIR emission should stay on the BIR text surface");
 }
 
+void test_backend_riscv64_supported_lir_and_direct_bir_share_text_route() {
+  const auto lir_module = make_bir_return_add_module();
+  const auto bir_module = c4c::backend::lower_to_bir(lir_module);
+  const auto lir_rendered =
+      c4c::backend::emit_module(c4c::backend::BackendModuleInput{lir_module},
+                                make_bir_pipeline_options(c4c::backend::Target::Riscv64));
+  const auto bir_rendered =
+      c4c::backend::emit_module(c4c::backend::BackendModuleInput{bir_module},
+                                make_bir_pipeline_options(c4c::backend::Target::Riscv64));
+
+  expect_true(lir_rendered == bir_rendered,
+              "supported riscv64 backend entry should render the same BIR text whether callers pass fresh LIR or prelowered BIR");
+  expect_contains(lir_rendered, "bir.func",
+                  "supported riscv64 backend entry should stay on the shared BIR text surface");
+}
+
 void test_backend_direct_bir_i686_target_uses_x86_stack_arg_emitter() {
   auto bir_module = c4c::backend::lower_to_bir(make_bir_two_param_add_module());
   bir_module.target_triple = "i686-unknown-linux-gnu";
@@ -1522,5 +1538,6 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_backend_bir_pipeline_routes_two_param_staged_affine_chain_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_selection_only_applies_at_lir_entry_input);
   RUN_TEST(test_backend_lowered_riscv_passthrough_is_detached_from_lir_metadata);
+  RUN_TEST(test_backend_riscv64_supported_lir_and_direct_bir_share_text_route);
   RUN_TEST(test_backend_direct_bir_i686_target_uses_x86_stack_arg_emitter);
 }
