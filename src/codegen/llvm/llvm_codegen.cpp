@@ -58,6 +58,9 @@ std::string emit_via_backend(const lir::LirModule& lir_mod,
     if (!is_direct_bir_subset_error(ex)) {
       throw;
     }
+    // x86/aarch64 still have native direct-LIR slices that are wider than the
+    // shared direct-BIR subset, so preserve the target-owned retry here until
+    // those native gaps are intentionally closed.
     return retry_target_native_backend(lir_mod, target);
   }
 }

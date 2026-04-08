@@ -685,6 +685,16 @@ if(CLANG_EXECUTABLE)
         LABELS "internal;backend")
 
     c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00012_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00012.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00012_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
       backend_codegen_route_riscv64_return_add_defaults_to_bir
       SRC "${INTERNAL_C_TEST_ROOT}/backend_case/return_add.c"
       TARGET_TRIPLE riscv64-unknown-linux-gnu

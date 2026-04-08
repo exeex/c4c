@@ -7,16 +7,40 @@ Source Plan: plan.md
 - Step 6 cleanup: remove the remaining `--codegen asm` backend-to-LLVM rescue
   diagnostics now that Step 4/5 legacy-lowering and legacy-IR deletion work is
   already complete in-tree
-- Current slice: completed the remaining true `CodegenPath::Lir`
-  backend-to-LLVM rescue removal for unsupported `riscv64 --codegen asm`
-  requests in `src/codegen/llvm/llvm_codegen.cpp` while preserving the
-  x86/aarch64 native retry path that still covers active aarch64 cases
-- Next intended slice: re-audit whether the remaining direct-BIR rejection
-  retry in `src/codegen/llvm/llvm_codegen.cpp` can be narrowed further without
-  regressing `c_testsuite_aarch64_backend_src_00012_c` /
-  `c_testsuite_aarch64_backend_src_00064_c`
+- Current slice: audited the remaining direct-BIR rejection retry in
+  `src/codegen/llvm/llvm_codegen.cpp`, confirmed it is still load-bearing on
+  x86_64 for `tests/c/external/c-testsuite/src/00012.c`, and pinned that
+  contract with a focused backend route test instead of silently narrowing the
+  retry and dropping native asm coverage
+- Next intended slice: decide whether the shared x86/i686 emitter should get a
+  matching `i686` route contract before any future narrowing of the remaining
+  target-native retry path
 
 # Completed
+
+- Re-audited the remaining `src/codegen/llvm/llvm_codegen.cpp` direct-BIR
+  rejection retry by temporarily narrowing it to aarch64-only and verifying
+  that `./build/c4cll --codegen asm --target x86_64-unknown-linux-gnu
+  tests/c/external/c-testsuite/src/00012.c` and `src/00064.c` then failed with
+  the native direct-BIR subset diagnostic, proving x86_64 still depends on the
+  target-native direct-LIR retry after shared direct-BIR decline
+- Added
+  `backend_codegen_route_x86_64_c_testsuite_00012_retries_after_direct_bir_rejection`
+  in `tests/c/internal/InternalTests.cmake`, pinning that the x86_64 backend
+  route still emits native asm for `tests/c/external/c-testsuite/src/00012.c`
+  instead of regressing to a direct-BIR rejection
+- Documented the retry intent in `src/codegen/llvm/llvm_codegen.cpp` so the
+  remaining catch/retry now explicitly states that x86/aarch64 still have
+  native direct-LIR slices wider than the shared direct-BIR subset
+- Reconfigured and rebuilt with `cmake -S . -B build` and
+  `cmake --build build -j8`, reran focused
+  `ctest --test-dir build -R '^(backend_codegen_route_x86_64_c_testsuite_00012_retries_after_direct_bir_rejection|backend_bir_tests|backend_lir_riscv64_variadic_double_asm_unsupported|backend_codegen_route_riscv64_global_load_asm_unsupported|c_testsuite_aarch64_backend_src_00012_c|c_testsuite_aarch64_backend_src_00064_c)$' --output-on-failure`,
+  reran the full `ctest --test-dir build -j8 --output-on-failure` suite into
+  `test_fail_after.log`, and confirmed the workspace is now at `2836/2836`
+  passing with 0 failures
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=5
+  failed=-3` and zero newly failing tests against `test_fail_before.log`
 
 - Added a focused unsupported-asm contract in
   `tests/c/internal/cmake/run_backend_unsupported_asm_case.cmake` plus
