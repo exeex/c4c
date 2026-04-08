@@ -4,17 +4,32 @@ Source Plan: plan.md
 
 # Active Item
 
-- Step 2: switch one shared helper seam off `BackendModule`
-- Current slice: resume the emitter-local `BackendModule` inventory after the
-  x86/aarch64 dead-overload cleanup and inspect the remaining Step 2 shared
-  helper seams for the next verified-dead adapter family or the next real
-  metadata-backed cluster that still needs bounded BIR or a shared lookup seam
-- Next intended slice: audit `src/backend/lowering/call_decode.hpp` plus the
-  remaining x86 emitter-local inventory for the next concrete
-  `BackendModule`-only parser family that is still truly live versus the next
-  dead adapter set that can be deleted without widening scope
+- Step 3: migrate the next aarch64 emitter helper cluster onto direct BIR
+- Current slice: continue the aarch64 direct-call BIR emitter expansion with
+  the remaining bounded shared parser families
+  (`dual_identity_direct_call_sub` and `call_crossing_direct_call`) now that
+  the first two-arg/add-immediate/identity helper cluster is native
+- Next intended slice: either land the remaining aarch64 bounded direct-call
+  helper families or, if that exposes no more active target-local work, return
+  to the Step 2 shared-seam inventory for the next removable adapter family
 
 # Completed
+
+- Added native aarch64 direct-BIR emission for the minimal two-argument
+  direct-call, direct-call-add-immediate, and identity direct-call families in
+  `src/backend/aarch64/codegen/emit.cpp`
+- Extended `tests/backend/backend_bir_pipeline_aarch64_tests.cpp` with focused
+  direct-BIR and LIR-through-BIR coverage for those three aarch64 helper
+  families
+- Rebuilt `backend_bir_tests` and `c4cll` successfully after the aarch64
+  direct-call helper cluster landed
+- Reran `ctest --test-dir build -R 'backend_bir_tests' --output-on-failure`
+  successfully after the aarch64 direct-call helper cluster landed
+- Reran the full `ctest --test-dir build -j --output-on-failure` suite and
+  refreshed `test_after.log` / `test_fail_after.log`; compared with the
+  existing `test_fail_before.log`, the workspace improved from `2821/2834`
+  passing with 13 failures down to `2833/2834` passing with 1 failure, with
+  zero newly failing tests
 
 - Removed the remaining dead aarch64 emitter-local `BackendModule` parser
   inventory from `src/backend/aarch64/codegen/emit.cpp` for the

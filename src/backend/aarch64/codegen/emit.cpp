@@ -3280,6 +3280,142 @@ std::string emit_minimal_void_direct_call_imm_return_asm(
   return out.str();
 }
 
+std::string emit_minimal_two_arg_direct_call_asm(
+    const c4c::backend::bir::Module& module,
+    const c4c::backend::ParsedBirMinimalTwoArgDirectCallModuleView& slice) {
+  auto emit_i32_imm = [](std::ostringstream& out,
+                         std::string_view reg,
+                         std::int64_t imm,
+                         const char* detail) {
+    if (imm >= 0 && imm <= std::numeric_limits<std::uint16_t>::max()) {
+      out << "  mov " << reg << ", #" << imm << "\n";
+      return;
+    }
+    if (imm < 0 && -imm <= std::numeric_limits<std::uint16_t>::max()) {
+      out << "  sub " << reg << ", wzr, #" << -imm << "\n";
+      return;
+    }
+    fail_unsupported(detail);
+  };
+
+  if (slice.helper == nullptr || slice.main_function == nullptr) {
+    fail_unsupported("BIR two-argument direct-call slice without helper metadata");
+  }
+
+  std::ostringstream out;
+  const std::string helper_symbol = asm_symbol_name(module.target_triple, slice.helper->name);
+  const std::string main_symbol = asm_symbol_name(module.target_triple, slice.main_function->name);
+
+  out << ".text\n";
+  emit_function_prelude(out, module.target_triple, helper_symbol, false);
+  out << "  add w0, w0, w1\n"
+      << "  ret\n";
+  emit_function_prelude(out, module.target_triple, main_symbol, true);
+  out << "  sub sp, sp, #16\n"
+      << "  str x30, [sp, #8]\n";
+  emit_i32_imm(out, "w0", slice.lhs_call_arg_imm,
+               "two-argument direct-call lhs immediate exceeds the minimal aarch64 mov/sub range");
+  emit_i32_imm(out, "w1", slice.rhs_call_arg_imm,
+               "two-argument direct-call rhs immediate exceeds the minimal aarch64 mov/sub range");
+  out << "  bl " << helper_symbol << "\n"
+      << "  ldr x30, [sp, #8]\n"
+      << "  add sp, sp, #16\n"
+      << "  ret\n";
+  return out.str();
+}
+
+std::string emit_minimal_direct_call_add_imm_asm(
+    const c4c::backend::bir::Module& module,
+    const c4c::backend::ParsedBirMinimalDirectCallAddImmModuleView& slice) {
+  auto emit_i32_imm = [](std::ostringstream& out,
+                         std::string_view reg,
+                         std::int64_t imm,
+                         const char* detail) {
+    if (imm >= 0 && imm <= std::numeric_limits<std::uint16_t>::max()) {
+      out << "  mov " << reg << ", #" << imm << "\n";
+      return;
+    }
+    if (imm < 0 && -imm <= std::numeric_limits<std::uint16_t>::max()) {
+      out << "  sub " << reg << ", wzr, #" << -imm << "\n";
+      return;
+    }
+    fail_unsupported(detail);
+  };
+
+  if (slice.helper == nullptr || slice.main_function == nullptr) {
+    fail_unsupported("BIR single-argument add-immediate direct-call slice without helper metadata");
+  }
+  if (slice.add_imm > std::numeric_limits<std::uint16_t>::max() ||
+      slice.add_imm < -std::numeric_limits<std::uint16_t>::max()) {
+    fail_unsupported(
+        "single-argument direct-call add-immediate exceeds the minimal aarch64 add/sub range");
+  }
+
+  std::ostringstream out;
+  const std::string helper_symbol = asm_symbol_name(module.target_triple, slice.helper->name);
+  const std::string main_symbol = asm_symbol_name(module.target_triple, slice.main_function->name);
+
+  out << ".text\n";
+  emit_function_prelude(out, module.target_triple, helper_symbol, false);
+  if (slice.add_imm >= 0) {
+    out << "  add w0, w0, #" << slice.add_imm << "\n";
+  } else {
+    out << "  sub w0, w0, #" << -slice.add_imm << "\n";
+  }
+  out << "  ret\n";
+  emit_function_prelude(out, module.target_triple, main_symbol, true);
+  out << "  sub sp, sp, #16\n"
+      << "  str x30, [sp, #8]\n";
+  emit_i32_imm(out, "w0", slice.call_arg_imm,
+               "single-argument direct-call immediate exceeds the minimal aarch64 mov/sub range");
+  out << "  bl " << helper_symbol << "\n"
+      << "  ldr x30, [sp, #8]\n"
+      << "  add sp, sp, #16\n"
+      << "  ret\n";
+  return out.str();
+}
+
+std::string emit_minimal_direct_call_identity_arg_asm(
+    const c4c::backend::bir::Module& module,
+    const c4c::backend::ParsedBirMinimalDirectCallIdentityArgModuleView& slice) {
+  auto emit_i32_imm = [](std::ostringstream& out,
+                         std::string_view reg,
+                         std::int64_t imm,
+                         const char* detail) {
+    if (imm >= 0 && imm <= std::numeric_limits<std::uint16_t>::max()) {
+      out << "  mov " << reg << ", #" << imm << "\n";
+      return;
+    }
+    if (imm < 0 && -imm <= std::numeric_limits<std::uint16_t>::max()) {
+      out << "  sub " << reg << ", wzr, #" << -imm << "\n";
+      return;
+    }
+    fail_unsupported(detail);
+  };
+
+  if (slice.helper == nullptr || slice.main_function == nullptr) {
+    fail_unsupported("BIR identity direct-call slice without helper metadata");
+  }
+
+  std::ostringstream out;
+  const std::string helper_symbol = asm_symbol_name(module.target_triple, slice.helper->name);
+  const std::string main_symbol = asm_symbol_name(module.target_triple, slice.main_function->name);
+
+  out << ".text\n";
+  emit_function_prelude(out, module.target_triple, helper_symbol, false);
+  out << "  ret\n";
+  emit_function_prelude(out, module.target_triple, main_symbol, true);
+  out << "  sub sp, sp, #16\n"
+      << "  str x30, [sp, #8]\n";
+  emit_i32_imm(out, "w0", slice.call_arg_imm,
+               "identity direct-call immediate exceeds the minimal aarch64 mov/sub range");
+  out << "  bl " << helper_symbol << "\n"
+      << "  ldr x30, [sp, #8]\n"
+      << "  add sp, sp, #16\n"
+      << "  ret\n";
+  return out.str();
+}
+
 std::string emit_minimal_declared_direct_call_asm(
     const c4c::backend::bir::Module& module,
     const c4c::backend::ParsedBirMinimalDeclaredDirectCallModuleView& slice) {
@@ -6670,6 +6806,18 @@ std::string emit_module(const c4c::backend::bir::Module& module,
   if (const auto slice = c4c::backend::parse_bir_minimal_declared_direct_call_module(module);
       slice.has_value()) {
     return emit_minimal_declared_direct_call_asm(module, *slice);
+  }
+  if (const auto slice = c4c::backend::parse_bir_minimal_two_arg_direct_call_module(module);
+      slice.has_value()) {
+    return emit_minimal_two_arg_direct_call_asm(module, *slice);
+  }
+  if (const auto slice = c4c::backend::parse_bir_minimal_direct_call_add_imm_module(module);
+      slice.has_value()) {
+    return emit_minimal_direct_call_add_imm_asm(module, *slice);
+  }
+  if (const auto slice = c4c::backend::parse_bir_minimal_direct_call_identity_arg_module(module);
+      slice.has_value()) {
+    return emit_minimal_direct_call_identity_arg_asm(module, *slice);
   }
   if (const auto imm = parse_minimal_return_imm(module); imm.has_value()) {
     return emit_minimal_return_sub_imm_asm(module, *imm);
