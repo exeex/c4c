@@ -5,10 +5,10 @@ Source Plan: plan.md
 # Active Item
 
 - Step 2: switch one shared helper seam off `BackendModule`
-- Current slice: inventory the remaining x86-only rich direct-call helper
-  families after landing the single-argument add-immediate helper/main route,
-  and pick the next smallest BIR-owned seam between the identity-return and
-  folded-two-argument helper/main families
+- Current slice: switch the next smallest remaining x86-only rich direct-call
+  helper/main family off the legacy parser after landing the single-argument
+  identity-return seam; prefer the folded-two-argument helper/main route next
+  unless the dual-identity subtraction slice proves smaller
 
 # Completed
 
@@ -93,6 +93,20 @@ Source Plan: plan.md
   `ctest --test-dir build -R 'backend_(bir_tests|shared_util_tests)' --output-on-failure`,
   and reran the full `ctest --test-dir build -j --output-on-failure` suite
   successfully with `2834/2834` tests passing in `test_after.log`
+- Added a shared BIR parser for the minimal single-argument identity-return
+  direct-call helper/main module shape
+- Added a bounded `try_lower_to_bir(...)` path for the matching minimal LIR
+  identity-return direct-call family so it synthesizes a shared BIR helper and
+  caller instead of depending on the x86-only direct LIR emitter seam
+- Switched `src/backend/x86/codegen/emit.cpp` to consume the new
+  `parse_bir_minimal_direct_call_identity_arg_module(...)` view for direct BIR
+  emission and the shared identity-return slice abstraction for LIR input
+- Added focused shared-util coverage, BIR lowering coverage, and x86
+  end-to-end pipeline coverage for the identity-return direct-call family
+- Rebuilt `backend_bir_tests` and `backend_shared_util_tests`, reran both test
+  binaries directly, and reran the full `ctest --test-dir build -j
+  --output-on-failure` suite successfully with `2834/2834` tests passing in
+  `test_after.log`
 - Added an order-independent `try_lower_to_bir(...)` path for the zero-arg
   minimal LIR direct-call helper/main family so it now synthesizes the shared
   two-function BIR direct-call shape instead of depending on x86's private
@@ -145,10 +159,11 @@ Source Plan: plan.md
   route and the single-argument add-immediate helper/main route
 - Continue shrinking stale direct-call helper families one seam at a time now
   that the zero-arg, declared-direct-call, minimal two-argument helper/main,
-  and single-argument add-immediate paths no longer need private x86 LIR
-  dispatch
-- Prefer the single-argument identity-return helper/main family next unless the
-  folded-two-arg slice proves easier to express as a shared BIR helper view
+  single-argument add-immediate, and single-argument identity-return paths no
+  longer need private x86 LIR dispatch
+- Prefer the folded-two-argument helper/main family next unless the
+  dual-identity subtraction slice proves easier to express as a shared BIR
+  helper view
 - Use the next slice to make `lir_to_backend_ir.*` more obviously adapter-only
   before Step 4 collapse work starts
 
@@ -187,4 +202,7 @@ Source Plan: plan.md
   glue for `try_lower_to_bir(...)`
 - This slice removes another x86-only direct-call seam from the legacy route:
   the minimal single-argument add-immediate helper/main family now lowers
+  through shared BIR and has a direct-BIR emitter path on x86
+- This slice removes another x86-only direct-call seam from the legacy route:
+  the minimal single-argument identity-return helper/main family now lowers
   through shared BIR and has a direct-BIR emitter path on x86
