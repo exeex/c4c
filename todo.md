@@ -8,9 +8,9 @@ Source Plan: plan.md
 
 - Step 1: audit the typed type boundary and backend ownership seams
 - Current slice: extend the typed scalar seam into the remaining minimal
-  direct-call helper recognizers by preferring structured helper return/param
-  metadata over stale signature parameter text in the remaining two-parameter
-  helper parser used by the minimal two-argument direct-call lowering path
+  direct-call helper recognizers by deciding whether the remaining
+  alloca-slot helper parser needs the same structured-param preference now or
+  should stay as an explicit follow-on
 
 ## Completed
 
@@ -99,6 +99,16 @@ Source Plan: plan.md
   disagree with stale signature param text
 - Re-ran `backend_bir_tests` plus the full suite and kept the regression guard
   passing (`2841 -> 2841`)
+- Switched `parse_backend_two_param_add_function(...)` in
+  `src/backend/lowering/call_decode.hpp` to prefer structured helper return and
+  parameter metadata when present instead of hard-requiring `"i32"` signature
+  parameter text
+- Added a focused backend regression in
+  `tests/backend/backend_bir_lowering_tests.cpp` that keeps the minimal
+  two-argument direct-call lowering path working when typed helper params
+  disagree with stale signature param text
+- Re-ran `backend_bir_tests`, `backend_shared_util_tests`, and the full suite
+  with the regression guard still passing (`2841 -> 2841`)
 
 ## Next
 
@@ -106,10 +116,10 @@ Source Plan: plan.md
   `src/backend/lowering/lir_to_bir.cpp` and `src/backend/lowering/call_decode.hpp`
   away from hard-required signature-text parameter typing where structured
   helper metadata already exists
-- apply the same structured-param preference to
-  `parse_backend_two_param_add_function(...)` for the minimal two-argument
-  direct-call slice and decide whether the alloca-slot helper variant needs the
-  same treatment in the same step or as a follow-on
+- decide whether `parse_backend_single_param_slot_add_function(...)` should
+  accept structured helper return/param metadata in the same way as the other
+  minimal direct-call helper recognizers, or record it as a distinct follow-on
+  if the helper-local alloca/store shape needs separate coverage
 - decide whether pointer payload support is needed immediately for the next
   lowering slice or should stay deferred until the first pointer-backed BIR
   consumer is converted
@@ -137,6 +147,8 @@ Source Plan: plan.md
   `test_bir_lowering_accepts_minimal_direct_call_add_imm_lir_module_with_typed_helper_param`
   and
   `test_bir_lowering_accepts_minimal_call_crossing_direct_call_lir_module_with_typed_helper_param`
+  plus
+  `test_bir_lowering_accepts_minimal_two_arg_direct_call_lir_module_with_typed_helper_params`
   in `tests/backend/backend_bir_lowering_tests.cpp`.
 - Full-suite before/after comparison for this slice should use
   `test_fail_before.log` and `test_fail_after.log` with the regression-guard

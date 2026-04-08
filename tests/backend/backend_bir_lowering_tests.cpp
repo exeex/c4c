@@ -514,6 +514,28 @@ c4c::codegen::lir::LirModule make_bir_minimal_two_arg_direct_call_local_slot_lir
   return module;
 }
 
+c4c::codegen::lir::LirModule
+make_bir_minimal_two_arg_direct_call_lir_module_with_typed_helper_params() {
+  using namespace c4c::codegen::lir;
+
+  auto module = make_bir_minimal_two_arg_direct_call_lir_module();
+  auto& helper = module.functions[1];
+  helper.return_type.base = c4c::TB_INT;
+  helper.params.clear();
+
+  c4c::TypeSpec param_type{};
+  param_type.base = c4c::TB_INT;
+  helper.params.push_back({"%lhs", param_type});
+  helper.params.push_back({"%rhs", param_type});
+  helper.signature_text = "define i32 @add_pair(i8 %lhs, i8 %rhs)\n";
+
+  auto& helper_entry = helper.blocks.front();
+  auto& add = std::get<LirBinOp>(helper_entry.insts.front());
+  add.type_str = LirTypeRef::integer(32);
+
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_bir_minimal_direct_call_add_imm_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -1073,6 +1095,23 @@ void test_bir_lowering_accepts_minimal_two_arg_direct_call_local_slot_lir_module
                     parsed->main_function != nullptr && parsed->main_function->name == "main" &&
                     parsed->lhs_call_arg_imm == 5 && parsed->rhs_call_arg_imm == 7,
                 "the lowered local-slot BIR module should preserve the helper/main structure and normalized immediate call operands");
+  }
+}
+
+void test_bir_lowering_accepts_minimal_two_arg_direct_call_lir_module_with_typed_helper_params() {
+  const auto lowered = c4c::backend::try_lower_to_bir(
+      make_bir_minimal_two_arg_direct_call_lir_module_with_typed_helper_params());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the minimal two-argument direct-call LIR module slice when typed helper params disagree with stale signature param text");
+
+  const auto parsed = c4c::backend::parse_bir_minimal_two_arg_direct_call_module(*lowered);
+  expect_true(parsed.has_value(),
+              "the lowered BIR module should still match the shared minimal two-argument direct-call BIR parser when typed helper params disagree with stale signature text");
+  if (parsed.has_value()) {
+    expect_true(parsed->helper != nullptr && parsed->helper->name == "add_pair" &&
+                    parsed->main_function != nullptr && parsed->main_function->name == "main" &&
+                    parsed->lhs_call_arg_imm == 5 && parsed->rhs_call_arg_imm == 7,
+                "the lowered BIR module should preserve the helper/main structure and both immediate call operands for the typed helper-param two-argument direct-call slice");
   }
 }
 
@@ -3285,6 +3324,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_minimal_void_direct_call_imm_return_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_two_arg_direct_call_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_two_arg_direct_call_local_slot_lir_module);
+  RUN_TEST(test_bir_lowering_accepts_minimal_two_arg_direct_call_lir_module_with_typed_helper_params);
   RUN_TEST(test_bir_lowering_accepts_minimal_direct_call_add_imm_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_direct_call_add_imm_lir_module_with_typed_helper_param);
   RUN_TEST(test_bir_lowering_accepts_minimal_direct_call_identity_arg_lir_module);
