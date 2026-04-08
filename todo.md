@@ -5,9 +5,9 @@ Source Plan: plan.md
 # Active Item
 
 - Step 2: switch one shared helper seam off `BackendModule`
-- Current slice: extend the same BIR-first direct-call migration to the next
-  production consumer, likely the aarch64 direct BIR emitter entry or the next
-  shared declared-direct-call seam
+- Current slice: extend the BIR-first migration into the next declared-direct-
+  call seam, where a concrete emitter or shared helper still requires richer
+  extern-arg metadata than the current BIR surface carries
 
 # Completed
 
@@ -31,12 +31,19 @@ Source Plan: plan.md
   `BackendModule` parser on that path
 - Rebuilt `backend_bir_tests` and reran the full
   `ctest --test-dir build -j --output-on-failure` suite successfully
+- Switched `src/backend/aarch64/codegen/emit.cpp` to consume
+  `parse_bir_minimal_direct_call_module(...)` before the affine-return BIR
+  subset so direct BIR helper/main call pairs now avoid the legacy
+  `BackendModule` route on the native aarch64 entry too
+- Added focused aarch64 BIR pipeline coverage for a direct BIR helper/main
+  zero-argument direct-call module
+- Rebuilt `backend_bir_tests` and confirmed full-suite parity again:
+  `2834/2834` tests passed in `test_after.log`
 
 # Next
 
-- Extend the same migration pattern to the next direct-call consumer after x86,
-  likely the aarch64 direct BIR entry or the next shared declared-direct-call
-  seam
+- Extend the same migration pattern past the new aarch64 zero-argument
+  direct-call entry, likely into the next declared-direct-call seam
 - Extend the BIR declared-direct-call surface with typed-call / extern-arg
   detail when a concrete emitter or shared helper needs it
 - Continue shrinking stale `BackendModule`-only direct-call helpers one family
@@ -54,3 +61,6 @@ Source Plan: plan.md
 - This slice removes one real x86 direct-call consumer from the legacy
   `BackendModule` parser family, but aarch64 and declared-direct-call seams
   still remain
+- The aarch64 direct BIR entry now matches x86 for the minimal helper/main
+  zero-argument direct-call family; the next live shared seam is the richer
+  declared-direct-call surface

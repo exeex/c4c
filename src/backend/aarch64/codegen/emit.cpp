@@ -4320,6 +4320,38 @@ std::string emit_minimal_direct_call_asm(const c4c::backend::BackendModule& modu
   return out.str();
 }
 
+std::string emit_minimal_direct_call_asm(
+    const c4c::backend::bir::Module& module,
+    const c4c::backend::ParsedBirMinimalDirectCallModuleView& slice) {
+  if (slice.helper == nullptr || slice.main_function == nullptr) {
+    fail_unsupported("BIR zero-argument direct-call slice without helper metadata");
+  }
+
+  if (slice.return_imm < 0 ||
+      slice.return_imm > std::numeric_limits<std::uint16_t>::max()) {
+    fail_unsupported("BIR helper return immediates outside the minimal mov-supported range");
+  }
+
+  std::ostringstream out;
+  const std::string helper_symbol =
+      asm_symbol_name(module.target_triple, slice.helper->name);
+  const std::string main_symbol =
+      asm_symbol_name(module.target_triple, slice.main_function->name);
+
+  out << ".text\n";
+  emit_function_prelude(out, module.target_triple, helper_symbol, false);
+  out << "  mov w0, #" << slice.return_imm << "\n"
+      << "  ret\n";
+  emit_function_prelude(out, module.target_triple, main_symbol, true);
+  out << "  sub sp, sp, #16\n"
+      << "  str x30, [sp, #8]\n"
+      << "  bl " << helper_symbol << "\n"
+      << "  ldr x30, [sp, #8]\n"
+      << "  add sp, sp, #16\n"
+      << "  ret\n";
+  return out.str();
+}
+
 std::string emit_minimal_void_direct_call_imm_return_asm(
     const c4c::backend::BackendModule& module,
     const c4c::backend::ParsedBackendMinimalVoidDirectCallImmReturnModuleView& slice) {
@@ -8336,6 +8368,10 @@ std::optional<std::string> try_emit_direct_lir_module(
 std::string emit_module(const c4c::backend::bir::Module& module,
                         const c4c::codegen::lir::LirModule* legacy_fallback) {
   (void)legacy_fallback;
+  if (const auto slice = c4c::backend::parse_bir_minimal_direct_call_module(module);
+      slice.has_value()) {
+    return emit_minimal_direct_call_asm(module, *slice);
+  }
   if (const auto imm = parse_minimal_return_imm(module); imm.has_value()) {
     return emit_minimal_return_sub_imm_asm(module, *imm);
   }
