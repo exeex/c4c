@@ -24,6 +24,15 @@ static_assert(!IsCompleteType<c4c::codegen::lir::LirModule>::value,
 static_assert(std::is_constructible_v<c4c::backend::BackendModuleInput,
                                       const c4c::backend::bir::Module&>,
               "backend input surface should accept a direct BIR module");
+static_assert(std::is_constructible_v<c4c::backend::BackendModuleInput,
+                                      const c4c::codegen::lir::LirModule&>,
+              "backend input surface should accept a direct LIR entry module");
+static_assert(!std::is_constructible_v<c4c::backend::BackendModuleInput,
+                                       const c4c::backend::bir::Module*>,
+              "backend input surface should not advertise nullable BIR pointer state");
+static_assert(!std::is_constructible_v<c4c::backend::BackendModuleInput,
+                                       const c4c::codegen::lir::LirModule*>,
+              "backend input surface should not advertise nullable LIR pointer state");
 static_assert(!std::is_constructible_v<c4c::backend::BackendModuleInput,
                                        const c4c::backend::bir::Module&,
                                        const c4c::codegen::lir::LirModule*>,

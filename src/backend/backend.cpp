@@ -7,7 +7,6 @@
 #include "../codegen/lir/lir_printer.hpp"
 #include "../codegen/lir/ir.hpp"
 
-#include <memory>
 #include <stdexcept>
 
 namespace c4c::backend {
@@ -37,15 +36,10 @@ std::string render_bir_module(const bir::Module& module, Target target) {
 }  // namespace
 
 BackendModuleInput::BackendModuleInput(const bir::Module& bir_module)
-    : owned_bir_module_(std::make_unique<bir::Module>(bir_module)),
-      bir_module_(owned_bir_module_.get()) {}
+    : module_(bir_module) {}
 
 BackendModuleInput::BackendModuleInput(const c4c::codegen::lir::LirModule& lir_module)
-    : lir_module_(&lir_module) {}
-
-BackendModuleInput::BackendModuleInput(BackendModuleInput&&) noexcept = default;
-BackendModuleInput& BackendModuleInput::operator=(BackendModuleInput&&) noexcept = default;
-BackendModuleInput::~BackendModuleInput() = default;
+    : module_(&lir_module) {}
 
 std::string emit_module(const BackendModuleInput& input,
                         const BackendOptions& options) {
@@ -53,9 +47,6 @@ std::string emit_module(const BackendModuleInput& input,
     return render_bir_module(*input.bir_module(), options.target);
   }
 
-  if (input.lir_module() == nullptr) {
-    return {};
-  }
   const auto& lir_module = *input.lir_module();
   auto bir_module = c4c::backend::try_lower_to_bir(lir_module);
   if (!bir_module.has_value()) {

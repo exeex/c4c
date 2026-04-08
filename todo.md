@@ -6,15 +6,33 @@ Source Plan: plan.md
 
 - Step 4 cleanup: keep shrinking adapter-only legacy-lowering surface now that
   `src/backend/ir.hpp` and `lir_to_backend_ir.*` are already gone
-- Current slice: re-inventory the remaining Step 4 public/semipublic entry
-  seams after deleting the dead `BackendLoweringRoute` /
-  `select_lowering_route(...)` split from `src/backend/backend.{hpp,cpp}`
-- Next intended slice: compare the surviving `BackendModuleInput` ownership
-  surface and `src/backend/lowering/lir_to_backend_ir.*` callers to see
-  whether another adapter-only public seam can disappear without changing the
-  explicit riscv64 LLVM fallback behavior for unsupported LIR input
+- Current slice: re-inventory the remaining backend-entry/public seams after
+  the `BackendModuleInput` ownership cleanup to see whether any header or
+  helper still advertises impossible empty-input or legacy-lowering state
+- Next intended slice: compare the backend-entry surface against the target
+  emitters and `try_lower_to_bir(...)` fallback path to see whether another
+  adapter-only wrapper can disappear without changing the explicit riscv64 LLVM
+  text fallback for unsupported LIR input
 
 # Completed
+
+- Collapsed `src/backend/backend.hpp` / `src/backend/backend.cpp`
+  `BackendModuleInput` from heap-backed nullable pointer plumbing into one
+  exact two-state variant: owned direct BIR payload or borrowed LIR entry,
+  removing the dead empty-input return path from backend entry
+- Tightened
+  `tests/backend/backend_header_boundary_tests.cpp` so the public backend input
+  surface must continue accepting direct BIR and direct LIR modules while
+  rejecting nullable pointer-only construction and the old BIR-plus-fallback
+  legacy shape
+- Rebuilt `backend_bir_tests` and `backend_shared_util_tests`, reran
+  `ctest --test-dir build -R '^(backend_bir_tests|backend_shared_util_tests)$' --output-on-failure`,
+  reran the full `ctest --test-dir build -j8 --output-on-failure` suite into
+  `test_after.log` / `test_fail_after.log`, and confirmed the workspace stayed
+  at `2834/2834` passing with 0 failures
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=3 failed=-3`
+  and zero newly failing tests against `test_fail_before.log`
 
 - Collapsed the remaining duplicated riscv64 BIR-render branch in
   `src/backend/backend.cpp` behind one shared `render_bir_module(...)` helper

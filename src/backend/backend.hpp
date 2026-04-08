@@ -1,8 +1,8 @@
 #pragma once
 
 #include "bir.hpp"
-#include <memory>
 #include <string>
+#include <variant>
 
 #include "target.hpp"
 
@@ -15,19 +15,25 @@ namespace c4c::backend {
 struct BackendModuleInput {
   explicit BackendModuleInput(const bir::Module& bir_module);
   explicit BackendModuleInput(const c4c::codegen::lir::LirModule& lir_module);
-  BackendModuleInput(BackendModuleInput&&) noexcept;
-  BackendModuleInput& operator=(BackendModuleInput&&) noexcept;
-  BackendModuleInput(const BackendModuleInput&) = delete;
-  BackendModuleInput& operator=(const BackendModuleInput&) = delete;
-  ~BackendModuleInput();
+  BackendModuleInput(BackendModuleInput&&) noexcept = default;
+  BackendModuleInput& operator=(BackendModuleInput&&) noexcept = default;
+  BackendModuleInput(const BackendModuleInput&) = default;
+  BackendModuleInput& operator=(const BackendModuleInput&) = default;
+  ~BackendModuleInput() = default;
 
-  const bir::Module* bir_module() const { return bir_module_; }
-  const c4c::codegen::lir::LirModule* lir_module() const { return lir_module_; }
+  const bir::Module* bir_module() const {
+    return std::get_if<bir::Module>(&module_);
+  }
+  const c4c::codegen::lir::LirModule* lir_module() const {
+    if (const auto* lir_module =
+            std::get_if<const c4c::codegen::lir::LirModule*>(&module_)) {
+      return *lir_module;
+    }
+    return nullptr;
+  }
 
  private:
-  std::unique_ptr<bir::Module> owned_bir_module_;
-  const bir::Module* bir_module_ = nullptr;
-  const c4c::codegen::lir::LirModule* lir_module_ = nullptr;
+  std::variant<bir::Module, const c4c::codegen::lir::LirModule*> module_;
 };
 
 struct BackendOptions {
