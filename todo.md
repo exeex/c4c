@@ -10,10 +10,33 @@ Source Plan: plan.md
   `src/backend/lowering/call_decode.hpp` by moving the next small live
   direct-call lowering family into `src/backend/lowering/lir_to_bir.cpp`
 - Next intended slice: remove the next simplest surviving direct-call adapter
-  family after declared direct-call, likely the minimal two-arg direct-call
+  family after the two-argument helper, likely the add-immediate direct-call
   helper, once focused BIR lowering coverage is in place
 
 # Completed
+
+- Removed the still-live
+  `parse_backend_minimal_two_arg_direct_call_lir_module(...)` adapter and its
+  `ParsedBackendMinimalTwoArgDirectCallLirModuleView` from
+  `src/backend/lowering/call_decode.hpp` by matching that LIR shape directly in
+  `src/backend/lowering/lir_to_bir.cpp`
+- Added focused BIR lowering coverage in
+  `tests/backend/backend_bir_lowering_tests.cpp` for the accepted one-local-slot
+  two-argument direct-call rewrite form so the shared BIR lowering route keeps
+  validating the non-trivial adapter behavior after removal
+- Rebuilt `backend_bir_tests` successfully after the two-argument direct-call
+  adapter removal
+- Reran `ctest --test-dir build -R 'backend_bir_tests' --output-on-failure`
+  successfully after the adapter removal
+- Rebuilt the full workspace with `cmake --build build -j8` successfully after
+  the adapter removal
+- Reran the full `ctest --test-dir build -j8 --output-on-failure` suite and
+  refreshed `test_fail_after.log`; the workspace improved from `2821/2834`
+  passing with 13 failures in `test_fail_before.log` to `2834/2834` passing
+  with 0 failures
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=13 failed=-13`
+  and zero newly failing tests
 
 - Removed the remaining
   `parse_backend_minimal_declared_direct_call_lir_module(...)` adapter and its

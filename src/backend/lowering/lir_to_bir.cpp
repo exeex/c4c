@@ -561,18 +561,134 @@ std::optional<bir::Module> try_lower_minimal_declared_direct_call_module(
 
 std::optional<bir::Module> try_lower_minimal_two_arg_direct_call_module(
     const c4c::codegen::lir::LirModule& module) {
-  const auto parsed = parse_backend_minimal_two_arg_direct_call_lir_module(module);
-  if (!parsed.has_value() || parsed->helper == nullptr || parsed->main_function == nullptr ||
-      parsed->call == nullptr || parsed->call->result.str().empty()) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 2 || !module.globals.empty() || !module.string_pool.empty() ||
+      !module.extern_decls.empty()) {
     return std::nullopt;
   }
+
+  const auto try_match =
+      [](const LirFunction& main_function,
+         const LirFunction& helper)
+      -> std::optional<std::tuple<const LirFunction*, const LirFunction*, const LirCallOp*,
+                                  std::int64_t, std::int64_t>> {
+    if (main_function.is_declaration || helper.is_declaration ||
+        !parse_backend_two_param_add_function(helper, std::nullopt).has_value() ||
+        !backend_lir_signature_matches(
+            main_function.signature_text, "define", "i32", main_function.name, {}) ||
+        helper.entry.value != 0 || main_function.entry.value != 0 || helper.blocks.size() != 1 ||
+        main_function.blocks.size() != 1 || !helper.alloca_insts.empty() ||
+        !helper.stack_objects.empty() || !main_function.stack_objects.empty()) {
+      return std::nullopt;
+    }
+
+    const auto& main_block = main_function.blocks.front();
+    const auto* main_ret = std::get_if<LirRet>(&main_block.terminator);
+    if (main_block.label != "entry" || main_ret == nullptr || !main_ret->value_str.has_value() ||
+        main_ret->type_str != "i32" || main_block.insts.empty()) {
+      return std::nullopt;
+    }
+
+    const auto* call = std::get_if<LirCallOp>(&main_block.insts.back());
+    const auto call_operands =
+        call == nullptr
+            ? std::nullopt
+            : parse_backend_direct_global_two_typed_call_operands(
+                  *call, helper.name, "i32", "i32");
+    if (call == nullptr || call->result.empty() || call->result != *main_ret->value_str ||
+        !call_operands.has_value()) {
+      return std::nullopt;
+    }
+
+    if (main_function.alloca_insts.empty()) {
+      if (main_block.insts.size() != 1) {
+        return std::nullopt;
+      }
+
+      const auto lhs_call_arg_imm = parse_backend_i64_literal(call_operands->first);
+      const auto rhs_call_arg_imm = parse_backend_i64_literal(call_operands->second);
+      if (!lhs_call_arg_imm.has_value() || !rhs_call_arg_imm.has_value()) {
+        return std::nullopt;
+      }
+      return std::tuple<const LirFunction*, const LirFunction*, const LirCallOp*, std::int64_t,
+                        std::int64_t>{&helper, &main_function, call, *lhs_call_arg_imm,
+                                      *rhs_call_arg_imm};
+    }
+
+    const std::vector<LirInst> slot_prefix(main_block.insts.begin(), main_block.insts.end() - 1);
+    if (main_function.alloca_insts.size() == 1) {
+      const auto* alloca = std::get_if<LirAllocaOp>(&main_function.alloca_insts.front());
+      if (alloca == nullptr || alloca->type_str != "i32" || !alloca->count.empty()) {
+        return std::nullopt;
+      }
+
+      const auto matched_local = parse_backend_single_local_i32_slot_call_operand_imm(
+          slot_prefix, alloca->result, call_operands->first, call_operands->second);
+      if (!matched_local.has_value()) {
+        return std::nullopt;
+      }
+
+      if (matched_local->second) {
+        const auto rhs_call_arg_imm = parse_backend_i64_literal(call_operands->second);
+        if (!rhs_call_arg_imm.has_value()) {
+          return std::nullopt;
+        }
+        return std::tuple<const LirFunction*, const LirFunction*, const LirCallOp*, std::int64_t,
+                          std::int64_t>{&helper, &main_function, call, matched_local->first,
+                                        *rhs_call_arg_imm};
+      }
+
+      const auto lhs_call_arg_imm = parse_backend_i64_literal(call_operands->first);
+      if (!lhs_call_arg_imm.has_value()) {
+        return std::nullopt;
+      }
+      return std::tuple<const LirFunction*, const LirFunction*, const LirCallOp*, std::int64_t,
+                        std::int64_t>{&helper, &main_function, call, *lhs_call_arg_imm,
+                                      matched_local->first};
+    }
+
+    if (main_function.alloca_insts.size() != 2) {
+      return std::nullopt;
+    }
+
+    const auto* lhs_alloca = std::get_if<LirAllocaOp>(&main_function.alloca_insts[0]);
+    const auto* rhs_alloca = std::get_if<LirAllocaOp>(&main_function.alloca_insts[1]);
+    if (lhs_alloca == nullptr || rhs_alloca == nullptr || lhs_alloca->type_str != "i32" ||
+        rhs_alloca->type_str != "i32" || !lhs_alloca->count.empty() ||
+        !rhs_alloca->count.empty()) {
+      return std::nullopt;
+    }
+
+    const auto matched_slots = parse_backend_two_local_i32_rewrite_call_operands_imm(
+        slot_prefix, lhs_alloca->result, rhs_alloca->result, call_operands->first,
+        call_operands->second);
+    if (!matched_slots.has_value()) {
+      return std::nullopt;
+    }
+
+    return std::tuple<const LirFunction*, const LirFunction*, const LirCallOp*, std::int64_t,
+                      std::int64_t>{&helper, &main_function, call, matched_slots->first,
+                                    matched_slots->second};
+  };
+
+  auto parsed = try_match(module.functions[0], module.functions[1]);
+  if (!parsed.has_value()) {
+    parsed = try_match(module.functions[1], module.functions[0]);
+  }
+  if (!parsed.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto& [helper_function, caller_function, call, lhs_call_arg_imm, rhs_call_arg_imm] =
+      *parsed;
 
   bir::Module lowered;
   lowered.target_triple = module.target_triple;
   lowered.data_layout = module.data_layout;
 
   bir::Function helper;
-  helper.name = parsed->helper->name;
+  helper.name = helper_function->name;
   helper.return_type = bir::TypeKind::I32;
   helper.params = {
       bir::Param{.type = bir::TypeKind::I32, .name = "%lhs"},
@@ -592,22 +708,22 @@ std::optional<bir::Module> try_lower_minimal_two_arg_direct_call_module(
   lowered.functions.push_back(std::move(helper));
 
   bir::Function main_function;
-  main_function.name = parsed->main_function->name;
+  main_function.name = caller_function->name;
   main_function.return_type = bir::TypeKind::I32;
 
   bir::Block main_entry;
   main_entry.label = "entry";
   main_entry.insts.push_back(bir::CallInst{
-      .result = bir::Value::named(bir::TypeKind::I32, parsed->call->result.str()),
-      .callee = parsed->helper->name,
+      .result = bir::Value::named(bir::TypeKind::I32, call->result.str()),
+      .callee = helper_function->name,
       .args = {
-          bir::Value::immediate_i32(static_cast<std::int32_t>(parsed->lhs_call_arg_imm)),
-          bir::Value::immediate_i32(static_cast<std::int32_t>(parsed->rhs_call_arg_imm)),
+          bir::Value::immediate_i32(static_cast<std::int32_t>(lhs_call_arg_imm)),
+          bir::Value::immediate_i32(static_cast<std::int32_t>(rhs_call_arg_imm)),
       },
       .return_type_name = "i32",
   });
   main_entry.terminator.value =
-      bir::Value::named(bir::TypeKind::I32, parsed->call->result.str());
+      bir::Value::named(bir::TypeKind::I32, call->result.str());
   main_function.blocks.push_back(std::move(main_entry));
   lowered.functions.push_back(std::move(main_function));
   return lowered;
