@@ -8,7 +8,9 @@ Source Plan: plan.md
 - Current slice: inventory the next smallest remaining x86-only rich
   direct-call helper family after the dead call-crossing `BackendModule` seam
   removal, with preference for a parser/emitter pair that can move to a shared
-  BIR-first view without widening the contract
+  BIR-first view without widening the contract; chosen target is the
+  zero-argument void-helper / fixed-immediate caller family so shared BIR can
+  own the helper/main pairing before the richer mixed-metadata families
 
 # Completed
 
@@ -212,12 +214,36 @@ Source Plan: plan.md
   binaries directly, and reran the full `ctest --test-dir build -j
   --output-on-failure` suite successfully against the repo's current known
   dirty baseline with the same 13 failures recorded in `test_after.log`
+- Identified the zero-argument void-helper / fixed-immediate caller family as
+  the next smallest remaining rich direct-call seam that could move to shared
+  BIR without widening globals, local-slot, or extern metadata contracts
+- Added `ParsedBirMinimalVoidDirectCallImmReturnModuleView` /
+  `parse_bir_minimal_void_direct_call_imm_return_module(...)` so shared
+  call-decode now owns the BIR helper/main pairing for that void direct-call
+  family
+- Added a bounded `try_lower_to_bir(...)` path for the matching minimal LIR
+  void direct-call family so x86 LIR input now lowers through shared BIR
+  instead of depending on the direct LIR-only emitter shortcut
+- Switched x86 direct BIR emission to recognize the new BIR void direct-call
+  slice and removed the dead x86 LIR-only direct-emission seam for that family
+- Switched native aarch64 direct BIR emission to recognize the new shared BIR
+  void direct-call slice and deleted the dead legacy `BackendModule` emitter
+  overload for that family
+- Added focused shared-util coverage plus x86/aarch64 direct-BIR pipeline
+  coverage and x86 LIR-through-BIR pipeline coverage for the void direct-call
+  family
+- Rebuilt `backend_shared_util_tests`, `backend_bir_tests`, and `c4cll`, reran
+  `ctest --test-dir build -R 'backend_(bir_tests|shared_util_tests)' --output-on-failure`,
+  and reran the full `ctest --test-dir build -j --output-on-failure` suite
+  successfully against the repo's current dirty baseline with the same 13
+  failures recorded in `test_before.log` and `test_after.log`
 
 # Next
 
-- Inventory the remaining x86-only rich direct-call helper families in
-  `src/backend/x86/codegen/emit.cpp` and `src/backend/lowering/call_decode.hpp`
-  to choose the next smallest seam after the dead call-crossing route removal
+- Inventory the remaining rich direct-call helper families after the void
+  direct-call migration, with the folded two-argument and dual-identity
+  subtraction seams as the next likely candidates to move off any remaining
+  legacy `BackendModule` parsing
 - Continue shrinking stale direct-call helper families one seam at a time now
   that the zero-arg, declared-direct-call, minimal two-argument helper/main,
   single-argument add-immediate, single-argument identity-return, folded

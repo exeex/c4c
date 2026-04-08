@@ -124,6 +124,51 @@ void test_backend_shared_call_decode_parses_bir_minimal_declared_direct_call_mod
               "shared call-decode surface should allow BIR declared direct-call modules to return a fixed immediate after the call");
 }
 
+void test_backend_shared_call_decode_parses_bir_minimal_void_direct_call_imm_return_module() {
+  c4c::backend::bir::Module module;
+  module.functions.push_back(c4c::backend::bir::Function{
+      .name = "voidfn",
+      .return_type = c4c::backend::bir::TypeKind::Void,
+      .params = {},
+      .local_slots = {},
+      .blocks = {c4c::backend::bir::Block{
+          .label = "entry",
+          .insts = {},
+          .terminator = c4c::backend::bir::ReturnTerminator{},
+      }},
+      .is_declaration = false,
+  });
+  module.functions.push_back(c4c::backend::bir::Function{
+      .name = "main",
+      .return_type = c4c::backend::bir::TypeKind::I32,
+      .params = {},
+      .local_slots = {},
+      .blocks = {c4c::backend::bir::Block{
+          .label = "entry",
+          .insts = {c4c::backend::bir::CallInst{
+              .result = std::nullopt,
+              .callee = "voidfn",
+              .args = {},
+              .return_type_name = "void",
+          }},
+          .terminator = c4c::backend::bir::ReturnTerminator{
+              .value = c4c::backend::bir::Value::immediate_i32(9),
+          },
+      }},
+      .is_declaration = false,
+  });
+
+  const auto parsed = c4c::backend::parse_bir_minimal_void_direct_call_imm_return_module(module);
+  expect_true(parsed.has_value(),
+              "shared call-decode surface should parse a BIR void direct-call module with a fixed caller return");
+  expect_true(parsed->helper != nullptr && parsed->helper->name == "voidfn" &&
+                  parsed->main_function != nullptr && parsed->main_function->name == "main",
+              "shared call-decode surface should preserve helper and caller identities for BIR void direct-call modules");
+  expect_true(parsed->call != nullptr && parsed->call->callee == "voidfn" &&
+                  !parsed->call->result.has_value() && parsed->return_imm == 9,
+              "shared call-decode surface should preserve the void call and caller fixed return immediate for BIR void direct-call modules");
+}
+
 void test_backend_shared_call_decode_parses_bir_minimal_two_arg_direct_call_module() {
   c4c::backend::bir::Module module;
   module.functions.push_back(c4c::backend::bir::Function{
@@ -1276,6 +1321,7 @@ int main(int argc, char* argv[]) {
   if (argc >= 2) test_filter() = argv[1];
   test_backend_shared_call_decode_parses_bir_minimal_direct_call_module();
   test_backend_shared_call_decode_parses_bir_minimal_declared_direct_call_module();
+  test_backend_shared_call_decode_parses_bir_minimal_void_direct_call_imm_return_module();
   test_backend_shared_call_decode_parses_bir_minimal_two_arg_direct_call_module();
   test_backend_shared_call_decode_parses_bir_minimal_direct_call_add_imm_module();
   test_backend_shared_call_decode_parses_bir_minimal_direct_call_identity_arg_module();

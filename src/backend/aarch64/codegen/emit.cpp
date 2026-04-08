@@ -4362,22 +4362,20 @@ std::string emit_minimal_direct_call_asm(
 }
 
 std::string emit_minimal_void_direct_call_imm_return_asm(
-    const c4c::backend::BackendModule& module,
-    const c4c::backend::ParsedBackendMinimalVoidDirectCallImmReturnModuleView& slice) {
-  if (slice.helper == nullptr) {
-    fail_unsupported("structured zero-argument void direct-call slice without helper metadata");
+    const c4c::backend::bir::Module& module,
+    const c4c::backend::ParsedBirMinimalVoidDirectCallImmReturnModuleView& slice) {
+  if (slice.helper == nullptr || slice.main_function == nullptr) {
+    fail_unsupported("BIR zero-argument void direct-call slice without helper metadata");
   }
 
   if (slice.return_imm < 0 ||
       slice.return_imm > std::numeric_limits<std::uint16_t>::max()) {
-    fail_unsupported("void direct-call return immediates outside the minimal mov-supported range");
+    fail_unsupported("BIR void direct-call return immediates outside the minimal mov-supported range");
   }
 
   std::ostringstream out;
-  const std::string helper_symbol =
-      asm_symbol_name(module.target_triple, slice.helper->signature.name);
-  const std::string main_symbol =
-      asm_symbol_name(module.target_triple, slice.main_function->signature.name);
+  const std::string helper_symbol = asm_symbol_name(module.target_triple, slice.helper->name);
+  const std::string main_symbol = asm_symbol_name(module.target_triple, slice.main_function->name);
 
   out << ".text\n";
   emit_function_prelude(out, module.target_triple, helper_symbol, false);
@@ -8319,6 +8317,10 @@ std::string emit_module(const c4c::backend::bir::Module& module,
   if (const auto slice = c4c::backend::parse_bir_minimal_direct_call_module(module);
       slice.has_value()) {
     return emit_minimal_direct_call_asm(module, *slice);
+  }
+  if (const auto slice = c4c::backend::parse_bir_minimal_void_direct_call_imm_return_module(module);
+      slice.has_value()) {
+    return emit_minimal_void_direct_call_imm_return_asm(module, *slice);
   }
   if (const auto slice = c4c::backend::parse_bir_minimal_declared_direct_call_module(module);
       slice.has_value()) {

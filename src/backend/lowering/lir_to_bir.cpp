@@ -244,6 +244,46 @@ std::optional<bir::Module> try_lower_minimal_direct_call_module(
   return lowered;
 }
 
+std::optional<bir::Module> try_lower_minimal_void_direct_call_imm_return_module(
+    const c4c::codegen::lir::LirModule& module) {
+  const auto parsed = parse_backend_minimal_void_direct_call_imm_return_lir_module(module);
+  if (!parsed.has_value() || parsed->helper == nullptr || parsed->main_function == nullptr ||
+      parsed->call == nullptr) {
+    return std::nullopt;
+  }
+
+  bir::Module lowered;
+  lowered.target_triple = module.target_triple;
+  lowered.data_layout = module.data_layout;
+
+  bir::Function helper;
+  helper.name = parsed->helper->name;
+  helper.return_type = bir::TypeKind::Void;
+
+  bir::Block helper_entry;
+  helper_entry.label = "entry";
+  helper.blocks.push_back(std::move(helper_entry));
+  lowered.functions.push_back(std::move(helper));
+
+  bir::Function main_function;
+  main_function.name = parsed->main_function->name;
+  main_function.return_type = bir::TypeKind::I32;
+
+  bir::Block main_entry;
+  main_entry.label = "entry";
+  main_entry.insts.push_back(bir::CallInst{
+      .result = std::nullopt,
+      .callee = parsed->helper->name,
+      .args = {},
+      .return_type_name = "void",
+  });
+  main_entry.terminator.value =
+      bir::Value::immediate_i32(static_cast<std::int32_t>(parsed->return_imm));
+  main_function.blocks.push_back(std::move(main_entry));
+  lowered.functions.push_back(std::move(main_function));
+  return lowered;
+}
+
 std::optional<bir::Module> try_lower_minimal_declared_direct_call_module(
     const c4c::codegen::lir::LirModule& module) {
   const auto parsed = parse_backend_minimal_declared_direct_call_lir_module(module);
@@ -2554,6 +2594,10 @@ std::optional<bir::Function> try_lower_widened_i8_conditional_phi_select_functio
 
 std::optional<bir::Module> try_lower_to_bir(const c4c::codegen::lir::LirModule& module) {
   if (const auto lowered = try_lower_minimal_direct_call_module(module);
+      lowered.has_value()) {
+    return lowered;
+  }
+  if (const auto lowered = try_lower_minimal_void_direct_call_imm_return_module(module);
       lowered.has_value()) {
     return lowered;
   }

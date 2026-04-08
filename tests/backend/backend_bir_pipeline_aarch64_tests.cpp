@@ -111,6 +111,54 @@ void test_backend_bir_pipeline_drives_aarch64_direct_bir_declared_direct_call_en
                       "direct BIR declared direct-call input should stay on native aarch64 asm emission");
 }
 
+void test_backend_bir_pipeline_drives_aarch64_direct_bir_minimal_void_direct_call_imm_return_end_to_end() {
+  c4c::backend::bir::Module module;
+  module.functions.push_back(c4c::backend::bir::Function{
+      .name = "voidfn",
+      .return_type = c4c::backend::bir::TypeKind::Void,
+      .params = {},
+      .local_slots = {},
+      .blocks = {c4c::backend::bir::Block{
+          .label = "entry",
+          .insts = {},
+          .terminator = c4c::backend::bir::ReturnTerminator{},
+      }},
+      .is_declaration = false,
+  });
+  module.functions.push_back(c4c::backend::bir::Function{
+      .name = "main",
+      .return_type = c4c::backend::bir::TypeKind::I32,
+      .params = {},
+      .local_slots = {},
+      .blocks = {c4c::backend::bir::Block{
+          .label = "entry",
+          .insts = {c4c::backend::bir::CallInst{
+              .result = std::nullopt,
+              .callee = "voidfn",
+              .args = {},
+              .return_type_name = "void",
+          }},
+          .terminator = c4c::backend::bir::ReturnTerminator{
+              .value = c4c::backend::bir::Value::immediate_i32(9),
+          },
+      }},
+      .is_declaration = false,
+  });
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      make_bir_pipeline_options(c4c::backend::Target::Aarch64));
+
+  expect_contains(rendered, ".type voidfn, %function\nvoidfn:",
+                  "direct BIR void direct-call input should emit the helper body on the native aarch64 path");
+  expect_contains(rendered, "bl voidfn",
+                  "direct BIR void direct-call input should branch to the helper on the native aarch64 backend path");
+  expect_contains(rendered, "mov w0, #9",
+                  "direct BIR void direct-call input should preserve the fixed caller return immediate on the native aarch64 path");
+  expect_not_contains(rendered, "target triple =",
+                      "direct BIR void direct-call input should stay on native aarch64 asm emission");
+}
+
 void test_backend_bir_pipeline_drives_aarch64_single_param_chain_end_to_end() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_bir_single_param_add_sub_chain_module()},
@@ -562,6 +610,7 @@ void test_backend_bir_pipeline_rejects_unsupported_direct_bir_input_on_aarch64()
 void run_backend_bir_pipeline_aarch64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_direct_bir_minimal_direct_call_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_direct_bir_declared_direct_call_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_aarch64_direct_bir_minimal_void_direct_call_imm_return_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_single_param_chain_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_direct_bir_zero_param_staged_constant_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_two_param_add_end_to_end);

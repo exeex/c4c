@@ -68,6 +68,42 @@ c4c::codegen::lir::LirModule make_lir_declared_direct_call_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_lir_minimal_void_direct_call_imm_return_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction helper;
+  helper.name = "voidfn";
+  helper.signature_text = "define void @voidfn()\n";
+  helper.entry = LirBlockId{0};
+
+  LirBlock helper_entry;
+  helper_entry.id = LirBlockId{0};
+  helper_entry.label = "entry";
+  helper_entry.terminator = LirRet{std::nullopt, "void"};
+  helper.blocks.push_back(std::move(helper_entry));
+
+  LirFunction main_function;
+  main_function.name = "main";
+  main_function.signature_text = "define i32 @main()\n";
+  main_function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{"", "void", "@voidfn", "", ""});
+  entry.terminator = LirRet{std::string("9"), "i32"};
+  main_function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(main_function));
+  module.functions.push_back(std::move(helper));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_lir_minimal_two_arg_direct_call_module() {
   using namespace c4c::codegen::lir;
 
@@ -474,6 +510,55 @@ void test_backend_bir_pipeline_drives_x86_direct_bir_declared_direct_call_end_to
                       "direct BIR declared direct-call input should stay on native x86 asm emission");
 }
 
+void test_backend_bir_pipeline_drives_x86_direct_bir_minimal_void_direct_call_imm_return_end_to_end() {
+  c4c::backend::bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.functions.push_back(c4c::backend::bir::Function{
+      .name = "voidfn",
+      .return_type = c4c::backend::bir::TypeKind::Void,
+      .params = {},
+      .local_slots = {},
+      .blocks = {c4c::backend::bir::Block{
+          .label = "entry",
+          .insts = {},
+          .terminator = c4c::backend::bir::ReturnTerminator{},
+      }},
+      .is_declaration = false,
+  });
+  module.functions.push_back(c4c::backend::bir::Function{
+      .name = "main",
+      .return_type = c4c::backend::bir::TypeKind::I32,
+      .params = {},
+      .local_slots = {},
+      .blocks = {c4c::backend::bir::Block{
+          .label = "entry",
+          .insts = {c4c::backend::bir::CallInst{
+              .result = std::nullopt,
+              .callee = "voidfn",
+              .args = {},
+              .return_type_name = "void",
+          }},
+          .terminator = c4c::backend::bir::ReturnTerminator{
+              .value = c4c::backend::bir::Value::immediate_i32(9),
+          },
+      }},
+      .is_declaration = false,
+  });
+
+  const auto rendered =
+      c4c::backend::emit_module(c4c::backend::BackendModuleInput{module},
+                                make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".type voidfn, %function\nvoidfn:\n",
+                  "direct BIR void direct-call input should emit the void helper body on the native x86 path");
+  expect_contains(rendered, "call voidfn",
+                  "direct BIR void direct-call input should preserve the helper call on the native x86 path");
+  expect_contains(rendered, "mov eax, 9",
+                  "direct BIR void direct-call input should preserve the fixed caller return immediate on the native x86 path");
+  expect_not_contains(rendered, "target triple =",
+                      "direct BIR void direct-call input should stay on native x86 asm emission");
+}
+
 void test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_through_bir_end_to_end() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_lir_minimal_direct_call_module()},
@@ -487,6 +572,21 @@ void test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_through_bir_en
                   "x86 LIR minimal direct-call input should lower the helper call on the native x86 path");
   expect_not_contains(rendered, "target triple =",
                       "x86 LIR minimal direct-call input should stay on native asm emission instead of falling back to LLVM text");
+}
+
+void test_backend_bir_pipeline_drives_x86_lir_minimal_void_direct_call_imm_return_through_bir_end_to_end() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_lir_minimal_void_direct_call_imm_return_module()},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".type voidfn, %function\nvoidfn:\n",
+                  "x86 LIR void direct-call input should still emit the helper definition after routing through the shared BIR path");
+  expect_contains(rendered, "call voidfn",
+                  "x86 LIR void direct-call input should lower the helper call on the native x86 path");
+  expect_contains(rendered, "mov eax, 9",
+                  "x86 LIR void direct-call input should preserve the fixed caller return immediate on the BIR-owned route");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR void direct-call input should stay on native asm emission instead of falling back to LLVM text");
 }
 
 void test_backend_bir_pipeline_drives_x86_lir_declared_direct_call_through_bir_end_to_end() {
@@ -1382,12 +1482,14 @@ void test_backend_bir_pipeline_rejects_unsupported_direct_bir_input_on_x86() {
 void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_direct_call_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_declared_direct_call_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_void_direct_call_imm_return_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_two_arg_direct_call_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_direct_call_add_imm_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_direct_call_identity_arg_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_dual_identity_direct_call_sub_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_call_crossing_direct_call_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_through_bir_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_void_direct_call_imm_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_declared_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_add_imm_through_bir_end_to_end);
