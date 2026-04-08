@@ -937,60 +937,56 @@ parse_backend_minimal_structured_direct_call_module(const BackendModule& module,
     return std::nullopt;
   }
 
-  const BackendFunction* main_fn = nullptr;
-  const BackendFunction* helper = nullptr;
-  for (const auto& function : module.functions) {
-    if (function.signature.name == "main") {
-      if (main_fn != nullptr) {
-        return std::nullopt;
-      }
-      main_fn = &function;
-      continue;
-    }
-    if (helper != nullptr) {
+  const auto try_match = [&](const BackendFunction& caller,
+                             const BackendFunction& helper)
+      -> std::optional<ParsedBackendMinimalStructuredDirectCallModuleView> {
+    if (caller.is_declaration || helper.is_declaration ||
+        !backend_function_is_definition(caller.signature) ||
+        !backend_function_is_definition(helper.signature) ||
+        backend_signature_return_scalar_type(caller.signature) != BackendScalarType::I32 ||
+        backend_signature_return_scalar_type(helper.signature) != BackendScalarType::I32 ||
+        !caller.signature.params.empty() || caller.signature.is_vararg ||
+        helper.signature.is_vararg || caller.blocks.size() != 1 || helper.blocks.size() != 1) {
       return std::nullopt;
     }
-    helper = &function;
-  }
 
-  if (helper == nullptr || main_fn == nullptr || helper->is_declaration || main_fn->is_declaration ||
-      !backend_function_is_definition(main_fn->signature) ||
-      !backend_function_is_definition(helper->signature) ||
-      backend_signature_return_scalar_type(main_fn->signature) != BackendScalarType::I32 ||
-      backend_signature_return_scalar_type(helper->signature) != BackendScalarType::I32 ||
-      !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
-      helper->signature.is_vararg || helper->blocks.size() != 1 || main_fn->blocks.size() != 1) {
-    return std::nullopt;
-  }
+    const auto& caller_block = caller.blocks.front();
+    if (caller_block.label != "entry" || caller_block.insts.size() != 1 ||
+        !caller_block.terminator.value.has_value() ||
+        backend_return_scalar_type(caller_block.terminator) != BackendScalarType::I32) {
+      return std::nullopt;
+    }
 
-  const auto& main_block = main_fn->blocks.front();
-  if (main_block.label != "entry" || main_block.insts.size() != 1 ||
-      !main_block.terminator.value.has_value() ||
-      backend_return_scalar_type(main_block.terminator) != BackendScalarType::I32) {
-    return std::nullopt;
-  }
+    const auto* call = std::get_if<BackendCallInst>(&caller_block.insts.front());
+    const auto parsed_call =
+        call == nullptr ? std::nullopt : parse_backend_direct_global_typed_call(*call);
+    if (call == nullptr || !parsed_call.has_value() ||
+        !backend_typed_call_matches_signature(parsed_call->typed_call, helper.signature) ||
+        backend_call_return_type_kind(*call) != BackendValueTypeKind::Scalar ||
+        backend_call_return_scalar_type(*call) != BackendScalarType::I32 ||
+        call->result.empty() || parsed_call->symbol_name.empty() ||
+        parsed_call->symbol_name == caller.signature.name ||
+        parsed_call->symbol_name != helper.signature.name ||
+        parsed_call->typed_call.args.size() != expected_arg_count ||
+        *caller_block.terminator.value != call->result) {
+      return std::nullopt;
+    }
 
-  const auto* call = std::get_if<BackendCallInst>(&main_block.insts.front());
-  const auto parsed_call =
-      call == nullptr ? std::nullopt : parse_backend_direct_global_typed_call(*call);
-  if (call == nullptr || !parsed_call.has_value() ||
-      !backend_typed_call_matches_signature(parsed_call->typed_call, helper->signature) ||
-      backend_call_return_type_kind(*call) != BackendValueTypeKind::Scalar ||
-      backend_call_return_scalar_type(*call) != BackendScalarType::I32 ||
-      call->result.empty() || parsed_call->symbol_name.empty() || parsed_call->symbol_name == "main" ||
-      parsed_call->symbol_name != helper->signature.name ||
-      parsed_call->typed_call.args.size() != expected_arg_count ||
-      *main_block.terminator.value != call->result) {
-    return std::nullopt;
-  }
-
-  return ParsedBackendMinimalStructuredDirectCallModuleView{
-      helper,
-      main_fn,
-      &main_block,
-      call,
-      *parsed_call,
+    return ParsedBackendMinimalStructuredDirectCallModuleView{
+        &helper,
+        &caller,
+        &caller_block,
+        call,
+        *parsed_call,
+    };
   };
+
+  const auto& first = module.functions[0];
+  const auto& second = module.functions[1];
+  if (const auto parsed = try_match(first, second); parsed.has_value()) {
+    return parsed;
+  }
+  return try_match(second, first);
 }
 
 inline std::optional<ParsedBackendMinimalTwoArgDirectCallModuleView>
@@ -2148,96 +2144,93 @@ parse_backend_minimal_direct_call_add_imm_lir_module(
     return std::nullopt;
   }
 
-  const LirFunction* main_fn = nullptr;
-  const LirFunction* helper = nullptr;
-  for (const auto& function : module.functions) {
-    if (function.name == "main") {
-      if (main_fn != nullptr) {
+  const auto try_match =
+      [](const LirFunction& caller,
+         const LirFunction& helper) -> std::optional<ParsedBackendMinimalDirectCallAddImmLirModuleView> {
+    if (caller.is_declaration || helper.is_declaration ||
+        !backend_lir_signature_matches(
+            caller.signature_text, "define", "i32", caller.name, {}) ||
+        caller.entry.value != 0 || helper.entry.value != 0 || caller.blocks.size() != 1 ||
+        helper.blocks.size() != 1 || !caller.stack_objects.empty()) {
+      return std::nullopt;
+    }
+
+    const auto helper_shape = parse_backend_single_add_imm_function(helper, std::nullopt);
+    if (!helper_shape.has_value()) {
+      return std::nullopt;
+    }
+
+    const auto& caller_block = caller.blocks.front();
+    const auto* caller_ret = std::get_if<LirRet>(&caller_block.terminator);
+    if (caller_block.label != "entry" || caller_ret == nullptr ||
+        !caller_ret->value_str.has_value() || caller_ret->type_str != "i32" ||
+        caller_block.insts.empty()) {
+      return std::nullopt;
+    }
+
+    const auto* call = std::get_if<LirCallOp>(&caller_block.insts.back());
+    if (call == nullptr || call->result.empty() || call->result != *caller_ret->value_str) {
+      return std::nullopt;
+    }
+
+    std::optional<std::int64_t> call_arg_imm;
+    if (caller.alloca_insts.empty()) {
+      if (caller_block.insts.size() != 1) {
         return std::nullopt;
       }
-      main_fn = &function;
-      continue;
-    }
-    if (helper != nullptr) {
-      return std::nullopt;
-    }
-    helper = &function;
-  }
+      const auto operand =
+          parse_backend_direct_global_single_typed_call_operand(*call, helper.name, "i32");
+      if (!operand.has_value()) {
+        return std::nullopt;
+      }
+      call_arg_imm = parse_backend_i64_literal(*operand);
+    } else if (caller.alloca_insts.size() == 1) {
+      const auto* alloca = std::get_if<LirAllocaOp>(&caller.alloca_insts.front());
+      if (alloca == nullptr || alloca->type_str != "i32" || !alloca->count.empty()) {
+        return std::nullopt;
+      }
 
-  if (helper == nullptr || main_fn == nullptr || helper->is_declaration || main_fn->is_declaration ||
-      !backend_lir_is_zero_arg_i32_main_definition(main_fn->signature_text) ||
-      helper->entry.value != 0 || main_fn->entry.value != 0 || helper->blocks.size() != 1 ||
-      main_fn->blocks.size() != 1 || !main_fn->stack_objects.empty()) {
-    return std::nullopt;
-  }
+      const auto parsed_local_call =
+          parse_backend_single_local_typed_call(caller_block.insts, alloca->result);
+      if (!parsed_local_call.has_value() || parsed_local_call->arg_load == nullptr ||
+          parsed_local_call->call == nullptr) {
+        return std::nullopt;
+      }
+      const auto operand = parse_backend_direct_global_single_typed_call_operand(
+          *parsed_local_call->call, helper.name, "i32");
+      if (!operand.has_value() || *operand != parsed_local_call->arg_load->result) {
+        return std::nullopt;
+      }
 
-  const auto helper_shape = parse_backend_single_add_imm_function(*helper, std::nullopt);
-  if (!helper_shape.has_value()) {
-    return std::nullopt;
-  }
-
-  const auto& main_block = main_fn->blocks.front();
-  const auto* main_ret = std::get_if<LirRet>(&main_block.terminator);
-  if (main_block.label != "entry" || main_ret == nullptr || !main_ret->value_str.has_value() ||
-      main_ret->type_str != "i32" || main_block.insts.empty()) {
-    return std::nullopt;
-  }
-
-  const auto* call = std::get_if<LirCallOp>(&main_block.insts.back());
-  if (call == nullptr || call->result.empty() || call->result != *main_ret->value_str) {
-    return std::nullopt;
-  }
-
-  std::optional<std::int64_t> call_arg_imm;
-  if (main_fn->alloca_insts.empty()) {
-    if (main_block.insts.size() != 1) {
-      return std::nullopt;
-    }
-    const auto operand =
-        parse_backend_direct_global_single_typed_call_operand(*call, helper->name, "i32");
-    if (!operand.has_value()) {
-      return std::nullopt;
-    }
-    call_arg_imm = parse_backend_i64_literal(*operand);
-  } else if (main_fn->alloca_insts.size() == 1) {
-    const auto* alloca = std::get_if<LirAllocaOp>(&main_fn->alloca_insts.front());
-    if (alloca == nullptr || alloca->type_str != "i32" || !alloca->count.empty()) {
+      const auto* store = std::get_if<LirStoreOp>(&caller_block.insts.front());
+      if (store == nullptr || store->type_str != "i32" || store->ptr != alloca->result) {
+        return std::nullopt;
+      }
+      call_arg_imm = parse_backend_i64_literal(store->val);
+    } else {
       return std::nullopt;
     }
 
-    const auto parsed_local_call = parse_backend_single_local_typed_call(
-        main_block.insts, alloca->result);
-    if (!parsed_local_call.has_value() || parsed_local_call->arg_load == nullptr ||
-        parsed_local_call->call == nullptr) {
-      return std::nullopt;
-    }
-    const auto operand = parse_backend_direct_global_single_typed_call_operand(
-        *parsed_local_call->call, helper->name, "i32");
-    if (!operand.has_value() || *operand != parsed_local_call->arg_load->result) {
+    const auto add_imm = parse_backend_i64_literal(helper_shape->add->rhs);
+    if (!call_arg_imm.has_value() || !add_imm.has_value()) {
       return std::nullopt;
     }
 
-    const auto* store = std::get_if<LirStoreOp>(&main_block.insts.front());
-    if (store == nullptr || store->type_str != "i32" || store->ptr != alloca->result) {
-      return std::nullopt;
-    }
-    call_arg_imm = parse_backend_i64_literal(store->val);
-  } else {
-    return std::nullopt;
-  }
-
-  const auto add_imm = parse_backend_i64_literal(helper_shape->add->rhs);
-  if (!call_arg_imm.has_value() || !add_imm.has_value()) {
-    return std::nullopt;
-  }
-
-  return ParsedBackendMinimalDirectCallAddImmLirModuleView{
-      helper,
-      main_fn,
-      call,
-      *call_arg_imm,
-      *add_imm,
+    return ParsedBackendMinimalDirectCallAddImmLirModuleView{
+        &helper,
+        &caller,
+        call,
+        *call_arg_imm,
+        *add_imm,
+    };
   };
+
+  const auto& first = module.functions[0];
+  const auto& second = module.functions[1];
+  if (const auto parsed = try_match(first, second); parsed.has_value()) {
+    return parsed;
+  }
+  return try_match(second, first);
 }
 
 inline std::optional<ParsedBackendMinimalDirectCallIdentityArgLirModuleView>

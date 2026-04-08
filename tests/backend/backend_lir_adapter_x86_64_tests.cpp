@@ -2810,6 +2810,39 @@ void test_x86_backend_explicit_lir_emit_surface_matches_structured_direct_call_a
                       "x86 explicit LIR emit surface should stay on assembly output for the single-argument direct-call slice");
 }
 
+void test_x86_backend_keeps_renamed_direct_call_add_imm_caller_on_asm_path() {
+  auto lowered =
+      c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_local_arg_module());
+  lowered.target_triple = "x86_64-unknown-linux-gnu";
+
+  c4c::backend::BackendFunction* caller = nullptr;
+  for (auto& function : lowered.functions) {
+    if (function.signature.name == "main") {
+      caller = &function;
+      break;
+    }
+  }
+  expect_true(caller != nullptr,
+              "x86 renamed single-argument direct-call caller regression test needs the zero-arg caller function");
+  if (caller == nullptr) {
+    return;
+  }
+
+  caller->signature.name = "entry_add";
+
+  const auto rendered = c4c::backend::emit_module(
+      lowered,
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".globl entry_add",
+                  "x86 backend seam should carry the renamed single-argument direct-call caller symbol through the direct asm path instead of hardcoding main");
+  expect_contains(rendered, "entry_add:",
+                  "x86 backend seam should emit the renamed single-argument direct-call caller label on the asm path");
+  expect_contains(rendered, "call add_one",
+                  "x86 backend seam should keep the single-argument helper call on the asm path after the caller rename");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back when the bounded single-argument caller is renamed away from main");
+}
+
 void test_x86_backend_renders_typed_direct_call_identity_arg_slice() {
   auto module = make_typed_direct_call_identity_arg_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -6640,6 +6673,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_param_slot_runtime_path);
   RUN_TEST(test_x86_backend_renders_typed_direct_call_local_arg_slice);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_structured_direct_call_add_imm_path);
+  RUN_TEST(test_x86_backend_keeps_renamed_direct_call_add_imm_caller_on_asm_path);
   RUN_TEST(test_x86_backend_renders_typed_direct_call_identity_arg_slice);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_identity_direct_call_path);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_keeps_renamed_identity_direct_call_caller_on_asm_path);

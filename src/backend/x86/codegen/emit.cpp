@@ -4687,7 +4687,9 @@ std::string emit_minimal_direct_call_asm(const c4c::backend::BackendModule& modu
   }
 
   const std::string helper_symbol = asm_symbol_name(module, slice.helper->signature.name);
-  const std::string main_symbol = asm_symbol_name(module, "main");
+  const std::string main_symbol =
+      asm_symbol_name(module,
+                      slice.main_function == nullptr ? "main" : slice.main_function->signature.name);
 
   std::ostringstream out;
   out << ".intel_syntax noprefix\n";
@@ -4751,7 +4753,9 @@ std::string emit_minimal_direct_call_add_imm_asm(
   }
 
   const std::string helper_symbol = asm_symbol_name(module, slice.helper->signature.name);
-  const std::string main_symbol = asm_symbol_name(module, "main");
+  const std::string main_symbol =
+      asm_symbol_name(module,
+                      slice.main_function == nullptr ? "main" : slice.main_function->signature.name);
 
   std::ostringstream out;
   out << ".intel_syntax noprefix\n";

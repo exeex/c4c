@@ -1134,6 +1134,33 @@ void test_backend_call_helpers_parse_structured_single_add_imm_direct_call_modul
               "shared structured single-add-immediate direct-call module parser should preserve renamed helper symbols and direct-call immediates without target-local backend-module scans");
 }
 
+void test_backend_call_helpers_parse_structured_single_add_imm_direct_call_module_with_renamed_caller() {
+  auto lowered =
+      c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_local_arg_module());
+
+  c4c::backend::BackendFunction* caller = nullptr;
+  for (auto& function : lowered.functions) {
+    if (function.signature.name == "main") {
+      caller = &function;
+      break;
+    }
+  }
+  expect_true(caller != nullptr,
+              "shared structured single-add-immediate direct-call renamed-caller regression test needs the lowered zero-arg caller function");
+  if (caller == nullptr) {
+    return;
+  }
+
+  caller->signature.name = "entry_add";
+
+  const auto parsed = c4c::backend::parse_backend_minimal_direct_call_add_imm_module(lowered);
+  expect_true(parsed.has_value() && parsed->helper != nullptr && parsed->main_function != nullptr &&
+                  parsed->call != nullptr && parsed->helper->signature.name == "add_one" &&
+                  parsed->main_function->signature.name == "entry_add" &&
+                  parsed->call_arg_imm == 5 && parsed->add_imm == 1,
+              "shared structured single-add-immediate direct-call module parser should identify the zero-arg caller structurally even when the bounded caller is renamed away from main");
+}
+
 void test_backend_call_helpers_parse_param_slot_runtime_as_structured_single_add_imm_direct_call() {
   auto lowered = c4c::backend::lower_lir_to_backend_module(make_param_slot_runtime_module());
 
@@ -3060,6 +3087,7 @@ int main(int argc, char* argv[]) {
   test_backend_call_helpers_parse_structured_zero_arg_direct_call_module();
   test_backend_call_helpers_parse_structured_void_direct_call_imm_return_module();
   test_backend_call_helpers_parse_structured_single_add_imm_direct_call_module();
+  test_backend_call_helpers_parse_structured_single_add_imm_direct_call_module_with_renamed_caller();
   test_backend_call_helpers_parse_structured_call_crossing_direct_call_module();
   test_backend_call_helpers_parse_structured_call_crossing_direct_call_module_with_renamed_caller();
   test_backend_call_helpers_parse_structured_call_crossing_direct_call_lir_module();
