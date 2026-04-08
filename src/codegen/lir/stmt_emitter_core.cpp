@@ -1,4 +1,5 @@
 #include "stmt_emitter.hpp"
+#include "ir.hpp"
 #include "canonical_symbol.hpp"
 #include "../llvm/calling_convention.hpp"
 
@@ -69,6 +70,15 @@ void emit_condbr_and_fallthrough_lbl(FnCtx& ctx, const std::string& cond,
                                      const std::string& true_label,
                                      const std::string& false_label) {
   emit_condbr_and_open_lbl(ctx, cond, true_label, false_label, false_label);
+}
+
+bool set_terminator_if_open(FnCtx& ctx, lir::LirTerminator terminator) {
+  if (!std::holds_alternative<lir::LirUnreachable>(ctx.cur_block().terminator)) {
+    return false;
+  }
+  ctx.cur_block().terminator = std::move(terminator);
+  ctx.last_term = true;
+  return true;
 }
 
 TypeSpec sig_return_type(const FnPtrSig& sig) { return sig.return_type.spec; }
@@ -322,6 +332,13 @@ int object_align_bytes(const Module& mod, const TypeSpec& ts) {
 StmtEmitter::StmtEmitter(const Module& m) : mod_(m) {}
 
 void StmtEmitter::set_module(lir::LirModule& module) { module_ = &module; }
+
+void StmtEmitter::emit_lir_op(FnCtx& ctx, lir::LirInst op) {
+  // Skip dead code after a terminator has been placed in this block.
+  if (!std::holds_alternative<lir::LirUnreachable>(ctx.cur_block().terminator)) return;
+  ctx.cur_block().insts.push_back(std::move(op));
+  ctx.last_term = false;
+}
 
 const GlobalVar* StmtEmitter::select_global_object(const std::string& name) const {
   const GlobalVar* best = nullptr;

@@ -2,7 +2,6 @@
 
 #include "../shared/llvm_helpers.hpp"
 #include "call_args.hpp"
-#include "ir.hpp"
 #include "../shared/fn_lowering_ctx.hpp"
 
 #include <algorithm>
@@ -24,6 +23,8 @@ struct Amd64VarargInfo;
 }
 
 namespace c4c::codegen::lir {
+
+struct LirModule;
 
 using namespace c4c;
 using namespace c4c::hir;
@@ -121,15 +122,7 @@ void amd64_account_type_if_needed(const hir::Module& mod, const TypeSpec& ts,
                                   Amd64CallArgState* state);
 bool amd64_fixed_aggregate_byval(const hir::Module& mod, const TypeSpec& ts);
 
-template <typename TerminatorT>
-bool set_terminator_if_open(FnCtx& ctx, TerminatorT&& terminator) {
-  if (!std::holds_alternative<lir::LirUnreachable>(ctx.cur_block().terminator)) {
-    return false;
-  }
-  ctx.cur_block().terminator = std::forward<TerminatorT>(terminator);
-  ctx.last_term = true;
-  return true;
-}
+bool set_terminator_if_open(FnCtx& ctx, lir::LirTerminator terminator);
 
 void open_lbl(FnCtx& ctx, const std::string& lbl);
 void emit_condbr_and_open_lbl(FnCtx& ctx, const std::string& cond,
@@ -199,14 +192,7 @@ class StmtEmitter {
   // ── Instruction helpers ───────────────────────────────────────────────────
 
   // Push a typed LIR instruction (non-terminator) into the current block.
-  template<typename T>
-  void emit_lir_op(FnCtx& ctx, T&& op) {
-    // Skip dead code after a terminator has been placed in this block.
-    if (!std::holds_alternative<lir::LirUnreachable>(ctx.cur_block().terminator))
-      return;
-    ctx.cur_block().insts.push_back(std::forward<T>(op));
-    ctx.last_term = false;
-  }
+  void emit_lir_op(FnCtx& ctx, lir::LirInst op);
   void emit_term_br(FnCtx& ctx, const std::string& target_label);
   void emit_term_condbr(FnCtx& ctx, const std::string& cond,
                         const std::string& true_label, const std::string& false_label);
