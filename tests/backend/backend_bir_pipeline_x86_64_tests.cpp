@@ -2,6 +2,7 @@
 
 #include "../../src/backend/lowering/call_decode.hpp"
 #include "../../src/backend/lowering/lir_to_bir.hpp"
+#include "../../src/backend/x86/codegen/emit.hpp"
 
 #include <stdexcept>
 
@@ -49,6 +50,29 @@ c4c::codegen::lir::LirModule make_lir_minimal_global_char_pointer_diff_module() 
   entry.insts.push_back(LirCmpOp{"%t10", false, "eq", "i64", "%t8", "%t9"});
   entry.insts.push_back(LirCastOp{"%t11", LirCastKind::ZExt, "i1", "%t10", "i32"});
   entry.terminator = LirRet{std::string("%t11"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_unsupported_double_return_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define double @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.terminator = LirRet{std::string("0.0"), "double"};
   function.blocks.push_back(std::move(entry));
 
   module.functions.push_back(std::move(function));
@@ -2426,6 +2450,20 @@ void test_backend_bir_pipeline_rejects_unsupported_direct_bir_input_on_x86() {
   fail("x86 direct BIR input should fail explicitly once the emitter-side bir_to_backend_ir fallback is removed");
 }
 
+void test_x86_direct_lir_emitter_rejects_unsupported_input_without_legacy_backend_ir_stub() {
+  try {
+    (void)c4c::backend::x86::emit_module(make_unsupported_double_return_lir_module());
+  } catch (const std::invalid_argument& ex) {
+    expect_contains(ex.what(), "direct LIR module",
+                    "x86 direct LIR rejection should describe the direct-LIR subset instead of a deleted legacy backend IR route");
+    expect_not_contains(ex.what(), "legacy backend IR",
+                        "x86 direct LIR rejection should not mention the deleted legacy backend IR path");
+    return;
+  }
+
+  fail("x86 direct LIR emitter should fail explicitly once unsupported input stops pretending a legacy backend IR route still exists");
+}
+
 }  // namespace
 
 void run_backend_bir_pipeline_x86_64_tests() {
@@ -2488,4 +2526,5 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_i32_select_mixed_then_deeper_affine_post_join_add_sub_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_i32_select_mixed_then_deeper_affine_post_join_add_sub_add_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_rejects_unsupported_direct_bir_input_on_x86);
+  RUN_TEST(test_x86_direct_lir_emitter_rejects_unsupported_input_without_legacy_backend_ir_stub);
 }

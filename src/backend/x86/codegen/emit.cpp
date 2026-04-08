@@ -34,9 +34,9 @@ namespace {
       "x86 backend emitter does not support this direct BIR module; only the affine-return subset lowers natively");
 }
 
-[[noreturn]] void throw_legacy_backend_ir_not_implemented() {
-  throw std::runtime_error(
-      "x86 backend emitter legacy backend IR path is not implemented; use direct LIR or BIR lowering");
+[[noreturn]] void throw_unsupported_direct_lir_module() {
+  throw std::invalid_argument(
+      "x86 backend emitter does not support this direct LIR module; only direct-LIR slices that lower natively or through direct BIR are currently supported");
 }
 
 bool is_direct_bir_subset_error(const std::invalid_argument& ex) {
@@ -4131,7 +4131,7 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
       }
     }
   }
-  throw_legacy_backend_ir_not_implemented();
+  throw_unsupported_direct_lir_module();
 }
 
 assembler::AssembleResult assemble_module(const c4c::codegen::lir::LirModule& module,

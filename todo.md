@@ -6,10 +6,9 @@ Source Plan: plan.md
 
 - Step 4 cleanup: keep shrinking adapter-only legacy-lowering surface now that
   `src/backend/ir.hpp` and `lir_to_backend_ir.*` are already gone
-- Current slice: remove the dead prelowered-BIR `legacy_fallback` storage from
-  `BackendModuleInput` so fallback state exists only on the LIR-entry route
-  where `backend.cpp` still needs it for failed BIR lowering / unsupported
-  native direct-BIR fallback decisions
+- Current slice: re-inventory the remaining genuinely live compatibility seams
+  in `backend.cpp`, `call_decode.*`, and the native emitters after removing the
+  stale emitter-local legacy-backend-IR terminal stubs
 - Next intended slice: re-inventory the remaining genuinely live
   `BackendModule`-style compatibility seams in `backend.cpp`,
   `call_decode.*`, and the native emitters, then remove the next smallest
@@ -22,6 +21,21 @@ Source Plan: plan.md
   `src/backend/x86/codegen/emit.{hpp,cpp}` and
   `src/backend/aarch64/codegen/emit.{hpp,cpp}`, then updated the LIR-to-BIR
   fast paths to call the simplified direct-BIR interface
+- Replaced the stale x86/aarch64 direct-LIR terminal
+  “legacy backend IR path is not implemented” stubs with explicit
+  `invalid_argument` direct-LIR subset rejections so unsupported native direct
+  LIR no longer pretends the deleted legacy lowering route still exists
+- Added focused unsupported-LIR rejection coverage in
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` and
+  `tests/backend/backend_bir_pipeline_aarch64_tests.cpp`, pinning the new
+  direct-LIR diagnostics and rejecting any regression back to legacy-backend-IR
+  wording
+- Rebuilt `backend_bir_tests` successfully after the emitter rejection cleanup
+- Reran focused `backend_bir_tests` filters for the new x86/aarch64 direct-LIR
+  rejection coverage plus the existing unsupported direct-BIR rejection cases;
+  all passed
+- Reran `ctest --test-dir build -R '^backend_bir_tests$' --output-on-failure`
+  successfully after the cleanup
 - Removed the dead prelowered-BIR `legacy_fallback` constructor parameter and
   storage from `src/backend/backend.{hpp,cpp}` by narrowing
   `BackendModuleInput` to two disjoint ownership modes: explicit BIR module or
