@@ -12,11 +12,6 @@ struct LirModule;
 
 namespace c4c::backend {
 
-enum class BackendLoweringRoute : unsigned char {
-  BirPreloweredModule,
-  BirFromLirEntry,
-};
-
 struct BackendModuleInput {
   explicit BackendModuleInput(const bir::Module& bir_module);
   explicit BackendModuleInput(const c4c::codegen::lir::LirModule& lir_module);
@@ -38,9 +33,6 @@ struct BackendModuleInput {
 struct BackendOptions {
   Target target;
 };
-
-BackendLoweringRoute select_lowering_route(const BackendModuleInput& input,
-                                           const BackendOptions& options);
 
 std::string emit_module(const BackendModuleInput& input,
                         const BackendOptions& options);

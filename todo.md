@@ -6,12 +6,12 @@ Source Plan: plan.md
 
 - Step 4 cleanup: keep shrinking adapter-only legacy-lowering surface now that
   `src/backend/ir.hpp` and `lir_to_backend_ir.*` are already gone
-- Current slice: re-inventory `src/backend/backend.cpp` after the shared
-  riscv64 BIR render cleanup and identify whether the remaining
-  `select_lowering_route(...)` / route split is still carrying any dead
-  adapter-only branching
-- Next intended slice: compare the surviving route split against current test
-  coverage and remove it only if one route can disappear without changing the
+- Current slice: re-inventory the remaining Step 4 public/semipublic entry
+  seams after deleting the dead `BackendLoweringRoute` /
+  `select_lowering_route(...)` split from `src/backend/backend.{hpp,cpp}`
+- Next intended slice: compare the surviving `BackendModuleInput` ownership
+  surface and `src/backend/lowering/lir_to_backend_ir.*` callers to see
+  whether another adapter-only public seam can disappear without changing the
   explicit riscv64 LLVM fallback behavior for unsupported LIR input
 
 # Completed
@@ -218,6 +218,24 @@ Source Plan: plan.md
 - Ran the c4c regression guard script with
   `--allow-non-decreasing-passed`; it passed with `delta: passed=159
   failed=-159` and zero newly failing tests against `test_fail_before.log`
+
+- Removed the dead `BackendLoweringRoute` enum and
+  `select_lowering_route(...)` helper from `src/backend/backend.{hpp,cpp}` so
+  shared backend entry now branches directly on `BackendModuleInput`
+  ownership instead of preserving an adapter-only route tag with no
+  production callers
+- Replaced the route-only assertions in
+  `tests/backend/backend_bir_pipeline_tests.cpp` with input-ownership checks,
+  keeping direct BIR versus LIR-entry observability without pinning the
+  deleted public route split
+- Rebuilt `backend_bir_tests`, reran focused
+  `ctest --test-dir build -R '^backend_bir_tests$' --output-on-failure`,
+  reran the full `ctest --test-dir build -j8 --output-on-failure` suite into
+  `test_fail_after.log`, and confirmed the workspace stayed at `2834/2834`
+  passing with 0 failures
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=3 failed=-3`
+  and zero newly failing tests against `test_fail_before.log`
 - Simplified `src/backend/backend.cpp` so `BackendEmitter` only forwards the
   BIR module to native targets, deleted the now-dead passthrough emitter
   wrapper, and kept the riscv64 LLVM/BIR fallback behavior in the existing

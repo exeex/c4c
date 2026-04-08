@@ -118,31 +118,22 @@ void expect_i8_bir_immediate_route(I8ModuleFactory make_module,
                       " should keep the widened i8 immediate return on the BIR text path");
 }
 
-void test_backend_default_route_stays_on_bir_lir_entry_target_neutral() {
-  const auto route = c4c::backend::select_lowering_route(
-      c4c::backend::BackendModuleInput{make_bir_return_add_module()},
-      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+void test_backend_default_input_keeps_lir_entry_observable() {
+  const c4c::backend::BackendModuleInput input{make_bir_return_add_module()};
 
-  expect_true(route == c4c::backend::BackendLoweringRoute::BirFromLirEntry,
-              "default backend entry should now start from the BIR lowering seam instead of routing fresh LIR input through legacy backend IR");
+  expect_true(input.lir_module() != nullptr,
+              "default backend input should keep fresh LIR observable at the shared entry seam");
+  expect_true(input.bir_module() == nullptr,
+              "default backend input should not synthesize prelowered BIR ownership before lowering runs");
 }
 
-void test_backend_bir_pipeline_options_keep_bir_lir_entry_route_target_neutral() {
-  const auto route = c4c::backend::select_lowering_route(
-      c4c::backend::BackendModuleInput{make_bir_return_add_module()},
-      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+void test_backend_direct_bir_input_keeps_bir_ownership_observable() {
+  const c4c::backend::BackendModuleInput input{make_return_immediate_module()};
 
-  expect_true(route == c4c::backend::BackendLoweringRoute::BirFromLirEntry,
-              "BIR-focused backend options should keep the LIR entry seam on the BIR lowering route before any target-specific emission is observed");
-}
-
-void test_backend_direct_bir_module_route_ignores_legacy_pipeline_default_target_neutral() {
-  const auto route = c4c::backend::select_lowering_route(
-      c4c::backend::BackendModuleInput{make_return_immediate_module()},
-      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
-
-  expect_true(route == c4c::backend::BackendLoweringRoute::BirPreloweredModule,
-              "direct BIR input should remain observable as a BIR-owned route even when callers do not opt into the LIR-entry BIR pipeline");
+  expect_true(input.bir_module() != nullptr,
+              "direct BIR input should remain observable as BIR-owned input at the shared backend entry");
+  expect_true(input.lir_module() == nullptr,
+              "direct BIR input should not advertise a dead LIR fallback payload");
 }
 
 void test_backend_default_path_uses_bir_when_bir_pipeline_is_not_selected() {
@@ -1447,9 +1438,8 @@ void test_backend_direct_bir_i686_target_uses_x86_stack_arg_emitter() {
 }  // namespace
 
 void run_backend_bir_pipeline_tests() {
-  RUN_TEST(test_backend_default_route_stays_on_bir_lir_entry_target_neutral);
-  RUN_TEST(test_backend_bir_pipeline_options_keep_bir_lir_entry_route_target_neutral);
-  RUN_TEST(test_backend_direct_bir_module_route_ignores_legacy_pipeline_default_target_neutral);
+  RUN_TEST(test_backend_default_input_keeps_lir_entry_observable);
+  RUN_TEST(test_backend_direct_bir_input_keeps_bir_ownership_observable);
   RUN_TEST(test_backend_default_path_uses_bir_when_bir_pipeline_is_not_selected);
   RUN_TEST(test_backend_riscv64_path_keeps_unsupported_lir_on_llvm_text_surface);
   RUN_TEST(test_backend_riscv64_path_keeps_unsupported_direct_lir_on_llvm_text_surface);
