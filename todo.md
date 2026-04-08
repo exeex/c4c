@@ -6,9 +6,10 @@ Source Plan: plan.md
 
 - Step 4 cleanup: keep shrinking adapter-only legacy-lowering surface now that
   `src/backend/ir.hpp` and `lir_to_backend_ir.*` are already gone
-- Current slice: remove the dead native-backend `legacy_fallback` plumbing
-  from the BIR emitter path because x86/aarch64 direct-BIR entry points ignore
-  it and only the riscv passthrough route still needs LIR fallback state
+- Current slice: remove the dead prelowered-BIR `legacy_fallback` storage from
+  `BackendModuleInput` so fallback state exists only on the LIR-entry route
+  where `backend.cpp` still needs it for failed BIR lowering / unsupported
+  native direct-BIR fallback decisions
 - Next intended slice: re-inventory the remaining genuinely live
   `BackendModule`-style compatibility seams in `backend.cpp`,
   `call_decode.*`, and the native emitters, then remove the next smallest
@@ -21,6 +22,28 @@ Source Plan: plan.md
   `src/backend/x86/codegen/emit.{hpp,cpp}` and
   `src/backend/aarch64/codegen/emit.{hpp,cpp}`, then updated the LIR-to-BIR
   fast paths to call the simplified direct-BIR interface
+- Removed the dead prelowered-BIR `legacy_fallback` constructor parameter and
+  storage from `src/backend/backend.{hpp,cpp}` by narrowing
+  `BackendModuleInput` to two disjoint ownership modes: explicit BIR module or
+  LIR-entry fallback source
+- Simplified `src/backend/backend.cpp` to use the stored `LirModule` only on
+  the `BirFromLirEntry` route, keeping riscv64 / unsupported-native fallback
+  behavior intact without advertising no-op fallback plumbing on explicit BIR
+  inputs
+- Tightened `tests/backend/backend_header_boundary_tests.cpp` with a static
+  boundary check that rejects reconstructing `BackendModuleInput` from a BIR
+  module plus dead legacy fallback pointer
+- Rebuilt `c4cll`, `backend_bir_tests`, and `backend_shared_util_tests`
+  successfully after narrowing the backend input surface
+- Reran
+  `ctest --test-dir build -R '^(backend_bir_tests|backend_shared_util_tests)$' --output-on-failure`
+  successfully after the backend input cleanup
+- Reran the full `ctest --test-dir build -j8 --output-on-failure` suite and
+  refreshed `test_after.log` / `test_fail_after.log`; the workspace is now at
+  `2834/2834` passing with 0 failures
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=159
+  failed=-159` and zero newly failing tests against `test_fail_before.log`
 - Simplified `src/backend/backend.cpp` so `BackendEmitter` only forwards the
   BIR module to native targets, deleted the now-dead passthrough emitter
   wrapper, and kept the riscv64 LLVM/BIR fallback behavior in the existing

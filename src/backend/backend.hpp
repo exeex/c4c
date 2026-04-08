@@ -18,8 +18,7 @@ enum class BackendLoweringRoute : unsigned char {
 };
 
 struct BackendModuleInput {
-  explicit BackendModuleInput(const bir::Module& bir_module,
-                              const c4c::codegen::lir::LirModule* legacy_fallback_in = nullptr);
+  explicit BackendModuleInput(const bir::Module& bir_module);
   explicit BackendModuleInput(const c4c::codegen::lir::LirModule& lir_module);
   BackendModuleInput(BackendModuleInput&&) noexcept;
   BackendModuleInput& operator=(BackendModuleInput&&) noexcept;
@@ -28,12 +27,12 @@ struct BackendModuleInput {
   ~BackendModuleInput();
 
   const bir::Module* bir_module() const { return bir_module_; }
-  const c4c::codegen::lir::LirModule* legacy_fallback() const { return legacy_fallback_; }
+  const c4c::codegen::lir::LirModule* lir_module() const { return lir_module_; }
 
  private:
   std::unique_ptr<bir::Module> owned_bir_module_;
   const bir::Module* bir_module_ = nullptr;
-  const c4c::codegen::lir::LirModule* legacy_fallback_ = nullptr;
+  const c4c::codegen::lir::LirModule* lir_module_ = nullptr;
 };
 
 struct BackendOptions {

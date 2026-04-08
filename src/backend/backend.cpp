@@ -79,15 +79,12 @@ bool is_direct_bir_subset_error(const std::invalid_argument& ex) {
 
 }  // namespace
 
-BackendModuleInput::BackendModuleInput(
-    const bir::Module& bir_module,
-    const c4c::codegen::lir::LirModule* legacy_fallback_in)
+BackendModuleInput::BackendModuleInput(const bir::Module& bir_module)
     : owned_bir_module_(std::make_unique<bir::Module>(bir_module)),
-      bir_module_(owned_bir_module_.get()),
-      legacy_fallback_(legacy_fallback_in) {}
+      bir_module_(owned_bir_module_.get()) {}
 
 BackendModuleInput::BackendModuleInput(const c4c::codegen::lir::LirModule& lir_module)
-    : legacy_fallback_(&lir_module) {}
+    : lir_module_(&lir_module) {}
 
 BackendModuleInput::BackendModuleInput(BackendModuleInput&&) noexcept = default;
 BackendModuleInput& BackendModuleInput::operator=(BackendModuleInput&&) noexcept = default;
@@ -106,18 +103,19 @@ std::string emit_module(const BackendModuleInput& input,
                         const BackendOptions& options) {
   const auto route = select_lowering_route(input, options);
   if (route == BackendLoweringRoute::BirFromLirEntry) {
-    if (input.legacy_fallback() == nullptr) {
+    if (input.lir_module() == nullptr) {
       return {};
     }
-    auto bir_module = c4c::backend::try_lower_to_bir(*input.legacy_fallback());
+    const auto& lir_module = *input.lir_module();
+    auto bir_module = c4c::backend::try_lower_to_bir(lir_module);
     if (!bir_module.has_value()) {
-      return emit_direct_lir_or_llvm_fallback(*input.legacy_fallback(), options.target);
+      return emit_direct_lir_or_llvm_fallback(lir_module, options.target);
     }
     if (options.target == Target::Riscv64) {
-      if (!input.legacy_fallback()->globals.empty() ||
-          !input.legacy_fallback()->string_pool.empty() ||
-          !input.legacy_fallback()->extern_decls.empty()) {
-        return c4c::codegen::lir::print_llvm(*input.legacy_fallback());
+      if (!lir_module.globals.empty() ||
+          !lir_module.string_pool.empty() ||
+          !lir_module.extern_decls.empty()) {
+        return c4c::codegen::lir::print_llvm(lir_module);
       }
       return c4c::backend::bir::print(*bir_module);
     }
@@ -128,7 +126,7 @@ std::string emit_module(const BackendModuleInput& input,
       if (!is_direct_bir_subset_error(ex)) {
         throw;
       }
-      return emit_direct_lir_or_llvm_fallback(*input.legacy_fallback(), options.target);
+      return emit_direct_lir_or_llvm_fallback(lir_module, options.target);
     }
   }
 
