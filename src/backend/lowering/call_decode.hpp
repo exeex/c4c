@@ -115,6 +115,13 @@ struct ParsedBirMinimalDirectCallModuleView {
   const bir::CallInst* call = nullptr;
 };
 
+struct ParsedBirMinimalDeclaredDirectCallModuleView {
+  const bir::Function* callee = nullptr;
+  const bir::Function* main_function = nullptr;
+  const bir::Block* main_block = nullptr;
+  const bir::CallInst* call = nullptr;
+};
+
 struct ParsedBackendMinimalTwoArgDirectCallLirModuleView {
   const c4c::codegen::lir::LirFunction* helper = nullptr;
   const c4c::codegen::lir::LirFunction* main_function = nullptr;
@@ -981,6 +988,63 @@ parse_bir_minimal_direct_call_module(const bir::Module& module) {
 
   return ParsedBirMinimalDirectCallModuleView{
       helper,
+      main_fn,
+      &main_block,
+      call,
+  };
+}
+
+inline std::optional<ParsedBirMinimalDeclaredDirectCallModuleView>
+parse_bir_minimal_declared_direct_call_module(const bir::Module& module) {
+  if (!module.globals.empty() || !module.string_constants.empty() || module.functions.size() != 2) {
+    return std::nullopt;
+  }
+
+  const bir::Function* main_fn = nullptr;
+  const bir::Function* callee = nullptr;
+  for (const auto& function : module.functions) {
+    if (function.is_declaration) {
+      if (callee != nullptr || function.return_type != bir::TypeKind::I32 ||
+          !function.params.empty() || !function.local_slots.empty() || !function.blocks.empty()) {
+        return std::nullopt;
+      }
+      callee = &function;
+      continue;
+    }
+
+    if (main_fn != nullptr || function.return_type != bir::TypeKind::I32 ||
+        !function.params.empty() || !function.local_slots.empty() || function.blocks.size() != 1) {
+      return std::nullopt;
+    }
+    main_fn = &function;
+  }
+
+  if (callee == nullptr || main_fn == nullptr || callee->name.empty() || main_fn->name.empty() ||
+      callee->name == main_fn->name) {
+    return std::nullopt;
+  }
+
+  const auto& main_block = main_fn->blocks.front();
+  if (main_block.label != "entry" || main_block.insts.size() != 1 ||
+      !main_block.terminator.value.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto* call = std::get_if<bir::CallInst>(&main_block.insts.front());
+  if (call == nullptr || call->callee != callee->name || !call->result.has_value() ||
+      call->result->kind != bir::Value::Kind::Named ||
+      call->result->name != main_block.terminator.value->name ||
+      call->result->type != bir::TypeKind::I32 ||
+      main_block.terminator.value->kind != bir::Value::Kind::Named ||
+      main_block.terminator.value->type != bir::TypeKind::I32) {
+    return std::nullopt;
+  }
+
+  if (call->return_type_name != "i32" || call->args.size() > 6) {
+    return std::nullopt;
+  }
+  return ParsedBirMinimalDeclaredDirectCallModuleView{
+      callee,
       main_fn,
       &main_block,
       call,

@@ -1,7 +1,5 @@
 #include "backend_bir_test_support.hpp"
 
-#include "../../src/backend/ir_printer.hpp"
-#include "../../src/backend/lowering/lir_to_backend_ir.hpp"
 #include "../../src/backend/lowering/lir_to_bir.hpp"
 
 namespace {

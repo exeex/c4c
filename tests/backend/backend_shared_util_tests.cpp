@@ -1,8 +1,6 @@
 
 #include "backend.hpp"
 #include "generation.hpp"
-#include "ir_printer.hpp"
-#include "ir_validate.hpp"
 #include "liveness.hpp"
 #include "regalloc.hpp"
 #include "stack_layout/analysis.hpp"
