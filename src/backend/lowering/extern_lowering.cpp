@@ -1,6 +1,7 @@
 #include "extern_lowering.hpp"
 
 #include "call_decode.hpp"
+#include "lir_to_backend_ir.hpp"
 
 namespace c4c::backend {
 

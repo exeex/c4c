@@ -1,8 +1,5 @@
 #pragma once
 
-#include "../ir.hpp"
-#include "lir_to_backend_ir.hpp"
-
 #include "../../codegen/lir/ir.hpp"
 
 #include <optional>
@@ -10,6 +7,8 @@
 #include <vector>
 
 namespace c4c::backend {
+
+struct BackendFunction;
 
 std::optional<std::vector<std::string>> infer_extern_param_types(
     const c4c::codegen::lir::LirModule& module,

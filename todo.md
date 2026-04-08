@@ -13,6 +13,8 @@ Source Plan: plan.md
   [`src/backend/backend.hpp`](/workspaces/c4c/src/backend/backend.hpp)
 - [x] Land the first bounded BIR contract expansion slice and keep backend
   validation green
+- [x] Land the declared-direct-call BIR seam and keep targeted backend
+  validation green
 
 Current active item:
 - continue the BIR contract expansion lane, with Group C focused on the next
@@ -37,8 +39,8 @@ BIR contract expansion checklist:
   lands
 - Group C: keep expanding `bir.hpp` with the next bounded contract additions
   beyond the initial direct-call/globals/string/local-slot slice
-- Mainline: line up the first active tests/consumers that should move off
-  `ir_printer.*` / `ir_validate.*`
+- Mainline: keep shrinking active legacy IR utility consumers while Group C
+  extends bounded BIR contract shape
 
 Close blockers intentionally left outside this round:
 - `ir.hpp`, `ir_printer.*`, and `ir_validate.*` still exist and still have
@@ -49,16 +51,30 @@ Close blockers intentionally left outside this round:
   and [`src/apps/c4cll.cpp`](/workspaces/c4c/src/apps/c4cll.cpp)
 
 Latest completed slice:
-- initial BIR contract expansion landed and validated with:
-  `cmake -S . -B build`
+- declared-direct-call BIR seam landed in
+  [`src/backend/lowering/call_decode.hpp`](/workspaces/c4c/src/backend/lowering/call_decode.hpp)
+  together with active test consumer cleanup in
+  [`tests/backend/backend_bir_pipeline_aarch64_tests.cpp`](/workspaces/c4c/tests/backend/backend_bir_pipeline_aarch64_tests.cpp)
+  and
+  [`tests/backend/backend_shared_util_tests.cpp`](/workspaces/c4c/tests/backend/backend_shared_util_tests.cpp)
+- validated with:
   `cmake --build build -j8`
-  `ctest --test-dir build -R backend -j --output-on-failure`
+  `./build/backend_bir_tests`
+  `./build/backend_shared_util_tests`
+  `ctest --test-dir build -R '^backend_runtime_(call_helper|extern_global_array)$' --output-on-failure`
+- note: a broad `ctest --test-dir build -R backend -j --output-on-failure`
+  run still shows widespread external aarch64 `c-testsuite` `[FRONTEND_FAIL]`
+  noise, so mainline is currently relying on targeted backend validation for
+  this slice
+- the earlier initial BIR contract expansion added:
+  direct-call shape, `globals`, `string_constants`, and `local_slots` in
+  [`src/backend/bir.hpp`](/workspaces/c4c/src/backend/bir.hpp)
 - the first bounded BIR contract slice now exists in
   [`src/backend/bir.hpp`](/workspaces/c4c/src/backend/bir.hpp):
   direct-call shape, `globals`, `string_constants`, and `local_slots`
 - [`src/backend/lowering/call_decode.hpp`](/workspaces/c4c/src/backend/lowering/call_decode.hpp)
-  now has a BIR-facing direct-call parser seam alongside the legacy
-  `BackendModule` seam
+  now has BIR-facing direct-call and declared-direct-call parser seams
+  alongside the legacy `BackendModule` seam
 - [`src/backend/backend.cpp`](/workspaces/c4c/src/backend/backend.cpp) no
   longer includes `lir_to_backend_ir.hpp`
 - [`src/backend/backend.hpp`](/workspaces/c4c/src/backend/backend.hpp) no
@@ -73,16 +89,23 @@ Latest completed slice:
   no longer includes `ir_printer.hpp` / `lir_to_backend_ir.hpp`, and
   [`tests/backend/backend_shared_util_tests.cpp`](/workspaces/c4c/tests/backend/backend_shared_util_tests.cpp)
   no longer includes `ir_printer.hpp` / `ir_validate.hpp`
+- [`src/backend/lowering/lir_to_backend_ir.cpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp)
+  no longer includes the dead `ir_printer.hpp` dependency
+- [`src/backend/lowering/extern_lowering.hpp`](/workspaces/c4c/src/backend/lowering/extern_lowering.hpp)
+  no longer exposes `ir.hpp` or `lir_to_backend_ir.hpp`; those legacy
+  dependencies are now implementation-local to
+  [`src/backend/lowering/extern_lowering.cpp`](/workspaces/c4c/src/backend/lowering/extern_lowering.cpp)
 
 Mainline follow-up map:
-- first active test consumers to migrate off legacy IR utilities:
+- active test-side legacy IR utility includes have been cleared from:
   [`tests/backend/backend_shared_util_tests.cpp`](/workspaces/c4c/tests/backend/backend_shared_util_tests.cpp)
   and
   [`tests/backend/backend_bir_pipeline_aarch64_tests.cpp`](/workspaces/c4c/tests/backend/backend_bir_pipeline_aarch64_tests.cpp)
-- remaining `ir.*` utility references still live in:
-  [`tests/backend/backend_shared_util_tests.cpp`](/workspaces/c4c/tests/backend/backend_shared_util_tests.cpp)
-  [`tests/backend/backend_bir_pipeline_aarch64_tests.cpp`](/workspaces/c4c/tests/backend/backend_bir_pipeline_aarch64_tests.cpp)
-  [`src/backend/lowering/lir_to_backend_ir.cpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp)
+- remaining `ir.*` utility references now live primarily in the legacy files
+  themselves and not in those active test consumers
+- remaining public-ish legacy backend IR exposure is now concentrated in:
+  [`src/backend/lowering/call_decode.hpp`](/workspaces/c4c/src/backend/lowering/call_decode.hpp)
+  [`src/backend/lowering/lir_to_backend_ir.hpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.hpp)
 - remaining large `BackendModule` helper surfaces still live in:
   [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
   [`src/backend/aarch64/codegen/emit.cpp`](/workspaces/c4c/src/backend/aarch64/codegen/emit.cpp)
@@ -91,6 +114,7 @@ Mainline follow-up map:
 Next integration steps:
 - let Group C continue with the next bounded BIR contract:
   extern / address-global classification / local-slot read-write shape
-- prepare the first active test consumers to move off legacy IR utilities
+- use those new contracts to start switching the first `call_decode` /
+  emitter helpers away from `BackendModule`
 - restate which emitter helpers should be switched first after the next BIR
   contract lands
