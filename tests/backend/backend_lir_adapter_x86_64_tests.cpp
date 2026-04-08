@@ -4791,6 +4791,39 @@ void test_x86_backend_keeps_renamed_call_crossing_slice_on_asm_path() {
                       "x86 backend seam should not fall back when the call-crossing slice relies only on structured call and callee metadata");
 }
 
+void test_x86_backend_keeps_renamed_call_crossing_caller_on_asm_path() {
+  auto module = make_typed_call_crossing_direct_call_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+
+  c4c::codegen::lir::LirFunction* caller = nullptr;
+  for (auto& function : module.functions) {
+    if (function.name == "main") {
+      caller = &function;
+      break;
+    }
+  }
+  expect_true(caller != nullptr,
+              "x86 renamed call-crossing caller regression test needs the zero-arg caller function");
+  if (caller == nullptr) {
+    return;
+  }
+
+  caller->name = "entry_value";
+  caller->signature_text = "define i32 @entry_value()\n";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".globl entry_value",
+                  "x86 backend seam should carry the renamed call-crossing caller symbol through the direct asm path instead of hardcoding main");
+  expect_contains(rendered, "entry_value:",
+                  "x86 backend seam should emit the renamed call-crossing caller label on the direct asm path");
+  expect_contains(rendered, "call add_one",
+                  "x86 backend seam should keep the call-crossing helper call on the asm path after the caller rename");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back when the bounded call-crossing caller is renamed away from main");
+}
+
 void test_x86_backend_keeps_renamed_call_crossing_call_result_on_asm_path() {
   auto module = make_typed_call_crossing_direct_call_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -6425,6 +6458,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_cleans_up_redundant_self_move_on_call_crossing_slice);
   RUN_TEST(test_x86_backend_keeps_spacing_tolerant_call_crossing_slice_on_asm_path);
   RUN_TEST(test_x86_backend_keeps_renamed_call_crossing_slice_on_asm_path);
+  RUN_TEST(test_x86_backend_keeps_renamed_call_crossing_caller_on_asm_path);
   RUN_TEST(test_x86_backend_keeps_renamed_call_crossing_call_result_on_asm_path);
   RUN_TEST(test_x86_backend_scaffold_accepts_renamed_structured_call_crossing_direct_call_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_lowered_call_crossing_source_value_rename_without_signature_shims);

@@ -59,6 +59,7 @@ const std::string& synthetic_call_crossing_regalloc_source_value() {
 
 struct MinimalCallCrossingDirectCallSlice {
   std::string callee_name;
+  std::string caller_name = "main";
   std::int64_t source_imm = 0;
   std::int64_t helper_add_imm = 0;
   std::string regalloc_source_value = synthetic_call_crossing_regalloc_source_value();
@@ -4185,6 +4186,7 @@ std::optional<MinimalCallCrossingDirectCallSlice> parse_minimal_call_crossing_di
 
   return MinimalCallCrossingDirectCallSlice{
       parsed->helper->signature.name,
+      parsed->main_function == nullptr ? "main" : parsed->main_function->signature.name,
       parsed->source_imm,
       parsed->helper_add_imm,
       std::string(parsed->regalloc_source_value),
@@ -4201,6 +4203,7 @@ std::optional<MinimalCallCrossingDirectCallSlice> parse_minimal_call_crossing_di
 
   return MinimalCallCrossingDirectCallSlice{
       parsed->helper->name,
+      parsed->main_function == nullptr ? "main" : parsed->main_function->name,
       parsed->source_imm,
       parsed->helper_add_imm,
       std::string(parsed->regalloc_source_value),
@@ -5803,7 +5806,7 @@ std::string emit_minimal_call_crossing_direct_call_asm(
 
   const auto frame_size = aligned_frame_size(1);
   const auto helper_symbol = asm_symbol_name(module, slice.callee_name);
-  const auto main_symbol = asm_symbol_name(module, "main");
+  const auto main_symbol = asm_symbol_name(module, slice.caller_name);
 
   std::ostringstream out;
   out << ".intel_syntax noprefix\n";
@@ -5869,7 +5872,7 @@ std::string emit_minimal_call_crossing_direct_call_asm(
 
   const auto frame_size = aligned_frame_size(1);
   const auto helper_symbol = asm_symbol_name(target_triple, slice.callee_name);
-  const auto main_symbol = asm_symbol_name(target_triple, "main");
+  const auto main_symbol = asm_symbol_name(target_triple, slice.caller_name);
 
   std::ostringstream out;
   out << ".intel_syntax noprefix\n";
@@ -6037,20 +6040,8 @@ std::optional<std::string> try_emit_direct_lir_module(
     }
     if (const auto slice = parse_minimal_call_crossing_direct_call_slice(module);
         slice.has_value()) {
-      const auto* main_fn = static_cast<const c4c::codegen::lir::LirFunction*>(nullptr);
-      for (const auto& function : module.functions) {
-        if (function.name == "main") {
-          main_fn = &function;
-          break;
-        }
-      }
-      if (main_fn == nullptr) {
-        throw c4c::backend::LirAdapterError(
-            c4c::backend::LirAdapterErrorKind::Unsupported,
-            "main function for shared x86 call-crossing direct-call slice");
-      }
       return remove_redundant_self_moves(emit_minimal_call_crossing_direct_call_asm(
-          module.target_triple, run_shared_x86_regalloc(*main_fn), *slice));
+          module.target_triple, synthesize_shared_x86_call_crossing_regalloc(*slice), *slice));
     }
     if (const auto imm = parse_minimal_double_indirect_local_pointer_conditional_return_imm(module);
         imm.has_value()) {

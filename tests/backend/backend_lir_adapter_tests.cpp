@@ -1170,6 +1170,24 @@ void test_backend_call_helpers_parse_structured_call_crossing_direct_call_module
               "shared structured call-crossing direct-call module parser should preserve renamed helper symbols, SSA names, regalloc source metadata, and summed source immediates without target-local backend-module scans");
 }
 
+void test_backend_call_helpers_parse_structured_call_crossing_direct_call_module_with_renamed_caller() {
+  auto module = make_typed_call_crossing_direct_call_module();
+  auto& caller = module.functions.back();
+  caller.name = "entry_value";
+  caller.signature_text = "define i32 @entry_value()\n";
+
+  auto lowered = c4c::backend::lower_lir_to_backend_module(module);
+  const auto parsed =
+      c4c::backend::parse_backend_minimal_call_crossing_direct_call_module(lowered);
+  expect_true(parsed.has_value() && parsed->helper != nullptr && parsed->main_function != nullptr &&
+                  parsed->helper->signature.name == "add_one" &&
+                  parsed->main_function->signature.name == "entry_value" &&
+                  parsed->source_add != nullptr && parsed->call != nullptr &&
+                  parsed->final_add != nullptr && parsed->source_imm == 5 &&
+                  parsed->helper_add_imm == 1,
+              "shared structured call-crossing direct-call module parser should identify the zero-arg caller structurally even when the bounded caller is renamed away from main");
+}
+
 void test_backend_call_helpers_parse_structured_call_crossing_direct_call_lir_module() {
   auto module = make_typed_call_crossing_direct_call_module();
   std::swap(module.functions.front(), module.functions.back());
@@ -1223,6 +1241,25 @@ void test_backend_call_helpers_parse_structured_call_crossing_direct_call_lir_mo
                   parsed->final_add->result == "%t.crossing.sum.structured" &&
                   parsed->source_imm == 5 && parsed->helper_add_imm == 1,
               "shared structured call-crossing direct-call LIR parser should preserve renamed helper symbols, SSA names, regalloc source metadata, and summed source immediates without backend-IR lowering");
+}
+
+void test_backend_call_helpers_parse_structured_call_crossing_direct_call_lir_module_with_renamed_caller() {
+  auto module = make_typed_call_crossing_direct_call_module();
+  std::swap(module.functions.front(), module.functions.back());
+
+  auto& caller = module.functions.front();
+  caller.name = "entry_value";
+  caller.signature_text = "define i32 @entry_value()\n";
+
+  const auto parsed =
+      c4c::backend::parse_backend_minimal_call_crossing_direct_call_lir_module(module);
+  expect_true(parsed.has_value() && parsed->helper != nullptr &&
+                  parsed->main_function != nullptr && parsed->source_add != nullptr &&
+                  parsed->call != nullptr && parsed->final_add != nullptr &&
+                  parsed->helper->name == "add_one" &&
+                  parsed->main_function->name == "entry_value" &&
+                  parsed->source_imm == 5 && parsed->helper_add_imm == 1,
+              "shared structured call-crossing direct-call LIR parser should identify the zero-arg caller structurally even when the bounded caller is renamed away from main");
 }
 
 void test_backend_call_helpers_parse_structured_folded_two_arg_function() {
@@ -2958,7 +2995,9 @@ int main(int argc, char* argv[]) {
   test_backend_call_helpers_parse_structured_void_direct_call_imm_return_module();
   test_backend_call_helpers_parse_structured_single_add_imm_direct_call_module();
   test_backend_call_helpers_parse_structured_call_crossing_direct_call_module();
+  test_backend_call_helpers_parse_structured_call_crossing_direct_call_module_with_renamed_caller();
   test_backend_call_helpers_parse_structured_call_crossing_direct_call_lir_module();
+  test_backend_call_helpers_parse_structured_call_crossing_direct_call_lir_module_with_renamed_caller();
   test_backend_call_helpers_parse_structured_folded_two_arg_function();
   test_backend_call_helpers_parse_structured_two_arg_direct_call_module();
   test_backend_call_helpers_match_structured_direct_call_module();

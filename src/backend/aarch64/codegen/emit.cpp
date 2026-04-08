@@ -4257,7 +4257,9 @@ std::string emit_minimal_direct_call_asm(const c4c::backend::BackendModule& modu
 
   std::ostringstream out;
   const std::string helper_symbol = asm_symbol_name(module, slice.helper->signature.name);
-  const std::string main_symbol = asm_symbol_name(module, "main");
+  const std::string main_symbol =
+      asm_symbol_name(module, slice.main_function == nullptr ? "main"
+                                                             : slice.main_function->signature.name);
 
   out << ".text\n";
   emit_function_prelude(out, module, helper_symbol, false);
@@ -4630,7 +4632,9 @@ std::string emit_minimal_call_crossing_direct_call_asm(
   const std::int64_t frame_size = aligned_call_frame_size(saved_regs.size());
   std::ostringstream out;
   const std::string helper_symbol = asm_symbol_name(module, slice.helper->signature.name);
-  const std::string main_symbol = asm_symbol_name(module, "main");
+  const std::string main_symbol =
+      asm_symbol_name(module, slice.main_function == nullptr ? "main"
+                                                             : slice.main_function->signature.name);
 
   out << ".text\n";
   emit_function_prelude(out, module, helper_symbol, false);
@@ -8378,19 +8382,9 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
       if (const auto slice =
               c4c::backend::parse_backend_minimal_call_crossing_direct_call_module(adapted);
           slice.has_value()) {
-        const auto* main_fn = static_cast<const c4c::codegen::lir::LirFunction*>(nullptr);
-        for (const auto& function : module.functions) {
-          if (function.name == "main") {
-            main_fn = &function;
-            break;
-          }
-        }
-        if (main_fn == nullptr) {
-          fail_unsupported("main function for shared call-crossing direct-call slice");
-        }
         return emit_minimal_call_crossing_direct_call_asm(
             adapted,
-            run_shared_aarch64_regalloc(*main_fn),
+            synthesize_shared_aarch64_call_crossing_regalloc(slice->source_add->result),
             *slice,
             slice->source_add->result);
       }
@@ -8523,19 +8517,9 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
       }
       if (const auto slice = c4c::backend::parse_backend_minimal_call_crossing_direct_call_module(adapted);
           slice.has_value()) {
-        const auto* main_fn = static_cast<const c4c::codegen::lir::LirFunction*>(nullptr);
-        for (const auto& function : prepared.functions) {
-          if (function.name == "main") {
-            main_fn = &function;
-            break;
-          }
-        }
-        if (main_fn == nullptr) {
-          fail_unsupported("main function for shared call-crossing direct-call slice");
-        }
         return emit_minimal_call_crossing_direct_call_asm(
             adapted,
-            run_shared_aarch64_regalloc(*main_fn),
+            synthesize_shared_aarch64_call_crossing_regalloc(slice->source_add->result),
             *slice,
             slice->source_add->result);
       }

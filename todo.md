@@ -9,14 +9,36 @@ Source Plan: plan.md
 - [ ] Remove legacy backend IR files and backend/app LLVM rescue paths
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
-Current active item: Step 4 priority reset. Remove the remaining production
-`main` fixture anchors from x86/aarch64 emitters and shared LIR-side parser
-helpers before taking the next legacy-lowering deletion slice. Any logic that
-needs to manufacture or locate `main` for bounded backend fixtures must move
-into backend test helpers/fixtures instead of living in
-`emit.cpp`/`call_decode.hpp`.
+Current active item: Step 4 follow-on deletion. Target another bounded
+x86-local helper/runtime family that still reaches
+`lower_lir_to_backend_module(...)` on the explicit LIR entrypoint now that the
+shared call-crossing direct-call seam no longer depends on production-side
+`main` anchors in the parser/emitter path.
 
 Completed in this slice:
+
+- removed the shared call-crossing direct-call production-side `main` anchor
+  from
+  [`src/backend/lowering/call_decode.hpp`](/workspaces/c4c/src/backend/lowering/call_decode.hpp)
+  by teaching the shared parser to identify the zero-argument `i32` caller
+  structurally for that seam instead of rejecting renamed callers up front
+- taught the x86 shared call-crossing direct-call direct-LIR seam in
+  [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+  to carry the parsed caller symbol through emission and synthesize the
+  preserved-source regalloc from backend-owned call-crossing metadata instead
+  of rescanning the LIR module for a literal `main`
+- taught the aarch64 shared call-crossing direct-call backend seam in
+  [`src/backend/aarch64/codegen/emit.cpp`](/workspaces/c4c/src/backend/aarch64/codegen/emit.cpp)
+  to emit the parsed caller symbol and use backend-owned synthesized
+  call-crossing regalloc for the lowered seam instead of hardcoding `main` in
+  the emitter path
+- proved the deletion with new renamed-caller regressions in
+  [`tests/backend/backend_lir_adapter_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_tests.cpp),
+  [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp),
+  and
+  [`tests/backend/backend_lir_adapter_aarch64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_aarch64_tests.cpp)
+  so the shared parser plus both backend seams stay on the asm path without a
+  production-side `main` fixture anchor for this bounded family
 
 - removed the emitter-local `find_lir_function(...)` helper from both
   [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
@@ -225,9 +247,10 @@ Next slice:
   after the production deletion
 - prove the next deletion with focused x86 backend tests and
   `ctest --test-dir build -R backend -j1 --output-on-failure`
-- in this iteration, tighten the x86 direct-entry surface by deleting the
-  bespoke local single-argument helper parser/emitter and covering the
-  slot-backed helper family through the shared direct-call add-immediate path
+- tighten another explicit x86 LIR-entry seam that still depends on
+  `lower_lir_to_backend_module(...)` after the shared call-crossing caller
+  anchor removal, preferably a bounded local-runtime helper family that can be
+  deleted together with its matching compatibility-only test ownership
 
 Step 4 remaining surface:
 

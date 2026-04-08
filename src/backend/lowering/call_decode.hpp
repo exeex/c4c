@@ -623,7 +623,7 @@ parse_backend_two_local_typed_call(const std::vector<c4c::codegen::lir::LirInst>
 }
 
 inline std::optional<ParsedBackendSingleHelperMainLirModuleView>
-parse_backend_single_helper_zero_arg_main_lir_module(
+parse_backend_single_helper_zero_arg_caller_lir_module(
     const c4c::codegen::lir::LirModule& module,
     std::size_t expected_main_inst_count) {
   using namespace c4c::codegen::lir;
@@ -636,23 +636,23 @@ parse_backend_single_helper_zero_arg_main_lir_module(
   const LirFunction* main_fn = nullptr;
   const LirFunction* helper = nullptr;
   for (const auto& function : module.functions) {
-    if (function.name == "main") {
+    if (!function.is_declaration &&
+        backend_lir_signature_matches(
+            function.signature_text, "define", "i32", function.name, {})) {
       if (main_fn != nullptr) {
         return std::nullopt;
       }
       main_fn = &function;
-      continue;
+    } else {
+      if (helper != nullptr) {
+        return std::nullopt;
+      }
+      helper = &function;
     }
-
-    if (helper != nullptr) {
-      return std::nullopt;
-    }
-    helper = &function;
   }
 
   if (helper == nullptr || main_fn == nullptr || helper->is_declaration ||
       main_fn->is_declaration ||
-      !backend_lir_is_zero_arg_i32_main_definition(main_fn->signature_text) ||
       main_fn->entry.value != 0 || main_fn->blocks.size() != 1 || !main_fn->alloca_insts.empty() ||
       !main_fn->stack_objects.empty()) {
     return std::nullopt;
@@ -671,6 +671,19 @@ parse_backend_single_helper_zero_arg_main_lir_module(
       &main_block,
       main_ret,
   };
+}
+
+inline std::optional<ParsedBackendSingleHelperMainLirModuleView>
+parse_backend_single_helper_zero_arg_main_lir_module(
+    const c4c::codegen::lir::LirModule& module,
+    std::size_t expected_main_inst_count) {
+  const auto parsed =
+      parse_backend_single_helper_zero_arg_caller_lir_module(module, expected_main_inst_count);
+  if (!parsed.has_value() || parsed->main_function == nullptr ||
+      parsed->main_function->name != "main") {
+    return std::nullopt;
+  }
+  return parsed;
 }
 
 inline std::optional<ParsedBackendStructuredTwoParamAddFunctionView>
@@ -1303,23 +1316,22 @@ parse_backend_minimal_call_crossing_direct_call_module(const BackendModule& modu
   const BackendFunction* main_fn = nullptr;
   const BackendFunction* helper = nullptr;
   for (const auto& function : module.functions) {
-    if (function.signature.name == "main") {
+    if (!function.is_declaration && backend_function_is_definition(function.signature) &&
+        backend_signature_return_scalar_type(function.signature) == BackendScalarType::I32 &&
+        !function.signature.is_vararg && function.signature.params.empty()) {
       if (main_fn != nullptr) {
         return std::nullopt;
       }
       main_fn = &function;
-      continue;
+    } else {
+      if (helper != nullptr) {
+        return std::nullopt;
+      }
+      helper = &function;
     }
-    if (helper != nullptr) {
-      return std::nullopt;
-    }
-    helper = &function;
   }
 
   if (helper == nullptr || main_fn == nullptr || helper->is_declaration || main_fn->is_declaration ||
-      !backend_function_is_definition(main_fn->signature) ||
-      backend_signature_return_scalar_type(main_fn->signature) != BackendScalarType::I32 ||
-      !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
       main_fn->blocks.size() != 1) {
     return std::nullopt;
   }
@@ -2388,7 +2400,7 @@ inline std::optional<std::string_view> parse_backend_single_helper_call_crossing
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
 
-  const auto parsed = parse_backend_single_helper_zero_arg_main_lir_module(module, 3);
+  const auto parsed = parse_backend_single_helper_zero_arg_caller_lir_module(module, 3);
   if (!parsed.has_value()) {
     return std::nullopt;
   }
@@ -2416,7 +2428,7 @@ parse_backend_minimal_call_crossing_direct_call_lir_module(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
 
-  const auto parsed = parse_backend_single_helper_zero_arg_main_lir_module(module, 3);
+  const auto parsed = parse_backend_single_helper_zero_arg_caller_lir_module(module, 3);
   if (!parsed.has_value() || parsed->helper == nullptr || parsed->main_function == nullptr ||
       parsed->main_block == nullptr || parsed->main_ret == nullptr) {
     return std::nullopt;

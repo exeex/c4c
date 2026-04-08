@@ -2498,6 +2498,38 @@ void test_aarch64_backend_keeps_renamed_structured_call_crossing_slice_on_asm_pa
                       "aarch64 backend seam should not fall back when the call-crossing slice relies only on structured call and callee metadata");
 }
 
+void test_aarch64_backend_scaffold_accepts_renamed_structured_call_crossing_caller_without_main_anchor() {
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_typed_call_crossing_direct_call_module());
+
+  c4c::backend::BackendFunction* caller = nullptr;
+  for (auto& function : lowered.functions) {
+    if (function.signature.name == "main") {
+      caller = &function;
+      break;
+    }
+  }
+  expect_true(caller != nullptr,
+              "aarch64 renamed lowered call-crossing caller regression test needs the zero-arg caller function");
+  if (caller == nullptr) {
+    return;
+  }
+
+  caller->signature.name = "entry_value";
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  const auto rendered = c4c::backend::emit_module(
+      lowered,
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".globl entry_value",
+                  "aarch64 backend seam should carry the renamed lowered call-crossing caller symbol through the asm path instead of hardcoding main");
+  expect_contains(rendered, ".type entry_value, %function",
+                  "aarch64 backend seam should emit the renamed lowered call-crossing caller as a real function symbol");
+  expect_contains(rendered, "bl add_one",
+                  "aarch64 backend seam should keep the lowered call-crossing helper call on the asm path after the caller rename");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should not fall back when the lowered bounded call-crossing caller is renamed away from main");
+}
+
 void test_aarch64_backend_scaffold_accepts_structured_call_crossing_direct_call_ir_without_signature_shims() {
   auto lowered = c4c::backend::lower_lir_to_backend_module(make_typed_call_crossing_direct_call_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
@@ -5948,6 +5980,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_cleans_up_redundant_call_result_traffic_on_call_crossing_slice();
   test_aarch64_backend_keeps_spacing_tolerant_call_crossing_slice_on_asm_path();
   test_aarch64_backend_keeps_renamed_structured_call_crossing_slice_on_asm_path();
+  test_aarch64_backend_scaffold_accepts_renamed_structured_call_crossing_caller_without_main_anchor();
   test_aarch64_backend_scaffold_accepts_structured_call_crossing_direct_call_ir_without_signature_shims();
   test_aarch64_backend_scaffold_accepts_renamed_structured_call_crossing_direct_call_ir_without_signature_shims();
   test_aarch64_backend_scaffold_accepts_lowered_call_crossing_source_value_rename_without_signature_shims();
