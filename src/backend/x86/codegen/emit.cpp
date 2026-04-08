@@ -4633,10 +4633,6 @@ std::optional<std::string> try_emit_direct_lir_module(
         slice.has_value()) {
       return emit_minimal_string_literal_char_asm(module.target_triple, *slice);
     }
-    if (const auto slice = parse_minimal_conditional_return_slice(module);
-        slice.has_value()) {
-      return emit_minimal_conditional_return_asm(module.target_triple, *slice);
-    }
     if (const auto slice = parse_minimal_countdown_loop_slice(module);
         slice.has_value()) {
       return emit_minimal_countdown_loop_asm(module.target_triple, *slice);

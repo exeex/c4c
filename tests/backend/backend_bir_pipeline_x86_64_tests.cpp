@@ -253,6 +253,44 @@ c4c::codegen::lir::LirModule make_lir_minimal_folded_two_arg_direct_call_module(
   return module;
 }
 
+c4c::codegen::lir::LirModule make_lir_minimal_conditional_return_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCmpOp{"%t0", false, "slt", "i32", "2", "3"});
+  entry.insts.push_back(LirCastOp{"%t1", LirCastKind::ZExt, "i1", "%t0", "i32"});
+  entry.insts.push_back(LirCmpOp{"%t2", false, "ne", "i32", "%t1", "0"});
+  entry.terminator = LirCondBr{"%t2", "then", "else"};
+
+  LirBlock then_block;
+  then_block.id = LirBlockId{1};
+  then_block.label = "then";
+  then_block.terminator = LirRet{std::string("0"), "i32"};
+
+  LirBlock else_block;
+  else_block.id = LirBlockId{2};
+  else_block.label = "else";
+  else_block.terminator = LirRet{std::string("1"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(then_block));
+  function.blocks.push_back(std::move(else_block));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_lir_minimal_dual_identity_direct_call_sub_module() {
   using namespace c4c::codegen::lir;
 
@@ -1053,6 +1091,34 @@ void test_backend_bir_pipeline_drives_x86_lir_minimal_call_crossing_direct_call_
                       "x86 LIR call-crossing input should stay on native asm emission instead of falling back to LLVM text");
 }
 
+void test_backend_bir_pipeline_drives_x86_lir_minimal_conditional_return_through_bir_end_to_end() {
+  const auto lowered =
+      c4c::backend::try_lower_to_bir(make_lir_minimal_conditional_return_module());
+  expect_true(lowered.has_value(),
+              "x86 LIR conditional-return input should lower into a direct BIR module before target emission");
+  expect_true(lowered->functions.size() == 1 &&
+                  lowered->functions.front().blocks.size() == 1 &&
+                  lowered->functions.front().blocks.front().insts.size() == 1 &&
+                  std::holds_alternative<c4c::backend::bir::SelectInst>(
+                      lowered->functions.front().blocks.front().insts.front()),
+              "x86 LIR conditional-return input should collapse to the shared BIR select form before target emission");
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_lir_minimal_conditional_return_module()},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl main",
+                  "x86 LIR conditional-return input should still reach native asm emission after routing through the shared BIR path");
+  expect_contains(rendered, "jge .Lselect_false",
+                  "x86 LIR conditional-return input should lower the fused BIR predicate to the native branch form on the x86 path");
+  expect_contains(rendered, ".Lselect_true:\n  mov eax, 0\n  ret\n",
+                  "x86 LIR conditional-return input should preserve the then-arm immediate through the BIR-owned select emission");
+  expect_contains(rendered, ".Lselect_false:\n  mov eax, 1\n  ret\n",
+                  "x86 LIR conditional-return input should preserve the else-arm immediate through the BIR-owned select emission");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR conditional-return input should stay on native asm emission instead of falling back to LLVM text");
+}
+
 void test_backend_bir_pipeline_drives_x86_return_add_smoke_case_end_to_end() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_bir_return_add_module()},
@@ -1546,6 +1612,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_folded_two_arg_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_dual_identity_direct_call_sub_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_call_crossing_direct_call_through_bir_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_conditional_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_return_add_smoke_case_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_return_sub_smoke_case_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_zero_param_staged_constant_end_to_end);

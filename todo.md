@@ -5,12 +5,12 @@ Source Plan: plan.md
 # Active Item
 
 - Step 3: migrate the next aarch64 emitter helper cluster onto direct BIR
-- Current slice: inspect the next live x86/aarch64 emitter helper cluster that
-  still depends on `BackendModule`-era folded/global/local-slot parsing and
-  choose the narrowest direct-BIR migration target
-- Next intended slice: add the narrowest direct-BIR emitter coverage for that
-  next live helper cluster, then delete the corresponding dead
-  `call_decode.hpp` and emitter-local legacy seam
+- Current slice: inspect the next redundant x86 emitter-local LIR helper seam
+  that already has a direct-BIR path, with countdown-loop and conditional
+  phi-join families as the next candidates
+- Next intended slice: add a focused x86 LIR-through-BIR pipeline test for the
+  next removable seam, then delete that emitter-local LIR parser once the
+  native direct-BIR emitter covers it cleanly
 
 # Completed
 
@@ -795,3 +795,23 @@ Source Plan: plan.md
   full-suite baseline for this run: `99%` passed with 13 known failures
   (`backend_runtime_*` plus two aarch64 `c_testsuite` cases), so this slice
   was monotonic against the repo's dirty state
+- Removed the redundant x86 emitter-local
+  `parse_minimal_conditional_return_slice(const LirModule&)` fast path from
+  `src/backend/x86/codegen/emit.cpp` so the zero-arg conditional-return slice
+  now routes through `try_lower_to_bir(...)` and the existing direct-BIR
+  `parse_minimal_conditional_return_slice(const bir::Module&)` emitter path
+- Added focused x86 pipeline coverage in
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` proving the minimal LIR
+  conditional-return slice lowers to a single BIR `SelectInst` and still emits
+  native x86 asm through the BIR-owned path
+- Rebuilt `backend_bir_tests`, `backend_shared_util_tests`, and `c4cll`
+  successfully after the x86 conditional-return seam removal
+- Reran `ctest --test-dir build -R 'backend_bir_tests' --output-on-failure`
+  successfully after the x86 conditional-return seam removal
+- Reran the full `ctest --test-dir build -j8 --output-on-failure` suite and
+  refreshed `test_after.log` / `test_fail_after.log`; compared with the
+  existing `test_fail_before.log`, the workspace improved from `2675/2834`
+  passing with 159 failures to `2834/2834` passing with 0 failures
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=159
+  failed=-159` and zero newly failing tests
