@@ -4508,6 +4508,7 @@ void test_x86_backend_explicit_lir_emit_surface_keeps_renamed_param_member_array
   module.target_triple = "x86_64-unknown-linux-gnu";
   module.data_layout =
       "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  std::swap(module.functions.front(), module.functions.back());
 
   c4c::codegen::lir::LirFunction* helper = nullptr;
   c4c::codegen::lir::LirFunction* main_fn = nullptr;

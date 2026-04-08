@@ -9,10 +9,12 @@ Source Plan: plan.md
 - [ ] Remove legacy backend IR files and backend/app LLVM rescue paths
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
-Current active item: Step 4 x86 emitter tightening. Delete the next live x86
-`lower_lir_to_backend_module(...)` dependency by targeting another bounded
-helper/runtime family now that the renamed by-value member-array runtime slice
-stays on the direct x86 LIR asm path.
+Current active item: Step 4 priority reset. Remove the remaining production
+`main` fixture anchors from x86/aarch64 emitters and shared LIR-side parser
+helpers before taking the next legacy-lowering deletion slice. Any logic that
+needs to manufacture or locate `main` for bounded backend fixtures must move
+into backend test helpers/fixtures instead of living in
+`emit.cpp`/`call_decode.hpp`.
 
 Completed in this slice:
 
@@ -134,6 +136,13 @@ Completed in this slice:
 
 Next intended slice:
 
+- delete production parser/emitter uses of `function.name == "main"` where the
+  name is only serving as a fixture anchor for a bounded helper/caller shape
+- move any remaining test-only `main` convenience into backend test
+  helpers/fixtures so production code only matches structural constraints
+- then resume the next emitter-local `lower_lir_to_backend_module(...)`
+  deletion once the `main` anchor cleanup no longer risks reintroducing test
+  assumptions into production paths
 - keep deleting emitter-local legacy conveniences that encode symbol-specific
   assumptions when a bounded structural match is enough for the live slice
 - target another renamed or reordered x86-local helper/runtime family that

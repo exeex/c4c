@@ -119,18 +119,27 @@ Actions:
 
 Current next slice for Step 4:
 
-- choose one remaining live emitter-local
-  `lower_lir_to_backend_module(...)` seam in
-  [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
-  or
-  [`src/backend/aarch64/codegen/emit.cpp`](/workspaces/c4c/src/backend/aarch64/codegen/emit.cpp)
-- remove that production seam
-- delete or narrow the matching direct test/include dependency on
-  `lir_to_backend_ir.hpp` in the same batch
+- first remove the remaining production-side `main` fixture anchors from
+  emitter and shared parser code, starting with
+  [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp),
+  [`src/backend/aarch64/codegen/emit.cpp`](/workspaces/c4c/src/backend/aarch64/codegen/emit.cpp),
+  and
+  [`src/backend/lowering/call_decode.hpp`](/workspaces/c4c/src/backend/lowering/call_decode.hpp)
+- treat any assumption that "`main` identifies the top-level caller for a
+  bounded fixture shape" as test-only convenience, not production semantics
+- move any remaining fixture convenience for manufacturing or locating `main`
+  into backend test helpers/fixtures instead of leaving it in emitter/parser
+  code
+- after the production `main` anchors are gone, continue deleting the next
+  live emitter-local `lower_lir_to_backend_module(...)` seam in the same batch
 - prove the batch with focused backend tests plus `ctest -R backend`
 
 Batch completion check:
 
+- no emitter/parser production path depends on `function.name == "main"` just
+  to recognize a bounded fixture shape
+- any helper logic that still needs to manufacture or locate `main` for tests
+  lives under backend test helper/fixture ownership instead of production code
 - at least one live production legacy seam disappears
 - the batch also shrinks the matching test/build assumptions
 - the slice leaves the repo with fewer `lir_to_backend_ir` owners than before
