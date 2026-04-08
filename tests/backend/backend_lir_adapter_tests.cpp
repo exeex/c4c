@@ -1780,6 +1780,61 @@ void test_backend_call_helpers_parse_structured_declared_direct_call_module_with
               "shared declared direct-call backend-module parser should identify renamed zero-argument i32 callers structurally instead of requiring a literal main anchor");
 }
 
+void test_backend_call_helpers_parse_structured_dual_identity_direct_call_sub_module_with_renamed_caller() {
+  auto lowered =
+      c4c::backend::lower_lir_to_backend_module(make_typed_dual_identity_direct_call_sub_module());
+
+  c4c::backend::BackendFunction* caller_fn = nullptr;
+  for (auto& function : lowered.functions) {
+    if (!function.is_declaration &&
+        c4c::backend::backend_function_is_definition(function.signature) &&
+        c4c::backend::backend_signature_return_scalar_type(function.signature) ==
+            c4c::backend::BackendScalarType::I32 &&
+        function.signature.params.empty() && !function.signature.is_vararg) {
+      caller_fn = &function;
+      break;
+    }
+  }
+
+  expect_true(caller_fn != nullptr,
+              "shared renamed dual-identity direct-call subtraction regression test needs the lowered zero-argument caller function");
+  if (caller_fn == nullptr || caller_fn->blocks.empty() ||
+      caller_fn->blocks.front().insts.size() != 3) {
+    return;
+  }
+
+  caller_fn->signature.name = "entry_sub";
+  auto* lhs_call =
+      std::get_if<c4c::backend::BackendCallInst>(&caller_fn->blocks.front().insts[0]);
+  auto* rhs_call =
+      std::get_if<c4c::backend::BackendCallInst>(&caller_fn->blocks.front().insts[1]);
+  auto* sub =
+      std::get_if<c4c::backend::BackendBinaryInst>(&caller_fn->blocks.front().insts[2]);
+  expect_true(lhs_call != nullptr && rhs_call != nullptr && sub != nullptr,
+              "shared renamed dual-identity direct-call subtraction regression test needs the lowered caller instructions");
+  if (lhs_call == nullptr || rhs_call == nullptr || sub == nullptr) {
+    return;
+  }
+
+  lhs_call->result = "%t.entry_sub.lhs";
+  rhs_call->result = "%t.entry_sub.rhs";
+  sub->lhs = "%t.entry_sub.lhs";
+  sub->rhs = "%t.entry_sub.rhs";
+  sub->result = "%t.entry_sub.diff";
+  caller_fn->blocks.front().terminator.value = "%t.entry_sub.diff";
+
+  const auto parsed =
+      c4c::backend::parse_backend_minimal_dual_identity_direct_call_sub_module(lowered);
+  expect_true(parsed.has_value() && parsed->main_function == caller_fn &&
+                  parsed->lhs_helper != nullptr && parsed->rhs_helper != nullptr &&
+                  parsed->lhs_call == lhs_call && parsed->rhs_call == rhs_call &&
+                  parsed->sub == sub && parsed->main_function->signature.name == "entry_sub" &&
+                  parsed->lhs_helper->signature.name == "f" &&
+                  parsed->rhs_helper->signature.name == "g" &&
+                  parsed->lhs_call_arg_imm == 1 && parsed->rhs_call_arg_imm == 1,
+              "shared dual-identity direct-call subtraction backend-module parser should identify renamed zero-argument i32 callers structurally instead of requiring a literal main anchor");
+}
+
 void test_backend_call_helpers_parse_declared_direct_call_lir_module_with_renamed_caller() {
   auto module = make_x86_extern_decl_inferred_param_module();
   auto& caller_fn = module.functions.front();
@@ -3182,6 +3237,7 @@ int main(int argc, char* argv[]) {
   test_backend_call_helpers_parse_folded_two_arg_direct_call_lir_module();
   test_backend_call_helpers_parse_structured_declared_direct_call_module();
   test_backend_call_helpers_parse_structured_declared_direct_call_module_with_renamed_caller();
+  test_backend_call_helpers_parse_structured_dual_identity_direct_call_sub_module_with_renamed_caller();
   test_backend_call_helpers_parse_declared_direct_call_lir_module_with_renamed_caller();
   test_backend_call_helpers_decode_lir_direct_global_vararg_prefix();
   test_backend_call_helpers_classify_lir_nonminimal_call_types();

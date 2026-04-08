@@ -1294,7 +1294,9 @@ parse_backend_minimal_dual_identity_direct_call_sub_module(const BackendModule& 
   std::vector<const BackendFunction*> helpers;
   helpers.reserve(2);
   for (const auto& function : module.functions) {
-    if (function.signature.name == "main") {
+    if (!function.is_declaration && backend_function_is_definition(function.signature) &&
+        backend_signature_return_scalar_type(function.signature) == BackendScalarType::I32 &&
+        function.signature.params.empty() && !function.signature.is_vararg) {
       if (main_fn != nullptr) {
         return std::nullopt;
       }

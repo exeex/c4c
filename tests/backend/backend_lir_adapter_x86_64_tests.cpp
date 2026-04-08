@@ -3087,6 +3087,45 @@ void test_x86_backend_explicit_lir_emit_surface_keeps_renamed_dual_identity_dire
                       "x86 explicit LIR emit surface should not fall back to LLVM text for renamed dual-identity direct-call callers");
 }
 
+void test_x86_backend_explicit_emit_surface_keeps_renamed_dual_identity_direct_call_caller_on_asm_path() {
+  auto module = make_typed_dual_identity_direct_call_sub_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  auto* caller = module.functions.size() < 3 ? nullptr : &module.functions.back();
+  expect_true(caller != nullptr,
+              "x86 renamed dual-identity backend-path regression test needs the caller function");
+  if (caller == nullptr) {
+    return;
+  }
+
+  caller->name = "entry_sub";
+  caller->signature_text = "define i32 @entry_sub()\n";
+
+  const auto direct_rendered = c4c::backend::x86::emit_module(module);
+  const auto lowered_rendered =
+      c4c::backend::x86::emit_module(c4c::backend::lower_lir_to_backend_module(module));
+  const auto backend_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_true(direct_rendered == lowered_rendered,
+              "x86 explicit lowered backend seam should preserve renamed dual-identity callers on the same asm path as the direct LIR emit surface");
+  expect_true(direct_rendered == backend_rendered,
+              "x86 backend selection should keep renamed dual-identity callers on the same asm path as the direct LIR emit surface");
+  expect_contains(backend_rendered, ".globl entry_sub\n",
+                  "x86 backend selection should publish the renamed dual-identity caller instead of assuming main");
+  expect_contains(backend_rendered, "entry_sub:\n",
+                  "x86 backend selection should preserve the renamed dual-identity caller symbol on the asm path");
+  expect_contains(backend_rendered, "call f\n",
+                  "x86 backend selection should keep the first renamed dual-identity helper call on the asm path");
+  expect_contains(backend_rendered, "call g\n",
+                  "x86 backend selection should keep the second renamed dual-identity helper call on the asm path");
+  expect_not_contains(backend_rendered, "target triple =",
+                      "x86 backend selection should not fall back to LLVM text for renamed dual-identity direct-call callers");
+}
+
 void test_x86_backend_scaffold_accepts_structured_direct_call_add_imm_ir_without_signature_shims() {
   auto lowered =
       c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_local_arg_module());
@@ -6825,6 +6864,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_renders_dual_identity_direct_call_sub_slice);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_dual_identity_direct_call_sub_path);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_keeps_renamed_dual_identity_direct_call_caller_on_asm_path);
+  RUN_TEST(test_x86_backend_explicit_emit_surface_keeps_renamed_dual_identity_direct_call_caller_on_asm_path);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_direct_call_add_imm_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_renamed_structured_direct_call_add_imm_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_rejects_structured_direct_call_add_imm_when_helper_body_contract_disagrees);

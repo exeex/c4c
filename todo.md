@@ -10,12 +10,37 @@ Source Plan: plan.md
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
 Current active item: Step 4 follow-on deletion. Resume the next live x86
-single-helper helper/runtime seam beyond the bounded void-helper immediate
-return family now that both the shared parser and the direct/lowered x86 emit
-surfaces no longer require a literal `main` anchor or legacy lowering for that
-slice.
+single-helper helper/runtime seam that still depends on
+`backend_lir_is_zero_arg_i32_main_definition(...)` in
+[`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+now that the lowered dual-identity direct-call subtraction seam no longer
+requires a literal `main` caller anchor.
 
 Completed in this slice:
+
+- removed the lowered structured dual-identity direct-call subtraction
+  production-side literal-`main` caller anchor from
+  [`src/backend/lowering/call_decode.hpp`](/workspaces/c4c/src/backend/lowering/call_decode.hpp)
+  to identify the zero-argument `i32` caller structurally instead of requiring
+  a literal `main` symbol for the bounded dual-identity helper family
+- proved the shared matcher deletion with a new renamed-caller regression in
+  [`tests/backend/backend_lir_adapter_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_tests.cpp)
+  covering `parse_backend_minimal_dual_identity_direct_call_sub_module(...)`
+  on the lowered backend-module seam
+- proved the x86 lowered/backend-selection behavior with a new renamed-caller
+  regression in
+  [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
+  so the bounded dual-identity subtraction slice keeps the renamed caller on
+  the same direct-vs-lowered asm path instead of falling back when the caller
+  is no longer named `main`
+- kept focused adapter coverage green at `2` passed / `0` failed via
+  `ctest --test-dir build -R 'backend_lir_adapter_tests|backend_lir_adapter_x86_64_tests' -j1 --output-on-failure`
+- kept backend regression coverage monotonic from `291` passed / `111` failed
+  to `402` passed / `0` failed via `test_backend_before.log`,
+  `test_backend_after.log`, and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_backend_before.log --after test_backend_after.log --allow-non-decreasing-passed`
+
+Latest completed slice:
 
 - taught the shared structured void direct-call parser in
   [`src/backend/lowering/call_decode.hpp`](/workspaces/c4c/src/backend/lowering/call_decode.hpp)
@@ -45,8 +70,6 @@ Completed in this slice:
   to `402` passed / `0` failed via `test_backend_before.log`,
   `test_backend_after.log`, and
   `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_backend_before.log --after test_backend_after.log --allow-non-decreasing-passed`
-
-Latest completed slice:
 
 - removed the lowered structured declared-direct-call production-side
   literal-`main` caller anchor from
