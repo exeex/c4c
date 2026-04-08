@@ -216,6 +216,54 @@ c4c::codegen::lir::LirModule make_lir_minimal_folded_two_arg_direct_call_module(
   return module;
 }
 
+c4c::codegen::lir::LirModule make_lir_minimal_dual_identity_direct_call_sub_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction lhs;
+  lhs.name = "f";
+  lhs.signature_text = "define i32 @f(i32 %arg0)\n";
+  lhs.entry = LirBlockId{0};
+  lhs.blocks.push_back(
+      LirBlock{.id = LirBlockId{0},
+               .label = "entry",
+               .insts = {},
+               .terminator = LirRet{std::string("%arg0"), "i32"}});
+
+  LirFunction rhs;
+  rhs.name = "g";
+  rhs.signature_text = "define i32 @g(i32 %arg0)\n";
+  rhs.entry = LirBlockId{0};
+  rhs.blocks.push_back(
+      LirBlock{.id = LirBlockId{0},
+               .label = "entry",
+               .insts = {},
+               .terminator = LirRet{std::string("%arg0"), "i32"}});
+
+  LirFunction main_function;
+  main_function.name = "main";
+  main_function.signature_text = "define i32 @main()\n";
+  main_function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{"%t0", "i32", "@f", "(i32)", "i32 7"});
+  entry.insts.push_back(LirCallOp{"%t1", "i32", "@g", "(i32)", "i32 3"});
+  entry.insts.push_back(LirBinOp{"%t2", LirBinaryOpcode::Sub, "i32", "%t0", "%t1"});
+  entry.terminator = LirRet{std::string("%t2"), "i32"};
+  main_function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(lhs));
+  module.functions.push_back(std::move(rhs));
+  module.functions.push_back(std::move(main_function));
+  return module;
+}
+
 void test_backend_bir_pipeline_drives_x86_direct_bir_minimal_direct_call_end_to_end() {
   c4c::backend::bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -538,6 +586,96 @@ void test_backend_bir_pipeline_drives_x86_direct_bir_minimal_direct_call_identit
                       "direct BIR identity direct-call input should stay on native asm emission");
 }
 
+void test_backend_bir_pipeline_drives_x86_direct_bir_minimal_dual_identity_direct_call_sub_end_to_end() {
+  c4c::backend::bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.functions.push_back(c4c::backend::bir::Function{
+      .name = "f",
+      .return_type = c4c::backend::bir::TypeKind::I32,
+      .params = {
+          c4c::backend::bir::Param{.type = c4c::backend::bir::TypeKind::I32, .name = "%arg0"},
+      },
+      .local_slots = {},
+      .blocks = {c4c::backend::bir::Block{
+          .label = "entry",
+          .insts = {},
+          .terminator = c4c::backend::bir::ReturnTerminator{
+              .value = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%arg0"),
+          },
+      }},
+      .is_declaration = false,
+  });
+  module.functions.push_back(c4c::backend::bir::Function{
+      .name = "g",
+      .return_type = c4c::backend::bir::TypeKind::I32,
+      .params = {
+          c4c::backend::bir::Param{.type = c4c::backend::bir::TypeKind::I32, .name = "%arg0"},
+      },
+      .local_slots = {},
+      .blocks = {c4c::backend::bir::Block{
+          .label = "entry",
+          .insts = {},
+          .terminator = c4c::backend::bir::ReturnTerminator{
+              .value = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%arg0"),
+          },
+      }},
+      .is_declaration = false,
+  });
+  module.functions.push_back(c4c::backend::bir::Function{
+      .name = "main",
+      .return_type = c4c::backend::bir::TypeKind::I32,
+      .params = {},
+      .local_slots = {},
+      .blocks = {c4c::backend::bir::Block{
+          .label = "entry",
+          .insts = {
+              c4c::backend::bir::CallInst{
+                  .result =
+                      c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%t0"),
+                  .callee = "f",
+                  .args = {c4c::backend::bir::Value::immediate_i32(7)},
+                  .return_type_name = "i32",
+              },
+              c4c::backend::bir::CallInst{
+                  .result =
+                      c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%t1"),
+                  .callee = "g",
+                  .args = {c4c::backend::bir::Value::immediate_i32(3)},
+                  .return_type_name = "i32",
+              },
+              c4c::backend::bir::BinaryInst{
+                  .opcode = c4c::backend::bir::BinaryOpcode::Sub,
+                  .result =
+                      c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%t2"),
+                  .lhs = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%t0"),
+                  .rhs = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%t1"),
+              },
+          },
+          .terminator = c4c::backend::bir::ReturnTerminator{
+              .value = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%t2"),
+          },
+      }},
+      .is_declaration = false,
+  });
+
+  const auto rendered =
+      c4c::backend::emit_module(c4c::backend::BackendModuleInput{module},
+                                make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".type f, %function\nf:\n",
+                  "direct BIR dual-identity subtraction input should emit the left helper definition on the x86 backend path");
+  expect_contains(rendered, ".type g, %function\ng:\n",
+                  "direct BIR dual-identity subtraction input should emit the right helper definition on the x86 backend path");
+  expect_contains(rendered, "mov edi, 7",
+                  "direct BIR dual-identity subtraction input should materialize the left caller immediate on the native x86 path");
+  expect_contains(rendered, "mov edi, 3",
+                  "direct BIR dual-identity subtraction input should materialize the right caller immediate on the native x86 path");
+  expect_contains(rendered, "sub ebx, eax",
+                  "direct BIR dual-identity subtraction input should lower the subtraction natively without legacy backend IR");
+  expect_not_contains(rendered, "target triple =",
+                      "direct BIR dual-identity subtraction input should stay on native asm emission");
+}
+
 void test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_direct_call_through_bir_end_to_end() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_lir_minimal_two_arg_direct_call_module()},
@@ -602,6 +740,25 @@ void test_backend_bir_pipeline_drives_x86_lir_minimal_folded_two_arg_direct_call
                       "x86 LIR folded two-argument direct-call input should fully fold away the helper/main direct-call family on the BIR-owned route");
   expect_not_contains(rendered, "target triple =",
                       "x86 LIR folded two-argument direct-call input should stay on native asm emission instead of falling back to LLVM text");
+}
+
+void test_backend_bir_pipeline_drives_x86_lir_minimal_dual_identity_direct_call_sub_through_bir_end_to_end() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_lir_minimal_dual_identity_direct_call_sub_module()},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".type f, %function\nf:\n",
+                  "x86 LIR dual-identity subtraction input should still emit the left helper definition after routing through the shared BIR path");
+  expect_contains(rendered, ".type g, %function\ng:\n",
+                  "x86 LIR dual-identity subtraction input should still emit the right helper definition after routing through the shared BIR path");
+  expect_contains(rendered, "mov edi, 7",
+                  "x86 LIR dual-identity subtraction input should preserve the left caller immediate on the BIR-owned route");
+  expect_contains(rendered, "mov edi, 3",
+                  "x86 LIR dual-identity subtraction input should preserve the right caller immediate on the BIR-owned route");
+  expect_contains(rendered, "sub ebx, eax",
+                  "x86 LIR dual-identity subtraction input should lower the subtraction on the native x86 path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR dual-identity subtraction input should stay on native asm emission instead of falling back to LLVM text");
 }
 
 void test_backend_bir_pipeline_drives_x86_return_add_smoke_case_end_to_end() {
@@ -1084,12 +1241,14 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_two_arg_direct_call_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_direct_call_add_imm_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_direct_call_identity_arg_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_dual_identity_direct_call_sub_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_declared_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_add_imm_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_identity_arg_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_folded_two_arg_direct_call_through_bir_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_dual_identity_direct_call_sub_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_return_add_smoke_case_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_return_sub_smoke_case_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_zero_param_staged_constant_end_to_end);

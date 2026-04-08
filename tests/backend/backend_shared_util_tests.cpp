@@ -289,6 +289,92 @@ void test_backend_shared_call_decode_parses_bir_minimal_direct_call_identity_arg
               "shared call-decode surface should recover the caller immediate for the BIR identity direct-call slice");
 }
 
+void test_backend_shared_call_decode_parses_bir_minimal_dual_identity_direct_call_sub_module() {
+  c4c::backend::bir::Module module;
+  module.functions.push_back(c4c::backend::bir::Function{
+      .name = "f",
+      .return_type = c4c::backend::bir::TypeKind::I32,
+      .params = {
+          c4c::backend::bir::Param{.type = c4c::backend::bir::TypeKind::I32, .name = "%arg0"},
+      },
+      .local_slots = {},
+      .blocks = {c4c::backend::bir::Block{
+          .label = "entry",
+          .insts = {},
+          .terminator = c4c::backend::bir::ReturnTerminator{
+              .value = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%arg0"),
+          },
+      }},
+      .is_declaration = false,
+  });
+  module.functions.push_back(c4c::backend::bir::Function{
+      .name = "g",
+      .return_type = c4c::backend::bir::TypeKind::I32,
+      .params = {
+          c4c::backend::bir::Param{.type = c4c::backend::bir::TypeKind::I32, .name = "%arg0"},
+      },
+      .local_slots = {},
+      .blocks = {c4c::backend::bir::Block{
+          .label = "entry",
+          .insts = {},
+          .terminator = c4c::backend::bir::ReturnTerminator{
+              .value = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%arg0"),
+          },
+      }},
+      .is_declaration = false,
+  });
+  module.functions.push_back(c4c::backend::bir::Function{
+      .name = "main",
+      .return_type = c4c::backend::bir::TypeKind::I32,
+      .params = {},
+      .local_slots = {},
+      .blocks = {c4c::backend::bir::Block{
+          .label = "entry",
+          .insts = {
+              c4c::backend::bir::CallInst{
+                  .result =
+                      c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%t0"),
+                  .callee = "f",
+                  .args = {c4c::backend::bir::Value::immediate_i32(7)},
+                  .return_type_name = "i32",
+              },
+              c4c::backend::bir::CallInst{
+                  .result =
+                      c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%t1"),
+                  .callee = "g",
+                  .args = {c4c::backend::bir::Value::immediate_i32(3)},
+                  .return_type_name = "i32",
+              },
+              c4c::backend::bir::BinaryInst{
+                  .opcode = c4c::backend::bir::BinaryOpcode::Sub,
+                  .result =
+                      c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%t2"),
+                  .lhs = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%t0"),
+                  .rhs = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%t1"),
+              },
+          },
+          .terminator = c4c::backend::bir::ReturnTerminator{
+              .value = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%t2"),
+          },
+      }},
+      .is_declaration = false,
+  });
+
+  const auto parsed = c4c::backend::parse_bir_minimal_dual_identity_direct_call_sub_module(module);
+  expect_true(parsed.has_value(),
+              "shared call-decode surface should parse a BIR dual-identity direct-call subtraction module");
+  if (parsed.has_value()) {
+    expect_true(parsed->lhs_helper != nullptr && parsed->lhs_helper->name == "f" &&
+                    parsed->rhs_helper != nullptr && parsed->rhs_helper->name == "g" &&
+                    parsed->main_function != nullptr && parsed->main_function->name == "main",
+                "shared call-decode surface should preserve both helper identities and the caller for the BIR dual-identity subtraction slice");
+    expect_true(parsed->lhs_call != nullptr && parsed->rhs_call != nullptr &&
+                    parsed->sub != nullptr && parsed->lhs_call_arg_imm == 7 &&
+                    parsed->rhs_call_arg_imm == 3,
+                "shared call-decode surface should recover both call immediates and the subtraction instruction for the BIR dual-identity slice");
+  }
+}
+
 
 void test_backend_shared_liveness_surface_tracks_result_names() {
   const auto module = make_declaration_module();
@@ -1114,6 +1200,7 @@ int main(int argc, char* argv[]) {
   test_backend_shared_call_decode_parses_bir_minimal_two_arg_direct_call_module();
   test_backend_shared_call_decode_parses_bir_minimal_direct_call_add_imm_module();
   test_backend_shared_call_decode_parses_bir_minimal_direct_call_identity_arg_module();
+  test_backend_shared_call_decode_parses_bir_minimal_dual_identity_direct_call_sub_module();
   test_backend_shared_liveness_surface_tracks_result_names();
   test_backend_shared_liveness_surface_tracks_call_crossing_ranges();
   test_backend_shared_liveness_surface_tracks_phi_join_ranges();

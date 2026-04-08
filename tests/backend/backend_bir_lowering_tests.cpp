@@ -219,6 +219,54 @@ c4c::codegen::lir::LirModule make_bir_minimal_folded_two_arg_direct_call_lir_mod
   return module;
 }
 
+c4c::codegen::lir::LirModule make_bir_minimal_dual_identity_direct_call_sub_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction lhs;
+  lhs.name = "f";
+  lhs.signature_text = "define i32 @f(i32 %arg0)\n";
+  lhs.entry = LirBlockId{0};
+  lhs.blocks.push_back(
+      LirBlock{.id = LirBlockId{0},
+               .label = "entry",
+               .insts = {},
+               .terminator = LirRet{std::string("%arg0"), "i32"}});
+
+  LirFunction rhs;
+  rhs.name = "g";
+  rhs.signature_text = "define i32 @g(i32 %arg0)\n";
+  rhs.entry = LirBlockId{0};
+  rhs.blocks.push_back(
+      LirBlock{.id = LirBlockId{0},
+               .label = "entry",
+               .insts = {},
+               .terminator = LirRet{std::string("%arg0"), "i32"}});
+
+  LirFunction main_function;
+  main_function.name = "main";
+  main_function.signature_text = "define i32 @main()\n";
+  main_function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{"%t0", "i32", "@f", "(i32)", "i32 7"});
+  entry.insts.push_back(LirCallOp{"%t1", "i32", "@g", "(i32)", "i32 3"});
+  entry.insts.push_back(LirBinOp{"%t2", LirBinaryOpcode::Sub, "i32", "%t0", "%t1"});
+  entry.terminator = LirRet{std::string("%t2"), "i32"};
+  main_function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(lhs));
+  module.functions.push_back(std::move(rhs));
+  module.functions.push_back(std::move(main_function));
+  return module;
+}
+
 void test_bir_lowering_accepts_minimal_direct_call_lir_module() {
   const auto lowered = c4c::backend::try_lower_to_bir(make_bir_minimal_direct_call_lir_module());
   expect_true(lowered.has_value(),
@@ -443,6 +491,24 @@ void test_bir_lowering_accepts_minimal_folded_two_arg_direct_call_lir_module() {
   if (!lowered->functions.empty()) {
     expect_true(lowered->functions.front().return_type == c4c::backend::bir::TypeKind::I32,
                 "the lowered folded two-argument direct-call slice should preserve the caller return type");
+  }
+}
+
+void test_bir_lowering_accepts_minimal_dual_identity_direct_call_sub_lir_module() {
+  const auto lowered =
+      c4c::backend::try_lower_to_bir(make_bir_minimal_dual_identity_direct_call_sub_lir_module());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the minimal dual-identity subtraction direct-call LIR module slice");
+
+  const auto parsed = c4c::backend::parse_bir_minimal_dual_identity_direct_call_sub_module(*lowered);
+  expect_true(parsed.has_value(),
+              "the lowered BIR module should match the shared dual-identity subtraction direct-call BIR parser");
+  if (parsed.has_value()) {
+    expect_true(parsed->lhs_helper != nullptr && parsed->lhs_helper->name == "f" &&
+                    parsed->rhs_helper != nullptr && parsed->rhs_helper->name == "g" &&
+                    parsed->main_function != nullptr && parsed->main_function->name == "main" &&
+                    parsed->lhs_call_arg_imm == 7 && parsed->rhs_call_arg_imm == 3,
+                "the lowered BIR module should preserve both helper identities and both caller immediates for the dual-identity subtraction slice");
   }
 }
 
@@ -2214,6 +2280,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_minimal_direct_call_add_imm_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_direct_call_identity_arg_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_folded_two_arg_direct_call_lir_module);
+  RUN_TEST(test_bir_lowering_accepts_minimal_dual_identity_direct_call_sub_lir_module);
   RUN_TEST(test_bir_printer_renders_minimal_add_scaffold);
   RUN_TEST(test_bir_printer_renders_minimal_sub_scaffold);
   RUN_TEST(test_bir_printer_renders_minimal_mul_scaffold);

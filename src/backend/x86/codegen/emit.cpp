@@ -4425,6 +4425,24 @@ std::optional<MinimalNamedReturnImmSlice> parse_minimal_folded_two_arg_direct_ca
 }
 
 std::optional<MinimalDualIdentityDirectCallSubSlice> parse_minimal_dual_identity_direct_call_sub_slice(
+    const c4c::backend::bir::Module& module) {
+  const auto parsed =
+      c4c::backend::parse_bir_minimal_dual_identity_direct_call_sub_module(module);
+  if (!parsed.has_value() || parsed->lhs_helper == nullptr || parsed->rhs_helper == nullptr ||
+      parsed->main_function == nullptr) {
+    return std::nullopt;
+  }
+
+  return MinimalDualIdentityDirectCallSubSlice{
+      parsed->lhs_helper->name,
+      parsed->rhs_helper->name,
+      parsed->main_function->name,
+      parsed->lhs_call_arg_imm,
+      parsed->rhs_call_arg_imm,
+  };
+}
+
+std::optional<MinimalDualIdentityDirectCallSubSlice> parse_minimal_dual_identity_direct_call_sub_slice(
     const c4c::backend::BackendModule& module) {
   const auto parsed =
       c4c::backend::parse_backend_minimal_dual_identity_direct_call_sub_module(module);
@@ -6048,10 +6066,6 @@ std::optional<std::string> try_emit_direct_lir_module(
         slice.has_value()) {
       return emit_minimal_member_array_runtime_asm(module.target_triple, *slice);
     }
-    if (const auto slice = parse_minimal_dual_identity_direct_call_sub_slice(module);
-        slice.has_value()) {
-      return emit_minimal_dual_identity_direct_call_sub_asm(module.target_triple, *slice);
-    }
     if (const auto slice = parse_minimal_local_array_slice(module);
         slice.has_value()) {
       return emit_minimal_local_array_asm(module.target_triple, *slice);
@@ -6178,6 +6192,10 @@ std::string emit_module(const c4c::backend::bir::Module& module,
   if (const auto slice = parse_minimal_direct_call_identity_arg_slice(module);
       slice.has_value()) {
     return emit_minimal_direct_call_identity_arg_asm(module.target_triple, *slice);
+  }
+  if (const auto slice = parse_minimal_dual_identity_direct_call_sub_slice(module);
+      slice.has_value()) {
+    return emit_minimal_dual_identity_direct_call_sub_asm(module.target_triple, *slice);
   }
   if (const auto imm = parse_minimal_return_imm(module); imm.has_value()) {
     return emit_minimal_return_asm(module, *imm);

@@ -152,6 +152,18 @@ struct ParsedBirMinimalDirectCallIdentityArgModuleView {
   std::int64_t call_arg_imm = 0;
 };
 
+struct ParsedBirMinimalDualIdentityDirectCallSubModuleView {
+  const bir::Function* lhs_helper = nullptr;
+  const bir::Function* rhs_helper = nullptr;
+  const bir::Function* main_function = nullptr;
+  const bir::Block* main_block = nullptr;
+  const bir::CallInst* lhs_call = nullptr;
+  const bir::CallInst* rhs_call = nullptr;
+  const bir::BinaryInst* sub = nullptr;
+  std::int64_t lhs_call_arg_imm = 0;
+  std::int64_t rhs_call_arg_imm = 0;
+};
+
 struct ParsedBackendMinimalTwoArgDirectCallLirModuleView {
   const c4c::codegen::lir::LirFunction* helper = nullptr;
   const c4c::codegen::lir::LirFunction* main_function = nullptr;
@@ -1377,6 +1389,106 @@ parse_bir_minimal_direct_call_identity_arg_module(const bir::Module& module) {
     return parsed;
   }
   return try_match(module.functions[1], module.functions[0]);
+}
+
+inline std::optional<ParsedBirMinimalDualIdentityDirectCallSubModuleView>
+parse_bir_minimal_dual_identity_direct_call_sub_module(const bir::Module& module) {
+  if (!module.globals.empty() || !module.string_constants.empty() || module.functions.size() != 3) {
+    return std::nullopt;
+  }
+
+  const bir::Function* main_fn = nullptr;
+  std::vector<const bir::Function*> helpers;
+  helpers.reserve(2);
+  for (const auto& function : module.functions) {
+    if (!function.is_declaration && function.return_type == bir::TypeKind::I32 &&
+        function.params.empty() && function.local_slots.empty() && function.blocks.size() == 1) {
+      const auto& block = function.blocks.front();
+      if (block.label == "entry" && block.insts.size() == 3 &&
+          block.terminator.value.has_value() &&
+          block.terminator.value->kind == bir::Value::Kind::Named &&
+          block.terminator.value->type == bir::TypeKind::I32) {
+        if (main_fn != nullptr) {
+          return std::nullopt;
+        }
+        main_fn = &function;
+        continue;
+      }
+    }
+    helpers.push_back(&function);
+  }
+
+  if (main_fn == nullptr || helpers.size() != 2) {
+    return std::nullopt;
+  }
+
+  for (const auto* helper : helpers) {
+    if (helper == nullptr || helper->is_declaration || helper->return_type != bir::TypeKind::I32 ||
+        helper->params.size() != 1 || helper->params.front().type != bir::TypeKind::I32 ||
+        helper->params.front().name.empty() || !helper->local_slots.empty() ||
+        helper->blocks.size() != 1) {
+      return std::nullopt;
+    }
+    const auto& block = helper->blocks.front();
+    if (block.label != "entry" || !block.insts.empty() || !block.terminator.value.has_value() ||
+        block.terminator.value->kind != bir::Value::Kind::Named ||
+        block.terminator.value->type != bir::TypeKind::I32 ||
+        block.terminator.value->name != helper->params.front().name) {
+      return std::nullopt;
+    }
+  }
+
+  const auto& main_block = main_fn->blocks.front();
+  const auto* lhs_call = std::get_if<bir::CallInst>(&main_block.insts[0]);
+  const auto* rhs_call = std::get_if<bir::CallInst>(&main_block.insts[1]);
+  const auto* sub = std::get_if<bir::BinaryInst>(&main_block.insts[2]);
+  if (lhs_call == nullptr || rhs_call == nullptr || sub == nullptr ||
+      sub->opcode != bir::BinaryOpcode::Sub ||
+      sub->result.kind != bir::Value::Kind::Named || sub->result.type != bir::TypeKind::I32 ||
+      !lhs_call->result.has_value() || !rhs_call->result.has_value() ||
+      lhs_call->result->kind != bir::Value::Kind::Named ||
+      lhs_call->result->type != bir::TypeKind::I32 ||
+      rhs_call->result->kind != bir::Value::Kind::Named ||
+      rhs_call->result->type != bir::TypeKind::I32 ||
+      sub->lhs.kind != bir::Value::Kind::Named || sub->lhs.type != bir::TypeKind::I32 ||
+      sub->rhs.kind != bir::Value::Kind::Named || sub->rhs.type != bir::TypeKind::I32 ||
+      sub->lhs.name != lhs_call->result->name || sub->rhs.name != rhs_call->result->name ||
+      main_block.terminator.value->name != sub->result.name) {
+    return std::nullopt;
+  }
+
+  const bir::Function* lhs_helper = nullptr;
+  const bir::Function* rhs_helper = nullptr;
+  for (const auto* helper : helpers) {
+    if (helper->name == lhs_call->callee) {
+      lhs_helper = helper;
+    }
+    if (helper->name == rhs_call->callee) {
+      rhs_helper = helper;
+    }
+  }
+
+  if (lhs_helper == nullptr || rhs_helper == nullptr || lhs_helper == rhs_helper ||
+      lhs_call->return_type_name != "i32" || rhs_call->return_type_name != "i32" ||
+      lhs_call->args.size() != 1 || rhs_call->args.size() != 1 ||
+      lhs_call->args.front().kind != bir::Value::Kind::Immediate ||
+      lhs_call->args.front().type != bir::TypeKind::I32 ||
+      rhs_call->args.front().kind != bir::Value::Kind::Immediate ||
+      rhs_call->args.front().type != bir::TypeKind::I32) {
+    return std::nullopt;
+  }
+
+  return ParsedBirMinimalDualIdentityDirectCallSubModuleView{
+      lhs_helper,
+      rhs_helper,
+      main_fn,
+      &main_block,
+      lhs_call,
+      rhs_call,
+      sub,
+      lhs_call->args.front().immediate,
+      rhs_call->args.front().immediate,
+  };
 }
 
 // Legacy BackendModule seams that remain for direct-call families that still
