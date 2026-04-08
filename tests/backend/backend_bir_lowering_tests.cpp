@@ -551,6 +551,27 @@ c4c::codegen::lir::LirModule make_bir_minimal_direct_call_add_imm_lir_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule
+make_bir_minimal_direct_call_add_imm_lir_module_with_typed_helper_param() {
+  using namespace c4c::codegen::lir;
+
+  auto module = make_bir_minimal_direct_call_add_imm_lir_module();
+  auto& helper = module.functions[1];
+  helper.return_type.base = c4c::TB_INT;
+  helper.params.clear();
+
+  c4c::TypeSpec param_type{};
+  param_type.base = c4c::TB_INT;
+  helper.params.push_back({"%arg0", param_type});
+  helper.signature_text = "define i32 @add_one(i8 %arg0)\n";
+
+  auto& helper_entry = helper.blocks.front();
+  auto& add = std::get<LirBinOp>(helper_entry.insts.front());
+  add.type_str = LirTypeRef::integer(32);
+
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_bir_minimal_direct_call_identity_arg_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -798,6 +819,27 @@ c4c::codegen::lir::LirModule
 make_bir_minimal_call_crossing_direct_call_lir_module_helper_first() {
   auto module = make_bir_minimal_call_crossing_direct_call_lir_module();
   std::swap(module.functions[0], module.functions[1]);
+  return module;
+}
+
+c4c::codegen::lir::LirModule
+make_bir_minimal_call_crossing_direct_call_lir_module_with_typed_helper_param() {
+  using namespace c4c::codegen::lir;
+
+  auto module = make_bir_minimal_call_crossing_direct_call_lir_module();
+  auto& helper = module.functions[0];
+  helper.return_type.base = c4c::TB_INT;
+  helper.params.clear();
+
+  c4c::TypeSpec param_type{};
+  param_type.base = c4c::TB_INT;
+  helper.params.push_back({"%p.x", param_type});
+  helper.signature_text = "define i32 @add_one(i8 %p.x)\n";
+
+  auto& helper_entry = helper.blocks.front();
+  auto& add = std::get<LirBinOp>(helper_entry.insts.front());
+  add.type_str = LirTypeRef::integer(32);
+
   return module;
 }
 
@@ -1050,6 +1092,23 @@ void test_bir_lowering_accepts_minimal_direct_call_add_imm_lir_module() {
   }
 }
 
+void test_bir_lowering_accepts_minimal_direct_call_add_imm_lir_module_with_typed_helper_param() {
+  const auto lowered = c4c::backend::try_lower_to_bir(
+      make_bir_minimal_direct_call_add_imm_lir_module_with_typed_helper_param());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the add-immediate direct-call LIR module slice when the typed helper param disagrees with stale signature param text");
+
+  const auto parsed = c4c::backend::parse_bir_minimal_direct_call_add_imm_module(*lowered);
+  expect_true(parsed.has_value(),
+              "the lowered BIR module should still match the shared add-immediate direct-call BIR parser when typed helper params disagree with stale signature text");
+  if (parsed.has_value()) {
+    expect_true(parsed->helper != nullptr && parsed->helper->name == "add_one" &&
+                    parsed->main_function != nullptr && parsed->main_function->name == "main" &&
+                    parsed->call_arg_imm == 5 && parsed->add_imm == 1,
+                "the lowered BIR module should preserve the helper/main structure plus the call and add immediates for the typed helper-param add-immediate slice");
+  }
+}
+
 void test_bir_lowering_accepts_minimal_direct_call_identity_arg_lir_module() {
   const auto lowered = c4c::backend::try_lower_to_bir(make_bir_minimal_direct_call_identity_arg_lir_module());
   expect_true(lowered.has_value(),
@@ -1239,6 +1298,24 @@ void test_bir_lowering_accepts_minimal_call_crossing_direct_call_lir_module_with
                     parsed->regalloc_source_value == "%t0" &&
                     parsed->source_imm == 5 && parsed->helper_add_imm == 1,
                 "the lowered BIR module should preserve the recovered source and helper immediates for the helper-first call-crossing slice");
+  }
+}
+
+void test_bir_lowering_accepts_minimal_call_crossing_direct_call_lir_module_with_typed_helper_param() {
+  const auto lowered = c4c::backend::try_lower_to_bir(
+      make_bir_minimal_call_crossing_direct_call_lir_module_with_typed_helper_param());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the minimal call-crossing direct-call LIR module slice when the typed helper param disagrees with stale signature param text");
+
+  const auto parsed = c4c::backend::parse_bir_minimal_call_crossing_direct_call_module(*lowered);
+  expect_true(parsed.has_value(),
+              "the lowered BIR module should still match the shared call-crossing direct-call BIR parser when typed helper params disagree with stale signature text");
+  if (parsed.has_value()) {
+    expect_true(parsed->helper != nullptr && parsed->helper->name == "add_one" &&
+                    parsed->main_function != nullptr && parsed->main_function->name == "main" &&
+                    parsed->regalloc_source_value == "%t0" &&
+                    parsed->source_imm == 5 && parsed->helper_add_imm == 1,
+                "the lowered BIR module should preserve the helper/main structure plus the recovered source and helper immediates for the typed helper-param call-crossing slice");
   }
 }
 
@@ -3209,6 +3286,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_minimal_two_arg_direct_call_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_two_arg_direct_call_local_slot_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_direct_call_add_imm_lir_module);
+  RUN_TEST(test_bir_lowering_accepts_minimal_direct_call_add_imm_lir_module_with_typed_helper_param);
   RUN_TEST(test_bir_lowering_accepts_minimal_direct_call_identity_arg_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_direct_call_identity_arg_lir_module_with_helper_first);
   RUN_TEST(test_bir_lowering_accepts_minimal_direct_call_identity_arg_lir_module_with_typed_helper_param);
@@ -3220,6 +3298,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_minimal_dual_identity_direct_call_sub_lir_module_with_typed_helper_params);
   RUN_TEST(test_bir_lowering_accepts_minimal_call_crossing_direct_call_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_call_crossing_direct_call_lir_module_with_helper_first);
+  RUN_TEST(test_bir_lowering_accepts_minimal_call_crossing_direct_call_lir_module_with_typed_helper_param);
   RUN_TEST(test_bir_lowering_accepts_minimal_countdown_do_while_lir_module);
   RUN_TEST(test_bir_printer_renders_minimal_add_scaffold);
   RUN_TEST(test_bir_printer_renders_minimal_sub_scaffold);

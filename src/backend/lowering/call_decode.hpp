@@ -1556,6 +1556,8 @@ inline std::optional<ParsedBackendSingleAddImmFunctionView>
 parse_backend_single_add_imm_function(
     const c4c::codegen::lir::LirFunction& function,
     std::optional<std::string_view> expected_name) {
+  using namespace c4c::codegen::lir;
+
   if (const auto parsed =
           parse_backend_single_param_slot_add_function(function, expected_name);
       parsed.has_value()) {
@@ -1565,22 +1567,17 @@ parse_backend_single_add_imm_function(
     };
   }
 
-  using namespace c4c::codegen::lir;
-
   const std::string_view function_name =
       expected_name.has_value() ? *expected_name : std::string_view(function.name);
   if (function.is_declaration ||
-      !backend_lir_signature_matches(function.signature_text, "define", "i32", function_name,
-                                     {"i32"}) ||
+      function.name != function_name ||
       function.entry.value != 0 || function.blocks.size() != 1 ||
       !function.alloca_insts.empty() || !function.stack_objects.empty()) {
     return std::nullopt;
   }
 
-  const auto helper_params = parse_backend_function_signature_params(function.signature_text);
-  if (!helper_params.has_value() || helper_params->size() != 1 || helper_params->front().is_varargs ||
-      c4c::codegen::lir::trim_lir_arg_text(helper_params->front().type) != "i32" ||
-      helper_params->front().operand.empty()) {
+  const auto helper_param_name = parse_backend_single_minimal_i32_param_name(function);
+  if (!helper_param_name.has_value()) {
     return std::nullopt;
   }
 
@@ -1594,12 +1591,12 @@ parse_backend_single_add_imm_function(
   const auto* add = std::get_if<LirBinOp>(&block.insts.front());
   const auto add_opcode = add == nullptr ? std::nullopt : add->opcode.typed();
   if (add == nullptr || add_opcode != LirBinaryOpcode::Add || add->type_str != "i32" ||
-      add->lhs != helper_params->front().operand || *ret->value_str != add->result) {
+      add->lhs != *helper_param_name || *ret->value_str != add->result) {
     return std::nullopt;
   }
 
   return ParsedBackendSingleAddImmFunctionView{
-      helper_params->front().operand,
+      std::string(*helper_param_name),
       add,
   };
 }
