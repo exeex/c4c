@@ -2748,6 +2748,20 @@ void test_adapter_normalizes_countdown_do_while_return_slice() {
                   "adapter should collapse the bounded do-while countdown loop into a direct return");
 }
 
+void test_adapter_normalizes_renamed_countdown_do_while_return_slice() {
+  auto module = make_countdown_do_while_return_module();
+  auto& function = module.functions.front();
+  function.name = "entry_countdown";
+  function.signature_text = "define i32 @entry_countdown()\n";
+
+  const auto adapted = c4c::backend::lower_lir_to_backend_module(module);
+  const auto rendered = c4c::backend::render_module(adapted);
+  expect_contains(rendered, "define i32 @entry_countdown()",
+                  "adapter should preserve renamed do-while countdown callers on the explicit lowered backend seam");
+  expect_contains(rendered, "ret i32 0",
+                  "adapter should still collapse renamed do-while countdown loops into a direct return");
+}
+
 void test_adapter_preserves_typed_two_arg_direct_call_helper_slice() {
   const auto adapted =
       c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_two_arg_module());
@@ -3287,6 +3301,7 @@ int main(int argc, char* argv[]) {
   test_adapter_normalizes_countdown_while_return_slice();
   test_adapter_normalizes_typed_countdown_while_return_slice();
   test_adapter_normalizes_countdown_do_while_return_slice();
+  test_adapter_normalizes_renamed_countdown_do_while_return_slice();
   test_adapter_preserves_typed_two_arg_direct_call_helper_slice();
   test_adapter_normalizes_typed_direct_call_local_arg_slice();
   test_adapter_normalizes_typed_direct_call_local_arg_spacing_slice();

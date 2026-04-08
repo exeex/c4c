@@ -2323,8 +2323,8 @@ std::optional<BackendFunction> adapt_single_local_countdown_loop_function(
   using namespace c4c::codegen::lir;
 
   if (function.is_declaration || !backend_function_is_definition(signature) ||
-      signature.return_type != "i32" || signature.name != "main" ||
-      !signature.params.empty() || signature.is_vararg || function.blocks.empty() ||
+      signature.return_type != "i32" || !signature.params.empty() ||
+      signature.is_vararg || function.blocks.empty() ||
       function.alloca_insts.size() != 1 || !function.stack_objects.empty()) {
     return std::nullopt;
   }

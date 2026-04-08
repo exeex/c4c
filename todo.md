@@ -10,13 +10,29 @@ Source Plan: plan.md
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
 Current active item: Step 4 follow-on deletion. Continue with the renamed
-countdown-do-while follow-on in
+countdown-while follow-on in
 [`src/backend/lowering/lir_to_backend_ir.cpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp)
 so the explicit lowered/backend-selection seam no longer depends on
-`signature.name == "main"` for that bounded zero-argument `i32` family after
-the direct x86 emitter anchor removal landed.
+`signature.name == "main"` for the adjacent bounded zero-argument `i32`
+countdown-loop family after the countdown-do-while lowered seam landed.
 
 Completed in this slice:
+
+- removed the bounded countdown-do-while lowered/backend-selection
+  production-side literal-`main` caller anchor from
+  [`src/backend/lowering/lir_to_backend_ir.cpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp)
+  by teaching the structural single-local countdown loop adapter to accept any
+  zero-argument `i32` definition instead of rejecting renamed callers up front
+- proved the lowered seam deletion with a new renamed-caller regression in
+  [`tests/backend/backend_lir_adapter_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_tests.cpp)
+  so the bounded countdown-do-while family keeps renamed callers on the
+  explicit lowered backend path and still collapses to the same direct return
+- kept focused adapter coverage green at `2` passed / `0` failed via
+  `ctest --test-dir build -R '^backend_lir_adapter_tests$|^backend_lir_adapter_x86_64_tests$' -j1 --output-on-failure`
+- kept backend regression coverage monotonic from a clean `HEAD` baseline of
+  `182` passed / `0` failed to the patched tree at `402` passed / `0` failed
+  via `test_backend_before.log`, `test_backend_after.log`, and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_backend_before.log --after test_backend_after.log --allow-non-decreasing-passed`
 
 - removed the bounded x86 countdown-do-while direct-LIR production-side
   literal-`main` caller anchor from
