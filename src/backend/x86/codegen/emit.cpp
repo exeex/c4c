@@ -5644,6 +5644,100 @@ std::string emit_minimal_extern_decl_call_asm(
 }
 
 std::string emit_minimal_extern_decl_call_asm(
+    const c4c::backend::bir::Module& module,
+    const c4c::backend::ParsedBirMinimalDeclaredDirectCallModuleView& slice) {
+  static constexpr const char* kArgIntRegs[6] = {"edi", "esi", "edx", "ecx", "r8d", "r9d"};
+  static constexpr const char* kArgPtrRegs[6] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
+
+  const std::string helper_symbol = asm_symbol_name(module.target_triple, slice.callee->name);
+  const std::string main_symbol = asm_symbol_name(module.target_triple, slice.main_function->name);
+
+  if (slice.args.size() > 6) {
+    throw std::invalid_argument("extern declaration call argument count exceeds minimal x86 register budget");
+  }
+
+  std::vector<std::string> emitted_string_constant_names;
+  for (const auto& arg : slice.args) {
+    if (arg.kind != MinimalExternCallArgSlice::Kind::Ptr || arg.operand.empty() ||
+        arg.operand.front() != '@') {
+      continue;
+    }
+    const auto name = arg.operand.substr(1);
+    const auto it = std::find_if(module.string_constants.begin(),
+                                 module.string_constants.end(),
+                                 [&](const c4c::backend::bir::StringConstant& string_constant) {
+                                   return string_constant.name == name;
+                                 });
+    if (it == module.string_constants.end()) {
+      continue;
+    }
+    if (std::find(emitted_string_constant_names.begin(),
+                  emitted_string_constant_names.end(),
+                  it->name) == emitted_string_constant_names.end()) {
+      emitted_string_constant_names.push_back(it->name);
+    }
+  }
+
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n";
+  if (!emitted_string_constant_names.empty()) {
+    out << ".section .rodata\n";
+    for (const auto& name : emitted_string_constant_names) {
+      const auto it = std::find_if(module.string_constants.begin(),
+                                   module.string_constants.end(),
+                                   [&](const c4c::backend::bir::StringConstant& string_constant) {
+                                     return string_constant.name == name;
+                                   });
+      if (it == module.string_constants.end()) {
+        continue;
+      }
+      const std::string label = asm_private_data_label(module.target_triple, "@" + name);
+      out << label << ":\n"
+          << "  .asciz \"" << escape_asm_string(it->bytes) << "\"\n";
+    }
+  }
+  out << ".text\n";
+  out << ".globl " << main_symbol << "\n";
+  out << main_symbol << ":\n";
+  for (std::size_t index = 0; index < slice.args.size(); ++index) {
+    const auto& arg = slice.args[index];
+    switch (arg.kind) {
+      case MinimalExternCallArgSlice::Kind::I32Imm:
+        out << "  mov " << kArgIntRegs[index] << ", " << arg.imm << "\n";
+        break;
+      case MinimalExternCallArgSlice::Kind::I64Imm:
+        out << "  mov " << kArgPtrRegs[index] << ", " << arg.imm << "\n";
+        break;
+      case MinimalExternCallArgSlice::Kind::Ptr: {
+        const auto operand = arg.operand;
+        if (operand.empty() || operand.front() != '@') {
+          throw std::invalid_argument("non-symbol pointer operands in minimal x86 direct BIR extern declaration calls");
+        }
+        const auto name = operand.substr(1);
+        const auto it = std::find_if(module.string_constants.begin(),
+                                     module.string_constants.end(),
+                                     [&](const c4c::backend::bir::StringConstant& string_constant) {
+                                       return string_constant.name == name;
+                                     });
+        if (it == module.string_constants.end()) {
+          const std::string symbol = asm_symbol_name(module.target_triple, name);
+          out << "  lea " << kArgPtrRegs[index] << ", " << symbol << "[rip]\n";
+          break;
+        }
+        const auto label = asm_private_data_label(module.target_triple, operand);
+        out << "  lea " << kArgPtrRegs[index] << ", " << label << "[rip]\n";
+      } break;
+    }
+  }
+  out << "  call " << helper_symbol << "\n";
+  if (!slice.return_call_result) {
+    out << "  mov eax, " << slice.return_imm << "\n";
+  }
+  out << "  ret\n";
+  return out.str();
+}
+
+std::string emit_minimal_extern_decl_call_asm(
     const c4c::codegen::lir::LirModule& module,
     const c4c::backend::ParsedBackendMinimalDeclaredDirectCallLirModuleView& slice) {
   static constexpr const char* kArgIntRegs[6] = {"edi", "esi", "edx", "ecx", "r8d", "r9d"};
@@ -6207,6 +6301,10 @@ std::string emit_module(const c4c::backend::bir::Module& module,
   if (const auto slice = c4c::backend::parse_bir_minimal_direct_call_module(module);
       slice.has_value()) {
     return emit_minimal_direct_call_asm(module, *slice);
+  }
+  if (const auto slice = c4c::backend::parse_bir_minimal_declared_direct_call_module(module);
+      slice.has_value()) {
+    return emit_minimal_extern_decl_call_asm(module, *slice);
   }
   if (const auto imm = parse_minimal_return_imm(module); imm.has_value()) {
     return emit_minimal_return_asm(module, *imm);

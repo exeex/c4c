@@ -57,6 +57,62 @@ void test_backend_bir_pipeline_drives_x86_direct_bir_minimal_direct_call_end_to_
                   "x86 direct BIR minimal direct-call input should lower the main-to-helper call without legacy backend IR");
 }
 
+void test_backend_bir_pipeline_drives_x86_direct_bir_declared_direct_call_end_to_end() {
+  c4c::backend::bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.string_constants.push_back(c4c::backend::bir::StringConstant{
+      .name = "msg",
+      .bytes = "hello\\n",
+  });
+  module.functions.push_back(c4c::backend::bir::Function{
+      .name = "puts_like",
+      .return_type = c4c::backend::bir::TypeKind::I32,
+      .params = {c4c::backend::bir::Param{
+          .type = c4c::backend::bir::TypeKind::I64,
+          .name = "%arg0",
+      }},
+      .local_slots = {},
+      .blocks = {},
+      .is_declaration = true,
+  });
+  module.functions.push_back(c4c::backend::bir::Function{
+      .name = "main",
+      .return_type = c4c::backend::bir::TypeKind::I32,
+      .params = {},
+      .local_slots = {},
+      .blocks = {c4c::backend::bir::Block{
+          .label = "entry",
+          .insts = {c4c::backend::bir::CallInst{
+              .result = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%t0"),
+              .callee = "puts_like",
+              .args = {c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I64, "msg")},
+              .return_type_name = "i32",
+          }},
+          .terminator = c4c::backend::bir::ReturnTerminator{
+              .value = c4c::backend::bir::Value::immediate_i32(7),
+          },
+      }},
+      .is_declaration = false,
+  });
+
+  const auto rendered =
+      c4c::backend::emit_module(c4c::backend::BackendModuleInput{module},
+                                make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".section .rodata",
+                  "direct BIR declared direct-call input should materialize referenced string constants on the native x86 path");
+  expect_contains(rendered, ".asciz \"hello\\n\"",
+                  "direct BIR declared direct-call input should preserve string-constant bytes for native x86 emission");
+  expect_contains(rendered, "lea rdi, ",
+                  "direct BIR declared direct-call input should materialize pointer-style extern arguments through address formation on the native x86 path");
+  expect_contains(rendered, "call puts_like",
+                  "direct BIR declared direct-call input should branch to the declared callee without routing through legacy backend IR");
+  expect_contains(rendered, "mov eax, 7",
+                  "direct BIR declared direct-call input should preserve the fixed immediate return override on the native x86 path");
+  expect_not_contains(rendered, "target triple =",
+                      "direct BIR declared direct-call input should stay on native x86 asm emission");
+}
+
 void test_backend_bir_pipeline_drives_x86_return_add_smoke_case_end_to_end() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_bir_return_add_module()},
@@ -533,6 +589,7 @@ void test_backend_bir_pipeline_rejects_unsupported_direct_bir_input_on_x86() {
 
 void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_direct_call_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_declared_direct_call_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_return_add_smoke_case_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_return_sub_smoke_case_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_zero_param_staged_constant_end_to_end);
