@@ -9,14 +9,26 @@ Source Plan: plan.md
 - [ ] Remove legacy backend IR files and backend/app LLVM rescue paths
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
-Current active item: Step 4 x86 emitter tightening. Remove the next remaining
-x86 emitter-local `lower_lir_to_backend_module(...)` dependency for the folded
-two-argument helper family by wiring a direct x86 entry-surface path that
-keeps the folded helper/result contract on native asm and proving parity with
-focused x86 backend tests.
+Current active item: Step 4 x86 emitter tightening. Delete the now-redundant
+x86-local single-argument direct-call parser/emitter branch now that the
+shared direct-call add-immediate LIR parser covers the same bounded helper
+family, and prove the slot-backed helper family stays on the direct x86 asm
+path without the local special case.
 
 Completed in this slice:
 
+- deleted the bespoke x86-local single-argument direct-call parser/emitter
+  branch in
+  [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+  so the direct x86 LIR entrypoint now relies on the shared
+  `parse_backend_minimal_direct_call_add_imm_lir_module(...)` path for that
+  bounded helper family instead of keeping a duplicate target-local decoder
+- proved the slot-backed helper family with a new explicit-LIR parity
+  regression in
+  [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
+  that keeps the direct x86 entry surface, the explicit lowered seam, and the
+  backend-selection path on identical asm for the bounded param-slot runtime
+  slice
 - added a direct x86 LIR parser/emitter path for the bounded dual-identity
   direct-call subtraction family in
   [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
@@ -157,6 +169,9 @@ Next slice:
   after the production deletion
 - prove the next deletion with focused x86 backend tests and
   `ctest --test-dir build -R backend -j1 --output-on-failure`
+- in this iteration, tighten the x86 direct-entry surface by deleting the
+  bespoke local single-argument helper parser/emitter and covering the
+  slot-backed helper family through the shared direct-call add-immediate path
 
 Step 4 remaining surface:
 
@@ -193,6 +208,8 @@ Recent baseline:
 - blocker: none
 - backend regression scope is currently green at `402` passed / `0` failed via
   `ctest --test-dir build -R backend -j1 --output-on-failure`
+- focused adapter coverage is green at `2` passed / `0` failed via
+  `ctest --test-dir build -R 'backend_lir_adapter_tests|backend_lir_adapter_x86_64_tests' -j1 --output-on-failure`
 - latest Step 4 follow-through also removes the bounded local-slot arithmetic /
   two-local scalar-slot dependency on `lower_lir_to_backend_module(...)` from
   the direct x86 LIR entrypoint

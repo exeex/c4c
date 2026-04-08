@@ -2736,6 +2736,33 @@ void test_x86_backend_rejects_param_slot_slice_when_helper_body_contract_disagre
                   "x86 backend seam should stop matching the param-slot asm slice when the helper body no longer matches the shared slot-add contract");
 }
 
+void test_x86_backend_explicit_lir_emit_surface_matches_param_slot_runtime_path() {
+  auto module = make_param_slot_runtime_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  const auto direct_rendered = c4c::backend::x86::emit_module(module);
+  const auto lowered_rendered =
+      c4c::backend::x86::emit_module(c4c::backend::lower_lir_to_backend_module(module));
+  const auto backend_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_true(direct_rendered == lowered_rendered,
+              "x86 explicit LIR emit surface should stay aligned with the structured param-slot helper backend path");
+  expect_true(direct_rendered == backend_rendered,
+              "x86 backend selection should keep the param-slot runtime slice on the same direct x86 LIR emit path");
+  expect_contains(direct_rendered, ".type add_one, %function",
+                  "x86 explicit LIR emit surface should publish the slot-backed helper directly");
+  expect_contains(direct_rendered, "mov edi, 5\n",
+                  "x86 explicit LIR emit surface should preserve the bounded param-slot call argument without adapting through backend IR first");
+  expect_contains(direct_rendered, "call add_one\n",
+                  "x86 explicit LIR emit surface should keep the slot-backed helper call on the asm path");
+  expect_not_contains(direct_rendered, "target triple =",
+                      "x86 explicit LIR emit surface should not fall back to LLVM text for the bounded param-slot slice");
+}
+
 void test_x86_backend_renders_typed_direct_call_local_arg_slice() {
   auto module = make_typed_direct_call_local_arg_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -6109,6 +6136,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_keeps_renamed_param_slot_slice_on_asm_path);
   RUN_TEST(test_x86_backend_keeps_renamed_param_slot_call_result_on_asm_path);
   RUN_TEST(test_x86_backend_rejects_param_slot_slice_when_helper_body_contract_disagrees);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_param_slot_runtime_path);
   RUN_TEST(test_x86_backend_renders_typed_direct_call_local_arg_slice);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_structured_direct_call_add_imm_path);
   RUN_TEST(test_x86_backend_renders_typed_direct_call_identity_arg_slice);
