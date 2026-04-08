@@ -4,48 +4,45 @@ Source Plan: plan.md
 Group: C
 
 Ownership:
-- [`src/backend/backend.hpp`](/workspaces/c4c/src/backend/backend.hpp) if needed
-- [`src/backend/lowering/lir_to_backend_ir.cpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp)
-- [`src/backend/lowering/lir_to_backend_ir.hpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.hpp)
 - [`src/backend/lowering/call_decode.hpp`](/workspaces/c4c/src/backend/lowering/call_decode.hpp)
 - [`src/backend/lowering/call_decode.cpp`](/workspaces/c4c/src/backend/lowering/call_decode.cpp) if needed
-- directly adjacent shared backend headers only if required by the same seam
-  reduction
+- [`src/backend/lowering/lir_to_backend_ir.hpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.hpp)
+- [`src/backend/lowering/lir_to_backend_ir.cpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp) if needed
+- [`src/backend/bir.hpp`](/workspaces/c4c/src/backend/bir.hpp) and directly adjacent BIR helpers
+  only if a small parity addition is clearly bounded
 
 Goal:
-- shrink the shared lowering surface so legacy backend IR looks temporary and
-  exceptional instead of like a normal backend API
+- turn the shared legacy seam into an explicit BIR parity map, beginning with
+  `call_decode` and the remaining `BackendModule` parser surface
 
-Priority kill list:
-- reduce public exposure of `lower_lir_to_backend_module(...)` from shared
-  headers
-- reduce public visibility of `LirAdapterError` / `LirAdapterErrorKind`
-- remove dead compatibility helpers that only serve legacy backend IR
-- keep `call_decode` ownership local to implementation files where possible
-- avoid widening into emitter-local cleanup that belongs to Group A or B
+Priority parity map:
+- identify which `parse_backend_minimal_*_module(...)` helpers truly require
+  `BackendModule`
+- separate "needs new BIR field/type" from "needs consumer rewrite"
+- if a tiny BIR-facing helper or shape addition is obvious and safe, land it
+  in the same slice
 
 Do:
-- collapse dead compatibility shims
-- keep surviving BIR routes explicit and small
-- leave any still-needed bridge code clearly temporary
-- report the narrowest remaining blocker to deleting `lir_to_backend_ir.*`
+- keep surviving bridge code explicit and temporary
+- avoid drifting into emitter-local deep refactors owned by Group A or B
+- prefer clarifying the replacement contract over prematurely deleting legacy
+  files
 
 Do not edit:
-- [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
-- [`src/backend/aarch64/codegen/emit.cpp`](/workspaces/c4c/src/backend/aarch64/codegen/emit.cpp)
-- parked legacy test files unless directly required by the same API reduction
+- deep x86/aarch64 emitter logic except for coordinated signature fallout
+- `ir.*` physical deletion in this round
 - [`src/codegen/llvm/llvm_codegen.cpp`](/workspaces/c4c/src/codegen/llvm/llvm_codegen.cpp)
 - [`src/apps/c4cll.cpp`](/workspaces/c4c/src/apps/c4cll.cpp)
 - [`todo.md`](/workspaces/c4c/todo.md), [`todoA.md`](/workspaces/c4c/todoA.md), [`todoB.md`](/workspaces/c4c/todoB.md), [`todoD.md`](/workspaces/c4c/todoD.md)
 
 Worker-local validation:
-- `cmake --build build -j8 --target CMakeFiles/c4cll.dir/src/backend/lowering/lir_to_backend_ir.cpp.o`
-- or `cmake --build build -j8 --target CMakeFiles/c4cll.dir/src/backend/lowering/call_decode.cpp.o`
+- `cmake --build build -j8 --target CMakeFiles/c4cll.dir/src/backend/lowering/call_decode.cpp.o`
+- or `cmake --build build -j8 --target CMakeFiles/c4cll.dir/src/backend/lowering/lir_to_backend_ir.cpp.o`
 
 Handoff standard:
-- report which public/compat surface was removed or narrowed
-- report the smallest remaining blocker to deleting or fully internalizing
-  `lir_to_backend_ir.*`
+- report which shared helpers still require `BackendModule`
+- report which gaps are true missing BIR shape
+- report any bounded BIR addition landed in this slice
 
 Status:
-- third-wave slice completed and awaiting any fourth-wave reassignment
+- ready for BIR parity wave

@@ -12,8 +12,6 @@ struct LirModule;
 
 namespace c4c::backend {
 
-struct BackendModule;
-
 enum class BackendLoweringRoute : unsigned char {
   BirPreloweredModule,
   BirFromLirEntry,

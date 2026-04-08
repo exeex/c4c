@@ -1,7 +1,6 @@
 #include "backend.hpp"
 #include "aarch64/codegen/emit.hpp"
 #include "bir_printer.hpp"
-#include "lowering/lir_to_backend_ir.hpp"
 #include "lowering/lir_to_bir.hpp"
 #include "x86/codegen/emit.hpp"
 
@@ -12,8 +11,6 @@
 #include <memory>
 
 namespace c4c::backend {
-
-BackendModule lower_lir_to_backend_module(const c4c::codegen::lir::LirModule& module);
 
 namespace {
 
@@ -65,6 +62,11 @@ std::unique_ptr<BackendEmitter> make_backend(Target target) {
   return nullptr;
 }
 
+bool is_direct_lir_subset_error(const std::invalid_argument& ex) {
+  return std::string_view(ex.what()).find("does not support this direct LIR module") !=
+         std::string_view::npos;
+}
+
 std::string emit_direct_lir_or_llvm_fallback(const c4c::codegen::lir::LirModule& module,
                                              Target target) {
   try {
@@ -77,8 +79,8 @@ std::string emit_direct_lir_or_llvm_fallback(const c4c::codegen::lir::LirModule&
       case Target::Riscv64:
         return c4c::codegen::lir::print_llvm(module);
     }
-  } catch (const c4c::backend::LirAdapterError& ex) {
-    if (!ex.is_unsupported()) {
+  } catch (const std::invalid_argument& ex) {
+    if (!is_direct_lir_subset_error(ex)) {
       throw;
     }
   }

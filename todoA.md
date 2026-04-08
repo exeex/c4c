@@ -8,27 +8,26 @@ Ownership:
 - [`src/backend/x86/codegen/emit.hpp`](/workspaces/c4c/src/backend/x86/codegen/emit.hpp) if needed
 
 Goal:
-- reduce x86 emitter-local `BackendModule` and `LirAdapterError` ownership
-  until the remaining blockers to a BIR-native emitter are explicit and minimal
+- inventory the remaining x86 emitter-side `BackendModule` dependency and make
+  the missing BIR replacement shape explicit
 
-Priority kill list:
-- replace `LirAdapterError` throws/catches with narrower local failure handling
-  where the path is no longer really using shared legacy lowering semantics
-- remove `#include "../../lowering/lir_to_backend_ir.hpp"` once file-local
-  ownership no longer requires `LirAdapterError`
-- if full removal is not yet possible, leave a smaller set of clearly bounded
-  `BackendModule` helpers rather than a broad mixed-mode surface
+Priority parity map:
+- group the remaining x86 `BackendModule` helpers by semantic role
+- separate "pure symbol/plumbing" from "real module/function metadata"
+- identify which remaining helpers could switch to BIR with existing shape and
+  which require new BIR fields or helper abstractions
 
 Do:
-- prefer deleting dead helper branches over preserving compatibility shims
+- prefer bounded annotations, helper clustering, or tiny clarifying refactors
+  over broad rewrites
 - keep behavior on direct-LIR and BIR entry paths unchanged
-- record any dependency on Group C instead of silently widening scope
-- keep notes focused on what still blocks deleting the remaining x86
-  `BackendModule` helpers
+- record any dependency on Group C when the missing piece is really shared BIR
+  shape or `call_decode` contract
 
 Do not edit:
 - [`src/backend/aarch64/codegen/emit.cpp`](/workspaces/c4c/src/backend/aarch64/codegen/emit.cpp)
-- [`src/backend/lowering/lir_to_backend_ir.cpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp)
+- [`src/backend/lowering/call_decode.hpp`](/workspaces/c4c/src/backend/lowering/call_decode.hpp)
+- [`src/backend/bir.hpp`](/workspaces/c4c/src/backend/bir.hpp) unless explicitly coordinated
 - [`src/codegen/llvm/llvm_codegen.cpp`](/workspaces/c4c/src/codegen/llvm/llvm_codegen.cpp)
 - [`src/apps/c4cll.cpp`](/workspaces/c4c/src/apps/c4cll.cpp)
 - [`todo.md`](/workspaces/c4c/todo.md), [`todoB.md`](/workspaces/c4c/todoB.md), [`todoC.md`](/workspaces/c4c/todoC.md), [`todoD.md`](/workspaces/c4c/todoD.md)
@@ -37,9 +36,9 @@ Worker-local validation:
 - `cmake --build build -j8 --target CMakeFiles/c4cll.dir/src/backend/x86/codegen/emit.cpp.o`
 
 Handoff standard:
-- report which legacy includes/helpers/error paths were removed
-- report the smallest remaining x86-only blocker if `BackendModule` or
-  `LirAdapterError` ownership still remains
+- report the remaining x86 `BackendModule` helper clusters
+- report which clusters already have enough BIR shape
+- report which clusters still need new BIR fields or shared helper contracts
 
 Status:
-- third-wave slice completed and awaiting any fourth-wave reassignment
+- ready for BIR parity wave
