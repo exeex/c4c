@@ -71,6 +71,42 @@ c4c::codegen::lir::LirModule make_bir_declared_direct_call_lir_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_bir_minimal_void_direct_call_imm_return_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction helper;
+  helper.name = "voidfn";
+  helper.signature_text = "define void @voidfn()\n";
+  helper.entry = LirBlockId{0};
+
+  LirBlock helper_entry;
+  helper_entry.id = LirBlockId{0};
+  helper_entry.label = "entry";
+  helper_entry.terminator = LirRet{std::nullopt, "void"};
+  helper.blocks.push_back(std::move(helper_entry));
+
+  LirFunction main_function;
+  main_function.name = "main";
+  main_function.signature_text = "define i32 @main()\n";
+  main_function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{"", "void", "@voidfn", "", ""});
+  entry.terminator = LirRet{std::string("9"), "i32"};
+  main_function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(main_function));
+  module.functions.push_back(std::move(helper));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_bir_minimal_two_arg_direct_call_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -463,6 +499,23 @@ void test_bir_lowering_accepts_minimal_declared_direct_call_lir_module() {
                   parsed->args.front().operand == "@msg" &&
                   !parsed->return_call_result && parsed->return_imm == 7,
               "the lowered BIR module should preserve the pointer argument and fixed return immediate");
+}
+
+void test_bir_lowering_accepts_minimal_void_direct_call_imm_return_lir_module() {
+  const auto lowered =
+      c4c::backend::try_lower_to_bir(make_bir_minimal_void_direct_call_imm_return_lir_module());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the minimal void direct-call plus fixed return LIR module slice");
+
+  const auto parsed = c4c::backend::parse_bir_minimal_void_direct_call_imm_return_module(*lowered);
+  expect_true(parsed.has_value(),
+              "the lowered BIR module should match the shared void direct-call BIR parser");
+  if (parsed.has_value()) {
+    expect_true(parsed->helper != nullptr && parsed->helper->name == "voidfn" &&
+                    parsed->main_function != nullptr && parsed->main_function->name == "main" &&
+                    parsed->return_imm == 9,
+                "the lowered BIR module should preserve the helper/main structure and caller fixed return immediate");
+  }
 }
 
 void test_bir_lowering_accepts_minimal_two_arg_direct_call_lir_module() {
@@ -2333,6 +2386,7 @@ void test_bir_validator_rejects_non_widening_sext() {
 
 void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_minimal_direct_call_lir_module);
+  RUN_TEST(test_bir_lowering_accepts_minimal_void_direct_call_imm_return_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_two_arg_direct_call_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_direct_call_add_imm_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_direct_call_identity_arg_lir_module);

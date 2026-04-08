@@ -5,14 +5,37 @@ Source Plan: plan.md
 # Active Item
 
 - Step 3: migrate the next aarch64 emitter helper cluster onto direct BIR
-- Current slice: return to the Step 2 shared-seam inventory and identify the
-  next removable `BackendModule` adapter family now that the remaining bounded
-  aarch64 direct-call helper families are native
-- Next intended slice: audit `src/backend/lowering/call_decode.hpp` plus the
-  x86/aarch64 emitter comments for the next still-live shared parser or thin
-  target-local wrapper that can be removed in one behavior-preserving slice
+- Current slice: return to the remaining
+  `parse_backend_minimal_*_lir_module(...)` inventory in
+  `src/backend/lowering/call_decode.hpp` and remove the next simplest live
+  direct-call adapter family after the void direct-call cleanup
+- Next intended slice: migrate the declared direct-call or another small
+  direct-call lowering family out of `call_decode.hpp` and into
+  `src/backend/lowering/lir_to_bir.cpp`, then delete the now-dead adapter
+  helper
 
 # Completed
+
+- Removed the still-live
+  `parse_backend_minimal_void_direct_call_imm_return_lir_module(...)` adapter
+  and its `ParsedBackendMinimalVoidDirectCallImmReturnLirModuleView` from
+  `src/backend/lowering/call_decode.hpp` by lowering that LIR shape directly in
+  `src/backend/lowering/lir_to_bir.cpp`
+- Added focused BIR lowering coverage in
+  `tests/backend/backend_bir_lowering_tests.cpp` for the minimal void
+  direct-call plus fixed-return LIR slice so the shared BIR lowering route is
+  validated without the removed adapter
+- Rebuilt `backend_bir_tests` and `c4cll` successfully after the void
+  direct-call adapter removal
+- Reran
+  `ctest --test-dir build -R 'backend_(bir_tests|shared_util_tests)' --output-on-failure`
+  successfully after the adapter removal
+- Reran the full `ctest --test-dir build -j8 --output-on-failure` suite and
+  refreshed `test_after.log` / `test_fail_after.log`; the workspace is now at
+  `2834/2834` passing with 0 failures
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=13 failed=-13`
+  and zero newly failing tests
 
 - Wired the native aarch64 direct-BIR emitter to the shared
   `parse_bir_minimal_dual_identity_direct_call_sub_module(...)` and
