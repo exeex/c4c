@@ -5567,6 +5567,33 @@ void test_x86_backend_explicit_lir_emit_surface_keeps_renamed_declared_direct_ca
                       "x86 explicit LIR emit surface should not fall back to LLVM text for renamed declared direct calls");
 }
 
+void test_x86_backend_explicit_lir_emit_surface_keeps_renamed_declared_direct_call_caller_on_asm_path() {
+  auto module = make_x86_extern_decl_inferred_param_module();
+  auto& caller_fn = module.functions.front();
+  auto& call = std::get<c4c::codegen::lir::LirCallOp>(caller_fn.blocks.front().insts.front());
+
+  caller_fn.name = "entry_sum";
+  caller_fn.signature_text = "define i32 @entry_sum()\n";
+  call.result = "%t.entry_sum.call";
+  caller_fn.blocks.front().terminator =
+      c4c::codegen::lir::LirRet{std::string("%t.entry_sum.call"), "i32"};
+
+  const auto rendered = c4c::backend::x86::emit_module(module);
+
+  expect_contains(rendered, ".globl entry_sum\n",
+                  "x86 explicit LIR emit surface should publish the observed renamed zero-arg caller instead of requiring a literal main anchor");
+  expect_contains(rendered, "entry_sum:\n",
+                  "x86 explicit LIR emit surface should preserve the renamed caller symbol on the native asm path");
+  expect_contains(rendered, "mov edi, 5\n",
+                  "x86 explicit LIR emit surface should keep decoding the first declared-call argument after removing the caller-name anchor");
+  expect_contains(rendered, "mov esi, 7\n",
+                  "x86 explicit LIR emit surface should keep decoding the second declared-call argument after removing the caller-name anchor");
+  expect_contains(rendered, "call helper_ext\n",
+                  "x86 explicit LIR emit surface should keep renamed callers on the declared direct-call asm path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 explicit LIR emit surface should not fall back to LLVM text for renamed declared-call callers");
+}
+
 void test_x86_backend_declared_direct_call_uses_structured_vararg_metadata() {
   auto lowered = c4c::backend::lower_lir_to_backend_module(make_x86_extern_decl_object_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
@@ -6595,6 +6622,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_renders_extern_decl_inferred_param_slice);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_structured_declared_direct_call_path);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_keeps_renamed_declared_direct_call_on_asm_path);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_keeps_renamed_declared_direct_call_caller_on_asm_path);
   RUN_TEST(test_x86_backend_declared_direct_call_uses_structured_vararg_metadata);
   RUN_TEST(test_x86_backend_explicit_emit_surface_keeps_structured_declared_direct_call_backend_path);
   RUN_TEST(test_x86_backend_declared_direct_call_uses_structured_decl_signature_for_fixed_args);

@@ -9,11 +9,35 @@ Source Plan: plan.md
 - [ ] Remove legacy backend IR files and backend/app LLVM rescue paths
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
-Current active item: Step 4 follow-on deletion. Target another bounded
-x86-local helper/runtime family that still reaches
-`lower_lir_to_backend_module(...)` on the explicit LIR entrypoint now that the
-shared call-crossing direct-call seam no longer depends on production-side
-`main` anchors in the parser/emitter path.
+Current active item: Step 4 follow-on deletion. Resume the next bounded x86
+explicit-LIR helper/runtime family that still reaches
+`lower_lir_to_backend_module(...)` after the declared-direct-call caller-name
+anchor removal.
+
+Latest completed slice:
+
+- removed the shared declared-direct-call LIR production-side `main` anchor
+  from
+  [`src/backend/lowering/call_decode.hpp`](/workspaces/c4c/src/backend/lowering/call_decode.hpp)
+  by teaching the shared parser to identify the zero-argument `i32` caller
+  structurally instead of requiring a literal `main` definition for that seam
+- taught the direct x86 declared-direct-call LIR emitter in
+  [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+  to publish the parsed caller symbol instead of hardcoding the emitted entry
+  symbol to `main`, so renamed callers stay on the native asm path
+- proved the shared parser deletion with a new renamed-caller regression in
+  [`tests/backend/backend_lir_adapter_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_tests.cpp)
+  that exercises `parse_backend_minimal_declared_direct_call_lir_module(...)`
+  directly
+- proved the x86 emitter behavior with a new renamed-caller regression in
+  [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
+  so the explicit x86 LIR emit surface publishes the observed caller symbol
+  and stays on assembly output for the bounded declared-direct-call family
+- kept focused adapter coverage green at `2` passed / `0` failed via
+  `ctest --test-dir build -R 'backend_lir_adapter_tests|backend_lir_adapter_x86_64_tests' -j1 --output-on-failure`
+- kept full-suite regression monotonic at `2841` passed / `0` failed before
+  and after via `test_before.log`, `test_after.log`, and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
 
 Completed in this slice:
 

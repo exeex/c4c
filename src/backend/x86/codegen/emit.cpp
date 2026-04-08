@@ -5510,7 +5510,8 @@ std::string emit_minimal_extern_decl_call_asm(
   static constexpr const char* kArgPtrRegs[6] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
 
   const std::string helper_symbol = asm_symbol_name(module.target_triple, slice.parsed_call.symbol_name);
-  const std::string main_symbol = asm_symbol_name(module.target_triple, "main");
+  const std::string main_symbol = asm_symbol_name(
+      module.target_triple, slice.main_function == nullptr ? "main" : slice.main_function->name);
 
   if (slice.args.size() > 6) {
     throw c4c::backend::LirAdapterError(

@@ -1631,6 +1631,31 @@ void test_backend_call_helpers_parse_structured_declared_direct_call_module() {
               "shared structured declared direct-call module parser should preserve renamed declaration symbols, typed operands, vararg signatures, and fixed return immediates without target-local backend-module scans");
 }
 
+void test_backend_call_helpers_parse_declared_direct_call_lir_module_with_renamed_caller() {
+  auto module = make_x86_extern_decl_inferred_param_module();
+  auto& caller_fn = module.functions.front();
+  auto& call = std::get<c4c::codegen::lir::LirCallOp>(caller_fn.blocks.front().insts.front());
+
+  caller_fn.name = "entry_sum";
+  caller_fn.signature_text = "define i32 @entry_sum()\n";
+  call.result = "%t.entry_sum.call";
+  caller_fn.blocks.front().terminator =
+      c4c::codegen::lir::LirRet{std::string("%t.entry_sum.call"), "i32"};
+
+  const auto parsed =
+      c4c::backend::parse_backend_minimal_declared_direct_call_lir_module(module);
+  expect_true(parsed.has_value() && parsed->main_function != nullptr &&
+                  parsed->main_function->name == "entry_sum" &&
+                  parsed->main_block == &caller_fn.blocks.front() && parsed->call == &call &&
+                  parsed->parsed_call.symbol_name == "helper_ext" &&
+                  parsed->parsed_call.typed_call.args.size() == 2 && parsed->args.size() == 2 &&
+                  parsed->args[0].kind == c4c::backend::ParsedBackendExternCallArg::Kind::I32Imm &&
+                  parsed->args[0].imm == 5 &&
+                  parsed->args[1].kind == c4c::backend::ParsedBackendExternCallArg::Kind::I32Imm &&
+                  parsed->args[1].imm == 7 && parsed->return_call_result,
+              "shared declared direct-call LIR parser should identify renamed zero-arg i32 callers structurally instead of requiring a literal main anchor");
+}
+
 void test_backend_call_helpers_decode_lir_direct_global_vararg_prefix() {
   c4c::codegen::lir::LirCallOp call{
       "%t2",
@@ -3004,6 +3029,7 @@ int main(int argc, char* argv[]) {
   test_backend_call_helpers_parse_structured_folded_two_arg_direct_call_module();
   test_backend_call_helpers_parse_folded_two_arg_direct_call_lir_module();
   test_backend_call_helpers_parse_structured_declared_direct_call_module();
+  test_backend_call_helpers_parse_declared_direct_call_lir_module_with_renamed_caller();
   test_backend_call_helpers_decode_lir_direct_global_vararg_prefix();
   test_backend_call_helpers_classify_lir_nonminimal_call_types();
   test_backend_call_helpers_classify_lir_nonminimal_signature_types();

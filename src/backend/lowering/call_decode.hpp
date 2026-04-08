@@ -1489,21 +1489,22 @@ parse_backend_minimal_declared_direct_call_lir_module(
   const LirFunction* main_fn = nullptr;
   const LirFunction* declared_callee = nullptr;
   for (const auto& function : module.functions) {
-    if (function.name == "main") {
-      if (main_fn != nullptr || function.is_declaration) {
+    if (!function.is_declaration &&
+        backend_lir_signature_matches(
+            function.signature_text, "define", "i32", function.name, {})) {
+      if (main_fn != nullptr) {
         return std::nullopt;
       }
       main_fn = &function;
-      continue;
+    } else {
+      if (declared_callee != nullptr || !function.is_declaration) {
+        return std::nullopt;
+      }
+      declared_callee = &function;
     }
-    if (declared_callee != nullptr || !function.is_declaration) {
-      return std::nullopt;
-    }
-    declared_callee = &function;
   }
 
   if (main_fn == nullptr ||
-      !backend_lir_is_zero_arg_i32_main_definition(main_fn->signature_text) ||
       main_fn->entry.value != 0 || main_fn->blocks.size() != 1 || !main_fn->alloca_insts.empty() ||
       !main_fn->stack_objects.empty()) {
     return std::nullopt;
