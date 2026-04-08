@@ -2528,6 +2528,20 @@ void test_adapter_normalizes_double_indirect_local_pointer_conditional_return_sl
                   "adapter should collapse the selected double-indirect local-pointer conditional chain into a direct return");
 }
 
+void test_adapter_normalizes_renamed_double_indirect_local_pointer_conditional_return_slice() {
+  auto module = make_double_indirect_local_pointer_conditional_return_module();
+  auto& function = module.functions.front();
+  function.name = "entry_ptrcond";
+  function.signature_text = "define i32 @entry_ptrcond()\n";
+
+  const auto adapted = c4c::backend::lower_lir_to_backend_module(module);
+  const auto rendered = c4c::backend::render_module(adapted);
+  expect_contains(rendered, "define i32 @entry_ptrcond()",
+                  "adapter should preserve renamed double-indirect local-pointer callers on the explicit lowered backend seam");
+  expect_contains(rendered, "ret i32 0",
+                  "adapter should still collapse renamed double-indirect local-pointer conditional chains into a direct return");
+}
+
 void test_adapter_normalizes_goto_only_constant_return_slice() {
   const auto adapted =
       c4c::backend::lower_lir_to_backend_module(make_goto_only_constant_return_module());
@@ -3302,6 +3316,7 @@ int main(int argc, char* argv[]) {
   test_adapter_normalizes_two_local_temp_return_slice();
   test_adapter_normalizes_local_pointer_temp_return_slice();
   test_adapter_normalizes_double_indirect_local_pointer_conditional_return_slice();
+  test_adapter_normalizes_renamed_double_indirect_local_pointer_conditional_return_slice();
   test_adapter_normalizes_goto_only_constant_return_slice();
   test_adapter_normalizes_constant_conditional_goto_return_slice();
   test_adapter_normalizes_i64_constant_conditional_goto_return_slice();

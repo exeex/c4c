@@ -17,6 +17,38 @@ conditional-return adapter and its matching backend/x86 proof surface.
 
 Latest completed slice:
 
+- removed the bounded double-indirect local-pointer conditional-return
+  production-side literal-`main` caller anchor from
+  [`src/backend/lowering/lir_to_backend_ir.cpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp)
+  so the explicit lowered backend adapter now accepts any structural
+  zero-argument `i32` caller instead of rejecting renamed callers before they
+  reach the normalized direct-return seam
+- removed the matching direct x86 literal-`main` caller anchor from
+  [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+  by teaching the bounded direct LIR parser to accept any matching
+  zero-argument `i32` definition and carry the observed caller symbol through
+  the emitted asm instead of hardcoding `main`
+- proved the lowered seam deletion with a new renamed-caller regression in
+  [`tests/backend/backend_lir_adapter_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_tests.cpp)
+  so the normalized backend IR keeps `define i32 @entry_ptrcond()` and still
+  collapses the bounded double-indirect local-pointer conditional chain to
+  `ret i32 0`
+- proved the x86 production deletion with a new renamed-caller regression in
+  [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
+  so direct x86 emission, the explicit lowered backend seam, and normal
+  backend selection all preserve `.globl entry_ptrcond` on identical asm
+  output without falling back to LLVM text
+- kept focused adapter coverage green at `2` passed / `0` failed via
+  `ctest --test-dir build -R '^backend_lir_adapter_tests$|^backend_lir_adapter_x86_64_tests$' -j1 --output-on-failure`
+- reran the required backend regression scope to `401` passed / `1` failed via
+  `ctest --test-dir build -R backend -j --output-on-failure > test_backend_after.log`;
+  the only failing case remains the independently reproducing unrelated blocker
+  `c_testsuite_aarch64_backend_src_00023_c`
+- the monotonic backend guard against the checked-in baseline still reports one
+  new failing test because `test_backend_before.log` remains the older clean
+  `182`-test snapshot while the current tree still reproduces the unrelated
+  aarch64 failure above
+
 - removed the lowered structured conditional-return production-side
   literal-`main` caller anchor from
   [`src/backend/lowering/lir_to_backend_ir.cpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp)

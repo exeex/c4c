@@ -2291,6 +2291,33 @@ void test_x86_backend_explicit_lir_emit_surface_matches_double_indirect_local_po
                       "x86 explicit LIR emit surface should not fall back to LLVM text for the bounded double-indirect local-pointer conditional family");
 }
 
+void test_x86_backend_explicit_lir_emit_surface_keeps_renamed_double_indirect_local_pointer_conditional_return_on_asm_path() {
+  auto module = make_double_indirect_local_pointer_conditional_return_module();
+  auto& function = module.functions.front();
+  function.name = "entry_ptrcond";
+  function.signature_text = "define i32 @entry_ptrcond()\n";
+
+  const auto direct_rendered = c4c::backend::x86::emit_module(module);
+  const auto lowered_rendered =
+      c4c::backend::x86::emit_module(c4c::backend::lower_lir_to_backend_module(module));
+  const auto backend_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_true(direct_rendered == lowered_rendered,
+              "x86 explicit LIR emit surface should keep renamed double-indirect local-pointer conditional callers aligned with the explicit lowered backend seam");
+  expect_true(direct_rendered == backend_rendered,
+              "x86 backend selection should keep renamed double-indirect local-pointer conditional callers on the same explicit x86 asm path");
+  expect_contains(direct_rendered, ".globl entry_ptrcond\n",
+                  "x86 explicit LIR emit surface should publish the observed renamed zero-arg caller instead of requiring a literal main anchor");
+  expect_contains(direct_rendered, "entry_ptrcond:\n",
+                  "x86 explicit LIR emit surface should preserve the renamed double-indirect local-pointer conditional caller label on the asm path");
+  expect_contains(direct_rendered, "mov eax, 0\n",
+                  "x86 explicit LIR emit surface should still fold the renamed double-indirect local-pointer conditional family into the same immediate return");
+  expect_not_contains(direct_rendered, "target triple =",
+                      "x86 explicit LIR emit surface should not fall back to LLVM text for renamed double-indirect local-pointer conditional callers");
+}
+
 void test_x86_backend_explicit_lir_emit_surface_matches_mixed_cast_constant_conditional_goto_return_path() {
   const auto module = make_mixed_cast_constant_conditional_goto_return_module();
   const auto direct_rendered = c4c::backend::x86::emit_module(module);
@@ -6998,6 +7025,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_local_pointer_temp_return_path);
   RUN_TEST(test_x86_backend_renders_double_indirect_local_pointer_conditional_return_slice);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_double_indirect_local_pointer_conditional_return_path);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_keeps_renamed_double_indirect_local_pointer_conditional_return_on_asm_path);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_mixed_cast_constant_conditional_goto_return_path);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_truncating_binop_constant_conditional_goto_return_path);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_select_constant_conditional_goto_return_path);

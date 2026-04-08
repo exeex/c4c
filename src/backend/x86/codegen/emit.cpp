@@ -616,7 +616,8 @@ std::optional<MinimalNamedReturnImmSlice> parse_minimal_goto_only_constant_retur
   }
 }
 
-std::optional<std::int64_t> parse_minimal_double_indirect_local_pointer_conditional_return_imm(
+std::optional<MinimalNamedReturnImmSlice>
+parse_minimal_double_indirect_local_pointer_conditional_return_imm(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
 
@@ -627,8 +628,8 @@ std::optional<std::int64_t> parse_minimal_double_indirect_local_pointer_conditio
 
   const auto& function = module.functions.front();
   if (function.is_declaration ||
-      function.name != "main" ||
-      !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(function.signature_text) ||
+      !c4c::backend::backend_lir_signature_matches(
+          function.signature_text, "define", "i32", function.name, {}) ||
       function.entry.value != 0 || function.blocks.empty()) {
     return std::nullopt;
   }
@@ -885,7 +886,7 @@ std::optional<std::int64_t> parse_minimal_double_indirect_local_pointer_conditio
       if (!ret->value_str.has_value() || ret->type_str != "i32") return std::nullopt;
       auto val = resolve(*ret->value_str);
       if (!val || val->is_ptr || val->is_fp) return std::nullopt;
-      return val->ival;
+      return MinimalNamedReturnImmSlice{function.name, val->ival};
     }
     if (const auto* br = std::get_if<LirBr>(&current->terminator)) {
       auto it = blocks_by_label.find(br->target_label);
@@ -6195,7 +6196,7 @@ std::optional<std::string> try_emit_direct_lir_module(
     }
     if (const auto imm = parse_minimal_double_indirect_local_pointer_conditional_return_imm(module);
         imm.has_value()) {
-      return emit_minimal_return_asm(module.target_triple, *imm);
+      return emit_minimal_return_asm(module.target_triple, imm->function_name, imm->return_imm);
     }
     if (const auto imm = parse_minimal_goto_only_constant_return_imm(module);
         imm.has_value()) {
