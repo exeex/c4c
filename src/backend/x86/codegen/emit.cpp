@@ -69,6 +69,7 @@ using MinimalExternCallArgSlice = c4c::backend::ParsedBackendExternCallArg;
 
 struct MinimalTwoArgDirectCallSlice {
   std::string callee_name;
+  std::string caller_name = "main";
   std::int64_t lhs_call_arg_imm = 0;
   std::int64_t rhs_call_arg_imm = 0;
 };
@@ -76,8 +77,14 @@ struct MinimalTwoArgDirectCallSlice {
 struct MinimalDualIdentityDirectCallSubSlice {
   std::string lhs_helper_name;
   std::string rhs_helper_name;
+  std::string caller_name = "main";
   std::int64_t lhs_call_arg_imm = 0;
   std::int64_t rhs_call_arg_imm = 0;
+};
+
+struct MinimalNamedReturnImmSlice {
+  std::string function_name = "main";
+  std::int64_t return_imm = 0;
 };
 
 struct MinimalMemberArrayRuntimeSlice {
@@ -4214,12 +4221,13 @@ std::optional<MinimalCallCrossingDirectCallSlice> parse_minimal_call_crossing_di
 std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_slice(
     const c4c::codegen::lir::LirModule& module) {
   const auto parsed = c4c::backend::parse_backend_minimal_two_arg_direct_call_lir_module(module);
-  if (!parsed.has_value() || parsed->helper == nullptr) {
+  if (!parsed.has_value() || parsed->helper == nullptr || parsed->main_function == nullptr) {
     return std::nullopt;
   }
 
   return MinimalTwoArgDirectCallSlice{
       parsed->helper->name,
+      parsed->main_function->name,
       parsed->lhs_call_arg_imm,
       parsed->rhs_call_arg_imm,
   };
@@ -4245,17 +4253,33 @@ std::optional<std::int64_t> parse_minimal_folded_two_arg_direct_call_return_imm(
   return parsed->return_imm;
 }
 
+std::optional<MinimalNamedReturnImmSlice> parse_minimal_folded_two_arg_direct_call_return_slice(
+    const c4c::codegen::lir::LirModule& module) {
+  const auto parsed =
+      c4c::backend::parse_backend_minimal_folded_two_arg_direct_call_lir_module(module);
+  if (!parsed.has_value() || parsed->main_function == nullptr) {
+    return std::nullopt;
+  }
+
+  return MinimalNamedReturnImmSlice{
+      parsed->main_function->name,
+      parsed->return_imm,
+  };
+}
+
 std::optional<MinimalDualIdentityDirectCallSubSlice> parse_minimal_dual_identity_direct_call_sub_slice(
     const c4c::backend::BackendModule& module) {
   const auto parsed =
       c4c::backend::parse_backend_minimal_dual_identity_direct_call_sub_module(module);
-  if (!parsed.has_value() || parsed->lhs_helper == nullptr || parsed->rhs_helper == nullptr) {
+  if (!parsed.has_value() || parsed->lhs_helper == nullptr || parsed->rhs_helper == nullptr ||
+      parsed->main_function == nullptr) {
     return std::nullopt;
   }
 
   return MinimalDualIdentityDirectCallSubSlice{
       parsed->lhs_helper->signature.name,
       parsed->rhs_helper->signature.name,
+      parsed->main_function->signature.name,
       parsed->lhs_call_arg_imm,
       parsed->rhs_call_arg_imm,
   };
@@ -4265,13 +4289,15 @@ std::optional<MinimalDualIdentityDirectCallSubSlice> parse_minimal_dual_identity
     const c4c::codegen::lir::LirModule& module) {
   const auto parsed =
       c4c::backend::parse_backend_minimal_dual_identity_direct_call_sub_lir_module(module);
-  if (!parsed.has_value() || parsed->lhs_helper == nullptr || parsed->rhs_helper == nullptr) {
+  if (!parsed.has_value() || parsed->lhs_helper == nullptr || parsed->rhs_helper == nullptr ||
+      parsed->main_function == nullptr) {
     return std::nullopt;
   }
 
   return MinimalDualIdentityDirectCallSubSlice{
       parsed->lhs_helper->name,
       parsed->rhs_helper->name,
+      parsed->main_function->name,
       parsed->lhs_call_arg_imm,
       parsed->rhs_call_arg_imm,
   };
@@ -4463,8 +4489,9 @@ void emit_function_prelude(std::ostringstream& out,
 }
 
 std::string emit_minimal_return_asm(std::string_view target_triple,
+                                    std::string_view function_name,
                                     std::int64_t return_imm) {
-  const std::string symbol = asm_symbol_name(target_triple, "main");
+  const std::string symbol = asm_symbol_name(target_triple, function_name);
   std::ostringstream out;
   out << ".intel_syntax noprefix\n";
   out << ".text\n";
@@ -4473,6 +4500,11 @@ std::string emit_minimal_return_asm(std::string_view target_triple,
   out << "  mov eax, " << return_imm << "\n";
   out << "  ret\n";
   return out.str();
+}
+
+std::string emit_minimal_return_asm(std::string_view target_triple,
+                                    std::int64_t return_imm) {
+  return emit_minimal_return_asm(target_triple, "main", return_imm);
 }
 
 std::string emit_minimal_return_asm(const c4c::backend::BackendModule& module,
@@ -4754,7 +4786,8 @@ std::string emit_minimal_direct_call_add_imm_asm(
   }
 
   const std::string helper_symbol = asm_symbol_name(target_triple, slice.helper->name);
-  const std::string main_symbol = asm_symbol_name(target_triple, "main");
+  const std::string main_symbol = asm_symbol_name(
+      target_triple, slice.main_function == nullptr ? "main" : slice.main_function->name);
 
   std::ostringstream out;
   out << ".intel_syntax noprefix\n";
@@ -4819,7 +4852,8 @@ std::string emit_minimal_direct_call_identity_arg_asm(
   }
 
   const std::string helper_symbol = asm_symbol_name(target_triple, slice.helper->name);
-  const std::string main_symbol = asm_symbol_name(target_triple, "main");
+  const std::string main_symbol = asm_symbol_name(
+      target_triple, slice.main_function == nullptr ? "main" : slice.main_function->name);
 
   std::ostringstream out;
   out << ".intel_syntax noprefix\n";
@@ -4848,7 +4882,7 @@ std::string emit_minimal_dual_identity_direct_call_sub_asm(
 
   const std::string lhs_symbol = asm_symbol_name(target_triple, slice.lhs_helper_name);
   const std::string rhs_symbol = asm_symbol_name(target_triple, slice.rhs_helper_name);
-  const std::string main_symbol = asm_symbol_name(target_triple, "main");
+  const std::string main_symbol = asm_symbol_name(target_triple, slice.caller_name);
 
   std::ostringstream out;
   out << ".intel_syntax noprefix\n";
@@ -4886,7 +4920,7 @@ std::string emit_minimal_two_arg_direct_call_asm(
   }
 
   const std::string helper_symbol = asm_symbol_name(target_triple, slice.callee_name);
-  const std::string main_symbol = asm_symbol_name(target_triple, "main");
+  const std::string main_symbol = asm_symbol_name(target_triple, slice.caller_name);
 
   std::ostringstream out;
   out << ".intel_syntax noprefix\n";
@@ -4982,6 +5016,7 @@ std::string emit_minimal_two_arg_direct_call_asm(
       module,
       MinimalTwoArgDirectCallSlice{
           slice.helper->signature.name,
+          slice.main_function == nullptr ? "main" : slice.main_function->signature.name,
           slice.lhs_call_arg_imm,
           slice.rhs_call_arg_imm,
       });
@@ -6022,9 +6057,9 @@ std::optional<std::string> try_emit_direct_lir_module(
         slice.has_value()) {
       return emit_minimal_two_arg_direct_call_asm(module.target_triple, *slice);
     }
-    if (const auto imm = parse_minimal_folded_two_arg_direct_call_return_imm(module);
-        imm.has_value()) {
-      return emit_minimal_return_asm(module.target_triple, *imm);
+    if (const auto slice = parse_minimal_folded_two_arg_direct_call_return_slice(module);
+        slice.has_value()) {
+      return emit_minimal_return_asm(module.target_triple, slice->function_name, slice->return_imm);
     }
     if (const auto slice =
             c4c::backend::parse_backend_minimal_direct_call_identity_arg_lir_module(module);

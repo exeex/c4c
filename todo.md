@@ -9,10 +9,12 @@ Source Plan: plan.md
 - [ ] Remove legacy backend IR files and backend/app LLVM rescue paths
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
-Current active item: Step 4 follow-on deletion. Resume the next bounded x86
-explicit-LIR helper/runtime family that still reaches
-`lower_lir_to_backend_module(...)` after the declared-direct-call caller-name
-anchor removal.
+Current active item: Step 4 follow-on deletion. Resume the remaining
+production-side literal-`main` caller anchor cleanup in the x86 explicit-LIR
+single-helper direct-call family that still falls back for the single-arg
+add-immediate slice now that the identity, two-arg, folded-two-arg, and
+dual-identity subtraction families stay on the native asm path for renamed
+zero-arg callers.
 
 Latest completed slice:
 
@@ -40,6 +42,29 @@ Latest completed slice:
   `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
 
 Completed in this slice:
+
+- taught the shared direct-call LIR parsers in
+  [`src/backend/lowering/call_decode.hpp`](/workspaces/c4c/src/backend/lowering/call_decode.hpp)
+  to identify zero-argument `i32` callers structurally for the bounded
+  identity, two-arg, folded-two-arg, and dual-identity helper families
+  instead of requiring a literal `main` symbol
+- taught the x86 direct-LIR emit helpers in
+  [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+  to publish the parsed caller symbol for those bounded helper families,
+  including the folded-two-arg return-immediate fast path, so renamed callers
+  stay on the native asm path without routing through legacy backend IR
+- proved the shared parser change with a renamed-caller regression in
+  [`tests/backend/backend_lir_adapter_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_tests.cpp)
+  covering the bounded two-arg direct-call parser path
+- proved the x86 explicit-LIR behavior with renamed-caller regressions in
+  [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
+  covering the identity, two-arg, folded-two-arg, and dual-identity helper
+  families so the native entry surface no longer assumes a literal `main`
+- kept focused adapter coverage green at `2` passed / `0` failed via
+  `ctest --test-dir build -R 'backend_lir_adapter_tests|backend_lir_adapter_x86_64_tests' -j1 --output-on-failure`
+- kept backend regression coverage monotonic at `402` passed / `0` failed
+  before and after via `test_before.log`, `test_after.log`, and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
 
 - removed the shared call-crossing direct-call production-side `main` anchor
   from
@@ -197,13 +222,20 @@ Completed in this slice:
 
 Next intended slice:
 
-- delete production parser/emitter uses of `function.name == "main"` where the
-  name is only serving as a fixture anchor for a bounded helper/caller shape
-- move any remaining test-only `main` convenience into backend test
-  helpers/fixtures so production code only matches structural constraints
+- finish the remaining x86 single-arg add-immediate caller-anchor cleanup in
+  [`src/backend/lowering/call_decode.hpp`](/workspaces/c4c/src/backend/lowering/call_decode.hpp)
+  and
+  [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+  so renamed zero-arg callers for that bounded helper family stop falling
+  through to `lower_lir_to_backend_module(...)`
+- prove that remaining single-arg add-immediate deletion with renamed-caller
+  regressions in
+  [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
+  and, if needed, a shared parser regression in
+  [`tests/backend/backend_lir_adapter_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_tests.cpp)
 - then resume the next emitter-local `lower_lir_to_backend_module(...)`
-  deletion once the `main` anchor cleanup no longer risks reintroducing test
-  assumptions into production paths
+  deletion once the remaining literal-`main` convenience is gone from this
+  x86 helper batch
 - keep deleting emitter-local legacy conveniences that encode symbol-specific
   assumptions when a bounded structural match is enough for the live slice
 - target another renamed or reordered x86-local helper/runtime family that

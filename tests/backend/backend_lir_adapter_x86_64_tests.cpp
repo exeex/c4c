@@ -2854,6 +2854,33 @@ void test_x86_backend_explicit_lir_emit_surface_matches_identity_direct_call_pat
                       "x86 explicit LIR emit surface should stay on assembly output for the identity direct-call slice");
 }
 
+void test_x86_backend_explicit_lir_emit_surface_keeps_renamed_identity_direct_call_caller_on_asm_path() {
+  auto module = make_typed_direct_call_identity_arg_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  auto* caller = module.functions.size() < 2 ? nullptr : &module.functions.back();
+  expect_true(caller != nullptr,
+              "x86 renamed identity direct-call caller regression test needs the caller function");
+  if (caller == nullptr) {
+    return;
+  }
+
+  caller->name = "entry_identity";
+  caller->signature_text = "define i32 @entry_identity()\n";
+
+  const auto rendered = c4c::backend::x86::emit_module(module);
+  expect_contains(rendered, ".globl entry_identity\n",
+                  "x86 explicit LIR emit surface should publish the renamed identity direct-call caller instead of assuming main");
+  expect_contains(rendered, "entry_identity:\n",
+                  "x86 explicit LIR emit surface should preserve the renamed identity caller symbol on the asm path");
+  expect_contains(rendered, "call f\n",
+                  "x86 explicit LIR emit surface should keep renamed identity callers on the helper asm path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 explicit LIR emit surface should not fall back to LLVM text for renamed identity direct-call callers");
+}
+
 void test_x86_backend_renders_dual_identity_direct_call_sub_slice() {
   auto module = make_typed_dual_identity_direct_call_sub_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -2903,6 +2930,35 @@ void test_x86_backend_explicit_lir_emit_surface_matches_dual_identity_direct_cal
                   "x86 explicit LIR emit surface should subtract the second helper result from the preserved first helper result directly on the asm path");
   expect_not_contains(direct_rendered, "target triple =",
                       "x86 explicit LIR emit surface should not fall back to LLVM text for the bounded dual identity direct-call subtraction slice");
+}
+
+void test_x86_backend_explicit_lir_emit_surface_keeps_renamed_dual_identity_direct_call_caller_on_asm_path() {
+  auto module = make_typed_dual_identity_direct_call_sub_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  auto* caller = module.functions.size() < 3 ? nullptr : &module.functions.back();
+  expect_true(caller != nullptr,
+              "x86 renamed dual-identity direct-call caller regression test needs the caller function");
+  if (caller == nullptr) {
+    return;
+  }
+
+  caller->name = "entry_sub";
+  caller->signature_text = "define i32 @entry_sub()\n";
+
+  const auto rendered = c4c::backend::x86::emit_module(module);
+  expect_contains(rendered, ".globl entry_sub\n",
+                  "x86 explicit LIR emit surface should publish the renamed dual-identity caller instead of assuming main");
+  expect_contains(rendered, "entry_sub:\n",
+                  "x86 explicit LIR emit surface should preserve the renamed dual-identity caller symbol on the asm path");
+  expect_contains(rendered, "call f\n",
+                  "x86 explicit LIR emit surface should keep the first renamed dual-identity helper call on the asm path");
+  expect_contains(rendered, "call g\n",
+                  "x86 explicit LIR emit surface should keep the second renamed dual-identity helper call on the asm path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 explicit LIR emit surface should not fall back to LLVM text for renamed dual-identity direct-call callers");
 }
 
 void test_x86_backend_scaffold_accepts_structured_direct_call_add_imm_ir_without_signature_shims() {
@@ -3504,6 +3560,33 @@ void test_x86_backend_explicit_lir_emit_surface_matches_structured_folded_two_ar
                       "x86 backend selection should stay on assembly output for the folded two-argument slice");
 }
 
+void test_x86_backend_explicit_lir_emit_surface_keeps_renamed_folded_two_arg_direct_call_caller_on_asm_path() {
+  auto module = make_folded_two_arg_direct_call_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  auto* caller = module.functions.size() < 2 ? nullptr : &module.functions.back();
+  expect_true(caller != nullptr,
+              "x86 renamed folded two-argument direct-call caller regression test needs the caller function");
+  if (caller == nullptr) {
+    return;
+  }
+
+  caller->name = "entry_folded";
+  caller->signature_text = "define i32 @entry_folded()\n";
+
+  const auto rendered = c4c::backend::x86::emit_module(module);
+  expect_contains(rendered, ".globl entry_folded\n",
+                  "x86 explicit LIR emit surface should publish the renamed folded two-argument caller instead of assuming main");
+  expect_contains(rendered, "entry_folded:\n",
+                  "x86 explicit LIR emit surface should preserve the renamed folded two-argument caller symbol on the asm path");
+  expect_contains(rendered, "mov eax, 7\n",
+                  "x86 explicit LIR emit surface should keep the folded two-argument return-immediate fast path for renamed callers");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 explicit LIR emit surface should not fall back to LLVM text for renamed folded two-argument direct-call callers");
+}
+
 void test_x86_backend_renders_typed_direct_call_local_arg_spacing_slice() {
   auto module = make_typed_direct_call_local_arg_with_suffix_spacing_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -3587,6 +3670,33 @@ void test_x86_backend_explicit_lir_emit_surface_matches_structured_two_arg_direc
                   "x86 explicit LIR emit surface should preserve the two-argument direct-call helper symbol");
   expect_not_contains(direct_rendered, "target triple =",
                       "x86 explicit LIR emit surface should stay on assembly output for the two-argument direct-call slice");
+}
+
+void test_x86_backend_explicit_lir_emit_surface_keeps_renamed_two_arg_direct_call_caller_on_asm_path() {
+  auto module = make_typed_direct_call_two_arg_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  auto* caller = module.functions.size() < 2 ? nullptr : &module.functions.back();
+  expect_true(caller != nullptr,
+              "x86 renamed two-argument direct-call caller regression test needs the caller function");
+  if (caller == nullptr) {
+    return;
+  }
+
+  caller->name = "entry_sum";
+  caller->signature_text = "define i32 @entry_sum()\n";
+
+  const auto rendered = c4c::backend::x86::emit_module(module);
+  expect_contains(rendered, ".globl entry_sum\n",
+                  "x86 explicit LIR emit surface should publish the renamed two-argument direct-call caller instead of assuming main");
+  expect_contains(rendered, "entry_sum:\n",
+                  "x86 explicit LIR emit surface should preserve the renamed two-argument caller symbol on the asm path");
+  expect_contains(rendered, "call add_pair\n",
+                  "x86 explicit LIR emit surface should keep renamed two-argument callers on the helper asm path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 explicit LIR emit surface should not fall back to LLVM text for renamed two-argument direct-call callers");
 }
 
 void test_x86_backend_renders_typed_two_arg_direct_call_slice_with_spaced_helper_signature() {
@@ -6532,8 +6642,10 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_structured_direct_call_add_imm_path);
   RUN_TEST(test_x86_backend_renders_typed_direct_call_identity_arg_slice);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_identity_direct_call_path);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_keeps_renamed_identity_direct_call_caller_on_asm_path);
   RUN_TEST(test_x86_backend_renders_dual_identity_direct_call_sub_slice);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_dual_identity_direct_call_sub_path);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_keeps_renamed_dual_identity_direct_call_caller_on_asm_path);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_direct_call_add_imm_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_renamed_structured_direct_call_add_imm_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_rejects_structured_direct_call_add_imm_when_helper_body_contract_disagrees);
@@ -6557,6 +6669,8 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_slice);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_structured_two_arg_direct_call_path);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_structured_folded_two_arg_direct_call_path);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_keeps_renamed_two_arg_direct_call_caller_on_asm_path);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_keeps_renamed_folded_two_arg_direct_call_caller_on_asm_path);
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_slice_with_spaced_helper_signature);
   RUN_TEST(test_x86_backend_keeps_renamed_typed_two_arg_direct_call_slice_on_asm_path);
   RUN_TEST(test_x86_backend_rejects_typed_two_arg_direct_call_slice_when_helper_body_contract_disagrees);

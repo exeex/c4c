@@ -878,6 +878,46 @@ void test_backend_call_helpers_parse_minimal_two_arg_direct_call_lir_module() {
               "shared two-argument minimal module parser should preserve reordered helper discovery plus renamed local-slot call operands without target-local module-shape scans");
 }
 
+void test_backend_call_helpers_parse_minimal_two_arg_direct_call_lir_module_with_renamed_caller() {
+  auto module = make_typed_direct_call_two_arg_module();
+
+  auto* helper = module.functions.empty() ? nullptr : &module.functions.front();
+  auto* caller = module.functions.size() < 2 ? nullptr : &module.functions.back();
+  expect_true(helper != nullptr && caller != nullptr,
+              "shared two-argument renamed-caller parser regression test needs helper and caller functions");
+  if (helper == nullptr || caller == nullptr || caller->blocks.empty()) {
+    return;
+  }
+
+  helper->name = "sum_pair";
+  helper->signature_text = "define i32 @sum_pair(i32 %p.left, i32 %p.right)\n";
+  auto& helper_add = std::get<c4c::codegen::lir::LirBinOp>(helper->blocks.front().insts.front());
+  helper_add.lhs = "%p.left";
+  helper_add.rhs = "%p.right";
+
+  caller->name = "entry_sum";
+  caller->signature_text = "define i32 @entry_sum()\n";
+  auto* call = std::get_if<c4c::codegen::lir::LirCallOp>(&caller->blocks.front().insts.front());
+  expect_true(call != nullptr,
+              "shared two-argument renamed-caller parser regression test needs the direct call to mutate");
+  if (call == nullptr) {
+    return;
+  }
+  call->callee = c4c::codegen::lir::LirOperand(std::string("@sum_pair"),
+                                               c4c::codegen::lir::LirOperandKind::Global);
+  call->result = "%t.entry_sum.result";
+  caller->blocks.front().terminator =
+      c4c::codegen::lir::LirRet{std::string("%t.entry_sum.result"), "i32"};
+
+  const auto parsed = c4c::backend::parse_backend_minimal_two_arg_direct_call_lir_module(module);
+  expect_true(parsed.has_value() && parsed->helper != nullptr && parsed->main_function != nullptr &&
+                  parsed->call != nullptr && parsed->helper->name == "sum_pair" &&
+                  parsed->main_function->name == "entry_sum" &&
+                  parsed->call->result == "%t.entry_sum.result" &&
+                  parsed->lhs_call_arg_imm == 5 && parsed->rhs_call_arg_imm == 7,
+              "shared two-argument minimal module parser should identify renamed zero-argument callers structurally instead of requiring a literal main symbol");
+}
+
 void test_backend_call_helpers_parse_structured_two_param_add_function() {
   auto lowered = c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_two_arg_module());
 
@@ -3013,6 +3053,7 @@ int main(int argc, char* argv[]) {
   test_backend_call_helpers_parse_single_add_imm_function();
   test_backend_call_helpers_parse_two_param_add_function();
   test_backend_call_helpers_parse_minimal_two_arg_direct_call_lir_module();
+  test_backend_call_helpers_parse_minimal_two_arg_direct_call_lir_module_with_renamed_caller();
   test_backend_call_helpers_parse_structured_two_param_add_function();
   test_backend_call_helpers_parse_structured_zero_arg_return_imm_function();
   test_backend_call_helpers_parse_structured_single_add_imm_function();

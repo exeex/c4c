@@ -1830,24 +1830,29 @@ parse_backend_minimal_two_arg_direct_call_lir_module(
   const LirFunction* main_fn = nullptr;
   const LirFunction* helper = nullptr;
   for (const auto& function : module.functions) {
-    if (function.name == "main") {
+    if (!function.is_declaration &&
+        parse_backend_two_param_add_function(function, std::nullopt).has_value()) {
+      if (helper != nullptr) {
+        return std::nullopt;
+      }
+      helper = &function;
+    } else if (!function.is_declaration &&
+               backend_lir_signature_matches(
+                   function.signature_text, "define", "i32", function.name, {})) {
       if (main_fn != nullptr) {
         return std::nullopt;
       }
       main_fn = &function;
-      continue;
-    }
-    if (helper != nullptr) {
+    } else {
       return std::nullopt;
     }
-    helper = &function;
   }
 
-  if (helper == nullptr || main_fn == nullptr || helper->is_declaration || main_fn->is_declaration ||
-      !backend_lir_is_zero_arg_i32_main_definition(main_fn->signature_text) ||
-      helper->entry.value != 0 || main_fn->entry.value != 0 || helper->blocks.size() != 1 ||
-      main_fn->blocks.size() != 1 || !helper->alloca_insts.empty() ||
-      !helper->stack_objects.empty() || !main_fn->stack_objects.empty()) {
+  if (helper == nullptr || main_fn == nullptr || helper->is_declaration ||
+      main_fn->is_declaration || helper->entry.value != 0 || main_fn->entry.value != 0 ||
+      helper->blocks.size() != 1 || main_fn->blocks.size() != 1 ||
+      !helper->alloca_insts.empty() || !helper->stack_objects.empty() ||
+      !main_fn->stack_objects.empty()) {
     return std::nullopt;
   }
 
@@ -2038,25 +2043,29 @@ parse_backend_minimal_folded_two_arg_direct_call_lir_module(
   const LirFunction* main_fn = nullptr;
   const LirFunction* helper = nullptr;
   for (const auto& function : module.functions) {
-    if (function.name == "main") {
+    if (!function.is_declaration &&
+        parse_backend_folded_two_arg_function(function, std::nullopt).has_value()) {
+      if (helper != nullptr) {
+        return std::nullopt;
+      }
+      helper = &function;
+    } else if (!function.is_declaration &&
+               backend_lir_signature_matches(
+                   function.signature_text, "define", "i32", function.name, {})) {
       if (main_fn != nullptr) {
         return std::nullopt;
       }
       main_fn = &function;
-      continue;
-    }
-    if (helper != nullptr) {
+    } else {
       return std::nullopt;
     }
-    helper = &function;
   }
 
-  if (helper == nullptr || main_fn == nullptr || helper->is_declaration || main_fn->is_declaration ||
-      !backend_lir_is_zero_arg_i32_main_definition(main_fn->signature_text) ||
-      helper->entry.value != 0 || main_fn->entry.value != 0 || helper->blocks.size() != 1 ||
-      main_fn->blocks.size() != 1 || !helper->alloca_insts.empty() ||
-      !helper->stack_objects.empty() || !main_fn->stack_objects.empty() ||
-      !main_fn->alloca_insts.empty()) {
+  if (helper == nullptr || main_fn == nullptr || helper->is_declaration ||
+      main_fn->is_declaration || helper->entry.value != 0 || main_fn->entry.value != 0 ||
+      helper->blocks.size() != 1 || main_fn->blocks.size() != 1 ||
+      !helper->alloca_insts.empty() || !helper->stack_objects.empty() ||
+      !main_fn->stack_objects.empty() || !main_fn->alloca_insts.empty()) {
     return std::nullopt;
   }
 
@@ -2244,24 +2253,28 @@ parse_backend_minimal_direct_call_identity_arg_lir_module(
   const LirFunction* main_fn = nullptr;
   const LirFunction* helper = nullptr;
   for (const auto& function : module.functions) {
-    if (function.name == "main") {
+    if (!function.is_declaration &&
+        parse_backend_single_identity_function(function, std::nullopt).has_value()) {
+      if (helper != nullptr) {
+        return std::nullopt;
+      }
+      helper = &function;
+    } else if (!function.is_declaration &&
+               backend_lir_signature_matches(
+                   function.signature_text, "define", "i32", function.name, {})) {
       if (main_fn != nullptr) {
         return std::nullopt;
       }
       main_fn = &function;
-      continue;
-    }
-    if (helper != nullptr) {
+    } else {
       return std::nullopt;
     }
-    helper = &function;
   }
 
-  if (helper == nullptr || main_fn == nullptr || helper->is_declaration || main_fn->is_declaration ||
-      !backend_lir_is_zero_arg_i32_main_definition(main_fn->signature_text) ||
-      helper->entry.value != 0 || main_fn->entry.value != 0 || helper->blocks.size() != 1 ||
-      main_fn->blocks.size() != 1 || !main_fn->alloca_insts.empty() ||
-      !main_fn->stack_objects.empty()) {
+  if (helper == nullptr || main_fn == nullptr || helper->is_declaration ||
+      main_fn->is_declaration || helper->entry.value != 0 || main_fn->entry.value != 0 ||
+      helper->blocks.size() != 1 || main_fn->blocks.size() != 1 ||
+      !main_fn->alloca_insts.empty() || !main_fn->stack_objects.empty()) {
     return std::nullopt;
   }
 
@@ -2310,18 +2323,22 @@ parse_backend_minimal_dual_identity_direct_call_sub_lir_module(
   std::vector<const LirFunction*> helpers;
   helpers.reserve(2);
   for (const auto& function : module.functions) {
-    if (function.name == "main") {
+    if (!function.is_declaration &&
+        parse_backend_single_identity_function(function, std::nullopt).has_value()) {
+      helpers.push_back(&function);
+    } else if (!function.is_declaration &&
+               backend_lir_signature_matches(
+                   function.signature_text, "define", "i32", function.name, {})) {
       if (main_fn != nullptr) {
         return std::nullopt;
       }
       main_fn = &function;
-      continue;
+    } else {
+      return std::nullopt;
     }
-    helpers.push_back(&function);
   }
 
   if (main_fn == nullptr || helpers.size() != 2 || main_fn->is_declaration ||
-      !backend_lir_is_zero_arg_i32_main_definition(main_fn->signature_text) ||
       main_fn->entry.value != 0 || main_fn->blocks.size() != 1 ||
       !main_fn->alloca_insts.empty() || !main_fn->stack_objects.empty()) {
     return std::nullopt;
