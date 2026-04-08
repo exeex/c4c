@@ -1,6 +1,5 @@
 #pragma once
 
-#include "ir.hpp"
 #include "../shared/llvm_helpers.hpp"
 
 #include <functional>
@@ -9,6 +8,8 @@
 #include <vector>
 
 namespace c4c::codegen::lir {
+
+struct LirModule;
 
 /// Standalone constant-initializer emitter for global variables.
 /// Owns all const-eval logic previously in HirEmitter; depends only on

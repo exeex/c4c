@@ -1,10 +1,10 @@
 #pragma once
 
-#include "ir.hpp"
-
 #include <string>
 
 namespace c4c::backend {
+
+struct BackendModule;
 
 bool validate_backend_module(const BackendModule& module, std::string* error);
 

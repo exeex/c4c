@@ -4,16 +4,61 @@ Source Plan: plan.md
 
 # Active Item
 
-- Step 3: migrate the next aarch64 emitter helper cluster onto direct BIR
-- Current slice: re-check the remaining Step 3 global/string seams after the
-  scalar-global store-reload migration, starting with whether
-  string-literal-char can land as another bounded shared BIR contract without
-  reopening broader pointer/address metadata work
-- Next intended slice: if string-literal-char still needs wider address shape,
-  switch to the next smallest extern/global-address seam instead of broadening
-  BIR speculatively
+- Step 4/5 probe: remove legacy lowering / legacy IR implementation units from
+  the build graph and compile to inventory the first real blockers
+- Current slice: temporarily drop `src/backend/lowering/lir_to_backend_ir.cpp`
+  plus backend `ir.*` implementation files from `CMakeLists.txt` without
+  follow-on cleanup so the compile failure surface shows which live objects
+  still depend on the legacy route
+- Next intended slice: classify the first-wave compile or link failures into
+  `lir_to_backend_ir` blockers, `ir.*` blockers, and any accidental build-only
+  references before deciding whether Step 4 can start directly or needs one
+  more bounded Step 3 cleanup
 
 # Completed
+
+- Removed `src/backend/lowering/lir_to_backend_ir.cpp` plus backend
+  `ir.cpp` / `ir_printer.cpp` / `ir_validate.cpp` from both
+  `FRONTEND_CXX_COMMON_SRCS` and `BACKEND_TEST_COMMON_SRCS` in
+  `CMakeLists.txt` as a Step 4/5 compile probe, without any follow-on code
+  cleanup
+- Reconfigured with `cmake -S . -B build` and rebuilt with
+  `cmake --build build -j8`; `c4cll`, `backend_shared_util_tests`, and
+  `backend_bir_tests` all still linked successfully with no compile or link
+  errors after those implementation units left the build graph
+- The probe shows the current blockers are no longer link-time references to
+  `lower_lir_to_backend_module(...)`, `print_backend_module(...)`, or
+  `validate_backend_module(...)`; the remaining legacy surface is primarily
+  header/type ownership through `ir.hpp` includes in LIR-facing headers such as
+  `src/codegen/lir/const_init_emitter.hpp`,
+  `src/codegen/lir/stmt_emitter.hpp`, `src/codegen/lir/lir_printer.hpp`,
+  `src/codegen/lir/verify.hpp`, and `src/codegen/lir/call_args.hpp`
+- Removed the direct `ir.hpp` includes from those LIR-facing headers plus the
+  direct `lir_to_backend_ir.hpp` include from
+  `src/backend/lowering/extern_lowering.cpp` as a one-shot ownership probe,
+  then reran `cmake --build build -j8`
+- The first-wave failures are dominated by `src/codegen/lir/call_args.hpp`
+  losing `LirCallOp` through the old transitive `ir.hpp` include path; that
+  breaks shared helpers consumed by `src/backend/lowering/call_decode.cpp` and
+  all emitters that include `call_decode.hpp`
+- `src/backend/lowering/extern_lowering.cpp` also still depends on
+  `LirAdapterError` arriving from `lir_to_backend_ir.hpp`, so Step 4 requires
+  either moving that error type to a non-legacy header or replacing the throw
+  surface before the legacy lowering header can disappear
+- Split `LirAdapterError` out of `src/backend/lowering/lir_to_backend_ir.hpp`
+  into the new `src/backend/lowering/lir_adapter_error.hpp`, letting
+  `src/backend/lowering/extern_lowering.cpp` stop depending on the legacy
+  lowering header just to throw adapter errors
+- Moved the direct `#include "ir.hpp"` dependency out of
+  `src/codegen/lir/const_init_emitter.hpp`,
+  `src/codegen/lir/lir_printer.hpp`,
+  `src/codegen/lir/verify.hpp`,
+  `src/backend/ir_printer.hpp`, and `src/backend/ir_validate.hpp` by replacing
+  them with forward declarations or narrower includes and pulling `ir.hpp`
+  into the matching `.cpp` files instead
+- Rebuilt with `cmake --build build -j8` after the header include move; the
+  workspace still compiled successfully with the legacy implementation units
+  kept out of the build graph
 
 - Added bounded shared `bir.load_global` support in `src/backend/bir.hpp`,
   `src/backend/bir_printer.cpp`, and `src/backend/bir_validate.cpp` so BIR can

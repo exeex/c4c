@@ -1,4 +1,5 @@
 #include "const_init_emitter.hpp"
+#include "ir.hpp"
 
 #include <algorithm>
 #include <cctype>

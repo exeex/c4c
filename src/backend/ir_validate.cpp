@@ -1,5 +1,6 @@
 #include "ir_validate.hpp"
 
+#include "ir.hpp"
 #include <unordered_map>
 #include <unordered_set>
 

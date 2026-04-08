@@ -1,5 +1,6 @@
 #include "ir_printer.hpp"
 
+#include "ir.hpp"
 #include "../codegen/lir/call_args.hpp"
 
 #include <sstream>

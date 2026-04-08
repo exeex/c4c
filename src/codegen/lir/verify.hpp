@@ -1,6 +1,7 @@
 #pragma once
 
-#include "ir.hpp"
+#include "operands.hpp"
+#include "types.hpp"
 
 #include <initializer_list>
 #include <stdexcept>
@@ -8,6 +9,8 @@
 #include <string_view>
 
 namespace c4c::codegen::lir {
+
+struct LirModule;
 
 enum class LirVerifyErrorKind {
   Malformed,

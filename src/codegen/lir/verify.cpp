@@ -1,4 +1,5 @@
 #include "verify.hpp"
+#include "ir.hpp"
 
 #include <sstream>
 
