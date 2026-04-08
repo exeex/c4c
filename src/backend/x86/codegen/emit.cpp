@@ -4111,10 +4111,6 @@ std::string emit_module(const c4c::backend::bir::Module& module) {
 }
 
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {
-  if (const auto rendered = try_emit_direct_lir_module(module); rendered.has_value()) {
-    return *rendered;
-  }
-
   if (const auto bir_module = c4c::backend::try_lower_to_bir(module); bir_module.has_value()) {
     try {
       return emit_module(*bir_module);
@@ -4124,11 +4120,6 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
       }
     }
   }
-  throw_unsupported_direct_lir_module();
-}
-
-std::string emit_module_after_failed_bir_lowering(
-    const c4c::codegen::lir::LirModule& module) {
   if (const auto rendered = try_emit_direct_lir_module(module); rendered.has_value()) {
     return *rendered;
   }

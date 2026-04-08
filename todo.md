@@ -6,15 +6,36 @@ Source Plan: plan.md
 
 - Step 4 cleanup: keep shrinking adapter-only legacy-lowering surface now that
   `src/backend/ir.hpp` and `lir_to_backend_ir.*` are already gone
-- Current slice: inventory the remaining aarch64 shared-entry/raw-LIR retry
-  seam after proving the x86 duplicate failed-lowering retry can collapse
-  safely while aarch64 still needs its prune-before-lower path
-- Next intended slice: if the remaining aarch64 retry is only preserving
-  backend-side entry-alloca pruning or general-LIR coverage, isolate that fact
-  behind one explicit helper or note it as the Step 4 stop point before the
-  next legacy-lowering deletion cut
+- Current slice: re-inventory the remaining aarch64 prune-before-lower path
+  now that the x86 failed-BIR helper seam is gone from shared backend entry
+- Next intended slice: if the remaining aarch64 path is only target-owned
+  entry-alloca normalization plus general-LIR coverage, record that as the
+  Step 4 stop point and move the next cut to Step 5 legacy file/build-graph
+  deletion work
 
 # Completed
+
+- Removed the adapter-only
+  `src/backend/x86/codegen/emit.{hpp,cpp}`
+  `emit_module_after_failed_bir_lowering(...)` seam by making
+  `c4c::backend::x86::emit_module(const LirModule&)` own the backend-entry
+  order directly: try shared BIR first, then fall back to the native direct-LIR
+  subset path when BIR lowering or bounded direct-BIR emission declines the
+  module
+- Simplified `src/backend/backend.cpp` so failed shared-BIR lowering on
+  `Target::X86_64` / `Target::I686` now reuses the standard x86 LIR emitter
+  entry instead of routing through a special failed-lowering wrapper; the
+  remaining aarch64 asymmetry is the real `prune_module_entry_allocas(...)`
+  normalization path inside `src/backend/aarch64/codegen/emit.cpp`
+- Rebuilt `backend_bir_tests` and `c4cll`, reran focused
+  `ctest --test-dir build -R '^(backend_bir_tests|asm_unsupported)$' --output-on-failure`,
+  reran the full `ctest --test-dir build -j8 --output-on-failure` suite into
+  `test_fail_after.log`, and confirmed the workspace moved from the
+  `2831/2834` passing `test_fail_before.log` baseline to `2834/2834` passing
+  with 0 failures
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=3 failed=-3`
+  and zero newly failing tests against `test_fail_before.log`
 
 - Compared `src/backend/backend.cpp` shared LIR dispatch against the native
   target emitters and confirmed the broad “native emitter first” cleanup was
