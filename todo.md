@@ -7,10 +7,10 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 1: audit the typed type boundary and backend ownership seams
-- Current slice: finish the direct-call helper recognizer audit by replacing
-  the remaining raw `"i32"` checks on typed `LirTypeRef` helper operations and
-  decide whether pointer payload support is required immediately for the next
-  lowering slice
+- Current slice: move the next typed-lowering pass back into
+  `src/backend/lowering/lir_to_bir.cpp` and replace the remaining
+  instruction-local raw `i8`/`i32`/`i64` checks that still bypass semantic
+  `LirTypeRef` inspection
 
 ## Completed
 
@@ -128,6 +128,17 @@ Source Plan: plan.md
   slot-add, identity, and two-param helper recognizers working when helper
   operations are built from typed `LirTypeRef::integer(32)` metadata while the
   signature text stays stale
+- Re-ran `backend_shared_util_tests`, `backend_bir_tests`, and the full suite
+  with the regression guard still passing (`2841 -> 2841`)
+- Switched the remaining direct-call typed-operation checks in
+  `src/backend/lowering/lir_to_bir.cpp` from raw `"i32"` string matching to
+  semantic `LirTypeRef` integer-width inspection for direct-call local slots,
+  caller stores, dual-identity subtraction, and call-crossing add chains
+- Tightened the direct-call typed-operation regressions in
+  `tests/backend/backend_bir_lowering_tests.cpp` and
+  `tests/backend/backend_shared_util_tests.cpp` so the helper/caller
+  `LirTypeRef` objects carry semantic `i32` metadata while their stored text is
+  intentionally stale
 - Re-ran `backend_shared_util_tests`, `backend_bir_tests`, and the full suite
   with the regression guard still passing (`2841 -> 2841`)
 - Completed the active helper-recognizer audit:

@@ -514,6 +514,10 @@ c4c::codegen::lir::LirModule make_bir_minimal_two_arg_direct_call_local_slot_lir
   return module;
 }
 
+c4c::codegen::lir::LirTypeRef make_test_stale_text_i32_lir_type() {
+  return c4c::codegen::lir::LirTypeRef("i8", c4c::codegen::lir::LirTypeKind::Integer, 32);
+}
+
 c4c::codegen::lir::LirModule
 make_bir_minimal_two_arg_direct_call_lir_module_with_typed_helper_params() {
   using namespace c4c::codegen::lir;
@@ -531,7 +535,7 @@ make_bir_minimal_two_arg_direct_call_lir_module_with_typed_helper_params() {
 
   auto& helper_entry = helper.blocks.front();
   auto& add = std::get<LirBinOp>(helper_entry.insts.front());
-  add.type_str = LirTypeRef::integer(32);
+  add.type_str = make_test_stale_text_i32_lir_type();
 
   return module;
 }
@@ -589,7 +593,7 @@ make_bir_minimal_direct_call_add_imm_lir_module_with_typed_helper_param() {
 
   auto& helper_entry = helper.blocks.front();
   auto& add = std::get<LirBinOp>(helper_entry.insts.front());
-  add.type_str = LirTypeRef::integer(32);
+  add.type_str = make_test_stale_text_i32_lir_type();
 
   return module;
 }
@@ -607,16 +611,16 @@ make_bir_minimal_direct_call_add_imm_slot_lir_module_with_typed_helper_param() {
   param_type.base = c4c::TB_INT;
   helper.params.push_back({"%arg0", param_type});
   helper.signature_text = "define i32 @add_one(i8 %arg0)\n";
-  helper.alloca_insts.push_back(LirAllocaOp{"%slot", "i32", "", 4});
-  helper.alloca_insts.push_back(LirStoreOp{"i32", "%arg0", "%slot"});
+  helper.alloca_insts.push_back(LirAllocaOp{"%slot", make_test_stale_text_i32_lir_type(), "", 4});
+  helper.alloca_insts.push_back(LirStoreOp{make_test_stale_text_i32_lir_type(), "%arg0", "%slot"});
 
   auto& helper_entry = helper.blocks.front();
   helper_entry.insts.clear();
-  helper_entry.insts.push_back(LirLoadOp{"%t0", "i32", "%slot"});
-  helper_entry.insts.push_back(LirBinOp{"%sum", LirBinaryOpcode::Add, LirTypeRef::integer(32),
+  helper_entry.insts.push_back(LirLoadOp{"%t0", make_test_stale_text_i32_lir_type(), "%slot"});
+  helper_entry.insts.push_back(LirBinOp{"%sum", LirBinaryOpcode::Add, make_test_stale_text_i32_lir_type(),
                                         "%t0", "1"});
-  helper_entry.insts.push_back(LirStoreOp{"i32", "%sum", "%slot"});
-  helper_entry.insts.push_back(LirLoadOp{"%t1", "i32", "%slot"});
+  helper_entry.insts.push_back(LirStoreOp{make_test_stale_text_i32_lir_type(), "%sum", "%slot"});
+  helper_entry.insts.push_back(LirLoadOp{"%t1", make_test_stale_text_i32_lir_type(), "%slot"});
   helper_entry.terminator = LirRet{std::string("%t1"), "i32"};
 
   return module;
@@ -738,8 +742,8 @@ make_bir_minimal_folded_two_arg_direct_call_lir_module_with_typed_helper_params(
   auto& helper_entry = helper.blocks.front();
   auto& add = std::get<LirBinOp>(helper_entry.insts[0]);
   auto& sub = std::get<LirBinOp>(helper_entry.insts[1]);
-  add.type_str = LirTypeRef::integer(32);
-  sub.type_str = LirTypeRef::integer(32);
+  add.type_str = make_test_stale_text_i32_lir_type();
+  sub.type_str = make_test_stale_text_i32_lir_type();
 
   return module;
 }
@@ -888,7 +892,13 @@ make_bir_minimal_call_crossing_direct_call_lir_module_with_typed_helper_param() 
 
   auto& helper_entry = helper.blocks.front();
   auto& add = std::get<LirBinOp>(helper_entry.insts.front());
-  add.type_str = LirTypeRef::integer(32);
+  add.type_str = make_test_stale_text_i32_lir_type();
+
+  auto& main_entry = module.functions[1].blocks.front();
+  auto& source_add = std::get<LirBinOp>(main_entry.insts[0]);
+  auto& final_add = std::get<LirBinOp>(main_entry.insts[2]);
+  source_add.type_str = make_test_stale_text_i32_lir_type();
+  final_add.type_str = make_test_stale_text_i32_lir_type();
 
   return module;
 }

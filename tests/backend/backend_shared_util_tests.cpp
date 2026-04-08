@@ -508,6 +508,10 @@ c4c::TypeSpec make_test_i32_typespec() {
   return type;
 }
 
+c4c::codegen::lir::LirTypeRef make_test_stale_text_i32_lir_type() {
+  return c4c::codegen::lir::LirTypeRef("i8", c4c::codegen::lir::LirTypeKind::Integer, 32);
+}
+
 }  // namespace
 
 void test_backend_shared_call_decode_accepts_typed_i32_single_add_imm_helper() {
@@ -522,7 +526,7 @@ void test_backend_shared_call_decode_accepts_typed_i32_single_add_imm_helper() {
   entry.insts.push_back(c4c::codegen::lir::LirBinOp{
       .result = "%sum",
       .opcode = c4c::codegen::lir::LirBinaryOpcode::Add,
-      .type_str = c4c::codegen::lir::LirTypeRef::integer(32),
+      .type_str = make_test_stale_text_i32_lir_type(),
       .lhs = "%arg0",
       .rhs = "1",
   });
@@ -546,12 +550,12 @@ void test_backend_shared_call_decode_accepts_typed_i32_slot_add_helper() {
   function.signature_text = "define i32 @slot_add(i8 %stale)";
   function.alloca_insts.push_back(c4c::codegen::lir::LirAllocaOp{
       .result = "%slot",
-      .type_str = c4c::codegen::lir::LirTypeRef::integer(32),
+      .type_str = make_test_stale_text_i32_lir_type(),
       .count = "",
       .align = 4,
   });
   function.alloca_insts.push_back(c4c::codegen::lir::LirStoreOp{
-      .type_str = c4c::codegen::lir::LirTypeRef::integer(32),
+      .type_str = make_test_stale_text_i32_lir_type(),
       .val = "%arg0",
       .ptr = "%slot",
   });
@@ -560,24 +564,24 @@ void test_backend_shared_call_decode_accepts_typed_i32_slot_add_helper() {
   entry.label = "entry";
   entry.insts.push_back(c4c::codegen::lir::LirLoadOp{
       .result = "%t0",
-      .type_str = c4c::codegen::lir::LirTypeRef::integer(32),
+      .type_str = make_test_stale_text_i32_lir_type(),
       .ptr = "%slot",
   });
   entry.insts.push_back(c4c::codegen::lir::LirBinOp{
       .result = "%sum",
       .opcode = c4c::codegen::lir::LirBinaryOpcode::Add,
-      .type_str = c4c::codegen::lir::LirTypeRef::integer(32),
+      .type_str = make_test_stale_text_i32_lir_type(),
       .lhs = "%t0",
       .rhs = "1",
   });
   entry.insts.push_back(c4c::codegen::lir::LirStoreOp{
-      .type_str = c4c::codegen::lir::LirTypeRef::integer(32),
+      .type_str = make_test_stale_text_i32_lir_type(),
       .val = "%sum",
       .ptr = "%slot",
   });
   entry.insts.push_back(c4c::codegen::lir::LirLoadOp{
       .result = "%t1",
-      .type_str = c4c::codegen::lir::LirTypeRef::integer(32),
+      .type_str = make_test_stale_text_i32_lir_type(),
       .ptr = "%slot",
   });
   entry.terminator = c4c::codegen::lir::LirRet{std::string("%t1"), "i32"};

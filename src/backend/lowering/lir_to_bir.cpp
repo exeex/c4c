@@ -667,7 +667,8 @@ std::optional<bir::Module> try_lower_minimal_two_arg_direct_call_module(
     const std::vector<LirInst> slot_prefix(main_block.insts.begin(), main_block.insts.end() - 1);
     if (main_function.alloca_insts.size() == 1) {
       const auto* alloca = std::get_if<LirAllocaOp>(&main_function.alloca_insts.front());
-      if (alloca == nullptr || alloca->type_str != "i32" || !alloca->count.empty()) {
+      if (alloca == nullptr || !backend_lir_type_is_i32(alloca->type_str) ||
+          !alloca->count.empty()) {
         return std::nullopt;
       }
 
@@ -702,8 +703,9 @@ std::optional<bir::Module> try_lower_minimal_two_arg_direct_call_module(
 
     const auto* lhs_alloca = std::get_if<LirAllocaOp>(&main_function.alloca_insts[0]);
     const auto* rhs_alloca = std::get_if<LirAllocaOp>(&main_function.alloca_insts[1]);
-    if (lhs_alloca == nullptr || rhs_alloca == nullptr || lhs_alloca->type_str != "i32" ||
-        rhs_alloca->type_str != "i32" || !lhs_alloca->count.empty() ||
+    if (lhs_alloca == nullptr || rhs_alloca == nullptr ||
+        !backend_lir_type_is_i32(lhs_alloca->type_str) ||
+        !backend_lir_type_is_i32(rhs_alloca->type_str) || !lhs_alloca->count.empty() ||
         !rhs_alloca->count.empty()) {
       return std::nullopt;
     }
@@ -835,7 +837,8 @@ std::optional<bir::Module> try_lower_minimal_direct_call_add_imm_module(
       call_arg_imm = parse_backend_i64_literal(*operand);
     } else if (caller.alloca_insts.size() == 1) {
       const auto* alloca = std::get_if<LirAllocaOp>(&caller.alloca_insts.front());
-      if (alloca == nullptr || alloca->type_str != "i32" || !alloca->count.empty()) {
+      if (alloca == nullptr || !backend_lir_type_is_i32(alloca->type_str) ||
+          !alloca->count.empty()) {
         return std::nullopt;
       }
 
@@ -853,7 +856,8 @@ std::optional<bir::Module> try_lower_minimal_direct_call_add_imm_module(
       }
 
       const auto* store = std::get_if<LirStoreOp>(&caller_block.insts.front());
-      if (store == nullptr || store->type_str != "i32" || store->ptr != alloca->result) {
+      if (store == nullptr || !backend_lir_type_is_i32(store->type_str) ||
+          store->ptr != alloca->result) {
         return std::nullopt;
       }
       call_arg_imm = parse_backend_i64_literal(store->val);
@@ -1190,7 +1194,7 @@ std::optional<bir::Module> try_lower_minimal_dual_identity_direct_call_sub_modul
     const auto* sub = std::get_if<LirBinOp>(&main_block.insts[2]);
     const auto sub_opcode = sub == nullptr ? std::nullopt : sub->opcode.typed();
     if (lhs_call == nullptr || rhs_call == nullptr || sub == nullptr ||
-        sub_opcode != LirBinaryOpcode::Sub || sub->type_str != "i32" ||
+        sub_opcode != LirBinaryOpcode::Sub || !backend_lir_type_is_i32(sub->type_str) ||
         lhs_call->result.empty() || rhs_call->result.empty() || sub->result.empty() ||
         sub->lhs != lhs_call->result || sub->rhs != rhs_call->result ||
         *main_ret->value_str != sub->result) {
@@ -1348,7 +1352,8 @@ std::optional<bir::Module> try_lower_minimal_call_crossing_direct_call_module(
         final_add == nullptr ? std::nullopt : final_add->opcode.typed();
     if (source_add == nullptr || call == nullptr || final_add == nullptr ||
         source_add_opcode != LirBinaryOpcode::Add || final_add_opcode != LirBinaryOpcode::Add ||
-        source_add->type_str != "i32" || final_add->type_str != "i32" ||
+        !backend_lir_type_is_i32(source_add->type_str) ||
+        !backend_lir_type_is_i32(final_add->type_str) ||
         source_add->result.empty() || call->result.empty() || final_add->result.empty() ||
         final_add->lhs != source_add->result || final_add->rhs != call->result ||
         *main_ret->value_str != final_add->result) {
