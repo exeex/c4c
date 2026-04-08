@@ -80,7 +80,8 @@ c4c::codegen::lir::LirModule make_bir_return_zext_module() {
   LirBlock entry;
   entry.id = LirBlockId{0};
   entry.label = "entry";
-  entry.insts.push_back(LirCastOp{"%t0", LirCastKind::ZExt, "i8", "%p.x", "i32"});
+  entry.insts.push_back(
+      LirCastOp{"%t0", LirCastKind::ZExt, LirTypeRef::integer(8), "%p.x", LirTypeRef::integer(32)});
   entry.terminator = LirRet{std::string("%t0"), "i32"};
   function.blocks.push_back(std::move(entry));
 

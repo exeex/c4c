@@ -8,9 +8,9 @@ Source Plan: plan.md
 
 - Step 1: audit the typed type boundary and backend ownership seams
 - Current slice: extend the typed scalar seam beyond the first straight-line
-  integer lowering helpers by moving the remaining function-signature fallback
-  users and nearby typed LIR construction helpers onto explicit typed
-  `LirTypeRef` handling in `src/backend/lowering/lir_to_bir.cpp`
+  integer lowering helpers by removing the remaining signature-parameter text
+  fallback in `lower_function_params(...)` and pinning the nearby one-parameter
+  `i8` BIR fixture coverage to explicit typed `LirTypeRef` construction
 
 ## Completed
 
@@ -57,14 +57,24 @@ Source Plan: plan.md
   `test_fail_after.log`
 - Passed the regression guard check with no new failures and no pass-count drop
   (`2841 -> 2841`)
+- Replaced the remaining `lower_function_params(...)` signature-parameter
+  scalar fallback from raw `i8`/`i32`/`i64` string matching to
+  `LirTypeRef`-based typed lowering
+- Moved the nearby one-parameter `widen_unsigned` `i8` zext BIR fixture onto
+  explicit typed `LirTypeRef::integer(...)` cast construction
+- Added focused typed zext lowering coverage for the one-parameter `i8`
+  straight-line slice and kept it on the verified LIR path
+- Re-ran `backend_bir_tests`, nearby backend route tests, and the full suite
+  with the regression guard still passing (`2841 -> 2841`)
 
 ## Next
 
-- convert the remaining narrow integer-only signature fallback path in
-  `src/backend/lowering/lir_to_bir.cpp` that still reparses type text during
-  parameter lowering
-- continue moving LIR construction sites and test scaffolds onto explicit typed
-  integer constructors instead of relying on reparsing text at use sites
+- continue migrating nearby remaining typed integer construction sites in
+  backend BIR fixtures away from raw string literals where those refs feed
+  lowering decisions directly
+- audit whether the empty-`params` compatibility fallback in
+  `lower_function_params(...)` should stay temporarily text-backed or be
+  upgraded next to typed signature-param payloads
 - decide whether pointer payload support is needed immediately for the next
   lowering slice or should stay deferred until the first pointer-backed BIR
   consumer is converted

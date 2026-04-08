@@ -1754,6 +1754,21 @@ void test_bir_lowering_accepts_tiny_return_zext_lir_slice() {
                   "BIR lowering should return the named BIR zext result");
 }
 
+void test_bir_lowering_accepts_typed_tiny_return_zext_lir_slice() {
+  auto module = make_bir_return_zext_module();
+  c4c::codegen::lir::verify_module(module);
+
+  const auto lowered = c4c::backend::lower_to_bir(module);
+  const auto rendered = c4c::backend::bir::print(lowered);
+
+  expect_contains(rendered, "bir.func @widen_unsigned(i8 %p.x) -> i32 {",
+                  "BIR lowering should preserve the typed widened parameter signature for straight-line zext slices");
+  expect_contains(rendered, "%t0 = bir.zext i8 %p.x to i32",
+                  "BIR lowering should materialize typed straight-line zext slices in BIR terms");
+  expect_contains(rendered, "bir.ret i32 %t0",
+                  "BIR lowering should return the typed zext result on the direct BIR path");
+}
+
 void test_bir_lowering_accepts_tiny_return_trunc_lir_slice() {
   const auto lowered = c4c::backend::lower_to_bir(make_bir_return_trunc_module());
   const auto rendered = c4c::backend::bir::print(lowered);
@@ -3127,6 +3142,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_tiny_return_sub_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_sext_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_zext_lir_slice);
+  RUN_TEST(test_bir_lowering_accepts_typed_tiny_return_zext_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_trunc_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_mul_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_and_lir_slice);

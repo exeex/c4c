@@ -2598,7 +2598,7 @@ std::optional<std::vector<bir::Param>> lower_function_params(
 
   params.reserve(parsed_params->size());
   for (const auto& param : *parsed_params) {
-    const auto lowered_type = lower_scalar_type_text(param.type);
+    const auto lowered_type = lower_scalar_type(c4c::codegen::lir::LirTypeRef(param.type));
     if (param.is_varargs || !lowered_type.has_value() || param.operand.empty()) {
       return std::nullopt;
     }
