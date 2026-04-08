@@ -515,18 +515,6 @@ void test_backend_bir_pipeline_drives_x86_direct_bir_minimal_void_direct_call_im
   c4c::backend::bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
   module.functions.push_back(c4c::backend::bir::Function{
-      .name = "voidfn",
-      .return_type = c4c::backend::bir::TypeKind::Void,
-      .params = {},
-      .local_slots = {},
-      .blocks = {c4c::backend::bir::Block{
-          .label = "entry",
-          .insts = {},
-          .terminator = c4c::backend::bir::ReturnTerminator{},
-      }},
-      .is_declaration = false,
-  });
-  module.functions.push_back(c4c::backend::bir::Function{
       .name = "main",
       .return_type = c4c::backend::bir::TypeKind::I32,
       .params = {},
@@ -542,6 +530,18 @@ void test_backend_bir_pipeline_drives_x86_direct_bir_minimal_void_direct_call_im
           .terminator = c4c::backend::bir::ReturnTerminator{
               .value = c4c::backend::bir::Value::immediate_i32(9),
           },
+      }},
+      .is_declaration = false,
+  });
+  module.functions.push_back(c4c::backend::bir::Function{
+      .name = "voidfn",
+      .return_type = c4c::backend::bir::TypeKind::Void,
+      .params = {},
+      .local_slots = {},
+      .blocks = {c4c::backend::bir::Block{
+          .label = "entry",
+          .insts = {},
+          .terminator = c4c::backend::bir::ReturnTerminator{},
       }},
       .is_declaration = false,
   });

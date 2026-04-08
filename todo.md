@@ -7,10 +7,32 @@ Source Plan: plan.md
 - Step 2: switch one shared helper seam off `BackendModule`
 - Current slice: inspect the remaining Step 2 emitter-local helper clusters for
   the next `BackendModule` seam that still carries real metadata instead of
-  being a dead forwarding wrapper
+  being a dead forwarding wrapper after the x86 zero-arg void-helper /
+  fixed-immediate direct-call family finished its BIR-first cutover
 
 # Completed
 
+- Switched the x86 zero-argument void-helper / fixed-immediate caller direct-BIR
+  family to consume
+  `parse_bir_minimal_void_direct_call_imm_return_module(...)` directly in
+  `src/backend/x86/codegen/emit.cpp`, removing the target-local wrapper struct
+  and parser that only forwarded helper/caller names plus the fixed return
+  immediate
+- Tightened the focused x86 BIR pipeline regression for that family so the
+  direct-BIR test still passes when the caller appears before the helper in the
+  module function list, proving the shared BIR parser is the real pairing seam
+- Rebuilt `backend_bir_tests`, `backend_shared_util_tests`, and `c4cll`
+  successfully after the x86 void-direct-call cleanup
+- Reran
+  `ctest --test-dir build -R 'backend_(bir_tests|shared_util_tests)' --output-on-failure`
+  successfully after the cleanup
+- Reran the full `ctest --test-dir build -j --output-on-failure` suite and
+  refreshed `test_after.log` / `test_fail_after.log`; the workspace still has
+  the same 13 known failures as `test_fail_before.log` with `2821/2834` tests
+  passing
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=0 failed=0`
+  and zero newly failing tests
 - Removed the next verified-dead target-local `BackendModule` forwarding
   overloads from `src/backend/x86/codegen/emit.cpp` and
   `src/backend/aarch64/codegen/emit.cpp` after confirming all live callers
