@@ -4,6 +4,101 @@
 
 namespace {
 
+c4c::codegen::lir::LirModule make_lir_minimal_direct_call_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction helper;
+  helper.name = "helper";
+  helper.signature_text = "define i32 @helper()\n";
+  helper.entry = LirBlockId{0};
+
+  LirBlock helper_entry;
+  helper_entry.id = LirBlockId{0};
+  helper_entry.label = "entry";
+  helper_entry.terminator = LirRet{std::string("42"), "i32"};
+  helper.blocks.push_back(std::move(helper_entry));
+
+  LirFunction main_function;
+  main_function.name = "main";
+  main_function.signature_text = "define i32 @main()\n";
+  main_function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{"%t0", "i32", "@helper", "", ""});
+  entry.terminator = LirRet{std::string("%t0"), "i32"};
+  main_function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(main_function));
+  module.functions.push_back(std::move(helper));
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_lir_declared_direct_call_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.extern_decls.push_back(LirExternDecl{"puts_like", "i32"});
+  module.string_pool.push_back(LirStringConst{"@msg", "hello\\0A", 7});
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{"%t0", "i32", "@puts_like", "", "ptr @msg"});
+  entry.terminator = LirRet{std::string("7"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_lir_minimal_void_direct_call_imm_return_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction helper;
+  helper.name = "voidfn";
+  helper.signature_text = "define void @voidfn()\n";
+  helper.entry = LirBlockId{0};
+
+  LirBlock helper_entry;
+  helper_entry.id = LirBlockId{0};
+  helper_entry.label = "entry";
+  helper_entry.terminator = LirRet{std::nullopt, "void"};
+  helper.blocks.push_back(std::move(helper_entry));
+
+  LirFunction main_function;
+  main_function.name = "main";
+  main_function.signature_text = "define i32 @main()\n";
+  main_function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{"", "void", "@voidfn", "", ""});
+  entry.terminator = LirRet{std::string("9"), "i32"};
+  main_function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(main_function));
+  module.functions.push_back(std::move(helper));
+  return module;
+}
+
 void test_backend_bir_pipeline_drives_aarch64_direct_bir_minimal_direct_call_end_to_end() {
   c4c::backend::bir::Module module;
   module.functions.push_back(c4c::backend::bir::Function{
@@ -157,6 +252,53 @@ void test_backend_bir_pipeline_drives_aarch64_direct_bir_minimal_void_direct_cal
                   "direct BIR void direct-call input should preserve the fixed caller return immediate on the native aarch64 path");
   expect_not_contains(rendered, "target triple =",
                       "direct BIR void direct-call input should stay on native aarch64 asm emission");
+}
+
+void test_backend_bir_pipeline_drives_aarch64_lir_minimal_direct_call_through_bir_end_to_end() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_lir_minimal_direct_call_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Aarch64));
+
+  expect_contains(rendered, ".type helper, %function\nhelper:",
+                  "aarch64 LIR minimal direct-call input should still emit the helper definition after routing through the shared BIR path");
+  expect_contains(rendered, "mov w0, #42",
+                  "aarch64 LIR minimal direct-call input should preserve the helper immediate on the BIR-owned route");
+  expect_contains(rendered, "bl helper",
+                  "aarch64 LIR minimal direct-call input should lower the helper call on the native aarch64 path");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 LIR minimal direct-call input should stay on native asm emission instead of falling back to LLVM text");
+}
+
+void test_backend_bir_pipeline_drives_aarch64_lir_minimal_void_direct_call_imm_return_through_bir_end_to_end() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_lir_minimal_void_direct_call_imm_return_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Aarch64));
+
+  expect_contains(rendered, ".type voidfn, %function\nvoidfn:",
+                  "aarch64 LIR void direct-call input should still emit the helper definition after routing through the shared BIR path");
+  expect_contains(rendered, "bl voidfn",
+                  "aarch64 LIR void direct-call input should lower the helper call on the native aarch64 path");
+  expect_contains(rendered, "mov w0, #9",
+                  "aarch64 LIR void direct-call input should preserve the fixed caller return immediate on the BIR-owned route");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 LIR void direct-call input should stay on native asm emission instead of falling back to LLVM text");
+}
+
+void test_backend_bir_pipeline_drives_aarch64_lir_declared_direct_call_through_bir_end_to_end() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_lir_declared_direct_call_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Aarch64));
+
+  expect_contains(rendered, ".section .rodata",
+                  "aarch64 LIR declared direct-call input should now reach the BIR-owned extern-call emitter path");
+  expect_contains(rendered, ".asciz \"hello\\n\"",
+                  "aarch64 LIR declared direct-call input should preserve string bytes through the BIR lowering seam");
+  expect_contains(rendered, "bl puts_like",
+                  "aarch64 LIR declared direct-call input should still lower the declared call after the aarch64 legacy seam is bypassed");
+  expect_contains(rendered, "mov w0, #7",
+                  "aarch64 LIR declared direct-call input should preserve the fixed immediate return override on the BIR path");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 LIR declared direct-call input should stay on native asm emission instead of falling back to LLVM text");
 }
 
 void test_backend_bir_pipeline_drives_aarch64_single_param_chain_end_to_end() {
@@ -611,6 +753,9 @@ void run_backend_bir_pipeline_aarch64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_direct_bir_minimal_direct_call_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_direct_bir_declared_direct_call_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_direct_bir_minimal_void_direct_call_imm_return_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_aarch64_lir_minimal_direct_call_through_bir_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_aarch64_lir_minimal_void_direct_call_imm_return_through_bir_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_aarch64_lir_declared_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_single_param_chain_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_direct_bir_zero_param_staged_constant_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_two_param_add_end_to_end);

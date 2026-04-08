@@ -5,17 +5,31 @@ Source Plan: plan.md
 # Active Item
 
 - Step 2: switch one shared helper seam off `BackendModule`
-- Current slice: inspect the remaining Step 2 emitter-local helper clusters for
-  the next `BackendModule` seam that still carries real metadata instead of
-  being a dead forwarding wrapper after the x86 zero-arg void-helper /
-  fixed-immediate direct-call family finished its BIR-first cutover
-- Next intended slice: inspect the remaining x86/aarch64 emitter-local
-  `BackendModule` parser families after the single-function scalar-control-flow
-  cleanup and pick the next cluster that is now dead forwarding glue rather
-  than a real metadata-bearing seam
+- Current slice: add missing aarch64 end-to-end regression coverage for the
+  Step 2 direct-call families already migrated to `try_lower_to_bir(...)` so
+  the native aarch64 path proves LIR helper/main and declared-call inputs stay
+  on the BIR-owned route instead of silently depending on legacy lowering
+- Next intended slice: resume inspecting the remaining x86/aarch64 emitter-local
+  `BackendModule` parser families after the aarch64 LIR-through-BIR coverage
+  lands and pick the next cluster that is dead forwarding glue rather than a
+  real metadata-bearing seam
 
 # Completed
 
+- Added missing aarch64 backend pipeline coverage for the Step 2 shared-BIR
+  direct-call families so LIR helper/main, void-helper/fixed-return, and
+  declared extern-call inputs are now all exercised end-to-end through
+  `try_lower_to_bir(...)` on the native aarch64 path
+- Rebuilt `backend_bir_tests` successfully after the aarch64 direct-call
+  coverage expansion
+- Reran `ctest --test-dir build -R 'backend_bir_tests' --output-on-failure`
+  successfully after the aarch64 coverage expansion
+- Reran the full `ctest --test-dir build -j --output-on-failure` suite and
+  refreshed `test_fail_after.log`; the workspace still has the same 13 known
+  failures as `test_fail_before.log` with `2821/2834` tests passing
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=0 failed=0`
+  and zero newly failing tests
 - Removed the dead x86/aarch64 `BackendModule` single-function scalar-control-flow
   overload set for minimal return/add/sub/affine parsing and emission now that
   the active direct path already routes those slices through BIR-owned helpers
