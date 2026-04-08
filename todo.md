@@ -5,15 +5,32 @@ Source Plan: plan.md
 # Active Item
 
 - Step 3: migrate the next aarch64 emitter helper cluster onto direct BIR
-- Current slice: continue shrinking the remaining
-  `parse_backend_minimal_*_lir_module(...)` inventory in
-  `src/backend/lowering/call_decode.hpp` by moving the next small live
-  direct-call lowering family into `src/backend/lowering/lir_to_bir.cpp`
+- Current slice: remove
+  `parse_backend_minimal_direct_call_identity_arg_lir_module(...)` from
+  `src/backend/lowering/call_decode.hpp` by matching that identity direct-call
+  LIR shape directly in `src/backend/lowering/lir_to_bir.cpp`
 - Next intended slice: remove the next simplest surviving direct-call adapter
-  family after the two-argument helper, likely the add-immediate direct-call
-  helper, once focused BIR lowering coverage is in place
+  family after the identity helper, likely the dual-identity subtraction
+  direct-call helper, once focused BIR lowering coverage is in place
 
 # Completed
+
+- Removed the still-live
+  `parse_backend_minimal_direct_call_add_imm_lir_module(...)` adapter and its
+  `ParsedBackendMinimalDirectCallAddImmLirModuleView` from
+  `src/backend/lowering/call_decode.hpp` by matching that add-immediate
+  direct-call LIR shape directly in `src/backend/lowering/lir_to_bir.cpp`
+- Rebuilt `backend_bir_tests`, `backend_shared_util_tests`, and `c4cll`
+  successfully after the add-immediate direct-call adapter removal
+- Reran
+  `ctest --test-dir build -R 'backend_bir_tests|backend_shared_util_tests' --output-on-failure`
+  successfully after the add-immediate direct-call adapter removal
+- Reran the full `ctest --test-dir build -j --output-on-failure` suite and
+  refreshed `test_fail_after.log`; the workspace stayed at `2834/2834`
+  passing with 0 failures
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=13 failed=-13`
+  and zero newly failing tests
 
 - Removed the still-live
   `parse_backend_minimal_two_arg_direct_call_lir_module(...)` adapter and its

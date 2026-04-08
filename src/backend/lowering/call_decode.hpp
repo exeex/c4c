@@ -192,14 +192,6 @@ struct ParsedBackendMinimalFoldedTwoArgDirectCallLirModuleView {
   std::int64_t return_imm = 0;
 };
 
-struct ParsedBackendMinimalDirectCallAddImmLirModuleView {
-  const c4c::codegen::lir::LirFunction* helper = nullptr;
-  const c4c::codegen::lir::LirFunction* main_function = nullptr;
-  const c4c::codegen::lir::LirCallOp* call = nullptr;
-  std::int64_t call_arg_imm = 0;
-  std::int64_t add_imm = 0;
-};
-
 struct ParsedBackendMinimalDirectCallIdentityArgLirModuleView {
   const c4c::codegen::lir::LirFunction* helper = nullptr;
   const c4c::codegen::lir::LirFunction* main_function = nullptr;
@@ -1896,105 +1888,6 @@ parse_backend_minimal_folded_two_arg_direct_call_lir_module(
       *rhs_call_arg_imm,
       helper_shape->base_imm + *lhs_call_arg_imm - *rhs_call_arg_imm,
   };
-}
-
-inline std::optional<ParsedBackendMinimalDirectCallAddImmLirModuleView>
-parse_backend_minimal_direct_call_add_imm_lir_module(
-    const c4c::codegen::lir::LirModule& module) {
-  using namespace c4c::codegen::lir;
-
-  if (module.functions.size() != 2 || !module.globals.empty() ||
-      !module.string_pool.empty() || !module.extern_decls.empty()) {
-    return std::nullopt;
-  }
-
-  const auto try_match =
-      [](const LirFunction& caller,
-         const LirFunction& helper) -> std::optional<ParsedBackendMinimalDirectCallAddImmLirModuleView> {
-    if (caller.is_declaration || helper.is_declaration ||
-        !backend_lir_signature_matches(
-            caller.signature_text, "define", "i32", caller.name, {}) ||
-        caller.entry.value != 0 || helper.entry.value != 0 || caller.blocks.size() != 1 ||
-        helper.blocks.size() != 1 || !caller.stack_objects.empty()) {
-      return std::nullopt;
-    }
-
-    const auto helper_shape = parse_backend_single_add_imm_function(helper, std::nullopt);
-    if (!helper_shape.has_value()) {
-      return std::nullopt;
-    }
-
-    const auto& caller_block = caller.blocks.front();
-    const auto* caller_ret = std::get_if<LirRet>(&caller_block.terminator);
-    if (caller_block.label != "entry" || caller_ret == nullptr ||
-        !caller_ret->value_str.has_value() || caller_ret->type_str != "i32" ||
-        caller_block.insts.empty()) {
-      return std::nullopt;
-    }
-
-    const auto* call = std::get_if<LirCallOp>(&caller_block.insts.back());
-    if (call == nullptr || call->result.empty() || call->result != *caller_ret->value_str) {
-      return std::nullopt;
-    }
-
-    std::optional<std::int64_t> call_arg_imm;
-    if (caller.alloca_insts.empty()) {
-      if (caller_block.insts.size() != 1) {
-        return std::nullopt;
-      }
-      const auto operand =
-          parse_backend_direct_global_single_typed_call_operand(*call, helper.name, "i32");
-      if (!operand.has_value()) {
-        return std::nullopt;
-      }
-      call_arg_imm = parse_backend_i64_literal(*operand);
-    } else if (caller.alloca_insts.size() == 1) {
-      const auto* alloca = std::get_if<LirAllocaOp>(&caller.alloca_insts.front());
-      if (alloca == nullptr || alloca->type_str != "i32" || !alloca->count.empty()) {
-        return std::nullopt;
-      }
-
-      const auto parsed_local_call =
-          parse_backend_single_local_typed_call(caller_block.insts, alloca->result);
-      if (!parsed_local_call.has_value() || parsed_local_call->arg_load == nullptr ||
-          parsed_local_call->call == nullptr) {
-        return std::nullopt;
-      }
-      const auto operand = parse_backend_direct_global_single_typed_call_operand(
-          *parsed_local_call->call, helper.name, "i32");
-      if (!operand.has_value() || *operand != parsed_local_call->arg_load->result) {
-        return std::nullopt;
-      }
-
-      const auto* store = std::get_if<LirStoreOp>(&caller_block.insts.front());
-      if (store == nullptr || store->type_str != "i32" || store->ptr != alloca->result) {
-        return std::nullopt;
-      }
-      call_arg_imm = parse_backend_i64_literal(store->val);
-    } else {
-      return std::nullopt;
-    }
-
-    const auto add_imm = parse_backend_i64_literal(helper_shape->add->rhs);
-    if (!call_arg_imm.has_value() || !add_imm.has_value()) {
-      return std::nullopt;
-    }
-
-    return ParsedBackendMinimalDirectCallAddImmLirModuleView{
-        &helper,
-        &caller,
-        call,
-        *call_arg_imm,
-        *add_imm,
-    };
-  };
-
-  const auto& first = module.functions[0];
-  const auto& second = module.functions[1];
-  if (const auto parsed = try_match(first, second); parsed.has_value()) {
-    return parsed;
-  }
-  return try_match(second, first);
 }
 
 inline std::optional<ParsedBackendMinimalDirectCallIdentityArgLirModuleView>
