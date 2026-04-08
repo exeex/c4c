@@ -1,7 +1,7 @@
 #include "ir_printer.hpp"
 
 #include "ir.hpp"
-#include "../codegen/lir/call_args.hpp"
+#include "../codegen/lir/call_args_ops.hpp"
 
 #include <sstream>
 #include <string_view>

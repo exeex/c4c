@@ -1,7 +1,7 @@
 #include "slot_assignment.hpp"
 
 #include "alloca_coalescing.hpp"
-#include "../../codegen/lir/call_args.hpp"
+#include "../../codegen/lir/call_args_ops.hpp"
 
 #include <algorithm>
 #include <unordered_map>

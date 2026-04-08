@@ -1,7 +1,7 @@
 #include "analysis.hpp"
 
 #include "regalloc_helpers.hpp"
-#include "../../codegen/lir/call_args.hpp"
+#include "../../codegen/lir/call_args_ops.hpp"
 
 #include <algorithm>
 

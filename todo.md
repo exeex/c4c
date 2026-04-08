@@ -17,6 +17,23 @@ Source Plan: plan.md
 
 # Completed
 
+- Split `src/codegen/lir/call_args.hpp` into a text-only layer plus a new
+  `src/codegen/lir/call_args_ops.hpp` wrapper header so `call_args.hpp` no
+  longer directly includes `ir.hpp`
+- Moved the `LirCallOp`-dependent helpers into
+  `src/codegen/lir/call_args_ops.hpp`, including `make_lir_call_op(...)`,
+  typed-call parsing overloads, `parse_lir_direct_global_typed_call(...)`,
+  `lir_call_has_no_args(...)`, `collect_lir_value_names_from_call(...)`,
+  `collect_lir_global_symbol_refs_from_call(...)`,
+  `rewrite_lir_call_operands(...)`, and `format_lir_call_site(...)`
+- Updated the owned include sites that need the `LirCallOp` wrappers to include
+  `call_args_ops.hpp` instead of `call_args.hpp`, including the backend IR
+  headers plus the LIR printer, call lowering, liveness, stack-layout, and
+  stmt-emitter call sites
+- Rebuilt the narrow ownership targets with
+  `cmake --build build -j8 --target c4cll backend_bir_tests backend_shared_util_tests`
+  successfully after the split
+
 - Removed `src/backend/lowering/lir_to_backend_ir.cpp` plus backend
   `ir.cpp` / `ir_printer.cpp` / `ir_validate.cpp` from both
   `FRONTEND_CXX_COMMON_SRCS` and `BACKEND_TEST_COMMON_SRCS` in

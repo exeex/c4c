@@ -3,7 +3,7 @@
 #include "lir_adapter_error.hpp"
 #include "../ir.hpp"
 
-#include "../../codegen/lir/call_args.hpp"
+#include "../../codegen/lir/call_args_ops.hpp"
 #include "../../codegen/lir/ir.hpp"
 
 #include <optional>
