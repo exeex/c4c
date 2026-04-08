@@ -2430,7 +2430,7 @@ std::optional<MinimalCountdownLoopSlice> parse_minimal_countdown_loop_slice(
   };
 }
 
-std::optional<std::int64_t> parse_minimal_countdown_do_while_return_imm(
+std::optional<MinimalNamedReturnImmSlice> parse_minimal_countdown_do_while_return_slice(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
 
@@ -2440,9 +2440,8 @@ std::optional<std::int64_t> parse_minimal_countdown_do_while_return_imm(
   }
 
   const auto& function = module.functions.front();
-  if (function.is_declaration ||
-      !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(function.signature_text) ||
-      function.entry.value != 0 || function.blocks.size() != 5 ||
+  if (!is_zero_arg_i32_lir_definition(function) || function.entry.value != 0 ||
+      function.blocks.size() != 5 ||
       function.alloca_insts.size() != 1 || !function.stack_objects.empty()) {
     return std::nullopt;
   }
@@ -2508,7 +2507,10 @@ std::optional<std::int64_t> parse_minimal_countdown_do_while_return_imm(
     return std::nullopt;
   }
 
-  return 0;
+  return MinimalNamedReturnImmSlice{
+      function.name,
+      0,
+  };
 }
 
 std::optional<MinimalConditionalPhiJoinSlice> parse_minimal_conditional_phi_join_slice(
@@ -6126,9 +6128,9 @@ std::optional<std::string> try_emit_direct_lir_module(
         slice.has_value()) {
       return emit_minimal_countdown_loop_asm(module.target_triple, *slice);
     }
-    if (const auto imm = parse_minimal_countdown_do_while_return_imm(module);
-        imm.has_value()) {
-      return emit_minimal_return_asm(module.target_triple, *imm);
+    if (const auto slice = parse_minimal_countdown_do_while_return_slice(module);
+        slice.has_value()) {
+      return emit_minimal_return_asm(module.target_triple, slice->function_name, slice->return_imm);
     }
     if (const auto slice = parse_minimal_conditional_phi_join_slice(module);
         slice.has_value()) {

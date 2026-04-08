@@ -2008,6 +2008,25 @@ void test_x86_backend_explicit_lir_emit_surface_matches_countdown_do_while_path(
   }
 }
 
+void test_x86_backend_explicit_lir_emit_surface_keeps_renamed_countdown_do_while_on_asm_path() {
+  auto module = make_countdown_do_while_return_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  auto& function = module.functions.front();
+  function.name = "entry_countdown";
+  function.signature_text = "define i32 @entry_countdown()\n";
+
+  const auto direct_rendered = c4c::backend::x86::emit_module(module);
+
+  expect_contains(direct_rendered, ".globl entry_countdown\n",
+                  "x86 countdown-do-while regression should publish the renamed caller symbol on the direct LIR asm path");
+  expect_contains(direct_rendered, "entry_countdown:\n",
+                  "x86 countdown-do-while regression should emit the renamed caller label on the direct LIR asm path");
+  expect_contains(direct_rendered, "mov eax, 0\n",
+                  "x86 countdown-do-while regression should keep renamed callers on the folded return-immediate asm path");
+  expect_not_contains(direct_rendered, "target triple =",
+                      "x86 countdown-do-while regression should not fall back to LLVM text when the bounded caller is no longer named main");
+}
+
 void test_x86_backend_scaffold_accepts_direct_conditional_phi_join_add_lir_input() {
   const auto rendered =
       c4c::backend::x86::emit_module(make_conditional_phi_join_add_module());
@@ -6839,6 +6858,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_scaffold_accepts_direct_typed_countdown_while_lir_input);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_keeps_renamed_countdown_while_on_asm_path);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_countdown_do_while_path);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_keeps_renamed_countdown_do_while_on_asm_path);
   RUN_TEST(test_x86_backend_scaffold_accepts_direct_conditional_phi_join_add_lir_input);
   RUN_TEST(test_x86_backend_scaffold_prefers_direct_bir_path_for_cast_return_lir_input);
   RUN_TEST(test_x86_backend_scaffold_renders_direct_return_immediate_slice);
