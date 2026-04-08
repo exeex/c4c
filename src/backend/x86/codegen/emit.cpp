@@ -13,6 +13,7 @@
 
 #include <charconv>
 #include <cctype>
+#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <optional>
@@ -601,10 +602,12 @@ std::optional<std::int64_t> parse_minimal_double_indirect_local_pointer_conditio
     return std::nullopt;
   }
 
-  // Abstract value: either an i64 scalar or a pointer alias to an alloca name.
+  // Abstract value: integer scalar, floating-point scalar, or pointer alias.
   struct AbsVal {
     bool is_ptr = false;
+    bool is_fp = false;
     std::int64_t ival = 0;
+    double fval = 0.0;
     std::string ptr_target;  // alloca name when is_ptr
   };
 
@@ -621,7 +624,7 @@ std::optional<std::int64_t> parse_minimal_double_indirect_local_pointer_conditio
 
   auto resolve = [&](const std::string& name) -> std::optional<AbsVal> {
     if (auto it = temps.find(name); it != temps.end()) return it->second;
-    if (auto v = parse_i64(name); v.has_value()) return AbsVal{false, *v, {}};
+    if (auto v = parse_i64(name); v.has_value()) return AbsVal{false, false, *v, 0.0, {}};
     return std::nullopt;
   };
 
@@ -653,7 +656,7 @@ std::optional<std::int64_t> parse_minimal_double_indirect_local_pointer_conditio
         // Value is either a literal, a temp, or an alloca name (address-of).
         if (auto sit = slots.find(store->val); sit != slots.end()) {
           // Storing the address of an alloca.
-          it->second = AbsVal{true, 0, store->val};
+          it->second = AbsVal{true, false, 0, 0.0, store->val};
         } else {
           auto val = resolve(store->val);
           if (!val) return std::nullopt;
@@ -672,36 +675,57 @@ std::optional<std::int64_t> parse_minimal_double_indirect_local_pointer_conditio
           temps[load->result] = sit->second;
         }
       } else if (const auto* cmp = std::get_if<LirCmpOp>(&inst)) {
-        if (cmp->is_float) return std::nullopt;
         auto lhs = resolve(cmp->lhs);
         auto rhs = resolve(cmp->rhs);
         if (!lhs || !rhs || lhs->is_ptr || rhs->is_ptr) return std::nullopt;
         bool result = false;
         std::string_view pred = cmp->predicate;
-        if (pred == "eq") result = (lhs->ival == rhs->ival);
-        else if (pred == "ne") result = (lhs->ival != rhs->ival);
-        else if (pred == "slt") result = (lhs->ival < rhs->ival);
-        else if (pred == "sle") result = (lhs->ival <= rhs->ival);
-        else if (pred == "sgt") result = (lhs->ival > rhs->ival);
-        else if (pred == "sge") result = (lhs->ival >= rhs->ival);
-        else if (pred == "ult") result = (static_cast<std::uint64_t>(lhs->ival) < static_cast<std::uint64_t>(rhs->ival));
-        else if (pred == "ule") result = (static_cast<std::uint64_t>(lhs->ival) <= static_cast<std::uint64_t>(rhs->ival));
-        else if (pred == "ugt") result = (static_cast<std::uint64_t>(lhs->ival) > static_cast<std::uint64_t>(rhs->ival));
-        else if (pred == "uge") result = (static_cast<std::uint64_t>(lhs->ival) >= static_cast<std::uint64_t>(rhs->ival));
-        else return std::nullopt;
-        temps[cmp->result] = AbsVal{false, result ? 1 : 0, {}};
+        if (cmp->is_float) {
+          if (!lhs->is_fp || !rhs->is_fp) return std::nullopt;
+          double lv = lhs->fval, rv = rhs->fval;
+          bool l_nan = std::isnan(lv), r_nan = std::isnan(rv);
+          if (pred == "oeq") result = !l_nan && !r_nan && lv == rv;
+          else if (pred == "one") result = !l_nan && !r_nan && lv != rv;
+          else if (pred == "olt") result = !l_nan && !r_nan && lv < rv;
+          else if (pred == "ole") result = !l_nan && !r_nan && lv <= rv;
+          else if (pred == "ogt") result = !l_nan && !r_nan && lv > rv;
+          else if (pred == "oge") result = !l_nan && !r_nan && lv >= rv;
+          else if (pred == "ord") result = !l_nan && !r_nan;
+          else if (pred == "uno") result = l_nan || r_nan;
+          else if (pred == "ueq") result = l_nan || r_nan || lv == rv;
+          else if (pred == "une") result = l_nan || r_nan || lv != rv;
+          else if (pred == "ult") result = l_nan || r_nan || lv < rv;
+          else if (pred == "ule") result = l_nan || r_nan || lv <= rv;
+          else if (pred == "ugt") result = l_nan || r_nan || lv > rv;
+          else if (pred == "uge") result = l_nan || r_nan || lv >= rv;
+          else return std::nullopt;
+        } else {
+          if (lhs->is_fp || rhs->is_fp) return std::nullopt;
+          if (pred == "eq") result = (lhs->ival == rhs->ival);
+          else if (pred == "ne") result = (lhs->ival != rhs->ival);
+          else if (pred == "slt") result = (lhs->ival < rhs->ival);
+          else if (pred == "sle") result = (lhs->ival <= rhs->ival);
+          else if (pred == "sgt") result = (lhs->ival > rhs->ival);
+          else if (pred == "sge") result = (lhs->ival >= rhs->ival);
+          else if (pred == "ult") result = (static_cast<std::uint64_t>(lhs->ival) < static_cast<std::uint64_t>(rhs->ival));
+          else if (pred == "ule") result = (static_cast<std::uint64_t>(lhs->ival) <= static_cast<std::uint64_t>(rhs->ival));
+          else if (pred == "ugt") result = (static_cast<std::uint64_t>(lhs->ival) > static_cast<std::uint64_t>(rhs->ival));
+          else if (pred == "uge") result = (static_cast<std::uint64_t>(lhs->ival) >= static_cast<std::uint64_t>(rhs->ival));
+          else return std::nullopt;
+        }
+        temps[cmp->result] = AbsVal{false, false, result ? 1 : 0, 0.0, {}};
       } else if (const auto* cast = std::get_if<LirCastOp>(&inst)) {
         auto src = resolve(cast->operand);
         if (!src || src->is_ptr) return std::nullopt;
-        std::int64_t val = src->ival;
         switch (cast->kind) {
           case LirCastKind::ZExt: {
-            // Source is already truncated to from_type width in the abstract;
-            // zero-extension preserves the unsigned value.
+            if (src->is_fp) return std::nullopt;
+            temps[cast->result] = AbsVal{false, false, src->ival, 0.0, {}};
             break;
           }
           case LirCastKind::SExt: {
-            // Sign-extend: replicate the sign bit of from_type into to_type width.
+            if (src->is_fp) return std::nullopt;
+            std::int64_t val = src->ival;
             int from_bits = 0;
             if (cast->from_type == "i1") from_bits = 1;
             else if (cast->from_type == "i8") from_bits = 8;
@@ -716,10 +740,12 @@ std::optional<std::int64_t> parse_minimal_double_indirect_local_pointer_conditio
                 val |= ~mask;
               }
             }
+            temps[cast->result] = AbsVal{false, false, val, 0.0, {}};
             break;
           }
           case LirCastKind::Trunc: {
-            // Truncate to to_type width.
+            if (src->is_fp) return std::nullopt;
+            std::int64_t val = src->ival;
             int to_bits = 0;
             if (cast->to_type == "i1") to_bits = 1;
             else if (cast->to_type == "i8") to_bits = 8;
@@ -730,15 +756,47 @@ std::optional<std::int64_t> parse_minimal_double_indirect_local_pointer_conditio
             if (to_bits < 64) {
               val &= (static_cast<std::int64_t>(1) << to_bits) - 1;
             }
+            temps[cast->result] = AbsVal{false, false, val, 0.0, {}};
+            break;
+          }
+          case LirCastKind::SIToFP: {
+            if (src->is_fp) return std::nullopt;
+            temps[cast->result] = AbsVal{false, true, 0, static_cast<double>(src->ival), {}};
+            break;
+          }
+          case LirCastKind::UIToFP: {
+            if (src->is_fp) return std::nullopt;
+            temps[cast->result] = AbsVal{false, true, 0, static_cast<double>(static_cast<std::uint64_t>(src->ival)), {}};
+            break;
+          }
+          case LirCastKind::FPToSI: {
+            if (!src->is_fp) return std::nullopt;
+            temps[cast->result] = AbsVal{false, false, static_cast<std::int64_t>(src->fval), 0.0, {}};
+            break;
+          }
+          case LirCastKind::FPToUI: {
+            if (!src->is_fp) return std::nullopt;
+            temps[cast->result] = AbsVal{false, false, static_cast<std::int64_t>(static_cast<std::uint64_t>(src->fval)), 0.0, {}};
+            break;
+          }
+          case LirCastKind::FPExt:
+          case LirCastKind::FPTrunc: {
+            if (!src->is_fp) return std::nullopt;
+            double val = src->fval;
+            if (cast->kind == LirCastKind::FPTrunc &&
+                cast->to_type == "float") {
+              val = static_cast<double>(static_cast<float>(val));
+            }
+            temps[cast->result] = AbsVal{false, true, 0, val, {}};
             break;
           }
           default: return std::nullopt;
         }
-        temps[cast->result] = AbsVal{false, val, {}};
       } else if (const auto* bin = std::get_if<LirBinOp>(&inst)) {
         auto lhs = resolve(bin->lhs);
         auto rhs = resolve(bin->rhs);
         if (!lhs || !rhs || lhs->is_ptr || rhs->is_ptr) return std::nullopt;
+        if (lhs->is_fp || rhs->is_fp) return std::nullopt;
         auto typed_op = bin->opcode.typed();
         if (!typed_op) return std::nullopt;
         std::int64_t val = 0;
@@ -746,6 +804,14 @@ std::optional<std::int64_t> parse_minimal_double_indirect_local_pointer_conditio
           case LirBinaryOpcode::Add: val = lhs->ival + rhs->ival; break;
           case LirBinaryOpcode::Sub: val = lhs->ival - rhs->ival; break;
           case LirBinaryOpcode::Mul: val = lhs->ival * rhs->ival; break;
+          case LirBinaryOpcode::SDiv:
+            if (rhs->ival == 0) return std::nullopt;
+            val = lhs->ival / rhs->ival;
+            break;
+          case LirBinaryOpcode::SRem:
+            if (rhs->ival == 0) return std::nullopt;
+            val = lhs->ival % rhs->ival;
+            break;
           case LirBinaryOpcode::And: val = lhs->ival & rhs->ival; break;
           case LirBinaryOpcode::Or:  val = lhs->ival | rhs->ival; break;
           case LirBinaryOpcode::Xor: val = lhs->ival ^ rhs->ival; break;
@@ -757,7 +823,7 @@ std::optional<std::int64_t> parse_minimal_double_indirect_local_pointer_conditio
           case LirBinaryOpcode::AShr: val = lhs->ival >> rhs->ival; break;
           default: return std::nullopt;
         }
-        temps[bin->result] = AbsVal{false, val, {}};
+        temps[bin->result] = AbsVal{false, false, val, 0.0, {}};
       } else if (const auto* sel = std::get_if<LirSelectOp>(&inst)) {
         auto cond = resolve(sel->cond);
         if (!cond || cond->is_ptr) return std::nullopt;
@@ -787,7 +853,7 @@ std::optional<std::int64_t> parse_minimal_double_indirect_local_pointer_conditio
     if (const auto* ret = std::get_if<LirRet>(&current->terminator)) {
       if (!ret->value_str.has_value() || ret->type_str != "i32") return std::nullopt;
       auto val = resolve(*ret->value_str);
-      if (!val || val->is_ptr) return std::nullopt;
+      if (!val || val->is_ptr || val->is_fp) return std::nullopt;
       return val->ival;
     }
     if (const auto* br = std::get_if<LirBr>(&current->terminator)) {

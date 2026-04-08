@@ -198,3 +198,10 @@ Recent baseline:
   constant-return family from the LLVM-text fallback path — patterns with
   both alloca slots and phi nodes now fold to constant returns via the
   interpreter instead of falling through to raw LLVM IR output
+- latest Step 4 follow-through extends the x86 LIR constant-fold interpreter
+  with floating-point support: SIToFP/UIToFP/FPToSI/FPToUI/FPExt/FPTrunc
+  casts, float/double alloca store/load tracking, ordered and unordered fcmp
+  predicates (oeq, one, olt, ole, ogt, oge, ord, uno, ueq, une, ult, ule,
+  ugt, uge), and SDiv/SRem in the multi-block BinOp handler — removing the
+  bounded float-local-slot SIToFP equality family from the
+  `lower_lir_to_backend_module(...)` fallback path

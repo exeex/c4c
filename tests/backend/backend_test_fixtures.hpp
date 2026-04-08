@@ -7238,3 +7238,11 @@ inline c4c::codegen::lir::LirModule make_x86_global_int_pointer_roundtrip_module
       "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
   return module;
 }
+
+inline c4c::codegen::lir::LirModule make_x86_float_sitofp_equality_module() {
+  auto module = make_float_sitofp_equality_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  return module;
+}
