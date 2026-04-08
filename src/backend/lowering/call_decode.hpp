@@ -1092,7 +1092,7 @@ parse_backend_minimal_void_direct_call_imm_return_module(const BackendModule& mo
   if (call == nullptr || !parsed_call.has_value() ||
       !backend_typed_call_matches_signature(parsed_call->typed_call, helper->signature) ||
       backend_call_return_type_kind(*call) != BackendValueTypeKind::Void ||
-      !call->result.empty() || parsed_call->symbol_name.empty() || parsed_call->symbol_name == "main" ||
+      !call->result.empty() || parsed_call->symbol_name.empty() ||
       parsed_call->symbol_name != helper->signature.name ||
       !parsed_call->typed_call.args.empty() || !return_imm.has_value() ||
       *return_imm < std::numeric_limits<std::int32_t>::min() ||
@@ -1487,7 +1487,7 @@ parse_backend_minimal_declared_direct_call_module(const BackendModule& module) {
   if (call == nullptr || !parsed_call.has_value() ||
       backend_call_return_type_kind(*call) != BackendValueTypeKind::Scalar ||
       backend_call_return_scalar_type(*call) != BackendScalarType::I32 ||
-      parsed_call->symbol_name.empty() || parsed_call->symbol_name == "main" ||
+      parsed_call->symbol_name.empty() ||
       parsed_call->typed_call.args.size() > 6) {
     return std::nullopt;
   }
@@ -1589,7 +1589,7 @@ parse_backend_minimal_declared_direct_call_lir_module(
           ? std::nullopt
           : c4c::codegen::lir::parse_lir_typed_call_or_infer_params(*call);
   if (call == nullptr || !symbol_name.has_value() || !typed_call.has_value() ||
-      call->return_type != "i32" || symbol_name->empty() || *symbol_name == "main" ||
+      call->return_type != "i32" || symbol_name->empty() ||
       typed_call->args.size() > 6) {
     return std::nullopt;
   }

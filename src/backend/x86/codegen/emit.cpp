@@ -59,7 +59,7 @@ const std::string& synthetic_call_crossing_regalloc_source_value() {
 
 struct MinimalCallCrossingDirectCallSlice {
   std::string callee_name;
-  std::string caller_name = "main";
+  std::string caller_name;
   std::int64_t source_imm = 0;
   std::int64_t helper_add_imm = 0;
   std::string regalloc_source_value = synthetic_call_crossing_regalloc_source_value();
@@ -69,7 +69,7 @@ using MinimalExternCallArgSlice = c4c::backend::ParsedBackendExternCallArg;
 
 struct MinimalTwoArgDirectCallSlice {
   std::string callee_name;
-  std::string caller_name = "main";
+  std::string caller_name;
   std::int64_t lhs_call_arg_imm = 0;
   std::int64_t rhs_call_arg_imm = 0;
 };
@@ -77,13 +77,13 @@ struct MinimalTwoArgDirectCallSlice {
 struct MinimalDualIdentityDirectCallSubSlice {
   std::string lhs_helper_name;
   std::string rhs_helper_name;
-  std::string caller_name = "main";
+  std::string caller_name;
   std::int64_t lhs_call_arg_imm = 0;
   std::int64_t rhs_call_arg_imm = 0;
 };
 
 struct MinimalNamedReturnImmSlice {
-  std::string function_name = "main";
+  std::string function_name;
   std::int64_t return_imm = 0;
 };
 
@@ -95,7 +95,7 @@ struct MinimalMemberArrayRuntimeSlice {
 
   Kind kind = Kind::ByValueParam;
   std::string helper_name;
-  std::string caller_name = "main";
+  std::string caller_name;
   std::int64_t first_imm = 0;
   std::int64_t second_imm = 0;
 };
@@ -135,7 +135,7 @@ struct MinimalConditionalPhiJoinSlice {
   };
 
   c4c::codegen::lir::LirCmpPredicate predicate = c4c::codegen::lir::LirCmpPredicate::Eq;
-  std::string function_name = "main";
+  std::string function_name;
   std::int64_t lhs_imm = 0;
   std::int64_t rhs_imm = 0;
   std::string true_label;
@@ -265,6 +265,7 @@ std::string emit_minimal_multi_printf_vararg_asm(
     const MinimalMultiPrintfVarargSlice& slice);
 
 struct MinimalLocalArraySlice {
+  std::string function_name;
   std::int64_t store0_imm = 0;
   std::int64_t store1_imm = 0;
 };
@@ -303,7 +304,7 @@ struct MinimalScalarGlobalLoadSlice {
 };
 
 struct MinimalScalarGlobalStoreReloadSlice {
-  std::string function_name = "main";
+  std::string function_name;
   std::string global_name;
   std::int64_t init_imm = 0;
   std::int64_t store_imm = 0;
@@ -3006,7 +3007,7 @@ std::optional<MinimalLocalArraySlice> parse_minimal_local_array_slice(
     return std::nullopt;
   }
 
-  return MinimalLocalArraySlice{*store0, *store1};
+  return MinimalLocalArraySlice{function.name, *store0, *store1};
 }
 
 std::optional<MinimalExternGlobalArrayLoadSlice> parse_minimal_extern_global_array_load_slice(
@@ -3261,7 +3262,7 @@ std::optional<MinimalLocalArraySlice> parse_minimal_local_array_slice(
     return std::nullopt;
   }
 
-  return MinimalLocalArraySlice{*store0_imm, *store1_imm};
+  return MinimalLocalArraySlice{function->signature.name, *store0_imm, *store1_imm};
 }
 
 std::optional<MinimalExternScalarGlobalLoadSlice> parse_minimal_extern_scalar_global_load_slice(
@@ -4232,14 +4233,14 @@ std::optional<MinimalScalarGlobalStoreReloadSlice> parse_minimal_scalar_global_s
 std::optional<MinimalCallCrossingDirectCallSlice> parse_minimal_call_crossing_direct_call_slice(
     const c4c::backend::BackendModule& module) {
   const auto parsed = c4c::backend::parse_backend_minimal_call_crossing_direct_call_module(module);
-  if (!parsed.has_value() || parsed->helper == nullptr ||
+  if (!parsed.has_value() || parsed->helper == nullptr || parsed->main_function == nullptr ||
       parsed->regalloc_source_value.empty()) {
     return std::nullopt;
   }
 
   return MinimalCallCrossingDirectCallSlice{
       parsed->helper->signature.name,
-      parsed->main_function == nullptr ? "main" : parsed->main_function->signature.name,
+      parsed->main_function->signature.name,
       parsed->source_imm,
       parsed->helper_add_imm,
       std::string(parsed->regalloc_source_value),
@@ -4250,13 +4251,14 @@ std::optional<MinimalCallCrossingDirectCallSlice> parse_minimal_call_crossing_di
     const c4c::codegen::lir::LirModule& module) {
   const auto parsed =
       c4c::backend::parse_backend_minimal_call_crossing_direct_call_lir_module(module);
-  if (!parsed.has_value() || parsed->helper == nullptr || parsed->regalloc_source_value.empty()) {
+  if (!parsed.has_value() || parsed->helper == nullptr || parsed->main_function == nullptr ||
+      parsed->regalloc_source_value.empty()) {
     return std::nullopt;
   }
 
   return MinimalCallCrossingDirectCallSlice{
       parsed->helper->name,
-      parsed->main_function == nullptr ? "main" : parsed->main_function->name,
+      parsed->main_function->name,
       parsed->source_imm,
       parsed->helper_add_imm,
       std::string(parsed->regalloc_source_value),
@@ -4547,11 +4549,6 @@ std::string emit_minimal_return_asm(std::string_view target_triple,
   return out.str();
 }
 
-std::string emit_minimal_return_asm(std::string_view target_triple,
-                                    std::int64_t return_imm) {
-  return emit_minimal_return_asm(target_triple, "main", return_imm);
-}
-
 std::string emit_minimal_return_asm(const c4c::backend::BackendModule& module,
                                     std::int64_t return_imm) {
   const std::string symbol = minimal_single_function_symbol(module);
@@ -4718,7 +4715,7 @@ std::string emit_minimal_cast_return_asm(
 
 std::string emit_minimal_direct_call_asm(const c4c::backend::BackendModule& module,
                                          const c4c::backend::ParsedBackendMinimalDirectCallModuleView& slice) {
-  if (slice.helper == nullptr) {
+  if (slice.helper == nullptr || slice.main_function == nullptr) {
     throw c4c::backend::LirAdapterError(
         c4c::backend::LirAdapterErrorKind::Unsupported,
         "structured zero-argument direct-call slice without helper metadata");
@@ -4733,8 +4730,7 @@ std::string emit_minimal_direct_call_asm(const c4c::backend::BackendModule& modu
 
   const std::string helper_symbol = asm_symbol_name(module, slice.helper->signature.name);
   const std::string main_symbol =
-      asm_symbol_name(module,
-                      slice.main_function == nullptr ? "main" : slice.main_function->signature.name);
+      asm_symbol_name(module, slice.main_function->signature.name);
 
   std::ostringstream out;
   out << ".intel_syntax noprefix\n";
@@ -4751,10 +4747,10 @@ std::string emit_minimal_direct_call_asm(const c4c::backend::BackendModule& modu
 std::string emit_minimal_direct_call_asm(
     std::string_view target_triple,
     const c4c::backend::ParsedBackendMinimalDirectCallLirModuleView& slice) {
-  if (slice.helper == nullptr) {
+  if (slice.helper == nullptr || slice.main_function == nullptr) {
     throw c4c::backend::LirAdapterError(
         c4c::backend::LirAdapterErrorKind::Unsupported,
-        "direct zero-argument LIR call slice without helper metadata");
+        "direct zero-argument LIR call slice without caller/helper metadata");
   }
 
   if (slice.return_imm < std::numeric_limits<std::int32_t>::min() ||
@@ -4765,7 +4761,7 @@ std::string emit_minimal_direct_call_asm(
   }
 
   const std::string helper_symbol = asm_symbol_name(target_triple, slice.helper->name);
-  const std::string main_symbol = asm_symbol_name(target_triple, "main");
+  const std::string main_symbol = asm_symbol_name(target_triple, slice.main_function->name);
 
   std::ostringstream out;
   out << ".intel_syntax noprefix\n";
@@ -4782,7 +4778,7 @@ std::string emit_minimal_direct_call_asm(
 std::string emit_minimal_void_direct_call_imm_return_asm(
     const c4c::backend::BackendModule& module,
     const c4c::backend::ParsedBackendMinimalVoidDirectCallImmReturnModuleView& slice) {
-  if (slice.helper == nullptr) {
+  if (slice.helper == nullptr || slice.main_function == nullptr) {
     throw c4c::backend::LirAdapterError(
         c4c::backend::LirAdapterErrorKind::Unsupported,
         "structured zero-argument void direct-call slice without helper metadata");
@@ -4797,8 +4793,7 @@ std::string emit_minimal_void_direct_call_imm_return_asm(
 
   const std::string helper_symbol = asm_symbol_name(module, slice.helper->signature.name);
   const std::string main_symbol =
-      asm_symbol_name(module,
-                      slice.main_function == nullptr ? "main" : slice.main_function->signature.name);
+      asm_symbol_name(module, slice.main_function->signature.name);
 
   std::ostringstream out;
   out << ".intel_syntax noprefix\n";
@@ -4815,7 +4810,7 @@ std::string emit_minimal_void_direct_call_imm_return_asm(
 std::string emit_minimal_void_direct_call_imm_return_asm(
     std::string_view target_triple,
     const c4c::backend::ParsedBackendMinimalVoidDirectCallImmReturnLirModuleView& slice) {
-  if (slice.helper == nullptr) {
+  if (slice.helper == nullptr || slice.main_function == nullptr) {
     throw c4c::backend::LirAdapterError(
         c4c::backend::LirAdapterErrorKind::Unsupported,
         "direct zero-argument void LIR call slice without helper metadata");
@@ -4830,8 +4825,7 @@ std::string emit_minimal_void_direct_call_imm_return_asm(
 
   const std::string helper_symbol = asm_symbol_name(target_triple, slice.helper->name);
   const std::string main_symbol =
-      asm_symbol_name(target_triple,
-                      slice.main_function == nullptr ? "main" : slice.main_function->name);
+      asm_symbol_name(target_triple, slice.main_function->name);
 
   std::ostringstream out;
   out << ".intel_syntax noprefix\n";
@@ -4848,7 +4842,7 @@ std::string emit_minimal_void_direct_call_imm_return_asm(
 std::string emit_minimal_direct_call_add_imm_asm(
     const c4c::backend::BackendModule& module,
     const c4c::backend::ParsedBackendMinimalDirectCallAddImmModuleView& slice) {
-  if (slice.helper == nullptr) {
+  if (slice.helper == nullptr || slice.main_function == nullptr) {
     throw c4c::backend::LirAdapterError(
         c4c::backend::LirAdapterErrorKind::Unsupported,
         "structured single-argument direct-call slice without helper metadata");
@@ -4865,8 +4859,7 @@ std::string emit_minimal_direct_call_add_imm_asm(
 
   const std::string helper_symbol = asm_symbol_name(module, slice.helper->signature.name);
   const std::string main_symbol =
-      asm_symbol_name(module,
-                      slice.main_function == nullptr ? "main" : slice.main_function->signature.name);
+      asm_symbol_name(module, slice.main_function->signature.name);
 
   std::ostringstream out;
   out << ".intel_syntax noprefix\n";
@@ -4885,7 +4878,7 @@ std::string emit_minimal_direct_call_add_imm_asm(
 std::string emit_minimal_direct_call_add_imm_asm(
     std::string_view target_triple,
     const c4c::backend::ParsedBackendMinimalDirectCallAddImmLirModuleView& slice) {
-  if (slice.helper == nullptr) {
+  if (slice.helper == nullptr || slice.main_function == nullptr) {
     throw c4c::backend::LirAdapterError(
         c4c::backend::LirAdapterErrorKind::Unsupported,
         "direct single-argument LIR call slice without helper metadata");
@@ -4901,8 +4894,8 @@ std::string emit_minimal_direct_call_add_imm_asm(
   }
 
   const std::string helper_symbol = asm_symbol_name(target_triple, slice.helper->name);
-  const std::string main_symbol = asm_symbol_name(
-      target_triple, slice.main_function == nullptr ? "main" : slice.main_function->name);
+  const std::string main_symbol =
+      asm_symbol_name(target_triple, slice.main_function->name);
 
   std::ostringstream out;
   out << ".intel_syntax noprefix\n";
@@ -4935,7 +4928,7 @@ std::string emit_minimal_direct_call_identity_arg_asm(
   }
 
   const std::string helper_symbol = asm_symbol_name(module, slice.helper->signature.name);
-  const std::string main_symbol = asm_symbol_name(module, "main");
+  const std::string main_symbol = asm_symbol_name(module, slice.main_function->signature.name);
 
   std::ostringstream out;
   out << ".intel_syntax noprefix\n";
@@ -4967,8 +4960,8 @@ std::string emit_minimal_direct_call_identity_arg_asm(
   }
 
   const std::string helper_symbol = asm_symbol_name(target_triple, slice.helper->name);
-  const std::string main_symbol = asm_symbol_name(
-      target_triple, slice.main_function == nullptr ? "main" : slice.main_function->name);
+  const std::string main_symbol =
+      asm_symbol_name(target_triple, slice.main_function->name);
 
   std::ostringstream out;
   out << ".intel_syntax noprefix\n";
@@ -5131,7 +5124,7 @@ std::string emit_minimal_two_arg_direct_call_asm(
       module,
       MinimalTwoArgDirectCallSlice{
           slice.helper->signature.name,
-          slice.main_function == nullptr ? "main" : slice.main_function->signature.name,
+          slice.main_function->signature.name,
           slice.lhs_call_arg_imm,
           slice.rhs_call_arg_imm,
       });
@@ -5500,7 +5493,7 @@ std::string emit_minimal_local_array_asm(std::string_view target_triple,
         "local-array store immediates outside the minimal mov-supported range");
   }
 
-  const std::string symbol = asm_symbol_name(target_triple, "main");
+  const std::string symbol = asm_symbol_name(target_triple, slice.function_name);
   std::ostringstream out;
   out << ".intel_syntax noprefix\n";
   out << ".text\n";
@@ -5573,8 +5566,8 @@ std::string emit_minimal_extern_decl_call_asm(
   static constexpr const char* kArgPtrRegs[6] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
 
   const std::string helper_symbol = asm_symbol_name(module, slice.parsed_call.symbol_name);
-  const std::string main_symbol = asm_symbol_name(
-      module, slice.main_function == nullptr ? "main" : slice.main_function->signature.name);
+  const std::string main_symbol =
+      asm_symbol_name(module, slice.main_function->signature.name);
 
   if (slice.args.size() > 6) {
     throw c4c::backend::LirAdapterError(
@@ -5661,8 +5654,8 @@ std::string emit_minimal_extern_decl_call_asm(
   static constexpr const char* kArgPtrRegs[6] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
 
   const std::string helper_symbol = asm_symbol_name(module.target_triple, slice.parsed_call.symbol_name);
-  const std::string main_symbol = asm_symbol_name(
-      module.target_triple, slice.main_function == nullptr ? "main" : slice.main_function->name);
+  const std::string main_symbol =
+      asm_symbol_name(module.target_triple, slice.main_function->name);
 
   if (slice.args.size() > 6) {
     throw c4c::backend::LirAdapterError(

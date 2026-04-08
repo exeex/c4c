@@ -349,8 +349,12 @@ std::string asm_symbol_name(const c4c::backend::BackendModule& module,
                             std::string_view logical_name);
 std::string asm_symbol_name(std::string_view target_triple,
                             std::string_view logical_name);
-std::string emit_minimal_return_imm_asm(std::string_view target_triple, std::int64_t imm);
-std::string emit_minimal_return_sub_imm_asm(std::string_view target_triple, std::int64_t imm);
+std::string emit_minimal_return_imm_asm(std::string_view target_triple,
+                                        std::string_view function_name,
+                                        std::int64_t imm);
+std::string emit_minimal_return_sub_imm_asm(std::string_view target_triple,
+                                            std::string_view function_name,
+                                            std::int64_t imm);
 std::string emit_minimal_countdown_loop_asm(std::string_view target_triple,
                                             const MinimalCountdownLoopSlice& slice);
 std::string emit_minimal_scalar_global_load_asm(
@@ -1788,6 +1792,7 @@ struct MinimalConditionalPhiJoinSlice {
     std::vector<ArithmeticStep> steps;
   };
 
+  std::string function_name;
   c4c::codegen::lir::LirCmpPredicate predicate = c4c::codegen::lir::LirCmpPredicate::Eq;
   std::int64_t lhs_imm = 0;
   std::int64_t rhs_imm = 0;
@@ -1918,6 +1923,7 @@ std::optional<MinimalConditionalAffineI32ReturnSlice::ValueExpr> lower_bir_i32_v
 }
 
 struct MinimalCountdownLoopSlice {
+  std::string function_name;
   std::int64_t initial_imm = 0;
   std::string loop_label;
   std::string body_label;
@@ -1925,6 +1931,7 @@ struct MinimalCountdownLoopSlice {
 };
 
 struct MinimalScalarGlobalLoadSlice {
+  std::string function_name;
   std::string global_name;
   std::int64_t init_imm = 0;
   int align_bytes = 4;
@@ -1932,6 +1939,7 @@ struct MinimalScalarGlobalLoadSlice {
 };
 
 struct MinimalScalarGlobalStoreReloadSlice {
+  std::string function_name;
   std::string global_name;
   std::int64_t init_imm = 0;
   std::int64_t store_imm = 0;
@@ -1939,21 +1947,25 @@ struct MinimalScalarGlobalStoreReloadSlice {
 };
 
 struct MinimalExternScalarGlobalLoadSlice {
+  std::string function_name;
   std::string global_name;
 };
 
 struct MinimalExternGlobalArrayLoadSlice {
+  std::string function_name;
   std::string global_name;
   std::int64_t byte_offset = 0;
 };
 
 struct MinimalGlobalCharPointerDiffSlice {
+  std::string function_name;
   std::string global_name;
   std::int64_t global_size = 0;
   std::int64_t byte_offset = 0;
 };
 
 struct MinimalGlobalIntPointerDiffSlice {
+  std::string function_name;
   std::string global_name;
   std::int64_t global_size = 0;
   std::int64_t byte_offset = 0;
@@ -1961,11 +1973,13 @@ struct MinimalGlobalIntPointerDiffSlice {
 };
 
 struct MinimalLocalArraySlice {
+  std::string function_name;
   std::int64_t store0_imm = 0;
   std::int64_t store1_imm = 0;
 };
 
 struct MinimalStringLiteralCharSlice {
+  std::string function_name;
   std::string pool_name;
   std::string raw_bytes;
   std::int64_t byte_index = 0;
@@ -2522,6 +2536,7 @@ std::optional<MinimalStringLiteralCharSlice> parse_minimal_string_literal_char_s
   }
 
   return MinimalStringLiteralCharSlice{
+      function.name,
       string_const.pool_name,
       string_const.raw_bytes,
       *byte_index,
@@ -2538,16 +2553,16 @@ std::optional<MinimalStringLiteralCharSlice> parse_minimal_string_literal_char_s
 
   const auto* string_const =
       find_string_constant(module, module.string_constants.front().name);
-  const auto* main_fn = find_function(module, "main");
-  if (string_const == nullptr || main_fn == nullptr || main_fn->is_declaration ||
-      !backend_function_is_definition(main_fn->signature) ||
-      !is_i32_scalar_signature_return(main_fn->signature) ||
-      !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
-      main_fn->blocks.size() != 1) {
+  const auto& function = module.functions.front();
+  if (string_const == nullptr || function.is_declaration ||
+      !backend_function_is_definition(function.signature) ||
+      !is_i32_scalar_signature_return(function.signature) ||
+      !function.signature.params.empty() || function.signature.is_vararg ||
+      function.blocks.size() != 1) {
     return std::nullopt;
   }
 
-  const auto& block = main_fn->blocks.front();
+  const auto& block = function.blocks.front();
   if (block.label != "entry" || block.insts.size() != 1 ||
       !block.terminator.value.has_value() ||
       c4c::backend::backend_return_scalar_type(block.terminator) !=
@@ -2575,6 +2590,7 @@ std::optional<MinimalStringLiteralCharSlice> parse_minimal_string_literal_char_s
   }
 
   return MinimalStringLiteralCharSlice{
+      function.signature.name,
       "@" + string_const->name,
       string_const->raw_bytes,
       load->address.byte_offset,
@@ -2599,19 +2615,19 @@ std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_sl
     return std::nullopt;
   }
 
-  const auto* function = find_function(module, "main");
-  if (function == nullptr || function->is_declaration ||
-      !backend_function_is_definition(function->signature) ||
-      c4c::backend::backend_signature_return_scalar_type(function->signature) !=
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      !backend_function_is_definition(function.signature) ||
+      c4c::backend::backend_signature_return_scalar_type(function.signature) !=
           c4c::backend::BackendScalarType::I32 ||
-      !function->signature.params.empty() || function->signature.is_vararg ||
-      function->blocks.size() != 3) {
+      !function.signature.params.empty() || function.signature.is_vararg ||
+      function.blocks.size() != 3) {
     return std::nullopt;
   }
 
-  const auto& entry = function->blocks[0];
-  const auto& true_block = function->blocks[1];
-  const auto& false_block = function->blocks[2];
+  const auto& entry = function.blocks[0];
+  const auto& true_block = function.blocks[1];
+  const auto& false_block = function.blocks[2];
   if (entry.label != "entry" || entry.insts.size() != 1 ||
       entry.terminator.kind != c4c::backend::BackendTerminatorKind::CondBranch ||
       true_block.label != entry.terminator.true_label ||
@@ -2660,7 +2676,7 @@ std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_sl
   }
 
   return MinimalConditionalReturnSlice{
-      "main",
+      function.signature.name,
       0,
       predicate,
       {MinimalConditionalReturnSlice::ValueKind::Immediate, *lhs_imm},
@@ -2740,7 +2756,7 @@ std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_sl
   }
 
   return MinimalConditionalReturnSlice{
-      "main",
+      function.name,
       0,
       *cmp0_predicate,
       {MinimalConditionalReturnSlice::ValueKind::Immediate, *lhs_imm},
@@ -2758,20 +2774,20 @@ std::optional<MinimalCountdownLoopSlice> parse_minimal_countdown_loop_slice(
     return std::nullopt;
   }
 
-  const auto* function = find_function(module, "main");
-  if (function == nullptr || function->is_declaration ||
-      !backend_function_is_definition(function->signature) ||
-      c4c::backend::backend_signature_return_scalar_type(function->signature) !=
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      !backend_function_is_definition(function.signature) ||
+      c4c::backend::backend_signature_return_scalar_type(function.signature) !=
           c4c::backend::BackendScalarType::I32 ||
-      !function->signature.params.empty() || function->signature.is_vararg ||
-      function->blocks.size() != 4) {
+      !function.signature.params.empty() || function.signature.is_vararg ||
+      function.blocks.size() != 4) {
     return std::nullopt;
   }
 
-  const auto& entry = function->blocks[0];
-  const auto& loop = function->blocks[1];
-  const auto& body = function->blocks[2];
-  const auto& exit = function->blocks[3];
+  const auto& entry = function.blocks[0];
+  const auto& loop = function.blocks[1];
+  const auto& body = function.blocks[2];
+  const auto& exit = function.blocks[3];
   if (entry.label != "entry" || !entry.insts.empty() ||
       entry.terminator.kind != c4c::backend::BackendTerminatorKind::Branch ||
       entry.terminator.target_label != loop.label || loop.insts.size() != 2 ||
@@ -2812,7 +2828,7 @@ std::optional<MinimalCountdownLoopSlice> parse_minimal_countdown_loop_slice(
     return std::nullopt;
   }
 
-  return MinimalCountdownLoopSlice{*initial_imm, loop.label, body.label, exit.label};
+  return MinimalCountdownLoopSlice{function.signature.name, *initial_imm, loop.label, body.label, exit.label};
 }
 
 std::optional<MinimalConditionalPhiJoinSlice> parse_minimal_conditional_phi_join_slice(
@@ -2821,20 +2837,20 @@ std::optional<MinimalConditionalPhiJoinSlice> parse_minimal_conditional_phi_join
     return std::nullopt;
   }
 
-  const auto* function = find_function(module, "main");
-  if (function == nullptr || function->is_declaration ||
-      !backend_function_is_definition(function->signature) ||
-      c4c::backend::backend_signature_return_scalar_type(function->signature) !=
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      !backend_function_is_definition(function.signature) ||
+      c4c::backend::backend_signature_return_scalar_type(function.signature) !=
           c4c::backend::BackendScalarType::I32 ||
-      !function->signature.params.empty() || function->signature.is_vararg ||
-      function->blocks.size() != 4) {
+      !function.signature.params.empty() || function.signature.is_vararg ||
+      function.blocks.size() != 4) {
     return std::nullopt;
   }
 
-  const auto& entry = function->blocks[0];
-  const auto& true_block = function->blocks[1];
-  const auto& false_block = function->blocks[2];
-  const auto& join_block = function->blocks[3];
+  const auto& entry = function.blocks[0];
+  const auto& true_block = function.blocks[1];
+  const auto& false_block = function.blocks[2];
+  const auto& join_block = function.blocks[3];
   const auto parse_incoming_value =
       [](const c4c::backend::BackendBlock& block,
          std::string_view expected_result)
@@ -2951,7 +2967,8 @@ std::optional<MinimalConditionalPhiJoinSlice> parse_minimal_conditional_phi_join
     case BackendPred::Uge: predicate = LirPred::Uge; break;
   }
 
-  return MinimalConditionalPhiJoinSlice{predicate,
+  return MinimalConditionalPhiJoinSlice{function.signature.name,
+                                        predicate,
                                         *lhs_imm,
                                         *rhs_imm,
                                         true_block.label,
@@ -3010,7 +3027,8 @@ std::optional<MinimalScalarGlobalLoadSlice> parse_minimal_scalar_global_load_sli
     return std::nullopt;
   }
 
-  return MinimalScalarGlobalLoadSlice{global.name,
+  return MinimalScalarGlobalLoadSlice{function.name,
+                                      global.name,
                                       init_imm,
                                       global.align_bytes > 0 ? global.align_bytes : 4,
                                       zero_initializer};
@@ -3065,6 +3083,7 @@ std::optional<MinimalScalarGlobalStoreReloadSlice> parse_minimal_scalar_global_s
   }
 
   return MinimalScalarGlobalStoreReloadSlice{
+      function.name,
       global.name,
       *init_imm,
       *store_imm,
@@ -3158,7 +3177,7 @@ std::optional<MinimalScalarGlobalLoadSlice> parse_minimal_global_int_pointer_rou
     return std::nullopt;
   }
 
-  return MinimalScalarGlobalLoadSlice{global.name, *init_imm,
+  return MinimalScalarGlobalLoadSlice{function.name, global.name, *init_imm,
                                       global.align_bytes > 0 ? global.align_bytes : 4};
 }
 
@@ -3199,7 +3218,7 @@ std::optional<MinimalExternScalarGlobalLoadSlice> parse_minimal_extern_scalar_gl
     return std::nullopt;
   }
 
-  return MinimalExternScalarGlobalLoadSlice{global.name};
+  return MinimalExternScalarGlobalLoadSlice{function.name, global.name};
 }
 
 std::optional<MinimalExternGlobalArrayLoadSlice> parse_minimal_extern_global_array_load_slice(
@@ -3288,7 +3307,7 @@ std::optional<MinimalExternGlobalArrayLoadSlice> parse_minimal_extern_global_arr
     return std::nullopt;
   }
 
-  return MinimalExternGlobalArrayLoadSlice{global.name, byte_offset};
+  return MinimalExternGlobalArrayLoadSlice{function.name, global.name, byte_offset};
 }
 
 std::optional<MinimalGlobalCharPointerDiffSlice> parse_minimal_global_char_pointer_diff_slice(
@@ -3422,7 +3441,7 @@ std::optional<MinimalGlobalCharPointerDiffSlice> parse_minimal_global_char_point
     return std::nullopt;
   }
 
-  return MinimalGlobalCharPointerDiffSlice{global.name, *global_size, 1};
+  return MinimalGlobalCharPointerDiffSlice{function.name, global.name, *global_size, 1};
 }
 
 std::optional<MinimalGlobalIntPointerDiffSlice> parse_minimal_global_int_pointer_diff_slice(
@@ -3565,7 +3584,7 @@ std::optional<MinimalGlobalIntPointerDiffSlice> parse_minimal_global_int_pointer
     return std::nullopt;
   }
 
-  return MinimalGlobalIntPointerDiffSlice{global.name, *global_size, 4, 2};
+  return MinimalGlobalIntPointerDiffSlice{function.name, global.name, *global_size, 4, 2};
 }
 
 std::optional<MinimalScalarGlobalLoadSlice> parse_minimal_scalar_global_load_slice(
@@ -3588,16 +3607,16 @@ std::optional<MinimalScalarGlobalLoadSlice> parse_minimal_scalar_global_load_sli
       return std::nullopt;
   }
 
-  const auto* main_fn = find_function(module, "main");
-  if (main_fn == nullptr || main_fn->is_declaration ||
-      !backend_function_is_definition(main_fn->signature) ||
-      !is_i32_scalar_signature_return(main_fn->signature) ||
-      !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
-      main_fn->blocks.size() != 1) {
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      !backend_function_is_definition(function.signature) ||
+      !is_i32_scalar_signature_return(function.signature) ||
+      !function.signature.params.empty() || function.signature.is_vararg ||
+      function.blocks.size() != 1) {
     return std::nullopt;
   }
 
-  const auto& block = main_fn->blocks.front();
+  const auto& block = function.blocks.front();
   if (block.label != "entry" || block.insts.size() != 1 ||
       !block.terminator.value.has_value() ||
       c4c::backend::backend_return_scalar_type(block.terminator) !=
@@ -3618,6 +3637,7 @@ std::optional<MinimalScalarGlobalLoadSlice> parse_minimal_scalar_global_load_sli
   }
 
   return MinimalScalarGlobalLoadSlice{
+      function.signature.name,
       global->name,
       init_imm,
       global->align_bytes > 0 ? global->align_bytes : 4,
@@ -3632,16 +3652,16 @@ std::optional<MinimalLocalArraySlice> parse_minimal_local_array_slice(
     return std::nullopt;
   }
 
-  const auto* main_fn = find_function(module, "main");
-  if (main_fn == nullptr || main_fn->is_declaration ||
-      !backend_function_is_definition(main_fn->signature) ||
-      !is_i32_scalar_signature_return(main_fn->signature) ||
-      !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
-      main_fn->blocks.size() != 1) {
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      !backend_function_is_definition(function.signature) ||
+      !is_i32_scalar_signature_return(function.signature) ||
+      !function.signature.params.empty() || function.signature.is_vararg ||
+      function.blocks.size() != 1) {
     return std::nullopt;
   }
 
-  const auto& block = main_fn->blocks.front();
+  const auto& block = function.blocks.front();
   if (block.label != "entry" || block.insts.size() != 5 ||
       !block.terminator.value.has_value() ||
       c4c::backend::backend_return_scalar_type(block.terminator) !=
@@ -3686,7 +3706,7 @@ std::optional<MinimalLocalArraySlice> parse_minimal_local_array_slice(
       store1->address.kind != c4c::backend::BackendAddressBaseKind::LocalSlot ||
       load0->address.kind != c4c::backend::BackendAddressBaseKind::LocalSlot ||
       load1->address.kind != c4c::backend::BackendAddressBaseKind::LocalSlot ||
-      !is_two_element_i32_local_array_slot(*main_fn, store0->address.base_symbol)) {
+      !is_two_element_i32_local_array_slot(function, store0->address.base_symbol)) {
     return std::nullopt;
   }
 
@@ -3704,7 +3724,7 @@ std::optional<MinimalLocalArraySlice> parse_minimal_local_array_slice(
     return std::nullopt;
   }
 
-  return MinimalLocalArraySlice{*store0_imm, *store1_imm};
+  return MinimalLocalArraySlice{function.signature.name, *store0_imm, *store1_imm};
 }
 
 std::optional<MinimalScalarGlobalStoreReloadSlice> parse_minimal_scalar_global_store_reload_slice(
@@ -3724,16 +3744,16 @@ std::optional<MinimalScalarGlobalStoreReloadSlice> parse_minimal_scalar_global_s
     return std::nullopt;
   }
 
-  const auto* main_fn = find_function(module, "main");
-  if (main_fn == nullptr || main_fn->is_declaration ||
-      !backend_function_is_definition(main_fn->signature) ||
-      !is_i32_scalar_signature_return(main_fn->signature) ||
-      !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
-      main_fn->blocks.size() != 1) {
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      !backend_function_is_definition(function.signature) ||
+      !is_i32_scalar_signature_return(function.signature) ||
+      !function.signature.params.empty() || function.signature.is_vararg ||
+      function.blocks.size() != 1) {
     return std::nullopt;
   }
 
-  const auto& block = main_fn->blocks.front();
+  const auto& block = function.blocks.front();
   if (block.label != "entry" || block.insts.size() != 2 ||
       !block.terminator.value.has_value() ||
       c4c::backend::backend_return_scalar_type(block.terminator) !=
@@ -3764,6 +3784,7 @@ std::optional<MinimalScalarGlobalStoreReloadSlice> parse_minimal_scalar_global_s
   }
 
   return MinimalScalarGlobalStoreReloadSlice{
+      function.signature.name,
       global->name,
       init_imm,
       *store_imm,
@@ -3786,16 +3807,16 @@ std::optional<MinimalExternScalarGlobalLoadSlice> parse_minimal_extern_scalar_gl
     return std::nullopt;
   }
 
-  const auto* main_fn = find_function(module, "main");
-  if (main_fn == nullptr || main_fn->is_declaration ||
-      !backend_function_is_definition(main_fn->signature) ||
-      !is_i32_scalar_signature_return(main_fn->signature) ||
-      !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
-      main_fn->blocks.size() != 1) {
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      !backend_function_is_definition(function.signature) ||
+      !is_i32_scalar_signature_return(function.signature) ||
+      !function.signature.params.empty() || function.signature.is_vararg ||
+      function.blocks.size() != 1) {
     return std::nullopt;
   }
 
-  const auto& block = main_fn->blocks.front();
+  const auto& block = function.blocks.front();
   if (block.label != "entry" || block.insts.size() != 1 ||
       !block.terminator.value.has_value() ||
       c4c::backend::backend_return_scalar_type(block.terminator) !=
@@ -3815,7 +3836,7 @@ std::optional<MinimalExternScalarGlobalLoadSlice> parse_minimal_extern_scalar_gl
     return std::nullopt;
   }
 
-  return MinimalExternScalarGlobalLoadSlice{global->name};
+  return MinimalExternScalarGlobalLoadSlice{function.signature.name, global->name};
 }
 
 std::optional<MinimalExternGlobalArrayLoadSlice> parse_minimal_extern_global_array_load_slice(
@@ -3837,16 +3858,16 @@ std::optional<MinimalExternGlobalArrayLoadSlice> parse_minimal_extern_global_arr
     return std::nullopt;
   }
 
-  const auto* main_fn = find_function(module, "main");
-  if (main_fn == nullptr || main_fn->is_declaration ||
-      !backend_function_is_definition(main_fn->signature) ||
-      !is_i32_scalar_signature_return(main_fn->signature) ||
-      !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
-      main_fn->blocks.size() != 1) {
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      !backend_function_is_definition(function.signature) ||
+      !is_i32_scalar_signature_return(function.signature) ||
+      !function.signature.params.empty() || function.signature.is_vararg ||
+      function.blocks.size() != 1) {
     return std::nullopt;
   }
 
-  const auto& block = main_fn->blocks.front();
+  const auto& block = function.blocks.front();
   if (block.label != "entry" || block.insts.size() != 1 ||
       !block.terminator.value.has_value() ||
       c4c::backend::backend_return_scalar_type(block.terminator) !=
@@ -3870,7 +3891,10 @@ std::optional<MinimalExternGlobalArrayLoadSlice> parse_minimal_extern_global_arr
     return std::nullopt;
   }
 
-  return MinimalExternGlobalArrayLoadSlice{global->name, load->address.byte_offset};
+  return MinimalExternGlobalArrayLoadSlice{
+      function.signature.name,
+      global->name,
+      load->address.byte_offset};
 }
 
 std::optional<MinimalGlobalCharPointerDiffSlice> parse_minimal_global_char_pointer_diff_slice(
@@ -3896,16 +3920,16 @@ std::optional<MinimalGlobalCharPointerDiffSlice> parse_minimal_global_char_point
     return std::nullopt;
   }
 
-  const auto* main_fn = find_function(module, "main");
-  if (main_fn == nullptr || main_fn->is_declaration ||
-      !backend_function_is_definition(main_fn->signature) ||
-      !is_i32_scalar_signature_return(main_fn->signature) ||
-      !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
-      main_fn->blocks.size() != 1) {
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      !backend_function_is_definition(function.signature) ||
+      !is_i32_scalar_signature_return(function.signature) ||
+      !function.signature.params.empty() || function.signature.is_vararg ||
+      function.blocks.size() != 1) {
     return std::nullopt;
   }
 
-  const auto& block = main_fn->blocks.front();
+  const auto& block = function.blocks.front();
   if (block.label != "entry" || block.insts.size() != 1 ||
       !block.terminator.value.has_value() ||
       c4c::backend::backend_return_scalar_type(block.terminator) !=
@@ -3933,6 +3957,7 @@ std::optional<MinimalGlobalCharPointerDiffSlice> parse_minimal_global_char_point
   }
 
   return MinimalGlobalCharPointerDiffSlice{
+      function.signature.name,
       global->name,
       global_size,
       ptrdiff->lhs_address.byte_offset,
@@ -3962,16 +3987,16 @@ std::optional<MinimalGlobalIntPointerDiffSlice> parse_minimal_global_int_pointer
     return std::nullopt;
   }
 
-  const auto* main_fn = find_function(module, "main");
-  if (main_fn == nullptr || main_fn->is_declaration ||
-      !backend_function_is_definition(main_fn->signature) ||
-      !is_i32_scalar_signature_return(main_fn->signature) ||
-      !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
-      main_fn->blocks.size() != 1) {
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      !backend_function_is_definition(function.signature) ||
+      !is_i32_scalar_signature_return(function.signature) ||
+      !function.signature.params.empty() || function.signature.is_vararg ||
+      function.blocks.size() != 1) {
     return std::nullopt;
   }
 
-  const auto& block = main_fn->blocks.front();
+  const auto& block = function.blocks.front();
   if (block.label != "entry" || block.insts.size() != 1 ||
       !block.terminator.value.has_value() ||
       c4c::backend::backend_return_scalar_type(block.terminator) !=
@@ -3995,7 +4020,7 @@ std::optional<MinimalGlobalIntPointerDiffSlice> parse_minimal_global_int_pointer
     return std::nullopt;
   }
 
-  return MinimalGlobalIntPointerDiffSlice{global->name, global_size, 4, 2};
+  return MinimalGlobalIntPointerDiffSlice{function.signature.name, global->name, global_size, 4, 2};
 }
 
 void emit_function_prelude(std::ostringstream& out,
@@ -4039,13 +4064,14 @@ std::string emit_minimal_return_imm_asm(const c4c::backend::BackendModule& modul
 }
 
 std::string emit_minimal_return_imm_asm(std::string_view target_triple,
+                                        std::string_view function_name,
                                         std::int64_t imm) {
   if (imm < 0 || imm > std::numeric_limits<std::uint16_t>::max()) {
     fail_unsupported("return immediates outside the minimal mov-supported range");
   }
 
   std::ostringstream out;
-  const std::string symbol = asm_symbol_name(target_triple, "main");
+  const std::string symbol = asm_symbol_name(target_triple, function_name);
 
   out << ".text\n";
   emit_function_prelude(out, target_triple, symbol, true);
@@ -4095,9 +4121,10 @@ std::string emit_minimal_return_sub_imm_asm(const c4c::backend::BackendModule& m
 }
 
 std::string emit_minimal_return_sub_imm_asm(std::string_view target_triple,
+                                            std::string_view function_name,
                                             std::int64_t imm) {
   if (imm >= 0 && imm <= std::numeric_limits<std::uint16_t>::max()) {
-    return emit_minimal_return_imm_asm(target_triple, imm);
+    return emit_minimal_return_imm_asm(target_triple, function_name, imm);
   }
   if (imm >= 0) {
     fail_unsupported("return immediates outside the minimal mov-supported range");
@@ -4109,7 +4136,7 @@ std::string emit_minimal_return_sub_imm_asm(std::string_view target_triple,
   }
 
   std::ostringstream out;
-  const std::string symbol = asm_symbol_name(target_triple, "main");
+  const std::string symbol = asm_symbol_name(target_triple, function_name);
 
   out << ".text\n";
   emit_function_prelude(out, target_triple, symbol, true);
@@ -4264,8 +4291,7 @@ std::string emit_minimal_direct_call_asm(const c4c::backend::BackendModule& modu
   std::ostringstream out;
   const std::string helper_symbol = asm_symbol_name(module, slice.helper->signature.name);
   const std::string main_symbol =
-      asm_symbol_name(module, slice.main_function == nullptr ? "main"
-                                                             : slice.main_function->signature.name);
+      asm_symbol_name(module, slice.main_function->signature.name);
 
   out << ".text\n";
   emit_function_prelude(out, module, helper_symbol, false);
@@ -4296,8 +4322,7 @@ std::string emit_minimal_void_direct_call_imm_return_asm(
   std::ostringstream out;
   const std::string helper_symbol = asm_symbol_name(module, slice.helper->signature.name);
   const std::string main_symbol =
-      asm_symbol_name(module, slice.main_function == nullptr ? "main"
-                                                             : slice.main_function->signature.name);
+      asm_symbol_name(module, slice.main_function->signature.name);
 
   out << ".text\n";
   emit_function_prelude(out, module, helper_symbol, false);
@@ -4331,8 +4356,7 @@ std::string emit_minimal_direct_call_add_imm_asm(
   std::ostringstream out;
   const std::string helper_symbol = asm_symbol_name(module, slice.helper->signature.name);
   const std::string main_symbol =
-      asm_symbol_name(module, slice.main_function == nullptr ? "main"
-                                                             : slice.main_function->signature.name);
+      asm_symbol_name(module, slice.main_function->signature.name);
 
   out << ".text\n";
   emit_function_prelude(out, module, helper_symbol, false);
@@ -4364,8 +4388,7 @@ std::string emit_minimal_direct_call_identity_arg_asm(
   std::ostringstream out;
   const std::string helper_symbol = asm_symbol_name(module, slice.helper->signature.name);
   const std::string main_symbol =
-      asm_symbol_name(module, slice.main_function == nullptr ? "main"
-                                                             : slice.main_function->signature.name);
+      asm_symbol_name(module, slice.main_function->signature.name);
 
   out << ".text\n";
   emit_function_prelude(out, module, helper_symbol, false);
@@ -4404,8 +4427,7 @@ std::string emit_minimal_dual_identity_direct_call_sub_asm(
   const std::string lhs_symbol = asm_symbol_name(module, slice.lhs_helper->signature.name);
   const std::string rhs_symbol = asm_symbol_name(module, slice.rhs_helper->signature.name);
   const std::string main_symbol =
-      asm_symbol_name(module, slice.main_function == nullptr ? "main"
-                                                             : slice.main_function->signature.name);
+      asm_symbol_name(module, slice.main_function->signature.name);
 
   out << ".text\n";
   emit_function_prelude(out, module, lhs_symbol, false);
@@ -4444,8 +4466,7 @@ std::string emit_minimal_direct_call_two_arg_add_asm(
   std::ostringstream out;
   const std::string helper_symbol = asm_symbol_name(module, slice.helper->signature.name);
   const std::string main_symbol =
-      asm_symbol_name(module, slice.main_function == nullptr ? "main"
-                                                             : slice.main_function->signature.name);
+      asm_symbol_name(module, slice.main_function->signature.name);
 
   out << ".text\n";
   emit_function_prelude(out, module, helper_symbol, false);
@@ -4486,8 +4507,7 @@ std::string emit_minimal_direct_call_two_arg_folded_asm(
   std::ostringstream out;
   const std::string helper_symbol = asm_symbol_name(module, slice.helper->signature.name);
   const std::string main_symbol =
-      asm_symbol_name(module, slice.main_function == nullptr ? "main"
-                                                             : slice.main_function->signature.name);
+      asm_symbol_name(module, slice.main_function->signature.name);
 
   out << ".text\n";
   emit_function_prelude(out, module, helper_symbol, false);
@@ -4558,8 +4578,7 @@ std::string emit_minimal_declared_direct_call_asm(
 
   const std::string helper_symbol = asm_symbol_name(module, slice.parsed_call.symbol_name);
   const std::string main_symbol =
-      asm_symbol_name(module, slice.main_function == nullptr ? "main"
-                                                             : slice.main_function->signature.name);
+      asm_symbol_name(module, slice.main_function->signature.name);
 
   std::ostringstream out;
   if (!emitted_string_constant_names.empty()) {
@@ -4653,8 +4672,7 @@ std::string emit_minimal_call_crossing_direct_call_asm(
   std::ostringstream out;
   const std::string helper_symbol = asm_symbol_name(module, slice.helper->signature.name);
   const std::string main_symbol =
-      asm_symbol_name(module, slice.main_function == nullptr ? "main"
-                                                             : slice.main_function->signature.name);
+      asm_symbol_name(module, slice.main_function->signature.name);
 
   out << ".text\n";
   emit_function_prelude(out, module, helper_symbol, false);
@@ -5149,7 +5167,7 @@ std::string emit_minimal_countdown_loop_asm(const c4c::backend::BackendModule& m
 std::string emit_minimal_countdown_loop_asm(std::string_view target_triple,
                                             const MinimalCountdownLoopSlice& slice) {
   std::ostringstream out;
-  const std::string main_symbol = asm_symbol_name(target_triple, "main");
+  const std::string main_symbol = asm_symbol_name(target_triple, slice.function_name);
 
   out << ".text\n";
   emit_function_prelude(out, target_triple, main_symbol, true);
@@ -5194,7 +5212,7 @@ std::string emit_minimal_conditional_phi_join_asm(
   }
 
   std::ostringstream out;
-  const std::string main_symbol = asm_symbol_name(module, "main");
+  const std::string main_symbol = asm_symbol_name(module, slice.function_name);
   const char* fail_branch = nullptr;
   switch (slice.predicate) {
     case c4c::codegen::lir::LirCmpPredicate::Slt: fail_branch = "b.ge"; break;
@@ -5258,7 +5276,7 @@ std::string emit_minimal_scalar_global_load_asm(
   const bool is_darwin =
       target_triple.find("apple-darwin") != std::string::npos;
   const std::string global_symbol = asm_symbol_name(target_triple, slice.global_name);
-  const std::string main_symbol = asm_symbol_name(target_triple, "main");
+  const std::string main_symbol = asm_symbol_name(target_triple, slice.function_name);
   const int align_pow2 = slice.align_bytes <= 1
                              ? 0
                              : (slice.align_bytes == 2 ? 1 : 2);
@@ -5317,7 +5335,7 @@ std::string emit_minimal_scalar_global_store_reload_asm(
   const bool is_darwin =
       target_triple.find("apple-darwin") != std::string::npos;
   const std::string global_symbol = asm_symbol_name(target_triple, slice.global_name);
-  const std::string main_symbol = asm_symbol_name(target_triple, "main");
+  const std::string main_symbol = asm_symbol_name(target_triple, slice.function_name);
   const int align_pow2 = slice.align_bytes <= 1
                              ? 0
                              : (slice.align_bytes == 2 ? 1 : 2);
@@ -5363,7 +5381,7 @@ std::string emit_minimal_extern_scalar_global_load_asm(
   const bool is_darwin =
       target_triple.find("apple-darwin") != std::string::npos;
   const std::string global_symbol = asm_symbol_name(target_triple, slice.global_name);
-  const std::string main_symbol = asm_symbol_name(target_triple, "main");
+  const std::string main_symbol = asm_symbol_name(target_triple, slice.function_name);
 
   std::ostringstream out;
   if (!is_darwin) {
@@ -5394,7 +5412,7 @@ std::string emit_minimal_extern_global_array_load_asm(
   const bool is_darwin =
       target_triple.find("apple-darwin") != std::string::npos;
   const std::string global_symbol = asm_symbol_name(target_triple, slice.global_name);
-  const std::string main_symbol = asm_symbol_name(target_triple, "main");
+  const std::string main_symbol = asm_symbol_name(target_triple, slice.function_name);
 
   std::ostringstream out;
   if (!is_darwin) {
@@ -5426,7 +5444,7 @@ std::string emit_minimal_global_char_pointer_diff_asm(
   const bool is_darwin =
       target_triple.find("apple-darwin") != std::string::npos;
   const std::string global_symbol = asm_symbol_name(target_triple, slice.global_name);
-  const std::string main_symbol = asm_symbol_name(target_triple, "main");
+  const std::string main_symbol = asm_symbol_name(target_triple, slice.function_name);
 
   std::ostringstream out;
   out << ".bss\n"
@@ -5470,7 +5488,7 @@ std::string emit_minimal_global_int_pointer_diff_asm(
   const bool is_darwin =
       target_triple.find("apple-darwin") != std::string::npos;
   const std::string global_symbol = asm_symbol_name(target_triple, slice.global_name);
-  const std::string main_symbol = asm_symbol_name(target_triple, "main");
+  const std::string main_symbol = asm_symbol_name(target_triple, slice.function_name);
 
   std::ostringstream out;
   out << ".bss\n"
@@ -5508,7 +5526,7 @@ std::string emit_minimal_string_literal_char_asm(
     const MinimalStringLiteralCharSlice& slice) {
   const bool is_darwin = target_triple.find("apple-darwin") != std::string::npos;
   const std::string string_label = asm_private_data_label(target_triple, slice.pool_name);
-  const std::string main_symbol = asm_symbol_name(target_triple, "main");
+  const std::string main_symbol = asm_symbol_name(target_triple, slice.function_name);
 
   std::ostringstream out;
   if (is_darwin) {
@@ -5551,7 +5569,7 @@ std::string emit_minimal_local_array_asm(
     fail_unsupported("local-array store immediates outside the minimal mov-supported range");
   }
 
-  const std::string main_symbol = asm_symbol_name(module, "main");
+  const std::string main_symbol = asm_symbol_name(module, slice.function_name);
 
   std::ostringstream out;
   out << ".text\n";
@@ -8261,14 +8279,17 @@ std::optional<std::string> try_emit_direct_lir_module(
     if (!needs_nonminimal_lowering) {
       if (const auto imm = parse_minimal_lir_local_pointer_return_imm(module);
           imm.has_value()) {
-        return emit_minimal_return_imm_asm(module.target_triple, *imm);
+        return emit_minimal_return_imm_asm(
+            module.target_triple, module.functions.front().name, *imm);
       }
     }
     if (const auto imm = parse_minimal_lir_return_imm(module); imm.has_value()) {
-      return emit_minimal_return_imm_asm(module.target_triple, *imm);
+      return emit_minimal_return_imm_asm(
+          module.target_triple, module.functions.front().name, *imm);
     }
     if (const auto imm = parse_minimal_lir_return_sub_imm(module); imm.has_value()) {
-      return emit_minimal_return_sub_imm_asm(module.target_triple, *imm);
+      return emit_minimal_return_sub_imm_asm(
+          module.target_triple, module.functions.front().name, *imm);
     }
     if (const auto bir_module = c4c::backend::try_lower_to_bir(module);
         bir_module.has_value()) {
@@ -8551,7 +8572,8 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
   }
   if (!needs_nonminimal_lowering) {
     if (const auto imm2 = try_constant_fold_single_block(prepared); imm2.has_value()) {
-      return emit_minimal_return_imm_asm(prepared.target_triple, *imm2);
+      return emit_minimal_return_imm_asm(
+          prepared.target_triple, prepared.functions.front().name, *imm2);
     }
   }
   if (auto gen_asm = try_emit_general_lir_asm(prepared)) return *gen_asm;
