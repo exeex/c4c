@@ -6,15 +6,35 @@ Source Plan: plan.md
 
 - Step 2: switch one shared helper seam off `BackendModule`
 - Current slice: resume the emitter-local `BackendModule` inventory after the
-  x86 dead-overload cleanup and inspect the matching aarch64 parser inventory
-  for the next verified-dead legacy entry points or the next real
+  x86/aarch64 dead-overload cleanup and inspect the remaining Step 2 shared
+  helper seams for the next verified-dead adapter family or the next real
   metadata-backed cluster that still needs bounded BIR or a shared lookup seam
-- Next intended slice: mirror the x86 dead-overload reachability check in
-  `src/backend/aarch64/codegen/emit.cpp` and remove the next confirmed-dead
-  `BackendModule` parser wrappers only if no live dispatcher still references
-  them
+- Next intended slice: audit `src/backend/lowering/call_decode.hpp` plus the
+  remaining x86 emitter-local inventory for the next concrete
+  `BackendModule`-only parser family that is still truly live versus the next
+  dead adapter set that can be deleted without widening scope
 
 # Completed
+
+- Removed the remaining dead aarch64 emitter-local `BackendModule` parser
+  inventory from `src/backend/aarch64/codegen/emit.cpp` for the
+  conditional-return, countdown-loop, string-literal-char, scalar/external
+  global load-store, and global-pointer-diff families after confirming the live
+  aarch64 dispatcher only emits from `LirModule` and `bir::Module`
+- Deleted the now-unused aarch64 legacy backend lookup helpers
+  `find_global(...)` and backend `find_string_constant(...)` after the dead
+  parser removal
+- Rebuilt `c4cll`, `backend_bir_tests`, and `backend_shared_util_tests`
+  successfully after the aarch64 dead parser cleanup
+- Reran
+  `ctest --test-dir build -R 'backend_bir_tests|backend_shared_util_tests' --output-on-failure`
+  successfully after the cleanup
+- Reran the full `ctest --test-dir build -j --output-on-failure` suite and
+  refreshed `test_fail_after.log`; the workspace still has the same 13 known
+  failures as `test_fail_before.log` with `2821/2834` tests passing
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=0 failed=0`
+  and zero newly failing tests
 
 - Removed the remaining dead x86 emitter-local `BackendModule` parser overloads
   for the conditional-return, countdown-loop, conditional-phi-join,
