@@ -1184,6 +1184,19 @@ void test_backend_bir_pipeline_drives_aarch64_lir_minimal_direct_call_through_bi
                       "aarch64 LIR minimal direct-call input should stay on native asm emission instead of falling back to LLVM text");
 }
 
+void test_aarch64_direct_emitter_lowers_minimal_direct_call_via_outer_bir_path() {
+  const auto rendered = c4c::backend::aarch64::emit_module(make_lir_minimal_direct_call_module());
+
+  expect_contains(rendered, ".type helper, %function\nhelper:",
+                  "aarch64 direct emitter should still emit the helper definition when direct-LIR staging declines a BIR-lowerable direct-call module");
+  expect_contains(rendered, "mov w0, #42",
+                  "aarch64 direct emitter should preserve the helper immediate after the outer BIR-lowering retry owns the module");
+  expect_contains(rendered, "bl helper",
+                  "aarch64 direct emitter should still lower the helper call after removing the duplicate inner BIR retry seam");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 direct emitter should stay on native asm emission when the outer BIR path handles the direct-call module");
+}
+
 void test_backend_bir_pipeline_drives_aarch64_lir_minimal_direct_call_with_dead_entry_alloca_end_to_end() {
   const auto module = make_lir_minimal_direct_call_with_dead_entry_alloca_module();
   expect_true(!c4c::backend::try_lower_to_bir(module).has_value(),
@@ -2041,6 +2054,7 @@ void run_backend_bir_pipeline_aarch64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_direct_bir_minimal_extern_scalar_global_load_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_direct_bir_minimal_scalar_global_store_reload_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_lir_minimal_direct_call_through_bir_end_to_end);
+  RUN_TEST(test_aarch64_direct_emitter_lowers_minimal_direct_call_via_outer_bir_path);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_lir_minimal_direct_call_with_dead_entry_alloca_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_lir_minimal_void_direct_call_imm_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_lir_declared_direct_call_through_bir_end_to_end);

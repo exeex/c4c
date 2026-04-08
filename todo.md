@@ -6,16 +6,33 @@ Source Plan: plan.md
 
 - Step 4 cleanup: keep shrinking adapter-only legacy-lowering surface now that
   `src/backend/ir.hpp` and `lir_to_backend_ir.*` are already gone
-- Current slice: re-inventory the remaining native direct-LIR staging helpers
-  after folding the aarch64 entry-alloca pruning pass into the normal emitter
-  flow, starting with any other aarch64-only LIR preparation or retry seams
-  that still survive only to preserve deleted legacy routes
-- Next intended slice: choose the next smallest surviving direct-LIR staging
-  helper after `prune_module_entry_allocas(...)`, add the narrowest regression
-  coverage around it, and delete it if native direct-BIR or explicit
-  direct-LIR rejection already covers the behavior
+- Current slice: continue the Step 4 inventory after removing the aarch64
+  direct-emitter inner BIR retry, then compare the remaining duplicate retry
+  / dispatch seams in x86 direct-LIR emission and `src/backend/backend.cpp`
+- Next intended slice: add one focused x86 direct-emitter regression around a
+  BIR-lowerable LIR module, then delete the matching duplicate inner BIR retry
+  if the outer BIR path already owns the behavior cleanly
 
 # Completed
+
+- Removed the duplicate aarch64 direct-emitter inner BIR retry from
+  `src/backend/aarch64/codegen/emit.cpp` so
+  `try_emit_direct_lir_module(...)` now only handles the native direct-LIR
+  staging helpers and leaves shared-BIR lowering to the outer
+  `emit_module(const LirModule&)` flow
+- Added focused coverage in
+  `tests/backend/backend_bir_pipeline_aarch64_tests.cpp` that calls
+  `c4c::backend::aarch64::emit_module(...)` directly on a BIR-lowerable
+  minimal direct-call LIR module, pinning that the outer BIR path still owns
+  native asm emission after removing the duplicate retry seam
+- Rebuilt `backend_bir_tests` and `c4cll`, reran
+  `ctest --test-dir build -R '^backend_bir_tests$' --output-on-failure`, reran
+  the full `ctest --test-dir build -j8 --output-on-failure` suite into
+  `test_fail_after.log`, and confirmed the workspace stayed at `2834/2834`
+  passing with 0 failures
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=0 failed=0`
+  and zero newly failing tests against the refreshed `test_fail_before.log`
 
 - Renamed the aarch64 adapter-only `prepare_module_for_fallback(...)` helper
   to `prune_module_entry_allocas(...)` in `src/backend/aarch64/codegen/emit.cpp`
