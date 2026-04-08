@@ -2037,6 +2037,165 @@ std::optional<bir::Module> try_lower_minimal_global_char_pointer_diff_module(
   return lowered;
 }
 
+std::optional<bir::Module> try_lower_minimal_global_int_pointer_diff_module(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  const bool supported_target =
+      module.target_triple.find("x86_64") != std::string::npos ||
+      module.target_triple.find("i686") != std::string::npos ||
+      module.target_triple.find("aarch64") != std::string::npos;
+  if (!supported_target) {
+    return std::nullopt;
+  }
+
+  if (module.functions.size() != 1 || module.globals.size() != 1 ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& global = module.globals.front();
+  if (global.is_internal || global.is_const || global.is_extern_decl ||
+      global.linkage_vis != "" || global.qualifier != "global " ||
+      global.align_bytes != 4 ||
+      (global.init_text != "zeroinitializer" && global.init_text != "[i32 0, i32 0]")) {
+    return std::nullopt;
+  }
+
+  const std::string array_prefix = "[";
+  const std::string array_suffix = " x i32]";
+  if (global.llvm_type.size() <= array_prefix.size() + array_suffix.size() ||
+      global.llvm_type.substr(0, array_prefix.size()) != array_prefix ||
+      global.llvm_type.substr(global.llvm_type.size() - array_suffix.size()) != array_suffix) {
+    return std::nullopt;
+  }
+  const auto global_size_text = global.llvm_type.substr(
+      array_prefix.size(),
+      global.llvm_type.size() - array_prefix.size() - array_suffix.size());
+  const auto global_size = parse_immediate(global_size_text);
+  if (!global_size.has_value() || *global_size != 2) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      !backend_lir_signature_matches(function.signature_text, "define", "i32", function.name, {}) ||
+      function.entry.value != 0 || function.blocks.size() != 1 ||
+      !function.alloca_insts.empty() || !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  if (entry.label != "entry" || entry.insts.size() != 13) {
+    return std::nullopt;
+  }
+
+  const auto* base_gep1 = std::get_if<LirGepOp>(&entry.insts[0]);
+  const auto* index1 = std::get_if<LirCastOp>(&entry.insts[1]);
+  const auto* elem_gep1 = std::get_if<LirGepOp>(&entry.insts[2]);
+  const auto* base_gep0 = std::get_if<LirGepOp>(&entry.insts[3]);
+  const auto* index0 = std::get_if<LirCastOp>(&entry.insts[4]);
+  const auto* elem_gep0 = std::get_if<LirGepOp>(&entry.insts[5]);
+  const auto* ptrtoint1 = std::get_if<LirCastOp>(&entry.insts[6]);
+  const auto* ptrtoint0 = std::get_if<LirCastOp>(&entry.insts[7]);
+  const auto* diff = std::get_if<LirBinOp>(&entry.insts[8]);
+  const auto* scaled_diff = std::get_if<LirBinOp>(&entry.insts[9]);
+  const auto* expected_diff = std::get_if<LirCastOp>(&entry.insts[10]);
+  const auto* cmp = std::get_if<LirCmpOp>(&entry.insts[11]);
+  const auto* extend = std::get_if<LirCastOp>(&entry.insts[12]);
+  const auto* ret = std::get_if<LirRet>(&entry.terminator);
+  if (base_gep1 == nullptr || index1 == nullptr || elem_gep1 == nullptr ||
+      base_gep0 == nullptr || index0 == nullptr || elem_gep0 == nullptr ||
+      ptrtoint1 == nullptr || ptrtoint0 == nullptr || diff == nullptr ||
+      scaled_diff == nullptr || expected_diff == nullptr || cmp == nullptr ||
+      extend == nullptr || ret == nullptr) {
+    return std::nullopt;
+  }
+
+  const std::string global_ptr = "@" + global.name;
+  if (base_gep1->element_type != global.llvm_type || base_gep1->ptr != global_ptr ||
+      base_gep1->indices.size() != 2 || base_gep1->indices[0] != "i64 0" ||
+      base_gep1->indices[1] != "i64 0") {
+    return std::nullopt;
+  }
+  if (base_gep0->element_type != global.llvm_type || base_gep0->ptr != global_ptr ||
+      base_gep0->indices.size() != 2 || base_gep0->indices[0] != "i64 0" ||
+      base_gep0->indices[1] != "i64 0") {
+    return std::nullopt;
+  }
+  if (index1->kind != LirCastKind::SExt || index1->from_type != "i32" ||
+      index1->to_type != "i64" || index1->operand != "1") {
+    return std::nullopt;
+  }
+  if (index0->kind != LirCastKind::SExt || index0->from_type != "i32" ||
+      index0->to_type != "i64" || index0->operand != "0") {
+    return std::nullopt;
+  }
+  if (elem_gep1->element_type != "i32" || elem_gep1->ptr != base_gep1->result ||
+      elem_gep1->indices.size() != 1 ||
+      elem_gep1->indices[0] != ("i64 " + index1->result)) {
+    return std::nullopt;
+  }
+  if (elem_gep0->element_type != "i32" || elem_gep0->ptr != base_gep0->result ||
+      elem_gep0->indices.size() != 1 ||
+      elem_gep0->indices[0] != ("i64 " + index0->result)) {
+    return std::nullopt;
+  }
+  if (ptrtoint1->kind != LirCastKind::PtrToInt || ptrtoint1->from_type != "ptr" ||
+      ptrtoint1->operand != elem_gep1->result || ptrtoint1->to_type != "i64") {
+    return std::nullopt;
+  }
+  if (ptrtoint0->kind != LirCastKind::PtrToInt || ptrtoint0->from_type != "ptr" ||
+      ptrtoint0->operand != elem_gep0->result || ptrtoint0->to_type != "i64") {
+    return std::nullopt;
+  }
+
+  const auto diff_opcode = diff->opcode.typed();
+  if (diff_opcode != LirBinaryOpcode::Sub || diff->type_str != "i64" ||
+      diff->lhs != ptrtoint1->result || diff->rhs != ptrtoint0->result) {
+    return std::nullopt;
+  }
+  const auto scaled_opcode = scaled_diff->opcode.typed();
+  if (scaled_opcode != LirBinaryOpcode::SDiv || scaled_diff->type_str != "i64" ||
+      scaled_diff->lhs != diff->result || scaled_diff->rhs != "4") {
+    return std::nullopt;
+  }
+  if (expected_diff->kind != LirCastKind::SExt || expected_diff->from_type != "i32" ||
+      expected_diff->to_type != "i64" || expected_diff->operand != "1") {
+    return std::nullopt;
+  }
+
+  const auto cmp_predicate = cmp->predicate.typed();
+  if (cmp->is_float || cmp_predicate != LirCmpPredicate::Eq || cmp->type_str != "i64" ||
+      cmp->lhs != scaled_diff->result || cmp->rhs != expected_diff->result) {
+    return std::nullopt;
+  }
+  if (extend->kind != LirCastKind::ZExt || extend->from_type != "i1" ||
+      extend->operand != cmp->result || extend->to_type != "i32") {
+    return std::nullopt;
+  }
+  if (!ret->value_str.has_value() || ret->type_str != "i32" ||
+      *ret->value_str != extend->result) {
+    return std::nullopt;
+  }
+
+  bir::Module lowered;
+  lowered.target_triple = module.target_triple;
+  lowered.data_layout = module.data_layout;
+
+  bir::Function lowered_function;
+  lowered_function.name = function.name;
+  lowered_function.return_type = bir::TypeKind::I32;
+
+  bir::Block lowered_entry;
+  lowered_entry.label = "entry";
+  lowered_entry.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(1)};
+
+  lowered_function.blocks.push_back(std::move(lowered_entry));
+  lowered.functions.push_back(std::move(lowered_function));
+  return lowered;
+}
+
 std::optional<bir::Module> try_lower_minimal_scalar_global_store_reload_module(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
@@ -4079,6 +4238,10 @@ std::optional<bir::Module> try_lower_to_bir(const c4c::codegen::lir::LirModule& 
     return lowered;
   }
   if (const auto lowered = try_lower_minimal_global_char_pointer_diff_module(module);
+      lowered.has_value()) {
+    return lowered;
+  }
+  if (const auto lowered = try_lower_minimal_global_int_pointer_diff_module(module);
       lowered.has_value()) {
     return lowered;
   }

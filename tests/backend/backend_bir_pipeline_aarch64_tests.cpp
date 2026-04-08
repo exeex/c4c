@@ -51,6 +51,54 @@ c4c::codegen::lir::LirModule make_lir_minimal_global_char_pointer_diff_module() 
   return module;
 }
 
+c4c::codegen::lir::LirModule make_lir_minimal_global_int_pointer_diff_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.globals.push_back(LirGlobal{
+      LirGlobalId{0},
+      "g_words",
+      {},
+      false,
+      false,
+      "",
+      "global ",
+      "[2 x i32]",
+      "zeroinitializer",
+      4,
+      false,
+  });
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{"%t0", "[2 x i32]", "@g_words", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirCastOp{"%t1", LirCastKind::SExt, "i32", "1", "i64"});
+  entry.insts.push_back(LirGepOp{"%t2", "i32", "%t0", false, {"i64 %t1"}});
+  entry.insts.push_back(LirGepOp{"%t3", "[2 x i32]", "@g_words", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirCastOp{"%t4", LirCastKind::SExt, "i32", "0", "i64"});
+  entry.insts.push_back(LirGepOp{"%t5", "i32", "%t3", false, {"i64 %t4"}});
+  entry.insts.push_back(LirCastOp{"%t6", LirCastKind::PtrToInt, "ptr", "%t2", "i64"});
+  entry.insts.push_back(LirCastOp{"%t7", LirCastKind::PtrToInt, "ptr", "%t5", "i64"});
+  entry.insts.push_back(LirBinOp{"%t8", "sub", "i64", "%t6", "%t7"});
+  entry.insts.push_back(LirBinOp{"%t9", "sdiv", "i64", "%t8", "4"});
+  entry.insts.push_back(LirCastOp{"%t10", LirCastKind::SExt, "i32", "1", "i64"});
+  entry.insts.push_back(LirCmpOp{"%t11", false, "eq", "i64", "%t9", "%t10"});
+  entry.insts.push_back(LirCastOp{"%t12", LirCastKind::ZExt, "i1", "%t11", "i32"});
+  entry.terminator = LirRet{std::string("%t12"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_lir_minimal_direct_call_module() {
   using namespace c4c::codegen::lir;
 
@@ -1392,6 +1440,35 @@ void test_backend_bir_pipeline_drives_aarch64_lir_minimal_global_char_pointer_di
                       "aarch64 LIR global char pointer-diff input should stay on native asm emission instead of falling back to LLVM text");
 }
 
+void test_backend_bir_pipeline_drives_aarch64_lir_minimal_global_int_pointer_diff_through_bir_end_to_end() {
+  const auto lowered_bir =
+      c4c::backend::try_lower_to_bir(make_lir_minimal_global_int_pointer_diff_module());
+  expect_true(lowered_bir.has_value(),
+              "aarch64 LIR global int pointer-diff input should now lower into the bounded shared BIR immediate-return shape");
+  if (!lowered_bir.has_value()) {
+    return;
+  }
+  expect_true(lowered_bir->globals.empty() && lowered_bir->functions.size() == 1 &&
+                  lowered_bir->functions.front().blocks.size() == 1 &&
+                  lowered_bir->functions.front().blocks.front().insts.empty() &&
+                  lowered_bir->functions.front().blocks.front().terminator.value.has_value() &&
+                  lowered_bir->functions.front().blocks.front().terminator.value->kind ==
+                      c4c::backend::bir::Value::Kind::Immediate &&
+                  lowered_bir->functions.front().blocks.front().terminator.value->immediate == 1,
+              "aarch64 LIR global int pointer-diff lowering should produce the bounded shared immediate-return contract");
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_lir_minimal_global_int_pointer_diff_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Aarch64));
+
+  expect_contains(rendered, "mov w0, #1",
+                  "aarch64 LIR global int pointer-diff input should materialize the shared immediate-return result on the native aarch64 path");
+  expect_not_contains(rendered, "sub x8, x9, x8",
+                      "aarch64 LIR global int pointer-diff input should no longer rely on the emitter-local pointer-diff fast path");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 LIR global int pointer-diff input should stay on native asm emission instead of falling back to LLVM text");
+}
+
 void test_backend_bir_pipeline_drives_aarch64_lir_minimal_scalar_global_store_reload_through_bir_end_to_end() {
   const auto lowered_bir =
       c4c::backend::try_lower_to_bir(make_lir_minimal_scalar_global_store_reload_module());
@@ -1909,6 +1986,7 @@ void run_backend_bir_pipeline_aarch64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_lir_minimal_scalar_global_load_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_lir_minimal_extern_scalar_global_load_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_lir_minimal_global_char_pointer_diff_through_bir_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_aarch64_lir_minimal_global_int_pointer_diff_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_lir_minimal_scalar_global_store_reload_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_lir_minimal_call_crossing_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_single_param_chain_end_to_end);
