@@ -2540,9 +2540,17 @@ std::optional<MinimalStringLiteralCharSlice> parse_minimal_string_literal_char_s
   };
 }
 
-// BIR-gap data slices.
-// These still need string-pool / global / address-shape metadata that BIR does
-// not currently expose in the same form.
+// BIR switch order:
+// 1. string literal pool slices, once BIR exposes private data labels / pool
+//    naming
+// 2. global-backed load/store/diff slices, once BIR exposes globals with
+//    storage/linkage/address-shape metadata
+// 3. local-slot slices, once shared slot layout contracts exist
+// 4. direct-call slices, once BIR exposes call-argument parsing and helper/main
+//    pairing metadata
+//
+// This block stays on BackendModule today because those BIR contracts are not
+// all available yet.
 std::optional<MinimalStringLiteralCharSlice> parse_minimal_string_literal_char_slice(
     const c4c::backend::BackendModule& module) {
   if (module.functions.size() != 1 || module.string_constants.size() != 1 ||
@@ -3647,6 +3655,9 @@ std::optional<MinimalScalarGlobalLoadSlice> parse_minimal_scalar_global_load_sli
   };
 }
 
+// BIR-gap local-slot slices.
+// The local-array helper still needs the emitter-local slot layout contract;
+// that shape is not represented in BIR yet.
 std::optional<MinimalLocalArraySlice> parse_minimal_local_array_slice(
     const c4c::backend::BackendModule& module) {
   if (module.functions.size() != 1 || !module.globals.empty() ||
@@ -3729,9 +3740,6 @@ std::optional<MinimalLocalArraySlice> parse_minimal_local_array_slice(
   return MinimalLocalArraySlice{function.signature.name, *store0_imm, *store1_imm};
 }
 
-// BIR-gap local-slot slices.
-// The local-array helper still needs the emitter-local slot layout contract;
-// that shape is not represented in BIR yet.
 std::optional<MinimalScalarGlobalStoreReloadSlice> parse_minimal_scalar_global_store_reload_slice(
     const c4c::backend::BackendModule& module) {
   if (module.functions.size() != 1 || module.globals.size() != 1) {
@@ -4278,6 +4286,9 @@ std::string emit_minimal_cast_return_asm(
 // Mixed direct-call metadata.
 // These helpers still need helper/main pairing, parsed extern-call args, and
 // string-constant lookup that BIR does not yet model directly.
+// First mover here should be the declared-direct-call path once BIR can carry
+// extern-call arg shape and named helper resolution; the zero-arg direct-call
+// family can follow behind the same contract.
 std::string emit_minimal_direct_call_asm(const c4c::backend::BackendModule& module,
                                          const c4c::backend::ParsedBackendMinimalDirectCallModuleView& slice) {
   if (slice.helper == nullptr) {

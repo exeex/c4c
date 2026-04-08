@@ -3199,6 +3199,13 @@ std::optional<MinimalExternGlobalArrayLoadSlice> parse_minimal_extern_global_arr
 // These storage/global/string slices still lean on module-wide metadata:
 // globals, string pools, declaration status, and exact function count.
 // They likely need new BIR fields or a shared lowering contract before they can fully move.
+// First move candidates once bounded BIR lands:
+//   - parse_minimal_extern_global_array_load_slice
+//   - parse_minimal_extern_scalar_global_load_slice
+//   - parse_minimal_scalar_global_load_slice
+//   - parse_minimal_scalar_global_store_reload_slice
+//   - parse_minimal_string_literal_char_slice
+//   - parse_minimal_local_array_slice
 std::optional<MinimalLocalArraySlice> parse_minimal_local_array_slice(
     const c4c::backend::BackendModule& module) {
   if (module.functions.size() != 1 || !module.globals.empty() ||
@@ -4244,6 +4251,8 @@ std::optional<MinimalScalarGlobalStoreReloadSlice> parse_minimal_scalar_global_s
 
 // Pure direct-call shapes already have BIR-friendly equivalents, but call-crossing still needs
 // a shared regalloc contract because the emission depends on allocated callee-saved state.
+// First move candidate in this family once the BIR regalloc contract exists:
+//   - parse_minimal_call_crossing_direct_call_slice
 std::optional<MinimalCallCrossingDirectCallSlice> parse_minimal_call_crossing_direct_call_slice(
     const c4c::backend::BackendModule& module) {
   const auto parsed = c4c::backend::parse_backend_minimal_call_crossing_direct_call_module(module);
@@ -6029,6 +6038,11 @@ std::string remove_redundant_self_moves(std::string asm_text) {
 std::optional<std::string> try_emit_direct_lir_module(
     const c4c::codegen::lir::LirModule& module) {
   try {
+    // Intended migration order:
+    // 1) direct BIR emission stays the fast path.
+    // 2) pure call/global/string/local-slot BIR contracts land next and should replace
+    //    the matching BackendModule clusters below in-place.
+    // 3) call-crossing follows only after shared regalloc state is expressible in BIR.
     if (const auto slice = parse_minimal_member_array_runtime_slice(module);
         slice.has_value()) {
       return emit_minimal_member_array_runtime_asm(module.target_triple, *slice);

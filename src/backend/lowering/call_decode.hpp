@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../bir.hpp"
 #include "../ir.hpp"
 
 #include "../../codegen/lir/call_args.hpp"
@@ -105,6 +106,13 @@ struct ParsedBackendSingleHelperDirectGlobalCallView {
   const c4c::codegen::lir::LirCallOp* call = nullptr;
   std::string_view operand;
   std::string_view callee_name;
+};
+
+struct ParsedBirMinimalDirectCallModuleView {
+  const bir::Function* helper = nullptr;
+  const bir::Function* main_function = nullptr;
+  const bir::Block* main_block = nullptr;
+  const bir::CallInst* call = nullptr;
 };
 
 struct ParsedBackendMinimalTwoArgDirectCallLirModuleView {
@@ -919,6 +927,63 @@ parse_backend_single_helper_direct_global_call(
       call,
       *call_operand,
       module.helper->name,
+  };
+}
+
+inline std::optional<ParsedBirMinimalDirectCallModuleView>
+parse_bir_minimal_direct_call_module(const bir::Module& module) {
+  if (!module.globals.empty() || !module.string_constants.empty() || module.functions.size() != 2) {
+    return std::nullopt;
+  }
+
+  const bir::Function* helper = nullptr;
+  const bir::Function* main_fn = nullptr;
+  for (const auto& function : module.functions) {
+    if (function.is_declaration) {
+      if (helper != nullptr || !function.blocks.empty() || !function.local_slots.empty()) {
+        return std::nullopt;
+      }
+      helper = &function;
+      continue;
+    }
+    if (main_fn != nullptr || function.return_type != bir::TypeKind::I32 ||
+        !function.local_slots.empty() || function.blocks.size() != 1) {
+      return std::nullopt;
+    }
+    main_fn = &function;
+  }
+
+  if (helper == nullptr || main_fn == nullptr || helper->name.empty() || main_fn->name.empty() ||
+      helper->return_type != bir::TypeKind::I32 || main_fn->name == helper->name) {
+    return std::nullopt;
+  }
+
+  const auto& main_block = main_fn->blocks.front();
+  if (main_block.label != "entry" || main_block.insts.size() != 1 ||
+      main_fn->return_type != bir::TypeKind::I32) {
+    return std::nullopt;
+  }
+
+  const auto* call = std::get_if<bir::CallInst>(&main_block.insts.front());
+  if (call == nullptr ||
+      call->callee != helper->name) {
+    return std::nullopt;
+  }
+  if (call->result.has_value()) {
+    if (!main_block.terminator.value.has_value() ||
+        main_block.terminator.value->kind != bir::Value::Kind::Named ||
+        main_block.terminator.value->name != call->result->name) {
+      return std::nullopt;
+    }
+  } else if (main_block.terminator.value.has_value()) {
+    return std::nullopt;
+  }
+
+  return ParsedBirMinimalDirectCallModuleView{
+      helper,
+      main_fn,
+      &main_block,
+      call,
   };
 }
 

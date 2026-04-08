@@ -154,6 +154,46 @@ bool validate_cast(const Function& function,
   return true;
 }
 
+bool validate_call(const Function& function,
+                   const CallInst& inst,
+                   std::vector<std::string>* defined_names,
+                   std::string* error) {
+  if (inst.callee.empty()) {
+    return fail(error, "bir call in @" + function.name + " must name a callee");
+  }
+  if (inst.return_type_name.empty()) {
+    return fail(error, "bir call in @" + function.name + " must name a return type");
+  }
+  if (inst.result.has_value()) {
+    if (inst.result->kind != Value::Kind::Named || inst.result->name.empty()) {
+      return fail(error, "bir call result in @" + function.name +
+                             " must use a non-empty named value");
+    }
+    if (!validate_value_type(inst.result->type,
+                             "bir call result in @" + function.name,
+                             error)) {
+      return false;
+    }
+    if (inst.result->type == TypeKind::Void) {
+      return fail(error, "bir call result in @" + function.name +
+                             " must not be void-typed");
+    }
+  }
+  for (const auto& arg : inst.args) {
+    if (!validate_value_type(arg.type, "bir call arg in @" + function.name, error)) {
+      return false;
+    }
+    if (arg.kind == Value::Kind::Named && arg.name.empty()) {
+      return fail(error, "bir call arg in @" + function.name +
+                             " must not use an empty name");
+    }
+  }
+  if (inst.result.has_value()) {
+    defined_names->push_back(inst.result->name);
+  }
+  return true;
+}
+
 bool validate_params(const Function& function,
                      std::vector<std::string>* defined_names,
                      std::string* error) {
@@ -251,6 +291,8 @@ bool validate(const Module& module, std::string* error) {
                 return validate_select(function, lowered, &defined_names, error);
               } else if constexpr (std::is_same_v<T, CastInst>) {
                 return validate_cast(function, lowered, &defined_names, error);
+              } else if constexpr (std::is_same_v<T, CallInst>) {
+                return validate_call(function, lowered, &defined_names, error);
               }
             },
             inst);

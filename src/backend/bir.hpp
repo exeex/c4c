@@ -39,6 +39,24 @@ struct Param {
   std::string name;
 };
 
+struct LocalSlot {
+  std::string name;
+  TypeKind type = TypeKind::Void;
+  std::size_t size_bytes = 0;
+};
+
+struct Global {
+  std::string name;
+  TypeKind type = TypeKind::Void;
+  bool is_extern = false;
+  std::optional<Value> initializer;
+};
+
+struct StringConstant {
+  std::string name;
+  std::string bytes;
+};
+
 enum class BinaryOpcode : unsigned char {
   Add,
   Sub,
@@ -93,7 +111,14 @@ struct CastInst {
   Value operand;
 };
 
-using Inst = std::variant<BinaryInst, SelectInst, CastInst>;
+struct CallInst {
+  std::optional<Value> result;
+  std::string callee;
+  std::vector<Value> args;
+  std::string return_type_name;
+};
+
+using Inst = std::variant<BinaryInst, SelectInst, CastInst, CallInst>;
 
 struct ReturnTerminator {
   std::optional<Value> value;
@@ -109,6 +134,7 @@ struct Function {
   std::string name;
   TypeKind return_type = TypeKind::Void;
   std::vector<Param> params;
+  std::vector<LocalSlot> local_slots;
   std::vector<Block> blocks;
   bool is_declaration = false;
 };
@@ -116,6 +142,8 @@ struct Function {
 struct Module {
   std::string target_triple;
   std::string data_layout;
+  std::vector<Global> globals;
+  std::vector<StringConstant> string_constants;
   std::vector<Function> functions;
 };
 
