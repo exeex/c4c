@@ -1,6 +1,7 @@
 #include "lir_to_backend_ir.hpp"
 
 #include "../ir_printer.hpp"
+#include "call_decode.hpp"
 #include "extern_lowering.hpp"
 
 #include "../../codegen/lir/call_args.hpp"

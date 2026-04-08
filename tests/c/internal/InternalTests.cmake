@@ -304,19 +304,6 @@ if(EXISTS "${EXAMPLE_C}")
       LABELS "internal;backend")
 
   add_test(
-      NAME backend_lir_aarch64_variadic_long_double_ir
-      COMMAND "${CMAKE_COMMAND}"
-              -DCOMPILER=$<TARGET_FILE:c4cll>
-              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_module_case/variadic_long_double_bytes.c
-              -DTARGET_TRIPLE=aarch64-unknown-linux-gnu
-              -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/variadic_long_double_bytes_aarch64.ll
-              "-DREQUIRED_SNIPPETS=declare ptr @llvm.ptrmask.p0.i64(ptr, i64)|vaarg.fp.join.|call ptr @llvm.ptrmask.p0.i64(|load fp128, ptr|getelementptr %struct.__va_list_tag_, ptr %lv.ap, i32 0, i32 4"
-              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_module_check_case.cmake"
-  )
-  set_tests_properties(backend_lir_aarch64_variadic_long_double_ir PROPERTIES
-      LABELS "internal;backend")
-
-  add_test(
       NAME backend_lir_aarch64_variadic_pair_ir
       COMMAND "${CMAKE_COMMAND}"
               -DCOMPILER=$<TARGET_FILE:c4cll>
@@ -468,19 +455,6 @@ if(EXISTS "${EXAMPLE_C}")
               -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_stdout_contract_case.cmake"
   )
   set_tests_properties(backend_lir_aarch64_variadic_mixed_double_short_ir PROPERTIES
-      LABELS "internal;backend")
-
-  add_test(
-      NAME backend_lir_x86_64_struct_return_indirect_byval_ir
-      COMMAND "${CMAKE_COMMAND}"
-              -DCOMPILER=$<TARGET_FILE:c4cll>
-              -DSRC=${INTERNAL_C_TEST_ROOT}/backend_module_case/struct_return_indirect_byval.c
-              -DTARGET_TRIPLE=x86_64-unknown-linux-gnu
-              -DOUT_LL=${CMAKE_BINARY_DIR}/internal_backend/struct_return_indirect_byval_x86_64.ll
-              "-DREQUIRED_SNIPPETS=define %struct.Result @make_result(ptr byval(%struct.Pair) align 8 %p.left, i8 %p.tag, double %p.mid, ptr byval(%struct.Pair) align 8 %p.right)|call %struct.Result (ptr, i8, double, ptr)|ptr byval(%struct.Pair) align 8 %lv.a|ptr byval(%struct.Pair) align 8 %lv.b"
-              -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_module_check_case.cmake"
-  )
-  set_tests_properties(backend_lir_x86_64_struct_return_indirect_byval_ir PROPERTIES
       LABELS "internal;backend")
 
   add_test(

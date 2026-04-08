@@ -1,7 +1,6 @@
 #pragma once
 
 #include "../ir.hpp"
-#include "call_decode.hpp"
 
 #include "../../codegen/lir/call_args.hpp"
 #include "../../codegen/lir/ir.hpp"
@@ -33,9 +32,6 @@ class LirAdapterError : public std::invalid_argument {
 };
 
 BackendModule lower_lir_to_backend_module(const c4c::codegen::lir::LirModule& module);
-inline BackendModule lower_to_backend_ir(const c4c::codegen::lir::LirModule& module) {
-  return lower_lir_to_backend_module(module);
-}
 std::string render_module(const BackendModule& module);
 
 }  // namespace c4c::backend

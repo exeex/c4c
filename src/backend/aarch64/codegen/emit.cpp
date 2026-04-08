@@ -8318,13 +8318,6 @@ std::optional<std::string> try_emit_direct_lir_module(
 
 }  // namespace
 
-std::string emit_module(const c4c::backend::BackendModule& module,
-                        const c4c::codegen::lir::LirModule* legacy_fallback) {
-  (void)module;
-  (void)legacy_fallback;
-  fail_legacy_backend_ir_not_implemented();
-}
-
 std::string emit_module(const c4c::backend::bir::Module& module,
                         const c4c::codegen::lir::LirModule* legacy_fallback) {
   (void)legacy_fallback;
