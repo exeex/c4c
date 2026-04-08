@@ -7,18 +7,47 @@ Source Plan: plan.md
 - Step 5 follow-through: keep shrinking the remaining emitter-local direct-LIR
   compatibility surface now that `src/backend/ir.hpp` is gone and BIR owns the
   active shared global/call/local-slot seams
-- Current slice: evaluate the remaining cross-target
-  `parse_minimal_global_char_pointer_diff_slice(...)` and
-  `parse_minimal_global_int_pointer_diff_slice(...)` helpers now that
-  extern-array global loads route through shared BIR, then remove the next
-  narrowest direct-LIR-only family that still bypasses shared lowering
-- Next intended slice: start with
-  `parse_minimal_global_char_pointer_diff_slice(...)`, because its current
-  shape is a bounded one-byte pointer-difference check that may fit a narrow
-  address/offset-aware BIR follow-through before the wider `i32` pointer-diff
-  family
+- Current slice: follow through on the remaining
+  `parse_minimal_global_int_pointer_diff_slice(...)` family now that the
+  cross-target char-pointer-diff helper has been removed and the wider `i32`
+  pointer-diff seam is the next direct-LIR-only global helper still bypassing
+  shared lowering
+- Next intended slice: inventory whether the `i32` pointer-diff helper can use
+  the same bounded constant-result approach or whether it needs a small shared
+  BIR extension for scaled byte-difference handling before the x86/aarch64
+  fast-path removal
 
 # Completed
+
+- Lowered the bounded cross-target `global_char_pointer_diff` LIR slice into
+  shared BIR in `src/backend/lowering/lir_to_bir.cpp` by recognizing the
+  one-byte same-global pointer-difference proof and collapsing it to the
+  existing shared `bir.ret i32 1` contract instead of keeping a direct-LIR
+  emitter-local matcher
+- Removed the matching emitter-local
+  `parse_minimal_global_char_pointer_diff_slice(...)` /
+  `emit_minimal_global_char_pointer_diff_asm(...)` fast paths from
+  `src/backend/x86/codegen/emit.cpp` and
+  `src/backend/aarch64/codegen/emit.cpp`, so both native targets now consume
+  this bounded seam through shared BIR rather than private LIR parsing
+- Added focused lowering coverage in
+  `tests/backend/backend_bir_lowering_tests.cpp` plus focused x86/aarch64
+  LIR-through-BIR pipeline coverage in
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` and
+  `tests/backend/backend_bir_pipeline_aarch64_tests.cpp`, pinning the shared
+  immediate-return contract and proving the old pointer-diff native asm fast
+  paths no longer fire
+- Rebuilt `backend_bir_tests`, `backend_shared_util_tests`, and `c4cll`
+  successfully after the char-pointer-diff migration
+- Reran
+  `ctest --test-dir build -R '^(backend_bir_tests|backend_shared_util_tests)$' --output-on-failure`
+  successfully after removing the emitter-local char-pointer-diff fast path
+- Reran the full `ctest --test-dir build -j8 --output-on-failure` suite and
+  refreshed `test_fail_after.log`; the workspace stayed at `2834/2834`
+  passing with 0 failures
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=159
+  failed=-159` and zero newly failing tests against `test_fail_before.log`
 
 - Re-inventoried the remaining cross-target emitter-local global/string helper
   families and selected `parse_minimal_extern_global_array_load_slice(...)` as

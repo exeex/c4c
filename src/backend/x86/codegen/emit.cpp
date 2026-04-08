@@ -212,7 +212,6 @@ struct MinimalCountdownLoopSlice {
 struct MinimalLocalArraySlice;
 struct MinimalExternScalarGlobalLoadSlice;
 struct MinimalExternGlobalArrayLoadSlice;
-struct MinimalGlobalCharPointerDiffSlice;
 struct MinimalGlobalIntPointerDiffSlice;
 struct MinimalScalarGlobalLoadSlice;
 struct MinimalScalarGlobalStoreReloadSlice;
@@ -235,9 +234,6 @@ std::string emit_minimal_extern_global_array_load_asm(
 std::string emit_minimal_extern_scalar_global_load_asm(
     std::string_view target_triple,
     const MinimalExternScalarGlobalLoadSlice& slice);
-std::string emit_minimal_global_char_pointer_diff_asm(
-    std::string_view target_triple,
-    const MinimalGlobalCharPointerDiffSlice& slice);
 std::string emit_minimal_global_int_pointer_diff_asm(
     std::string_view target_triple,
     const MinimalGlobalIntPointerDiffSlice& slice);
@@ -266,13 +262,6 @@ struct MinimalExternScalarGlobalLoadSlice {
 struct MinimalExternGlobalArrayLoadSlice {
   std::string function_name;
   std::string global_name;
-  std::int64_t byte_offset = 0;
-};
-
-struct MinimalGlobalCharPointerDiffSlice {
-  std::string function_name;
-  std::string global_name;
-  std::int64_t global_size = 0;
   std::int64_t byte_offset = 0;
 };
 
@@ -2276,151 +2265,6 @@ std::optional<MinimalExternScalarGlobalLoadSlice> parse_minimal_extern_scalar_gl
   return MinimalExternScalarGlobalLoadSlice{function->name, global.name};
 }
 
-std::optional<MinimalGlobalCharPointerDiffSlice> parse_minimal_global_char_pointer_diff_slice(
-    const c4c::codegen::lir::LirModule& module) {
-  using namespace c4c::codegen::lir;
-
-  if (module.functions.size() != 1 || module.globals.size() != 1 ||
-      !module.string_pool.empty() || !module.extern_decls.empty()) {
-    return std::nullopt;
-  }
-
-  const auto& global = module.globals.front();
-  if (global.is_internal || global.is_const || global.is_extern_decl ||
-      global.linkage_vis != "" || global.qualifier != "global ") {
-    return std::nullopt;
-  }
-
-  const std::string array_prefix = "[";
-  const std::string array_suffix = " x i8]";
-  if (global.llvm_type.size() <= array_prefix.size() + array_suffix.size() ||
-      global.llvm_type.substr(0, array_prefix.size()) != array_prefix ||
-      global.llvm_type.substr(global.llvm_type.size() - array_suffix.size()) !=
-          array_suffix) {
-    return std::nullopt;
-  }
-
-  const auto global_size_text = global.llvm_type.substr(
-      array_prefix.size(),
-      global.llvm_type.size() - array_prefix.size() - array_suffix.size());
-  const auto global_size = parse_i64(global_size_text);
-  if (!global_size.has_value() || *global_size < 2) {
-    return std::nullopt;
-  }
-
-  const auto* function = find_single_zero_arg_i32_lir_definition(module);
-  if (function == nullptr || function->blocks.size() != 1 || !function->alloca_insts.empty() ||
-      !function->stack_objects.empty()) {
-    return std::nullopt;
-  }
-
-  const auto& entry = function->blocks.front();
-  if (entry.label != "entry" || entry.insts.size() != 12) {
-    return std::nullopt;
-  }
-
-  const auto* base_gep1 = std::get_if<LirGepOp>(&entry.insts[0]);
-  const auto* index1 = std::get_if<LirCastOp>(&entry.insts[1]);
-  const auto* byte_gep1 = std::get_if<LirGepOp>(&entry.insts[2]);
-  const auto* base_gep0 = std::get_if<LirGepOp>(&entry.insts[3]);
-  const auto* index0 = std::get_if<LirCastOp>(&entry.insts[4]);
-  const auto* byte_gep0 = std::get_if<LirGepOp>(&entry.insts[5]);
-  const auto* ptrtoint1 = std::get_if<LirCastOp>(&entry.insts[6]);
-  const auto* ptrtoint0 = std::get_if<LirCastOp>(&entry.insts[7]);
-  const auto* diff = std::get_if<LirBinOp>(&entry.insts[8]);
-  const auto* expected_diff = std::get_if<LirCastOp>(&entry.insts[9]);
-  const auto* cmp = std::get_if<LirCmpOp>(&entry.insts[10]);
-  const auto* extend = std::get_if<LirCastOp>(&entry.insts[11]);
-  const auto* ret = std::get_if<LirRet>(&entry.terminator);
-  if (base_gep1 == nullptr || index1 == nullptr || byte_gep1 == nullptr ||
-      base_gep0 == nullptr || index0 == nullptr || byte_gep0 == nullptr ||
-      ptrtoint1 == nullptr || ptrtoint0 == nullptr || diff == nullptr ||
-      expected_diff == nullptr || cmp == nullptr || extend == nullptr || ret == nullptr) {
-    return std::nullopt;
-  }
-
-  const std::string global_ptr = "@" + global.name;
-  if (base_gep1->element_type != global.llvm_type || base_gep1->ptr != global_ptr ||
-      base_gep1->indices.size() != 2 || base_gep1->indices[0] != "i64 0" ||
-      base_gep1->indices[1] != "i64 0") {
-    return std::nullopt;
-  }
-  if (base_gep0->element_type != global.llvm_type || base_gep0->ptr != global_ptr ||
-      base_gep0->indices.size() != 2 || base_gep0->indices[0] != "i64 0" ||
-      base_gep0->indices[1] != "i64 0") {
-    return std::nullopt;
-  }
-
-  if (index1->kind != LirCastKind::SExt || index1->from_type != "i32" ||
-      index1->to_type != "i64") {
-    return std::nullopt;
-  }
-  const auto byte_index = parse_i64(index1->operand);
-  if (!byte_index.has_value() || *byte_index <= 0 || *byte_index >= *global_size) {
-    return std::nullopt;
-  }
-
-  if (index0->kind != LirCastKind::SExt || index0->from_type != "i32" ||
-      index0->to_type != "i64" || index0->operand != "0") {
-    return std::nullopt;
-  }
-
-  if (byte_gep1->element_type != "i8" || byte_gep1->ptr != base_gep1->result ||
-      byte_gep1->indices.size() != 1 ||
-      byte_gep1->indices[0] != ("i64 " + index1->result)) {
-    return std::nullopt;
-  }
-  if (byte_gep0->element_type != "i8" || byte_gep0->ptr != base_gep0->result ||
-      byte_gep0->indices.size() != 1 ||
-      byte_gep0->indices[0] != ("i64 " + index0->result)) {
-    return std::nullopt;
-  }
-
-  if (ptrtoint1->kind != LirCastKind::PtrToInt || ptrtoint1->from_type != "ptr" ||
-      ptrtoint1->operand != byte_gep1->result || ptrtoint1->to_type != "i64") {
-    return std::nullopt;
-  }
-  if (ptrtoint0->kind != LirCastKind::PtrToInt || ptrtoint0->from_type != "ptr" ||
-      ptrtoint0->operand != byte_gep0->result || ptrtoint0->to_type != "i64") {
-    return std::nullopt;
-  }
-
-  const auto diff_opcode = diff->opcode.typed();
-  if (diff_opcode != LirBinaryOpcode::Sub || diff->type_str != "i64" ||
-      diff->lhs != ptrtoint1->result ||
-      diff->rhs != ptrtoint0->result) {
-    return std::nullopt;
-  }
-
-  if (expected_diff->kind != LirCastKind::SExt || expected_diff->from_type != "i32" ||
-      expected_diff->to_type != "i64") {
-    return std::nullopt;
-  }
-  const auto expected_value = parse_i64(expected_diff->operand);
-  if (!expected_value.has_value() || *expected_value != *byte_index) {
-    return std::nullopt;
-  }
-
-  const auto cmp_predicate = cmp->predicate.typed();
-  if (cmp->is_float || cmp_predicate != LirCmpPredicate::Eq || cmp->type_str != "i64" ||
-      cmp->lhs != diff->result ||
-      cmp->rhs != expected_diff->result) {
-    return std::nullopt;
-  }
-
-  if (extend->kind != LirCastKind::ZExt || extend->from_type != "i1" ||
-      extend->operand != cmp->result || extend->to_type != "i32") {
-    return std::nullopt;
-  }
-
-  if (!ret->value_str.has_value() || *ret->value_str != extend->result ||
-      ret->type_str != "i32") {
-    return std::nullopt;
-  }
-
-  return MinimalGlobalCharPointerDiffSlice{function->name, global.name, *global_size, *byte_index};
-}
-
 std::optional<MinimalGlobalIntPointerDiffSlice> parse_minimal_global_int_pointer_diff_slice(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
@@ -4120,31 +3964,6 @@ std::string emit_minimal_multi_printf_vararg_asm(
   return out.str();
 }
 
-std::string emit_minimal_global_char_pointer_diff_asm(
-    std::string_view target_triple,
-    const MinimalGlobalCharPointerDiffSlice& slice) {
-  const std::string global_symbol = asm_symbol_name(target_triple, slice.global_name);
-  const std::string main_symbol = asm_symbol_name(target_triple, slice.function_name);
-
-  std::ostringstream out;
-  out << ".intel_syntax noprefix\n";
-  out << ".bss\n"
-      << ".globl " << global_symbol << "\n"
-      << global_symbol << ":\n"
-      << "  .zero " << slice.global_size << "\n";
-  out << ".text\n";
-  out << ".globl " << main_symbol << "\n";
-  out << main_symbol << ":\n";
-  out << "  lea rax, " << global_symbol << "[rip]\n"
-      << "  lea rcx, [rax + " << slice.byte_offset << "]\n"
-      << "  sub rcx, rax\n"
-      << "  cmp rcx, " << slice.byte_offset << "\n"
-      << "  sete al\n"
-      << "  movzx eax, al\n"
-      << "  ret\n";
-  return out.str();
-}
-
 std::string emit_minimal_global_int_pointer_diff_asm(
     std::string_view target_triple,
     const MinimalGlobalIntPointerDiffSlice& slice) {
@@ -4350,10 +4169,6 @@ std::optional<std::string> try_emit_direct_lir_module(
     if (const auto slice = parse_minimal_local_array_slice(module);
         slice.has_value()) {
       return emit_minimal_local_array_asm(module.target_triple, *slice);
-    }
-    if (const auto slice = parse_minimal_global_char_pointer_diff_slice(module);
-        slice.has_value()) {
-      return emit_minimal_global_char_pointer_diff_asm(module.target_triple, *slice);
     }
     if (const auto slice = parse_minimal_global_int_pointer_diff_slice(module);
         slice.has_value()) {

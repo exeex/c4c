@@ -10,6 +10,53 @@
 
 namespace {
 
+c4c::codegen::lir::LirModule make_bir_minimal_global_char_pointer_diff_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.globals.push_back(LirGlobal{
+      LirGlobalId{0},
+      "g_bytes",
+      {},
+      false,
+      false,
+      "",
+      "global ",
+      "[2 x i8]",
+      "zeroinitializer",
+      1,
+      false,
+  });
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{"%t0", "[2 x i8]", "@g_bytes", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirCastOp{"%t1", LirCastKind::SExt, "i32", "1", "i64"});
+  entry.insts.push_back(LirGepOp{"%t2", "i8", "%t0", false, {"i64 %t1"}});
+  entry.insts.push_back(LirGepOp{"%t3", "[2 x i8]", "@g_bytes", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirCastOp{"%t4", LirCastKind::SExt, "i32", "0", "i64"});
+  entry.insts.push_back(LirGepOp{"%t5", "i8", "%t3", false, {"i64 %t4"}});
+  entry.insts.push_back(LirCastOp{"%t6", LirCastKind::PtrToInt, "ptr", "%t2", "i64"});
+  entry.insts.push_back(LirCastOp{"%t7", LirCastKind::PtrToInt, "ptr", "%t5", "i64"});
+  entry.insts.push_back(LirBinOp{"%t8", LirBinaryOpcode::Sub, "i64", "%t6", "%t7"});
+  entry.insts.push_back(LirCastOp{"%t9", LirCastKind::SExt, "i32", "1", "i64"});
+  entry.insts.push_back(LirCmpOp{"%t10", false, LirCmpPredicate::Eq, "i64", "%t8", "%t9"});
+  entry.insts.push_back(LirCastOp{"%t11", LirCastKind::ZExt, "i1", "%t10", "i32"});
+  entry.terminator = LirRet{std::string("%t11"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_bir_minimal_countdown_do_while_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -1114,6 +1161,28 @@ void test_bir_lowering_accepts_minimal_extern_global_array_load_lir_module() {
   expect_contains(rendered,
                   "entry:\n  %t3 = bir.load_global i32 @ext_arr, offset 4\n  bir.ret i32 %t3\n",
                   "the lowered extern global-array-load BIR module should print the bounded offset bir.load_global contract");
+}
+
+void test_bir_lowering_accepts_minimal_global_char_pointer_diff_lir_module() {
+  const auto lowered =
+      c4c::backend::try_lower_to_bir(make_bir_minimal_global_char_pointer_diff_lir_module());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the minimal global char pointer-diff LIR slice");
+  if (!lowered.has_value()) {
+    return;
+  }
+  expect_true(lowered->globals.empty() && lowered->functions.size() == 1 &&
+                  lowered->functions.front().blocks.size() == 1 &&
+                  lowered->functions.front().blocks.front().insts.empty() &&
+                  lowered->functions.front().blocks.front().terminator.value.has_value() &&
+                  lowered->functions.front().blocks.front().terminator.value->kind ==
+                      c4c::backend::bir::Value::Kind::Immediate &&
+                  lowered->functions.front().blocks.front().terminator.value->immediate == 1,
+              "the lowered global char pointer-diff BIR module should collapse to the bounded immediate-return contract");
+
+  const auto rendered = c4c::backend::bir::print(*lowered);
+  expect_contains(rendered, "entry:\n  bir.ret i32 1\n",
+                  "the lowered global char pointer-diff BIR module should print the shared immediate-return contract");
 }
 
 void test_bir_lowering_accepts_minimal_scalar_global_store_reload_lir_module() {
@@ -3038,6 +3107,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_infers_extern_decl_params_from_typed_call_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_scalar_global_load_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_extern_scalar_global_load_lir_module);
+  RUN_TEST(test_bir_lowering_accepts_minimal_global_char_pointer_diff_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_scalar_global_store_reload_lir_module);
   RUN_TEST(test_bir_validator_rejects_returning_undefined_named_value);
   RUN_TEST(test_bir_validator_rejects_return_type_mismatch);
