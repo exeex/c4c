@@ -4542,48 +4542,6 @@ std::string emit_minimal_direct_call_two_arg_add_asm(
   return out.str();
 }
 
-std::string emit_minimal_direct_call_two_arg_folded_asm(
-    const c4c::backend::BackendModule& module,
-    const c4c::backend::ParsedBackendMinimalFoldedTwoArgDirectCallModuleView& slice) {
-  if (slice.helper == nullptr) {
-    fail_unsupported("structured folded two-argument direct-call slice without helper metadata");
-  }
-
-  if (slice.return_imm < 0 ||
-      slice.return_imm > std::numeric_limits<std::uint16_t>::max()) {
-    fail_unsupported("folded helper return immediates outside the minimal mov-supported range");
-  }
-  if (slice.lhs_call_arg_imm < 0 ||
-      slice.lhs_call_arg_imm > std::numeric_limits<std::uint16_t>::max()) {
-    fail_unsupported("first folded direct-call argument immediates outside the minimal mov-supported range");
-  }
-  if (slice.rhs_call_arg_imm < 0 ||
-      slice.rhs_call_arg_imm > std::numeric_limits<std::uint16_t>::max()) {
-    fail_unsupported("second folded direct-call argument immediates outside the minimal mov-supported range");
-  }
-
-  std::ostringstream out;
-  const std::string helper_symbol =
-      asm_symbol_name(module.target_triple, slice.helper->signature.name);
-  const std::string main_symbol =
-      asm_symbol_name(module.target_triple, slice.main_function->signature.name);
-
-  out << ".text\n";
-  emit_function_prelude(out, module.target_triple, helper_symbol, false);
-  out << "  mov w0, #" << slice.return_imm << "\n"
-      << "  ret\n";
-  emit_function_prelude(out, module.target_triple, main_symbol, true);
-  out << "  sub sp, sp, #16\n"
-      << "  str x30, [sp, #8]\n"
-      << "  mov w0, #" << slice.lhs_call_arg_imm << "\n"
-      << "  mov w1, #" << slice.rhs_call_arg_imm << "\n"
-      << "  bl " << helper_symbol << "\n"
-      << "  ldr x30, [sp, #8]\n"
-      << "  add sp, sp, #16\n"
-      << "  ret\n";
-  return out.str();
-}
-
 std::string emit_minimal_declared_direct_call_asm(
     const c4c::backend::bir::Module& module,
     const c4c::backend::ParsedBirMinimalDeclaredDirectCallModuleView& slice) {

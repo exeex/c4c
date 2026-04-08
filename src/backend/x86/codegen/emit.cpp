@@ -4392,16 +4392,6 @@ std::optional<MinimalVoidDirectCallImmReturnSlice> parse_minimal_void_direct_cal
 }
 
 std::optional<std::int64_t> parse_minimal_folded_two_arg_direct_call_return_imm(
-    const c4c::backend::BackendModule& module) {
-  const auto parsed =
-      c4c::backend::parse_backend_minimal_folded_two_arg_direct_call_module(module);
-  if (!parsed.has_value()) {
-    return std::nullopt;
-  }
-  return parsed->return_imm;
-}
-
-std::optional<std::int64_t> parse_minimal_folded_two_arg_direct_call_return_imm(
     const c4c::codegen::lir::LirModule& module) {
   const auto parsed =
       c4c::backend::parse_backend_minimal_folded_two_arg_direct_call_lir_module(module);
@@ -4409,20 +4399,6 @@ std::optional<std::int64_t> parse_minimal_folded_two_arg_direct_call_return_imm(
     return std::nullopt;
   }
   return parsed->return_imm;
-}
-
-std::optional<MinimalNamedReturnImmSlice> parse_minimal_folded_two_arg_direct_call_return_slice(
-    const c4c::codegen::lir::LirModule& module) {
-  const auto parsed =
-      c4c::backend::parse_backend_minimal_folded_two_arg_direct_call_lir_module(module);
-  if (!parsed.has_value() || parsed->caller_function == nullptr) {
-    return std::nullopt;
-  }
-
-  return MinimalNamedReturnImmSlice{
-      parsed->caller_function->name,
-      parsed->return_imm,
-  };
 }
 
 std::optional<MinimalDualIdentityDirectCallSubSlice> parse_minimal_dual_identity_direct_call_sub_slice(
