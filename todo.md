@@ -5,14 +5,12 @@ Source Plan: plan.md
 # Active Item
 
 - Step 3: migrate the next aarch64 emitter helper cluster onto direct BIR
-- Current slice: remove the remaining
-  `parse_backend_minimal_folded_two_arg_direct_call_lir_module(...)` adapter by
-  matching or collapsing that folded direct-call LIR shape directly in
-  `src/backend/lowering/lir_to_bir.cpp`, then trim its legacy
-  `call_decode.hpp` surface
-- Next intended slice: decide whether the folded two-argument direct-call case
-  should lower to direct BIR or collapse straight to a constant-return BIR
-  module, then add the narrowest coverage needed before deleting the adapter
+- Current slice: inspect the next live x86/aarch64 emitter helper cluster that
+  still depends on `BackendModule`-era folded/global/local-slot parsing and
+  choose the narrowest direct-BIR migration target
+- Next intended slice: add the narrowest direct-BIR emitter coverage for that
+  next live helper cluster, then delete the corresponding dead
+  `call_decode.hpp` and emitter-local legacy seam
 
 # Completed
 
@@ -219,6 +217,27 @@ Source Plan: plan.md
 - Ran the c4c regression guard script with
   `--allow-non-decreasing-passed`; it passed with `delta: passed=0 failed=0`
   and zero newly failing tests
+
+- Removed the remaining
+  `parse_backend_minimal_folded_two_arg_direct_call_lir_module(...)` adapter
+  and its `ParsedBackendMinimalFoldedTwoArgDirectCallLirModuleView` from
+  `src/backend/lowering/call_decode.hpp` by matching that folded direct-call
+  LIR shape directly in `src/backend/lowering/lir_to_bir.cpp`
+- Added focused BIR lowering coverage in
+  `tests/backend/backend_bir_lowering_tests.cpp` for the helper-first folded
+  two-argument direct-call module order so the direct matcher keeps validating
+  that order-insensitive folded slice after the adapter removal
+- Rebuilt `backend_bir_tests`, `backend_shared_util_tests`, and `c4cll`
+  successfully after the folded two-argument direct-call adapter removal
+- Reran
+  `ctest --test-dir build -R 'backend_(bir_tests|shared_util_tests)' --output-on-failure`
+  successfully after the adapter removal
+- Reran the full `ctest --test-dir build -j8 --output-on-failure` suite and
+  refreshed `test_after.log` / `test_fail_after.log`; the workspace is now at
+  `2834/2834` passing with 0 failures
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=159
+  failed=-159` and zero newly failing tests
 
 - Removed the remaining dead x86 emitter-local `BackendModule` parser overloads
   for the conditional-return, countdown-loop, conditional-phi-join,
