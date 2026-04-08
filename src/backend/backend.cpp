@@ -53,7 +53,7 @@ std::string emit_module(const BackendModuleInput& input,
     switch (options.target) {
       case Target::X86_64:
       case Target::I686:
-        return c4c::backend::x86::emit_module(lir_module);
+        return c4c::backend::x86::emit_module_after_failed_bir_lowering(lir_module);
       case Target::Aarch64:
         return c4c::backend::aarch64::emit_module(lir_module);
       case Target::Riscv64:

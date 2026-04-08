@@ -6,16 +6,36 @@ Source Plan: plan.md
 
 - Step 4 cleanup: keep shrinking adapter-only legacy-lowering surface now that
   `src/backend/ir.hpp` and `lir_to_backend_ir.*` are already gone
-- Current slice: compare the shared backend-entry LIR retry path against the
-  native target emitters and `try_lower_to_bir(...)` flow to see whether the
-  duplicate failed-lowering retry can disappear without changing the explicit
-  riscv64 LLVM-text fallback for unsupported LIR input
-- Next intended slice: if the shared entry still double-attempts BIR lowering
-  before reaching native direct-LIR emission, collapse that adapter-only retry
-  behind one target-dispatch seam while keeping unsupported x86/aarch64
-  diagnostics and riscv64 text fallback unchanged
+- Current slice: inventory the remaining aarch64 shared-entry/raw-LIR retry
+  seam after proving the x86 duplicate failed-lowering retry can collapse
+  safely while aarch64 still needs its prune-before-lower path
+- Next intended slice: if the remaining aarch64 retry is only preserving
+  backend-side entry-alloca pruning or general-LIR coverage, isolate that fact
+  behind one explicit helper or note it as the Step 4 stop point before the
+  next legacy-lowering deletion cut
 
 # Completed
+
+- Compared `src/backend/backend.cpp` shared LIR dispatch against the native
+  target emitters and confirmed the broad “native emitter first” cleanup was
+  not behavior-preserving: x86 countdown / conditional backend-entry coverage
+  regressed because supported shared-BIR slices must still lower through the
+  shared BIR route before falling back to native direct-LIR handling
+- Narrowed the Step 4 cleanup to the real duplicate-failure seam by adding
+  `src/backend/x86/codegen/emit.{hpp,cpp}`
+  `emit_module_after_failed_bir_lowering(...)` and routing the
+  `src/backend/backend.cpp` x86/i686 shared-entry failed-`try_lower_to_bir(...)`
+  branch through it, removing the redundant second x86 BIR-lowering attempt
+  while leaving aarch64 prune-before-lower behavior and riscv64 LLVM-text
+  fallback unchanged
+- Rebuilt `backend_bir_tests` and `c4cll`, reran focused
+  `ctest --test-dir build -R '^backend_bir_tests$' --output-on-failure`, reran
+  the full `ctest --test-dir build -j8 --output-on-failure` suite into
+  `test_fail_after.log`, and confirmed the workspace stayed at `2834/2834`
+  passing with 0 failures
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=3 failed=-3`
+  and zero newly failing tests against `test_fail_before.log`
 
 - Tightened `src/backend/backend.hpp` / `src/backend/backend.cpp`
   `BackendModuleInput` so the two ownership modes now store direct BIR or a

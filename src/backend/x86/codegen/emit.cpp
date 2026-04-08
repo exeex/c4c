@@ -4127,6 +4127,14 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
   throw_unsupported_direct_lir_module();
 }
 
+std::string emit_module_after_failed_bir_lowering(
+    const c4c::codegen::lir::LirModule& module) {
+  if (const auto rendered = try_emit_direct_lir_module(module); rendered.has_value()) {
+    return *rendered;
+  }
+  throw_unsupported_direct_lir_module();
+}
+
 assembler::AssembleResult assemble_module(const c4c::codegen::lir::LirModule& module,
                                           const std::string& output_path) {
   return assembler::assemble(
