@@ -5,16 +5,32 @@ Source Plan: plan.md
 # Active Item
 
 - Step 3: migrate the next aarch64 emitter helper cluster onto direct BIR
-- Current slice: return to the remaining
+- Current slice: continue shrinking the remaining
   `parse_backend_minimal_*_lir_module(...)` inventory in
-  `src/backend/lowering/call_decode.hpp` and remove the next simplest live
-  direct-call adapter family after the void direct-call cleanup
-- Next intended slice: migrate the declared direct-call or another small
-  direct-call lowering family out of `call_decode.hpp` and into
-  `src/backend/lowering/lir_to_bir.cpp`, then delete the now-dead adapter
-  helper
+  `src/backend/lowering/call_decode.hpp` by moving the next small live
+  direct-call lowering family into `src/backend/lowering/lir_to_bir.cpp`
+- Next intended slice: remove the next simplest surviving direct-call adapter
+  family after declared direct-call, likely the minimal two-arg direct-call
+  helper, once focused BIR lowering coverage is in place
 
 # Completed
+
+- Removed the remaining
+  `parse_backend_minimal_declared_direct_call_lir_module(...)` adapter and its
+  `ParsedBackendMinimalDeclaredDirectCallLirModuleView` from
+  `src/backend/lowering/call_decode.hpp` by teaching
+  `src/backend/lowering/lir_to_bir.cpp` to recognize and lower that LIR shape
+  directly
+- Rebuilt `backend_bir_tests` and `c4cll` successfully after the declared
+  direct-call adapter removal
+- Reran `ctest --test-dir build -R 'backend_bir_tests' --output-on-failure`
+  successfully after the declared direct-call adapter removal
+- Reran the full `ctest --test-dir build -j8 --output-on-failure` suite and
+  refreshed `test_after.log` / `test_fail_after.log`; the workspace stayed at
+  `2834/2834` passing with 0 failures
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=13 failed=-13`
+  and zero newly failing tests
 
 - Removed the still-live
   `parse_backend_minimal_void_direct_call_imm_return_lir_module(...)` adapter
