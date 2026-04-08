@@ -338,7 +338,7 @@ void prune_dead_entry_allocas(c4c::codegen::lir::LirFunction& function) {
   c4c::backend::stack_layout::apply_entry_alloca_slot_plan(function, plans);
 }
 
-c4c::codegen::lir::LirModule prepare_module_for_fallback(
+c4c::codegen::lir::LirModule prune_module_entry_allocas(
     const c4c::codegen::lir::LirModule& module) {
   auto prepared = module;
   for (auto& function : prepared.functions) {
@@ -6741,12 +6741,7 @@ std::string emit_module(const c4c::backend::bir::Module& module) {
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {
   const bool needs_nonminimal_lowering = lir_module_needs_nonminimal_lowering(module);
   validate_module(module);
-  if (auto rendered = try_emit_direct_lir_module(module, needs_nonminimal_lowering);
-      rendered.has_value()) {
-    return *rendered;
-  }
-
-  const auto prepared = prepare_module_for_fallback(module);
+  const auto prepared = prune_module_entry_allocas(module);
   validate_module(prepared);
   if (auto rendered = try_emit_direct_lir_module(prepared, needs_nonminimal_lowering);
       rendered.has_value()) {
