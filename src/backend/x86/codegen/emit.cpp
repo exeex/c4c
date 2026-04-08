@@ -6020,6 +6020,10 @@ std::optional<std::string> try_emit_direct_lir_module(
         slice.has_value()) {
       return emit_minimal_direct_call_add_imm_asm(module.target_triple, *slice);
     }
+    if (const auto slice = parse_minimal_two_arg_direct_call_slice(module);
+        slice.has_value()) {
+      return emit_minimal_two_arg_direct_call_asm(module.target_triple, *slice);
+    }
     if (const auto slice =
             c4c::backend::parse_backend_minimal_direct_call_identity_arg_lir_module(module);
         slice.has_value()) {

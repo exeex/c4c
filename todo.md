@@ -9,13 +9,24 @@ Source Plan: plan.md
 - [ ] Remove legacy backend IR files and backend/app LLVM rescue paths
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
-Current active item: Step 4 x86 emitter tightening. Continue shrinking the
-remaining x86 emitter-local `lower_lir_to_backend_module(...)` fallback for the
-next bounded direct-call helper family after the single-argument identity-call
-slice.
+Current active item: Step 4 x86 emitter tightening. Remove the remaining x86
+emitter-local `lower_lir_to_backend_module(...)` dependency for the bounded
+plain two-argument direct-call helper family by wiring the existing direct-LIR
+parser into the explicit x86 entry surface and proving parity with focused x86
+backend tests.
 
 Completed in this slice:
 
+- wired the existing plain two-argument direct-call LIR parser into the x86
+  explicit emit surface in
+  [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+  so that bounded register-only two-argument helper calls no longer need
+  `lower_lir_to_backend_module(...)` on the direct x86 entrypoint
+- proved the production deletion with a new explicit-LIR parity regression in
+  [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
+  that keeps the direct x86 LIR emit surface, the structured lowered seam,
+  and normal backend selection on identical asm for the bounded plain
+  two-argument helper slice
 - taught the direct x86 LIR emit path in
   [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
   to constant-fold the bounded local-slot arithmetic / two-local return family
@@ -55,7 +66,7 @@ Next intended slice:
   dual-identity direct-call subtract family or the folded two-argument helper
   family, whichever removes the next live x86
   `lower_lir_to_backend_module(...)` dependency with the smaller parser/emitter
-  batch
+  batch after the plain two-argument helper family
 - removed the old x86 emitter-local post-adaptation return-immediate/add/sub
   recognition branches and replaced them with the BIR-first direct-LIR path
 - proved the shared parser with a new regression test in
@@ -167,6 +178,10 @@ Recent baseline:
 - latest Step 4 follow-through also removes the bounded local-slot arithmetic /
   two-local scalar-slot dependency on `lower_lir_to_backend_module(...)` from
   the direct x86 LIR entrypoint
+- latest Step 4 follow-through also removes the bounded plain two-argument
+  direct-call dependency on `lower_lir_to_backend_module(...)` from the direct
+  x86 LIR entrypoint and keeps the direct/lowered/backend-selection seams on
+  identical asm
 - latest Step 4 follow-through also removes the bounded single-local
   single-argument direct-call dependency on `lower_lir_to_backend_module(...)`
   from the direct x86 LIR entrypoint
