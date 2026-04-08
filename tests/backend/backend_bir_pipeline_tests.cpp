@@ -167,6 +167,17 @@ void test_backend_riscv64_path_keeps_unsupported_lir_on_llvm_text_surface() {
                       "unsupported LIR input should not pretend to have lowered through the BIR scaffold");
 }
 
+void test_backend_riscv64_path_keeps_unsupported_direct_lir_on_llvm_text_surface() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_unsupported_x86_double_return_lir_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Riscv64});
+
+  expect_contains(rendered, "define double @main()",
+                  "riscv64 backend text flow should keep unsupported direct-LIR input on the LLVM text surface even when native x86 entry rejects the same module");
+  expect_not_contains(rendered, "bir.func",
+                      "unsupported direct LIR should not be rendered as BIR on the riscv64 text path");
+}
+
 void test_backend_entry_rejects_unsupported_direct_lir_input_on_x86() {
   try {
     (void)c4c::backend::emit_module(
@@ -1425,6 +1436,7 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_backend_direct_bir_module_route_ignores_legacy_pipeline_default_target_neutral);
   RUN_TEST(test_backend_default_path_uses_bir_when_bir_pipeline_is_not_selected);
   RUN_TEST(test_backend_riscv64_path_keeps_unsupported_lir_on_llvm_text_surface);
+  RUN_TEST(test_backend_riscv64_path_keeps_unsupported_direct_lir_on_llvm_text_surface);
   RUN_TEST(test_backend_entry_rejects_unsupported_direct_lir_input_on_x86);
   RUN_TEST(test_backend_entry_rejects_unsupported_direct_lir_input_on_aarch64);
   RUN_TEST(test_backend_bir_pipeline_is_opt_in_through_backend_options);

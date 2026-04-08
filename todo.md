@@ -6,17 +6,36 @@ Source Plan: plan.md
 
 - Step 4 cleanup: keep shrinking adapter-only legacy-lowering surface now that
   `src/backend/ir.hpp` and `lir_to_backend_ir.*` are already gone
-- Current slice: compare the remaining retry / dispatch seams in
-  `src/backend/backend.cpp` after both native direct emitters dropped their
-  duplicate inner BIR retries, and check whether the riscv64-only
-  direct-LIR-or-LLVM wrapper can collapse into the main route logic without
-  changing native rejection behavior
+- Current slice: re-inventory the remaining `src/backend/backend.cpp`
+  `BackendModuleInput` LIR-entry branches after collapsing the riscv64-only
+  direct-LIR-or-LLVM wrapper, then check whether any last adapter-only
+  target switch or subset-error helper is still duplicating route logic
 - Next intended slice: inventory the `BackendModuleInput` LIR-entry path in
-  `src/backend/backend.cpp`, add one focused regression around the native
-  direct-LIR rejection / riscv64 text split if needed, then delete any dead
-  wrapper that only re-encodes the same target switch
+  `src/backend/backend.cpp`, compare the remaining
+  `is_direct_bir_subset_error(...)` catch path against the prelowered-BIR
+  route, and remove any dead helper that no longer changes observable backend
+  behavior
 
 # Completed
+
+- Collapsed the riscv64-only
+  `emit_direct_lir_or_llvm_fallback(...)` wrapper from
+  `src/backend/backend.cpp` into the main `BackendModuleInput` LIR-entry path,
+  keeping the same target split directly at the unsupported-LIR branch:
+  riscv64 still returns LLVM text, while x86/i686/aarch64 still call their
+  native direct-LIR emitters and surface native subset rejections
+- Added focused coverage in `tests/backend/backend_bir_pipeline_tests.cpp`
+  proving that the same unsupported direct-LIR module still renders LLVM text
+  on `Target::Riscv64` even though native x86 entry rejects it, pinning the
+  exact behavior split touched by the `backend.cpp` dispatch cleanup
+- Rebuilt with `cmake --build build -j8`, reran focused
+  `ctest --test-dir build -R '^backend_bir_tests$' --output-on-failure`, reran
+  the full `ctest --test-dir build -j8 --output-on-failure` suite into
+  `test_fail_after.log`, and confirmed the workspace stayed at `2834/2834`
+  passing with 0 failures
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=0 failed=0`
+  and zero newly failing tests against the refreshed `test_fail_before.log`
 
 - Removed the duplicate x86 direct-emitter inner BIR retry from
   `src/backend/x86/codegen/emit.cpp` so
