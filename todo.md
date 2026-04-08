@@ -4,16 +4,47 @@ Source Plan: plan.md
 
 # Active Item
 
-- Step 4 cleanup: keep shrinking adapter-only legacy-lowering surface now that
-  `src/backend/ir.hpp` and `lir_to_backend_ir.*` are already gone
-- Current slice: re-inventory the remaining aarch64 prune-before-lower path
-  now that the x86 failed-BIR helper seam is gone from shared backend entry
-- Next intended slice: if the remaining aarch64 path is only target-owned
-  entry-alloca normalization plus general-LIR coverage, record that as the
-  Step 4 stop point and move the next cut to Step 5 legacy file/build-graph
-  deletion work
+- Step 6 cleanup: remove the remaining `--codegen asm` backend-to-LLVM rescue
+  diagnostics now that Step 4/5 legacy-lowering and legacy-IR deletion work is
+  already complete in-tree
+- Current slice: completed the unsupported-asm diagnostic cleanup in
+  `src/apps/c4cll.cpp`; keep `src/codegen/llvm/llvm_codegen.cpp`'s
+  direct-BIR-rejection-to-native-LIR retry because two active aarch64
+  c-testsuite cases still depend on that native retry and it is not the LLVM
+  rescue targeted by Step 6
+- Next intended slice: continue Step 6 by isolating the remaining true
+  backend-to-LLVM rescue behavior without regressing the active aarch64 native
+  retry coverage
 
 # Completed
+
+- Added a focused unsupported-asm contract in
+  `tests/c/internal/cmake/run_backend_unsupported_asm_case.cmake` plus
+  `backend_lir_riscv64_variadic_double_asm_unsupported` in
+  `tests/c/internal/InternalTests.cmake`, pinning that
+  `--codegen asm --target riscv64-unknown-linux-gnu` on
+  `tests/c/internal/backend_case/variadic_double_bytes.c` fails explicitly
+  without emitting stdout or the old fallback-reason narration
+- Removed the old fallback-reason inference block from
+  `src/apps/c4cll.cpp`; unsupported asm requests that still surface LLVM text
+  now stop at the explicit
+  `error: --codegen asm requires backend-native assembly output.` diagnostic
+  instead of printing a second inferred-fallback hint section
+- Revalidated that `src/codegen/llvm/llvm_codegen.cpp` must keep the
+  direct-BIR-rejection native retry path for now: a temporary attempt to route
+  `CodegenPath::Lir` directly through `backend::emit_module(...)` regressed
+  `c_testsuite_aarch64_backend_src_00012_c` and
+  `c_testsuite_aarch64_backend_src_00064_c`, so the slice restored that path
+  and recorded it as outside the current Step 6 deletion target
+- Reconfigured and rebuilt with `cmake -S . -B build` and
+  `cmake --build build -j8`, reran focused
+  `ctest --test-dir build -R '^(backend_bir_tests|backend_lir_aarch64_variadic_double_asm_unsupported|backend_lir_riscv64_variadic_double_asm_unsupported|backend_lir_unsupported_target_entry|c_testsuite_aarch64_backend_src_00012_c|c_testsuite_aarch64_backend_src_00064_c)$' --output-on-failure`,
+  reran the full `ctest --test-dir build -j8 --output-on-failure` suite into
+  `test_fail_after.log`, and confirmed the workspace is now at `2835/2835`
+  passing with 0 failures
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=4
+  failed=-3` and zero newly failing tests against `test_fail_before.log`
 
 - Removed the adapter-only
   `src/backend/x86/codegen/emit.{hpp,cpp}`

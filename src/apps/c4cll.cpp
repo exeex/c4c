@@ -66,79 +66,6 @@ bool looks_like_llvm_ir(std::string_view text) {
   return false;
 }
 
-bool starts_with(std::string_view text, std::string_view prefix) {
-  if (text.size() < prefix.size()) return false;
-  return text.compare(0, prefix.size(), prefix) == 0;
-}
-
-bool reason_already_present(const std::vector<std::string>& reasons,
-                           std::string_view reason) {
-  for (const auto& existing : reasons) {
-    if (existing == reason) return true;
-  }
-  return false;
-}
-
-std::vector<std::string> infer_asm_fallback_reasons(std::string_view ir) {
-  std::vector<std::string> reasons;
-
-  if (ir.find("@llvm.va_start") != std::string_view::npos ||
-      ir.find("@llvm.va_end") != std::string_view::npos ||
-      ir.find(" ...)") != std::string_view::npos) {
-    reasons.push_back("encountered varargs-related lowering pattern");
-  }
-
-  if (ir.find("landingpad") != std::string_view::npos ||
-      ir.find("invoke ") != std::string_view::npos) {
-    reasons.push_back("encountered exception/cleanup constructs");
-  }
-
-  size_t pos = 0;
-  while (true) {
-    auto next = ir.find("declare", pos);
-    if (next == std::string_view::npos) break;
-    auto eol = ir.find('\n', next);
-    auto line = ir.substr(
-        next, eol == std::string_view::npos ? std::string_view::npos : eol - next);
-
-    if (line.find("...") != std::string_view::npos) {
-      auto at = line.find("@");
-      if (at != std::string_view::npos) {
-        auto name_end = line.find('(', at);
-        auto maybe_name = line.substr(at + 1, name_end - (at + 1));
-        if (name_end != std::string_view::npos) {
-          if (starts_with(maybe_name, "llvm.")) {
-            // ignore intrinsic declarations
-          } else {
-            std::string sym = "@" + std::string(maybe_name);
-            if (!reason_already_present(reasons, sym)) {
-              reasons.push_back("declared/used varargs function " + sym +
-                                " may need LLVM-path fallback");
-            }
-          }
-        }
-      }
-    }
-    pos = (eol == std::string_view::npos) ? std::string_view::npos : (eol + 1);
-    if (pos == std::string_view::npos) break;
-  }
-
-  if (reasons.empty()) {
-    reasons.push_back("no specific unsupported pattern was detected in fallback IR");
-  }
-  return reasons;
-}
-
-void print_asm_fallback_hint(std::string_view ir) {
-  auto reasons = infer_asm_fallback_reasons(ir);
-  std::cerr << "error: --codegen asm did not emit assembly for this input and cannot write .s.\n";
-  std::cerr << "       Reason detected in emitted IR:\n";
-  for (const auto& reason : reasons) {
-    std::cerr << "       - " << reason << "\n";
-  }
-  std::cerr << "       Re-run with --codegen llvm if you need IR output.\n";
-}
-
 std::string default_host_target_triple() {
 #if defined(__aarch64__) || defined(_M_ARM64)
 #if defined(__APPLE__)
@@ -705,7 +632,6 @@ int main(int argc, char **argv) {
         std::cerr << "       file output no longer falls back to LLVM-generated asm.\n";
       }
       std::cerr << "       Re-run with --codegen llvm if you need IR output.\n";
-      print_asm_fallback_hint(ir);
       return 2;
     }
 
