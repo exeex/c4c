@@ -164,6 +164,17 @@ struct ParsedBirMinimalDualIdentityDirectCallSubModuleView {
   std::int64_t rhs_call_arg_imm = 0;
 };
 
+struct ParsedBirMinimalCallCrossingDirectCallModuleView {
+  const bir::Function* helper = nullptr;
+  const bir::Function* main_function = nullptr;
+  const bir::BinaryInst* source_add = nullptr;
+  const bir::CallInst* call = nullptr;
+  const bir::BinaryInst* final_add = nullptr;
+  std::string_view regalloc_source_value;
+  std::int64_t source_imm = 0;
+  std::int64_t helper_add_imm = 0;
+};
+
 struct ParsedBackendMinimalTwoArgDirectCallLirModuleView {
   const c4c::codegen::lir::LirFunction* helper = nullptr;
   const c4c::codegen::lir::LirFunction* main_function = nullptr;
@@ -1578,6 +1589,118 @@ parse_backend_minimal_two_arg_direct_call_module(const BackendModule& module) {
       *lhs_call_arg_imm,
       *rhs_call_arg_imm,
   };
+}
+
+inline std::optional<ParsedBirMinimalCallCrossingDirectCallModuleView>
+parse_bir_minimal_call_crossing_direct_call_module(const bir::Module& module) {
+  if (!module.globals.empty() || !module.string_constants.empty() || module.functions.size() != 2) {
+    return std::nullopt;
+  }
+
+  const auto try_match =
+      [](const bir::Function& caller,
+         const bir::Function& helper)
+      -> std::optional<ParsedBirMinimalCallCrossingDirectCallModuleView> {
+    if (caller.is_declaration || helper.is_declaration ||
+        caller.return_type != bir::TypeKind::I32 || helper.return_type != bir::TypeKind::I32 ||
+        !caller.params.empty() || !caller.local_slots.empty() || !helper.local_slots.empty() ||
+        caller.blocks.size() != 1 || helper.blocks.size() != 1 || caller.name.empty() ||
+        helper.name.empty() || caller.name == helper.name || helper.params.size() != 1 ||
+        helper.params.front().type != bir::TypeKind::I32 || helper.params.front().name.empty()) {
+      return std::nullopt;
+    }
+
+    const auto& helper_block = helper.blocks.front();
+    if (helper_block.label != "entry" || helper_block.insts.size() != 1 ||
+        !helper_block.terminator.value.has_value() ||
+        helper_block.terminator.value->kind != bir::Value::Kind::Named ||
+        helper_block.terminator.value->type != bir::TypeKind::I32) {
+      return std::nullopt;
+    }
+
+    const auto* helper_add = std::get_if<bir::BinaryInst>(&helper_block.insts.front());
+    if (helper_add == nullptr || helper_add->opcode != bir::BinaryOpcode::Add ||
+        helper_add->result.kind != bir::Value::Kind::Named ||
+        helper_add->result.type != bir::TypeKind::I32 ||
+        helper_block.terminator.value->name != helper_add->result.name) {
+      return std::nullopt;
+    }
+
+    std::optional<std::int64_t> helper_add_imm;
+    const auto& helper_param = helper.params.front().name;
+    const bool lhs_param_rhs_imm =
+        helper_add->lhs.kind == bir::Value::Kind::Named &&
+        helper_add->lhs.type == bir::TypeKind::I32 &&
+        helper_add->lhs.name == helper_param &&
+        helper_add->rhs.kind == bir::Value::Kind::Immediate &&
+        helper_add->rhs.type == bir::TypeKind::I32;
+    const bool lhs_imm_rhs_param =
+        helper_add->lhs.kind == bir::Value::Kind::Immediate &&
+        helper_add->lhs.type == bir::TypeKind::I32 &&
+        helper_add->rhs.kind == bir::Value::Kind::Named &&
+        helper_add->rhs.type == bir::TypeKind::I32 &&
+        helper_add->rhs.name == helper_param;
+    if (lhs_param_rhs_imm) {
+      helper_add_imm = helper_add->rhs.immediate;
+    } else if (lhs_imm_rhs_param) {
+      helper_add_imm = helper_add->lhs.immediate;
+    } else {
+      return std::nullopt;
+    }
+
+    const auto& main_block = caller.blocks.front();
+    if (main_block.label != "entry" || main_block.insts.size() != 3 ||
+        !main_block.terminator.value.has_value() ||
+        main_block.terminator.value->kind != bir::Value::Kind::Named ||
+        main_block.terminator.value->type != bir::TypeKind::I32) {
+      return std::nullopt;
+    }
+
+    const auto* source_add = std::get_if<bir::BinaryInst>(&main_block.insts[0]);
+    const auto* call = std::get_if<bir::CallInst>(&main_block.insts[1]);
+    const auto* final_add = std::get_if<bir::BinaryInst>(&main_block.insts[2]);
+    if (source_add == nullptr || call == nullptr || final_add == nullptr ||
+        source_add->opcode != bir::BinaryOpcode::Add ||
+        source_add->result.kind != bir::Value::Kind::Named ||
+        source_add->result.type != bir::TypeKind::I32 ||
+        source_add->lhs.kind != bir::Value::Kind::Immediate ||
+        source_add->lhs.type != bir::TypeKind::I32 ||
+        source_add->rhs.kind != bir::Value::Kind::Immediate ||
+        source_add->rhs.type != bir::TypeKind::I32 || call->callee != helper.name ||
+        !call->result.has_value() || call->result->kind != bir::Value::Kind::Named ||
+        call->result->type != bir::TypeKind::I32 || call->return_type_name != "i32" ||
+        call->args.size() != 1 || call->args.front().kind != bir::Value::Kind::Named ||
+        call->args.front().type != bir::TypeKind::I32 ||
+        call->args.front().name != source_add->result.name ||
+        final_add->opcode != bir::BinaryOpcode::Add ||
+        final_add->result.kind != bir::Value::Kind::Named ||
+        final_add->result.type != bir::TypeKind::I32 ||
+        final_add->lhs.kind != bir::Value::Kind::Named ||
+        final_add->lhs.type != bir::TypeKind::I32 ||
+        final_add->rhs.kind != bir::Value::Kind::Named ||
+        final_add->rhs.type != bir::TypeKind::I32 ||
+        final_add->lhs.name != source_add->result.name ||
+        final_add->rhs.name != call->result->name ||
+        main_block.terminator.value->name != final_add->result.name) {
+      return std::nullopt;
+    }
+
+    return ParsedBirMinimalCallCrossingDirectCallModuleView{
+        &helper,
+        &caller,
+        source_add,
+        call,
+        final_add,
+        source_add->result.name,
+        source_add->lhs.immediate + source_add->rhs.immediate,
+        *helper_add_imm,
+    };
+  };
+
+  if (const auto parsed = try_match(module.functions[0], module.functions[1]); parsed.has_value()) {
+    return parsed;
+  }
+  return try_match(module.functions[1], module.functions[0]);
 }
 
 inline std::optional<ParsedBackendMinimalDirectCallModuleView>

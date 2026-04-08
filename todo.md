@@ -5,9 +5,9 @@ Source Plan: plan.md
 # Active Item
 
 - Step 2: switch one shared helper seam off `BackendModule`
-- Current slice: switch the next remaining x86 direct-call helper seam after
-  the dual-identity subtraction family; prefer the call-crossing route unless
-  a smaller shared BIR helper view appears during inspection
+- Current slice: remove the now-dead legacy `BackendModule` call-crossing
+  parser/emitter route after the shared BIR call-crossing view and LIR-through-
+  BIR path are in place
 
 # Completed
 
@@ -178,6 +178,24 @@ Source Plan: plan.md
   `ctest --test-dir build -R 'backend_(bir_tests|shared_util_tests)' --output-on-failure`,
   and reran the full `ctest --test-dir build -j --output-on-failure` suite
   successfully with `2834/2834` tests passing in `test_after.log`
+- Added a shared BIR parser for the minimal call-crossing direct-call
+  helper/main family, preserving the helper identity, recovered source add
+  value name, source immediate, and helper add immediate
+- Added a bounded `try_lower_to_bir(...)` path for the minimal call-crossing
+  LIR family so x86 call-crossing input now routes through shared BIR instead
+  of depending on the direct-LIR emission shortcut
+- Switched `src/backend/x86/codegen/emit.cpp` to consume
+  `parse_bir_minimal_call_crossing_direct_call_module(...)` for direct BIR
+  emission and removed the earlier direct-LIR call-crossing fast path from
+  `try_emit_direct_lir(...)`
+- Added focused shared-util coverage, BIR lowering coverage, and x86 pipeline
+  coverage for both direct-BIR and LIR-through-BIR minimal call-crossing
+  direct-call modules
+- Rebuilt `backend_bir_tests` and `backend_shared_util_tests`, reran
+  `ctest --test-dir build -R 'backend_(bir_tests|shared_util_tests)' --output-on-failure`,
+  and reran the full `ctest --test-dir build -j --output-on-failure` suite
+  against the repo's current dirty baseline with the same 13 known failures in
+  `test_before.log` and `test_after.log`
 
 # Next
 
@@ -187,10 +205,10 @@ Source Plan: plan.md
 - Continue shrinking stale direct-call helper families one seam at a time now
   that the zero-arg, declared-direct-call, minimal two-argument helper/main,
   single-argument add-immediate, single-argument identity-return, folded
-  two-argument helper/main, and dual-identity subtraction paths no longer need
-  private x86 LIR dispatch
-- Prefer the call-crossing family next unless another smaller shared BIR
-  direct-call helper view proves easier to land first
+  two-argument helper/main, dual-identity subtraction, and call-crossing paths
+  no longer need private x86 LIR dispatch
+- Confirm the legacy `BackendModule` call-crossing parser family is now dead,
+  then delete the dead helper view and any remaining adapter-only references
 - Use the next slice to make `lir_to_backend_ir.*` more obviously adapter-only
   before Step 4 collapse work starts
 
@@ -239,3 +257,7 @@ Source Plan: plan.md
 - This slice removes the x86 emitter's private dual-identity subtraction
   direct-call LIR fast path; the helper/main family now lowers through shared
   BIR and has a direct-BIR emitter path on x86
+- `test_before.log` and `test_after.log` both recorded the same current
+  full-suite baseline for this run: `99%` passed with 13 known failures
+  (`backend_runtime_*` plus two aarch64 `c_testsuite` cases), so this slice
+  was monotonic against the repo's dirty state

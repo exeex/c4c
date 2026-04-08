@@ -375,6 +375,82 @@ void test_backend_shared_call_decode_parses_bir_minimal_dual_identity_direct_cal
   }
 }
 
+void test_backend_shared_call_decode_parses_bir_minimal_call_crossing_direct_call_module() {
+  c4c::backend::bir::Module module;
+  module.functions.push_back(c4c::backend::bir::Function{
+      .name = "add_one",
+      .return_type = c4c::backend::bir::TypeKind::I32,
+      .params = {
+          c4c::backend::bir::Param{.type = c4c::backend::bir::TypeKind::I32, .name = "%arg0"},
+      },
+      .local_slots = {},
+      .blocks = {c4c::backend::bir::Block{
+          .label = "entry",
+          .insts = {c4c::backend::bir::BinaryInst{
+              .opcode = c4c::backend::bir::BinaryOpcode::Add,
+              .result = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%sum"),
+              .lhs = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%arg0"),
+              .rhs = c4c::backend::bir::Value::immediate_i32(1),
+          }},
+          .terminator = c4c::backend::bir::ReturnTerminator{
+              .value = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%sum"),
+          },
+      }},
+      .is_declaration = false,
+  });
+  module.functions.push_back(c4c::backend::bir::Function{
+      .name = "main",
+      .return_type = c4c::backend::bir::TypeKind::I32,
+      .params = {},
+      .local_slots = {},
+      .blocks = {c4c::backend::bir::Block{
+          .label = "entry",
+          .insts = {
+              c4c::backend::bir::BinaryInst{
+                  .opcode = c4c::backend::bir::BinaryOpcode::Add,
+                  .result =
+                      c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%t0"),
+                  .lhs = c4c::backend::bir::Value::immediate_i32(2),
+                  .rhs = c4c::backend::bir::Value::immediate_i32(3),
+              },
+              c4c::backend::bir::CallInst{
+                  .result =
+                      c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%t1"),
+                  .callee = "add_one",
+                  .args = {c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32,
+                                                           "%t0")},
+                  .return_type_name = "i32",
+              },
+              c4c::backend::bir::BinaryInst{
+                  .opcode = c4c::backend::bir::BinaryOpcode::Add,
+                  .result =
+                      c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%t2"),
+                  .lhs = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%t0"),
+                  .rhs = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%t1"),
+              },
+          },
+          .terminator = c4c::backend::bir::ReturnTerminator{
+              .value = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%t2"),
+          },
+      }},
+      .is_declaration = false,
+  });
+
+  const auto parsed = c4c::backend::parse_bir_minimal_call_crossing_direct_call_module(module);
+  expect_true(parsed.has_value(),
+              "shared call-decode surface should parse a BIR call-crossing direct-call module");
+  if (parsed.has_value()) {
+    expect_true(parsed->helper != nullptr && parsed->helper->name == "add_one" &&
+                    parsed->main_function != nullptr && parsed->main_function->name == "main",
+                "shared call-decode surface should preserve helper and caller identities for the BIR call-crossing slice");
+    expect_true(parsed->source_add != nullptr && parsed->call != nullptr &&
+                    parsed->final_add != nullptr &&
+                    parsed->regalloc_source_value == "%t0" &&
+                    parsed->source_imm == 5 && parsed->helper_add_imm == 1,
+                "shared call-decode surface should recover the source add result plus the source/helper immediates for the BIR call-crossing slice");
+  }
+}
+
 
 void test_backend_shared_liveness_surface_tracks_result_names() {
   const auto module = make_declaration_module();
@@ -1201,6 +1277,7 @@ int main(int argc, char* argv[]) {
   test_backend_shared_call_decode_parses_bir_minimal_direct_call_add_imm_module();
   test_backend_shared_call_decode_parses_bir_minimal_direct_call_identity_arg_module();
   test_backend_shared_call_decode_parses_bir_minimal_dual_identity_direct_call_sub_module();
+  test_backend_shared_call_decode_parses_bir_minimal_call_crossing_direct_call_module();
   test_backend_shared_liveness_surface_tracks_result_names();
   test_backend_shared_liveness_surface_tracks_call_crossing_ranges();
   test_backend_shared_liveness_surface_tracks_phi_join_ranges();

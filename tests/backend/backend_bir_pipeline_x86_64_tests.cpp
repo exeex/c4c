@@ -264,6 +264,109 @@ c4c::codegen::lir::LirModule make_lir_minimal_dual_identity_direct_call_sub_modu
   return module;
 }
 
+c4c::codegen::lir::LirModule make_lir_minimal_call_crossing_direct_call_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction helper;
+  helper.name = "add_one";
+  helper.signature_text = "define i32 @add_one(i32 %p.x)\n";
+  helper.entry = LirBlockId{0};
+
+  LirBlock helper_entry;
+  helper_entry.id = LirBlockId{0};
+  helper_entry.label = "entry";
+  helper_entry.insts.push_back(LirBinOp{"%t0", LirBinaryOpcode::Add, "i32", "%p.x", "1"});
+  helper_entry.terminator = LirRet{std::string("%t0"), "i32"};
+  helper.blocks.push_back(std::move(helper_entry));
+
+  LirFunction main_function;
+  main_function.name = "main";
+  main_function.signature_text = "define i32 @main()\n";
+  main_function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirBinOp{"%t0", LirBinaryOpcode::Add, "i32", "2", "3"});
+  entry.insts.push_back(LirCallOp{"%t1", "i32", "@add_one", "(i32)", "i32 %t0"});
+  entry.insts.push_back(LirBinOp{"%t2", LirBinaryOpcode::Add, "i32", "%t0", "%t1"});
+  entry.terminator = LirRet{std::string("%t2"), "i32"};
+  main_function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(helper));
+  module.functions.push_back(std::move(main_function));
+  return module;
+}
+
+void populate_bir_minimal_call_crossing_direct_call_module(c4c::backend::bir::Module& module) {
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.functions.push_back(c4c::backend::bir::Function{
+      .name = "add_one",
+      .return_type = c4c::backend::bir::TypeKind::I32,
+      .params = {
+          c4c::backend::bir::Param{.type = c4c::backend::bir::TypeKind::I32, .name = "%arg0"},
+      },
+      .local_slots = {},
+      .blocks = {c4c::backend::bir::Block{
+          .label = "entry",
+          .insts = {c4c::backend::bir::BinaryInst{
+              .opcode = c4c::backend::bir::BinaryOpcode::Add,
+              .result = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%sum"),
+              .lhs = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%arg0"),
+              .rhs = c4c::backend::bir::Value::immediate_i32(1),
+          }},
+          .terminator = c4c::backend::bir::ReturnTerminator{
+              .value = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%sum"),
+          },
+      }},
+      .is_declaration = false,
+  });
+  module.functions.push_back(c4c::backend::bir::Function{
+      .name = "main",
+      .return_type = c4c::backend::bir::TypeKind::I32,
+      .params = {},
+      .local_slots = {},
+      .blocks = {c4c::backend::bir::Block{
+          .label = "entry",
+          .insts = {
+              c4c::backend::bir::BinaryInst{
+                  .opcode = c4c::backend::bir::BinaryOpcode::Add,
+                  .result =
+                      c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%t0"),
+                  .lhs = c4c::backend::bir::Value::immediate_i32(2),
+                  .rhs = c4c::backend::bir::Value::immediate_i32(3),
+              },
+              c4c::backend::bir::CallInst{
+                  .result =
+                      c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%t1"),
+                  .callee = "add_one",
+                  .args = {c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32,
+                                                           "%t0")},
+                  .return_type_name = "i32",
+              },
+              c4c::backend::bir::BinaryInst{
+                  .opcode = c4c::backend::bir::BinaryOpcode::Add,
+                  .result =
+                      c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%t2"),
+                  .lhs = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%t0"),
+                  .rhs = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%t1"),
+              },
+          },
+          .terminator = c4c::backend::bir::ReturnTerminator{
+              .value = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%t2"),
+          },
+      }},
+      .is_declaration = false,
+  });
+}
+
 void test_backend_bir_pipeline_drives_x86_direct_bir_minimal_direct_call_end_to_end() {
   c4c::backend::bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -676,6 +779,30 @@ void test_backend_bir_pipeline_drives_x86_direct_bir_minimal_dual_identity_direc
                       "direct BIR dual-identity subtraction input should stay on native asm emission");
 }
 
+void test_backend_bir_pipeline_drives_x86_direct_bir_minimal_call_crossing_direct_call_end_to_end() {
+  c4c::backend::bir::Module module;
+  populate_bir_minimal_call_crossing_direct_call_module(module);
+
+  const auto rendered =
+      c4c::backend::emit_module(c4c::backend::BackendModuleInput{module},
+                                make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".type add_one, %function\nadd_one:\n",
+                  "direct BIR call-crossing input should emit the helper definition on the x86 backend path");
+  expect_contains(rendered, ".globl main",
+                  "direct BIR call-crossing input should emit the caller definition on the x86 backend path");
+  expect_contains(rendered, "mov eax, edi\n  add eax, 1\n  ret\n",
+                  "direct BIR call-crossing input should preserve the helper add-immediate body on the native x86 path");
+  expect_contains(rendered, "mov ebx, 5",
+                  "direct BIR call-crossing input should materialize the source value in the shared callee-saved register");
+  expect_contains(rendered, "call add_one",
+                  "direct BIR call-crossing input should lower the helper call without legacy backend IR");
+  expect_contains(rendered, "add eax, ebx",
+                  "direct BIR call-crossing input should add the preserved source value after the helper call");
+  expect_not_contains(rendered, "target triple =",
+                      "direct BIR call-crossing input should stay on native asm emission");
+}
+
 void test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_direct_call_through_bir_end_to_end() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_lir_minimal_two_arg_direct_call_module()},
@@ -759,6 +886,23 @@ void test_backend_bir_pipeline_drives_x86_lir_minimal_dual_identity_direct_call_
                   "x86 LIR dual-identity subtraction input should lower the subtraction on the native x86 path");
   expect_not_contains(rendered, "target triple =",
                       "x86 LIR dual-identity subtraction input should stay on native asm emission instead of falling back to LLVM text");
+}
+
+void test_backend_bir_pipeline_drives_x86_lir_minimal_call_crossing_direct_call_through_bir_end_to_end() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_lir_minimal_call_crossing_direct_call_module()},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".type add_one, %function\nadd_one:\n",
+                  "x86 LIR call-crossing input should still emit the helper definition after routing through the shared BIR path");
+  expect_contains(rendered, "mov ebx, 5",
+                  "x86 LIR call-crossing input should preserve the source value in the shared callee-saved register assignment");
+  expect_contains(rendered, "call add_one",
+                  "x86 LIR call-crossing input should stay on the shared BIR-owned direct-call emitter path");
+  expect_contains(rendered, "add eax, ebx",
+                  "x86 LIR call-crossing input should preserve the final add against the source value after BIR lowering");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR call-crossing input should stay on native asm emission instead of falling back to LLVM text");
 }
 
 void test_backend_bir_pipeline_drives_x86_return_add_smoke_case_end_to_end() {
@@ -1242,6 +1386,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_direct_call_add_imm_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_direct_call_identity_arg_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_dual_identity_direct_call_sub_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_call_crossing_direct_call_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_declared_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_direct_call_through_bir_end_to_end);
@@ -1249,6 +1394,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_identity_arg_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_folded_two_arg_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_dual_identity_direct_call_sub_through_bir_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_call_crossing_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_return_add_smoke_case_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_return_sub_smoke_case_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_zero_param_staged_constant_end_to_end);

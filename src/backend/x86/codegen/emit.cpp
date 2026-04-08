@@ -4262,10 +4262,26 @@ std::optional<MinimalScalarGlobalStoreReloadSlice> parse_minimal_scalar_global_s
   };
 }
 
-// Pure direct-call shapes already have BIR-friendly equivalents, but call-crossing still needs
-// a shared regalloc contract because the emission depends on allocated callee-saved state.
-// First move candidate in this family once the BIR regalloc contract exists:
-//   - parse_minimal_call_crossing_direct_call_slice
+// Pure direct-call helper/main shapes now have BIR-friendly equivalents,
+// including the bounded call-crossing slice. The remaining richer families
+// should continue migrating through shared BIR views one seam at a time.
+std::optional<MinimalCallCrossingDirectCallSlice> parse_minimal_call_crossing_direct_call_slice(
+    const c4c::backend::bir::Module& module) {
+  const auto parsed = c4c::backend::parse_bir_minimal_call_crossing_direct_call_module(module);
+  if (!parsed.has_value() || parsed->helper == nullptr || parsed->main_function == nullptr ||
+      parsed->regalloc_source_value.empty()) {
+    return std::nullopt;
+  }
+
+  return MinimalCallCrossingDirectCallSlice{
+      parsed->helper->name,
+      parsed->main_function->name,
+      parsed->source_imm,
+      parsed->helper_add_imm,
+      std::string(parsed->regalloc_source_value),
+  };
+}
+
 std::optional<MinimalCallCrossingDirectCallSlice> parse_minimal_call_crossing_direct_call_slice(
     const c4c::backend::BackendModule& module) {
   const auto parsed = c4c::backend::parse_backend_minimal_call_crossing_direct_call_module(module);
@@ -4277,24 +4293,6 @@ std::optional<MinimalCallCrossingDirectCallSlice> parse_minimal_call_crossing_di
   return MinimalCallCrossingDirectCallSlice{
       parsed->helper->signature.name,
       parsed->main_function->signature.name,
-      parsed->source_imm,
-      parsed->helper_add_imm,
-      std::string(parsed->regalloc_source_value),
-  };
-}
-
-std::optional<MinimalCallCrossingDirectCallSlice> parse_minimal_call_crossing_direct_call_slice(
-    const c4c::codegen::lir::LirModule& module) {
-  const auto parsed =
-      c4c::backend::parse_backend_minimal_call_crossing_direct_call_lir_module(module);
-  if (!parsed.has_value() || parsed->helper == nullptr || parsed->main_function == nullptr ||
-      parsed->regalloc_source_value.empty()) {
-    return std::nullopt;
-  }
-
-  return MinimalCallCrossingDirectCallSlice{
-      parsed->helper->name,
-      parsed->main_function->name,
       parsed->source_imm,
       parsed->helper_add_imm,
       std::string(parsed->regalloc_source_value),
@@ -6059,9 +6057,9 @@ std::optional<std::string> try_emit_direct_lir_module(
   try {
     // Intended migration order:
     // 1) direct BIR emission stays the fast path.
-    // 2) pure call/global/string/local-slot BIR contracts land next and should replace
-    //    the matching BackendModule clusters below in-place.
-    // 3) call-crossing follows only after shared regalloc state is expressible in BIR.
+    // 2) pure call/global/string/local-slot BIR contracts replace the matching
+    //    BackendModule clusters below in-place.
+    // 3) remaining richer helper families follow through shared BIR views.
     if (const auto slice = parse_minimal_member_array_runtime_slice(module);
         slice.has_value()) {
       return emit_minimal_member_array_runtime_asm(module.target_triple, *slice);
@@ -6139,11 +6137,6 @@ std::optional<std::string> try_emit_direct_lir_module(
         slice.has_value()) {
       return emit_minimal_multi_printf_vararg_asm(module.target_triple, module, *slice);
     }
-    if (const auto slice = parse_minimal_call_crossing_direct_call_slice(module);
-        slice.has_value()) {
-      return remove_redundant_self_moves(emit_minimal_call_crossing_direct_call_asm(
-          module.target_triple, synthesize_shared_x86_call_crossing_regalloc(*slice), *slice));
-    }
     if (const auto imm = parse_minimal_double_indirect_local_pointer_conditional_return_imm(module);
         imm.has_value()) {
       return emit_minimal_return_asm(module.target_triple, imm->function_name, imm->return_imm);
@@ -6196,6 +6189,11 @@ std::string emit_module(const c4c::backend::bir::Module& module,
   if (const auto slice = parse_minimal_dual_identity_direct_call_sub_slice(module);
       slice.has_value()) {
     return emit_minimal_dual_identity_direct_call_sub_asm(module.target_triple, *slice);
+  }
+  if (const auto slice = parse_minimal_call_crossing_direct_call_slice(module);
+      slice.has_value()) {
+    return remove_redundant_self_moves(emit_minimal_call_crossing_direct_call_asm(
+        module.target_triple, synthesize_shared_x86_call_crossing_regalloc(*slice), *slice));
   }
   if (const auto imm = parse_minimal_return_imm(module); imm.has_value()) {
     return emit_minimal_return_asm(module, *imm);

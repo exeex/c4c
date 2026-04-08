@@ -267,6 +267,45 @@ c4c::codegen::lir::LirModule make_bir_minimal_dual_identity_direct_call_sub_lir_
   return module;
 }
 
+c4c::codegen::lir::LirModule make_bir_minimal_call_crossing_direct_call_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction helper;
+  helper.name = "add_one";
+  helper.signature_text = "define i32 @add_one(i32 %p.x)\n";
+  helper.entry = LirBlockId{0};
+
+  LirBlock helper_entry;
+  helper_entry.id = LirBlockId{0};
+  helper_entry.label = "entry";
+  helper_entry.insts.push_back(LirBinOp{"%t0", LirBinaryOpcode::Add, "i32", "%p.x", "1"});
+  helper_entry.terminator = LirRet{std::string("%t0"), "i32"};
+  helper.blocks.push_back(std::move(helper_entry));
+
+  LirFunction main_function;
+  main_function.name = "main";
+  main_function.signature_text = "define i32 @main()\n";
+  main_function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirBinOp{"%t0", LirBinaryOpcode::Add, "i32", "2", "3"});
+  entry.insts.push_back(LirCallOp{"%t1", "i32", "@add_one", "(i32)", "i32 %t0"});
+  entry.insts.push_back(LirBinOp{"%t2", LirBinaryOpcode::Add, "i32", "%t0", "%t1"});
+  entry.terminator = LirRet{std::string("%t2"), "i32"};
+  main_function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(helper));
+  module.functions.push_back(std::move(main_function));
+  return module;
+}
+
 void test_bir_lowering_accepts_minimal_direct_call_lir_module() {
   const auto lowered = c4c::backend::try_lower_to_bir(make_bir_minimal_direct_call_lir_module());
   expect_true(lowered.has_value(),
@@ -509,6 +548,24 @@ void test_bir_lowering_accepts_minimal_dual_identity_direct_call_sub_lir_module(
                     parsed->main_function != nullptr && parsed->main_function->name == "main" &&
                     parsed->lhs_call_arg_imm == 7 && parsed->rhs_call_arg_imm == 3,
                 "the lowered BIR module should preserve both helper identities and both caller immediates for the dual-identity subtraction slice");
+  }
+}
+
+void test_bir_lowering_accepts_minimal_call_crossing_direct_call_lir_module() {
+  const auto lowered =
+      c4c::backend::try_lower_to_bir(make_bir_minimal_call_crossing_direct_call_lir_module());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the minimal call-crossing direct-call LIR module slice");
+
+  const auto parsed = c4c::backend::parse_bir_minimal_call_crossing_direct_call_module(*lowered);
+  expect_true(parsed.has_value(),
+              "the lowered BIR module should match the shared call-crossing direct-call BIR parser");
+  if (parsed.has_value()) {
+    expect_true(parsed->helper != nullptr && parsed->helper->name == "add_one" &&
+                    parsed->main_function != nullptr && parsed->main_function->name == "main" &&
+                    parsed->regalloc_source_value == "%t0" &&
+                    parsed->source_imm == 5 && parsed->helper_add_imm == 1,
+                "the lowered BIR module should preserve the helper/main structure plus the recovered source and helper immediates for the call-crossing slice");
   }
 }
 
@@ -2281,6 +2338,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_minimal_direct_call_identity_arg_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_folded_two_arg_direct_call_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_dual_identity_direct_call_sub_lir_module);
+  RUN_TEST(test_bir_lowering_accepts_minimal_call_crossing_direct_call_lir_module);
   RUN_TEST(test_bir_printer_renders_minimal_add_scaffold);
   RUN_TEST(test_bir_printer_renders_minimal_sub_scaffold);
   RUN_TEST(test_bir_printer_renders_minimal_mul_scaffold);
