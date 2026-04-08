@@ -6,14 +6,36 @@ Source Plan: plan.md
 
 - Step 4 cleanup: keep shrinking adapter-only legacy-lowering surface now that
   `src/backend/ir.hpp` and `lir_to_backend_ir.*` are already gone
-- Current slice: continue the Step 4 inventory after removing the aarch64
-  direct-emitter inner BIR retry, then compare the remaining duplicate retry
-  / dispatch seams in x86 direct-LIR emission and `src/backend/backend.cpp`
-- Next intended slice: add one focused x86 direct-emitter regression around a
-  BIR-lowerable LIR module, then delete the matching duplicate inner BIR retry
-  if the outer BIR path already owns the behavior cleanly
+- Current slice: compare the remaining retry / dispatch seams in
+  `src/backend/backend.cpp` after both native direct emitters dropped their
+  duplicate inner BIR retries, and check whether the riscv64-only
+  direct-LIR-or-LLVM wrapper can collapse into the main route logic without
+  changing native rejection behavior
+- Next intended slice: inventory the `BackendModuleInput` LIR-entry path in
+  `src/backend/backend.cpp`, add one focused regression around the native
+  direct-LIR rejection / riscv64 text split if needed, then delete any dead
+  wrapper that only re-encodes the same target switch
 
 # Completed
+
+- Removed the duplicate x86 direct-emitter inner BIR retry from
+  `src/backend/x86/codegen/emit.cpp` so
+  `try_emit_direct_lir_module(...)` now only handles the remaining native
+  direct-LIR staging helpers and leaves shared-BIR lowering to the outer
+  `emit_module(const LirModule&)` flow
+- Added focused coverage in
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` that calls
+  `c4c::backend::x86::emit_module(...)` directly on a BIR-lowerable minimal
+  direct-call LIR module, pinning that the outer BIR path still owns native
+  asm emission after removing the duplicate retry seam
+- Rebuilt `backend_bir_tests` and `c4cll`, reran
+  `ctest --test-dir build -R '^backend_bir_tests$' --output-on-failure`, reran
+  the full `ctest --test-dir build -j8 --output-on-failure` suite into
+  `test_fail_after.log`, and confirmed the workspace stayed at `2834/2834`
+  passing with 0 failures
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=0 failed=0`
+  and zero newly failing tests against the refreshed `test_fail_before.log`
 
 - Removed the duplicate aarch64 direct-emitter inner BIR retry from
   `src/backend/aarch64/codegen/emit.cpp` so

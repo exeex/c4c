@@ -4016,13 +4016,6 @@ std::optional<std::string> try_emit_direct_lir_module(
     if (const auto imm = parse_minimal_lir_return_imm(module); imm.has_value()) {
       return emit_minimal_return_asm(module.target_triple, imm->function_name, imm->return_imm);
     }
-    if (const auto lowered_bir = c4c::backend::try_lower_to_bir(module);
-        lowered_bir.has_value()) {
-      try {
-        return emit_module(*lowered_bir);
-      } catch (const std::invalid_argument&) {
-      }
-    }
   } catch (const std::invalid_argument&) {
   }
 

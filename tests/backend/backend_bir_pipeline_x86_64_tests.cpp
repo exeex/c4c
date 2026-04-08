@@ -1167,6 +1167,19 @@ void test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_through_bir_en
                       "x86 LIR minimal direct-call input should stay on native asm emission instead of falling back to LLVM text");
 }
 
+void test_x86_direct_emitter_lowers_minimal_direct_call_via_outer_bir_path() {
+  const auto rendered = c4c::backend::x86::emit_module(make_lir_minimal_direct_call_module());
+
+  expect_contains(rendered, ".type helper, %function\nhelper:\n",
+                  "x86 direct emitter should still emit the helper definition when direct-LIR staging declines a BIR-lowerable direct-call module");
+  expect_contains(rendered, "mov eax, 42",
+                  "x86 direct emitter should preserve the helper immediate after the outer BIR-lowering retry owns the module");
+  expect_contains(rendered, "call helper",
+                  "x86 direct emitter should still lower the helper call after removing the duplicate inner BIR retry seam");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 direct emitter should stay on native asm emission when the outer BIR path handles the direct-call module");
+}
+
 void test_backend_bir_pipeline_drives_x86_lir_minimal_void_direct_call_imm_return_through_bir_end_to_end() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_lir_minimal_void_direct_call_imm_return_module()},
@@ -2481,6 +2494,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_scalar_global_store_reload_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_lowers_x86_direct_call_helper_families_to_shared_bir_views);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_through_bir_end_to_end);
+  RUN_TEST(test_x86_direct_emitter_lowers_minimal_direct_call_via_outer_bir_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_void_direct_call_imm_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_declared_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_direct_call_through_bir_end_to_end);
