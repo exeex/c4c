@@ -14,11 +14,6 @@ namespace c4c::backend {
 
 namespace {
 
-bool is_direct_lir_subset_error(const std::invalid_argument& ex) {
-  return std::string_view(ex.what()).find("does not support this direct LIR module") !=
-         std::string_view::npos;
-}
-
 std::string emit_native_bir_module(const bir::Module& module, Target target) {
   switch (target) {
     case Target::X86_64:
@@ -34,22 +29,16 @@ std::string emit_native_bir_module(const bir::Module& module, Target target) {
 
 std::string emit_direct_lir_or_llvm_fallback(const c4c::codegen::lir::LirModule& module,
                                              Target target) {
-  try {
-    switch (target) {
-      case Target::X86_64:
-      case Target::I686:
-        return c4c::backend::x86::emit_module(module);
-      case Target::Aarch64:
-        return c4c::backend::aarch64::emit_module(module);
-      case Target::Riscv64:
-        return c4c::codegen::lir::print_llvm(module);
-    }
-  } catch (const std::invalid_argument& ex) {
-    if (!is_direct_lir_subset_error(ex)) {
-      throw;
-    }
+  switch (target) {
+    case Target::X86_64:
+    case Target::I686:
+      return c4c::backend::x86::emit_module(module);
+    case Target::Aarch64:
+      return c4c::backend::aarch64::emit_module(module);
+    case Target::Riscv64:
+      return c4c::codegen::lir::print_llvm(module);
   }
-  return c4c::codegen::lir::print_llvm(module);
+  throw std::logic_error("unreachable backend target");
 }
 
 bool is_direct_bir_subset_error(const std::invalid_argument& ex) {
@@ -105,7 +94,10 @@ std::string emit_module(const BackendModuleInput& input,
       if (!is_direct_bir_subset_error(ex)) {
         throw;
       }
-      return emit_direct_lir_or_llvm_fallback(lir_module, options.target);
+      if (options.target == Target::Riscv64) {
+        return emit_direct_lir_or_llvm_fallback(lir_module, options.target);
+      }
+      throw;
     }
   }
 

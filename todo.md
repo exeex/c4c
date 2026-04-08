@@ -6,15 +6,36 @@ Source Plan: plan.md
 
 - Step 4 cleanup: keep shrinking adapter-only legacy-lowering surface now that
   `src/backend/ir.hpp` and `lir_to_backend_ir.*` are already gone
-- Current slice: re-inventory the remaining direct-LIR/direct-BIR fallback
-  helpers in `backend.cpp` and the native emitters now that the
-  `backend.cpp` BIR-target dispatch wrappers are gone
-- Next intended slice: inspect the remaining backend/emitter fallback helpers
-  (`emit_direct_lir_or_llvm_fallback(...)`, aarch64 fallback preparation, and
-  similar direct-LIR staging helpers) and remove the next smallest adapter-only
-  seam whose behavior is already covered by the surviving routes
+- Current slice: re-inventory the remaining backend/emitter fallback helpers
+  after the backend-entry cleanup, starting with the aarch64
+  `prepare_module_for_fallback(...)` path and any surviving direct-LIR staging
+  helpers that still exist only to preserve deleted legacy routes
+- Next intended slice: choose the next smallest surviving aarch64 direct-LIR
+  fallback-preparation seam, add the narrowest regression coverage around it,
+  and delete it if native direct-BIR or explicit direct-LIR rejection already
+  covers the behavior
 
 # Completed
+
+- Removed the adapter-only native-target direct-LIR LLVM rescue from
+  `src/backend/backend.cpp` so x86/aarch64 backend entry now propagates the
+  native direct-LIR subset rejection instead of quietly returning LLVM text;
+  `Target::Riscv64` still keeps the text fallback surface for unsupported
+  shared-BIR-lowering cases
+- Replaced the stale route-level unsupported-LIR fallback test in
+  `tests/backend/backend_bir_pipeline_tests.cpp` with one explicit `riscv64`
+  text-path check plus backend-entry rejection coverage for unsupported x86 and
+  aarch64 direct-LIR modules
+- Rebuilt `backend_bir_tests` and `c4cll`, reran
+  `ctest --test-dir build -R '^backend_bir_tests$' --output-on-failure`, and
+  reran `ctest --test-dir build -R 'asm_unsupported' --output-on-failure`
+  successfully after removing the backend-entry LLVM rescue seam
+- Reran the full `ctest --test-dir build -j8 --output-on-failure` suite and
+  refreshed `test_after.log` / `test_fail_after.log`; the workspace stayed at
+  `2834/2834` passing with 0 failures
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=159
+  failed=-159` and zero newly failing tests against `test_fail_before.log`
 
 - Re-inventoried the Step 4 compatibility seams in `src/backend/backend.cpp`,
   `src/backend/lowering/call_decode.*`, and the native emitters; confirmed

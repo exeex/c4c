@@ -41,6 +41,51 @@ c4c::codegen::lir::LirModule make_unsupported_local_array_gep_lir_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_unsupported_x86_double_return_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define double @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.terminator = LirRet{std::string("0.0"), "double"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_unsupported_aarch64_double_return_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define double @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.terminator = LirRet{std::string("0.0"), "double"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 void expect_i8_bir_route(I8ModuleFactory make_module,
                          std::string_view signature,
                          std::string_view op_text,
@@ -111,15 +156,47 @@ void test_backend_default_path_uses_bir_when_bir_pipeline_is_not_selected() {
                   "default backend flow should lower supported LIR input directly through the BIR seam");
 }
 
-void test_backend_default_path_keeps_unsupported_lir_on_llvm_text_surface() {
+void test_backend_riscv64_path_keeps_unsupported_lir_on_llvm_text_surface() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_unsupported_local_array_gep_lir_module()},
       c4c::backend::BackendOptions{c4c::backend::Target::Riscv64});
 
   expect_contains(rendered, "define i32 @main()",
-                  "default backend flow should keep unsupported LIR input on the LLVM text fallback surface until the app-layer rescue path is deleted");
+                  "riscv64 backend text flow should keep unsupported LIR input on the LLVM text surface when shared BIR lowering cannot represent it");
   expect_not_contains(rendered, "bir.func",
                       "unsupported LIR input should not pretend to have lowered through the BIR scaffold");
+}
+
+void test_backend_entry_rejects_unsupported_direct_lir_input_on_x86() {
+  try {
+    (void)c4c::backend::emit_module(
+        c4c::backend::BackendModuleInput{make_unsupported_x86_double_return_lir_module()},
+        c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  } catch (const std::invalid_argument& ex) {
+    expect_contains(ex.what(), "direct LIR module",
+                    "backend entry should now expose the native x86 direct-LIR subset rejection instead of rescuing unsupported input through LLVM text");
+    expect_not_contains(ex.what(), "legacy backend IR",
+                        "backend entry should not mention the deleted legacy backend IR route when x86 rejects unsupported direct LIR");
+    return;
+  }
+
+  fail("backend entry should reject unsupported x86 direct LIR input once the backend.cpp LLVM rescue seam is removed");
+}
+
+void test_backend_entry_rejects_unsupported_direct_lir_input_on_aarch64() {
+  try {
+    (void)c4c::backend::emit_module(
+        c4c::backend::BackendModuleInput{make_unsupported_aarch64_double_return_lir_module()},
+        c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  } catch (const std::invalid_argument& ex) {
+    expect_contains(ex.what(), "direct LIR module",
+                    "backend entry should now expose the native aarch64 direct-LIR subset rejection instead of rescuing unsupported input through LLVM text");
+    expect_not_contains(ex.what(), "legacy backend IR",
+                        "backend entry should not mention the deleted legacy backend IR route when aarch64 rejects unsupported direct LIR");
+    return;
+  }
+
+  fail("backend entry should reject unsupported aarch64 direct LIR input once the backend.cpp LLVM rescue seam is removed");
 }
 
 void test_backend_bir_pipeline_is_opt_in_through_backend_options() {
@@ -1347,7 +1424,9 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_backend_bir_pipeline_options_keep_bir_lir_entry_route_target_neutral);
   RUN_TEST(test_backend_direct_bir_module_route_ignores_legacy_pipeline_default_target_neutral);
   RUN_TEST(test_backend_default_path_uses_bir_when_bir_pipeline_is_not_selected);
-  RUN_TEST(test_backend_default_path_keeps_unsupported_lir_on_llvm_text_surface);
+  RUN_TEST(test_backend_riscv64_path_keeps_unsupported_lir_on_llvm_text_surface);
+  RUN_TEST(test_backend_entry_rejects_unsupported_direct_lir_input_on_x86);
+  RUN_TEST(test_backend_entry_rejects_unsupported_direct_lir_input_on_aarch64);
   RUN_TEST(test_backend_bir_pipeline_is_opt_in_through_backend_options);
   RUN_TEST(test_backend_bir_pipeline_accepts_direct_bir_module_input);
   RUN_TEST(test_backend_bir_pipeline_routes_sub_cluster_through_bir_text_surface);
