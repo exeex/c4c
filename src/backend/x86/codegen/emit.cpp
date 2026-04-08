@@ -3795,8 +3795,7 @@ std::optional<MinimalScalarGlobalLoadSlice> parse_minimal_global_int_pointer_rou
   }
 
   const auto& function = module.functions.front();
-  if (function.is_declaration ||
-      !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(function.signature_text) ||
+  if (function.is_declaration || !is_zero_arg_i32_lir_definition(function) ||
       function.entry.value != 0 || function.blocks.size() != 1 ||
       function.alloca_insts.size() != 2 || !function.stack_objects.empty()) {
     return std::nullopt;

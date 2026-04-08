@@ -10,11 +10,44 @@ Source Plan: plan.md
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
 Current active item: Step 4 follow-on deletion. Continue with the next bounded
-scalar-global literal-`main` caller anchor after the store-reload family,
-starting with the global int-pointer roundtrip sibling in
+scalar-global literal-`main` caller anchor after the global int-pointer
+roundtrip family, starting with the remaining pointer-difference / indexed
+global-array siblings in
 [`src/backend/lowering/lir_to_backend_ir.cpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp)
-and the matching direct/structured x86 emitter slice in
+and the matching direct/structured x86 emitter slices in
 [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp).
+
+Latest completed slice:
+
+- removed the bounded scalar-global int-pointer-roundtrip production-side
+  literal-`main` caller anchor from
+  [`src/backend/lowering/lir_to_backend_ir.cpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp)
+  so the explicit lowered backend adapter now accepts any structural
+  zero-argument `i32` caller instead of rejecting renamed callers before they
+  reach the normalized direct global-load seam
+- removed the matching direct x86 literal-`main` caller anchor from
+  [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+  by teaching the bounded direct LIR matcher to accept any structural
+  zero-argument `i32` definition and carry the observed caller symbol through
+  emitted asm instead of hardcoding `main`
+- proved the lowered seam deletion with a new renamed-caller regression in
+  [`tests/backend/backend_lir_adapter_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_tests.cpp)
+  so the normalized backend IR keeps `define i32 @entry_roundtrip()` while
+  still lowering `%t4 = load i32, ptr @g_value` and `ret i32 %t4`
+- proved the x86 production deletion with a new renamed-caller regression in
+  [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
+  so direct x86 emission, the explicit lowered backend seam, and normal
+  backend selection all preserve `.globl entry_roundtrip` on identical
+  scalar-global int-pointer-roundtrip asm output without falling back to
+  backend IR or LLVM text
+- kept focused backend coverage green at `3` passed / `0` failed via
+  `ctest --test-dir build -R '^(backend_lir_adapter_tests|backend_lir_adapter_x86_64_tests|backend_module_tests)$' -j1 --output-on-failure`
+- reran the required backend regression scope to `401` passed / `1` failed via
+  `ctest --test-dir build -R backend -j --output-on-failure > test_backend_after.log`;
+  the only failing case remains the independently reproducing unrelated blocker
+  `c_testsuite_aarch64_backend_src_00023_c`
+- kept the monotonic backend guard green at equal pass/fail counts via
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_backend_before.log --after test_backend_after.log --allow-non-decreasing-passed`
 
 Latest completed slice:
 

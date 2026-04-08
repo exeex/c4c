@@ -2318,6 +2318,35 @@ void test_x86_backend_explicit_lir_emit_surface_keeps_renamed_double_indirect_lo
                       "x86 explicit LIR emit surface should not fall back to LLVM text for renamed double-indirect local-pointer conditional callers");
 }
 
+void test_x86_backend_explicit_lir_emit_surface_keeps_renamed_global_int_pointer_roundtrip_on_asm_path() {
+  auto module = make_x86_global_int_pointer_roundtrip_module();
+  auto& function = module.functions.front();
+  function.name = "entry_roundtrip";
+  function.signature_text = "define i32 @entry_roundtrip()\n";
+
+  const auto direct_rendered = c4c::backend::x86::emit_module(module);
+  const auto lowered_rendered =
+      c4c::backend::x86::emit_module(c4c::backend::lower_lir_to_backend_module(module));
+  const auto backend_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_true(direct_rendered == lowered_rendered,
+              "x86 explicit LIR emit surface should keep renamed global-int-pointer-roundtrip callers aligned with the explicit lowered backend seam");
+  expect_true(direct_rendered == backend_rendered,
+              "x86 backend selection should keep renamed global-int-pointer-roundtrip callers on the same explicit x86 asm path");
+  expect_contains(direct_rendered, ".globl entry_roundtrip\n",
+                  "x86 explicit LIR emit surface should publish the observed renamed zero-arg caller instead of requiring a literal main anchor for the roundtrip slice");
+  expect_contains(direct_rendered, "entry_roundtrip:\n",
+                  "x86 explicit LIR emit surface should preserve the renamed global-int-pointer-roundtrip caller label on the asm path");
+  expect_contains(direct_rendered, "lea rax, g_value[rip]\n",
+                  "x86 explicit LIR emit surface should still materialize the renamed roundtrip global base directly");
+  expect_contains(direct_rendered, "mov eax, dword ptr [rax]\n",
+                  "x86 explicit LIR emit surface should still lower renamed roundtrip callers into the same direct global load");
+  expect_not_contains(direct_rendered, "target triple =",
+                      "x86 explicit LIR emit surface should not fall back to LLVM text for renamed global-int-pointer-roundtrip callers");
+}
+
 void test_x86_backend_explicit_lir_emit_surface_matches_mixed_cast_constant_conditional_goto_return_path() {
   const auto module = make_mixed_cast_constant_conditional_goto_return_module();
   const auto direct_rendered = c4c::backend::x86::emit_module(module);
@@ -7166,6 +7195,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_renders_double_indirect_local_pointer_conditional_return_slice);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_double_indirect_local_pointer_conditional_return_path);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_keeps_renamed_double_indirect_local_pointer_conditional_return_on_asm_path);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_keeps_renamed_global_int_pointer_roundtrip_on_asm_path);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_mixed_cast_constant_conditional_goto_return_path);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_truncating_binop_constant_conditional_goto_return_path);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_select_constant_conditional_goto_return_path);
