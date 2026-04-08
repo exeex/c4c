@@ -10,12 +10,40 @@ Source Plan: plan.md
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
 Current active item: Step 4 follow-on deletion. Continue removing the
-remaining x86 production-side literal-`main` caller anchors in bounded
-multi-block emitter families after the conditional-return slice, starting with
-the still-literal lowered conditional-phi-join matcher in
-[`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
-and proving each deletion on the explicit lowered backend emit surface plus
-normal backend selection.
+remaining bounded multi-block literal-`main` caller anchors that still block
+renamed-caller parity on x86/native-backend routes after the conditional
+phi-join slice, with the next target being the still-literal lowered
+conditional-return adapter in
+[`src/backend/lowering/lir_to_backend_ir.cpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp)
+and its matching x86/native-backend proof surface.
+
+Latest completed slice:
+
+- removed the bounded conditional-phi-join production-side literal-`main`
+  caller anchor from the direct x86 LIR parser plus the explicit lowered
+  backend matcher in
+  [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+  by switching both routes to structural zero-argument `i32` caller matching
+  and carrying the observed caller symbol through native asm emission instead
+  of hardcoding `main`
+- removed the matching lowered backend-adapter literal-`main` gate in
+  [`src/backend/lowering/lir_to_backend_ir.cpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp)
+  so renamed conditional-phi-join callers stay on the explicit lowered seam
+  instead of falling through the generic unsupported multi-block adapter path
+- proved the production deletion with a new renamed-caller regression in
+  [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
+  covering direct x86 emission, the explicit lowered backend seam, and normal
+  backend selection on identical conditional-phi-join assembly output
+- kept focused x86 adapter coverage green at `1` passed / `0` failed via
+  `ctest --test-dir build -R '^backend_lir_adapter_x86_64_tests$' -j1 --output-on-failure`
+- reran the required backend regression scope to `401` passed / `1` failed via
+  `ctest --test-dir build -R backend -j --output-on-failure > test_backend_after.log`;
+  the only failing case remains the independently reproducing unrelated blocker
+  `c_testsuite_aarch64_backend_src_00023_c`
+- the monotonic backend guard against the checked-in baseline currently reports
+  one new failing test because `test_backend_before.log` still records an older
+  clean `182`-test snapshot while the current tree retains the unrelated
+  aarch64 failure above
 
 Completed in this slice:
 

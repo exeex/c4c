@@ -135,6 +135,7 @@ struct MinimalConditionalPhiJoinSlice {
   };
 
   c4c::codegen::lir::LirCmpPredicate predicate = c4c::codegen::lir::LirCmpPredicate::Eq;
+  std::string function_name = "main";
   std::int64_t lhs_imm = 0;
   std::int64_t rhs_imm = 0;
   std::string true_label;
@@ -2537,7 +2538,8 @@ std::optional<MinimalConditionalPhiJoinSlice> parse_minimal_conditional_phi_join
 
   const auto& function = module.functions.front();
   if (function.is_declaration ||
-      !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(function.signature_text) ||
+      !c4c::backend::backend_lir_signature_matches(
+          function.signature_text, "define", "i32", function.name, {}) ||
       function.entry.value != 0 || function.blocks.size() != 4 ||
       !function.alloca_insts.empty() || !function.stack_objects.empty()) {
     return std::nullopt;
@@ -2674,6 +2676,7 @@ std::optional<MinimalConditionalPhiJoinSlice> parse_minimal_conditional_phi_join
   }
 
   return MinimalConditionalPhiJoinSlice{*cmp0_predicate,
+                                        function.name,
                                         *lhs_imm,
                                         *rhs_imm,
                                         true_block.label,
@@ -2694,7 +2697,6 @@ std::optional<MinimalConditionalPhiJoinSlice> parse_minimal_conditional_phi_join
   if (function.is_declaration || !backend_function_is_definition(function.signature) ||
       c4c::backend::backend_signature_return_scalar_type(function.signature) !=
           c4c::backend::BackendScalarType::I32 ||
-      function.signature.name != "main" ||
       !function.signature.params.empty() || function.signature.is_vararg ||
       function.blocks.size() != 4) {
     return std::nullopt;
@@ -2821,6 +2823,7 @@ std::optional<MinimalConditionalPhiJoinSlice> parse_minimal_conditional_phi_join
   }
 
   return MinimalConditionalPhiJoinSlice{predicate,
+                                        function.signature.name,
                                         *lhs_imm,
                                         *rhs_imm,
                                         true_block.label,
@@ -5416,7 +5419,7 @@ std::string emit_minimal_countdown_loop_asm(const c4c::backend::BackendModule& m
 std::string emit_minimal_conditional_phi_join_asm(
     std::string_view target_triple,
     const MinimalConditionalPhiJoinSlice& slice) {
-  const std::string symbol = asm_symbol_name(target_triple, "main");
+  const std::string symbol = asm_symbol_name(target_triple, slice.function_name);
   std::ostringstream out;
   out << ".intel_syntax noprefix\n";
   out << ".text\n";

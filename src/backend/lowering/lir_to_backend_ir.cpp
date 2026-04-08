@@ -850,7 +850,7 @@ std::optional<BackendFunction> adapt_conditional_phi_join_function(
   using namespace c4c::codegen::lir;
 
   if (function.is_declaration || !backend_function_is_definition(signature) ||
-      signature.return_type != "i32" || signature.name != "main" ||
+      signature.return_type != "i32" ||
       !signature.params.empty() || signature.is_vararg || function.entry.value != 0 ||
       function.blocks.size() != 4 || !function.alloca_insts.empty() ||
       !function.stack_objects.empty()) {

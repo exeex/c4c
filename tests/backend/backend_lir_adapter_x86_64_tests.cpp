@@ -2040,6 +2040,34 @@ void test_x86_backend_scaffold_accepts_direct_conditional_phi_join_add_lir_input
                       "x86 direct-LIR phi-join regression should not fall back to LLVM text for the bounded join slice");
 }
 
+void test_x86_backend_explicit_lir_emit_surface_keeps_renamed_conditional_phi_join_on_asm_path() {
+  auto module = make_conditional_phi_join_add_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  auto& function = module.functions.front();
+  function.name = "phi_entry";
+  function.signature_text = "define i32 @phi_entry()\n";
+
+  const auto direct_rendered = c4c::backend::x86::emit_module(module);
+  const auto lowered_rendered =
+      c4c::backend::x86::emit_module(c4c::backend::lower_lir_to_backend_module(module));
+  const auto backend_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_true(direct_rendered == lowered_rendered,
+              "x86 explicit LIR emit surface should stay aligned with the explicit lowered backend seam for renamed conditional phi joins");
+  expect_true(direct_rendered == backend_rendered,
+              "x86 backend selection should keep renamed conditional phi joins on the same explicit x86 asm path");
+  expect_contains(direct_rendered, ".globl phi_entry\n",
+                  "x86 explicit LIR emit surface should publish the renamed zero-arg caller instead of assuming main for conditional phi joins");
+  expect_contains(direct_rendered, "phi_entry:\n",
+                  "x86 explicit LIR emit surface should preserve the renamed caller label on the conditional phi-join asm path");
+  expect_contains(direct_rendered, ".Ljoin:\n  add eax, 5\n  ret\n",
+                  "x86 explicit LIR emit surface should keep the bounded phi-fed post-join add after removing the caller-name anchor");
+  expect_not_contains(direct_rendered, "target triple =",
+                      "x86 explicit LIR emit surface should not fall back to LLVM text for renamed conditional phi joins");
+}
+
 void test_x86_backend_scaffold_prefers_direct_bir_path_for_cast_return_lir_input() {
   const auto module = make_x86_direct_bir_sext_return_module();
   const auto direct_rendered = c4c::backend::x86::emit_module(module);
@@ -6955,6 +6983,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_countdown_do_while_path);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_keeps_renamed_countdown_do_while_on_asm_path);
   RUN_TEST(test_x86_backend_scaffold_accepts_direct_conditional_phi_join_add_lir_input);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_keeps_renamed_conditional_phi_join_on_asm_path);
   RUN_TEST(test_x86_backend_scaffold_prefers_direct_bir_path_for_cast_return_lir_input);
   RUN_TEST(test_x86_backend_scaffold_renders_direct_return_immediate_slice);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_keeps_renamed_direct_return_immediate_caller_on_asm_path);
