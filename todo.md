@@ -4,19 +4,47 @@ Source Plan: plan.md
 
 # Active Item
 
-- Step 5 follow-through: delete the now-unreferenced legacy backend IR header
-  and trim the last stale `BackendModule` migration note that still implies a
-  live backend-IR dependency
-- Current slice: remove `src/backend/ir.hpp` now that repo search shows no
-  active includes or type consumers remain outside the header itself, and
-  update the x86 direct-LIR dispatch comment to match the BIR-first ownership
-  already in tree
-- Next intended slice: re-inventory the remaining direct-LIR compatibility
-  helpers in `src/backend/x86/codegen/emit.cpp` and
+- Step 5 follow-through: keep shrinking the remaining emitter-local direct-LIR
+  compatibility surface now that `src/backend/ir.hpp` is gone and BIR owns the
+  active shared global/call/local-slot seams
+- Current slice: re-inventory the remaining cross-target global/string helper
+  families in `src/backend/x86/codegen/emit.cpp` and
   `src/backend/aarch64/codegen/emit.cpp`, then remove the next narrowest
-  emitter-local family that still bypasses shared BIR lowering
+  direct-LIR-only family that still bypasses shared BIR lowering
+- Next intended slice: evaluate the remaining cross-target
+  `parse_minimal_extern_global_array_load_slice(...)`,
+  `parse_minimal_global_char_pointer_diff_slice(...)`, and
+  `parse_minimal_global_int_pointer_diff_slice(...)` helpers, then route the
+  smallest BIR-ready family through shared lowering and direct-BIR emission
 
 # Completed
+
+- Lowered the minimal extern scalar global-load LIR slice into shared BIR in
+  `src/backend/lowering/lir_to_bir.cpp`, preserving the global as
+  `is_extern = true` with no invented initializer and emitting one
+  `bir.load_global`
+- Added direct-BIR extern scalar global-load parsers in
+  `src/backend/x86/codegen/emit.cpp` and
+  `src/backend/aarch64/codegen/emit.cpp`, then removed the matching
+  emitter-local direct-LIR fast-path dispatch entries so both targets now
+  consume this bounded slice through shared BIR
+- Added focused lowering coverage in
+  `tests/backend/backend_bir_lowering_tests.cpp` plus focused x86/aarch64
+  direct-BIR and LIR-through-BIR pipeline coverage in
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` and
+  `tests/backend/backend_bir_pipeline_aarch64_tests.cpp`
+- Rebuilt `backend_bir_tests`, `backend_shared_util_tests`, and `c4cll`
+  successfully after the extern scalar global-load migration
+- Reran
+  `ctest --test-dir build -R '^(backend_bir_tests|backend_shared_util_tests)$' --output-on-failure`
+  successfully after removing the emitter-local extern scalar global-load
+  fast path
+- Reran the full `ctest --test-dir build -j8 --output-on-failure` suite and
+  refreshed `test_fail_after.log`; the workspace stayed at `2834/2834`
+  passing with 0 failures
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=159
+  failed=-159` and zero newly failing tests against `test_fail_before.log`
 
 - Deleted the now-unreferenced legacy backend IR header
   `src/backend/ir.hpp`; repo search showed no remaining active includes or type
