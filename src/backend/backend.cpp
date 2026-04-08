@@ -1,8 +1,6 @@
 #include "backend.hpp"
 #include "aarch64/codegen/emit.hpp"
 #include "bir_printer.hpp"
-#include "ir.hpp"
-#include "ir_printer.hpp"
 #include "lowering/lir_to_backend_ir.hpp"
 #include "lowering/lir_to_bir.hpp"
 #include "x86/codegen/emit.hpp"
@@ -20,19 +18,12 @@ namespace {
 class BackendEmitter {
  public:
   virtual ~BackendEmitter() = default;
-  virtual std::string emit(const BackendModule& module,
-                           const c4c::codegen::lir::LirModule* legacy_fallback) const = 0;
   virtual std::string emit(const bir::Module& module,
                            const c4c::codegen::lir::LirModule* legacy_fallback) const = 0;
 };
 
 class Aarch64BackendEmitter final : public BackendEmitter {
  public:
-  std::string emit(const BackendModule& module,
-                   const c4c::codegen::lir::LirModule* legacy_fallback) const override {
-    return c4c::backend::aarch64::emit_module(module, legacy_fallback);
-  }
-
   std::string emit(const bir::Module& module,
                    const c4c::codegen::lir::LirModule* legacy_fallback) const override {
     return c4c::backend::aarch64::emit_module(module, legacy_fallback);
@@ -41,11 +32,6 @@ class Aarch64BackendEmitter final : public BackendEmitter {
 
 class X86BackendEmitter final : public BackendEmitter {
  public:
-  std::string emit(const BackendModule& module,
-                   const c4c::codegen::lir::LirModule* legacy_fallback) const override {
-    return c4c::backend::x86::emit_module(module, legacy_fallback);
-  }
-
   std::string emit(const bir::Module& module,
                    const c4c::codegen::lir::LirModule* legacy_fallback) const override {
     return c4c::backend::x86::emit_module(module, legacy_fallback);
@@ -54,15 +40,6 @@ class X86BackendEmitter final : public BackendEmitter {
 
 class PassthroughBackendEmitter final : public BackendEmitter {
  public:
-  std::string emit(const BackendModule& module,
-                   const c4c::codegen::lir::LirModule* legacy_fallback) const override {
-    if (legacy_fallback != nullptr &&
-        !c4c::backend::try_lower_to_bir(*legacy_fallback).has_value()) {
-      return c4c::codegen::lir::print_llvm(*legacy_fallback);
-    }
-    return c4c::backend::print_backend_module(module);
-  }
-
   std::string emit(const bir::Module& module,
                    const c4c::codegen::lir::LirModule* legacy_fallback) const override {
     if (legacy_fallback != nullptr &&
@@ -134,15 +111,6 @@ BackendLoweringRoute select_lowering_route(const BackendModuleInput& input,
     return BackendLoweringRoute::BirPreloweredModule;
   }
   return BackendLoweringRoute::BirFromLirEntry;
-}
-
-std::string emit_module(const BackendModule& module,
-                        const BackendOptions& options) {
-  if (options.target == Target::Riscv64) {
-    return c4c::backend::print_backend_module(module);
-  }
-  auto backend = make_backend(options.target);
-  return backend->emit(module, nullptr);
 }
 
 std::string emit_module(const BackendModuleInput& input,

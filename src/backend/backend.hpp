@@ -47,9 +47,6 @@ struct BackendOptions {
 BackendLoweringRoute select_lowering_route(const BackendModuleInput& input,
                                            const BackendOptions& options);
 
-std::string emit_module(const BackendModule& module,
-                        const BackendOptions& options);
-
 std::string emit_module(const BackendModuleInput& input,
                         const BackendOptions& options);
 

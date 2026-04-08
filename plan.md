@@ -129,9 +129,10 @@ Current next slice for Step 4:
   [`tests/backend/backend_module_tests.cpp`](/workspaces/c4c/tests/backend/backend_module_tests.cpp)
 - keep the source files in-tree for short-lived reference only, but stop
   building or registering them once the production emitters have been hard-locked
-- after the stale build wiring is gone, decide whether shared
+- after the stale build wiring is gone, hard-lock shared
   [`src/backend/backend.cpp`](/workspaces/c4c/src/backend/backend.cpp)
-  `BackendModule` entrypoints should also become explicit unsupported seams
+  `BackendModule` entrypoints as explicit unsupported seams so public backend
+  routing also rejects legacy IR at the boundary
 - prove the batch with reconfigure/build plus the surviving backend test scope
 
 Batch completion check:
@@ -145,6 +146,7 @@ Batch completion check:
 - the slice leaves the repo with fewer `lir_to_backend_ir` owners than before
 - legacy backend-IR-centric test targets are no longer part of default build or
   `ctest -R backend` execution
+- shared backend public emission no longer accepts raw `BackendModule` input
 
 Step 4 commit quality bar:
 

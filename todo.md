@@ -9,18 +9,28 @@ Source Plan: plan.md
 - [ ] Remove legacy backend IR files and backend/app LLVM rescue paths
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
-Current active item: Step 4 follow-on deletion. Remove the stale
-legacy-backend-IR test/build wiring now that both native emitters have been
-hard-locked away from `BackendModule` fallback ownership, starting with the
-CMake / ctest registration for
-[`tests/backend/backend_lir_adapter_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_tests.cpp),
-[`tests/backend/backend_lir_adapter_aarch64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_aarch64_tests.cpp),
-[`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp),
-[`tests/backend/backend_x86_64_extracted_tests.cpp`](/workspaces/c4c/tests/backend/backend_x86_64_extracted_tests.cpp),
+Current active item: Step 4 follow-on deletion. Hard-lock the shared backend
+route/API now that both native emitters and the legacy backend-IR test/build
+wiring are out of the active path, starting with
+[`src/backend/backend.cpp`](/workspaces/c4c/src/backend/backend.cpp)
 and
-[`tests/backend/backend_module_tests.cpp`](/workspaces/c4c/tests/backend/backend_module_tests.cpp),
-while keeping the files in-tree temporarily until the shared backend route/API
-cleanup is ready.
+[`src/backend/backend.hpp`](/workspaces/c4c/src/backend/backend.hpp)
+so public backend emission also rejects raw `BackendModule` input at the
+boundary.
+
+Latest completed slice:
+
+- hard-locked the shared backend legacy `BackendModule` entry seam in
+  [`src/backend/backend.cpp`](/workspaces/c4c/src/backend/backend.cpp)
+  so `emit_module(const BackendModule&, ...)` now fails explicitly instead of
+  routing raw backend IR toward target emitters or `riscv64` passthrough text
+- narrowed the shared backend dispatcher in
+  [`src/backend/backend.cpp`](/workspaces/c4c/src/backend/backend.cpp)
+  to meaningful BIR/LIR routes only by removing the dead `BackendEmitter`
+  overloads that existed solely for raw `BackendModule` emission
+- next intended slice: delete the now-dead public/backend-facing legacy API
+  declarations and leftover compatibility includes once the remaining BIR-only
+  callers and tests are confirmed
 
 Latest completed slice:
 
