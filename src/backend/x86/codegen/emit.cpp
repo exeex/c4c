@@ -4346,38 +4346,10 @@ std::optional<MinimalVoidDirectCallImmReturnSlice> parse_minimal_void_direct_cal
   };
 }
 
-std::optional<std::int64_t> parse_minimal_folded_two_arg_direct_call_return_imm(
-    const c4c::codegen::lir::LirModule& module) {
-  const auto parsed =
-      c4c::backend::parse_backend_minimal_folded_two_arg_direct_call_lir_module(module);
-  if (!parsed.has_value()) {
-    return std::nullopt;
-  }
-  return parsed->return_imm;
-}
-
 std::optional<MinimalDualIdentityDirectCallSubSlice> parse_minimal_dual_identity_direct_call_sub_slice(
     const c4c::backend::bir::Module& module) {
   const auto parsed =
       c4c::backend::parse_bir_minimal_dual_identity_direct_call_sub_module(module);
-  if (!parsed.has_value() || parsed->lhs_helper == nullptr || parsed->rhs_helper == nullptr ||
-      parsed->main_function == nullptr) {
-    return std::nullopt;
-  }
-
-  return MinimalDualIdentityDirectCallSubSlice{
-      parsed->lhs_helper->name,
-      parsed->rhs_helper->name,
-      parsed->main_function->name,
-      parsed->lhs_call_arg_imm,
-      parsed->rhs_call_arg_imm,
-  };
-}
-
-std::optional<MinimalDualIdentityDirectCallSubSlice> parse_minimal_dual_identity_direct_call_sub_slice(
-    const c4c::codegen::lir::LirModule& module) {
-  const auto parsed =
-      c4c::backend::parse_backend_minimal_dual_identity_direct_call_sub_lir_module(module);
   if (!parsed.has_value() || parsed->lhs_helper == nullptr || parsed->rhs_helper == nullptr ||
       parsed->main_function == nullptr) {
     return std::nullopt;

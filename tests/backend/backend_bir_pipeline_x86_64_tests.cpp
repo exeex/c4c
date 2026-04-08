@@ -911,6 +911,12 @@ void test_backend_bir_pipeline_lowers_x86_direct_call_helper_families_to_shared_
       c4c::backend::lower_to_bir(make_lir_minimal_direct_call_add_imm_module());
   const auto identity_bir =
       c4c::backend::lower_to_bir(make_lir_minimal_direct_call_identity_arg_module());
+  const auto folded_bir =
+      c4c::backend::lower_to_bir(make_lir_minimal_folded_two_arg_direct_call_module());
+  const auto dual_identity_bir =
+      c4c::backend::lower_to_bir(make_lir_minimal_dual_identity_direct_call_sub_module());
+  const auto call_crossing_bir =
+      c4c::backend::lower_to_bir(make_lir_minimal_call_crossing_direct_call_module());
 
   const auto two_arg_slice = c4c::backend::parse_bir_minimal_two_arg_direct_call_module(two_arg_bir);
   expect_true(two_arg_slice.has_value(),
@@ -925,6 +931,24 @@ void test_backend_bir_pipeline_lowers_x86_direct_call_helper_families_to_shared_
       c4c::backend::parse_bir_minimal_direct_call_identity_arg_module(identity_bir);
   expect_true(identity_slice.has_value(),
               "x86 identity direct-call LIR input should lower into the shared BIR identity parser view before target emission");
+
+  expect_true(folded_bir.functions.size() == 1 &&
+                  folded_bir.functions.front().blocks.size() == 1 &&
+                  folded_bir.functions.front().blocks.front().terminator.value.has_value() &&
+                  folded_bir.functions.front().blocks.front().terminator.value->kind ==
+                      c4c::backend::bir::Value::Kind::Immediate &&
+                  folded_bir.functions.front().blocks.front().terminator.value->immediate == 8,
+              "x86 folded two-argument direct-call LIR input should lower into the shared BIR return-immediate shape before target emission");
+
+  const auto dual_identity_slice =
+      c4c::backend::parse_bir_minimal_dual_identity_direct_call_sub_module(dual_identity_bir);
+  expect_true(dual_identity_slice.has_value(),
+              "x86 dual-identity direct-call subtraction LIR input should lower into the shared BIR subtraction parser view before target emission");
+
+  const auto call_crossing_slice =
+      c4c::backend::parse_bir_minimal_call_crossing_direct_call_module(call_crossing_bir);
+  expect_true(call_crossing_slice.has_value(),
+              "x86 call-crossing direct-call LIR input should lower into the shared BIR call-crossing parser view before target emission");
 }
 
 void test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_direct_call_through_bir_end_to_end() {

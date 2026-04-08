@@ -5,13 +5,26 @@ Source Plan: plan.md
 # Active Item
 
 - Step 2: switch one shared helper seam off `BackendModule`
-- Current slice: inspect the remaining x86 direct-call adapter helpers around
-  the folded-two-arg, dual-identity-sub, and call-crossing families to see
-  which LIR-only wrappers are now dead after the route already collapsed to
-  shared BIR parsing or LIR-through-BIR lowering
+- Current slice: inspect the remaining Step 2 helper families for other dead
+  target-local `BackendModule` or direct-LIR adapters now that the x86
+  folded-two-arg, dual-identity-sub, and call-crossing families are confirmed
+  to lower through shared BIR first
 
 # Completed
 
+- Extended the focused x86 BIR pipeline regression so folded-two-arg,
+  dual-identity subtraction, and call-crossing direct-call LIR inputs are all
+  required to lower into shared BIR-owned shapes before target emission
+- Removed the dead x86-only folded-two-arg return-immediate parser wrapper and
+  the dead x86-only dual-identity direct-call subtraction LIR slice adapter
+  from `src/backend/x86/codegen/emit.cpp` now that `try_emit_direct_lir_module`
+  lowers those families through `try_lower_to_bir(...)` before native emission
+- Rebuilt `backend_bir_tests` and reran
+  `ctest --test-dir build -R 'backend_bir_tests' --output-on-failure`
+  successfully
+- Reran the full `ctest --test-dir build -j --output-on-failure` suite; the
+  workspace still has the same 13 known dirty-baseline failures in
+  `test_after.log` and `backend_bir_tests` still passes
 - Read `plan.md` and the linked source idea
 - Confirmed `todo.md` was missing and initialized execution state for this run
 - Inspected `call_decode.hpp` and found existing BIR helpers for minimal direct
