@@ -6,15 +6,40 @@ Source Plan: plan.md
 
 - Step 4 cleanup: keep shrinking adapter-only legacy-lowering surface now that
   `src/backend/ir.hpp` and `lir_to_backend_ir.*` are already gone
-- Current slice: re-inventory the remaining genuinely live compatibility seams
-  in `backend.cpp`, `call_decode.*`, and the native emitters after removing the
-  stale emitter-local legacy-backend-IR terminal stubs
-- Next intended slice: re-inventory the remaining genuinely live
-  `BackendModule`-style compatibility seams in `backend.cpp`,
-  `call_decode.*`, and the native emitters, then remove the next smallest
-  adapter-only wrapper or fallback branch that no longer has active callers
+- Current slice: re-inventory the remaining direct-LIR/direct-BIR fallback
+  helpers in `backend.cpp` and the native emitters now that the
+  `backend.cpp` BIR-target dispatch wrappers are gone
+- Next intended slice: inspect the remaining backend/emitter fallback helpers
+  (`emit_direct_lir_or_llvm_fallback(...)`, aarch64 fallback preparation, and
+  similar direct-LIR staging helpers) and remove the next smallest adapter-only
+  seam whose behavior is already covered by the surviving routes
 
 # Completed
+
+- Re-inventoried the Step 4 compatibility seams in `src/backend/backend.cpp`,
+  `src/backend/lowering/call_decode.*`, and the native emitters; confirmed
+  `call_decode.*` no longer carries `BackendModule` parser families and chose
+  the tiny `backend.cpp` BIR-target dispatch wrappers as the next adapter-only
+  cleanup slice
+- Added focused backend coverage in
+  `tests/backend/backend_bir_pipeline_tests.cpp` for direct prelowered BIR
+  emission on `Target::I686`, pinning that the backend entry still dispatches
+  through the x86 stack-argument path via `DWORD PTR [esp + 4]` /
+  `DWORD PTR [esp + 8]`
+- Removed the dead virtual `BackendEmitter` wrapper layer from
+  `src/backend/backend.cpp` and replaced it with one direct
+  `emit_native_bir_module(...)` target switch shared by both prelowered-BIR and
+  LIR-through-BIR native emission routes
+- Reconfigured with `cmake -S . -B build`, rebuilt with
+  `cmake --build build -j8`, and reran focused
+  `ctest --test-dir build -R '^backend_bir_tests$' --output-on-failure`
+  successfully after collapsing the wrapper layer
+- Reran the full `ctest --test-dir build -j8 --output-on-failure` suite and
+  refreshed `test_after.log` / `test_fail_after.log`; the workspace stayed at
+  `2834/2834` passing with 0 failures
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=159
+  failed=-159` and zero newly failing tests against `test_fail_before.log`
 
 - Removed the dead native-backend `legacy_fallback` parameter from the x86 and
   aarch64 direct-BIR emitter entry points in

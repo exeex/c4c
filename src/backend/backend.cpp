@@ -7,49 +7,29 @@
 #include "../codegen/lir/lir_printer.hpp"
 #include "../codegen/lir/ir.hpp"
 
-#include <stdexcept>
 #include <memory>
+#include <stdexcept>
 
 namespace c4c::backend {
 
 namespace {
 
-class BackendEmitter {
- public:
-  virtual ~BackendEmitter() = default;
-  virtual std::string emit(const bir::Module& module) const = 0;
-};
-
-class Aarch64BackendEmitter final : public BackendEmitter {
- public:
-  std::string emit(const bir::Module& module) const override {
-    return c4c::backend::aarch64::emit_module(module);
-  }
-};
-
-class X86BackendEmitter final : public BackendEmitter {
- public:
-  std::string emit(const bir::Module& module) const override {
-    return c4c::backend::x86::emit_module(module);
-  }
-};
-
-std::unique_ptr<BackendEmitter> make_backend(Target target) {
-  switch (target) {
-    case Target::X86_64:
-    case Target::I686:
-      return std::make_unique<X86BackendEmitter>();
-    case Target::Aarch64:
-      return std::make_unique<Aarch64BackendEmitter>();
-    case Target::Riscv64:
-      break;
-  }
-  return nullptr;
-}
-
 bool is_direct_lir_subset_error(const std::invalid_argument& ex) {
   return std::string_view(ex.what()).find("does not support this direct LIR module") !=
          std::string_view::npos;
+}
+
+std::string emit_native_bir_module(const bir::Module& module, Target target) {
+  switch (target) {
+    case Target::X86_64:
+    case Target::I686:
+      return c4c::backend::x86::emit_module(module);
+    case Target::Aarch64:
+      return c4c::backend::aarch64::emit_module(module);
+    case Target::Riscv64:
+      throw std::logic_error("riscv64 native BIR emission is handled by the caller");
+  }
+  throw std::logic_error("unreachable backend target");
 }
 
 std::string emit_direct_lir_or_llvm_fallback(const c4c::codegen::lir::LirModule& module,
@@ -119,9 +99,8 @@ std::string emit_module(const BackendModuleInput& input,
       }
       return c4c::backend::bir::print(*bir_module);
     }
-    auto backend = make_backend(options.target);
     try {
-      return backend->emit(*bir_module);
+      return emit_native_bir_module(*bir_module, options.target);
     } catch (const std::invalid_argument& ex) {
       if (!is_direct_bir_subset_error(ex)) {
         throw;
@@ -134,8 +113,7 @@ std::string emit_module(const BackendModuleInput& input,
     if (options.target == Target::Riscv64) {
       return c4c::backend::bir::print(*input.bir_module());
     }
-    auto backend = make_backend(options.target);
-    return backend->emit(*input.bir_module());
+    return emit_native_bir_module(*input.bir_module(), options.target);
   }
 
   throw std::logic_error("unreachable backend lowering route");

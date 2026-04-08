@@ -1326,6 +1326,20 @@ void test_backend_lowered_riscv_passthrough_is_detached_from_lir_metadata() {
                   "explicit prelowered RISC-V BIR emission should stay on the BIR text surface");
 }
 
+void test_backend_direct_bir_i686_target_uses_x86_stack_arg_emitter() {
+  auto bir_module = c4c::backend::lower_to_bir(make_bir_two_param_add_module());
+  bir_module.target_triple = "i686-unknown-linux-gnu";
+
+  const auto rendered =
+      c4c::backend::emit_module(c4c::backend::BackendModuleInput{bir_module},
+                                make_bir_pipeline_options(c4c::backend::Target::I686));
+
+  expect_contains(rendered, "DWORD PTR [esp + 4]",
+                  "direct i686 BIR emission should still dispatch through the x86 stack-arg path");
+  expect_contains(rendered, "DWORD PTR [esp + 8]",
+                  "direct i686 BIR emission should keep the second stack-arg load");
+}
+
 }  // namespace
 
 void run_backend_bir_pipeline_tests() {
@@ -1417,4 +1431,5 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_backend_bir_pipeline_routes_two_param_staged_affine_chain_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_selection_only_applies_at_lir_entry_input);
   RUN_TEST(test_backend_lowered_riscv_passthrough_is_detached_from_lir_metadata);
+  RUN_TEST(test_backend_direct_bir_i686_target_uses_x86_stack_arg_emitter);
 }
