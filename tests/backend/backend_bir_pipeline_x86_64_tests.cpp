@@ -6,6 +6,32 @@
 
 namespace {
 
+c4c::codegen::lir::LirModule make_lir_declared_direct_call_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.extern_decls.push_back(LirExternDecl{"puts_like", "i32"});
+  module.string_pool.push_back(LirStringConst{"@msg", "hello\\0A", 7});
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{"%t0", "i32", "@puts_like", "", "ptr @msg"});
+  entry.terminator = LirRet{std::string("7"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 void test_backend_bir_pipeline_drives_x86_direct_bir_minimal_direct_call_end_to_end() {
   c4c::backend::bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -111,6 +137,23 @@ void test_backend_bir_pipeline_drives_x86_direct_bir_declared_direct_call_end_to
                   "direct BIR declared direct-call input should preserve the fixed immediate return override on the native x86 path");
   expect_not_contains(rendered, "target triple =",
                       "direct BIR declared direct-call input should stay on native x86 asm emission");
+}
+
+void test_backend_bir_pipeline_drives_x86_lir_declared_direct_call_through_bir_end_to_end() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_lir_declared_direct_call_module()},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".section .rodata",
+                  "x86 LIR declared direct-call input should now reach the BIR-owned extern-call emitter path");
+  expect_contains(rendered, ".asciz \"hello\\n\"",
+                  "x86 LIR declared direct-call input should preserve string bytes through the BIR lowering seam");
+  expect_contains(rendered, "call puts_like",
+                  "x86 LIR declared direct-call input should still lower the declared call after the x86 LIR-only seam is removed");
+  expect_contains(rendered, "mov eax, 7",
+                  "x86 LIR declared direct-call input should preserve the fixed immediate return override on the BIR path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR declared direct-call input should stay on native asm emission instead of falling back to LLVM text");
 }
 
 void test_backend_bir_pipeline_drives_x86_return_add_smoke_case_end_to_end() {
@@ -590,6 +633,7 @@ void test_backend_bir_pipeline_rejects_unsupported_direct_bir_input_on_x86() {
 void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_direct_call_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_declared_direct_call_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_declared_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_return_add_smoke_case_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_return_sub_smoke_case_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_zero_param_staged_constant_end_to_end);

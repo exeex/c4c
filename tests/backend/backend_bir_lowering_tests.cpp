@@ -2,11 +2,38 @@
 
 #include "../../src/backend/bir_printer.hpp"
 #include "../../src/backend/bir_validate.hpp"
+#include "../../src/backend/lowering/call_decode.hpp"
 #include "../../src/backend/lowering/lir_to_bir.hpp"
 
 #include <string>
 
 namespace {
+
+c4c::codegen::lir::LirModule make_bir_declared_direct_call_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.extern_decls.push_back(LirExternDecl{"puts_like", "i32"});
+  module.string_pool.push_back(LirStringConst{"@msg", "hello\\0A", 7});
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{"%t0", "i32", "@puts_like", "", "ptr @msg"});
+  entry.terminator = LirRet{std::string("7"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
 
 void test_bir_printer_renders_minimal_add_scaffold() {
   using namespace c4c::backend::bir;
@@ -125,6 +152,30 @@ void test_bir_printer_renders_minimal_shl_scaffold() {
                   "BIR printer should render explicit shl instructions in BIR terms");
   expect_contains(rendered, "bir.ret i32 %t0",
                   "BIR printer should let shl results flow into returns");
+}
+
+void test_bir_lowering_accepts_minimal_declared_direct_call_lir_module() {
+  const auto lowered = c4c::backend::try_lower_to_bir(make_bir_declared_direct_call_lir_module());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the remaining minimal declared direct-call LIR module slice");
+
+  expect_true(lowered->string_constants.size() == 1 &&
+                  lowered->string_constants.front().name == "msg" &&
+                  lowered->string_constants.front().bytes == "hello\n",
+              "BIR lowering should decode LIR string-pool entries into BIR string constants for minimal declared direct-call modules");
+  expect_true(lowered->functions.size() == 2 &&
+                  lowered->functions.front().is_declaration &&
+                  lowered->functions.front().name == "puts_like",
+              "BIR lowering should synthesize the callee declaration in BIR for minimal declared direct-call modules");
+
+  const auto parsed = c4c::backend::parse_bir_minimal_declared_direct_call_module(*lowered);
+  expect_true(parsed.has_value(),
+              "the lowered BIR module should match the shared minimal declared direct-call BIR parser");
+  expect_true(parsed->args.size() == 1 &&
+                  parsed->args.front().kind == c4c::backend::ParsedBackendExternCallArg::Kind::Ptr &&
+                  parsed->args.front().operand == "@msg" &&
+                  !parsed->return_call_result && parsed->return_imm == 7,
+              "the lowered BIR module should preserve the pointer argument and fixed return immediate");
 }
 
 void test_bir_printer_renders_minimal_lshr_scaffold() {
@@ -2009,6 +2060,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_two_param_add);
   RUN_TEST(test_bir_lowering_accepts_two_param_add_sub_chain);
   RUN_TEST(test_bir_lowering_accepts_two_param_staged_affine_chain);
+  RUN_TEST(test_bir_lowering_accepts_minimal_declared_direct_call_lir_module);
   RUN_TEST(test_bir_validator_rejects_returning_undefined_named_value);
   RUN_TEST(test_bir_validator_rejects_return_type_mismatch);
   RUN_TEST(test_bir_validator_rejects_non_widening_sext);

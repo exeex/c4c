@@ -5,10 +5,9 @@ Source Plan: plan.md
 # Active Item
 
 - Step 2: switch one shared helper seam off `BackendModule`
-- Current slice: continue the declared-direct-call cleanup into the remaining
-  shared legacy helper seam by deleting the dead
-  `parse_backend_minimal_declared_direct_call_module(...)` family after both
-  native emitters switched to the BIR parser view
+- Current slice: pick the next still-live legacy LIR direct-call helper family
+  after the x86 declared-direct-call path moved onto `try_lower_to_bir(...)`
+  and the shared BIR parser/emitter route
 
 # Completed
 
@@ -80,14 +79,28 @@ Source Plan: plan.md
 - Reran the full `ctest --test-dir build -j --output-on-failure` suite
   successfully and confirmed parity again: `2834/2834` tests passed in
   `test_after.log`
+- Added a bounded `try_lower_to_bir(...)` path for the remaining minimal LIR
+  declared-direct-call module shape, including string-pool decoding into BIR
+  string constants and synthesized BIR declaration/main functions
+- Deleted the redundant x86
+  `parse_backend_minimal_declared_direct_call_lir_module(...)` dispatch and
+  private LIR-specific emitter overload from `src/backend/x86/codegen/emit.cpp`
+- Added focused BIR lowering coverage for the minimal LIR
+  declared-direct-call slice plus an x86 end-to-end pipeline test proving LIR
+  input now stays on the BIR-owned extern-call route
+- Rebuilt `backend_bir_tests` and `backend_shared_util_tests`, reran
+  `ctest --test-dir build -R 'backend_(bir_tests|shared_util_tests)' --output-on-failure`,
+  and reran the full `ctest --test-dir build -j --output-on-failure` suite
+  successfully with `2834/2834` tests passing in `test_after.log`
 
 # Next
 
-- Decide whether the next highest-value Step 2 cut is the remaining
-  LIR-specific declared-direct-call helper seam or a different still-live
-  `BackendModule` parser family in `call_decode.hpp`
+- Inventory the remaining x86-only LIR direct-call helpers in
+  `src/backend/x86/codegen/emit.cpp` and `src/backend/lowering/call_decode.hpp`
+  to choose the next smallest seam that can be rerouted through BIR without
+  broadening `try_lower_to_bir(...)` too aggressively
 - Continue shrinking stale direct-call helper families one seam at a time now
-  that the dead backend declared-direct-call route is gone
+  that the x86 declared-direct-call path no longer needs its private LIR seam
 - Use the next slice to make `lir_to_backend_ir.*` more obviously adapter-only
   before Step 4 collapse work starts
 
@@ -109,6 +122,10 @@ Source Plan: plan.md
 - This slice removes the native aarch64 direct-BIR declared-direct-call path
   from the legacy `BackendModule` parser family, and x86 now matches it; the
   remaining live seam is the shared legacy declared-direct-call helper route
-- That remaining declared-direct-call helper route is now narrowed to the
-  LIR-specific compatibility path; the `BackendModule` variant has been
-  deleted from `call_decode.hpp` and both native emitters
+- The old declared-direct-call helper family is now fully off
+  `BackendModule`; the shared parser/emitter route is BIR-owned, and the x86
+  LIR-only compatibility seam has also been deleted
+- `test_before.log` was not present in the workspace at the start of this run;
+  this slice rebuilt the touched backend targets, reran targeted backend
+  coverage, and then recorded full-suite success in `test_after.log` at
+  `2834/2834`

@@ -44,6 +44,18 @@ std::optional<bir::TypeKind> lower_scalar_type_text(std::string_view text) {
   return std::nullopt;
 }
 
+std::optional<bir::TypeKind> lower_minimal_call_arg_type_text(std::string_view text) {
+  if (const auto scalar = lower_scalar_type_text(text); scalar.has_value()) {
+    return scalar;
+  }
+
+  const auto trimmed = c4c::codegen::lir::trim_lir_arg_text(text);
+  if (trimmed == "ptr" || (!trimmed.empty() && trimmed.back() == '*')) {
+    return bir::TypeKind::I64;
+  }
+  return std::nullopt;
+}
+
 unsigned scalar_type_bit_width(bir::TypeKind type) {
   switch (type) {
     case bir::TypeKind::I8:
@@ -107,6 +119,137 @@ std::optional<bir::Value> lower_immediate_or_name(std::string_view value_text,
       return std::nullopt;
   }
   return std::nullopt;
+}
+
+std::string decode_llvm_byte_string(std::string_view text) {
+  std::string bytes;
+  bytes.reserve(text.size());
+  for (std::size_t index = 0; index < text.size(); ++index) {
+    if (text[index] == '\\' && index + 2 < text.size()) {
+      auto hex_val = [](char c) -> int {
+        if (c >= '0' && c <= '9') return c - '0';
+        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+        return -1;
+      };
+      const int hi = hex_val(text[index + 1]);
+      const int lo = hex_val(text[index + 2]);
+      if (hi >= 0 && lo >= 0) {
+        bytes.push_back(static_cast<char>(hi * 16 + lo));
+        index += 2;
+        continue;
+      }
+    }
+    bytes.push_back(text[index]);
+  }
+  return bytes;
+}
+
+std::optional<bir::Module> try_lower_minimal_declared_direct_call_module(
+    const c4c::codegen::lir::LirModule& module) {
+  const auto parsed = parse_backend_minimal_declared_direct_call_lir_module(module);
+  if (!parsed.has_value() || parsed->call == nullptr || parsed->main_function == nullptr) {
+    return std::nullopt;
+  }
+  if (parsed->call->result.str().empty()) {
+    return std::nullopt;
+  }
+
+  bir::Module lowered;
+  lowered.target_triple = module.target_triple;
+  lowered.data_layout = module.data_layout;
+
+  lowered.globals.reserve(module.globals.size());
+  for (const auto& global : module.globals) {
+    if (global.name.empty()) {
+      return std::nullopt;
+    }
+    lowered.globals.push_back(bir::Global{
+        .name = global.name,
+        .type = bir::TypeKind::I64,
+        .is_extern = global.is_extern_decl,
+        .initializer = std::nullopt,
+    });
+  }
+
+  lowered.string_constants.reserve(module.string_pool.size());
+  for (const auto& string_constant : module.string_pool) {
+    if (string_constant.pool_name.empty() || string_constant.byte_length < 0) {
+      return std::nullopt;
+    }
+
+    std::string name = string_constant.pool_name;
+    if (!name.empty() && name.front() == '@') {
+      name.erase(name.begin());
+    }
+
+    lowered.string_constants.push_back(bir::StringConstant{
+        .name = std::move(name),
+        .bytes = decode_llvm_byte_string(string_constant.raw_bytes),
+    });
+  }
+
+  bir::Function callee;
+  callee.name = parsed->parsed_call.symbol_name;
+  callee.return_type = bir::TypeKind::I32;
+  callee.is_declaration = true;
+  callee.params.reserve(parsed->parsed_call.typed_call.param_types.size());
+  for (std::size_t index = 0; index < parsed->parsed_call.typed_call.param_types.size(); ++index) {
+    const auto type =
+        lower_minimal_call_arg_type_text(parsed->parsed_call.typed_call.param_types[index]);
+    if (!type.has_value()) {
+      return std::nullopt;
+    }
+    callee.params.push_back(bir::Param{
+        .type = *type,
+        .name = "%arg" + std::to_string(index),
+    });
+  }
+  lowered.functions.push_back(std::move(callee));
+
+  bir::Function main_function;
+  main_function.name = parsed->main_function->name;
+  main_function.return_type = bir::TypeKind::I32;
+
+  bir::Block entry_block;
+  entry_block.label = "entry";
+
+  bir::CallInst call_inst;
+  call_inst.result = bir::Value::named(bir::TypeKind::I32, parsed->call->result.str());
+  call_inst.callee = parsed->parsed_call.symbol_name;
+  call_inst.return_type_name = "i32";
+  call_inst.args.reserve(parsed->args.size());
+  for (const auto& arg : parsed->args) {
+    switch (arg.kind) {
+      case ParsedBackendExternCallArg::Kind::I32Imm:
+        call_inst.args.push_back(bir::Value::immediate_i32(static_cast<std::int32_t>(arg.imm)));
+        break;
+      case ParsedBackendExternCallArg::Kind::I64Imm:
+        call_inst.args.push_back(bir::Value::immediate_i64(arg.imm));
+        break;
+      case ParsedBackendExternCallArg::Kind::Ptr: {
+        if (arg.operand.empty() || arg.operand.front() != '@') {
+          return std::nullopt;
+        }
+        call_inst.args.push_back(
+            bir::Value::named(bir::TypeKind::I64, arg.operand.substr(1)));
+        break;
+      }
+    }
+  }
+  entry_block.insts.push_back(std::move(call_inst));
+
+  if (parsed->return_call_result) {
+    entry_block.terminator.value =
+        bir::Value::named(bir::TypeKind::I32, parsed->call->result.str());
+  } else {
+    entry_block.terminator.value =
+        bir::Value::immediate_i32(static_cast<std::int32_t>(parsed->return_imm));
+  }
+
+  main_function.blocks.push_back(std::move(entry_block));
+  lowered.functions.push_back(std::move(main_function));
+  return lowered;
 }
 
 std::optional<bir::BinaryOpcode> lower_binary_opcode(std::string_view opcode) {
@@ -2004,6 +2147,11 @@ std::optional<bir::Function> try_lower_widened_i8_conditional_phi_select_functio
 }  // namespace
 
 std::optional<bir::Module> try_lower_to_bir(const c4c::codegen::lir::LirModule& module) {
+  if (const auto lowered = try_lower_minimal_declared_direct_call_module(module);
+      lowered.has_value()) {
+    return lowered;
+  }
+
   if (!module.globals.empty() || !module.string_pool.empty() || !module.extern_decls.empty() ||
       module.functions.size() != 1) {
     return std::nullopt;
