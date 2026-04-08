@@ -427,6 +427,20 @@ std::string asm_symbol_name(std::string_view target_triple,
   return std::string("_") + std::string(logical_name);
 }
 
+std::string aarch64_reg32_name(c4c::backend::PhysReg reg) {
+  if (reg.index > 30) {
+    throw std::invalid_argument("aarch64 backend emitter received an unknown physical register");
+  }
+  return "w" + std::to_string(reg.index);
+}
+
+std::string aarch64_reg64_name(c4c::backend::PhysReg reg) {
+  if (reg.index > 30) {
+    throw std::invalid_argument("aarch64 backend emitter received an unknown physical register");
+  }
+  return "x" + std::to_string(reg.index);
+}
+
 // BIR-ready scalar/control-flow slices.
 // These helpers only need single-function/block/value shape that BIR already
 // models.
@@ -3412,6 +3426,124 @@ std::string emit_minimal_direct_call_identity_arg_asm(
   out << "  bl " << helper_symbol << "\n"
       << "  ldr x30, [sp, #8]\n"
       << "  add sp, sp, #16\n"
+      << "  ret\n";
+  return out.str();
+}
+
+std::string emit_minimal_dual_identity_direct_call_sub_asm(
+    const c4c::backend::bir::Module& module,
+    const c4c::backend::ParsedBirMinimalDualIdentityDirectCallSubModuleView& slice) {
+  auto emit_i32_imm = [](std::ostringstream& out,
+                         std::string_view reg,
+                         std::int64_t imm,
+                         const char* detail) {
+    if (imm >= 0 && imm <= std::numeric_limits<std::uint16_t>::max()) {
+      out << "  mov " << reg << ", #" << imm << "\n";
+      return;
+    }
+    if (imm < 0 && -imm <= std::numeric_limits<std::uint16_t>::max()) {
+      out << "  sub " << reg << ", wzr, #" << -imm << "\n";
+      return;
+    }
+    fail_unsupported(detail);
+  };
+
+  if (slice.lhs_helper == nullptr || slice.rhs_helper == nullptr || slice.main_function == nullptr) {
+    fail_unsupported("BIR dual-identity direct-call subtraction slice without helper metadata");
+  }
+
+  std::ostringstream out;
+  const std::string lhs_symbol = asm_symbol_name(module.target_triple, slice.lhs_helper->name);
+  const std::string rhs_symbol = asm_symbol_name(module.target_triple, slice.rhs_helper->name);
+  const std::string main_symbol = asm_symbol_name(module.target_triple, slice.main_function->name);
+
+  out << ".text\n";
+  emit_function_prelude(out, module.target_triple, lhs_symbol, false);
+  out << "  ret\n";
+  emit_function_prelude(out, module.target_triple, rhs_symbol, false);
+  out << "  ret\n";
+  emit_function_prelude(out, module.target_triple, main_symbol, true);
+  out << "  sub sp, sp, #32\n"
+      << "  str x19, [sp, #8]\n"
+      << "  str x30, [sp, #24]\n";
+  emit_i32_imm(out, "w0", slice.lhs_call_arg_imm,
+               "dual-identity direct-call lhs immediate exceeds the minimal aarch64 mov/sub range");
+  out << "  bl " << lhs_symbol << "\n"
+      << "  mov w19, w0\n";
+  emit_i32_imm(out, "w0", slice.rhs_call_arg_imm,
+               "dual-identity direct-call rhs immediate exceeds the minimal aarch64 mov/sub range");
+  out << "  bl " << rhs_symbol << "\n"
+      << "  sub w19, w19, w0\n"
+      << "  mov w0, w19\n"
+      << "  ldr x19, [sp, #8]\n"
+      << "  ldr x30, [sp, #24]\n"
+      << "  add sp, sp, #32\n"
+      << "  ret\n";
+  return out.str();
+}
+
+std::string emit_minimal_call_crossing_direct_call_asm(
+    const c4c::backend::bir::Module& module,
+    const c4c::backend::RegAllocIntegrationResult& regalloc,
+    const c4c::backend::ParsedBirMinimalCallCrossingDirectCallModuleView& slice) {
+  auto emit_i32_imm = [](std::ostringstream& out,
+                         std::string_view reg,
+                         std::int64_t imm,
+                         const char* detail) {
+    if (imm >= 0 && imm <= std::numeric_limits<std::uint16_t>::max()) {
+      out << "  mov " << reg << ", #" << imm << "\n";
+      return;
+    }
+    if (imm < 0 && -imm <= std::numeric_limits<std::uint16_t>::max()) {
+      out << "  sub " << reg << ", wzr, #" << -imm << "\n";
+      return;
+    }
+    fail_unsupported(detail);
+  };
+
+  if (slice.helper == nullptr || slice.main_function == nullptr) {
+    fail_unsupported("BIR call-crossing direct-call slice without helper metadata");
+  }
+  if (slice.helper_add_imm > std::numeric_limits<std::uint16_t>::max() ||
+      slice.helper_add_imm < -std::numeric_limits<std::uint16_t>::max()) {
+    fail_unsupported("call-crossing helper add immediate exceeds the minimal aarch64 add/sub range");
+  }
+
+  const std::string source_value(slice.regalloc_source_value);
+  const auto* source_reg =
+      c4c::backend::stack_layout::find_assigned_reg(regalloc, source_value);
+  if (source_reg == nullptr ||
+      !c4c::backend::stack_layout::uses_callee_saved_reg(regalloc, *source_reg)) {
+    throw std::invalid_argument(
+        "shared call-crossing regalloc state is required for the minimal aarch64 direct-call slice");
+  }
+
+  const std::string reg32 = aarch64_reg32_name(*source_reg);
+  const std::string reg64 = aarch64_reg64_name(*source_reg);
+  const std::string helper_symbol = asm_symbol_name(module.target_triple, slice.helper->name);
+  const std::string main_symbol = asm_symbol_name(module.target_triple, slice.main_function->name);
+
+  std::ostringstream out;
+  out << ".text\n";
+  emit_function_prelude(out, module.target_triple, helper_symbol, false);
+  if (slice.helper_add_imm >= 0) {
+    out << "  add w0, w0, #" << slice.helper_add_imm << "\n";
+  } else {
+    out << "  sub w0, w0, #" << -slice.helper_add_imm << "\n";
+  }
+  out << "  ret\n";
+  emit_function_prelude(out, module.target_triple, main_symbol, true);
+  out << "  sub sp, sp, #32\n"
+      << "  str " << reg64 << ", [sp, #8]\n"
+      << "  str x30, [sp, #24]\n";
+  emit_i32_imm(out, reg32, slice.source_imm,
+               "call-crossing source immediate exceeds the minimal aarch64 mov/sub range");
+  out << "  mov w0, " << reg32 << "\n"
+      << "  bl " << helper_symbol << "\n"
+      << "  add w0, w0, " << reg32 << "\n"
+      << "  ldr " << reg64 << ", [sp, #8]\n"
+      << "  ldr x30, [sp, #24]\n"
+      << "  add sp, sp, #32\n"
       << "  ret\n";
   return out.str();
 }
@@ -6818,6 +6950,18 @@ std::string emit_module(const c4c::backend::bir::Module& module,
   if (const auto slice = c4c::backend::parse_bir_minimal_direct_call_identity_arg_module(module);
       slice.has_value()) {
     return emit_minimal_direct_call_identity_arg_asm(module, *slice);
+  }
+  if (const auto slice =
+          c4c::backend::parse_bir_minimal_dual_identity_direct_call_sub_module(module);
+      slice.has_value()) {
+    return emit_minimal_dual_identity_direct_call_sub_asm(module, *slice);
+  }
+  if (const auto slice =
+          c4c::backend::parse_bir_minimal_call_crossing_direct_call_module(module);
+      slice.has_value()) {
+    return emit_minimal_call_crossing_direct_call_asm(
+        module, synthesize_shared_aarch64_call_crossing_regalloc(slice->regalloc_source_value),
+        *slice);
   }
   if (const auto imm = parse_minimal_return_imm(module); imm.has_value()) {
     return emit_minimal_return_sub_imm_asm(module, *imm);

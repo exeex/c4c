@@ -5,15 +5,32 @@ Source Plan: plan.md
 # Active Item
 
 - Step 3: migrate the next aarch64 emitter helper cluster onto direct BIR
-- Current slice: continue the aarch64 direct-call BIR emitter expansion with
-  the remaining bounded shared parser families
-  (`dual_identity_direct_call_sub` and `call_crossing_direct_call`) now that
-  the first two-arg/add-immediate/identity helper cluster is native
-- Next intended slice: either land the remaining aarch64 bounded direct-call
-  helper families or, if that exposes no more active target-local work, return
-  to the Step 2 shared-seam inventory for the next removable adapter family
+- Current slice: return to the Step 2 shared-seam inventory and identify the
+  next removable `BackendModule` adapter family now that the remaining bounded
+  aarch64 direct-call helper families are native
+- Next intended slice: audit `src/backend/lowering/call_decode.hpp` plus the
+  x86/aarch64 emitter comments for the next still-live shared parser or thin
+  target-local wrapper that can be removed in one behavior-preserving slice
 
 # Completed
+
+- Wired the native aarch64 direct-BIR emitter to the shared
+  `parse_bir_minimal_dual_identity_direct_call_sub_module(...)` and
+  `parse_bir_minimal_call_crossing_direct_call_module(...)` families in
+  `src/backend/aarch64/codegen/emit.cpp`, removing the last bounded direct-call
+  gap called out by the active Step 3 slice
+- Extended `tests/backend/backend_bir_pipeline_aarch64_tests.cpp` with focused
+  direct-BIR and LIR-through-BIR coverage for the aarch64 dual-identity
+  subtraction and call-crossing direct-call helper families
+- Rebuilt `backend_bir_tests`, `backend_shared_util_tests`, and `c4cll`
+  successfully after the aarch64 direct-call emitter expansion
+- Reran
+  `ctest --test-dir build -R 'backend_bir_tests|backend_shared_util_tests' --output-on-failure`
+  successfully after the aarch64 direct-call emitter expansion
+- Reran the full `ctest --test-dir build -j8 --output-on-failure` suite and
+  refreshed `test_before.log` / `test_after.log`; the workspace improved from
+  `2833/2834` passing with 1 failure (`c_testsuite_aarch64_backend_src_00121_c`)
+  to `2834/2834` passing with 0 failures and zero newly failing tests
 
 - Added native aarch64 direct-BIR emission for the minimal two-argument
   direct-call, direct-call-add-immediate, and identity direct-call families in
