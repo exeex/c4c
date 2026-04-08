@@ -2187,6 +2187,63 @@ void test_x86_backend_explicit_lir_emit_surface_matches_double_indirect_local_po
                       "x86 explicit LIR emit surface should not fall back to LLVM text for the bounded double-indirect local-pointer conditional family");
 }
 
+void test_x86_backend_explicit_lir_emit_surface_matches_mixed_cast_constant_conditional_goto_return_path() {
+  const auto module = make_mixed_cast_constant_conditional_goto_return_module();
+  const auto direct_rendered = c4c::backend::x86::emit_module(module);
+  const auto lowered_rendered =
+      c4c::backend::x86::emit_module(c4c::backend::lower_lir_to_backend_module(module));
+  const auto backend_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_true(direct_rendered == lowered_rendered,
+              "x86 explicit LIR emit surface should stay aligned with the legacy-lowered backend seam for the bounded mixed-cast constant-conditional goto-return family");
+  expect_true(direct_rendered == backend_rendered,
+              "x86 backend selection should keep the bounded mixed-cast constant-conditional goto-return family on the same explicit x86 asm path");
+  expect_contains(direct_rendered, "mov eax, 0\n",
+                  "x86 explicit LIR emit surface should fold the bounded mixed-cast constant-conditional goto-return family without adapting through backend IR first");
+  expect_not_contains(direct_rendered, "target triple =",
+                      "x86 explicit LIR emit surface should not fall back to LLVM text for the bounded mixed-cast constant-conditional goto-return family");
+}
+
+void test_x86_backend_explicit_lir_emit_surface_matches_truncating_binop_constant_conditional_goto_return_path() {
+  const auto module = make_truncating_binop_constant_conditional_goto_return_module();
+  const auto direct_rendered = c4c::backend::x86::emit_module(module);
+  const auto lowered_rendered =
+      c4c::backend::x86::emit_module(c4c::backend::lower_lir_to_backend_module(module));
+  const auto backend_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_true(direct_rendered == lowered_rendered,
+              "x86 explicit LIR emit surface should stay aligned with the legacy-lowered backend seam for the bounded truncating-binop constant-conditional goto-return family");
+  expect_true(direct_rendered == backend_rendered,
+              "x86 backend selection should keep the bounded truncating-binop constant-conditional goto-return family on the same explicit x86 asm path");
+  expect_contains(direct_rendered, "mov eax, 0\n",
+                  "x86 explicit LIR emit surface should fold the bounded truncating-binop constant-conditional goto-return family without adapting through backend IR first");
+  expect_not_contains(direct_rendered, "target triple =",
+                      "x86 explicit LIR emit surface should not fall back to LLVM text for the bounded truncating-binop constant-conditional goto-return family");
+}
+
+void test_x86_backend_explicit_lir_emit_surface_matches_select_constant_conditional_goto_return_path() {
+  const auto module = make_select_constant_conditional_goto_return_module();
+  const auto direct_rendered = c4c::backend::x86::emit_module(module);
+  const auto lowered_rendered =
+      c4c::backend::x86::emit_module(c4c::backend::lower_lir_to_backend_module(module));
+  const auto backend_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_true(direct_rendered == lowered_rendered,
+              "x86 explicit LIR emit surface should stay aligned with the legacy-lowered backend seam for the bounded select constant-conditional goto-return family");
+  expect_true(direct_rendered == backend_rendered,
+              "x86 backend selection should keep the bounded select constant-conditional goto-return family on the same explicit x86 asm path");
+  expect_contains(direct_rendered, "mov eax, 0\n",
+                  "x86 explicit LIR emit surface should fold the bounded select constant-conditional goto-return family without adapting through backend IR first");
+  expect_not_contains(direct_rendered, "target triple =",
+                      "x86 explicit LIR emit surface should not fall back to LLVM text for the bounded select constant-conditional goto-return family");
+}
+
 void test_x86_backend_renders_goto_only_constant_return_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_goto_only_constant_return_module()},
@@ -5878,6 +5935,9 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_local_pointer_temp_return_path);
   RUN_TEST(test_x86_backend_renders_double_indirect_local_pointer_conditional_return_slice);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_double_indirect_local_pointer_conditional_return_path);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_mixed_cast_constant_conditional_goto_return_path);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_truncating_binop_constant_conditional_goto_return_path);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_select_constant_conditional_goto_return_path);
   RUN_TEST(test_x86_backend_renders_goto_only_constant_return_slice);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_goto_only_constant_return_path);
   RUN_TEST(test_x86_backend_renders_countdown_while_return_slice);

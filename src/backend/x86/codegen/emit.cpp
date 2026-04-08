@@ -684,6 +684,81 @@ std::optional<std::int64_t> parse_minimal_double_indirect_local_pointer_conditio
         else if (pred == "sge") result = (lhs->ival >= rhs->ival);
         else return std::nullopt;
         temps[cmp->result] = AbsVal{false, result ? 1 : 0, {}};
+      } else if (const auto* cast = std::get_if<LirCastOp>(&inst)) {
+        auto src = resolve(cast->operand);
+        if (!src || src->is_ptr) return std::nullopt;
+        std::int64_t val = src->ival;
+        switch (cast->kind) {
+          case LirCastKind::ZExt: {
+            // Source is already truncated to from_type width in the abstract;
+            // zero-extension preserves the unsigned value.
+            break;
+          }
+          case LirCastKind::SExt: {
+            // Sign-extend: replicate the sign bit of from_type into to_type width.
+            int from_bits = 0;
+            if (cast->from_type == "i1") from_bits = 1;
+            else if (cast->from_type == "i8") from_bits = 8;
+            else if (cast->from_type == "i16") from_bits = 16;
+            else if (cast->from_type == "i32") from_bits = 32;
+            else if (cast->from_type == "i64") from_bits = 64;
+            else return std::nullopt;
+            if (from_bits < 64) {
+              std::int64_t mask = (static_cast<std::int64_t>(1) << from_bits) - 1;
+              val &= mask;
+              if (val & (static_cast<std::int64_t>(1) << (from_bits - 1))) {
+                val |= ~mask;
+              }
+            }
+            break;
+          }
+          case LirCastKind::Trunc: {
+            // Truncate to to_type width.
+            int to_bits = 0;
+            if (cast->to_type == "i1") to_bits = 1;
+            else if (cast->to_type == "i8") to_bits = 8;
+            else if (cast->to_type == "i16") to_bits = 16;
+            else if (cast->to_type == "i32") to_bits = 32;
+            else if (cast->to_type == "i64") to_bits = 64;
+            else return std::nullopt;
+            if (to_bits < 64) {
+              val &= (static_cast<std::int64_t>(1) << to_bits) - 1;
+            }
+            break;
+          }
+          default: return std::nullopt;
+        }
+        temps[cast->result] = AbsVal{false, val, {}};
+      } else if (const auto* bin = std::get_if<LirBinOp>(&inst)) {
+        auto lhs = resolve(bin->lhs);
+        auto rhs = resolve(bin->rhs);
+        if (!lhs || !rhs || lhs->is_ptr || rhs->is_ptr) return std::nullopt;
+        auto typed_op = bin->opcode.typed();
+        if (!typed_op) return std::nullopt;
+        std::int64_t val = 0;
+        switch (*typed_op) {
+          case LirBinaryOpcode::Add: val = lhs->ival + rhs->ival; break;
+          case LirBinaryOpcode::Sub: val = lhs->ival - rhs->ival; break;
+          case LirBinaryOpcode::Mul: val = lhs->ival * rhs->ival; break;
+          case LirBinaryOpcode::And: val = lhs->ival & rhs->ival; break;
+          case LirBinaryOpcode::Or:  val = lhs->ival | rhs->ival; break;
+          case LirBinaryOpcode::Xor: val = lhs->ival ^ rhs->ival; break;
+          case LirBinaryOpcode::Shl: val = lhs->ival << rhs->ival; break;
+          case LirBinaryOpcode::LShr:
+            val = static_cast<std::int64_t>(
+                static_cast<std::uint64_t>(lhs->ival) >> rhs->ival);
+            break;
+          case LirBinaryOpcode::AShr: val = lhs->ival >> rhs->ival; break;
+          default: return std::nullopt;
+        }
+        temps[bin->result] = AbsVal{false, val, {}};
+      } else if (const auto* sel = std::get_if<LirSelectOp>(&inst)) {
+        auto cond = resolve(sel->cond);
+        if (!cond || cond->is_ptr) return std::nullopt;
+        auto tv = resolve(sel->true_val);
+        auto fv = resolve(sel->false_val);
+        if (!tv || !fv || tv->is_ptr || fv->is_ptr) return std::nullopt;
+        temps[sel->result] = (cond->ival != 0) ? *tv : *fv;
       } else {
         return std::nullopt;
       }

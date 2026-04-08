@@ -187,3 +187,8 @@ Recent baseline:
   local-pointer conditional dependency on `lower_lir_to_backend_module(...)` from
   the direct x86 LIR entrypoint via a mini constant-fold interpreter that tracks
   alloca slots, pointer aliases, and conditional branches
+- latest Step 4 follow-through extends the x86 LIR constant-fold interpreter
+  to handle CastOp (ZExt, SExt, Trunc), BinOp (Add, Sub, Mul, And, Or, Xor,
+  Shl, LShr, AShr), and SelectOp instructions, removing the bounded
+  mixed-cast, truncating-binop, and select constant-conditional goto-return
+  families from the `lower_lir_to_backend_module(...)` fallback path
