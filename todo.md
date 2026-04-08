@@ -5,16 +5,30 @@ Source Plan: plan.md
 # Active Item
 
 - Step 2: switch one shared helper seam off `BackendModule`
-- Current slice: inspect the remaining Step 2 helper families for other dead
-  target-local `BackendModule` or direct-LIR adapters now that the x86
-  folded-two-arg, dual-identity-sub, and call-crossing families are confirmed
-  to lower through shared BIR first
+- Current slice: inspect the remaining Step 2 helper families for the next dead
+  target-local `BackendModule` or direct-LIR adapter cleanup after removing the
+  unused zero-arg direct-call LIR parser seam from shared call-decode
 
 # Completed
 
 - Extended the focused x86 BIR pipeline regression so folded-two-arg,
   dual-identity subtraction, and call-crossing direct-call LIR inputs are all
   required to lower into shared BIR-owned shapes before target emission
+- Removed the dead shared
+  `ParsedBackendMinimalDirectCallLirModuleView` /
+  `parse_backend_minimal_direct_call_lir_module(...)` adapter from
+  `src/backend/lowering/call_decode.hpp` now that the zero-arg direct-call LIR
+  family already lowers through `try_lower_to_bir(...)` and no live target
+  still consumes the old parser view
+- Rebuilt `backend_shared_util_tests`, `backend_bir_tests`, and `c4cll`
+  successfully after the dead shared LIR-parser cleanup
+- Reran
+  `ctest --test-dir build -R 'backend_(shared_util_tests|bir_tests)' --output-on-failure`
+  successfully after the cleanup
+- Reran the full `ctest --test-dir build -j --output-on-failure` suite and
+  recorded the current workspace baseline in `test_after.log`: `2674/2834`
+  tests passed, with 160 failures in this snapshot (`test_before.log` was not
+  present at the start of the run, so no same-run monotonic diff was possible)
 - Removed the dead x86-only folded-two-arg return-immediate parser wrapper and
   the dead x86-only dual-identity direct-call subtraction LIR slice adapter
   from `src/backend/x86/codegen/emit.cpp` now that `try_emit_direct_lir_module`
@@ -312,6 +326,13 @@ Source Plan: plan.md
 - `test_before.log` was not present in the workspace at the start of this
   iteration, so this run used focused rebuilds plus a fresh full-suite
   `test_after.log` check instead of a same-run before/after diff
+- This slice removes one more dead direct-call compatibility seam from shared
+  call-decode itself: the unused zero-arg direct-call LIR parser/view is gone,
+  while the live zero-arg LIR-to-BIR lowering helpers remain in
+  `src/backend/lowering/lir_to_bir.cpp`
+- The current workspace full-suite baseline is much dirtier than the older
+  `todo.md` notes from prior iterations: this run recorded `2674/2834` passing
+  with 160 failures in `test_after.log`
 - This run's full-suite check finished with the same 13 known failures listed
   in `test_after.log`:
   `backend_runtime_local_arg_call`, `backend_runtime_param_slot`,

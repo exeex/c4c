@@ -200,13 +200,6 @@ struct ParsedBackendMinimalFoldedTwoArgDirectCallLirModuleView {
   std::int64_t return_imm = 0;
 };
 
-struct ParsedBackendMinimalDirectCallLirModuleView {
-  const c4c::codegen::lir::LirFunction* helper = nullptr;
-  const c4c::codegen::lir::LirFunction* main_function = nullptr;
-  const c4c::codegen::lir::LirCallOp* call = nullptr;
-  std::int64_t return_imm = 0;
-};
-
 struct ParsedBackendMinimalDirectCallAddImmLirModuleView {
   const c4c::codegen::lir::LirFunction* helper = nullptr;
   const c4c::codegen::lir::LirFunction* main_function = nullptr;
@@ -2298,36 +2291,6 @@ parse_backend_minimal_folded_two_arg_direct_call_lir_module(
       *lhs_call_arg_imm,
       *rhs_call_arg_imm,
       helper_shape->base_imm + *lhs_call_arg_imm - *rhs_call_arg_imm,
-  };
-}
-
-inline std::optional<ParsedBackendMinimalDirectCallLirModuleView>
-parse_backend_minimal_direct_call_lir_module(const c4c::codegen::lir::LirModule& module) {
-  const auto parsed = parse_backend_single_helper_zero_arg_caller_lir_module(module, 1);
-  if (!parsed.has_value()) {
-    return std::nullopt;
-  }
-
-  const auto* call = parsed->main_block == nullptr || parsed->main_block->insts.empty()
-                         ? nullptr
-                         : std::get_if<c4c::codegen::lir::LirCallOp>(&parsed->main_block->insts[0]);
-  const auto callee_name =
-      call == nullptr ? std::nullopt : parse_backend_zero_arg_direct_global_typed_call(*call);
-  const auto return_imm =
-      parsed->helper == nullptr
-          ? std::nullopt
-          : parse_backend_lir_zero_arg_return_imm_function(*parsed->helper, std::nullopt);
-  if (call == nullptr || !callee_name.has_value() || parsed->helper == nullptr ||
-      *callee_name != parsed->helper->name || !return_imm.has_value() || call->result.empty() ||
-      parsed->main_ret == nullptr || *parsed->main_ret->value_str != call->result) {
-    return std::nullopt;
-  }
-
-  return ParsedBackendMinimalDirectCallLirModuleView{
-      parsed->helper,
-      parsed->main_function,
-      call,
-      *return_imm,
   };
 }
 
