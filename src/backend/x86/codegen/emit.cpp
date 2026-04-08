@@ -4825,12 +4825,6 @@ std::string emit_minimal_conditional_affine_i8_return_asm(
   return out.str();
 }
 
-std::string emit_minimal_conditional_affine_i8_return_asm(
-    const c4c::backend::BackendModule& module,
-    const MinimalConditionalAffineI8ReturnSlice& slice) {
-  return emit_minimal_conditional_affine_i8_return_asm(module.target_triple, slice);
-}
-
 std::string emit_minimal_conditional_affine_i32_return_asm(
     std::string_view target_triple,
     const MinimalConditionalAffineI32ReturnSlice& slice) {
@@ -4917,12 +4911,6 @@ std::string emit_minimal_conditional_affine_i32_return_asm(
   }
   out << "  ret\n";
   return out.str();
-}
-
-std::string emit_minimal_conditional_affine_i32_return_asm(
-    const c4c::backend::BackendModule& module,
-    const MinimalConditionalAffineI32ReturnSlice& slice) {
-  return emit_minimal_conditional_affine_i32_return_asm(module.target_triple, slice);
 }
 
 std::string emit_minimal_countdown_loop_asm(std::string_view target_triple,

@@ -5,16 +5,43 @@ Source Plan: plan.md
 # Active Item
 
 - Step 2: switch one shared helper seam off `BackendModule`
-- Current slice: inspect the remaining emitter-local `BackendModule`
-  overloads that still survive in x86/aarch64 and classify whether the next
-  removable seam is another target-triple forwarder or a genuinely
-  metadata-bearing helper
-- Next intended slice: verify whether the remaining x86 conditional-affine
-  wrappers and the aarch64 local-array / conditional-phi wrapper set are still
-  live, and remove the next dead forwarding cluster if dispatch already routes
-  entirely through `target_triple` or BIR-owned inputs
+- Current slice: re-scan the remaining emitter-local `BackendModule` helpers
+  after the wrapper cleanup and classify which survivors still need real
+  module metadata versus which ones are now dead or purely target-triple
+  plumbing
+- Next intended slice: inspect the remaining target-local helper families in
+  `src/backend/x86/codegen/emit.cpp` and `src/backend/aarch64/codegen/emit.cpp`
+  that still read backend module/string/global tables directly, and identify
+  the next removable cluster versus the next contract that must move into BIR
 
 # Completed
+
+- Removed the dead x86 `BackendModule` forwarding wrappers for
+  `emit_minimal_conditional_affine_i8_return_asm(...)` and
+  `emit_minimal_conditional_affine_i32_return_asm(...)` now that all live
+  dispatch sites already pass `target_triple` directly
+- Removed the dead aarch64 `BackendModule` forwarding wrappers for
+  `emit_minimal_conditional_affine_i8_return_asm(...)` and
+  `emit_minimal_conditional_affine_i32_return_asm(...)` now that all live
+  dispatch sites already pass `target_triple` directly
+- Deleted the unused aarch64 legacy `BackendModule` parser/emitter cluster for
+  `parse_minimal_conditional_phi_join_slice(...)`,
+  `parse_minimal_local_array_slice(...)`,
+  `emit_minimal_conditional_phi_join_asm(...)`, and
+  `emit_minimal_local_array_asm(...)` after confirming no dispatch path still
+  references that target-local fallback
+- Rebuilt `c4cll`, `backend_bir_tests`, and `backend_shared_util_tests`
+  successfully after the emitter-wrapper cleanup
+- Reran
+  `ctest --test-dir build -R 'backend_(bir_tests|shared_util_tests)' --output-on-failure`
+  successfully after the cleanup
+- Reran the full `ctest --test-dir build -j --output-on-failure` suite and
+  refreshed `test_after.log` / `test_fail_after.log`; the workspace still has
+  the same 13 known failures as `test_fail_before.log` with `2821/2834` tests
+  passing
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=0 failed=0`
+  and zero newly failing tests
 
 - Removed the dead x86/aarch64 `BackendModule` forwarding overloads for the
   scalar-global-load, scalar-global-store-reload, extern-scalar-global-load,
