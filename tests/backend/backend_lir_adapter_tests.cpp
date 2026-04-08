@@ -2558,6 +2558,24 @@ void test_adapter_normalizes_renamed_global_load_slice() {
                   "adapter should still return the lowered scalar global value for renamed callers");
 }
 
+void test_adapter_normalizes_renamed_global_store_reload_slice() {
+  auto module = make_global_store_reload_module();
+  auto& function = module.functions.front();
+  function.name = "entry_store";
+  function.signature_text = "define i32 @entry_store()\n";
+
+  const auto adapted = c4c::backend::lower_lir_to_backend_module(module);
+  const auto rendered = c4c::backend::render_module(adapted);
+  expect_contains(rendered, "define i32 @entry_store()",
+                  "adapter should preserve renamed scalar-global-store-reload callers on the explicit lowered backend seam");
+  expect_contains(rendered, "store i32 7, ptr @g_counter",
+                  "adapter should still normalize renamed scalar-global-store-reload callers onto the bounded direct global-store shape");
+  expect_contains(rendered, "%t0 = load i32, ptr @g_counter",
+                  "adapter should still reload the scalar global after the renamed bounded store");
+  expect_contains(rendered, "ret i32 %t0",
+                  "adapter should still return the lowered scalar global value for renamed store-reload callers");
+}
+
 void test_adapter_normalizes_goto_only_constant_return_slice() {
   const auto adapted =
       c4c::backend::lower_lir_to_backend_module(make_goto_only_constant_return_module());
@@ -3334,6 +3352,7 @@ int main(int argc, char* argv[]) {
   test_adapter_normalizes_double_indirect_local_pointer_conditional_return_slice();
   test_adapter_normalizes_renamed_double_indirect_local_pointer_conditional_return_slice();
   test_adapter_normalizes_renamed_global_load_slice();
+  test_adapter_normalizes_renamed_global_store_reload_slice();
   test_adapter_normalizes_goto_only_constant_return_slice();
   test_adapter_normalizes_constant_conditional_goto_return_slice();
   test_adapter_normalizes_i64_constant_conditional_goto_return_slice();

@@ -299,6 +299,7 @@ struct MinimalScalarGlobalLoadSlice {
 };
 
 struct MinimalScalarGlobalStoreReloadSlice {
+  std::string function_name = "main";
   std::string global_name;
   std::int64_t init_imm = 0;
   std::int64_t store_imm = 0;
@@ -3965,7 +3966,12 @@ std::optional<MinimalScalarGlobalStoreReloadSlice> parse_minimal_scalar_global_s
     return std::nullopt;
   }
 
-  return MinimalScalarGlobalStoreReloadSlice{global.name, *init_imm, *store_imm};
+  return MinimalScalarGlobalStoreReloadSlice{
+      function.name,
+      global.name,
+      *init_imm,
+      *store_imm,
+  };
 }
 
 std::optional<MinimalMultiPrintfVarargSlice> parse_minimal_multi_printf_vararg_slice(
@@ -4197,16 +4203,12 @@ std::optional<MinimalScalarGlobalStoreReloadSlice> parse_minimal_scalar_global_s
     return std::nullopt;
   }
 
-  const auto* main_fn = find_function(module, "main");
-  if (main_fn == nullptr || main_fn->is_declaration ||
-      !backend_function_is_definition(main_fn->signature) ||
-      !is_i32_scalar_signature_return(main_fn->signature) ||
-      !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
-      main_fn->blocks.size() != 1) {
+  const auto& function = module.functions.front();
+  if (!is_zero_arg_i32_backend_definition(function) || function.blocks.size() != 1) {
     return std::nullopt;
   }
 
-  const auto& block = main_fn->blocks.front();
+  const auto& block = function.blocks.front();
   if (block.label != "entry" || block.insts.size() != 2 ||
       !block.terminator.value.has_value() ||
       c4c::backend::backend_return_scalar_type(block.terminator) !=
@@ -4236,7 +4238,12 @@ std::optional<MinimalScalarGlobalStoreReloadSlice> parse_minimal_scalar_global_s
     return std::nullopt;
   }
 
-  return MinimalScalarGlobalStoreReloadSlice{global->name, init_imm, *store_imm};
+  return MinimalScalarGlobalStoreReloadSlice{
+      function.signature.name,
+      global->name,
+      init_imm,
+      *store_imm,
+  };
 }
 
 std::optional<MinimalCallCrossingDirectCallSlice> parse_minimal_call_crossing_direct_call_slice(
@@ -5894,7 +5901,7 @@ std::string emit_minimal_scalar_global_store_reload_asm(
     std::string_view target_triple,
     const MinimalScalarGlobalStoreReloadSlice& slice) {
   const std::string global_symbol = asm_symbol_name(target_triple, slice.global_name);
-  const std::string main_symbol = asm_symbol_name(target_triple, "main");
+  const std::string function_symbol = asm_symbol_name(target_triple, slice.function_name);
 
   std::ostringstream out;
   out << ".intel_syntax noprefix\n";
@@ -5903,8 +5910,8 @@ std::string emit_minimal_scalar_global_store_reload_asm(
       << global_symbol << ":\n"
       << "  .long " << slice.init_imm << "\n";
   out << ".text\n";
-  out << ".globl " << main_symbol << "\n";
-  out << main_symbol << ":\n";
+  out << ".globl " << function_symbol << "\n";
+  out << function_symbol << ":\n";
   out << "  lea rax, " << global_symbol << "[rip]\n"
       << "  mov dword ptr [rax], " << slice.store_imm << "\n"
       << "  mov eax, dword ptr [rax]\n"
