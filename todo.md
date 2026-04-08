@@ -5,9 +5,10 @@ Source Plan: plan.md
 # Active Item
 
 - Step 2: switch one shared helper seam off `BackendModule`
-- Current slice: remove the now-dead `BackendModule` direct-call parser/emitter
-  seams that remained after the direct-call helper families had already
-  switched to shared BIR views or LIR-through-BIR lowering
+- Current slice: inspect the remaining x86 direct-call adapter helpers around
+  the folded-two-arg, dual-identity-sub, and call-crossing families to see
+  which LIR-only wrappers are now dead after the route already collapsed to
+  shared BIR parsing or LIR-through-BIR lowering
 
 # Completed
 
@@ -248,6 +249,20 @@ Source Plan: plan.md
 - Reran the full `ctest --test-dir build -j --output-on-failure` suite after
   the cleanup; the workspace still has the same 13 known failures listed in
   `test_after.log`
+- Added a focused x86 regression proving the two-arg, add-immediate, and
+  identity-return direct-call LIR helper families already lower into the
+  shared BIR parser views before target emission
+- Removed the redundant x86 direct-LIR parser/emitter shortcuts and
+  `try_emit_direct_lir(...)` dispatch for those same two-arg, add-immediate,
+  and identity-return direct-call helper families now that the BIR-owned route
+  already covers them
+- Rebuilt `backend_bir_tests` and reran
+  `ctest --test-dir build -R 'backend_bir_tests' --output-on-failure`
+  successfully after the shortcut cleanup
+- Reran the full `ctest --test-dir build -j --output-on-failure` suite after
+  the cleanup; the workspace still has the same 13 known failures in
+  `test_after.log` (`test_before.log` is not present in this workspace
+  snapshot)
 - Removed the dead `ParsedBackendMinimalStructuredDirectCallModuleView` /
   `parse_backend_minimal_*direct_call*_module(...)` `BackendModule` parser
   family from `src/backend/lowering/call_decode.hpp` once the zero-arg,

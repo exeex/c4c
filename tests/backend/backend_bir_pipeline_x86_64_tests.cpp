@@ -1,5 +1,6 @@
 #include "backend_bir_test_support.hpp"
 
+#include "../../src/backend/lowering/call_decode.hpp"
 #include "../../src/backend/lowering/lir_to_bir.hpp"
 
 #include <stdexcept>
@@ -903,6 +904,29 @@ void test_backend_bir_pipeline_drives_x86_direct_bir_minimal_call_crossing_direc
                       "direct BIR call-crossing input should stay on native asm emission");
 }
 
+void test_backend_bir_pipeline_lowers_x86_direct_call_helper_families_to_shared_bir_views() {
+  const auto two_arg_bir =
+      c4c::backend::lower_to_bir(make_lir_minimal_two_arg_direct_call_module());
+  const auto add_imm_bir =
+      c4c::backend::lower_to_bir(make_lir_minimal_direct_call_add_imm_module());
+  const auto identity_bir =
+      c4c::backend::lower_to_bir(make_lir_minimal_direct_call_identity_arg_module());
+
+  const auto two_arg_slice = c4c::backend::parse_bir_minimal_two_arg_direct_call_module(two_arg_bir);
+  expect_true(two_arg_slice.has_value(),
+              "x86 two-argument direct-call LIR input should lower into the shared BIR two-argument parser view before target emission");
+
+  const auto add_imm_slice =
+      c4c::backend::parse_bir_minimal_direct_call_add_imm_module(add_imm_bir);
+  expect_true(add_imm_slice.has_value(),
+              "x86 add-immediate direct-call LIR input should lower into the shared BIR add-immediate parser view before target emission");
+
+  const auto identity_slice =
+      c4c::backend::parse_bir_minimal_direct_call_identity_arg_module(identity_bir);
+  expect_true(identity_slice.has_value(),
+              "x86 identity direct-call LIR input should lower into the shared BIR identity parser view before target emission");
+}
+
 void test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_direct_call_through_bir_end_to_end() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_lir_minimal_two_arg_direct_call_module()},
@@ -1488,6 +1512,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_direct_call_identity_arg_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_dual_identity_direct_call_sub_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_call_crossing_direct_call_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_lowers_x86_direct_call_helper_families_to_shared_bir_views);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_void_direct_call_imm_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_declared_direct_call_through_bir_end_to_end);

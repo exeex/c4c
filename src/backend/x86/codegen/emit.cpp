@@ -4303,21 +4303,6 @@ std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_sl
   };
 }
 
-std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_slice(
-    const c4c::codegen::lir::LirModule& module) {
-  const auto parsed = c4c::backend::parse_backend_minimal_two_arg_direct_call_lir_module(module);
-  if (!parsed.has_value() || parsed->helper == nullptr || parsed->main_function == nullptr) {
-    return std::nullopt;
-  }
-
-  return MinimalTwoArgDirectCallSlice{
-      parsed->helper->name,
-      parsed->main_function->name,
-      parsed->lhs_call_arg_imm,
-      parsed->rhs_call_arg_imm,
-  };
-}
-
 std::optional<MinimalDirectCallAddImmSlice> parse_minimal_direct_call_add_imm_slice(
     const c4c::backend::bir::Module& module) {
   const auto parsed = c4c::backend::parse_bir_minimal_direct_call_add_imm_module(module);
@@ -4333,39 +4318,9 @@ std::optional<MinimalDirectCallAddImmSlice> parse_minimal_direct_call_add_imm_sl
   };
 }
 
-std::optional<MinimalDirectCallAddImmSlice> parse_minimal_direct_call_add_imm_slice(
-    const c4c::codegen::lir::LirModule& module) {
-  const auto parsed = c4c::backend::parse_backend_minimal_direct_call_add_imm_lir_module(module);
-  if (!parsed.has_value() || parsed->helper == nullptr || parsed->main_function == nullptr) {
-    return std::nullopt;
-  }
-
-  return MinimalDirectCallAddImmSlice{
-      parsed->helper->name,
-      parsed->main_function->name,
-      parsed->call_arg_imm,
-      parsed->add_imm,
-  };
-}
-
 std::optional<MinimalDirectCallIdentityArgSlice> parse_minimal_direct_call_identity_arg_slice(
     const c4c::backend::bir::Module& module) {
   const auto parsed = c4c::backend::parse_bir_minimal_direct_call_identity_arg_module(module);
-  if (!parsed.has_value() || parsed->helper == nullptr || parsed->main_function == nullptr) {
-    return std::nullopt;
-  }
-
-  return MinimalDirectCallIdentityArgSlice{
-      parsed->helper->name,
-      parsed->main_function->name,
-      parsed->call_arg_imm,
-  };
-}
-
-std::optional<MinimalDirectCallIdentityArgSlice> parse_minimal_direct_call_identity_arg_slice(
-    const c4c::codegen::lir::LirModule& module) {
-  const auto parsed =
-      c4c::backend::parse_backend_minimal_direct_call_identity_arg_lir_module(module);
   if (!parsed.has_value() || parsed->helper == nullptr || parsed->main_function == nullptr) {
     return std::nullopt;
   }
@@ -4885,22 +4840,6 @@ std::string emit_minimal_direct_call_add_imm_asm(
   return out.str();
 }
 
-std::string emit_minimal_direct_call_add_imm_asm(
-    std::string_view target_triple,
-    const c4c::backend::ParsedBackendMinimalDirectCallAddImmLirModuleView& slice) {
-  if (slice.helper == nullptr || slice.main_function == nullptr) {
-    throw std::invalid_argument("direct single-argument LIR call slice without helper metadata");
-  }
-
-  return emit_minimal_direct_call_add_imm_asm(target_triple,
-                                              MinimalDirectCallAddImmSlice{
-                                                  slice.helper->name,
-                                                  slice.main_function->name,
-                                                  slice.call_arg_imm,
-                                                  slice.add_imm,
-                                              });
-}
-
 std::string emit_minimal_direct_call_identity_arg_asm(
     std::string_view target_triple,
     const MinimalDirectCallIdentityArgSlice& slice) {
@@ -4923,20 +4862,6 @@ std::string emit_minimal_direct_call_identity_arg_asm(
       << "  call " << helper_symbol << "\n"
       << "  ret\n";
   return out.str();
-}
-
-std::string emit_minimal_direct_call_identity_arg_asm(
-    std::string_view target_triple,
-    const c4c::backend::ParsedBackendMinimalDirectCallIdentityArgLirModuleView& slice) {
-  if (slice.helper == nullptr) {
-    throw std::invalid_argument("direct identity LIR call slice without helper metadata");
-  }
-  return emit_minimal_direct_call_identity_arg_asm(target_triple,
-                                                   MinimalDirectCallIdentityArgSlice{
-                                                       slice.helper->name,
-                                                       slice.main_function->name,
-                                                       slice.call_arg_imm,
-                                                   });
 }
 
 std::string emit_minimal_dual_identity_direct_call_sub_asm(
@@ -5002,12 +4927,6 @@ std::string emit_minimal_two_arg_direct_call_asm(
       << "  call " << helper_symbol << "\n"
       << "  ret\n";
   return out.str();
-}
-
-std::string emit_minimal_two_arg_direct_call_asm(
-    const c4c::backend::BackendModule& module,
-    const MinimalTwoArgDirectCallSlice& slice) {
-  return emit_minimal_two_arg_direct_call_asm(module.target_triple, slice);
 }
 
 std::string emit_minimal_member_array_runtime_asm(
@@ -5968,18 +5887,6 @@ std::optional<std::string> try_emit_direct_lir_module(
     if (const auto slice = parse_minimal_conditional_phi_join_slice(module);
         slice.has_value()) {
       return emit_minimal_conditional_phi_join_asm(module.target_triple, *slice);
-    }
-    if (const auto slice = parse_minimal_direct_call_add_imm_slice(module);
-        slice.has_value()) {
-      return emit_minimal_direct_call_add_imm_asm(module.target_triple, *slice);
-    }
-    if (const auto slice = parse_minimal_two_arg_direct_call_slice(module);
-        slice.has_value()) {
-      return emit_minimal_two_arg_direct_call_asm(module.target_triple, *slice);
-    }
-    if (const auto slice = parse_minimal_direct_call_identity_arg_slice(module);
-        slice.has_value()) {
-      return emit_minimal_direct_call_identity_arg_asm(module.target_triple, *slice);
     }
     if (const auto slice = parse_minimal_multi_printf_vararg_slice(module);
         slice.has_value()) {
