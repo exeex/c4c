@@ -9,17 +9,38 @@ Source Plan: plan.md
 - [ ] Remove legacy backend IR files and backend/app LLVM rescue paths
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
-Current active item: Step 4 follow-on deletion. Continue with the remaining
-entry-symbol caller anchors that still survive outside the recent aarch64
-direct-call plus shared decode batch, focusing next on the non-direct-call
-minimal emitters that still publish `main` unconditionally for bounded
-single-function entry shapes, starting with
-[`src/backend/aarch64/codegen/emit.cpp`](/workspaces/c4c/src/backend/aarch64/codegen/emit.cpp)
+Current active item: Step 4 follow-on deletion. Remove the stale
+legacy-backend-IR test/build wiring now that both native emitters have been
+hard-locked away from `BackendModule` fallback ownership, starting with the
+CMake / ctest registration for
+[`tests/backend/backend_lir_adapter_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_tests.cpp),
+[`tests/backend/backend_lir_adapter_aarch64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_aarch64_tests.cpp),
+[`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp),
+[`tests/backend/backend_x86_64_extracted_tests.cpp`](/workspaces/c4c/tests/backend/backend_x86_64_extracted_tests.cpp),
 and
-[`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
-families such as local-array/global/string fast paths whose slices still
-match structurally but do not yet carry the observed caller symbol through
-emitted asm.
+[`tests/backend/backend_module_tests.cpp`](/workspaces/c4c/tests/backend/backend_module_tests.cpp),
+while keeping the files in-tree temporarily until the shared backend route/API
+cleanup is ready.
+
+Latest completed slice:
+
+- removed the legacy backend-IR-centric backend test targets from active CMake
+  and `ctest` wiring in
+  [`CMakeLists.txt`](/workspaces/c4c/CMakeLists.txt)
+  and
+  [`tests/c/internal/InternalTests.cmake`](/workspaces/c4c/tests/c/internal/InternalTests.cmake)
+  so `backend_lir_adapter_*`, `backend_x86_64_extracted_tests`, and
+  `backend_module_tests` no longer participate in default build/test flow
+  now that both emitters fail explicitly on `BackendModule` entrypoints
+- kept the old testcase `.cpp` files in-tree as temporary reference material
+  instead of deleting them in the same slice, because the next cleanup still
+  needs to decide whether shared
+  [`src/backend/backend.cpp`](/workspaces/c4c/src/backend/backend.cpp)
+  / [`src/backend/backend.hpp`](/workspaces/c4c/src/backend/backend.hpp)
+  should hard-reject `BackendModule` publicly as well
+- next intended slice: remove or hard-lock the shared backend
+  `emit_module(const BackendModule&, ...)` API once the remaining BIR-route
+  callers are confirmed
 
 Latest completed slice:
 

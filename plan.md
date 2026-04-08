@@ -119,20 +119,20 @@ Actions:
 
 Current next slice for Step 4:
 
-- first remove the remaining production-side `main` fixture anchors from
-  emitter and shared parser code, starting with
-  [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp),
-  [`src/backend/aarch64/codegen/emit.cpp`](/workspaces/c4c/src/backend/aarch64/codegen/emit.cpp),
+- remove legacy backend-IR-driven backend test targets from active CMake / ctest
+  wiring first, starting with
+  [`tests/backend/backend_lir_adapter_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_tests.cpp),
+  [`tests/backend/backend_lir_adapter_aarch64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_aarch64_tests.cpp),
+  [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp),
+  [`tests/backend/backend_x86_64_extracted_tests.cpp`](/workspaces/c4c/tests/backend/backend_x86_64_extracted_tests.cpp),
   and
-  [`src/backend/lowering/call_decode.hpp`](/workspaces/c4c/src/backend/lowering/call_decode.hpp)
-- treat any assumption that "`main` identifies the top-level caller for a
-  bounded fixture shape" as test-only convenience, not production semantics
-- move any remaining fixture convenience for manufacturing or locating `main`
-  into backend test helpers/fixtures instead of leaving it in emitter/parser
-  code
-- after the production `main` anchors are gone, continue deleting the next
-  live emitter-local `lower_lir_to_backend_module(...)` seam in the same batch
-- prove the batch with focused backend tests plus `ctest -R backend`
+  [`tests/backend/backend_module_tests.cpp`](/workspaces/c4c/tests/backend/backend_module_tests.cpp)
+- keep the source files in-tree for short-lived reference only, but stop
+  building or registering them once the production emitters have been hard-locked
+- after the stale build wiring is gone, decide whether shared
+  [`src/backend/backend.cpp`](/workspaces/c4c/src/backend/backend.cpp)
+  `BackendModule` entrypoints should also become explicit unsupported seams
+- prove the batch with reconfigure/build plus the surviving backend test scope
 
 Batch completion check:
 
@@ -143,6 +143,8 @@ Batch completion check:
 - at least one live production legacy seam disappears
 - the batch also shrinks the matching test/build assumptions
 - the slice leaves the repo with fewer `lir_to_backend_ir` owners than before
+- legacy backend-IR-centric test targets are no longer part of default build or
+  `ctest -R backend` execution
 
 Step 4 commit quality bar:
 

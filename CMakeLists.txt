@@ -319,26 +319,6 @@ set(BACKEND_TEST_COMMON_SRCS
     "${PROJECT_SOURCE_DIR}/src/codegen/lir/verify.cpp"
 )
 
-add_executable(backend_lir_adapter_tests
-    "${PROJECT_SOURCE_DIR}/tests/backend/backend_lir_adapter_tests.cpp"
-    ${BACKEND_TEST_COMMON_SRCS}
-)
-add_executable(backend_lir_adapter_aarch64_tests
-    "${PROJECT_SOURCE_DIR}/tests/backend/backend_lir_adapter_aarch64_tests.cpp"
-    ${BACKEND_TEST_COMMON_SRCS}
-)
-add_executable(backend_lir_adapter_x86_64_tests
-    "${PROJECT_SOURCE_DIR}/tests/backend/backend_lir_adapter_x86_64_tests.cpp"
-    ${BACKEND_TEST_COMMON_SRCS}
-)
-add_executable(backend_x86_64_extracted_tests
-    "${PROJECT_SOURCE_DIR}/tests/backend/backend_x86_64_extracted_tests.cpp"
-    ${BACKEND_TEST_COMMON_SRCS}
-)
-add_executable(backend_module_tests
-    "${PROJECT_SOURCE_DIR}/tests/backend/backend_module_tests.cpp"
-    ${BACKEND_TEST_COMMON_SRCS}
-)
 add_executable(backend_bir_tests
     "${PROJECT_SOURCE_DIR}/tests/backend/backend_bir_tests.cpp"
     "${PROJECT_SOURCE_DIR}/tests/backend/backend_bir_test_support.cpp"
@@ -355,21 +335,6 @@ add_executable(backend_shared_util_tests
     ${BACKEND_TEST_COMMON_SRCS}
 )
 
-target_include_directories(backend_lir_adapter_tests PRIVATE
-    ${FRONTEND_CXX_INCLUDE_DIRS}
-)
-target_include_directories(backend_lir_adapter_aarch64_tests PRIVATE
-    ${FRONTEND_CXX_INCLUDE_DIRS}
-)
-target_include_directories(backend_lir_adapter_x86_64_tests PRIVATE
-    ${FRONTEND_CXX_INCLUDE_DIRS}
-)
-target_include_directories(backend_x86_64_extracted_tests PRIVATE
-    ${FRONTEND_CXX_INCLUDE_DIRS}
-)
-target_include_directories(backend_module_tests PRIVATE
-    ${FRONTEND_CXX_INCLUDE_DIRS}
-)
 target_include_directories(backend_bir_tests PRIVATE
     ${FRONTEND_CXX_INCLUDE_DIRS}
 )
@@ -377,21 +342,6 @@ target_include_directories(backend_shared_util_tests PRIVATE
     ${FRONTEND_CXX_INCLUDE_DIRS}
 )
 if(CLANG_EXECUTABLE)
-  target_compile_definitions(backend_lir_adapter_tests PRIVATE
-      C4C_TEST_CLANG_PATH="${CLANG_EXECUTABLE}"
-  )
-  target_compile_definitions(backend_lir_adapter_aarch64_tests PRIVATE
-      C4C_TEST_CLANG_PATH="${CLANG_EXECUTABLE}"
-  )
-  target_compile_definitions(backend_lir_adapter_x86_64_tests PRIVATE
-      C4C_TEST_CLANG_PATH="${CLANG_EXECUTABLE}"
-  )
-  target_compile_definitions(backend_x86_64_extracted_tests PRIVATE
-      C4C_TEST_CLANG_PATH="${CLANG_EXECUTABLE}"
-  )
-  target_compile_definitions(backend_module_tests PRIVATE
-      C4C_TEST_CLANG_PATH="${CLANG_EXECUTABLE}"
-  )
   target_compile_definitions(backend_bir_tests PRIVATE
       C4C_TEST_CLANG_PATH="${CLANG_EXECUTABLE}"
   )
@@ -400,21 +350,6 @@ if(CLANG_EXECUTABLE)
   )
 endif()
 if(OBJDUMP_EXECUTABLE)
-  target_compile_definitions(backend_lir_adapter_tests PRIVATE
-      C4C_TEST_OBJDUMP_PATH="${OBJDUMP_EXECUTABLE}"
-  )
-  target_compile_definitions(backend_lir_adapter_aarch64_tests PRIVATE
-      C4C_TEST_OBJDUMP_PATH="${OBJDUMP_EXECUTABLE}"
-  )
-  target_compile_definitions(backend_lir_adapter_x86_64_tests PRIVATE
-      C4C_TEST_OBJDUMP_PATH="${OBJDUMP_EXECUTABLE}"
-  )
-  target_compile_definitions(backend_x86_64_extracted_tests PRIVATE
-      C4C_TEST_OBJDUMP_PATH="${OBJDUMP_EXECUTABLE}"
-  )
-  target_compile_definitions(backend_module_tests PRIVATE
-      C4C_TEST_OBJDUMP_PATH="${OBJDUMP_EXECUTABLE}"
-  )
   target_compile_definitions(backend_bir_tests PRIVATE
       C4C_TEST_OBJDUMP_PATH="${OBJDUMP_EXECUTABLE}"
   )
@@ -422,22 +357,6 @@ if(OBJDUMP_EXECUTABLE)
       C4C_TEST_OBJDUMP_PATH="${OBJDUMP_EXECUTABLE}"
   )
 endif()
-set_target_properties(backend_lir_adapter_tests PROPERTIES
-    CXX_STANDARD 17
-    CXX_STANDARD_REQUIRED ON
-)
-set_target_properties(backend_lir_adapter_aarch64_tests PROPERTIES
-    CXX_STANDARD 17
-    CXX_STANDARD_REQUIRED ON
-)
-set_target_properties(backend_lir_adapter_x86_64_tests PROPERTIES
-    CXX_STANDARD 17
-    CXX_STANDARD_REQUIRED ON
-)
-set_target_properties(backend_module_tests PROPERTIES
-    CXX_STANDARD 17
-    CXX_STANDARD_REQUIRED ON
-)
 set_target_properties(backend_bir_tests PROPERTIES
     CXX_STANDARD 17
     CXX_STANDARD_REQUIRED ON

@@ -207,31 +207,6 @@ foreach(src IN LISTS INTERNAL_PREPROCESSOR_TEST_SRCS)
 endforeach()
 
 c4c_add_backend_test(
-    backend_lir_adapter_tests
-    COMMAND backend_lir_adapter_tests
-)
-
-c4c_add_backend_test(
-    backend_lir_adapter_aarch64_tests
-    COMMAND backend_lir_adapter_aarch64_tests
-)
-
-c4c_add_backend_test(
-    backend_lir_adapter_x86_64_tests
-    COMMAND backend_lir_adapter_x86_64_tests
-)
-
-c4c_add_backend_test(
-    backend_x86_64_extracted_tests
-    COMMAND backend_x86_64_extracted_tests
-)
-
-c4c_add_backend_test(
-    backend_module_tests
-    COMMAND backend_module_tests
-)
-
-c4c_add_backend_test(
     backend_bir_tests
     COMMAND backend_bir_tests
 )
