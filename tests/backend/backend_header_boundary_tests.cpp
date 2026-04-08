@@ -37,3 +37,9 @@ static_assert(!std::is_constructible_v<c4c::backend::BackendModuleInput,
                                        const c4c::backend::bir::Module&,
                                        const c4c::codegen::lir::LirModule*>,
               "backend input surface should not advertise a dead prelowered-BIR legacy fallback pointer");
+static_assert(std::is_same_v<decltype(std::declval<const c4c::backend::BackendModuleInput&>().bir_module()),
+                             const c4c::backend::bir::Module&>,
+              "backend input surface should expose direct BIR ownership through a non-nullable reference");
+static_assert(std::is_same_v<decltype(std::declval<const c4c::backend::BackendModuleInput&>().lir_module()),
+                             const c4c::codegen::lir::LirModule&>,
+              "backend input surface should expose direct LIR ownership through a non-nullable reference");

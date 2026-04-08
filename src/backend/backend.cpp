@@ -39,15 +39,15 @@ BackendModuleInput::BackendModuleInput(const bir::Module& bir_module)
     : module_(bir_module) {}
 
 BackendModuleInput::BackendModuleInput(const c4c::codegen::lir::LirModule& lir_module)
-    : module_(&lir_module) {}
+    : module_(std::cref(lir_module)) {}
 
 std::string emit_module(const BackendModuleInput& input,
                         const BackendOptions& options) {
-  if (input.bir_module() != nullptr) {
-    return render_bir_module(*input.bir_module(), options.target);
+  if (input.holds_bir_module()) {
+    return render_bir_module(input.bir_module(), options.target);
   }
 
-  const auto& lir_module = *input.lir_module();
+  const auto& lir_module = input.lir_module();
   auto bir_module = c4c::backend::try_lower_to_bir(lir_module);
   if (!bir_module.has_value()) {
     switch (options.target) {

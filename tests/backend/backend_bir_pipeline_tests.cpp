@@ -121,18 +121,18 @@ void expect_i8_bir_immediate_route(I8ModuleFactory make_module,
 void test_backend_default_input_keeps_lir_entry_observable() {
   const c4c::backend::BackendModuleInput input{make_bir_return_add_module()};
 
-  expect_true(input.lir_module() != nullptr,
+  expect_true(input.holds_lir_module(),
               "default backend input should keep fresh LIR observable at the shared entry seam");
-  expect_true(input.bir_module() == nullptr,
+  expect_true(!input.holds_bir_module(),
               "default backend input should not synthesize prelowered BIR ownership before lowering runs");
 }
 
 void test_backend_direct_bir_input_keeps_bir_ownership_observable() {
   const c4c::backend::BackendModuleInput input{make_return_immediate_module()};
 
-  expect_true(input.bir_module() != nullptr,
+  expect_true(input.holds_bir_module(),
               "direct BIR input should remain observable as BIR-owned input at the shared backend entry");
-  expect_true(input.lir_module() == nullptr,
+  expect_true(!input.holds_lir_module(),
               "direct BIR input should not advertise a dead LIR fallback payload");
 }
 

@@ -6,15 +6,36 @@ Source Plan: plan.md
 
 - Step 4 cleanup: keep shrinking adapter-only legacy-lowering surface now that
   `src/backend/ir.hpp` and `lir_to_backend_ir.*` are already gone
-- Current slice: re-inventory the remaining backend-entry/public seams after
-  the `BackendModuleInput` ownership cleanup to see whether any header or
-  helper still advertises impossible empty-input or legacy-lowering state
-- Next intended slice: compare the backend-entry surface against the target
-  emitters and `try_lower_to_bir(...)` fallback path to see whether another
-  adapter-only wrapper can disappear without changing the explicit riscv64 LLVM
-  text fallback for unsupported LIR input
+- Current slice: compare the shared backend-entry LIR retry path against the
+  native target emitters and `try_lower_to_bir(...)` flow to see whether the
+  duplicate failed-lowering retry can disappear without changing the explicit
+  riscv64 LLVM-text fallback for unsupported LIR input
+- Next intended slice: if the shared entry still double-attempts BIR lowering
+  before reaching native direct-LIR emission, collapse that adapter-only retry
+  behind one target-dispatch seam while keeping unsupported x86/aarch64
+  diagnostics and riscv64 text fallback unchanged
 
 # Completed
+
+- Tightened `src/backend/backend.hpp` / `src/backend/backend.cpp`
+  `BackendModuleInput` so the two ownership modes now store direct BIR or a
+  non-null `std::reference_wrapper<const LirModule>` instead of advertising a
+  nullable raw LIR pointer inside the exact-two-state variant
+- Updated `tests/backend/backend_bir_pipeline_tests.cpp` and
+  `tests/backend/backend_header_boundary_tests.cpp` so the backend-entry
+  observability seam now asserts `holds_*` state plus reference-return access,
+  pinning that the public backend input surface no longer models impossible
+  null BIR/LIR ownership
+- Rebuilt `backend_bir_tests`, `backend_shared_util_tests`, and `c4cll`,
+  reran focused
+  `ctest --test-dir build -R '^(backend_bir_tests|backend_shared_util_tests)$' --output-on-failure`,
+  reran the full `ctest --test-dir build -j8 --output-on-failure` suite into
+  `test_fail_after.log`, and confirmed the workspace moved from the
+  `2831/2834` passing `test_fail_before.log` baseline to `2834/2834` passing
+  with 0 failures
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=3 failed=-3`
+  and zero newly failing tests against `test_fail_before.log`
 
 - Collapsed `src/backend/backend.hpp` / `src/backend/backend.cpp`
   `BackendModuleInput` from heap-backed nullable pointer plumbing into one

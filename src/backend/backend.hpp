@@ -1,6 +1,7 @@
 #pragma once
 
 #include "bir.hpp"
+#include <functional>
 #include <string>
 #include <variant>
 
@@ -21,19 +22,25 @@ struct BackendModuleInput {
   BackendModuleInput& operator=(const BackendModuleInput&) = default;
   ~BackendModuleInput() = default;
 
-  const bir::Module* bir_module() const {
-    return std::get_if<bir::Module>(&module_);
+  bool holds_bir_module() const {
+    return std::holds_alternative<bir::Module>(module_);
   }
-  const c4c::codegen::lir::LirModule* lir_module() const {
-    if (const auto* lir_module =
-            std::get_if<const c4c::codegen::lir::LirModule*>(&module_)) {
-      return *lir_module;
-    }
-    return nullptr;
+  bool holds_lir_module() const {
+    return std::holds_alternative<std::reference_wrapper<const c4c::codegen::lir::LirModule>>(
+        module_);
+  }
+
+  const bir::Module& bir_module() const {
+    return std::get<bir::Module>(module_);
+  }
+  const c4c::codegen::lir::LirModule& lir_module() const {
+    return std::get<std::reference_wrapper<const c4c::codegen::lir::LirModule>>(module_)
+        .get();
   }
 
  private:
-  std::variant<bir::Module, const c4c::codegen::lir::LirModule*> module_;
+  std::variant<bir::Module, std::reference_wrapper<const c4c::codegen::lir::LirModule>>
+      module_;
 };
 
 struct BackendOptions {
