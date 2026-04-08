@@ -139,6 +139,47 @@ c4c::codegen::lir::LirModule make_bir_minimal_extern_scalar_global_load_lir_modu
   return module;
 }
 
+c4c::codegen::lir::LirModule make_bir_minimal_extern_global_array_load_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.globals.push_back(LirGlobal{
+      LirGlobalId{0},
+      "ext_arr",
+      {},
+      false,
+      false,
+      "external ",
+      "global ",
+      "[2 x i32]",
+      "",
+      4,
+      true,
+  });
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(
+      LirGepOp{"%t0", "[2 x i32]", "@ext_arr", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirCastOp{"%t1", LirCastKind::SExt, "i32", "1", "i64"});
+  entry.insts.push_back(LirGepOp{"%t2", "i32", "%t0", false, {"i64 %t1"}});
+  entry.insts.push_back(LirLoadOp{"%t3", "i32", "%t2"});
+  entry.terminator = LirRet{std::string("%t3"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_bir_minimal_scalar_global_store_reload_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -1050,6 +1091,29 @@ void test_bir_lowering_accepts_minimal_extern_scalar_global_load_lir_module() {
   const auto rendered = c4c::backend::bir::print(*lowered);
   expect_contains(rendered, "entry:\n  %t0 = bir.load_global i32 @g_counter\n  bir.ret i32 %t0\n",
                   "the lowered extern scalar global-load BIR module should print the bounded bir.load_global contract");
+}
+
+void test_bir_lowering_accepts_minimal_extern_global_array_load_lir_module() {
+  const auto lowered =
+      c4c::backend::try_lower_to_bir(make_bir_minimal_extern_global_array_load_lir_module());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the minimal extern global-array-load LIR slice");
+  expect_true(lowered->globals.size() == 1 && lowered->functions.size() == 1 &&
+                  lowered->globals.front().name == "ext_arr" &&
+                  lowered->globals.front().is_extern &&
+                  !lowered->globals.front().initializer.has_value() &&
+                  lowered->functions.front().blocks.size() == 1 &&
+                  lowered->functions.front().blocks.front().insts.size() == 1 &&
+                  std::holds_alternative<c4c::backend::bir::LoadGlobalInst>(
+                      lowered->functions.front().blocks.front().insts.front()) &&
+                  std::get<c4c::backend::bir::LoadGlobalInst>(
+                      lowered->functions.front().blocks.front().insts.front()).byte_offset == 4,
+              "the lowered extern global-array-load BIR module should carry one extern global plus one byte-offset bir.load_global instruction");
+
+  const auto rendered = c4c::backend::bir::print(*lowered);
+  expect_contains(rendered,
+                  "entry:\n  %t3 = bir.load_global i32 @ext_arr, offset 4\n  bir.ret i32 %t3\n",
+                  "the lowered extern global-array-load BIR module should print the bounded offset bir.load_global contract");
 }
 
 void test_bir_lowering_accepts_minimal_scalar_global_store_reload_lir_module() {

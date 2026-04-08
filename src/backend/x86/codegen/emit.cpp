@@ -2717,12 +2717,51 @@ std::optional<MinimalExternScalarGlobalLoadSlice> parse_minimal_extern_scalar_gl
       entry.insts.size() == 1 ? std::get_if<LoadGlobalInst>(&entry.insts.front()) : nullptr;
   if (entry.label != "entry" || load == nullptr || load->result.kind != Value::Kind::Named ||
       load->result.type != TypeKind::I32 || load->global_name != global.name ||
+      load->byte_offset != 0 ||
       entry.terminator.kind != TerminatorKind::Return ||
       !entry.terminator.value.has_value() || *entry.terminator.value != load->result) {
     return std::nullopt;
   }
 
   return MinimalExternScalarGlobalLoadSlice{function.name, global.name};
+}
+
+std::optional<MinimalExternGlobalArrayLoadSlice> parse_minimal_extern_global_array_load_slice(
+    const c4c::backend::bir::Module& module) {
+  using namespace c4c::backend::bir;
+
+  if (module.functions.size() != 1 || module.globals.size() != 1 ||
+      !module.string_constants.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& global = module.globals.front();
+  if (!global.is_extern || global.type != TypeKind::I32 || global.initializer.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration || function.return_type != TypeKind::I32 ||
+      !function.params.empty() || !function.local_slots.empty() || function.blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  const auto* load =
+      entry.insts.size() == 1 ? std::get_if<LoadGlobalInst>(&entry.insts.front()) : nullptr;
+  if (entry.label != "entry" || load == nullptr || load->result.kind != Value::Kind::Named ||
+      load->result.type != TypeKind::I32 || load->global_name != global.name ||
+      load->byte_offset == 0 || (load->byte_offset % 4) != 0 ||
+      entry.terminator.kind != TerminatorKind::Return ||
+      !entry.terminator.value.has_value() || *entry.terminator.value != load->result) {
+    return std::nullopt;
+  }
+
+  return MinimalExternGlobalArrayLoadSlice{
+      .function_name = function.name,
+      .global_name = global.name,
+      .byte_offset = static_cast<std::int64_t>(load->byte_offset),
+  };
 }
 
 std::optional<MinimalScalarGlobalStoreReloadSlice> parse_minimal_scalar_global_store_reload_slice(
@@ -4312,10 +4351,6 @@ std::optional<std::string> try_emit_direct_lir_module(
         slice.has_value()) {
       return emit_minimal_local_array_asm(module.target_triple, *slice);
     }
-    if (const auto slice = parse_minimal_extern_global_array_load_slice(module);
-        slice.has_value()) {
-      return emit_minimal_extern_global_array_load_asm(module.target_triple, *slice);
-    }
     if (const auto slice = parse_minimal_global_char_pointer_diff_slice(module);
         slice.has_value()) {
       return emit_minimal_global_char_pointer_diff_asm(module.target_triple, *slice);
@@ -4409,6 +4444,10 @@ std::string emit_module(const c4c::backend::bir::Module& module,
   if (const auto slice = parse_minimal_extern_scalar_global_load_slice(module);
       slice.has_value()) {
     return emit_minimal_extern_scalar_global_load_asm(module.target_triple, *slice);
+  }
+  if (const auto slice = parse_minimal_extern_global_array_load_slice(module);
+      slice.has_value()) {
+    return emit_minimal_extern_global_array_load_asm(module.target_triple, *slice);
   }
   if (const auto slice = parse_minimal_scalar_global_store_reload_slice(module);
       slice.has_value()) {

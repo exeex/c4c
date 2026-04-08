@@ -86,7 +86,11 @@ void render_function(std::ostringstream& out, const Function& function) {
                   << render_type(lowered.result.type) << " " << lowered.slot_name << "\n";
             } else if constexpr (std::is_same_v<T, LoadGlobalInst>) {
               out << "  " << lowered.result.name << " = bir.load_global "
-                  << render_type(lowered.result.type) << " @" << lowered.global_name << "\n";
+                  << render_type(lowered.result.type) << " @" << lowered.global_name;
+              if (lowered.byte_offset != 0) {
+                out << ", offset " << lowered.byte_offset;
+              }
+              out << "\n";
             } else if constexpr (std::is_same_v<T, StoreGlobalInst>) {
               out << "  bir.store_global @" << lowered.global_name << ", "
                   << render_type(lowered.value.type) << " " << render_value(lowered.value)

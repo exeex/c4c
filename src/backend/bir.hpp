@@ -135,6 +135,7 @@ struct LoadLocalInst {
 struct LoadGlobalInst {
   Value result;
   std::string global_name;
+  std::size_t byte_offset = 0;
 };
 
 struct StoreGlobalInst {

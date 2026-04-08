@@ -283,6 +283,12 @@ bool validate_load_global(const Module& module,
     return fail(error, "bir global load in @" + function.name +
                            " must agree with the referenced global type");
   }
+  const std::size_t type_size =
+      inst.result.type == TypeKind::I8 ? 1 : inst.result.type == TypeKind::I32 ? 4 : 8;
+  if (inst.byte_offset % type_size != 0) {
+    return fail(error, "bir global load in @" + function.name +
+                           " must use an offset aligned to the loaded type");
+  }
   defined_names->push_back(inst.result.name);
   return true;
 }

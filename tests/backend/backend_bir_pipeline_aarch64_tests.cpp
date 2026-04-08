@@ -235,6 +235,46 @@ c4c::codegen::lir::LirModule make_lir_minimal_extern_scalar_global_load_module()
   return module;
 }
 
+c4c::codegen::lir::LirModule make_lir_minimal_extern_global_array_load_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.globals.push_back(LirGlobal{
+      LirGlobalId{0},
+      "ext_arr",
+      {},
+      false,
+      false,
+      "external ",
+      "global ",
+      "[2 x i32]",
+      "",
+      4,
+      true,
+  });
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(
+      LirGepOp{"%t0", "[2 x i32]", "@ext_arr", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirCastOp{"%t1", LirCastKind::SExt, "i32", "1", "i64"});
+  entry.insts.push_back(LirGepOp{"%t2", "i32", "%t0", false, {"i64 %t1"}});
+  entry.insts.push_back(LirLoadOp{"%t3", "i32", "%t2"});
+  entry.terminator = LirRet{std::string("%t3"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_lir_minimal_scalar_global_store_reload_module() {
   using namespace c4c::codegen::lir;
 
@@ -1246,6 +1286,34 @@ void test_backend_bir_pipeline_drives_aarch64_lir_minimal_extern_scalar_global_l
                   "aarch64 LIR extern scalar global-load input should lower bir.load_global on the native aarch64 path");
   expect_not_contains(rendered, "target triple =",
                       "aarch64 LIR extern scalar global-load input should stay on native asm emission instead of falling back to LLVM text");
+}
+
+void test_backend_bir_pipeline_drives_aarch64_lir_minimal_extern_global_array_load_through_bir_end_to_end() {
+  const auto lowered_bir =
+      c4c::backend::try_lower_to_bir(make_lir_minimal_extern_global_array_load_module());
+  expect_true(lowered_bir.has_value(),
+              "aarch64 LIR extern global-array-load input should now lower into the bounded shared BIR global-load shape");
+  expect_true(lowered_bir->globals.size() == 1 && lowered_bir->functions.size() == 1 &&
+                  lowered_bir->globals.front().is_extern &&
+                  !lowered_bir->globals.front().initializer.has_value() &&
+                  lowered_bir->functions.front().blocks.size() == 1 &&
+                  lowered_bir->functions.front().blocks.front().insts.size() == 1 &&
+                  std::holds_alternative<c4c::backend::bir::LoadGlobalInst>(
+                      lowered_bir->functions.front().blocks.front().insts.front()) &&
+                  std::get<c4c::backend::bir::LoadGlobalInst>(
+                      lowered_bir->functions.front().blocks.front().insts.front()).byte_offset == 4,
+              "aarch64 LIR extern global-array-load lowering should produce one extern global declaration plus one byte-offset bir.load_global instruction");
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_lir_minimal_extern_global_array_load_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Aarch64));
+
+  expect_not_contains(rendered, ".globl ext_arr",
+                      "aarch64 LIR extern global-array-load input should keep the global unresolved after routing through the shared BIR path");
+  expect_contains(rendered, "ldr w0, [x8, :lo12:ext_arr+4]",
+                  "aarch64 LIR extern global-array-load input should lower the byte-offset bir.load_global on the native aarch64 path");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 LIR extern global-array-load input should stay on native asm emission instead of falling back to LLVM text");
 }
 
 void test_backend_bir_pipeline_drives_aarch64_lir_minimal_scalar_global_store_reload_through_bir_end_to_end() {

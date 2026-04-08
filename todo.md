@@ -7,17 +7,51 @@ Source Plan: plan.md
 - Step 5 follow-through: keep shrinking the remaining emitter-local direct-LIR
   compatibility surface now that `src/backend/ir.hpp` is gone and BIR owns the
   active shared global/call/local-slot seams
-- Current slice: re-inventory the remaining cross-target global/string helper
-  families in `src/backend/x86/codegen/emit.cpp` and
-  `src/backend/aarch64/codegen/emit.cpp`, then remove the next narrowest
-  direct-LIR-only family that still bypasses shared BIR lowering
-- Next intended slice: evaluate the remaining cross-target
-  `parse_minimal_extern_global_array_load_slice(...)`,
-  `parse_minimal_global_char_pointer_diff_slice(...)`, and
-  `parse_minimal_global_int_pointer_diff_slice(...)` helpers, then route the
-  smallest BIR-ready family through shared lowering and direct-BIR emission
+- Current slice: evaluate the remaining cross-target
+  `parse_minimal_global_char_pointer_diff_slice(...)` and
+  `parse_minimal_global_int_pointer_diff_slice(...)` helpers now that
+  extern-array global loads route through shared BIR, then remove the next
+  narrowest direct-LIR-only family that still bypasses shared lowering
+- Next intended slice: start with
+  `parse_minimal_global_char_pointer_diff_slice(...)`, because its current
+  shape is a bounded one-byte pointer-difference check that may fit a narrow
+  address/offset-aware BIR follow-through before the wider `i32` pointer-diff
+  family
 
 # Completed
+
+- Re-inventoried the remaining cross-target emitter-local global/string helper
+  families and selected `parse_minimal_extern_global_array_load_slice(...)` as
+  the next bounded shared-lowering candidate because it only needed an offset
+  extension on the existing `bir.load_global` contract
+- Extended `src/backend/bir.hpp`, `src/backend/bir_printer.cpp`, and
+  `src/backend/bir_validate.cpp` so `bir.load_global` can carry a bounded byte
+  offset while staying aligned to the loaded scalar type
+- Lowered the minimal extern global-array-load LIR slice into shared BIR in
+  `src/backend/lowering/lir_to_bir.cpp`, representing the extern array base as
+  one extern `i32` global plus one `bir.load_global ... offset 4` instruction
+- Added direct-BIR extern global-array-load parsers in
+  `src/backend/x86/codegen/emit.cpp` and
+  `src/backend/aarch64/codegen/emit.cpp`, then removed the matching
+  emitter-local direct-LIR fast-path dispatch entries so both targets now
+  consume this bounded slice through shared BIR
+- Added focused lowering coverage in
+  `tests/backend/backend_bir_lowering_tests.cpp` plus focused x86/aarch64
+  LIR-through-BIR pipeline coverage in
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` and
+  `tests/backend/backend_bir_pipeline_aarch64_tests.cpp`
+- Rebuilt `backend_bir_tests`, `backend_shared_util_tests`, and `c4cll`
+  successfully after the extern global-array-load migration
+- Reran
+  `ctest --test-dir build -R '^(backend_bir_tests|backend_shared_util_tests)$' --output-on-failure`
+  successfully after removing the emitter-local extern global-array-load
+  fast path
+- Reran the full `ctest --test-dir build -j8 --output-on-failure` suite and
+  refreshed `test_fail_after.log`; the workspace stayed at `2834/2834`
+  passing with 0 failures
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=159
+  failed=-159` and zero newly failing tests against `test_fail_before.log`
 
 - Lowered the minimal extern scalar global-load LIR slice into shared BIR in
   `src/backend/lowering/lir_to_bir.cpp`, preserving the global as
