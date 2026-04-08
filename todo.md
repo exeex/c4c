@@ -10,13 +10,41 @@ Source Plan: plan.md
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
 Current active item: Step 4 follow-on deletion. Continue with the remaining
-zero-argument entry-symbol caller anchors after the x86 extern-scalar /
-string-literal-char / bounded multi-printf siblings, focusing next on any
-matching aarch64 emitter or shared parser/decode seams that still special-case
-`main` for these bounded entry-shape families, starting with
+zero-argument entry-symbol caller anchors that still survive outside the
+recent aarch64 direct-call emitter batch, focusing next on the shared
+parser/decode and direct-LIR fallback seams that still special-case `main`
+for bounded entry-shape families, starting with
+[`src/backend/lowering/call_decode.hpp`](/workspaces/c4c/src/backend/lowering/call_decode.hpp),
+[`src/backend/lowering/call_decode.cpp`](/workspaces/c4c/src/backend/lowering/call_decode.cpp),
+and the remaining
 [`src/backend/aarch64/codegen/emit.cpp`](/workspaces/c4c/src/backend/aarch64/codegen/emit.cpp)
-and
-[`src/backend/lowering/call_decode.hpp`](/workspaces/c4c/src/backend/lowering/call_decode.hpp).
+helpers that still key direct-LIR zero-argument callers from
+`backend_lir_is_zero_arg_i32_main_definition(...)`.
+
+Latest completed slice:
+
+- removed the remaining bounded aarch64 direct-call entry-symbol hardcodes
+  from [`src/backend/aarch64/codegen/emit.cpp`](/workspaces/c4c/src/backend/aarch64/codegen/emit.cpp)
+  for the structured void direct-call, declared direct-call,
+  single-argument add-immediate direct-call, identity direct-call,
+  dual-identity subtraction direct-call, two-argument direct-call, and
+  folded two-argument direct-call emitters so each slice now publishes the
+  observed caller symbol from structured backend metadata instead of
+  hardcoding `main`
+- proved the emitter deletions with new renamed-caller regressions in
+  [`tests/backend/backend_lir_adapter_aarch64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_aarch64_tests.cpp)
+  covering the void direct-call, declared direct-call, and
+  single-argument add-immediate direct-call families so the lowered aarch64
+  asm now preserves `.globl entry_void`, `.globl entry_ext`, and
+  `.globl entry_inc` without falling back to backend IR text
+- kept focused backend coverage green at `3` passed / `0` failed via
+  `ctest --test-dir build -R '^(backend_lir_adapter_aarch64_tests|backend_lir_adapter_tests|backend_module_tests)$' -j1 --output-on-failure`
+- reran the required backend regression scope to `401` passed / `1` failed via
+  `ctest --test-dir build -R backend -j --output-on-failure > test_backend_after.log`;
+  the only failing case remains the independently reproducing unrelated blocker
+  `c_testsuite_aarch64_backend_src_00023_c`
+- kept the monotonic backend guard green at equal pass/fail counts via
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_backend_before.log --after test_backend_after.log --allow-non-decreasing-passed`
 
 Latest completed slice:
 

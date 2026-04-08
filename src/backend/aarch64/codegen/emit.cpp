@@ -4295,7 +4295,9 @@ std::string emit_minimal_void_direct_call_imm_return_asm(
 
   std::ostringstream out;
   const std::string helper_symbol = asm_symbol_name(module, slice.helper->signature.name);
-  const std::string main_symbol = asm_symbol_name(module, "main");
+  const std::string main_symbol =
+      asm_symbol_name(module, slice.main_function == nullptr ? "main"
+                                                             : slice.main_function->signature.name);
 
   out << ".text\n";
   emit_function_prelude(out, module, helper_symbol, false);
@@ -4328,7 +4330,9 @@ std::string emit_minimal_direct_call_add_imm_asm(
 
   std::ostringstream out;
   const std::string helper_symbol = asm_symbol_name(module, slice.helper->signature.name);
-  const std::string main_symbol = asm_symbol_name(module, "main");
+  const std::string main_symbol =
+      asm_symbol_name(module, slice.main_function == nullptr ? "main"
+                                                             : slice.main_function->signature.name);
 
   out << ".text\n";
   emit_function_prelude(out, module, helper_symbol, false);
@@ -4359,7 +4363,9 @@ std::string emit_minimal_direct_call_identity_arg_asm(
 
   std::ostringstream out;
   const std::string helper_symbol = asm_symbol_name(module, slice.helper->signature.name);
-  const std::string main_symbol = asm_symbol_name(module, "main");
+  const std::string main_symbol =
+      asm_symbol_name(module, slice.main_function == nullptr ? "main"
+                                                             : slice.main_function->signature.name);
 
   out << ".text\n";
   emit_function_prelude(out, module, helper_symbol, false);
@@ -4397,7 +4403,9 @@ std::string emit_minimal_dual_identity_direct_call_sub_asm(
   std::ostringstream out;
   const std::string lhs_symbol = asm_symbol_name(module, slice.lhs_helper->signature.name);
   const std::string rhs_symbol = asm_symbol_name(module, slice.rhs_helper->signature.name);
-  const std::string main_symbol = asm_symbol_name(module, "main");
+  const std::string main_symbol =
+      asm_symbol_name(module, slice.main_function == nullptr ? "main"
+                                                             : slice.main_function->signature.name);
 
   out << ".text\n";
   emit_function_prelude(out, module, lhs_symbol, false);
@@ -4435,7 +4443,9 @@ std::string emit_minimal_direct_call_two_arg_add_asm(
 
   std::ostringstream out;
   const std::string helper_symbol = asm_symbol_name(module, slice.helper->signature.name);
-  const std::string main_symbol = asm_symbol_name(module, "main");
+  const std::string main_symbol =
+      asm_symbol_name(module, slice.main_function == nullptr ? "main"
+                                                             : slice.main_function->signature.name);
 
   out << ".text\n";
   emit_function_prelude(out, module, helper_symbol, false);
@@ -4475,7 +4485,9 @@ std::string emit_minimal_direct_call_two_arg_folded_asm(
 
   std::ostringstream out;
   const std::string helper_symbol = asm_symbol_name(module, slice.helper->signature.name);
-  const std::string main_symbol = asm_symbol_name(module, "main");
+  const std::string main_symbol =
+      asm_symbol_name(module, slice.main_function == nullptr ? "main"
+                                                             : slice.main_function->signature.name);
 
   out << ".text\n";
   emit_function_prelude(out, module, helper_symbol, false);
@@ -4545,7 +4557,9 @@ std::string emit_minimal_declared_direct_call_asm(
   }
 
   const std::string helper_symbol = asm_symbol_name(module, slice.parsed_call.symbol_name);
-  const std::string main_symbol = asm_symbol_name(module, "main");
+  const std::string main_symbol =
+      asm_symbol_name(module, slice.main_function == nullptr ? "main"
+                                                             : slice.main_function->signature.name);
 
   std::ostringstream out;
   if (!emitted_string_constant_names.empty()) {
