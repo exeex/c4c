@@ -92,6 +92,61 @@ c4c::codegen::lir::LirModule make_lir_minimal_countdown_loop_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_lir_minimal_countdown_do_while_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.x", "i32", "", 4});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{"i32", "50", "%lv.x"});
+  entry.terminator = LirBr{"body"};
+
+  LirBlock body;
+  body.id = LirBlockId{1};
+  body.label = "body";
+  body.insts.push_back(LirLoadOp{"%t0", "i32", "%lv.x"});
+  body.insts.push_back(LirBinOp{"%t1", "sub", "i32", "%t0", "1"});
+  body.insts.push_back(LirStoreOp{"i32", "%t1", "%lv.x"});
+  body.terminator = LirBr{"bridge"};
+
+  LirBlock bridge;
+  bridge.id = LirBlockId{2};
+  bridge.label = "bridge";
+  bridge.terminator = LirBr{"cond"};
+
+  LirBlock cond;
+  cond.id = LirBlockId{3};
+  cond.label = "cond";
+  cond.insts.push_back(LirLoadOp{"%t2", "i32", "%lv.x"});
+  cond.insts.push_back(LirCmpOp{"%t3", false, "ne", "i32", "%t2", "0"});
+  cond.terminator = LirCondBr{"%t3", "body", "exit"};
+
+  LirBlock exit;
+  exit.id = LirBlockId{4};
+  exit.label = "exit";
+  exit.insts.push_back(LirLoadOp{"%t4", "i32", "%lv.x"});
+  exit.terminator = LirRet{std::string("%t4"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(body));
+  function.blocks.push_back(std::move(bridge));
+  function.blocks.push_back(std::move(cond));
+  function.blocks.push_back(std::move(exit));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::backend::bir::Module make_bir_minimal_countdown_loop_module() {
   using namespace c4c::backend::bir;
 
@@ -1223,6 +1278,32 @@ void test_backend_bir_pipeline_drives_x86_lir_minimal_countdown_loop_through_bir
                       "x86 LIR countdown-loop input should stay on native asm emission instead of falling back to LLVM text");
 }
 
+void test_backend_bir_pipeline_drives_x86_lir_minimal_countdown_do_while_through_bir_end_to_end() {
+  const auto lowered_bir = c4c::backend::try_lower_to_bir(make_lir_minimal_countdown_do_while_module());
+  expect_true(lowered_bir.has_value(),
+              "x86 LIR countdown do-while input should now lower into the bounded shared BIR local-slot loop shape");
+  expect_true(lowered_bir->functions.size() == 1 &&
+                  lowered_bir->functions.front().local_slots.size() == 1 &&
+                  lowered_bir->functions.front().blocks.size() == 4 &&
+                  lowered_bir->functions.front().blocks[1].label == "cond" &&
+                  lowered_bir->functions.front().blocks[1].terminator.kind ==
+                      c4c::backend::bir::TerminatorKind::CondBranch,
+              "x86 LIR countdown do-while lowering should normalize the empty bridge block into the shared conditional loop header");
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_lir_minimal_countdown_do_while_module()},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, "mov eax, 50",
+                  "x86 LIR countdown do-while input should preserve the initial counter after routing through the shared BIR path");
+  expect_contains(rendered, ".Lcond:\n  cmp eax, 0\n  je .Lexit\n",
+                  "x86 LIR countdown do-while input should now materialize the normalized shared loop header on the native backend path");
+  expect_contains(rendered, ".Lbody:\n  sub eax, 1\n  jmp .Lcond\n",
+                  "x86 LIR countdown do-while input should preserve the decrement-and-backedge sequence after the x86-only LIR seam is removed");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR countdown do-while input should stay on native asm emission instead of falling back to LLVM text");
+}
+
 void test_backend_bir_pipeline_drives_x86_lir_minimal_dual_identity_direct_call_sub_through_bir_end_to_end() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_lir_minimal_dual_identity_direct_call_sub_module()},
@@ -1808,6 +1889,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_identity_arg_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_folded_two_arg_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_countdown_loop_through_bir_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_countdown_do_while_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_dual_identity_direct_call_sub_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_call_crossing_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_conditional_return_through_bir_end_to_end);

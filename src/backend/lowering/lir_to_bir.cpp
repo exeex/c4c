@@ -1410,7 +1410,8 @@ std::optional<bir::Module> try_lower_minimal_countdown_loop_module(
   const auto& function = module.functions.front();
   if (!backend_lir_signature_matches(function.signature_text, "define", "i32", function.name, {}) ||
       function.entry.value != 0 ||
-      function.blocks.size() != 4 || function.alloca_insts.size() != 1 ||
+      (function.blocks.size() != 4 && function.blocks.size() != 5) ||
+      function.alloca_insts.size() != 1 ||
       !function.stack_objects.empty()) {
     return std::nullopt;
   }
@@ -1421,49 +1422,105 @@ std::optional<bir::Module> try_lower_minimal_countdown_loop_module(
   }
 
   const auto& entry = function.blocks[0];
-  const auto& loop = function.blocks[1];
-  const auto& body = function.blocks[2];
-  const auto& exit = function.blocks[3];
-
   const auto* entry_store =
       entry.insts.size() == 1 ? std::get_if<LirStoreOp>(&entry.insts.front()) : nullptr;
   const auto* entry_branch = std::get_if<LirBr>(&entry.terminator);
-  const auto* loop_load =
-      loop.insts.size() == 2 ? std::get_if<LirLoadOp>(&loop.insts[0]) : nullptr;
-  const auto* loop_cmp =
-      loop.insts.size() == 2 ? std::get_if<LirCmpOp>(&loop.insts[1]) : nullptr;
-  const auto* loop_branch = std::get_if<LirCondBr>(&loop.terminator);
-  const auto* body_load =
-      body.insts.size() == 3 ? std::get_if<LirLoadOp>(&body.insts[0]) : nullptr;
-  const auto* body_sub =
-      body.insts.size() == 3 ? std::get_if<LirBinOp>(&body.insts[1]) : nullptr;
-  const auto* body_store =
-      body.insts.size() == 3 ? std::get_if<LirStoreOp>(&body.insts[2]) : nullptr;
-  const auto* body_branch = std::get_if<LirBr>(&body.terminator);
-  const auto* exit_load =
-      exit.insts.size() == 1 ? std::get_if<LirLoadOp>(&exit.insts[0]) : nullptr;
-  const auto* exit_ret = std::get_if<LirRet>(&exit.terminator);
-  const auto cmp_predicate = loop_cmp == nullptr ? std::nullopt : loop_cmp->predicate.typed();
-  const auto sub_opcode = body_sub == nullptr ? std::nullopt : body_sub->opcode.typed();
   if (entry.label != "entry" || entry_store == nullptr || entry_branch == nullptr ||
-      entry_store->type_str != "i32" || entry_store->ptr != slot->result ||
-      entry_branch->target_label != loop.label || loop_load == nullptr ||
-      loop_cmp == nullptr || loop_branch == nullptr || loop_load->type_str != "i32" ||
-      loop_load->ptr != slot->result || loop_cmp->is_float ||
-      cmp_predicate != LirCmpPredicate::Ne || loop_cmp->type_str != "i32" ||
-      loop_cmp->lhs != loop_load->result || loop_cmp->rhs != "0" ||
-      loop_branch->cond_name != loop_cmp->result || loop_branch->true_label != body.label ||
-      loop_branch->false_label != exit.label || body_load == nullptr ||
-      body_sub == nullptr || body_store == nullptr || body_branch == nullptr ||
-      body_load->type_str != "i32" || body_load->ptr != slot->result ||
-      sub_opcode != LirBinaryOpcode::Sub || body_sub->type_str != "i32" ||
-      body_sub->lhs != body_load->result || body_sub->rhs != "1" ||
-      body_store->type_str != "i32" || body_store->val != body_sub->result ||
-      body_store->ptr != slot->result || body_branch->target_label != loop.label ||
-      exit_load == nullptr || exit_ret == nullptr || exit_load->type_str != "i32" ||
-      exit_load->ptr != slot->result || exit_ret->type_str != "i32" ||
-      !exit_ret->value_str.has_value() || *exit_ret->value_str != exit_load->result) {
+      entry_store->type_str != "i32" || entry_store->ptr != slot->result) {
     return std::nullopt;
+  }
+
+  const LirBlock* loop = nullptr;
+  const LirBlock* body = nullptr;
+  const LirBlock* exit = nullptr;
+  const auto* loop_load = static_cast<const LirLoadOp*>(nullptr);
+  const auto* loop_cmp = static_cast<const LirCmpOp*>(nullptr);
+  const auto* loop_branch = static_cast<const LirCondBr*>(nullptr);
+  const auto* body_load = static_cast<const LirLoadOp*>(nullptr);
+  const auto* body_sub = static_cast<const LirBinOp*>(nullptr);
+  const auto* body_store = static_cast<const LirStoreOp*>(nullptr);
+  const auto* body_branch = static_cast<const LirBr*>(nullptr);
+  const auto* exit_load = static_cast<const LirLoadOp*>(nullptr);
+  const auto* exit_ret = static_cast<const LirRet*>(nullptr);
+
+  if (function.blocks.size() == 4) {
+    loop = &function.blocks[1];
+    body = &function.blocks[2];
+    exit = &function.blocks[3];
+
+    loop_load = loop->insts.size() == 2 ? std::get_if<LirLoadOp>(&loop->insts[0]) : nullptr;
+    loop_cmp = loop->insts.size() == 2 ? std::get_if<LirCmpOp>(&loop->insts[1]) : nullptr;
+    loop_branch = std::get_if<LirCondBr>(&loop->terminator);
+    body_load = body->insts.size() == 3 ? std::get_if<LirLoadOp>(&body->insts[0]) : nullptr;
+    body_sub = body->insts.size() == 3 ? std::get_if<LirBinOp>(&body->insts[1]) : nullptr;
+    body_store = body->insts.size() == 3 ? std::get_if<LirStoreOp>(&body->insts[2]) : nullptr;
+    body_branch = std::get_if<LirBr>(&body->terminator);
+    exit_load = exit->insts.size() == 1 ? std::get_if<LirLoadOp>(&exit->insts[0]) : nullptr;
+    exit_ret = std::get_if<LirRet>(&exit->terminator);
+
+    const auto cmp_predicate =
+        loop_cmp == nullptr ? std::nullopt : loop_cmp->predicate.typed();
+    const auto sub_opcode =
+        body_sub == nullptr ? std::nullopt : body_sub->opcode.typed();
+    if (entry_branch->target_label != loop->label || loop_load == nullptr ||
+        loop_cmp == nullptr || loop_branch == nullptr || loop_load->type_str != "i32" ||
+        loop_load->ptr != slot->result || loop_cmp->is_float ||
+        cmp_predicate != LirCmpPredicate::Ne || loop_cmp->type_str != "i32" ||
+        loop_cmp->lhs != loop_load->result || loop_cmp->rhs != "0" ||
+        loop_branch->cond_name != loop_cmp->result || loop_branch->true_label != body->label ||
+        loop_branch->false_label != exit->label || body_load == nullptr ||
+        body_sub == nullptr || body_store == nullptr || body_branch == nullptr ||
+        body_load->type_str != "i32" || body_load->ptr != slot->result ||
+        sub_opcode != LirBinaryOpcode::Sub || body_sub->type_str != "i32" ||
+        body_sub->lhs != body_load->result || body_sub->rhs != "1" ||
+        body_store->type_str != "i32" || body_store->val != body_sub->result ||
+        body_store->ptr != slot->result || body_branch->target_label != loop->label ||
+        exit_load == nullptr || exit_ret == nullptr || exit_load->type_str != "i32" ||
+        exit_load->ptr != slot->result || exit_ret->type_str != "i32" ||
+        !exit_ret->value_str.has_value() || *exit_ret->value_str != exit_load->result) {
+      return std::nullopt;
+    }
+  } else {
+    body = &function.blocks[1];
+    const auto& bridge = function.blocks[2];
+    loop = &function.blocks[3];
+    exit = &function.blocks[4];
+
+    body_load = body->insts.size() == 3 ? std::get_if<LirLoadOp>(&body->insts[0]) : nullptr;
+    body_sub = body->insts.size() == 3 ? std::get_if<LirBinOp>(&body->insts[1]) : nullptr;
+    body_store = body->insts.size() == 3 ? std::get_if<LirStoreOp>(&body->insts[2]) : nullptr;
+    body_branch = std::get_if<LirBr>(&body->terminator);
+    const auto* bridge_branch = std::get_if<LirBr>(&bridge.terminator);
+    loop_load = loop->insts.size() == 2 ? std::get_if<LirLoadOp>(&loop->insts[0]) : nullptr;
+    loop_cmp = loop->insts.size() == 2 ? std::get_if<LirCmpOp>(&loop->insts[1]) : nullptr;
+    loop_branch = std::get_if<LirCondBr>(&loop->terminator);
+    exit_load = exit->insts.size() == 1 ? std::get_if<LirLoadOp>(&exit->insts[0]) : nullptr;
+    exit_ret = std::get_if<LirRet>(&exit->terminator);
+
+    const auto cmp_predicate =
+        loop_cmp == nullptr ? std::nullopt : loop_cmp->predicate.typed();
+    const auto sub_opcode =
+        body_sub == nullptr ? std::nullopt : body_sub->opcode.typed();
+    if (entry_branch->target_label != body->label || body_load == nullptr ||
+        body_sub == nullptr || body_store == nullptr || body_branch == nullptr ||
+        body_load->type_str != "i32" || body_load->ptr != slot->result ||
+        sub_opcode != LirBinaryOpcode::Sub || body_sub->type_str != "i32" ||
+        body_sub->lhs != body_load->result || body_sub->rhs != "1" ||
+        body_store->type_str != "i32" || body_store->val != body_sub->result ||
+        body_store->ptr != slot->result || body_branch->target_label != bridge.label ||
+        !bridge.insts.empty() || bridge_branch == nullptr ||
+        bridge_branch->target_label != loop->label || loop_load == nullptr ||
+        loop_cmp == nullptr || loop_branch == nullptr || loop_load->type_str != "i32" ||
+        loop_load->ptr != slot->result || loop_cmp->is_float ||
+        cmp_predicate != LirCmpPredicate::Ne || loop_cmp->type_str != "i32" ||
+        loop_cmp->lhs != loop_load->result || loop_cmp->rhs != "0" ||
+        loop_branch->cond_name != loop_cmp->result || loop_branch->true_label != body->label ||
+        loop_branch->false_label != exit->label || exit_load == nullptr ||
+        exit_ret == nullptr || exit_load->type_str != "i32" ||
+        exit_load->ptr != slot->result || exit_ret->type_str != "i32" ||
+        !exit_ret->value_str.has_value() || *exit_ret->value_str != exit_load->result) {
+      return std::nullopt;
+    }
   }
 
   const auto initial_imm = parse_immediate(entry_store->val);
@@ -1488,10 +1545,10 @@ std::optional<bir::Module> try_lower_minimal_countdown_loop_module(
       .slot_name = slot->result,
       .value = bir::Value::immediate_i32(static_cast<std::int32_t>(*initial_imm)),
   });
-  lowered_entry.terminator = bir::BranchTerminator{.target_label = loop.label};
+  lowered_entry.terminator = bir::BranchTerminator{.target_label = loop->label};
 
   bir::Block lowered_loop;
-  lowered_loop.label = loop.label;
+  lowered_loop.label = loop->label;
   lowered_loop.insts.push_back(bir::LoadLocalInst{
       .result = bir::Value::named(bir::TypeKind::I32, loop_load->result.str()),
       .slot_name = slot->result,
@@ -1504,12 +1561,12 @@ std::optional<bir::Module> try_lower_minimal_countdown_loop_module(
   });
   lowered_loop.terminator = bir::CondBranchTerminator{
       .condition = bir::Value::named(bir::TypeKind::I32, loop_cmp->result.str()),
-      .true_label = body.label,
-      .false_label = exit.label,
+      .true_label = body->label,
+      .false_label = exit->label,
   };
 
   bir::Block lowered_body;
-  lowered_body.label = body.label;
+  lowered_body.label = body->label;
   lowered_body.insts.push_back(bir::LoadLocalInst{
       .result = bir::Value::named(bir::TypeKind::I32, body_load->result.str()),
       .slot_name = slot->result,
@@ -1524,10 +1581,10 @@ std::optional<bir::Module> try_lower_minimal_countdown_loop_module(
       .slot_name = slot->result,
       .value = bir::Value::named(bir::TypeKind::I32, body_sub->result.str()),
   });
-  lowered_body.terminator = bir::BranchTerminator{.target_label = loop.label};
+  lowered_body.terminator = bir::BranchTerminator{.target_label = loop->label};
 
   bir::Block lowered_exit;
-  lowered_exit.label = exit.label;
+  lowered_exit.label = exit->label;
   lowered_exit.insts.push_back(bir::LoadLocalInst{
       .result = bir::Value::named(bir::TypeKind::I32, exit_load->result.str()),
       .slot_name = slot->result,

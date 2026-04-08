@@ -6,13 +6,38 @@ Source Plan: plan.md
 
 - Step 3: migrate the next aarch64 emitter helper cluster onto direct BIR
 - Current slice: inspect the next remaining native emitter-local LIR fast paths
-  after the shared countdown-loop route landed, starting with the still-live
-  countdown/do-while-style bounded helpers
-- Next intended slice: identify whether the next bounded loop/helper family can
-  reuse the new local-slot plus branch BIR contract directly or needs one more
-  narrow shared view before removing its emitter-local matcher
+  after the shared countdown-loop route landed, continuing with the next
+  remaining global/string helper family that still bypasses the shared BIR path
+- Next intended slice: inspect whether the next x86/aarch64 scalar-global or
+  string-literal emitter-local fast path can lower through the existing BIR
+  global/string contract without another schema addition
 
 # Completed
+
+- Extended `src/backend/lowering/lir_to_bir.cpp` so the shared bounded
+  countdown-loop lowering also accepts the x86 do-while countdown variant by
+  normalizing its empty bridge block into the existing four-block local-slot
+  BIR loop shape
+- Removed the x86-only
+  `parse_minimal_countdown_do_while_return_slice(...)` fast path from
+  `src/backend/x86/codegen/emit.cpp` so that bounded helper now routes through
+  shared BIR instead of emitter-local LIR matching
+- Added focused shared-lowering coverage in
+  `tests/backend/backend_bir_lowering_tests.cpp` for the bounded x86 countdown
+  do-while LIR slice so the normalized BIR header/loop shape stays pinned
+- Added focused x86 pipeline coverage in
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` proving the countdown
+  do-while LIR slice now lowers through shared BIR and still emits native asm
+- Rebuilt `backend_bir_tests`, `backend_shared_util_tests`, and `c4cll`
+  successfully after the x86 countdown do-while migration
+- Reran `ctest --test-dir build -R '^backend_bir_tests$' --output-on-failure`
+  successfully after the shared lowering plus x86 fast-path removal
+- Reran the full `ctest --test-dir build -j8 --output-on-failure` suite and
+  refreshed `test_after.log` / `test_fail_after.log`; the workspace stayed at
+  `2834/2834` passing with 0 failures
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=159
+  failed=-159` and zero newly failing tests
 
 - Added bounded shared BIR control-flow plus local-slot coverage for the
   countdown-loop family by extending `src/backend/bir.hpp`,

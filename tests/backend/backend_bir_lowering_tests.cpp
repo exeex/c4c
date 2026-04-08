@@ -10,6 +10,61 @@
 
 namespace {
 
+c4c::codegen::lir::LirModule make_bir_minimal_countdown_do_while_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.x", "i32", "", 4});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{"i32", "50", "%lv.x"});
+  entry.terminator = LirBr{"body"};
+
+  LirBlock body;
+  body.id = LirBlockId{1};
+  body.label = "body";
+  body.insts.push_back(LirLoadOp{"%t0", "i32", "%lv.x"});
+  body.insts.push_back(LirBinOp{"%t1", "sub", "i32", "%t0", "1"});
+  body.insts.push_back(LirStoreOp{"i32", "%t1", "%lv.x"});
+  body.terminator = LirBr{"bridge"};
+
+  LirBlock bridge;
+  bridge.id = LirBlockId{2};
+  bridge.label = "bridge";
+  bridge.terminator = LirBr{"cond"};
+
+  LirBlock cond;
+  cond.id = LirBlockId{3};
+  cond.label = "cond";
+  cond.insts.push_back(LirLoadOp{"%t2", "i32", "%lv.x"});
+  cond.insts.push_back(LirCmpOp{"%t3", false, "ne", "i32", "%t2", "0"});
+  cond.terminator = LirCondBr{"%t3", "body", "exit"};
+
+  LirBlock exit;
+  exit.id = LirBlockId{4};
+  exit.label = "exit";
+  exit.insts.push_back(LirLoadOp{"%t4", "i32", "%lv.x"});
+  exit.terminator = LirRet{std::string("%t4"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(body));
+  function.blocks.push_back(std::move(bridge));
+  function.blocks.push_back(std::move(cond));
+  function.blocks.push_back(std::move(exit));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_bir_minimal_direct_call_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -774,6 +829,27 @@ void test_bir_lowering_accepts_minimal_call_crossing_direct_call_lir_module_with
                     parsed->source_imm == 5 && parsed->helper_add_imm == 1,
                 "the lowered BIR module should preserve the recovered source and helper immediates for the helper-first call-crossing slice");
   }
+}
+
+void test_bir_lowering_accepts_minimal_countdown_do_while_lir_module() {
+  const auto lowered =
+      c4c::backend::try_lower_to_bir(make_bir_minimal_countdown_do_while_lir_module());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the bounded countdown do-while LIR slice through the shared local-slot loop contract");
+
+  expect_true(lowered->functions.size() == 1 &&
+                  lowered->functions.front().local_slots.size() == 1 &&
+                  lowered->functions.front().blocks.size() == 4 &&
+                  lowered->functions.front().blocks[1].label == "cond" &&
+                  lowered->functions.front().blocks[1].terminator.kind ==
+                      c4c::backend::bir::TerminatorKind::CondBranch,
+              "the lowered countdown do-while BIR module should normalize the empty bridge block into the shared four-block loop shape");
+
+  const auto rendered = c4c::backend::bir::print(*lowered);
+  expect_contains(rendered, "entry:\n  bir.store_local %lv.x, i32 50\n  bir.br cond\n",
+                  "the lowered countdown do-while BIR module should preserve the initial counter while normalizing the loop header");
+  expect_contains(rendered, "cond:\n  %t2 = bir.load_local i32 %lv.x\n  %t3 = bir.ne i32 %t2, 0\n  bir.cond_br i32 %t3, body, exit\n",
+                  "the lowered countdown do-while BIR module should route through the shared conditional loop header");
 }
 
 void test_bir_printer_renders_minimal_lshr_scaffold() {
@@ -2552,6 +2628,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_minimal_dual_identity_direct_call_sub_lir_module_with_helper_first);
   RUN_TEST(test_bir_lowering_accepts_minimal_call_crossing_direct_call_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_call_crossing_direct_call_lir_module_with_helper_first);
+  RUN_TEST(test_bir_lowering_accepts_minimal_countdown_do_while_lir_module);
   RUN_TEST(test_bir_printer_renders_minimal_add_scaffold);
   RUN_TEST(test_bir_printer_renders_minimal_sub_scaffold);
   RUN_TEST(test_bir_printer_renders_minimal_mul_scaffold);

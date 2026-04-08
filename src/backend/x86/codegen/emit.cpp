@@ -2094,89 +2094,6 @@ std::optional<MinimalCountdownLoopSlice> parse_minimal_countdown_loop_slice(
   };
 }
 
-std::optional<MinimalNamedReturnImmSlice> parse_minimal_countdown_do_while_return_slice(
-    const c4c::codegen::lir::LirModule& module) {
-  using namespace c4c::codegen::lir;
-
-  if (module.functions.size() != 1 || !module.globals.empty() ||
-      !module.string_pool.empty() || !module.extern_decls.empty()) {
-    return std::nullopt;
-  }
-
-  const auto& function = module.functions.front();
-  if (!is_zero_arg_i32_lir_definition(function) || function.entry.value != 0 ||
-      function.blocks.size() != 5 ||
-      function.alloca_insts.size() != 1 || !function.stack_objects.empty()) {
-    return std::nullopt;
-  }
-
-  const auto* slot = std::get_if<LirAllocaOp>(&function.alloca_insts.front());
-  if (slot == nullptr || slot->type_str != "i32") {
-    return std::nullopt;
-  }
-
-  const auto& entry = function.blocks[0];
-  const auto& body = function.blocks[1];
-  const auto& bridge = function.blocks[2];
-  const auto& cond = function.blocks[3];
-  const auto& exit = function.blocks[4];
-
-  const auto* entry_store =
-      entry.insts.empty() ? nullptr : std::get_if<LirStoreOp>(&entry.insts.front());
-  const auto* entry_branch = std::get_if<LirBr>(&entry.terminator);
-  const auto* body_load =
-      body.insts.empty() ? nullptr : std::get_if<LirLoadOp>(&body.insts[0]);
-  const auto* body_sub =
-      body.insts.size() < 2 ? nullptr : std::get_if<LirBinOp>(&body.insts[1]);
-  const auto* body_store =
-      body.insts.size() < 3 ? nullptr : std::get_if<LirStoreOp>(&body.insts[2]);
-  const auto* body_branch = std::get_if<LirBr>(&body.terminator);
-  const auto* bridge_branch = std::get_if<LirBr>(&bridge.terminator);
-  const auto* cond_load =
-      cond.insts.empty() ? nullptr : std::get_if<LirLoadOp>(&cond.insts[0]);
-  const auto* cond_cmp =
-      cond.insts.size() < 2 ? nullptr : std::get_if<LirCmpOp>(&cond.insts[1]);
-  const auto* cond_branch = std::get_if<LirCondBr>(&cond.terminator);
-  const auto* exit_load =
-      exit.insts.empty() ? nullptr : std::get_if<LirLoadOp>(&exit.insts[0]);
-  const auto* exit_ret = std::get_if<LirRet>(&exit.terminator);
-  const auto sub_opcode = body_sub == nullptr ? std::nullopt : body_sub->opcode.typed();
-  const auto cmp_predicate = cond_cmp == nullptr ? std::nullopt : cond_cmp->predicate.typed();
-  if (entry.label != "entry" || entry.insts.size() != 1 || entry_store == nullptr ||
-      entry_branch == nullptr || entry_branch->target_label != body.label ||
-      entry_store->type_str != "i32" || entry_store->ptr != slot->result ||
-      body.insts.size() != 3 || body_load == nullptr || body_sub == nullptr ||
-      body_store == nullptr || body_branch == nullptr ||
-      body_load->type_str != "i32" || body_load->ptr != slot->result ||
-      sub_opcode != LirBinaryOpcode::Sub || body_sub->type_str != "i32" ||
-      body_sub->lhs != body_load->result || body_sub->rhs != "1" ||
-      body_store->type_str != "i32" || body_store->val != body_sub->result ||
-      body_store->ptr != slot->result || body_branch->target_label != bridge.label ||
-      !bridge.insts.empty() || bridge_branch == nullptr ||
-      bridge_branch->target_label != cond.label || cond.insts.size() != 2 ||
-      cond_load == nullptr || cond_cmp == nullptr || cond_branch == nullptr ||
-      cond_load->type_str != "i32" || cond_load->ptr != slot->result ||
-      cond_cmp->is_float || cmp_predicate != LirCmpPredicate::Ne ||
-      cond_cmp->type_str != "i32" || cond_cmp->lhs != cond_load->result ||
-      cond_cmp->rhs != "0" || cond_branch->cond_name != cond_cmp->result ||
-      cond_branch->true_label != body.label || cond_branch->false_label != exit.label ||
-      exit.insts.size() != 1 || exit_load == nullptr || exit_ret == nullptr ||
-      exit_load->type_str != "i32" || exit_load->ptr != slot->result ||
-      exit_ret->type_str != "i32" || exit_ret->value_str != exit_load->result) {
-    return std::nullopt;
-  }
-
-  const auto initial_imm = parse_i64(entry_store->val);
-  if (!initial_imm.has_value() || *initial_imm <= 0) {
-    return std::nullopt;
-  }
-
-  return MinimalNamedReturnImmSlice{
-      function.name,
-      0,
-  };
-}
-
 std::optional<MinimalLocalArraySlice> parse_minimal_local_array_slice(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
@@ -4396,10 +4313,6 @@ std::optional<std::string> try_emit_direct_lir_module(
     if (const auto slice = parse_minimal_string_literal_char_slice(module);
         slice.has_value()) {
       return emit_minimal_string_literal_char_asm(module.target_triple, *slice);
-    }
-    if (const auto slice = parse_minimal_countdown_do_while_return_slice(module);
-        slice.has_value()) {
-      return emit_minimal_return_asm(module.target_triple, slice->function_name, slice->return_imm);
     }
     if (const auto slice = parse_minimal_multi_printf_vararg_slice(module);
         slice.has_value()) {
