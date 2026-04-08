@@ -45,6 +45,29 @@ std::optional<bir::TypeKind> lower_scalar_type_text(std::string_view text) {
   return std::nullopt;
 }
 
+std::optional<bir::TypeKind> lower_scalar_type(
+    const c4c::codegen::lir::LirTypeRef& type) {
+  if (type.kind() != c4c::codegen::lir::LirTypeKind::Integer) {
+    return std::nullopt;
+  }
+
+  const auto integer_width = type.integer_bit_width();
+  if (!integer_width.has_value()) {
+    return std::nullopt;
+  }
+
+  switch (*integer_width) {
+    case 8:
+      return bir::TypeKind::I8;
+    case 32:
+      return bir::TypeKind::I32;
+    case 64:
+      return bir::TypeKind::I64;
+    default:
+      return std::nullopt;
+  }
+}
+
 std::optional<bir::TypeKind> lower_minimal_call_arg_type_text(std::string_view text) {
   if (const auto scalar = lower_scalar_type_text(text); scalar.has_value()) {
     return scalar;
@@ -2379,8 +2402,8 @@ std::optional<bir::Value> lower_lossless_immediate_cast(
     return std::nullopt;
   }
 
-  const auto from_type = lower_scalar_type_text(cast->from_type.str());
-  const auto to_type = lower_scalar_type_text(cast->to_type.str());
+  const auto from_type = lower_scalar_type(cast->from_type);
+  const auto to_type = lower_scalar_type(cast->to_type);
   if (!from_type.has_value() || !to_type.has_value() ||
       scalar_type_bit_width(*from_type) >= scalar_type_bit_width(*to_type)) {
     return std::nullopt;
@@ -2415,8 +2438,8 @@ std::optional<bir::CastInst> lower_cast(const c4c::codegen::lir::LirInst& inst) 
   if (cast == nullptr || cast->result.str().empty()) {
     return std::nullopt;
   }
-  const auto from_type = lower_scalar_type_text(cast->from_type.str());
-  const auto to_type = lower_scalar_type_text(cast->to_type.str());
+  const auto from_type = lower_scalar_type(cast->from_type);
+  const auto to_type = lower_scalar_type(cast->to_type);
   if (!from_type.has_value() || !to_type.has_value() ||
       *from_type == *to_type) {
     return std::nullopt;
@@ -2453,7 +2476,7 @@ std::optional<bir::BinaryInst> lower_binary(const c4c::codegen::lir::LirInst& in
   if (bin == nullptr || bin->result.str().empty()) {
     return std::nullopt;
   }
-  const auto type = lower_scalar_type_text(bin->type_str.str());
+  const auto type = lower_scalar_type(bin->type_str);
   if (!type.has_value()) {
     return std::nullopt;
   }
@@ -2492,8 +2515,8 @@ std::optional<bir::BinaryInst> lower_compare_materialization(
     return std::nullopt;
   }
 
-  const auto type = lower_scalar_type_text(cmp->type_str.str());
-  const auto widened_type = lower_scalar_type_text(cast->to_type.str());
+  const auto type = lower_scalar_type(cmp->type_str);
+  const auto widened_type = lower_scalar_type(cast->to_type);
   if (!type.has_value() || !widened_type.has_value() || *type != *widened_type) {
     return std::nullopt;
   }
@@ -2523,8 +2546,8 @@ std::optional<bir::SelectInst> lower_select_materialization(
   }
 
   const auto predicate = lower_compare_materialization_opcode(cmp->predicate.str());
-  const auto type = lower_scalar_type_text(cmp->type_str.str());
-  const auto selected_type = lower_scalar_type_text(select->type_str.str());
+  const auto type = lower_scalar_type(cmp->type_str);
+  const auto selected_type = lower_scalar_type(select->type_str);
   if (!predicate.has_value() || !type.has_value() || !selected_type.has_value() ||
       *type != *selected_type) {
     return std::nullopt;
@@ -4320,7 +4343,7 @@ std::optional<bir::Module> try_lower_to_bir(const c4c::codegen::lir::LirModule& 
   if (ret == nullptr || !ret->value_str.has_value()) {
     return std::nullopt;
   }
-  const auto return_type = lower_scalar_type_text(ret->type_str);
+  const auto return_type = lower_scalar_type(ret->type_str);
   if (!return_type.has_value()) {
     return std::nullopt;
   }

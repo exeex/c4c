@@ -1697,6 +1697,17 @@ void test_bir_validator_accepts_minimal_select_scaffold() {
               "BIR validator should keep the bounded select scaffold on the valid path");
 }
 
+void test_lir_verify_rejects_typed_integer_text_mismatch() {
+  auto module = make_bir_i8_return_mul_module();
+  auto& bin = std::get<c4c::codegen::lir::LirBinOp>(module.functions.front().blocks.front().insts.front());
+  bin.type_str = c4c::codegen::lir::LirTypeRef("i32", c4c::codegen::lir::LirTypeKind::Integer, 8);
+
+  expect_throws_lir_verify(
+      [&]() { c4c::codegen::lir::verify_module(module); },
+      "typed integer width 8 disagrees with text 'i32'",
+      "LIR verifier should reject integer type refs whose typed width disagrees with their renderable text");
+}
+
 void test_bir_lowering_accepts_tiny_return_add_lir_slice() {
   const auto lowered = c4c::backend::lower_to_bir(make_bir_return_add_module());
   const auto rendered = c4c::backend::bir::print(lowered);
@@ -2842,7 +2853,16 @@ void test_bir_lowering_accepts_i8_return_sub() {
 }
 
 void test_bir_lowering_accepts_i8_return_mul() {
-  const auto lowered = c4c::backend::lower_to_bir(make_bir_i8_return_mul_module());
+  auto module = make_bir_i8_return_mul_module();
+  auto& block = module.functions.front().blocks.front();
+  auto& bin = std::get<c4c::codegen::lir::LirBinOp>(block.insts.front());
+  bin.type_str = c4c::codegen::lir::LirTypeRef::integer(8);
+  block.terminator = c4c::codegen::lir::LirRet{std::string("%t0"),
+                                               c4c::codegen::lir::LirTypeRef::integer(8)};
+
+  c4c::codegen::lir::verify_module(module);
+
+  const auto lowered = c4c::backend::lower_to_bir(module);
   const auto rendered = c4c::backend::bir::print(lowered);
 
   expect_contains(rendered, "bir.func @choose_mul_u() -> i8 {",
@@ -3087,6 +3107,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_validator_accepts_minimal_i64_scaffold);
   RUN_TEST(test_bir_validator_accepts_minimal_cast_scaffold);
   RUN_TEST(test_bir_validator_accepts_minimal_select_scaffold);
+  RUN_TEST(test_lir_verify_rejects_typed_integer_text_mismatch);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_add_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_sub_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_sext_lir_slice);

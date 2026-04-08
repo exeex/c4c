@@ -1,6 +1,7 @@
 #pragma once
 
 #include <ostream>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -26,11 +27,27 @@ class LirTypeRef {
   LirTypeRef(const char* text) : LirTypeRef(std::string(text)) {}
   LirTypeRef(std::string text, std::optional<LirTypeKind> kind = std::nullopt)
       : text_(std::move(text)),
-        kind_(kind.value_or(classify(text_))) {}
+        kind_(kind.value_or(classify(text_))),
+        integer_bit_width_(derive_integer_bit_width(text_, kind_)) {}
+  LirTypeRef(std::string text, LirTypeKind kind)
+      : text_(std::move(text)),
+        kind_(kind),
+        integer_bit_width_(derive_integer_bit_width(text_, kind_)) {}
+  LirTypeRef(std::string text, LirTypeKind kind, unsigned integer_bit_width)
+      : text_(std::move(text)),
+        kind_(kind),
+        integer_bit_width_(integer_bit_width) {}
+
+  [[nodiscard]] static LirTypeRef integer(unsigned bit_width) {
+    return LirTypeRef("i" + std::to_string(bit_width), LirTypeKind::Integer, bit_width);
+  }
 
   [[nodiscard]] const std::string& str() const { return text_; }
   [[nodiscard]] std::string& str() { return text_; }
   [[nodiscard]] LirTypeKind kind() const { return kind_; }
+  [[nodiscard]] std::optional<unsigned> integer_bit_width() const {
+    return integer_bit_width_;
+  }
   [[nodiscard]] bool empty() const { return text_.empty(); }
 
   operator std::string&() { return text_; }
@@ -104,20 +121,37 @@ class LirTypeRef {
   }
 
  private:
+  [[nodiscard]] static std::optional<unsigned> parse_integer_bit_width(
+      std::string_view text) {
+    if (text.size() <= 1 || text.front() != 'i') {
+      return std::nullopt;
+    }
+
+    unsigned value = 0;
+    for (std::size_t index = 1; index < text.size(); ++index) {
+      const char ch = text[index];
+      if (ch < '0' || ch > '9') {
+        return std::nullopt;
+      }
+      value = (value * 10u) + static_cast<unsigned>(ch - '0');
+    }
+    return value;
+  }
+
+  [[nodiscard]] static std::optional<unsigned> derive_integer_bit_width(
+      std::string_view text,
+      LirTypeKind kind) {
+    if (kind != LirTypeKind::Integer) {
+      return std::nullopt;
+    }
+    return parse_integer_bit_width(text);
+  }
+
   [[nodiscard]] static LirTypeKind classify(std::string_view text) {
     if (text.empty()) return LirTypeKind::RawText;
     if (text == "void") return LirTypeKind::Void;
     if (text == "ptr") return LirTypeKind::Pointer;
-    if (text.front() == 'i' && text.size() > 1) {
-      bool all_digits = true;
-      for (std::size_t i = 1; i < text.size(); ++i) {
-        if (text[i] < '0' || text[i] > '9') {
-          all_digits = false;
-          break;
-        }
-      }
-      if (all_digits) return LirTypeKind::Integer;
-    }
+    if (parse_integer_bit_width(text).has_value()) return LirTypeKind::Integer;
     if (text == "half" || text == "float" || text == "double" ||
         text == "fp128" || text == "x86_fp80") {
       return LirTypeKind::Floating;
@@ -137,6 +171,7 @@ class LirTypeRef {
 
   std::string text_;
   LirTypeKind kind_ = LirTypeKind::RawText;
+  std::optional<unsigned> integer_bit_width_;
 };
 
 enum class LirBinaryOpcode : unsigned char {

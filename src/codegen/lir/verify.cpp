@@ -48,6 +48,34 @@ bool operand_kind_allowed(LirOperandKind kind,
   return false;
 }
 
+std::optional<std::string> type_ref_mismatch_detail(const LirTypeRef& type) {
+  const auto classified_kind = type.empty() ? LirTypeKind::RawText
+                                            : LirTypeRef(type.str()).kind();
+  if (type.kind() != classified_kind) {
+    std::ostringstream detail;
+    detail << "typed kind disagrees with text '" << type.str() << "'";
+    return detail.str();
+  }
+
+  if (type.kind() == LirTypeKind::Integer) {
+    const auto typed_width = type.integer_bit_width();
+    const auto text_width = LirTypeRef(type.str()).integer_bit_width();
+    if (typed_width != text_width) {
+      std::ostringstream detail;
+      detail << "typed integer width ";
+      if (typed_width.has_value()) {
+        detail << *typed_width;
+      } else {
+        detail << "<missing>";
+      }
+      detail << " disagrees with text '" << type.str() << "'";
+      return detail.str();
+    }
+  }
+
+  return std::nullopt;
+}
+
 void verify_result_operand(const LirOperand& operand, std::string_view field) {
   require_operand_kind(operand, field, {LirOperandKind::SsaValue});
 }
@@ -319,6 +347,9 @@ const std::string& require_type_ref(const LirTypeRef& type,
                                     std::string_view field,
                                     bool allow_void) {
   if (type.empty()) fail_verify(field, "must not be empty");
+  if (const auto mismatch = type_ref_mismatch_detail(type); mismatch.has_value()) {
+    fail_verify(field, *mismatch);
+  }
   if (!allow_void && type.kind() == LirTypeKind::Void) {
     fail_verify(field, "void is not valid here");
   }
