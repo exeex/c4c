@@ -351,6 +351,60 @@ std::optional<bir::Module> try_lower_minimal_declared_direct_call_module(
   return lowered;
 }
 
+std::optional<bir::Module> try_lower_minimal_two_arg_direct_call_module(
+    const c4c::codegen::lir::LirModule& module) {
+  const auto parsed = parse_backend_minimal_two_arg_direct_call_lir_module(module);
+  if (!parsed.has_value() || parsed->helper == nullptr || parsed->main_function == nullptr ||
+      parsed->call == nullptr || parsed->call->result.str().empty()) {
+    return std::nullopt;
+  }
+
+  bir::Module lowered;
+  lowered.target_triple = module.target_triple;
+  lowered.data_layout = module.data_layout;
+
+  bir::Function helper;
+  helper.name = parsed->helper->name;
+  helper.return_type = bir::TypeKind::I32;
+  helper.params = {
+      bir::Param{.type = bir::TypeKind::I32, .name = "%lhs"},
+      bir::Param{.type = bir::TypeKind::I32, .name = "%rhs"},
+  };
+
+  bir::Block helper_entry;
+  helper_entry.label = "entry";
+  helper_entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "%sum"),
+      .lhs = bir::Value::named(bir::TypeKind::I32, helper.params[0].name),
+      .rhs = bir::Value::named(bir::TypeKind::I32, helper.params[1].name),
+  });
+  helper_entry.terminator.value = bir::Value::named(bir::TypeKind::I32, "%sum");
+  helper.blocks.push_back(std::move(helper_entry));
+  lowered.functions.push_back(std::move(helper));
+
+  bir::Function main_function;
+  main_function.name = parsed->main_function->name;
+  main_function.return_type = bir::TypeKind::I32;
+
+  bir::Block main_entry;
+  main_entry.label = "entry";
+  main_entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, parsed->call->result.str()),
+      .callee = parsed->helper->name,
+      .args = {
+          bir::Value::immediate_i32(static_cast<std::int32_t>(parsed->lhs_call_arg_imm)),
+          bir::Value::immediate_i32(static_cast<std::int32_t>(parsed->rhs_call_arg_imm)),
+      },
+      .return_type_name = "i32",
+  });
+  main_entry.terminator.value =
+      bir::Value::named(bir::TypeKind::I32, parsed->call->result.str());
+  main_function.blocks.push_back(std::move(main_entry));
+  lowered.functions.push_back(std::move(main_function));
+  return lowered;
+}
+
 std::optional<bir::BinaryOpcode> lower_binary_opcode(std::string_view opcode) {
   if (opcode == "add") {
     return bir::BinaryOpcode::Add;
@@ -2251,6 +2305,10 @@ std::optional<bir::Module> try_lower_to_bir(const c4c::codegen::lir::LirModule& 
     return lowered;
   }
   if (const auto lowered = try_lower_minimal_declared_direct_call_module(module);
+      lowered.has_value()) {
+    return lowered;
+  }
+  if (const auto lowered = try_lower_minimal_two_arg_direct_call_module(module);
       lowered.has_value()) {
     return lowered;
   }

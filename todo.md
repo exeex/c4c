@@ -5,8 +5,8 @@ Source Plan: plan.md
 # Active Item
 
 - Step 2: switch one shared helper seam off `BackendModule`
-- Current slice: inventory the next smallest legacy x86 direct-call LIR helper
-  family now that the zero-arg minimal helper/main route has moved onto
+- Current slice: inventory the next remaining rich x86 direct-call helper family
+  after moving the minimal two-argument helper/main route onto
   `try_lower_to_bir(...)` and the shared BIR direct-call emitter path
 
 # Completed
@@ -105,16 +105,32 @@ Source Plan: plan.md
 - Rebuilt `backend_bir_tests`, reran the binary directly, and reran the full
   `ctest --test-dir build -j --output-on-failure` suite successfully with
   `2834/2834` tests passing in `test_after.log`
+- Added focused shared-util coverage for the new BIR
+  two-argument direct-call parser view, plus BIR lowering coverage for the
+  matching minimal LIR helper/main slice
+- Added focused x86 BIR pipeline coverage for both direct-BIR input and
+  LIR-through-BIR input for the minimal two-argument direct-call family
+- Added a bounded `try_lower_to_bir(...)` path for the minimal two-argument
+  direct-call LIR helper/main shape so it synthesizes a shared BIR helper and
+  caller instead of relying on the x86-only direct LIR fast path
+- Switched `src/backend/x86/codegen/emit.cpp` to consume the new
+  `parse_bir_minimal_two_arg_direct_call_module(...)` view for direct BIR
+  emission and removed the earlier x86-only direct-LIR dispatch for that
+  family
+- Rebuilt `backend_bir_tests` and `backend_shared_util_tests`, reran
+  `ctest --test-dir build -R 'backend_(bir_tests|shared_util_tests)' --output-on-failure`,
+  and reran the full `ctest --test-dir build -j --output-on-failure` suite
+  successfully with `2834/2834` tests passing in `test_after.log`
 
 # Next
 
-- Inventory the remaining x86-only LIR direct-call helpers in
+- Inventory the remaining x86-only rich direct-call helper families in
   `src/backend/x86/codegen/emit.cpp` and `src/backend/lowering/call_decode.hpp`
-  to choose the next smallest seam that can be rerouted through BIR without
-  broadening `try_lower_to_bir(...)` too aggressively
+  to choose the next smallest seam after the minimal two-argument helper/main
+  route
 - Continue shrinking stale direct-call helper families one seam at a time now
-  that both the x86 declared-direct-call path and the zero-arg helper/main
-  path no longer need private emitter-only LIR seams
+  that the zero-arg, declared-direct-call, and minimal two-argument helper/main
+  paths no longer need private x86 LIR dispatch
 - Use the next slice to make `lir_to_backend_ir.*` more obviously adapter-only
   before Step 4 collapse work starts
 
@@ -146,3 +162,8 @@ Source Plan: plan.md
 - This slice removes the x86 emitter's private zero-arg direct-call LIR
   dispatch, but the shared LIR shape recognizer still exists as lowering glue
   for `try_lower_to_bir(...)`
+- `test_before.log` was not present in the workspace at the start of this
+  slice; the rerun full-suite result in `test_after.log` is `2834/2834`
+- This slice removes the x86 emitter's private minimal two-argument direct-call
+  LIR dispatch, while keeping the existing LIR recognizer as bounded lowering
+  glue for `try_lower_to_bir(...)`

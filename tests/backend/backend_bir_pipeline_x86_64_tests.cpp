@@ -68,6 +68,43 @@ c4c::codegen::lir::LirModule make_lir_declared_direct_call_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_lir_minimal_two_arg_direct_call_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction helper;
+  helper.name = "add_pair";
+  helper.signature_text = "define i32 @add_pair(i32 %lhs, i32 %rhs)\n";
+  helper.entry = LirBlockId{0};
+
+  LirBlock helper_entry;
+  helper_entry.id = LirBlockId{0};
+  helper_entry.label = "entry";
+  helper_entry.insts.push_back(LirBinOp{"%sum", LirBinaryOpcode::Add, "i32", "%lhs", "%rhs"});
+  helper_entry.terminator = LirRet{std::string("%sum"), "i32"};
+  helper.blocks.push_back(std::move(helper_entry));
+
+  LirFunction main_function;
+  main_function.name = "main";
+  main_function.signature_text = "define i32 @main()\n";
+  main_function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{"%t0", "i32", "@add_pair", "(i32, i32)", "i32 5, i32 7"});
+  entry.terminator = LirRet{std::string("%t0"), "i32"};
+  main_function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(main_function));
+  module.functions.push_back(std::move(helper));
+  return module;
+}
+
 void test_backend_bir_pipeline_drives_x86_direct_bir_minimal_direct_call_end_to_end() {
   c4c::backend::bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -205,6 +242,87 @@ void test_backend_bir_pipeline_drives_x86_lir_declared_direct_call_through_bir_e
                   "x86 LIR declared direct-call input should preserve the fixed immediate return override on the BIR path");
   expect_not_contains(rendered, "target triple =",
                       "x86 LIR declared direct-call input should stay on native asm emission instead of falling back to LLVM text");
+}
+
+void test_backend_bir_pipeline_drives_x86_direct_bir_minimal_two_arg_direct_call_end_to_end() {
+  c4c::backend::bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.functions.push_back(c4c::backend::bir::Function{
+      .name = "add_pair",
+      .return_type = c4c::backend::bir::TypeKind::I32,
+      .params = {
+          c4c::backend::bir::Param{.type = c4c::backend::bir::TypeKind::I32, .name = "%lhs"},
+          c4c::backend::bir::Param{.type = c4c::backend::bir::TypeKind::I32, .name = "%rhs"},
+      },
+      .local_slots = {},
+      .blocks = {c4c::backend::bir::Block{
+          .label = "entry",
+          .insts = {c4c::backend::bir::BinaryInst{
+              .opcode = c4c::backend::bir::BinaryOpcode::Add,
+              .result = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%sum"),
+              .lhs = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%lhs"),
+              .rhs = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%rhs"),
+          }},
+          .terminator = c4c::backend::bir::ReturnTerminator{
+              .value = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%sum"),
+          },
+      }},
+      .is_declaration = false,
+  });
+  module.functions.push_back(c4c::backend::bir::Function{
+      .name = "main",
+      .return_type = c4c::backend::bir::TypeKind::I32,
+      .params = {},
+      .local_slots = {},
+      .blocks = {c4c::backend::bir::Block{
+          .label = "entry",
+          .insts = {c4c::backend::bir::CallInst{
+              .result = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%t0"),
+              .callee = "add_pair",
+              .args = {
+                  c4c::backend::bir::Value::immediate_i32(5),
+                  c4c::backend::bir::Value::immediate_i32(7),
+              },
+              .return_type_name = "i32",
+          }},
+          .terminator = c4c::backend::bir::ReturnTerminator{
+              .value = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%t0"),
+          },
+      }},
+      .is_declaration = false,
+  });
+
+  const auto rendered =
+      c4c::backend::emit_module(c4c::backend::BackendModuleInput{module},
+                                make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".type add_pair, %function\nadd_pair:\n",
+                  "direct BIR two-argument direct-call input should emit the helper definition on the x86 backend path");
+  expect_contains(rendered, "mov edi, 5",
+                  "direct BIR two-argument direct-call input should materialize the first call immediate on the native x86 path");
+  expect_contains(rendered, "mov esi, 7",
+                  "direct BIR two-argument direct-call input should materialize the second call immediate on the native x86 path");
+  expect_contains(rendered, "add eax, esi",
+                  "direct BIR two-argument direct-call input should lower the helper add natively without legacy backend IR");
+  expect_not_contains(rendered, "target triple =",
+                      "direct BIR two-argument direct-call input should stay on native asm emission");
+}
+
+void test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_direct_call_through_bir_end_to_end() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_lir_minimal_two_arg_direct_call_module()},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".type add_pair, %function\nadd_pair:\n",
+                  "x86 LIR two-argument direct-call input should still emit the helper definition after routing through the shared BIR path");
+  expect_contains(rendered, "mov edi, 5",
+                  "x86 LIR two-argument direct-call input should preserve the first immediate on the BIR-owned route");
+  expect_contains(rendered, "mov esi, 7",
+                  "x86 LIR two-argument direct-call input should preserve the second immediate on the BIR-owned route");
+  expect_contains(rendered, "call add_pair",
+                  "x86 LIR two-argument direct-call input should lower the helper call on the native x86 path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR two-argument direct-call input should stay on native asm emission instead of falling back to LLVM text");
 }
 
 void test_backend_bir_pipeline_drives_x86_return_add_smoke_case_end_to_end() {
@@ -684,8 +802,10 @@ void test_backend_bir_pipeline_rejects_unsupported_direct_bir_input_on_x86() {
 void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_direct_call_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_declared_direct_call_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_two_arg_direct_call_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_declared_direct_call_through_bir_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_return_add_smoke_case_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_return_sub_smoke_case_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_zero_param_staged_constant_end_to_end);
