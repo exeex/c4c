@@ -337,6 +337,33 @@ inline std::optional<std::int64_t> parse_backend_i64_literal(std::string_view te
   return value;
 }
 
+inline bool backend_lir_is_minimal_i32_typespec(const c4c::TypeSpec& type) {
+  return type.ptr_level == 0 && type.array_rank == 0 && type.base == TB_INT;
+}
+
+inline std::optional<std::string_view> parse_backend_single_minimal_i32_param_name(
+    const c4c::codegen::lir::LirFunction& function) {
+  if (!function.params.empty()) {
+    if (!backend_lir_is_minimal_i32_typespec(function.return_type) || function.params.size() != 1) {
+      return std::nullopt;
+    }
+
+    const auto& [param_name, param_type] = function.params.front();
+    if (param_name.empty() || !backend_lir_is_minimal_i32_typespec(param_type)) {
+      return std::nullopt;
+    }
+    return param_name;
+  }
+
+  const auto helper_params = parse_backend_function_signature_params(function.signature_text);
+  if (!helper_params.has_value() || helper_params->size() != 1 || helper_params->front().is_varargs ||
+      c4c::codegen::lir::trim_lir_arg_text(helper_params->front().type) != "i32" ||
+      helper_params->front().operand.empty()) {
+    return std::nullopt;
+  }
+  return helper_params->front().operand;
+}
+
 inline bool matches_backend_zero_add_slot_rewrite(
     const c4c::codegen::lir::LirLoadOp& load,
     const c4c::codegen::lir::LirBinOp& add,
@@ -1585,17 +1612,14 @@ inline std::optional<std::string_view> parse_backend_single_identity_function(
   const std::string_view function_name =
       expected_name.has_value() ? *expected_name : std::string_view(function.name);
   if (function.is_declaration ||
-      !backend_lir_signature_matches(function.signature_text, "define", "i32", function_name,
-                                     {"i32"}) ||
+      function.name != function_name ||
       function.entry.value != 0 || function.blocks.size() != 1 ||
       !function.alloca_insts.empty() || !function.stack_objects.empty()) {
     return std::nullopt;
   }
 
-  const auto helper_params = parse_backend_function_signature_params(function.signature_text);
-  if (!helper_params.has_value() || helper_params->size() != 1 || helper_params->front().is_varargs ||
-      c4c::codegen::lir::trim_lir_arg_text(helper_params->front().type) != "i32" ||
-      helper_params->front().operand.empty()) {
+  const auto helper_param_name = parse_backend_single_minimal_i32_param_name(function);
+  if (!helper_param_name.has_value()) {
     return std::nullopt;
   }
 
@@ -1603,11 +1627,11 @@ inline std::optional<std::string_view> parse_backend_single_identity_function(
   const auto* ret = std::get_if<LirRet>(&block.terminator);
   if (block.label != "entry" || !block.insts.empty() || ret == nullptr ||
       !ret->value_str.has_value() || ret->type_str != "i32" ||
-      *ret->value_str != helper_params->front().operand) {
+      *ret->value_str != *helper_param_name) {
     return std::nullopt;
   }
 
-  return helper_params->front().operand;
+  return helper_param_name;
 }
 
 inline std::optional<ParsedBackendTwoParamAddFunctionView>

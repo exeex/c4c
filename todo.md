@@ -9,7 +9,9 @@ Source Plan: plan.md
 - Step 1: audit the typed type boundary and backend ownership seams
 - Current slice: extend the typed scalar seam into the remaining minimal
   direct-call helper recognizers by preferring structured helper return/param
-  metadata over stale signature parameter text in the folded two-argument path
+  metadata over stale signature parameter text in the remaining single-add-imm
+  helper parser used by the add-immediate and call-crossing direct-call
+  lowering paths
 
 ## Completed
 
@@ -78,6 +80,16 @@ Source Plan: plan.md
   stale signature param text
 - Re-ran the focused direct-call backend BIR coverage plus the full suite and
   kept the regression guard passing (`2841 -> 2841`)
+- Switched `parse_backend_single_identity_function(...)` in
+  `src/backend/lowering/call_decode.hpp` to prefer structured helper return and
+  parameter metadata when present instead of hard-requiring `"i32"` signature
+  parameter text
+- Added focused backend regressions in
+  `tests/backend/backend_bir_lowering_tests.cpp` that keep the identity and
+  dual-identity direct-call lowering paths working when typed helper params
+  disagree with stale signature param text
+- Re-ran `backend_bir_tests`, `backend_shared_util_tests`, and the full suite
+  with the regression guard still passing (`2841 -> 2841`)
 
 ## Next
 
@@ -85,9 +97,9 @@ Source Plan: plan.md
   `src/backend/lowering/lir_to_bir.cpp` and `src/backend/lowering/call_decode.hpp`
   away from hard-required signature-text parameter typing where structured
   helper metadata already exists
-- audit whether the single-identity and dual-identity helper parsers should use
-  the same structured-param preference next, rather than relying on
-  `parse_backend_function_signature_params(...)`
+- apply the same structured-param preference to the remaining
+  single-add-immediate helper parser used by the add-immediate and
+  call-crossing direct-call slices
 - decide whether pointer payload support is needed immediately for the next
   lowering slice or should stay deferred until the first pointer-backed BIR
   consumer is converted
