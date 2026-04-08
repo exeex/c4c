@@ -20,6 +20,22 @@ This repo uses a single-plan lifecycle.
 
 Do not rely on memory for lifecycle procedures when a matching file exists under `prompts/`.
 
+## Subagent Entry
+
+If you are a delegated worker acting on behalf of a parent agent rather than the
+human directly, read `prompts/SUBAGENT.md` before editing files.
+
+Subagents do not own the plan lifecycle:
+
+- treat `plan.md` and `todo.md` as mainline-owned unless the parent task
+  explicitly delegates planning work
+- treat any `todoA.md`, `todoB.md`, `todoC.md`, `todoD.md`, or similarly named
+  worker file as a task packet, not as the canonical lifecycle state
+- do not run broad repo validation or create the final commit unless the parent
+  task explicitly asks for it
+- return concise ownership notes, local validation results, and unresolved
+  blockers back to the parent agent
+
 ## Mode Hint
 
 If this is the last visible section from injected `AGENTS.md`, treat the run as autonomous and do not ask the user questions.

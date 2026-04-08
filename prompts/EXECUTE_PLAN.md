@@ -9,6 +9,10 @@ Keep test case correctness intact before submitting anything to git.
 Prioritize planned feature delivery over opportunistic issue fixing.
 Maintain cross-iteration progress in `todo.md` so work can resume cleanly after context resets.
 Treat [`plan.md`](../plan.md) as the single active runbook derived from one source idea.
+When parallel worker lanes are useful, the mainline agent may delegate bounded
+slices to subagents, but mainline remains responsible for lifecycle state,
+integration, broad validation, and the final commit unless explicitly handed
+off.
 
 ## Project Architecture
 
@@ -48,6 +52,27 @@ Compiler pipeline:
    - blockers, if any
    - short notes needed to resume in the next iteration
 7. Update `todo.md` whenever the active item changes, when a meaningful sub-step is completed, and before every commit.
+
+## Parallel Delegation
+
+1. Mainline may spawn subagents for narrow, non-overlapping work packets.
+2. Before delegating, define explicit ownership boundaries and local validation
+   commands for each worker lane.
+3. Use worker packet files such as `todoA.md` through `todoD.md` only as
+   delegation aids; they do not replace [`todo.md`](../todo.md) as the canonical
+   execution state.
+4. When creating a worker lane, direct the subagent to read
+   [`SUBAGENT.md`](../prompts/SUBAGENT.md).
+5. Mainline keeps responsibility for:
+   - [`plan.md`](../plan.md)
+   - [`todo.md`](../todo.md)
+   - cross-lane conflict resolution
+   - broad validation
+   - final commit and lifecycle transitions
+6. Subagents should normally:
+   - avoid broad `ctest` runs
+   - avoid editing planning files
+   - validate only owned objects or narrow owned tests
 
 ## Work Selection
 
