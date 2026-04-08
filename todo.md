@@ -6,9 +6,10 @@ Source Plan: plan.md
 
 - Step 2: switch one shared helper seam off `BackendModule`
 - Current slice: switch the next smallest remaining x86-only rich direct-call
-  helper/main family off the legacy parser after landing the single-argument
-  identity-return seam; prefer the folded-two-argument helper/main route next
-  unless the dual-identity subtraction slice proves smaller
+  helper/main family off the legacy parser after landing the folded
+  two-argument helper/main seam; prefer the dual-identity subtraction family
+  next unless a smaller shared direct-call helper route shows up during
+  inspection
 
 # Completed
 
@@ -107,6 +108,18 @@ Source Plan: plan.md
   binaries directly, and reran the full `ctest --test-dir build -j
   --output-on-failure` suite successfully with `2834/2834` tests passing in
   `test_after.log`
+- Added a bounded `try_lower_to_bir(...)` path for the folded two-argument
+  direct-call LIR family so it collapses the helper/main slice to a shared BIR
+  caller return-immediate shape instead of depending on x86's private legacy
+  parser dispatch
+- Removed the now-dead x86-only folded two-argument direct-call direct-emission
+  dispatch from `src/backend/x86/codegen/emit.cpp`
+- Added focused BIR lowering coverage for the folded two-argument direct-call
+  LIR slice plus an x86 end-to-end pipeline test proving the LIR route now
+  stays on the shared BIR-owned emitter path
+- Rebuilt `backend_bir_tests`, reran the binary directly, and reran the full
+  `ctest --test-dir build -j --output-on-failure` suite successfully with
+  `2834/2834` tests passing in `test_after.log`
 - Added an order-independent `try_lower_to_bir(...)` path for the zero-arg
   minimal LIR direct-call helper/main family so it now synthesizes the shared
   two-function BIR direct-call shape instead of depending on x86's private
@@ -155,15 +168,14 @@ Source Plan: plan.md
 
 - Inventory the remaining x86-only rich direct-call helper families in
   `src/backend/x86/codegen/emit.cpp` and `src/backend/lowering/call_decode.hpp`
-  to choose the next smallest seam after the minimal two-argument helper/main
-  route and the single-argument add-immediate helper/main route
+  to choose the next smallest seam after the folded two-argument helper/main
+  route
 - Continue shrinking stale direct-call helper families one seam at a time now
   that the zero-arg, declared-direct-call, minimal two-argument helper/main,
-  single-argument add-immediate, and single-argument identity-return paths no
-  longer need private x86 LIR dispatch
-- Prefer the folded-two-argument helper/main family next unless the
-  dual-identity subtraction slice proves easier to express as a shared BIR
-  helper view
+  single-argument add-immediate, single-argument identity-return, and folded
+  two-argument helper/main paths no longer need private x86 LIR dispatch
+- Prefer the dual-identity subtraction family next unless a smaller shared BIR
+  direct-call helper view proves easier to land first
 - Use the next slice to make `lir_to_backend_ir.*` more obviously adapter-only
   before Step 4 collapse work starts
 
@@ -206,3 +218,6 @@ Source Plan: plan.md
 - This slice removes another x86-only direct-call seam from the legacy route:
   the minimal single-argument identity-return helper/main family now lowers
   through shared BIR and has a direct-BIR emitter path on x86
+- This slice removes the x86 emitter's private folded two-argument direct-call
+  LIR dispatch; the helper/main family now lowers through shared BIR as a
+  collapsed caller return-immediate shape

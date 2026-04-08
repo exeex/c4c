@@ -178,6 +178,44 @@ c4c::codegen::lir::LirModule make_lir_minimal_direct_call_identity_arg_module() 
   return module;
 }
 
+c4c::codegen::lir::LirModule make_lir_minimal_folded_two_arg_direct_call_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction helper;
+  helper.name = "fold_pair";
+  helper.signature_text = "define i32 @fold_pair(i32 %lhs, i32 %rhs)\n";
+  helper.entry = LirBlockId{0};
+
+  LirBlock helper_entry;
+  helper_entry.id = LirBlockId{0};
+  helper_entry.label = "entry";
+  helper_entry.insts.push_back(LirBinOp{"%t0", LirBinaryOpcode::Add, "i32", "10", "%lhs"});
+  helper_entry.insts.push_back(LirBinOp{"%t1", LirBinaryOpcode::Sub, "i32", "%t0", "%rhs"});
+  helper_entry.terminator = LirRet{std::string("%t1"), "i32"};
+  helper.blocks.push_back(std::move(helper_entry));
+
+  LirFunction main_function;
+  main_function.name = "main";
+  main_function.signature_text = "define i32 @main()\n";
+  main_function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{"%t0", "i32", "@fold_pair", "(i32, i32)", "i32 5, i32 7"});
+  entry.terminator = LirRet{std::string("%t0"), "i32"};
+  main_function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(main_function));
+  module.functions.push_back(std::move(helper));
+  return module;
+}
+
 void test_backend_bir_pipeline_drives_x86_direct_bir_minimal_direct_call_end_to_end() {
   c4c::backend::bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -549,6 +587,21 @@ void test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_identity_arg_t
                   "x86 LIR identity direct-call input should lower the helper call on the native x86 path");
   expect_not_contains(rendered, "target triple =",
                       "x86 LIR identity direct-call input should stay on native asm emission instead of falling back to LLVM text");
+}
+
+void test_backend_bir_pipeline_drives_x86_lir_minimal_folded_two_arg_direct_call_through_bir_end_to_end() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_lir_minimal_folded_two_arg_direct_call_module()},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl main",
+                  "x86 LIR folded two-argument direct-call input should still reach native asm emission after routing through the shared BIR path");
+  expect_contains(rendered, "mov eax, 8",
+                  "x86 LIR folded two-argument direct-call input should preserve the folded immediate result on the BIR-owned route");
+  expect_not_contains(rendered, "fold_pair",
+                      "x86 LIR folded two-argument direct-call input should fully fold away the helper/main direct-call family on the BIR-owned route");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR folded two-argument direct-call input should stay on native asm emission instead of falling back to LLVM text");
 }
 
 void test_backend_bir_pipeline_drives_x86_return_add_smoke_case_end_to_end() {
@@ -1036,6 +1089,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_add_imm_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_identity_arg_through_bir_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_folded_two_arg_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_return_add_smoke_case_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_return_sub_smoke_case_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_zero_param_staged_constant_end_to_end);

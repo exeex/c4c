@@ -6117,10 +6117,6 @@ std::optional<std::string> try_emit_direct_lir_module(
         slice.has_value()) {
       return emit_minimal_two_arg_direct_call_asm(module.target_triple, *slice);
     }
-    if (const auto slice = parse_minimal_folded_two_arg_direct_call_return_slice(module);
-        slice.has_value()) {
-      return emit_minimal_return_asm(module.target_triple, slice->function_name, slice->return_imm);
-    }
     if (const auto slice = parse_minimal_direct_call_identity_arg_slice(module);
         slice.has_value()) {
       return emit_minimal_direct_call_identity_arg_asm(module.target_triple, *slice);
