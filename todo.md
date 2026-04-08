@@ -16,6 +16,13 @@ stays on the direct x86 LIR asm path.
 
 Completed in this slice:
 
+- removed the emitter-local `find_lir_function(...)` helper from both
+  [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+  and
+  [`src/backend/aarch64/codegen/emit.cpp`](/workspaces/c4c/src/backend/aarch64/codegen/emit.cpp)
+  by inlining the bounded `main` discovery at the remaining direct-emitter
+  call sites, so this seam no longer carries a reusable name-based helper that
+  encourages special-casing by symbol lookup
 - taught the direct x86 member-array runtime parser in
   [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
   to discover the helper from the observed non-`main` definition and key both
@@ -127,6 +134,8 @@ Completed in this slice:
 
 Next intended slice:
 
+- keep deleting emitter-local legacy conveniences that encode symbol-specific
+  assumptions when a bounded structural match is enough for the live slice
 - target another renamed or reordered x86-local helper/runtime family that
   still falls through to legacy lowering when the direct parser keys off fixed
   symbols or ordering

@@ -2286,15 +2286,6 @@ parse_minimal_conditional_affine_i32_return_slice(
   };
 }
 
-const c4c::codegen::lir::LirFunction* find_lir_function(
-    const c4c::codegen::lir::LirModule& module,
-    std::string_view name) {
-  for (const auto& function : module.functions) {
-    if (function.name == name) return &function;
-  }
-  return nullptr;
-}
-
 c4c::backend::RegAllocIntegrationResult run_shared_aarch64_regalloc(
     const c4c::codegen::lir::LirFunction& function) {
   c4c::backend::RegAllocConfig config;
@@ -8387,7 +8378,13 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
       if (const auto slice =
               c4c::backend::parse_backend_minimal_call_crossing_direct_call_module(adapted);
           slice.has_value()) {
-        const auto* main_fn = find_lir_function(module, "main");
+        const auto* main_fn = static_cast<const c4c::codegen::lir::LirFunction*>(nullptr);
+        for (const auto& function : module.functions) {
+          if (function.name == "main") {
+            main_fn = &function;
+            break;
+          }
+        }
         if (main_fn == nullptr) {
           fail_unsupported("main function for shared call-crossing direct-call slice");
         }
@@ -8526,7 +8523,13 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
       }
       if (const auto slice = c4c::backend::parse_backend_minimal_call_crossing_direct_call_module(adapted);
           slice.has_value()) {
-        const auto* main_fn = find_lir_function(prepared, "main");
+        const auto* main_fn = static_cast<const c4c::codegen::lir::LirFunction*>(nullptr);
+        for (const auto& function : prepared.functions) {
+          if (function.name == "main") {
+            main_fn = &function;
+            break;
+          }
+        }
         if (main_fn == nullptr) {
           fail_unsupported("main function for shared call-crossing direct-call slice");
         }

@@ -1245,15 +1245,6 @@ std::string escape_asm_string(std::string_view bytes) {
   return escaped;
 }
 
-const c4c::codegen::lir::LirFunction* find_lir_function(
-    const c4c::codegen::lir::LirModule& module,
-    std::string_view name) {
-  for (const auto& function : module.functions) {
-    if (function.name == name) return &function;
-  }
-  return nullptr;
-}
-
 const c4c::backend::BackendFunction* find_function(
     const c4c::backend::BackendModule& module,
     std::string_view name) {
@@ -4291,10 +4282,24 @@ std::optional<MinimalMemberArrayRuntimeSlice> parse_minimal_member_array_runtime
     return std::nullopt;
   }
 
-  const auto* main_fn = find_lir_function(module, "main");
-  const auto* helper = module.functions[0].name == "main" ? &module.functions[1] : &module.functions[0];
-  if (helper == nullptr || helper->name == "main" || main_fn == nullptr || helper->is_declaration ||
-      main_fn->is_declaration ||
+  const auto* main_fn = static_cast<const c4c::codegen::lir::LirFunction*>(nullptr);
+  for (const auto& function : module.functions) {
+    if (function.name == "main") {
+      main_fn = &function;
+      break;
+    }
+  }
+  const auto* helper = static_cast<const c4c::codegen::lir::LirFunction*>(nullptr);
+  for (const auto& function : module.functions) {
+    if (function.name == "main") {
+      continue;
+    }
+    if (helper != nullptr) {
+      return std::nullopt;
+    }
+    helper = &function;
+  }
+  if (helper == nullptr || main_fn == nullptr || helper->is_declaration || main_fn->is_declaration ||
       helper->entry.value != 0 || main_fn->entry.value != 0 || helper->blocks.size() != 1 ||
       main_fn->blocks.size() != 1 ||
       !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(main_fn->signature_text)) {
@@ -6032,7 +6037,13 @@ std::optional<std::string> try_emit_direct_lir_module(
     }
     if (const auto slice = parse_minimal_call_crossing_direct_call_slice(module);
         slice.has_value()) {
-      const auto* main_fn = find_lir_function(module, "main");
+      const auto* main_fn = static_cast<const c4c::codegen::lir::LirFunction*>(nullptr);
+      for (const auto& function : module.functions) {
+        if (function.name == "main") {
+          main_fn = &function;
+          break;
+        }
+      }
       if (main_fn == nullptr) {
         throw c4c::backend::LirAdapterError(
             c4c::backend::LirAdapterErrorKind::Unsupported,
