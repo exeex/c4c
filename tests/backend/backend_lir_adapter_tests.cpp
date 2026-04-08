@@ -582,7 +582,7 @@ void test_backend_call_helpers_decode_lir_direct_global_typed_operands() {
               "shared direct-global two-operand helper should decode spacing-tolerant LIR call operands");
 }
 
-void test_backend_call_helpers_parse_single_helper_zero_arg_main_module_shape() {
+void test_backend_call_helpers_parse_single_helper_zero_arg_caller_module_shape() {
   auto module = make_param_slot_runtime_module();
   std::swap(module.functions.front(), module.functions.back());
 
@@ -606,17 +606,17 @@ void test_backend_call_helpers_parse_single_helper_zero_arg_main_module_shape() 
                                                c4c::codegen::lir::LirOperandKind::Global);
 
   const auto parsed =
-      c4c::backend::parse_backend_single_helper_zero_arg_main_lir_module(module, 1);
+      c4c::backend::parse_backend_single_helper_zero_arg_caller_lir_module(module, 1);
   expect_true(parsed.has_value() && parsed->helper != nullptr &&
                   parsed->main_function != nullptr && parsed->main_block != nullptr &&
                   parsed->main_ret != nullptr,
-              "shared single-helper main-module parser should identify the minimal helper/main module contract without target-local scans");
+              "shared single-helper caller-module parser should identify the minimal helper/caller module contract without target-local scans");
   expect_true(parsed.has_value() && parsed->helper->name == "inc_value" &&
                   parsed->main_function->name == "main" &&
                   parsed->main_block->insts.size() == 1 &&
                   parsed->main_ret->value_str.has_value() &&
                   *parsed->main_ret->value_str == "%t0",
-              "shared single-helper main-module parser should preserve renamed helper metadata and remain independent from function ordering");
+              "shared single-helper caller-module parser should preserve renamed helper metadata and remain independent from function ordering");
 }
 
 void test_backend_call_helpers_parse_single_helper_call_crossing_source_value() {
@@ -680,7 +680,7 @@ void test_backend_call_helpers_parse_single_helper_direct_call() {
                                                      c4c::codegen::lir::LirOperandKind::Global);
 
   const auto parsed_param_module =
-      c4c::backend::parse_backend_single_helper_zero_arg_main_lir_module(param_slot, 1);
+      c4c::backend::parse_backend_single_helper_zero_arg_caller_lir_module(param_slot, 1);
   expect_true(parsed_param_module.has_value(),
               "shared single-helper direct-call parser regression test needs the param-slot helper/main module shape");
   if (!parsed_param_module.has_value()) {
@@ -721,7 +721,7 @@ void test_backend_call_helpers_parse_single_helper_direct_call() {
   crossing_call->args_str = "i32 %t.crossing.source.renamed";
 
   const auto parsed_crossing_module =
-      c4c::backend::parse_backend_single_helper_zero_arg_main_lir_module(call_crossing, 3);
+      c4c::backend::parse_backend_single_helper_zero_arg_caller_lir_module(call_crossing, 3);
   expect_true(parsed_crossing_module.has_value(),
               "shared single-helper direct-call parser regression test needs the call-crossing helper/main module shape");
   if (!parsed_crossing_module.has_value()) {
@@ -1928,31 +1928,31 @@ void test_backend_call_helpers_classify_lir_nonminimal_signature_types() {
       "lowering-owned nonminimal signature classifier should reject nonminimal return types through the shared decode seam");
 }
 
-void test_backend_call_helpers_classify_i32_main_signature_shapes() {
+void test_backend_call_helpers_classify_i32_definition_signature_shapes() {
   expect_true(
-      c4c::backend::backend_lir_is_i32_main_definition(
-          "define i32 @main(i32 %argc, ptr %argv)\n"),
-      "lowering-owned main-signature classifier should recognize i32 main definitions without target-local text scans");
+      c4c::backend::backend_lir_is_i32_definition(
+          "define i32 @entry(i32 %argc, ptr %argv)\n"),
+      "lowering-owned definition classifier should recognize i32 definitions without target-local symbol assumptions");
 
   expect_true(
-      c4c::backend::backend_lir_is_zero_arg_i32_main_definition(
-          " define  i32   @main( ) \n"),
-      "lowering-owned zero-arg main classifier should tolerate compatibility spacing while keeping raw signature parsing centralized");
+      c4c::backend::backend_lir_is_zero_arg_i32_definition(
+          " define  i32   @entry( ) \n"),
+      "lowering-owned zero-arg definition classifier should tolerate compatibility spacing while keeping raw signature parsing centralized");
 
   expect_true(
-      !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(
-          "define i32 @main(i32 %argc)\n"),
-      "lowering-owned zero-arg main classifier should reject signatures that still declare parameters");
+      !c4c::backend::backend_lir_is_zero_arg_i32_definition(
+          "define i32 @entry(i32 %argc)\n"),
+      "lowering-owned zero-arg definition classifier should reject signatures that still declare parameters");
 
   expect_true(
-      !c4c::backend::backend_lir_is_i32_main_definition(
-          "declare i32 @main()\n"),
-      "lowering-owned main-signature classifier should reject declarations");
+      !c4c::backend::backend_lir_is_i32_definition(
+          "declare i32 @entry()\n"),
+      "lowering-owned definition classifier should reject declarations");
 
   expect_true(
-      !c4c::backend::backend_lir_is_i32_main_definition(
-          "define i64 @main()\n"),
-      "lowering-owned main-signature classifier should reject non-i32 return signatures");
+      !c4c::backend::backend_lir_is_i32_definition(
+          "define i64 @entry()\n"),
+      "lowering-owned definition classifier should reject non-i32 return signatures");
 }
 
 void test_backend_call_helpers_match_lir_helper_signature_shapes() {
@@ -3410,7 +3410,7 @@ int main(int argc, char* argv[]) {
   test_backend_call_helpers_decode_direct_global_two_typed_operands();
   test_backend_call_helpers_decode_zero_arg_direct_global_calls();
   test_backend_call_helpers_decode_lir_direct_global_typed_operands();
-  test_backend_call_helpers_parse_single_helper_zero_arg_main_module_shape();
+  test_backend_call_helpers_parse_single_helper_zero_arg_caller_module_shape();
   test_backend_call_helpers_parse_single_helper_call_crossing_source_value();
   test_backend_call_helpers_parse_single_helper_direct_call();
   test_backend_call_helpers_parse_single_add_imm_function();
@@ -3441,7 +3441,7 @@ int main(int argc, char* argv[]) {
   test_backend_call_helpers_decode_lir_direct_global_vararg_prefix();
   test_backend_call_helpers_classify_lir_nonminimal_call_types();
   test_backend_call_helpers_classify_lir_nonminimal_signature_types();
-  test_backend_call_helpers_classify_i32_main_signature_shapes();
+  test_backend_call_helpers_classify_i32_definition_signature_shapes();
   test_backend_call_helpers_match_lir_helper_signature_shapes();
   test_backend_call_helpers_decode_signature_params_with_spacing_and_varargs();
   test_backend_call_helpers_classify_lir_nonminimal_global_and_return_types();

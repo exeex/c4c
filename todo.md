@@ -10,18 +10,48 @@ Source Plan: plan.md
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
 Current active item: Step 4 follow-on deletion. Continue with the remaining
-zero-argument entry-symbol caller anchors that still survive outside the
-recent aarch64 direct-call emitter batch, focusing next on the shared
-parser/decode and direct-LIR fallback seams that still special-case `main`
-for bounded entry-shape families, starting with
-[`src/backend/lowering/call_decode.hpp`](/workspaces/c4c/src/backend/lowering/call_decode.hpp),
-[`src/backend/lowering/call_decode.cpp`](/workspaces/c4c/src/backend/lowering/call_decode.cpp),
-and the remaining
+entry-symbol caller anchors that still survive outside the recent aarch64
+direct-call plus shared decode batch, focusing next on the non-direct-call
+minimal emitters that still publish `main` unconditionally for bounded
+single-function entry shapes, starting with
 [`src/backend/aarch64/codegen/emit.cpp`](/workspaces/c4c/src/backend/aarch64/codegen/emit.cpp)
-helpers that still key direct-LIR zero-argument callers from
-`backend_lir_is_zero_arg_i32_main_definition(...)`.
+and
+[`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+families such as local-array/global/string fast paths whose slices still
+match structurally but do not yet carry the observed caller symbol through
+emitted asm.
 
 Latest completed slice:
+
+- replaced the shared lowering-owned `main` signature classifiers in
+  [`src/backend/lowering/call_decode.hpp`](/workspaces/c4c/src/backend/lowering/call_decode.hpp)
+  and
+  [`src/backend/lowering/call_decode.cpp`](/workspaces/c4c/src/backend/lowering/call_decode.cpp)
+  with structural `i32` / zero-argument `i32` definition checks, removed the
+  last decode helper that required a literal `main` caller for bounded
+  single-helper direct-call LIR modules, and updated the remaining aarch64/x86
+  direct-LIR matchers in
+  [`src/backend/aarch64/codegen/emit.cpp`](/workspaces/c4c/src/backend/aarch64/codegen/emit.cpp)
+  and
+  [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+  to use the new structural caller classification instead of
+  `backend_lir_is_zero_arg_i32_main_definition(...)`
+- proved the shared decode shift with updated helper-classifier coverage in
+  [`tests/backend/backend_lir_adapter_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_tests.cpp)
+  and added missing direct-LIR renamed-caller regressions in
+  [`tests/backend/backend_lir_adapter_aarch64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_aarch64_tests.cpp)
+  for zero-argument direct-call, single-argument direct-call, and declared
+  direct-call entry-symbol families so the explicit aarch64 emit surface now
+  preserves `.globl entry_zero`, `.globl entry_inc`, and `.globl entry_ext`
+  without falling back to IR text
+- kept focused backend coverage green at `4` passed / `0` failed via
+  `ctest --test-dir build -R '^(backend_lir_adapter_tests|backend_lir_adapter_aarch64_tests|backend_lir_adapter_x86_64_tests|backend_module_tests)$' -j1 --output-on-failure`
+- reran the required backend regression scope to `401` passed / `1` failed via
+  `ctest --test-dir build -R backend -j --output-on-failure > test_backend_after.log`;
+  the only failing case remains the independently reproducing unrelated blocker
+  `c_testsuite_aarch64_backend_src_00023_c`
+- kept the monotonic backend guard green at equal pass/fail counts via
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_backend_before.log --after test_backend_after.log --allow-non-decreasing-passed`
 
 - removed the remaining bounded aarch64 direct-call entry-symbol hardcodes
   from [`src/backend/aarch64/codegen/emit.cpp`](/workspaces/c4c/src/backend/aarch64/codegen/emit.cpp)

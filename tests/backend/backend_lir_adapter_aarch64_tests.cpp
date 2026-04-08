@@ -2159,6 +2159,37 @@ void test_aarch64_backend_scaffold_accepts_renamed_structured_zero_arg_direct_ca
                       "aarch64 backend seam should not fall back when a renamed zero-argument direct-call slice relies only on structured metadata");
 }
 
+void test_aarch64_backend_scaffold_accepts_renamed_zero_arg_direct_call_caller_without_main_anchor() {
+  auto module = make_direct_call_module();
+  c4c::codegen::lir::LirFunction* caller = nullptr;
+  for (auto& function : module.functions) {
+    if (function.name == "main") {
+      caller = &function;
+      break;
+    }
+  }
+  expect_true(caller != nullptr,
+              "aarch64 renamed zero-argument direct-call regression test needs the zero-arg caller function");
+  if (caller == nullptr) {
+    return;
+  }
+
+  caller->name = "entry_zero";
+  caller->signature_text = "define i32 @entry_zero()\n";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".globl entry_zero",
+                  "aarch64 backend seam should carry the renamed zero-argument direct-call caller symbol through the asm path instead of hardcoding main");
+  expect_contains(rendered, ".type entry_zero, %function",
+                  "aarch64 backend seam should emit the renamed zero-argument direct-call caller as a real function symbol");
+  expect_contains(rendered, "bl helper",
+                  "aarch64 backend seam should keep the renamed zero-argument direct-call helper call on the asm path");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should not fall back when the direct zero-argument caller is renamed away from main");
+}
+
 void test_aarch64_backend_renders_void_direct_call_imm_return_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_void_direct_call_imm_return_module()},
@@ -3236,6 +3267,39 @@ void test_aarch64_backend_scaffold_accepts_renamed_structured_direct_call_add_im
                       "aarch64 backend seam should not fall back when the lowered single-argument direct-call caller is renamed away from main");
 }
 
+void test_aarch64_backend_scaffold_accepts_renamed_direct_call_add_imm_caller_without_main_anchor() {
+  auto module = make_typed_direct_call_local_arg_module();
+  c4c::codegen::lir::LirFunction* caller = nullptr;
+  for (auto& function : module.functions) {
+    if (function.name == "main") {
+      caller = &function;
+      break;
+    }
+  }
+  expect_true(caller != nullptr,
+              "aarch64 renamed direct single-argument call regression test needs the zero-arg caller function");
+  if (caller == nullptr) {
+    return;
+  }
+
+  caller->name = "entry_inc";
+  caller->signature_text = "define i32 @entry_inc()\n";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+  expect_contains(rendered, ".globl entry_inc",
+                  "aarch64 backend seam should carry the renamed direct single-argument caller symbol through the asm path instead of hardcoding main");
+  expect_contains(rendered, ".type entry_inc, %function",
+                  "aarch64 backend seam should emit the renamed direct single-argument caller as a real function symbol");
+  expect_contains(rendered, "mov w0, #5",
+                  "aarch64 backend seam should still materialize the direct single-argument immediate after the caller rename");
+  expect_contains(rendered, "bl add_one",
+                  "aarch64 backend seam should keep the renamed direct single-argument helper call on the asm path");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 backend seam should not fall back when the direct single-argument caller is renamed away from main");
+}
+
 void test_aarch64_backend_renders_typed_direct_call_local_arg_spacing_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{
@@ -4036,6 +4100,37 @@ void test_aarch64_backend_scaffold_accepts_renamed_declared_direct_call_caller_w
                   "aarch64 backend seam should keep the renamed declared direct helper call on the asm path");
   expect_not_contains(rendered, "target triple =",
                       "aarch64 backend seam should not fall back when the lowered declared direct-call caller is renamed away from main");
+}
+
+void test_aarch64_backend_explicit_emit_surface_accepts_renamed_declared_direct_call_caller_without_main_anchor() {
+  auto module = make_extern_decl_call_module();
+  c4c::codegen::lir::LirFunction* caller = nullptr;
+  for (auto& function : module.functions) {
+    if (function.name == "main") {
+      caller = &function;
+      break;
+    }
+  }
+  expect_true(caller != nullptr,
+              "aarch64 renamed direct declared direct-call regression test needs the zero-arg caller function");
+  if (caller == nullptr) {
+    return;
+  }
+
+  caller->name = "entry_ext";
+  caller->signature_text = "define i32 @entry_ext()\n";
+
+  const auto rendered = c4c::backend::aarch64::emit_module(module);
+  expect_contains(rendered, ".globl entry_ext",
+                  "aarch64 explicit LIR emit surface should carry the renamed declared direct-call caller symbol through the asm path instead of hardcoding main");
+  expect_contains(rendered, ".type entry_ext, %function",
+                  "aarch64 explicit LIR emit surface should emit the renamed declared direct-call caller as a real function symbol");
+  expect_contains(rendered, "mov w0, #5",
+                  "aarch64 explicit LIR emit surface should still materialize the declared direct-call argument after the caller rename");
+  expect_contains(rendered, "bl helper_ext",
+                  "aarch64 explicit LIR emit surface should keep the renamed declared direct helper call on the asm path");
+  expect_not_contains(rendered, "define i32 @entry_ext()",
+                      "aarch64 explicit LIR emit surface should not fall back to LLVM text when the direct declared-call caller is renamed away from main");
 }
 
 void test_aarch64_backend_renders_extern_decl_slice_with_irrelevant_type_decl() {
@@ -6079,6 +6174,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_renders_zero_arg_typed_direct_call_slice_with_whitespace();
   test_aarch64_backend_scaffold_accepts_structured_zero_arg_direct_call_spacing_ir_without_signature_shims();
   test_aarch64_backend_scaffold_accepts_renamed_structured_zero_arg_direct_call_ir_without_signature_shims();
+  test_aarch64_backend_scaffold_accepts_renamed_zero_arg_direct_call_caller_without_main_anchor();
   test_aarch64_backend_renders_void_direct_call_imm_return_slice();
   test_aarch64_backend_scaffold_accepts_renamed_void_direct_call_imm_return_caller_without_main_anchor();
   test_aarch64_backend_rejects_intrinsic_callee_from_direct_call_fast_path();
@@ -6122,6 +6218,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_scaffold_rejects_structured_direct_call_add_imm_when_helper_body_contract_disagrees();
   test_aarch64_backend_scaffold_accepts_renamed_structured_direct_call_add_imm_ir_without_signature_shims();
   test_aarch64_backend_scaffold_accepts_renamed_structured_direct_call_add_imm_caller_without_main_anchor();
+  test_aarch64_backend_scaffold_accepts_renamed_direct_call_add_imm_caller_without_main_anchor();
   test_aarch64_backend_renders_typed_direct_call_local_arg_spacing_slice();
   test_aarch64_backend_scaffold_accepts_structured_direct_call_local_arg_spacing_ir_without_signature_shims();
   test_aarch64_backend_renders_typed_two_arg_direct_call_local_arg_slice();
@@ -6167,6 +6264,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_renders_extern_decl_slice();
   test_aarch64_backend_explicit_emit_surface_matches_structured_declared_direct_call_path();
   test_aarch64_backend_scaffold_accepts_renamed_declared_direct_call_caller_without_main_anchor();
+  test_aarch64_backend_explicit_emit_surface_accepts_renamed_declared_direct_call_caller_without_main_anchor();
   test_aarch64_backend_renders_extern_decl_slice_with_irrelevant_type_decl();
   test_aarch64_backend_lowered_ir_text_fallback_ignores_legacy_lir_metadata();
   test_aarch64_backend_renders_extern_global_load_slice();

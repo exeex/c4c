@@ -340,8 +340,8 @@ bool backend_lir_signature_matches(std::string_view signature_text,
                                    std::string_view expected_return_type,
                                    std::string_view expected_function_name,
                                    std::initializer_list<std::string_view> expected_param_types);
-bool backend_lir_is_i32_main_definition(std::string_view signature_text);
-bool backend_lir_is_zero_arg_i32_main_definition(std::string_view signature_text);
+bool backend_lir_is_i32_definition(std::string_view signature_text);
+bool backend_lir_is_zero_arg_i32_definition(std::string_view signature_text);
 
 std::optional<c4c::codegen::lir::ParsedLirDirectGlobalTypedCallView>
 parse_backend_direct_global_typed_call(const c4c::codegen::lir::LirCallOp& call);
@@ -678,19 +678,6 @@ parse_backend_single_helper_zero_arg_caller_lir_module(
       &main_block,
       main_ret,
   };
-}
-
-inline std::optional<ParsedBackendSingleHelperMainLirModuleView>
-parse_backend_single_helper_zero_arg_main_lir_module(
-    const c4c::codegen::lir::LirModule& module,
-    std::size_t expected_main_inst_count) {
-  const auto parsed =
-      parse_backend_single_helper_zero_arg_caller_lir_module(module, expected_main_inst_count);
-  if (!parsed.has_value() || parsed->main_function == nullptr ||
-      parsed->main_function->name != "main") {
-    return std::nullopt;
-  }
-  return parsed;
 }
 
 inline std::optional<ParsedBackendStructuredTwoParamAddFunctionView>
@@ -2187,7 +2174,7 @@ parse_backend_minimal_folded_two_arg_direct_call_lir_module(
 
 inline std::optional<ParsedBackendMinimalDirectCallLirModuleView>
 parse_backend_minimal_direct_call_lir_module(const c4c::codegen::lir::LirModule& module) {
-  const auto parsed = parse_backend_single_helper_zero_arg_main_lir_module(module, 1);
+  const auto parsed = parse_backend_single_helper_zero_arg_caller_lir_module(module, 1);
   if (!parsed.has_value()) {
     return std::nullopt;
   }

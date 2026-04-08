@@ -2873,7 +2873,7 @@ std::optional<MinimalLocalArraySlice> parse_minimal_local_array_slice(
 
   const auto& function = module.functions.front();
   if (function.is_declaration ||
-      !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(function.signature_text) ||
+      !c4c::backend::backend_lir_is_zero_arg_i32_definition(function.signature_text) ||
       function.entry.value != 0 || function.blocks.size() != 1 ||
       function.alloca_insts.size() != 1 || !function.stack_objects.empty()) {
     return std::nullopt;

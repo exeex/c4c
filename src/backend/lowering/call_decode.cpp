@@ -144,7 +144,7 @@ bool backend_lir_signature_matches(std::string_view signature_text,
   return true;
 }
 
-bool backend_lir_is_i32_main_definition(std::string_view signature_text) {
+bool backend_lir_is_i32_definition(std::string_view signature_text) {
   std::string_view linkage;
   std::string_view return_type;
   std::string_view function_name;
@@ -152,11 +152,11 @@ bool backend_lir_is_i32_main_definition(std::string_view signature_text) {
     return false;
   }
 
-  return linkage == "define" && return_type == "i32" && function_name == "main";
+  return linkage == "define" && return_type == "i32" && !function_name.empty();
 }
 
-bool backend_lir_is_zero_arg_i32_main_definition(std::string_view signature_text) {
-  if (!backend_lir_is_i32_main_definition(signature_text)) {
+bool backend_lir_is_zero_arg_i32_definition(std::string_view signature_text) {
+  if (!backend_lir_is_i32_definition(signature_text)) {
     return false;
   }
 
