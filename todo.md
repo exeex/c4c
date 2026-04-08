@@ -7,14 +7,14 @@ Source Plan: plan.md
 - Step 6 cleanup: remove the remaining `--codegen asm` backend-to-LLVM rescue
   diagnostics now that Step 4/5 legacy-lowering and legacy-IR deletion work is
   already complete in-tree
-- Current slice: completed the unsupported-asm diagnostic cleanup in
-  `src/apps/c4cll.cpp`; keep `src/codegen/llvm/llvm_codegen.cpp`'s
-  direct-BIR-rejection-to-native-LIR retry because two active aarch64
-  c-testsuite cases still depend on that native retry and it is not the LLVM
-  rescue targeted by Step 6
-- Next intended slice: continue Step 6 by isolating the remaining true
-  backend-to-LLVM rescue behavior without regressing the active aarch64 native
-  retry coverage
+- Current slice: completed the remaining true `CodegenPath::Lir`
+  backend-to-LLVM rescue removal for unsupported `riscv64 --codegen asm`
+  requests in `src/codegen/llvm/llvm_codegen.cpp` while preserving the
+  x86/aarch64 native retry path that still covers active aarch64 cases
+- Next intended slice: re-audit whether the remaining direct-BIR rejection
+  retry in `src/codegen/llvm/llvm_codegen.cpp` can be narrowed further without
+  regressing `c_testsuite_aarch64_backend_src_00012_c` /
+  `c_testsuite_aarch64_backend_src_00064_c`
 
 # Completed
 
@@ -39,6 +39,27 @@ Source Plan: plan.md
 - Reconfigured and rebuilt with `cmake -S . -B build` and
   `cmake --build build -j8`, reran focused
   `ctest --test-dir build -R '^(backend_bir_tests|backend_lir_aarch64_variadic_double_asm_unsupported|backend_lir_riscv64_variadic_double_asm_unsupported|backend_lir_unsupported_target_entry|c_testsuite_aarch64_backend_src_00012_c|c_testsuite_aarch64_backend_src_00064_c)$' --output-on-failure`,
+  reran the full `ctest --test-dir build -j8 --output-on-failure` suite into
+  `test_fail_after.log`, and confirmed the workspace is now at `2835/2835`
+  passing with 0 failures
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=4
+  failed=-3` and zero newly failing tests against `test_fail_before.log`
+
+- Replaced the remaining `src/codegen/llvm/llvm_codegen.cpp`
+  riscv64-only `CodegenPath::Lir` LLVM-text rescue with an explicit
+  `--codegen asm requires backend-native assembly output.` failure while
+  preserving the x86/aarch64 native retry helpers that still back active
+  aarch64 coverage
+- Tightened `backend_lir_riscv64_variadic_double_asm_unsupported` in
+  `tests/c/internal/InternalTests.cmake` to forbid the old fallback-explanation
+  narration, and replaced the stale
+  `backend_codegen_route_riscv64_global_load_falls_back_to_llvm` expectation
+  with `backend_codegen_route_riscv64_global_load_asm_unsupported`, pinning
+  that unsupported riscv64 asm requests now fail explicitly instead of
+  emitting LLVM text
+- Rebuilt `c4cll`, reran focused
+  `ctest --test-dir build -R '^(backend_lir_riscv64_variadic_double_asm_unsupported|backend_codegen_route_riscv64_global_load_asm_unsupported|backend_codegen_route_riscv64_return_add_defaults_to_bir|backend_codegen_route_riscv64_return_mul_defaults_to_bir|backend_lir_aarch64_variadic_double_asm_unsupported|c_testsuite_aarch64_backend_src_00012_c|c_testsuite_aarch64_backend_src_00064_c)$' --output-on-failure`,
   reran the full `ctest --test-dir build -j8 --output-on-failure` suite into
   `test_fail_after.log`, and confirmed the workspace is now at `2835/2835`
   passing with 0 failures

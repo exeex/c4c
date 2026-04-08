@@ -310,7 +310,7 @@ if(EXISTS "${EXAMPLE_C}")
               -DSRC=${INTERNAL_C_TEST_ROOT}/backend_case/variadic_double_bytes.c
               -DTARGET_TRIPLE=riscv64-unknown-linux-gnu
               "-DREQUIRED_STDERR_REGEX=error: --codegen asm requires backend-native assembly output\\."
-              "-DFORBIDDEN_STDERR_SNIPPETS=did not emit assembly for this input and cannot write .s.|Reason detected in emitted IR:|encountered varargs-related lowering pattern"
+              "-DFORBIDDEN_STDERR_SNIPPETS=did not emit assembly for this input and cannot write .s.|Reason detected in emitted IR:|encountered varargs-related lowering pattern|stdout assembly output is only available when the backend emits native asm.|file output no longer falls back to LLVM-generated asm.|Re-run with --codegen llvm if you need IR output."
               -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_backend_unsupported_asm_case.cmake"
   )
   set_tests_properties(backend_lir_riscv64_variadic_double_asm_unsupported PROPERTIES
@@ -1656,13 +1656,18 @@ if(CLANG_EXECUTABLE)
       FORBIDDEN_SNIPPETS "define i32 @add_pair(i32 %p.x, i32 %p.y)"
     )
 
-    c4c_add_backend_codegen_route_test(
-      backend_codegen_route_riscv64_global_load_falls_back_to_llvm
-      SRC "${INTERNAL_C_TEST_ROOT}/backend_case/global_load.c"
-      TARGET_TRIPLE riscv64-unknown-linux-gnu
-      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/global_load_riscv64.ll"
-      REQUIRED_SNIPPETS "@g_counter = global i32 11|define i32 @main()"
-      FORBIDDEN_SNIPPETS "bir.func @main()"
+    c4c_add_backend_cmake_test(
+      backend_codegen_route_riscv64_global_load_asm_unsupported
+      run_backend_unsupported_asm_case.cmake
+      -DCOMPILER=$<TARGET_FILE:c4cll>
+      -DSRC=${INTERNAL_C_TEST_ROOT}/backend_case/global_load.c
+      -DTARGET_TRIPLE=riscv64-unknown-linux-gnu
+      "-DREQUIRED_STDERR_REGEX=error: --codegen asm requires backend-native assembly output\\."
+      "-DFORBIDDEN_STDERR_SNIPPETS=stdout assembly output is only available when the backend emits native asm.|file output no longer falls back to LLVM-generated asm.|Re-run with --codegen llvm if you need IR output."
+    )
+    c4c_set_backend_test_labels(
+      backend_codegen_route_riscv64_global_load_asm_unsupported
+      backend_route
     )
   endif()
 
