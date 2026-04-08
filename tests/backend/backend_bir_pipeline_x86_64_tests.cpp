@@ -6,6 +6,57 @@
 
 namespace {
 
+void test_backend_bir_pipeline_drives_x86_direct_bir_minimal_direct_call_end_to_end() {
+  c4c::backend::bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.functions.push_back(c4c::backend::bir::Function{
+      .name = "helper",
+      .return_type = c4c::backend::bir::TypeKind::I32,
+      .params = {},
+      .local_slots = {},
+      .blocks = {c4c::backend::bir::Block{
+          .label = "entry",
+          .insts = {},
+          .terminator = c4c::backend::bir::ReturnTerminator{
+              .value = c4c::backend::bir::Value::immediate_i32(42),
+          },
+      }},
+      .is_declaration = false,
+  });
+  module.functions.push_back(c4c::backend::bir::Function{
+      .name = "main",
+      .return_type = c4c::backend::bir::TypeKind::I32,
+      .params = {},
+      .local_slots = {},
+      .blocks = {c4c::backend::bir::Block{
+          .label = "entry",
+          .insts = {c4c::backend::bir::CallInst{
+              .result = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%t0"),
+              .callee = "helper",
+              .args = {},
+              .return_type_name = "i32",
+          }},
+          .terminator = c4c::backend::bir::ReturnTerminator{
+              .value = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%t0"),
+          },
+      }},
+      .is_declaration = false,
+  });
+
+  const auto rendered =
+      c4c::backend::emit_module(c4c::backend::BackendModuleInput{module},
+                                make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".type helper, %function\nhelper:\n",
+                  "direct BIR minimal direct-call input should emit the helper definition on the x86 backend path");
+  expect_contains(rendered, ".globl main",
+                  "direct BIR minimal direct-call input should emit the main definition on the x86 backend path");
+  expect_contains(rendered, "mov eax, 42",
+                  "x86 direct BIR minimal direct-call input should materialize the helper immediate in native asm");
+  expect_contains(rendered, "call helper",
+                  "x86 direct BIR minimal direct-call input should lower the main-to-helper call without legacy backend IR");
+}
+
 void test_backend_bir_pipeline_drives_x86_return_add_smoke_case_end_to_end() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_bir_return_add_module()},
@@ -481,6 +532,7 @@ void test_backend_bir_pipeline_rejects_unsupported_direct_bir_input_on_x86() {
 }  // namespace
 
 void run_backend_bir_pipeline_x86_64_tests() {
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_direct_call_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_return_add_smoke_case_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_return_sub_smoke_case_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_zero_param_staged_constant_end_to_end);

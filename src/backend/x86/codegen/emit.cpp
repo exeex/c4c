@@ -4764,6 +4764,33 @@ std::string emit_minimal_direct_call_asm(const c4c::backend::BackendModule& modu
 }
 
 std::string emit_minimal_direct_call_asm(
+    const c4c::backend::bir::Module& module,
+    const c4c::backend::ParsedBirMinimalDirectCallModuleView& slice) {
+  if (slice.helper == nullptr || slice.main_function == nullptr) {
+    throw std::invalid_argument("BIR zero-argument direct-call slice without helper metadata");
+  }
+
+  if (slice.return_imm < std::numeric_limits<std::int32_t>::min() ||
+      slice.return_imm > std::numeric_limits<std::int32_t>::max()) {
+    throw std::invalid_argument("BIR helper return immediates outside the minimal mov-supported range");
+  }
+
+  const std::string helper_symbol = asm_symbol_name(module.target_triple, slice.helper->name);
+  const std::string main_symbol = asm_symbol_name(module.target_triple, slice.main_function->name);
+
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n";
+  out << ".text\n";
+  emit_function_prelude(out, helper_symbol, false);
+  out << "  mov eax, " << slice.return_imm << "\n"
+      << "  ret\n";
+  emit_function_prelude(out, main_symbol, true);
+  out << "  call " << helper_symbol << "\n"
+      << "  ret\n";
+  return out.str();
+}
+
+std::string emit_minimal_direct_call_asm(
     std::string_view target_triple,
     const c4c::backend::ParsedBackendMinimalDirectCallLirModuleView& slice) {
   if (slice.helper == nullptr || slice.main_function == nullptr) {
@@ -6177,6 +6204,10 @@ std::optional<std::string> try_emit_direct_lir_module(
 std::string emit_module(const c4c::backend::bir::Module& module,
                         const c4c::codegen::lir::LirModule* legacy_fallback) {
   (void)legacy_fallback;
+  if (const auto slice = c4c::backend::parse_bir_minimal_direct_call_module(module);
+      slice.has_value()) {
+    return emit_minimal_direct_call_asm(module, *slice);
+  }
   if (const auto imm = parse_minimal_return_imm(module); imm.has_value()) {
     return emit_minimal_return_asm(module, *imm);
   }
