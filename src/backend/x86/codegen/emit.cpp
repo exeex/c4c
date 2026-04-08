@@ -134,29 +134,6 @@ struct MinimalConditionalReturnSlice {
   ValueSource false_value;
 };
 
-struct MinimalConditionalPhiJoinSlice {
-  struct ArithmeticStep {
-    c4c::backend::BackendBinaryOpcode opcode = c4c::backend::BackendBinaryOpcode::Add;
-    std::int64_t imm = 0;
-  };
-
-  struct IncomingValue {
-    std::int64_t base_imm = 0;
-    std::vector<ArithmeticStep> steps;
-  };
-
-  c4c::codegen::lir::LirCmpPredicate predicate = c4c::codegen::lir::LirCmpPredicate::Eq;
-  std::string function_name;
-  std::int64_t lhs_imm = 0;
-  std::int64_t rhs_imm = 0;
-  std::string true_label;
-  std::string false_label;
-  std::string join_label;
-  IncomingValue true_value;
-  IncomingValue false_value;
-  std::optional<std::int64_t> join_add_imm;
-};
-
 struct MinimalConditionalAffineI8ReturnSlice {
   enum class ValueKind : unsigned char {
     Immediate,
@@ -2201,166 +2178,6 @@ std::optional<MinimalNamedReturnImmSlice> parse_minimal_countdown_do_while_retur
   };
 }
 
-std::optional<MinimalConditionalPhiJoinSlice> parse_minimal_conditional_phi_join_slice(
-    const c4c::codegen::lir::LirModule& module) {
-  using namespace c4c::codegen::lir;
-
-  if (module.functions.size() != 1 || !module.globals.empty() ||
-      !module.string_pool.empty() || !module.extern_decls.empty()) {
-    return std::nullopt;
-  }
-
-  const auto& function = module.functions.front();
-  if (function.is_declaration ||
-      !c4c::backend::backend_lir_signature_matches(
-          function.signature_text, "define", "i32", function.name, {}) ||
-      function.entry.value != 0 || function.blocks.size() != 4 ||
-      !function.alloca_insts.empty() || !function.stack_objects.empty()) {
-    return std::nullopt;
-  }
-
-  const auto& entry = function.blocks[0];
-  const auto& true_block = function.blocks[1];
-  const auto& false_block = function.blocks[2];
-  const auto& join_block = function.blocks[3];
-
-  const auto* cmp0 = entry.insts.empty() ? nullptr : std::get_if<LirCmpOp>(&entry.insts[0]);
-  const auto* cast = entry.insts.size() < 2 ? nullptr : std::get_if<LirCastOp>(&entry.insts[1]);
-  const auto* cmp1 = entry.insts.size() < 3 ? nullptr : std::get_if<LirCmpOp>(&entry.insts[2]);
-  const auto* condbr = std::get_if<LirCondBr>(&entry.terminator);
-  const auto cmp0_predicate = cmp0 == nullptr ? std::nullopt : cmp0->predicate.typed();
-  const auto cmp1_predicate = cmp1 == nullptr ? std::nullopt : cmp1->predicate.typed();
-  if (entry.label != "entry" || entry.insts.size() != 3 || cmp0 == nullptr || cast == nullptr ||
-      cmp1 == nullptr || condbr == nullptr || cmp0->is_float || !cmp0_predicate.has_value() ||
-      (*cmp0_predicate != LirCmpPredicate::Slt && *cmp0_predicate != LirCmpPredicate::Sle &&
-       *cmp0_predicate != LirCmpPredicate::Sgt && *cmp0_predicate != LirCmpPredicate::Sge &&
-       *cmp0_predicate != LirCmpPredicate::Eq && *cmp0_predicate != LirCmpPredicate::Ne &&
-       *cmp0_predicate != LirCmpPredicate::Ult && *cmp0_predicate != LirCmpPredicate::Ule &&
-       *cmp0_predicate != LirCmpPredicate::Ugt && *cmp0_predicate != LirCmpPredicate::Uge) ||
-      cmp0->type_str != "i32" || cast->kind != LirCastKind::ZExt ||
-      cast->from_type != "i1" || cast->operand != cmp0->result || cast->to_type != "i32" ||
-      cmp1->is_float || cmp1_predicate != LirCmpPredicate::Ne || cmp1->type_str != "i32" ||
-      cmp1->lhs != cast->result || cmp1->rhs != "0" || condbr->cond_name != cmp1->result ||
-      true_block.label != condbr->true_label || false_block.label != condbr->false_label) {
-    return std::nullopt;
-  }
-
-  const auto* true_branch = std::get_if<LirBr>(&true_block.terminator);
-  const auto* false_branch = std::get_if<LirBr>(&false_block.terminator);
-  if (true_branch == nullptr || false_branch == nullptr ||
-      true_branch->target_label != join_block.label ||
-      false_branch->target_label != join_block.label ||
-      (join_block.insts.size() != 1 && join_block.insts.size() != 2)) {
-    return std::nullopt;
-  }
-
-  const auto parse_incoming_value =
-      [](const LirBlock& block,
-         std::string_view expected_result)
-      -> std::optional<MinimalConditionalPhiJoinSlice::IncomingValue> {
-    MinimalConditionalPhiJoinSlice::IncomingValue value;
-    std::string current_name;
-
-    if (block.insts.empty()) {
-      const auto imm = parse_i64(expected_result);
-      if (!imm.has_value()) {
-        return std::nullopt;
-      }
-      value.base_imm = *imm;
-      return value;
-    }
-
-    for (std::size_t index = 0; index < block.insts.size(); ++index) {
-      const auto* inst = std::get_if<LirBinOp>(&block.insts[index]);
-      const auto opcode = inst == nullptr ? std::nullopt : inst->opcode.typed();
-      if (inst == nullptr || !opcode.has_value() || inst->type_str != "i32" ||
-          (*opcode != LirBinaryOpcode::Add && *opcode != LirBinaryOpcode::Sub)) {
-        return std::nullopt;
-      }
-
-      const auto rhs_imm = parse_i64(inst->rhs);
-      if (!rhs_imm.has_value()) {
-        return std::nullopt;
-      }
-
-      if (index == 0) {
-        const auto base_imm = parse_i64(inst->lhs);
-        if (!base_imm.has_value()) {
-          return std::nullopt;
-        }
-        value.base_imm = *base_imm;
-      } else if (inst->lhs != current_name) {
-        return std::nullopt;
-      }
-
-      value.steps.push_back(
-          {*opcode == LirBinaryOpcode::Add ? c4c::backend::BackendBinaryOpcode::Add
-                                           : c4c::backend::BackendBinaryOpcode::Sub,
-           *rhs_imm});
-      current_name = inst->result;
-    }
-
-    if (current_name != expected_result) {
-      return std::nullopt;
-    }
-
-    return value;
-  };
-
-  const auto lhs_imm = parse_i64(cmp0->lhs);
-  const auto rhs_imm = parse_i64(cmp0->rhs);
-  if (!lhs_imm.has_value() || !rhs_imm.has_value()) {
-    return std::nullopt;
-  }
-
-  const auto* phi = std::get_if<LirPhiOp>(&join_block.insts.front());
-  if (phi == nullptr || phi->type_str != "i32" || phi->incoming.size() != 2 ||
-      phi->incoming[0].second != true_block.label ||
-      phi->incoming[1].second != false_block.label) {
-    return std::nullopt;
-  }
-
-  std::optional<std::int64_t> join_add_imm;
-  if (join_block.insts.size() == 1) {
-    const auto* ret = std::get_if<LirRet>(&join_block.terminator);
-    if (ret == nullptr || !ret->value_str.has_value() || ret->type_str != "i32" ||
-        *ret->value_str != phi->result) {
-      return std::nullopt;
-    }
-  } else {
-    const auto* add = std::get_if<LirBinOp>(&join_block.insts[1]);
-    const auto* ret = std::get_if<LirRet>(&join_block.terminator);
-    const auto add_opcode = add == nullptr ? std::nullopt : add->opcode.typed();
-    if (add == nullptr || !add_opcode.has_value() || *add_opcode != LirBinaryOpcode::Add ||
-        add->type_str != "i32" || add->lhs != phi->result || ret == nullptr ||
-        !ret->value_str.has_value() || ret->type_str != "i32" ||
-        *ret->value_str != add->result) {
-      return std::nullopt;
-    }
-    join_add_imm = parse_i64(add->rhs);
-    if (!join_add_imm.has_value()) {
-      return std::nullopt;
-    }
-  }
-
-  const auto true_value = parse_incoming_value(true_block, phi->incoming[0].first);
-  const auto false_value = parse_incoming_value(false_block, phi->incoming[1].first);
-  if (!true_value.has_value() || !false_value.has_value()) {
-    return std::nullopt;
-  }
-
-  return MinimalConditionalPhiJoinSlice{*cmp0_predicate,
-                                        function.name,
-                                        *lhs_imm,
-                                        *rhs_imm,
-                                        true_block.label,
-                                        false_block.label,
-                                        join_block.label,
-                                        *true_value,
-                                        *false_value,
-                                        join_add_imm};
-}
-
 std::optional<MinimalLocalArraySlice> parse_minimal_local_array_slice(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
@@ -4125,58 +3942,6 @@ std::string emit_minimal_countdown_loop_asm(std::string_view target_triple,
   return out.str();
 }
 
-std::string emit_minimal_conditional_phi_join_asm(
-    std::string_view target_triple,
-    const MinimalConditionalPhiJoinSlice& slice) {
-  const std::string symbol = asm_symbol_name(target_triple, slice.function_name);
-  std::ostringstream out;
-  out << ".intel_syntax noprefix\n";
-  out << ".text\n";
-  out << ".globl " << symbol << "\n";
-  out << symbol << ":\n";
-
-  const char* fail_branch = nullptr;
-  switch (slice.predicate) {
-    case c4c::codegen::lir::LirCmpPredicate::Slt: fail_branch = "jge"; break;
-    case c4c::codegen::lir::LirCmpPredicate::Sle: fail_branch = "jg"; break;
-    case c4c::codegen::lir::LirCmpPredicate::Sgt: fail_branch = "jle"; break;
-    case c4c::codegen::lir::LirCmpPredicate::Sge: fail_branch = "jl"; break;
-    case c4c::codegen::lir::LirCmpPredicate::Eq: fail_branch = "jne"; break;
-    case c4c::codegen::lir::LirCmpPredicate::Ne: fail_branch = "je"; break;
-    case c4c::codegen::lir::LirCmpPredicate::Ult: fail_branch = "jae"; break;
-    case c4c::codegen::lir::LirCmpPredicate::Ule: fail_branch = "ja"; break;
-    case c4c::codegen::lir::LirCmpPredicate::Ugt: fail_branch = "jbe"; break;
-    case c4c::codegen::lir::LirCmpPredicate::Uge: fail_branch = "jb"; break;
-    default:
-      throw std::invalid_argument("conditional-phi-join predicates outside the current compare-and-branch x86 slice");
-  }
-
-  out << "  mov eax, " << slice.lhs_imm << "\n";
-  out << "  cmp eax, " << slice.rhs_imm << "\n";
-  out << "  " << fail_branch << " .L" << slice.false_label << "\n";
-  out << ".L" << slice.true_label << ":\n";
-  out << "  mov eax, " << slice.true_value.base_imm << "\n";
-  for (const auto& step : slice.true_value.steps) {
-    out << "  "
-        << (step.opcode == c4c::backend::BackendBinaryOpcode::Sub ? "sub" : "add")
-        << " eax, " << step.imm << "\n";
-  }
-  out << "  jmp .L" << slice.join_label << "\n";
-  out << ".L" << slice.false_label << ":\n";
-  out << "  mov eax, " << slice.false_value.base_imm << "\n";
-  for (const auto& step : slice.false_value.steps) {
-    out << "  "
-        << (step.opcode == c4c::backend::BackendBinaryOpcode::Sub ? "sub" : "add")
-        << " eax, " << step.imm << "\n";
-  }
-  out << ".L" << slice.join_label << ":\n";
-  if (slice.join_add_imm.has_value()) {
-    out << "  add eax, " << *slice.join_add_imm << "\n";
-  }
-  out << "  ret\n";
-  return out.str();
-}
-
 std::string emit_minimal_local_array_asm(std::string_view target_triple,
                                          const MinimalLocalArraySlice& slice) {
   if (slice.store0_imm < std::numeric_limits<std::int32_t>::min() ||
@@ -4640,10 +4405,6 @@ std::optional<std::string> try_emit_direct_lir_module(
     if (const auto slice = parse_minimal_countdown_do_while_return_slice(module);
         slice.has_value()) {
       return emit_minimal_return_asm(module.target_triple, slice->function_name, slice->return_imm);
-    }
-    if (const auto slice = parse_minimal_conditional_phi_join_slice(module);
-        slice.has_value()) {
-      return emit_minimal_conditional_phi_join_asm(module.target_triple, *slice);
     }
     if (const auto slice = parse_minimal_multi_printf_vararg_slice(module);
         slice.has_value()) {

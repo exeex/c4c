@@ -1119,6 +1119,34 @@ void test_backend_bir_pipeline_drives_x86_lir_minimal_conditional_return_through
                       "x86 LIR conditional-return input should stay on native asm emission instead of falling back to LLVM text");
 }
 
+void test_backend_bir_pipeline_drives_x86_lir_conditional_phi_join_through_bir_end_to_end() {
+  const auto lowered =
+      c4c::backend::try_lower_to_bir(make_bir_single_param_select_eq_phi_module());
+  expect_true(lowered.has_value(),
+              "x86 LIR conditional-phi-join input should lower into a direct BIR module before target emission");
+  expect_true(lowered->functions.size() == 1 &&
+                  lowered->functions.front().blocks.size() == 1 &&
+                  lowered->functions.front().blocks.front().insts.size() == 1 &&
+                  std::holds_alternative<c4c::backend::bir::SelectInst>(
+                      lowered->functions.front().blocks.front().insts.front()),
+              "x86 LIR conditional-phi-join input should collapse to the shared BIR select form before target emission");
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_bir_single_param_select_eq_phi_module()},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl choose",
+                  "x86 LIR conditional-phi-join input should still reach native asm emission after routing through the shared BIR path");
+  expect_contains(rendered, "cmp eax, 7",
+                  "x86 LIR conditional-phi-join input should lower the fused BIR predicate to the native branch form on the x86 path");
+  expect_contains(rendered, "mov eax, 11",
+                  "x86 LIR conditional-phi-join input should preserve the then-arm immediate through the BIR-owned select emission");
+  expect_contains(rendered, "mov eax, 4",
+                  "x86 LIR conditional-phi-join input should preserve the else-arm immediate through the BIR-owned select emission");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR conditional-phi-join input should stay on native asm emission instead of falling back to LLVM text");
+}
+
 void test_backend_bir_pipeline_drives_x86_return_add_smoke_case_end_to_end() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_bir_return_add_module()},
@@ -1613,6 +1641,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_dual_identity_direct_call_sub_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_call_crossing_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_conditional_return_through_bir_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_conditional_phi_join_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_return_add_smoke_case_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_return_sub_smoke_case_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_zero_param_staged_constant_end_to_end);

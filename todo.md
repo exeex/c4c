@@ -5,14 +5,35 @@ Source Plan: plan.md
 # Active Item
 
 - Step 3: migrate the next aarch64 emitter helper cluster onto direct BIR
-- Current slice: inspect the next redundant x86 emitter-local LIR helper seam
-  that already has a direct-BIR path, with countdown-loop and conditional
-  phi-join families as the next candidates
-- Next intended slice: add a focused x86 LIR-through-BIR pipeline test for the
-  next removable seam, then delete that emitter-local LIR parser once the
-  native direct-BIR emitter covers it cleanly
+- Current slice: inspect whether the remaining x86 countdown-loop LIR fast path
+  now has a direct-BIR equivalent or still needs a bounded BIR contract
+  addition before removal
+- Next intended slice: if countdown-loop still lacks a shared BIR route, add
+  the smallest validating lowering coverage needed to make that gap explicit
+  before changing the x86 emitter
 
 # Completed
+
+- Added focused x86 LIR-through-BIR pipeline coverage in
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` for the
+  conditional-phi-join family so the x86 path now validates that this seam
+  lowers into a shared one-block BIR `select` before target emission
+- Removed the redundant x86 emitter-local `parse_minimal_conditional_phi_join_slice(...)`
+  matcher and `emit_minimal_conditional_phi_join_asm(...)` fast path from
+  `src/backend/x86/codegen/emit.cpp`, leaving this family to route through the
+  shared BIR select emitter instead of bespoke x86-local LIR parsing
+- Rebuilt `backend_bir_tests`, `backend_shared_util_tests`, and `c4cll`
+  successfully after the x86 conditional-phi-join fast-path removal
+- Reran
+  `ctest --test-dir build -R 'backend_(bir_tests|shared_util_tests)' --output-on-failure`
+  successfully after the x86 conditional-phi-join fast-path removal
+- Reran the full `ctest --test-dir build -j8 --output-on-failure` suite and
+  refreshed `test_fail_after.log`; compared with `test_fail_before.log`, the
+  workspace improved from `2675/2834` passing with 159 failures to
+  `2834/2834` passing with 0 failures
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=159
+  failed=-159` and zero newly failing tests
 
 - Removed the still-live
   `parse_backend_minimal_call_crossing_direct_call_lir_module(...)` adapter and
