@@ -113,6 +113,21 @@ Completed in this slice:
   [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
   covering both backend selection and explicit direct-vs-lowered parity for
   the bounded dual-identity direct-call subtraction slice
+- removed the remaining x86 member-array runtime production-side `main` anchor
+  from
+  [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+  by teaching the direct parser to identify the bounded zero-argument caller
+  structurally instead of requiring `function.name == "main"` for the
+  by-value, nested by-value, and nested member-pointer runtime variants
+- taught the x86 member-array runtime emitter in
+  [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+  to carry the observed caller symbol through the bounded asm slice instead of
+  hardcoding the emitted entry symbol to `main`, so renamed caller fixtures
+  stay on the direct asm path without routing through legacy backend IR
+- proved the production deletion with new renamed-caller regressions in
+  [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
+  covering the nested by-value and nested member-pointer member-array runtime
+  families on both backend selection and the explicit x86 LIR emit surface
 - wired the existing plain two-argument direct-call LIR parser into the x86
   explicit emit surface in
   [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
@@ -175,6 +190,10 @@ Next intended slice:
 - target another bounded x86-local helper/runtime family that still hits
   `lower_lir_to_backend_module(...)` on the explicit LIR entrypoint now that
   the folded two-argument helper seam is gone
+- target another explicit x86 LIR helper/runtime family whose direct parser or
+  emitter still relies on symbol-specific fixture assumptions beyond the
+  member-array runtime slice, and delete that production anchor together with
+  matching direct-vs-lowered regressions
 - removed the old x86 emitter-local post-adaptation return-immediate/add/sub
   recognition branches and replaced them with the BIR-first direct-LIR path
 - proved the shared parser with a new regression test in

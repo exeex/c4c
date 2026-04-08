@@ -88,6 +88,7 @@ struct MinimalMemberArrayRuntimeSlice {
 
   Kind kind = Kind::ByValueParam;
   std::string helper_name;
+  std::string caller_name = "main";
   std::int64_t first_imm = 0;
   std::int64_t second_imm = 0;
 };
@@ -4286,26 +4287,25 @@ std::optional<MinimalMemberArrayRuntimeSlice> parse_minimal_member_array_runtime
   }
 
   const auto* main_fn = static_cast<const c4c::codegen::lir::LirFunction*>(nullptr);
-  for (const auto& function : module.functions) {
-    if (function.name == "main") {
-      main_fn = &function;
-      break;
-    }
-  }
   const auto* helper = static_cast<const c4c::codegen::lir::LirFunction*>(nullptr);
   for (const auto& function : module.functions) {
-    if (function.name == "main") {
-      continue;
+    if (!function.is_declaration &&
+        c4c::backend::backend_lir_signature_matches(
+            function.signature_text, "define", "i32", function.name, {})) {
+      if (main_fn != nullptr) {
+        return std::nullopt;
+      }
+      main_fn = &function;
+    } else {
+      if (helper != nullptr) {
+        return std::nullopt;
+      }
+      helper = &function;
     }
-    if (helper != nullptr) {
-      return std::nullopt;
-    }
-    helper = &function;
   }
   if (helper == nullptr || main_fn == nullptr || helper->is_declaration || main_fn->is_declaration ||
       helper->entry.value != 0 || main_fn->entry.value != 0 || helper->blocks.size() != 1 ||
-      main_fn->blocks.size() != 1 ||
-      !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(main_fn->signature_text)) {
+      main_fn->blocks.size() != 1) {
     return std::nullopt;
   }
 
@@ -4438,6 +4438,7 @@ std::optional<MinimalMemberArrayRuntimeSlice> parse_minimal_member_array_runtime
   }
 
   slice.helper_name = helper->name;
+  slice.caller_name = main_fn->name;
   slice.first_imm = element_imms[0];
   slice.second_imm = element_imms[1];
   return slice;
@@ -4923,7 +4924,7 @@ std::string emit_minimal_member_array_runtime_asm(
   ensure_i32_imm(slice.second_imm, "second member-array");
 
   const std::string helper_symbol = asm_symbol_name(target_triple, slice.helper_name);
-  const std::string main_symbol = asm_symbol_name(target_triple, "main");
+  const std::string main_symbol = asm_symbol_name(target_triple, slice.caller_name);
 
   std::ostringstream out;
   out << ".intel_syntax noprefix\n";

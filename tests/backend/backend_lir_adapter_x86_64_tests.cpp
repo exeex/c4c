@@ -4579,6 +4579,60 @@ void test_x86_backend_explicit_lir_emit_surface_matches_nested_param_member_arra
                       "x86 explicit LIR emit surface should not fall back to LLVM text for the nested by-value member-array runtime slice");
 }
 
+void test_x86_backend_explicit_lir_emit_surface_keeps_renamed_nested_param_member_array_runtime_path() {
+  auto module = make_nested_param_member_array_runtime_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  std::swap(module.functions.front(), module.functions.back());
+
+  c4c::codegen::lir::LirFunction* helper = nullptr;
+  c4c::codegen::lir::LirFunction* caller = nullptr;
+  for (auto& function : module.functions) {
+    if (function.name == "get_second") {
+      helper = &function;
+    } else if (function.name == "main") {
+      caller = &function;
+    }
+  }
+  expect_true(helper != nullptr && caller != nullptr,
+              "x86 renamed nested member-array runtime regression test needs helper and caller functions");
+  if (helper == nullptr || caller == nullptr) {
+    return;
+  }
+
+  helper->name = "pick_nested_second";
+  helper->signature_text = "define i32 @pick_nested_second(%struct.Outer %p.o)\n";
+  caller->name = "entry_value";
+  caller->signature_text = "define i32 @entry_value()\n";
+
+  auto& call = std::get<c4c::codegen::lir::LirCallOp>(caller->blocks.front().insts.back());
+  call.callee = c4c::codegen::lir::LirOperand(std::string("@pick_nested_second"),
+                                              c4c::codegen::lir::LirOperandKind::Global);
+
+  const auto direct_rendered = c4c::backend::x86::emit_module(module);
+  const auto backend_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_true(direct_rendered == backend_rendered,
+              "x86 backend selection should keep renamed nested by-value member-array runtime slices on the same direct x86 LIR emit path");
+  expect_contains(direct_rendered, ".globl pick_nested_second\n",
+                  "x86 explicit LIR emit surface should key renamed nested bounded member-array helpers from the observed helper symbol");
+  expect_contains(direct_rendered, ".globl entry_value\n",
+                  "x86 explicit LIR emit surface should publish the renamed zero-arg caller symbol instead of assuming main");
+  expect_contains(direct_rendered, "mov eax, esi\n",
+                  "x86 explicit LIR emit surface should still return the nested second split aggregate register for renamed nested by-value member-array helpers");
+  expect_contains(direct_rendered, "mov edi, 4\n",
+                  "x86 explicit LIR emit surface should still materialize the first renamed nested bounded member-array element in the helper call setup");
+  expect_contains(direct_rendered, "mov esi, 9\n",
+                  "x86 explicit LIR emit surface should still materialize the second renamed nested bounded member-array element in the helper call setup");
+  expect_contains(direct_rendered, "call pick_nested_second\n",
+                  "x86 explicit LIR emit surface should keep renamed nested by-value member-array helper calls on the asm path without backend-IR adaptation");
+  expect_not_contains(direct_rendered, "target triple =",
+                      "x86 explicit LIR emit surface should not fall back to LLVM text for renamed nested by-value member-array runtime slices");
+}
+
 void test_x86_backend_explicit_lir_emit_surface_matches_nested_member_pointer_array_runtime_path() {
   auto module = make_nested_member_pointer_array_runtime_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -4602,6 +4656,62 @@ void test_x86_backend_explicit_lir_emit_surface_matches_nested_member_pointer_ar
                   "x86 explicit LIR emit surface should materialize the nested second bounded local array element directly");
   expect_not_contains(direct_rendered, "target triple =",
                       "x86 explicit LIR emit surface should not fall back to LLVM text for the nested member-pointer runtime slice");
+}
+
+void test_x86_backend_explicit_lir_emit_surface_keeps_renamed_nested_member_pointer_array_runtime_path() {
+  auto module = make_nested_member_pointer_array_runtime_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  std::swap(module.functions.front(), module.functions.back());
+
+  c4c::codegen::lir::LirFunction* helper = nullptr;
+  c4c::codegen::lir::LirFunction* caller = nullptr;
+  for (auto& function : module.functions) {
+    if (function.name == "get_second") {
+      helper = &function;
+    } else if (function.name == "main") {
+      caller = &function;
+    }
+  }
+  expect_true(helper != nullptr && caller != nullptr,
+              "x86 renamed nested member-pointer runtime regression test needs helper and caller functions");
+  if (helper == nullptr || caller == nullptr) {
+    return;
+  }
+
+  helper->name = "pick_nested_second";
+  helper->signature_text = "define i32 @pick_nested_second(ptr %p.o)\n";
+  caller->name = "entry_value";
+  caller->signature_text = "define i32 @entry_value()\n";
+
+  auto& call = std::get<c4c::codegen::lir::LirCallOp>(caller->blocks.front().insts.back());
+  call.callee = c4c::codegen::lir::LirOperand(std::string("@pick_nested_second"),
+                                              c4c::codegen::lir::LirOperandKind::Global);
+
+  const auto direct_rendered = c4c::backend::x86::emit_module(module);
+  const auto backend_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_true(direct_rendered == backend_rendered,
+              "x86 backend selection should keep renamed nested member-pointer runtime slices on the same direct x86 LIR emit path");
+  expect_contains(direct_rendered, ".globl pick_nested_second\n",
+                  "x86 explicit LIR emit surface should key renamed nested member-pointer helpers from the observed helper symbol");
+  expect_contains(direct_rendered, ".globl entry_value\n",
+                  "x86 explicit LIR emit surface should publish the renamed zero-arg caller symbol for nested member-pointer slices");
+  expect_contains(direct_rendered, "mov rax, qword ptr [rdi]\n",
+                  "x86 explicit LIR emit surface should still reload the nested inner pointer directly from the aggregate member for renamed nested member-pointer helpers");
+  expect_contains(direct_rendered, "mov eax, dword ptr [rax + 4]\n",
+                  "x86 explicit LIR emit surface should still fold the nested second member-array load for renamed nested member-pointer helpers");
+  expect_contains(direct_rendered, "mov dword ptr [rsp + 16], 4\n",
+                  "x86 explicit LIR emit surface should still materialize the first renamed nested bounded local array element directly");
+  expect_contains(direct_rendered, "mov dword ptr [rsp + 20], 8\n",
+                  "x86 explicit LIR emit surface should still materialize the second renamed nested bounded local array element directly");
+  expect_contains(direct_rendered, "call pick_nested_second\n",
+                  "x86 explicit LIR emit surface should keep renamed nested member-pointer helper calls on the asm path without backend-IR adaptation");
+  expect_not_contains(direct_rendered, "target triple =",
+                      "x86 explicit LIR emit surface should not fall back to LLVM text for renamed nested member-pointer runtime slices");
 }
 
 void test_x86_backend_renders_global_load_slice() {
@@ -6448,7 +6558,9 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_param_member_array_runtime_path);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_keeps_renamed_param_member_array_runtime_path);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_nested_param_member_array_runtime_path);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_keeps_renamed_nested_param_member_array_runtime_path);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_nested_member_pointer_array_runtime_path);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_keeps_renamed_nested_member_pointer_array_runtime_path);
   RUN_TEST(test_x86_backend_renders_global_load_slice);
   RUN_TEST(test_x86_backend_renders_global_store_reload_slice);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_bounded_scalar_global_load_path);
