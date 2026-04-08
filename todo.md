@@ -9,8 +9,33 @@ Source Plan: plan.md
   the next `BackendModule` seam that still carries real metadata instead of
   being a dead forwarding wrapper after the x86 zero-arg void-helper /
   fixed-immediate direct-call family finished its BIR-first cutover
+- Next intended slice: inspect the remaining x86/aarch64 emitter-local
+  `BackendModule` parser families after the single-function scalar-control-flow
+  cleanup and pick the next cluster that is now dead forwarding glue rather
+  than a real metadata-bearing seam
 
 # Completed
+
+- Removed the dead x86/aarch64 `BackendModule` single-function scalar-control-flow
+  overload set for minimal return/add/sub/affine parsing and emission now that
+  the active direct path already routes those slices through BIR-owned helpers
+- Deleted the matching dead emitter-local `BackendModule` helper plumbing
+  (`is_minimal_single_function_asm_slice(...)`,
+  `minimal_single_backend_function(...)`, and
+  `minimal_single_function_symbol(...)`) from the x86/aarch64 emitters where
+  those helpers only served the removed legacy overloads
+- Rebuilt `backend_bir_tests`, `backend_shared_util_tests`, and `c4cll`
+  successfully after the emitter overload cleanup
+- Reran
+  `ctest --test-dir build -R 'backend_(bir_tests|shared_util_tests)' --output-on-failure`
+  successfully after the cleanup
+- Reran the full `ctest --test-dir build -j --output-on-failure` suite and
+  refreshed `test_after.log` / `test_fail_after.log`; the workspace still has
+  the same 13 known failures as `test_fail_before.log` with `2821/2834` tests
+  passing
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=0 failed=0`
+  and zero newly failing tests
 
 - Switched the x86 zero-argument void-helper / fixed-immediate caller direct-BIR
   family to consume

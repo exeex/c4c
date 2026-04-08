@@ -1475,41 +1475,6 @@ c4c::backend::RegAllocIntegrationResult synthesize_shared_x86_call_crossing_rega
   return regalloc;
 }
 
-// These single-function slices already have a direct BIR equivalent shape:
-// one defined i32 function, one block, one terminal return, and at most one simple inst.
-bool is_minimal_single_function_asm_slice(const c4c::backend::BackendModule& module) {
-  const c4c::backend::BackendFunction* function = nullptr;
-  for (const auto& candidate : module.functions) {
-    if (candidate.is_declaration) continue;
-    if (function != nullptr) return false;
-    function = &candidate;
-  }
-  if (function == nullptr || !backend_function_is_definition(function->signature) ||
-      !is_i32_scalar_signature_return(function->signature) || function->signature.is_vararg ||
-      function->blocks.size() != 1) {
-    return false;
-  }
-
-  const auto& block = function->blocks.front();
-  if (block.label != "entry" || !block.terminator.value.has_value() ||
-      c4c::backend::backend_return_scalar_type(block.terminator) !=
-          c4c::backend::BackendScalarType::I32) {
-    return false;
-  }
-
-  return true;
-}
-
-const c4c::backend::BackendFunction* minimal_single_backend_function(
-    const c4c::backend::BackendModule& module) {
-  for (const auto& function : module.functions) {
-    if (!function.is_declaration) {
-      return &function;
-    }
-  }
-  return nullptr;
-}
-
 bool is_minimal_single_function_asm_slice(const c4c::backend::bir::Module& module) {
   if (module.functions.size() != 1) {
     return false;
@@ -1530,36 +1495,8 @@ bool is_minimal_single_function_asm_slice(const c4c::backend::bir::Module& modul
   return true;
 }
 
-std::string minimal_single_function_symbol(const c4c::backend::BackendModule& module) {
-  for (const auto& function : module.functions) {
-    if (!function.is_declaration) {
-      return asm_symbol_name(module, function.signature.name);
-    }
-  }
-
-  return asm_symbol_name(module, module.functions.front().signature.name);
-}
-
 std::string minimal_single_function_symbol(const c4c::backend::bir::Module& module) {
   return asm_symbol_name(module.target_triple, module.functions.front().name);
-}
-
-std::optional<std::int64_t> parse_minimal_return_imm(
-    const c4c::backend::BackendModule& module) {
-  if (!is_minimal_single_function_asm_slice(module)) {
-    return std::nullopt;
-  }
-
-  const auto* function = minimal_single_backend_function(module);
-  if (function == nullptr) {
-    return std::nullopt;
-  }
-  const auto& block = function->blocks.front();
-  if (!block.insts.empty()) {
-    return std::nullopt;
-  }
-
-  return parse_i64(*block.terminator.value);
 }
 
 std::optional<std::int64_t> parse_minimal_return_imm(
@@ -1576,35 +1513,6 @@ std::optional<std::int64_t> parse_minimal_return_imm(
   return parse_i64(*block.terminator.value);
 }
 
-std::optional<std::int64_t> parse_minimal_return_add_imm(
-    const c4c::backend::BackendModule& module) {
-  if (!is_minimal_single_function_asm_slice(module)) {
-    return std::nullopt;
-  }
-
-  const auto* function = minimal_single_backend_function(module);
-  if (function == nullptr) {
-    return std::nullopt;
-  }
-  const auto& block = function->blocks.front();
-  if (block.insts.size() != 1) {
-    return std::nullopt;
-  }
-
-  const auto* add = std::get_if<c4c::backend::BackendBinaryInst>(&block.insts.front());
-  if (add == nullptr || add->opcode != c4c::backend::BackendBinaryOpcode::Add ||
-      !is_i32_scalar_binary(*add) || *block.terminator.value != add->result) {
-    return std::nullopt;
-  }
-
-  const auto lhs = parse_i64(add->lhs);
-  const auto rhs = parse_i64(add->rhs);
-  if (!lhs.has_value() || !rhs.has_value()) {
-    return std::nullopt;
-  }
-
-  return *lhs + *rhs;
-}
 
 std::optional<std::int64_t> parse_minimal_return_add_imm(
     const c4c::backend::bir::Module& module) {
@@ -1636,35 +1544,6 @@ std::optional<std::int64_t> parse_minimal_return_add_imm(
   return *lhs + *rhs;
 }
 
-std::optional<std::int64_t> parse_minimal_return_sub_imm(
-    const c4c::backend::BackendModule& module) {
-  if (!is_minimal_single_function_asm_slice(module)) {
-    return std::nullopt;
-  }
-
-  const auto* function = minimal_single_backend_function(module);
-  if (function == nullptr) {
-    return std::nullopt;
-  }
-  const auto& block = function->blocks.front();
-  if (block.insts.size() != 1) {
-    return std::nullopt;
-  }
-
-  const auto* sub = std::get_if<c4c::backend::BackendBinaryInst>(&block.insts.front());
-  if (sub == nullptr || sub->opcode != c4c::backend::BackendBinaryOpcode::Sub ||
-      !is_i32_scalar_binary(*sub) || *block.terminator.value != sub->result) {
-    return std::nullopt;
-  }
-
-  const auto lhs = parse_i64(sub->lhs);
-  const auto rhs = parse_i64(sub->rhs);
-  if (!lhs.has_value() || !rhs.has_value()) {
-    return std::nullopt;
-  }
-
-  return *lhs - *rhs;
-}
 
 std::optional<std::int64_t> parse_minimal_return_sub_imm(
     const c4c::backend::bir::Module& module) {
@@ -1696,61 +1575,6 @@ std::optional<std::int64_t> parse_minimal_return_sub_imm(
   return *lhs - *rhs;
 }
 
-std::optional<MinimalAffineReturnSlice> parse_minimal_affine_return_slice(
-    const c4c::backend::BackendModule& module) {
-  if (!is_minimal_single_function_asm_slice(module)) {
-    return std::nullopt;
-  }
-
-  const auto* function = minimal_single_backend_function(module);
-  if (function == nullptr || function->signature.params.size() > 2 ||
-      function->signature.params.empty()) {
-    return std::nullopt;
-  }
-  for (const auto& param : function->signature.params) {
-    if (!is_i32_scalar_param(param)) {
-      return std::nullopt;
-    }
-  }
-
-  std::vector<std::string_view> param_names;
-  param_names.reserve(function->signature.params.size());
-  for (const auto& param : function->signature.params) {
-    param_names.push_back(param.name);
-  }
-  const auto& block = function->blocks.front();
-  std::unordered_map<std::string, AffineValue> values;
-  for (const auto& inst : block.insts) {
-    const auto* bin = std::get_if<c4c::backend::BackendBinaryInst>(&inst);
-    if (bin == nullptr || !is_i32_scalar_binary(*bin) || bin->result.empty()) {
-      return std::nullopt;
-    }
-    const auto lhs = lower_affine_operand(bin->lhs, param_names, values);
-    const auto rhs = lower_affine_operand(bin->rhs, param_names, values);
-    if (!lhs.has_value() || !rhs.has_value()) {
-      return std::nullopt;
-    }
-    const auto combined = combine_affine_values(*lhs, *rhs, bin->opcode);
-    if (!combined.has_value()) {
-      return std::nullopt;
-    }
-    values[bin->result] = *combined;
-  }
-
-  const auto lowered_return =
-      lower_affine_operand(*block.terminator.value, param_names, values);
-  if (!lowered_return.has_value()) {
-    return std::nullopt;
-  }
-
-  return MinimalAffineReturnSlice{
-      function->signature.name,
-      function->signature.params.size(),
-      lowered_return->uses_first_param,
-      lowered_return->uses_second_param,
-      lowered_return->constant,
-  };
-}
 
 std::optional<AffineValue> lower_affine_operand(
     const c4c::backend::bir::Value& value,
@@ -4543,19 +4367,6 @@ std::string emit_minimal_return_asm(std::string_view target_triple,
   return out.str();
 }
 
-std::string emit_minimal_return_asm(const c4c::backend::BackendModule& module,
-                                    std::int64_t return_imm) {
-  const std::string symbol = minimal_single_function_symbol(module);
-  std::ostringstream out;
-  out << ".intel_syntax noprefix\n";
-  out << ".text\n";
-  out << ".globl " << symbol << "\n";
-  out << symbol << ":\n";
-  out << "  mov eax, " << return_imm << "\n";
-  out << "  ret\n";
-  return out.str();
-}
-
 std::string emit_minimal_return_asm(const c4c::backend::bir::Module& module,
                                     std::int64_t return_imm) {
   const std::string symbol = minimal_single_function_symbol(module);
@@ -4565,56 +4376,6 @@ std::string emit_minimal_return_asm(const c4c::backend::bir::Module& module,
   out << ".globl " << symbol << "\n";
   out << symbol << ":\n";
   out << "  mov eax, " << return_imm << "\n";
-  out << "  ret\n";
-  return out.str();
-}
-
-std::string emit_minimal_affine_return_asm(
-    const c4c::backend::BackendModule& module,
-    const MinimalAffineReturnSlice& slice) {
-  const std::string symbol = asm_symbol_name(module, slice.function_name);
-  std::ostringstream out;
-  out << ".intel_syntax noprefix\n";
-  out << ".text\n";
-  emit_function_prelude(out, module, symbol, true);
-  const bool is_i686 = module.target_triple.find("i686") != std::string::npos;
-  auto emit_param_move = [&](int index) {
-    if (is_i686) {
-      out << "  mov eax, DWORD PTR [esp + " << (4 * (index + 1)) << "]\n";
-    } else if (index == 0) {
-      out << "  mov eax, edi\n";
-    } else {
-      out << "  mov eax, esi\n";
-    }
-  };
-  auto emit_param_add = [&](int index) {
-    if (is_i686) {
-      out << "  add eax, DWORD PTR [esp + " << (4 * (index + 1)) << "]\n";
-    } else if (index == 0) {
-      out << "  add eax, edi\n";
-    } else {
-      out << "  add eax, esi\n";
-    }
-  };
-
-  if (slice.uses_first_param) {
-    emit_param_move(0);
-    if (slice.uses_second_param) {
-      emit_param_add(1);
-    }
-  } else if (slice.uses_second_param) {
-    emit_param_move(1);
-  } else {
-    out << "  mov eax, " << slice.constant << "\n";
-    out << "  ret\n";
-    return out.str();
-  }
-
-  if (slice.constant > 0) {
-    out << "  add eax, " << slice.constant << "\n";
-  } else if (slice.constant < 0) {
-    out << "  sub eax, " << -slice.constant << "\n";
-  }
   out << "  ret\n";
   return out.str();
 }
