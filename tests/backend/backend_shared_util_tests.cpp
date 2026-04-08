@@ -74,10 +74,17 @@ void test_backend_shared_call_decode_parses_bir_minimal_direct_call_module() {
 
 void test_backend_shared_call_decode_parses_bir_minimal_declared_direct_call_module() {
   c4c::backend::bir::Module module;
+  module.string_constants.push_back(c4c::backend::bir::StringConstant{
+      .name = "msg",
+      .bytes = "hello\n",
+  });
   module.functions.push_back(c4c::backend::bir::Function{
       .name = "puts_like",
       .return_type = c4c::backend::bir::TypeKind::I32,
-      .params = {},
+      .params = {c4c::backend::bir::Param{
+          .type = c4c::backend::bir::TypeKind::I64,
+          .name = "%arg0",
+      }},
       .local_slots = {},
       .blocks = {},
       .is_declaration = true,
@@ -92,7 +99,7 @@ void test_backend_shared_call_decode_parses_bir_minimal_declared_direct_call_mod
           .insts = {c4c::backend::bir::CallInst{
               .result = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%t0"),
               .callee = "puts_like",
-              .args = {},
+              .args = {c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I64, "msg")},
               .return_type_name = "i32",
           }},
           .terminator = c4c::backend::bir::ReturnTerminator{
@@ -108,6 +115,10 @@ void test_backend_shared_call_decode_parses_bir_minimal_declared_direct_call_mod
   expect_true(parsed->callee != nullptr && parsed->callee->name == "puts_like" &&
                   parsed->main_function != nullptr && parsed->main_function->name == "main",
               "shared call-decode surface should preserve declaration and caller identities for BIR declared direct-call modules");
+  expect_true(parsed->args.size() == 1 &&
+                  parsed->args.front().kind == c4c::backend::ParsedBackendExternCallArg::Kind::Ptr &&
+                  parsed->args.front().operand == "@msg",
+              "shared call-decode surface should classify BIR i64 symbol operands as pointer-style extern call args");
   expect_true(parsed->call != nullptr && parsed->call->callee == "puts_like" &&
                   !parsed->return_call_result && parsed->return_imm == 7,
               "shared call-decode surface should allow BIR declared direct-call modules to return a fixed immediate after the call");

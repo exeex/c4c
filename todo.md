@@ -5,9 +5,9 @@ Source Plan: plan.md
 # Active Item
 
 - Step 2: switch one shared helper seam off `BackendModule`
-- Current slice: extend the BIR-first migration into the next declared-direct-
-  call seam, where a concrete emitter or shared helper still requires richer
-  extern-arg metadata than the current BIR surface carries
+- Current slice: continue the declared-direct-call migration into the next
+  native consumer after aarch64, reusing the new BIR extern-arg decoding
+  surface where richer direct-BIR metadata is now concrete
 
 # Completed
 
@@ -39,15 +39,31 @@ Source Plan: plan.md
   zero-argument direct-call module
 - Rebuilt `backend_bir_tests` and confirmed full-suite parity again:
   `2834/2834` tests passed in `test_after.log`
+- Extended `parse_bir_minimal_declared_direct_call_module(...)` to decode
+  bounded BIR extern-call arguments into concrete immediate vs pointer-style
+  metadata using declaration param types plus module symbol tables
+- Added shared-util coverage proving the BIR declared-direct-call parser
+  preserves pointer-style string-constant operands as concrete extern-call args
+- Switched the native aarch64 direct-BIR emitter to consume the new BIR
+  declared-direct-call view so that declared extern-call modules no longer need
+  the legacy `BackendModule` parser on that path
+- Added focused aarch64 direct-BIR pipeline coverage for a declared direct-call
+  module that passes a string-constant pointer to an extern declaration and
+  then returns a fixed immediate
+- Rebuilt the affected backend test binaries and reran the full
+  `ctest --test-dir build -j --output-on-failure` suite successfully
+- Confirmed full-suite parity for this slice: `2834/2834` tests passed in
+  `test_after.log`
 
 # Next
 
-- Extend the same migration pattern past the new aarch64 zero-argument
-  direct-call entry, likely into the next declared-direct-call seam
-- Extend the BIR declared-direct-call surface with typed-call / extern-arg
-  detail when a concrete emitter or shared helper needs it
+- Reuse the new BIR declared-direct-call arg view in the next native emitter or
+  shared helper seam that still routes through `BackendModule`
+- Decide whether the next highest-value cut is x86 declared direct-call
+  emission or further `call_decode` family cleanup around the stale
+  `parse_backend_minimal_declared_direct_call_module(...)` route
 - Continue shrinking stale `BackendModule`-only direct-call helpers one family
-  at a time
+  at a time now that BIR carries bounded extern-arg metadata for this slice
 
 # Notes
 
@@ -64,3 +80,6 @@ Source Plan: plan.md
 - The aarch64 direct BIR entry now matches x86 for the minimal helper/main
   zero-argument direct-call family; the next live shared seam is the richer
   declared-direct-call surface
+- This slice removes the native aarch64 direct-BIR declared-direct-call path
+  from the legacy `BackendModule` parser family, but x86 and the remaining
+  shared legacy declared-direct-call helpers still remain

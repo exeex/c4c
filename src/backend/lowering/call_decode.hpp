@@ -121,6 +121,7 @@ struct ParsedBirMinimalDeclaredDirectCallModuleView {
   const bir::Function* main_function = nullptr;
   const bir::Block* main_block = nullptr;
   const bir::CallInst* call = nullptr;
+  std::vector<ParsedBackendExternCallArg> args;
   bool return_call_result = false;
   std::int64_t return_imm = 0;
 };
@@ -1001,7 +1002,7 @@ parse_bir_minimal_direct_call_module(const bir::Module& module) {
 
 inline std::optional<ParsedBirMinimalDeclaredDirectCallModuleView>
 parse_bir_minimal_declared_direct_call_module(const bir::Module& module) {
-  if (!module.globals.empty() || !module.string_constants.empty() || module.functions.size() != 2) {
+  if (module.functions.size() != 2) {
     return std::nullopt;
   }
 
@@ -1010,8 +1011,14 @@ parse_bir_minimal_declared_direct_call_module(const bir::Module& module) {
   for (const auto& function : module.functions) {
     if (function.is_declaration) {
       if (callee != nullptr || function.return_type != bir::TypeKind::I32 ||
-          !function.params.empty() || !function.local_slots.empty() || !function.blocks.empty()) {
+          function.params.size() > 8 || !function.local_slots.empty() || !function.blocks.empty()) {
         return std::nullopt;
+      }
+      for (const auto& param : function.params) {
+        if (param.name.empty() ||
+            (param.type != bir::TypeKind::I32 && param.type != bir::TypeKind::I64)) {
+          return std::nullopt;
+        }
       }
       callee = &function;
       continue;
@@ -1042,8 +1049,73 @@ parse_bir_minimal_declared_direct_call_module(const bir::Module& module) {
     return std::nullopt;
   }
 
-  if (call->return_type_name != "i32" || call->args.size() > 6) {
+  if (call->return_type_name != "i32" || call->args.size() != callee->params.size()) {
     return std::nullopt;
+  }
+
+  std::vector<ParsedBackendExternCallArg> parsed_args;
+  parsed_args.reserve(call->args.size());
+  for (std::size_t index = 0; index < call->args.size(); ++index) {
+    const auto& param = callee->params[index];
+    const auto& arg = call->args[index];
+    if (arg.type != param.type) {
+      return std::nullopt;
+    }
+
+    if (arg.kind == bir::Value::Kind::Immediate) {
+      if (arg.type == bir::TypeKind::I32) {
+        parsed_args.push_back(ParsedBackendExternCallArg{
+            .kind = ParsedBackendExternCallArg::Kind::I32Imm,
+            .imm = arg.immediate,
+        });
+        continue;
+      }
+      if (arg.type == bir::TypeKind::I64) {
+        parsed_args.push_back(ParsedBackendExternCallArg{
+            .kind = ParsedBackendExternCallArg::Kind::I64Imm,
+            .imm = arg.immediate,
+        });
+        continue;
+      }
+      return std::nullopt;
+    }
+
+    if (arg.kind != bir::Value::Kind::Named || arg.name.empty() ||
+        arg.type != bir::TypeKind::I64) {
+      return std::nullopt;
+    }
+
+    bool known_symbol = false;
+    for (const auto& global : module.globals) {
+      if (global.name == arg.name) {
+        known_symbol = true;
+        break;
+      }
+    }
+    if (!known_symbol) {
+      for (const auto& string_constant : module.string_constants) {
+        if (string_constant.name == arg.name) {
+          known_symbol = true;
+          break;
+        }
+      }
+    }
+    if (!known_symbol) {
+      for (const auto& function : module.functions) {
+        if (function.name == arg.name) {
+          known_symbol = true;
+          break;
+        }
+      }
+    }
+    if (!known_symbol) {
+      return std::nullopt;
+    }
+
+    parsed_args.push_back(ParsedBackendExternCallArg{
+        .kind = ParsedBackendExternCallArg::Kind::Ptr,
+        .operand = "@" + arg.name,
+    });
   }
 
   const bool return_call_result =
@@ -1064,6 +1136,7 @@ parse_bir_minimal_declared_direct_call_module(const bir::Module& module) {
       main_fn,
       &main_block,
       call,
+      std::move(parsed_args),
       return_call_result,
       return_imm,
   };

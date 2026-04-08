@@ -836,6 +836,15 @@ const c4c::backend::BackendStringConstant* find_string_constant(
   return nullptr;
 }
 
+const c4c::backend::bir::StringConstant* find_string_constant(
+    const c4c::backend::bir::Module& module,
+    std::string_view name) {
+  for (const auto& string_constant : module.string_constants) {
+    if (string_constant.name == name) return &string_constant;
+  }
+  return nullptr;
+}
+
 std::optional<std::int64_t> parse_minimal_lir_return_sub_imm(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
@@ -4693,6 +4702,120 @@ std::string emit_minimal_declared_direct_call_asm(
   return out.str();
 }
 
+std::string emit_minimal_declared_direct_call_asm(
+    const c4c::backend::bir::Module& module,
+    const c4c::backend::ParsedBirMinimalDeclaredDirectCallModuleView& slice) {
+  static constexpr const char* kArgI32Regs[8] = {"w0", "w1", "w2", "w3",
+                                                 "w4", "w5", "w6", "w7"};
+  static constexpr const char* kArgPtrRegs[8] = {"x0", "x1", "x2", "x3",
+                                                 "x4", "x5", "x6", "x7"};
+
+  auto emit_i32_imm = [](std::ostringstream& out,
+                         std::string_view reg,
+                         std::int64_t imm,
+                         const char* detail) {
+    if (imm >= 0 && imm <= std::numeric_limits<std::uint16_t>::max()) {
+      out << "  mov " << reg << ", #" << imm << "\n";
+      return;
+    }
+    if (imm < 0 && -imm <= std::numeric_limits<std::uint16_t>::max()) {
+      out << "  sub " << reg << ", wzr, #" << -imm << "\n";
+      return;
+    }
+    fail_unsupported(detail);
+  };
+
+  if (slice.args.size() > 8) {
+    fail_unsupported("extern declaration call argument count exceeds minimal aarch64 register budget");
+  }
+
+  std::vector<std::string> emitted_string_constant_names;
+  for (const auto& arg : slice.args) {
+    if (arg.kind != c4c::backend::ParsedBackendExternCallArg::Kind::Ptr ||
+        arg.operand.empty() || arg.operand.front() != '@') {
+      continue;
+    }
+    const auto* string_constant = find_string_constant(module, arg.operand.substr(1));
+    if (string_constant == nullptr) {
+      continue;
+    }
+    bool duplicate = false;
+    for (const auto& emitted : emitted_string_constant_names) {
+      if (emitted == string_constant->name) {
+        duplicate = true;
+        break;
+      }
+    }
+    if (!duplicate) {
+      emitted_string_constant_names.push_back(string_constant->name);
+    }
+  }
+
+  const std::string helper_symbol = asm_symbol_name(module.target_triple, slice.callee->name);
+  const std::string main_symbol = asm_symbol_name(module.target_triple, slice.main_function->name);
+
+  std::ostringstream out;
+  if (!emitted_string_constant_names.empty()) {
+    out << ".section .rodata\n";
+    for (const auto& name : emitted_string_constant_names) {
+      const auto* string_constant = find_string_constant(module, name);
+      if (string_constant == nullptr) {
+        continue;
+      }
+      const std::string label = asm_private_data_label(module.target_triple, std::string("@") + name);
+      out << label << ":\n"
+          << "  .asciz \"" << escape_asm_string(string_constant->bytes) << "\"\n";
+    }
+  }
+  out << ".text\n";
+  emit_function_prelude(out, module.target_triple, main_symbol, true);
+  out << "  sub sp, sp, #16\n"
+      << "  str x30, [sp, #8]\n";
+  for (std::size_t index = 0; index < slice.args.size(); ++index) {
+    const auto& arg = slice.args[index];
+    switch (arg.kind) {
+      case c4c::backend::ParsedBackendExternCallArg::Kind::I32Imm:
+        emit_i32_imm(out,
+                     kArgI32Regs[index],
+                     arg.imm,
+                     "extern declaration i32 immediates outside the minimal mov-supported range");
+        break;
+      case c4c::backend::ParsedBackendExternCallArg::Kind::I64Imm:
+        if (arg.imm < 0 || arg.imm > std::numeric_limits<std::uint16_t>::max()) {
+          fail_unsupported(
+              "extern declaration i64 immediates outside the minimal mov-supported range");
+        }
+        out << "  mov " << kArgPtrRegs[index] << ", #" << arg.imm << "\n";
+        break;
+      case c4c::backend::ParsedBackendExternCallArg::Kind::Ptr: {
+        const auto operand = arg.operand;
+        if (operand.empty() || operand.front() != '@') {
+          fail_unsupported("non-symbol pointer operands in minimal extern declaration calls");
+        }
+        const auto* string_constant = find_string_constant(module, operand.substr(1));
+        const std::string symbol =
+            string_constant != nullptr
+                ? asm_private_data_label(module.target_triple, std::string(operand))
+                : asm_symbol_name(module.target_triple, operand.substr(1));
+        out << "  adrp " << kArgPtrRegs[index] << ", " << symbol << "\n"
+            << "  add " << kArgPtrRegs[index] << ", " << kArgPtrRegs[index]
+            << ", :lo12:" << symbol << "\n";
+      } break;
+    }
+  }
+  out << "  bl " << helper_symbol << "\n";
+  if (!slice.return_call_result) {
+    emit_i32_imm(out,
+                 "w0",
+                 slice.return_imm,
+                 "extern declaration fixed returns outside the minimal mov-supported range");
+  }
+  out << "  ldr x30, [sp, #8]\n"
+      << "  add sp, sp, #16\n"
+      << "  ret\n";
+  return out.str();
+}
+
 std::string emit_minimal_call_crossing_direct_call_asm(
     const c4c::backend::BackendModule& module,
     const c4c::backend::RegAllocIntegrationResult& regalloc,
@@ -8371,6 +8494,10 @@ std::string emit_module(const c4c::backend::bir::Module& module,
   if (const auto slice = c4c::backend::parse_bir_minimal_direct_call_module(module);
       slice.has_value()) {
     return emit_minimal_direct_call_asm(module, *slice);
+  }
+  if (const auto slice = c4c::backend::parse_bir_minimal_declared_direct_call_module(module);
+      slice.has_value()) {
+    return emit_minimal_declared_direct_call_asm(module, *slice);
   }
   if (const auto imm = parse_minimal_return_imm(module); imm.has_value()) {
     return emit_minimal_return_sub_imm_asm(module, *imm);
