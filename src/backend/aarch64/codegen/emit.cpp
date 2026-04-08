@@ -2535,8 +2535,49 @@ std::optional<MinimalCountdownLoopSlice> parse_minimal_countdown_loop_slice(
 }
 
 // BIR-gap data slices.
-// These still depend on globals, linkage, and address classification that BIR
-// does not yet expose in the same shape.
+// The scalar-global-load family now has a direct BIR contract; the remaining
+// global/string slices still depend on richer storage or address metadata.
+std::optional<MinimalScalarGlobalLoadSlice> parse_minimal_scalar_global_load_slice(
+    const c4c::backend::bir::Module& module) {
+  using namespace c4c::backend::bir;
+
+  if (module.functions.size() != 1 || module.globals.size() != 1 ||
+      !module.string_constants.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& global = module.globals.front();
+  if (global.is_extern || global.type != TypeKind::I32 || !global.initializer.has_value() ||
+      global.initializer->kind != Value::Kind::Immediate ||
+      global.initializer->type != TypeKind::I32) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration || function.return_type != TypeKind::I32 ||
+      !function.params.empty() || !function.local_slots.empty() || function.blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  const auto* load =
+      entry.insts.size() == 1 ? std::get_if<LoadGlobalInst>(&entry.insts.front()) : nullptr;
+  if (entry.label != "entry" || load == nullptr || load->result.kind != Value::Kind::Named ||
+      load->result.type != TypeKind::I32 || load->global_name != global.name ||
+      entry.terminator.kind != TerminatorKind::Return ||
+      !entry.terminator.value.has_value() || *entry.terminator.value != load->result) {
+    return std::nullopt;
+  }
+
+  return MinimalScalarGlobalLoadSlice{
+      function.name,
+      global.name,
+      global.initializer->immediate,
+      4,
+      global.initializer->immediate == 0,
+  };
+}
+
 std::optional<MinimalScalarGlobalLoadSlice> parse_minimal_scalar_global_load_slice(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
@@ -6940,10 +6981,6 @@ std::optional<std::string> try_emit_direct_lir_module(
         return emit_minimal_conditional_return_asm(module.target_triple, *slice);
       }
     }
-    if (const auto slice = parse_minimal_scalar_global_load_slice(module);
-        slice.has_value()) {
-      return emit_minimal_scalar_global_load_asm(module.target_triple, *slice);
-    }
     if (const auto slice = parse_minimal_scalar_global_store_reload_slice(module);
         slice.has_value()) {
       return emit_minimal_scalar_global_store_reload_asm(module.target_triple, *slice);
@@ -7043,6 +7080,10 @@ std::string emit_module(const c4c::backend::bir::Module& module,
     return emit_minimal_call_crossing_direct_call_asm(
         module, synthesize_shared_aarch64_call_crossing_regalloc(slice->regalloc_source_value),
         *slice);
+  }
+  if (const auto slice = parse_minimal_scalar_global_load_slice(module);
+      slice.has_value()) {
+    return emit_minimal_scalar_global_load_asm(module.target_triple, *slice);
   }
   if (const auto imm = parse_minimal_return_imm(module); imm.has_value()) {
     return emit_minimal_return_sub_imm_asm(module, *imm);

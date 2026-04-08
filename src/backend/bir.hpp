@@ -132,12 +132,23 @@ struct LoadLocalInst {
   std::string slot_name;
 };
 
+struct LoadGlobalInst {
+  Value result;
+  std::string global_name;
+};
+
 struct StoreLocalInst {
   std::string slot_name;
   Value value;
 };
 
-using Inst = std::variant<BinaryInst, SelectInst, CastInst, CallInst, LoadLocalInst, StoreLocalInst>;
+using Inst = std::variant<BinaryInst,
+                          SelectInst,
+                          CastInst,
+                          CallInst,
+                          LoadLocalInst,
+                          LoadGlobalInst,
+                          StoreLocalInst>;
 
 struct ReturnTerminator {
   std::optional<Value> value;

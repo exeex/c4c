@@ -220,6 +220,13 @@ bool validate_local_slot_names(const Function& function, std::string* error) {
   return true;
 }
 
+const Global* find_global(const Module& module, std::string_view global_name) {
+  const auto it = std::find_if(module.globals.begin(),
+                               module.globals.end(),
+                               [&](const Global& global) { return global.name == global_name; });
+  return it == module.globals.end() ? nullptr : &*it;
+}
+
 const LocalSlot* find_local_slot(const Function& function, std::string_view slot_name) {
   const auto it = std::find_if(function.local_slots.begin(),
                                function.local_slots.end(),
@@ -248,6 +255,33 @@ bool validate_load_local(const Function& function,
   if (slot->type != inst.result.type) {
     return fail(error, "bir local load in @" + function.name +
                            " must agree with the referenced local slot type");
+  }
+  defined_names->push_back(inst.result.name);
+  return true;
+}
+
+bool validate_load_global(const Module& module,
+                          const Function& function,
+                          const LoadGlobalInst& inst,
+                          std::vector<std::string>* defined_names,
+                          std::string* error) {
+  if (inst.result.kind != Value::Kind::Named || inst.result.name.empty()) {
+    return fail(error, "bir global load result in @" + function.name +
+                           " must use a non-empty named value");
+  }
+  if (!validate_value_type(inst.result.type,
+                           "bir global load result in @" + function.name,
+                           error)) {
+    return false;
+  }
+  const auto* global = find_global(module, inst.global_name);
+  if (global == nullptr) {
+    return fail(error, "bir global load in @" + function.name +
+                           " must reference a declared global");
+  }
+  if (global->type != inst.result.type) {
+    return fail(error, "bir global load in @" + function.name +
+                           " must agree with the referenced global type");
   }
   defined_names->push_back(inst.result.name);
   return true;
@@ -400,6 +434,35 @@ bool validate_terminator(const Function& function,
 }  // namespace
 
 bool validate(const Module& module, std::string* error) {
+  std::vector<std::string_view> global_names;
+  global_names.reserve(module.globals.size());
+  for (const auto& global : module.globals) {
+    if (global.name.empty()) {
+      return fail(error, "bir global must have a non-empty name");
+    }
+    if (!validate_value_type(global.type, "bir global", error)) {
+      return false;
+    }
+    if (std::find(global_names.begin(), global_names.end(), global.name) != global_names.end()) {
+      return fail(error, "bir globals must not reuse an existing name");
+    }
+    if (!global.is_extern && !global.initializer.has_value()) {
+      return fail(error, "bir defined global @" + global.name + " must have an initializer");
+    }
+    if (global.initializer.has_value()) {
+      if (!validate_value_type(global.initializer->type,
+                               "bir global initializer",
+                               error)) {
+        return false;
+      }
+      if (global.initializer->kind != Value::Kind::Immediate ||
+          global.initializer->type != global.type) {
+        return fail(error, "bir global initializer @" + global.name +
+                               " must be an immediate matching the global type");
+      }
+    }
+    global_names.push_back(global.name);
+  }
   for (std::size_t function_index = 0; function_index < module.functions.size(); ++function_index) {
     const auto& function = module.functions[function_index];
     if (function.name.empty()) {
@@ -453,6 +516,8 @@ bool validate(const Module& module, std::string* error) {
                 return validate_call(function, lowered, &defined_names, error);
               } else if constexpr (std::is_same_v<T, LoadLocalInst>) {
                 return validate_load_local(function, lowered, &defined_names, error);
+              } else if constexpr (std::is_same_v<T, LoadGlobalInst>) {
+                return validate_load_global(module, function, lowered, &defined_names, error);
               } else if constexpr (std::is_same_v<T, StoreLocalInst>) {
                 return validate_store_local(function, lowered, defined_names, error);
               }

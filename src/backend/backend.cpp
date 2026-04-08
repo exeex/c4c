@@ -129,6 +129,11 @@ std::string emit_module(const BackendModuleInput& input,
       return emit_direct_lir_or_llvm_fallback(*input.legacy_fallback(), options.target);
     }
     if (options.target == Target::Riscv64) {
+      if (!input.legacy_fallback()->globals.empty() ||
+          !input.legacy_fallback()->string_pool.empty() ||
+          !input.legacy_fallback()->extern_decls.empty()) {
+        return c4c::codegen::lir::print_llvm(*input.legacy_fallback());
+      }
       return c4c::backend::bir::print(*bir_module);
     }
     auto backend = make_backend(options.target);

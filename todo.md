@@ -5,14 +5,42 @@ Source Plan: plan.md
 # Active Item
 
 - Step 3: migrate the next aarch64 emitter helper cluster onto direct BIR
-- Current slice: inspect the next remaining native emitter-local LIR fast paths
-  after the shared countdown-loop route landed, continuing with the next
-  remaining global/string helper family that still bypasses the shared BIR path
-- Next intended slice: inspect whether the next x86/aarch64 scalar-global or
-  string-literal emitter-local fast path can lower through the existing BIR
-  global/string contract without another schema addition
+- Current slice: inspect the next remaining global/string emitter-local family
+  after scalar-global-load, preferring scalar-global store-reload or
+  string-literal-char only if one can land as a similarly bounded direct-BIR
+  contract without reopening broad address-shape work
+- Next intended slice: compare the current x86/aarch64 scalar-global
+  store-reload and string-literal-char LIR fast paths against the new shared
+  `bir.load_global` seam to decide whether the next smallest follow-through is
+  a store-capable global contract or a separate string-pool load contract
 
 # Completed
+
+- Added bounded shared `bir.load_global` support in `src/backend/bir.hpp`,
+  `src/backend/bir_printer.cpp`, and `src/backend/bir_validate.cpp` so BIR can
+  now carry a typed initialized global plus one direct global-load instruction
+- Lowered the minimal scalar-global-load LIR slice directly into that shared
+  BIR contract in `src/backend/lowering/lir_to_bir.cpp`
+- Routed the x86 and aarch64 scalar-global-load emitter helper family through
+  direct BIR in `src/backend/x86/codegen/emit.cpp` and
+  `src/backend/aarch64/codegen/emit.cpp`, removing the LIR-only fast-path
+  dependency for this slice while preserving the riscv64 LLVM fallback route
+- Added focused lowering coverage in
+  `tests/backend/backend_bir_lowering_tests.cpp` and focused x86/aarch64 direct
+  BIR plus LIR-through-BIR pipeline coverage in
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` and
+  `tests/backend/backend_bir_pipeline_aarch64_tests.cpp`
+- Rebuilt `backend_bir_tests`, `backend_shared_util_tests`, and `c4cll`
+  successfully after the bounded `bir.load_global` route landed
+- Reran
+  `ctest --test-dir build -R '^(backend_bir_tests|backend_codegen_route_riscv64_global_load_falls_back_to_llvm)$' --output-on-failure`
+  successfully after restoring the riscv64 fallback expectation
+- Reran the full `ctest --test-dir build -j8 --output-on-failure` suite and
+  refreshed `test_after.log` / `test_fail_after.log`; the workspace stayed at
+  `2834/2834` passing with 0 failures
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=159
+  failed=-159` and zero newly failing tests
 
 - Extended `src/backend/lowering/lir_to_bir.cpp` so the shared bounded
   countdown-loop lowering also accepts the x86 do-while countdown variant by
