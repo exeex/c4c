@@ -7,10 +7,9 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 1: audit the typed type boundary and backend ownership seams
-- Current slice: extend the typed scalar seam beyond the first straight-line
-  integer lowering helpers by removing the remaining signature-parameter text
-  fallback in `lower_function_params(...)` and pinning the nearby one-parameter
-  `i8` BIR fixture coverage to explicit typed `LirTypeRef` construction
+- Current slice: extend the typed scalar seam into the remaining minimal
+  direct-call helper recognizers by preferring structured helper return/param
+  metadata over stale signature parameter text in the folded two-argument path
 
 ## Completed
 
@@ -66,15 +65,29 @@ Source Plan: plan.md
   straight-line slice and kept it on the verified LIR path
 - Re-ran `backend_bir_tests`, nearby backend route tests, and the full suite
   with the regression guard still passing (`2841 -> 2841`)
+- Switched `try_lower_minimal_folded_two_arg_direct_call_module(...)` in
+  `src/backend/lowering/lir_to_bir.cpp` to accept structured `LirFunction`
+  helper return/param metadata when present instead of hard-requiring raw
+  `"i32"` helper signature parameter text
+- Replaced the folded-helper binop type check in
+  `src/backend/lowering/lir_to_bir.cpp` from raw `"i32"` string comparison to
+  typed `LirTypeRef` scalar inspection
+- Added a focused backend regression in
+  `tests/backend/backend_bir_lowering_tests.cpp` that keeps the folded
+  two-argument direct-call path working when typed helper params disagree with
+  stale signature param text
+- Re-ran the focused direct-call backend BIR coverage plus the full suite and
+  kept the regression guard passing (`2841 -> 2841`)
 
 ## Next
 
-- continue migrating nearby remaining typed integer construction sites in
-  backend BIR fixtures away from raw string literals where those refs feed
-  lowering decisions directly
-- audit whether the empty-`params` compatibility fallback in
-  `lower_function_params(...)` should stay temporarily text-backed or be
-  upgraded next to typed signature-param payloads
+- continue migrating the remaining minimal direct-call helper recognizers in
+  `src/backend/lowering/lir_to_bir.cpp` and `src/backend/lowering/call_decode.hpp`
+  away from hard-required signature-text parameter typing where structured
+  helper metadata already exists
+- audit whether the single-identity and dual-identity helper parsers should use
+  the same structured-param preference next, rather than relying on
+  `parse_backend_function_signature_params(...)`
 - decide whether pointer payload support is needed immediately for the next
   lowering slice or should stay deferred until the first pointer-backed BIR
   consumer is converted

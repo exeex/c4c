@@ -15,6 +15,9 @@ namespace c4c::backend {
 
 namespace {
 
+std::optional<std::vector<bir::Param>> lower_function_params(
+    const c4c::codegen::lir::LirFunction& lir_function);
+
 std::optional<bir::TypeKind> lower_minimal_scalar_type(const c4c::TypeSpec& type) {
   if (type.ptr_level != 0 || type.array_rank != 0) {
     return std::nullopt;
@@ -43,6 +46,28 @@ std::optional<bir::TypeKind> lower_scalar_type_text(std::string_view text) {
     return bir::TypeKind::I64;
   }
   return std::nullopt;
+}
+
+bool matches_minimal_i32_function_signature(
+    const c4c::codegen::lir::LirFunction& function,
+    std::initializer_list<std::string_view> signature_param_types) {
+  if (!function.params.empty()) {
+    const auto lowered_return_type = lower_minimal_scalar_type(function.return_type);
+    if (lowered_return_type != bir::TypeKind::I32 ||
+        function.params.size() != signature_param_types.size()) {
+      return false;
+    }
+
+    for (const auto& [param_name, param_type] : function.params) {
+      if (param_name.empty() || lower_minimal_scalar_type(param_type) != bir::TypeKind::I32) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  return backend_lir_signature_matches(
+      function.signature_text, "define", "i32", function.name, signature_param_types);
 }
 
 std::optional<bir::TypeKind> lower_scalar_type(
@@ -1015,9 +1040,8 @@ std::optional<bir::Module> try_lower_minimal_folded_two_arg_direct_call_module(
       [](const LirFunction& caller,
          const LirFunction& helper) -> std::optional<std::tuple<std::string, std::int64_t>> {
     if (caller.is_declaration || helper.is_declaration ||
-        !backend_lir_signature_matches(caller.signature_text, "define", "i32", caller.name, {}) ||
-        !backend_lir_signature_matches(
-            helper.signature_text, "define", "i32", helper.name, {"i32", "i32"}) ||
+        !matches_minimal_i32_function_signature(caller, {}) ||
+        !matches_minimal_i32_function_signature(helper, {"i32", "i32"}) ||
         caller.entry.value != 0 || helper.entry.value != 0 || caller.blocks.size() != 1 ||
         helper.blocks.size() != 1 || !caller.alloca_insts.empty() ||
         !helper.alloca_insts.empty() || !caller.stack_objects.empty() ||
@@ -1025,12 +1049,11 @@ std::optional<bir::Module> try_lower_minimal_folded_two_arg_direct_call_module(
       return std::nullopt;
     }
 
-    const auto helper_params = parse_backend_function_signature_params(helper.signature_text);
-    if (!helper_params.has_value() || helper_params->size() != 2 || (*helper_params)[0].is_varargs ||
-        (*helper_params)[1].is_varargs ||
-        trim_lir_arg_text((*helper_params)[0].type) != "i32" ||
-        trim_lir_arg_text((*helper_params)[1].type) != "i32" ||
-        (*helper_params)[0].operand.empty() || (*helper_params)[1].operand.empty()) {
+    const auto helper_params = lower_function_params(helper);
+    if (!helper_params.has_value() || helper_params->size() != 2 ||
+        (*helper_params)[0].type != bir::TypeKind::I32 ||
+        (*helper_params)[1].type != bir::TypeKind::I32 ||
+        (*helper_params)[0].name.empty() || (*helper_params)[1].name.empty()) {
       return std::nullopt;
     }
 
@@ -1045,16 +1068,19 @@ std::optional<bir::Module> try_lower_minimal_folded_two_arg_direct_call_module(
     const auto* sub = std::get_if<LirBinOp>(&helper_block.insts[1]);
     const auto add_opcode = add == nullptr ? std::nullopt : add->opcode.typed();
     const auto sub_opcode = sub == nullptr ? std::nullopt : sub->opcode.typed();
+    const auto add_type = add == nullptr ? std::nullopt : lower_scalar_type(add->type_str);
+    const auto sub_type = sub == nullptr ? std::nullopt : lower_scalar_type(sub->type_str);
     if (add == nullptr || sub == nullptr || add_opcode != LirBinaryOpcode::Add ||
-        sub_opcode != LirBinaryOpcode::Sub || add->type_str != "i32" || sub->type_str != "i32" ||
+        sub_opcode != LirBinaryOpcode::Sub || add_type != bir::TypeKind::I32 ||
+        sub_type != bir::TypeKind::I32 ||
         *helper_ret->value_str != sub->result || sub->lhs != add->result ||
-        sub->rhs != (*helper_params)[1].operand) {
+        sub->rhs != (*helper_params)[1].name) {
       return std::nullopt;
     }
 
     const auto add_lhs_imm = parse_backend_i64_literal(add->lhs);
     const auto add_rhs_imm = parse_backend_i64_literal(add->rhs);
-    const std::string_view lhs_param = (*helper_params)[0].operand;
+    const std::string_view lhs_param = (*helper_params)[0].name;
     std::int64_t base_imm = 0;
     if (add->rhs == lhs_param && add_lhs_imm.has_value()) {
       base_imm = *add_lhs_imm;

@@ -631,6 +631,31 @@ c4c::codegen::lir::LirModule make_bir_minimal_folded_two_arg_direct_call_lir_mod
   return module;
 }
 
+c4c::codegen::lir::LirModule
+make_bir_minimal_folded_two_arg_direct_call_lir_module_with_typed_helper_params() {
+  using namespace c4c::codegen::lir;
+
+  auto module = make_bir_minimal_folded_two_arg_direct_call_lir_module();
+  auto& helper = module.functions[1];
+  helper.return_type.base = c4c::TB_INT;
+  helper.params.clear();
+
+  c4c::TypeSpec param_type{};
+  param_type.base = c4c::TB_INT;
+  helper.params.push_back({"%lhs", param_type});
+  helper.params.push_back({"%rhs", param_type});
+
+  helper.signature_text = "define i32 @fold_pair(i8 %lhs, i8 %rhs)\n";
+
+  auto& helper_entry = helper.blocks.front();
+  auto& add = std::get<LirBinOp>(helper_entry.insts[0]);
+  auto& sub = std::get<LirBinOp>(helper_entry.insts[1]);
+  add.type_str = LirTypeRef::integer(32);
+  sub.type_str = LirTypeRef::integer(32);
+
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_bir_minimal_folded_two_arg_direct_call_lir_module_helper_first() {
   auto module = make_bir_minimal_folded_two_arg_direct_call_lir_module();
   std::swap(module.functions[0], module.functions[1]);
@@ -1038,6 +1063,22 @@ void test_bir_lowering_accepts_minimal_folded_two_arg_direct_call_lir_module() {
     expect_true(lowered->functions.front().return_type == c4c::backend::bir::TypeKind::I32,
                 "the lowered folded two-argument direct-call slice should preserve the caller return type");
   }
+}
+
+void test_bir_lowering_accepts_minimal_folded_two_arg_direct_call_lir_module_with_typed_helper_params() {
+  const auto lowered = c4c::backend::try_lower_to_bir(
+      make_bir_minimal_folded_two_arg_direct_call_lir_module_with_typed_helper_params());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the folded two-argument direct-call slice when typed helper params disagree with stale signature param text");
+
+  expect_true(lowered->functions.size() == 1 && lowered->functions.front().name == "main" &&
+                  lowered->functions.front().blocks.size() == 1 &&
+                  lowered->functions.front().blocks.front().insts.empty() &&
+                  lowered->functions.front().blocks.front().terminator.value.has_value() &&
+                  lowered->functions.front().blocks.front().terminator.value->kind ==
+                      c4c::backend::bir::Value::Kind::Immediate &&
+                  lowered->functions.front().blocks.front().terminator.value->immediate == 8,
+              "The typed helper-param folded direct-call slice should still collapse to the same caller return immediate");
 }
 
 void test_bir_lowering_accepts_minimal_folded_two_arg_direct_call_lir_module_with_helper_first() {
@@ -3098,6 +3139,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_minimal_direct_call_identity_arg_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_direct_call_identity_arg_lir_module_with_helper_first);
   RUN_TEST(test_bir_lowering_accepts_minimal_folded_two_arg_direct_call_lir_module);
+  RUN_TEST(test_bir_lowering_accepts_minimal_folded_two_arg_direct_call_lir_module_with_typed_helper_params);
   RUN_TEST(test_bir_lowering_accepts_minimal_folded_two_arg_direct_call_lir_module_with_helper_first);
   RUN_TEST(test_bir_lowering_accepts_minimal_dual_identity_direct_call_sub_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_dual_identity_direct_call_sub_lir_module_with_helper_first);
