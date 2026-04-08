@@ -4420,24 +4420,6 @@ std::optional<MinimalDualIdentityDirectCallSubSlice> parse_minimal_dual_identity
 }
 
 std::optional<MinimalDualIdentityDirectCallSubSlice> parse_minimal_dual_identity_direct_call_sub_slice(
-    const c4c::backend::BackendModule& module) {
-  const auto parsed =
-      c4c::backend::parse_backend_minimal_dual_identity_direct_call_sub_module(module);
-  if (!parsed.has_value() || parsed->lhs_helper == nullptr || parsed->rhs_helper == nullptr ||
-      parsed->main_function == nullptr) {
-    return std::nullopt;
-  }
-
-  return MinimalDualIdentityDirectCallSubSlice{
-      parsed->lhs_helper->signature.name,
-      parsed->rhs_helper->signature.name,
-      parsed->main_function->signature.name,
-      parsed->lhs_call_arg_imm,
-      parsed->rhs_call_arg_imm,
-  };
-}
-
-std::optional<MinimalDualIdentityDirectCallSubSlice> parse_minimal_dual_identity_direct_call_sub_slice(
     const c4c::codegen::lir::LirModule& module) {
   const auto parsed =
       c4c::backend::parse_backend_minimal_dual_identity_direct_call_sub_lir_module(module);
@@ -4818,33 +4800,6 @@ std::string emit_minimal_cast_return_asm(
   throw_unsupported_direct_bir_module();
 }
 
-std::string emit_minimal_direct_call_asm(const c4c::backend::BackendModule& module,
-                                         const c4c::backend::ParsedBackendMinimalDirectCallModuleView& slice) {
-  if (slice.helper == nullptr || slice.main_function == nullptr) {
-    throw std::invalid_argument("structured zero-argument direct-call slice without helper metadata");
-  }
-
-  if (slice.return_imm < std::numeric_limits<std::int32_t>::min() ||
-      slice.return_imm > std::numeric_limits<std::int32_t>::max()) {
-    throw std::invalid_argument("helper return immediates outside the minimal mov-supported range");
-  }
-
-  const std::string helper_symbol = asm_symbol_name(module, slice.helper->signature.name);
-  const std::string main_symbol =
-      asm_symbol_name(module, slice.main_function->signature.name);
-
-  std::ostringstream out;
-  out << ".intel_syntax noprefix\n";
-  out << ".text\n";
-  emit_function_prelude(out, module, helper_symbol, false);
-  out << "  mov eax, " << slice.return_imm << "\n"
-      << "  ret\n";
-  emit_function_prelude(out, module, main_symbol, true);
-  out << "  call " << helper_symbol << "\n"
-      << "  ret\n";
-  return out.str();
-}
-
 std::string emit_minimal_direct_call_asm(
     const c4c::backend::bir::Module& module,
     const c4c::backend::ParsedBirMinimalDirectCallModuleView& slice) {
@@ -4944,34 +4899,6 @@ std::string emit_minimal_direct_call_add_imm_asm(
                                                   slice.call_arg_imm,
                                                   slice.add_imm,
                                               });
-}
-
-std::string emit_minimal_direct_call_identity_arg_asm(
-    const c4c::backend::BackendModule& module,
-    const c4c::backend::ParsedBackendMinimalDirectCallIdentityArgModuleView& slice) {
-  if (slice.helper == nullptr) {
-    throw std::invalid_argument("structured identity direct-call slice without helper metadata");
-  }
-
-  if (slice.call_arg_imm < std::numeric_limits<std::int32_t>::min() ||
-      slice.call_arg_imm > std::numeric_limits<std::int32_t>::max()) {
-    throw std::invalid_argument("identity direct-call immediates outside the minimal x86 slice range");
-  }
-
-  const std::string helper_symbol = asm_symbol_name(module, slice.helper->signature.name);
-  const std::string main_symbol = asm_symbol_name(module, slice.main_function->signature.name);
-
-  std::ostringstream out;
-  out << ".intel_syntax noprefix\n";
-  out << ".text\n";
-  emit_function_prelude(out, module, helper_symbol, false);
-  out << "  mov eax, edi\n"
-      << "  ret\n";
-  emit_function_prelude(out, module, main_symbol, true);
-  out << "  mov edi, " << slice.call_arg_imm << "\n"
-      << "  call " << helper_symbol << "\n"
-      << "  ret\n";
-  return out.str();
 }
 
 std::string emit_minimal_direct_call_identity_arg_asm(
@@ -5130,30 +5057,6 @@ std::string emit_minimal_member_array_runtime_asm(
         << "  ret\n";
   }
   return out.str();
-}
-
-std::string emit_minimal_two_arg_direct_call_asm(
-    const c4c::backend::BackendModule& module,
-    const c4c::backend::ParsedBackendMinimalTwoArgDirectCallModuleView& slice) {
-  if (slice.helper == nullptr) {
-    throw std::invalid_argument("structured two-argument direct-call slice without helper metadata");
-  }
-
-  if (slice.lhs_call_arg_imm < std::numeric_limits<std::int32_t>::min() ||
-      slice.lhs_call_arg_imm > std::numeric_limits<std::int32_t>::max() ||
-      slice.rhs_call_arg_imm < std::numeric_limits<std::int32_t>::min() ||
-      slice.rhs_call_arg_imm > std::numeric_limits<std::int32_t>::max()) {
-    throw std::invalid_argument("two-argument direct-call immediates outside the minimal x86 slice range");
-  }
-
-  return emit_minimal_two_arg_direct_call_asm(
-      module,
-      MinimalTwoArgDirectCallSlice{
-          slice.helper->signature.name,
-          slice.main_function->signature.name,
-          slice.lhs_call_arg_imm,
-          slice.rhs_call_arg_imm,
-      });
 }
 
 std::string emit_minimal_conditional_return_asm(

@@ -5,11 +5,9 @@ Source Plan: plan.md
 # Active Item
 
 - Step 2: switch one shared helper seam off `BackendModule`
-- Current slice: inventory the next smallest remaining x86-only rich
-  direct-call helper family after the dead call-crossing `BackendModule` seam
-  removal; chosen target is cleanup of the now-dead folded two-argument legacy
-  parser/emitter helpers that were left behind after the route already
-  collapsed to shared BIR lowering plus native return-immediate emission
+- Current slice: remove the now-dead `BackendModule` direct-call parser/emitter
+  seams that remained after the direct-call helper families had already
+  switched to shared BIR views or LIR-through-BIR lowering
 
 # Completed
 
@@ -250,13 +248,26 @@ Source Plan: plan.md
 - Reran the full `ctest --test-dir build -j --output-on-failure` suite after
   the cleanup; the workspace still has the same 13 known failures listed in
   `test_after.log`
+- Removed the dead `ParsedBackendMinimalStructuredDirectCallModuleView` /
+  `parse_backend_minimal_*direct_call*_module(...)` `BackendModule` parser
+  family from `src/backend/lowering/call_decode.hpp` once the zero-arg,
+  single-arg, two-arg, and dual-identity direct-call slices no longer had live
+  `BackendModule` consumers
+- Deleted the matching dead x86 and aarch64 `BackendModule` direct-call emitter
+  overloads, plus the dead x86 `BackendModule` dual-identity slice wrapper
+- Rebuilt `backend_shared_util_tests`, `backend_bir_tests`, and `c4cll`
+  successfully after the dead-seam cleanup
+- Reran `ctest --test-dir build -R 'backend_(bir_tests|shared_util_tests)' --output-on-failure`
+  successfully after the cleanup
+- Reran the full `ctest --test-dir build -j --output-on-failure` suite and
+  recorded the current dirty baseline in `test_after.log`: `2821/2834` tests
+  passed, with the same 13 known failures already tracked in `todo.md`
 
 # Next
 
-- Inventory the remaining rich direct-call helper families after the folded
-  two-argument dead-seam cleanup, with the live dual-identity subtraction and
-  other mixed-metadata families as the next likely candidates to move off any
-  remaining legacy `BackendModule` parsing
+- After validation, inventory the remaining genuinely live
+  `BackendModule`-only helper families; the next likely work is no longer in
+  the pure helper/main direct-call slices, but in richer mixed-metadata seams
 - Continue shrinking stale direct-call helper families one seam at a time now
   that the zero-arg, declared-direct-call, minimal two-argument helper/main,
   single-argument add-immediate, single-argument identity-return, folded
