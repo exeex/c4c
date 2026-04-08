@@ -4783,6 +4783,70 @@ std::string emit_minimal_direct_call_add_imm_asm(
   return out.str();
 }
 
+std::string emit_minimal_direct_call_identity_arg_asm(
+    const c4c::backend::BackendModule& module,
+    const c4c::backend::ParsedBackendMinimalDirectCallIdentityArgModuleView& slice) {
+  if (slice.helper == nullptr) {
+    throw c4c::backend::LirAdapterError(
+        c4c::backend::LirAdapterErrorKind::Unsupported,
+        "structured identity direct-call slice without helper metadata");
+  }
+
+  if (slice.call_arg_imm < std::numeric_limits<std::int32_t>::min() ||
+      slice.call_arg_imm > std::numeric_limits<std::int32_t>::max()) {
+    throw c4c::backend::LirAdapterError(
+        c4c::backend::LirAdapterErrorKind::Unsupported,
+        "identity direct-call immediates outside the minimal x86 slice range");
+  }
+
+  const std::string helper_symbol = asm_symbol_name(module, slice.helper->signature.name);
+  const std::string main_symbol = asm_symbol_name(module, "main");
+
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n";
+  out << ".text\n";
+  emit_function_prelude(out, module, helper_symbol, false);
+  out << "  mov eax, edi\n"
+      << "  ret\n";
+  emit_function_prelude(out, module, main_symbol, true);
+  out << "  mov edi, " << slice.call_arg_imm << "\n"
+      << "  call " << helper_symbol << "\n"
+      << "  ret\n";
+  return out.str();
+}
+
+std::string emit_minimal_direct_call_identity_arg_asm(
+    std::string_view target_triple,
+    const c4c::backend::ParsedBackendMinimalDirectCallIdentityArgLirModuleView& slice) {
+  if (slice.helper == nullptr) {
+    throw c4c::backend::LirAdapterError(
+        c4c::backend::LirAdapterErrorKind::Unsupported,
+        "direct identity LIR call slice without helper metadata");
+  }
+
+  if (slice.call_arg_imm < std::numeric_limits<std::int32_t>::min() ||
+      slice.call_arg_imm > std::numeric_limits<std::int32_t>::max()) {
+    throw c4c::backend::LirAdapterError(
+        c4c::backend::LirAdapterErrorKind::Unsupported,
+        "identity direct-call immediates outside the minimal x86 slice range");
+  }
+
+  const std::string helper_symbol = asm_symbol_name(target_triple, slice.helper->name);
+  const std::string main_symbol = asm_symbol_name(target_triple, "main");
+
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n";
+  out << ".text\n";
+  emit_function_prelude(out, helper_symbol, false);
+  out << "  mov eax, edi\n"
+      << "  ret\n";
+  emit_function_prelude(out, main_symbol, true);
+  out << "  mov edi, " << slice.call_arg_imm << "\n"
+      << "  call " << helper_symbol << "\n"
+      << "  ret\n";
+  return out.str();
+}
+
 std::string emit_minimal_local_arg_direct_call_add_imm_asm(
     std::string_view target_triple,
     const MinimalLocalArgDirectCallAddImmSlice& slice) {
@@ -5957,6 +6021,11 @@ std::optional<std::string> try_emit_direct_lir_module(
       return emit_minimal_direct_call_add_imm_asm(module.target_triple, *slice);
     }
     if (const auto slice =
+            c4c::backend::parse_backend_minimal_direct_call_identity_arg_lir_module(module);
+        slice.has_value()) {
+      return emit_minimal_direct_call_identity_arg_asm(module.target_triple, *slice);
+    }
+    if (const auto slice =
             c4c::backend::parse_backend_minimal_declared_direct_call_lir_module(module);
         slice.has_value()) {
       return emit_minimal_extern_decl_call_asm(module, *slice);
@@ -6066,6 +6135,11 @@ std::string emit_module(const c4c::backend::BackendModule& module,
     if (const auto slice = c4c::backend::parse_backend_minimal_direct_call_add_imm_module(module);
         slice.has_value()) {
       return emit_minimal_direct_call_add_imm_asm(module, *slice);
+    }
+    if (const auto slice =
+            c4c::backend::parse_backend_minimal_direct_call_identity_arg_module(module);
+        slice.has_value()) {
+      return emit_minimal_direct_call_identity_arg_asm(module, *slice);
     }
     if (const auto slice = c4c::backend::parse_backend_minimal_two_arg_direct_call_module(module);
         slice.has_value()) {

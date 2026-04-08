@@ -11,8 +11,8 @@ Source Plan: plan.md
 
 Current active item: Step 4 x86 emitter tightening. Continue shrinking the
 remaining x86 emitter-local `lower_lir_to_backend_module(...)` fallback for the
-next bounded local-runtime family after the double-indirect local-pointer
-conditional chain.
+next bounded direct-call helper family after the single-argument identity-call
+slice.
 
 Completed in this slice:
 
@@ -38,6 +38,24 @@ Completed in this slice:
   [`src/backend/lowering/call_decode.hpp`](/workspaces/c4c/src/backend/lowering/call_decode.hpp)
 - switched the x86 explicit LIR emit surface to try direct LIR parsers and
   `try_lower_to_bir(...)` before falling back to legacy backend IR
+- added a shared LIR-native identity-helper parser in
+  [`src/backend/lowering/call_decode.hpp`](/workspaces/c4c/src/backend/lowering/call_decode.hpp)
+  plus matching x86 emitter hooks in
+  [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+  so the bounded single-argument identity direct-call family no longer needs
+  `lower_lir_to_backend_module(...)` on the explicit x86 entrypoint
+- proved the production deletion with new x86 regressions in
+  [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
+  covering both backend selection and the explicit x86 LIR emit surface for
+  the bounded identity direct-call slice
+
+Next intended slice:
+
+- target the adjacent shared direct-call helper seam next: either the bounded
+  dual-identity direct-call subtract family or the folded two-argument helper
+  family, whichever removes the next live x86
+  `lower_lir_to_backend_module(...)` dependency with the smaller parser/emitter
+  batch
 - removed the old x86 emitter-local post-adaptation return-immediate/add/sub
   recognition branches and replaced them with the BIR-first direct-LIR path
 - proved the shared parser with a new regression test in
