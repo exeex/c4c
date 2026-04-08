@@ -4291,9 +4291,10 @@ std::optional<MinimalMemberArrayRuntimeSlice> parse_minimal_member_array_runtime
     return std::nullopt;
   }
 
-  const auto* helper = find_lir_function(module, "get_second");
   const auto* main_fn = find_lir_function(module, "main");
-  if (helper == nullptr || main_fn == nullptr || helper->is_declaration || main_fn->is_declaration ||
+  const auto* helper = module.functions[0].name == "main" ? &module.functions[1] : &module.functions[0];
+  if (helper == nullptr || helper->name == "main" || main_fn == nullptr || helper->is_declaration ||
+      main_fn->is_declaration ||
       helper->entry.value != 0 || main_fn->entry.value != 0 || helper->blocks.size() != 1 ||
       main_fn->blocks.size() != 1 ||
       !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(main_fn->signature_text)) {
@@ -4308,7 +4309,8 @@ std::optional<MinimalMemberArrayRuntimeSlice> parse_minimal_member_array_runtime
     return std::nullopt;
   }
 
-  if (helper->signature_text == "define i32 @get_second(%struct.Pair %p.p)\n" &&
+  if (helper->signature_text ==
+          ("define i32 @" + helper->name + "(%struct.Pair %p.p)\n") &&
       helper->alloca_insts.size() == 2 && helper_block.insts.size() == 5) {
     const auto* alloca = std::get_if<LirAllocaOp>(&helper->alloca_insts[0]);
     const auto* store = std::get_if<LirStoreOp>(&helper->alloca_insts[1]);
@@ -4334,7 +4336,8 @@ std::optional<MinimalMemberArrayRuntimeSlice> parse_minimal_member_array_runtime
       return std::nullopt;
     }
     slice.kind = MinimalMemberArrayRuntimeSlice::Kind::ByValueParam;
-  } else if (helper->signature_text == "define i32 @get_second(%struct.Outer %p.o)\n" &&
+  } else if (helper->signature_text ==
+                 ("define i32 @" + helper->name + "(%struct.Outer %p.o)\n") &&
              helper->alloca_insts.size() == 2 && helper_block.insts.size() == 6) {
     const auto* alloca = std::get_if<LirAllocaOp>(&helper->alloca_insts[0]);
     const auto* store = std::get_if<LirStoreOp>(&helper->alloca_insts[1]);
@@ -4363,7 +4366,8 @@ std::optional<MinimalMemberArrayRuntimeSlice> parse_minimal_member_array_runtime
       return std::nullopt;
     }
     slice.kind = MinimalMemberArrayRuntimeSlice::Kind::ByValueParam;
-  } else if (helper->signature_text == "define i32 @get_second(ptr %p.o)\n" &&
+  } else if (helper->signature_text ==
+                 ("define i32 @" + helper->name + "(ptr %p.o)\n") &&
              helper->alloca_insts.empty() && helper_block.insts.size() == 7) {
     const auto* outer_gep = std::get_if<LirGepOp>(&helper_block.insts[0]);
     const auto* load_inner = std::get_if<LirLoadOp>(&helper_block.insts[1]);
@@ -4419,7 +4423,8 @@ std::optional<MinimalMemberArrayRuntimeSlice> parse_minimal_member_array_runtime
   }
 
   const auto* call = std::get_if<LirCallOp>(&main_block.insts.back());
-  if (call == nullptr || call->return_type != "i32" || call->callee != "@get_second" ||
+  if (call == nullptr || call->return_type != "i32" ||
+      call->callee != ("@" + helper->name) ||
       *main_ret->value_str != call->result) {
     return std::nullopt;
   }

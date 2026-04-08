@@ -11,10 +11,26 @@ Source Plan: plan.md
 
 Current active item: Step 4 x86 emitter tightening. Delete the next live x86
 `lower_lir_to_backend_module(...)` dependency by targeting another bounded
-helper/runtime family adjacent to the folded two-argument slice, keeping the
-batch production-first with matching parity coverage.
+helper/runtime family now that the renamed by-value member-array runtime slice
+stays on the direct x86 LIR asm path.
 
 Completed in this slice:
+
+- taught the direct x86 member-array runtime parser in
+  [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+  to discover the helper from the observed non-`main` definition and key both
+  the helper signature match and `main` call target from that live symbol
+  instead of hardcoding `get_second`, removing the renamed by-value
+  member-array runtime dependency on `lower_lir_to_backend_module(...)` from
+  the explicit x86 LIR entrypoint
+- proved the production deletion with a new x86 regression in
+  [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
+  that keeps a renamed by-value member-array helper/runtime slice on the
+  direct asm path and aligned with backend selection
+- added an explicit-LIR parity regression in
+  [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
+  for the spacing-tolerant rewritten first-local two-argument helper family so
+  that already-direct seam stays pinned to identical direct-vs-lowered asm
 
 - added a shared LIR-side parser for the bounded folded two-argument direct-call
   helper family in
@@ -111,6 +127,11 @@ Completed in this slice:
 
 Next intended slice:
 
+- target another renamed or reordered x86-local helper/runtime family that
+  still falls through to legacy lowering when the direct parser keys off fixed
+  symbols or ordering
+- prefer the remaining member-array runtime variants first so the next batch
+  can reuse the same bounded helper/runtime seam without widening scope
 - target another bounded x86-local helper/runtime family that still hits
   `lower_lir_to_backend_module(...)` on the explicit LIR entrypoint now that
   the folded two-argument helper seam is gone
@@ -225,6 +246,12 @@ Recent baseline:
 - blocker: none
 - backend regression scope is currently green at `402` passed / `0` failed via
   `ctest --test-dir build -R backend -j1 --output-on-failure`
+- this slice keeps the serial backend scope monotonic at `402` passed / `0`
+  failed via `ctest --test-dir build -R backend -j1 --output-on-failure`
+- latest Step 4 follow-through also removes the renamed by-value member-array
+  runtime dependency on `lower_lir_to_backend_module(...)` from the direct x86
+  LIR entrypoint by keying the helper/runtime parse off the observed live
+  symbol instead of the hardcoded `get_second` name
 - focused adapter coverage is green at `2` passed / `0` failed via
   `ctest --test-dir build -R 'backend_lir_adapter_tests|backend_lir_adapter_x86_64_tests' -j1 --output-on-failure`
 - full-suite regression guard is green at `2841` passed / `0` failed before and

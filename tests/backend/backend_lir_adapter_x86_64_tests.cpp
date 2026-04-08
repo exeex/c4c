@@ -4333,6 +4333,28 @@ void test_x86_backend_renders_typed_two_arg_direct_call_first_local_rewrite_spac
                       "x86 backend should not fall back to LLVM text for spacing-tolerant typed two-argument calls");
 }
 
+void test_x86_backend_explicit_lir_emit_surface_matches_first_local_rewrite_spacing_two_arg_path() {
+  auto module = make_typed_direct_call_two_arg_first_local_rewrite_with_suffix_spacing_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  const auto direct_rendered = c4c::backend::x86::emit_module(module);
+  const auto lowered_rendered = c4c::backend::x86::emit_module(
+      c4c::backend::lower_lir_to_backend_module(module));
+
+  expect_true(direct_rendered == lowered_rendered,
+              "x86 explicit LIR emit surface should stay aligned with the lowered backend seam for the spacing-tolerant rewritten first-local two-argument slice");
+  expect_contains(direct_rendered, "mov edi, 5\n",
+                  "x86 explicit LIR emit surface should materialize the spacing-tolerant rewritten first local argument without adapting through backend IR first");
+  expect_contains(direct_rendered, "mov esi, 7\n",
+                  "x86 explicit LIR emit surface should preserve the spacing-tolerant immediate second argument on the direct asm path");
+  expect_contains(direct_rendered, "call add_pair\n",
+                  "x86 explicit LIR emit surface should keep the spacing-tolerant rewritten first-local two-argument helper call on the asm path");
+  expect_not_contains(direct_rendered, "target triple =",
+                      "x86 explicit LIR emit surface should not fall back to LLVM text for the spacing-tolerant rewritten first-local two-argument slice");
+}
+
 void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_first_local_rewrite_spacing_ir_without_signature_shims() {
   auto lowered = c4c::backend::lower_lir_to_backend_module(
       make_typed_direct_call_two_arg_first_local_rewrite_with_suffix_spacing_module());
@@ -4479,6 +4501,56 @@ void test_x86_backend_explicit_lir_emit_surface_matches_param_member_array_runti
                   "x86 explicit LIR emit surface should materialize the second bounded member-array element in the helper call setup");
   expect_not_contains(direct_rendered, "target triple =",
                       "x86 explicit LIR emit surface should not fall back to LLVM text for the bounded by-value member-array runtime slice");
+}
+
+void test_x86_backend_explicit_lir_emit_surface_keeps_renamed_param_member_array_runtime_path() {
+  auto module = make_param_member_array_runtime_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  c4c::codegen::lir::LirFunction* helper = nullptr;
+  c4c::codegen::lir::LirFunction* main_fn = nullptr;
+  for (auto& function : module.functions) {
+    if (function.name == "get_second") {
+      helper = &function;
+    } else if (function.name == "main") {
+      main_fn = &function;
+    }
+  }
+  expect_true(helper != nullptr && main_fn != nullptr,
+              "x86 renamed member-array runtime regression test needs helper and main functions");
+  if (helper == nullptr || main_fn == nullptr) {
+    return;
+  }
+
+  helper->name = "pick_second";
+  helper->signature_text = "define i32 @pick_second(%struct.Pair %p.p)\n";
+
+  auto& call = std::get<c4c::codegen::lir::LirCallOp>(main_fn->blocks.front().insts.back());
+  call.callee =
+      c4c::codegen::lir::LirOperand(std::string("@pick_second"),
+                                    c4c::codegen::lir::LirOperandKind::Global);
+
+  const auto direct_rendered = c4c::backend::x86::emit_module(module);
+  const auto backend_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_true(direct_rendered == backend_rendered,
+              "x86 backend selection should keep renamed by-value member-array runtime slices on the same direct x86 LIR emit path");
+  expect_contains(direct_rendered, ".globl pick_second\n",
+                  "x86 explicit LIR emit surface should key renamed bounded member-array helpers from the observed helper symbol");
+  expect_contains(direct_rendered, "mov eax, esi\n",
+                  "x86 explicit LIR emit surface should still return the second split aggregate register for renamed by-value member-array helpers");
+  expect_contains(direct_rendered, "mov edi, 4\n",
+                  "x86 explicit LIR emit surface should still materialize the first renamed bounded member-array element in the helper call setup");
+  expect_contains(direct_rendered, "mov esi, 6\n",
+                  "x86 explicit LIR emit surface should still materialize the second renamed bounded member-array element in the helper call setup");
+  expect_contains(direct_rendered, "call pick_second\n",
+                  "x86 explicit LIR emit surface should keep renamed by-value member-array helper calls on the asm path without backend-IR adaptation");
+  expect_not_contains(direct_rendered, "target triple =",
+                      "x86 explicit LIR emit surface should not fall back to LLVM text for renamed by-value member-array runtime slices");
 }
 
 void test_x86_backend_explicit_lir_emit_surface_matches_nested_param_member_array_runtime_path() {
@@ -6328,6 +6400,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_second_local_rewrite_slice);
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_first_local_rewrite_slice);
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_first_local_rewrite_spacing_slice);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_first_local_rewrite_spacing_two_arg_path);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_first_local_rewrite_spacing_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_both_local_arg_slice);
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_both_local_first_rewrite_slice);
@@ -6339,6 +6412,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_renders_nested_param_member_array_runtime_slice);
   RUN_TEST(test_x86_backend_renders_nested_member_pointer_array_runtime_slice);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_param_member_array_runtime_path);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_keeps_renamed_param_member_array_runtime_path);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_nested_param_member_array_runtime_path);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_nested_member_pointer_array_runtime_path);
   RUN_TEST(test_x86_backend_renders_global_load_slice);
