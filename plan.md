@@ -226,10 +226,13 @@ Completion check:
 - the legacy IR files are gone from the build graph and source tree
 - no active backend code or active test includes them
 
-### Step 6: Remove LLVM rescue paths
+### Step 6: Remove backend-to-LLVM fallback rescue paths
 
 Goal:
-- make unsupported backend asm a backend error instead of a silent LLVM rescue
+- remove only the automatic backend-to-LLVM fallback path for `--codegen asm`
+  when native backend lowering fails
+- keep LLVM codegen itself available as an explicit codegen path; this step is
+  not a full LLVM removal
 
 Primary targets:
 - [`src/codegen/llvm/llvm_codegen.cpp`](/workspaces/c4c/src/codegen/llvm/llvm_codegen.cpp)
@@ -240,10 +243,12 @@ Concrete actions:
   good enough
 - delete fallback-only diagnostics and normalization helpers once the rescue
   path is gone
-- keep failures explicit when backend coverage is still missing
+- keep explicit backend failures when backend coverage is still missing instead
+  of silently switching codegen implementations
 
 Completion check:
 - `--codegen asm` no longer rescues unsupported backend slices through LLVM
+- explicit LLVM-driven flows still work when LLVM is selected on purpose
 - remaining failures are explicit backend errors, not silent fallback success
 
 ## Validation

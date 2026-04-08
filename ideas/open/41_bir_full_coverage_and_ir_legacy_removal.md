@@ -49,9 +49,10 @@ Complete the removal of the legacy `ir.*` backend IR by expanding BIR to full
 production coverage and migrating the x86/aarch64 emitters to consume BIR
 directly, eliminating the need for `ir.hpp`, `ir.cpp`, `ir_printer.*`,
 `ir_validate.*`, `lir_to_backend_ir.cpp`, and `bir_to_backend_ir.cpp`.
-This idea also removes every remaining LLVM fallback path used to rescue
-backend codegen, so `c4cll --codegen asm` no longer falls back through LLVM IR
-or LLVM-produced asm when backend lowering/emission is unsupported.
+This idea also removes every remaining automatic LLVM fallback/rescue path used
+to rescue backend codegen, so `c4cll --codegen asm` no longer falls back
+through LLVM IR or LLVM-produced asm when backend lowering/emission is
+unsupported. LLVM codegen itself remains available when selected explicitly.
 
 ## Current Architecture
 
@@ -84,8 +85,8 @@ Idea 06 only changed the routing layer, not the IR contract.
   bearing at the lowest level; true BIR ownership requires fixing this
 - App-layer LLVM fallback still masks unsupported backend slices by converting
   LLVM IR back into asm in `src/apps/c4cll.cpp`; that prevents unsupported
-  backend coverage gaps from being visible and keeps LLVM as a production
-  dependency for asm output
+  backend coverage gaps from being visible and keeps backend-asm success
+  dependent on an implicit LLVM rescue path
 
 ## Why Remove LLVM Fallback Too
 
@@ -97,7 +98,7 @@ Idea 06 only changed the routing layer, not the IR contract.
 - As long as fallback-to-LLVM remains allowed, "backend coverage complete"
   cannot be asserted with confidence because unsupported slices may still appear
   to work
-- True independence from LLVM requires both:
+- Backend-asm independence from implicit LLVM rescue requires both:
   - deleting the legacy backend IR route
   - deleting the app-layer LLVM IR/asm rescue path
 
@@ -213,7 +214,7 @@ Progress on 2026-04-03:
 - Remove `ir.hpp`, `ir.cpp`, `ir_printer.*`, `ir_validate.*`
 - Remove the legacy routing branch from `backend.cpp`
 
-### Phase 6: Delete LLVM Rescue Paths
+### Phase 6: Delete backend-to-LLVM rescue/fallback paths
 
 - Remove `emit_legacy()` and the legacy compare/LLVM routing that exists only to
   preserve LLVM rescue behavior
@@ -225,6 +226,8 @@ Progress on 2026-04-03:
   gone
 - Change `--codegen asm` behavior so unsupported backend codegen is a hard
   backend error, not a silent LLVM fallback
+- Keep explicit LLVM-selected codegen flows working; this phase is not a full
+  LLVM removal
 - Full ctest run: must stay green without any backend-to-LLVM rescue
 
 ## Constraints
@@ -274,6 +277,8 @@ Implication:
       is no longer a supported path
 - [ ] `c4cll --codegen asm` fails explicitly on unsupported backend slices
       instead of silently falling back through LLVM
+- [ ] Explicit LLVM-selected codegen flows still work after backend fallback
+      removal
 - [ ] Full ctest suite passes without any LLVM fallback or legacy backend-IR
       fallback remaining in production codegen
 
