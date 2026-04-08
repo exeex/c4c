@@ -7,10 +7,9 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 1: audit the typed type boundary and backend ownership seams
-- Current slice: extend the typed scalar seam into the remaining minimal
-  direct-call helper recognizers by deciding whether the remaining
-  alloca-slot helper parser needs the same structured-param preference now or
-  should stay as an explicit follow-on
+- Current slice: review the remaining typed type consumers after landing the
+  slot-backed direct-call helper recognizer follow-through and decide whether
+  pointer payload support is required for the next lowering slice
 
 ## Completed
 
@@ -109,17 +108,22 @@ Source Plan: plan.md
   disagree with stale signature param text
 - Re-ran `backend_bir_tests`, `backend_shared_util_tests`, and the full suite
   with the regression guard still passing (`2841 -> 2841`)
+- Switched `parse_backend_single_param_slot_add_function(...)` in
+  `src/backend/lowering/call_decode.hpp` to prefer structured helper return and
+  parameter metadata when present instead of hard-requiring `"i32"` signature
+  parameter text
+- Added a focused backend regression in
+  `tests/backend/backend_bir_lowering_tests.cpp` that keeps the slot-based
+  add-immediate direct-call lowering path working when the typed helper param
+  disagrees with stale signature param text
+- Re-ran `backend_bir_tests`, `backend_shared_util_tests`, and the full suite
+  with the regression guard still passing (`2841 -> 2841`)
 
 ## Next
 
-- continue migrating the remaining minimal direct-call helper recognizers in
-  `src/backend/lowering/lir_to_bir.cpp` and `src/backend/lowering/call_decode.hpp`
-  away from hard-required signature-text parameter typing where structured
-  helper metadata already exists
-- decide whether `parse_backend_single_param_slot_add_function(...)` should
-  accept structured helper return/param metadata in the same way as the other
-  minimal direct-call helper recognizers, or record it as a distinct follow-on
-  if the helper-local alloca/store shape needs separate coverage
+- audit whether any remaining minimal direct-call helper recognizers still rely
+  on signature-text parameter typing where structured helper metadata already
+  exists, now that the slot-backed helper path also prefers structured params
 - decide whether pointer payload support is needed immediately for the next
   lowering slice or should stay deferred until the first pointer-backed BIR
   consumer is converted
@@ -145,6 +149,7 @@ Source Plan: plan.md
   `tests/backend/backend_bir_lowering_tests.cpp`.
 - Latest validating targets for the direct-call helper seam:
   `test_bir_lowering_accepts_minimal_direct_call_add_imm_lir_module_with_typed_helper_param`
+  `test_bir_lowering_accepts_minimal_direct_call_add_imm_slot_lir_module_with_typed_helper_param`
   and
   `test_bir_lowering_accepts_minimal_call_crossing_direct_call_lir_module_with_typed_helper_param`
   plus

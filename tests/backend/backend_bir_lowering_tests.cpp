@@ -594,6 +594,34 @@ make_bir_minimal_direct_call_add_imm_lir_module_with_typed_helper_param() {
   return module;
 }
 
+c4c::codegen::lir::LirModule
+make_bir_minimal_direct_call_add_imm_slot_lir_module_with_typed_helper_param() {
+  using namespace c4c::codegen::lir;
+
+  auto module = make_bir_minimal_direct_call_add_imm_lir_module();
+  auto& helper = module.functions[1];
+  helper.return_type.base = c4c::TB_INT;
+  helper.params.clear();
+
+  c4c::TypeSpec param_type{};
+  param_type.base = c4c::TB_INT;
+  helper.params.push_back({"%arg0", param_type});
+  helper.signature_text = "define i32 @add_one(i8 %arg0)\n";
+  helper.alloca_insts.push_back(LirAllocaOp{"%slot", "i32", "", 4});
+  helper.alloca_insts.push_back(LirStoreOp{"i32", "%arg0", "%slot"});
+
+  auto& helper_entry = helper.blocks.front();
+  helper_entry.insts.clear();
+  helper_entry.insts.push_back(LirLoadOp{"%t0", "i32", "%slot"});
+  helper_entry.insts.push_back(LirBinOp{"%sum", LirBinaryOpcode::Add, LirTypeRef::integer(32),
+                                        "%t0", "1"});
+  helper_entry.insts.push_back(LirStoreOp{"i32", "%sum", "%slot"});
+  helper_entry.insts.push_back(LirLoadOp{"%t1", "i32", "%slot"});
+  helper_entry.terminator = LirRet{std::string("%t1"), "i32"};
+
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_bir_minimal_direct_call_identity_arg_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -1145,6 +1173,23 @@ void test_bir_lowering_accepts_minimal_direct_call_add_imm_lir_module_with_typed
                     parsed->main_function != nullptr && parsed->main_function->name == "main" &&
                     parsed->call_arg_imm == 5 && parsed->add_imm == 1,
                 "the lowered BIR module should preserve the helper/main structure plus the call and add immediates for the typed helper-param add-immediate slice");
+  }
+}
+
+void test_bir_lowering_accepts_minimal_direct_call_add_imm_slot_lir_module_with_typed_helper_param() {
+  const auto lowered = c4c::backend::try_lower_to_bir(
+      make_bir_minimal_direct_call_add_imm_slot_lir_module_with_typed_helper_param());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the slot-based add-immediate direct-call LIR module slice when the typed helper param disagrees with stale signature param text");
+
+  const auto parsed = c4c::backend::parse_bir_minimal_direct_call_add_imm_module(*lowered);
+  expect_true(parsed.has_value(),
+              "the lowered BIR module should still match the shared add-immediate direct-call BIR parser for the slot-based typed helper-param slice");
+  if (parsed.has_value()) {
+    expect_true(parsed->helper != nullptr && parsed->helper->name == "add_one" &&
+                    parsed->main_function != nullptr && parsed->main_function->name == "main" &&
+                    parsed->call_arg_imm == 5 && parsed->add_imm == 1,
+                "the lowered BIR module should preserve the helper/main structure plus the call and add immediates for the slot-based typed helper-param add-immediate slice");
   }
 }
 
@@ -3327,6 +3372,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_minimal_two_arg_direct_call_lir_module_with_typed_helper_params);
   RUN_TEST(test_bir_lowering_accepts_minimal_direct_call_add_imm_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_direct_call_add_imm_lir_module_with_typed_helper_param);
+  RUN_TEST(test_bir_lowering_accepts_minimal_direct_call_add_imm_slot_lir_module_with_typed_helper_param);
   RUN_TEST(test_bir_lowering_accepts_minimal_direct_call_identity_arg_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_direct_call_identity_arg_lir_module_with_helper_first);
   RUN_TEST(test_bir_lowering_accepts_minimal_direct_call_identity_arg_lir_module_with_typed_helper_param);
