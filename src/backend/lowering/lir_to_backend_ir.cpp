@@ -768,8 +768,8 @@ std::optional<BackendFunction> adapt_conditional_return_function(
   using namespace c4c::codegen::lir;
 
   if (function.is_declaration || !backend_function_is_definition(signature) ||
-      signature.return_type != "i32" || signature.name != "main" ||
-      !signature.params.empty() || signature.is_vararg || function.entry.value != 0 ||
+      signature.return_type != "i32" || !signature.params.empty() || signature.is_vararg ||
+      function.entry.value != 0 ||
       function.blocks.size() != 3 || !function.alloca_insts.empty() ||
       !function.stack_objects.empty()) {
     return std::nullopt;

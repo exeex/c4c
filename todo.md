@@ -9,15 +9,35 @@ Source Plan: plan.md
 - [ ] Remove legacy backend IR files and backend/app LLVM rescue paths
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
-Current active item: Step 4 follow-on deletion. Continue removing the
-remaining bounded multi-block literal-`main` caller anchors that still block
-renamed-caller parity on x86/native-backend routes after the conditional
-phi-join slice, with the next target being the still-literal lowered
-conditional-return adapter in
-[`src/backend/lowering/lir_to_backend_ir.cpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp)
-and its matching x86/native-backend proof surface.
+Current active item: Step 4 follow-on deletion. Continue with the next bounded
+multi-block literal-`main` caller anchor in
+[`src/backend/lowering/lir_to_backend_ir.cpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp),
+with the next target being the double-indirect local-pointer
+conditional-return adapter and its matching backend/x86 proof surface.
 
 Latest completed slice:
+
+- removed the lowered structured conditional-return production-side
+  literal-`main` caller anchor from
+  [`src/backend/lowering/lir_to_backend_ir.cpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp)
+  by teaching the multi-block compare-and-branch adapter to accept any
+  structural zero-argument `i32` caller instead of rejecting renamed callers
+  before they reach the specialized lowered backend path
+- proved the production deletion with a new renamed-caller regression in
+  [`tests/backend/backend_module_tests.cpp`](/workspaces/c4c/tests/backend/backend_module_tests.cpp)
+  so the lowered backend printer preserves `define i32 @entry_cond()` plus the
+  same compare-and-branch IR instead of throwing the generic unsupported
+  multi-block fallback error
+- kept focused backend coverage green at `2` passed / `0` failed via
+  `ctest --test-dir build -R '^(backend_module_tests|backend_lir_adapter_x86_64_tests)$' -j1 --output-on-failure`
+- reran the required backend regression scope to `401` passed / `1` failed via
+  `ctest --test-dir build -R backend -j --output-on-failure > test_backend_after.log`;
+  the only failing case remains the independently reproducing unrelated blocker
+  `c_testsuite_aarch64_backend_src_00023_c`
+- the monotonic backend guard against the checked-in baseline still reports one
+  new failing test because `test_backend_before.log` remains the older clean
+  `182`-test snapshot while the current tree still reproduces the unrelated
+  aarch64 failure above
 
 - removed the bounded conditional-phi-join production-side literal-`main`
   caller anchor from the direct x86 LIR parser plus the explicit lowered

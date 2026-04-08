@@ -208,6 +208,25 @@ void test_backend_ir_validator_accepts_structured_conditional_return_slice_witho
               "backend IR validator should not report an error for structured conditional-return slices without compare type text");
 }
 
+void test_backend_ir_printer_renders_lowered_conditional_return_slice_with_renamed_caller() {
+  auto module = make_conditional_return_module();
+  auto& function = module.functions.front();
+  function.name = "entry_cond";
+  function.signature_text = "define i32 @entry_cond()\n";
+
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(std::move(module));
+  const auto rendered = c4c::backend::print_backend_module(lowered);
+
+  expect_contains(rendered, "define i32 @entry_cond()",
+                  "backend IR printer should preserve renamed structural zero-argument conditional-return callers instead of requiring a literal main symbol");
+  expect_contains(rendered, "%t0 = icmp slt i32 2, 3",
+                  "backend IR printer should still render the lowered compare for renamed conditional-return callers");
+  expect_contains(rendered, "br i1 %t0, label %then, label %else",
+                  "backend IR printer should still render the lowered conditional branch for renamed conditional-return callers");
+  expect_not_contains(rendered, "define i32 @main()",
+                      "backend IR printer should not rewrite renamed conditional-return callers back to main");
+}
+
 void test_backend_ir_printer_renders_lowered_conditional_phi_join_slice() {
   const auto lowered = c4c::backend::lower_lir_to_backend_module(make_conditional_phi_join_module());
   const auto rendered = c4c::backend::print_backend_module(lowered);
@@ -2058,6 +2077,7 @@ int main(int argc, char* argv[]) {
   test_backend_ir_validator_accepts_lowered_conditional_return_slice();
   test_backend_ir_printer_renders_structured_conditional_return_slice_without_type_text();
   test_backend_ir_validator_accepts_structured_conditional_return_slice_without_type_text();
+  test_backend_ir_printer_renders_lowered_conditional_return_slice_with_renamed_caller();
   test_backend_ir_printer_renders_lowered_conditional_phi_join_slice();
   test_backend_ir_validator_accepts_lowered_conditional_phi_join_slice();
   test_backend_ir_printer_renders_lowered_conditional_phi_join_add_slice();
