@@ -182,6 +182,62 @@ void test_backend_shared_call_decode_parses_bir_minimal_two_arg_direct_call_modu
               "shared call-decode surface should recover both immediate call operands for the BIR two-argument direct-call slice");
 }
 
+void test_backend_shared_call_decode_parses_bir_minimal_direct_call_add_imm_module() {
+  c4c::backend::bir::Module module;
+  module.functions.push_back(c4c::backend::bir::Function{
+      .name = "add_one",
+      .return_type = c4c::backend::bir::TypeKind::I32,
+      .params = {
+          c4c::backend::bir::Param{.type = c4c::backend::bir::TypeKind::I32, .name = "%arg0"},
+      },
+      .local_slots = {},
+      .blocks = {c4c::backend::bir::Block{
+          .label = "entry",
+          .insts = {c4c::backend::bir::BinaryInst{
+              .opcode = c4c::backend::bir::BinaryOpcode::Add,
+              .result = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%sum"),
+              .lhs = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%arg0"),
+              .rhs = c4c::backend::bir::Value::immediate_i32(1),
+          }},
+          .terminator = c4c::backend::bir::ReturnTerminator{
+              .value = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%sum"),
+          },
+      }},
+      .is_declaration = false,
+  });
+  module.functions.push_back(c4c::backend::bir::Function{
+      .name = "main",
+      .return_type = c4c::backend::bir::TypeKind::I32,
+      .params = {},
+      .local_slots = {},
+      .blocks = {c4c::backend::bir::Block{
+          .label = "entry",
+          .insts = {c4c::backend::bir::CallInst{
+              .result = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%t0"),
+              .callee = "add_one",
+              .args = {
+                  c4c::backend::bir::Value::immediate_i32(5),
+              },
+              .return_type_name = "i32",
+          }},
+          .terminator = c4c::backend::bir::ReturnTerminator{
+              .value = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%t0"),
+          },
+      }},
+      .is_declaration = false,
+  });
+
+  const auto parsed = c4c::backend::parse_bir_minimal_direct_call_add_imm_module(module);
+  expect_true(parsed.has_value(),
+              "shared call-decode surface should parse a BIR helper/main add-immediate direct-call module");
+  expect_true(parsed->helper != nullptr && parsed->helper->name == "add_one" &&
+                  parsed->main_function != nullptr && parsed->main_function->name == "main",
+              "shared call-decode surface should preserve helper and caller identities for the BIR add-immediate direct-call slice");
+  expect_true(parsed->call != nullptr && parsed->call->callee == "add_one" &&
+                  parsed->call_arg_imm == 5 && parsed->add_imm == 1,
+              "shared call-decode surface should recover the call argument and helper add immediate for the BIR add-immediate direct-call slice");
+}
+
 
 void test_backend_shared_liveness_surface_tracks_result_names() {
   const auto module = make_declaration_module();
@@ -1005,6 +1061,7 @@ int main(int argc, char* argv[]) {
   test_backend_shared_call_decode_parses_bir_minimal_direct_call_module();
   test_backend_shared_call_decode_parses_bir_minimal_declared_direct_call_module();
   test_backend_shared_call_decode_parses_bir_minimal_two_arg_direct_call_module();
+  test_backend_shared_call_decode_parses_bir_minimal_direct_call_add_imm_module();
   test_backend_shared_liveness_surface_tracks_result_names();
   test_backend_shared_liveness_surface_tracks_call_crossing_ranges();
   test_backend_shared_liveness_surface_tracks_phi_join_ranges();
