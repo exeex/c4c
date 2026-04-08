@@ -2578,6 +2578,51 @@ std::optional<MinimalScalarGlobalLoadSlice> parse_minimal_scalar_global_load_sli
   };
 }
 
+std::optional<MinimalScalarGlobalStoreReloadSlice> parse_minimal_scalar_global_store_reload_slice(
+    const c4c::backend::bir::Module& module) {
+  using namespace c4c::backend::bir;
+
+  if (module.functions.size() != 1 || module.globals.size() != 1 ||
+      !module.string_constants.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& global = module.globals.front();
+  if (global.is_extern || global.type != TypeKind::I32 || !global.initializer.has_value() ||
+      global.initializer->kind != Value::Kind::Immediate ||
+      global.initializer->type != TypeKind::I32) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration || function.return_type != TypeKind::I32 ||
+      !function.params.empty() || !function.local_slots.empty() || function.blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  const auto* store =
+      entry.insts.size() == 2 ? std::get_if<StoreGlobalInst>(&entry.insts[0]) : nullptr;
+  const auto* load =
+      entry.insts.size() == 2 ? std::get_if<LoadGlobalInst>(&entry.insts[1]) : nullptr;
+  if (entry.label != "entry" || store == nullptr || load == nullptr ||
+      store->global_name != global.name || store->value.kind != Value::Kind::Immediate ||
+      store->value.type != TypeKind::I32 || load->result.kind != Value::Kind::Named ||
+      load->result.type != TypeKind::I32 || load->global_name != global.name ||
+      entry.terminator.kind != TerminatorKind::Return ||
+      !entry.terminator.value.has_value() || *entry.terminator.value != load->result) {
+    return std::nullopt;
+  }
+
+  return MinimalScalarGlobalStoreReloadSlice{
+      function.name,
+      global.name,
+      global.initializer->immediate,
+      store->value.immediate,
+      4,
+  };
+}
+
 std::optional<MinimalScalarGlobalLoadSlice> parse_minimal_scalar_global_load_slice(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
@@ -7084,6 +7129,10 @@ std::string emit_module(const c4c::backend::bir::Module& module,
   if (const auto slice = parse_minimal_scalar_global_load_slice(module);
       slice.has_value()) {
     return emit_minimal_scalar_global_load_asm(module.target_triple, *slice);
+  }
+  if (const auto slice = parse_minimal_scalar_global_store_reload_slice(module);
+      slice.has_value()) {
+    return emit_minimal_scalar_global_store_reload_asm(module.target_triple, *slice);
   }
   if (const auto imm = parse_minimal_return_imm(module); imm.has_value()) {
     return emit_minimal_return_sub_imm_asm(module, *imm);

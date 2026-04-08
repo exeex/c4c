@@ -1686,6 +1686,100 @@ std::optional<bir::Module> try_lower_minimal_scalar_global_load_module(
   return lowered;
 }
 
+std::optional<bir::Module> try_lower_minimal_scalar_global_store_reload_module(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  const bool supported_target =
+      module.target_triple.find("x86_64") != std::string::npos ||
+      module.target_triple.find("i686") != std::string::npos ||
+      module.target_triple.find("aarch64") != std::string::npos;
+  if (!supported_target) {
+    return std::nullopt;
+  }
+
+  if (module.functions.size() != 1 || module.globals.size() != 1 ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& global = module.globals.front();
+  if (global.is_internal || global.is_const || global.is_extern_decl ||
+      global.linkage_vis != "" || global.qualifier != "global " ||
+      global.llvm_type != "i32") {
+    return std::nullopt;
+  }
+
+  const auto parsed_init = parse_immediate(global.init_text);
+  if (!parsed_init.has_value() ||
+      *parsed_init < std::numeric_limits<std::int32_t>::min() ||
+      *parsed_init > std::numeric_limits<std::int32_t>::max()) {
+    return std::nullopt;
+  }
+  const auto init_imm = static_cast<std::int32_t>(*parsed_init);
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      !backend_lir_signature_matches(function.signature_text, "define", "i32", function.name, {}) ||
+      function.entry.value != 0 || function.blocks.size() != 1 ||
+      !function.alloca_insts.empty() || !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  const auto* ret = std::get_if<LirRet>(&entry.terminator);
+  const auto* store =
+      entry.insts.size() == 2 ? std::get_if<LirStoreOp>(&entry.insts[0]) : nullptr;
+  const auto* load =
+      entry.insts.size() == 2 ? std::get_if<LirLoadOp>(&entry.insts[1]) : nullptr;
+  if (entry.label != "entry" || ret == nullptr || store == nullptr || load == nullptr ||
+      store->type_str != "i32" || load->type_str != "i32" ||
+      store->ptr != ("@" + global.name) || load->ptr != ("@" + global.name) ||
+      !ret->value_str.has_value() || ret->type_str != "i32" ||
+      *ret->value_str != load->result.str()) {
+    return std::nullopt;
+  }
+
+  const auto store_imm = parse_immediate(store->val);
+  if (!store_imm.has_value() ||
+      *store_imm < std::numeric_limits<std::int32_t>::min() ||
+      *store_imm > std::numeric_limits<std::int32_t>::max()) {
+    return std::nullopt;
+  }
+
+  bir::Module lowered;
+  lowered.target_triple = module.target_triple;
+  lowered.data_layout = module.data_layout;
+  lowered.globals.push_back(bir::Global{
+      .name = global.name,
+      .type = bir::TypeKind::I32,
+      .is_extern = false,
+      .initializer = bir::Value::immediate_i32(init_imm),
+  });
+
+  bir::Function lowered_function;
+  lowered_function.name = function.name;
+  lowered_function.return_type = bir::TypeKind::I32;
+
+  bir::Block lowered_entry;
+  lowered_entry.label = "entry";
+  lowered_entry.insts.push_back(bir::StoreGlobalInst{
+      .global_name = global.name,
+      .value = bir::Value::immediate_i32(static_cast<std::int32_t>(*store_imm)),
+  });
+  lowered_entry.insts.push_back(bir::LoadGlobalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, load->result.str()),
+      .global_name = global.name,
+  });
+  lowered_entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, load->result.str()),
+  };
+
+  lowered_function.blocks.push_back(std::move(lowered_entry));
+  lowered.functions.push_back(std::move(lowered_function));
+  return lowered;
+}
+
 std::optional<bir::BinaryOpcode> lower_binary_opcode(std::string_view opcode) {
   if (opcode == "add") {
     return bir::BinaryOpcode::Add;
@@ -3622,6 +3716,10 @@ std::optional<bir::Module> try_lower_to_bir(const c4c::codegen::lir::LirModule& 
     return lowered;
   }
   if (const auto lowered = try_lower_minimal_scalar_global_load_module(module);
+      lowered.has_value()) {
+    return lowered;
+  }
+  if (const auto lowered = try_lower_minimal_scalar_global_store_reload_module(module);
       lowered.has_value()) {
     return lowered;
   }

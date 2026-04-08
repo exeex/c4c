@@ -199,6 +199,43 @@ c4c::codegen::lir::LirModule make_lir_minimal_scalar_global_load_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_lir_minimal_scalar_global_store_reload_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.globals.push_back(LirGlobal{
+      LirGlobalId{0},
+      "g_counter",
+      {},
+      false,
+      false,
+      "",
+      "global ",
+      "i32",
+      "11",
+      4,
+      false,
+  });
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{"i32", "7", "@g_counter"});
+  entry.insts.push_back(LirLoadOp{"%t0", "i32", "@g_counter"});
+  entry.terminator = LirRet{std::string("%t0"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::backend::bir::Module make_bir_minimal_scalar_global_load_module() {
   using namespace c4c::backend::bir;
 
@@ -221,6 +258,42 @@ c4c::backend::bir::Module make_bir_minimal_scalar_global_load_module() {
           .result = Value::named(TypeKind::I32, "%t0"),
           .global_name = "g_counter",
       }},
+      .terminator = ReturnTerminator{
+          .value = Value::named(TypeKind::I32, "%t0"),
+      },
+  });
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+c4c::backend::bir::Module make_bir_minimal_scalar_global_store_reload_module() {
+  using namespace c4c::backend::bir;
+
+  Module module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.globals.push_back(Global{
+      .name = "g_counter",
+      .type = TypeKind::I32,
+      .is_extern = false,
+      .initializer = Value::immediate_i32(11),
+  });
+
+  Function function;
+  function.name = "main";
+  function.return_type = TypeKind::I32;
+  function.blocks.push_back(Block{
+      .label = "entry",
+      .insts = {
+          StoreGlobalInst{
+              .global_name = "g_counter",
+              .value = Value::immediate_i32(7),
+          },
+          LoadGlobalInst{
+              .result = Value::named(TypeKind::I32, "%t0"),
+              .global_name = "g_counter",
+          },
+      },
       .terminator = ReturnTerminator{
           .value = Value::named(TypeKind::I32, "%t0"),
       },
@@ -940,6 +1013,23 @@ void test_backend_bir_pipeline_drives_aarch64_direct_bir_minimal_scalar_global_l
                       "aarch64 direct BIR scalar global-load input should stay on native asm emission instead of falling back to LLVM text");
 }
 
+void test_backend_bir_pipeline_drives_aarch64_direct_bir_minimal_scalar_global_store_reload_end_to_end() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_bir_minimal_scalar_global_store_reload_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Aarch64));
+
+  expect_contains(rendered, ".globl g_counter",
+                  "aarch64 direct BIR scalar global store-reload input should still emit the global definition on the native backend path");
+  expect_contains(rendered, "  .long 11\n",
+                  "aarch64 direct BIR scalar global store-reload input should preserve the initialized global payload");
+  expect_contains(rendered, "str w9, [x8]",
+                  "aarch64 direct BIR scalar global store-reload input should lower bir.store_global into a native scalar memory store");
+  expect_contains(rendered, "ldr w0, [x8]",
+                  "aarch64 direct BIR scalar global store-reload input should reload the just-stored scalar value on the native backend path");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 direct BIR scalar global store-reload input should stay on native asm emission instead of falling back to LLVM text");
+}
+
 void test_backend_bir_pipeline_drives_aarch64_lir_minimal_two_arg_direct_call_through_bir_end_to_end() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_lir_minimal_two_arg_direct_call_module()},
@@ -1051,6 +1141,34 @@ void test_backend_bir_pipeline_drives_aarch64_lir_minimal_scalar_global_load_thr
                   "aarch64 LIR scalar global-load input should lower bir.load_global on the native aarch64 path");
   expect_not_contains(rendered, "target triple =",
                       "aarch64 LIR scalar global-load input should stay on native asm emission instead of falling back to LLVM text");
+}
+
+void test_backend_bir_pipeline_drives_aarch64_lir_minimal_scalar_global_store_reload_through_bir_end_to_end() {
+  const auto lowered_bir =
+      c4c::backend::try_lower_to_bir(make_lir_minimal_scalar_global_store_reload_module());
+  expect_true(lowered_bir.has_value(),
+              "aarch64 LIR scalar global store-reload input should now lower into the bounded shared BIR global store-reload shape");
+  expect_true(lowered_bir->globals.size() == 1 && lowered_bir->functions.size() == 1 &&
+                  lowered_bir->functions.front().blocks.size() == 1 &&
+                  lowered_bir->functions.front().blocks.front().insts.size() == 2 &&
+                  std::holds_alternative<c4c::backend::bir::StoreGlobalInst>(
+                      lowered_bir->functions.front().blocks.front().insts.front()) &&
+                  std::holds_alternative<c4c::backend::bir::LoadGlobalInst>(
+                      lowered_bir->functions.front().blocks.front().insts[1]),
+              "aarch64 LIR scalar global store-reload lowering should produce one initialized global plus direct bir.store_global and bir.load_global instructions");
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_lir_minimal_scalar_global_store_reload_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Aarch64));
+
+  expect_contains(rendered, ".globl g_counter",
+                  "aarch64 LIR scalar global store-reload input should still emit the global definition after routing through the shared BIR path");
+  expect_contains(rendered, "str w9, [x8]",
+                  "aarch64 LIR scalar global store-reload input should lower bir.store_global on the native aarch64 path");
+  expect_contains(rendered, "ldr w0, [x8]",
+                  "aarch64 LIR scalar global store-reload input should reload the stored scalar value on the native aarch64 path");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 LIR scalar global store-reload input should stay on native asm emission instead of falling back to LLVM text");
 }
 
 void test_backend_bir_pipeline_drives_aarch64_lir_minimal_call_crossing_direct_call_through_bir_end_to_end() {
@@ -1529,6 +1647,7 @@ void run_backend_bir_pipeline_aarch64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_direct_bir_minimal_call_crossing_direct_call_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_direct_bir_minimal_countdown_loop_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_direct_bir_minimal_scalar_global_load_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_aarch64_direct_bir_minimal_scalar_global_store_reload_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_lir_minimal_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_lir_minimal_void_direct_call_imm_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_lir_declared_direct_call_through_bir_end_to_end);
@@ -1538,6 +1657,7 @@ void run_backend_bir_pipeline_aarch64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_lir_minimal_dual_identity_direct_call_sub_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_lir_minimal_countdown_loop_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_lir_minimal_scalar_global_load_through_bir_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_aarch64_lir_minimal_scalar_global_store_reload_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_lir_minimal_call_crossing_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_single_param_chain_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_direct_bir_zero_param_staged_constant_end_to_end);

@@ -137,6 +137,11 @@ struct LoadGlobalInst {
   std::string global_name;
 };
 
+struct StoreGlobalInst {
+  std::string global_name;
+  Value value;
+};
+
 struct StoreLocalInst {
   std::string slot_name;
   Value value;
@@ -148,6 +153,7 @@ using Inst = std::variant<BinaryInst,
                           CallInst,
                           LoadLocalInst,
                           LoadGlobalInst,
+                          StoreGlobalInst,
                           StoreLocalInst>;
 
 struct ReturnTerminator {

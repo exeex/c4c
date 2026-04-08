@@ -319,6 +319,39 @@ bool validate_store_local(const Function& function,
   return true;
 }
 
+bool validate_store_global(const Module& module,
+                           const Function& function,
+                           const StoreGlobalInst& inst,
+                           const std::vector<std::string>& defined_names,
+                           std::string* error) {
+  const auto* global = find_global(module, inst.global_name);
+  if (global == nullptr) {
+    return fail(error, "bir global store in @" + function.name +
+                           " must reference a declared global");
+  }
+  if (!validate_value_type(inst.value.type,
+                           "bir global store value in @" + function.name,
+                           error)) {
+    return false;
+  }
+  if (global->type != inst.value.type) {
+    return fail(error, "bir global store in @" + function.name +
+                           " must agree with the referenced global type");
+  }
+  if (inst.value.kind == Value::Kind::Named) {
+    if (inst.value.name.empty()) {
+      return fail(error, "bir global store value in @" + function.name +
+                             " must not use an empty name");
+    }
+    if (std::find(defined_names.begin(), defined_names.end(), inst.value.name) ==
+        defined_names.end()) {
+      return fail(error, "bir global store in @" + function.name +
+                             " must reference a value defined earlier in the block");
+    }
+  }
+  return true;
+}
+
 bool validate_params(const Function& function,
                      std::vector<std::string>* defined_names,
                      std::string* error) {
@@ -518,6 +551,8 @@ bool validate(const Module& module, std::string* error) {
                 return validate_load_local(function, lowered, &defined_names, error);
               } else if constexpr (std::is_same_v<T, LoadGlobalInst>) {
                 return validate_load_global(module, function, lowered, &defined_names, error);
+              } else if constexpr (std::is_same_v<T, StoreGlobalInst>) {
+                return validate_store_global(module, function, lowered, defined_names, error);
               } else if constexpr (std::is_same_v<T, StoreLocalInst>) {
                 return validate_store_local(function, lowered, defined_names, error);
               }
