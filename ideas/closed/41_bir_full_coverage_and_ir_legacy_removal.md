@@ -1,7 +1,7 @@
 # BIR Full Coverage and Legacy IR Removal
 
-Status: Open
-Last Updated: 2026-04-04
+Status: Closed
+Last Updated: 2026-04-08
 
 ## Priority Note
 
@@ -53,6 +53,31 @@ This idea also removes every remaining automatic LLVM fallback/rescue path used
 to rescue backend codegen, so `c4cll --codegen asm` no longer falls back
 through LLVM IR or LLVM-produced asm when backend lowering/emission is
 unsupported. LLVM codegen itself remains available when selected explicitly.
+
+## Completion Summary
+
+Closed on 2026-04-08 after finishing the final Step 6 cleanup and validation.
+
+- legacy backend IR and legacy lowering route removal completed in-tree
+- `--codegen asm` no longer rescues unsupported backend requests through LLVM;
+  unsupported riscv64 asm now fails explicitly with the backend-native asm
+  diagnostic instead of emitting LLVM text
+- the remaining shared direct-BIR rejection retry in
+  `src/codegen/llvm/llvm_codegen.cpp` is intentionally preserved because
+  x86_64, i686, and aarch64 still have native direct-LIR slices that are wider
+  than the current shared direct-BIR subset
+- focused backend-route coverage now pins that retry-owned native asm behavior
+  for `tests/c/external/c-testsuite/src/00012.c` and `src/00064.c` on
+  x86_64, i686, and aarch64
+- full validation passed at `2841/2841` tests with 0 failures, and the
+  regression guard passed against `test_fail_before.log` with zero newly
+  failing tests
+
+## Leftover Follow-up
+
+The remaining direct-BIR subset gap versus native x86/i686/aarch64 direct-LIR
+coverage is a follow-on backend-coverage improvement, not a remaining legacy-IR
+or LLVM-rescue blocker.
 
 ## Current Architecture
 
