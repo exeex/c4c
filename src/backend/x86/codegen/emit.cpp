@@ -37,6 +37,11 @@ namespace {
       "x86 backend emitter does not support this direct BIR module; only the affine-return subset lowers natively");
 }
 
+[[noreturn]] void throw_legacy_backend_ir_not_implemented() {
+  throw std::runtime_error(
+      "x86 backend emitter legacy backend IR path is not implemented; use direct LIR or BIR lowering");
+}
+
 bool is_direct_bir_subset_error(const std::invalid_argument& ex) {
   return std::string_view(ex.what()).find("does not support this direct BIR module") !=
          std::string_view::npos;
@@ -6222,119 +6227,9 @@ std::optional<std::string> try_emit_direct_lir_module(
 
 std::string emit_module(const c4c::backend::BackendModule& module,
                         const c4c::codegen::lir::LirModule* legacy_fallback) {
-  std::string backend_ir_error;
-  if (!c4c::backend::validate_backend_module(module, &backend_ir_error)) {
-    return c4c::backend::print_backend_module(module);
-  }
-  try {
-    if (const auto slice = parse_minimal_extern_scalar_global_load_slice(module);
-        slice.has_value()) {
-      return emit_minimal_extern_scalar_global_load_asm(module, *slice);
-    }
-    if (const auto slice = parse_minimal_extern_global_array_load_slice(module);
-        slice.has_value()) {
-      return emit_minimal_extern_global_array_load_asm(module, *slice);
-    }
-    if (const auto slice = parse_minimal_local_array_slice(module);
-        slice.has_value()) {
-      return emit_minimal_local_array_asm(module, *slice);
-    }
-    if (const auto slice = c4c::backend::parse_backend_minimal_declared_direct_call_module(module);
-        slice.has_value()) {
-      return emit_minimal_extern_decl_call_asm(module, *slice);
-    }
-    if (const auto slice = parse_minimal_scalar_global_load_slice(module);
-        slice.has_value()) {
-      return emit_minimal_scalar_global_load_asm(module, *slice);
-    }
-    if (const auto slice = parse_minimal_scalar_global_store_reload_slice(module);
-        slice.has_value()) {
-      return emit_minimal_scalar_global_store_reload_asm(module, *slice);
-    }
-    if (const auto slice = parse_minimal_global_char_pointer_diff_slice(module);
-        slice.has_value()) {
-      return emit_minimal_global_char_pointer_diff_asm(module, *slice);
-    }
-    if (const auto slice = parse_minimal_global_int_pointer_diff_slice(module);
-        slice.has_value()) {
-      return emit_minimal_global_int_pointer_diff_asm(module, *slice);
-    }
-    if (const auto slice = parse_minimal_string_literal_char_slice(module);
-        slice.has_value()) {
-      c4c::codegen::lir::LirModule scaffold_module;
-      scaffold_module.target_triple = module.target_triple;
-      return emit_minimal_string_literal_char_asm(module.target_triple, *slice);
-    }
-    if (const auto slice = parse_minimal_conditional_return_slice(module);
-        slice.has_value()) {
-      return emit_minimal_conditional_return_asm(module, *slice);
-    }
-    if (const auto slice = parse_minimal_conditional_phi_join_slice(module);
-        slice.has_value()) {
-      return emit_minimal_conditional_phi_join_asm(module, *slice);
-    }
-    if (const auto slice = parse_minimal_countdown_loop_slice(module);
-        slice.has_value()) {
-      return emit_minimal_countdown_loop_asm(module, *slice);
-    }
-    if (const auto slice = c4c::backend::parse_backend_minimal_direct_call_module(module);
-        slice.has_value()) {
-      return emit_minimal_direct_call_asm(module, *slice);
-    }
-    if (const auto slice = c4c::backend::parse_backend_minimal_void_direct_call_imm_return_module(module);
-        slice.has_value()) {
-      return emit_minimal_void_direct_call_imm_return_asm(module, *slice);
-    }
-    if (const auto slice = c4c::backend::parse_backend_minimal_direct_call_add_imm_module(module);
-        slice.has_value()) {
-      return emit_minimal_direct_call_add_imm_asm(module, *slice);
-    }
-    if (const auto slice =
-            c4c::backend::parse_backend_minimal_direct_call_identity_arg_module(module);
-        slice.has_value()) {
-      return emit_minimal_direct_call_identity_arg_asm(module, *slice);
-    }
-    if (const auto slice = parse_minimal_dual_identity_direct_call_sub_slice(module);
-        slice.has_value()) {
-      return emit_minimal_dual_identity_direct_call_sub_asm(module.target_triple, *slice);
-    }
-    if (const auto slice = c4c::backend::parse_backend_minimal_two_arg_direct_call_module(module);
-        slice.has_value()) {
-      return emit_minimal_two_arg_direct_call_asm(module, *slice);
-    }
-    if (const auto imm = parse_minimal_folded_two_arg_direct_call_return_imm(module);
-        imm.has_value()) {
-      return emit_minimal_return_asm(module, *imm);
-    }
-    if (const auto slice = parse_minimal_call_crossing_direct_call_slice(module);
-        slice.has_value()) {
-      return remove_redundant_self_moves(emit_minimal_call_crossing_direct_call_asm(
-          module, synthesize_shared_x86_call_crossing_regalloc(*slice), *slice));
-    }
-    if (const auto imm = parse_minimal_return_imm(module); imm.has_value()) {
-      return emit_minimal_return_asm(module, *imm);
-    }
-    if (const auto imm = parse_minimal_return_add_imm(module); imm.has_value()) {
-      return emit_minimal_return_asm(module, *imm);
-    }
-    if (const auto imm = parse_minimal_return_sub_imm(module); imm.has_value()) {
-      return emit_minimal_return_asm(module, *imm);
-    }
-    if (const auto slice = parse_minimal_affine_return_slice(module);
-        slice.has_value()) {
-      return emit_minimal_affine_return_asm(module, *slice);
-    }
-  } catch (const c4c::backend::LirAdapterError&) {
-  }
-
-  if (legacy_fallback != nullptr) {
-    if (const auto rendered = try_emit_direct_lir_module(*legacy_fallback);
-        rendered.has_value()) {
-      return *rendered;
-    }
-    return c4c::codegen::lir::print_llvm(*legacy_fallback);
-  }
-  return c4c::backend::print_backend_module(module);
+  (void)module;
+  (void)legacy_fallback;
+  throw_legacy_backend_ir_not_implemented();
 }
 
 std::string emit_module(const c4c::backend::bir::Module& module,
@@ -6386,13 +6281,7 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
       }
     }
   }
-
-  try {
-    const auto adapted = c4c::backend::lower_lir_to_backend_module(module);
-    return emit_module(adapted, &module);
-  } catch (const c4c::backend::LirAdapterError&) {
-    return c4c::codegen::lir::print_llvm(module);
-  }
+  throw_legacy_backend_ir_not_implemented();
 }
 
 assembler::AssembleResult assemble_module(const c4c::codegen::lir::LirModule& module,

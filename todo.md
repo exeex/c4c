@@ -23,6 +23,16 @@ emitted asm.
 
 Latest completed slice:
 
+- hard-locked the production-side legacy x86 backend-IR seam in
+  [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+  by turning `emit_module(const BackendModule&, ...)` into an explicit
+  `not implemented` failure and removing the `emit_module(const LirModule&)`
+  fallback that previously lowered through `lower_lir_to_backend_module(...)`
+  before rendering or printing legacy backend IR
+- kept the surviving x86 live paths limited to direct-LIR emit probes plus
+  `lir_to_bir` / direct-BIR emission, so unsupported modules now fail
+  explicitly instead of silently dropping onto the legacy backend-IR adapter
+- verified the cutover still builds with `cmake --build build -j8`
 - hard-locked the production-side legacy aarch64 backend-IR seam in
   [`src/backend/aarch64/codegen/emit.cpp`](/workspaces/c4c/src/backend/aarch64/codegen/emit.cpp)
   by turning `emit_module(const BackendModule&, ...)` into an explicit
