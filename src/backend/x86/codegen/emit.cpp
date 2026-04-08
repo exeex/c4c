@@ -3,7 +3,6 @@
 #include "../../bir.hpp"
 #include "../../generation.hpp"
 #include "../../lowering/call_decode.hpp"
-#include "../../lowering/lir_to_backend_ir.hpp"
 #include "../../lowering/lir_to_bir.hpp"
 #include "../../stack_layout/regalloc_helpers.hpp"
 #include "../../../codegen/lir/call_args.hpp"
@@ -4719,16 +4718,12 @@ std::string emit_minimal_cast_return_asm(
 std::string emit_minimal_direct_call_asm(const c4c::backend::BackendModule& module,
                                          const c4c::backend::ParsedBackendMinimalDirectCallModuleView& slice) {
   if (slice.helper == nullptr || slice.main_function == nullptr) {
-    throw c4c::backend::LirAdapterError(
-        c4c::backend::LirAdapterErrorKind::Unsupported,
-        "structured zero-argument direct-call slice without helper metadata");
+    throw std::invalid_argument("structured zero-argument direct-call slice without helper metadata");
   }
 
   if (slice.return_imm < std::numeric_limits<std::int32_t>::min() ||
       slice.return_imm > std::numeric_limits<std::int32_t>::max()) {
-    throw c4c::backend::LirAdapterError(
-        c4c::backend::LirAdapterErrorKind::Unsupported,
-        "helper return immediates outside the minimal mov-supported range");
+    throw std::invalid_argument("helper return immediates outside the minimal mov-supported range");
   }
 
   const std::string helper_symbol = asm_symbol_name(module, slice.helper->signature.name);
@@ -4751,16 +4746,12 @@ std::string emit_minimal_direct_call_asm(
     std::string_view target_triple,
     const c4c::backend::ParsedBackendMinimalDirectCallLirModuleView& slice) {
   if (slice.helper == nullptr || slice.main_function == nullptr) {
-    throw c4c::backend::LirAdapterError(
-        c4c::backend::LirAdapterErrorKind::Unsupported,
-        "direct zero-argument LIR call slice without caller/helper metadata");
+    throw std::invalid_argument("direct zero-argument LIR call slice without caller/helper metadata");
   }
 
   if (slice.return_imm < std::numeric_limits<std::int32_t>::min() ||
       slice.return_imm > std::numeric_limits<std::int32_t>::max()) {
-    throw c4c::backend::LirAdapterError(
-        c4c::backend::LirAdapterErrorKind::Unsupported,
-        "direct zero-argument LIR helper return immediates outside the minimal mov-supported range");
+    throw std::invalid_argument("direct zero-argument LIR helper return immediates outside the minimal mov-supported range");
   }
 
   const std::string helper_symbol = asm_symbol_name(target_triple, slice.helper->name);
@@ -4782,16 +4773,12 @@ std::string emit_minimal_void_direct_call_imm_return_asm(
     const c4c::backend::BackendModule& module,
     const c4c::backend::ParsedBackendMinimalVoidDirectCallImmReturnModuleView& slice) {
   if (slice.helper == nullptr || slice.main_function == nullptr) {
-    throw c4c::backend::LirAdapterError(
-        c4c::backend::LirAdapterErrorKind::Unsupported,
-        "structured zero-argument void direct-call slice without helper metadata");
+    throw std::invalid_argument("structured zero-argument void direct-call slice without helper metadata");
   }
 
   if (slice.return_imm < std::numeric_limits<std::int32_t>::min() ||
       slice.return_imm > std::numeric_limits<std::int32_t>::max()) {
-    throw c4c::backend::LirAdapterError(
-        c4c::backend::LirAdapterErrorKind::Unsupported,
-        "void direct-call return immediates outside the minimal mov-supported range");
+    throw std::invalid_argument("void direct-call return immediates outside the minimal mov-supported range");
   }
 
   const std::string helper_symbol = asm_symbol_name(module, slice.helper->signature.name);
@@ -4814,16 +4801,12 @@ std::string emit_minimal_void_direct_call_imm_return_asm(
     std::string_view target_triple,
     const c4c::backend::ParsedBackendMinimalVoidDirectCallImmReturnLirModuleView& slice) {
   if (slice.helper == nullptr || slice.main_function == nullptr) {
-    throw c4c::backend::LirAdapterError(
-        c4c::backend::LirAdapterErrorKind::Unsupported,
-        "direct zero-argument void LIR call slice without helper metadata");
+    throw std::invalid_argument("direct zero-argument void LIR call slice without helper metadata");
   }
 
   if (slice.return_imm < std::numeric_limits<std::int32_t>::min() ||
       slice.return_imm > std::numeric_limits<std::int32_t>::max()) {
-    throw c4c::backend::LirAdapterError(
-        c4c::backend::LirAdapterErrorKind::Unsupported,
-        "void direct-call LIR return immediates outside the minimal mov-supported range");
+    throw std::invalid_argument("void direct-call LIR return immediates outside the minimal mov-supported range");
   }
 
   const std::string helper_symbol = asm_symbol_name(target_triple, slice.helper->name);
@@ -4846,18 +4829,14 @@ std::string emit_minimal_direct_call_add_imm_asm(
     const c4c::backend::BackendModule& module,
     const c4c::backend::ParsedBackendMinimalDirectCallAddImmModuleView& slice) {
   if (slice.helper == nullptr || slice.main_function == nullptr) {
-    throw c4c::backend::LirAdapterError(
-        c4c::backend::LirAdapterErrorKind::Unsupported,
-        "structured single-argument direct-call slice without helper metadata");
+    throw std::invalid_argument("structured single-argument direct-call slice without helper metadata");
   }
 
   if (slice.call_arg_imm < std::numeric_limits<std::int32_t>::min() ||
       slice.call_arg_imm > std::numeric_limits<std::int32_t>::max() ||
       slice.add_imm < std::numeric_limits<std::int32_t>::min() ||
       slice.add_imm > std::numeric_limits<std::int32_t>::max()) {
-    throw c4c::backend::LirAdapterError(
-        c4c::backend::LirAdapterErrorKind::Unsupported,
-        "single-argument direct-call immediates outside the minimal x86 slice range");
+    throw std::invalid_argument("single-argument direct-call immediates outside the minimal x86 slice range");
   }
 
   const std::string helper_symbol = asm_symbol_name(module, slice.helper->signature.name);
@@ -4882,18 +4861,14 @@ std::string emit_minimal_direct_call_add_imm_asm(
     std::string_view target_triple,
     const c4c::backend::ParsedBackendMinimalDirectCallAddImmLirModuleView& slice) {
   if (slice.helper == nullptr || slice.main_function == nullptr) {
-    throw c4c::backend::LirAdapterError(
-        c4c::backend::LirAdapterErrorKind::Unsupported,
-        "direct single-argument LIR call slice without helper metadata");
+    throw std::invalid_argument("direct single-argument LIR call slice without helper metadata");
   }
 
   if (slice.call_arg_imm < std::numeric_limits<std::int32_t>::min() ||
       slice.call_arg_imm > std::numeric_limits<std::int32_t>::max() ||
       slice.add_imm < std::numeric_limits<std::int32_t>::min() ||
       slice.add_imm > std::numeric_limits<std::int32_t>::max()) {
-    throw c4c::backend::LirAdapterError(
-        c4c::backend::LirAdapterErrorKind::Unsupported,
-        "single-argument direct-call immediates outside the minimal x86 slice range");
+    throw std::invalid_argument("single-argument direct-call immediates outside the minimal x86 slice range");
   }
 
   const std::string helper_symbol = asm_symbol_name(target_triple, slice.helper->name);
@@ -4918,16 +4893,12 @@ std::string emit_minimal_direct_call_identity_arg_asm(
     const c4c::backend::BackendModule& module,
     const c4c::backend::ParsedBackendMinimalDirectCallIdentityArgModuleView& slice) {
   if (slice.helper == nullptr) {
-    throw c4c::backend::LirAdapterError(
-        c4c::backend::LirAdapterErrorKind::Unsupported,
-        "structured identity direct-call slice without helper metadata");
+    throw std::invalid_argument("structured identity direct-call slice without helper metadata");
   }
 
   if (slice.call_arg_imm < std::numeric_limits<std::int32_t>::min() ||
       slice.call_arg_imm > std::numeric_limits<std::int32_t>::max()) {
-    throw c4c::backend::LirAdapterError(
-        c4c::backend::LirAdapterErrorKind::Unsupported,
-        "identity direct-call immediates outside the minimal x86 slice range");
+    throw std::invalid_argument("identity direct-call immediates outside the minimal x86 slice range");
   }
 
   const std::string helper_symbol = asm_symbol_name(module, slice.helper->signature.name);
@@ -4950,16 +4921,12 @@ std::string emit_minimal_direct_call_identity_arg_asm(
     std::string_view target_triple,
     const c4c::backend::ParsedBackendMinimalDirectCallIdentityArgLirModuleView& slice) {
   if (slice.helper == nullptr) {
-    throw c4c::backend::LirAdapterError(
-        c4c::backend::LirAdapterErrorKind::Unsupported,
-        "direct identity LIR call slice without helper metadata");
+    throw std::invalid_argument("direct identity LIR call slice without helper metadata");
   }
 
   if (slice.call_arg_imm < std::numeric_limits<std::int32_t>::min() ||
       slice.call_arg_imm > std::numeric_limits<std::int32_t>::max()) {
-    throw c4c::backend::LirAdapterError(
-        c4c::backend::LirAdapterErrorKind::Unsupported,
-        "identity direct-call immediates outside the minimal x86 slice range");
+    throw std::invalid_argument("identity direct-call immediates outside the minimal x86 slice range");
   }
 
   const std::string helper_symbol = asm_symbol_name(target_triple, slice.helper->name);
@@ -4986,9 +4953,7 @@ std::string emit_minimal_dual_identity_direct_call_sub_asm(
       slice.lhs_call_arg_imm > std::numeric_limits<std::int32_t>::max() ||
       slice.rhs_call_arg_imm < std::numeric_limits<std::int32_t>::min() ||
       slice.rhs_call_arg_imm > std::numeric_limits<std::int32_t>::max()) {
-    throw c4c::backend::LirAdapterError(
-        c4c::backend::LirAdapterErrorKind::Unsupported,
-        "dual identity direct-call subtraction immediates outside the minimal x86 slice range");
+    throw std::invalid_argument("dual identity direct-call subtraction immediates outside the minimal x86 slice range");
   }
 
   const std::string lhs_symbol = asm_symbol_name(target_triple, slice.lhs_helper_name);
@@ -5025,9 +4990,7 @@ std::string emit_minimal_two_arg_direct_call_asm(
       slice.lhs_call_arg_imm > std::numeric_limits<std::int32_t>::max() ||
       slice.rhs_call_arg_imm < std::numeric_limits<std::int32_t>::min() ||
       slice.rhs_call_arg_imm > std::numeric_limits<std::int32_t>::max()) {
-    throw c4c::backend::LirAdapterError(
-        c4c::backend::LirAdapterErrorKind::Unsupported,
-        "two-argument direct-call immediates outside the minimal x86 slice range");
+    throw std::invalid_argument("two-argument direct-call immediates outside the minimal x86 slice range");
   }
 
   const std::string helper_symbol = asm_symbol_name(target_triple, slice.callee_name);
@@ -5060,9 +5023,7 @@ std::string emit_minimal_member_array_runtime_asm(
   auto ensure_i32_imm = [](std::int64_t value, std::string_view label) {
     if (value < std::numeric_limits<std::int32_t>::min() ||
         value > std::numeric_limits<std::int32_t>::max()) {
-      throw c4c::backend::LirAdapterError(
-          c4c::backend::LirAdapterErrorKind::Unsupported,
-          std::string(label) + " immediate outside the minimal x86 member-array slice range");
+      throw std::invalid_argument(std::string(label) + " immediate outside the minimal x86 member-array slice range");
     }
   };
   ensure_i32_imm(slice.first_imm, "first member-array");
@@ -5109,18 +5070,14 @@ std::string emit_minimal_two_arg_direct_call_asm(
     const c4c::backend::BackendModule& module,
     const c4c::backend::ParsedBackendMinimalTwoArgDirectCallModuleView& slice) {
   if (slice.helper == nullptr) {
-    throw c4c::backend::LirAdapterError(
-        c4c::backend::LirAdapterErrorKind::Unsupported,
-        "structured two-argument direct-call slice without helper metadata");
+    throw std::invalid_argument("structured two-argument direct-call slice without helper metadata");
   }
 
   if (slice.lhs_call_arg_imm < std::numeric_limits<std::int32_t>::min() ||
       slice.lhs_call_arg_imm > std::numeric_limits<std::int32_t>::max() ||
       slice.rhs_call_arg_imm < std::numeric_limits<std::int32_t>::min() ||
       slice.rhs_call_arg_imm > std::numeric_limits<std::int32_t>::max()) {
-    throw c4c::backend::LirAdapterError(
-        c4c::backend::LirAdapterErrorKind::Unsupported,
-        "two-argument direct-call immediates outside the minimal x86 slice range");
+    throw std::invalid_argument("two-argument direct-call immediates outside the minimal x86 slice range");
   }
 
   return emit_minimal_two_arg_direct_call_asm(
@@ -5181,9 +5138,7 @@ std::string emit_minimal_conditional_return_asm(
     case c4c::codegen::lir::LirCmpPredicate::Ugt: fail_branch = "jbe"; break;
     case c4c::codegen::lir::LirCmpPredicate::Uge: fail_branch = "jb"; break;
     default:
-      throw c4c::backend::LirAdapterError(
-          c4c::backend::LirAdapterErrorKind::Unsupported,
-          "conditional-return predicates outside the current compare-and-branch x86 slice");
+      throw std::invalid_argument("conditional-return predicates outside the current compare-and-branch x86 slice");
   }
   emit_value_to_eax(out, slice.lhs);
   out << "  cmp eax, " << cmp_rhs_operand(slice.rhs) << "\n";
@@ -5271,9 +5226,7 @@ std::string emit_minimal_conditional_affine_i8_return_asm(
     case c4c::codegen::lir::LirCmpPredicate::Ugt: fail_branch = "jbe"; break;
     case c4c::codegen::lir::LirCmpPredicate::Uge: fail_branch = "jb"; break;
     default:
-      throw c4c::backend::LirAdapterError(
-          c4c::backend::LirAdapterErrorKind::Unsupported,
-          "conditional-i8-affine-return predicates outside the current compare-and-branch x86 slice");
+      throw std::invalid_argument("conditional-i8-affine-return predicates outside the current compare-and-branch x86 slice");
   }
 
   emit_compare_source_to_al(out, slice.lhs);
@@ -5367,9 +5320,7 @@ std::string emit_minimal_conditional_affine_i32_return_asm(
     case c4c::codegen::lir::LirCmpPredicate::Ugt: fail_branch = "jbe"; break;
     case c4c::codegen::lir::LirCmpPredicate::Uge: fail_branch = "jb"; break;
     default:
-      throw c4c::backend::LirAdapterError(
-          c4c::backend::LirAdapterErrorKind::Unsupported,
-          "conditional-i32-affine-return predicates outside the current compare-and-branch x86 slice");
+      throw std::invalid_argument("conditional-i32-affine-return predicates outside the current compare-and-branch x86 slice");
   }
 
   emit_compare_source_to_eax(out, slice.lhs);
@@ -5443,9 +5394,7 @@ std::string emit_minimal_conditional_phi_join_asm(
     case c4c::codegen::lir::LirCmpPredicate::Ugt: fail_branch = "jbe"; break;
     case c4c::codegen::lir::LirCmpPredicate::Uge: fail_branch = "jb"; break;
     default:
-      throw c4c::backend::LirAdapterError(
-          c4c::backend::LirAdapterErrorKind::Unsupported,
-          "conditional-phi-join predicates outside the current compare-and-branch x86 slice");
+      throw std::invalid_argument("conditional-phi-join predicates outside the current compare-and-branch x86 slice");
   }
 
   out << "  mov eax, " << slice.lhs_imm << "\n";
@@ -5491,9 +5440,7 @@ std::string emit_minimal_local_array_asm(std::string_view target_triple,
       slice.store0_imm > std::numeric_limits<std::int32_t>::max() ||
       slice.store1_imm < std::numeric_limits<std::int32_t>::min() ||
       slice.store1_imm > std::numeric_limits<std::int32_t>::max()) {
-    throw c4c::backend::LirAdapterError(
-        c4c::backend::LirAdapterErrorKind::Unsupported,
-        "local-array store immediates outside the minimal mov-supported range");
+    throw std::invalid_argument("local-array store immediates outside the minimal mov-supported range");
   }
 
   const std::string symbol = asm_symbol_name(target_triple, slice.function_name);
@@ -5573,9 +5520,7 @@ std::string emit_minimal_extern_decl_call_asm(
       asm_symbol_name(module, slice.main_function->signature.name);
 
   if (slice.args.size() > 6) {
-    throw c4c::backend::LirAdapterError(
-        c4c::backend::LirAdapterErrorKind::Unsupported,
-        "extern declaration call argument count exceeds minimal x86 register budget");
+    throw std::invalid_argument("extern declaration call argument count exceeds minimal x86 register budget");
   }
 
   std::vector<std::string> emitted_string_constant_names;
@@ -5661,9 +5606,7 @@ std::string emit_minimal_extern_decl_call_asm(
       asm_symbol_name(module.target_triple, slice.main_function->name);
 
   if (slice.args.size() > 6) {
-    throw c4c::backend::LirAdapterError(
-        c4c::backend::LirAdapterErrorKind::Unsupported,
-        "extern declaration call argument count exceeds minimal x86 register budget");
+    throw std::invalid_argument("extern declaration call argument count exceeds minimal x86 register budget");
   }
 
   std::vector<std::string> emitted_string_constant_names;
@@ -5745,9 +5688,7 @@ std::string emit_minimal_multi_printf_vararg_asm(
   const auto* first = find_string_constant(module, slice.first_string_pool_name);
   const auto* second = find_string_constant(module, slice.second_string_pool_name);
   if (first == nullptr || second == nullptr) {
-    throw c4c::backend::LirAdapterError(
-        c4c::backend::LirAdapterErrorKind::Unsupported,
-        "bounded multi-printf vararg slice lost one of its string constants");
+    throw std::invalid_argument("bounded multi-printf vararg slice lost one of its string constants");
   }
 
   const std::string main_symbol = asm_symbol_name(target_triple, slice.function_name);
@@ -5925,32 +5866,24 @@ std::string emit_minimal_call_crossing_direct_call_asm(
     const MinimalCallCrossingDirectCallSlice& slice) {
   if (slice.source_imm < std::numeric_limits<std::int32_t>::min() ||
       slice.source_imm > std::numeric_limits<std::int32_t>::max()) {
-    throw c4c::backend::LirAdapterError(
-        c4c::backend::LirAdapterErrorKind::Unsupported,
-        "call-crossing source immediates outside the minimal mov-supported range");
+    throw std::invalid_argument("call-crossing source immediates outside the minimal mov-supported range");
   }
   if (slice.helper_add_imm < std::numeric_limits<std::int32_t>::min() ||
       slice.helper_add_imm > std::numeric_limits<std::int32_t>::max()) {
-    throw c4c::backend::LirAdapterError(
-        c4c::backend::LirAdapterErrorKind::Unsupported,
-        "call-crossing helper add immediates outside the minimal add-supported range");
+    throw std::invalid_argument("call-crossing helper add immediates outside the minimal add-supported range");
   }
 
   const auto* source_reg =
       c4c::backend::stack_layout::find_assigned_reg(regalloc, slice.regalloc_source_value);
   if (source_reg == nullptr ||
       !c4c::backend::stack_layout::uses_callee_saved_reg(regalloc, *source_reg)) {
-    throw c4c::backend::LirAdapterError(
-        c4c::backend::LirAdapterErrorKind::Unsupported,
-        "shared call-crossing regalloc state for the minimal x86 direct-call slice");
+    throw std::invalid_argument("shared call-crossing regalloc state for the minimal x86 direct-call slice");
   }
 
   const char* reg64 = x86_reg64_name(*source_reg);
   const char* reg32 = x86_reg32_name(*source_reg);
   if (reg64 == nullptr || reg32 == nullptr) {
-    throw c4c::backend::LirAdapterError(
-        c4c::backend::LirAdapterErrorKind::Unsupported,
-        "minimal x86 direct-call slice received an unknown physical register");
+    throw std::invalid_argument("minimal x86 direct-call slice received an unknown physical register");
   }
 
   const auto frame_size = aligned_frame_size(1);
@@ -5991,32 +5924,24 @@ std::string emit_minimal_call_crossing_direct_call_asm(
     const MinimalCallCrossingDirectCallSlice& slice) {
   if (slice.source_imm < std::numeric_limits<std::int32_t>::min() ||
       slice.source_imm > std::numeric_limits<std::int32_t>::max()) {
-    throw c4c::backend::LirAdapterError(
-        c4c::backend::LirAdapterErrorKind::Unsupported,
-        "call-crossing source immediates outside the minimal mov-supported range");
+    throw std::invalid_argument("call-crossing source immediates outside the minimal mov-supported range");
   }
   if (slice.helper_add_imm < std::numeric_limits<std::int32_t>::min() ||
       slice.helper_add_imm > std::numeric_limits<std::int32_t>::max()) {
-    throw c4c::backend::LirAdapterError(
-        c4c::backend::LirAdapterErrorKind::Unsupported,
-        "call-crossing helper add immediates outside the minimal add-supported range");
+    throw std::invalid_argument("call-crossing helper add immediates outside the minimal add-supported range");
   }
 
   const auto* source_reg =
       c4c::backend::stack_layout::find_assigned_reg(regalloc, slice.regalloc_source_value);
   if (source_reg == nullptr ||
       !c4c::backend::stack_layout::uses_callee_saved_reg(regalloc, *source_reg)) {
-    throw c4c::backend::LirAdapterError(
-        c4c::backend::LirAdapterErrorKind::Unsupported,
-        "shared call-crossing regalloc state for the minimal x86 direct-call slice");
+    throw std::invalid_argument("shared call-crossing regalloc state for the minimal x86 direct-call slice");
   }
 
   const char* reg64 = x86_reg64_name(*source_reg);
   const char* reg32 = x86_reg32_name(*source_reg);
   if (reg64 == nullptr || reg32 == nullptr) {
-    throw c4c::backend::LirAdapterError(
-        c4c::backend::LirAdapterErrorKind::Unsupported,
-        "minimal x86 direct-call slice received an unknown physical register");
+    throw std::invalid_argument("minimal x86 direct-call slice received an unknown physical register");
   }
 
   const auto frame_size = aligned_frame_size(1);
@@ -6215,7 +6140,7 @@ std::optional<std::string> try_emit_direct_lir_module(
       } catch (const std::invalid_argument&) {
       }
     }
-  } catch (const c4c::backend::LirAdapterError&) {
+  } catch (const std::invalid_argument&) {
   }
 
   return std::nullopt;

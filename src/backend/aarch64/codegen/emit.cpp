@@ -347,8 +347,6 @@ struct MinimalExternScalarGlobalLoadSlice;
 struct MinimalExternGlobalArrayLoadSlice;
 struct MinimalGlobalCharPointerDiffSlice;
 struct MinimalGlobalIntPointerDiffSlice;
-std::string asm_symbol_name(const c4c::backend::BackendModule& module,
-                            std::string_view logical_name);
 std::string asm_symbol_name(std::string_view target_triple,
                             std::string_view logical_name);
 std::string emit_minimal_return_imm_asm(std::string_view target_triple,
@@ -418,11 +416,11 @@ const c4c::backend::BackendFunction* minimal_single_backend_function(
 std::string minimal_single_function_symbol(const c4c::backend::BackendModule& module) {
   for (const auto& function : module.functions) {
     if (!function.is_declaration) {
-      return asm_symbol_name(module, function.signature.name);
+      return asm_symbol_name(module.target_triple, function.signature.name);
     }
   }
 
-  return asm_symbol_name(module, module.functions.front().signature.name);
+  return asm_symbol_name(module.target_triple, module.functions.front().signature.name);
 }
 
 constexpr std::array<c4c::backend::PhysReg, 9> kAarch64CalleeSavedRegs = {
@@ -463,11 +461,6 @@ c4c::codegen::lir::LirModule prepare_module_for_fallback(
 
 std::string minimal_single_function_symbol(const c4c::backend::bir::Module& module) {
   return asm_symbol_name(module.target_triple, module.functions.front().name);
-}
-
-std::string asm_symbol_name(const c4c::backend::BackendModule& module,
-                            std::string_view logical_name) {
-  return asm_symbol_name(module.target_triple, logical_name);
 }
 
 std::string asm_symbol_name(std::string_view target_triple,
@@ -2461,11 +2454,6 @@ std::string asm_private_data_label(const c4c::codegen::lir::LirModule& module,
   return asm_private_data_label(module.target_triple, pool_name);
 }
 
-std::string asm_private_data_label(const c4c::backend::BackendModule& module,
-                                   std::string_view pool_name) {
-  return asm_private_data_label(module.target_triple, pool_name);
-}
-
 std::optional<MinimalStringLiteralCharSlice> parse_minimal_string_literal_char_slice(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
@@ -4026,13 +4014,6 @@ std::optional<MinimalGlobalIntPointerDiffSlice> parse_minimal_global_int_pointer
 }
 
 void emit_function_prelude(std::ostringstream& out,
-                           const c4c::backend::BackendModule& module,
-                           std::string_view symbol,
-                           bool is_global) {
-  emit_function_prelude(out, module.target_triple, symbol, is_global);
-}
-
-void emit_function_prelude(std::ostringstream& out,
                            std::string_view target_triple,
                            std::string_view symbol,
                            bool is_global) {
@@ -4058,7 +4039,7 @@ std::string emit_minimal_return_imm_asm(const c4c::backend::BackendModule& modul
   const std::string symbol = minimal_single_function_symbol(module);
 
   out << ".text\n";
-  emit_function_prelude(out, module, symbol, true);
+  emit_function_prelude(out, module.target_triple, symbol, true);
   out
       << "  mov w0, #" << imm << "\n"
       << "  ret\n";
@@ -4116,7 +4097,7 @@ std::string emit_minimal_return_sub_imm_asm(const c4c::backend::BackendModule& m
   const std::string symbol = minimal_single_function_symbol(module);
 
   out << ".text\n";
-  emit_function_prelude(out, module, symbol, true);
+  emit_function_prelude(out, module.target_triple, symbol, true);
   out << "  sub w0, wzr, #" << neg_imm << "\n"
       << "  ret\n";
   return out.str();
@@ -4174,10 +4155,10 @@ std::string emit_minimal_return_sub_imm_asm(const c4c::backend::bir::Module& mod
 std::string emit_minimal_affine_return_asm(
     const c4c::backend::BackendModule& module,
     const MinimalAffineReturnSlice& slice) {
-  const std::string symbol = asm_symbol_name(module, slice.function_name);
+  const std::string symbol = asm_symbol_name(module.target_triple, slice.function_name);
   std::ostringstream out;
   out << ".text\n";
-  emit_function_prelude(out, module, symbol, true);
+  emit_function_prelude(out, module.target_triple, symbol, true);
   if (!slice.uses_first_param && !slice.uses_second_param) {
     if (slice.constant >= 0 && slice.constant <= std::numeric_limits<std::uint16_t>::max()) {
       out << "  mov w0, #" << slice.constant << "\n";
@@ -4291,15 +4272,16 @@ std::string emit_minimal_direct_call_asm(const c4c::backend::BackendModule& modu
   }
 
   std::ostringstream out;
-  const std::string helper_symbol = asm_symbol_name(module, slice.helper->signature.name);
+  const std::string helper_symbol =
+      asm_symbol_name(module.target_triple, slice.helper->signature.name);
   const std::string main_symbol =
-      asm_symbol_name(module, slice.main_function->signature.name);
+      asm_symbol_name(module.target_triple, slice.main_function->signature.name);
 
   out << ".text\n";
-  emit_function_prelude(out, module, helper_symbol, false);
+  emit_function_prelude(out, module.target_triple, helper_symbol, false);
   out << "  mov w0, #" << slice.return_imm << "\n"
       << "  ret\n";
-  emit_function_prelude(out, module, main_symbol, true);
+  emit_function_prelude(out, module.target_triple, main_symbol, true);
   out << "  sub sp, sp, #16\n"
       << "  str x30, [sp, #8]\n"
       << "  bl " << helper_symbol << "\n"
@@ -4322,14 +4304,15 @@ std::string emit_minimal_void_direct_call_imm_return_asm(
   }
 
   std::ostringstream out;
-  const std::string helper_symbol = asm_symbol_name(module, slice.helper->signature.name);
+  const std::string helper_symbol =
+      asm_symbol_name(module.target_triple, slice.helper->signature.name);
   const std::string main_symbol =
-      asm_symbol_name(module, slice.main_function->signature.name);
+      asm_symbol_name(module.target_triple, slice.main_function->signature.name);
 
   out << ".text\n";
-  emit_function_prelude(out, module, helper_symbol, false);
+  emit_function_prelude(out, module.target_triple, helper_symbol, false);
   out << "  ret\n";
-  emit_function_prelude(out, module, main_symbol, true);
+  emit_function_prelude(out, module.target_triple, main_symbol, true);
   out << "  sub sp, sp, #16\n"
       << "  str x30, [sp, #8]\n"
       << "  bl " << helper_symbol << "\n"
@@ -4356,15 +4339,16 @@ std::string emit_minimal_direct_call_add_imm_asm(
   }
 
   std::ostringstream out;
-  const std::string helper_symbol = asm_symbol_name(module, slice.helper->signature.name);
+  const std::string helper_symbol =
+      asm_symbol_name(module.target_triple, slice.helper->signature.name);
   const std::string main_symbol =
-      asm_symbol_name(module, slice.main_function->signature.name);
+      asm_symbol_name(module.target_triple, slice.main_function->signature.name);
 
   out << ".text\n";
-  emit_function_prelude(out, module, helper_symbol, false);
+  emit_function_prelude(out, module.target_triple, helper_symbol, false);
   out << "  add w0, w0, #" << slice.add_imm << "\n"
       << "  ret\n";
-  emit_function_prelude(out, module, main_symbol, true);
+  emit_function_prelude(out, module.target_triple, main_symbol, true);
   out << "  sub sp, sp, #16\n"
       << "  str x30, [sp, #8]\n"
       << "  mov w0, #" << slice.call_arg_imm << "\n"
@@ -4388,14 +4372,15 @@ std::string emit_minimal_direct_call_identity_arg_asm(
   }
 
   std::ostringstream out;
-  const std::string helper_symbol = asm_symbol_name(module, slice.helper->signature.name);
+  const std::string helper_symbol =
+      asm_symbol_name(module.target_triple, slice.helper->signature.name);
   const std::string main_symbol =
-      asm_symbol_name(module, slice.main_function->signature.name);
+      asm_symbol_name(module.target_triple, slice.main_function->signature.name);
 
   out << ".text\n";
-  emit_function_prelude(out, module, helper_symbol, false);
+  emit_function_prelude(out, module.target_triple, helper_symbol, false);
   out << "  ret\n";
-  emit_function_prelude(out, module, main_symbol, true);
+  emit_function_prelude(out, module.target_triple, main_symbol, true);
   out << "  sub sp, sp, #16\n"
       << "  str x30, [sp, #8]\n";
   if (slice.call_arg_imm == 0) {
@@ -4426,17 +4411,19 @@ std::string emit_minimal_dual_identity_direct_call_sub_asm(
   }
 
   std::ostringstream out;
-  const std::string lhs_symbol = asm_symbol_name(module, slice.lhs_helper->signature.name);
-  const std::string rhs_symbol = asm_symbol_name(module, slice.rhs_helper->signature.name);
+  const std::string lhs_symbol =
+      asm_symbol_name(module.target_triple, slice.lhs_helper->signature.name);
+  const std::string rhs_symbol =
+      asm_symbol_name(module.target_triple, slice.rhs_helper->signature.name);
   const std::string main_symbol =
-      asm_symbol_name(module, slice.main_function->signature.name);
+      asm_symbol_name(module.target_triple, slice.main_function->signature.name);
 
   out << ".text\n";
-  emit_function_prelude(out, module, lhs_symbol, false);
+  emit_function_prelude(out, module.target_triple, lhs_symbol, false);
   out << "  ret\n";
-  emit_function_prelude(out, module, rhs_symbol, false);
+  emit_function_prelude(out, module.target_triple, rhs_symbol, false);
   out << "  ret\n";
-  emit_function_prelude(out, module, main_symbol, true);
+  emit_function_prelude(out, module.target_triple, main_symbol, true);
   out << "  stp x30, x19, [sp, #-16]!\n"
       << "  mov w0, #" << slice.lhs_call_arg_imm << "\n"
       << "  bl " << lhs_symbol << "\n"
@@ -4466,15 +4453,16 @@ std::string emit_minimal_direct_call_two_arg_add_asm(
   }
 
   std::ostringstream out;
-  const std::string helper_symbol = asm_symbol_name(module, slice.helper->signature.name);
+  const std::string helper_symbol =
+      asm_symbol_name(module.target_triple, slice.helper->signature.name);
   const std::string main_symbol =
-      asm_symbol_name(module, slice.main_function->signature.name);
+      asm_symbol_name(module.target_triple, slice.main_function->signature.name);
 
   out << ".text\n";
-  emit_function_prelude(out, module, helper_symbol, false);
+  emit_function_prelude(out, module.target_triple, helper_symbol, false);
   out << "  add w0, w0, w1\n"
       << "  ret\n";
-  emit_function_prelude(out, module, main_symbol, true);
+  emit_function_prelude(out, module.target_triple, main_symbol, true);
   out << "  sub sp, sp, #16\n"
       << "  str x30, [sp, #8]\n"
       << "  mov w0, #" << slice.lhs_call_arg_imm << "\n"
@@ -4507,15 +4495,16 @@ std::string emit_minimal_direct_call_two_arg_folded_asm(
   }
 
   std::ostringstream out;
-  const std::string helper_symbol = asm_symbol_name(module, slice.helper->signature.name);
+  const std::string helper_symbol =
+      asm_symbol_name(module.target_triple, slice.helper->signature.name);
   const std::string main_symbol =
-      asm_symbol_name(module, slice.main_function->signature.name);
+      asm_symbol_name(module.target_triple, slice.main_function->signature.name);
 
   out << ".text\n";
-  emit_function_prelude(out, module, helper_symbol, false);
+  emit_function_prelude(out, module.target_triple, helper_symbol, false);
   out << "  mov w0, #" << slice.return_imm << "\n"
       << "  ret\n";
-  emit_function_prelude(out, module, main_symbol, true);
+  emit_function_prelude(out, module.target_triple, main_symbol, true);
   out << "  sub sp, sp, #16\n"
       << "  str x30, [sp, #8]\n"
       << "  mov w0, #" << slice.lhs_call_arg_imm << "\n"
@@ -4576,9 +4565,10 @@ std::string emit_minimal_declared_direct_call_asm(
     }
   }
 
-  const std::string helper_symbol = asm_symbol_name(module, slice.parsed_call.symbol_name);
+  const std::string helper_symbol =
+      asm_symbol_name(module.target_triple, slice.parsed_call.symbol_name);
   const std::string main_symbol =
-      asm_symbol_name(module, slice.main_function->signature.name);
+      asm_symbol_name(module.target_triple, slice.main_function->signature.name);
 
   std::ostringstream out;
   if (!emitted_string_constant_names.empty()) {
@@ -4588,13 +4578,13 @@ std::string emit_minimal_declared_direct_call_asm(
       if (string_constant == nullptr) {
         continue;
       }
-      const std::string label = asm_private_data_label(module, std::string("@") + name);
+      const std::string label = asm_private_data_label(module.target_triple, std::string("@") + name);
       out << label << ":\n"
           << "  .asciz \"" << escape_asm_string(string_constant->raw_bytes) << "\"\n";
     }
   }
   out << ".text\n";
-  emit_function_prelude(out, module, main_symbol, true);
+  emit_function_prelude(out, module.target_triple, main_symbol, true);
   out << "  sub sp, sp, #16\n"
       << "  str x30, [sp, #8]\n";
   for (std::size_t index = 0; index < slice.args.size(); ++index) {
@@ -4620,8 +4610,9 @@ std::string emit_minimal_declared_direct_call_asm(
         }
         const auto* string_constant = find_string_constant(module, operand.substr(1));
         const std::string symbol =
-            string_constant != nullptr ? asm_private_data_label(module, operand)
-                                       : asm_symbol_name(module, operand.substr(1));
+            string_constant != nullptr
+                ? asm_private_data_label(module.target_triple, operand)
+                : asm_symbol_name(module.target_triple, operand.substr(1));
         out << "  adrp " << kArgPtrRegs[index] << ", " << symbol << "\n"
             << "  add " << kArgPtrRegs[index] << ", " << kArgPtrRegs[index]
             << ", :lo12:" << symbol << "\n";
@@ -4670,15 +4661,16 @@ std::string emit_minimal_call_crossing_direct_call_asm(
 
   const std::int64_t frame_size = aligned_call_frame_size(saved_regs.size());
   std::ostringstream out;
-  const std::string helper_symbol = asm_symbol_name(module, slice.helper->signature.name);
+  const std::string helper_symbol =
+      asm_symbol_name(module.target_triple, slice.helper->signature.name);
   const std::string main_symbol =
-      asm_symbol_name(module, slice.main_function->signature.name);
+      asm_symbol_name(module.target_triple, slice.main_function->signature.name);
 
   out << ".text\n";
-  emit_function_prelude(out, module, helper_symbol, false);
+  emit_function_prelude(out, module.target_triple, helper_symbol, false);
   out << "  add w0, w0, #" << slice.helper_add_imm << "\n"
       << "  ret\n";
-  emit_function_prelude(out, module, main_symbol, true);
+  emit_function_prelude(out, module.target_triple, main_symbol, true);
   out << "  sub sp, sp, #" << frame_size << "\n";
   for (std::size_t i = 0; i < saved_regs.size(); ++i) {
     out << "  str " << gp_reg_name(saved_regs[i], false) << ", [sp, #"
@@ -4835,7 +4827,7 @@ std::string emit_minimal_conditional_affine_i8_return_asm(
       };
 
   std::ostringstream out;
-  const std::string main_symbol = asm_symbol_name(module, slice.function_name);
+  const std::string main_symbol = asm_symbol_name(module.target_triple, slice.function_name);
   const char* fail_branch = nullptr;
   switch (slice.predicate) {
     case c4c::codegen::lir::LirCmpPredicate::Slt: fail_branch = "b.ge"; break;
@@ -4854,7 +4846,7 @@ std::string emit_minimal_conditional_affine_i8_return_asm(
   }
 
   out << ".text\n";
-  emit_function_prelude(out, module, main_symbol, true);
+  emit_function_prelude(out, module.target_triple, main_symbol, true);
   emit_value_expr_to_w(out, "w8", slice.lhs);
   emit_value_expr_to_w(out, "w9", slice.rhs);
   out << "  cmp w8, w9\n"
@@ -5025,7 +5017,7 @@ std::string emit_minimal_conditional_affine_i32_return_asm(
       };
 
   std::ostringstream out;
-  const std::string main_symbol = asm_symbol_name(module, slice.function_name);
+  const std::string main_symbol = asm_symbol_name(module.target_triple, slice.function_name);
   const char* fail_branch = nullptr;
   switch (slice.predicate) {
     case c4c::codegen::lir::LirCmpPredicate::Slt: fail_branch = "b.ge"; break;
@@ -5044,7 +5036,7 @@ std::string emit_minimal_conditional_affine_i32_return_asm(
   }
 
   out << ".text\n";
-  emit_function_prelude(out, module, main_symbol, true);
+  emit_function_prelude(out, module.target_triple, main_symbol, true);
   emit_value_expr_to_w(out, "w8", slice.lhs);
   emit_value_expr_to_w(out, "w9", slice.rhs);
   out << "  cmp w8, w9\n"
@@ -5212,7 +5204,7 @@ std::string emit_minimal_conditional_phi_join_asm(
   }
 
   std::ostringstream out;
-  const std::string main_symbol = asm_symbol_name(module, slice.function_name);
+  const std::string main_symbol = asm_symbol_name(module.target_triple, slice.function_name);
   const char* fail_branch = nullptr;
   switch (slice.predicate) {
     case c4c::codegen::lir::LirCmpPredicate::Slt: fail_branch = "b.ge"; break;
@@ -5231,7 +5223,7 @@ std::string emit_minimal_conditional_phi_join_asm(
   }
 
   out << ".text\n";
-  emit_function_prelude(out, module, main_symbol, true);
+  emit_function_prelude(out, module.target_triple, main_symbol, true);
   out << "  mov w8, #" << slice.lhs_imm << "\n"
       << "  cmp w8, #" << slice.rhs_imm << "\n"
       << "  " << fail_branch << " .L" << slice.false_label << "\n"
@@ -5569,11 +5561,11 @@ std::string emit_minimal_local_array_asm(
     fail_unsupported("local-array store immediates outside the minimal mov-supported range");
   }
 
-  const std::string main_symbol = asm_symbol_name(module, slice.function_name);
+  const std::string main_symbol = asm_symbol_name(module.target_triple, slice.function_name);
 
   std::ostringstream out;
   out << ".text\n";
-  emit_function_prelude(out, module, main_symbol, true);
+  emit_function_prelude(out, module.target_triple, main_symbol, true);
   out << "  sub sp, sp, #16\n"
       << "  add x8, sp, #8\n"
       << "  mov w9, #" << slice.store0_imm << "\n"

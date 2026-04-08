@@ -15,23 +15,23 @@
 
 namespace c4c::backend {
 
-enum class LirAdapterErrorKind {
-  Unsupported,
-  Malformed,
-};
-
 class LirAdapterError : public std::invalid_argument {
  public:
-  LirAdapterError(LirAdapterErrorKind kind, const std::string& message)
-      : std::invalid_argument(message), kind_(kind) {}
+  static LirAdapterError unsupported(const std::string& message) {
+    return LirAdapterError(true, message);
+  }
 
-  LirAdapterErrorKind kind() const noexcept { return kind_; }
+  static LirAdapterError malformed(const std::string& message) {
+    return LirAdapterError(false, message);
+  }
+
+  bool is_unsupported() const noexcept { return is_unsupported_; }
 
  private:
-  LirAdapterErrorKind kind_;
-};
+  explicit LirAdapterError(bool is_unsupported, const std::string& message)
+      : std::invalid_argument(message), is_unsupported_(is_unsupported) {}
 
-BackendModule lower_lir_to_backend_module(const c4c::codegen::lir::LirModule& module);
-std::string render_module(const BackendModule& module);
+  bool is_unsupported_;
+};
 
 }  // namespace c4c::backend

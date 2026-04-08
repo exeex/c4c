@@ -13,6 +13,8 @@
 
 namespace c4c::backend {
 
+BackendModule lower_lir_to_backend_module(const c4c::codegen::lir::LirModule& module);
+
 namespace {
 
 class BackendEmitter {
@@ -76,7 +78,7 @@ std::string emit_direct_lir_or_llvm_fallback(const c4c::codegen::lir::LirModule&
         return c4c::codegen::lir::print_llvm(module);
     }
   } catch (const c4c::backend::LirAdapterError& ex) {
-    if (ex.kind() != c4c::backend::LirAdapterErrorKind::Unsupported) {
+    if (!ex.is_unsupported()) {
       throw;
     }
   }

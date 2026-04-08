@@ -63,8 +63,7 @@ std::optional<InferredExternCallSurface> infer_extern_call_surfaces(
         }
         if (inferred->param_types != parsed_call->param_types ||
             inferred->is_vararg != parsed_call->is_vararg) {
-          throw LirAdapterError(
-              LirAdapterErrorKind::Unsupported,
+          throw LirAdapterError::unsupported(
               "minimal backend LIR adapter does not support extern declarations with inconsistent typed call surfaces");
         }
       }
@@ -84,8 +83,8 @@ BackendFunction lower_extern_decl(const c4c::codegen::lir::LirModule& module,
   out.signature.name = decl.name;
 
   if (out.signature.return_type.empty() || out.signature.name.empty()) {
-    throw LirAdapterError(LirAdapterErrorKind::Malformed,
-                          "minimal backend LIR adapter could not adapt extern declaration");
+    throw LirAdapterError::malformed(
+        "minimal backend LIR adapter could not adapt extern declaration");
   }
 
   const auto inferred_surface = infer_extern_call_surfaces(module, decl);

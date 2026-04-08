@@ -8,17 +8,14 @@ Ownership:
 - [`src/backend/x86/codegen/emit.hpp`](/workspaces/c4c/src/backend/x86/codegen/emit.hpp) if needed
 
 Goal:
-- reduce x86 emitter-local `BackendModule` ownership until the remaining
-  blockers to a BIR-native emitter are explicit and minimal
+- reduce x86 emitter-local `BackendModule` and `LirAdapterError` ownership
+  until the remaining blockers to a BIR-native emitter are explicit and minimal
 
 Priority kill list:
-- remove dead internal legacy `emit_module(const BackendModule&, ...)`-style
-  entry/helper code if it is no longer reachable
+- replace `LirAdapterError` throws/catches with narrower local failure handling
+  where the path is no longer really using shared legacy lowering semantics
 - remove `#include "../../lowering/lir_to_backend_ir.hpp"` once file-local
-  ownership no longer requires it
-- remove `#include "../../ir_printer.hpp"` and
-  `#include "../../ir_validate.hpp"` once file-local ownership no longer
-  requires them
+  ownership no longer requires `LirAdapterError`
 - if full removal is not yet possible, leave a smaller set of clearly bounded
   `BackendModule` helpers rather than a broad mixed-mode surface
 
@@ -40,9 +37,9 @@ Worker-local validation:
 - `cmake --build build -j8 --target CMakeFiles/c4cll.dir/src/backend/x86/codegen/emit.cpp.o`
 
 Handoff standard:
-- report which legacy includes/helpers were removed
-- report the smallest remaining x86-only blocker if `BackendModule` ownership
-  still remains
+- report which legacy includes/helpers/error paths were removed
+- report the smallest remaining x86-only blocker if `BackendModule` or
+  `LirAdapterError` ownership still remains
 
 Status:
-- second-wave slice completed and awaiting any third-wave reassignment
+- third-wave slice completed and awaiting any fourth-wave reassignment

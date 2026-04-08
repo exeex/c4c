@@ -1,4 +1,4 @@
-Status: Active
+Status: Parked
 Source Idea: ideas/open/41_bir_full_coverage_and_ir_legacy_removal.md
 Source Plan: plan.md
 Group: D
@@ -11,8 +11,7 @@ Ownership:
   assertions
 
 Goal:
-- finish retiring the parked legacy backend-IR test family so it no longer
-  competes with the active BIR/native test story
+- no active work in this round; the legacy adapter test family is already gone
 
 Priority kill list:
 - delete files that are now pure legacy scaffolding
@@ -44,4 +43,5 @@ Handoff standard:
   stay
 
 Status:
-- second-wave slice completed and awaiting any third-wave reassignment
+- parked after second-wave completion; do not dispatch unless a new bounded
+  test-only follow-up appears

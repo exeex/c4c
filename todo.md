@@ -13,8 +13,8 @@ Source Plan: plan.md
 - [x] Refresh per-group ownership notes for A/B/C/D
 
 Current active item:
-- restate the post-second-wave close gap and decide whether to open a third
-  A/B/C/D worker round or switch to a smaller mainline-only cleanup slice
+- restate the post-third-wave close gap and decide whether to open a fourth
+  A/B/C worker round or switch to a smaller mainline-only cleanup slice
 
 Mainline rules:
 - mainline owns planning files, cross-group conflict resolution, and final
@@ -27,22 +27,22 @@ Mainline rules:
   [`src/codegen/llvm/llvm_codegen.cpp`](/workspaces/c4c/src/codegen/llvm/llvm_codegen.cpp)
   or [`src/apps/c4cll.cpp`](/workspaces/c4c/src/apps/c4cll.cpp); those remain
   explicit close blockers for idea 41, not part of the current worker wave
+- Group D is parked for this round because the remaining
+  `backend_lir_adapter*` files are already gone
 
-Legacy seam checklist for second-wave dispatch:
-- Group A: reduce x86 emitter-local `BackendModule` ownership in
+Legacy seam checklist for third-wave dispatch:
+- Group A: reduce x86 emitter-local `BackendModule` and `LirAdapterError`
+  ownership in
   [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
-  and remove legacy includes when no longer needed
+  now that the dead shim/includes are already gone
 - Group B: reduce aarch64 emitter-local `BackendModule` ownership in
   [`src/backend/aarch64/codegen/emit.cpp`](/workspaces/c4c/src/backend/aarch64/codegen/emit.cpp)
-  and remove legacy includes when no longer needed
+  by collapsing or better isolating the remaining private helper surface
 - Group C: shrink the public/shared legacy lowering seam in
+  [`src/backend/backend.hpp`](/workspaces/c4c/src/backend/backend.hpp),
   [`src/backend/lowering/lir_to_backend_ir.hpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.hpp),
   [`src/backend/lowering/lir_to_backend_ir.cpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp),
   and [`src/backend/lowering/call_decode.hpp`](/workspaces/c4c/src/backend/lowering/call_decode.hpp)
-- Group D: retire or migrate the remaining parked legacy tests
-  [`tests/backend/backend_lir_adapter_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_tests.cpp),
-  [`tests/backend/backend_lir_adapter_aarch64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_aarch64_tests.cpp),
-  and [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
 
 Close blockers intentionally left outside this wave:
 - `ir.hpp`, `ir_printer.*`, and `ir_validate.*` still exist and still have
@@ -85,13 +85,12 @@ Latest completed slice:
   [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
 
 Next integration steps:
-- inventory the smallest remaining `BackendModule` helper surface in the x86
-  and aarch64 emitters
-- inventory the remaining public consumers of
-  `lower_lir_to_backend_module(...)`, `render_module(...)`, and
-  `LirAdapterError`
-- decide whether the next wave should target `lir_to_backend_ir.*` deletion,
-  emitter-internal helper collapse, or `ir.*` retirement preparation
+- inventory the smallest remaining private `BackendModule` helper surface in
+  the x86 and aarch64 emitters after the third-wave collapse
+- inventory the remaining external consumers of `LirAdapterError` after the
+  shared-header narrowing
+- decide whether the next wave should target emitter-internal helper collapse,
+  `ir.*` retirement preparation, or `lir_to_backend_ir.*` internalization
 
 Post-second-wave blocker map:
 - x86 emitter still contains a large private `BackendModule` helper surface in
@@ -120,3 +119,24 @@ Post-second-wave blocker map:
   [`src/backend/ir_validate.cpp`](/workspaces/c4c/src/backend/ir_validate.cpp)
   [`src/backend/lowering/lir_to_backend_ir.hpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.hpp)
   [`src/backend/lowering/lir_to_backend_ir.cpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp)
+
+Latest completed slice, third wave:
+- third-wave worker reintegration passed with:
+  `cmake -S . -B build`
+  `cmake --build build -j8`
+  `ctest --test-dir build -R backend -j --output-on-failure`
+- [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+  no longer depends on `LirAdapterError` or
+  [`src/backend/lowering/lir_to_backend_ir.hpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.hpp);
+  the remaining x86 legacy seam is now the private `BackendModule` helper
+  surface itself
+- [`src/backend/aarch64/codegen/emit.cpp`](/workspaces/c4c/src/backend/aarch64/codegen/emit.cpp)
+  collapsed the thin `BackendModule` pass-through wrappers for symbol/prelude
+  plumbing, leaving the remaining ownership concentrated in the semantic
+  direct-call helpers
+- [`src/backend/backend.hpp`](/workspaces/c4c/src/backend/backend.hpp) no
+  longer publicly declares `lower_lir_to_backend_module(...)`
+- [`src/backend/lowering/lir_to_backend_ir.hpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.hpp)
+  no longer exports `render_module(...)`, and its error surface is narrowed to
+  `LirAdapterError::unsupported(...)`, `LirAdapterError::malformed(...)`, and
+  `is_unsupported()`

@@ -39,15 +39,15 @@ Already complete on the current branch:
 
 Not yet complete relative to the source idea:
 
-- x86 emitter internals still contain many `BackendModule` helpers and include
-  legacy lowering / printer / validator headers
-- aarch64 emitter internals still contain many `BackendModule` helpers and
-  include legacy lowering / printer / validator headers
+- x86 emitter internals still contain many `BackendModule` helpers and
+  `LirAdapterError`-based fallback branches
+- aarch64 emitter internals still contain many `BackendModule` helpers even
+  after the public shim/includes cleanup
 - `lir_to_backend_ir.*` still exists and still exports
-  `lower_lir_to_backend_module(...)`
+  `lower_lir_to_backend_module(...)`, `render_module(...)`, and
+  `LirAdapterError`
 - `ir.hpp`, `ir_printer.*`, and `ir_validate.*` still exist and are still
   referenced by active code/tests
-- parked `backend_lir_adapter*` files still remain in-tree
 - LLVM rescue behavior in `src/codegen/llvm/llvm_codegen.cpp` and
   `src/apps/c4cll.cpp` still exists, so idea 41 cannot close yet
 
@@ -136,29 +136,13 @@ Out of scope:
 ### Group D
 
 Mission:
-- finish retiring the parked backend-IR-centric test files that no longer match
-  the active architecture
+- parked for this round
 
-Write ownership:
-- [`tests/backend/backend_lir_adapter_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_tests.cpp)
-- [`tests/backend/backend_lir_adapter_aarch64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_aarch64_tests.cpp)
-- [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
-- directly related backend test support files only if needed for migrated
-  assertions
-
-Expected outcomes:
-- delete files that are now pure legacy scaffolding
-- migrate any still-useful assertions into surviving BIR/native test families
-- keep active backend coverage aligned with the BIR-first architecture
-
-Worker-local validation:
-- build only the touched representative object, for example:
-  `cmake --build build -j8 --target CMakeFiles/backend_bir_tests.dir/tests/backend/backend_bir_pipeline_tests.cpp.o`
-
-Out of scope:
-- production emitter cleanup
-- shared lowering cleanup unless directly required by an assertion migration
-- final broad validation
+State:
+- the `backend_lir_adapter*` legacy test family has already been deleted in the
+  second wave
+- do not dispatch a worker lane here unless a later round discovers a new
+  bounded test-only follow-up
 
 ## Mainline Integration
 
@@ -193,8 +177,8 @@ This plan is not ready to close until all of the following are true:
 
 This round is successful when:
 
-- each A/B/C/D lane can hand mainline a bounded patch with no cross-lane write
-  conflicts
+- each active A/B/C lane can hand mainline a bounded patch with no cross-lane
+  write conflicts
 - the remaining legacy blockers are fewer, more localized, and easier to name
 - mainline can restate the post-round close gap in a shorter checklist than the
   current one

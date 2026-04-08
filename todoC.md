@@ -4,6 +4,7 @@ Source Plan: plan.md
 Group: C
 
 Ownership:
+- [`src/backend/backend.hpp`](/workspaces/c4c/src/backend/backend.hpp) if needed
 - [`src/backend/lowering/lir_to_backend_ir.cpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp)
 - [`src/backend/lowering/lir_to_backend_ir.hpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.hpp)
 - [`src/backend/lowering/call_decode.hpp`](/workspaces/c4c/src/backend/lowering/call_decode.hpp)
@@ -16,7 +17,9 @@ Goal:
   exceptional instead of like a normal backend API
 
 Priority kill list:
-- reduce public exposure of `lower_lir_to_backend_module(...)`
+- reduce public exposure of `lower_lir_to_backend_module(...)` from shared
+  headers
+- reduce public visibility of `LirAdapterError` / `LirAdapterErrorKind`
 - remove dead compatibility helpers that only serve legacy backend IR
 - keep `call_decode` ownership local to implementation files where possible
 - avoid widening into emitter-local cleanup that belongs to Group A or B
@@ -45,4 +48,4 @@ Handoff standard:
   `lir_to_backend_ir.*`
 
 Status:
-- second-wave slice completed and awaiting any third-wave reassignment
+- third-wave slice completed and awaiting any fourth-wave reassignment

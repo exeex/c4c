@@ -133,9 +133,9 @@ BackendGlobalStorageKind adapt_global_storage(std::string_view qualifier) {
   if (qualifier == "constant ") {
     return BackendGlobalStorageKind::Constant;
   }
-  throw LirAdapterError(LirAdapterErrorKind::Malformed,
-                        "minimal backend LIR adapter could not classify global qualifier '" +
-                            std::string(qualifier) + "'");
+  throw LirAdapterError::malformed(
+      "minimal backend LIR adapter could not classify global qualifier '" +
+      std::string(qualifier) + "'");
 }
 
 BackendGlobalInitializer adapt_global_initializer(
@@ -174,14 +174,12 @@ BackendGlobal adapt_global(const c4c::codegen::lir::LirGlobal& global) {
 }
 
 [[noreturn]] void fail_unsupported(const std::string& detail) {
-  throw LirAdapterError(LirAdapterErrorKind::Unsupported,
-                        "minimal backend LIR adapter does not support " + detail);
+  throw LirAdapterError::unsupported("minimal backend LIR adapter does not support " + detail);
 }
 
 [[noreturn]] void fail_bad_signature(const std::string& signature_text) {
-  throw LirAdapterError(LirAdapterErrorKind::Malformed,
-                        "minimal backend LIR adapter could not parse signature '" +
-                            signature_text + "'");
+  throw LirAdapterError::malformed(
+      "minimal backend LIR adapter could not parse signature '" + signature_text + "'");
 }
 
 BackendFunctionSignature parse_signature(const std::string& signature_text) {
@@ -647,18 +645,16 @@ BackendInst adapt_inst(const c4c::codegen::lir::LirInst& inst) {
   if (const auto* call = std::get_if<c4c::codegen::lir::LirCallOp>(&inst)) {
     const auto parsed_call = parse_backend_typed_call(*call);
     if (!parsed_call.has_value()) {
-      throw LirAdapterError(
-          LirAdapterErrorKind::Malformed,
+      throw LirAdapterError::malformed(
           "minimal backend LIR adapter could not parse typed call operands for '" +
-              std::string(call->callee.str()) + "'");
+          std::string(call->callee.str()) + "'");
     }
 
     const auto callee = parse_backend_call_callee(call->callee.str());
     if (!callee.has_value()) {
-      throw LirAdapterError(
-          LirAdapterErrorKind::Malformed,
+      throw LirAdapterError::malformed(
           "minimal backend LIR adapter could not classify call callee '" +
-              std::string(call->callee.str()) + "'");
+          std::string(call->callee.str()) + "'");
     }
 
     return make_backend_call_inst(call->result.str(),
@@ -3661,10 +3657,6 @@ BackendModule lower_lir_to_backend_module(const c4c::codegen::lir::LirModule& mo
     out.functions.push_back(adapt_function(function, module));
   }
   return out;
-}
-
-std::string render_module(const BackendModule& module) {
-  return print_backend_module(module);
 }
 
 }  // namespace c4c::backend

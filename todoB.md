@@ -12,13 +12,8 @@ Goal:
   blockers to a BIR-native emitter are explicit and minimal
 
 Priority kill list:
-- remove dead internal legacy `BackendModule` entry/helper code if it is no
-  longer reachable
-- remove `#include "../../lowering/lir_to_backend_ir.hpp"` once file-local
-  ownership no longer requires it
-- remove `#include "../../ir_printer.hpp"` and
-  `#include "../../ir_validate.hpp"` once file-local ownership no longer
-  requires them
+- collapse or isolate the remaining private `BackendModule` helper surface
+  around the direct-call / prelowered-BIR paths
 - if full removal is not yet possible, leave a smaller set of clearly bounded
   `BackendModule` helpers rather than a broad mixed-mode surface
 
@@ -45,4 +40,4 @@ Handoff standard:
   ownership still remains
 
 Status:
-- second-wave slice completed and awaiting any third-wave reassignment
+- third-wave slice completed and awaiting any fourth-wave reassignment
