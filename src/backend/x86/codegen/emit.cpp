@@ -1042,31 +1042,22 @@ std::optional<AffineValue> lower_affine_operand(
 
 std::optional<AffineValue> combine_affine_values(const AffineValue& lhs,
                                                  const AffineValue& rhs,
-                                                 c4c::backend::BackendBinaryOpcode opcode) {
-  if (opcode == c4c::backend::BackendBinaryOpcode::Add) {
-    if ((lhs.uses_first_param && rhs.uses_first_param) ||
-        (lhs.uses_second_param && rhs.uses_second_param)) {
-      return std::nullopt;
-    }
-    return AffineValue{lhs.uses_first_param || rhs.uses_first_param,
-                       lhs.uses_second_param || rhs.uses_second_param,
-                       lhs.constant + rhs.constant};
-  }
-  if (rhs.uses_first_param || rhs.uses_second_param) {
-    return std::nullopt;
-  }
-  return AffineValue{lhs.uses_first_param, lhs.uses_second_param,
-                     lhs.constant - rhs.constant};
-}
-
-std::optional<AffineValue> combine_affine_values(const AffineValue& lhs,
-                                                 const AffineValue& rhs,
                                                  c4c::backend::bir::BinaryOpcode opcode) {
   switch (opcode) {
     case c4c::backend::bir::BinaryOpcode::Add:
-      return combine_affine_values(lhs, rhs, c4c::backend::BackendBinaryOpcode::Add);
+      if ((lhs.uses_first_param && rhs.uses_first_param) ||
+          (lhs.uses_second_param && rhs.uses_second_param)) {
+        return std::nullopt;
+      }
+      return AffineValue{lhs.uses_first_param || rhs.uses_first_param,
+                         lhs.uses_second_param || rhs.uses_second_param,
+                         lhs.constant + rhs.constant};
     case c4c::backend::bir::BinaryOpcode::Sub:
-      return combine_affine_values(lhs, rhs, c4c::backend::BackendBinaryOpcode::Sub);
+      if (rhs.uses_first_param || rhs.uses_second_param) {
+        return std::nullopt;
+      }
+      return AffineValue{lhs.uses_first_param, lhs.uses_second_param,
+                         lhs.constant - rhs.constant};
   }
   return std::nullopt;
 }
@@ -1076,68 +1067,10 @@ const c4c::backend::bir::BinaryInst* get_binary_inst(
   return std::get_if<c4c::backend::bir::BinaryInst>(&inst);
 }
 
-bool is_i32_scalar_signature_return(const c4c::backend::BackendFunctionSignature& signature) {
-  return c4c::backend::backend_signature_return_type_kind(signature) ==
-             c4c::backend::BackendValueTypeKind::Scalar &&
-         c4c::backend::backend_signature_return_scalar_type(signature) ==
-             c4c::backend::BackendScalarType::I32;
-}
-
-bool is_zero_arg_i32_backend_definition(const c4c::backend::BackendFunction& function) {
-  return !function.is_declaration && backend_function_is_definition(function.signature) &&
-         is_i32_scalar_signature_return(function.signature) &&
-         function.signature.params.empty() && !function.signature.is_vararg;
-}
-
 bool is_zero_arg_i32_lir_definition(const c4c::codegen::lir::LirFunction& function) {
   return !function.is_declaration &&
          c4c::backend::backend_lir_signature_matches(
              function.signature_text, "define", "i32", function.name, {});
-}
-
-bool is_i32_scalar_param(const c4c::backend::BackendParam& param) {
-  return c4c::backend::backend_param_type_kind(param) ==
-             c4c::backend::BackendValueTypeKind::Scalar &&
-         c4c::backend::backend_param_scalar_type(param) ==
-             c4c::backend::BackendScalarType::I32;
-}
-
-bool is_i32_scalar_call_return(const c4c::backend::BackendCallInst& call) {
-  return c4c::backend::backend_call_return_type_kind(call) ==
-             c4c::backend::BackendValueTypeKind::Scalar &&
-         c4c::backend::backend_call_return_scalar_type(call) ==
-             c4c::backend::BackendScalarType::I32;
-}
-
-bool is_i32_scalar_binary(const c4c::backend::BackendBinaryInst& inst) {
-  return c4c::backend::backend_binary_value_type(inst) ==
-         c4c::backend::BackendScalarType::I32;
-}
-
-bool is_i32_scalar_global(const c4c::backend::BackendGlobal& global) {
-  return c4c::backend::backend_global_value_type_kind(global) ==
-             c4c::backend::BackendValueTypeKind::Scalar &&
-         c4c::backend::backend_global_scalar_type(global) ==
-             c4c::backend::BackendScalarType::I32;
-}
-
-const c4c::backend::BackendLocalSlot* find_local_slot(
-    const c4c::backend::BackendFunction& function,
-    std::string_view slot_name) {
-  for (const auto& slot : function.local_slots) {
-    if (slot.name == slot_name) {
-      return &slot;
-    }
-  }
-  return nullptr;
-}
-
-bool is_two_element_i32_local_array_slot(const c4c::backend::BackendFunction& function,
-                                         std::string_view slot_name) {
-  const auto* slot = find_local_slot(function, slot_name);
-  return slot != nullptr && slot->size_bytes == 8 &&
-         slot->element_type == c4c::backend::BackendScalarType::I32 &&
-         slot->element_size_bytes == 4;
 }
 
 std::optional<std::string_view> strip_typed_operand_prefix(std::string_view operand,
@@ -1285,26 +1218,6 @@ const c4c::codegen::lir::LirStringConst* find_string_constant(
     }
   }
   return nullptr;
-}
-
-std::optional<std::int64_t> parse_single_block_return_imm(
-    const c4c::backend::BackendFunction& function) {
-  if (function.is_declaration || !backend_function_is_definition(function.signature) ||
-      !is_i32_scalar_signature_return(function.signature) ||
-      !function.signature.params.empty() ||
-      function.signature.is_vararg || function.blocks.size() != 1) {
-    return std::nullopt;
-  }
-
-  const auto& block = function.blocks.front();
-  if (block.label != "entry" || !block.terminator.value.has_value() ||
-      c4c::backend::backend_return_scalar_type(block.terminator) !=
-          c4c::backend::BackendScalarType::I32 ||
-      !block.insts.empty()) {
-    return std::nullopt;
-  }
-
-  return parse_i64(*block.terminator.value);
 }
 
 const char* x86_reg64_name(c4c::backend::PhysReg reg) {

@@ -224,44 +224,6 @@ parse_backend_direct_global_typed_call(const c4c::codegen::lir::LirCallOp& call)
   };
 }
 
-std::optional<ParsedBackendTypedCallView> parse_backend_typed_call(
-    const BackendCallInst& call) {
-  bool can_borrow_existing_types = true;
-  for (std::size_t index = 0; index < call.param_types.size(); ++index) {
-    if (call.param_types[index].empty()) {
-      can_borrow_existing_types = false;
-      break;
-    }
-  }
-  if (can_borrow_existing_types) {
-    return make_backend_typed_call_view(
-        c4c::codegen::lir::borrow_lir_typed_call(call.param_types, call.args));
-  }
-
-  ParsedBackendTypedCallView view;
-  view.owned_param_types.reserve(call.args.size());
-  view.param_types.reserve(call.args.size());
-  view.args.reserve(call.args.size());
-  for (std::size_t index = 0; index < call.args.size(); ++index) {
-    view.owned_param_types.push_back(render_backend_call_param_type(call, index));
-    view.param_types.push_back(view.owned_param_types.back());
-    view.args.push_back({call.args[index].type, call.args[index].operand});
-  }
-  return view;
-}
-
-std::optional<ParsedBackendDirectGlobalTypedCallView> parse_backend_direct_global_typed_call(
-    const BackendCallInst& call) {
-  if (call.callee.kind != BackendCallCalleeKind::DirectGlobal) {
-    return std::nullopt;
-  }
-  const auto typed_call = parse_backend_typed_call(call);
-  if (!typed_call.has_value()) {
-    return std::nullopt;
-  }
-  return ParsedBackendDirectGlobalTypedCallView{call.callee.symbol_name, std::move(*typed_call)};
-}
-
 std::optional<ParsedBackendExternCallArg> parse_backend_extern_call_arg(
     std::string_view type,
     std::string_view operand) {
@@ -311,29 +273,6 @@ std::optional<ParsedBackendExternCallArg> parse_backend_extern_call_arg(
       0,
       std::string(normalized_operand),
   };
-}
-
-bool backend_typed_call_matches_signature(const ParsedBackendTypedCallView& parsed,
-                                          const BackendFunctionSignature& signature,
-                                          bool allow_extra_varargs) {
-  if (signature.params.size() > parsed.param_types.size() ||
-      parsed.args.size() < signature.params.size()) {
-    return false;
-  }
-
-  for (std::size_t index = 0; index < signature.params.size(); ++index) {
-    if (render_backend_param_type(signature.params[index]) !=
-        c4c::codegen::lir::trim_lir_arg_text(parsed.param_types[index])) {
-      return false;
-    }
-  }
-
-  const bool is_vararg = signature.is_vararg || allow_extra_varargs;
-  if (!is_vararg && signature.params.size() != parsed.args.size()) {
-    return false;
-  }
-
-  return true;
 }
 
 std::optional<std::vector<ParsedBackendExternCallArg>> parse_backend_extern_call_args(

@@ -2,6 +2,7 @@
 
 #include "call_decode.hpp"
 #include "lir_adapter_error.hpp"
+#include "../ir.hpp"
 
 namespace c4c::backend {
 

@@ -7,14 +7,18 @@ Source Plan: plan.md
 - Step 5 follow-through: inventory and migrate the remaining live `ir.hpp`
   type consumers before the final legacy contract deletion
 - Current slice: classify the surviving `ir.hpp` ownership in
+  `src/backend/lowering/extern_lowering.hpp` as the remaining real
+  `BackendFunction` seam after removing dead
   `src/backend/lowering/call_decode.hpp`,
   `src/backend/lowering/extern_lowering.hpp`,
   `src/backend/x86/codegen/emit.cpp`, and
   `src/backend/aarch64/codegen/emit.cpp` into BIR-shape blockers versus
-  dead helper-only compatibility seams
+  dead helper-only compatibility seams; the remaining real blocker in this set
+  is `extern_lowering.*` still constructing and returning `BackendFunction`
 - Next intended slice: remove one real `BackendFunction` / `BackendCallInst`
-  consumer family at a time so `ir.hpp` can stop being a live production
-  contract instead of only deleting more already-dead files
+  consumer family at a time, starting with `extern_lowering.*`, so `ir.hpp`
+  can stop being a live production contract instead of only deleting more
+  already-dead files
 
 # Completed
 
@@ -219,6 +223,35 @@ Source Plan: plan.md
   successfully after the call-crossing direct-call adapter removal
 - Rebuilt the full workspace with `cmake --build build -j8` successfully after
   the call-crossing direct-call adapter removal
+
+- Removed the dead `BackendFunction` / `BackendCallInst` compatibility seams
+  from `src/backend/lowering/call_decode.hpp` and
+  `src/backend/lowering/call_decode.cpp`, including the unused structured
+  parser/view family and backend-IR typed-call overloads, so
+  `call_decode.hpp` no longer includes `src/backend/ir.hpp`
+- Removed the matching dead emitter-local backend-IR helper predicates from
+  `src/backend/x86/codegen/emit.cpp` and
+  `src/backend/aarch64/codegen/emit.cpp`; those files now only retain live BIR
+  or LIR ownership for this slice
+- Kept the real legacy ownership local to
+  `src/backend/lowering/extern_lowering.cpp` by adding the direct `ir.hpp`
+  implementation include there instead of keeping `call_decode.hpp` as a
+  transitive legacy carrier
+- Fixed the live aarch64 backend follow-through uncovered during validation by
+  restoring strict BIR affine folding to only accept `Add` / `Sub` and by
+  materializing negative immediates via `mov reg, #0` plus `sub reg, reg, #imm`
+  instead of `sub reg, wzr, #imm`
+- Rebuilt `c4cll`, `backend_bir_tests`, and `backend_shared_util_tests`
+  successfully after the cleanup plus aarch64 follow-through
+- Reran
+  `ctest --test-dir build -R '^(backend_bir_tests|backend_shared_util_tests)$' --output-on-failure`
+  successfully after the cleanup
+- Reran
+  `ctest --test-dir build -R '^(c_testsuite_aarch64_backend_src_00012_c|c_testsuite_aarch64_backend_src_00064_c)$' --output-on-failure`
+  successfully after fixing the aarch64 regression surfaced by the cleanup
+- Reran the full `ctest --test-dir build -j8 --output-on-failure` suite and
+  refreshed `test_after.log`; the workspace stayed at `2834/2834` passing with
+  0 failures
 - Deleted `src/backend/lowering/lir_to_backend_ir.hpp` and
   `src/backend/lowering/lir_to_backend_ir.cpp` from the tree after confirming
   the legacy lowering route had no remaining source references and was already

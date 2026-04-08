@@ -159,31 +159,22 @@ std::optional<AffineValue> lower_affine_operand(
 
 std::optional<AffineValue> combine_affine_values(const AffineValue& lhs,
                                                  const AffineValue& rhs,
-                                                 c4c::backend::BackendBinaryOpcode opcode) {
-  if (opcode == c4c::backend::BackendBinaryOpcode::Add) {
-    if ((lhs.uses_first_param && rhs.uses_first_param) ||
-        (lhs.uses_second_param && rhs.uses_second_param)) {
-      return std::nullopt;
-    }
-    return AffineValue{lhs.uses_first_param || rhs.uses_first_param,
-                       lhs.uses_second_param || rhs.uses_second_param,
-                       lhs.constant + rhs.constant};
-  }
-  if (rhs.uses_first_param || rhs.uses_second_param) {
-    return std::nullopt;
-  }
-  return AffineValue{lhs.uses_first_param, lhs.uses_second_param,
-                     lhs.constant - rhs.constant};
-}
-
-std::optional<AffineValue> combine_affine_values(const AffineValue& lhs,
-                                                 const AffineValue& rhs,
                                                  c4c::backend::bir::BinaryOpcode opcode) {
   switch (opcode) {
     case c4c::backend::bir::BinaryOpcode::Add:
-      return combine_affine_values(lhs, rhs, c4c::backend::BackendBinaryOpcode::Add);
+      if ((lhs.uses_first_param && rhs.uses_first_param) ||
+          (lhs.uses_second_param && rhs.uses_second_param)) {
+        return std::nullopt;
+      }
+      return AffineValue{lhs.uses_first_param || rhs.uses_first_param,
+                         lhs.uses_second_param || rhs.uses_second_param,
+                         lhs.constant + rhs.constant};
     case c4c::backend::bir::BinaryOpcode::Sub:
-      return combine_affine_values(lhs, rhs, c4c::backend::BackendBinaryOpcode::Sub);
+      if (rhs.uses_first_param || rhs.uses_second_param) {
+        return std::nullopt;
+      }
+      return AffineValue{lhs.uses_first_param, lhs.uses_second_param,
+                         lhs.constant - rhs.constant};
   }
   return std::nullopt;
 }
@@ -191,58 +182,6 @@ std::optional<AffineValue> combine_affine_values(const AffineValue& lhs,
 const c4c::backend::bir::BinaryInst* get_binary_inst(
     const c4c::backend::bir::Inst& inst) {
   return std::get_if<c4c::backend::bir::BinaryInst>(&inst);
-}
-
-bool is_i32_scalar_signature_return(const c4c::backend::BackendFunctionSignature& signature) {
-  return c4c::backend::backend_signature_return_type_kind(signature) ==
-             c4c::backend::BackendValueTypeKind::Scalar &&
-         c4c::backend::backend_signature_return_scalar_type(signature) ==
-             c4c::backend::BackendScalarType::I32;
-}
-
-bool is_i32_scalar_param(const c4c::backend::BackendParam& param) {
-  return c4c::backend::backend_param_type_kind(param) ==
-             c4c::backend::BackendValueTypeKind::Scalar &&
-         c4c::backend::backend_param_scalar_type(param) ==
-             c4c::backend::BackendScalarType::I32;
-}
-
-bool is_i32_scalar_call_return(const c4c::backend::BackendCallInst& call) {
-  return c4c::backend::backend_call_return_type_kind(call) ==
-             c4c::backend::BackendValueTypeKind::Scalar &&
-         c4c::backend::backend_call_return_scalar_type(call) ==
-             c4c::backend::BackendScalarType::I32;
-}
-
-bool is_i32_scalar_binary(const c4c::backend::BackendBinaryInst& inst) {
-  return c4c::backend::backend_binary_value_type(inst) ==
-         c4c::backend::BackendScalarType::I32;
-}
-
-bool is_i32_scalar_global(const c4c::backend::BackendGlobal& global) {
-  return c4c::backend::backend_global_value_type_kind(global) ==
-             c4c::backend::BackendValueTypeKind::Scalar &&
-         c4c::backend::backend_global_scalar_type(global) ==
-             c4c::backend::BackendScalarType::I32;
-}
-
-const c4c::backend::BackendLocalSlot* find_local_slot(
-    const c4c::backend::BackendFunction& function,
-    std::string_view slot_name) {
-  for (const auto& slot : function.local_slots) {
-    if (slot.name == slot_name) {
-      return &slot;
-    }
-  }
-  return nullptr;
-}
-
-bool is_two_element_i32_local_array_slot(const c4c::backend::BackendFunction& function,
-                                         std::string_view slot_name) {
-  const auto* slot = find_local_slot(function, slot_name);
-  return slot != nullptr && slot->size_bytes == 8 &&
-         slot->element_type == c4c::backend::BackendScalarType::I32 &&
-         slot->element_size_bytes == 4;
 }
 
 bool is_minimal_single_function_asm_slice(const c4c::backend::bir::Module& module) {
@@ -1480,71 +1419,6 @@ std::optional<std::int64_t> try_constant_fold_single_block(
   return std::nullopt;  // Step limit exceeded
 }
 
-std::optional<std::int64_t> fold_minimal_direct_call_two_arg_callee_return(
-    const c4c::backend::BackendFunction& callee_fn,
-    std::int64_t arg0_imm,
-    std::int64_t arg1_imm) {
-  if (callee_fn.signature.params.size() != 2 ||
-      !is_i32_scalar_param(callee_fn.signature.params[0]) ||
-      !is_i32_scalar_param(callee_fn.signature.params[1]) ||
-      callee_fn.signature.params[0].name.empty() ||
-      callee_fn.signature.params[1].name.empty() || callee_fn.signature.is_vararg ||
-      callee_fn.blocks.size() != 1) {
-    return std::nullopt;
-  }
-
-  const auto& block = callee_fn.blocks.front();
-  if (block.label != "entry" || !block.terminator.value.has_value() ||
-      c4c::backend::backend_return_scalar_type(block.terminator) !=
-          c4c::backend::BackendScalarType::I32) {
-    return std::nullopt;
-  }
-
-  std::unordered_map<std::string, std::int64_t> values;
-  values[callee_fn.signature.params[0].name] = arg0_imm;
-  values[callee_fn.signature.params[1].name] = arg1_imm;
-
-  const auto resolve_i32_operand = [&](std::string_view operand)
-      -> std::optional<std::int64_t> {
-    const auto imm = parse_i64(operand);
-    if (imm.has_value()) {
-      return imm;
-    }
-    auto it = values.find(std::string(operand));
-    if (it == values.end()) {
-      return std::nullopt;
-    }
-    return it->second;
-  };
-
-  for (const auto& inst : block.insts) {
-    const auto* bin =
-        std::get_if<c4c::backend::BackendBinaryInst>(&inst);
-    if (bin == nullptr || !is_i32_scalar_binary(*bin) || bin->result.empty()) {
-      return std::nullopt;
-    }
-
-    const auto lhs = resolve_i32_operand(bin->lhs);
-    const auto rhs = resolve_i32_operand(bin->rhs);
-    if (!lhs.has_value() || !rhs.has_value()) {
-      return std::nullopt;
-    }
-
-    std::int64_t value = 0;
-    if (bin->opcode == c4c::backend::BackendBinaryOpcode::Add) {
-      value = *lhs + *rhs;
-    } else if (bin->opcode == c4c::backend::BackendBinaryOpcode::Sub) {
-      value = *lhs - *rhs;
-    } else {
-      return std::nullopt;
-    }
-
-    values[bin->result] = value;
-  }
-
-  return resolve_i32_operand(*block.terminator.value);
-}
-
 struct MinimalConditionalReturnSlice {
   enum class ValueKind : unsigned char {
     Immediate,
@@ -1599,7 +1473,7 @@ std::optional<MinimalConditionalReturnSlice::ValueSource> lower_bir_i32_value_so
 
 struct MinimalConditionalPhiJoinSlice {
   struct ArithmeticStep {
-    c4c::backend::BackendBinaryOpcode opcode = c4c::backend::BackendBinaryOpcode::Add;
+    c4c::backend::bir::BinaryOpcode opcode = c4c::backend::bir::BinaryOpcode::Add;
     std::int64_t imm = 0;
   };
 
@@ -3300,7 +3174,8 @@ std::string emit_minimal_return_sub_imm_asm(std::string_view target_triple,
 
   out << ".text\n";
   emit_function_prelude(out, target_triple, symbol, true);
-  out << "  sub w0, wzr, #" << neg_imm << "\n"
+  out << "  mov w0, #0\n"
+      << "  sub w0, w0, #" << neg_imm << "\n"
       << "  ret\n";
   return out.str();
 }
@@ -3324,7 +3199,8 @@ std::string emit_minimal_return_sub_imm_asm(const c4c::backend::bir::Module& mod
 
   out << ".text\n";
   emit_function_prelude(out, module.target_triple, symbol, true);
-  out << "  sub w0, wzr, #" << neg_imm << "\n"
+  out << "  mov w0, #0\n"
+      << "  sub w0, w0, #" << neg_imm << "\n"
       << "  ret\n";
   return out.str();
 }
@@ -3341,7 +3217,8 @@ std::string emit_minimal_affine_return_asm(
       out << "  mov w0, #" << slice.constant << "\n";
     } else if (slice.constant < 0 &&
                -slice.constant <= std::numeric_limits<std::uint16_t>::max()) {
-      out << "  sub w0, wzr, #" << -slice.constant << "\n";
+      out << "  mov w0, #0\n"
+          << "  sub w0, w0, #" << -slice.constant << "\n";
     } else {
       fail_unsupported("affine return constant outside the minimal mov/sub-supported range");
     }
@@ -3473,7 +3350,8 @@ std::string emit_minimal_two_arg_direct_call_asm(
       return;
     }
     if (imm < 0 && -imm <= std::numeric_limits<std::uint16_t>::max()) {
-      out << "  sub " << reg << ", wzr, #" << -imm << "\n";
+      out << "  mov " << reg << ", #0\n"
+          << "  sub " << reg << ", " << reg << ", #" << -imm << "\n";
       return;
     }
     fail_unsupported(detail);
@@ -3517,7 +3395,8 @@ std::string emit_minimal_direct_call_add_imm_asm(
       return;
     }
     if (imm < 0 && -imm <= std::numeric_limits<std::uint16_t>::max()) {
-      out << "  sub " << reg << ", wzr, #" << -imm << "\n";
+      out << "  mov " << reg << ", #0\n"
+          << "  sub " << reg << ", " << reg << ", #" << -imm << "\n";
       return;
     }
     fail_unsupported(detail);
@@ -3568,7 +3447,8 @@ std::string emit_minimal_direct_call_identity_arg_asm(
       return;
     }
     if (imm < 0 && -imm <= std::numeric_limits<std::uint16_t>::max()) {
-      out << "  sub " << reg << ", wzr, #" << -imm << "\n";
+      out << "  mov " << reg << ", #0\n"
+          << "  sub " << reg << ", " << reg << ", #" << -imm << "\n";
       return;
     }
     fail_unsupported(detail);
@@ -3609,7 +3489,8 @@ std::string emit_minimal_dual_identity_direct_call_sub_asm(
       return;
     }
     if (imm < 0 && -imm <= std::numeric_limits<std::uint16_t>::max()) {
-      out << "  sub " << reg << ", wzr, #" << -imm << "\n";
+      out << "  mov " << reg << ", #0\n"
+          << "  sub " << reg << ", " << reg << ", #" << -imm << "\n";
       return;
     }
     fail_unsupported(detail);
@@ -3662,7 +3543,8 @@ std::string emit_minimal_call_crossing_direct_call_asm(
       return;
     }
     if (imm < 0 && -imm <= std::numeric_limits<std::uint16_t>::max()) {
-      out << "  sub " << reg << ", wzr, #" << -imm << "\n";
+      out << "  mov " << reg << ", #0\n"
+          << "  sub " << reg << ", " << reg << ", #" << -imm << "\n";
       return;
     }
     fail_unsupported(detail);
@@ -3732,7 +3614,8 @@ std::string emit_minimal_declared_direct_call_asm(
       return;
     }
     if (imm < 0 && -imm <= std::numeric_limits<std::uint16_t>::max()) {
-      out << "  sub " << reg << ", wzr, #" << -imm << "\n";
+      out << "  mov " << reg << ", #0\n"
+          << "  sub " << reg << ", " << reg << ", #" << -imm << "\n";
       return;
     }
     fail_unsupported(detail);
