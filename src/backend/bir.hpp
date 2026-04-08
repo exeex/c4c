@@ -34,6 +34,15 @@ struct Value {
   static Value named(TypeKind type, std::string name);
 };
 
+inline bool operator==(const Value& lhs, const Value& rhs) {
+  return lhs.kind == rhs.kind && lhs.type == rhs.type && lhs.immediate == rhs.immediate &&
+         lhs.name == rhs.name;
+}
+
+inline bool operator!=(const Value& lhs, const Value& rhs) {
+  return !(lhs == rhs);
+}
+
 struct Param {
   TypeKind type = TypeKind::Void;
   std::string name;
@@ -118,16 +127,61 @@ struct CallInst {
   std::string return_type_name;
 };
 
-using Inst = std::variant<BinaryInst, SelectInst, CastInst, CallInst>;
+struct LoadLocalInst {
+  Value result;
+  std::string slot_name;
+};
+
+struct StoreLocalInst {
+  std::string slot_name;
+  Value value;
+};
+
+using Inst = std::variant<BinaryInst, SelectInst, CastInst, CallInst, LoadLocalInst, StoreLocalInst>;
 
 struct ReturnTerminator {
   std::optional<Value> value;
 };
 
+struct BranchTerminator {
+  std::string target_label;
+};
+
+struct CondBranchTerminator {
+  Value condition;
+  std::string true_label;
+  std::string false_label;
+};
+
+enum class TerminatorKind : unsigned char {
+  Return,
+  Branch,
+  CondBranch,
+};
+
+struct Terminator {
+  TerminatorKind kind = TerminatorKind::Return;
+  std::optional<Value> value;
+  Value condition;
+  std::string target_label;
+  std::string true_label;
+  std::string false_label;
+
+  Terminator() = default;
+  Terminator(const ReturnTerminator& ret) : kind(TerminatorKind::Return), value(ret.value) {}
+  Terminator(const BranchTerminator& br)
+      : kind(TerminatorKind::Branch), target_label(br.target_label) {}
+  Terminator(const CondBranchTerminator& br)
+      : kind(TerminatorKind::CondBranch),
+        condition(br.condition),
+        true_label(br.true_label),
+        false_label(br.false_label) {}
+};
+
 struct Block {
   std::string label;
   std::vector<Inst> insts;
-  ReturnTerminator terminator;
+  Terminator terminator;
 };
 
 struct Function {
@@ -154,7 +208,9 @@ inline std::optional<std::int64_t> parse_i32_return_immediate(const Function& fu
   }
 
   const auto& block = function.blocks.front();
-  if (block.label != "entry" || !block.insts.empty() || !block.terminator.value.has_value() ||
+  if (block.label != "entry" || !block.insts.empty() ||
+      block.terminator.kind != TerminatorKind::Return ||
+      !block.terminator.value.has_value() ||
       block.terminator.value->kind != Value::Kind::Immediate ||
       block.terminator.value->type != TypeKind::I32) {
     return std::nullopt;

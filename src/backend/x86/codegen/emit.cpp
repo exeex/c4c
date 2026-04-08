@@ -2014,23 +2014,23 @@ std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_sl
 }
 
 std::optional<MinimalCountdownLoopSlice> parse_minimal_countdown_loop_slice(
-    const c4c::codegen::lir::LirModule& module) {
-  using namespace c4c::codegen::lir;
+    const c4c::backend::bir::Module& module) {
+  using namespace c4c::backend::bir;
 
   if (module.functions.size() != 1 || !module.globals.empty() ||
-      !module.string_pool.empty() || !module.extern_decls.empty()) {
+      !module.string_constants.empty()) {
     return std::nullopt;
   }
 
   const auto& function = module.functions.front();
-  if (!is_zero_arg_i32_lir_definition(function) || function.entry.value != 0 ||
-      function.blocks.size() != 4 ||
-      function.alloca_insts.size() != 1 || !function.stack_objects.empty()) {
+  if (function.is_declaration || function.return_type != TypeKind::I32 ||
+      !function.params.empty() || function.local_slots.size() != 1 ||
+      function.blocks.size() != 4) {
     return std::nullopt;
   }
 
-  const auto* slot = std::get_if<LirAllocaOp>(&function.alloca_insts.front());
-  if (slot == nullptr || slot->type_str != "i32") {
+  const auto& slot = function.local_slots.front();
+  if (slot.name.empty() || slot.type != TypeKind::I32 || slot.size_bytes != 4) {
     return std::nullopt;
   }
 
@@ -2040,55 +2040,54 @@ std::optional<MinimalCountdownLoopSlice> parse_minimal_countdown_loop_slice(
   const auto& exit = function.blocks[3];
 
   const auto* entry_store =
-      entry.insts.empty() ? nullptr : std::get_if<LirStoreOp>(&entry.insts.front());
-  const auto* entry_branch = std::get_if<LirBr>(&entry.terminator);
+      entry.insts.size() == 1 ? std::get_if<StoreLocalInst>(&entry.insts[0]) : nullptr;
   const auto* loop_load =
-      loop.insts.empty() ? nullptr : std::get_if<LirLoadOp>(&loop.insts[0]);
+      loop.insts.size() == 2 ? std::get_if<LoadLocalInst>(&loop.insts[0]) : nullptr;
   const auto* loop_cmp =
-      loop.insts.size() < 2 ? nullptr : std::get_if<LirCmpOp>(&loop.insts[1]);
-  const auto* loop_branch = std::get_if<LirCondBr>(&loop.terminator);
+      loop.insts.size() == 2 ? std::get_if<BinaryInst>(&loop.insts[1]) : nullptr;
   const auto* body_load =
-      body.insts.empty() ? nullptr : std::get_if<LirLoadOp>(&body.insts[0]);
+      body.insts.size() == 3 ? std::get_if<LoadLocalInst>(&body.insts[0]) : nullptr;
   const auto* body_sub =
-      body.insts.size() < 2 ? nullptr : std::get_if<LirBinOp>(&body.insts[1]);
+      body.insts.size() == 3 ? std::get_if<BinaryInst>(&body.insts[1]) : nullptr;
   const auto* body_store =
-      body.insts.size() < 3 ? nullptr : std::get_if<LirStoreOp>(&body.insts[2]);
-  const auto* body_branch = std::get_if<LirBr>(&body.terminator);
+      body.insts.size() == 3 ? std::get_if<StoreLocalInst>(&body.insts[2]) : nullptr;
   const auto* exit_load =
-      exit.insts.empty() ? nullptr : std::get_if<LirLoadOp>(&exit.insts[0]);
-  const auto* exit_ret = std::get_if<LirRet>(&exit.terminator);
-  const auto cmp_predicate = loop_cmp == nullptr ? std::nullopt : loop_cmp->predicate.typed();
-  const auto sub_opcode = body_sub == nullptr ? std::nullopt : body_sub->opcode.typed();
-  if (entry.label != "entry" || entry.insts.size() != 1 || entry_store == nullptr ||
-      entry_branch == nullptr || entry_branch->target_label != loop.label ||
-      entry_store->type_str != "i32" || entry_store->ptr != slot->result ||
-      loop.insts.size() != 2 || loop_load == nullptr || loop_cmp == nullptr ||
-      loop_branch == nullptr || loop_load->type_str != "i32" || loop_load->ptr != slot->result ||
-      loop_cmp->is_float || cmp_predicate != LirCmpPredicate::Ne ||
-      loop_cmp->type_str != "i32" || loop_cmp->lhs != loop_load->result ||
-      loop_cmp->rhs != "0" || loop_branch->cond_name != loop_cmp->result ||
-      loop_branch->true_label != body.label || loop_branch->false_label != exit.label ||
-      body.insts.size() != 3 || body_load == nullptr || body_sub == nullptr ||
-      body_store == nullptr || body_branch == nullptr ||
-      body_load->type_str != "i32" || body_load->ptr != slot->result ||
-      sub_opcode != LirBinaryOpcode::Sub || body_sub->type_str != "i32" ||
-      body_sub->lhs != body_load->result || body_sub->rhs != "1" ||
-      body_store->type_str != "i32" || body_store->val != body_sub->result ||
-      body_store->ptr != slot->result || body_branch->target_label != loop.label ||
-      exit.insts.size() != 1 || exit_load == nullptr || exit_ret == nullptr ||
-      exit_load->type_str != "i32" || exit_load->ptr != slot->result ||
-      exit_ret->type_str != "i32" || exit_ret->value_str != exit_load->result) {
+      exit.insts.size() == 1 ? std::get_if<LoadLocalInst>(&exit.insts[0]) : nullptr;
+  if (entry.label != "entry" || entry_store == nullptr ||
+      entry.terminator.kind != TerminatorKind::Branch ||
+      entry_store->slot_name != slot.name || entry_store->value.kind != Value::Kind::Immediate ||
+      entry_store->value.type != TypeKind::I32 ||
+      entry.terminator.target_label != loop.label || loop_load == nullptr ||
+      loop_cmp == nullptr || loop.terminator.kind != TerminatorKind::CondBranch ||
+      loop_load->slot_name != slot.name || loop_load->result.kind != Value::Kind::Named ||
+      loop_load->result.type != TypeKind::I32 || loop_cmp->opcode != BinaryOpcode::Ne ||
+      loop_cmp->result.kind != Value::Kind::Named || loop_cmp->result.type != TypeKind::I32 ||
+      loop_cmp->lhs != loop_load->result || loop_cmp->rhs != Value::immediate_i32(0) ||
+      loop.terminator.condition != loop_cmp->result ||
+      loop.terminator.true_label != body.label ||
+      loop.terminator.false_label != exit.label || body_load == nullptr ||
+      body_sub == nullptr || body_store == nullptr ||
+      body.terminator.kind != TerminatorKind::Branch ||
+      body_load->slot_name != slot.name || body_load->result.kind != Value::Kind::Named ||
+      body_load->result.type != TypeKind::I32 || body_sub->opcode != BinaryOpcode::Sub ||
+      body_sub->result.kind != Value::Kind::Named || body_sub->result.type != TypeKind::I32 ||
+      body_sub->lhs != body_load->result || body_sub->rhs != Value::immediate_i32(1) ||
+      body_store->slot_name != slot.name || body_store->value != body_sub->result ||
+      body.terminator.target_label != loop.label || exit_load == nullptr ||
+      exit.terminator.kind != TerminatorKind::Return ||
+      exit_load->slot_name != slot.name || exit_load->result.kind != Value::Kind::Named ||
+      exit_load->result.type != TypeKind::I32 || !exit.terminator.value.has_value() ||
+      *exit.terminator.value != exit_load->result) {
     return std::nullopt;
   }
 
-  const auto initial_imm = parse_i64(entry_store->val);
-  if (!initial_imm.has_value() || *initial_imm < 0) {
+  if (entry_store->value.immediate < 0) {
     return std::nullopt;
   }
 
   return MinimalCountdownLoopSlice{
       function.name,
-      *initial_imm,
+      entry_store->value.immediate,
       loop.label,
       body.label,
       exit.label,
@@ -4398,10 +4397,6 @@ std::optional<std::string> try_emit_direct_lir_module(
         slice.has_value()) {
       return emit_minimal_string_literal_char_asm(module.target_triple, *slice);
     }
-    if (const auto slice = parse_minimal_countdown_loop_slice(module);
-        slice.has_value()) {
-      return emit_minimal_countdown_loop_asm(module.target_triple, *slice);
-    }
     if (const auto slice = parse_minimal_countdown_do_while_return_slice(module);
         slice.has_value()) {
       return emit_minimal_return_asm(module.target_triple, slice->function_name, slice->return_imm);
@@ -4500,6 +4495,10 @@ std::string emit_module(const c4c::backend::bir::Module& module,
   if (const auto slice = parse_minimal_conditional_affine_i32_return_slice(module);
       slice.has_value()) {
     return emit_minimal_conditional_affine_i32_return_asm(module.target_triple, *slice);
+  }
+  if (const auto slice = parse_minimal_countdown_loop_slice(module);
+      slice.has_value()) {
+    return emit_minimal_countdown_loop_asm(module.target_triple, *slice);
   }
   throw_unsupported_direct_bir_module();
 }

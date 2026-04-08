@@ -194,6 +194,97 @@ bool validate_call(const Function& function,
   return true;
 }
 
+bool validate_local_slot_names(const Function& function, std::string* error) {
+  std::vector<std::string_view> slot_names;
+  slot_names.reserve(function.local_slots.size());
+  for (const auto& slot : function.local_slots) {
+    if (slot.name.empty()) {
+      return fail(error, "bir local slot in @" + function.name +
+                             " must use a non-empty name");
+    }
+    if (!validate_value_type(slot.type,
+                             "bir local slot in @" + function.name,
+                             error)) {
+      return false;
+    }
+    if (slot.size_bytes == 0) {
+      return fail(error, "bir local slot in @" + function.name +
+                             " must use a non-zero size");
+    }
+    if (std::find(slot_names.begin(), slot_names.end(), slot.name) != slot_names.end()) {
+      return fail(error, "bir local slot in @" + function.name +
+                             " must not reuse an existing slot name");
+    }
+    slot_names.push_back(slot.name);
+  }
+  return true;
+}
+
+const LocalSlot* find_local_slot(const Function& function, std::string_view slot_name) {
+  const auto it = std::find_if(function.local_slots.begin(),
+                               function.local_slots.end(),
+                               [&](const LocalSlot& slot) { return slot.name == slot_name; });
+  return it == function.local_slots.end() ? nullptr : &*it;
+}
+
+bool validate_load_local(const Function& function,
+                         const LoadLocalInst& inst,
+                         std::vector<std::string>* defined_names,
+                         std::string* error) {
+  if (inst.result.kind != Value::Kind::Named || inst.result.name.empty()) {
+    return fail(error, "bir local load result in @" + function.name +
+                           " must use a non-empty named value");
+  }
+  if (!validate_value_type(inst.result.type,
+                           "bir local load result in @" + function.name,
+                           error)) {
+    return false;
+  }
+  const auto* slot = find_local_slot(function, inst.slot_name);
+  if (slot == nullptr) {
+    return fail(error, "bir local load in @" + function.name +
+                           " must reference a declared local slot");
+  }
+  if (slot->type != inst.result.type) {
+    return fail(error, "bir local load in @" + function.name +
+                           " must agree with the referenced local slot type");
+  }
+  defined_names->push_back(inst.result.name);
+  return true;
+}
+
+bool validate_store_local(const Function& function,
+                          const StoreLocalInst& inst,
+                          const std::vector<std::string>& defined_names,
+                          std::string* error) {
+  const auto* slot = find_local_slot(function, inst.slot_name);
+  if (slot == nullptr) {
+    return fail(error, "bir local store in @" + function.name +
+                           " must reference a declared local slot");
+  }
+  if (!validate_value_type(inst.value.type,
+                           "bir local store value in @" + function.name,
+                           error)) {
+    return false;
+  }
+  if (slot->type != inst.value.type) {
+    return fail(error, "bir local store in @" + function.name +
+                           " must agree with the referenced local slot type");
+  }
+  if (inst.value.kind == Value::Kind::Named) {
+    if (inst.value.name.empty()) {
+      return fail(error, "bir local store value in @" + function.name +
+                             " must not use an empty name");
+    }
+    if (std::find(defined_names.begin(), defined_names.end(), inst.value.name) ==
+        defined_names.end()) {
+      return fail(error, "bir local store in @" + function.name +
+                             " must reference a value defined earlier in the block");
+    }
+  }
+  return true;
+}
+
 bool validate_params(const Function& function,
                      std::vector<std::string>* defined_names,
                      std::string* error) {
@@ -221,6 +312,10 @@ bool validate_return(const Function& function,
                      const Block& block,
                      const std::vector<std::string>& defined_names,
                      std::string* error) {
+  if (block.terminator.kind != TerminatorKind::Return) {
+    return true;
+  }
+
   const auto& returned = block.terminator.value;
   if (function.return_type == TypeKind::Void) {
     if (returned.has_value()) {
@@ -251,6 +346,57 @@ bool validate_return(const Function& function,
   return true;
 }
 
+bool validate_terminator(const Function& function,
+                         const Block& block,
+                         const std::vector<std::string>& block_labels,
+                         const std::vector<std::string>& defined_names,
+                         std::string* error) {
+  switch (block.terminator.kind) {
+    case TerminatorKind::Return:
+      return validate_return(function, block, defined_names, error);
+    case TerminatorKind::Branch:
+      if (block.terminator.target_label.empty()) {
+        return fail(error, "bir branch in @" + function.name + " must name a target");
+      }
+      if (std::find(block_labels.begin(), block_labels.end(), block.terminator.target_label) ==
+          block_labels.end()) {
+        return fail(error, "bir branch in @" + function.name +
+                               " must target a block in the same function");
+      }
+      return true;
+    case TerminatorKind::CondBranch:
+      if (!validate_value_type(block.terminator.condition.type,
+                               "bir cond_br condition in @" + function.name,
+                               error)) {
+        return false;
+      }
+      if (block.terminator.condition.kind == Value::Kind::Named) {
+        if (block.terminator.condition.name.empty()) {
+          return fail(error, "bir cond_br condition in @" + function.name +
+                                 " must not use an empty name");
+        }
+        if (std::find(defined_names.begin(), defined_names.end(),
+                      block.terminator.condition.name) == defined_names.end()) {
+          return fail(error, "bir cond_br in @" + function.name +
+                                 " must reference a value defined earlier in the block");
+        }
+      }
+      if (block.terminator.true_label.empty() || block.terminator.false_label.empty()) {
+        return fail(error, "bir cond_br in @" + function.name +
+                               " must name both successor labels");
+      }
+      if (std::find(block_labels.begin(), block_labels.end(), block.terminator.true_label) ==
+              block_labels.end() ||
+          std::find(block_labels.begin(), block_labels.end(), block.terminator.false_label) ==
+              block_labels.end()) {
+        return fail(error, "bir cond_br in @" + function.name +
+                               " must target blocks in the same function");
+      }
+      return true;
+  }
+  return false;
+}
+
 }  // namespace
 
 bool validate(const Module& module, std::string* error) {
@@ -270,6 +416,18 @@ bool validate(const Module& module, std::string* error) {
     if (function.blocks.empty()) {
       return fail(error, "bir function @" + function.name +
                              " must contain at least one block");
+    }
+    if (!validate_local_slot_names(function, error)) {
+      return false;
+    }
+    std::vector<std::string> block_labels;
+    block_labels.reserve(function.blocks.size());
+    for (const auto& block : function.blocks) {
+      if (std::find(block_labels.begin(), block_labels.end(), block.label) != block_labels.end()) {
+        return fail(error, "bir function @" + function.name +
+                               " must not reuse a block label");
+      }
+      block_labels.push_back(block.label);
     }
     for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
       const auto& block = function.blocks[block_index];
@@ -293,6 +451,10 @@ bool validate(const Module& module, std::string* error) {
                 return validate_cast(function, lowered, &defined_names, error);
               } else if constexpr (std::is_same_v<T, CallInst>) {
                 return validate_call(function, lowered, &defined_names, error);
+              } else if constexpr (std::is_same_v<T, LoadLocalInst>) {
+                return validate_load_local(function, lowered, &defined_names, error);
+              } else if constexpr (std::is_same_v<T, StoreLocalInst>) {
+                return validate_store_local(function, lowered, defined_names, error);
               }
             },
             inst);
@@ -300,7 +462,7 @@ bool validate(const Module& module, std::string* error) {
           return false;
         }
       }
-      if (!validate_return(function, block, defined_names, error)) {
+      if (!validate_terminator(function, block, block_labels, defined_names, error)) {
         return false;
       }
     }

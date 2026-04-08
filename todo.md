@@ -5,14 +5,41 @@ Source Plan: plan.md
 # Active Item
 
 - Step 3: migrate the next aarch64 emitter helper cluster onto direct BIR
-- Current slice: inspect whether the remaining x86 countdown-loop LIR fast path
-  now has a direct-BIR equivalent or still needs a bounded BIR contract
-  addition before removal
-- Next intended slice: if countdown-loop still lacks a shared BIR route, add
-  the smallest validating lowering coverage needed to make that gap explicit
-  before changing the x86 emitter
+- Current slice: inspect the next remaining native emitter-local LIR fast paths
+  after the shared countdown-loop route landed, starting with the still-live
+  countdown/do-while-style bounded helpers
+- Next intended slice: identify whether the next bounded loop/helper family can
+  reuse the new local-slot plus branch BIR contract directly or needs one more
+  narrow shared view before removing its emitter-local matcher
 
 # Completed
+
+- Added bounded shared BIR control-flow plus local-slot coverage for the
+  countdown-loop family by extending `src/backend/bir.hpp`,
+  `src/backend/bir_printer.cpp`, and `src/backend/bir_validate.cpp` with
+  local-slot load/store and branch/cond-branch support
+- Lowered the minimal countdown-loop LIR shape directly into that shared BIR
+  contract in `src/backend/lowering/lir_to_bir.cpp`
+- Removed the x86 emitter-local countdown-loop LIR matcher from
+  `src/backend/x86/codegen/emit.cpp` by teaching the x86 direct-BIR path to
+  recognize and emit the bounded countdown-loop module shape instead
+- Added the matching aarch64 direct-BIR countdown-loop route in
+  `src/backend/aarch64/codegen/emit.cpp` so the new shared lowering does not
+  regress aarch64 backend coverage
+- Extended `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` and
+  `tests/backend/backend_bir_pipeline_aarch64_tests.cpp` with focused direct-BIR
+  and LIR-through-BIR countdown-loop coverage
+- Rebuilt `backend_bir_tests`, `backend_shared_util_tests`, and `c4cll`
+  successfully after the shared countdown-loop BIR route landed
+- Reran `ctest --test-dir build -R 'backend_bir_tests|c_testsuite_aarch64_backend_src_00006_c' --output-on-failure`
+  successfully while fixing the aarch64 direct-BIR follow-through for the new
+  countdown-loop lowering route
+- Reran the full `ctest --test-dir build -j8 --output-on-failure` suite and
+  refreshed `test_after.log` / `test_fail_after.log`; the workspace stayed at
+  `2834/2834` passing with 0 failures
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=159
+  failed=-159` and zero newly failing tests
 
 - Added focused x86 LIR-through-BIR pipeline coverage in
   `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` for the

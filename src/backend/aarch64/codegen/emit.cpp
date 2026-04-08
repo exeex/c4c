@@ -2453,6 +2453,87 @@ std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_sl
   };
 }
 
+std::optional<MinimalCountdownLoopSlice> parse_minimal_countdown_loop_slice(
+    const c4c::backend::bir::Module& module) {
+  using namespace c4c::backend::bir;
+
+  if (module.functions.size() != 1 || !module.globals.empty() ||
+      !module.string_constants.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration || function.return_type != TypeKind::I32 ||
+      !function.params.empty() || function.local_slots.size() != 1 ||
+      function.blocks.size() != 4) {
+    return std::nullopt;
+  }
+
+  const auto& slot = function.local_slots.front();
+  if (slot.name.empty() || slot.type != TypeKind::I32 || slot.size_bytes != 4) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks[0];
+  const auto& loop = function.blocks[1];
+  const auto& body = function.blocks[2];
+  const auto& exit = function.blocks[3];
+
+  const auto* entry_store =
+      entry.insts.size() == 1 ? std::get_if<StoreLocalInst>(&entry.insts[0]) : nullptr;
+  const auto* loop_load =
+      loop.insts.size() == 2 ? std::get_if<LoadLocalInst>(&loop.insts[0]) : nullptr;
+  const auto* loop_cmp =
+      loop.insts.size() == 2 ? std::get_if<BinaryInst>(&loop.insts[1]) : nullptr;
+  const auto* body_load =
+      body.insts.size() == 3 ? std::get_if<LoadLocalInst>(&body.insts[0]) : nullptr;
+  const auto* body_sub =
+      body.insts.size() == 3 ? std::get_if<BinaryInst>(&body.insts[1]) : nullptr;
+  const auto* body_store =
+      body.insts.size() == 3 ? std::get_if<StoreLocalInst>(&body.insts[2]) : nullptr;
+  const auto* exit_load =
+      exit.insts.size() == 1 ? std::get_if<LoadLocalInst>(&exit.insts[0]) : nullptr;
+  if (entry.label != "entry" || entry_store == nullptr ||
+      entry.terminator.kind != TerminatorKind::Branch ||
+      entry_store->slot_name != slot.name || entry_store->value.kind != Value::Kind::Immediate ||
+      entry_store->value.type != TypeKind::I32 ||
+      entry.terminator.target_label != loop.label || loop_load == nullptr ||
+      loop_cmp == nullptr || loop.terminator.kind != TerminatorKind::CondBranch ||
+      loop_load->slot_name != slot.name || loop_load->result.kind != Value::Kind::Named ||
+      loop_load->result.type != TypeKind::I32 || loop_cmp->opcode != BinaryOpcode::Ne ||
+      loop_cmp->result.kind != Value::Kind::Named || loop_cmp->result.type != TypeKind::I32 ||
+      loop_cmp->lhs != loop_load->result || loop_cmp->rhs != Value::immediate_i32(0) ||
+      loop.terminator.condition != loop_cmp->result ||
+      loop.terminator.true_label != body.label ||
+      loop.terminator.false_label != exit.label || body_load == nullptr ||
+      body_sub == nullptr || body_store == nullptr ||
+      body.terminator.kind != TerminatorKind::Branch ||
+      body_load->slot_name != slot.name || body_load->result.kind != Value::Kind::Named ||
+      body_load->result.type != TypeKind::I32 || body_sub->opcode != BinaryOpcode::Sub ||
+      body_sub->result.kind != Value::Kind::Named || body_sub->result.type != TypeKind::I32 ||
+      body_sub->lhs != body_load->result || body_sub->rhs != Value::immediate_i32(1) ||
+      body_store->slot_name != slot.name || body_store->value != body_sub->result ||
+      body.terminator.target_label != loop.label || exit_load == nullptr ||
+      exit.terminator.kind != TerminatorKind::Return ||
+      exit_load->slot_name != slot.name || exit_load->result.kind != Value::Kind::Named ||
+      exit_load->result.type != TypeKind::I32 || !exit.terminator.value.has_value() ||
+      *exit.terminator.value != exit_load->result) {
+    return std::nullopt;
+  }
+
+  if (entry_store->value.immediate < 0) {
+    return std::nullopt;
+  }
+
+  return MinimalCountdownLoopSlice{
+      function.name,
+      entry_store->value.immediate,
+      loop.label,
+      body.label,
+      exit.label,
+  };
+}
+
 // BIR-gap data slices.
 // These still depend on globals, linkage, and address classification that BIR
 // does not yet expose in the same shape.
@@ -6991,6 +7072,10 @@ std::string emit_module(const c4c::backend::bir::Module& module,
   if (const auto slice = parse_minimal_conditional_affine_i32_return_slice(module);
       slice.has_value()) {
     return emit_minimal_conditional_affine_i32_return_asm(module.target_triple, *slice);
+  }
+  if (const auto slice = parse_minimal_countdown_loop_slice(module);
+      slice.has_value()) {
+    return emit_minimal_countdown_loop_asm(module.target_triple, *slice);
   }
   fail_unsupported_direct_bir_module();
 }

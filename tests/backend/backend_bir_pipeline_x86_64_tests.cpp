@@ -43,6 +43,132 @@ c4c::codegen::lir::LirModule make_lir_minimal_direct_call_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_lir_minimal_countdown_loop_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.x", "i32", "", 4});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{"i32", "5", "%lv.x"});
+  entry.terminator = LirBr{"loop"};
+
+  LirBlock loop;
+  loop.id = LirBlockId{1};
+  loop.label = "loop";
+  loop.insts.push_back(LirLoadOp{"%t0", "i32", "%lv.x"});
+  loop.insts.push_back(LirCmpOp{"%t1", false, "ne", "i32", "%t0", "0"});
+  loop.terminator = LirCondBr{"%t1", "body", "exit"};
+
+  LirBlock body;
+  body.id = LirBlockId{2};
+  body.label = "body";
+  body.insts.push_back(LirLoadOp{"%t2", "i32", "%lv.x"});
+  body.insts.push_back(LirBinOp{"%t3", "sub", "i32", "%t2", "1"});
+  body.insts.push_back(LirStoreOp{"i32", "%t3", "%lv.x"});
+  body.terminator = LirBr{"loop"};
+
+  LirBlock exit;
+  exit.id = LirBlockId{3};
+  exit.label = "exit";
+  exit.insts.push_back(LirLoadOp{"%t4", "i32", "%lv.x"});
+  exit.terminator = LirRet{std::string("%t4"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(loop));
+  function.blocks.push_back(std::move(body));
+  function.blocks.push_back(std::move(exit));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+c4c::backend::bir::Module make_bir_minimal_countdown_loop_module() {
+  using namespace c4c::backend::bir;
+
+  Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  Function function;
+  function.name = "main";
+  function.return_type = TypeKind::I32;
+  function.local_slots.push_back(
+      LocalSlot{.name = "%lv.x", .type = TypeKind::I32, .size_bytes = 4});
+
+  function.blocks.push_back(Block{
+      .label = "entry",
+      .insts = {StoreLocalInst{
+          .slot_name = "%lv.x",
+          .value = Value::immediate_i32(5),
+      }},
+      .terminator = BranchTerminator{.target_label = "loop"},
+  });
+  function.blocks.push_back(Block{
+      .label = "loop",
+      .insts = {
+          LoadLocalInst{
+              .result = Value::named(TypeKind::I32, "%t0"),
+              .slot_name = "%lv.x",
+          },
+          BinaryInst{
+              .opcode = BinaryOpcode::Ne,
+              .result = Value::named(TypeKind::I32, "%t1"),
+              .lhs = Value::named(TypeKind::I32, "%t0"),
+              .rhs = Value::immediate_i32(0),
+          },
+      },
+      .terminator = CondBranchTerminator{
+          .condition = Value::named(TypeKind::I32, "%t1"),
+          .true_label = "body",
+          .false_label = "exit",
+      },
+  });
+  function.blocks.push_back(Block{
+      .label = "body",
+      .insts = {
+          LoadLocalInst{
+              .result = Value::named(TypeKind::I32, "%t2"),
+              .slot_name = "%lv.x",
+          },
+          BinaryInst{
+              .opcode = BinaryOpcode::Sub,
+              .result = Value::named(TypeKind::I32, "%t3"),
+              .lhs = Value::named(TypeKind::I32, "%t2"),
+              .rhs = Value::immediate_i32(1),
+          },
+          StoreLocalInst{
+              .slot_name = "%lv.x",
+              .value = Value::named(TypeKind::I32, "%t3"),
+          },
+      },
+      .terminator = BranchTerminator{.target_label = "loop"},
+  });
+  function.blocks.push_back(Block{
+      .label = "exit",
+      .insts = {LoadLocalInst{
+          .result = Value::named(TypeKind::I32, "%t4"),
+          .slot_name = "%lv.x",
+      }},
+      .terminator = ReturnTerminator{
+          .value = Value::named(TypeKind::I32, "%t4"),
+      },
+  });
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_lir_declared_direct_call_module() {
   using namespace c4c::codegen::lir;
 
@@ -645,6 +771,21 @@ void test_backend_bir_pipeline_drives_x86_lir_declared_direct_call_through_bir_e
                       "x86 LIR declared direct-call input should stay on native asm emission instead of falling back to LLVM text");
 }
 
+void test_backend_bir_pipeline_drives_x86_direct_bir_minimal_countdown_loop_end_to_end() {
+  const auto rendered =
+      c4c::backend::emit_module(c4c::backend::BackendModuleInput{make_bir_minimal_countdown_loop_module()},
+                                make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, "mov eax, 5",
+                  "x86 direct BIR countdown-loop input should materialize the initial counter on the native backend path");
+  expect_contains(rendered, ".Lloop:\n  cmp eax, 0\n  je .Lexit\n",
+                  "x86 direct BIR countdown-loop input should preserve the loop test on the native backend path");
+  expect_contains(rendered, ".Lbody:\n  sub eax, 1\n  jmp .Lloop\n",
+                  "x86 direct BIR countdown-loop input should preserve the decrement-and-backedge sequence on the native backend path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 direct BIR countdown-loop input should stay on native asm emission");
+}
+
 void test_backend_bir_pipeline_drives_x86_direct_bir_minimal_two_arg_direct_call_end_to_end() {
   c4c::backend::bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -1053,6 +1194,33 @@ void test_backend_bir_pipeline_drives_x86_lir_minimal_folded_two_arg_direct_call
                       "x86 LIR folded two-argument direct-call input should fully fold away the helper/main direct-call family on the BIR-owned route");
   expect_not_contains(rendered, "target triple =",
                       "x86 LIR folded two-argument direct-call input should stay on native asm emission instead of falling back to LLVM text");
+}
+
+void test_backend_bir_pipeline_drives_x86_lir_minimal_countdown_loop_through_bir_end_to_end() {
+  const auto lowered_bir = c4c::backend::try_lower_to_bir(make_lir_minimal_countdown_loop_module());
+  expect_true(lowered_bir.has_value(),
+              "x86 LIR countdown-loop input should now lower into the bounded shared BIR local-slot loop shape");
+  expect_true(lowered_bir->functions.size() == 1 &&
+                  lowered_bir->functions.front().local_slots.size() == 1 &&
+                  lowered_bir->functions.front().blocks.size() == 4 &&
+                  lowered_bir->functions.front().blocks[0].terminator.kind ==
+                      c4c::backend::bir::TerminatorKind::Branch &&
+                  lowered_bir->functions.front().blocks[1].terminator.kind ==
+                      c4c::backend::bir::TerminatorKind::CondBranch,
+              "x86 LIR countdown-loop lowering should produce the expected multi-block shared BIR control-flow skeleton");
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_lir_minimal_countdown_loop_module()},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, "mov eax, 5",
+                  "x86 LIR countdown-loop input should preserve the initial counter after routing through the shared BIR path");
+  expect_contains(rendered, ".Lloop:\n  cmp eax, 0\n  je .Lexit\n",
+                  "x86 LIR countdown-loop input should preserve the loop test after the x86 LIR-only seam is removed");
+  expect_contains(rendered, ".Lbody:\n  sub eax, 1\n  jmp .Lloop\n",
+                  "x86 LIR countdown-loop input should preserve the decrement-and-backedge sequence after routing through shared BIR");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR countdown-loop input should stay on native asm emission instead of falling back to LLVM text");
 }
 
 void test_backend_bir_pipeline_drives_x86_lir_minimal_dual_identity_direct_call_sub_through_bir_end_to_end() {
@@ -1630,6 +1798,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_direct_call_identity_arg_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_dual_identity_direct_call_sub_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_call_crossing_direct_call_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_countdown_loop_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_lowers_x86_direct_call_helper_families_to_shared_bir_views);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_void_direct_call_imm_return_through_bir_end_to_end);
@@ -1638,6 +1807,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_add_imm_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_identity_arg_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_folded_two_arg_direct_call_through_bir_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_countdown_loop_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_dual_identity_direct_call_sub_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_call_crossing_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_conditional_return_through_bir_end_to_end);

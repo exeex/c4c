@@ -81,14 +81,34 @@ void render_function(std::ostringstream& out, const Function& function) {
                     << render_value(lowered.args[arg_index]);
               }
               out << ")\n";
+            } else if constexpr (std::is_same_v<T, LoadLocalInst>) {
+              out << "  " << lowered.result.name << " = bir.load_local "
+                  << render_type(lowered.result.type) << " " << lowered.slot_name << "\n";
+            } else if constexpr (std::is_same_v<T, StoreLocalInst>) {
+              out << "  bir.store_local " << lowered.slot_name << ", "
+                  << render_type(lowered.value.type) << " " << render_value(lowered.value)
+                  << "\n";
             }
           },
           inst);
     }
-    out << "  bir.ret";
-    if (block.terminator.value.has_value()) {
-      out << " " << render_type(block.terminator.value->type) << " "
-          << render_value(*block.terminator.value);
+    out << "  ";
+    switch (block.terminator.kind) {
+      case TerminatorKind::Return:
+        out << "bir.ret";
+        if (block.terminator.value.has_value()) {
+          out << " " << render_type(block.terminator.value->type) << " "
+              << render_value(*block.terminator.value);
+        }
+        break;
+      case TerminatorKind::Branch:
+        out << "bir.br " << block.terminator.target_label;
+        break;
+      case TerminatorKind::CondBranch:
+        out << "bir.cond_br " << render_type(block.terminator.condition.type) << " "
+            << render_value(block.terminator.condition) << ", "
+            << block.terminator.true_label << ", " << block.terminator.false_label;
+        break;
     }
     out << "\n";
   }
