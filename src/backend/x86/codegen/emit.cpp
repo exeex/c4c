@@ -4945,11 +4945,6 @@ std::string emit_minimal_countdown_loop_asm(std::string_view target_triple,
   return out.str();
 }
 
-std::string emit_minimal_countdown_loop_asm(const c4c::backend::BackendModule& module,
-                                            const MinimalCountdownLoopSlice& slice) {
-  return emit_minimal_countdown_loop_asm(module.target_triple, slice);
-}
-
 std::string emit_minimal_conditional_phi_join_asm(
     std::string_view target_triple,
     const MinimalConditionalPhiJoinSlice& slice) {
@@ -5000,17 +4995,6 @@ std::string emit_minimal_conditional_phi_join_asm(
   }
   out << "  ret\n";
   return out.str();
-}
-
-std::string emit_minimal_conditional_phi_join_asm(
-    const c4c::backend::BackendModule& module,
-    const MinimalConditionalPhiJoinSlice& slice) {
-  return emit_minimal_conditional_phi_join_asm(module.target_triple, slice);
-}
-
-std::string emit_minimal_local_array_asm(const c4c::backend::BackendModule& module,
-                                         const MinimalLocalArraySlice& slice) {
-  return emit_minimal_local_array_asm(module.target_triple, slice);
 }
 
 std::string emit_minimal_local_array_asm(std::string_view target_triple,

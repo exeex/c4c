@@ -10,7 +10,9 @@ Source Plan: plan.md
   forwarding glue rather than a real metadata-bearing seam
 - Next intended slice: resume inspecting the remaining x86/aarch64 emitter-local
   `BackendModule` parser families and pick the next cluster that is dead
-  forwarding glue rather than a real metadata-bearing seam
+  forwarding glue rather than a real metadata-bearing seam, preferably another
+  target-triple-only emitter wrapper cluster or a similarly unreferenced
+  adapter seam
 
 # Completed
 
@@ -25,6 +27,26 @@ Source Plan: plan.md
 - Reran the full `ctest --test-dir build -j --output-on-failure` suite and
   recorded same-run before/after logs in `test_before.log` and `test_after.log`;
   both snapshots reported `2821/2834` passed with the same 13 known failures
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=0 failed=0`
+  and zero newly failing tests
+- Removed the dead x86 `BackendModule` forwarding wrappers for
+  `emit_minimal_countdown_loop_asm(...)`,
+  `emit_minimal_conditional_phi_join_asm(...)`, and
+  `emit_minimal_local_array_asm(...)` now that all live call sites already
+  pass `target_triple` directly
+- Removed the dead aarch64 `BackendModule` forwarding wrapper for
+  `emit_minimal_countdown_loop_asm(...)` now that all live call sites already
+  pass `target_triple` directly
+- Rebuilt `c4cll`, `backend_bir_tests`, and `backend_shared_util_tests`
+  successfully after the dead emitter-wrapper cleanup
+- Reran
+  `ctest --test-dir build -R 'backend_(bir_tests|shared_util_tests)' --output-on-failure`
+  successfully after the cleanup
+- Reran the full `ctest --test-dir build -j --output-on-failure` suite and
+  refreshed `test_after.log` / `test_fail_after.log`; the workspace still has
+  the same 13 known failures as `test_fail_before.log` with `2821/2834` tests
+  passing
 - Ran the c4c regression guard script with
   `--allow-non-decreasing-passed`; it passed with `delta: passed=0 failed=0`
   and zero newly failing tests

@@ -4665,14 +4665,6 @@ std::string emit_minimal_conditional_affine_i32_return_asm(
   return out.str();
 }
 
-// Pure plumbing wrapper.
-// Countdown-loop emission already has a target-triple-only path; this overload
-// just forwards legacy module callers.
-std::string emit_minimal_countdown_loop_asm(const c4c::backend::BackendModule& module,
-                                            const MinimalCountdownLoopSlice& slice) {
-  return emit_minimal_countdown_loop_asm(module.target_triple, slice);
-}
-
 std::string emit_minimal_countdown_loop_asm(std::string_view target_triple,
                                             const MinimalCountdownLoopSlice& slice) {
   std::ostringstream out;
