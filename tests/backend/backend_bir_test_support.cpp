@@ -1141,11 +1141,15 @@ c4c::codegen::lir::LirModule make_bir_two_param_select_ne_phi_module() {
   LirBlock entry;
   entry.id = LirBlockId{0};
   entry.label = "entry";
-  entry.insts.push_back(LirCastOp{"%t0", LirCastKind::ZExt, "i8", "%p.x", "i32"});
-  entry.insts.push_back(LirCastOp{"%t1", LirCastKind::ZExt, "i8", "%p.y", "i32"});
-  entry.insts.push_back(LirCmpOp{"%t2", false, "ne", "i32", "%t0", "%t1"});
-  entry.insts.push_back(LirCastOp{"%t3", LirCastKind::ZExt, "i1", "%t2", "i32"});
-  entry.insts.push_back(LirCmpOp{"%t4", false, "ne", "i32", "%t3", "0"});
+  entry.insts.push_back(
+      LirCastOp{"%t0", LirCastKind::ZExt, LirTypeRef::integer(8), "%p.x", LirTypeRef::integer(32)});
+  entry.insts.push_back(
+      LirCastOp{"%t1", LirCastKind::ZExt, LirTypeRef::integer(8), "%p.y", LirTypeRef::integer(32)});
+  entry.insts.push_back(
+      LirCmpOp{"%t2", false, "ne", LirTypeRef::integer(32), "%t0", "%t1"});
+  entry.insts.push_back(LirCastOp{"%t3", LirCastKind::ZExt, "i1", "%t2", LirTypeRef::integer(32)});
+  entry.insts.push_back(
+      LirCmpOp{"%t4", false, "ne", LirTypeRef::integer(32), "%t3", "0"});
   entry.terminator = LirCondBr{"%t4", "tern.then.5", "tern.else.7"};
   function.blocks.push_back(std::move(entry));
 
@@ -1177,8 +1181,8 @@ c4c::codegen::lir::LirModule make_bir_two_param_select_ne_phi_module() {
   join_block.id = LirBlockId{5};
   join_block.label = "tern.end.9";
   join_block.insts.push_back(
-      LirPhiOp{"%t5", "i8", {{"%p.x", "tern.then.end.6"}, {"%p.y", "tern.else.end.8"}}});
-  join_block.terminator = LirRet{std::string("%t5"), "i8"};
+      LirPhiOp{"%t5", LirTypeRef::integer(8), {{"%p.x", "tern.then.end.6"}, {"%p.y", "tern.else.end.8"}}});
+  join_block.terminator = LirRet{std::string("%t5"), LirTypeRef::integer(8)};
   function.blocks.push_back(std::move(join_block));
 
   module.functions.push_back(std::move(function));

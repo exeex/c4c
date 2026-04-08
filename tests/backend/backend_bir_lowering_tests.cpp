@@ -2240,6 +2240,21 @@ void test_bir_lowering_accepts_two_param_u8_select_ne_phi_slice() {
                   "BIR lowering should return the widened select result instead of falling back to legacy LLVM IR");
 }
 
+void test_bir_lowering_accepts_typed_two_param_u8_select_ne_phi_slice() {
+  auto module = make_bir_two_param_select_ne_phi_module();
+  c4c::codegen::lir::verify_module(module);
+
+  const auto lowered = c4c::backend::lower_to_bir(module);
+  const auto rendered = c4c::backend::bir::print(lowered);
+
+  expect_contains(rendered, "bir.func @choose2_ne_u(i8 %p.x, i8 %p.y) -> i8 {",
+                  "BIR lowering should preserve the typed widened two-parameter unsigned-char ternary signature for not-equal");
+  expect_contains(rendered, "%t5 = bir.select ne i8 %p.x, %p.y, %p.x, %p.y",
+                  "BIR lowering should collapse the typed widened two-parameter not-equal phi join into a direct i8 BIR select");
+  expect_contains(rendered, "bir.ret i8 %t5",
+                  "BIR lowering should return the typed widened select result on the direct BIR path");
+}
+
 void test_bir_lowering_accepts_two_param_u8_select_ne_predecessor_add_phi_post_join_add_slice() {
   const auto lowered = c4c::backend::lower_to_bir(
       make_bir_two_param_u8_select_ne_predecessor_add_phi_post_join_add_module());
@@ -3156,6 +3171,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_single_param_select_phi_slice);
   RUN_TEST(test_bir_lowering_accepts_two_param_select_phi_slice);
   RUN_TEST(test_bir_lowering_accepts_two_param_u8_select_ne_phi_slice);
+  RUN_TEST(test_bir_lowering_accepts_typed_two_param_u8_select_ne_phi_slice);
   RUN_TEST(test_bir_lowering_accepts_two_param_u8_select_ne_predecessor_add_phi_post_join_add_slice);
   RUN_TEST(test_bir_lowering_accepts_two_param_u8_select_ne_split_predecessor_add_phi_post_join_add_sub_slice);
   RUN_TEST(test_bir_lowering_accepts_two_param_u8_select_ne_split_predecessor_add_phi_post_join_add_sub_add_slice);

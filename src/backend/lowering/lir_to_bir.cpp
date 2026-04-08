@@ -2997,9 +2997,9 @@ std::optional<bir::Function> try_lower_conditional_return_select_function(
   }
 
   const auto predicate = lower_compare_materialization_opcode(cmp0->predicate.str());
-  const auto compare_type = lower_scalar_type_text(cmp0->type_str.str());
-  const auto widened_type = lower_scalar_type_text(cast->to_type.str());
-  const auto cond_type = lower_scalar_type_text(cmp1->type_str.str());
+  const auto compare_type = lower_scalar_type(cmp0->type_str);
+  const auto widened_type = lower_scalar_type(cast->to_type);
+  const auto cond_type = lower_scalar_type(cmp1->type_str);
   if (!predicate.has_value() || !compare_type.has_value() || !widened_type.has_value() ||
       !cond_type.has_value() || *compare_type != *widened_type ||
       *compare_type != *cond_type) {
@@ -3082,9 +3082,9 @@ std::optional<bir::Function> try_lower_conditional_phi_select_function(
   }
 
   const auto predicate = lower_compare_materialization_opcode(cmp0->predicate.str());
-  const auto compare_type = lower_scalar_type_text(cmp0->type_str.str());
-  const auto widened_type = lower_scalar_type_text(cast->to_type.str());
-  const auto cond_type = lower_scalar_type_text(cmp1->type_str.str());
+  const auto compare_type = lower_scalar_type(cmp0->type_str);
+  const auto widened_type = lower_scalar_type(cast->to_type);
+  const auto cond_type = lower_scalar_type(cmp1->type_str);
   if (!predicate.has_value() || !compare_type.has_value() || !widened_type.has_value() ||
       !cond_type.has_value() || *compare_type != *widened_type ||
       *compare_type != *cond_type) {

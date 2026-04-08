@@ -8,9 +8,9 @@ Source Plan: plan.md
 
 - Step 1: audit the typed type boundary and backend ownership seams
 - Current slice: extend the typed scalar seam beyond the first straight-line
-  integer lowering helpers by covering remaining typed integer consumers in
-  `src/backend/lowering/lir_to_bir.cpp` and then start moving construction
-  sites onto explicit typed `LirTypeRef` helpers
+  integer lowering helpers by moving the remaining function-signature fallback
+  users and nearby typed LIR construction helpers onto explicit typed
+  `LirTypeRef` handling in `src/backend/lowering/lir_to_bir.cpp`
 
 ## Completed
 
@@ -44,6 +44,15 @@ Source Plan: plan.md
   - typed integer verifier mismatch rejection
   - typed `LirTypeRef::integer(8)` lowering through the existing i8 multiply
     BIR slice
+- Converted the conditional select compare/cast lowering paths in
+  `src/backend/lowering/lir_to_bir.cpp` from string-based integer decoding to
+  typed `LirTypeRef` inspection
+- Moved the two-parameter unsigned-char select-phi fixture in
+  `tests/backend/backend_bir_test_support.cpp` onto explicit typed
+  `LirTypeRef::integer(...)` constructors for its cast/cmp/phi/ret type refs
+- Added a focused typed `i8` select regression in
+  `tests/backend/backend_bir_lowering_tests.cpp` and kept it on the verified
+  BIR path with `c4c::codegen::lir::verify_module(...)`
 - Captured full-suite before/after logs in `test_fail_before.log` and
   `test_fail_after.log`
 - Passed the regression guard check with no new failures and no pass-count drop
@@ -51,10 +60,10 @@ Source Plan: plan.md
 
 ## Next
 
-- convert the remaining narrow integer-only `lower_scalar_type_text(...)`
-  consumers in `src/backend/lowering/lir_to_bir.cpp` that are still part of
-  the typed-type migration path
-- start moving LIR construction sites and test scaffolds onto explicit typed
+- convert the remaining narrow integer-only signature fallback path in
+  `src/backend/lowering/lir_to_bir.cpp` that still reparses type text during
+  parameter lowering
+- continue moving LIR construction sites and test scaffolds onto explicit typed
   integer constructors instead of relying on reparsing text at use sites
 - decide whether pointer payload support is needed immediately for the next
   lowering slice or should stay deferred until the first pointer-backed BIR
@@ -77,7 +86,7 @@ Source Plan: plan.md
   text mentions `plan_todo.md`.
 - Immediate validating targets:
   `test_lir_verify_rejects_typed_integer_text_mismatch` and
-  `test_bir_lowering_accepts_i8_return_mul` in
+  `test_bir_lowering_accepts_typed_two_param_u8_select_ne_phi_slice` in
   `tests/backend/backend_bir_lowering_tests.cpp`.
 - Full-suite before/after comparison for this slice should use
   `test_fail_before.log` and `test_fail_after.log` with the regression-guard
