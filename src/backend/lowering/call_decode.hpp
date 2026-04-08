@@ -341,6 +341,11 @@ inline bool backend_lir_is_minimal_i32_typespec(const c4c::TypeSpec& type) {
   return type.ptr_level == 0 && type.array_rank == 0 && type.base == TB_INT;
 }
 
+inline bool backend_lir_type_is_i32(const c4c::codegen::lir::LirTypeRef& type) {
+  return type.kind() == c4c::codegen::lir::LirTypeKind::Integer &&
+         type.integer_bit_width() == 32;
+}
+
 inline std::optional<std::string_view> parse_backend_single_minimal_i32_param_name(
     const c4c::codegen::lir::LirFunction& function) {
   if (!function.params.empty()) {
@@ -402,9 +407,9 @@ inline bool matches_backend_zero_add_slot_rewrite(
     std::string_view slot) {
   using namespace c4c::codegen::lir;
 
-  if (load.type_str != "i32" || load.ptr != slot ||
-      add.opcode.typed() != LirBinaryOpcode::Add || add.type_str != "i32" ||
-      add.result.empty() || store.type_str != "i32" || store.ptr != slot ||
+  if (!backend_lir_type_is_i32(load.type_str) || load.ptr != slot ||
+      add.opcode.typed() != LirBinaryOpcode::Add || !backend_lir_type_is_i32(add.type_str) ||
+      add.result.empty() || !backend_lir_type_is_i32(store.type_str) || store.ptr != slot ||
       store.val != add.result) {
     return false;
   }
@@ -420,7 +425,7 @@ inline bool matches_backend_zero_add_slot_rewrite_with_reload(
     const c4c::codegen::lir::LirStoreOp& store,
     const c4c::codegen::lir::LirLoadOp& reload,
     std::string_view slot) {
-  if (reload.type_str != "i32" || reload.ptr != slot) {
+  if (!backend_lir_type_is_i32(reload.type_str) || reload.ptr != slot) {
     return false;
   }
   return matches_backend_zero_add_slot_rewrite(load, add, store, slot);
@@ -436,7 +441,7 @@ parse_backend_single_local_typed_call(const std::vector<c4c::codegen::lir::LirIn
     parsed.arg_load = std::get_if<LirLoadOp>(&insts[1]);
     parsed.call = std::get_if<LirCallOp>(&insts[2]);
     if (parsed.arg_load == nullptr || parsed.call == nullptr ||
-        parsed.arg_load->type_str != "i32" || parsed.arg_load->ptr != slot) {
+        !backend_lir_type_is_i32(parsed.arg_load->type_str) || parsed.arg_load->ptr != slot) {
       return std::nullopt;
     }
     return parsed;
@@ -472,8 +477,8 @@ parse_backend_two_local_typed_call(const std::vector<c4c::codegen::lir::LirInst>
     parsed.arg1_load = std::get_if<LirLoadOp>(&insts[3]);
     parsed.call = std::get_if<LirCallOp>(&insts[4]);
     if (parsed.arg0_load == nullptr || parsed.arg1_load == nullptr ||
-        parsed.call == nullptr || parsed.arg0_load->type_str != "i32" ||
-        parsed.arg1_load->type_str != "i32" || parsed.arg0_load->ptr != slot0 ||
+        parsed.call == nullptr || !backend_lir_type_is_i32(parsed.arg0_load->type_str) ||
+        !backend_lir_type_is_i32(parsed.arg1_load->type_str) || parsed.arg0_load->ptr != slot0 ||
         parsed.arg1_load->ptr != slot1) {
       return std::nullopt;
     }
@@ -498,8 +503,8 @@ parse_backend_two_local_typed_call(const std::vector<c4c::codegen::lir::LirInst>
             *load0_before, *add0, *store0_rewrite, slot0) ||
         !matches_backend_zero_add_slot_rewrite(
             *load1_before, *add1, *store1_rewrite, slot1) ||
-        parsed.arg0_load->type_str != "i32" || parsed.arg0_load->ptr != slot0 ||
-        parsed.arg1_load->type_str != "i32" || parsed.arg1_load->ptr != slot1) {
+        !backend_lir_type_is_i32(parsed.arg0_load->type_str) || parsed.arg0_load->ptr != slot0 ||
+        !backend_lir_type_is_i32(parsed.arg1_load->type_str) || parsed.arg1_load->ptr != slot1) {
       return std::nullopt;
     }
     return parsed;
@@ -523,7 +528,7 @@ parse_backend_two_local_typed_call(const std::vector<c4c::codegen::lir::LirInst>
       parsed.arg0_load != nullptr && parsed.arg1_load != nullptr &&
       matches_backend_zero_add_slot_rewrite_with_reload(
           *load0_before, *add0, *store0_rewrite, *parsed.arg0_load, slot0) &&
-      parsed.arg1_load->type_str == "i32" && parsed.arg1_load->ptr == slot1) {
+      backend_lir_type_is_i32(parsed.arg1_load->type_str) && parsed.arg1_load->ptr == slot1) {
     return parsed;
   }
 
@@ -536,7 +541,7 @@ parse_backend_two_local_typed_call(const std::vector<c4c::codegen::lir::LirInst>
       parsed.arg0_load == nullptr || parsed.arg1_load == nullptr ||
       !matches_backend_zero_add_slot_rewrite_with_reload(
           *load1_before, *add1, *store1_rewrite, *parsed.arg1_load, slot1) ||
-      parsed.arg0_load->type_str != "i32" || parsed.arg0_load->ptr != slot0) {
+      !backend_lir_type_is_i32(parsed.arg0_load->type_str) || parsed.arg0_load->ptr != slot0) {
     return std::nullopt;
   }
   return parsed;
@@ -1344,7 +1349,7 @@ parse_backend_single_local_i32_slot_call_operand_imm(
   }
 
   const auto* store = std::get_if<LirStoreOp>(&insts.front());
-  if (store == nullptr || store->type_str != "i32" || store->ptr != slot) {
+  if (store == nullptr || !backend_lir_type_is_i32(store->type_str) || store->ptr != slot) {
     return std::nullopt;
   }
 
@@ -1364,7 +1369,7 @@ parse_backend_single_local_i32_slot_call_operand_imm(
     const auto& inst = insts[inst_index];
 
     if (const auto* load = std::get_if<LirLoadOp>(&inst)) {
-      if (load->type_str != "i32" || load->ptr != slot) {
+      if (!backend_lir_type_is_i32(load->type_str) || load->ptr != slot) {
         return std::nullopt;
       }
       last_load_result = load->result;
@@ -1382,7 +1387,7 @@ parse_backend_single_local_i32_slot_call_operand_imm(
     if (const auto* rewrite = std::get_if<LirBinOp>(&inst)) {
       const auto rewrite_opcode = rewrite->opcode.typed();
       if (saw_rewrite || committed_rewrite || rewrite_opcode != LirBinaryOpcode::Add ||
-          rewrite->type_str != "i32" || rewrite->lhs != last_load_result ||
+          !backend_lir_type_is_i32(rewrite->type_str) || rewrite->lhs != last_load_result ||
           rewrite->rhs != "0") {
         return std::nullopt;
       }
@@ -1392,7 +1397,8 @@ parse_backend_single_local_i32_slot_call_operand_imm(
     }
 
     if (const auto* rewrite_store = std::get_if<LirStoreOp>(&inst)) {
-      if (!saw_rewrite || committed_rewrite || rewrite_store->type_str != "i32" ||
+      if (!saw_rewrite || committed_rewrite ||
+          !backend_lir_type_is_i32(rewrite_store->type_str) ||
           rewrite_store->ptr != slot || rewrite_store->val != rewritten_result) {
         return std::nullopt;
       }
@@ -1444,7 +1450,7 @@ parse_backend_two_local_i32_rewrite_call_operands_imm(
 
   for (std::size_t inst_index = 0; inst_index < 2; ++inst_index) {
     const auto* store = std::get_if<LirStoreOp>(&insts[inst_index]);
-    if (store == nullptr || store->type_str != "i32") {
+    if (store == nullptr || !backend_lir_type_is_i32(store->type_str)) {
       return std::nullopt;
     }
 
@@ -1466,7 +1472,7 @@ parse_backend_two_local_i32_rewrite_call_operands_imm(
     const auto& inst = insts[inst_index];
 
     if (const auto* load = std::get_if<LirLoadOp>(&inst)) {
-      if (load->type_str != "i32") {
+      if (!backend_lir_type_is_i32(load->type_str)) {
         return std::nullopt;
       }
       auto* slot = match_slot(load->ptr);
@@ -1483,7 +1489,8 @@ parse_backend_two_local_i32_rewrite_call_operands_imm(
 
     if (const auto* rewrite = std::get_if<LirBinOp>(&inst)) {
       const auto rewrite_opcode = rewrite->opcode.typed();
-      if (rewrite_opcode != LirBinaryOpcode::Add || rewrite->type_str != "i32" ||
+      if (rewrite_opcode != LirBinaryOpcode::Add ||
+          !backend_lir_type_is_i32(rewrite->type_str) ||
           rewrite->rhs != "0") {
         return std::nullopt;
       }
@@ -1503,7 +1510,7 @@ parse_backend_two_local_i32_rewrite_call_operands_imm(
     }
 
     if (const auto* rewrite_store = std::get_if<LirStoreOp>(&inst)) {
-      if (rewrite_store->type_str != "i32") {
+      if (!backend_lir_type_is_i32(rewrite_store->type_str)) {
         return std::nullopt;
       }
       auto* slot = match_slot(rewrite_store->ptr);
@@ -1546,7 +1553,8 @@ parse_backend_single_param_slot_add_function(
   const auto* alloca = std::get_if<LirAllocaOp>(&function.alloca_insts[0]);
   const auto* arg_store = std::get_if<LirStoreOp>(&function.alloca_insts[1]);
   if (alloca == nullptr || arg_store == nullptr || alloca->result.empty() ||
-      alloca->type_str != "i32" || !alloca->count.empty() || arg_store->type_str != "i32" ||
+      !backend_lir_type_is_i32(alloca->type_str) || !alloca->count.empty() ||
+      !backend_lir_type_is_i32(arg_store->type_str) ||
       arg_store->val != *helper_param_name || arg_store->ptr != alloca->result) {
     return std::nullopt;
   }
@@ -1564,11 +1572,11 @@ parse_backend_single_param_slot_add_function(
   const auto* reload = std::get_if<LirLoadOp>(&block.insts[3]);
   const auto add_opcode = add == nullptr ? std::nullopt : add->opcode.typed();
   if (load_before == nullptr || add == nullptr || store_rewrite == nullptr || reload == nullptr ||
-      load_before->type_str != "i32" || load_before->ptr != alloca->result ||
-      add_opcode != LirBinaryOpcode::Add || add->type_str != "i32" ||
-      add->lhs != load_before->result || store_rewrite->type_str != "i32" ||
+      !backend_lir_type_is_i32(load_before->type_str) || load_before->ptr != alloca->result ||
+      add_opcode != LirBinaryOpcode::Add || !backend_lir_type_is_i32(add->type_str) ||
+      add->lhs != load_before->result || !backend_lir_type_is_i32(store_rewrite->type_str) ||
       store_rewrite->val != add->result || store_rewrite->ptr != alloca->result ||
-      reload->type_str != "i32" || reload->ptr != alloca->result ||
+      !backend_lir_type_is_i32(reload->type_str) || reload->ptr != alloca->result ||
       *ret->value_str != reload->result) {
     return std::nullopt;
   }
@@ -1618,7 +1626,8 @@ parse_backend_single_add_imm_function(
 
   const auto* add = std::get_if<LirBinOp>(&block.insts.front());
   const auto add_opcode = add == nullptr ? std::nullopt : add->opcode.typed();
-  if (add == nullptr || add_opcode != LirBinaryOpcode::Add || add->type_str != "i32" ||
+  if (add == nullptr || add_opcode != LirBinaryOpcode::Add ||
+      !backend_lir_type_is_i32(add->type_str) ||
       add->lhs != *helper_param_name || *ret->value_str != add->result) {
     return std::nullopt;
   }
@@ -1688,7 +1697,8 @@ parse_backend_two_param_add_function(
 
   const auto* add = std::get_if<LirBinOp>(&block.insts.front());
   const auto add_opcode = add == nullptr ? std::nullopt : add->opcode.typed();
-  if (add == nullptr || add_opcode != LirBinaryOpcode::Add || add->type_str != "i32" ||
+  if (add == nullptr || add_opcode != LirBinaryOpcode::Add ||
+      !backend_lir_type_is_i32(add->type_str) ||
       add->lhs != helper_params->first || add->rhs != helper_params->second ||
       *ret->value_str != add->result) {
     return std::nullopt;

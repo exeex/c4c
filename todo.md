@@ -7,9 +7,10 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 1: audit the typed type boundary and backend ownership seams
-- Current slice: review the remaining typed type consumers after landing the
-  slot-backed direct-call helper recognizer follow-through and decide whether
-  pointer payload support is required for the next lowering slice
+- Current slice: finish the direct-call helper recognizer audit by replacing
+  the remaining raw `"i32"` checks on typed `LirTypeRef` helper operations and
+  decide whether pointer payload support is required immediately for the next
+  lowering slice
 
 ## Completed
 
@@ -118,15 +119,36 @@ Source Plan: plan.md
   disagrees with stale signature param text
 - Re-ran `backend_bir_tests`, `backend_shared_util_tests`, and the full suite
   with the regression guard still passing (`2841 -> 2841`)
+- Switched the remaining direct-call helper recognizer typed-operation checks
+  in `src/backend/lowering/call_decode.hpp` from raw `"i32"` string matching to
+  semantic `LirTypeRef` integer-width inspection for loads, stores, allocas,
+  and helper add-rewrite operations
+- Added focused shared-util regressions in
+  `tests/backend/backend_shared_util_tests.cpp` that keep the single-add,
+  slot-add, identity, and two-param helper recognizers working when helper
+  operations are built from typed `LirTypeRef::integer(32)` metadata while the
+  signature text stays stale
+- Re-ran `backend_shared_util_tests`, `backend_bir_tests`, and the full suite
+  with the regression guard still passing (`2841 -> 2841`)
+- Completed the active helper-recognizer audit:
+  - no remaining minimal direct-call helper recognizers still rely on
+    signature-text parameter typing where structured helper metadata already
+    exists
+  - pointer payload support is not required for the next lowering slice
+    because the remaining typed-lowering/direct-call seams in scope are still
+    integer and signature-shape driven; pointer handling remains confined to
+    declared-extern parsing and can stay deferred until the first
+    pointer-backed BIR consumer is converted
 
 ## Next
 
-- audit whether any remaining minimal direct-call helper recognizers still rely
-  on signature-text parameter typing where structured helper metadata already
-  exists, now that the slot-backed helper path also prefers structured params
-- decide whether pointer payload support is needed immediately for the next
-  lowering slice or should stay deferred until the first pointer-backed BIR
-  consumer is converted
+- move the next typed-lowering slice back to
+  `src/backend/lowering/lir_to_bir.cpp` and audit the remaining
+  instruction-local raw text checks for `i8`/`i32`/`i64` that still bypass
+  semantic `LirTypeRef` inspection
+- keep pointer payload support deferred until a concrete pointer-backed BIR
+  lowering consumer appears, then add only the narrow typed payload that
+  consumer needs
 
 ## Blockers
 
@@ -155,6 +177,13 @@ Source Plan: plan.md
   plus
   `test_bir_lowering_accepts_minimal_two_arg_direct_call_lir_module_with_typed_helper_params`
   in `tests/backend/backend_bir_lowering_tests.cpp`.
+- Latest validating targets for the typed helper-operation seam:
+  `test_backend_shared_call_decode_accepts_typed_i32_single_add_imm_helper`
+  `test_backend_shared_call_decode_accepts_typed_i32_slot_add_helper`
+  `test_backend_shared_call_decode_accepts_typed_i32_identity_helper`
+  and
+  `test_backend_shared_call_decode_accepts_typed_i32_two_param_add_helper`
+  in `tests/backend/backend_shared_util_tests.cpp`.
 - Full-suite before/after comparison for this slice should use
   `test_fail_before.log` and `test_fail_after.log` with the regression-guard
   checker script.

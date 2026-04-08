@@ -499,6 +499,148 @@ void test_backend_shared_call_decode_parses_bir_minimal_call_crossing_direct_cal
   }
 }
 
+namespace {
+
+c4c::TypeSpec make_test_i32_typespec() {
+  c4c::TypeSpec type{};
+  type.base = c4c::TB_INT;
+  type.array_size = -1;
+  return type;
+}
+
+}  // namespace
+
+void test_backend_shared_call_decode_accepts_typed_i32_single_add_imm_helper() {
+  c4c::codegen::lir::LirFunction function;
+  function.name = "add_one";
+  function.return_type = make_test_i32_typespec();
+  function.params.emplace_back("%arg0", make_test_i32_typespec());
+  function.signature_text = "define i32 @add_one(i8 %stale)";
+
+  c4c::codegen::lir::LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(c4c::codegen::lir::LirBinOp{
+      .result = "%sum",
+      .opcode = c4c::codegen::lir::LirBinaryOpcode::Add,
+      .type_str = c4c::codegen::lir::LirTypeRef::integer(32),
+      .lhs = "%arg0",
+      .rhs = "1",
+  });
+  entry.terminator = c4c::codegen::lir::LirRet{std::string("%sum"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  const auto parsed = c4c::backend::parse_backend_single_add_imm_function(function, "add_one");
+  expect_true(parsed.has_value(),
+              "shared call-decode should accept semantic i32 typed helper binops for the add-immediate parser");
+  if (parsed.has_value()) {
+    expect_true(parsed->param_name == "%arg0" && parsed->add != nullptr && parsed->add->rhs == "1",
+                "shared call-decode should preserve the typed helper param and add-immediate operand");
+  }
+}
+
+void test_backend_shared_call_decode_accepts_typed_i32_slot_add_helper() {
+  c4c::codegen::lir::LirFunction function;
+  function.name = "slot_add";
+  function.return_type = make_test_i32_typespec();
+  function.params.emplace_back("%arg0", make_test_i32_typespec());
+  function.signature_text = "define i32 @slot_add(i8 %stale)";
+  function.alloca_insts.push_back(c4c::codegen::lir::LirAllocaOp{
+      .result = "%slot",
+      .type_str = c4c::codegen::lir::LirTypeRef::integer(32),
+      .count = "",
+      .align = 4,
+  });
+  function.alloca_insts.push_back(c4c::codegen::lir::LirStoreOp{
+      .type_str = c4c::codegen::lir::LirTypeRef::integer(32),
+      .val = "%arg0",
+      .ptr = "%slot",
+  });
+
+  c4c::codegen::lir::LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(c4c::codegen::lir::LirLoadOp{
+      .result = "%t0",
+      .type_str = c4c::codegen::lir::LirTypeRef::integer(32),
+      .ptr = "%slot",
+  });
+  entry.insts.push_back(c4c::codegen::lir::LirBinOp{
+      .result = "%sum",
+      .opcode = c4c::codegen::lir::LirBinaryOpcode::Add,
+      .type_str = c4c::codegen::lir::LirTypeRef::integer(32),
+      .lhs = "%t0",
+      .rhs = "1",
+  });
+  entry.insts.push_back(c4c::codegen::lir::LirStoreOp{
+      .type_str = c4c::codegen::lir::LirTypeRef::integer(32),
+      .val = "%sum",
+      .ptr = "%slot",
+  });
+  entry.insts.push_back(c4c::codegen::lir::LirLoadOp{
+      .result = "%t1",
+      .type_str = c4c::codegen::lir::LirTypeRef::integer(32),
+      .ptr = "%slot",
+  });
+  entry.terminator = c4c::codegen::lir::LirRet{std::string("%t1"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  const auto parsed = c4c::backend::parse_backend_single_param_slot_add_function(
+      function, "slot_add");
+  expect_true(parsed.has_value(),
+              "shared call-decode should accept semantic i32 typed local-slot helper ops for the slot-add parser");
+  if (parsed.has_value()) {
+    expect_true(parsed->param_name == "%arg0" && parsed->slot_name == "%slot" &&
+                    parsed->add != nullptr && parsed->add->rhs == "1",
+                "shared call-decode should preserve the typed slot helper param, slot, and add operand");
+  }
+}
+
+void test_backend_shared_call_decode_accepts_typed_i32_identity_helper() {
+  c4c::codegen::lir::LirFunction function;
+  function.name = "identity";
+  function.return_type = make_test_i32_typespec();
+  function.params.emplace_back("%arg0", make_test_i32_typespec());
+  function.signature_text = "define i32 @identity(i8 %stale)";
+
+  c4c::codegen::lir::LirBlock entry;
+  entry.label = "entry";
+  entry.terminator = c4c::codegen::lir::LirRet{std::string("%arg0"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  const auto parsed = c4c::backend::parse_backend_single_identity_function(function, "identity");
+  expect_true(parsed.has_value() && *parsed == "%arg0",
+              "shared call-decode should accept typed i32 helper params for the identity helper parser");
+}
+
+void test_backend_shared_call_decode_accepts_typed_i32_two_param_add_helper() {
+  c4c::codegen::lir::LirFunction function;
+  function.name = "add_pair";
+  function.return_type = make_test_i32_typespec();
+  function.params.emplace_back("%lhs", make_test_i32_typespec());
+  function.params.emplace_back("%rhs", make_test_i32_typespec());
+  function.signature_text = "define i32 @add_pair(i8 %lhs, i8 %rhs)";
+
+  c4c::codegen::lir::LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(c4c::codegen::lir::LirBinOp{
+      .result = "%sum",
+      .opcode = c4c::codegen::lir::LirBinaryOpcode::Add,
+      .type_str = c4c::codegen::lir::LirTypeRef::integer(32),
+      .lhs = "%lhs",
+      .rhs = "%rhs",
+  });
+  entry.terminator = c4c::codegen::lir::LirRet{std::string("%sum"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  const auto parsed = c4c::backend::parse_backend_two_param_add_function(function, "add_pair");
+  expect_true(parsed.has_value(),
+              "shared call-decode should accept semantic i32 typed helper binops for the two-parameter add parser");
+  if (parsed.has_value()) {
+    expect_true(parsed->lhs_param_name == "%lhs" && parsed->rhs_param_name == "%rhs" &&
+                    parsed->add != nullptr && parsed->add->result == "%sum",
+                "shared call-decode should preserve both typed helper params for the two-parameter add parser");
+  }
+}
+
 
 void test_backend_shared_liveness_surface_tracks_result_names() {
   const auto module = make_declaration_module();
@@ -1327,6 +1469,10 @@ int main(int argc, char* argv[]) {
   test_backend_shared_call_decode_parses_bir_minimal_direct_call_identity_arg_module();
   test_backend_shared_call_decode_parses_bir_minimal_dual_identity_direct_call_sub_module();
   test_backend_shared_call_decode_parses_bir_minimal_call_crossing_direct_call_module();
+  test_backend_shared_call_decode_accepts_typed_i32_single_add_imm_helper();
+  test_backend_shared_call_decode_accepts_typed_i32_slot_add_helper();
+  test_backend_shared_call_decode_accepts_typed_i32_identity_helper();
+  test_backend_shared_call_decode_accepts_typed_i32_two_param_add_helper();
   test_backend_shared_liveness_surface_tracks_result_names();
   test_backend_shared_liveness_surface_tracks_call_crossing_ranges();
   test_backend_shared_liveness_surface_tracks_phi_join_ranges();
