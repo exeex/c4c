@@ -4,16 +4,17 @@ Source Plan: plan.md
 
 # Active Item
 
-- Step 4/5 probe: remove legacy lowering / legacy IR implementation units from
-  the build graph and compile to inventory the first real blockers
-- Current slice: temporarily drop `src/backend/lowering/lir_to_backend_ir.cpp`
-  plus backend `ir.*` implementation files from `CMakeLists.txt` without
-  follow-on cleanup so the compile failure surface shows which live objects
-  still depend on the legacy route
-- Next intended slice: classify the first-wave compile or link failures into
-  `lir_to_backend_ir` blockers, `ir.*` blockers, and any accidental build-only
-  references before deciding whether Step 4 can start directly or needs one
-  more bounded Step 3 cleanup
+- Step 5 follow-through: inventory and migrate the remaining live `ir.hpp`
+  type consumers before the final legacy contract deletion
+- Current slice: classify the surviving `ir.hpp` ownership in
+  `src/backend/lowering/call_decode.hpp`,
+  `src/backend/lowering/extern_lowering.hpp`,
+  `src/backend/x86/codegen/emit.cpp`, and
+  `src/backend/aarch64/codegen/emit.cpp` into BIR-shape blockers versus
+  dead helper-only compatibility seams
+- Next intended slice: remove one real `BackendFunction` / `BackendCallInst`
+  consumer family at a time so `ir.hpp` can stop being a live production
+  contract instead of only deleting more already-dead files
 
 # Completed
 
@@ -218,6 +219,26 @@ Source Plan: plan.md
   successfully after the call-crossing direct-call adapter removal
 - Rebuilt the full workspace with `cmake --build build -j8` successfully after
   the call-crossing direct-call adapter removal
+- Deleted `src/backend/lowering/lir_to_backend_ir.hpp` and
+  `src/backend/lowering/lir_to_backend_ir.cpp` from the tree after confirming
+  the legacy lowering route had no remaining source references and was already
+  absent from the build graph
+- Deleted the dead legacy implementation-only files
+  `src/backend/ir.cpp`, `src/backend/ir_printer.hpp`,
+  `src/backend/ir_printer.cpp`, `src/backend/ir_validate.hpp`, and
+  `src/backend/ir_validate.cpp`; `src/backend/ir.hpp` intentionally remains
+  because live type users still include it
+- Rebuilt `c4cll`, `backend_bir_tests`, and `backend_shared_util_tests`
+  successfully after the file deletions
+- Reran
+  `ctest --test-dir build -R '^(backend_bir_tests|backend_shared_util_tests)$' --output-on-failure`
+  successfully after the deletion slice
+- Reran the full `ctest --test-dir build -j8 --output-on-failure` suite,
+  refreshed `test_after.log` / `test_fail_after.log`, and finished at
+  `2834/2834` passing with 0 failures
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed against `test_fail_before.log`
+  with `delta: passed=159 failed=-159` and zero newly failing tests
 - Reran the full `ctest --test-dir build -j8 --output-on-failure` suite and
   refreshed `test_before.log` / `test_after.log`; the workspace improved from
   `2675/2834` passing with 159 failures to `2834/2834` passing with 0 failures
