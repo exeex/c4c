@@ -6,6 +6,7 @@
 #include "../../src/backend/lowering/lir_to_bir.hpp"
 
 #include <string>
+#include <utility>
 
 namespace {
 
@@ -350,6 +351,13 @@ c4c::codegen::lir::LirModule make_bir_minimal_dual_identity_direct_call_sub_lir_
   return module;
 }
 
+c4c::codegen::lir::LirModule
+make_bir_minimal_dual_identity_direct_call_sub_lir_module_helper_first() {
+  auto module = make_bir_minimal_dual_identity_direct_call_sub_lir_module();
+  std::swap(module.functions[0], module.functions[2]);
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_bir_minimal_call_crossing_direct_call_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -682,6 +690,24 @@ void test_bir_lowering_accepts_minimal_dual_identity_direct_call_sub_lir_module(
                     parsed->main_function != nullptr && parsed->main_function->name == "main" &&
                     parsed->lhs_call_arg_imm == 7 && parsed->rhs_call_arg_imm == 3,
                 "the lowered BIR module should preserve both helper identities and both caller immediates for the dual-identity subtraction slice");
+  }
+}
+
+void test_bir_lowering_accepts_minimal_dual_identity_direct_call_sub_lir_module_with_helper_first() {
+  const auto lowered = c4c::backend::try_lower_to_bir(
+      make_bir_minimal_dual_identity_direct_call_sub_lir_module_helper_first());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the minimal dual-identity subtraction direct-call LIR module slice when a helper is listed first");
+
+  const auto parsed = c4c::backend::parse_bir_minimal_dual_identity_direct_call_sub_module(*lowered);
+  expect_true(parsed.has_value(),
+              "the lowered BIR module should still match the shared dual-identity subtraction direct-call BIR parser when a helper is listed first");
+  if (parsed.has_value()) {
+    expect_true(parsed->lhs_helper != nullptr && parsed->lhs_helper->name == "f" &&
+                    parsed->rhs_helper != nullptr && parsed->rhs_helper->name == "g" &&
+                    parsed->main_function != nullptr && parsed->main_function->name == "main" &&
+                    parsed->lhs_call_arg_imm == 7 && parsed->rhs_call_arg_imm == 3,
+                "the lowered BIR module should preserve both helper identities and both caller immediates for the helper-first dual-identity subtraction slice");
   }
 }
 
@@ -2475,6 +2501,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_minimal_direct_call_identity_arg_lir_module_with_helper_first);
   RUN_TEST(test_bir_lowering_accepts_minimal_folded_two_arg_direct_call_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_dual_identity_direct_call_sub_lir_module);
+  RUN_TEST(test_bir_lowering_accepts_minimal_dual_identity_direct_call_sub_lir_module_with_helper_first);
   RUN_TEST(test_bir_lowering_accepts_minimal_call_crossing_direct_call_lir_module);
   RUN_TEST(test_bir_printer_renders_minimal_add_scaffold);
   RUN_TEST(test_bir_printer_renders_minimal_sub_scaffold);
