@@ -2827,6 +2827,57 @@ void test_x86_backend_explicit_lir_emit_surface_matches_identity_direct_call_pat
                       "x86 explicit LIR emit surface should stay on assembly output for the identity direct-call slice");
 }
 
+void test_x86_backend_renders_dual_identity_direct_call_sub_slice() {
+  auto module = make_typed_dual_identity_direct_call_sub_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, ".type f, %function",
+                  "x86 backend should lower the first identity helper into a real function symbol");
+  expect_contains(rendered, ".type g, %function",
+                  "x86 backend should lower the second identity helper into a real function symbol");
+  expect_contains(rendered, "f:\n  mov eax, edi\n  ret\n",
+                  "x86 backend should lower the first identity helper directly from edi");
+  expect_contains(rendered, "g:\n  mov eax, edi\n  ret\n",
+                  "x86 backend should lower the second identity helper directly from edi");
+  expect_contains(rendered,
+                  "push rbx\n  mov edi, 1\n  call f\n  mov ebx, eax\n  mov edi, 1\n  call g\n  sub ebx, eax\n  mov eax, ebx\n  pop rbx\n",
+                  "x86 backend should keep both identity helper calls on the native asm path and subtract their results without LLVM fallback");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend should not fall back to LLVM text for the bounded dual identity direct-call subtraction slice");
+}
+
+void test_x86_backend_explicit_lir_emit_surface_matches_dual_identity_direct_call_sub_path() {
+  auto module = make_typed_dual_identity_direct_call_sub_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  const auto direct_rendered = c4c::backend::x86::emit_module(module);
+  const auto lowered_rendered =
+      c4c::backend::x86::emit_module(c4c::backend::lower_lir_to_backend_module(module));
+  const auto backend_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_true(direct_rendered == lowered_rendered,
+              "x86 explicit LIR emit surface should stay aligned with the lowered backend seam for the bounded dual identity direct-call subtraction slice");
+  expect_true(direct_rendered == backend_rendered,
+              "x86 backend selection should keep the bounded dual identity direct-call subtraction slice on the same direct x86 LIR emit path");
+  expect_contains(direct_rendered, "call f\n",
+                  "x86 explicit LIR emit surface should preserve the first identity helper call without adapting through backend IR first");
+  expect_contains(direct_rendered, "call g\n",
+                  "x86 explicit LIR emit surface should preserve the second identity helper call without adapting through backend IR first");
+  expect_contains(direct_rendered, "sub ebx, eax\n",
+                  "x86 explicit LIR emit surface should subtract the second helper result from the preserved first helper result directly on the asm path");
+  expect_not_contains(direct_rendered, "target triple =",
+                      "x86 explicit LIR emit surface should not fall back to LLVM text for the bounded dual identity direct-call subtraction slice");
+}
+
 void test_x86_backend_scaffold_accepts_structured_direct_call_add_imm_ir_without_signature_shims() {
   auto lowered =
       c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_local_arg_module());
@@ -6062,6 +6113,8 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_structured_direct_call_add_imm_path);
   RUN_TEST(test_x86_backend_renders_typed_direct_call_identity_arg_slice);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_identity_direct_call_path);
+  RUN_TEST(test_x86_backend_renders_dual_identity_direct_call_sub_slice);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_dual_identity_direct_call_sub_path);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_direct_call_add_imm_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_renamed_structured_direct_call_add_imm_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_rejects_structured_direct_call_add_imm_when_helper_body_contract_disagrees);

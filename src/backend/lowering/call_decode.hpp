@@ -141,6 +141,17 @@ struct ParsedBackendMinimalDirectCallIdentityArgLirModuleView {
   std::int64_t call_arg_imm = 0;
 };
 
+struct ParsedBackendMinimalDualIdentityDirectCallSubLirModuleView {
+  const c4c::codegen::lir::LirFunction* lhs_helper = nullptr;
+  const c4c::codegen::lir::LirFunction* rhs_helper = nullptr;
+  const c4c::codegen::lir::LirFunction* main_function = nullptr;
+  const c4c::codegen::lir::LirCallOp* lhs_call = nullptr;
+  const c4c::codegen::lir::LirCallOp* rhs_call = nullptr;
+  const c4c::codegen::lir::LirBinOp* sub = nullptr;
+  std::int64_t lhs_call_arg_imm = 0;
+  std::int64_t rhs_call_arg_imm = 0;
+};
+
 struct ParsedBackendMinimalCallCrossingDirectCallLirModuleView {
   const c4c::codegen::lir::LirFunction* helper = nullptr;
   const c4c::codegen::lir::LirFunction* main_function = nullptr;
@@ -2122,6 +2133,107 @@ parse_backend_minimal_direct_call_identity_arg_lir_module(
       main_fn,
       call,
       *call_arg_imm,
+  };
+}
+
+inline std::optional<ParsedBackendMinimalDualIdentityDirectCallSubLirModuleView>
+parse_backend_minimal_dual_identity_direct_call_sub_lir_module(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 3 || !module.globals.empty() ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const LirFunction* main_fn = nullptr;
+  std::vector<const LirFunction*> helpers;
+  helpers.reserve(2);
+  for (const auto& function : module.functions) {
+    if (function.name == "main") {
+      if (main_fn != nullptr) {
+        return std::nullopt;
+      }
+      main_fn = &function;
+      continue;
+    }
+    helpers.push_back(&function);
+  }
+
+  if (main_fn == nullptr || helpers.size() != 2 || main_fn->is_declaration ||
+      !backend_lir_is_zero_arg_i32_main_definition(main_fn->signature_text) ||
+      main_fn->entry.value != 0 || main_fn->blocks.size() != 1 ||
+      !main_fn->alloca_insts.empty() || !main_fn->stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  for (const auto* helper : helpers) {
+    if (helper == nullptr || helper->is_declaration || helper->entry.value != 0 ||
+        helper->blocks.size() != 1 ||
+        !parse_backend_single_identity_function(*helper, std::nullopt).has_value()) {
+      return std::nullopt;
+    }
+  }
+
+  const auto& main_block = main_fn->blocks.front();
+  const auto* main_ret = std::get_if<LirRet>(&main_block.terminator);
+  if (main_block.label != "entry" || main_block.insts.size() != 3 || main_ret == nullptr ||
+      !main_ret->value_str.has_value() || main_ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto* lhs_call = std::get_if<LirCallOp>(&main_block.insts[0]);
+  const auto* rhs_call = std::get_if<LirCallOp>(&main_block.insts[1]);
+  const auto* sub = std::get_if<LirBinOp>(&main_block.insts[2]);
+  const auto sub_opcode = sub == nullptr ? std::nullopt : sub->opcode.typed();
+  if (lhs_call == nullptr || rhs_call == nullptr || sub == nullptr ||
+      sub_opcode != LirBinaryOpcode::Sub || sub->type_str != "i32" ||
+      lhs_call->result.empty() || rhs_call->result.empty() ||
+      sub->lhs != lhs_call->result || sub->rhs != rhs_call->result ||
+      *main_ret->value_str != sub->result) {
+    return std::nullopt;
+  }
+
+  const LirFunction* lhs_helper = nullptr;
+  const LirFunction* rhs_helper = nullptr;
+  std::int64_t lhs_call_arg_imm = 0;
+  std::int64_t rhs_call_arg_imm = 0;
+  for (const auto* helper : helpers) {
+    if (lhs_helper == nullptr) {
+      const auto operand =
+          parse_backend_direct_global_single_typed_call_operand(*lhs_call, helper->name, "i32");
+      const auto parsed_imm =
+          operand.has_value() ? parse_backend_i64_literal(*operand) : std::nullopt;
+      if (parsed_imm.has_value()) {
+        lhs_helper = helper;
+        lhs_call_arg_imm = *parsed_imm;
+      }
+    }
+    if (rhs_helper == nullptr) {
+      const auto operand =
+          parse_backend_direct_global_single_typed_call_operand(*rhs_call, helper->name, "i32");
+      const auto parsed_imm =
+          operand.has_value() ? parse_backend_i64_literal(*operand) : std::nullopt;
+      if (parsed_imm.has_value()) {
+        rhs_helper = helper;
+        rhs_call_arg_imm = *parsed_imm;
+      }
+    }
+  }
+
+  if (lhs_helper == nullptr || rhs_helper == nullptr || lhs_helper == rhs_helper) {
+    return std::nullopt;
+  }
+
+  return ParsedBackendMinimalDualIdentityDirectCallSubLirModuleView{
+      lhs_helper,
+      rhs_helper,
+      main_fn,
+      lhs_call,
+      rhs_call,
+      sub,
+      lhs_call_arg_imm,
+      rhs_call_arg_imm,
   };
 }
 

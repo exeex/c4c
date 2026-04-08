@@ -78,6 +78,13 @@ struct MinimalLocalArgDirectCallAddImmSlice {
   std::int64_t add_imm = 0;
 };
 
+struct MinimalDualIdentityDirectCallSubSlice {
+  std::string lhs_helper_name;
+  std::string rhs_helper_name;
+  std::int64_t lhs_call_arg_imm = 0;
+  std::int64_t rhs_call_arg_imm = 0;
+};
+
 struct MinimalMemberArrayRuntimeSlice {
   enum class Kind : unsigned char {
     ByValueParam,
@@ -224,6 +231,9 @@ std::string emit_minimal_two_arg_direct_call_asm(
 std::string emit_minimal_local_arg_direct_call_add_imm_asm(
     std::string_view target_triple,
     const MinimalLocalArgDirectCallAddImmSlice& slice);
+std::string emit_minimal_dual_identity_direct_call_sub_asm(
+    std::string_view target_triple,
+    const MinimalDualIdentityDirectCallSubSlice& slice);
 std::string emit_minimal_member_array_runtime_asm(
     std::string_view target_triple,
     const MinimalMemberArrayRuntimeSlice& slice);
@@ -4309,6 +4319,38 @@ std::optional<MinimalLocalArgDirectCallAddImmSlice> parse_minimal_local_arg_dire
   };
 }
 
+std::optional<MinimalDualIdentityDirectCallSubSlice> parse_minimal_dual_identity_direct_call_sub_slice(
+    const c4c::backend::BackendModule& module) {
+  const auto parsed =
+      c4c::backend::parse_backend_minimal_dual_identity_direct_call_sub_module(module);
+  if (!parsed.has_value() || parsed->lhs_helper == nullptr || parsed->rhs_helper == nullptr) {
+    return std::nullopt;
+  }
+
+  return MinimalDualIdentityDirectCallSubSlice{
+      parsed->lhs_helper->signature.name,
+      parsed->rhs_helper->signature.name,
+      parsed->lhs_call_arg_imm,
+      parsed->rhs_call_arg_imm,
+  };
+}
+
+std::optional<MinimalDualIdentityDirectCallSubSlice> parse_minimal_dual_identity_direct_call_sub_slice(
+    const c4c::codegen::lir::LirModule& module) {
+  const auto parsed =
+      c4c::backend::parse_backend_minimal_dual_identity_direct_call_sub_lir_module(module);
+  if (!parsed.has_value() || parsed->lhs_helper == nullptr || parsed->rhs_helper == nullptr) {
+    return std::nullopt;
+  }
+
+  return MinimalDualIdentityDirectCallSubSlice{
+      parsed->lhs_helper->name,
+      parsed->rhs_helper->name,
+      parsed->lhs_call_arg_imm,
+      parsed->rhs_call_arg_imm,
+  };
+}
+
 std::optional<MinimalMemberArrayRuntimeSlice> parse_minimal_member_array_runtime_slice(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
@@ -4872,6 +4914,45 @@ std::string emit_minimal_local_arg_direct_call_add_imm_asm(
   emit_function_prelude(out, main_symbol, true);
   out << "  mov edi, " << slice.call_arg_imm << "\n"
       << "  call " << helper_symbol << "\n"
+      << "  ret\n";
+  return out.str();
+}
+
+std::string emit_minimal_dual_identity_direct_call_sub_asm(
+    std::string_view target_triple,
+    const MinimalDualIdentityDirectCallSubSlice& slice) {
+  if (slice.lhs_call_arg_imm < std::numeric_limits<std::int32_t>::min() ||
+      slice.lhs_call_arg_imm > std::numeric_limits<std::int32_t>::max() ||
+      slice.rhs_call_arg_imm < std::numeric_limits<std::int32_t>::min() ||
+      slice.rhs_call_arg_imm > std::numeric_limits<std::int32_t>::max()) {
+    throw c4c::backend::LirAdapterError(
+        c4c::backend::LirAdapterErrorKind::Unsupported,
+        "dual identity direct-call subtraction immediates outside the minimal x86 slice range");
+  }
+
+  const std::string lhs_symbol = asm_symbol_name(target_triple, slice.lhs_helper_name);
+  const std::string rhs_symbol = asm_symbol_name(target_triple, slice.rhs_helper_name);
+  const std::string main_symbol = asm_symbol_name(target_triple, "main");
+
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n";
+  out << ".text\n";
+  emit_function_prelude(out, lhs_symbol, false);
+  out << "  mov eax, edi\n"
+      << "  ret\n";
+  emit_function_prelude(out, rhs_symbol, false);
+  out << "  mov eax, edi\n"
+      << "  ret\n";
+  emit_function_prelude(out, main_symbol, true);
+  out << "  push rbx\n"
+      << "  mov edi, " << slice.lhs_call_arg_imm << "\n"
+      << "  call " << lhs_symbol << "\n"
+      << "  mov ebx, eax\n"
+      << "  mov edi, " << slice.rhs_call_arg_imm << "\n"
+      << "  call " << rhs_symbol << "\n"
+      << "  sub ebx, eax\n"
+      << "  mov eax, ebx\n"
+      << "  pop rbx\n"
       << "  ret\n";
   return out.str();
 }
@@ -5951,6 +6032,10 @@ std::optional<std::string> try_emit_direct_lir_module(
         slice.has_value()) {
       return emit_minimal_member_array_runtime_asm(module.target_triple, *slice);
     }
+    if (const auto slice = parse_minimal_dual_identity_direct_call_sub_slice(module);
+        slice.has_value()) {
+      return emit_minimal_dual_identity_direct_call_sub_asm(module.target_triple, *slice);
+    }
     if (const auto slice = parse_minimal_two_arg_direct_call_slice(module);
         slice.has_value()) {
       return emit_minimal_two_arg_direct_call_asm(module.target_triple, *slice);
@@ -6144,6 +6229,10 @@ std::string emit_module(const c4c::backend::BackendModule& module,
             c4c::backend::parse_backend_minimal_direct_call_identity_arg_module(module);
         slice.has_value()) {
       return emit_minimal_direct_call_identity_arg_asm(module, *slice);
+    }
+    if (const auto slice = parse_minimal_dual_identity_direct_call_sub_slice(module);
+        slice.has_value()) {
+      return emit_minimal_dual_identity_direct_call_sub_asm(module.target_triple, *slice);
     }
     if (const auto slice = c4c::backend::parse_backend_minimal_two_arg_direct_call_module(module);
         slice.has_value()) {

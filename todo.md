@@ -9,14 +9,33 @@ Source Plan: plan.md
 - [ ] Remove legacy backend IR files and backend/app LLVM rescue paths
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
-Current active item: Step 4 x86 emitter tightening. Remove the remaining x86
-emitter-local `lower_lir_to_backend_module(...)` dependency for the bounded
-plain two-argument direct-call helper family by wiring the existing direct-LIR
-parser into the explicit x86 entry surface and proving parity with focused x86
-backend tests.
+Current active item: Step 4 x86 emitter tightening. Remove the next remaining
+x86 emitter-local `lower_lir_to_backend_module(...)` dependency for the folded
+two-argument helper family by wiring a direct x86 entry-surface path that
+keeps the folded helper/result contract on native asm and proving parity with
+focused x86 backend tests.
 
 Completed in this slice:
 
+- added a direct x86 LIR parser/emitter path for the bounded dual-identity
+  direct-call subtraction family in
+  [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+  so the explicit x86 LIR entrypoint no longer needs
+  `lower_lir_to_backend_module(...)` for that slice before staying on the asm
+  path
+- added a shared LIR-side decoder for the bounded dual-identity direct-call
+  subtraction family in
+  [`src/backend/lowering/call_decode.hpp`](/workspaces/c4c/src/backend/lowering/call_decode.hpp)
+  so the x86 direct-entry seam can recognize the two identity helpers, paired
+  immediate calls, and final subtraction without backend-IR adaptation first
+- taught the lowered x86 backend-module seam in
+  [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+  to render the same bounded dual-identity direct-call subtraction family so
+  the direct and lowered x86 seams stay on identical asm for the slice
+- proved the production deletion with new x86 regressions in
+  [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
+  covering both backend selection and explicit direct-vs-lowered parity for
+  the bounded dual-identity direct-call subtraction slice
 - wired the existing plain two-argument direct-call LIR parser into the x86
   explicit emit surface in
   [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
@@ -62,11 +81,10 @@ Completed in this slice:
 
 Next intended slice:
 
-- target the adjacent shared direct-call helper seam next: either the bounded
-  dual-identity direct-call subtract family or the folded two-argument helper
-  family, whichever removes the next live x86
+- target the adjacent shared direct-call helper seam next: the bounded folded
+  two-argument helper family, removing the next live x86
   `lower_lir_to_backend_module(...)` dependency with the smaller parser/emitter
-  batch after the plain two-argument helper family
+  batch now that the dual-identity direct-call subtraction seam is gone
 - removed the old x86 emitter-local post-adaptation return-immediate/add/sub
   recognition branches and replaced them with the BIR-first direct-LIR path
 - proved the shared parser with a new regression test in
@@ -220,6 +238,10 @@ Recent baseline:
   local-pointer conditional dependency on `lower_lir_to_backend_module(...)` from
   the direct x86 LIR entrypoint via a mini constant-fold interpreter that tracks
   alloca slots, pointer aliases, and conditional branches
+- latest Step 4 follow-through also removes the bounded dual-identity
+  direct-call subtraction dependency on `lower_lir_to_backend_module(...)`
+  from the direct x86 LIR entrypoint and keeps the direct/lowered/backend-
+  selection seams on identical asm
 - latest Step 4 follow-through extends the x86 LIR constant-fold interpreter
   to handle CastOp (ZExt, SExt, Trunc), BinOp (Add, Sub, Mul, And, Or, Xor,
   Shl, LShr, AShr), and SelectOp instructions, removing the bounded
