@@ -4700,65 +4700,6 @@ std::string emit_minimal_declared_direct_call_asm(
   return out.str();
 }
 
-std::string emit_minimal_call_crossing_direct_call_asm(
-    const c4c::backend::BackendModule& module,
-    const c4c::backend::RegAllocIntegrationResult& regalloc,
-    const c4c::backend::ParsedBackendMinimalCallCrossingDirectCallModuleView& slice,
-    std::string_view regalloc_source_value) {
-  if (slice.helper == nullptr) {
-    fail_unsupported("structured call-crossing direct-call slice without helper metadata");
-  }
-  if (slice.source_imm < 0 ||
-      slice.source_imm > std::numeric_limits<std::uint16_t>::max()) {
-    fail_unsupported("call-crossing source immediates outside the minimal mov-supported range");
-  }
-  if (slice.helper_add_imm < 0 || slice.helper_add_imm > 4095) {
-    fail_unsupported("call-crossing helper add immediates outside the minimal add-supported range");
-  }
-
-  const std::string regalloc_source_name(regalloc_source_value);
-  const auto* source_reg =
-      c4c::backend::stack_layout::find_assigned_reg(regalloc, regalloc_source_name);
-  if (source_reg == nullptr ||
-      !c4c::backend::stack_layout::uses_callee_saved_reg(regalloc, *source_reg)) {
-    fail_unsupported("shared call-crossing regalloc state for the minimal direct-call slice");
-  }
-
-  std::vector<c4c::backend::PhysReg> saved_regs;
-  saved_regs.push_back(*source_reg);
-
-  const std::int64_t frame_size = aligned_call_frame_size(saved_regs.size());
-  std::ostringstream out;
-  const std::string helper_symbol =
-      asm_symbol_name(module.target_triple, slice.helper->signature.name);
-  const std::string main_symbol =
-      asm_symbol_name(module.target_triple, slice.main_function->signature.name);
-
-  out << ".text\n";
-  emit_function_prelude(out, module.target_triple, helper_symbol, false);
-  out << "  add w0, w0, #" << slice.helper_add_imm << "\n"
-      << "  ret\n";
-  emit_function_prelude(out, module.target_triple, main_symbol, true);
-  out << "  sub sp, sp, #" << frame_size << "\n";
-  for (std::size_t i = 0; i < saved_regs.size(); ++i) {
-    out << "  str " << gp_reg_name(saved_regs[i], false) << ", [sp, #"
-        << (i * 8) << "]\n";
-  }
-  out << "  str x30, [sp, #" << (saved_regs.size() * 8) << "]\n"
-      << "  mov " << gp_reg_name(*source_reg, true) << ", #" << slice.source_imm << "\n"
-      << "  mov w0, " << gp_reg_name(*source_reg, true) << "\n"
-      << "  bl " << helper_symbol << "\n"
-      << "  add w0, " << gp_reg_name(*source_reg, true) << ", w0\n"
-      << "  ldr x30, [sp, #" << (saved_regs.size() * 8) << "]\n";
-  for (std::size_t i = saved_regs.size(); i > 0; --i) {
-    const auto& reg = saved_regs[i - 1];
-    out << "  ldr " << gp_reg_name(reg, false) << ", [sp, #" << ((i - 1) * 8) << "]\n";
-  }
-  out << "  add sp, sp, #" << frame_size << "\n"
-      << "  ret\n";
-  return out.str();
-}
-
 std::string emit_minimal_conditional_return_asm(
     std::string_view target_triple,
     const MinimalConditionalReturnSlice& slice) {

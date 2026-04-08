@@ -445,6 +445,9 @@ void test_backend_shared_call_decode_parses_bir_minimal_call_crossing_direct_cal
                 "shared call-decode surface should preserve helper and caller identities for the BIR call-crossing slice");
     expect_true(parsed->source_add != nullptr && parsed->call != nullptr &&
                     parsed->final_add != nullptr &&
+                    parsed->source_add->result.name == parsed->regalloc_source_value &&
+                    parsed->call->args.front().name == parsed->regalloc_source_value &&
+                    parsed->final_add->lhs.name == parsed->regalloc_source_value &&
                     parsed->regalloc_source_value == "%t0" &&
                     parsed->source_imm == 5 && parsed->helper_add_imm == 1,
                 "shared call-decode surface should recover the source add result plus the source/helper immediates for the BIR call-crossing slice");

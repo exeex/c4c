@@ -4282,23 +4282,6 @@ std::optional<MinimalCallCrossingDirectCallSlice> parse_minimal_call_crossing_di
   };
 }
 
-std::optional<MinimalCallCrossingDirectCallSlice> parse_minimal_call_crossing_direct_call_slice(
-    const c4c::backend::BackendModule& module) {
-  const auto parsed = c4c::backend::parse_backend_minimal_call_crossing_direct_call_module(module);
-  if (!parsed.has_value() || parsed->helper == nullptr || parsed->main_function == nullptr ||
-      parsed->regalloc_source_value.empty()) {
-    return std::nullopt;
-  }
-
-  return MinimalCallCrossingDirectCallSlice{
-      parsed->helper->signature.name,
-      parsed->main_function->signature.name,
-      parsed->source_imm,
-      parsed->helper_add_imm,
-      std::string(parsed->regalloc_source_value),
-  };
-}
-
 std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_slice(
     const c4c::backend::bir::Module& module) {
   const auto parsed = c4c::backend::parse_bir_minimal_two_arg_direct_call_module(module);

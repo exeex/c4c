@@ -5,9 +5,10 @@ Source Plan: plan.md
 # Active Item
 
 - Step 2: switch one shared helper seam off `BackendModule`
-- Current slice: remove the now-dead legacy `BackendModule` call-crossing
-  parser/emitter route after the shared BIR call-crossing view and LIR-through-
-  BIR path are in place
+- Current slice: inventory the next smallest remaining x86-only rich
+  direct-call helper family after the dead call-crossing `BackendModule` seam
+  removal, with preference for a parser/emitter pair that can move to a shared
+  BIR-first view without widening the contract
 
 # Completed
 
@@ -196,19 +197,32 @@ Source Plan: plan.md
   and reran the full `ctest --test-dir build -j --output-on-failure` suite
   against the repo's current dirty baseline with the same 13 known failures in
   `test_before.log` and `test_after.log`
+- Tightened the shared BIR call-crossing parser test so it also proves the
+  recovered regalloc source value stays aligned with the source add result, the
+  call operand, and the final add lhs on the BIR-owned path
+- Removed the dead
+  `ParsedBackendMinimalCallCrossingDirectCallModuleView` /
+  `parse_backend_minimal_call_crossing_direct_call_module(...)` family from
+  `src/backend/lowering/call_decode.hpp` now that the x86 call-crossing slice
+  only uses the shared BIR view
+- Deleted the matching dead x86 `BackendModule` call-crossing slice wrapper and
+  the dead aarch64 `BackendModule` call-crossing emitter overload that still
+  referenced the removed legacy parsed view
+- Rebuilt `backend_shared_util_tests` and `backend_bir_tests`, reran both test
+  binaries directly, and reran the full `ctest --test-dir build -j
+  --output-on-failure` suite successfully against the repo's current known
+  dirty baseline with the same 13 failures recorded in `test_after.log`
 
 # Next
 
 - Inventory the remaining x86-only rich direct-call helper families in
   `src/backend/x86/codegen/emit.cpp` and `src/backend/lowering/call_decode.hpp`
-  to choose the next smallest seam after the dual-identity subtraction route
+  to choose the next smallest seam after the dead call-crossing route removal
 - Continue shrinking stale direct-call helper families one seam at a time now
   that the zero-arg, declared-direct-call, minimal two-argument helper/main,
   single-argument add-immediate, single-argument identity-return, folded
   two-argument helper/main, dual-identity subtraction, and call-crossing paths
   no longer need private x86 LIR dispatch
-- Confirm the legacy `BackendModule` call-crossing parser family is now dead,
-  then delete the dead helper view and any remaining adapter-only references
 - Use the next slice to make `lir_to_backend_ir.*` more obviously adapter-only
   before Step 4 collapse work starts
 
@@ -218,19 +232,25 @@ Source Plan: plan.md
   part of the direct-call surface, while legacy helpers still carry richer
   typed-call / extern-arg detail
 - `test_before.log` was not present in the workspace at the start of this
-  iteration; the last recorded full-suite baseline in `todo.md` was
-  `2834/2834`, and this slice reran the full suite successfully in
-  `test_after.log`
-- This slice removes one real x86 direct-call consumer from the legacy
-  `BackendModule` parser family, but aarch64 and declared-direct-call seams
-  still remain
-- The aarch64 direct BIR entry now matches x86 for the minimal helper/main
-  zero-argument direct-call family; the next live shared seam is the richer
-  declared-direct-call surface
-- This slice removes the native aarch64 direct-BIR declared-direct-call path
-  from the legacy `BackendModule` parser family, and x86 now matches it; the
-  remaining live seam is the shared legacy declared-direct-call helper route
-- The old declared-direct-call helper family is now fully off
+  iteration, so this run used focused rebuilds plus a fresh full-suite
+  `test_after.log` check instead of a same-run before/after diff
+- This run's full-suite check finished with the same 13 known failures listed
+  in `test_after.log`:
+  `backend_runtime_local_arg_call`, `backend_runtime_param_slot`,
+  `backend_runtime_two_arg_both_local_arg`,
+  `backend_runtime_two_arg_both_local_double_rewrite`,
+  `backend_runtime_two_arg_both_local_first_rewrite`,
+  `backend_runtime_two_arg_both_local_second_rewrite`,
+  `backend_runtime_two_arg_first_local_rewrite`,
+  `backend_runtime_two_arg_helper`, `backend_runtime_two_arg_local_arg`,
+  `backend_runtime_two_arg_second_local_arg`,
+  `backend_runtime_two_arg_second_local_rewrite`,
+  `c_testsuite_aarch64_backend_src_00116_c`, and
+  `c_testsuite_aarch64_backend_src_00121_c`
+- This slice removes the last call-crossing-specific `BackendModule` parse
+  helper from the shared call-decode surface; the remaining legacy direct-call
+  seams are the richer typed/direct-call families that still depend on
+  `BackendModule` shape not yet modeled in shared BIR helpers
   `BackendModule`; the shared parser/emitter route is BIR-owned, and the x86
   LIR-only compatibility seam has also been deleted
 - `test_before.log` was not present in the workspace at the start of this run;
