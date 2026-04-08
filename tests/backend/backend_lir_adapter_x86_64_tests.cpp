@@ -5201,6 +5201,34 @@ void test_x86_backend_explicit_lir_emit_surface_matches_bounded_scalar_global_lo
                       "x86 explicit LIR emit surface should not fall back to LLVM text for the bounded scalar global-load slice");
 }
 
+void test_x86_backend_explicit_lir_emit_surface_keeps_renamed_global_load_caller_on_asm_path() {
+  auto module = make_global_load_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  auto& caller_fn = module.functions.front();
+  auto& load = std::get<c4c::codegen::lir::LirLoadOp>(caller_fn.blocks.front().insts.front());
+  caller_fn.name = "entry_load";
+  caller_fn.signature_text = "define i32 @entry_load()\n";
+  load.result = "%t.entry_load";
+  caller_fn.blocks.front().terminator =
+      c4c::codegen::lir::LirRet{std::string("%t.entry_load"), "i32"};
+
+  const auto rendered = c4c::backend::x86::emit_module(module);
+
+  expect_contains(rendered, ".globl entry_load\n",
+                  "x86 explicit LIR emit surface should publish the observed renamed scalar-global-load caller instead of requiring a literal main anchor");
+  expect_contains(rendered, "entry_load:\n",
+                  "x86 explicit LIR emit surface should preserve the renamed scalar-global-load caller label on the native asm path");
+  expect_contains(rendered, "lea rax, g_counter[rip]\n",
+                  "x86 explicit LIR emit surface should still form the scalar global address after the caller rename");
+  expect_contains(rendered, "mov eax, dword ptr [rax]\n",
+                  "x86 explicit LIR emit surface should still load the scalar global value after removing the caller-name anchor");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 explicit LIR emit surface should not fall back to LLVM text for renamed scalar-global-load callers");
+}
+
 void test_x86_backend_explicit_lir_emit_surface_matches_bounded_global_store_reload_path() {
   const auto module = make_x86_global_store_reload_module();
   const auto direct_rendered = c4c::backend::x86::emit_module(module);
@@ -5229,6 +5257,48 @@ void test_x86_backend_scaffold_matches_direct_global_store_reload_asm() {
   if (direct_rendered != lowered_rendered) {
     fail("x86 global-store-reload regression should keep the direct LIR and explicit lowered backend seams on identical assembly output");
   }
+}
+
+void test_x86_backend_explicit_emit_surface_keeps_renamed_global_load_caller_on_asm_path() {
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_global_load_module());
+
+  c4c::backend::BackendFunction* caller_fn = nullptr;
+  for (auto& function : lowered.functions) {
+    if (!function.is_declaration &&
+        c4c::backend::backend_function_is_definition(function.signature) &&
+        c4c::backend::backend_signature_return_scalar_type(function.signature) ==
+            c4c::backend::BackendScalarType::I32 &&
+        function.signature.params.empty() && !function.signature.is_vararg) {
+      caller_fn = &function;
+      break;
+    }
+  }
+
+  expect_true(caller_fn != nullptr,
+              "x86 renamed scalar-global-load backend emit regression test needs the lowered zero-argument caller function");
+  if (caller_fn == nullptr) {
+    return;
+  }
+
+  caller_fn->signature.name = "entry_load";
+
+  const auto direct_rendered = c4c::backend::x86::emit_module(lowered);
+  const auto backend_rendered = c4c::backend::emit_module(
+      lowered,
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_true(backend_rendered == direct_rendered,
+              "x86 backend selection should keep renamed structured scalar-global-load callers on the explicit backend emit surface");
+  expect_contains(direct_rendered, ".globl entry_load\n",
+                  "x86 explicit backend emit surface should publish the renamed scalar-global-load caller instead of assuming main");
+  expect_contains(direct_rendered, "entry_load:\n",
+                  "x86 explicit backend emit surface should preserve the renamed scalar-global-load caller label on the structured asm path");
+  expect_contains(direct_rendered, "lea rax, g_counter[rip]\n",
+                  "x86 explicit backend emit surface should still form the scalar global address after removing the caller-name anchor");
+  expect_contains(direct_rendered, "mov eax, dword ptr [rax]\n",
+                  "x86 explicit backend emit surface should still reload the scalar global value for renamed callers");
+  expect_not_contains(direct_rendered, "define i32 @entry_load()",
+                      "x86 explicit backend emit surface should not fall back to backend IR text for renamed scalar-global-load callers");
 }
 
 void test_x86_backend_uses_shared_regalloc_for_call_crossing_direct_call_slice() {
@@ -7122,8 +7192,10 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_renders_global_load_slice);
   RUN_TEST(test_x86_backend_renders_global_store_reload_slice);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_bounded_scalar_global_load_path);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_keeps_renamed_global_load_caller_on_asm_path);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_bounded_global_store_reload_path);
   RUN_TEST(test_x86_backend_scaffold_matches_direct_global_store_reload_asm);
+  RUN_TEST(test_x86_backend_explicit_emit_surface_keeps_renamed_global_load_caller_on_asm_path);
   RUN_TEST(test_x86_backend_uses_shared_regalloc_for_call_crossing_direct_call_slice);
   RUN_TEST(test_x86_backend_cleans_up_redundant_self_move_on_call_crossing_slice);
   RUN_TEST(test_x86_backend_keeps_spacing_tolerant_call_crossing_slice_on_asm_path);

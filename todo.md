@@ -10,12 +10,44 @@ Source Plan: plan.md
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
 Current active item: Step 4 follow-on deletion. Continue with the next bounded
-multi-block literal-`main` caller anchor in
-[`src/backend/lowering/lir_to_backend_ir.cpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp),
-with the next target being the double-indirect local-pointer
-conditional-return adapter and its matching backend/x86 proof surface.
+scalar-global literal-`main` caller anchor in
+[`src/backend/lowering/lir_to_backend_ir.cpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp)
+and the matching x86 emitter/global-store proof surface, with the next target
+being the sibling scalar global store-reload family after the scalar
+global-load caller-anchor deletion below.
 
 Latest completed slice:
+
+- removed the bounded scalar global-load production-side literal-`main` caller
+  anchor from
+  [`src/backend/lowering/lir_to_backend_ir.cpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp)
+  so the explicit lowered backend adapter now accepts any structural
+  zero-argument `i32` caller instead of rejecting renamed callers before they
+  reach the normalized direct global-load seam
+- removed the matching scalar global-load caller anchor from
+  [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+  by teaching both the direct LIR matcher and the explicit lowered backend
+  matcher to carry the observed caller symbol through emitted asm instead of
+  hardcoding `main`
+- proved the lowered seam deletion with a new renamed-caller regression in
+  [`tests/backend/backend_lir_adapter_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_tests.cpp)
+  so the normalized backend IR keeps `define i32 @entry_load()` while still
+  lowering `load i32, ptr @g_counter` plus `ret i32 %t.entry_load`
+- proved the x86 production deletion with new renamed-caller regressions in
+  [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
+  so both the explicit LIR emit surface and the explicit lowered backend emit
+  surface preserve `.globl entry_load` on identical scalar-global-load asm
+  output without falling back to backend IR or LLVM text
+- kept focused backend coverage green at `3` passed / `0` failed via
+  `ctest --test-dir build -R '^backend_lir_adapter_tests$|^backend_lir_adapter_x86_64_tests$|^backend_module_tests$' -j1 --output-on-failure`
+- reran the required backend regression scope to `401` passed / `1` failed via
+  `ctest --test-dir build -R backend -j --output-on-failure > test_backend_after.log`;
+  the only failing case remains the independently reproducing unrelated blocker
+  `c_testsuite_aarch64_backend_src_00023_c`
+- the monotonic backend guard against the checked-in baseline still reports one
+  new failing test because `test_backend_before.log` remains the older clean
+  `182`-test snapshot while the current tree still reproduces the unrelated
+  aarch64 failure above
 
 - removed the bounded double-indirect local-pointer conditional-return
   production-side literal-`main` caller anchor from
