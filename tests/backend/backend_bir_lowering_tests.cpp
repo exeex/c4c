@@ -258,6 +258,12 @@ c4c::codegen::lir::LirModule make_bir_minimal_direct_call_identity_arg_lir_modul
   return module;
 }
 
+c4c::codegen::lir::LirModule make_bir_minimal_direct_call_identity_arg_lir_module_helper_first() {
+  auto module = make_bir_minimal_direct_call_identity_arg_lir_module();
+  std::swap(module.functions[0], module.functions[1]);
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_bir_minimal_folded_two_arg_direct_call_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -621,6 +627,23 @@ void test_bir_lowering_accepts_minimal_direct_call_identity_arg_lir_module() {
                     parsed->main_function != nullptr && parsed->main_function->name == "main" &&
                     parsed->call_arg_imm == 0,
                 "the lowered BIR module should preserve the helper/main structure and the caller immediate for the identity direct-call slice");
+  }
+}
+
+void test_bir_lowering_accepts_minimal_direct_call_identity_arg_lir_module_with_helper_first() {
+  const auto lowered =
+      c4c::backend::try_lower_to_bir(make_bir_minimal_direct_call_identity_arg_lir_module_helper_first());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the minimal identity direct-call LIR module slice when the helper is listed first");
+
+  const auto parsed = c4c::backend::parse_bir_minimal_direct_call_identity_arg_module(*lowered);
+  expect_true(parsed.has_value(),
+              "the lowered BIR module should still match the shared identity direct-call BIR parser when the helper is listed first");
+  if (parsed.has_value()) {
+    expect_true(parsed->helper != nullptr && parsed->helper->name == "f" &&
+                    parsed->main_function != nullptr && parsed->main_function->name == "main" &&
+                    parsed->call_arg_imm == 0,
+                "the lowered BIR module should preserve the helper/main structure and the caller immediate for the helper-first identity direct-call slice");
   }
 }
 
@@ -2449,6 +2472,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_minimal_two_arg_direct_call_local_slot_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_direct_call_add_imm_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_direct_call_identity_arg_lir_module);
+  RUN_TEST(test_bir_lowering_accepts_minimal_direct_call_identity_arg_lir_module_with_helper_first);
   RUN_TEST(test_bir_lowering_accepts_minimal_folded_two_arg_direct_call_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_dual_identity_direct_call_sub_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_call_crossing_direct_call_lir_module);

@@ -5,15 +5,40 @@ Source Plan: plan.md
 # Active Item
 
 - Step 3: migrate the next aarch64 emitter helper cluster onto direct BIR
-- Current slice: remove
-  `parse_backend_minimal_direct_call_identity_arg_lir_module(...)` from
-  `src/backend/lowering/call_decode.hpp` by matching that identity direct-call
-  LIR shape directly in `src/backend/lowering/lir_to_bir.cpp`
-- Next intended slice: remove the next simplest surviving direct-call adapter
-  family after the identity helper, likely the dual-identity subtraction
-  direct-call helper, once focused BIR lowering coverage is in place
+- Current slice: remove the next simplest surviving direct-call adapter family
+  after the identity helper, likely the dual-identity subtraction direct-call
+  helper, by matching that LIR shape directly in
+  `src/backend/lowering/lir_to_bir.cpp`
+- Next intended slice: remove
+  `parse_backend_minimal_dual_identity_direct_call_sub_lir_module(...)` from
+  `src/backend/lowering/call_decode.hpp` after adding any focused BIR lowering
+  coverage needed to keep that subtraction direct-call shape validated
 
 # Completed
+
+- Removed the still-live
+  `parse_backend_minimal_direct_call_identity_arg_lir_module(...)` adapter and
+  its `ParsedBackendMinimalDirectCallIdentityArgLirModuleView` from
+  `src/backend/lowering/call_decode.hpp` by matching that identity direct-call
+  LIR shape directly in `src/backend/lowering/lir_to_bir.cpp`
+- Added focused BIR lowering coverage in
+  `tests/backend/backend_bir_lowering_tests.cpp` for the helper-first identity
+  direct-call module order so the direct matcher keeps validating that
+  order-insensitive LIR slice after the adapter removal
+- Rebuilt `backend_bir_tests`, `backend_shared_util_tests`, and `c4cll`
+  successfully after the identity direct-call adapter removal
+- Reran
+  `ctest --test-dir build -R 'backend_(bir_tests|shared_util_tests)' --output-on-failure`
+  successfully after the identity direct-call adapter removal
+- Rebuilt the full workspace with `cmake --build build -j8` successfully after
+  the identity direct-call adapter removal
+- Reran the full `ctest --test-dir build -j8 --output-on-failure` suite and
+  refreshed `test_after.log` / `test_fail_after.log`; the workspace improved
+  from `2821/2834` passing with 13 failures in `test_fail_before.log` to
+  `2834/2834` passing with 0 failures
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=13 failed=-13`
+  and zero newly failing tests
 
 - Removed the still-live
   `parse_backend_minimal_direct_call_add_imm_lir_module(...)` adapter and its
