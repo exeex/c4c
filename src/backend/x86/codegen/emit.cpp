@@ -4269,7 +4269,7 @@ std::optional<std::string> try_emit_direct_lir_module(
     // Intended migration order:
     // 1) direct BIR emission stays the fast path.
     // 2) pure call/global/string/local-slot BIR contracts replace the matching
-    //    BackendModule clusters below in-place.
+    //    legacy direct-LIR helper clusters below in-place.
     // 3) remaining richer helper families follow through shared BIR views.
     if (const auto slice = parse_minimal_member_array_runtime_slice(module);
         slice.has_value()) {

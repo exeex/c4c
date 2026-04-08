@@ -4,20 +4,35 @@ Source Plan: plan.md
 
 # Active Item
 
-- Step 5 follow-through: inventory and migrate the remaining live `ir.hpp`
-  type consumers before the final legacy contract deletion
-- Current slice: remove one remaining real `BackendFunction` /
-  `BackendCallInst` consumer family at a time now that
-  `src/backend/lowering/extern_lowering.*` proved to be a dead helper-only
-  compatibility seam rather than a live production blocker
-- Next intended slice: continue Step 5 ownership trimming from the actual live
-  consumers in `src/backend/lowering/call_decode.hpp`,
-  `src/backend/x86/codegen/emit.cpp`, and
-  `src/backend/aarch64/codegen/emit.cpp`, starting with the narrowest
-  `BackendModule` parser/helper family that can move to BIR without widening
-  schema scope
+- Step 5 follow-through: delete the now-unreferenced legacy backend IR header
+  and trim the last stale `BackendModule` migration note that still implies a
+  live backend-IR dependency
+- Current slice: remove `src/backend/ir.hpp` now that repo search shows no
+  active includes or type consumers remain outside the header itself, and
+  update the x86 direct-LIR dispatch comment to match the BIR-first ownership
+  already in tree
+- Next intended slice: re-inventory the remaining direct-LIR compatibility
+  helpers in `src/backend/x86/codegen/emit.cpp` and
+  `src/backend/aarch64/codegen/emit.cpp`, then remove the next narrowest
+  emitter-local family that still bypasses shared BIR lowering
 
 # Completed
+
+- Deleted the now-unreferenced legacy backend IR header
+  `src/backend/ir.hpp`; repo search showed no remaining active includes or type
+  consumers outside the header itself before removal
+- Updated the stale x86 direct-LIR migration note in
+  `src/backend/x86/codegen/emit.cpp` so it no longer implies live
+  `BackendModule` ownership for the remaining compatibility helpers
+- Rebuilt the workspace with `cmake --build build -j8` successfully after the
+  header deletion
+- Reran the full `ctest --test-dir build -j8 --output-on-failure` suite and
+  refreshed `test_after.log` / `test_fail_after.log`; the workspace stayed at
+  `2834/2834` passing with 0 failures
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=159
+  failed=-159` and zero newly failing tests against the existing
+  `test_fail_before.log` baseline
 
 - Added focused BIR lowering coverage in
   `tests/backend/backend_bir_lowering_tests.cpp` for an extern declaration
