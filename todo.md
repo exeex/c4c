@@ -6,16 +6,37 @@ Source Plan: plan.md
 
 - Step 2: switch one shared helper seam off `BackendModule`
 - Current slice: resume the emitter-local `BackendModule` inventory after the
-  dead-helper cleanup and choose the next real metadata-backed cluster among
-  the string/global/local-slot parsers that still need either bounded BIR
-  fields or a shared lookup contract
-- Next intended slice: inspect the shared global/string/local-slot parser
-  clusters in `src/backend/x86/codegen/emit.cpp` and
-  `src/backend/aarch64/codegen/emit.cpp` for a pair that can move together
-  onto an existing BIR or shared lookup seam without expanding scope
+  x86 dead-overload cleanup and inspect the matching aarch64 parser inventory
+  for the next verified-dead legacy entry points or the next real
+  metadata-backed cluster that still needs bounded BIR or a shared lookup seam
+- Next intended slice: mirror the x86 dead-overload reachability check in
+  `src/backend/aarch64/codegen/emit.cpp` and remove the next confirmed-dead
+  `BackendModule` parser wrappers only if no live dispatcher still references
+  them
 
 # Completed
 
+- Removed the remaining dead x86 emitter-local `BackendModule` parser overloads
+  for the conditional-return, countdown-loop, conditional-phi-join,
+  local-array/global/string metadata cluster, and scalar-global-store-reload
+  slices from `src/backend/x86/codegen/emit.cpp` after confirming the native
+  x86 emitter only dispatches through LIR and direct-BIR entry points now
+- Deleted the now-unused x86 legacy backend lookup helpers
+  `find_single_zero_arg_i32_backend_definition(...)`, backend
+  `find_global(...)`, and backend `find_string_constant(...)` after the dead
+  `BackendModule` parser removal
+- Rebuilt `c4cll`, `backend_bir_tests`, and `backend_shared_util_tests`
+  successfully after the x86 dead parser cleanup
+- Reran
+  `ctest --test-dir build -R 'backend_(bir_tests|shared_util_tests)' --output-on-failure`
+  successfully after the cleanup
+- Reran the full `ctest --test-dir build -j --output-on-failure` suite and
+  refreshed `test_after.log` / `test_fail_after.log`; the workspace still has
+  the same 13 known failures as `test_fail_before.log` with `2821/2834` tests
+  passing
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=0 failed=0`
+  and zero newly failing tests
 - Removed the dead x86 `BackendModule` forwarding wrappers for
   `emit_minimal_conditional_affine_i8_return_asm(...)` and
   `emit_minimal_conditional_affine_i32_return_asm(...)` now that all live
