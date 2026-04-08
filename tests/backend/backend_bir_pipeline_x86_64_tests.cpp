@@ -2457,6 +2457,8 @@ void test_backend_bir_pipeline_rejects_unsupported_direct_bir_input_on_x86() {
   } catch (const std::invalid_argument& ex) {
     expect_contains(ex.what(), "direct BIR module",
                     "x86 direct BIR rejection should explain that unsupported direct BIR input no longer falls back through legacy backend IR");
+    expect_not_contains(ex.what(), "legacy backend IR",
+                        "x86 direct BIR rejection should not mention the deleted legacy backend IR route at the shared backend entry");
     return;
   }
 

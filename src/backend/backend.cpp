@@ -27,11 +27,6 @@ std::string emit_native_bir_module(const bir::Module& module, Target target) {
   throw std::logic_error("unreachable backend target");
 }
 
-bool is_direct_bir_subset_error(const std::invalid_argument& ex) {
-  return std::string_view(ex.what()).find("does not support this direct BIR module") !=
-         std::string_view::npos;
-}
-
 }  // namespace
 
 BackendModuleInput::BackendModuleInput(const bir::Module& bir_module)
@@ -83,14 +78,7 @@ std::string emit_module(const BackendModuleInput& input,
       }
       return c4c::backend::bir::print(*bir_module);
     }
-    try {
-      return emit_native_bir_module(*bir_module, options.target);
-    } catch (const std::invalid_argument& ex) {
-      if (!is_direct_bir_subset_error(ex)) {
-        throw;
-      }
-      throw;
-    }
+    return emit_native_bir_module(*bir_module, options.target);
   }
 
   if (route == BackendLoweringRoute::BirPreloweredModule) {

@@ -7,16 +7,34 @@ Source Plan: plan.md
 - Step 4 cleanup: keep shrinking adapter-only legacy-lowering surface now that
   `src/backend/ir.hpp` and `lir_to_backend_ir.*` are already gone
 - Current slice: re-inventory the remaining `src/backend/backend.cpp`
-  `BackendModuleInput` LIR-entry branches after collapsing the riscv64-only
-  direct-LIR-or-LLVM wrapper, then check whether any last adapter-only
-  target switch or subset-error helper is still duplicating route logic
-- Next intended slice: inventory the `BackendModuleInput` LIR-entry path in
-  `src/backend/backend.cpp`, compare the remaining
-  `is_direct_bir_subset_error(...)` catch path against the prelowered-BIR
-  route, and remove any dead helper that no longer changes observable backend
-  behavior
+  `BackendModuleInput` LIR-entry and prelowered-BIR branches now that the
+  dead direct-BIR subset catch/rethrow helper is gone, then identify whether
+  any target split still duplicates the same native-BIR dispatch
+- Next intended slice: compare the riscv64 explicit-BIR text branch against
+  the LIR-through-BIR riscv64 branch in `src/backend/backend.cpp`, and remove
+  any remaining adapter-only conditional or helper that no longer changes
+  observable backend behavior
 
 # Completed
+
+- Re-inventoried the remaining `src/backend/backend.cpp`
+  `BackendModuleInput` direct-BIR/LIR-through-BIR branch logic, confirmed the
+  local `is_direct_bir_subset_error(...)` helper only wrapped a no-op
+  catch/rethrow around `emit_native_bir_module(...)`, and removed that dead
+  adapter-only shared-entry error path
+- Tightened
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` and
+  `tests/backend/backend_bir_pipeline_aarch64_tests.cpp` so backend-entry
+  unsupported direct-BIR rejections must not mention the deleted legacy
+  backend IR route while still surfacing the native direct-BIR subset wording
+- Rebuilt `backend_bir_tests`, reran focused
+  `ctest --test-dir build -R '^backend_bir_tests$' --output-on-failure`,
+  reran the full `ctest --test-dir build -j8 --output-on-failure` suite into
+  `test_fail_after.log`, and confirmed the workspace stayed at `2834/2834`
+  passing with 0 failures
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=0 failed=0`
+  and zero newly failing tests against `test_fail_before.log`
 
 - Collapsed the riscv64-only
   `emit_direct_lir_or_llvm_fallback(...)` wrapper from
