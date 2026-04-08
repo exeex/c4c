@@ -5027,12 +5027,6 @@ std::string emit_minimal_local_array_asm(std::string_view target_triple,
 }
 
 std::string emit_minimal_extern_global_array_load_asm(
-    const c4c::backend::BackendModule& module,
-    const MinimalExternGlobalArrayLoadSlice& slice) {
-  return emit_minimal_extern_global_array_load_asm(module.target_triple, slice);
-}
-
-std::string emit_minimal_extern_global_array_load_asm(
     std::string_view target_triple,
     const MinimalExternGlobalArrayLoadSlice& slice) {
   const std::string global_symbol = asm_symbol_name(target_triple, slice.global_name);
@@ -5047,12 +5041,6 @@ std::string emit_minimal_extern_global_array_load_asm(
       << "  mov eax, dword ptr [rax + " << slice.byte_offset << "]\n"
       << "  ret\n";
   return out.str();
-}
-
-std::string emit_minimal_extern_scalar_global_load_asm(
-    const c4c::backend::BackendModule& module,
-    const MinimalExternScalarGlobalLoadSlice& slice) {
-  return emit_minimal_extern_scalar_global_load_asm(module.target_triple, slice);
 }
 
 std::string emit_minimal_extern_scalar_global_load_asm(
@@ -5203,12 +5191,6 @@ std::string emit_minimal_multi_printf_vararg_asm(
 }
 
 std::string emit_minimal_global_char_pointer_diff_asm(
-    const c4c::backend::BackendModule& module,
-    const MinimalGlobalCharPointerDiffSlice& slice) {
-  return emit_minimal_global_char_pointer_diff_asm(module.target_triple, slice);
-}
-
-std::string emit_minimal_global_char_pointer_diff_asm(
     std::string_view target_triple,
     const MinimalGlobalCharPointerDiffSlice& slice) {
   const std::string global_symbol = asm_symbol_name(target_triple, slice.global_name);
@@ -5231,12 +5213,6 @@ std::string emit_minimal_global_char_pointer_diff_asm(
       << "  movzx eax, al\n"
       << "  ret\n";
   return out.str();
-}
-
-std::string emit_minimal_global_int_pointer_diff_asm(
-    const c4c::backend::BackendModule& module,
-    const MinimalGlobalIntPointerDiffSlice& slice) {
-  return emit_minimal_global_int_pointer_diff_asm(module.target_triple, slice);
 }
 
 std::string emit_minimal_global_int_pointer_diff_asm(
@@ -5266,12 +5242,6 @@ std::string emit_minimal_global_int_pointer_diff_asm(
 }
 
 std::string emit_minimal_scalar_global_load_asm(
-    const c4c::backend::BackendModule& module,
-    const MinimalScalarGlobalLoadSlice& slice) {
-  return emit_minimal_scalar_global_load_asm(module.target_triple, slice);
-}
-
-std::string emit_minimal_scalar_global_load_asm(
     std::string_view target_triple,
     const MinimalScalarGlobalLoadSlice& slice) {
   const std::string global_symbol = asm_symbol_name(target_triple, slice.global_name);
@@ -5294,12 +5264,6 @@ std::string emit_minimal_scalar_global_load_asm(
       << "  mov eax, dword ptr [rax]\n"
       << "  ret\n";
   return out.str();
-}
-
-std::string emit_minimal_scalar_global_store_reload_asm(
-    const c4c::backend::BackendModule& module,
-    const MinimalScalarGlobalStoreReloadSlice& slice) {
-  return emit_minimal_scalar_global_store_reload_asm(module.target_triple, slice);
 }
 
 std::string emit_minimal_scalar_global_store_reload_asm(

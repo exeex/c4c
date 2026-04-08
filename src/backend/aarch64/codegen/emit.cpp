@@ -4761,12 +4761,6 @@ std::string emit_minimal_conditional_phi_join_asm(
 }
 
 std::string emit_minimal_scalar_global_load_asm(
-    const c4c::backend::BackendModule& module,
-    const MinimalScalarGlobalLoadSlice& slice) {
-  return emit_minimal_scalar_global_load_asm(module.target_triple, slice);
-}
-
-std::string emit_minimal_scalar_global_load_asm(
     std::string_view target_triple,
     const MinimalScalarGlobalLoadSlice& slice) {
   if (slice.init_imm < std::numeric_limits<std::int32_t>::min() ||
@@ -4810,12 +4804,6 @@ std::string emit_minimal_scalar_global_load_asm(
   }
   out << "  ret\n";
   return out.str();
-}
-
-std::string emit_minimal_scalar_global_store_reload_asm(
-    const c4c::backend::BackendModule& module,
-    const MinimalScalarGlobalStoreReloadSlice& slice) {
-  return emit_minimal_scalar_global_store_reload_asm(module.target_triple, slice);
 }
 
 std::string emit_minimal_scalar_global_store_reload_asm(
@@ -4871,12 +4859,6 @@ std::string emit_minimal_scalar_global_store_reload_asm(
 }
 
 std::string emit_minimal_extern_scalar_global_load_asm(
-    const c4c::backend::BackendModule& module,
-    const MinimalExternScalarGlobalLoadSlice& slice) {
-  return emit_minimal_extern_scalar_global_load_asm(module.target_triple, slice);
-}
-
-std::string emit_minimal_extern_scalar_global_load_asm(
     std::string_view target_triple,
     const MinimalExternScalarGlobalLoadSlice& slice) {
   const bool is_darwin =
@@ -4899,12 +4881,6 @@ std::string emit_minimal_extern_scalar_global_load_asm(
   }
   out << "  ret\n";
   return out.str();
-}
-
-std::string emit_minimal_extern_global_array_load_asm(
-    const c4c::backend::BackendModule& module,
-    const MinimalExternGlobalArrayLoadSlice& slice) {
-  return emit_minimal_extern_global_array_load_asm(module.target_triple, slice);
 }
 
 std::string emit_minimal_extern_global_array_load_asm(
@@ -4931,12 +4907,6 @@ std::string emit_minimal_extern_global_array_load_asm(
   out << "  ldr w0, [x8, #" << slice.byte_offset << "]\n"
       << "  ret\n";
   return out.str();
-}
-
-std::string emit_minimal_global_char_pointer_diff_asm(
-    const c4c::backend::BackendModule& module,
-    const MinimalGlobalCharPointerDiffSlice& slice) {
-  return emit_minimal_global_char_pointer_diff_asm(module.target_triple, slice);
 }
 
 std::string emit_minimal_global_char_pointer_diff_asm(
@@ -4975,12 +4945,6 @@ std::string emit_minimal_global_char_pointer_diff_asm(
       << "  cset w0, eq\n"
       << "  ret\n";
   return out.str();
-}
-
-std::string emit_minimal_global_int_pointer_diff_asm(
-    const c4c::backend::BackendModule& module,
-    const MinimalGlobalIntPointerDiffSlice& slice) {
-  return emit_minimal_global_int_pointer_diff_asm(module.target_triple, slice);
 }
 
 std::string emit_minimal_global_int_pointer_diff_asm(

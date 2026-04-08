@@ -5,17 +5,32 @@ Source Plan: plan.md
 # Active Item
 
 - Step 2: switch one shared helper seam off `BackendModule`
-- Current slice: resume inspecting the remaining x86/aarch64 emitter-local
-  `BackendModule` parser families and pick the next cluster that is dead
-  forwarding glue rather than a real metadata-bearing seam
-- Next intended slice: resume inspecting the remaining x86/aarch64 emitter-local
-  `BackendModule` parser families and pick the next cluster that is dead
-  forwarding glue rather than a real metadata-bearing seam, preferably another
-  target-triple-only emitter wrapper cluster or a similarly unreferenced
-  adapter seam
+- Current slice: inspect the remaining emitter-local `BackendModule`
+  overloads that still survive in x86/aarch64 and classify whether the next
+  removable seam is another target-triple forwarder or a genuinely
+  metadata-bearing helper
+- Next intended slice: verify whether the remaining x86 conditional-affine
+  wrappers and the aarch64 local-array / conditional-phi wrapper set are still
+  live, and remove the next dead forwarding cluster if dispatch already routes
+  entirely through `target_triple` or BIR-owned inputs
 
 # Completed
 
+- Removed the dead x86/aarch64 `BackendModule` forwarding overloads for the
+  scalar-global-load, scalar-global-store-reload, extern-scalar-global-load,
+  extern-global-array-load, and global-pointer-diff emitter helpers now that
+  all live dispatch sites already call the `target_triple` overloads directly
+- Rebuilt `backend_bir_tests`, `backend_shared_util_tests`, and `c4cll`
+  successfully after the dead global-helper wrapper cleanup
+- Reran
+  `ctest --test-dir build -R 'backend_(bir_tests|shared_util_tests)' --output-on-failure`
+  successfully after the cleanup
+- Reran the full `ctest --test-dir build -j --output-on-failure` suite and
+  recorded same-run before/after logs in `test_before.log` and `test_after.log`;
+  both snapshots reported `2821/2834` passed with the same 13 known failures
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=0 failed=0`
+  and zero newly failing tests
 - Removed the dead x86 emitter-local `BackendModule` forwarding overloads for
   `asm_symbol_name(...)` and `asm_private_data_label(...)` now that all live
   call sites already pass `target_triple` directly
