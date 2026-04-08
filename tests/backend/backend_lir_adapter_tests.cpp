@@ -2592,6 +2592,56 @@ void test_adapter_normalizes_renamed_global_int_pointer_roundtrip_slice() {
                   "adapter should still return the lowered scalar global value for renamed roundtrip callers");
 }
 
+void test_adapter_normalizes_renamed_extern_global_array_load_slice() {
+  auto module = make_extern_global_array_load_module();
+  auto& function = module.functions.front();
+  function.name = "entry_array";
+  function.signature_text = "define i32 @entry_array()\n";
+
+  const auto adapted = c4c::backend::lower_lir_to_backend_module(module);
+  const auto rendered = c4c::backend::render_module(adapted);
+  expect_contains(rendered, "define i32 @entry_array()",
+                  "adapter should preserve renamed extern-global-array callers on the explicit lowered backend seam");
+  expect_contains(rendered, "%t3 = load i32, ptr @ext_arr + 4",
+                  "adapter should still normalize renamed extern-global-array callers onto the bounded direct indexed-load shape");
+  expect_contains(rendered, "ret i32 %t3",
+                  "adapter should still return the lowered extern global array value for renamed callers");
+}
+
+void test_adapter_normalizes_renamed_global_char_pointer_diff_slice() {
+  auto module = make_global_char_pointer_diff_module();
+  auto& function = module.functions.front();
+  function.name = "entry_chardiff";
+  function.signature_text = "define i32 @entry_chardiff()\n";
+
+  const auto adapted = c4c::backend::lower_lir_to_backend_module(module);
+  const auto rendered = c4c::backend::render_module(adapted);
+  expect_contains(rendered, "define i32 @entry_chardiff()",
+                  "adapter should preserve renamed global-char-pointer-diff callers on the explicit lowered backend seam");
+  expect_contains(rendered,
+                  "ptrdiff_eq i32, ptr @g_bytes + 1, ptr @g_bytes, elem_size 1, expected 1",
+                  "adapter should still normalize renamed global-char-pointer-diff callers onto the bounded ptrdiff_eq shape");
+  expect_contains(rendered, "ret i32 %t11",
+                  "adapter should still return the lowered char pointer-difference comparison result for renamed callers");
+}
+
+void test_adapter_normalizes_renamed_global_int_pointer_diff_slice() {
+  auto module = make_global_int_pointer_diff_module();
+  auto& function = module.functions.front();
+  function.name = "entry_intdiff";
+  function.signature_text = "define i32 @entry_intdiff()\n";
+
+  const auto adapted = c4c::backend::lower_lir_to_backend_module(module);
+  const auto rendered = c4c::backend::render_module(adapted);
+  expect_contains(rendered, "define i32 @entry_intdiff()",
+                  "adapter should preserve renamed global-int-pointer-diff callers on the explicit lowered backend seam");
+  expect_contains(rendered,
+                  "ptrdiff_eq i32, ptr @g_words + 4, ptr @g_words, elem_size 4, expected 1",
+                  "adapter should still normalize renamed global-int-pointer-diff callers onto the bounded scaled ptrdiff_eq shape");
+  expect_contains(rendered, "ret i32 %t12",
+                  "adapter should still return the lowered int pointer-difference comparison result for renamed callers");
+}
+
 void test_adapter_normalizes_goto_only_constant_return_slice() {
   const auto adapted =
       c4c::backend::lower_lir_to_backend_module(make_goto_only_constant_return_module());
@@ -3370,6 +3420,9 @@ int main(int argc, char* argv[]) {
   test_adapter_normalizes_renamed_global_load_slice();
   test_adapter_normalizes_renamed_global_store_reload_slice();
   test_adapter_normalizes_renamed_global_int_pointer_roundtrip_slice();
+  test_adapter_normalizes_renamed_extern_global_array_load_slice();
+  test_adapter_normalizes_renamed_global_char_pointer_diff_slice();
+  test_adapter_normalizes_renamed_global_int_pointer_diff_slice();
   test_adapter_normalizes_goto_only_constant_return_slice();
   test_adapter_normalizes_constant_conditional_goto_return_slice();
   test_adapter_normalizes_i64_constant_conditional_goto_return_slice();

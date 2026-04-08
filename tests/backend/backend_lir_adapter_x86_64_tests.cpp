@@ -2347,6 +2347,33 @@ void test_x86_backend_explicit_lir_emit_surface_keeps_renamed_global_int_pointer
                       "x86 explicit LIR emit surface should not fall back to LLVM text for renamed global-int-pointer-roundtrip callers");
 }
 
+void test_x86_backend_explicit_lir_emit_surface_keeps_renamed_extern_global_array_on_asm_path() {
+  auto module = make_x86_extern_global_array_load_module();
+  auto& function = module.functions.front();
+  function.name = "entry_array";
+  function.signature_text = "define i32 @entry_array()\n";
+
+  const auto direct_rendered = c4c::backend::x86::emit_module(module);
+  const auto lowered_rendered =
+      c4c::backend::x86::emit_module(c4c::backend::lower_lir_to_backend_module(module));
+  const auto backend_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_true(direct_rendered == lowered_rendered,
+              "x86 explicit LIR emit surface should keep renamed extern-global-array callers aligned with the explicit lowered backend seam");
+  expect_true(direct_rendered == backend_rendered,
+              "x86 backend selection should keep renamed extern-global-array callers on the same explicit x86 asm path");
+  expect_contains(direct_rendered, ".globl entry_array\n",
+                  "x86 explicit LIR emit surface should publish the renamed zero-arg caller instead of requiring a literal main anchor for indexed extern-global-array slices");
+  expect_contains(direct_rendered, "entry_array:\n",
+                  "x86 explicit LIR emit surface should preserve the renamed extern-global-array caller label on the asm path");
+  expect_contains(direct_rendered, "mov eax, dword ptr [rax + 4]\n",
+                  "x86 explicit LIR emit surface should still lower renamed extern-global-array callers into the same indexed global load");
+  expect_not_contains(direct_rendered, "target triple =",
+                      "x86 explicit LIR emit surface should not fall back to LLVM text for renamed extern-global-array callers");
+}
+
 void test_x86_backend_explicit_lir_emit_surface_matches_mixed_cast_constant_conditional_goto_return_path() {
   const auto module = make_mixed_cast_constant_conditional_goto_return_module();
   const auto direct_rendered = c4c::backend::x86::emit_module(module);
@@ -6516,6 +6543,33 @@ void test_x86_backend_renders_global_char_pointer_diff_slice() {
                       "x86 backend should no longer fall back to LLVM text for the bounded global char pointer-difference slice");
 }
 
+void test_x86_backend_explicit_lir_emit_surface_keeps_renamed_global_char_pointer_diff_on_asm_path() {
+  auto module = make_x86_global_char_pointer_diff_module();
+  auto& function = module.functions.front();
+  function.name = "entry_chardiff";
+  function.signature_text = "define i32 @entry_chardiff()\n";
+
+  const auto direct_rendered = c4c::backend::x86::emit_module(module);
+  const auto lowered_rendered =
+      c4c::backend::x86::emit_module(c4c::backend::lower_lir_to_backend_module(module));
+  const auto backend_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_true(direct_rendered == lowered_rendered,
+              "x86 explicit LIR emit surface should keep renamed global-char-pointer-diff callers aligned with the explicit lowered backend seam");
+  expect_true(direct_rendered == backend_rendered,
+              "x86 backend selection should keep renamed global-char-pointer-diff callers on the same explicit x86 asm path");
+  expect_contains(direct_rendered, ".globl entry_chardiff\n",
+                  "x86 explicit LIR emit surface should publish the renamed zero-arg caller instead of requiring a literal main anchor for char pointer-difference slices");
+  expect_contains(direct_rendered, "entry_chardiff:\n",
+                  "x86 explicit LIR emit surface should preserve the renamed global-char-pointer-diff caller label on the asm path");
+  expect_contains(direct_rendered, "cmp rcx, 1\n",
+                  "x86 explicit LIR emit surface should still compare the renamed char pointer difference against the expected byte distance");
+  expect_not_contains(direct_rendered, "target triple =",
+                      "x86 explicit LIR emit surface should not fall back to LLVM text for renamed global-char-pointer-diff callers");
+}
+
 void test_x86_backend_scaffold_matches_direct_global_char_pointer_diff_asm() {
   const auto direct_rendered =
       c4c::backend::x86::emit_module(make_x86_global_char_pointer_diff_module());
@@ -6578,6 +6632,33 @@ void test_x86_backend_renders_global_int_pointer_diff_slice() {
                   "x86 backend should return the bounded scaled pointer-difference comparison result");
   expect_not_contains(rendered, "getelementptr",
                       "x86 backend should no longer fall back to LLVM text for the bounded global int pointer-difference slice");
+}
+
+void test_x86_backend_explicit_lir_emit_surface_keeps_renamed_global_int_pointer_diff_on_asm_path() {
+  auto module = make_x86_global_int_pointer_diff_module();
+  auto& function = module.functions.front();
+  function.name = "entry_intdiff";
+  function.signature_text = "define i32 @entry_intdiff()\n";
+
+  const auto direct_rendered = c4c::backend::x86::emit_module(module);
+  const auto lowered_rendered =
+      c4c::backend::x86::emit_module(c4c::backend::lower_lir_to_backend_module(module));
+  const auto backend_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_true(direct_rendered == lowered_rendered,
+              "x86 explicit LIR emit surface should keep renamed global-int-pointer-diff callers aligned with the explicit lowered backend seam");
+  expect_true(direct_rendered == backend_rendered,
+              "x86 backend selection should keep renamed global-int-pointer-diff callers on the same explicit x86 asm path");
+  expect_contains(direct_rendered, ".globl entry_intdiff\n",
+                  "x86 explicit LIR emit surface should publish the renamed zero-arg caller instead of requiring a literal main anchor for int pointer-difference slices");
+  expect_contains(direct_rendered, "entry_intdiff:\n",
+                  "x86 explicit LIR emit surface should preserve the renamed global-int-pointer-diff caller label on the asm path");
+  expect_contains(direct_rendered, "sar rcx, 2\n",
+                  "x86 explicit LIR emit surface should still scale the renamed int pointer difference before comparison");
+  expect_not_contains(direct_rendered, "target triple =",
+                      "x86 explicit LIR emit surface should not fall back to LLVM text for renamed global-int-pointer-diff callers");
 }
 
 void test_x86_backend_scaffold_matches_direct_global_int_pointer_diff_asm() {
@@ -7196,6 +7277,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_double_indirect_local_pointer_conditional_return_path);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_keeps_renamed_double_indirect_local_pointer_conditional_return_on_asm_path);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_keeps_renamed_global_int_pointer_roundtrip_on_asm_path);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_keeps_renamed_extern_global_array_on_asm_path);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_mixed_cast_constant_conditional_goto_return_path);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_truncating_binop_constant_conditional_goto_return_path);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_select_constant_conditional_goto_return_path);
@@ -7337,9 +7419,11 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_bounded_multi_printf_vararg_path);
   RUN_TEST(test_x86_backend_renders_string_literal_char_slice);
   RUN_TEST(test_x86_backend_renders_global_char_pointer_diff_slice);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_keeps_renamed_global_char_pointer_diff_on_asm_path);
   RUN_TEST(test_x86_backend_scaffold_matches_direct_global_char_pointer_diff_asm);
   RUN_TEST(test_x86_backend_renders_global_char_pointer_diff_slice_from_typed_ops);
   RUN_TEST(test_x86_backend_renders_global_int_pointer_diff_slice);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_keeps_renamed_global_int_pointer_diff_on_asm_path);
   RUN_TEST(test_x86_backend_scaffold_matches_direct_global_int_pointer_diff_asm);
   RUN_TEST(test_x86_backend_renders_global_int_pointer_diff_slice_from_typed_ops);
   RUN_TEST(test_x86_backend_renders_global_int_pointer_roundtrip_slice);

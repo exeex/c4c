@@ -3166,9 +3166,9 @@ std::optional<BackendFunction> adapt_indexed_global_array_load_function(
   using namespace c4c::codegen::lir;
 
   if (function.is_declaration || !backend_function_is_definition(signature) ||
-      signature.return_type != "i32" || signature.name != "main" ||
-      !signature.params.empty() || signature.is_vararg || function.blocks.size() != 1 ||
-      !function.alloca_insts.empty() || !function.stack_objects.empty()) {
+      signature.return_type != "i32" || !signature.params.empty() ||
+      signature.is_vararg || function.blocks.size() != 1 || !function.alloca_insts.empty() ||
+      !function.stack_objects.empty()) {
     return std::nullopt;
   }
 
@@ -3236,9 +3236,9 @@ std::optional<BackendFunction> adapt_global_char_pointer_diff_function(
   using namespace c4c::codegen::lir;
 
   if (function.is_declaration || !backend_function_is_definition(signature) ||
-      signature.return_type != "i32" || signature.name != "main" ||
-      !signature.params.empty() || signature.is_vararg || function.blocks.size() != 1 ||
-      !function.alloca_insts.empty() || !function.stack_objects.empty()) {
+      signature.return_type != "i32" || !signature.params.empty() ||
+      signature.is_vararg || function.blocks.size() != 1 || !function.alloca_insts.empty() ||
+      !function.stack_objects.empty()) {
     return std::nullopt;
   }
 
@@ -3368,9 +3368,9 @@ std::optional<BackendFunction> adapt_global_int_pointer_diff_function(
   using namespace c4c::codegen::lir;
 
   if (function.is_declaration || !backend_function_is_definition(signature) ||
-      signature.return_type != "i32" || signature.name != "main" ||
-      !signature.params.empty() || signature.is_vararg || function.blocks.size() != 1 ||
-      !function.alloca_insts.empty() || !function.stack_objects.empty()) {
+      signature.return_type != "i32" || !signature.params.empty() ||
+      signature.is_vararg || function.blocks.size() != 1 || !function.alloca_insts.empty() ||
+      !function.stack_objects.empty()) {
     return std::nullopt;
   }
 
