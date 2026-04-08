@@ -2726,6 +2726,22 @@ void test_adapter_normalizes_countdown_while_return_slice() {
                   "adapter should preserve the explicit countdown loop backedge split");
 }
 
+void test_adapter_normalizes_renamed_countdown_while_return_slice() {
+  auto module = make_countdown_while_return_module();
+  auto& function = module.functions.front();
+  function.name = "countdown_helper";
+  function.signature_text = "define i32 @countdown_helper()\n";
+
+  const auto adapted = c4c::backend::lower_lir_to_backend_module(module);
+  const auto rendered = c4c::backend::render_module(adapted);
+  expect_contains(rendered, "define i32 @countdown_helper()",
+                  "adapter should preserve renamed while-countdown callers on the explicit lowered backend seam");
+  expect_contains(rendered, "%t.iter = phi i32 [ 50, %entry ], [ %t.dec, %block_2 ]",
+                  "adapter should keep renamed while-countdown loops on the explicit loop-carried backend path");
+  expect_contains(rendered, "br i1 %t.keep_going, label %block_2, label %block_3",
+                  "adapter should preserve the explicit loop backedge split for renamed while-countdown callers");
+}
+
 void test_adapter_normalizes_typed_countdown_while_return_slice() {
   const auto adapted =
       c4c::backend::lower_lir_to_backend_module(make_typed_countdown_while_return_module());
@@ -3299,6 +3315,7 @@ int main(int argc, char* argv[]) {
   test_adapter_normalizes_representative_eighteen_local_slot_constant_conditional_goto_return_slice();
   test_adapter_normalizes_non_main_param_nineteen_local_slot_constant_conditional_goto_return_slice();
   test_adapter_normalizes_countdown_while_return_slice();
+  test_adapter_normalizes_renamed_countdown_while_return_slice();
   test_adapter_normalizes_typed_countdown_while_return_slice();
   test_adapter_normalizes_countdown_do_while_return_slice();
   test_adapter_normalizes_renamed_countdown_do_while_return_slice();

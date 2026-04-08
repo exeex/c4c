@@ -9,12 +9,36 @@ Source Plan: plan.md
 - [ ] Remove legacy backend IR files and backend/app LLVM rescue paths
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
-Current active item: Step 4 follow-on deletion. Continue with the renamed
-countdown-while follow-on in
-[`src/backend/lowering/lir_to_backend_ir.cpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp)
-so the explicit lowered/backend-selection seam no longer depends on
-`signature.name == "main"` for the adjacent bounded zero-argument `i32`
-countdown-loop family after the countdown-do-while lowered seam landed.
+Current active item: Step 4 follow-on deletion. Continue with the next live
+emitter-local `lower_lir_to_backend_module(...)` owner in
+[`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+or
+[`src/backend/aarch64/codegen/emit.cpp`](/workspaces/c4c/src/backend/aarch64/codegen/emit.cpp)
+now that the renamed countdown-while lowered/backend-selection seam no longer
+depends on `signature.name == "main"` in
+[`src/backend/lowering/lir_to_backend_ir.cpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp).
+
+Completed in this slice:
+
+- removed the bounded countdown-while lowered/backend-selection
+  production-side literal-`main` caller anchor from
+  [`src/backend/lowering/lir_to_backend_ir.cpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp)
+  by teaching the structural zero-argument `i32` countdown-loop adapter to
+  accept renamed callers instead of rejecting anything not named `main`
+- proved the lowered seam deletion with a new renamed-caller regression in
+  [`tests/backend/backend_lir_adapter_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_tests.cpp)
+  so the bounded countdown-while family stays on the explicit loop-carried
+  backend path instead of collapsing through the generic `ret i32 0` fallback
+- tightened the existing x86 renamed countdown-while regression in
+  [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
+  to lower the renamed LIR module directly, proving the explicit lowered seam
+  now matches the direct LIR asm path without post-lowering signature patching
+- kept focused adapter coverage green at `2` passed / `0` failed via
+  `ctest --test-dir build -R '^backend_lir_adapter_tests$|^backend_lir_adapter_x86_64_tests$' -j1 --output-on-failure`
+- kept backend regression coverage monotonic from `182` passed / `0` failed to
+  `402` passed / `0` failed via `test_backend_before.log`,
+  `test_backend_after.log`, and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_backend_before.log --after test_backend_after.log --allow-non-decreasing-passed`
 
 Completed in this slice:
 

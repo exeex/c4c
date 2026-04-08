@@ -1975,8 +1975,7 @@ void test_x86_backend_explicit_lir_emit_surface_keeps_renamed_countdown_while_on
   function.signature_text = "define i32 @countdown_helper()\n";
 
   const auto direct_rendered = c4c::backend::x86::emit_module(module);
-  auto lowered = c4c::backend::lower_lir_to_backend_module(make_countdown_while_return_module());
-  lowered.functions.front().signature.name = "countdown_helper";
+  auto lowered = c4c::backend::lower_lir_to_backend_module(module);
   const auto lowered_rendered = c4c::backend::x86::emit_module(lowered);
 
   expect_contains(direct_rendered, ".globl countdown_helper\n",
