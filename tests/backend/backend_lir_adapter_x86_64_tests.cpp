@@ -3356,6 +3356,154 @@ void test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_both_local
                       "x86 backend seam should not fall back when the structured rewritten-second both-local slice relies only on backend-owned metadata");
 }
 
+namespace {
+
+c4c::codegen::lir::LirModule make_folded_two_arg_direct_call_module() {
+  auto module = make_typed_direct_call_two_arg_module();
+
+  auto* helper = module.functions.empty() ? nullptr : &module.functions.front();
+  auto* main_fn = module.functions.size() < 2 ? nullptr : &module.functions.back();
+  if (helper == nullptr || main_fn == nullptr || helper->blocks.empty() ||
+      main_fn->blocks.empty()) {
+    return module;
+  }
+
+  helper->name = "const_pair";
+  helper->signature_text = "define i32 @const_pair(i32 %p.left, i32 %p.right)\n";
+  auto& helper_entry = helper->blocks.front();
+  helper_entry.insts.clear();
+  helper_entry.insts.push_back(
+      c4c::codegen::lir::LirBinOp{"%t.helper.folded.add", "add", "i32", "9", "%p.left"});
+  helper_entry.insts.push_back(c4c::codegen::lir::LirBinOp{"%t.helper.folded.sub",
+                                                            "sub",
+                                                            "i32",
+                                                            "%t.helper.folded.add",
+                                                            "%p.right"});
+  helper_entry.terminator = c4c::codegen::lir::LirRet{std::string("%t.helper.folded.sub"), "i32"};
+
+  auto* call =
+      main_fn->blocks.front().insts.empty()
+          ? nullptr
+          : std::get_if<c4c::codegen::lir::LirCallOp>(&main_fn->blocks.front().insts.front());
+  if (call != nullptr) {
+    call->callee = c4c::codegen::lir::LirOperand(std::string("@const_pair"),
+                                                 c4c::codegen::lir::LirOperandKind::Global);
+    call->args_str = "i32 11, i32 13";
+    call->result = "%t.main.const_pair.folded";
+    main_fn->blocks.front().terminator =
+        c4c::codegen::lir::LirRet{std::string("%t.main.const_pair.folded"), "i32"};
+  }
+
+  return module;
+}
+
+c4c::backend::BackendModule make_folded_two_arg_direct_call_backend_module() {
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_two_arg_module());
+
+  c4c::backend::BackendFunction* helper = nullptr;
+  c4c::backend::BackendFunction* main_fn = nullptr;
+  for (auto& function : lowered.functions) {
+    if (function.signature.name == "main") {
+      main_fn = &function;
+    } else {
+      helper = &function;
+    }
+  }
+  if (helper == nullptr || main_fn == nullptr || helper->blocks.empty() ||
+      main_fn->blocks.empty()) {
+    return lowered;
+  }
+
+  helper->signature.name = "const_pair";
+  helper->signature.params[0].name = "%p.left";
+  helper->signature.params[1].name = "%p.right";
+  auto& helper_entry = helper->blocks.front();
+  helper_entry.insts.clear();
+  helper_entry.insts.push_back(c4c::backend::BackendBinaryInst{
+      c4c::backend::BackendBinaryOpcode::Add,
+      "%t.helper.folded.add",
+      "i32",
+      "9",
+      "%p.left",
+      c4c::backend::BackendScalarType::I32,
+  });
+  helper_entry.insts.push_back(c4c::backend::BackendBinaryInst{
+      c4c::backend::BackendBinaryOpcode::Sub,
+      "%t.helper.folded.sub",
+      "i32",
+      "%t.helper.folded.add",
+      "%p.right",
+      c4c::backend::BackendScalarType::I32,
+  });
+  helper_entry.terminator.value = "%t.helper.folded.sub";
+
+  auto* call =
+      main_fn->blocks.front().insts.empty()
+          ? nullptr
+          : std::get_if<c4c::backend::BackendCallInst>(&main_fn->blocks.front().insts.front());
+  if (call != nullptr) {
+    call->callee.symbol_name = "const_pair";
+    call->args[0].operand = "11";
+    call->args[1].operand = "13";
+    call->result = "%t.main.const_pair.folded";
+    main_fn->blocks.front().terminator.value = "%t.main.const_pair.folded";
+  }
+
+  return lowered;
+}
+
+}  // namespace
+
+void test_x86_backend_scaffold_accepts_structured_folded_two_arg_direct_call_ir_without_signature_shims() {
+  auto lowered = make_folded_two_arg_direct_call_backend_module();
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  const auto rendered = c4c::backend::emit_module(
+      lowered,
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+  expect_contains(rendered, "mov eax, 7",
+                  "x86 backend seam should fold the structured folded two-argument direct-call slice to the final return immediate without legacy signature text");
+  expect_not_contains(rendered, "call const_pair",
+                      "x86 backend seam should not need a legacy helper call once the structured folded two-argument slice is recognized");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 backend seam should not fall back when the structured folded two-argument slice relies only on backend-owned metadata");
+}
+
+void test_x86_backend_explicit_lir_emit_surface_matches_structured_folded_two_arg_direct_call_path() {
+  auto module = make_folded_two_arg_direct_call_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  const auto direct_rendered = c4c::backend::x86::emit_module(module);
+  auto lowered = make_folded_two_arg_direct_call_backend_module();
+  lowered.target_triple = "x86_64-unknown-linux-gnu";
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+  const auto lowered_rendered = c4c::backend::x86::emit_module(lowered);
+  const auto backend_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_contains(direct_rendered, "mov eax, 7\n",
+                  "x86 explicit LIR emit surface should fold the folded two-argument helper family to the final return immediate");
+  expect_contains(lowered_rendered, "mov eax, 7\n",
+                  "x86 lowered backend seam should fold the structured folded two-argument helper family to the same final return immediate");
+  expect_contains(backend_rendered, "mov eax, 7\n",
+                  "x86 backend selection should keep the folded two-argument LIR slice on the same folded return-immediate asm path");
+  expect_not_contains(direct_rendered, "call const_pair\n",
+                      "x86 explicit LIR emit surface should not keep a legacy helper call for the folded two-argument slice");
+  expect_not_contains(lowered_rendered, "call const_pair\n",
+                      "x86 lowered backend seam should not keep a legacy helper call for the folded two-argument slice");
+  expect_not_contains(backend_rendered, "call const_pair\n",
+                      "x86 backend selection should not keep a legacy helper call for the folded two-argument slice");
+  expect_not_contains(direct_rendered, "target triple =",
+                      "x86 explicit LIR emit surface should stay on assembly output for the folded two-argument slice");
+  expect_not_contains(lowered_rendered, "target triple =",
+                      "x86 lowered backend seam should stay on assembly output for the folded two-argument slice");
+  expect_not_contains(backend_rendered, "target triple =",
+                      "x86 backend selection should stay on assembly output for the folded two-argument slice");
+}
+
 void test_x86_backend_renders_typed_direct_call_local_arg_spacing_slice() {
   auto module = make_typed_direct_call_local_arg_with_suffix_spacing_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -6160,10 +6308,12 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_both_local_arg_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_both_local_first_rewrite_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_two_arg_direct_call_both_local_second_rewrite_ir_without_signature_shims);
+  RUN_TEST(test_x86_backend_scaffold_accepts_structured_folded_two_arg_direct_call_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_renders_typed_direct_call_local_arg_spacing_slice);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_direct_call_local_arg_spacing_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_slice);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_structured_two_arg_direct_call_path);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_structured_folded_two_arg_direct_call_path);
   RUN_TEST(test_x86_backend_renders_typed_two_arg_direct_call_slice_with_spaced_helper_signature);
   RUN_TEST(test_x86_backend_keeps_renamed_typed_two_arg_direct_call_slice_on_asm_path);
   RUN_TEST(test_x86_backend_rejects_typed_two_arg_direct_call_slice_when_helper_body_contract_disagrees);

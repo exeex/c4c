@@ -119,6 +119,15 @@ struct ParsedBackendMinimalTwoArgDirectCallLirModuleView {
   std::int64_t rhs_call_arg_imm = 0;
 };
 
+struct ParsedBackendMinimalFoldedTwoArgDirectCallLirModuleView {
+  const c4c::codegen::lir::LirFunction* helper = nullptr;
+  const c4c::codegen::lir::LirFunction* main_function = nullptr;
+  const c4c::codegen::lir::LirCallOp* call = nullptr;
+  std::int64_t lhs_call_arg_imm = 0;
+  std::int64_t rhs_call_arg_imm = 0;
+  std::int64_t return_imm = 0;
+};
+
 struct ParsedBackendMinimalDirectCallLirModuleView {
   const c4c::codegen::lir::LirFunction* helper = nullptr;
   const c4c::codegen::lir::LirFunction* main_function = nullptr;
@@ -1936,6 +1945,144 @@ parse_backend_minimal_two_arg_direct_call_lir_module(
       call,
       matched_slots->first,
       matched_slots->second,
+  };
+}
+
+inline std::optional<ParsedBackendStructuredFoldedTwoArgFunctionView>
+parse_backend_folded_two_arg_function(
+    const c4c::codegen::lir::LirFunction& function,
+    std::optional<std::string_view> expected_name = std::nullopt) {
+  using namespace c4c::codegen::lir;
+
+  const std::string_view function_name =
+      expected_name.has_value() ? *expected_name : std::string_view(function.name);
+  if (function.is_declaration ||
+      !backend_lir_signature_matches(function.signature_text, "define", "i32", function_name,
+                                     {"i32", "i32"}) ||
+      function.entry.value != 0 || function.blocks.size() != 1 ||
+      !function.alloca_insts.empty() || !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto helper_params = parse_backend_function_signature_params(function.signature_text);
+  if (!helper_params.has_value() || helper_params->size() != 2 || (*helper_params)[0].is_varargs ||
+      (*helper_params)[1].is_varargs ||
+      c4c::codegen::lir::trim_lir_arg_text((*helper_params)[0].type) != "i32" ||
+      c4c::codegen::lir::trim_lir_arg_text((*helper_params)[1].type) != "i32" ||
+      (*helper_params)[0].operand.empty() || (*helper_params)[1].operand.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& block = function.blocks.front();
+  const auto* ret = std::get_if<LirRet>(&block.terminator);
+  if (block.label != "entry" || block.insts.size() != 2 || ret == nullptr ||
+      !ret->value_str.has_value() || ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto* add = std::get_if<LirBinOp>(&block.insts[0]);
+  const auto* sub = std::get_if<LirBinOp>(&block.insts[1]);
+  const auto add_opcode = add == nullptr ? std::nullopt : add->opcode.typed();
+  const auto sub_opcode = sub == nullptr ? std::nullopt : sub->opcode.typed();
+  if (add == nullptr || sub == nullptr || add_opcode != LirBinaryOpcode::Add ||
+      sub_opcode != LirBinaryOpcode::Sub || add->type_str != "i32" || sub->type_str != "i32" ||
+      *ret->value_str != sub->result || sub->lhs != add->result ||
+      sub->rhs != (*helper_params)[1].operand) {
+    return std::nullopt;
+  }
+
+  const auto add_lhs_imm = parse_backend_i64_literal(add->lhs);
+  const auto add_rhs_imm = parse_backend_i64_literal(add->rhs);
+  const std::string_view lhs_param = (*helper_params)[0].operand;
+  std::int64_t base_imm = 0;
+  if (add->rhs == lhs_param && add_lhs_imm.has_value()) {
+    base_imm = *add_lhs_imm;
+  } else if (add->lhs == lhs_param && add_rhs_imm.has_value()) {
+    base_imm = *add_rhs_imm;
+  } else {
+    return std::nullopt;
+  }
+
+  return ParsedBackendStructuredFoldedTwoArgFunctionView{
+      std::move((*helper_params)[0].operand),
+      std::move((*helper_params)[1].operand),
+      base_imm,
+      nullptr,
+      nullptr,
+  };
+}
+
+inline std::optional<ParsedBackendMinimalFoldedTwoArgDirectCallLirModuleView>
+parse_backend_minimal_folded_two_arg_direct_call_lir_module(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 2 || !module.globals.empty() ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const LirFunction* main_fn = nullptr;
+  const LirFunction* helper = nullptr;
+  for (const auto& function : module.functions) {
+    if (function.name == "main") {
+      if (main_fn != nullptr) {
+        return std::nullopt;
+      }
+      main_fn = &function;
+      continue;
+    }
+    if (helper != nullptr) {
+      return std::nullopt;
+    }
+    helper = &function;
+  }
+
+  if (helper == nullptr || main_fn == nullptr || helper->is_declaration || main_fn->is_declaration ||
+      !backend_lir_is_zero_arg_i32_main_definition(main_fn->signature_text) ||
+      helper->entry.value != 0 || main_fn->entry.value != 0 || helper->blocks.size() != 1 ||
+      main_fn->blocks.size() != 1 || !helper->alloca_insts.empty() ||
+      !helper->stack_objects.empty() || !main_fn->stack_objects.empty() ||
+      !main_fn->alloca_insts.empty()) {
+    return std::nullopt;
+  }
+
+  const auto helper_shape = parse_backend_folded_two_arg_function(*helper, std::nullopt);
+  if (!helper_shape.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto& main_block = main_fn->blocks.front();
+  const auto* main_ret = std::get_if<LirRet>(&main_block.terminator);
+  if (main_block.label != "entry" || main_ret == nullptr || !main_ret->value_str.has_value() ||
+      main_ret->type_str != "i32" || main_block.insts.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto* call = std::get_if<LirCallOp>(&main_block.insts.front());
+  const auto call_operands =
+      call == nullptr
+          ? std::nullopt
+          : parse_backend_direct_global_two_typed_call_operands(
+                *call, helper->name, "i32", "i32");
+  if (call == nullptr || call->result.empty() || call->result != *main_ret->value_str ||
+      !call_operands.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto lhs_call_arg_imm = parse_backend_i64_literal(call_operands->first);
+  const auto rhs_call_arg_imm = parse_backend_i64_literal(call_operands->second);
+  if (!lhs_call_arg_imm.has_value() || !rhs_call_arg_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  return ParsedBackendMinimalFoldedTwoArgDirectCallLirModuleView{
+      helper,
+      main_fn,
+      call,
+      *lhs_call_arg_imm,
+      *rhs_call_arg_imm,
+      helper_shape->base_imm + *lhs_call_arg_imm - *rhs_call_arg_imm,
   };
 }
 

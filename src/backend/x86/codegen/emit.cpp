@@ -4230,6 +4230,26 @@ std::optional<MinimalTwoArgDirectCallSlice> parse_minimal_two_arg_direct_call_sl
   };
 }
 
+std::optional<std::int64_t> parse_minimal_folded_two_arg_direct_call_return_imm(
+    const c4c::backend::BackendModule& module) {
+  const auto parsed =
+      c4c::backend::parse_backend_minimal_folded_two_arg_direct_call_module(module);
+  if (!parsed.has_value()) {
+    return std::nullopt;
+  }
+  return parsed->return_imm;
+}
+
+std::optional<std::int64_t> parse_minimal_folded_two_arg_direct_call_return_imm(
+    const c4c::codegen::lir::LirModule& module) {
+  const auto parsed =
+      c4c::backend::parse_backend_minimal_folded_two_arg_direct_call_lir_module(module);
+  if (!parsed.has_value()) {
+    return std::nullopt;
+  }
+  return parsed->return_imm;
+}
+
 std::optional<MinimalDualIdentityDirectCallSubSlice> parse_minimal_dual_identity_direct_call_sub_slice(
     const c4c::backend::BackendModule& module) {
   const auto parsed =
@@ -5987,6 +6007,10 @@ std::optional<std::string> try_emit_direct_lir_module(
         slice.has_value()) {
       return emit_minimal_two_arg_direct_call_asm(module.target_triple, *slice);
     }
+    if (const auto imm = parse_minimal_folded_two_arg_direct_call_return_imm(module);
+        imm.has_value()) {
+      return emit_minimal_return_asm(module.target_triple, *imm);
+    }
     if (const auto slice =
             c4c::backend::parse_backend_minimal_direct_call_identity_arg_lir_module(module);
         slice.has_value()) {
@@ -6115,6 +6139,10 @@ std::string emit_module(const c4c::backend::BackendModule& module,
     if (const auto slice = c4c::backend::parse_backend_minimal_two_arg_direct_call_module(module);
         slice.has_value()) {
       return emit_minimal_two_arg_direct_call_asm(module, *slice);
+    }
+    if (const auto imm = parse_minimal_folded_two_arg_direct_call_return_imm(module);
+        imm.has_value()) {
+      return emit_minimal_return_asm(module, *imm);
     }
     if (const auto slice = parse_minimal_call_crossing_direct_call_slice(module);
         slice.has_value()) {

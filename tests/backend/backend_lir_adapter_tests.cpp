@@ -1482,6 +1482,59 @@ void test_backend_call_helpers_parse_structured_folded_two_arg_direct_call_modul
               "shared structured folded two-argument direct-call module parser should preserve renamed helper symbols, parameters, direct-call operands, and folded return immediates without target-local helper-body scans");
 }
 
+void test_backend_call_helpers_parse_folded_two_arg_direct_call_lir_module() {
+  auto module = make_typed_direct_call_two_arg_module();
+
+  auto* helper = module.functions.empty() ? nullptr : &module.functions.front();
+  auto* main_fn = module.functions.size() < 2 ? nullptr : &module.functions.back();
+  expect_true(helper != nullptr && main_fn != nullptr,
+              "shared folded two-argument direct-call LIR parser regression test needs helper and main functions");
+  if (helper == nullptr || main_fn == nullptr || helper->blocks.empty() ||
+      main_fn->blocks.empty()) {
+    return;
+  }
+
+  helper->name = "const_pair";
+  helper->signature_text = "define i32 @const_pair(i32 %p.left, i32 %p.right)\n";
+  auto& helper_entry = helper->blocks.front();
+  helper_entry.insts.clear();
+  helper_entry.insts.push_back(
+      c4c::codegen::lir::LirBinOp{"%t.helper.folded.add", "add", "i32", "9", "%p.left"});
+  helper_entry.insts.push_back(c4c::codegen::lir::LirBinOp{"%t.helper.folded.sub",
+                                                            "sub",
+                                                            "i32",
+                                                            "%t.helper.folded.add",
+                                                            "%p.right"});
+  helper_entry.terminator = c4c::codegen::lir::LirRet{std::string("%t.helper.folded.sub"), "i32"};
+
+  auto* call =
+      main_fn->blocks.front().insts.empty()
+          ? nullptr
+          : std::get_if<c4c::codegen::lir::LirCallOp>(&main_fn->blocks.front().insts.front());
+  expect_true(call != nullptr,
+              "shared folded two-argument direct-call LIR parser regression test needs a mutable main call instruction");
+  if (call == nullptr) {
+    return;
+  }
+
+  call->callee = c4c::codegen::lir::LirOperand(std::string("@const_pair"),
+                                               c4c::codegen::lir::LirOperandKind::Global);
+  call->args_str = "i32 11, i32 13";
+  call->result = "%t.main.const_pair.folded";
+  main_fn->blocks.front().terminator =
+      c4c::codegen::lir::LirRet{std::string("%t.main.const_pair.folded"), "i32"};
+
+  const auto parsed =
+      c4c::backend::parse_backend_minimal_folded_two_arg_direct_call_lir_module(module);
+  expect_true(parsed.has_value() && parsed->helper != nullptr && parsed->main_function != nullptr &&
+                  parsed->call != nullptr && parsed->helper->name == "const_pair" &&
+                  parsed->main_function->name == "main" &&
+                  parsed->call->result == "%t.main.const_pair.folded" &&
+                  parsed->lhs_call_arg_imm == 11 && parsed->rhs_call_arg_imm == 13 &&
+                  parsed->return_imm == 7,
+              "shared folded two-argument direct-call LIR parser should preserve renamed helper symbols, call operands, and folded return immediates without backend-IR lowering");
+}
+
 void test_backend_call_helpers_parse_structured_declared_direct_call_module() {
   auto lowered =
       c4c::backend::lower_lir_to_backend_module(make_x86_extern_decl_inferred_param_module());
@@ -2910,6 +2963,7 @@ int main(int argc, char* argv[]) {
   test_backend_call_helpers_parse_structured_two_arg_direct_call_module();
   test_backend_call_helpers_match_structured_direct_call_module();
   test_backend_call_helpers_parse_structured_folded_two_arg_direct_call_module();
+  test_backend_call_helpers_parse_folded_two_arg_direct_call_lir_module();
   test_backend_call_helpers_parse_structured_declared_direct_call_module();
   test_backend_call_helpers_decode_lir_direct_global_vararg_prefix();
   test_backend_call_helpers_classify_lir_nonminimal_call_types();

@@ -9,13 +9,31 @@ Source Plan: plan.md
 - [ ] Remove legacy backend IR files and backend/app LLVM rescue paths
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
-Current active item: Step 4 x86 emitter tightening. Delete the now-redundant
-x86-local single-argument direct-call parser/emitter branch now that the
-shared direct-call add-immediate LIR parser covers the same bounded helper
-family, and prove the slot-backed helper family stays on the direct x86 asm
-path without the local special case.
+Current active item: Step 4 x86 emitter tightening. Delete the next live x86
+`lower_lir_to_backend_module(...)` dependency by targeting another bounded
+helper/runtime family adjacent to the folded two-argument slice, keeping the
+batch production-first with matching parity coverage.
 
 Completed in this slice:
+
+- added a shared LIR-side parser for the bounded folded two-argument direct-call
+  helper family in
+  [`src/backend/lowering/call_decode.hpp`](/workspaces/c4c/src/backend/lowering/call_decode.hpp)
+  so the direct x86 entry surface can recognize the constant-plus-left-minus-right
+  helper shape without lowering through legacy backend IR first
+- taught the direct x86 LIR emit surface and the lowered backend-module x86 seam
+  in
+  [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+  to fold that bounded helper family directly to the final return-immediate asm
+  path, removing another live x86-local `lower_lir_to_backend_module(...)`
+  dependency for explicit LIR emission
+- proved the shared parser with a new regression in
+  [`tests/backend/backend_lir_adapter_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_tests.cpp)
+  covering the renamed folded helper/call shape on the LIR side
+- proved the production deletion with new x86 regressions in
+  [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
+  covering the structured lowered seam plus direct/lowered/backend-selection
+  asm-path coverage for the folded two-argument slice
 
 - deleted the bespoke x86-local single-argument direct-call parser/emitter
   branch in
@@ -93,10 +111,9 @@ Completed in this slice:
 
 Next intended slice:
 
-- target the adjacent shared direct-call helper seam next: the bounded folded
-  two-argument helper family, removing the next live x86
-  `lower_lir_to_backend_module(...)` dependency with the smaller parser/emitter
-  batch now that the dual-identity direct-call subtraction seam is gone
+- target another bounded x86-local helper/runtime family that still hits
+  `lower_lir_to_backend_module(...)` on the explicit LIR entrypoint now that
+  the folded two-argument helper seam is gone
 - removed the old x86 emitter-local post-adaptation return-immediate/add/sub
   recognition branches and replaced them with the BIR-first direct-LIR path
 - proved the shared parser with a new regression test in
@@ -210,6 +227,9 @@ Recent baseline:
   `ctest --test-dir build -R backend -j1 --output-on-failure`
 - focused adapter coverage is green at `2` passed / `0` failed via
   `ctest --test-dir build -R 'backend_lir_adapter_tests|backend_lir_adapter_x86_64_tests' -j1 --output-on-failure`
+- full-suite regression guard is green at `2841` passed / `0` failed before and
+  after via `test_fail_before.log`, `test_fail_after.log`, and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
 - latest Step 4 follow-through also removes the bounded local-slot arithmetic /
   two-local scalar-slot dependency on `lower_lir_to_backend_module(...)` from
   the direct x86 LIR entrypoint
@@ -259,6 +279,10 @@ Recent baseline:
   direct-call subtraction dependency on `lower_lir_to_backend_module(...)`
   from the direct x86 LIR entrypoint and keeps the direct/lowered/backend-
   selection seams on identical asm
+- latest Step 4 follow-through also removes the bounded folded two-argument
+  direct-call dependency on `lower_lir_to_backend_module(...)` from the direct
+  x86 LIR entrypoint and keeps the direct/lowered/backend-selection seams on
+  the folded return-immediate asm path
 - latest Step 4 follow-through extends the x86 LIR constant-fold interpreter
   to handle CastOp (ZExt, SExt, Trunc), BinOp (Add, Sub, Mul, And, Or, Xor,
   Shl, LShr, AShr), and SelectOp instructions, removing the bounded
