@@ -5012,12 +5012,6 @@ std::string emit_minimal_conditional_return_asm(
   return out.str();
 }
 
-std::string emit_minimal_conditional_return_asm(
-    const c4c::backend::BackendModule& module,
-    const MinimalConditionalReturnSlice& slice) {
-  return emit_minimal_conditional_return_asm(module.target_triple, slice);
-}
-
 std::string emit_minimal_conditional_affine_i8_return_asm(
     std::string_view target_triple,
     const MinimalConditionalAffineI8ReturnSlice& slice) {
@@ -5638,64 +5632,6 @@ std::string emit_minimal_string_literal_char_asm(
   out << "  lea rax, " << string_label << "[rip]\n"
       << "  " << (slice.sign_extend ? "movsx" : "movzx")
       << " eax, byte ptr [rax + " << slice.byte_offset << "]\n"
-      << "  ret\n";
-  return out.str();
-}
-
-std::string emit_minimal_call_crossing_direct_call_asm(
-    const c4c::backend::BackendModule& module,
-    const c4c::backend::RegAllocIntegrationResult& regalloc,
-    const MinimalCallCrossingDirectCallSlice& slice) {
-  if (slice.source_imm < std::numeric_limits<std::int32_t>::min() ||
-      slice.source_imm > std::numeric_limits<std::int32_t>::max()) {
-    throw std::invalid_argument("call-crossing source immediates outside the minimal mov-supported range");
-  }
-  if (slice.helper_add_imm < std::numeric_limits<std::int32_t>::min() ||
-      slice.helper_add_imm > std::numeric_limits<std::int32_t>::max()) {
-    throw std::invalid_argument("call-crossing helper add immediates outside the minimal add-supported range");
-  }
-
-  const auto* source_reg =
-      c4c::backend::stack_layout::find_assigned_reg(regalloc, slice.regalloc_source_value);
-  if (source_reg == nullptr ||
-      !c4c::backend::stack_layout::uses_callee_saved_reg(regalloc, *source_reg)) {
-    throw std::invalid_argument("shared call-crossing regalloc state for the minimal x86 direct-call slice");
-  }
-
-  const char* reg64 = x86_reg64_name(*source_reg);
-  const char* reg32 = x86_reg32_name(*source_reg);
-  if (reg64 == nullptr || reg32 == nullptr) {
-    throw std::invalid_argument("minimal x86 direct-call slice received an unknown physical register");
-  }
-
-  const auto frame_size = aligned_frame_size(1);
-  const auto helper_symbol = asm_symbol_name(module, slice.callee_name);
-  const auto main_symbol = asm_symbol_name(module, slice.caller_name);
-
-  std::ostringstream out;
-  out << ".intel_syntax noprefix\n";
-  out << ".text\n";
-  emit_function_prelude(out, module, helper_symbol, false);
-  out << "  mov eax, edi\n"
-      << "  add eax, " << slice.helper_add_imm << "\n"
-      << "  ret\n";
-  emit_function_prelude(out, module, main_symbol, true);
-  out << "  push rbp\n"
-      << "  mov rbp, rsp\n";
-  if (frame_size > 0) {
-    out << "  sub rsp, " << frame_size << "\n"
-        << "  mov qword ptr [rbp - " << frame_size << "], " << reg64 << "\n";
-  }
-  out << "  mov " << reg32 << ", " << slice.source_imm << "\n"
-      << "  mov edi, " << reg32 << "\n"
-      << "  call " << helper_symbol << "\n"
-      << "  mov eax, eax\n"
-      << "  add eax, " << reg32 << "\n";
-  if (frame_size > 0) {
-    out << "  mov " << reg64 << ", qword ptr [rbp - " << frame_size << "]\n";
-  }
-  out << "  mov rsp, rbp\n"
-      << "  pop rbp\n"
       << "  ret\n";
   return out.str();
 }

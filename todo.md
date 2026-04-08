@@ -5,12 +5,29 @@ Source Plan: plan.md
 # Active Item
 
 - Step 2: switch one shared helper seam off `BackendModule`
-- Current slice: inspect the remaining Step 2 helper families for the next dead
-  target-local `BackendModule` or direct-LIR adapter cleanup after removing the
-  unused zero-arg direct-call LIR parser seam from shared call-decode
+- Current slice: inspect the remaining Step 2 emitter-local helper clusters for
+  the next `BackendModule` seam that still carries real metadata instead of
+  being a dead forwarding wrapper
 
 # Completed
 
+- Removed the next verified-dead target-local `BackendModule` forwarding
+  overloads from `src/backend/x86/codegen/emit.cpp` and
+  `src/backend/aarch64/codegen/emit.cpp` after confirming all live callers
+  already pass target triples or BIR-owned slices directly for the
+  conditional-return, string-literal-char, and call-crossing direct-call helper
+  families
+- Rebuilt `backend_bir_tests`, `backend_shared_util_tests`, and `c4cll`
+  successfully after the emitter-local wrapper cleanup
+- Reran
+  `ctest --test-dir build -R 'backend_(shared_util_tests|bir_tests)' --output-on-failure`
+  successfully after the cleanup
+- Reran the full `ctest --test-dir build -j --output-on-failure` suite twice
+  to establish same-tree before/after logs for this maintenance slice; both
+  snapshots reported `2821/2834` passed with the same 13 known failures
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=0 failed=0`
+  and zero newly failing tests
 - Extended the focused x86 BIR pipeline regression so folded-two-arg,
   dual-identity subtraction, and call-crossing direct-call LIR inputs are all
   required to lower into shared BIR-owned shapes before target emission

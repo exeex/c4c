@@ -4542,12 +4542,6 @@ std::string emit_minimal_conditional_return_asm(
   return out.str();
 }
 
-std::string emit_minimal_conditional_return_asm(
-    const c4c::backend::BackendModule& module,
-    const MinimalConditionalReturnSlice& slice) {
-  return emit_minimal_conditional_return_asm(module.target_triple, slice);
-}
-
 std::string emit_minimal_conditional_affine_i8_return_asm(
     const c4c::backend::BackendModule& module,
     const MinimalConditionalAffineI8ReturnSlice& slice) {
@@ -5323,12 +5317,6 @@ std::string emit_minimal_string_literal_char_asm(
   }
   out << "  ret\n";
   return out.str();
-}
-
-std::string emit_minimal_string_literal_char_asm(
-    const c4c::backend::BackendModule& module,
-    const MinimalStringLiteralCharSlice& slice) {
-  return emit_minimal_string_literal_char_asm(module.target_triple, slice);
 }
 
 std::string emit_minimal_local_array_asm(
