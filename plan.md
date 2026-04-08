@@ -6,175 +6,156 @@ Activated from: ideas/closed/40_target_profile_and_execution_domain_foundation.m
 
 ## Purpose
 
-Resume the BIR migration now that the minimal target/execution-domain
-foundation is in place, and remove both legacy backend IR and backend-facing
-LLVM rescue behavior without letting test coverage collapse back onto the
-`riscv64` passthrough oracle.
+Finish the cutover to BIR-only backend ownership by removing the remaining
+legacy backend-IR production seams, then retire the now-stale legacy tests and
+build wiring.
 
 ## Goal
 
-Make BIR the only backend IR, migrate x86/aarch64 emitters to consume it
-directly, and delete legacy backend-IR plus LLVM rescue paths.
+Leave the repo with one backend IR path:
 
-## Read First
+- production/backend routing accepts only LIR entry or prelowered BIR
+- x86/aarch64 emitters consume only direct LIR probes or BIR-native paths
+- legacy backend-IR code and legacy backend-IR-centric tests are deleted or
+  fully parked out of active use
 
-- [ideas/open/41_bir_full_coverage_and_ir_legacy_removal.md](/workspaces/c4c/ideas/open/41_bir_full_coverage_and_ir_legacy_removal.md)
-- [src/backend/backend.cpp](/workspaces/c4c/src/backend/backend.cpp)
-- [src/backend/backend.hpp](/workspaces/c4c/src/backend/backend.hpp)
-- [src/backend/bir.hpp](/workspaces/c4c/src/backend/bir.hpp)
-- [src/backend/lowering/lir_to_bir.cpp](/workspaces/c4c/src/backend/lowering/lir_to_bir.cpp)
-- [src/backend/lowering/lir_to_backend_ir.cpp](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp)
-- [src/apps/c4cll.cpp](/workspaces/c4c/src/apps/c4cll.cpp)
+## Current State
 
-## Execution Rules
+Already done in the current branch:
 
-- do not use `riscv64` passthrough output as the default proof that BIR stayed
-  off fallback paths
-- prefer target-neutral route/lowering checks when the question is about
-  `lir_to_bir` or fallback selection
-- use `x86_64` / `aarch64` tests when the question is really about emitter
-  behavior
-- for this plan's routine validation, use `ctest -R backend` as the required
-  regression scope instead of the full `ctest` suite unless a change clearly
-  escapes backend ownership
-- when a lowering or route surface has multiple low-coupling fixture variants
-  in the same family, prefer landing that family as one bounded batch instead
-  of one test at a time
-- keep transitional legacy-bucket tests clearly marked and delete them once
-  their coverage is either migrated or made irrelevant
+- x86 legacy `BackendModule` emitter entry hard-locked
+- aarch64 legacy `BackendModule` emitter entry hard-locked
+- shared backend `BackendModule` public emission removed
+- legacy backend-IR-centric test targets removed from active CMake / ctest wiring
 
-## Step 1. Re-audit legacy boundaries
+Remaining work is now best handled as four parallel workstreams plus one mainline
+integration lane.
 
-Goal: refresh the exact production and test seams that still depend on
-`BackendModule(ir.*)` or backend-facing LLVM rescue.
+## Parallel Execution
 
-Actions:
+### Group A
 
-- refresh the code boundary inventory in `backend.*`, lowering, emitters, and
-  `c4cll`
-- refresh the legacy-coupled test inventory, including temporary extracted
-  buckets
-- identify which seams need structured route/fallback observation instead of
-  `riscv64` text inference
+Mission:
+- finish the x86 emitter-side conversion away from legacy backend IR internals
 
-Completion Check:
+Write ownership:
+- [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+- [`src/backend/x86/codegen/emit.hpp`](/workspaces/c4c/src/backend/x86/codegen/emit.hpp) if needed
 
-- the current removal map is concrete enough to drive implementation without
-  leaning on stale assumptions
+Expected outcomes:
+- remove dead `BackendModule`-typed helper paths where possible
+- trim obsolete legacy includes when helper/type dependencies are gone
+- keep x86 emitter entry behavior unchanged from the newly locked boundary
 
-## Step 2. Expand BIR coverage without RV64 overfitting
+Worker-local validation:
+- compile only the representative production object:
+  `cmake --build build -j8 --target CMakeFiles/c4cll.dir/src/backend/x86/codegen/emit.cpp.o`
 
-Goal: keep porting `lir_to_backend_ir` behavior into `lir_to_bir`, but validate
-through target-neutral seams first and use per-target emitters second.
+Out of scope:
+- shared backend routing
+- aarch64 emitter
+- legacy test-file deletion
 
-Actions:
+### Group B
 
-- port missing lowering clusters one bounded slice at a time
-- add target-neutral lowering/route tests where possible
-- prefer batching same-shape fixture families together when they share the same
-  route/lowering seam and are unlikely to interfere with each other
-- keep any `riscv64` route tests explicitly temporary and bounded
-- extend native x86/aarch64 emitter coverage for slices that are now BIR-owned
+Mission:
+- finish the aarch64 emitter-side conversion away from legacy backend IR internals
 
-Completion Check:
+Write ownership:
+- [`src/backend/aarch64/codegen/emit.cpp`](/workspaces/c4c/src/backend/aarch64/codegen/emit.cpp)
+- [`src/backend/aarch64/codegen/emit.hpp`](/workspaces/c4c/src/backend/aarch64/codegen/emit.hpp) if needed
 
-- new BIR coverage no longer depends primarily on `riscv64` passthrough tests
+Expected outcomes:
+- remove dead `BackendModule`-typed helper paths where possible
+- trim obsolete legacy includes when helper/type dependencies are gone
+- keep aarch64 emitter entry behavior unchanged from the newly locked boundary
 
-## Step 3. Migrate emitter-facing contracts
+Worker-local validation:
+- compile only the representative production object:
+  `cmake --build build -j8 --target CMakeFiles/c4cll.dir/src/backend/aarch64/codegen/emit.cpp.o`
 
-Goal: move x86/aarch64 emission off `ir.*` and onto BIR-native structures.
+Out of scope:
+- shared backend routing
+- x86 emitter
+- legacy test-file deletion
 
-Actions:
+### Group C
 
-- port printer/validator/data-structure parity needed by emitters
-- switch emitter includes and call sites from `ir.*` to BIR
-- remove `bir_to_backend_ir` usage as emitter-side crutch
+Mission:
+- remove the remaining shared lowering/legacy-IR production surfaces
 
-Completion Check:
+Write ownership:
+- [`src/backend/lowering/lir_to_backend_ir.cpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp)
+- [`src/backend/lowering/lir_to_backend_ir.hpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.hpp)
+- [`src/backend/lowering/call_decode.hpp`](/workspaces/c4c/src/backend/lowering/call_decode.hpp)
+- [`src/backend/lowering/call_decode.cpp`](/workspaces/c4c/src/backend/lowering/call_decode.cpp) if needed
+- legacy IR printer/validator headers or sources only if required by the same deletion batch
 
-- x86/aarch64 emission works from BIR-native ownership
+Expected outcomes:
+- shrink or remove production ownership of `lower_lir_to_backend_module(...)`
+- delete dead compatibility helpers that only exist for legacy backend IR
+- keep any still-needed bridge code explicitly temporary and documented
 
-## Step 4. Delete legacy/backend LLVM rescue paths
+Worker-local validation:
+- compile only touched representative objects:
+  `cmake --build build -j8 --target CMakeFiles/c4cll.dir/src/backend/lowering/lir_to_backend_ir.cpp.o`
+- or
+  `cmake --build build -j8 --target CMakeFiles/c4cll.dir/src/backend/lowering/call_decode.cpp.o`
 
-Goal: remove the now-obsolete backend IR and app-layer LLVM rescue behavior.
+Out of scope:
+- x86 emitter-local helper cleanup
+- aarch64 emitter-local helper cleanup
+- deleting parked legacy tests unless directly required by the same seam removal
 
-Sub-milestones:
+### Group D
 
-1. eliminate any remaining app-layer/backend fallback callers so backend asm
-   either emits natively or fails explicitly
-2. remove live production ownership of `lir_to_backend_ir.*` from x86/aarch64
-   emitters and backend route selectors
-3. delete the dead legacy backend IR files, tests, and build wiring once the
-   surviving paths are BIR-only
+Mission:
+- retire or migrate the parked legacy backend-IR-centric tests and scaffolding
 
-Actions:
+Write ownership:
+- [`tests/backend/backend_lir_adapter_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_tests.cpp)
+- [`tests/backend/backend_lir_adapter_aarch64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_aarch64_tests.cpp)
+- [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
+- [`tests/backend/backend_x86_64_extracted_tests.cpp`](/workspaces/c4c/tests/backend/backend_x86_64_extracted_tests.cpp)
+- [`tests/backend/backend_module_tests.cpp`](/workspaces/c4c/tests/backend/backend_module_tests.cpp)
+- directly related test support files only if required
 
-- keep unsupported backend asm behavior explicit and non-fallbacking on stdout
-  and file output throughout the cutover
-- batch work by live production seam, not by single testcase
-- when a seam is proven dead, delete the matching production caller, then
-  delete its tests/build wiring in the same slice
-- keep `lir_to_backend_ir.*` and `ir.*` deletion grouped into explicit
-  removal batches rather than letting them linger behind test-only progress
+Expected outcomes:
+- delete files that are now pure legacy scaffolding
+- migrate any still-valuable assertions into surviving BIR/native test families
+- keep test coverage aligned with BIR-only architecture
 
-Current next slice for Step 4:
+Worker-local validation:
+- compile only the touched representative test object, for example:
+  `cmake --build build -j8 --target CMakeFiles/backend_bir_tests.dir/tests/backend/backend_bir_pipeline_tests.cpp.o`
+- if editing a parked legacy file temporarily, use its matching object target only
 
-- remove legacy backend-IR-driven backend test targets from active CMake / ctest
-  wiring first, starting with
-  [`tests/backend/backend_lir_adapter_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_tests.cpp),
-  [`tests/backend/backend_lir_adapter_aarch64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_aarch64_tests.cpp),
-  [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp),
-  [`tests/backend/backend_x86_64_extracted_tests.cpp`](/workspaces/c4c/tests/backend/backend_x86_64_extracted_tests.cpp),
-  and
-  [`tests/backend/backend_module_tests.cpp`](/workspaces/c4c/tests/backend/backend_module_tests.cpp)
-- keep the source files in-tree for short-lived reference only, but stop
-  building or registering them once the production emitters have been hard-locked
-- after the stale build wiring is gone, hard-lock shared
-  [`src/backend/backend.cpp`](/workspaces/c4c/src/backend/backend.cpp)
-  `BackendModule` entrypoints as explicit unsupported seams so public backend
-  routing also rejects legacy IR at the boundary
-- prove the batch with reconfigure/build plus the surviving backend test scope
+Out of scope:
+- production emitter cleanup
+- shared lowering cleanup unless required for a migrated assertion
 
-Batch completion check:
+## Mainline Integration
 
-- no emitter/parser production path depends on `function.name == "main"` just
-  to recognize a bounded fixture shape
-- any helper logic that still needs to manufacture or locate `main` for tests
-  lives under backend test helper/fixture ownership instead of production code
-- at least one live production legacy seam disappears
-- the batch also shrinks the matching test/build assumptions
-- the slice leaves the repo with fewer `lir_to_backend_ir` owners than before
-- legacy backend-IR-centric test targets are no longer part of default build or
-  `ctest -R backend` execution
-- shared backend public emission no longer accepts raw `BackendModule` input
+Mainline stays responsible for:
 
-Step 4 commit quality bar:
+- updating [`plan.md`](/workspaces/c4c/plan.md), [`todo.md`](/workspaces/c4c/todo.md), and
+  [`todoA.md`](/workspaces/c4c/todoA.md) through [`todoD.md`](/workspaces/c4c/todoD.md)
+- conflict resolution and commit ordering across A/B/C/D
+- broad validation after worker slices land
+- deciding when to escalate from parked legacy state to physical deletion
 
-- do not treat test-only or probe-only commits as meaningful Step 4 progress
-- every Step 4 implementation commit should remove or tighten at least one
-  live production legacy path, fallback branch, or build-wired legacy caller
-- when tests are added or migrated in Step 4, they should accompany the
-  production deletion in the same bounded batch rather than stand alone as the
-  whole slice
-- if a slice cannot yet delete a production seam, keep it framed as audit or
-  preparation work rather than claiming Step 4 removal progress
+Mainline validation after merging worker output:
 
-Completion Check:
+- `cmake -S . -B build`
+- `cmake --build build -j8`
+- targeted surviving backend tests as appropriate
+- broader `ctest -R backend` only after reintegration, not inside each worker lane
 
-- there is only one backend IR path and no backend-to-LLVM rescue path left
+## Completion Check
 
-## Step 5. Final test cleanup
+This plan is complete when:
 
-Goal: remove transitional test buckets and align test families with the new
-BIR-only architecture.
-
-Actions:
-
-- delete temporary extracted legacy test buckets once coverage is migrated
-- retire legacy adapter/shared-util tests that only existed for `BackendModule`
-- keep platform-specific test files only where they still assert real
-  platform-specific behavior
-
-Completion Check:
-
-- test layout reflects the new architecture instead of the migration scaffolding
+- no live production path depends on legacy `BackendModule` emission
+- no active backend test/build path depends on legacy backend-IR-only seams
+- emitter and lowering ownership is BIR-first rather than legacy-IR-first
+- remaining legacy files are either deleted or clearly documented as temporary
