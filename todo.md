@@ -4,20 +4,39 @@ Source Plan: plan.md
 
 # Active Item
 
-- Step 5 follow-through: keep shrinking the remaining emitter-local direct-LIR
-  compatibility surface now that `src/backend/ir.hpp` is gone and BIR owns the
-  active shared global/call/local-slot seams
-- Current slice: follow through on the remaining
-  `parse_minimal_global_int_pointer_diff_slice(...)` family by proving the
-  fixed `[2 x i32]` same-global pointer-diff pattern also collapses to the
-  shared `bir.ret i32 1` contract, then remove the matching x86/aarch64
-  emitter-local direct-LIR fast paths
-- Next intended slice: re-inventory the remaining emitter-local direct-LIR
-  global/string/helper families after both bounded pointer-diff seams moved to
-  shared BIR, then pick the next smallest cross-target helper that still
-  bypasses shared lowering
+- Step 4 cleanup: keep shrinking adapter-only legacy-lowering surface now that
+  `src/backend/ir.hpp` and `lir_to_backend_ir.*` are already gone
+- Current slice: remove the dead native-backend `legacy_fallback` plumbing
+  from the BIR emitter path because x86/aarch64 direct-BIR entry points ignore
+  it and only the riscv passthrough route still needs LIR fallback state
+- Next intended slice: re-inventory the remaining genuinely live
+  `BackendModule`-style compatibility seams in `backend.cpp`,
+  `call_decode.*`, and the native emitters, then remove the next smallest
+  adapter-only wrapper or fallback branch that no longer has active callers
 
 # Completed
+
+- Removed the dead native-backend `legacy_fallback` parameter from the x86 and
+  aarch64 direct-BIR emitter entry points in
+  `src/backend/x86/codegen/emit.{hpp,cpp}` and
+  `src/backend/aarch64/codegen/emit.{hpp,cpp}`, then updated the LIR-to-BIR
+  fast paths to call the simplified direct-BIR interface
+- Simplified `src/backend/backend.cpp` so `BackendEmitter` only forwards the
+  BIR module to native targets, deleted the now-dead passthrough emitter
+  wrapper, and kept the riscv64 LLVM/BIR fallback behavior in the existing
+  route-specific branches instead of pretending native direct-BIR emission uses
+  LIR fallback state
+- Rebuilt `c4cll`, `backend_bir_tests`, and `backend_shared_util_tests`
+  successfully after the backend interface cleanup
+- Reran
+  `ctest --test-dir build -R 'backend_(bir_tests|shared_util_tests)' --output-on-failure`
+  successfully after the cleanup
+- Reran the full `ctest --test-dir build -j8 --output-on-failure` suite and
+  refreshed `test_after.log` / `test_fail_after.log`; the workspace stayed at
+  `2834/2834` passing with 0 failures
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=159
+  failed=-159` and zero newly failing tests against `test_fail_before.log`
 
 - Lowered the bounded cross-target `global_char_pointer_diff` LIR slice into
   shared BIR in `src/backend/lowering/lir_to_bir.cpp` by recognizing the

@@ -4031,9 +4031,7 @@ std::optional<std::string> try_emit_direct_lir_module(
 
 }  // namespace
 
-std::string emit_module(const c4c::backend::bir::Module& module,
-                        const c4c::codegen::lir::LirModule* legacy_fallback) {
-  (void)legacy_fallback;
+std::string emit_module(const c4c::backend::bir::Module& module) {
   if (const auto slice = c4c::backend::parse_bir_minimal_direct_call_module(module);
       slice.has_value()) {
     return emit_minimal_direct_call_asm(module, *slice);
@@ -4126,7 +4124,7 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
 
   if (const auto bir_module = c4c::backend::try_lower_to_bir(module); bir_module.has_value()) {
     try {
-      return emit_module(*bir_module, &module);
+      return emit_module(*bir_module);
     } catch (const std::invalid_argument& ex) {
       if (!is_direct_bir_subset_error(ex)) {
         throw;

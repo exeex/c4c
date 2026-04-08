@@ -17,35 +17,20 @@ namespace {
 class BackendEmitter {
  public:
   virtual ~BackendEmitter() = default;
-  virtual std::string emit(const bir::Module& module,
-                           const c4c::codegen::lir::LirModule* legacy_fallback) const = 0;
+  virtual std::string emit(const bir::Module& module) const = 0;
 };
 
 class Aarch64BackendEmitter final : public BackendEmitter {
  public:
-  std::string emit(const bir::Module& module,
-                   const c4c::codegen::lir::LirModule* legacy_fallback) const override {
-    return c4c::backend::aarch64::emit_module(module, legacy_fallback);
+  std::string emit(const bir::Module& module) const override {
+    return c4c::backend::aarch64::emit_module(module);
   }
 };
 
 class X86BackendEmitter final : public BackendEmitter {
  public:
-  std::string emit(const bir::Module& module,
-                   const c4c::codegen::lir::LirModule* legacy_fallback) const override {
-    return c4c::backend::x86::emit_module(module, legacy_fallback);
-  }
-};
-
-class PassthroughBackendEmitter final : public BackendEmitter {
- public:
-  std::string emit(const bir::Module& module,
-                   const c4c::codegen::lir::LirModule* legacy_fallback) const override {
-    if (legacy_fallback != nullptr &&
-        !c4c::backend::try_lower_to_bir(*legacy_fallback).has_value()) {
-      return c4c::codegen::lir::print_llvm(*legacy_fallback);
-    }
-    return c4c::backend::bir::print(module);
+  std::string emit(const bir::Module& module) const override {
+    return c4c::backend::x86::emit_module(module);
   }
 };
 
@@ -54,10 +39,10 @@ std::unique_ptr<BackendEmitter> make_backend(Target target) {
     case Target::X86_64:
     case Target::I686:
       return std::make_unique<X86BackendEmitter>();
-    case Target::Riscv64:
-      return std::make_unique<PassthroughBackendEmitter>();
     case Target::Aarch64:
       return std::make_unique<Aarch64BackendEmitter>();
+    case Target::Riscv64:
+      break;
   }
   return nullptr;
 }
@@ -138,7 +123,7 @@ std::string emit_module(const BackendModuleInput& input,
     }
     auto backend = make_backend(options.target);
     try {
-      return backend->emit(*bir_module, nullptr);
+      return backend->emit(*bir_module);
     } catch (const std::invalid_argument& ex) {
       if (!is_direct_bir_subset_error(ex)) {
         throw;
@@ -152,7 +137,7 @@ std::string emit_module(const BackendModuleInput& input,
       return c4c::backend::bir::print(*input.bir_module());
     }
     auto backend = make_backend(options.target);
-    return backend->emit(*input.bir_module(), input.legacy_fallback());
+    return backend->emit(*input.bir_module());
   }
 
   throw std::logic_error("unreachable backend lowering route");
