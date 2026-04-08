@@ -3,10 +3,7 @@
 #include "../../bir.hpp"
 #include "../../lowering/call_decode.hpp"
 #include "../../lowering/lir_to_bir.hpp"
-#include "../../lowering/lir_to_backend_ir.hpp"
 #include "../../generation.hpp"
-#include "../../ir_printer.hpp"
-#include "../../ir_validate.hpp"
 #include "../../stack_layout/analysis.hpp"
 #include "../../stack_layout/regalloc_helpers.hpp"
 #include "../../stack_layout/slot_assignment.hpp"
@@ -4554,9 +4551,7 @@ std::string emit_minimal_declared_direct_call_asm(
   };
 
   if (slice.args.size() > 8) {
-    throw c4c::backend::LirAdapterError(
-        c4c::backend::LirAdapterErrorKind::Unsupported,
-        "extern declaration call argument count exceeds minimal aarch64 register budget");
+    fail_unsupported("extern declaration call argument count exceeds minimal aarch64 register budget");
   }
 
   std::vector<std::string> emitted_string_constant_names;
@@ -8305,10 +8300,6 @@ std::optional<std::string> try_emit_direct_lir_module(
           throw;
         }
       }
-    }
-  } catch (const c4c::backend::LirAdapterError& ex) {
-    if (ex.kind() != c4c::backend::LirAdapterErrorKind::Unsupported) {
-      throw;
     }
   } catch (const std::invalid_argument&) {
   }

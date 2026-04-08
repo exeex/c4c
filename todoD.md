@@ -7,27 +7,41 @@ Ownership:
 - [`tests/backend/backend_lir_adapter_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_tests.cpp)
 - [`tests/backend/backend_lir_adapter_aarch64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_aarch64_tests.cpp)
 - [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
-- [`tests/backend/backend_x86_64_extracted_tests.cpp`](/workspaces/c4c/tests/backend/backend_x86_64_extracted_tests.cpp)
-- [`tests/backend/backend_module_tests.cpp`](/workspaces/c4c/tests/backend/backend_module_tests.cpp)
-- directly related backend test support files only if required
+- directly related backend test support files only if needed for migrated
+  assertions
 
 Goal:
-- delete or migrate the parked legacy backend-IR-centric tests now that they are
-  out of the active build graph
+- finish retiring the parked legacy backend-IR test family so it no longer
+  competes with the active BIR/native test story
+
+Priority kill list:
+- delete files that are now pure legacy scaffolding
+- migrate any still-valuable assertions into surviving BIR/native test files
+- avoid reintroducing legacy backend-IR dependencies into active tests
 
 Do:
-- move any still-valuable assertions into surviving BIR/native test families
-- delete pure scaffolding when no longer needed
-- coordinate with mainline before deleting broadly shared support
+- keep migrated assertions narrow and architecture-aligned
+- coordinate with mainline before touching broadly shared support
+- report whether each legacy file was deleted outright or had assertions moved
+  elsewhere
 
 Do not edit:
 - production emitter files
-- shared lowering files unless needed for a migrated assertion and explicitly coordinated
+- shared lowering files unless directly required by an assertion migration and
+  explicitly coordinated
+- [`src/codegen/llvm/llvm_codegen.cpp`](/workspaces/c4c/src/codegen/llvm/llvm_codegen.cpp)
+- [`src/apps/c4cll.cpp`](/workspaces/c4c/src/apps/c4cll.cpp)
 - [`todo.md`](/workspaces/c4c/todo.md), [`todoA.md`](/workspaces/c4c/todoA.md), [`todoB.md`](/workspaces/c4c/todoB.md), [`todoC.md`](/workspaces/c4c/todoC.md)
 
 Worker-local validation:
-- `cmake --build build -j8 --target CMakeFiles/backend_bir_tests.dir/tests/backend/backend_bir_pipeline_tests.cpp.o`
-- if touching another test source, build only that source's matching object target
+- build only the touched representative object, for example:
+  `cmake --build build -j8 --target CMakeFiles/backend_bir_tests.dir/tests/backend/backend_bir_pipeline_tests.cpp.o`
+
+Handoff standard:
+- report which legacy files were deleted
+- report any assertion moved into a surviving test file
+- report the smallest remaining reason any `backend_lir_adapter*` file had to
+  stay
 
 Status:
-- pending implementation
+- second-wave slice completed and awaiting any third-wave reassignment

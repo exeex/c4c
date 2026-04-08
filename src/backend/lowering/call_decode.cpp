@@ -351,14 +351,15 @@ std::optional<std::vector<ParsedBackendExternCallArg>> parse_backend_extern_call
   return args;
 }
 
-std::optional<std::vector<OwnedBackendTypedCallArg>> parse_backend_owned_typed_call_args(
+std::optional<std::vector<c4c::codegen::lir::OwnedLirTypedCallArg>>
+parse_backend_owned_typed_call_args(
     std::string_view args_str) {
   const auto parsed = c4c::codegen::lir::parse_lir_typed_call_args(args_str);
   if (!parsed.has_value()) {
     return std::nullopt;
   }
 
-  std::vector<OwnedBackendTypedCallArg> owned;
+  std::vector<c4c::codegen::lir::OwnedLirTypedCallArg> owned;
   owned.reserve(parsed->size());
   for (const auto& arg : *parsed) {
     owned.push_back({std::string(arg.type), std::string(arg.operand)});
@@ -366,14 +367,15 @@ std::optional<std::vector<OwnedBackendTypedCallArg>> parse_backend_owned_typed_c
   return owned;
 }
 
-std::optional<std::vector<OwnedBackendTypedCallArg>> parse_backend_owned_typed_call_args(
+std::optional<std::vector<c4c::codegen::lir::OwnedLirTypedCallArg>>
+parse_backend_owned_typed_call_args(
     const c4c::codegen::lir::LirCallOp& call) {
   const auto parsed = c4c::codegen::lir::parse_lir_typed_call_args(call.args_str);
   if (!parsed.has_value()) {
     return std::nullopt;
   }
 
-  std::vector<OwnedBackendTypedCallArg> owned;
+  std::vector<c4c::codegen::lir::OwnedLirTypedCallArg> owned;
   owned.reserve(parsed->size());
   for (const auto& arg : *parsed) {
     owned.push_back({std::string(arg.type), std::string(arg.operand)});

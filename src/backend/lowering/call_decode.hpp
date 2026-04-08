@@ -18,12 +18,10 @@
 
 namespace c4c::backend {
 
-using BackendTypedCallArgView = c4c::codegen::lir::LirTypedCallArgView;
-
 struct ParsedBackendTypedCallView {
   std::vector<std::string> owned_param_types;
   std::vector<std::string_view> param_types;
-  std::vector<BackendTypedCallArgView> args;
+  std::vector<c4c::codegen::lir::LirTypedCallArgView> args;
 };
 
 struct ParsedBackendDirectGlobalTypedCallView {
@@ -38,8 +36,6 @@ struct ParsedBackendExternCallArg {
   std::int64_t imm = 0;
   std::string operand;
 };
-
-using OwnedBackendTypedCallArg = c4c::codegen::lir::OwnedLirTypedCallArg;
 
 struct ParsedBackendFunctionSignatureParam {
   std::string type;
@@ -357,9 +353,11 @@ bool backend_typed_call_matches_signature(const ParsedBackendTypedCallView& pars
                                           bool allow_extra_varargs = false);
 std::optional<std::vector<ParsedBackendExternCallArg>> parse_backend_extern_call_args(
     const ParsedBackendTypedCallView& parsed);
-std::optional<std::vector<OwnedBackendTypedCallArg>> parse_backend_owned_typed_call_args(
+std::optional<std::vector<c4c::codegen::lir::OwnedLirTypedCallArg>>
+parse_backend_owned_typed_call_args(
     std::string_view args_str);
-std::optional<std::vector<OwnedBackendTypedCallArg>> parse_backend_owned_typed_call_args(
+std::optional<std::vector<c4c::codegen::lir::OwnedLirTypedCallArg>>
+parse_backend_owned_typed_call_args(
     const c4c::codegen::lir::LirCallOp& call);
 std::optional<std::vector<ParsedBackendFunctionSignatureParam>>
 parse_backend_function_signature_params(std::string_view signature_text);

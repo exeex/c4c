@@ -6,156 +6,195 @@ Activated from: ideas/closed/40_target_profile_and_execution_domain_foundation.m
 
 ## Purpose
 
-Finish the cutover to BIR-only backend ownership by removing the remaining
-legacy backend-IR production seams, then retire the now-stale legacy tests and
-build wiring.
+Finish the transition from "legacy backend IR is locked behind hard stops" to
+"legacy backend IR is no longer load-bearing". This plan stays optimized for
+parallel subagent execution while mainline owns reintegration, broad
+validation, and final commit sequencing.
 
 ## Goal
 
-Leave the repo with one backend IR path:
+Reach a state where the remaining closure work for idea 41 is narrow and
+mechanical:
 
-- production/backend routing accepts only LIR entry or prelowered BIR
-- x86/aarch64 emitters consume only direct LIR probes or BIR-native paths
-- legacy backend-IR code and legacy backend-IR-centric tests are deleted or
-  fully parked out of active use
+- x86 and aarch64 emitter internals no longer depend on legacy
+  `BackendModule`-typed helpers for active behavior
+- shared lowering no longer presents legacy backend-IR production seams as
+  normal public workflow
+- parked backend-IR-centric tests are either deleted or migrated into surviving
+  BIR/native coverage
+- mainline has a clean map of the final legacy files still blocking close
+  (`ir.*`, `lir_to_backend_ir.*`, LLVM rescue paths, and any residual tests)
 
 ## Current State
 
-Already done in the current branch:
+Already complete on the current branch:
 
-- x86 legacy `BackendModule` emitter entry hard-locked
-- aarch64 legacy `BackendModule` emitter entry hard-locked
-- shared backend `BackendModule` public emission removed
-- legacy backend-IR-centric test targets removed from active CMake / ctest wiring
+- shared backend public `emit_module(const BackendModule&, ...)` entry removed
+- x86 and aarch64 public emitter headers no longer expose legacy
+  `BackendModule` emission entry points
+- legacy backend-module test targets are removed from active CMake / ctest
+  wiring
+- two pure parked legacy test scaffolds have already been deleted
+- backend-only reintegration validation has passed after the first cleanup wave
 
-Remaining work is now best handled as four parallel workstreams plus one mainline
-integration lane.
+Not yet complete relative to the source idea:
+
+- x86 emitter internals still contain many `BackendModule` helpers and include
+  legacy lowering / printer / validator headers
+- aarch64 emitter internals still contain many `BackendModule` helpers and
+  include legacy lowering / printer / validator headers
+- `lir_to_backend_ir.*` still exists and still exports
+  `lower_lir_to_backend_module(...)`
+- `ir.hpp`, `ir_printer.*`, and `ir_validate.*` still exist and are still
+  referenced by active code/tests
+- parked `backend_lir_adapter*` files still remain in-tree
+- LLVM rescue behavior in `src/codegen/llvm/llvm_codegen.cpp` and
+  `src/apps/c4cll.cpp` still exists, so idea 41 cannot close yet
 
 ## Parallel Execution
 
 ### Group A
 
 Mission:
-- finish the x86 emitter-side conversion away from legacy backend IR internals
+- reduce x86 emitter-local ownership of legacy backend IR until the remaining
+  blockers are explicit and minimal
 
 Write ownership:
 - [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
 - [`src/backend/x86/codegen/emit.hpp`](/workspaces/c4c/src/backend/x86/codegen/emit.hpp) if needed
 
 Expected outcomes:
-- remove dead `BackendModule`-typed helper paths where possible
-- trim obsolete legacy includes when helper/type dependencies are gone
-- keep x86 emitter entry behavior unchanged from the newly locked boundary
+- remove dead internal `BackendModule` entry helpers that are no longer
+  reachable after boundary locking
+- isolate or annotate any remaining x86 `BackendModule` helpers that still
+  block full BIR-native emitter migration
+- trim obsolete legacy includes once the file no longer needs them
 
 Worker-local validation:
-- compile only the representative production object:
-  `cmake --build build -j8 --target CMakeFiles/c4cll.dir/src/backend/x86/codegen/emit.cpp.o`
+- `cmake --build build -j8 --target CMakeFiles/c4cll.dir/src/backend/x86/codegen/emit.cpp.o`
 
 Out of scope:
-- shared backend routing
-- aarch64 emitter
-- legacy test-file deletion
+- aarch64 emitter internals
+- shared lowering / `lir_to_backend_ir.*`
+- parked test deletion
+- final broad validation
 
 ### Group B
 
 Mission:
-- finish the aarch64 emitter-side conversion away from legacy backend IR internals
+- reduce aarch64 emitter-local ownership of legacy backend IR until the
+  remaining blockers are explicit and minimal
 
 Write ownership:
 - [`src/backend/aarch64/codegen/emit.cpp`](/workspaces/c4c/src/backend/aarch64/codegen/emit.cpp)
 - [`src/backend/aarch64/codegen/emit.hpp`](/workspaces/c4c/src/backend/aarch64/codegen/emit.hpp) if needed
 
 Expected outcomes:
-- remove dead `BackendModule`-typed helper paths where possible
-- trim obsolete legacy includes when helper/type dependencies are gone
-- keep aarch64 emitter entry behavior unchanged from the newly locked boundary
+- remove dead internal `BackendModule` entry helpers that are no longer
+  reachable after boundary locking
+- isolate or annotate any remaining aarch64 `BackendModule` helpers that still
+  block full BIR-native emitter migration
+- trim obsolete legacy includes once the file no longer needs them
 
 Worker-local validation:
-- compile only the representative production object:
-  `cmake --build build -j8 --target CMakeFiles/c4cll.dir/src/backend/aarch64/codegen/emit.cpp.o`
+- `cmake --build build -j8 --target CMakeFiles/c4cll.dir/src/backend/aarch64/codegen/emit.cpp.o`
 
 Out of scope:
-- shared backend routing
-- x86 emitter
-- legacy test-file deletion
+- x86 emitter internals
+- shared lowering / `lir_to_backend_ir.*`
+- parked test deletion
+- final broad validation
 
 ### Group C
 
 Mission:
-- remove the remaining shared lowering/legacy-IR production surfaces
+- shrink the shared legacy lowering seam so it is no longer presented as a
+  normal backend path
 
 Write ownership:
 - [`src/backend/lowering/lir_to_backend_ir.cpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp)
 - [`src/backend/lowering/lir_to_backend_ir.hpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.hpp)
 - [`src/backend/lowering/call_decode.hpp`](/workspaces/c4c/src/backend/lowering/call_decode.hpp)
 - [`src/backend/lowering/call_decode.cpp`](/workspaces/c4c/src/backend/lowering/call_decode.cpp) if needed
-- legacy IR printer/validator headers or sources only if required by the same deletion batch
+- directly adjacent shared backend headers only if required by the same seam
+  reduction
 
 Expected outcomes:
-- shrink or remove production ownership of `lower_lir_to_backend_module(...)`
-- delete dead compatibility helpers that only exist for legacy backend IR
-- keep any still-needed bridge code explicitly temporary and documented
+- reduce public exposure of `lower_lir_to_backend_module(...)`
+- remove dead compatibility helpers that exist only for legacy backend IR
+- leave any still-required bridge code explicitly temporary and easy to delete
 
 Worker-local validation:
-- compile only touched representative objects:
-  `cmake --build build -j8 --target CMakeFiles/c4cll.dir/src/backend/lowering/lir_to_backend_ir.cpp.o`
-- or
-  `cmake --build build -j8 --target CMakeFiles/c4cll.dir/src/backend/lowering/call_decode.cpp.o`
+- `cmake --build build -j8 --target CMakeFiles/c4cll.dir/src/backend/lowering/lir_to_backend_ir.cpp.o`
+- or `cmake --build build -j8 --target CMakeFiles/c4cll.dir/src/backend/lowering/call_decode.cpp.o`
 
 Out of scope:
-- x86 emitter-local helper cleanup
-- aarch64 emitter-local helper cleanup
-- deleting parked legacy tests unless directly required by the same seam removal
+- emitter-local helper cleanup owned by Group A or B
+- parked legacy tests unless required by the same API reduction
+- LLVM rescue removal
 
 ### Group D
 
 Mission:
-- retire or migrate the parked legacy backend-IR-centric tests and scaffolding
+- finish retiring the parked backend-IR-centric test files that no longer match
+  the active architecture
 
 Write ownership:
 - [`tests/backend/backend_lir_adapter_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_tests.cpp)
 - [`tests/backend/backend_lir_adapter_aarch64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_aarch64_tests.cpp)
 - [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
-- [`tests/backend/backend_x86_64_extracted_tests.cpp`](/workspaces/c4c/tests/backend/backend_x86_64_extracted_tests.cpp)
-- [`tests/backend/backend_module_tests.cpp`](/workspaces/c4c/tests/backend/backend_module_tests.cpp)
-- directly related test support files only if required
+- directly related backend test support files only if needed for migrated
+  assertions
 
 Expected outcomes:
 - delete files that are now pure legacy scaffolding
-- migrate any still-valuable assertions into surviving BIR/native test families
-- keep test coverage aligned with BIR-only architecture
+- migrate any still-useful assertions into surviving BIR/native test families
+- keep active backend coverage aligned with the BIR-first architecture
 
 Worker-local validation:
-- compile only the touched representative test object, for example:
+- build only the touched representative object, for example:
   `cmake --build build -j8 --target CMakeFiles/backend_bir_tests.dir/tests/backend/backend_bir_pipeline_tests.cpp.o`
-- if editing a parked legacy file temporarily, use its matching object target only
 
 Out of scope:
 - production emitter cleanup
-- shared lowering cleanup unless required for a migrated assertion
+- shared lowering cleanup unless directly required by an assertion migration
+- final broad validation
 
 ## Mainline Integration
 
 Mainline stays responsible for:
 
-- updating [`plan.md`](/workspaces/c4c/plan.md), [`todo.md`](/workspaces/c4c/todo.md), and
+- maintaining [`plan.md`](/workspaces/c4c/plan.md), [`todo.md`](/workspaces/c4c/todo.md), and
   [`todoA.md`](/workspaces/c4c/todoA.md) through [`todoD.md`](/workspaces/c4c/todoD.md)
-- conflict resolution and commit ordering across A/B/C/D
-- broad validation after worker slices land
-- deciding when to escalate from parked legacy state to physical deletion
+- dispatching subagents with strict file ownership and single-object builds
+- resolving overlaps, patch conflicts, and partial reductions across groups
+- running reintegration validation:
+  `cmake -S . -B build`
+  `cmake --build build -j8`
+  targeted backend tests
+  `ctest --test-dir build -R backend -j --output-on-failure` when appropriate
+- deciding when remaining work is small enough to shift from parallel lanes to
+  a final closeout lane
 
-Mainline validation after merging worker output:
+## Close Readiness
 
-- `cmake -S . -B build`
-- `cmake --build build -j8`
-- targeted surviving backend tests as appropriate
-- broader `ctest -R backend` only after reintegration, not inside each worker lane
+This plan is not ready to close until all of the following are true:
 
-## Completion Check
+- no active production path depends on emitter-internal `BackendModule`
+  ownership
+- `lir_to_backend_ir.*` is deleted or reduced to a clearly temporary,
+  non-public bridge with an agreed follow-up deletion step
+- `ir.*` support files are deleted or fully retired from active code/tests
+- parked legacy backend-IR tests are deleted or migrated
+- LLVM rescue behavior is removed or explicitly split into a separate active
+  idea before closing idea 41
 
-This plan is complete when:
+## This Round Exit Criteria
 
-- no live production path depends on legacy `BackendModule` emission
-- no active backend test/build path depends on legacy backend-IR-only seams
-- emitter and lowering ownership is BIR-first rather than legacy-IR-first
-- remaining legacy files are either deleted or clearly documented as temporary
+This round is successful when:
+
+- each A/B/C/D lane can hand mainline a bounded patch with no cross-lane write
+  conflicts
+- the remaining legacy blockers are fewer, more localized, and easier to name
+- mainline can restate the post-round close gap in a shorter checklist than the
+  current one
