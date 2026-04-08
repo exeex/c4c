@@ -121,7 +121,7 @@ struct ParsedBackendMinimalTwoArgDirectCallLirModuleView {
 
 struct ParsedBackendMinimalFoldedTwoArgDirectCallLirModuleView {
   const c4c::codegen::lir::LirFunction* helper = nullptr;
-  const c4c::codegen::lir::LirFunction* main_function = nullptr;
+  const c4c::codegen::lir::LirFunction* caller_function = nullptr;
   const c4c::codegen::lir::LirCallOp* call = nullptr;
   std::int64_t lhs_call_arg_imm = 0;
   std::int64_t rhs_call_arg_imm = 0;

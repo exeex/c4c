@@ -1664,9 +1664,9 @@ void test_backend_call_helpers_parse_folded_two_arg_direct_call_lir_module() {
 
   const auto parsed =
       c4c::backend::parse_backend_minimal_folded_two_arg_direct_call_lir_module(module);
-  expect_true(parsed.has_value() && parsed->helper != nullptr && parsed->main_function != nullptr &&
+  expect_true(parsed.has_value() && parsed->helper != nullptr && parsed->caller_function != nullptr &&
                   parsed->call != nullptr && parsed->helper->name == "const_pair" &&
-                  parsed->main_function->name == "main" &&
+                  parsed->caller_function->name == "main" &&
                   parsed->call->result == "%t.main.const_pair.folded" &&
                   parsed->lhs_call_arg_imm == 11 && parsed->rhs_call_arg_imm == 13 &&
                   parsed->return_imm == 7,
