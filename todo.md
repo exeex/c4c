@@ -5,14 +5,14 @@ Source Plan: plan.md
 # Active Item
 
 - Step 2: switch one shared helper seam off `BackendModule`
-- Current slice: re-scan the remaining emitter-local `BackendModule` helpers
-  after the wrapper cleanup and classify which survivors still need real
-  module metadata versus which ones are now dead or purely target-triple
-  plumbing
-- Next intended slice: inspect the remaining target-local helper families in
-  `src/backend/x86/codegen/emit.cpp` and `src/backend/aarch64/codegen/emit.cpp`
-  that still read backend module/string/global tables directly, and identify
-  the next removable cluster versus the next contract that must move into BIR
+- Current slice: resume the emitter-local `BackendModule` inventory after the
+  dead-helper cleanup and choose the next real metadata-backed cluster among
+  the string/global/local-slot parsers that still need either bounded BIR
+  fields or a shared lookup contract
+- Next intended slice: inspect the shared global/string/local-slot parser
+  clusters in `src/backend/x86/codegen/emit.cpp` and
+  `src/backend/aarch64/codegen/emit.cpp` for a pair that can move together
+  onto an existing BIR or shared lookup seam without expanding scope
 
 # Completed
 
@@ -20,6 +20,23 @@ Source Plan: plan.md
   `emit_minimal_conditional_affine_i8_return_asm(...)` and
   `emit_minimal_conditional_affine_i32_return_asm(...)` now that all live
   dispatch sites already pass `target_triple` directly
+- Removed the unused x86/aarch64 emitter-local `find_function(...)` helpers
+  after confirming no remaining parser or emitter path reads backend function
+  tables through those lookups
+- Removed the dead x86
+  `emit_function_prelude(..., const BackendModule&, ...)` overload after
+  confirming every live call site already uses the symbol-only prelude helper
+- Rebuilt `backend_bir_tests`, `backend_shared_util_tests`, and `c4cll`
+  successfully after the dead helper cleanup
+- Reran
+  `ctest --test-dir build -R 'backend_(bir_tests|shared_util_tests)' --output-on-failure`
+  successfully after the cleanup
+- Reran the full `ctest --test-dir build -j --output-on-failure` suite and
+  refreshed `test_fail_after.log`; the workspace still has the same 13 known
+  failures as `test_fail_before.log` with `2821/2834` tests passing
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=0 failed=0`
+  and zero newly failing tests
 - Removed the dead aarch64 `BackendModule` forwarding wrappers for
   `emit_minimal_conditional_affine_i8_return_asm(...)` and
   `emit_minimal_conditional_affine_i32_return_asm(...)` now that all live

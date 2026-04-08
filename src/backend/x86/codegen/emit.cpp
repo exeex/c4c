@@ -1317,15 +1317,6 @@ std::string escape_asm_string(std::string_view bytes) {
   return escaped;
 }
 
-const c4c::backend::BackendFunction* find_function(
-    const c4c::backend::BackendModule& module,
-    std::string_view name) {
-  for (const auto& function : module.functions) {
-    if (function.signature.name == name) return &function;
-  }
-  return nullptr;
-}
-
 const c4c::backend::BackendGlobal* find_global(
     const c4c::backend::BackendModule& module,
     std::string_view name) {
@@ -4317,16 +4308,6 @@ std::optional<MinimalMemberArrayRuntimeSlice> parse_minimal_member_array_runtime
   slice.first_imm = element_imms[0];
   slice.second_imm = element_imms[1];
   return slice;
-}
-
-void emit_function_prelude(std::ostringstream& out,
-                           const c4c::backend::BackendModule& module,
-                           std::string_view symbol,
-                           bool is_global) {
-  (void)module;
-  if (is_global) out << ".globl " << symbol << "\n";
-  out << ".type " << symbol << ", %function\n";
-  out << symbol << ":\n";
 }
 
 void emit_function_prelude(std::ostringstream& out,

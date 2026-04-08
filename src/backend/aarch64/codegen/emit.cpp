@@ -631,15 +631,6 @@ std::optional<MinimalCastReturnSlice> parse_minimal_cast_return_slice(
 // Real module metadata lookup helpers.
 // These are not just plumbing: they read the backend function/global/string
 // tables that BIR would need to expose or replace via shared lookup contracts.
-const c4c::backend::BackendFunction* find_function(
-    const c4c::backend::BackendModule& module,
-    std::string_view name) {
-  for (const auto& function : module.functions) {
-    if (function.signature.name == name) return &function;
-  }
-  return nullptr;
-}
-
 const c4c::backend::BackendGlobal* find_global(
     const c4c::backend::BackendModule& module,
     std::string_view name) {
