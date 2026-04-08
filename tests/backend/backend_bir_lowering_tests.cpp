@@ -397,6 +397,13 @@ c4c::codegen::lir::LirModule make_bir_minimal_call_crossing_direct_call_lir_modu
   return module;
 }
 
+c4c::codegen::lir::LirModule
+make_bir_minimal_call_crossing_direct_call_lir_module_helper_first() {
+  auto module = make_bir_minimal_call_crossing_direct_call_lir_module();
+  std::swap(module.functions[0], module.functions[1]);
+  return module;
+}
+
 void test_bir_lowering_accepts_minimal_direct_call_lir_module() {
   const auto lowered = c4c::backend::try_lower_to_bir(make_bir_minimal_direct_call_lir_module());
   expect_true(lowered.has_value(),
@@ -726,6 +733,24 @@ void test_bir_lowering_accepts_minimal_call_crossing_direct_call_lir_module() {
                     parsed->regalloc_source_value == "%t0" &&
                     parsed->source_imm == 5 && parsed->helper_add_imm == 1,
                 "the lowered BIR module should preserve the helper/main structure plus the recovered source and helper immediates for the call-crossing slice");
+  }
+}
+
+void test_bir_lowering_accepts_minimal_call_crossing_direct_call_lir_module_with_helper_first() {
+  const auto lowered = c4c::backend::try_lower_to_bir(
+      make_bir_minimal_call_crossing_direct_call_lir_module_helper_first());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the minimal call-crossing direct-call LIR module slice when a helper is listed first");
+
+  const auto parsed = c4c::backend::parse_bir_minimal_call_crossing_direct_call_module(*lowered);
+  expect_true(parsed.has_value(),
+              "the lowered BIR module should still match the shared call-crossing direct-call BIR parser when a helper is listed first");
+  if (parsed.has_value()) {
+    expect_true(parsed->helper != nullptr && parsed->helper->name == "add_one" &&
+                    parsed->main_function != nullptr && parsed->main_function->name == "main" &&
+                    parsed->regalloc_source_value == "%t0" &&
+                    parsed->source_imm == 5 && parsed->helper_add_imm == 1,
+                "the lowered BIR module should preserve the recovered source and helper immediates for the helper-first call-crossing slice");
   }
 }
 
@@ -2503,6 +2528,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_minimal_dual_identity_direct_call_sub_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_dual_identity_direct_call_sub_lir_module_with_helper_first);
   RUN_TEST(test_bir_lowering_accepts_minimal_call_crossing_direct_call_lir_module);
+  RUN_TEST(test_bir_lowering_accepts_minimal_call_crossing_direct_call_lir_module_with_helper_first);
   RUN_TEST(test_bir_printer_renders_minimal_add_scaffold);
   RUN_TEST(test_bir_printer_renders_minimal_sub_scaffold);
   RUN_TEST(test_bir_printer_renders_minimal_mul_scaffold);
