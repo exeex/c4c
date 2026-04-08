@@ -4,32 +4,34 @@ Source Plan: plan.md
 Group: C
 
 Ownership:
+- [`src/backend/bir.hpp`](/workspaces/c4c/src/backend/bir.hpp)
+- [`src/backend/bir.cpp`](/workspaces/c4c/src/backend/bir.cpp) if needed
+- [`src/backend/bir_printer.hpp`](/workspaces/c4c/src/backend/bir_printer.hpp) / [`src/backend/bir_printer.cpp`](/workspaces/c4c/src/backend/bir_printer.cpp) if needed
+- [`src/backend/bir_validate.hpp`](/workspaces/c4c/src/backend/bir_validate.hpp) / [`src/backend/bir_validate.cpp`](/workspaces/c4c/src/backend/bir_validate.cpp) if needed
 - [`src/backend/lowering/call_decode.hpp`](/workspaces/c4c/src/backend/lowering/call_decode.hpp)
 - [`src/backend/lowering/call_decode.cpp`](/workspaces/c4c/src/backend/lowering/call_decode.cpp) if needed
-- [`src/backend/lowering/lir_to_backend_ir.hpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.hpp)
-- [`src/backend/lowering/lir_to_backend_ir.cpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp) if needed
-- [`src/backend/bir.hpp`](/workspaces/c4c/src/backend/bir.hpp) and directly adjacent BIR helpers
-  only if a small parity addition is clearly bounded
+- [`src/backend/lowering/lir_to_backend_ir.hpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.hpp) /
+  [`src/backend/lowering/lir_to_backend_ir.cpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp) if needed
 
 Goal:
-- turn the shared legacy seam into an explicit BIR parity map, beginning with
-  `call_decode` and the remaining `BackendModule` parser surface
+- land the first bounded BIR contract additions for call / extern / global /
+  string / local-slot shape
 
-Priority parity map:
-- identify which `parse_backend_minimal_*_module(...)` helpers truly require
-  `BackendModule`
-- separate "needs new BIR field/type" from "needs consumer rewrite"
-- if a tiny BIR-facing helper or shape addition is obvious and safe, land it
-  in the same slice
+Priority contract work:
+- choose the smallest useful subset of those gaps and model it in BIR
+- keep the addition migration-oriented rather than trying to finish all parity
+  at once
+- connect the new shape explicitly to the remaining `BackendModule` seam in
+  `call_decode` or adjacent shared helpers
 
 Do:
-- keep surviving bridge code explicit and temporary
-- avoid drifting into emitter-local deep refactors owned by Group A or B
-- prefer clarifying the replacement contract over prematurely deleting legacy
-  files
+- prefer one or two bounded contract additions over a sprawling schema rewrite
+- keep bridge code explicit and temporary
+- avoid deep emitter-local refactors owned by Group A or B
 
 Do not edit:
-- deep x86/aarch64 emitter logic except for coordinated signature fallout
+- deep x86/aarch64 emitter logic except for coordinated fallout from a shared
+  signature change
 - `ir.*` physical deletion in this round
 - [`src/codegen/llvm/llvm_codegen.cpp`](/workspaces/c4c/src/codegen/llvm/llvm_codegen.cpp)
 - [`src/apps/c4cll.cpp`](/workspaces/c4c/src/apps/c4cll.cpp)
@@ -40,9 +42,9 @@ Worker-local validation:
 - or `cmake --build build -j8 --target CMakeFiles/c4cll.dir/src/backend/lowering/lir_to_backend_ir.cpp.o`
 
 Handoff standard:
-- report which shared helpers still require `BackendModule`
-- report which gaps are true missing BIR shape
-- report any bounded BIR addition landed in this slice
+- report which BIR contract addition landed
+- report which remaining `BackendModule` helpers it is intended to unlock
+- report the next most obvious missing BIR contract after this slice
 
 Status:
-- ready for BIR parity wave
+- ready for BIR contract expansion wave

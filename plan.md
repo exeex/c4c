@@ -6,22 +6,19 @@ Activated from: ideas/closed/40_target_profile_and_execution_domain_foundation.m
 
 ## Purpose
 
-Shift the execution plan from "keep trimming legacy seams" to "finish the BIR
-contract that legacy seams are still covering". The immediate priority is to
-identify and start migrating the remaining emitter-facing `BackendModule`
-semantics into BIR so legacy IR deletion becomes safe instead of premature.
+Shift the execution plan from "keep trimming legacy seams" to "expand the BIR
+contract so legacy seams can disappear safely". The immediate priority is to
+add the missing call / extern / global / string / local-slot shape that still
+forces emitter and parser code to depend on `BackendModule`.
 
 ## Goal
 
-Leave the repo with a concrete BIR parity map that answers:
+Leave the repo with concrete BIR contract expansion underway:
 
-- which `BackendModule`-owned semantics are still required by x86 emitters
-- which `BackendModule`-owned semantics are still required by aarch64 emitters
-- which shared parser/helper seams in `call_decode` still assume legacy IR
-- which of those semantics belong in `bir.hpp` versus temporary glue
-
-This round is successful when the next implementation slices can be framed as
-"add/migrate BIR shape X" instead of "poke at legacy IR until it breaks".
+- bounded BIR shape additions exist for the highest-priority missing contracts
+- emitter/shared code can point at specific new BIR fields/helpers instead of
+  abstract "future parity"
+- the next migrations can target real BIR consumers rather than more inventory
 
 ## Current State
 
@@ -36,6 +33,8 @@ Already complete on the current branch:
 - aarch64 emitter no longer depends on legacy lowering/printer/validator
   includes and has shed some thin `BackendModule` pass-through wrappers
 - parked legacy backend-IR test files are deleted from the tree
+- parity inventory has already identified the first obvious missing BIR shape
+  clusters: call / extern / global / string / local-slot
 
 Still blocking source-idea closure:
 
@@ -54,76 +53,74 @@ Still blocking source-idea closure:
 ### Group A
 
 Mission:
-- inventory the x86 emitter's remaining `BackendModule` dependency and identify
-  the BIR data/shape needed to replace it
+- prepare x86 to consume the first new BIR contract additions, focusing on the
+  already-identified high-value clusters
 
 Write ownership:
 - [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
-- [`src/backend/x86/codegen/emit.hpp`](/workspaces/c4c/src/backend/x86/codegen/emit.hpp) if needed for notes
+- [`src/backend/x86/codegen/emit.hpp`](/workspaces/c4c/src/backend/x86/codegen/emit.hpp) if needed
 
 Expected outcomes:
-- group the remaining x86 `BackendModule` helper surface into bounded semantic
-  clusters
-- identify which clusters are pure plumbing, which are parser helpers, and
-  which require real module/function metadata
-- annotate or lightly refactor only when it materially clarifies the required
-  BIR replacement shape
+- convert the current x86 inventory into a migration-ready cut list
+- identify the first x86 helpers that should switch once call / extern /
+  global / string / local-slot shape lands in BIR
+- make only bounded clarifying edits that reduce future migration friction
 
 Worker-local validation:
 - `cmake --build build -j8 --target CMakeFiles/c4cll.dir/src/backend/x86/codegen/emit.cpp.o`
 
 Out of scope:
 - aarch64 emitter changes
-- shared `bir.hpp` expansion
+- owning shared `bir.hpp` schema design
 - deleting legacy IR files
 
 ### Group B
 
 Mission:
-- inventory the aarch64 emitter's remaining `BackendModule` dependency and
-  identify the BIR data/shape needed to replace it
+- prepare aarch64 to consume the first new BIR contract additions, focusing on
+  the already-identified high-value clusters
 
 Write ownership:
 - [`src/backend/aarch64/codegen/emit.cpp`](/workspaces/c4c/src/backend/aarch64/codegen/emit.cpp)
-- [`src/backend/aarch64/codegen/emit.hpp`](/workspaces/c4c/src/backend/aarch64/codegen/emit.hpp) if needed for notes
+- [`src/backend/aarch64/codegen/emit.hpp`](/workspaces/c4c/src/backend/aarch64/codegen/emit.hpp) if needed
 
 Expected outcomes:
-- group the remaining aarch64 `BackendModule` helper surface into bounded
-  semantic clusters
-- identify which clusters are pure plumbing, which are parser helpers, and
-  which require real module/function metadata
-- annotate or lightly refactor only when it materially clarifies the required
-  BIR replacement shape
+- convert the current aarch64 inventory into a migration-ready cut list
+- identify the first aarch64 helpers that should switch once call / extern /
+  global / string / local-slot shape lands in BIR
+- make only bounded clarifying edits that reduce future migration friction
 
 Worker-local validation:
 - `cmake --build build -j8 --target CMakeFiles/c4cll.dir/src/backend/aarch64/codegen/emit.cpp.o`
 
 Out of scope:
 - x86 emitter changes
-- shared `bir.hpp` expansion
+- owning shared `bir.hpp` schema design
 - deleting legacy IR files
 
 ### Group C
 
 Mission:
-- map the shared legacy seam to concrete BIR parity work, starting from
-  `call_decode` and the remaining `BackendModule` parser surface
+- expand `bir.hpp` and adjacent shared helpers with the first bounded contract
+  additions needed to replace `BackendModule` parser/emitter seams
 
 Write ownership:
+- [`src/backend/bir.hpp`](/workspaces/c4c/src/backend/bir.hpp)
+- [`src/backend/bir.cpp`](/workspaces/c4c/src/backend/bir.cpp) if needed
+- [`src/backend/bir_printer.hpp`](/workspaces/c4c/src/backend/bir_printer.hpp) / [`src/backend/bir_printer.cpp`](/workspaces/c4c/src/backend/bir_printer.cpp) if needed
+- [`src/backend/bir_validate.hpp`](/workspaces/c4c/src/backend/bir_validate.hpp) / [`src/backend/bir_validate.cpp`](/workspaces/c4c/src/backend/bir_validate.cpp) if needed
 - [`src/backend/lowering/call_decode.hpp`](/workspaces/c4c/src/backend/lowering/call_decode.hpp)
 - [`src/backend/lowering/call_decode.cpp`](/workspaces/c4c/src/backend/lowering/call_decode.cpp) if needed
-- [`src/backend/lowering/lir_to_backend_ir.hpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.hpp)
-- [`src/backend/lowering/lir_to_backend_ir.cpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp) if needed
-- [`src/backend/bir.hpp`](/workspaces/c4c/src/backend/bir.hpp) and adjacent BIR helpers only if a
-  narrowly scoped parity addition is obvious and bounded
+- [`src/backend/lowering/lir_to_backend_ir.hpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.hpp) /
+  [`src/backend/lowering/lir_to_backend_ir.cpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp) if needed
 
 Expected outcomes:
-- identify which `call_decode` / lowering helpers still require
-  `BackendModule`
-- distinguish "needs BIR structure expansion" from "needs emitter-local
-  rewrite"
-- if safe, add the smallest BIR-facing abstraction or helper signature change
-  that reduces future `BackendModule` coupling
+- add the smallest useful BIR shape for one or more of:
+  call / extern / global / string / local-slot
+- update shared helpers or notes so the new shape is explicitly connected to
+  the remaining `BackendModule` seams
+- keep additions bounded and migration-oriented rather than trying to finish
+  all parity in one slice
 
 Worker-local validation:
 - `cmake --build build -j8 --target CMakeFiles/c4cll.dir/src/backend/lowering/call_decode.cpp.o`
@@ -151,8 +148,8 @@ Mainline stays responsible for:
 - maintaining [`plan.md`](/workspaces/c4c/plan.md), [`todo.md`](/workspaces/c4c/todo.md), and
   [`todoA.md`](/workspaces/c4c/todoA.md) through [`todoD.md`](/workspaces/c4c/todoD.md)
 - integrating the just-landed `backend.cpp` / `backend.hpp` cleanup with the
-  next parity-focused wave
-- resolving overlaps between emitter inventory and shared parity work
+  next BIR contract-expansion wave
+- resolving overlaps between emitter migration prep and shared BIR shape work
 - running reintegration validation:
   `cmake -S . -B build`
   `cmake --build build -j8`
@@ -174,9 +171,8 @@ This plan is not ready to close until all of the following are true:
 
 This round is successful when:
 
-- each active A/B/C lane can name the remaining `BackendModule` usage in terms
-  of concrete missing BIR shape
-- mainline can restate the next wave as explicit BIR additions and consumer
-  migrations
-- the repo is closer to "BIR parity first, deletion second" than it was at the
-  start of the round
+- each active A/B/C lane can point to concrete BIR contract additions or the
+  immediate consumer migrations they unlock
+- mainline can restate the next wave as "switch consumer X to BIR shape Y"
+- the repo is materially closer to "BIR contract expansion first, deletion
+  second" than it was at the start of the round

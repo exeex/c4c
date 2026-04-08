@@ -922,6 +922,8 @@ parse_backend_single_helper_direct_global_call(
   };
 }
 
+// Legacy BackendModule seams that remain because BIR does not yet model calls,
+// extern declarations, or the direct-call module surface.
 inline std::optional<ParsedBackendMinimalStructuredDirectCallModuleView>
 parse_backend_minimal_structured_direct_call_module(const BackendModule& module,
                                                     std::size_t expected_arg_count) {

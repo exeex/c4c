@@ -1183,6 +1183,8 @@ std::optional<std::string_view> strip_typed_operand_prefix(std::string_view oper
   return operand.substr(type_prefix.size() + 1);
 }
 
+// Legacy BackendModule plumbing: only the target triple still matters here.
+// These helpers can move to BIR unchanged once callers pass target_triple directly.
 std::string asm_symbol_name(const c4c::backend::BackendModule& module,
                             std::string_view logical_name) {
   return asm_symbol_name(module.target_triple, logical_name);
@@ -1460,6 +1462,8 @@ c4c::backend::RegAllocIntegrationResult synthesize_shared_x86_call_crossing_rega
   return regalloc;
 }
 
+// These single-function slices already have a direct BIR equivalent shape:
+// one defined i32 function, one block, one terminal return, and at most one simple inst.
 bool is_minimal_single_function_asm_slice(const c4c::backend::BackendModule& module) {
   const c4c::backend::BackendFunction* function = nullptr;
   for (const auto& candidate : module.functions) {
@@ -2178,6 +2182,7 @@ parse_minimal_conditional_affine_i32_return_slice(
   };
 }
 
+// BIR already carries enough shape for the basic compare-and-branch cases here.
 std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_slice(
     const c4c::backend::BackendModule& module) {
   if (module.functions.size() != 1) {
@@ -3134,6 +3139,8 @@ std::optional<MinimalExternScalarGlobalLoadSlice> parse_minimal_extern_scalar_gl
   return MinimalExternScalarGlobalLoadSlice{function->name, global.name};
 }
 
+// This cluster still needs module-wide metadata from legacy BackendModule/BIR-adjacent shape:
+// extern-vs-local globals, storage qualifiers, string pools, and exact address layout.
 std::optional<MinimalExternGlobalArrayLoadSlice> parse_minimal_extern_global_array_load_slice(
     const c4c::backend::BackendModule& module) {
   if (module.functions.size() != 1 || module.globals.size() != 1) {
@@ -3189,6 +3196,9 @@ std::optional<MinimalExternGlobalArrayLoadSlice> parse_minimal_extern_global_arr
   };
 }
 
+// These storage/global/string slices still lean on module-wide metadata:
+// globals, string pools, declaration status, and exact function count.
+// They likely need new BIR fields or a shared lowering contract before they can fully move.
 std::optional<MinimalLocalArraySlice> parse_minimal_local_array_slice(
     const c4c::backend::BackendModule& module) {
   if (module.functions.size() != 1 || !module.globals.empty() ||
@@ -4232,6 +4242,8 @@ std::optional<MinimalScalarGlobalStoreReloadSlice> parse_minimal_scalar_global_s
   };
 }
 
+// Pure direct-call shapes already have BIR-friendly equivalents, but call-crossing still needs
+// a shared regalloc contract because the emission depends on allocated callee-saved state.
 std::optional<MinimalCallCrossingDirectCallSlice> parse_minimal_call_crossing_direct_call_slice(
     const c4c::backend::BackendModule& module) {
   const auto parsed = c4c::backend::parse_backend_minimal_call_crossing_direct_call_module(module);

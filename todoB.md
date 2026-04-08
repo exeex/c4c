@@ -8,26 +8,25 @@ Ownership:
 - [`src/backend/aarch64/codegen/emit.hpp`](/workspaces/c4c/src/backend/aarch64/codegen/emit.hpp) if needed
 
 Goal:
-- inventory the remaining aarch64 emitter-side `BackendModule` dependency and
-  make the missing BIR replacement shape explicit
+- prepare aarch64 to consume the first new BIR contract additions, focusing on
+  the known call / extern / global / string / local-slot gaps
 
-Priority parity map:
-- group the remaining aarch64 `BackendModule` helpers by semantic role
-- separate "pure symbol/plumbing" from "real module/function metadata"
-- identify which remaining helpers could switch to BIR with existing shape and
-  which require new BIR fields or helper abstractions
+Priority migration map:
+- turn the current aarch64 `BackendModule` clusters into a concrete switch
+  order
+- identify the first helpers that should move once bounded BIR shape lands
+- make only small clarifying edits that reduce migration friction
 
 Do:
-- prefer bounded annotations, helper clustering, or tiny clarifying refactors
-  over broad rewrites
-- keep behavior on direct-LIR and BIR entry paths unchanged
+- keep behavior unchanged
+- prefer comments, helper regrouping, or tiny signature-local clarifications
 - record any dependency on Group C when the missing piece is really shared BIR
-  shape or `call_decode` contract
+  contract
 
 Do not edit:
 - [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
-- [`src/backend/lowering/call_decode.hpp`](/workspaces/c4c/src/backend/lowering/call_decode.hpp)
 - [`src/backend/bir.hpp`](/workspaces/c4c/src/backend/bir.hpp) unless explicitly coordinated
+- [`src/backend/lowering/call_decode.hpp`](/workspaces/c4c/src/backend/lowering/call_decode.hpp)
 - [`src/codegen/llvm/llvm_codegen.cpp`](/workspaces/c4c/src/codegen/llvm/llvm_codegen.cpp)
 - [`src/apps/c4cll.cpp`](/workspaces/c4c/src/apps/c4cll.cpp)
 - [`todo.md`](/workspaces/c4c/todo.md), [`todoA.md`](/workspaces/c4c/todoA.md), [`todoC.md`](/workspaces/c4c/todoC.md), [`todoD.md`](/workspaces/c4c/todoD.md)
@@ -36,9 +35,9 @@ Worker-local validation:
 - `cmake --build build -j8 --target CMakeFiles/c4cll.dir/src/backend/aarch64/codegen/emit.cpp.o`
 
 Handoff standard:
-- report the remaining aarch64 `BackendModule` helper clusters
-- report which clusters already have enough BIR shape
-- report which clusters still need new BIR fields or shared helper contracts
+- report the first aarch64 helpers that can switch after bounded BIR additions
+- report which exact BIR contract each helper still lacks
+- report any clarifying edits landed in this slice
 
 Status:
-- ready for BIR parity wave
+- ready for BIR contract expansion wave

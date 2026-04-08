@@ -119,6 +119,22 @@ struct Module {
   std::vector<Function> functions;
 };
 
+inline std::optional<std::int64_t> parse_i32_return_immediate(const Function& function) {
+  if (function.is_declaration || function.return_type != TypeKind::I32 ||
+      function.blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& block = function.blocks.front();
+  if (block.label != "entry" || !block.insts.empty() || !block.terminator.value.has_value() ||
+      block.terminator.value->kind != Value::Kind::Immediate ||
+      block.terminator.value->type != TypeKind::I32) {
+    return std::nullopt;
+  }
+
+  return block.terminator.value->immediate;
+}
+
 std::string render_type(TypeKind type);
 std::string render_binary_opcode(BinaryOpcode opcode);
 std::string render_cast_opcode(CastOpcode opcode);

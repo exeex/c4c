@@ -488,6 +488,9 @@ std::optional<std::int64_t> parse_minimal_return_imm(
   return parse_i64(*block.terminator.value);
 }
 
+// BIR-ready scalar/control-flow slices.
+// These helpers only need single-function/block/value shape that BIR already
+// models, so the remaining BackendModule overloads here are legacy entry points.
 std::optional<std::int64_t> parse_minimal_return_imm(
     const c4c::backend::bir::Module& module) {
   if (!is_minimal_single_function_asm_slice(module)) {
@@ -803,6 +806,9 @@ std::optional<MinimalCastReturnSlice> parse_minimal_cast_return_slice(
   };
 }
 
+// Real module metadata lookup helpers.
+// These are not just plumbing: they read the backend function/global/string
+// tables that BIR would need to expose or replace via shared lookup contracts.
 const c4c::backend::BackendFunction* find_function(
     const c4c::backend::BackendModule& module,
     std::string_view name) {
@@ -2534,6 +2540,9 @@ std::optional<MinimalStringLiteralCharSlice> parse_minimal_string_literal_char_s
   };
 }
 
+// BIR-gap data slices.
+// These still need string-pool / global / address-shape metadata that BIR does
+// not currently expose in the same form.
 std::optional<MinimalStringLiteralCharSlice> parse_minimal_string_literal_char_slice(
     const c4c::backend::BackendModule& module) {
   if (module.functions.size() != 1 || module.string_constants.size() != 1 ||
@@ -2969,6 +2978,9 @@ std::optional<MinimalConditionalPhiJoinSlice> parse_minimal_conditional_phi_join
                                         join_add_imm};
 }
 
+// BIR-gap data slices.
+// These still depend on globals, linkage, and address classification that BIR
+// does not yet expose in the same shape.
 std::optional<MinimalScalarGlobalLoadSlice> parse_minimal_scalar_global_load_slice(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
@@ -3717,6 +3729,9 @@ std::optional<MinimalLocalArraySlice> parse_minimal_local_array_slice(
   return MinimalLocalArraySlice{function.signature.name, *store0_imm, *store1_imm};
 }
 
+// BIR-gap local-slot slices.
+// The local-array helper still needs the emitter-local slot layout contract;
+// that shape is not represented in BIR yet.
 std::optional<MinimalScalarGlobalStoreReloadSlice> parse_minimal_scalar_global_store_reload_slice(
     const c4c::backend::BackendModule& module) {
   if (module.functions.size() != 1 || module.globals.size() != 1) {
@@ -4260,6 +4275,9 @@ std::string emit_minimal_cast_return_asm(
   fail_unsupported_direct_bir_module();
 }
 
+// Mixed direct-call metadata.
+// These helpers still need helper/main pairing, parsed extern-call args, and
+// string-constant lookup that BIR does not yet model directly.
 std::string emit_minimal_direct_call_asm(const c4c::backend::BackendModule& module,
                                          const c4c::backend::ParsedBackendMinimalDirectCallModuleView& slice) {
   if (slice.helper == nullptr) {
@@ -5151,6 +5169,9 @@ std::string emit_minimal_conditional_affine_i32_return_asm(
   return out.str();
 }
 
+// Pure plumbing wrapper.
+// Countdown-loop emission already has a target-triple-only path; this overload
+// just forwards legacy module callers.
 std::string emit_minimal_countdown_loop_asm(const c4c::backend::BackendModule& module,
                                             const MinimalCountdownLoopSlice& slice) {
   return emit_minimal_countdown_loop_asm(module.target_triple, slice);
