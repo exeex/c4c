@@ -9,13 +9,39 @@ Source Plan: plan.md
 - [ ] Remove legacy backend IR files and backend/app LLVM rescue paths
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
-Current active item: Step 4 follow-on deletion. Continue removing the direct
-x86 production-side literal-`main` caller anchors in
+Current active item: Step 4 follow-on deletion. Continue removing the
+remaining x86 production-side literal-`main` caller anchors in bounded
+multi-block emitter families after the conditional-return slice, starting with
+the still-literal lowered conditional-phi-join matcher in
 [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
-for the remaining single-function constant-return families beyond the plain
-return-immediate and goto-only slices, keeping each slice structural and
-proved with renamed-caller regressions on the explicit x86 LIR entry surface
-plus normal backend selection.
+and proving each deletion on the explicit lowered backend emit surface plus
+normal backend selection.
+
+Completed in this slice:
+
+- removed the bounded x86 conditional-return production-side literal-`main`
+  caller anchor from both the explicit lowered backend parser and the direct
+  LIR parser in
+  [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+  by switching the family to structural zero-argument `i32` caller matching
+  and carrying the observed caller symbol through the emitted assembly instead
+  of hardcoding `main`
+- proved the lowered/backend-selection seam deletion with a new renamed-caller
+  regression in
+  [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
+  so the bounded lowered conditional-return family now emits the renamed entry
+  symbol on identical x86 assembly output without falling back to backend IR
+  text
+- kept focused x86 adapter coverage green at `1` passed / `0` failed via
+  `ctest --test-dir build -R '^backend_lir_adapter_x86_64_tests$' -j1 --output-on-failure`
+- reran the required backend regression scope to `401` passed / `1` failed via
+  `ctest --test-dir build -R backend -j --output-on-failure > test_backend_after.log`;
+  the only failing case is the independently reproducing unrelated blocker
+  `c_testsuite_aarch64_backend_src_00023_c`
+- the monotonic backend guard against the checked-in baseline currently reports
+  one new failing test because `test_backend_before.log` records an older clean
+  `182`-test snapshot while the current tree still has the unrelated aarch64
+  failure above
 
 Completed in this slice:
 

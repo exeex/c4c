@@ -5612,6 +5612,48 @@ void test_x86_backend_renders_compare_and_branch_slice_from_typed_predicates() {
                       "x86 backend should keep typed compare-and-branch lowering on the asm path");
 }
 
+void test_x86_backend_explicit_emit_surface_keeps_renamed_conditional_return_caller_on_asm_path() {
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_conditional_return_module());
+
+  c4c::backend::BackendFunction* caller_fn = nullptr;
+  for (auto& function : lowered.functions) {
+    if (!function.is_declaration &&
+        c4c::backend::backend_function_is_definition(function.signature) &&
+        c4c::backend::backend_signature_return_scalar_type(function.signature) ==
+            c4c::backend::BackendScalarType::I32 &&
+        function.signature.params.empty() && !function.signature.is_vararg) {
+      caller_fn = &function;
+      break;
+    }
+  }
+
+  expect_true(caller_fn != nullptr,
+              "x86 renamed conditional-return backend emit regression test needs the lowered zero-argument caller function");
+  if (caller_fn == nullptr) {
+    return;
+  }
+
+  caller_fn->signature.name = "entry_cond";
+
+  const auto direct_rendered = c4c::backend::x86::emit_module(lowered);
+  const auto backend_rendered = c4c::backend::emit_module(
+      lowered,
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_true(backend_rendered == direct_rendered,
+              "x86 backend selection should keep renamed structured conditional-return callers on the explicit backend emit surface");
+  expect_contains(direct_rendered, ".globl entry_cond\n",
+                  "x86 explicit backend emit surface should publish the renamed zero-argument conditional caller instead of assuming main");
+  expect_contains(direct_rendered, "entry_cond:\n",
+                  "x86 explicit backend emit surface should preserve the renamed caller label on the structured conditional-return asm path");
+  expect_contains(direct_rendered, "  cmp eax, 3\n",
+                  "x86 explicit backend emit surface should still lower the structured conditional compare after removing the caller-name anchor");
+  expect_contains(direct_rendered, "  jge .Lelse\n",
+                  "x86 explicit backend emit surface should still branch on the structured conditional-return terminator after the caller rename");
+  expect_not_contains(direct_rendered, "define i32 @entry_cond()",
+                      "x86 explicit backend emit surface should not fall back to backend IR text for renamed structured conditional-return callers");
+}
+
 void test_x86_backend_renders_compare_and_branch_le_slice() {
   auto module = make_conditional_return_le_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -7038,6 +7080,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_scaffold_rejects_structured_call_crossing_direct_call_when_helper_body_contract_disagrees);
   RUN_TEST(test_x86_backend_renders_compare_and_branch_slice);
   RUN_TEST(test_x86_backend_renders_compare_and_branch_slice_from_typed_predicates);
+  RUN_TEST(test_x86_backend_explicit_emit_surface_keeps_renamed_conditional_return_caller_on_asm_path);
   RUN_TEST(test_x86_backend_renders_compare_and_branch_le_slice);
   RUN_TEST(test_x86_backend_renders_compare_and_branch_gt_slice);
   RUN_TEST(test_x86_backend_renders_compare_and_branch_ge_slice);

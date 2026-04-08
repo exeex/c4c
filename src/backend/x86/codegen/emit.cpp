@@ -2153,12 +2153,7 @@ std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_sl
   }
 
   const auto& function = module.functions.front();
-  if (function.is_declaration || !backend_function_is_definition(function.signature) ||
-      c4c::backend::backend_signature_return_scalar_type(function.signature) !=
-          c4c::backend::BackendScalarType::I32 ||
-      function.signature.name != "main" ||
-      !function.signature.params.empty() || function.signature.is_vararg ||
-      function.blocks.size() != 3) {
+  if (!is_zero_arg_i32_backend_definition(function) || function.blocks.size() != 3) {
     return std::nullopt;
   }
 
@@ -2213,7 +2208,7 @@ std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_sl
   }
 
   return MinimalConditionalReturnSlice{
-      "main",
+      function.signature.name,
       0,
       predicate,
       {MinimalConditionalReturnSlice::ValueKind::Immediate, *lhs_imm},
@@ -2232,9 +2227,8 @@ std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_sl
   if (module.functions.size() != 1) return std::nullopt;
 
   const auto& function = module.functions.front();
-  if (function.is_declaration ||
-      !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(function.signature_text) ||
-      function.entry.value != 0 || function.blocks.size() != 3 ||
+  if (!is_zero_arg_i32_lir_definition(function) || function.entry.value != 0 ||
+      function.blocks.size() != 3 ||
       !function.alloca_insts.empty() || !function.stack_objects.empty()) {
     return std::nullopt;
   }
@@ -2293,7 +2287,7 @@ std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_sl
   }
 
   return MinimalConditionalReturnSlice{
-      "main",
+      function.name,
       0,
       *cmp0_predicate,
       {MinimalConditionalReturnSlice::ValueKind::Immediate, *lhs_imm},
