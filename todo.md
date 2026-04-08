@@ -10,10 +10,41 @@ Source Plan: plan.md
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
 Current active item: Step 4 follow-on deletion. Resume the next live x86
-single-helper helper/runtime seam that still depends on
-`lower_lir_to_backend_module(...)` or another symbol-specific convenience now
-that the lowered declared-direct-call caller-anchor cleanup is gone from the
-shared parser and lowered x86 emitter path.
+single-helper helper/runtime seam beyond the bounded void-helper immediate
+return family now that both the shared parser and the direct/lowered x86 emit
+surfaces no longer require a literal `main` anchor or legacy lowering for that
+slice.
+
+Completed in this slice:
+
+- taught the shared structured void direct-call parser in
+  [`src/backend/lowering/call_decode.hpp`](/workspaces/c4c/src/backend/lowering/call_decode.hpp)
+  to identify the zero-argument `i32` caller structurally instead of requiring
+  a literal `main` symbol for the bounded void-helper / immediate-return
+  family
+- added a shared LIR-native parser for that bounded void-helper slice in
+  [`src/backend/lowering/call_decode.hpp`](/workspaces/c4c/src/backend/lowering/call_decode.hpp)
+  so the explicit x86 LIR entrypoint can keep the family on the direct asm
+  path without routing through `lower_lir_to_backend_module(...)`
+- taught the x86 direct LIR emit surface plus the explicit lowered backend seam
+  in
+  [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+  to render the bounded void helper body, call it, and materialize the
+  caller's immediate return while preserving renamed caller symbols
+- proved the shared matcher deletion with a new renamed-caller regression in
+  [`tests/backend/backend_lir_adapter_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_tests.cpp)
+  covering the structured lowered void-helper parser seam
+- proved the production deletion with new x86 regressions in
+  [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
+  covering direct-vs-lowered parity for the bounded void-helper family plus
+  renamed-caller coverage on both the explicit LIR emit surface and the
+  explicit lowered backend emit surface
+- kept focused adapter coverage green at `2` passed / `0` failed via
+  `ctest --test-dir build -R 'backend_lir_adapter_tests|backend_lir_adapter_x86_64_tests' -j1 --output-on-failure`
+- kept backend regression coverage monotonic from `291` passed / `111` failed
+  to `402` passed / `0` failed via `test_backend_before.log`,
+  `test_backend_after.log`, and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_backend_before.log --after test_backend_after.log --allow-non-decreasing-passed`
 
 Latest completed slice:
 

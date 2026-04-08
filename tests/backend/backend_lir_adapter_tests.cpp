@@ -1082,6 +1082,40 @@ void test_backend_call_helpers_parse_structured_void_direct_call_imm_return_modu
               "shared structured void direct-call parser should preserve the zero-arg helper call plus immediate main return without target-local scans");
 }
 
+void test_backend_call_helpers_parse_structured_void_direct_call_imm_return_module_with_renamed_caller() {
+  auto lowered = c4c::backend::lower_lir_to_backend_module(
+      make_void_direct_call_imm_return_module());
+
+  c4c::backend::BackendFunction* caller_fn = nullptr;
+  for (auto& function : lowered.functions) {
+    if (!function.is_declaration &&
+        c4c::backend::backend_function_is_definition(function.signature) &&
+        c4c::backend::backend_signature_return_scalar_type(function.signature) ==
+            c4c::backend::BackendScalarType::I32 &&
+        function.signature.params.empty() && !function.signature.is_vararg) {
+      caller_fn = &function;
+      break;
+    }
+  }
+
+  expect_true(caller_fn != nullptr,
+              "shared structured void direct-call parser regression test needs the lowered zero-argument caller");
+  if (caller_fn == nullptr || caller_fn->blocks.empty() || caller_fn->blocks.front().insts.empty()) {
+    return;
+  }
+
+  caller_fn->signature.name = "entry_void";
+
+  const auto parsed =
+      c4c::backend::parse_backend_minimal_void_direct_call_imm_return_module(lowered);
+  expect_true(parsed.has_value() && parsed->helper != nullptr && parsed->main_function != nullptr &&
+                  parsed->call != nullptr && parsed->helper->signature.name == "voidfn" &&
+                  parsed->main_function->signature.name == "entry_void" &&
+                  parsed->call->callee.symbol_name == "voidfn" &&
+                  parsed->call->result.empty() && parsed->return_imm == 0,
+              "shared structured void direct-call parser should identify the zero-argument i32 caller structurally instead of requiring a literal main symbol");
+}
+
 void test_backend_call_helpers_parse_structured_single_add_imm_direct_call_module() {
   auto lowered =
       c4c::backend::lower_lir_to_backend_module(make_typed_direct_call_local_arg_module());
@@ -3134,6 +3168,7 @@ int main(int argc, char* argv[]) {
   test_backend_call_helpers_parse_structured_single_add_imm_function();
   test_backend_call_helpers_parse_structured_zero_arg_direct_call_module();
   test_backend_call_helpers_parse_structured_void_direct_call_imm_return_module();
+  test_backend_call_helpers_parse_structured_void_direct_call_imm_return_module_with_renamed_caller();
   test_backend_call_helpers_parse_structured_single_add_imm_direct_call_module();
   test_backend_call_helpers_parse_structured_single_add_imm_direct_call_module_with_renamed_caller();
   test_backend_call_helpers_parse_structured_call_crossing_direct_call_module();

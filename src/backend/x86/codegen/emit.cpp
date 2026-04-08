@@ -4734,6 +4734,72 @@ std::string emit_minimal_direct_call_asm(
   return out.str();
 }
 
+std::string emit_minimal_void_direct_call_imm_return_asm(
+    const c4c::backend::BackendModule& module,
+    const c4c::backend::ParsedBackendMinimalVoidDirectCallImmReturnModuleView& slice) {
+  if (slice.helper == nullptr) {
+    throw c4c::backend::LirAdapterError(
+        c4c::backend::LirAdapterErrorKind::Unsupported,
+        "structured zero-argument void direct-call slice without helper metadata");
+  }
+
+  if (slice.return_imm < std::numeric_limits<std::int32_t>::min() ||
+      slice.return_imm > std::numeric_limits<std::int32_t>::max()) {
+    throw c4c::backend::LirAdapterError(
+        c4c::backend::LirAdapterErrorKind::Unsupported,
+        "void direct-call return immediates outside the minimal mov-supported range");
+  }
+
+  const std::string helper_symbol = asm_symbol_name(module, slice.helper->signature.name);
+  const std::string main_symbol =
+      asm_symbol_name(module,
+                      slice.main_function == nullptr ? "main" : slice.main_function->signature.name);
+
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n";
+  out << ".text\n";
+  emit_function_prelude(out, module, helper_symbol, false);
+  out << "  ret\n";
+  emit_function_prelude(out, module, main_symbol, true);
+  out << "  call " << helper_symbol << "\n";
+  out << "  mov eax, " << slice.return_imm << "\n";
+  out << "  ret\n";
+  return out.str();
+}
+
+std::string emit_minimal_void_direct_call_imm_return_asm(
+    std::string_view target_triple,
+    const c4c::backend::ParsedBackendMinimalVoidDirectCallImmReturnLirModuleView& slice) {
+  if (slice.helper == nullptr) {
+    throw c4c::backend::LirAdapterError(
+        c4c::backend::LirAdapterErrorKind::Unsupported,
+        "direct zero-argument void LIR call slice without helper metadata");
+  }
+
+  if (slice.return_imm < std::numeric_limits<std::int32_t>::min() ||
+      slice.return_imm > std::numeric_limits<std::int32_t>::max()) {
+    throw c4c::backend::LirAdapterError(
+        c4c::backend::LirAdapterErrorKind::Unsupported,
+        "void direct-call LIR return immediates outside the minimal mov-supported range");
+  }
+
+  const std::string helper_symbol = asm_symbol_name(target_triple, slice.helper->name);
+  const std::string main_symbol =
+      asm_symbol_name(target_triple,
+                      slice.main_function == nullptr ? "main" : slice.main_function->name);
+
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n";
+  out << ".text\n";
+  emit_function_prelude(out, helper_symbol, false);
+  out << "  ret\n";
+  emit_function_prelude(out, main_symbol, true);
+  out << "  call " << helper_symbol << "\n";
+  out << "  mov eax, " << slice.return_imm << "\n";
+  out << "  ret\n";
+  return out.str();
+}
+
 std::string emit_minimal_direct_call_add_imm_asm(
     const c4c::backend::BackendModule& module,
     const c4c::backend::ParsedBackendMinimalDirectCallAddImmModuleView& slice) {
@@ -6054,6 +6120,11 @@ std::optional<std::string> try_emit_direct_lir_module(
       return emit_minimal_direct_call_asm(module.target_triple, *slice);
     }
     if (const auto slice =
+            c4c::backend::parse_backend_minimal_void_direct_call_imm_return_lir_module(module);
+        slice.has_value()) {
+      return emit_minimal_void_direct_call_imm_return_asm(module.target_triple, *slice);
+    }
+    if (const auto slice =
             c4c::backend::parse_backend_minimal_direct_call_add_imm_lir_module(module);
         slice.has_value()) {
       return emit_minimal_direct_call_add_imm_asm(module.target_triple, *slice);
@@ -6171,6 +6242,10 @@ std::string emit_module(const c4c::backend::BackendModule& module,
     if (const auto slice = c4c::backend::parse_backend_minimal_direct_call_module(module);
         slice.has_value()) {
       return emit_minimal_direct_call_asm(module, *slice);
+    }
+    if (const auto slice = c4c::backend::parse_backend_minimal_void_direct_call_imm_return_module(module);
+        slice.has_value()) {
+      return emit_minimal_void_direct_call_imm_return_asm(module, *slice);
     }
     if (const auto slice = c4c::backend::parse_backend_minimal_direct_call_add_imm_module(module);
         slice.has_value()) {

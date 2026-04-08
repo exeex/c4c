@@ -71,6 +71,14 @@ c4c::codegen::lir::LirModule make_x86_direct_bir_sext_return_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_x86_void_direct_call_imm_return_module() {
+  auto module = make_void_direct_call_imm_return_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  return module;
+}
+
 void clear_backend_global_compatibility_shims(c4c::backend::BackendModule& module) {
   for (auto& global : module.globals) {
     if (global.linkage_kind != c4c::backend::BackendGlobalLinkage::Default) {
@@ -2402,6 +2410,91 @@ void test_x86_backend_explicit_lir_emit_surface_keeps_renamed_zero_arg_direct_ca
                   "x86 backend should keep renamed zero-arg helper calls on the asm path from the explicit LIR entry surface");
   expect_not_contains(rendered, "target triple =",
                       "x86 backend should not fall back to LLVM text for the renamed zero-arg direct-call LIR surface");
+}
+
+void test_x86_backend_explicit_lir_emit_surface_matches_void_direct_call_imm_return_path() {
+  const auto module = make_x86_void_direct_call_imm_return_module();
+  const auto direct_rendered = c4c::backend::x86::emit_module(module);
+  const auto lowered = c4c::backend::lower_lir_to_backend_module(module);
+  const auto lowered_rendered = c4c::backend::x86::emit_module(lowered);
+  const auto backend_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_true(direct_rendered == lowered_rendered,
+              "x86 explicit LIR emit surface should stay aligned with the lowered backend seam for the bounded void helper-call immediate-return family");
+  expect_true(backend_rendered == direct_rendered,
+              "x86 backend selection should keep the bounded void helper-call immediate-return family on the same direct x86 asm path");
+  expect_contains(direct_rendered, ".type voidfn, %function\nvoidfn:\n  ret\n",
+                  "x86 explicit LIR emit surface should publish the bounded void helper body directly");
+  expect_contains(direct_rendered, "call voidfn\n",
+                  "x86 explicit LIR emit surface should keep the bounded void helper call on the asm path without adapting through backend IR first");
+  expect_contains(direct_rendered, "mov eax, 0\n",
+                  "x86 explicit LIR emit surface should materialize the immediate caller return after the void helper call");
+  expect_not_contains(direct_rendered, "target triple =",
+                      "x86 explicit LIR emit surface should not fall back to LLVM text for the bounded void helper-call slice");
+}
+
+void test_x86_backend_explicit_lir_emit_surface_keeps_renamed_void_direct_call_imm_return_caller_on_asm_path() {
+  auto module = make_x86_void_direct_call_imm_return_module();
+  auto& caller_fn = module.functions.back();
+  caller_fn.name = "entry_void";
+  caller_fn.signature_text = "define i32 @entry_void()\n";
+
+  const auto rendered = c4c::backend::x86::emit_module(module);
+
+  expect_contains(rendered, ".globl entry_void\n",
+                  "x86 explicit LIR emit surface should publish the observed renamed zero-argument void-call caller instead of requiring a literal main anchor");
+  expect_contains(rendered, "entry_void:\n",
+                  "x86 explicit LIR emit surface should preserve the renamed caller symbol on the bounded void helper-call asm path");
+  expect_contains(rendered, "call voidfn\n",
+                  "x86 explicit LIR emit surface should keep renamed void helper-call callers on the asm path");
+  expect_contains(rendered, "mov eax, 0\n",
+                  "x86 explicit LIR emit surface should still materialize the immediate renamed caller return after the void helper call");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 explicit LIR emit surface should not fall back to LLVM text for renamed void helper-call callers");
+}
+
+void test_x86_backend_explicit_emit_surface_keeps_renamed_void_direct_call_imm_return_caller_on_asm_path() {
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_x86_void_direct_call_imm_return_module());
+
+  c4c::backend::BackendFunction* caller_fn = nullptr;
+  for (auto& function : lowered.functions) {
+    if (!function.is_declaration &&
+        c4c::backend::backend_function_is_definition(function.signature) &&
+        c4c::backend::backend_signature_return_scalar_type(function.signature) ==
+            c4c::backend::BackendScalarType::I32 &&
+        function.signature.params.empty() && !function.signature.is_vararg) {
+      caller_fn = &function;
+      break;
+    }
+  }
+
+  expect_true(caller_fn != nullptr,
+              "x86 renamed void helper-call backend emit regression test needs the lowered zero-argument caller function");
+  if (caller_fn == nullptr || caller_fn->blocks.empty() || caller_fn->blocks.front().insts.empty()) {
+    return;
+  }
+
+  caller_fn->signature.name = "entry_void";
+
+  const auto direct_rendered = c4c::backend::x86::emit_module(lowered);
+  const auto backend_rendered = c4c::backend::emit_module(
+      lowered,
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_true(backend_rendered == direct_rendered,
+              "x86 backend selection should keep renamed structured void helper-call callers on the explicit backend emit surface");
+  expect_contains(direct_rendered, ".globl entry_void\n",
+                  "x86 explicit backend emit surface should publish the renamed zero-argument void-call caller instead of assuming main");
+  expect_contains(direct_rendered, "entry_void:\n",
+                  "x86 explicit backend emit surface should preserve the renamed caller label on the structured void helper-call asm path");
+  expect_contains(direct_rendered, "call voidfn\n",
+                  "x86 explicit backend emit surface should keep renamed callers on the structured void helper-call asm path");
+  expect_contains(direct_rendered, "mov eax, 0\n",
+                  "x86 explicit backend emit surface should still materialize the immediate renamed caller return after the void helper call");
+  expect_not_contains(direct_rendered, "define i32 @entry_void()",
+                      "x86 explicit backend emit surface should not fall back to backend IR text for renamed structured void helper-call callers");
 }
 
 void test_x86_backend_scaffold_accepts_structured_zero_arg_direct_call_spacing_ir_without_signature_shims() {
@@ -6709,6 +6802,9 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_renders_direct_call_slice);
   RUN_TEST(test_x86_backend_renders_zero_arg_typed_direct_call_slice_with_whitespace);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_keeps_renamed_zero_arg_direct_call_on_asm_path);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_void_direct_call_imm_return_path);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_keeps_renamed_void_direct_call_imm_return_caller_on_asm_path);
+  RUN_TEST(test_x86_backend_explicit_emit_surface_keeps_renamed_void_direct_call_imm_return_caller_on_asm_path);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_zero_arg_direct_call_spacing_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_renamed_structured_zero_arg_direct_call_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_rejects_structured_zero_arg_direct_call_when_callee_signature_param_type_disagrees);
