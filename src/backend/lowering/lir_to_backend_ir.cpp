@@ -677,7 +677,7 @@ std::optional<BackendFunction> adapt_string_literal_char_function(
   using namespace c4c::codegen::lir;
 
   if (function.is_declaration || !backend_function_is_definition(signature) ||
-      signature.return_type != "i32" || signature.name != "main" ||
+      signature.return_type != "i32" ||
       !signature.params.empty() || signature.is_vararg || function.blocks.size() != 1 ||
       !function.alloca_insts.empty() || !function.stack_objects.empty() ||
       !module.globals.empty() || !module.extern_decls.empty()) {
@@ -2847,7 +2847,7 @@ std::optional<BackendFunction> adapt_direct_vararg_decl_call_function(
   using namespace c4c::codegen::lir;
 
   if (function.is_declaration || !backend_function_is_definition(signature) ||
-      signature.return_type != "i32" || signature.name != "main" ||
+      signature.return_type != "i32" ||
       !signature.params.empty() || signature.is_vararg || function.blocks.size() != 1 ||
       !function.alloca_insts.empty() || !function.stack_objects.empty()) {
     return std::nullopt;

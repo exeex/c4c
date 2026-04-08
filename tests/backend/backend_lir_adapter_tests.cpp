@@ -2608,6 +2608,61 @@ void test_adapter_normalizes_renamed_extern_global_array_load_slice() {
                   "adapter should still return the lowered extern global array value for renamed callers");
 }
 
+void test_adapter_normalizes_renamed_string_literal_char_slice() {
+  auto module = make_string_literal_char_module();
+  auto& function = module.functions.front();
+  function.name = "entry_strchar";
+  function.signature_text = "define i32 @entry_strchar()\n";
+
+  const auto adapted = c4c::backend::lower_lir_to_backend_module(module);
+  const auto rendered = c4c::backend::render_module(adapted);
+  expect_contains(rendered, "define i32 @entry_strchar()",
+                  "adapter should preserve renamed string-literal-char callers on the explicit lowered backend seam");
+  expect_contains(rendered, "%t4 = load i32 from i8 sext, ptr @.str0 + 1",
+                  "adapter should still normalize renamed string-literal-char callers onto the bounded widened string load");
+  expect_contains(rendered, "ret i32 %t4",
+                  "adapter should still return the lowered widened string-literal byte for renamed callers");
+}
+
+void test_adapter_normalizes_renamed_multi_printf_vararg_slice() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.extern_decls.push_back(LirExternDecl{"printf", "i32"});
+  module.string_pool.push_back(LirStringConst{"@.str0", "first\n", 7});
+  module.string_pool.push_back(LirStringConst{"@.str1", "second\n", 8});
+
+  LirFunction function;
+  function.name = "entry_printfs";
+  function.signature_text = "define i32 @entry_printfs()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{"%fmt0", "[7 x i8]", "@.str0", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirCallOp{"%call0", "i32", "@printf", "(ptr, ...)", "ptr %fmt0"});
+  entry.insts.push_back(LirGepOp{"%fmt1", "[8 x i8]", "@.str1", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirCallOp{"%call1", "i32", "@printf", "(ptr, ...)", "ptr %fmt1"});
+  entry.terminator = LirRet{std::string("0"), "i32"};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  const auto adapted = c4c::backend::lower_lir_to_backend_module(module);
+  const auto rendered = c4c::backend::render_module(adapted);
+  expect_contains(rendered, "define i32 @entry_printfs()",
+                  "adapter should preserve renamed bounded multi-printf callers on the explicit lowered backend seam");
+  expect_contains(rendered, "%call0 = call i32 (ptr) @printf(ptr @.str0)",
+                  "adapter should still preserve the first renamed bounded printf call");
+  expect_contains(rendered, "%call1 = call i32 (ptr) @printf(ptr @.str1)",
+                  "adapter should still preserve the second renamed bounded printf call");
+  expect_contains(rendered, "ret i32 0",
+                  "adapter should still preserve the explicit zero return after the renamed multi-printf sequence");
+}
+
 void test_adapter_normalizes_renamed_global_char_pointer_diff_slice() {
   auto module = make_global_char_pointer_diff_module();
   auto& function = module.functions.front();
@@ -3421,6 +3476,8 @@ int main(int argc, char* argv[]) {
   test_adapter_normalizes_renamed_global_store_reload_slice();
   test_adapter_normalizes_renamed_global_int_pointer_roundtrip_slice();
   test_adapter_normalizes_renamed_extern_global_array_load_slice();
+  test_adapter_normalizes_renamed_string_literal_char_slice();
+  test_adapter_normalizes_renamed_multi_printf_vararg_slice();
   test_adapter_normalizes_renamed_global_char_pointer_diff_slice();
   test_adapter_normalizes_renamed_global_int_pointer_diff_slice();
   test_adapter_normalizes_goto_only_constant_return_slice();

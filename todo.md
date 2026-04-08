@@ -9,14 +9,49 @@ Source Plan: plan.md
 - [ ] Remove legacy backend IR files and backend/app LLVM rescue paths
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
-Current active item: Step 4 follow-on deletion. Continue with the next bounded
-zero-argument entry-symbol caller anchors after the extern indexed-global-array
-and pointer-difference siblings, starting with the remaining extern-scalar /
-string-literal-char style x86 entry slices that still hardcode `main` in
-[`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
-and any matching lowering-owned caller anchors that still reject renamed
-zero-argument `i32` definitions in
-[`src/backend/lowering/lir_to_backend_ir.cpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp).
+Current active item: Step 4 follow-on deletion. Continue with the remaining
+zero-argument entry-symbol caller anchors after the x86 extern-scalar /
+string-literal-char / bounded multi-printf siblings, focusing next on any
+matching aarch64 emitter or shared parser/decode seams that still special-case
+`main` for these bounded entry-shape families, starting with
+[`src/backend/aarch64/codegen/emit.cpp`](/workspaces/c4c/src/backend/aarch64/codegen/emit.cpp)
+and
+[`src/backend/lowering/call_decode.hpp`](/workspaces/c4c/src/backend/lowering/call_decode.hpp).
+
+Latest completed slice:
+
+- removed the bounded string-literal-char plus multi-`printf` vararg
+  production-side literal-`main` caller anchors from
+  [`src/backend/lowering/lir_to_backend_ir.cpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp)
+  so the explicit lowered backend adapter now accepts any structural
+  zero-argument `i32` caller for those families instead of rejecting renamed
+  callers before they reach the normalized widened-string-load and preserved
+  direct-call seams
+- removed the matching direct x86 literal-`main` caller anchors from
+  [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+  by teaching the extern-scalar, string-literal-char, and bounded multi-`printf`
+  fast paths to identify any single zero-argument `i32` definition
+  structurally and carry the observed caller symbol through emitted asm
+  instead of hardcoding `main`
+- proved the lowered seam deletions with new renamed-caller regressions in
+  [`tests/backend/backend_lir_adapter_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_tests.cpp)
+  so the normalized backend IR keeps `define i32 @entry_strchar()` and
+  `define i32 @entry_printfs()` while still lowering the widened string byte
+  load plus both preserved `printf` calls
+- proved the x86 production deletions with new renamed-caller regressions in
+  [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
+  so direct x86 emission, the explicit lowered backend seam where applicable,
+  and normal backend selection preserve `.globl entry_scalar`,
+  `.globl entry_strchar`, and `.globl entry_printfs` on identical asm output
+  without falling back to backend IR or LLVM text
+- kept focused backend coverage green at `3` passed / `0` failed via
+  `ctest --test-dir build -R '^(backend_lir_adapter_tests|backend_lir_adapter_x86_64_tests|backend_module_tests)$' -j1 --output-on-failure`
+- reran the required backend regression scope to `401` passed / `1` failed via
+  `ctest --test-dir build -R backend -j --output-on-failure > test_backend_after.log`;
+  the only failing case remains the independently reproducing unrelated blocker
+  `c_testsuite_aarch64_backend_src_00023_c`
+- kept the monotonic backend guard green at equal pass/fail counts via
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_backend_before.log --after test_backend_after.log --allow-non-decreasing-passed`
 
 Latest completed slice:
 

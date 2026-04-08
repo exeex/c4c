@@ -2374,6 +2374,33 @@ void test_x86_backend_explicit_lir_emit_surface_keeps_renamed_extern_global_arra
                       "x86 explicit LIR emit surface should not fall back to LLVM text for renamed extern-global-array callers");
 }
 
+void test_x86_backend_explicit_lir_emit_surface_keeps_renamed_extern_scalar_global_load_on_asm_path() {
+  auto module = make_x86_extern_global_load_module();
+  auto& function = module.functions.front();
+  function.name = "entry_scalar";
+  function.signature_text = "define i32 @entry_scalar()\n";
+
+  const auto direct_rendered = c4c::backend::x86::emit_module(module);
+  const auto lowered_rendered =
+      c4c::backend::x86::emit_module(c4c::backend::lower_lir_to_backend_module(module));
+  const auto backend_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_true(direct_rendered == lowered_rendered,
+              "x86 explicit LIR emit surface should keep renamed extern-scalar-global callers aligned with the explicit lowered backend seam");
+  expect_true(direct_rendered == backend_rendered,
+              "x86 backend selection should keep renamed extern-scalar-global callers on the same explicit x86 asm path");
+  expect_contains(direct_rendered, ".globl entry_scalar\n",
+                  "x86 explicit LIR emit surface should publish the renamed zero-arg caller instead of requiring a literal main anchor for extern scalar loads");
+  expect_contains(direct_rendered, "entry_scalar:\n",
+                  "x86 explicit LIR emit surface should preserve the renamed extern-scalar-global caller label on the asm path");
+  expect_contains(direct_rendered, "mov eax, dword ptr [rax]\n",
+                  "x86 explicit LIR emit surface should still lower renamed extern-scalar-global callers into the same scalar load");
+  expect_not_contains(direct_rendered, "target triple =",
+                      "x86 explicit LIR emit surface should not fall back to LLVM text for renamed extern-scalar-global callers");
+}
+
 void test_x86_backend_explicit_lir_emit_surface_matches_mixed_cast_constant_conditional_goto_return_path() {
   const auto module = make_mixed_cast_constant_conditional_goto_return_module();
   const auto direct_rendered = c4c::backend::x86::emit_module(module);
@@ -6483,6 +6510,29 @@ void test_x86_backend_explicit_lir_emit_surface_matches_bounded_multi_printf_var
                       "x86 explicit LIR emit surface should not fall back to LLVM text for the bounded multi-printf vararg slice");
 }
 
+void test_x86_backend_explicit_lir_emit_surface_keeps_renamed_multi_printf_vararg_on_asm_path() {
+  auto module = make_x86_multi_printf_vararg_module();
+  auto& function = module.functions.front();
+  function.name = "entry_printfs";
+  function.signature_text = "define i32 @entry_printfs()\n";
+
+  const auto direct_rendered = c4c::backend::x86::emit_module(module);
+  const auto backend_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_true(direct_rendered == backend_rendered,
+              "x86 backend selection should keep renamed bounded multi-printf callers on the same direct x86 asm path");
+  expect_contains(direct_rendered, ".globl entry_printfs\n",
+                  "x86 explicit LIR emit surface should publish the renamed bounded multi-printf caller instead of requiring a literal main anchor");
+  expect_contains(direct_rendered, "entry_printfs:\n",
+                  "x86 explicit LIR emit surface should preserve the renamed bounded multi-printf caller label on the asm path");
+  expect_contains(direct_rendered, "call printf\n",
+                  "x86 explicit LIR emit surface should keep both renamed bounded printf calls on the asm path");
+  expect_not_contains(direct_rendered, "getelementptr",
+                      "x86 explicit LIR emit surface should not fall back to LLVM text for renamed bounded multi-printf callers");
+}
+
 void test_x86_backend_renders_string_literal_char_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_x86_string_literal_char_module()},
@@ -6507,6 +6557,33 @@ void test_x86_backend_renders_string_literal_char_slice() {
                   "x86 backend should return the promoted string-literal result");
   expect_not_contains(rendered, "getelementptr",
                       "x86 backend should no longer fall back to LLVM text for the string-literal char slice");
+}
+
+void test_x86_backend_explicit_lir_emit_surface_keeps_renamed_string_literal_char_on_asm_path() {
+  auto module = make_x86_string_literal_char_module();
+  auto& function = module.functions.front();
+  function.name = "entry_strchar";
+  function.signature_text = "define i32 @entry_strchar()\n";
+
+  const auto direct_rendered = c4c::backend::x86::emit_module(module);
+  const auto lowered_rendered =
+      c4c::backend::x86::emit_module(c4c::backend::lower_lir_to_backend_module(module));
+  const auto backend_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_true(direct_rendered == lowered_rendered,
+              "x86 explicit LIR emit surface should keep renamed string-literal-char callers aligned with the explicit lowered backend seam");
+  expect_true(direct_rendered == backend_rendered,
+              "x86 backend selection should keep renamed string-literal-char callers on the same explicit x86 asm path");
+  expect_contains(direct_rendered, ".globl entry_strchar\n",
+                  "x86 explicit LIR emit surface should publish the renamed zero-arg caller instead of requiring a literal main anchor for string-literal-char slices");
+  expect_contains(direct_rendered, "entry_strchar:\n",
+                  "x86 explicit LIR emit surface should preserve the renamed string-literal-char caller label on the asm path");
+  expect_contains(direct_rendered, "movsx eax, byte ptr [rax + 1]\n",
+                  "x86 explicit LIR emit surface should still lower the renamed widened string-literal byte load on the asm path");
+  expect_not_contains(direct_rendered, "getelementptr",
+                      "x86 explicit LIR emit surface should not fall back to LLVM text for renamed string-literal-char callers");
 }
 
 void test_x86_backend_renders_global_char_pointer_diff_slice() {
@@ -7278,6 +7355,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_keeps_renamed_double_indirect_local_pointer_conditional_return_on_asm_path);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_keeps_renamed_global_int_pointer_roundtrip_on_asm_path);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_keeps_renamed_extern_global_array_on_asm_path);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_keeps_renamed_extern_scalar_global_load_on_asm_path);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_mixed_cast_constant_conditional_goto_return_path);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_truncating_binop_constant_conditional_goto_return_path);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_select_constant_conditional_goto_return_path);
@@ -7417,7 +7495,9 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_declared_direct_call_uses_structured_decl_signature_for_fixed_args);
   RUN_TEST(test_x86_backend_adapter_preserves_multiple_printf_calls_in_backend_ir);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_bounded_multi_printf_vararg_path);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_keeps_renamed_multi_printf_vararg_on_asm_path);
   RUN_TEST(test_x86_backend_renders_string_literal_char_slice);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_keeps_renamed_string_literal_char_on_asm_path);
   RUN_TEST(test_x86_backend_renders_global_char_pointer_diff_slice);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_keeps_renamed_global_char_pointer_diff_on_asm_path);
   RUN_TEST(test_x86_backend_scaffold_matches_direct_global_char_pointer_diff_asm);

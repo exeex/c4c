@@ -270,6 +270,7 @@ struct MinimalLocalArraySlice {
 };
 
 struct MinimalExternScalarGlobalLoadSlice {
+  std::string function_name;
   std::string global_name;
 };
 
@@ -309,11 +310,13 @@ struct MinimalScalarGlobalStoreReloadSlice {
 };
 
 struct MinimalMultiPrintfVarargSlice {
+  std::string function_name;
   std::string first_string_pool_name;
   std::string second_string_pool_name;
 };
 
 struct MinimalStringLiteralCharSlice {
+  std::string function_name;
   std::string pool_name;
   std::string raw_bytes;
   std::int64_t byte_offset = 0;
@@ -3108,15 +3111,13 @@ std::optional<MinimalExternScalarGlobalLoadSlice> parse_minimal_extern_scalar_gl
     return std::nullopt;
   }
 
-  const auto& function = module.functions.front();
-  if (function.is_declaration ||
-      !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(function.signature_text) ||
-      function.entry.value != 0 || function.blocks.size() != 1 ||
-      !function.alloca_insts.empty() || !function.stack_objects.empty()) {
+  const auto* function = find_single_zero_arg_i32_lir_definition(module);
+  if (function == nullptr || function->blocks.size() != 1 ||
+      !function->alloca_insts.empty() || !function->stack_objects.empty()) {
     return std::nullopt;
   }
 
-  const auto& entry = function.blocks.front();
+  const auto& entry = function->blocks.front();
   const auto* load =
       entry.insts.size() == 1 ? std::get_if<LirLoadOp>(&entry.insts.front()) : nullptr;
   const auto* ret = std::get_if<LirRet>(&entry.terminator);
@@ -3127,7 +3128,7 @@ std::optional<MinimalExternScalarGlobalLoadSlice> parse_minimal_extern_scalar_gl
     return std::nullopt;
   }
 
-  return MinimalExternScalarGlobalLoadSlice{global.name};
+  return MinimalExternScalarGlobalLoadSlice{function->name, global.name};
 }
 
 std::optional<MinimalExternGlobalArrayLoadSlice> parse_minimal_extern_global_array_load_slice(
@@ -3303,7 +3304,7 @@ std::optional<MinimalExternScalarGlobalLoadSlice> parse_minimal_extern_scalar_gl
     return std::nullopt;
   }
 
-  return MinimalExternScalarGlobalLoadSlice{global->name};
+  return MinimalExternScalarGlobalLoadSlice{function->signature.name, global->name};
 }
 
 std::optional<MinimalScalarGlobalLoadSlice> parse_minimal_scalar_global_load_slice(
@@ -3928,15 +3929,13 @@ std::optional<MinimalScalarGlobalStoreReloadSlice> parse_minimal_scalar_global_s
     return std::nullopt;
   }
 
-  const auto& function = module.functions.front();
-  if (function.is_declaration ||
-      !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(function.signature_text) ||
-      function.entry.value != 0 || function.blocks.size() != 1 ||
-      !function.alloca_insts.empty() || !function.stack_objects.empty()) {
+  const auto* function = find_single_zero_arg_i32_lir_definition(module);
+  if (function == nullptr || function->blocks.size() != 1 ||
+      !function->alloca_insts.empty() || !function->stack_objects.empty()) {
     return std::nullopt;
   }
 
-  const auto& entry = function.blocks.front();
+  const auto& entry = function->blocks.front();
   const auto* ret = std::get_if<LirRet>(&entry.terminator);
   if (entry.label != "entry" || entry.insts.size() != 2 || ret == nullptr ||
       !ret->value_str.has_value() || ret->type_str != "i32") {
@@ -3957,7 +3956,7 @@ std::optional<MinimalScalarGlobalStoreReloadSlice> parse_minimal_scalar_global_s
   }
 
   return MinimalScalarGlobalStoreReloadSlice{
-      function.name,
+      function->name,
       global.name,
       *init_imm,
       *store_imm,
@@ -3978,15 +3977,13 @@ std::optional<MinimalMultiPrintfVarargSlice> parse_minimal_multi_printf_vararg_s
     return std::nullopt;
   }
 
-  const auto& function = module.functions.front();
-  if (function.is_declaration ||
-      !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(function.signature_text) ||
-      function.entry.value != 0 || function.blocks.size() != 1 ||
-      !function.alloca_insts.empty() || !function.stack_objects.empty()) {
+  const auto* function = find_single_zero_arg_i32_lir_definition(module);
+  if (function == nullptr || function->blocks.size() != 1 ||
+      !function->alloca_insts.empty() || !function->stack_objects.empty()) {
     return std::nullopt;
   }
 
-  const auto& entry = function.blocks.front();
+  const auto& entry = function->blocks.front();
   const auto* ret = std::get_if<LirRet>(&entry.terminator);
   if (entry.label != "entry" || entry.insts.size() != 4 || ret == nullptr ||
       !ret->value_str.has_value() || *ret->value_str != "0" || ret->type_str != "i32") {
@@ -4041,7 +4038,7 @@ std::optional<MinimalMultiPrintfVarargSlice> parse_minimal_multi_printf_vararg_s
     return std::nullopt;
   }
 
-  return MinimalMultiPrintfVarargSlice{string0->pool_name, string1->pool_name};
+  return MinimalMultiPrintfVarargSlice{function->name, string0->pool_name, string1->pool_name};
 }
 
 std::optional<MinimalStringLiteralCharSlice> parse_minimal_string_literal_char_slice(
@@ -4054,15 +4051,13 @@ std::optional<MinimalStringLiteralCharSlice> parse_minimal_string_literal_char_s
   }
 
   const auto& string_const = module.string_pool.front();
-  const auto& function = module.functions.front();
-  if (function.is_declaration ||
-      !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(function.signature_text) ||
-      function.entry.value != 0 || function.blocks.size() != 1 ||
-      !function.alloca_insts.empty() || !function.stack_objects.empty()) {
+  const auto* function = find_single_zero_arg_i32_lir_definition(module);
+  if (function == nullptr || function->blocks.size() != 1 ||
+      !function->alloca_insts.empty() || !function->stack_objects.empty()) {
     return std::nullopt;
   }
 
-  const auto& entry = function.blocks.front();
+  const auto& entry = function->blocks.front();
   if (entry.label != "entry" || entry.insts.size() != 5) {
     return std::nullopt;
   }
@@ -4117,6 +4112,7 @@ std::optional<MinimalStringLiteralCharSlice> parse_minimal_string_literal_char_s
   }
 
   return MinimalStringLiteralCharSlice{
+      function->name,
       string_const.pool_name,
       string_const.raw_bytes,
       *byte_index,
@@ -4133,16 +4129,12 @@ std::optional<MinimalStringLiteralCharSlice> parse_minimal_string_literal_char_s
 
   const auto* string_const =
       find_string_constant(module, module.string_constants.front().name);
-  const auto* main_fn = find_function(module, "main");
-  if (string_const == nullptr || main_fn == nullptr || main_fn->is_declaration ||
-      !backend_function_is_definition(main_fn->signature) ||
-      !is_i32_scalar_signature_return(main_fn->signature) ||
-      !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
-      main_fn->blocks.size() != 1) {
+  const auto* function = find_single_zero_arg_i32_backend_definition(module);
+  if (string_const == nullptr || function == nullptr || function->blocks.size() != 1) {
     return std::nullopt;
   }
 
-  const auto& block = main_fn->blocks.front();
+  const auto& block = function->blocks.front();
   if (block.label != "entry" || block.insts.size() != 1 ||
       !block.terminator.value.has_value() ||
       c4c::backend::backend_return_scalar_type(block.terminator) !=
@@ -4169,6 +4161,7 @@ std::optional<MinimalStringLiteralCharSlice> parse_minimal_string_literal_char_s
   }
 
   return MinimalStringLiteralCharSlice{
+      function->signature.name,
       "@" + string_const->name,
       string_const->raw_bytes,
       load->address.byte_offset,
@@ -5560,7 +5553,7 @@ std::string emit_minimal_extern_scalar_global_load_asm(
     std::string_view target_triple,
     const MinimalExternScalarGlobalLoadSlice& slice) {
   const std::string global_symbol = asm_symbol_name(target_triple, slice.global_name);
-  const std::string main_symbol = asm_symbol_name(target_triple, "main");
+  const std::string main_symbol = asm_symbol_name(target_triple, slice.function_name);
 
   std::ostringstream out;
   out << ".intel_syntax noprefix\n";
@@ -5761,7 +5754,7 @@ std::string emit_minimal_multi_printf_vararg_asm(
         "bounded multi-printf vararg slice lost one of its string constants");
   }
 
-  const std::string main_symbol = asm_symbol_name(target_triple, "main");
+  const std::string main_symbol = asm_symbol_name(target_triple, slice.function_name);
   const std::string printf_symbol = asm_symbol_name(target_triple, "printf");
   const std::string first_label = asm_private_data_label(target_triple, first->pool_name);
   const std::string second_label = asm_private_data_label(target_triple, second->pool_name);
@@ -5913,7 +5906,7 @@ std::string emit_minimal_string_literal_char_asm(
     std::string_view target_triple,
     const MinimalStringLiteralCharSlice& slice) {
   const std::string string_label = asm_private_data_label(target_triple, slice.pool_name);
-  const std::string main_symbol = asm_symbol_name(target_triple, "main");
+  const std::string main_symbol = asm_symbol_name(target_triple, slice.function_name);
 
   std::ostringstream out;
   out << ".intel_syntax noprefix\n";
