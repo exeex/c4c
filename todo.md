@@ -5,9 +5,9 @@ Source Plan: plan.md
 # Active Item
 
 - Step 2: switch one shared helper seam off `BackendModule`
-- Current slice: pick the next still-live legacy LIR direct-call helper family
-  after the x86 declared-direct-call path moved onto `try_lower_to_bir(...)`
-  and the shared BIR parser/emitter route
+- Current slice: inventory the next smallest legacy x86 direct-call LIR helper
+  family now that the zero-arg minimal helper/main route has moved onto
+  `try_lower_to_bir(...)` and the shared BIR direct-call emitter path
 
 # Completed
 
@@ -92,6 +92,19 @@ Source Plan: plan.md
   `ctest --test-dir build -R 'backend_(bir_tests|shared_util_tests)' --output-on-failure`,
   and reran the full `ctest --test-dir build -j --output-on-failure` suite
   successfully with `2834/2834` tests passing in `test_after.log`
+- Added an order-independent `try_lower_to_bir(...)` path for the zero-arg
+  minimal LIR direct-call helper/main family so it now synthesizes the shared
+  two-function BIR direct-call shape instead of depending on x86's private
+  legacy parser dispatch
+- Removed the now-dead x86-only
+  `parse_backend_minimal_direct_call_lir_module(...)` direct-emission dispatch
+  and matching private emitter overload from `src/backend/x86/codegen/emit.cpp`
+- Added focused BIR lowering coverage for the zero-arg minimal direct-call LIR
+  slice plus an x86 end-to-end pipeline test proving the LIR route now stays
+  on the shared BIR direct-call emitter path
+- Rebuilt `backend_bir_tests`, reran the binary directly, and reran the full
+  `ctest --test-dir build -j --output-on-failure` suite successfully with
+  `2834/2834` tests passing in `test_after.log`
 
 # Next
 
@@ -100,7 +113,8 @@ Source Plan: plan.md
   to choose the next smallest seam that can be rerouted through BIR without
   broadening `try_lower_to_bir(...)` too aggressively
 - Continue shrinking stale direct-call helper families one seam at a time now
-  that the x86 declared-direct-call path no longer needs its private LIR seam
+  that both the x86 declared-direct-call path and the zero-arg helper/main
+  path no longer need private emitter-only LIR seams
 - Use the next slice to make `lir_to_backend_ir.*` more obviously adapter-only
   before Step 4 collapse work starts
 
@@ -129,3 +143,6 @@ Source Plan: plan.md
   this slice rebuilt the touched backend targets, reran targeted backend
   coverage, and then recorded full-suite success in `test_after.log` at
   `2834/2834`
+- This slice removes the x86 emitter's private zero-arg direct-call LIR
+  dispatch, but the shared LIR shape recognizer still exists as lowering glue
+  for `try_lower_to_bir(...)`

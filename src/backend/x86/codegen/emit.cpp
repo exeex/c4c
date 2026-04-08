@@ -4790,33 +4790,6 @@ std::string emit_minimal_direct_call_asm(
   return out.str();
 }
 
-std::string emit_minimal_direct_call_asm(
-    std::string_view target_triple,
-    const c4c::backend::ParsedBackendMinimalDirectCallLirModuleView& slice) {
-  if (slice.helper == nullptr || slice.main_function == nullptr) {
-    throw std::invalid_argument("direct zero-argument LIR call slice without caller/helper metadata");
-  }
-
-  if (slice.return_imm < std::numeric_limits<std::int32_t>::min() ||
-      slice.return_imm > std::numeric_limits<std::int32_t>::max()) {
-    throw std::invalid_argument("direct zero-argument LIR helper return immediates outside the minimal mov-supported range");
-  }
-
-  const std::string helper_symbol = asm_symbol_name(target_triple, slice.helper->name);
-  const std::string main_symbol = asm_symbol_name(target_triple, slice.main_function->name);
-
-  std::ostringstream out;
-  out << ".intel_syntax noprefix\n";
-  out << ".text\n";
-  emit_function_prelude(out, helper_symbol, false);
-  out << "  mov eax, " << slice.return_imm << "\n"
-      << "  ret\n";
-  emit_function_prelude(out, main_symbol, true);
-  out << "  call " << helper_symbol << "\n"
-      << "  ret\n";
-  return out.str();
-}
-
 std::string emit_minimal_void_direct_call_imm_return_asm(
     const c4c::backend::BackendModule& module,
     const c4c::backend::ParsedBackendMinimalVoidDirectCallImmReturnModuleView& slice) {
@@ -6055,10 +6028,6 @@ std::optional<std::string> try_emit_direct_lir_module(
     if (const auto slice = parse_minimal_conditional_phi_join_slice(module);
         slice.has_value()) {
       return emit_minimal_conditional_phi_join_asm(module.target_triple, *slice);
-    }
-    if (const auto slice = c4c::backend::parse_backend_minimal_direct_call_lir_module(module);
-        slice.has_value()) {
-      return emit_minimal_direct_call_asm(module.target_triple, *slice);
     }
     if (const auto slice =
             c4c::backend::parse_backend_minimal_void_direct_call_imm_return_lir_module(module);

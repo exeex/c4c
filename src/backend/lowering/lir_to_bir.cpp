@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <vector>
 
 namespace c4c::backend {
@@ -143,6 +144,104 @@ std::string decode_llvm_byte_string(std::string_view text) {
     bytes.push_back(text[index]);
   }
   return bytes;
+}
+
+std::optional<bir::Module> try_lower_minimal_direct_call_module(
+    const c4c::codegen::lir::LirModule& module) {
+  if (!module.globals.empty() || !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+  if (module.functions.size() != 2) {
+    return std::nullopt;
+  }
+
+  const auto try_match =
+      [](const c4c::codegen::lir::LirFunction& main_function,
+         const c4c::codegen::lir::LirFunction& helper)
+      -> std::optional<std::tuple<std::string, std::string, std::string, std::int64_t>> {
+    using namespace c4c::codegen::lir;
+
+    if (main_function.is_declaration || helper.is_declaration ||
+        !backend_lir_signature_matches(
+            main_function.signature_text, "define", "i32", main_function.name, {}) ||
+        !backend_lir_signature_matches(helper.signature_text, "define", "i32", helper.name, {}) ||
+        main_function.entry.value != 0 || helper.entry.value != 0 ||
+        main_function.blocks.size() != 1 || helper.blocks.size() != 1 ||
+        !main_function.alloca_insts.empty() || !helper.alloca_insts.empty() ||
+        !main_function.stack_objects.empty() || !helper.stack_objects.empty()) {
+      return std::nullopt;
+    }
+
+    const auto helper_return_imm =
+        parse_backend_lir_zero_arg_return_imm_function(helper, std::nullopt);
+    if (!helper_return_imm.has_value()) {
+      return std::nullopt;
+    }
+
+    const auto& main_block = main_function.blocks.front();
+    const auto* main_ret = std::get_if<LirRet>(&main_block.terminator);
+    if (main_block.label != "entry" || main_block.insts.size() != 1 || main_ret == nullptr ||
+        !main_ret->value_str.has_value() || main_ret->type_str != "i32") {
+      return std::nullopt;
+    }
+
+    const auto* call = std::get_if<LirCallOp>(&main_block.insts.front());
+    const auto callee_name =
+        call == nullptr ? std::nullopt : parse_backend_zero_arg_direct_global_typed_call(*call);
+    if (call == nullptr || !callee_name.has_value() || *callee_name != helper.name ||
+        call->result.str().empty() || *main_ret->value_str != call->result.str()) {
+      return std::nullopt;
+    }
+
+    return std::tuple<std::string, std::string, std::string, std::int64_t>{
+        helper.name,
+        main_function.name,
+        call->result.str(),
+        *helper_return_imm,
+    };
+  };
+
+  auto parsed = try_match(module.functions[0], module.functions[1]);
+  if (!parsed.has_value()) {
+    parsed = try_match(module.functions[1], module.functions[0]);
+  }
+  if (!parsed.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto& [helper_name, main_name, call_result, return_imm] = *parsed;
+
+  bir::Module lowered;
+  lowered.target_triple = module.target_triple;
+  lowered.data_layout = module.data_layout;
+
+  bir::Function helper;
+  helper.name = helper_name;
+  helper.return_type = bir::TypeKind::I32;
+
+  bir::Block helper_entry;
+  helper_entry.label = "entry";
+  helper_entry.terminator.value =
+      bir::Value::immediate_i32(static_cast<std::int32_t>(return_imm));
+  helper.blocks.push_back(std::move(helper_entry));
+  lowered.functions.push_back(std::move(helper));
+
+  bir::Function main_function;
+  main_function.name = main_name;
+  main_function.return_type = bir::TypeKind::I32;
+
+  bir::Block main_entry;
+  main_entry.label = "entry";
+  main_entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, call_result),
+      .callee = helper_name,
+      .args = {},
+      .return_type_name = "i32",
+  });
+  main_entry.terminator.value = bir::Value::named(bir::TypeKind::I32, call_result);
+  main_function.blocks.push_back(std::move(main_entry));
+  lowered.functions.push_back(std::move(main_function));
+  return lowered;
 }
 
 std::optional<bir::Module> try_lower_minimal_declared_direct_call_module(
@@ -2147,6 +2246,10 @@ std::optional<bir::Function> try_lower_widened_i8_conditional_phi_select_functio
 }  // namespace
 
 std::optional<bir::Module> try_lower_to_bir(const c4c::codegen::lir::LirModule& module) {
+  if (const auto lowered = try_lower_minimal_direct_call_module(module);
+      lowered.has_value()) {
+    return lowered;
+  }
   if (const auto lowered = try_lower_minimal_declared_direct_call_module(module);
       lowered.has_value()) {
     return lowered;

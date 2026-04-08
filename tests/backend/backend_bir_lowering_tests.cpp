@@ -9,6 +9,42 @@
 
 namespace {
 
+c4c::codegen::lir::LirModule make_bir_minimal_direct_call_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction helper;
+  helper.name = "helper";
+  helper.signature_text = "define i32 @helper()\n";
+  helper.entry = LirBlockId{0};
+
+  LirBlock helper_entry;
+  helper_entry.id = LirBlockId{0};
+  helper_entry.label = "entry";
+  helper_entry.terminator = LirRet{std::string("42"), "i32"};
+  helper.blocks.push_back(std::move(helper_entry));
+
+  LirFunction main_function;
+  main_function.name = "main";
+  main_function.signature_text = "define i32 @main()\n";
+  main_function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{"%t0", "i32", "@helper", "", ""});
+  entry.terminator = LirRet{std::string("%t0"), "i32"};
+  main_function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(main_function));
+  module.functions.push_back(std::move(helper));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_bir_declared_direct_call_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -33,6 +69,22 @@ c4c::codegen::lir::LirModule make_bir_declared_direct_call_lir_module() {
 
   module.functions.push_back(std::move(function));
   return module;
+}
+
+void test_bir_lowering_accepts_minimal_direct_call_lir_module() {
+  const auto lowered = c4c::backend::try_lower_to_bir(make_bir_minimal_direct_call_lir_module());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the zero-arg minimal direct-call LIR module slice");
+
+  const auto parsed = c4c::backend::parse_bir_minimal_direct_call_module(*lowered);
+  expect_true(parsed.has_value(),
+              "the lowered BIR module should match the shared minimal direct-call BIR parser");
+  if (parsed.has_value()) {
+    expect_true(parsed->helper != nullptr && parsed->helper->name == "helper" &&
+                    parsed->main_function != nullptr && parsed->main_function->name == "main" &&
+                    parsed->return_imm == 42,
+                "the lowered BIR module should preserve the helper/main structure and immediate return");
+  }
 }
 
 void test_bir_printer_renders_minimal_add_scaffold() {
@@ -1941,6 +1993,7 @@ void test_bir_validator_rejects_non_widening_sext() {
 }  // namespace
 
 void run_backend_bir_lowering_tests() {
+  RUN_TEST(test_bir_lowering_accepts_minimal_direct_call_lir_module);
   RUN_TEST(test_bir_printer_renders_minimal_add_scaffold);
   RUN_TEST(test_bir_printer_renders_minimal_sub_scaffold);
   RUN_TEST(test_bir_printer_renders_minimal_mul_scaffold);
