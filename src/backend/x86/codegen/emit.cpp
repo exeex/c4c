@@ -44,12 +44,8 @@ bool is_direct_bir_subset_error(const std::invalid_argument& ex) {
          std::string_view::npos;
 }
 
-std::string asm_symbol_name(const c4c::backend::BackendModule& module,
-                            std::string_view logical_name);
 std::string asm_symbol_name(std::string_view target_triple,
                             std::string_view logical_name);
-std::string asm_private_data_label(const c4c::backend::BackendModule& module,
-                                   std::string_view pool_name);
 std::string asm_private_data_label(std::string_view target_triple,
                                    std::string_view pool_name);
 
@@ -1196,23 +1192,11 @@ std::optional<std::string_view> strip_typed_operand_prefix(std::string_view oper
   return operand.substr(type_prefix.size() + 1);
 }
 
-// Legacy BackendModule plumbing: only the target triple still matters here.
-// These helpers can move to BIR unchanged once callers pass target_triple directly.
-std::string asm_symbol_name(const c4c::backend::BackendModule& module,
-                            std::string_view logical_name) {
-  return asm_symbol_name(module.target_triple, logical_name);
-}
-
 std::string asm_symbol_name(std::string_view target_triple,
                             std::string_view logical_name) {
   const bool is_darwin = target_triple.find("apple-darwin") != std::string::npos;
   if (!is_darwin) return std::string(logical_name);
   return std::string("_") + std::string(logical_name);
-}
-
-std::string asm_private_data_label(const c4c::backend::BackendModule& module,
-                                   std::string_view pool_name) {
-  return asm_private_data_label(module.target_triple, pool_name);
 }
 
 std::string asm_private_data_label(std::string_view target_triple,
