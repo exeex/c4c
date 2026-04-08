@@ -12,10 +12,36 @@ Source Plan: plan.md
 Current active item: Step 4 follow-on deletion. Resume the next live x86
 single-helper helper/runtime seam that still depends on
 `lower_lir_to_backend_module(...)` or another symbol-specific convenience now
-that the remaining bounded single-arg add-immediate caller-anchor cleanup is
-gone from the shared direct-call parser and lowered x86 emitter path.
+that the lowered declared-direct-call caller-anchor cleanup is gone from the
+shared parser and lowered x86 emitter path.
 
 Latest completed slice:
+
+- removed the lowered structured declared-direct-call production-side
+  literal-`main` caller anchor from
+  [`src/backend/lowering/call_decode.hpp`](/workspaces/c4c/src/backend/lowering/call_decode.hpp)
+  by teaching the shared backend-module matcher to identify the zero-argument
+  `i32` caller structurally instead of selecting it by symbol name
+- taught the lowered x86 declared-direct-call emitter path in
+  [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+  to publish the parsed caller symbol instead of hardcoding the emitted entry
+  symbol to `main`, so renamed lowered callers stay on the native asm path for
+  this bounded extern-call family
+- proved the shared matcher deletion with a new renamed-caller regression in
+  [`tests/backend/backend_lir_adapter_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_tests.cpp)
+  covering `parse_backend_minimal_declared_direct_call_module(...)` on the
+  lowered backend-module seam
+- proved the x86 lowered-emitter behavior with a new renamed-caller regression
+  in
+  [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
+  so the bounded lowered declared-direct-call seam emits the observed caller
+  symbol and stays on assembly output
+- kept focused adapter coverage green at `2` passed / `0` failed via
+  `ctest --test-dir build -R 'backend_lir_adapter_tests|backend_lir_adapter_x86_64_tests' -j1 --output-on-failure`
+- kept backend regression coverage monotonic at `402` passed / `0` failed
+  before and after via `test_backend_before.log`, `test_backend_after.log`,
+  and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_backend_before.log --after test_backend_after.log --allow-non-decreasing-passed`
 
 - removed the remaining shared structured single-add-immediate direct-call
   production-side literal-`main` caller anchor from
@@ -248,14 +274,15 @@ Completed in this slice:
 Next intended slice:
 
 - resume the next emitter-local `lower_lir_to_backend_module(...)` deletion now
-  that the bounded single-arg add-immediate caller-anchor cleanup is complete
+  that the lowered declared-direct-call caller-anchor cleanup is complete
 - keep deleting emitter-local legacy conveniences that encode symbol-specific
   assumptions when a bounded structural match is enough for the live slice
 - target another renamed or reordered x86-local helper/runtime family that
-  still falls through to legacy lowering when the direct parser keys off fixed
-  symbols or ordering
-- prefer the remaining member-array runtime variants first so the next batch
-  can reuse the same bounded helper/runtime seam without widening scope
+  still falls through to legacy lowering or hardcodes `main` on a lowered
+  backend-module seam
+- prefer another bounded single-helper x86 helper/runtime family first so the
+  next batch can reuse the same helper/caller structural matcher shape without
+  widening scope
 - target another bounded x86-local helper/runtime family that still hits
   `lower_lir_to_backend_module(...)` on the explicit LIR entrypoint now that
   the folded two-argument helper seam is gone

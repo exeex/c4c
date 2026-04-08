@@ -5818,6 +5818,55 @@ void test_x86_backend_explicit_emit_surface_keeps_structured_declared_direct_cal
                       "x86 explicit backend emit surface should stay on assembly output for structured declared direct calls");
 }
 
+void test_x86_backend_explicit_emit_surface_keeps_renamed_declared_direct_call_caller_on_asm_path() {
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_x86_extern_decl_inferred_param_module());
+  clear_backend_signature_and_call_type_compatibility_shims(lowered);
+
+  c4c::backend::BackendFunction* caller_fn = nullptr;
+  for (auto& function : lowered.functions) {
+    if (!function.is_declaration &&
+        c4c::backend::backend_function_is_definition(function.signature) &&
+        c4c::backend::backend_signature_return_scalar_type(function.signature) ==
+            c4c::backend::BackendScalarType::I32 &&
+        function.signature.params.empty() && !function.signature.is_vararg) {
+      caller_fn = &function;
+      break;
+    }
+  }
+
+  expect_true(caller_fn != nullptr,
+              "x86 renamed declared direct-call backend emit regression test needs the lowered zero-argument caller function");
+  if (caller_fn == nullptr || caller_fn->blocks.empty() ||
+      caller_fn->blocks.front().insts.empty()) {
+    return;
+  }
+
+  caller_fn->signature.name = "entry_sum";
+  auto& call = std::get<c4c::backend::BackendCallInst>(caller_fn->blocks.front().insts.front());
+  call.result = "%t.entry_sum.call";
+  caller_fn->blocks.front().terminator.value = "%t.entry_sum.call";
+
+  const auto direct_rendered = c4c::backend::x86::emit_module(lowered);
+  const auto backend_rendered = c4c::backend::emit_module(
+      lowered,
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_true(backend_rendered == direct_rendered,
+              "x86 backend selection should keep renamed structured declared direct-call callers on the explicit backend emit surface");
+  expect_contains(direct_rendered, ".globl entry_sum\n",
+                  "x86 explicit backend emit surface should publish the renamed zero-arg caller instead of assuming main");
+  expect_contains(direct_rendered, "entry_sum:\n",
+                  "x86 explicit backend emit surface should preserve the renamed caller label on the structured declared direct-call asm path");
+  expect_contains(direct_rendered, "mov edi, 5\n",
+                  "x86 explicit backend emit surface should keep decoding the first fixed argument after removing the caller-name anchor");
+  expect_contains(direct_rendered, "mov esi, 7\n",
+                  "x86 explicit backend emit surface should keep decoding the second fixed argument after removing the caller-name anchor");
+  expect_contains(direct_rendered, "call helper_ext\n",
+                  "x86 explicit backend emit surface should keep renamed callers on the structured declared helper asm path");
+  expect_not_contains(direct_rendered, "define i32 @entry_sum()",
+                      "x86 explicit backend emit surface should not fall back to backend IR text for renamed structured declared direct-call callers");
+}
+
 void test_x86_backend_declared_direct_call_uses_structured_decl_signature_for_fixed_args() {
   auto lowered = c4c::backend::lower_lir_to_backend_module(make_x86_extern_decl_inferred_param_module());
   clear_backend_signature_and_call_type_compatibility_shims(lowered);
@@ -6773,6 +6822,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_keeps_renamed_declared_direct_call_caller_on_asm_path);
   RUN_TEST(test_x86_backend_declared_direct_call_uses_structured_vararg_metadata);
   RUN_TEST(test_x86_backend_explicit_emit_surface_keeps_structured_declared_direct_call_backend_path);
+  RUN_TEST(test_x86_backend_explicit_emit_surface_keeps_renamed_declared_direct_call_caller_on_asm_path);
   RUN_TEST(test_x86_backend_declared_direct_call_uses_structured_decl_signature_for_fixed_args);
   RUN_TEST(test_x86_backend_adapter_preserves_multiple_printf_calls_in_backend_ir);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_bounded_multi_printf_vararg_path);

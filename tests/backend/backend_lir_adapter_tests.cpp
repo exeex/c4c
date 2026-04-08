@@ -1698,6 +1698,54 @@ void test_backend_call_helpers_parse_structured_declared_direct_call_module() {
               "shared structured declared direct-call module parser should preserve renamed declaration symbols, typed operands, vararg signatures, and fixed return immediates without target-local backend-module scans");
 }
 
+void test_backend_call_helpers_parse_structured_declared_direct_call_module_with_renamed_caller() {
+  auto lowered =
+      c4c::backend::lower_lir_to_backend_module(make_x86_extern_decl_inferred_param_module());
+
+  c4c::backend::BackendFunction* caller_fn = nullptr;
+  for (auto& function : lowered.functions) {
+    if (!function.is_declaration &&
+        c4c::backend::backend_function_is_definition(function.signature) &&
+        c4c::backend::backend_signature_return_scalar_type(function.signature) ==
+            c4c::backend::BackendScalarType::I32 &&
+        function.signature.params.empty() && !function.signature.is_vararg) {
+      caller_fn = &function;
+      break;
+    }
+  }
+
+  expect_true(caller_fn != nullptr,
+              "shared renamed declared direct-call module parser regression test needs the lowered zero-argument caller function");
+  if (caller_fn == nullptr || caller_fn->blocks.empty() ||
+      caller_fn->blocks.front().insts.empty()) {
+    return;
+  }
+
+  caller_fn->signature.name = "entry_sum";
+  auto* call =
+      std::get_if<c4c::backend::BackendCallInst>(&caller_fn->blocks.front().insts.front());
+  expect_true(call != nullptr,
+              "shared renamed declared direct-call module parser regression test needs the lowered caller instruction");
+  if (call == nullptr) {
+    return;
+  }
+
+  call->result = "%t.entry_sum.call";
+  caller_fn->blocks.front().terminator.value = "%t.entry_sum.call";
+
+  const auto parsed = c4c::backend::parse_backend_minimal_declared_direct_call_module(lowered);
+  expect_true(parsed.has_value() && parsed->main_function == caller_fn &&
+                  parsed->main_block == &caller_fn->blocks.front() && parsed->call == call &&
+                  parsed->main_function->signature.name == "entry_sum" &&
+                  parsed->parsed_call.symbol_name == "helper_ext" &&
+                  parsed->parsed_call.typed_call.args.size() == 2 && parsed->args.size() == 2 &&
+                  parsed->args[0].kind == c4c::backend::ParsedBackendExternCallArg::Kind::I32Imm &&
+                  parsed->args[0].imm == 5 &&
+                  parsed->args[1].kind == c4c::backend::ParsedBackendExternCallArg::Kind::I32Imm &&
+                  parsed->args[1].imm == 7 && parsed->return_call_result,
+              "shared declared direct-call backend-module parser should identify renamed zero-argument i32 callers structurally instead of requiring a literal main anchor");
+}
+
 void test_backend_call_helpers_parse_declared_direct_call_lir_module_with_renamed_caller() {
   auto module = make_x86_extern_decl_inferred_param_module();
   auto& caller_fn = module.functions.front();
@@ -3098,6 +3146,7 @@ int main(int argc, char* argv[]) {
   test_backend_call_helpers_parse_structured_folded_two_arg_direct_call_module();
   test_backend_call_helpers_parse_folded_two_arg_direct_call_lir_module();
   test_backend_call_helpers_parse_structured_declared_direct_call_module();
+  test_backend_call_helpers_parse_structured_declared_direct_call_module_with_renamed_caller();
   test_backend_call_helpers_parse_declared_direct_call_lir_module_with_renamed_caller();
   test_backend_call_helpers_decode_lir_direct_global_vararg_prefix();
   test_backend_call_helpers_classify_lir_nonminimal_call_types();

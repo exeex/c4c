@@ -1390,19 +1390,18 @@ parse_backend_minimal_declared_direct_call_module(const BackendModule& module) {
 
   const BackendFunction* main_fn = nullptr;
   for (const auto& function : module.functions) {
-    if (function.signature.name == "main") {
-      if (main_fn != nullptr) {
-        return std::nullopt;
-      }
-      main_fn = &function;
+    if (function.is_declaration || !backend_function_is_definition(function.signature) ||
+        backend_signature_return_scalar_type(function.signature) != BackendScalarType::I32 ||
+        !function.signature.params.empty() || function.signature.is_vararg) {
+      continue;
     }
+    if (main_fn != nullptr) {
+      return std::nullopt;
+    }
+    main_fn = &function;
   }
 
-  if (main_fn == nullptr || main_fn->is_declaration ||
-      !backend_function_is_definition(main_fn->signature) ||
-      backend_signature_return_scalar_type(main_fn->signature) != BackendScalarType::I32 ||
-      !main_fn->signature.params.empty() || main_fn->signature.is_vararg ||
-      main_fn->blocks.size() != 1) {
+  if (main_fn == nullptr || main_fn->blocks.size() != 1) {
     return std::nullopt;
   }
 
