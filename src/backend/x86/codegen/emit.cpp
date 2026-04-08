@@ -213,6 +213,7 @@ struct MinimalCastReturnSlice {
 };
 
 struct MinimalCountdownLoopSlice {
+  std::string function_name;
   std::int64_t initial_imm = 0;
   std::string loop_label;
   std::string body_label;
@@ -1062,6 +1063,18 @@ bool is_i32_scalar_signature_return(const c4c::backend::BackendFunctionSignature
              c4c::backend::BackendValueTypeKind::Scalar &&
          c4c::backend::backend_signature_return_scalar_type(signature) ==
              c4c::backend::BackendScalarType::I32;
+}
+
+bool is_zero_arg_i32_backend_definition(const c4c::backend::BackendFunction& function) {
+  return !function.is_declaration && backend_function_is_definition(function.signature) &&
+         is_i32_scalar_signature_return(function.signature) &&
+         function.signature.params.empty() && !function.signature.is_vararg;
+}
+
+bool is_zero_arg_i32_lir_definition(const c4c::codegen::lir::LirFunction& function) {
+  return !function.is_declaration &&
+         c4c::backend::backend_lir_signature_matches(
+             function.signature_text, "define", "i32", function.name, {});
 }
 
 bool is_i32_scalar_param(const c4c::backend::BackendParam& param) {
@@ -2280,12 +2293,7 @@ std::optional<MinimalCountdownLoopSlice> parse_minimal_countdown_loop_slice(
   }
 
   const auto& function = module.functions.front();
-  if (function.is_declaration || !backend_function_is_definition(function.signature) ||
-      c4c::backend::backend_signature_return_scalar_type(function.signature) !=
-          c4c::backend::BackendScalarType::I32 ||
-      function.signature.name != "main" ||
-      !function.signature.params.empty() || function.signature.is_vararg ||
-      function.blocks.size() != 4) {
+  if (!is_zero_arg_i32_backend_definition(function) || function.blocks.size() != 4) {
     return std::nullopt;
   }
 
@@ -2331,7 +2339,13 @@ std::optional<MinimalCountdownLoopSlice> parse_minimal_countdown_loop_slice(
     return std::nullopt;
   }
 
-  return MinimalCountdownLoopSlice{*initial_imm, loop.label, body.label, exit.label};
+  return MinimalCountdownLoopSlice{
+      function.signature.name,
+      *initial_imm,
+      loop.label,
+      body.label,
+      exit.label,
+  };
 }
 
 std::optional<MinimalCountdownLoopSlice> parse_minimal_countdown_loop_slice(
@@ -2344,9 +2358,8 @@ std::optional<MinimalCountdownLoopSlice> parse_minimal_countdown_loop_slice(
   }
 
   const auto& function = module.functions.front();
-  if (function.is_declaration ||
-      !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(function.signature_text) ||
-      function.entry.value != 0 || function.blocks.size() != 4 ||
+  if (!is_zero_arg_i32_lir_definition(function) || function.entry.value != 0 ||
+      function.blocks.size() != 4 ||
       function.alloca_insts.size() != 1 || !function.stack_objects.empty()) {
     return std::nullopt;
   }
@@ -2408,7 +2421,13 @@ std::optional<MinimalCountdownLoopSlice> parse_minimal_countdown_loop_slice(
     return std::nullopt;
   }
 
-  return MinimalCountdownLoopSlice{*initial_imm, loop.label, body.label, exit.label};
+  return MinimalCountdownLoopSlice{
+      function.name,
+      *initial_imm,
+      loop.label,
+      body.label,
+      exit.label,
+  };
 }
 
 std::optional<std::int64_t> parse_minimal_countdown_do_while_return_imm(
@@ -5356,7 +5375,7 @@ std::string emit_minimal_conditional_affine_i32_return_asm(
 
 std::string emit_minimal_countdown_loop_asm(std::string_view target_triple,
                                             const MinimalCountdownLoopSlice& slice) {
-  const std::string symbol = asm_symbol_name(target_triple, "main");
+  const std::string symbol = asm_symbol_name(target_triple, slice.function_name);
   std::ostringstream out;
   out << ".intel_syntax noprefix\n";
   out << ".text\n";

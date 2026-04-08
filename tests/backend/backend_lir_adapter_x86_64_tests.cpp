@@ -1967,6 +1967,29 @@ void test_x86_backend_scaffold_accepts_direct_typed_countdown_while_lir_input() 
                       "x86 direct-LIR countdown regression should not fall back to LLVM text for the typed countdown loop");
 }
 
+void test_x86_backend_explicit_lir_emit_surface_keeps_renamed_countdown_while_on_asm_path() {
+  auto module = make_countdown_while_return_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  auto& function = module.functions.front();
+  function.name = "countdown_helper";
+  function.signature_text = "define i32 @countdown_helper()\n";
+
+  const auto direct_rendered = c4c::backend::x86::emit_module(module);
+  auto lowered = c4c::backend::lower_lir_to_backend_module(make_countdown_while_return_module());
+  lowered.functions.front().signature.name = "countdown_helper";
+  const auto lowered_rendered = c4c::backend::x86::emit_module(lowered);
+
+  expect_contains(direct_rendered, ".globl countdown_helper\n",
+                  "x86 countdown-while regression should publish the renamed caller symbol on the direct LIR asm path");
+  expect_contains(direct_rendered, "countdown_helper:\n",
+                  "x86 countdown-while regression should emit the renamed caller label on the direct LIR asm path");
+  expect_not_contains(direct_rendered, "target triple =",
+                      "x86 countdown-while regression should not fall back to LLVM text when the bounded caller is no longer named main");
+  if (direct_rendered != lowered_rendered) {
+    fail("x86 renamed countdown-while regression should keep the direct LIR and explicit lowered backend seams on identical assembly output");
+  }
+}
+
 void test_x86_backend_explicit_lir_emit_surface_matches_countdown_do_while_path() {
   const auto direct_rendered =
       c4c::backend::x86::emit_module(make_countdown_do_while_return_module());
@@ -6814,6 +6837,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_scaffold_accepts_explicit_lowered_countdown_while_ir_input);
   RUN_TEST(test_x86_backend_scaffold_accepts_structured_countdown_while_ir_without_signature_shims);
   RUN_TEST(test_x86_backend_scaffold_accepts_direct_typed_countdown_while_lir_input);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_keeps_renamed_countdown_while_on_asm_path);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_countdown_do_while_path);
   RUN_TEST(test_x86_backend_scaffold_accepts_direct_conditional_phi_join_add_lir_input);
   RUN_TEST(test_x86_backend_scaffold_prefers_direct_bir_path_for_cast_return_lir_input);

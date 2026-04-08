@@ -9,14 +9,33 @@ Source Plan: plan.md
 - [ ] Remove legacy backend IR files and backend/app LLVM rescue paths
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
-Current active item: Step 4 follow-on deletion. Resume the next live x86
-single-helper helper/runtime seam that still depends on
-`backend_lir_is_zero_arg_i32_main_definition(...)` in
+Current active item: Step 4 follow-on deletion. Remove the next bounded x86
+countdown/do-while direct-entry production seam in
 [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
-now that the lowered dual-identity direct-call subtraction seam no longer
-requires a literal `main` caller anchor.
+that still folds renamed zero-argument `i32` callers back onto a literal
+`main` return-entry symbol, then prove the renamed caller stays on the native
+asm path without reintroducing a production-side name anchor.
 
 Completed in this slice:
+
+- removed the bounded x86 countdown-while production-side literal-`main`
+  caller anchor from
+  [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+  by teaching both the direct LIR parser and the explicit lowered
+  backend-module parser to accept any structural zero-argument `i32`
+  definition, then carry the observed function name through native asm
+  emission instead of hardcoding `main`
+- proved the production deletion with a new renamed-caller regression in
+  [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
+  so the bounded countdown-while family keeps the renamed direct-LIR entry
+  surface and the explicit lowered backend seam on identical assembly output
+  without falling back to LLVM text
+- kept focused adapter coverage green at `2` passed / `0` failed via
+  `ctest --test-dir build -R 'backend_lir_adapter_tests|backend_lir_adapter_x86_64_tests' -j1 --output-on-failure`
+- kept backend regression coverage monotonic at `402` passed / `0` failed
+  before and after via `test_backend_before.log`, `test_backend_after.log`,
+  and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_backend_before.log --after test_backend_after.log --allow-non-decreasing-passed`
 
 - removed the lowered structured dual-identity direct-call subtraction
   production-side literal-`main` caller anchor from
