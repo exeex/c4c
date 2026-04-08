@@ -6,21 +6,40 @@ Source Plan: plan.md
 
 - Step 5 follow-through: inventory and migrate the remaining live `ir.hpp`
   type consumers before the final legacy contract deletion
-- Current slice: classify the surviving `ir.hpp` ownership in
-  `src/backend/lowering/extern_lowering.hpp` as the remaining real
-  `BackendFunction` seam after removing dead
-  `src/backend/lowering/call_decode.hpp`,
-  `src/backend/lowering/extern_lowering.hpp`,
+- Current slice: remove one remaining real `BackendFunction` /
+  `BackendCallInst` consumer family at a time now that
+  `src/backend/lowering/extern_lowering.*` proved to be a dead helper-only
+  compatibility seam rather than a live production blocker
+- Next intended slice: continue Step 5 ownership trimming from the actual live
+  consumers in `src/backend/lowering/call_decode.hpp`,
   `src/backend/x86/codegen/emit.cpp`, and
-  `src/backend/aarch64/codegen/emit.cpp` into BIR-shape blockers versus
-  dead helper-only compatibility seams; the remaining real blocker in this set
-  is `extern_lowering.*` still constructing and returning `BackendFunction`
-- Next intended slice: remove one real `BackendFunction` / `BackendCallInst`
-  consumer family at a time, starting with `extern_lowering.*`, so `ir.hpp`
-  can stop being a live production contract instead of only deleting more
-  already-dead files
+  `src/backend/aarch64/codegen/emit.cpp`, starting with the narrowest
+  `BackendModule` parser/helper family that can move to BIR without widening
+  schema scope
 
 # Completed
+
+- Added focused BIR lowering coverage in
+  `tests/backend/backend_bir_lowering_tests.cpp` for an extern declaration
+  whose fixed parameter list is inferred from a typed call, pinning the live
+  BIR replacement path that still covers this seam after the dead helper
+  removal
+- Removed the dead `src/backend/lowering/extern_lowering.hpp` and
+  `src/backend/lowering/extern_lowering.cpp` compatibility seam plus both
+  `CMakeLists.txt` build-graph entries after confirming nothing in the repo
+  still references `lower_extern_decl(...)` or the header
+- Rebuilt with
+  `cmake --build build -j8 --target backend_bir_tests backend_shared_util_tests c4cll`
+  successfully after the seam deletion
+- Reran
+  `ctest --test-dir build -R '^(backend_bir_tests|backend_shared_util_tests)$' --output-on-failure`
+  successfully after the extern-lowering removal
+- Reran the full `ctest --test-dir build -j8 --output-on-failure` suite and
+  refreshed `test_after.log` / `test_fail_after.log`; the workspace stayed at
+  `2834/2834` passing with 0 failures
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=159
+  failed=-159` and zero newly failing tests
 
 - Split `src/codegen/lir/call_args.hpp` into a text-only layer plus a new
   `src/codegen/lir/call_args_ops.hpp` wrapper header so `call_args.hpp` no

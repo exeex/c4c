@@ -202,6 +202,31 @@ c4c::codegen::lir::LirModule make_bir_declared_direct_call_lir_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_bir_declared_direct_call_inferred_params_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.extern_decls.push_back(LirExternDecl{"helper_ext", "i32"});
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{"%t0", "i32", "@helper_ext", "", "i32 5, i32 7"});
+  entry.terminator = LirRet{std::string("%t0"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_bir_minimal_void_direct_call_imm_return_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -697,6 +722,30 @@ void test_bir_lowering_accepts_minimal_declared_direct_call_lir_module() {
                   parsed->args.front().operand == "@msg" &&
                   !parsed->return_call_result && parsed->return_imm == 7,
               "the lowered BIR module should preserve the pointer argument and fixed return immediate");
+}
+
+void test_bir_lowering_infers_extern_decl_params_from_typed_call_lir_module() {
+  const auto lowered =
+      c4c::backend::try_lower_to_bir(make_bir_declared_direct_call_inferred_params_lir_module());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept extern declarations whose parameter surface is inferred from one typed call");
+
+  expect_true(lowered->functions.size() == 2 &&
+                  lowered->functions.front().is_declaration &&
+                  lowered->functions.front().name == "helper_ext" &&
+                  lowered->functions.front().params.size() == 2 &&
+                  lowered->functions.front().params[0].type == c4c::backend::bir::TypeKind::I32 &&
+                  lowered->functions.front().params[1].type == c4c::backend::bir::TypeKind::I32,
+              "BIR lowering should synthesize an extern declaration with the inferred typed parameter list");
+
+  const auto parsed = c4c::backend::parse_bir_minimal_declared_direct_call_module(*lowered);
+  expect_true(parsed.has_value() &&
+                  parsed->args.size() == 2 &&
+                  parsed->args[0].kind == c4c::backend::ParsedBackendExternCallArg::Kind::I32Imm &&
+                  parsed->args[0].imm == 5 &&
+                  parsed->args[1].kind == c4c::backend::ParsedBackendExternCallArg::Kind::I32Imm &&
+                  parsed->args[1].imm == 7,
+              "the lowered BIR module should preserve the inferred immediate call arguments for extern declarations");
 }
 
 void test_bir_lowering_accepts_minimal_void_direct_call_imm_return_lir_module() {
@@ -2865,6 +2914,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_two_param_add_sub_chain);
   RUN_TEST(test_bir_lowering_accepts_two_param_staged_affine_chain);
   RUN_TEST(test_bir_lowering_accepts_minimal_declared_direct_call_lir_module);
+  RUN_TEST(test_bir_lowering_infers_extern_decl_params_from_typed_call_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_scalar_global_load_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_scalar_global_store_reload_lir_module);
   RUN_TEST(test_bir_validator_rejects_returning_undefined_named_value);
