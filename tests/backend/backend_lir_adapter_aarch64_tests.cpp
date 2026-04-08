@@ -5362,6 +5362,25 @@ void test_aarch64_backend_renders_global_int_pointer_roundtrip_slice() {
                       "aarch64 backend should no longer fall back to LLVM IR allocas for the bounded round-trip slice");
 }
 
+void test_aarch64_backend_prunes_dead_allocas_before_direct_global_int_pointer_roundtrip_selection() {
+  const auto baseline = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_global_int_pointer_roundtrip_module()},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  auto module = make_global_int_pointer_roundtrip_module();
+  auto& function = module.functions.front();
+  function.alloca_insts.push_back(
+      c4c::codegen::lir::LirAllocaOp{"%lv.unused", "i32", "", 4});
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
+
+  if (rendered != baseline) {
+    fail("aarch64 dead-alloca round-trip regression should keep the explicit LIR emit surface on the same asm path after pruning unused allocas instead of depending on the removed eager backend-IR lowering owner");
+  }
+}
+
 void test_aarch64_backend_renders_bitcast_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_bitcast_scalar_module()},
@@ -6119,6 +6138,7 @@ void run_aarch64_backend_tests() {
   test_aarch64_backend_renders_global_int_pointer_diff_slice();
   test_aarch64_backend_renders_global_int_pointer_diff_slice_from_typed_ops();
   test_aarch64_backend_renders_global_int_pointer_roundtrip_slice();
+  test_aarch64_backend_prunes_dead_allocas_before_direct_global_int_pointer_roundtrip_selection();
   test_aarch64_backend_renders_bitcast_slice();
   test_aarch64_backend_renders_trunc_slice();
   test_aarch64_backend_renders_large_frame_adjustments();

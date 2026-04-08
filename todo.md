@@ -9,14 +9,35 @@ Source Plan: plan.md
 - [ ] Remove legacy backend IR files and backend/app LLVM rescue paths
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
-Current active item: Step 4 follow-on deletion. Continue with the next live
-emitter-local `lower_lir_to_backend_module(...)` owner in
-[`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
-or
+Current active item: Step 4 follow-on deletion. With the eager
 [`src/backend/aarch64/codegen/emit.cpp`](/workspaces/c4c/src/backend/aarch64/codegen/emit.cpp)
-now that the renamed countdown-while lowered/backend-selection seam no longer
-depends on `signature.name == "main"` in
-[`src/backend/lowering/lir_to_backend_ir.cpp`](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp).
+`lower_lir_to_backend_module(...)` owner removed, continue shrinking the
+remaining prepared-module legacy fallback by porting the next bounded
+non-direct-LIR family off the surviving lowered backend seam instead of
+re-introducing another eager legacy route.
+
+Completed in this slice:
+
+- removed the first live emitter-local
+  `lower_lir_to_backend_module(...)` owner from
+  [`src/backend/aarch64/codegen/emit.cpp`](/workspaces/c4c/src/backend/aarch64/codegen/emit.cpp)
+  by routing the explicit LIR entrypoint through direct LIR-native/BIR-native
+  fast paths first, then reusing the already-pruned prepared-module fallback
+  for the remaining legacy-backed cases
+- kept the bounded nonminimal local-array / return-immediate subset on the same
+  prepared lowered seam so deleting the eager owner did not regress the
+  existing direct-vs-lowered aarch64 parity checks
+- proved the dead-alloca-prune route with a new regression in
+  [`tests/backend/backend_lir_adapter_aarch64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_aarch64_tests.cpp)
+  so the global int-pointer round-trip family stays on identical assembly after
+  unused allocas are pruned instead of depending on the removed eager lowering
+  owner
+- kept focused aarch64 adapter coverage green at `1` passed / `0` failed via
+  `ctest --test-dir build -R '^backend_lir_adapter_aarch64_tests$' -j1 --output-on-failure`
+- kept backend regression coverage monotonic from `182` passed / `0` failed to
+  `402` passed / `0` failed via `test_backend_before.log`,
+  `test_backend_after.log`, and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_backend_before.log --after test_backend_after.log --allow-non-decreasing-passed`
 
 Completed in this slice:
 
