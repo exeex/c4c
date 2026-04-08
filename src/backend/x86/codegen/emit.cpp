@@ -341,7 +341,24 @@ std::optional<std::int64_t> parse_i64(const c4c::backend::bir::Value& value) {
   return value.immediate;
 }
 
-std::optional<std::int64_t> parse_minimal_lir_return_imm(
+const c4c::codegen::lir::LirFunction* find_single_zero_arg_i32_lir_definition(
+    const c4c::codegen::lir::LirModule& module) {
+  if (module.functions.size() != 1) {
+    return nullptr;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      !c4c::backend::backend_lir_signature_matches(
+          function.signature_text, "define", "i32", function.name, {}) ||
+      function.entry.value != 0) {
+    return nullptr;
+  }
+
+  return &function;
+}
+
+std::optional<MinimalNamedReturnImmSlice> parse_minimal_lir_return_imm(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
 
@@ -350,15 +367,12 @@ std::optional<std::int64_t> parse_minimal_lir_return_imm(
     return std::nullopt;
   }
 
-  const auto& function = module.functions.front();
-  if (function.is_declaration ||
-      function.name != "main" ||
-      !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(function.signature_text) ||
-      function.entry.value != 0 || function.blocks.size() != 1) {
+  const auto* function = find_single_zero_arg_i32_lir_definition(module);
+  if (function == nullptr || function->blocks.size() != 1) {
     return std::nullopt;
   }
 
-  const auto& entry = function.blocks.front();
+  const auto& entry = function->blocks.front();
   if (entry.label != "entry") {
     return std::nullopt;
   }
@@ -374,7 +388,7 @@ std::optional<std::int64_t> parse_minimal_lir_return_imm(
   std::unordered_map<std::string, std::string> pointer_values;
   std::unordered_map<std::string, std::string> pointer_slot_values;
   std::unordered_set<std::string> local_pointer_slots;
-  for (const auto& alloca : function.alloca_insts) {
+  for (const auto& alloca : function->alloca_insts) {
     const auto* alloca_inst = std::get_if<LirAllocaOp>(&alloca);
     if (alloca_inst == nullptr || !alloca_inst->count.empty() || alloca_inst->result.empty()) {
       continue;
@@ -529,10 +543,14 @@ std::optional<std::int64_t> parse_minimal_lir_return_imm(
     values[bin->result] = *result;
   }
 
-  return resolve_value(*ret->value_str);
+  const auto return_imm = resolve_value(*ret->value_str);
+  if (!return_imm.has_value()) {
+    return std::nullopt;
+  }
+  return MinimalNamedReturnImmSlice{std::string(function->name), *return_imm};
 }
 
-std::optional<std::int64_t> parse_minimal_goto_only_constant_return_imm(
+std::optional<MinimalNamedReturnImmSlice> parse_minimal_goto_only_constant_return_imm(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
 
@@ -541,16 +559,13 @@ std::optional<std::int64_t> parse_minimal_goto_only_constant_return_imm(
     return std::nullopt;
   }
 
-  const auto& function = module.functions.front();
-  if (function.is_declaration ||
-      function.name != "main" ||
-      !c4c::backend::backend_lir_is_zero_arg_i32_main_definition(function.signature_text) ||
-      function.entry.value != 0 || !function.alloca_insts.empty() || function.blocks.empty()) {
+  const auto* function = find_single_zero_arg_i32_lir_definition(module);
+  if (function == nullptr || !function->alloca_insts.empty() || function->blocks.empty()) {
     return std::nullopt;
   }
 
   std::unordered_map<std::string_view, const LirBlock*> blocks_by_label;
-  for (const auto& block : function.blocks) {
+  for (const auto& block : function->blocks) {
     if (!block.insts.empty() || block.label.empty()) {
       return std::nullopt;
     }
@@ -571,7 +586,7 @@ std::optional<std::int64_t> parse_minimal_goto_only_constant_return_imm(
     }
   }
 
-  const auto* current = &function.blocks.front();
+  const auto* current = &function->blocks.front();
   if (current->label != "entry") {
     return std::nullopt;
   }
@@ -582,7 +597,11 @@ std::optional<std::int64_t> parse_minimal_goto_only_constant_return_imm(
       return std::nullopt;
     }
     if (const auto* ret = std::get_if<LirRet>(&current->terminator)) {
-      return parse_i64(*ret->value_str);
+      const auto return_imm = parse_i64(*ret->value_str);
+      if (!return_imm.has_value()) {
+        return std::nullopt;
+      }
+      return MinimalNamedReturnImmSlice{std::string(function->name), *return_imm};
     }
     const auto* br = std::get_if<LirBr>(&current->terminator);
     if (br == nullptr) {
@@ -6183,10 +6202,10 @@ std::optional<std::string> try_emit_direct_lir_module(
     }
     if (const auto imm = parse_minimal_goto_only_constant_return_imm(module);
         imm.has_value()) {
-      return emit_minimal_return_asm(module.target_triple, *imm);
+      return emit_minimal_return_asm(module.target_triple, imm->function_name, imm->return_imm);
     }
     if (const auto imm = parse_minimal_lir_return_imm(module); imm.has_value()) {
-      return emit_minimal_return_asm(module.target_triple, *imm);
+      return emit_minimal_return_asm(module.target_triple, imm->function_name, imm->return_imm);
     }
     if (const auto lowered_bir = c4c::backend::try_lower_to_bir(module);
         lowered_bir.has_value()) {

@@ -2067,6 +2067,33 @@ void test_x86_backend_scaffold_renders_direct_return_immediate_slice() {
                   "x86 backend should terminate direct return immediates with ret");
 }
 
+void test_x86_backend_explicit_lir_emit_surface_keeps_renamed_direct_return_immediate_caller_on_asm_path() {
+  auto module = make_return_zero_module();
+  auto& function = module.functions.front();
+  function.name = "entry_zero";
+  function.signature_text = "define i32 @entry_zero()\n";
+
+  const auto direct_rendered = c4c::backend::x86::emit_module(module);
+  const auto lowered_rendered =
+      c4c::backend::x86::emit_module(c4c::backend::lower_lir_to_backend_module(module));
+  const auto backend_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_true(direct_rendered == lowered_rendered,
+              "x86 explicit LIR emit surface should stay aligned with the explicit lowered backend seam for renamed direct return immediates");
+  expect_true(direct_rendered == backend_rendered,
+              "x86 backend selection should keep renamed direct return immediates on the same explicit x86 asm path");
+  expect_contains(direct_rendered, ".globl entry_zero\n",
+                  "x86 explicit LIR emit surface should publish the renamed zero-arg caller instead of requiring a literal main anchor for direct return immediates");
+  expect_contains(direct_rendered, "entry_zero:\n",
+                  "x86 explicit LIR emit surface should preserve the renamed caller label on the direct return-immediate asm path");
+  expect_contains(direct_rendered, "mov eax, 0\n",
+                  "x86 explicit LIR emit surface should still materialize the immediate return after removing the caller-name anchor");
+  expect_not_contains(direct_rendered, "target triple =",
+                      "x86 explicit LIR emit surface should not fall back to LLVM text for renamed direct return immediates");
+}
+
 void test_x86_backend_keeps_unused_declaration_off_direct_return_path() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_return_zero_module_with_unused_decl()},
@@ -2352,6 +2379,33 @@ void test_x86_backend_explicit_lir_emit_surface_matches_goto_only_constant_retur
                   "x86 explicit LIR emit surface should fold the bounded goto-only branch chain without adapting through backend IR first");
   expect_not_contains(direct_rendered, "target triple =",
                       "x86 explicit LIR emit surface should not fall back to LLVM text for the bounded goto-only branch chain");
+}
+
+void test_x86_backend_explicit_lir_emit_surface_keeps_renamed_goto_only_constant_return_caller_on_asm_path() {
+  auto module = make_goto_only_constant_return_module();
+  auto& function = module.functions.front();
+  function.name = "entry_goto";
+  function.signature_text = "define i32 @entry_goto()\n";
+
+  const auto direct_rendered = c4c::backend::x86::emit_module(module);
+  const auto lowered_rendered =
+      c4c::backend::x86::emit_module(c4c::backend::lower_lir_to_backend_module(module));
+  const auto backend_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_true(direct_rendered == lowered_rendered,
+              "x86 explicit LIR emit surface should stay aligned with the explicit lowered backend seam for renamed goto-only constant-return callers");
+  expect_true(direct_rendered == backend_rendered,
+              "x86 backend selection should keep renamed goto-only constant-return callers on the same explicit x86 asm path");
+  expect_contains(direct_rendered, ".globl entry_goto\n",
+                  "x86 explicit LIR emit surface should publish the renamed zero-arg caller instead of requiring a literal main anchor for goto-only constant-return slices");
+  expect_contains(direct_rendered, "entry_goto:\n",
+                  "x86 explicit LIR emit surface should preserve the renamed caller label on the goto-only constant-return asm path");
+  expect_contains(direct_rendered, "mov eax, 0\n",
+                  "x86 explicit LIR emit surface should still fold the goto-only branch chain after removing the caller-name anchor");
+  expect_not_contains(direct_rendered, "target triple =",
+                      "x86 explicit LIR emit surface should not fall back to LLVM text for renamed goto-only constant-return callers");
 }
 
 void test_x86_backend_renders_countdown_while_return_slice() {
@@ -6861,6 +6915,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_scaffold_accepts_direct_conditional_phi_join_add_lir_input);
   RUN_TEST(test_x86_backend_scaffold_prefers_direct_bir_path_for_cast_return_lir_input);
   RUN_TEST(test_x86_backend_scaffold_renders_direct_return_immediate_slice);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_keeps_renamed_direct_return_immediate_caller_on_asm_path);
   RUN_TEST(test_x86_backend_keeps_unused_declaration_off_direct_return_path);
   RUN_TEST(test_x86_backend_scaffold_renders_direct_return_sub_immediate_slice);
   RUN_TEST(test_x86_backend_renders_local_temp_sub_slice);
@@ -6879,6 +6934,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_float_sitofp_equality_path);
   RUN_TEST(test_x86_backend_renders_goto_only_constant_return_slice);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_goto_only_constant_return_path);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_keeps_renamed_goto_only_constant_return_caller_on_asm_path);
   RUN_TEST(test_x86_backend_renders_countdown_while_return_slice);
   RUN_TEST(test_x86_backend_renders_countdown_do_while_return_slice);
   RUN_TEST(test_x86_backend_renders_direct_call_slice);

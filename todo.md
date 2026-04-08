@@ -9,12 +9,34 @@ Source Plan: plan.md
 - [ ] Remove legacy backend IR files and backend/app LLVM rescue paths
 - [ ] Delete transitional legacy test buckets once their coverage is migrated or no longer needed
 
-Current active item: Step 4 follow-on deletion. With the eager
-[`src/backend/aarch64/codegen/emit.cpp`](/workspaces/c4c/src/backend/aarch64/codegen/emit.cpp)
-`lower_lir_to_backend_module(...)` owner removed, continue shrinking the
-remaining prepared-module legacy fallback by porting the next bounded
-non-direct-LIR family off the surviving lowered backend seam instead of
-re-introducing another eager legacy route.
+Current active item: Step 4 follow-on deletion. Continue removing the direct
+x86 production-side literal-`main` caller anchors in
+[`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+for the remaining single-function constant-return families beyond the plain
+return-immediate and goto-only slices, keeping each slice structural and
+proved with renamed-caller regressions on the explicit x86 LIR entry surface
+plus normal backend selection.
+
+Completed in this slice:
+
+- removed the direct x86 production-side literal-`main` caller anchor from the
+  bounded single-function plain return-immediate and goto-only constant-return
+  families in
+  [`src/backend/x86/codegen/emit.cpp`](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+  by teaching the direct LIR parsers to accept any single structural
+  zero-argument `i32` definition and carry the observed caller symbol through
+  native asm emission instead of hardcoding `main`
+- proved the production deletion with new renamed-caller regressions in
+  [`tests/backend/backend_lir_adapter_x86_64_tests.cpp`](/workspaces/c4c/tests/backend/backend_lir_adapter_x86_64_tests.cpp)
+  so both the plain return-immediate and goto-only constant-return families
+  keep the renamed direct-LIR entry surface, the explicit lowered backend
+  seam, and normal backend selection on identical x86 assembly output without
+  falling back to LLVM text
+- kept focused x86 adapter coverage green at `1` passed / `0` failed via
+  `ctest --test-dir build -R '^backend_lir_adapter_x86_64_tests$' -j1 --output-on-failure`
+- kept full-suite regression coverage monotonic at `2840` passed / `1` failed
+  before and after via `test_before.log`, `test_after.log`, and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
 
 Completed in this slice:
 
