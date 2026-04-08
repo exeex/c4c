@@ -4911,6 +4911,61 @@ make_eighteen_local_slot_constant_conditional_goto_return_module() {
   return module;
 }
 
+// Alloca + phi-join pattern: local slot flag controls which phi incoming value
+// is selected at the join block.  The phi-join parser rejects this because of
+// the alloca; the constant-fold interpreter handles it once it knows PhiOp.
+// Expected folded return value: 42  (flag == 1, ne 0 → true path → phi 42).
+inline c4c::codegen::lir::LirModule
+make_local_slot_phi_join_constant_return_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.flag", "i32", "", 4});
+
+  // entry: store 1 → flag, load flag, cmp ne 0, condbr
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{"i32", "1", "%lv.flag"});
+  entry.insts.push_back(LirLoadOp{"%t0", "i32", "%lv.flag"});
+  entry.insts.push_back(LirCmpOp{"%t1", false, "ne", "i32", "%t0", "0"});
+  entry.terminator = LirCondBr{"%t1", "then_path", "else_path"};
+
+  LirBlock then_path;
+  then_path.id = LirBlockId{1};
+  then_path.label = "then_path";
+  then_path.terminator = LirBr{"join"};
+
+  LirBlock else_path;
+  else_path.id = LirBlockId{2};
+  else_path.label = "else_path";
+  else_path.terminator = LirBr{"join"};
+
+  // join: phi [42, then_path], [0, else_path] → ret
+  LirBlock join;
+  join.id = LirBlockId{3};
+  join.label = "join";
+  join.insts.push_back(
+      LirPhiOp{"%t2", "i32", {{"42", "then_path"}, {"0", "else_path"}}});
+  join.terminator = LirRet{std::string("%t2"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(then_path));
+  function.blocks.push_back(std::move(else_path));
+  function.blocks.push_back(std::move(join));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 inline c4c::codegen::lir::LirModule make_countdown_while_return_module() {
   using namespace c4c::codegen::lir;
 

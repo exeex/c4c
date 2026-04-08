@@ -192,3 +192,9 @@ Recent baseline:
   Shl, LShr, AShr), and SelectOp instructions, removing the bounded
   mixed-cast, truncating-binop, and select constant-conditional goto-return
   families from the `lower_lir_to_backend_module(...)` fallback path
+- latest Step 4 follow-through extends the x86 LIR constant-fold interpreter
+  with PhiOp support (predecessor-label tracking) and unsigned compare
+  predicates (ult, ule, ugt, uge), removing the bounded local-slot phi-join
+  constant-return family from the LLVM-text fallback path — patterns with
+  both alloca slots and phi nodes now fold to constant returns via the
+  interpreter instead of falling through to raw LLVM IR output

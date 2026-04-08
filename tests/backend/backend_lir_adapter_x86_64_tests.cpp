@@ -2244,6 +2244,21 @@ void test_x86_backend_explicit_lir_emit_surface_matches_select_constant_conditio
                       "x86 explicit LIR emit surface should not fall back to LLVM text for the bounded select constant-conditional goto-return family");
 }
 
+void test_x86_backend_explicit_lir_emit_surface_matches_local_slot_phi_join_constant_return_path() {
+  const auto module = make_local_slot_phi_join_constant_return_module();
+  const auto direct_rendered = c4c::backend::x86::emit_module(module);
+  const auto backend_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
+
+  expect_true(direct_rendered == backend_rendered,
+              "x86 backend selection should keep the bounded local-slot phi-join constant-return family on the same explicit x86 asm path");
+  expect_contains(direct_rendered, "mov eax, 42\n",
+                  "x86 explicit LIR emit surface should fold the bounded local-slot phi-join constant-return family via the constant-fold interpreter with phi support");
+  expect_not_contains(direct_rendered, "target triple =",
+                      "x86 explicit LIR emit surface should not fall back to LLVM text for the bounded local-slot phi-join constant-return family");
+}
+
 void test_x86_backend_renders_goto_only_constant_return_slice() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_goto_only_constant_return_module()},
@@ -5938,6 +5953,7 @@ int main(int argc, char* argv[]) {
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_mixed_cast_constant_conditional_goto_return_path);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_truncating_binop_constant_conditional_goto_return_path);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_select_constant_conditional_goto_return_path);
+  RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_local_slot_phi_join_constant_return_path);
   RUN_TEST(test_x86_backend_renders_goto_only_constant_return_slice);
   RUN_TEST(test_x86_backend_explicit_lir_emit_surface_matches_goto_only_constant_return_path);
   RUN_TEST(test_x86_backend_renders_countdown_while_return_slice);
