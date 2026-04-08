@@ -8,15 +8,32 @@ Source Plan: plan.md
   diagnostics now that Step 4/5 legacy-lowering and legacy-IR deletion work is
   already complete in-tree
 - Current slice: audited the remaining direct-BIR rejection retry in
-  `src/codegen/llvm/llvm_codegen.cpp`, confirmed it is still load-bearing on
-  x86_64 for `tests/c/external/c-testsuite/src/00012.c`, and pinned that
-  contract with a focused backend route test instead of silently narrowing the
-  retry and dropping native asm coverage
-- Next intended slice: decide whether the shared x86/i686 emitter should get a
-  matching `i686` route contract before any future narrowing of the remaining
-  target-native retry path
+  `src/codegen/llvm/llvm_codegen.cpp`; the matching `i686`
+  `tests/c/external/c-testsuite/src/00012.c` retry contract is now pinned, so
+  the next slice is deciding whether any remaining target-native Step 6 retry
+  logic is still deletion-ready beyond the now-explicit x86/i686/aarch64
+  behavior
+- Next intended slice: audit whether the surviving
+  `is_direct_bir_subset_error(...)` retry branch can be narrowed further
+  without dropping native asm coverage now that both `x86_64` and `i686`
+  `00012.c` contracts are explicit
 
 # Completed
+
+- Added
+  `backend_codegen_route_i686_c_testsuite_00012_retries_after_direct_bir_rejection`
+  in `tests/c/internal/InternalTests.cmake`, matching the existing `x86_64`
+  Step 6 route coverage so the shared x86 retry path is now explicitly pinned
+  for both active x86 targets on `tests/c/external/c-testsuite/src/00012.c`
+- Reconfigured and rebuilt with `cmake -S . -B build` and
+  `cmake --build build -j8`, reran focused
+  `ctest --test-dir build -R '^(backend_codegen_route_x86_64_c_testsuite_00012_retries_after_direct_bir_rejection|backend_codegen_route_i686_c_testsuite_00012_retries_after_direct_bir_rejection)$' --output-on-failure`,
+  reran the full `ctest --test-dir build -j8 --output-on-failure` suite into
+  `test_fail_after.log`, and confirmed the workspace is now at `2837/2837`
+  passing with 0 failures
+- Ran the c4c regression guard script with
+  `--allow-non-decreasing-passed`; it passed with `delta: passed=6
+  failed=-3` and zero newly failing tests against `test_fail_before.log`
 
 - Re-audited the remaining `src/codegen/llvm/llvm_codegen.cpp` direct-BIR
   rejection retry by temporarily narrowing it to aarch64-only and verifying
