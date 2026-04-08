@@ -23,6 +23,24 @@ emitted asm.
 
 Latest completed slice:
 
+- hard-locked the production-side legacy aarch64 backend-IR seam in
+  [`src/backend/aarch64/codegen/emit.cpp`](/workspaces/c4c/src/backend/aarch64/codegen/emit.cpp)
+  by turning `emit_module(const BackendModule&, ...)` into an explicit
+  `not implemented` failure and removing the `emit_module(const LirModule&)`
+  fallback that previously lowered through `lower_lir_to_backend_module(...)`
+  before rendering or printing legacy backend IR
+- kept the surviving aarch64 live paths limited to direct-LIR emit probes plus
+  `lir_to_bir` / direct-BIR emission, so unsupported modules now fail
+  explicitly instead of silently dropping onto the legacy backend-IR adapter
+- verified the cutover still builds with `cmake --build build -j8`
+- deferred the remaining file-internal helper cleanup because
+  [`src/backend/aarch64/codegen/emit.cpp`](/workspaces/c4c/src/backend/aarch64/codegen/emit.cpp)
+  still references `LirAdapterError` in private helpers, which means the
+  `lir_to_backend_ir.hpp` include is still carrying type declarations even
+  though the production fallback path is now sealed
+
+Latest completed slice:
+
 - replaced the shared lowering-owned `main` signature classifiers in
   [`src/backend/lowering/call_decode.hpp`](/workspaces/c4c/src/backend/lowering/call_decode.hpp)
   and
