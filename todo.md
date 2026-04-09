@@ -6,15 +6,16 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 2: review typedef, alias, and qualified cast targets
-- Current slice: continue Step 2 from the now-green global-qualified nested
-  dependent owner case to one more mixed namespace-plus-`template` owner chain
-- Current implementation target: keep Step 2 focused on one new alias-owned
-  qualified or dependent cast target at a time without expanding into
-  declarator-suffix coverage
-- Next intended slice: probe a focused
-  `typename ::ns::Holder<T>::template Rebind<T>::Inner::AliasL` /
-  `AliasR` owner chain before switching to Step 3
+- Step 3: review declarator suffix and function-pointer cast forms
+- Current slice: start Step 3 with one narrow template-id declarator-suffix
+  parser/runtime matrix case that is not already covered by the existing
+  staging parses
+- Current implementation target: keep Step 3 limited to one parser-facing
+  cast-target spelling at a time without re-opening Step 2 alias-owned
+  dependent lookup
+- Next intended slice: probe a focused template-id function-pointer or
+  cv-qualified pointer cast target once the first Step 3 suffix hole is
+  classified
 
 ## Completed
 
@@ -205,6 +206,18 @@ Source Plan: plan.md
   before HIR lowering.
 - Full-suite validation stayed monotonic: `test_fail_before.log` 2857/2857
   passed, `test_fail_after.log` 2858/2858 passed, with zero new failures.
+- Added
+  `tests/cpp/internal/postive_case/c_style_cast_global_qualified_nested_dependent_template_member_ref_alias_basic.cpp`
+  to cover the mixed global-qualified namespace-plus-`template` owner chain
+  `(typename ::ns::Holder<T>::template Rebind<T>::Inner::AliasL)x` /
+  `AliasR`, including assignment through the aliased references and overload
+  selection on the cast expressions.
+- Compared the mixed global-qualified namespace-plus-`template` reference-cast
+  slice against Clang and confirmed that parser, HIR, runtime behavior, and
+  overload selection already match for this reduction, so no compiler change
+  was needed for the final Step 2 alias-owned qualified/dependent case.
+- Full-suite validation stayed monotonic: `test_fail_before.log` 2858/2858
+  passed, `test_fail_after.log` 2859/2859 passed, with zero new failures.
 
 ## Notes
 
