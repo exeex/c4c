@@ -7,18 +7,29 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 3: review declarator suffix and function-pointer cast forms
-- Current slice: continue the qualified-owner member-function-pointer cast
-  matrix after covering the global-qualified dependent `template` owner-chain
-  `const` form
-- Current implementation target: add the next narrow parser regression for a
-  remaining namespace-qualified or ref-qualified dependent owner chain inside a
-  member-function-pointer C-style cast target
-- Next intended slice: probe the namespace-qualified dependent `template`
-  owner-chain member-function-pointer forms, then extend into adjacent
-  ref-qualified variants if they still lack explicit parse coverage
+- Current slice: extend the namespace-qualified dependent `template`
+  owner-chain member-function-pointer cast matrix into trailing `&` / `&&`
+  forms
+- Current implementation target: add the next narrow parse-only regression for
+  a namespace-qualified dependent `template` owner chain with trailing
+  ref-qualifiers inside a member-function-pointer C-style cast target
+- Next intended slice: if the namespace-qualified ref-qualified forms already
+  pass, probe whether the remaining gap is the global-qualified dependent
+  owner-chain trailing `&` / `&&` matrix instead
 
 ## Completed
 
+- Added
+  `tests/cpp/internal/postive_case/c_style_cast_namespace_qualified_dependent_template_member_fn_ptr_const_parse.cpp`
+  to cover the namespace-qualified dependent `template` owner chain
+  `(int (ns::Holder<T>::template Rebind<T>::Inner::*)(T) const)0` inside a
+  parenthesized member-function-pointer C-style cast target.
+- Ran the new namespace-qualified dependent owner-chain parser regression
+  alongside the adjacent global-qualified/template member-function-pointer
+  cast tests and confirmed the slice is coverage-only; parser acceptance
+  already matches the existing matrix, so no compiler change was needed.
+- Full-suite validation stayed monotonic: `test_before.log` 2869/2869 passed,
+  `test_after.log` 2870/2870 passed, with zero new failures.
 - Activated `ideas/open/43_c_style_cast_reference_followups_review.md` into the
   active runbook after closing idea 42
 - Added `tests/cpp/internal/postive_case/c_style_cast_cv_lvalue_ref_basic.cpp`
