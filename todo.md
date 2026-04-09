@@ -7,20 +7,45 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 7: move regalloc and stack layout to backend MIR
-- Current slice: re-audit the remaining `prepare_module_function_entry_alloca_compat_inputs(...)`
-  callers after the stack-layout wrapper deletion and decide whether that
-  compatibility packet can now shrink to an emitter-only surface or split into
-  smaller prepared views
-- Current implementation target: inspect the remaining AArch64 emitter and
-  shared-test call sites that still ask for the full compatibility packet, then
-  identify which fields are genuinely still required beyond the already-exposed
-  `planning_input`, `rewrite_input`, and value-name collection seams
-- Next intended slice: narrow or split
-  `prepare_module_function_entry_alloca_compat_inputs(...)` once the remaining
-  caller field requirements are explicit, while preserving focused parity
-  coverage for any compatibility state that still has to survive
+- Current slice: inspect whether the remaining `EntryAllocaCompatInputs`
+  surface can shed the rehydrated `compat_stack_layout_input` in favor of a
+  smaller analysis-only compatibility helper for the shared tests that still
+  compare prepared versus explicit stack-layout lowering
+- Current implementation target: audit the shared tests that still analyze
+  `compat_stack_layout_input`, classify which assertions truly need full block /
+  phi / metadata rehydration, and identify the smallest helper that would keep
+  those comparisons explicit without reviving a peer production-looking broad
+  packet
+- Next intended slice: split a smaller analysis-only compatibility carrier out
+  of `EntryAllocaCompatInputs` if the remaining tests only need narrowed
+  liveness-backed stack-layout facts rather than the full rehydrated
+  `StackLayoutInput`
 
 ## Completed
+
+- Completed the next Step 7 compatibility-surface naming slice by making the
+  surviving lowered broad packet read explicitly as compatibility state now
+  that production callers stay on prepared/emitter-owned seams:
+  - renamed `EntryAllocaRewriteInputs` to `EntryAllocaCompatInputs` in
+    `src/backend/stack_layout/slot_assignment.hpp` and
+    `src/backend/stack_layout/slot_assignment.cpp`, and renamed
+    `lower_prepared_entry_alloca_function_inputs(...)` to
+    `lower_prepared_entry_alloca_compat_inputs(...)` so the lowered broad
+    packet is no longer visually equivalent to the narrowed rewrite-only prep
+    surface
+  - renamed the rehydrated broad field from `stack_layout_input` to
+    `compat_stack_layout_input` and documented the struct as
+    compatibility-only, making the remaining raw-style stack-layout view
+    explicit at each call site
+  - retargeted `tests/backend/backend_shared_util_tests.cpp` to the renamed
+    compatibility API and field names while preserving the existing parity
+    coverage between prepared lowering and explicit stack-layout lowering
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`
+  - rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with the repo's allowed non-decreasing rule and no new
+    failures (`2809 -> 2809`, same 32 known failing tests as
+    `test_fail_before.log`)
 
 - Completed the next Step 7 AArch64 prepared-carrier narrowing slice by moving
   the general direct-LIR emitter off the full compatibility `StackLayoutInput`

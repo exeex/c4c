@@ -103,9 +103,11 @@ struct PreparedEntryAllocaFunctionInputs {
       EntryAllocaRewriteStackLayoutSource::RawLirFunction;
 };
 
-struct EntryAllocaRewriteInputs {
+// Compatibility-only lowered packet for callers that still need a rehydrated
+// stack-layout view alongside the narrowed rewrite/planning seams.
+struct EntryAllocaCompatInputs {
   LivenessInput liveness_input;
-  StackLayoutInput stack_layout_input;
+  StackLayoutInput compat_stack_layout_input;
   EntryAllocaRewriteInput rewrite_input;
   EntryAllocaPlanningInput planning_input;
   EntryAllocaRewriteLivenessSource liveness_source =
@@ -160,7 +162,7 @@ EntryAllocaRewritePatch prepare_entry_alloca_rewrite_patch(
     const c4c::codegen::lir::LirModule& module,
     std::size_t function_index);
 
-[[nodiscard]] EntryAllocaRewriteInputs lower_prepared_entry_alloca_function_inputs(
+[[nodiscard]] EntryAllocaCompatInputs lower_prepared_entry_alloca_compat_inputs(
     const PreparedEntryAllocaFunctionInputs& prepared_inputs);
 
 [[nodiscard]] PreparedEntryAllocaRewriteOnlyInputs
@@ -170,7 +172,7 @@ lower_prepared_entry_alloca_rewrite_only_inputs(
 // Compatibility-only wrapper that rehydrates the broader stack-layout view for
 // direct-LIR emitters and tests. Production rewrite flows should prefer
 // `prepare_module_function_entry_alloca_rewrite_only_inputs(...)`.
-[[nodiscard]] EntryAllocaRewriteInputs prepare_module_function_entry_alloca_compat_inputs(
+[[nodiscard]] EntryAllocaCompatInputs prepare_module_function_entry_alloca_compat_inputs(
     const c4c::codegen::lir::LirModule& module,
     std::size_t function_index);
 
