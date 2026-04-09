@@ -7,15 +7,14 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 3: review declarator suffix and function-pointer cast forms
-- Current slice: probe the next uncovered Step 3 suffix shape after confirming
-  that template-id parameter types inside parenthesized function-pointer cast
-  targets already parse cleanly
+- Current slice: probe the next remaining Step 3 template-id cast target after
+  landing member-function-pointer `const` coverage
 - Current implementation target: stay in parser-facing Step 3 coverage work
-  and identify the next uncovered function-pointer or member-pointer cast
-  target shape after the return-type and parameter-type template-id reductions
-- Next intended slice: add a focused parse-only regression for the next
-  uncovered Step 3 suffix variant, preferring a member-pointer or
-  cv-qualified-function-pointer cast target if it still exposes a parser hole
+  and identify whether any remaining pointer/reference qualifier variant still
+  exposes a parser-specific declarator-suffix hole
+- Next intended slice: probe template-id cast targets that combine remaining
+  pointer/reference qualifiers with nested declarator suffixes and add the
+  next focused regression only if the shape is still uncovered
 
 ## Completed
 
@@ -247,6 +246,18 @@ Source Plan: plan.md
   and `ctest --test-dir build -R c_style_cast_template_fn_ptr_param_type_parse --output-on-failure`.
 - Full-suite validation stayed monotonic: `test_fail_before.log` 2860/2860
   passed, `test_fail_after.log` 2861/2861 passed, with zero new failures.
+- Added
+  `tests/cpp/internal/postive_case/c_style_cast_template_member_fn_ptr_const_parse.cpp`
+  as a focused parse-only regression for
+  `int (Box<int>::*fp)(int) const = (int (Box<int>::*)(int) const)raw;`.
+- Confirmed the Step 3 template-id member-function-pointer `const` variant
+  already matches the parser baseline in the current tree, so no compiler
+  change was needed for this slice.
+- Targeted validation passed:
+  `build/c4cll --parse-only tests/cpp/internal/postive_case/c_style_cast_template_member_fn_ptr_const_parse.cpp`
+  and `ctest --test-dir build -R c_style_cast_template_member_fn_ptr_const_parse --output-on-failure`.
+- Full-suite validation stayed monotonic: `test_fail_before.log` 2860/2860
+  passed, `test_fail_after.log` 2862/2862 passed, with zero new failures.
 
 ## Notes
 

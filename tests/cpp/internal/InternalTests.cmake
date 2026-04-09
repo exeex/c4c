@@ -176,6 +176,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     declarator_parenthesized_fn_ptr_staging_parse
     declarator_member_fn_ptr_suffix_staging_parse
     c_style_cast_template_fn_ptr_return_type_parse
+    c_style_cast_template_member_fn_ptr_const_parse
     declarator_parenthesized_member_pointer_prefix_parse
     declarator_parenthesized_pointer_inner_staging_parse
     declarator_parenthesized_member_pointer_finalization_parse
