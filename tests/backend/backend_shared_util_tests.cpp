@@ -542,6 +542,31 @@ void test_backend_shared_call_decode_accepts_typed_i32_single_add_imm_helper() {
   }
 }
 
+void test_backend_shared_call_decode_accepts_typed_i32_single_add_imm_helper_with_stale_return_text() {
+  c4c::codegen::lir::LirFunction function;
+  function.name = "add_one";
+  function.return_type = make_test_i32_typespec();
+  function.params.emplace_back("%arg0", make_test_i32_typespec());
+  function.signature_text = "define i8 @add_one(i32 %arg0)";
+
+  c4c::codegen::lir::LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(c4c::codegen::lir::LirBinOp{
+      .result = "%sum",
+      .opcode = c4c::codegen::lir::LirBinaryOpcode::Add,
+      .type_str = make_test_stale_text_i32_lir_type(),
+      .lhs = "%arg0",
+      .rhs = "1",
+  });
+  entry.terminator =
+      c4c::codegen::lir::LirRet{std::string("%sum"), make_test_stale_text_i32_lir_type()};
+  function.blocks.push_back(std::move(entry));
+
+  const auto parsed = c4c::backend::parse_backend_single_add_imm_function(function, "add_one");
+  expect_true(parsed.has_value(),
+              "shared call-decode should accept the add-immediate helper when typed function metadata says i32 but the stored helper return text is stale");
+}
+
 void test_backend_shared_call_decode_accepts_typed_i32_slot_add_helper() {
   c4c::codegen::lir::LirFunction function;
   function.name = "slot_add";
@@ -598,6 +623,58 @@ void test_backend_shared_call_decode_accepts_typed_i32_slot_add_helper() {
   }
 }
 
+void test_backend_shared_call_decode_accepts_typed_i32_slot_add_helper_with_stale_return_text() {
+  c4c::codegen::lir::LirFunction function;
+  function.name = "slot_add";
+  function.return_type = make_test_i32_typespec();
+  function.params.emplace_back("%arg0", make_test_i32_typespec());
+  function.signature_text = "define i8 @slot_add(i32 %arg0)";
+  function.alloca_insts.push_back(c4c::codegen::lir::LirAllocaOp{
+      .result = "%slot",
+      .type_str = make_test_stale_text_i32_lir_type(),
+      .count = "",
+      .align = 4,
+  });
+  function.alloca_insts.push_back(c4c::codegen::lir::LirStoreOp{
+      .type_str = make_test_stale_text_i32_lir_type(),
+      .val = "%arg0",
+      .ptr = "%slot",
+  });
+
+  c4c::codegen::lir::LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(c4c::codegen::lir::LirLoadOp{
+      .result = "%t0",
+      .type_str = make_test_stale_text_i32_lir_type(),
+      .ptr = "%slot",
+  });
+  entry.insts.push_back(c4c::codegen::lir::LirBinOp{
+      .result = "%sum",
+      .opcode = c4c::codegen::lir::LirBinaryOpcode::Add,
+      .type_str = make_test_stale_text_i32_lir_type(),
+      .lhs = "%t0",
+      .rhs = "1",
+  });
+  entry.insts.push_back(c4c::codegen::lir::LirStoreOp{
+      .type_str = make_test_stale_text_i32_lir_type(),
+      .val = "%sum",
+      .ptr = "%slot",
+  });
+  entry.insts.push_back(c4c::codegen::lir::LirLoadOp{
+      .result = "%t1",
+      .type_str = make_test_stale_text_i32_lir_type(),
+      .ptr = "%slot",
+  });
+  entry.terminator =
+      c4c::codegen::lir::LirRet{std::string("%t1"), make_test_stale_text_i32_lir_type()};
+  function.blocks.push_back(std::move(entry));
+
+  const auto parsed = c4c::backend::parse_backend_single_param_slot_add_function(
+      function, "slot_add");
+  expect_true(parsed.has_value(),
+              "shared call-decode should accept the slot-add helper when typed function metadata says i32 but the stored helper return text is stale");
+}
+
 void test_backend_shared_call_decode_accepts_typed_i32_identity_helper() {
   c4c::codegen::lir::LirFunction function;
   function.name = "identity";
@@ -613,6 +690,24 @@ void test_backend_shared_call_decode_accepts_typed_i32_identity_helper() {
   const auto parsed = c4c::backend::parse_backend_single_identity_function(function, "identity");
   expect_true(parsed.has_value() && *parsed == "%arg0",
               "shared call-decode should accept typed i32 helper params for the identity helper parser");
+}
+
+void test_backend_shared_call_decode_accepts_typed_i32_identity_helper_with_stale_return_text() {
+  c4c::codegen::lir::LirFunction function;
+  function.name = "identity";
+  function.return_type = make_test_i32_typespec();
+  function.params.emplace_back("%arg0", make_test_i32_typespec());
+  function.signature_text = "define i8 @identity(i32 %arg0)";
+
+  c4c::codegen::lir::LirBlock entry;
+  entry.label = "entry";
+  entry.terminator =
+      c4c::codegen::lir::LirRet{std::string("%arg0"), make_test_stale_text_i32_lir_type()};
+  function.blocks.push_back(std::move(entry));
+
+  const auto parsed = c4c::backend::parse_backend_single_identity_function(function, "identity");
+  expect_true(parsed.has_value() && *parsed == "%arg0",
+              "shared call-decode should accept the identity helper when typed function metadata says i32 but the stored helper return text is stale");
 }
 
 void test_backend_shared_call_decode_accepts_typed_i32_two_param_add_helper() {
@@ -643,6 +738,32 @@ void test_backend_shared_call_decode_accepts_typed_i32_two_param_add_helper() {
                     parsed->add != nullptr && parsed->add->result == "%sum",
                 "shared call-decode should preserve both typed helper params for the two-parameter add parser");
   }
+}
+
+void test_backend_shared_call_decode_accepts_typed_i32_two_param_add_helper_with_stale_return_text() {
+  c4c::codegen::lir::LirFunction function;
+  function.name = "add_pair";
+  function.return_type = make_test_i32_typespec();
+  function.params.emplace_back("%lhs", make_test_i32_typespec());
+  function.params.emplace_back("%rhs", make_test_i32_typespec());
+  function.signature_text = "define i8 @add_pair(i32 %lhs, i32 %rhs)";
+
+  c4c::codegen::lir::LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(c4c::codegen::lir::LirBinOp{
+      .result = "%sum",
+      .opcode = c4c::codegen::lir::LirBinaryOpcode::Add,
+      .type_str = make_test_stale_text_i32_lir_type(),
+      .lhs = "%lhs",
+      .rhs = "%rhs",
+  });
+  entry.terminator =
+      c4c::codegen::lir::LirRet{std::string("%sum"), make_test_stale_text_i32_lir_type()};
+  function.blocks.push_back(std::move(entry));
+
+  const auto parsed = c4c::backend::parse_backend_two_param_add_function(function, "add_pair");
+  expect_true(parsed.has_value(),
+              "shared call-decode should accept the two-parameter add helper when typed function metadata says i32 but the stored helper return text is stale");
 }
 
 
@@ -1474,9 +1595,13 @@ int main(int argc, char* argv[]) {
   test_backend_shared_call_decode_parses_bir_minimal_dual_identity_direct_call_sub_module();
   test_backend_shared_call_decode_parses_bir_minimal_call_crossing_direct_call_module();
   test_backend_shared_call_decode_accepts_typed_i32_single_add_imm_helper();
+  test_backend_shared_call_decode_accepts_typed_i32_single_add_imm_helper_with_stale_return_text();
   test_backend_shared_call_decode_accepts_typed_i32_slot_add_helper();
+  test_backend_shared_call_decode_accepts_typed_i32_slot_add_helper_with_stale_return_text();
   test_backend_shared_call_decode_accepts_typed_i32_identity_helper();
+  test_backend_shared_call_decode_accepts_typed_i32_identity_helper_with_stale_return_text();
   test_backend_shared_call_decode_accepts_typed_i32_two_param_add_helper();
+  test_backend_shared_call_decode_accepts_typed_i32_two_param_add_helper_with_stale_return_text();
   test_backend_shared_liveness_surface_tracks_result_names();
   test_backend_shared_liveness_surface_tracks_call_crossing_ranges();
   test_backend_shared_liveness_surface_tracks_phi_join_ranges();

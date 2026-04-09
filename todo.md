@@ -7,14 +7,11 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 1: audit the typed type boundary and backend ownership seams
-- Current slice: move the next typed-lowering pass back into
-  `src/backend/lowering/lir_to_bir.cpp` and audit the remaining
-  declared-direct-call / declared-extern seams that still hard-require raw
-  declaration text after the zero-param declared-callee and caller/call return
-  gate conversion, with the immediate next target narrowed to the nearby
-  shared decode helpers and any remaining call-surface integer text checks in
-  `src/backend/lowering/call_decode.hpp` that still bypass structured helper
-  metadata
+- Current slice: move the next typed-lowering pass to the remaining
+  call-surface typed-call matchers in `src/backend/lowering/call_decode.hpp`,
+  especially the direct-global typed-call operand helpers that still compare
+  parsed parameter type text directly because `ParsedLirTypedCallView` does not
+  yet carry richer semantic payload beyond the stored call-surface text
 
 ## Completed
 
@@ -296,15 +293,26 @@ Source Plan: plan.md
   extern declared-direct-call slice before the full-suite check
 - Re-ran the full suite into `test_fail_after.log` and passed the regression
   guard with no new failures and no pass-count drop (`2841 -> 2841`)
+- Switched the remaining minimal-helper return gates in
+  `src/backend/lowering/call_decode.hpp` from raw `ret.type_str == "i32"`
+  checks to `backend_lir_lower_function_return_type(...)` for the
+  add-immediate, slot-add, identity, and two-parameter helper recognizers
+- Added focused shared-util regressions in
+  `tests/backend/backend_shared_util_tests.cpp` that keep those helper
+  recognizers accepting semantic `i32` helpers when the stored helper return
+  text is intentionally stale
+- Re-ran `backend_shared_util_tests`, `backend_bir_tests`, and the full suite,
+  refreshed `test_fail_after.log`, and passed the regression guard with no new
+  failures and no pass-count drop (`2841 -> 2841`)
 
 ## Next
 
 - move the next typed-lowering slice back to
   `src/backend/lowering/call_decode.hpp` and audit the remaining
   helper/caller recognizer gates that still branch on raw `"i32"` call-surface
-  or instruction-local text instead of structured helper metadata or semantic
-  `LirTypeRef` inspection, especially around parsed direct-call operands and
-  the adjacent minimal-helper return/type checks
+  text instead of structured helper metadata or semantic `LirTypeRef`
+  inspection, especially around parsed direct-global typed-call operands where
+  the current parsed call view still preserves only text
 - keep pointer payload support deferred until a concrete pointer-backed BIR
   lowering consumer appears, then add only the narrow typed payload that
   consumer needs
@@ -325,6 +333,11 @@ Source Plan: plan.md
 - Use `todo.md` as the canonical execution state even though the reusable skill
   text mentions `plan_todo.md`.
 - Immediate validating targets:
+  `test_backend_shared_call_decode_accepts_typed_i32_single_add_imm_helper_with_stale_return_text`
+  `test_backend_shared_call_decode_accepts_typed_i32_slot_add_helper_with_stale_return_text`
+  `test_backend_shared_call_decode_accepts_typed_i32_identity_helper_with_stale_return_text`
+  `test_backend_shared_call_decode_accepts_typed_i32_two_param_add_helper_with_stale_return_text`
+  and
   `test_lir_verify_rejects_typed_integer_text_mismatch` and
   `test_bir_lowering_accepts_typed_tiny_return_add_lir_slice_with_stale_text`
   `test_bir_lowering_accepts_typed_tiny_return_ne_lir_slice_with_stale_text`

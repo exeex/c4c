@@ -1666,7 +1666,8 @@ parse_backend_single_param_slot_add_function(
   const auto& block = function.blocks.front();
   const auto* ret = std::get_if<LirRet>(&block.terminator);
   if (block.label != "entry" || block.insts.size() != 4 || ret == nullptr ||
-      !ret->value_str.has_value() || ret->type_str != "i32") {
+      !ret->value_str.has_value() ||
+      backend_lir_lower_function_return_type(function, *ret) != bir::TypeKind::I32) {
     return std::nullopt;
   }
 
@@ -1724,7 +1725,8 @@ parse_backend_single_add_imm_function(
   const auto& block = function.blocks.front();
   const auto* ret = std::get_if<LirRet>(&block.terminator);
   if (block.label != "entry" || block.insts.size() != 1 || ret == nullptr ||
-      !ret->value_str.has_value() || ret->type_str != "i32") {
+      !ret->value_str.has_value() ||
+      backend_lir_lower_function_return_type(function, *ret) != bir::TypeKind::I32) {
     return std::nullopt;
   }
 
@@ -1764,7 +1766,8 @@ inline std::optional<std::string_view> parse_backend_single_identity_function(
   const auto& block = function.blocks.front();
   const auto* ret = std::get_if<LirRet>(&block.terminator);
   if (block.label != "entry" || !block.insts.empty() || ret == nullptr ||
-      !ret->value_str.has_value() || ret->type_str != "i32" ||
+      !ret->value_str.has_value() ||
+      backend_lir_lower_function_return_type(function, *ret) != bir::TypeKind::I32 ||
       *ret->value_str != *helper_param_name) {
     return std::nullopt;
   }
@@ -1795,7 +1798,8 @@ parse_backend_two_param_add_function(
   const auto& block = function.blocks.front();
   const auto* ret = std::get_if<LirRet>(&block.terminator);
   if (block.label != "entry" || block.insts.size() != 1 || ret == nullptr ||
-      !ret->value_str.has_value() || ret->type_str != "i32") {
+      !ret->value_str.has_value() ||
+      backend_lir_lower_function_return_type(function, *ret) != bir::TypeKind::I32) {
     return std::nullopt;
   }
 
