@@ -539,12 +539,32 @@ std::optional<bir::Module> try_lower_minimal_declared_direct_call_module(
   const auto* call = std::get_if<LirCallOp>(&main_lir_block.insts.front());
   const auto symbol_name =
       call == nullptr ? std::nullopt : parse_lir_direct_global_callee(call->callee);
+  const auto parsed_direct_global_call =
+      call == nullptr ? std::nullopt : parse_backend_direct_global_typed_call(*call);
   const auto typed_call =
       call == nullptr ? std::nullopt : parse_lir_typed_call_or_infer_params(*call);
-  if (call == nullptr || !symbol_name.has_value() || !typed_call.has_value() ||
+  if (call == nullptr || !symbol_name.has_value() ||
       lower_scalar_type(call->return_type) != bir::TypeKind::I32 || call->result.str().empty() ||
-      symbol_name->empty() ||
-      typed_call->args.size() > 6) {
+      symbol_name->empty()) {
+    return std::nullopt;
+  }
+
+  ParsedBackendTypedCallView backend_typed_call;
+  if (typed_call.has_value()) {
+    backend_typed_call = make_backend_typed_call_view(*typed_call);
+  } else if (parsed_direct_global_call.has_value()) {
+    backend_typed_call.args = parsed_direct_global_call->typed_call.args;
+    backend_typed_call.owned_param_types.reserve(parsed_direct_global_call->typed_call.param_types.size());
+    backend_typed_call.param_types.reserve(parsed_direct_global_call->typed_call.param_types.size());
+    for (const auto param_type : parsed_direct_global_call->typed_call.param_types) {
+      backend_typed_call.owned_param_types.push_back(std::string(param_type));
+      backend_typed_call.param_types.push_back(backend_typed_call.owned_param_types.back());
+    }
+  } else {
+    return std::nullopt;
+  }
+
+  if (backend_typed_call.args.size() > 6) {
     return std::nullopt;
   }
 
@@ -569,13 +589,21 @@ std::optional<bir::Module> try_lower_minimal_declared_direct_call_module(
       return std::nullopt;
     }
 
+    const auto declared_call_surface =
+        parsed_direct_global_call.value_or(
+            ParsedBackendDirectGlobalTypedCallView{
+                *symbol_name,
+                backend_typed_call,
+            });
+    const auto& declared_param_types = declared_call_surface.typed_call.param_types;
+
     const auto declared_params = lower_function_params(*declared_callee);
     if (declared_params.has_value()) {
-      if (typed_call->param_types.size() != declared_params->size()) {
+      if (declared_param_types.size() != declared_params->size()) {
         return std::nullopt;
       }
       for (std::size_t index = 0; index < declared_params->size(); ++index) {
-        const auto lowered_call_type = lower_minimal_call_arg_type_text(typed_call->param_types[index]);
+        const auto lowered_call_type = lower_minimal_call_arg_type_text(declared_param_types[index]);
         if (!lowered_call_type.has_value() || *lowered_call_type != (*declared_params)[index].type) {
           return std::nullopt;
         }
@@ -596,25 +624,35 @@ std::optional<bir::Module> try_lower_minimal_declared_direct_call_module(
         ++fixed_param_count;
       }
 
-      if (typed_call->param_types.size() < fixed_param_count ||
-          (!saw_varargs && typed_call->param_types.size() != fixed_param_count)) {
+      if (declared_param_types.size() < fixed_param_count ||
+          (!saw_varargs && declared_param_types.size() != fixed_param_count)) {
         return std::nullopt;
       }
       for (std::size_t index = 0; index < fixed_param_count; ++index) {
         if (trim_lir_arg_text((*params)[index].type) !=
-            trim_lir_arg_text(typed_call->param_types[index])) {
+            trim_lir_arg_text(declared_param_types[index])) {
           return std::nullopt;
         }
       }
-      if (typed_call->param_types.empty() &&
+      if (declared_param_types.empty() &&
           !backend_lir_signature_matches(
               declared_callee->signature_text, "declare", "i32", *symbol_name, {})) {
         return std::nullopt;
       }
+
+      if (saw_varargs) {
+        backend_typed_call.owned_param_types.clear();
+        backend_typed_call.param_types.clear();
+        backend_typed_call.owned_param_types.reserve(declared_call_surface.typed_call.param_types.size());
+        backend_typed_call.param_types.reserve(declared_call_surface.typed_call.param_types.size());
+        for (const auto param_type : declared_call_surface.typed_call.param_types) {
+          backend_typed_call.owned_param_types.push_back(std::string(param_type));
+          backend_typed_call.param_types.push_back(backend_typed_call.owned_param_types.back());
+        }
+      }
     }
   }
 
-  auto backend_typed_call = make_backend_typed_call_view(*typed_call);
   auto args = parse_backend_extern_call_args(backend_typed_call);
   if (!args.has_value()) {
     return std::nullopt;
@@ -674,9 +712,9 @@ std::optional<bir::Module> try_lower_minimal_declared_direct_call_module(
   lowered_callee.name = *symbol_name;
   lowered_callee.return_type = bir::TypeKind::I32;
   lowered_callee.is_declaration = true;
-  lowered_callee.params.reserve(typed_call->param_types.size());
-  for (std::size_t index = 0; index < typed_call->param_types.size(); ++index) {
-    const auto type = lower_minimal_call_arg_type_text(typed_call->param_types[index]);
+  lowered_callee.params.reserve(backend_typed_call.param_types.size());
+  for (std::size_t index = 0; index < backend_typed_call.param_types.size(); ++index) {
+    const auto type = lower_minimal_call_arg_type_text(backend_typed_call.param_types[index]);
     if (!type.has_value()) {
       return std::nullopt;
     }

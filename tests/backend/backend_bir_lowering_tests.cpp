@@ -475,6 +475,45 @@ c4c::codegen::lir::LirModule make_bir_declared_direct_call_typed_extern_metadata
   return module;
 }
 
+c4c::codegen::lir::LirModule
+make_bir_declared_direct_call_vararg_fixed_param_typed_match_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction callee;
+  callee.name = "helper_decl";
+  callee.is_declaration = true;
+  callee.signature_text = "declare i32 @helper_decl(i32 %arg0, ...)\n";
+  callee.return_type.base = c4c::TB_INT;
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.return_type.base = c4c::TB_INT;
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{
+      "%t0",
+      LirTypeRef{"i32", LirTypeKind::Integer, 32},
+      "@helper_decl",
+      "(i8, ...)",
+      "i32 5",
+  });
+  entry.terminator = LirRet{std::string("%t0"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  module.functions.push_back(std::move(callee));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_bir_minimal_void_direct_call_imm_return_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -1308,6 +1347,26 @@ void test_bir_lowering_uses_typed_extern_declared_direct_call_metadata_when_text
                   parsed->args[1].imm == 7 &&
                   parsed->return_call_result,
               "the lowered BIR module should preserve the extern declared direct-call structure from typed metadata");
+}
+
+void test_bir_lowering_uses_actual_fixed_vararg_call_types_for_declared_direct_calls() {
+  const auto lowered = c4c::backend::try_lower_to_bir(
+      make_bir_declared_direct_call_vararg_fixed_param_typed_match_lir_module());
+  expect_true(
+      lowered.has_value(),
+      "BIR lowering should accept declared direct-call vararg modules when the fixed call-surface type is only recoverable from the actual typed call args");
+
+  const auto parsed = c4c::backend::parse_bir_minimal_declared_direct_call_module(*lowered);
+  expect_true(parsed.has_value() &&
+                  parsed->callee != nullptr &&
+                  parsed->callee->name == "helper_decl" &&
+                  parsed->callee->params.size() == 1 &&
+                  parsed->callee->params[0].type == c4c::backend::bir::TypeKind::I32 &&
+                  parsed->args.size() == 1 &&
+                  parsed->args[0].kind == c4c::backend::ParsedBackendExternCallArg::Kind::I32Imm &&
+                  parsed->args[0].imm == 5 &&
+                  parsed->return_call_result,
+              "the lowered BIR module should preserve the fixed declared vararg operand recovered from the typed call args");
 }
 
 void test_bir_lowering_accepts_minimal_void_direct_call_imm_return_lir_module() {
@@ -4293,6 +4352,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_infers_extern_decl_params_from_typed_call_lir_module);
   RUN_TEST(test_bir_lowering_uses_typed_declared_direct_call_metadata_when_text_is_stale);
   RUN_TEST(test_bir_lowering_uses_typed_extern_declared_direct_call_metadata_when_text_is_stale);
+  RUN_TEST(test_bir_lowering_uses_actual_fixed_vararg_call_types_for_declared_direct_calls);
   RUN_TEST(test_bir_lowering_accepts_minimal_scalar_global_load_lir_module);
   RUN_TEST(test_bir_lowering_accepts_typed_minimal_scalar_global_load_lir_slice_with_stale_text);
   RUN_TEST(test_bir_lowering_accepts_minimal_extern_scalar_global_load_lir_module);

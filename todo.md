@@ -7,12 +7,11 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 1: audit the typed type boundary and backend ownership seams
-- Current slice: move the next typed-lowering pass to the remaining
-  call-surface typed-call/text fallbacks around declared-extern direct-call
-  matching in `src/backend/lowering/lir_to_bir.cpp`, especially the remaining
-  fixed-param vararg comparison path that still requires raw declared-signature
-  text to match the call-surface types exactly when no structured callee param
-  metadata is available
+- Current slice: audit the remaining declared-direct-call compatibility
+  fallbacks in `src/backend/lowering/lir_to_bir.cpp` after the fixed-param
+  vararg seam, especially whether the zero-arg signature-text check should stay
+  as bounded legacy compatibility or move behind typed metadata as the next
+  typed-lowering follow-through step
 
 ## Completed
 
@@ -238,6 +237,18 @@ Source Plan: plan.md
   global slices lowering when the global text, load/store `LirTypeRef` render
   text, and `ret` render text are intentionally stale but the typed metadata
   still says `i32`
+- Switched the declared direct-call fixed-param vararg comparison path in
+  `src/backend/lowering/lir_to_bir.cpp` to recover fixed call-surface types
+  from the backend direct-global typed-call parser when the generic LIR typed
+  call parse rejects stale vararg suffix text
+- Added a focused backend regression in
+  `tests/backend/backend_bir_lowering_tests.cpp` that keeps the declared
+  direct-call vararg slice lowering when the stored fixed-param suffix text is
+  stale but the actual typed call argument still carries the correct fixed
+  `i32` surface
+- Re-ran `backend_bir_tests`, `backend_shared_util_tests`, and the full suite,
+  refreshed `test_fail_after.log`, and passed the regression guard with no new
+  failures and no pass-count drop (`2841 -> 2841`)
 - Re-ran `backend_bir_tests` and the full suite, refreshed
   `test_fail_after.log`, and passed the regression guard with no new failures
   and no pass-count drop (`2841 -> 2841`)
@@ -385,6 +396,9 @@ Source Plan: plan.md
 - Latest validating target for the direct-global vararg typed-call seam:
   `test_backend_shared_call_decode_prefers_typed_vararg_call_args_over_stale_fixed_suffix_text`
   in `tests/backend/backend_shared_util_tests.cpp`.
+- Latest validating target for the declared direct-call vararg lowering seam:
+  `test_bir_lowering_uses_actual_fixed_vararg_call_types_for_declared_direct_calls`
+  in `tests/backend/backend_bir_lowering_tests.cpp`.
 - Full-suite before/after comparison for this slice should use
   `test_fail_before.log` and `test_fail_after.log` with the regression-guard
   checker script.
