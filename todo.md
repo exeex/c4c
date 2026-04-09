@@ -7,11 +7,10 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 1: audit the typed type boundary and backend ownership seams
-- Current slice: audit the remaining declared-direct-call compatibility
-  fallbacks in `src/backend/lowering/lir_to_bir.cpp` after the fixed-param
-  vararg seam, especially whether the zero-arg signature-text check should stay
-  as bounded legacy compatibility or move behind typed metadata as the next
-  typed-lowering follow-through step
+- Current slice: re-audit `src/backend/lowering/lir_to_bir.cpp` for any
+  remaining typed-lowering fallbacks that still require raw direct-call
+  signature text beyond bounded linkage/name parsing, then prepare the next
+  in-scope follow-through slice from that audit
 
 ## Completed
 
@@ -327,14 +326,26 @@ Source Plan: plan.md
 - Re-ran `backend_shared_util_tests`, `backend_bir_tests`, and the full suite,
   refreshed `test_fail_after.log`, and passed the regression guard with no new
   failures and no pass-count drop (`2841 -> 2841`)
+- Removed the remaining zero-fixed-param declared direct-call fallback gate in
+  `src/backend/lowering/lir_to_bir.cpp` that still required raw
+  `declare i32 @name()` signature text in the vararg/no-typed-param branch
+  even when typed callee return metadata and parsed fixed params already proved
+  the declaration surface
+- Added a focused backend regression in
+  `tests/backend/backend_bir_lowering_tests.cpp` that keeps the zero-arg
+  declared direct-call vararg slice lowering when the callee carries semantic
+  `i32` return metadata while the stored declaration text is intentionally
+  stale (`declare i64 @helper_decl(...)`)
+- Re-ran `backend_bir_tests`, `backend_shared_util_tests`, and the full suite,
+  refreshed `test_fail_after.log`, and passed the regression guard with no new
+  failures and no pass-count drop (`2841 -> 2841`)
 
 ## Next
 
-- move the next typed-lowering slice back to
-  `src/backend/lowering/lir_to_bir.cpp` and audit the remaining declared-call
-  fallback gates that still branch on raw signature param text, especially the
-  fixed-param vararg compare path in the minimal declared direct-call lowering
-  route when typed callee parameter metadata is absent
+- finish the direct-call fallback re-audit in
+  `src/backend/lowering/lir_to_bir.cpp`; if the declared-call typed-lowering
+  seam is exhausted, move the next implementation slice to the plan’s
+  BIR-owned phi/CFG normalization step instead of stretching Step 1 further
 - keep pointer payload support deferred until a concrete pointer-backed BIR
   lowering consumer appears, then add only the narrow typed payload that
   consumer needs

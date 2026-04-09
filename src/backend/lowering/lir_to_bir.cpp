@@ -634,12 +634,6 @@ std::optional<bir::Module> try_lower_minimal_declared_direct_call_module(
           return std::nullopt;
         }
       }
-      if (declared_param_types.empty() &&
-          !backend_lir_signature_matches(
-              declared_callee->signature_text, "declare", "i32", *symbol_name, {})) {
-        return std::nullopt;
-      }
-
       if (saw_varargs) {
         backend_typed_call.owned_param_types.clear();
         backend_typed_call.param_types.clear();
