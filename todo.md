@@ -7,20 +7,46 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: audit whether the new prepared-analysis point carrier can
-  shrink any remaining fields beyond the current pointer/use/escape subset now
-  that it is no longer coupled to the public `StackLayoutInput` block types
-- Current implementation target: prove whether `used_names`,
-  `terminator_used_names`, or any point-level pointer/escape facts are still
-  required by prepared overwrite-before-read and alloca-coalescing consumers,
-  and record the next removable field without regressing the current fallback
-  analyses
-- Next intended slice: target the first removable prepared-analysis field, if
-  any, with focused backend shared tests for overwrite-before-read pruning,
-  single-block coalescing, escaped-alloca exclusion, and rehydration back into
-  the production `StackLayoutInput` contract
+- Current slice: re-audit the remaining prepared pointer/escape facts after the
+  `used_names` duplication removal and identify the next field, if any, that
+  can move behind the liveness or backend-CFG seam
+- Current implementation target: prove whether
+  `pointer_accesses`, `escaped_names`, or `derived_pointer_root` can shrink any
+  further without regressing overwrite-before-read pruning, single-block
+  coalescing, or escaped-alloca exclusion on the prepared fallback path
+- Next intended slice: target the first remaining removable pointer/escape
+  field, if any, with focused backend shared tests for overwrite-before-read
+  pruning, single-block coalescing, escaped-alloca exclusion, and production
+  stack-layout-input rehydration
 
 ## Completed
+
+- Completed the next Step 6 bounded prepared stack-layout use-list narrowing
+  slice by removing duplicated `used_names` storage from the prepared
+  classification carrier and rebuilding those use lists from liveness during
+  lowering:
+  - removed instruction-level `used_names` and block-level
+    `terminator_used_names` from
+    `src/backend/stack_layout/slot_assignment.*`'s prepared
+    `PreparedEntryAllocaStackLayoutClassificationInput` carrier so the cached
+    fallback classification now keeps only the pointer/escape facts still owned
+    by overwrite-before-read and alloca-coalescing
+  - updated
+    `lower_prepared_entry_alloca_function_inputs(...)` and
+    `lower_prepared_stack_layout_input(...)` in
+    `src/backend/stack_layout/slot_assignment.cpp` to rehydrate production
+    `StackLayoutInput` instruction and terminator uses from the already-stored
+    `liveness_input` or lowered `backend_cfg_liveness`
+  - extended `tests/backend/backend_shared_util_tests.cpp` with focused
+    coverage proving the prepared fallback classification no longer stores
+    duplicated use lists while the lowered production stack-layout contract
+    still rebuilds instruction and terminator uses from liveness
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`,
+    rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with the repo’s allowed non-decreasing rule and no new
+    failures (`2809 -> 2809`, same 32 known failing tests as
+    `test_fail_before.log`)
 
 - Completed the next Step 6 bounded prepared-analysis carrier split slice by
   isolating cached fallback stack-layout block/point state from the public

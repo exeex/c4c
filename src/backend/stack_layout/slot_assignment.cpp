@@ -58,11 +58,9 @@ PreparedEntryAllocaStackLayoutClassificationInput lower_prepared_stack_layout_cl
   for (auto& block : input.blocks) {
     PreparedEntryAllocaStackLayoutBlock prepared_block;
     prepared_block.label = std::move(block.label);
-    prepared_block.terminator_used_names = std::move(block.terminator_used_names);
     prepared_block.insts.reserve(block.insts.size());
     for (auto& point : block.insts) {
       PreparedEntryAllocaStackLayoutPoint prepared_point;
-      prepared_point.used_names = std::move(point.used_names);
       prepared_point.pointer_accesses = std::move(point.pointer_accesses);
       prepared_point.escaped_names = std::move(point.escaped_names);
       prepared_point.derived_pointer_root = std::move(point.derived_pointer_root);
@@ -76,18 +74,17 @@ PreparedEntryAllocaStackLayoutClassificationInput lower_prepared_stack_layout_cl
 
 StackLayoutInput lower_prepared_stack_layout_input(
     const PreparedEntryAllocaStackLayoutClassificationInput& classification,
-    const PreparedEntryAllocaStackLayoutMetadata& metadata) {
+    const PreparedEntryAllocaStackLayoutMetadata& metadata,
+    const LivenessInput* liveness_input) {
   StackLayoutInput input;
   input.entry_allocas = classification.entry_allocas;
   input.blocks.reserve(classification.blocks.size());
   for (const auto& block : classification.blocks) {
     StackLayoutBlockInput lowered_block;
     lowered_block.label = block.label;
-    lowered_block.terminator_used_names = block.terminator_used_names;
     lowered_block.insts.reserve(block.insts.size());
     for (const auto& point : block.insts) {
       StackLayoutPoint lowered_point;
-      lowered_point.used_names = point.used_names;
       lowered_point.pointer_accesses = point.pointer_accesses;
       lowered_point.escaped_names = point.escaped_names;
       lowered_point.derived_pointer_root = point.derived_pointer_root;
@@ -97,6 +94,23 @@ StackLayoutInput lower_prepared_stack_layout_input(
   }
   input.phi_incoming_uses = classification.phi_incoming_uses;
   apply_prepared_stack_layout_metadata(input, metadata);
+
+  if (liveness_input == nullptr) {
+    return input;
+  }
+
+  const auto block_count = std::min(input.blocks.size(), liveness_input->blocks.size());
+  for (std::size_t block_index = 0; block_index < block_count; ++block_index) {
+    auto& lowered_block = input.blocks[block_index];
+    const auto& liveness_block = liveness_input->blocks[block_index];
+    lowered_block.terminator_used_names = liveness_block.terminator_used_names;
+
+    const auto inst_count = std::min(lowered_block.insts.size(), liveness_block.insts.size());
+    for (std::size_t inst_index = 0; inst_index < inst_count; ++inst_index) {
+      lowered_block.insts[inst_index].used_names = liveness_block.insts[inst_index].used_names;
+    }
+  }
+
   return input;
 }
 
@@ -406,20 +420,20 @@ PreparedEntryAllocaFunctionInputs prepare_module_function_entry_alloca_preparati
 EntryAllocaRewriteInputs lower_prepared_entry_alloca_function_inputs(
     const PreparedEntryAllocaFunctionInputs& prepared_inputs) {
   EntryAllocaRewriteInputs inputs;
-  inputs.stack_layout_input = lower_prepared_stack_layout_input(
-      prepared_inputs.stack_layout_classification, prepared_inputs.stack_layout_metadata);
   inputs.liveness_source = prepared_inputs.liveness_source;
   inputs.stack_layout_source = prepared_inputs.stack_layout_source;
 
   if (prepared_inputs.liveness_input.has_value()) {
     inputs.liveness_input = *prepared_inputs.liveness_input;
-    return inputs;
-  }
-
-  if (prepared_inputs.backend_cfg_liveness.has_value()) {
+  } else if (prepared_inputs.backend_cfg_liveness.has_value()) {
     inputs.liveness_input =
         lower_backend_cfg_to_liveness_input(*prepared_inputs.backend_cfg_liveness);
   }
+
+  inputs.stack_layout_input = lower_prepared_stack_layout_input(
+      prepared_inputs.stack_layout_classification,
+      prepared_inputs.stack_layout_metadata,
+      &inputs.liveness_input);
   return inputs;
 }
 

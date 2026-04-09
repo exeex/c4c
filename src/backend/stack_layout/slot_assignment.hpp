@@ -53,7 +53,6 @@ struct PreparedEntryAllocaStackLayoutMetadata {
 };
 
 struct PreparedEntryAllocaStackLayoutPoint {
-  std::vector<std::string> used_names;
   std::vector<PointerAccess> pointer_accesses;
   std::vector<std::string> escaped_names;
   std::optional<std::pair<std::string, std::string>> derived_pointer_root;
@@ -62,7 +61,6 @@ struct PreparedEntryAllocaStackLayoutPoint {
 struct PreparedEntryAllocaStackLayoutBlock {
   std::string label;
   std::vector<PreparedEntryAllocaStackLayoutPoint> insts;
-  std::vector<std::string> terminator_used_names;
 };
 
 struct PreparedEntryAllocaStackLayoutClassificationInput {

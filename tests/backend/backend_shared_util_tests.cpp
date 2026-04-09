@@ -2003,10 +2003,6 @@ void test_backend_shared_fallback_preparation_separates_stack_layout_metadata_fr
                   preparation.stack_layout_classification.blocks.size() == 1 &&
                   preparation.stack_layout_classification.blocks.front().label == "entry" &&
                   preparation.stack_layout_classification.blocks.front().insts.size() == 1 &&
-                  preparation.stack_layout_classification.blocks.front().insts.front().used_names
-                          .size() == 1 &&
-                  preparation.stack_layout_classification.blocks.front().insts.front().used_names
-                          .front() == "%p.x" &&
                   preparation.stack_layout_classification.blocks.front().insts.front()
                           .escaped_names.size() == 1 &&
                   preparation.stack_layout_classification.blocks.front().insts.front()
@@ -2049,6 +2045,63 @@ void test_backend_shared_fallback_preparation_separates_stack_layout_metadata_fr
                   lowered.stack_layout_input.call_results.front().type_str ==
                       "{ i32, i32 }",
               "shared prepared fallback carrier should still rehydrate the full rewrite-input stack-layout contract when lowered for production use");
+}
+
+void test_backend_shared_fallback_preparation_rehydrates_stack_layout_uses_from_liveness() {
+  c4c::codegen::lir::LirModule module;
+
+  c4c::codegen::lir::LirFunction function;
+  function.name = "branch_uses_entry_alloca";
+  function.signature_text = "define void @branch_uses_entry_alloca(i1 %p.cond, i32 %p.x)";
+  function.alloca_insts.push_back(c4c::codegen::lir::LirAllocaOp{"%lv.buf", "i32", "", 4});
+
+  c4c::codegen::lir::LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(c4c::codegen::lir::LirCallOp{
+      "%call0",
+      c4c::codegen::lir::LirTypeRef("i32"),
+      "@helper",
+      "(i32)",
+      "i32 %p.x",
+  });
+  entry.terminator = c4c::codegen::lir::LirCondBr{"%p.cond", "then", "else"};
+  function.blocks.push_back(std::move(entry));
+
+  c4c::codegen::lir::LirBlock then_block;
+  then_block.label = "then";
+  then_block.terminator = c4c::codegen::lir::LirRet{std::nullopt, "void"};
+  function.blocks.push_back(std::move(then_block));
+
+  c4c::codegen::lir::LirBlock else_block;
+  else_block.label = "else";
+  else_block.terminator = c4c::codegen::lir::LirRet{std::nullopt, "void"};
+  function.blocks.push_back(std::move(else_block));
+
+  module.functions.push_back(std::move(function));
+
+  const auto preparation =
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_preparation(module, 0);
+  const auto lowered =
+      c4c::backend::stack_layout::lower_prepared_entry_alloca_function_inputs(preparation);
+
+  expect_true(lowered.stack_layout_input.blocks.size() == 3 &&
+                  lowered.stack_layout_input.blocks.front().insts.size() == 1 &&
+                  lowered.stack_layout_input.blocks.front().insts.front().used_names.size() == 1 &&
+                  lowered.stack_layout_input.blocks.front().insts.front().used_names.front() ==
+                      "%p.x" &&
+                  lowered.stack_layout_input.blocks.front().terminator_used_names.size() == 1 &&
+                  lowered.stack_layout_input.blocks.front().terminator_used_names.front() ==
+                      "%p.cond" &&
+                  preparation.backend_cfg_liveness.has_value() &&
+                  preparation.backend_cfg_liveness->blocks.front().insts.front().used_names.size() ==
+                      1 &&
+                  preparation.backend_cfg_liveness->blocks.front().insts.front().used_names.front() ==
+                      "%p.x" &&
+                  preparation.backend_cfg_liveness->blocks.front().terminator_used_names.size() ==
+                      1 &&
+                  preparation.backend_cfg_liveness->blocks.front().terminator_used_names.front() ==
+                      "%p.cond",
+              "shared prepared fallback carrier should rebuild stack-layout instruction and terminator uses from liveness instead of caching those use lists in the prepared classification input");
 }
 
 void test_backend_shared_fallback_preparation_keeps_only_liveness_cfg_state() {
@@ -2571,6 +2624,7 @@ int main(int argc, char* argv[]) {
   test_backend_shared_fallback_entry_alloca_stack_layout_input_preserves_pointer_metadata();
   test_backend_shared_fallback_entry_alloca_stack_layout_input_preserves_signature_and_call_metadata();
   test_backend_shared_fallback_preparation_separates_stack_layout_metadata_from_cfg_classification();
+  test_backend_shared_fallback_preparation_rehydrates_stack_layout_uses_from_liveness();
   test_backend_shared_fallback_preparation_keeps_only_liveness_cfg_state();
   test_backend_shared_prepares_lir_module_for_target();
   test_backend_shared_target_preparation_enables_bir_lowering();
