@@ -2207,12 +2207,19 @@ void test_backend_shared_fallback_preparation_rehydrates_phi_predecessor_labels_
                   preparation.backend_cfg_liveness->blocks[1].label == "then" &&
                   preparation.backend_cfg_liveness->blocks[2].label == "else" &&
                   preparation.backend_cfg_liveness->blocks[3].label == "join" &&
+                  preparation.backend_cfg_liveness->phi_incoming_uses.size() == 2 &&
+                  preparation.backend_cfg_liveness->phi_incoming_uses.front().predecessor_label ==
+                      "then" &&
+                  preparation.backend_cfg_liveness->phi_incoming_uses.front().value_name == "%t1" &&
+                  preparation.backend_cfg_liveness->phi_incoming_uses.back().predecessor_label ==
+                      "else" &&
+                  preparation.backend_cfg_liveness->phi_incoming_uses.back().value_name == "%t2" &&
                   preparation.stack_layout_classification.blocks.size() == 4 &&
                   preparation.stack_layout_classification.blocks.front().inst_count == 1 &&
                   preparation.stack_layout_classification.blocks[1].inst_count == 1 &&
                   preparation.stack_layout_classification.blocks[2].inst_count == 1 &&
                   preparation.stack_layout_classification.blocks[3].inst_count == 2,
-              "shared prepared fallback carrier should rely on backend-owned liveness block order for labels while keeping only per-block instruction counts in stack-layout classification");
+              "shared prepared fallback carrier should rely on backend-owned liveness for phi predecessor edges and block order while keeping only per-block instruction counts in stack-layout classification");
 
   const auto lowered =
       c4c::backend::stack_layout::lower_prepared_entry_alloca_function_inputs(preparation);
@@ -2227,11 +2234,16 @@ void test_backend_shared_fallback_preparation_rehydrates_phi_predecessor_labels_
                   lowered.stack_layout_input.blocks[1].label == "then" &&
                   lowered.stack_layout_input.blocks[2].label == "else" &&
                   lowered.stack_layout_input.blocks[3].label == "join" &&
+                  lowered.stack_layout_input.phi_incoming_uses.size() == 2 &&
+                  lowered.stack_layout_input.phi_incoming_uses.front().predecessor_label == "then" &&
+                  lowered.stack_layout_input.phi_incoming_uses.front().value_name == "%t1" &&
+                  lowered.stack_layout_input.phi_incoming_uses.back().predecessor_label == "else" &&
+                  lowered.stack_layout_input.phi_incoming_uses.back().value_name == "%t2" &&
                   then_value_uses != nullptr && then_value_uses->size() == 1 &&
                   then_value_uses->front() == 1 &&
                   else_value_uses != nullptr && else_value_uses->size() == 1 &&
                   else_value_uses->front() == 2,
-              "shared prepared fallback lowering should rehydrate stack-layout block labels from liveness so phi predecessor-edge analysis still maps incoming values onto the correct predecessor blocks");
+              "shared prepared fallback lowering should rehydrate stack-layout phi predecessor edges and block labels from liveness so phi analysis still maps incoming values onto the correct predecessor blocks");
 }
 
 void test_backend_shared_fallback_preparation_still_needs_remaining_pointer_escape_facts() {

@@ -7,20 +7,39 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: audit the next prepared fallback carrier field now that block
-  labels have been removed and block identity is rehydrated from backend-owned
-  liveness order
-- Current implementation target: identify whether any remaining prepared
-  stack-layout fallback metadata can shrink further without introducing a new
-  backend-owned seam
-- Next intended slice: either remove the next redundant prepared fallback field
-  with a focused regression or record the exact still-required consumer and
-  invariant in `todo.md`; if this touches public interfaces, prefer the
-  newly-recorded Step 6-safe split between backend CFG/liveness-core surfaces
-  over broader cleanup now tracked separately in
-  `ideas/open/46_backend_surface_cleanup_after_mir_migration.md`
+- Current slice: audit the next prepared fallback carrier field after removing
+  duplicate phi predecessor-edge storage
+- Current implementation target: determine whether any remaining prepared
+  stack-layout fallback field beyond per-block instruction counts and the
+  coarse pointer/escape classification seams is still derivable from the
+  backend-owned liveness carrier without introducing a new ownership surface
+- Next intended slice: either remove the next redundant prepared fallback
+  field with a focused regression or record the exact still-required consumer
+  and invariant in `todo.md`
 
 ## Completed
+
+- Completed the next Step 6 prepared phi-edge narrowing slice by removing
+  duplicate prepared phi predecessor-use storage from the stack-layout fallback
+  carrier and rehydrating that data from backend-owned liveness during
+  lowering:
+  - removed `phi_incoming_uses` from
+    `src/backend/stack_layout/slot_assignment.hpp`'s
+    `PreparedEntryAllocaStackLayoutClassificationInput`
+  - updated `src/backend/stack_layout/slot_assignment.cpp` so prepared
+    stack-layout lowering now rebuilds `StackLayoutInput::phi_incoming_uses`
+    from `LivenessInput::phi_incoming_uses` instead of caching a duplicate
+    prepared copy
+  - extended `tests/backend/backend_shared_util_tests.cpp` with focused
+    coverage proving prepared fallback lowering still restores phi
+    predecessor-edge uses from backend-owned liveness while preserving the
+    correct predecessor block mapping for stack-layout analysis
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`
+  - rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with the repo’s allowed non-decreasing rule and no new
+    failures (`2809 -> 2809`, same 32 known failing tests as
+    `test_fail_before.log`)
 
 - Completed the next Step 6 prepared block-label narrowing slice by removing
   cached prepared block labels and rehydrating block identity from backend-owned

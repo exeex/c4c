@@ -214,7 +214,6 @@ PreparedEntryAllocaStackLayoutClassificationInput lower_prepared_stack_layout_cl
     prepared_block.inst_count = block.insts.size();
     classification.blocks.push_back(std::move(prepared_block));
   }
-  classification.phi_incoming_uses = std::move(input.phi_incoming_uses);
   return classification;
 }
 
@@ -242,7 +241,6 @@ StackLayoutInput lower_prepared_stack_layout_input(
     }
     input.blocks.push_back(std::move(lowered_block));
   }
-  input.phi_incoming_uses = classification.phi_incoming_uses;
   apply_prepared_stack_layout_metadata(input, metadata);
 
   if (liveness_input == nullptr) {
@@ -259,6 +257,12 @@ StackLayoutInput lower_prepared_stack_layout_input(
     for (std::size_t inst_index = 0; inst_index < inst_count; ++inst_index) {
       lowered_block.insts[inst_index].used_names = liveness_block.insts[inst_index].used_names;
     }
+  }
+
+  input.phi_incoming_uses.reserve(liveness_input->phi_incoming_uses.size());
+  for (const auto& phi_use : liveness_input->phi_incoming_uses) {
+    input.phi_incoming_uses.push_back(
+        PhiIncomingUse{phi_use.predecessor_label, phi_use.value_name});
   }
 
   return input;
