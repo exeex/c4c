@@ -1,5 +1,6 @@
 #pragma once
 
+#include "bir.hpp"
 #include "../codegen/lir/ir.hpp"
 
 #include <cstdint>
@@ -9,6 +10,30 @@
 #include <vector>
 
 namespace c4c::backend {
+
+struct BackendCfgPoint {
+  std::vector<std::string> used_names;
+  std::optional<std::string> result_name;
+  bool is_call = false;
+};
+
+struct BackendCfgBlock {
+  std::string label;
+  std::vector<BackendCfgPoint> insts;
+  std::vector<std::string> terminator_used_names;
+  std::vector<std::string> successor_labels;
+};
+
+struct BackendCfgPhiIncomingUse {
+  std::string predecessor_label;
+  std::string value_name;
+};
+
+struct BackendCfgFunction {
+  std::vector<BackendCfgPoint> entry_insts;
+  std::vector<BackendCfgBlock> blocks;
+  std::vector<BackendCfgPhiIncomingUse> phi_incoming_uses;
+};
 
 struct LivenessPoint {
   std::vector<std::string> used_names;
@@ -48,6 +73,9 @@ struct LivenessResult {
   [[nodiscard]] const LiveInterval* find_interval(std::string_view value_name) const;
 };
 
+BackendCfgFunction lower_bir_to_backend_cfg(const bir::Function& function);
+BackendCfgFunction lower_lir_to_backend_cfg(const c4c::codegen::lir::LirFunction& function);
+LivenessInput lower_backend_cfg_to_liveness_input(const BackendCfgFunction& function);
 LivenessInput lower_lir_to_liveness_input(const c4c::codegen::lir::LirFunction& function);
 LivenessResult compute_live_intervals(const LivenessInput& input);
 

@@ -7,19 +7,35 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: audit the next backend-entry/native-emitter ownership seam
-  after shared backend takes over the public x86/aarch64 `assemble_module(...)`
-  handoff
-- Current implementation target: identify the next public native-emitter
-  contract or binary-utils seam that still owns compatibility-only routing
-  after shared backend now centralizes text-to-object staging for target LIR
-  assembly
-- Next intended slice: inspect the disabled binary-utils contract/object-parse
-  coverage and adjacent assembler-facing helpers to decide whether the next
-  cleanup is test reactivation around the shared assembly seam or a separate
-  shared backend/native-emitter ownership move
+- Current slice: introduce a backend-owned CFG lowering seam for liveness so
+  backend liveness no longer needs raw `LirFunction` as its primary public
+  input surface
+- Current implementation target: route the remaining production caller through
+  `backend CFG -> LivenessInput` instead of calling the raw-LIR liveness
+  lowering helper directly
+- Next intended slice: move more callers and narrow tests to the backend-CFG
+  seam, then decide whether Step 6 should lower directly from BIR in production
+  or keep LIR-to-backend-CFG as the temporary comparison shim
 
 ## Completed
+
+- Completed the next Step 6 bounded backend-CFG liveness entry slice by
+  introducing a backend-owned lowering seam ahead of interval computation while
+  keeping raw LIR only as a compatibility shim:
+  - added `BackendCfgFunction` plus `lower_bir_to_backend_cfg(...)`,
+    `lower_lir_to_backend_cfg(...)`, and
+    `lower_backend_cfg_to_liveness_input(...)` in `src/backend/liveness.*` so
+    liveness now has a formal backend-owned CFG input path instead of exposing
+    only `LirFunction -> LivenessInput`
+  - kept `lower_lir_to_liveness_input(...)` as a thin compatibility helper that
+    lowers through the new backend-CFG seam rather than constructing
+    `LivenessInput` directly from raw LIR
+  - updated `src/backend/stack_layout/slot_assignment.cpp` so the production
+    entry-alloca rewrite path now builds backend CFG first and then lowers that
+    CFG into `LivenessInput`, removing its direct dependency on the raw-LIR
+    liveness entry helper
+  - rebuilt the tree and passed `cmake --build build -j8`; targeted/runtime
+    tests were intentionally deferred for this slice
 
 - Completed the next Step 6 bounded native-emitter assembly-handoff cleanup
   slice by moving compatibility-only x86/aarch64 `assemble_module(...)`

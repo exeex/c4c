@@ -11,10 +11,28 @@ namespace c4c::backend {
 
 namespace {
 
+using c4c::backend::BackendCfgBlock;
+using c4c::backend::BackendCfgFunction;
+using c4c::backend::BackendCfgPhiIncomingUse;
+using c4c::backend::BackendCfgPoint;
 using c4c::codegen::lir::LirBlock;
 using c4c::codegen::lir::LirFunction;
 using c4c::codegen::lir::LirInst;
 using c4c::codegen::lir::LirTerminator;
+
+std::optional<std::string> named_bir_value(const c4c::backend::bir::Value& value) {
+  if (value.kind != c4c::backend::bir::Value::Kind::Named || value.name.empty()) {
+    return std::nullopt;
+  }
+  return value.name;
+}
+
+void append_named_bir_value(std::vector<std::string>& values,
+                            const c4c::backend::bir::Value& value) {
+  if (const auto name = named_bir_value(value); name.has_value()) {
+    values.push_back(*name);
+  }
+}
 
 std::string result_name_for_inst(const c4c::codegen::lir::LirInst& inst) {
   return std::visit(
@@ -253,6 +271,86 @@ std::vector<std::string> successor_labels(const LirTerminator& terminator) {
       terminator);
 }
 
+std::optional<std::string> result_name_for_bir_inst(const c4c::backend::bir::Inst& inst) {
+  return std::visit(
+      [](const auto& op) -> std::optional<std::string> {
+        using T = std::decay_t<decltype(op)>;
+        if constexpr (std::is_same_v<T, c4c::backend::bir::BinaryInst> ||
+                      std::is_same_v<T, c4c::backend::bir::SelectInst> ||
+                      std::is_same_v<T, c4c::backend::bir::CastInst> ||
+                      std::is_same_v<T, c4c::backend::bir::LoadLocalInst> ||
+                      std::is_same_v<T, c4c::backend::bir::LoadGlobalInst>) {
+          return named_bir_value(op.result);
+        } else if constexpr (std::is_same_v<T, c4c::backend::bir::CallInst>) {
+          if (!op.result.has_value()) {
+            return std::nullopt;
+          }
+          return named_bir_value(*op.result);
+        } else {
+          return std::nullopt;
+        }
+      },
+      inst);
+}
+
+bool is_call_inst(const c4c::backend::bir::Inst& inst) {
+  return std::holds_alternative<c4c::backend::bir::CallInst>(inst);
+}
+
+std::vector<std::string> used_names_for_bir_inst(const c4c::backend::bir::Inst& inst) {
+  return std::visit(
+      [](const auto& op) -> std::vector<std::string> {
+        using T = std::decay_t<decltype(op)>;
+        std::vector<std::string> values;
+
+        if constexpr (std::is_same_v<T, c4c::backend::bir::BinaryInst>) {
+          append_named_bir_value(values, op.lhs);
+          append_named_bir_value(values, op.rhs);
+        } else if constexpr (std::is_same_v<T, c4c::backend::bir::SelectInst>) {
+          append_named_bir_value(values, op.lhs);
+          append_named_bir_value(values, op.rhs);
+          append_named_bir_value(values, op.true_value);
+          append_named_bir_value(values, op.false_value);
+        } else if constexpr (std::is_same_v<T, c4c::backend::bir::CastInst>) {
+          append_named_bir_value(values, op.operand);
+        } else if constexpr (std::is_same_v<T, c4c::backend::bir::CallInst>) {
+          for (const auto& arg : op.args) {
+            append_named_bir_value(values, arg);
+          }
+        } else if constexpr (std::is_same_v<T, c4c::backend::bir::StoreGlobalInst>) {
+          append_named_bir_value(values, op.value);
+        } else if constexpr (std::is_same_v<T, c4c::backend::bir::StoreLocalInst>) {
+          append_named_bir_value(values, op.value);
+        }
+
+        return values;
+      },
+      inst);
+}
+
+std::vector<std::string> used_names_for_bir_terminator(
+    const c4c::backend::bir::Terminator& terminator) {
+  std::vector<std::string> values;
+  if (terminator.kind == c4c::backend::bir::TerminatorKind::Return) {
+    if (terminator.value.has_value()) {
+      append_named_bir_value(values, *terminator.value);
+    }
+  } else if (terminator.kind == c4c::backend::bir::TerminatorKind::CondBranch) {
+    append_named_bir_value(values, terminator.condition);
+  }
+  return values;
+}
+
+std::vector<std::string> successor_labels(const c4c::backend::bir::Terminator& terminator) {
+  if (terminator.kind == c4c::backend::bir::TerminatorKind::Branch) {
+    return {terminator.target_label};
+  }
+  if (terminator.kind == c4c::backend::bir::TerminatorKind::CondBranch) {
+    return {terminator.true_label, terminator.false_label};
+  }
+  return {};
+}
+
 struct BlockState {
   std::uint32_t start = 0;
   std::uint32_t end = 0;
@@ -333,21 +431,44 @@ const LiveInterval* LivenessResult::find_interval(std::string_view value_name) c
   return nullptr;
 }
 
-LivenessInput lower_lir_to_liveness_input(const c4c::codegen::lir::LirFunction& function) {
-  LivenessInput input;
-  input.entry_insts.reserve(function.alloca_insts.size());
+BackendCfgFunction lower_bir_to_backend_cfg(const bir::Function& function) {
+  BackendCfgFunction cfg;
+  cfg.blocks.reserve(function.blocks.size());
+  for (const auto& block : function.blocks) {
+    BackendCfgBlock lowered_block;
+    lowered_block.label = block.label;
+    lowered_block.terminator_used_names = used_names_for_bir_terminator(block.terminator);
+    lowered_block.successor_labels = successor_labels(block.terminator);
+    lowered_block.insts.reserve(block.insts.size());
+
+    for (const auto& inst : block.insts) {
+      lowered_block.insts.push_back(BackendCfgPoint{
+          used_names_for_bir_inst(inst),
+          result_name_for_bir_inst(inst),
+          is_call_inst(inst),
+      });
+    }
+
+    cfg.blocks.push_back(std::move(lowered_block));
+  }
+  return cfg;
+}
+
+BackendCfgFunction lower_lir_to_backend_cfg(const c4c::codegen::lir::LirFunction& function) {
+  BackendCfgFunction cfg;
+  cfg.entry_insts.reserve(function.alloca_insts.size());
   for (const auto& inst : function.alloca_insts) {
     std::string result_name = result_name_for_inst(inst);
-    input.entry_insts.push_back(LivenessPoint{
+    cfg.entry_insts.push_back(BackendCfgPoint{
         used_names_for_inst(inst),
         result_name.empty() ? std::nullopt : std::optional<std::string>(std::move(result_name)),
         is_call_inst(inst),
     });
   }
 
-  input.blocks.reserve(function.blocks.size());
+  cfg.blocks.reserve(function.blocks.size());
   for (const auto& block : function.blocks) {
-    LivenessBlockInput lowered_block;
+    BackendCfgBlock lowered_block;
     lowered_block.label = block.label;
     lowered_block.terminator_used_names = used_names_for_terminator(block.terminator);
     lowered_block.successor_labels = successor_labels(block.terminator);
@@ -355,7 +476,7 @@ LivenessInput lower_lir_to_liveness_input(const c4c::codegen::lir::LirFunction& 
 
     for (const auto& inst : block.insts) {
       std::string result_name = result_name_for_inst(inst);
-      lowered_block.insts.push_back(LivenessPoint{
+      lowered_block.insts.push_back(BackendCfgPoint{
           used_names_for_inst(inst),
           result_name.empty() ? std::nullopt : std::optional<std::string>(std::move(result_name)),
           is_call_inst(inst),
@@ -366,13 +487,58 @@ LivenessInput lower_lir_to_liveness_input(const c4c::codegen::lir::LirFunction& 
       }
       const auto& phi = std::get<c4c::codegen::lir::LirPhiOp>(inst);
       for (const auto& [value_name, label] : phi.incoming) {
-        input.phi_incoming_uses.push_back(LivenessPhiIncomingUse{label, value_name});
+        cfg.phi_incoming_uses.push_back(BackendCfgPhiIncomingUse{label, value_name});
       }
     }
 
+    cfg.blocks.push_back(std::move(lowered_block));
+  }
+
+  return cfg;
+}
+
+LivenessInput lower_backend_cfg_to_liveness_input(const BackendCfgFunction& function) {
+  LivenessInput input;
+  input.entry_insts.reserve(function.entry_insts.size());
+  for (const auto& inst : function.entry_insts) {
+    input.entry_insts.push_back(LivenessPoint{
+        inst.used_names,
+        inst.result_name,
+        inst.is_call,
+    });
+  }
+
+  input.blocks.reserve(function.blocks.size());
+  for (const auto& block : function.blocks) {
+    LivenessBlockInput lowered_block;
+    lowered_block.label = block.label;
+    lowered_block.terminator_used_names = block.terminator_used_names;
+    lowered_block.successor_labels = block.successor_labels;
+    lowered_block.insts.reserve(block.insts.size());
+    for (const auto& inst : block.insts) {
+      lowered_block.insts.push_back(LivenessPoint{
+          inst.used_names,
+          inst.result_name,
+          inst.is_call,
+      });
+    }
     input.blocks.push_back(std::move(lowered_block));
   }
 
+  input.phi_incoming_uses.reserve(function.phi_incoming_uses.size());
+  for (const auto& phi_use : function.phi_incoming_uses) {
+    input.phi_incoming_uses.push_back(LivenessPhiIncomingUse{
+        phi_use.predecessor_label,
+        phi_use.value_name,
+    });
+  }
+
+  return input;
+}
+
+LivenessInput lower_lir_to_liveness_input(const c4c::codegen::lir::LirFunction& function) {
+  const auto cfg = lower_lir_to_backend_cfg(function);
+  auto input = lower_backend_cfg_to_liveness_input(cfg);
   return input;
 }
 

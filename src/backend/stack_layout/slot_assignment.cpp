@@ -225,7 +225,8 @@ LirModule rewrite_module_entry_allocas(
     const std::vector<PhysReg>& callee_saved_regs) {
   auto rewritten = module;
   for (auto& function : rewritten.functions) {
-    const auto liveness_input = lower_lir_to_liveness_input(function);
+    const auto backend_cfg = lower_lir_to_backend_cfg(function);
+    const auto liveness_input = lower_backend_cfg_to_liveness_input(backend_cfg);
     const auto stack_layout_input = lower_lir_to_stack_layout_input(function);
     const auto patch = prepare_entry_alloca_rewrite_patch(
         liveness_input,
