@@ -12,9 +12,9 @@ Source Plan: plan.md
   `/usr/include/c++/14/bits/ranges_util.h` undeclared-identifier cluster into
   the smallest internal semantic reproducer, now focused on the missing
   member/context names (`_M_begin`, `_M_end`, `_M_size`, `_S_store_size`,
-  `this`) inside `subrange::advance`, with the immediate follow-up narrowed to
-  the exact libstdc++ `subrange` shape after the simpler inline-method
-  member-context slice landed.
+  `this`) inside `subrange::advance`, with the immediate follow-up now reduced
+  past the earlier inline-method member-context slice to constrained
+  class-template method lookup itself.
 
 ## Completed
 
@@ -80,16 +80,22 @@ Source Plan: plan.md
 - Confirmed the new regression passes and the full `ctest --test-dir build -j`
   suite remains monotonic, now at 3280/3280 passing tests versus the earlier
   3278/3278 baseline.
+- Reduced the remaining `ranges_util.h` follow-up further in scratch repros:
+  a minimal constrained class-template method case
+  (`template<C T> struct Box { Box& f(); }; Box<int> b; b.f();`) still lowers
+  `b` as the primary `Box` rather than an instantiated record, failing later
+  with `StmtEmitter: field 'f' not found in struct/union 'Box'`.
 
 ## Next Slice
 
-- inspect the remaining `/usr/include/c++/14/bits/ranges_util.h` undeclared
-  identifier cluster (`_M_begin`, `_M_end`, `_M_size`, `_S_store_size`,
-  `this`) and reduce it further to the exact libstdc++ `subrange::advance`
-  shape that still fails after the simpler inline-method member-context fix
-- compare the passing internal `template_inline_method_member_context_frontend`
-  reducer against a closer `subrange`-shaped repro until the remaining tuple
-  blocker is isolated before touching `eastl_vector_simple.cpp`
+- promote the reduced constrained-template-method lookup repro into a focused
+  internal test once the expected failure mode is ready to fix cleanly
+- inspect why constrained class-template uses such as `Box<int>` currently
+  survive canonical/sema but still lower as the primary record instead of a
+  concrete instantiation before member-call codegen
+- compare that constrained-template reduction against libstdc++
+  `ranges::subrange<_It, _Sent, _Kind>::advance` before touching
+  `eastl_vector_simple.cpp`
 - keep `eastl_memory_simple.cpp` parked for now: after this tuple fix it still
   times out under both `--parse-only` and `--dump-canonical`, so it has not
   become the smaller frontier
@@ -99,6 +105,9 @@ Source Plan: plan.md
 - `eastl_tuple_simple.cpp` now stops in `/usr/include/c++/14/bits/ranges_util.h`
   with undeclared identifiers that still need an additional reduction beyond
   the simpler inline-method member-context support now covered internally
+- the latest scratch reduction suggests the remaining tuple blocker is broader
+  than plain member-context recovery: constrained class-template method calls
+  can still miss concrete record instantiation before codegen member lookup
 - `eastl_memory_simple.cpp` still times out under both parse-only and
   canonical/sema pressure, though the trace reaches much later tuple/ranges
   work than before
@@ -127,5 +136,9 @@ Source Plan: plan.md
 - focused inline class-template member-context frontend coverage now exists
   under
   `tests/cpp/internal/postive_case/template_inline_method_member_context_frontend.cpp`
+- latest unreduced scratch repro:
+  `template<typename T> concept C = true; template<C T> struct Box { Box& f() { return *this; } };`
+  then `Box<int> b{}; b.f();` still fails during lowering with
+  `StmtEmitter: field 'f' not found in struct/union 'Box'`
 - runtime and ABI glue remain explicitly out of scope except for temporary local
   shims already allowed by the source idea
