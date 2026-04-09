@@ -695,10 +695,43 @@ Node* Parser::parse_local_decl() {
         bool is_ctor_init = false;
         std::vector<Node*> ctor_args;
         if (check(TokenKind::LParen)) {
-            if (is_cpp_mode() && vname &&
-                (base_ts.base == TB_STRUCT || base_ts.base == TB_UNION ||
-                 (base_ts.base == TB_TYPEDEF && base_ts.tag))) {
-                // C++ constructor call: parse arguments
+            bool parsed_as_function_decl = false;
+            if (is_cpp_mode() && vname) {
+                bool single_value_arg = false;
+                if (pos_ + 2 < static_cast<int>(tokens_.size()) &&
+                    tokens_[pos_ + 1].kind == TokenKind::Identifier &&
+                    tokens_[pos_ + 2].kind == TokenKind::RParen) {
+                    const std::string& arg_name = tokens_[pos_ + 1].lexeme;
+                    const std::string resolved_type_name =
+                        resolve_visible_type_name(arg_name);
+                    const bool arg_is_type =
+                        is_typedef_name(arg_name) ||
+                        typedef_types_.count(arg_name) > 0 ||
+                        typedef_types_.count(resolved_type_name) > 0 ||
+                        struct_tag_def_map_.count(arg_name) > 0 ||
+                        struct_tag_def_map_.count(resolved_type_name) > 0;
+                    single_value_arg = !arg_is_type;
+                }
+                TentativeParseGuard guard(*this);
+                std::vector<Node*> probe_params;
+                std::vector<const char*> probe_knr_names;
+                bool probe_variadic = false;
+                try {
+                    parse_top_level_parameter_list(
+                        &probe_params, &probe_knr_names, &probe_variadic);
+                    if (!single_value_arg &&
+                        (check(TokenKind::Semi) || check(TokenKind::Comma))) {
+                        if (is_cpp_mode() && !probe_knr_names.empty()) {
+                            parsed_as_function_decl = false;
+                        } else {
+                        parsed_as_function_decl = true;
+                        }
+                    }
+                } catch (const std::exception&) {
+                }
+            }
+            if (is_cpp_mode() && vname && !parsed_as_function_decl) {
+                // C++ direct-initialization: parse constructor-style arguments.
                 consume();  // '('
                 if (!check(TokenKind::RParen)) {
                     while (!at_end()) {
