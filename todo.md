@@ -7,15 +7,15 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 2: review typedef, alias, and qualified cast targets
-- Current slice: move from namespace-qualified alias-owned reference casts to
-  the next narrow qualified spelling, starting with either a global-qualified
-  `(::ns::AliasL)x` reduction or a member-owned alias target
+- Current slice: move from the new member-owned alias reference-cast coverage
+  to the remaining global-qualified spelling with a focused
+  `(::ns::AliasL)x` / `(::ns::AliasR)x` reduction
 - Current implementation target: `tests/cpp` qualified alias-owned cast
   regressions plus the earliest failing parser, sema, HIR, or lowering surface
-  that the next `::`- or member-owned reference-cast target exposes
-- Next intended slice: add one focused `::ns::AliasL` / `::ns::AliasR` or
-  `Box::AliasL` / `Box::AliasR` cast regression, then classify any break before
-  widening to dependent `typename` forms
+  that the global-qualified `::` reference-cast target exposes
+- Next intended slice: add one focused `(::ns::AliasL)x` /
+  `(::ns::AliasR)x` cast regression, then classify any break before widening to
+  dependent `typename` forms
 
 ## Completed
 
@@ -107,6 +107,17 @@ Source Plan: plan.md
   `(ns::AliasL)x` and `(ns::AliasR)x`.
 - Full-suite validation stayed monotonic: `test_fail_before.log` 2848/2848
   passed, `test_fail_after.log` 2850/2850 passed, with zero new failures.
+- Added
+  `tests/cpp/internal/postive_case/c_style_cast_member_typedef_ref_alias_basic.cpp`
+  to cover member-owned `Box::AliasL` / `Box::AliasR` cast targets, assignment
+  through the aliased references, and overload selection on the cast
+  expressions themselves.
+- Confirmed the member-owned alias reference-cast runtime slice already matches
+  Clang: the targeted regression passed without compiler changes, including
+  lvalue and rvalue-reference overload selection through `(Box::AliasL)x` and
+  `(Box::AliasR)x`.
+- Full-suite validation stayed monotonic: `test_fail_before.log` 2850/2850
+  passed, `test_fail_after.log` 2851/2851 passed, with zero new failures.
 
 ## Notes
 
