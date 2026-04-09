@@ -663,31 +663,16 @@ std::optional<bir::Module> try_lower_minimal_declared_direct_call_module(
   bir::Block lowered_entry_block;
   lowered_entry_block.label = "entry";
 
-  std::vector<bir::Value> lowered_args;
-  lowered_args.reserve(args->size());
-  for (const auto& arg : *args) {
-    switch (arg.kind) {
-      case ParsedBackendExternCallArg::Kind::I32Imm:
-        lowered_args.push_back(bir::Value::immediate_i32(static_cast<std::int32_t>(arg.imm)));
-        break;
-      case ParsedBackendExternCallArg::Kind::I64Imm:
-        lowered_args.push_back(bir::Value::immediate_i64(arg.imm));
-        break;
-      case ParsedBackendExternCallArg::Kind::Ptr: {
-        if (arg.operand.empty() || arg.operand.front() != '@') {
-          return std::nullopt;
-        }
-        lowered_args.push_back(bir::Value::named(bir::TypeKind::I64, arg.operand.substr(1)));
-        break;
-      }
-    }
+  auto lowered_args = lower_direct_call_args(*args);
+  if (!lowered_args.has_value()) {
+    return std::nullopt;
   }
   lowered_entry_block.insts.push_back(make_direct_call_inst(
       *symbol_name,
       bir::TypeKind::I32,
       "i32",
       bir::Value::named(bir::TypeKind::I32, call->result.str()),
-      std::move(lowered_args)));
+      std::move(*lowered_args)));
 
   if (return_call_result) {
     lowered_entry_block.terminator.value =

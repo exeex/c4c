@@ -205,6 +205,9 @@ Source Plan: plan.md
 - moved the first direct-call construction helpers into `lir_to_bir/calls.cpp`:
   callee param legalization from call-surface type text and direct `bir::CallInst`
   construction for the minimal direct-call path
+- moved direct-call argument materialization into `lir_to_bir/calls.cpp` as
+  well, so the minimal extern/direct-call lowering no longer owns the
+  `ParsedBackendExternCallArg -> bir::Value` switch inline
 
 ## Blockers
 
@@ -274,6 +277,9 @@ Source Plan: plan.md
   address cases, not just use them as match predicates
 - the next call-side follow-up should move argument lowering and call metadata
   population out of the monolith, not just the final `CallInst` construction
+- the next concrete call-side target should be call metadata:
+  `arg_types`, `return_type`, and eventually `arg_abi/result_abi` should be
+  populated from the split call seam rather than left implicit
   failing, while the full suite now stands at
   `test_fail_after.log` = 2670 pass / 179 fail / 2849 total
 - the new internal route regression again increases total suite size by one,

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../lir_to_bir.hpp"
+#include "../call_decode.hpp"
 
 #include <cstddef>
 #include <optional>
@@ -27,6 +28,8 @@ bir::CallInst make_direct_call_inst(std::string callee,
                                     std::string return_type_name,
                                     std::optional<bir::Value> result,
                                     std::vector<bir::Value> args);
+std::optional<std::vector<bir::Value>> lower_direct_call_args(
+    const std::vector<ParsedBackendExternCallArg>& args);
 bir::LocalSlot make_memory_local_slot(std::string name,
                                       bir::TypeKind type,
                                       std::size_t size_bytes,

@@ -209,6 +209,29 @@ bir::CallInst c4c::backend::make_direct_call_inst(std::string callee,
   return call;
 }
 
+std::optional<std::vector<bir::Value>> c4c::backend::lower_direct_call_args(
+    const std::vector<ParsedBackendExternCallArg>& args) {
+  std::vector<bir::Value> lowered_args;
+  lowered_args.reserve(args.size());
+  for (const auto& arg : args) {
+    switch (arg.kind) {
+      case ParsedBackendExternCallArg::Kind::I32Imm:
+        lowered_args.push_back(bir::Value::immediate_i32(static_cast<std::int32_t>(arg.imm)));
+        break;
+      case ParsedBackendExternCallArg::Kind::I64Imm:
+        lowered_args.push_back(bir::Value::immediate_i64(arg.imm));
+        break;
+      case ParsedBackendExternCallArg::Kind::Ptr:
+        if (arg.operand.empty() || arg.operand.front() != '@') {
+          return std::nullopt;
+        }
+        lowered_args.push_back(bir::Value::named(bir::TypeKind::I64, arg.operand.substr(1)));
+        break;
+    }
+  }
+  return lowered_args;
+}
+
 void c4c::backend::record_call_lowering_scaffold_notes(
     const c4c::codegen::lir::LirModule& module,
     std::vector<BirLoweringNote>* notes) {
