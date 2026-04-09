@@ -10,20 +10,38 @@ Source Plan: plan.md
   use the split shared lowering seams as the owning implementation surface and
   recover compile/test health one seam-local family at a time
 - current exact slice:
-  continue the bounded x86-native variadic runtime lane by moving from the
-  now-green integer-only `backend_runtime_variadic_sum2` prepared-LIR slice to
-  the still-unsupported floating `backend_runtime_variadic_double_bytes` probe
+  keep the bounded x86-native variadic runtime lane in
+  `src/backend/x86/codegen/emit.cpp`, but move off the now-green
+  `backend_runtime_variadic_double_bytes` probe and classify the unrelated
+  full-suite monotonic-regression mismatch against the checked-in
+  `test_fail_before.log` baseline before widening this seam further
 
 ## Next Slice
 
-- keep the work seam-local in `src/backend/x86/codegen/emit.cpp` and move next
-  to the floating-point variadic `backend_runtime_variadic_double_bytes` probe
-- avoid broad `try_lower_to_bir_with_options(...)` ordering changes; if another
-  phi-bearing seam needs pre-phi ownership, add it as an explicit narrow
-  pre-phi lowering hook instead of reopening generic pipeline flow
+- determine whether the current 144-test monotonic delta versus
+  `test_fail_before.log` is stale-baseline drift or a separate regression
+  initiative; if it is separate, record it under `ideas/open/` instead of
+  silently broadening this x86 emitter slice
+- once the regression baseline question is settled, choose the next bounded
+  x86-native runtime probe without reopening broad
+  `try_lower_to_bir_with_options(...)` ordering changes
 
 ## Recently Completed
 
+- added a seam-local x86 prepared-LIR matcher in
+  `src/backend/x86/codegen/emit.cpp` for the bounded floating variadic
+  `variadic_double_bytes` runtime helper, accepting both the unit-test fixture
+  shape and the prepared compiler path where entry-allocation rewriting folds
+  the temporary double spills into `%lv.second`
+- verified the new floating variadic x86 runtime slice is green:
+  `./build/c4cll --codegen asm --target x86_64-unknown-linux-gnu tests/c/internal/backend_case/variadic_double_bytes.c`
+  now emits bounded native assembly, and
+  `ctest --test-dir build --output-on-failure -R '^backend_runtime_variadic_double_bytes$'`
+  now passes
+- re-checked the adjacent x86 integer variadic probe after the floating slice
+  landed and confirmed it stays green:
+  `ctest --test-dir build --output-on-failure -R '^backend_runtime_variadic_sum2$'`
+  passes
 - expanded `src/backend/bir.hpp` so BIR can carry backend-owned type, memory,
   and call metadata needed by the split lowering seam
 - added `src/backend/lowering/lir_to_bir/passes.hpp` and wired the translated
@@ -208,14 +226,17 @@ Source Plan: plan.md
 - later compile/test recovery still has known unrelated backend test noise, so
   not every existing backend test executable is currently a clean regression
   signal for this lane
-- the adjacent floating-point x86 variadic runtime slice
-  `backend_runtime_variadic_double_bytes` still fails at the unsupported
-  direct-LIR boundary and remains the next bounded probe
 - full-suite monotonic validation against the checked-in
-  `test_fail_before.log` baseline is still red, but the failure bucket is the
-  same broad pre-existing `backend_bir_tests` / route-test phi-select surface
-  already visible before this slice rather than a new seam-local
-  string-literal/x86-probe regression
+  `test_fail_before.log` baseline is still red, but the mismatch is now a much
+  broader 144-test delta
+  (`before: passed=2670 failed=179 total=2849`;
+  `after: passed=2526 failed=324 total=2850`) spanning route tests,
+  `backend_bir_tests`, and many x86 backend/runtime cases rather than a
+  seam-local `variadic_double_bytes` regression
+- because that monotonic mismatch is far broader than this one matcher and the
+  focused x86 variadic probes are green, treat the baseline drift as a separate
+  blocking investigation before using the checked-in `test_fail_before.log` as
+  the acceptance gate for further slices
 
 ## Notes To Resume
 
