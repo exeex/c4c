@@ -7,17 +7,39 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: introduce a backend-owned CFG lowering seam for liveness so
-  backend liveness no longer needs raw `LirFunction` as its primary public
-  input surface
-- Current implementation target: route the remaining production caller through
-  `backend CFG -> LivenessInput` instead of calling the raw-LIR liveness
-  lowering helper directly
-- Next intended slice: move more callers and narrow tests to the backend-CFG
-  seam, then decide whether Step 6 should lower directly from BIR in production
-  or keep LIR-to-backend-CFG as the temporary comparison shim
+- Current slice: decide whether the remaining Step 6 production path should
+  lower liveness from BIR directly or keep `LirFunction -> backend CFG` as the
+  temporary comparison shim while backend-owned CFG call sites continue to
+  migrate
+- Current implementation target: audit the surviving `lower_lir_to_backend_cfg`
+  production uses around stack-layout preparation and determine whether the
+  next shippable slice is a direct-BIR handoff or further backend-CFG seam
+  tightening
+- Next intended slice: if the direct-BIR path is ready, introduce the smallest
+  production caller conversion and pin it with focused backend coverage before
+  narrowing the raw-LIR compatibility seam further
 
 ## Completed
+
+- Completed the next Step 6 bounded backend-CFG test-surface retargeting slice
+  by moving shared backend liveness/regalloc/stack-layout coverage off the
+  raw-LIR helper and onto the backend-owned seam:
+  - added a focused `lower_lir_to_backend_cfg(...) ->
+    lower_backend_cfg_to_liveness_input(...)` test helper in
+    `tests/backend/backend_shared_util_tests.cpp` so the main shared-backend
+    liveness/regalloc/stack-layout regressions now exercise the backend-owned
+    CFG handoff directly
+  - rewired the existing shared liveness, regalloc, merged-clobber, and
+    stack-layout prep tests to use that backend-CFG helper instead of calling
+    `lower_lir_to_liveness_input(...)` as their primary setup path
+  - narrowed raw-LIR helper coverage to one compatibility-equivalence
+    regression that proves `lower_lir_to_liveness_input(...)` still matches the
+    backend-CFG seam on the phi-join slice while Step 6 keeps it as a shim
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`,
+    rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with no new failures and no pass-count drop
+    (`2809 -> 2809`, same 32 known failing tests as `test_fail_before.log`)
 
 - Completed the next Step 6 bounded backend-CFG liveness entry slice by
   introducing a backend-owned lowering seam ahead of interval computation while

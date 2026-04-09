@@ -26,6 +26,16 @@
 #include "../../src/backend/x86/linker/mod.hpp"
 #include "backend_test_helper.hpp"
 
+namespace {
+
+c4c::backend::LivenessInput lower_test_backend_cfg_liveness_input(
+    const c4c::codegen::lir::LirFunction& function) {
+  const auto backend_cfg = c4c::backend::lower_lir_to_backend_cfg(function);
+  return c4c::backend::lower_backend_cfg_to_liveness_input(backend_cfg);
+}
+
+}  // namespace
+
 void test_backend_shared_call_decode_parses_bir_minimal_direct_call_module() {
   c4c::backend::bir::Module module;
   module.functions.push_back(c4c::backend::bir::Function{
@@ -787,7 +797,7 @@ void test_backend_shared_call_decode_prefers_typed_vararg_call_args_over_stale_f
 void test_backend_shared_liveness_surface_tracks_result_names() {
   const auto module = make_declaration_module();
   const auto& function = module.functions.back();
-  const auto input = c4c::backend::lower_lir_to_liveness_input(function);
+  const auto input = lower_test_backend_cfg_liveness_input(function);
   const auto liveness = c4c::backend::compute_live_intervals(input);
 
   expect_true(liveness.call_points.size() == 1 && liveness.call_points.front() == 0,
@@ -804,7 +814,7 @@ void test_backend_shared_liveness_surface_tracks_result_names() {
 void test_backend_shared_liveness_surface_tracks_call_crossing_ranges() {
   const auto module = make_call_crossing_interval_module();
   const auto& function = module.functions.back();
-  const auto input = c4c::backend::lower_lir_to_liveness_input(function);
+  const auto input = lower_test_backend_cfg_liveness_input(function);
   const auto liveness = c4c::backend::compute_live_intervals(input);
 
   expect_true(liveness.call_points.size() == 1 && liveness.call_points.front() == 1,
@@ -823,7 +833,7 @@ void test_backend_shared_liveness_surface_tracks_call_crossing_ranges() {
 void test_backend_shared_liveness_surface_tracks_phi_join_ranges() {
   const auto module = make_interval_phi_join_module();
   const auto& function = module.functions.front();
-  const auto input = c4c::backend::lower_lir_to_liveness_input(function);
+  const auto input = lower_test_backend_cfg_liveness_input(function);
   const auto liveness = c4c::backend::compute_live_intervals(input);
 
   const auto* cond = liveness.find_interval("%t0");
@@ -847,33 +857,52 @@ void test_backend_shared_liveness_surface_tracks_phi_join_ranges() {
 void test_backend_shared_liveness_input_matches_lir_phi_join_ranges() {
   const auto module = make_interval_phi_join_module();
   const auto& function = module.functions.front();
-  const auto input = c4c::backend::lower_lir_to_liveness_input(function);
+  const auto input = lower_test_backend_cfg_liveness_input(function);
+  const auto compatibility_input =
+      c4c::backend::lower_lir_to_liveness_input(function);
   const auto liveness = c4c::backend::compute_live_intervals(input);
+  const auto compatibility_liveness =
+      c4c::backend::compute_live_intervals(compatibility_input);
 
-  expect_true(liveness.call_points.empty(),
-              "backend-owned liveness input should preserve the phi-join slice's lack of call points");
+  expect_true(liveness.call_points == compatibility_liveness.call_points,
+              "compatibility raw-LIR liveness lowering should preserve call-point classification from the backend-CFG seam");
   const auto* cond = liveness.find_interval("%t0");
   const auto* then_value = liveness.find_interval("%t1");
   const auto* else_value = liveness.find_interval("%t2");
   const auto* phi_value = liveness.find_interval("%t3");
   const auto* final_sum = liveness.find_interval("%t4");
+  const auto* compatibility_cond = compatibility_liveness.find_interval("%t0");
+  const auto* compatibility_then = compatibility_liveness.find_interval("%t1");
+  const auto* compatibility_else = compatibility_liveness.find_interval("%t2");
+  const auto* compatibility_phi = compatibility_liveness.find_interval("%t3");
+  const auto* compatibility_final = compatibility_liveness.find_interval("%t4");
 
-  expect_true(cond != nullptr && cond->start == 0 && cond->end == 1,
-              "backend-owned liveness input should preserve branch-condition interval endpoints");
-  expect_true(then_value != nullptr && then_value->start == 2 && then_value->end == 3,
-              "backend-owned liveness input should keep phi incoming uses on the predecessor edge");
-  expect_true(else_value != nullptr && else_value->start == 4 && else_value->end == 5,
-              "backend-owned liveness input should keep alternate phi incoming uses on their predecessor edge");
-  expect_true(phi_value != nullptr && phi_value->start == 6 && phi_value->end == 7,
-              "backend-owned liveness input should preserve phi-definition intervals in the join block");
-  expect_true(final_sum != nullptr && final_sum->start == 7 && final_sum->end == 8,
-              "backend-owned liveness input should preserve downstream join-result intervals");
+  expect_true(cond != nullptr && compatibility_cond != nullptr &&
+                  cond->start == compatibility_cond->start &&
+                  cond->end == compatibility_cond->end,
+              "compatibility raw-LIR liveness lowering should preserve branch-condition interval endpoints from the backend-CFG seam");
+  expect_true(then_value != nullptr && compatibility_then != nullptr &&
+                  then_value->start == compatibility_then->start &&
+                  then_value->end == compatibility_then->end,
+              "compatibility raw-LIR liveness lowering should preserve phi incoming predecessor-edge uses");
+  expect_true(else_value != nullptr && compatibility_else != nullptr &&
+                  else_value->start == compatibility_else->start &&
+                  else_value->end == compatibility_else->end,
+              "compatibility raw-LIR liveness lowering should preserve alternate phi incoming predecessor-edge uses");
+  expect_true(phi_value != nullptr && compatibility_phi != nullptr &&
+                  phi_value->start == compatibility_phi->start &&
+                  phi_value->end == compatibility_phi->end,
+              "compatibility raw-LIR liveness lowering should preserve phi-definition intervals in the join block");
+  expect_true(final_sum != nullptr && compatibility_final != nullptr &&
+                  final_sum->start == compatibility_final->start &&
+                  final_sum->end == compatibility_final->end,
+              "compatibility raw-LIR liveness lowering should preserve downstream join-result intervals");
 }
 
 void test_backend_shared_regalloc_surface_uses_caller_saved_for_non_call_interval() {
   const auto module = make_return_add_module();
   const auto& function = module.functions.front();
-  const auto input = c4c::backend::lower_lir_to_liveness_input(function);
+  const auto input = lower_test_backend_cfg_liveness_input(function);
 
   c4c::backend::RegAllocConfig config;
   config.available_regs = {{20}, {21}};
@@ -895,7 +924,7 @@ void test_backend_shared_regalloc_surface_uses_caller_saved_for_non_call_interva
 void test_backend_shared_regalloc_prefers_callee_saved_for_call_spanning_values() {
   const auto module = make_call_crossing_interval_module();
   const auto& function = module.functions.back();
-  const auto input = c4c::backend::lower_lir_to_liveness_input(function);
+  const auto input = lower_test_backend_cfg_liveness_input(function);
 
   c4c::backend::RegAllocConfig config;
   config.available_regs = {{20}};
@@ -920,7 +949,7 @@ void test_backend_shared_regalloc_prefers_callee_saved_for_call_spanning_values(
 void test_backend_shared_regalloc_accepts_backend_owned_liveness_input() {
   const auto module = make_call_crossing_interval_module();
   const auto& function = module.functions.back();
-  const auto input = c4c::backend::lower_lir_to_liveness_input(function);
+  const auto input = lower_test_backend_cfg_liveness_input(function);
 
   c4c::backend::RegAllocConfig config;
   config.available_regs = {{20}};
@@ -948,7 +977,7 @@ void test_backend_shared_regalloc_accepts_backend_owned_liveness_input() {
 void test_backend_shared_regalloc_reuses_register_after_interval_ends() {
   const auto module = make_non_overlapping_interval_module();
   const auto& function = module.functions.front();
-  const auto input = c4c::backend::lower_lir_to_liveness_input(function);
+  const auto input = lower_test_backend_cfg_liveness_input(function);
 
   c4c::backend::RegAllocConfig config;
   config.available_regs = {{20}};
@@ -969,7 +998,7 @@ void test_backend_shared_regalloc_reuses_register_after_interval_ends() {
 void test_backend_shared_regalloc_spills_overlapping_values_without_reusing_busy_reg() {
   const auto module = make_overlapping_interval_module();
   const auto& function = module.functions.front();
-  const auto input = c4c::backend::lower_lir_to_liveness_input(function);
+  const auto input = lower_test_backend_cfg_liveness_input(function);
 
   c4c::backend::RegAllocConfig config;
   config.available_regs = {{20}};
@@ -998,7 +1027,7 @@ void test_backend_shared_regalloc_helper_filters_and_merges_clobbers() {
   c4c::backend::RegAllocConfig config;
   config.available_regs = filtered;
   const auto input =
-      c4c::backend::lower_lir_to_liveness_input(module.functions.front());
+      lower_test_backend_cfg_liveness_input(module.functions.front());
   const auto merged = c4c::backend::run_regalloc_and_merge_clobbers(
       input, config, asm_clobbered);
 
@@ -1011,7 +1040,7 @@ void test_backend_shared_regalloc_helper_filters_and_merges_clobbers() {
 void test_backend_shared_stack_layout_regalloc_helper_exposes_handoff_view() {
   const auto module = make_call_crossing_interval_module();
   const auto& function = module.functions.back();
-  const auto input = c4c::backend::lower_lir_to_liveness_input(function);
+  const auto input = lower_test_backend_cfg_liveness_input(function);
 
   c4c::backend::RegAllocConfig config;
   config.available_regs = {{20}};
@@ -1058,7 +1087,7 @@ void test_backend_shared_regalloc_helper_accepts_backend_owned_liveness_input() 
   config.caller_saved_regs = {{13}};
   const std::vector<c4c::backend::PhysReg> asm_clobbered = {{21}};
 
-  const auto input = c4c::backend::lower_lir_to_liveness_input(function);
+  const auto input = lower_test_backend_cfg_liveness_input(function);
   const auto merged =
       c4c::backend::run_regalloc_and_merge_clobbers(input, config, asm_clobbered);
 
@@ -1238,7 +1267,7 @@ void test_backend_shared_stack_layout_analysis_detects_dead_param_allocas() {
   config.available_regs = {{20}};
   config.caller_saved_regs = {{13}};
   const auto dead_param_input =
-      c4c::backend::lower_lir_to_liveness_input(function);
+      lower_test_backend_cfg_liveness_input(function);
   const auto regalloc =
       c4c::backend::run_regalloc_and_merge_clobbers(dead_param_input, config, {});
   const auto input = c4c::backend::stack_layout::lower_lir_to_stack_layout_input(function);
@@ -1349,7 +1378,7 @@ void test_backend_shared_slot_assignment_plans_param_alloca_slots() {
   const auto dead_module = make_dead_param_alloca_candidate_module();
   const auto& dead_function = dead_module.functions.back();
   const auto dead_liveness_input =
-      c4c::backend::lower_lir_to_liveness_input(dead_function);
+      lower_test_backend_cfg_liveness_input(dead_function);
   const auto dead_regalloc =
       c4c::backend::run_regalloc_and_merge_clobbers(dead_liveness_input, config, {});
   const auto dead_input =
@@ -1367,7 +1396,7 @@ void test_backend_shared_slot_assignment_plans_param_alloca_slots() {
   const auto live_module = make_live_param_alloca_candidate_module();
   const auto& live_function = live_module.functions.front();
   const auto live_liveness_input =
-      c4c::backend::lower_lir_to_liveness_input(live_function);
+      lower_test_backend_cfg_liveness_input(live_function);
   const auto live_regalloc =
       c4c::backend::run_regalloc_and_merge_clobbers(live_liveness_input, config, {});
   const auto live_input =
@@ -1391,7 +1420,7 @@ void test_backend_shared_slot_assignment_param_alloca_pruning_matches_backend_ow
   const auto dead_module = make_dead_param_alloca_candidate_module();
   const auto& dead_function = dead_module.functions.back();
   const auto dead_liveness_input =
-      c4c::backend::lower_lir_to_liveness_input(dead_function);
+      lower_test_backend_cfg_liveness_input(dead_function);
   const auto dead_regalloc =
       c4c::backend::run_regalloc_and_merge_clobbers(dead_liveness_input, config, {});
   const auto dead_input =
@@ -1413,7 +1442,7 @@ void test_backend_shared_slot_assignment_param_alloca_pruning_matches_backend_ow
   const auto live_module = make_live_param_alloca_candidate_module();
   const auto& live_function = live_module.functions.front();
   const auto live_liveness_input =
-      c4c::backend::lower_lir_to_liveness_input(live_function);
+      lower_test_backend_cfg_liveness_input(live_function);
   const auto live_regalloc =
       c4c::backend::run_regalloc_and_merge_clobbers(live_liveness_input, config, {});
   const auto live_input =
@@ -1610,7 +1639,7 @@ void test_backend_shared_slot_assignment_accepts_backend_owned_input() {
   const auto dead_param_input =
       c4c::backend::stack_layout::lower_lir_to_stack_layout_input(dead_param_function);
   const auto dead_param_liveness_input =
-      c4c::backend::lower_lir_to_liveness_input(dead_param_function);
+      lower_test_backend_cfg_liveness_input(dead_param_function);
   const auto dead_regalloc =
       c4c::backend::run_regalloc_and_merge_clobbers(dead_param_liveness_input, config, {});
   const auto dead_analysis = c4c::backend::stack_layout::analyze_stack_layout(
@@ -1652,7 +1681,7 @@ void test_backend_shared_slot_assignment_bundle_accepts_backend_owned_input() {
   const auto dead_param_input =
       c4c::backend::stack_layout::lower_lir_to_stack_layout_input(dead_param_function);
   const auto dead_param_liveness_input =
-      c4c::backend::lower_lir_to_liveness_input(dead_param_function);
+      lower_test_backend_cfg_liveness_input(dead_param_function);
   const auto dead_regalloc =
       c4c::backend::run_regalloc_and_merge_clobbers(dead_param_liveness_input, config, {});
   const auto dead_bundle = c4c::backend::stack_layout::build_stack_layout_plan_bundle(
@@ -1687,7 +1716,7 @@ void test_backend_shared_slot_assignment_bundle_prepares_from_backend_owned_inpu
   const auto dead_param_input =
       c4c::backend::stack_layout::lower_lir_to_stack_layout_input(dead_param_function);
   const auto dead_param_liveness_input =
-      c4c::backend::lower_lir_to_liveness_input(dead_param_function);
+      lower_test_backend_cfg_liveness_input(dead_param_function);
   const auto prepared_bundle = c4c::backend::stack_layout::build_stack_layout_plan_bundle(
       dead_param_liveness_input, dead_param_input, config, {}, {{20}, {21}, {22}});
 
@@ -1712,7 +1741,7 @@ void test_backend_shared_slot_assignment_prepares_rewrite_patch_from_backend_own
 
   auto dead_function = make_dead_param_alloca_candidate_module().functions.back();
   const auto dead_liveness_input =
-      c4c::backend::lower_lir_to_liveness_input(dead_function);
+      lower_test_backend_cfg_liveness_input(dead_function);
   const auto dead_stack_layout_input =
       c4c::backend::stack_layout::lower_lir_to_stack_layout_input(dead_function);
 
