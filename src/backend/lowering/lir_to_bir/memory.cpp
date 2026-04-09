@@ -10,6 +10,9 @@
 
 #include "passes.hpp"
 
+#include "../../../codegen/lir/ir.hpp"
+
+#include <charconv>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -258,6 +261,42 @@ bir::MemoryAddress make_memory_pointer_address(bir::Value base_value,
                                                std::int64_t byte_offset,
                                                std::size_t align_bytes) {
   return make_pointer_memory_address(std::move(base_value), byte_offset, align_bytes);
+}
+
+bool match_memory_global_base_gep_zero(const c4c::codegen::lir::LirGepOp& gep,
+                                       std::string_view global_name,
+                                       std::string_view global_llvm_type) {
+  return gep.element_type == global_llvm_type && gep.ptr == ("@" + std::string(global_name)) &&
+         gep.indices.size() == 2 && gep.indices[0] == "i64 0" && gep.indices[1] == "i64 0";
+}
+
+std::optional<std::int64_t> match_memory_sext_i32_to_i64_immediate(
+    const c4c::codegen::lir::LirCastOp& cast) {
+  if (cast.kind != c4c::codegen::lir::LirCastKind::SExt ||
+      !lir_to_bir::legalize_lir_type_is_i32(cast.from_type) ||
+      cast.to_type.kind() != c4c::codegen::lir::LirTypeKind::Integer ||
+      cast.to_type.integer_bit_width() != 64) {
+    return std::nullopt;
+  }
+
+  std::int64_t value = 0;
+  const std::string_view text = cast.operand.str();
+  const char* begin = text.data();
+  const char* end = begin + text.size();
+  const auto result = std::from_chars(begin, end, value);
+  if (result.ec != std::errc() || result.ptr != end) {
+    return std::nullopt;
+  }
+  return value;
+}
+
+bool match_memory_indexed_gep_from_result(const c4c::codegen::lir::LirGepOp& gep,
+                                          std::string_view expected_ptr,
+                                          std::string_view expected_element_type,
+                                          std::string_view expected_index_name) {
+  return gep.element_type == expected_element_type && gep.ptr == expected_ptr &&
+         gep.indices.size() == 1 &&
+         gep.indices[0] == ("i64 " + std::string(expected_index_name));
 }
 
 bir::LoadLocalInst make_memory_load_local(bir::Value result,

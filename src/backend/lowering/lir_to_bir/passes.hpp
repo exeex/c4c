@@ -34,6 +34,15 @@ bir::MemoryAddress make_memory_global_address(std::string global_name,
 bir::MemoryAddress make_memory_pointer_address(bir::Value base_value,
                                                std::int64_t byte_offset = 0,
                                                std::size_t align_bytes = 0);
+bool match_memory_global_base_gep_zero(const c4c::codegen::lir::LirGepOp& gep,
+                                       std::string_view global_name,
+                                       std::string_view global_llvm_type);
+std::optional<std::int64_t> match_memory_sext_i32_to_i64_immediate(
+    const c4c::codegen::lir::LirCastOp& cast);
+bool match_memory_indexed_gep_from_result(const c4c::codegen::lir::LirGepOp& gep,
+                                          std::string_view expected_ptr,
+                                          std::string_view expected_element_type,
+                                          std::string_view expected_index_name);
 bir::LoadLocalInst make_memory_load_local(bir::Value result,
                                           std::string slot_name,
                                           std::size_t byte_offset = 0,

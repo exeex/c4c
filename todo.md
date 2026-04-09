@@ -194,6 +194,10 @@ Source Plan: plan.md
 - taught the split memory helpers to populate formal `bir::MemoryAddress`
   metadata for local/global load-store nodes instead of leaving address
   ownership as bare `byte_offset` fields
+- moved the first repeated global-address matcher shapes into
+  `lir_to_bir/memory.cpp` helpers:
+  zero-base global GEP recognition, `sext i32 -> i64` constant index
+  recognition, and single-index derived GEP recognition
 
 ## Blockers
 
@@ -258,6 +262,9 @@ Source Plan: plan.md
   formation itself:
   GEP-derived offsets, pointer-based addressing, and global/slot address
   classification still live in the monolith
+- the next concrete follow-up should make the monolith consume these helpers to
+  build `MemoryAddress`-driven lowering for pointer-diff and string-pool
+  address cases, not just use them as match predicates
   failing, while the full suite now stands at
   `test_fail_after.log` = 2670 pass / 179 fail / 2849 total
 - the new internal route regression again increases total suite size by one,

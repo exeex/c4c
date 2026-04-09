@@ -2596,24 +2596,15 @@ std::optional<bir::Module> try_lower_minimal_extern_global_array_load_module(
     return std::nullopt;
   }
 
-  if (base_gep->element_type != global.llvm_type || base_gep->ptr != ("@" + global.name) ||
-      base_gep->indices.size() != 2 || base_gep->indices[0] != "i64 0" ||
-      base_gep->indices[1] != "i64 0") {
+  if (!match_memory_global_base_gep_zero(*base_gep, global.name, global.llvm_type)) {
     return std::nullopt;
   }
-  if (index_cast->kind != LirCastKind::SExt ||
-      !lir_type_matches_integer_width(index_cast->from_type, 32) ||
-      !lir_type_matches_integer_width(index_cast->to_type, 64)) {
-    return std::nullopt;
-  }
-  const auto element_index = parse_immediate(index_cast->operand);
+  const auto element_index = match_memory_sext_i32_to_i64_immediate(*index_cast);
   if (!element_index.has_value() || *element_index < 0 || *element_index >= *element_count) {
     return std::nullopt;
   }
-  if (!lir_type_matches_integer_width(elem_gep->element_type, 32) ||
-      elem_gep->ptr != base_gep->result ||
-      elem_gep->indices.size() != 1 ||
-      elem_gep->indices[0] != ("i64 " + index_cast->result)) {
+  if (!match_memory_indexed_gep_from_result(
+          *elem_gep, base_gep->result.str(), "i32", index_cast->result.str())) {
     return std::nullopt;
   }
   if (!lir_type_matches_integer_width(load->type_str, 32) || load->ptr != elem_gep->result ||
@@ -2723,43 +2714,28 @@ std::optional<bir::Module> try_lower_minimal_global_char_pointer_diff_module(
     return std::nullopt;
   }
 
-  const std::string global_ptr = "@" + global.name;
-  if (base_gep1->element_type != global.llvm_type || base_gep1->ptr != global_ptr ||
-      base_gep1->indices.size() != 2 || base_gep1->indices[0] != "i64 0" ||
-      base_gep1->indices[1] != "i64 0") {
+  if (!match_memory_global_base_gep_zero(*base_gep1, global.name, global.llvm_type)) {
     return std::nullopt;
   }
-  if (base_gep0->element_type != global.llvm_type || base_gep0->ptr != global_ptr ||
-      base_gep0->indices.size() != 2 || base_gep0->indices[0] != "i64 0" ||
-      base_gep0->indices[1] != "i64 0") {
+  if (!match_memory_global_base_gep_zero(*base_gep0, global.name, global.llvm_type)) {
     return std::nullopt;
   }
 
-  if (index1->kind != LirCastKind::SExt ||
-      !lir_type_matches_integer_width(index1->from_type, 32) ||
-      !lir_type_matches_integer_width(index1->to_type, 64)) {
-    return std::nullopt;
-  }
-  const auto byte_index = parse_immediate(index1->operand);
+  const auto byte_index = match_memory_sext_i32_to_i64_immediate(*index1);
   if (!byte_index.has_value() || *byte_index <= 0 || *byte_index >= *global_size) {
     return std::nullopt;
   }
 
-  if (index0->kind != LirCastKind::SExt ||
-      !lir_type_matches_integer_width(index0->from_type, 32) ||
-      !lir_type_matches_integer_width(index0->to_type, 64) || index0->operand != "0") {
+  const auto zero_index = match_memory_sext_i32_to_i64_immediate(*index0);
+  if (!zero_index.has_value() || *zero_index != 0) {
     return std::nullopt;
   }
-  if (!lir_type_matches_integer_width(byte_gep1->element_type, 8) ||
-      byte_gep1->ptr != base_gep1->result ||
-      byte_gep1->indices.size() != 1 ||
-      byte_gep1->indices[0] != ("i64 " + index1->result)) {
+  if (!match_memory_indexed_gep_from_result(
+          *byte_gep1, base_gep1->result.str(), "i8", index1->result.str())) {
     return std::nullopt;
   }
-  if (!lir_type_matches_integer_width(byte_gep0->element_type, 8) ||
-      byte_gep0->ptr != base_gep0->result ||
-      byte_gep0->indices.size() != 1 ||
-      byte_gep0->indices[0] != ("i64 " + index0->result)) {
+  if (!match_memory_indexed_gep_from_result(
+          *byte_gep0, base_gep0->result.str(), "i8", index0->result.str())) {
     return std::nullopt;
   }
   if (ptrtoint1->kind != LirCastKind::PtrToInt || !lir_type_is_pointer_like(ptrtoint1->from_type) ||
@@ -2899,37 +2875,26 @@ std::optional<bir::Module> try_lower_minimal_global_int_pointer_diff_module(
     return std::nullopt;
   }
 
-  const std::string global_ptr = "@" + global.name;
-  if (base_gep1->element_type != global.llvm_type || base_gep1->ptr != global_ptr ||
-      base_gep1->indices.size() != 2 || base_gep1->indices[0] != "i64 0" ||
-      base_gep1->indices[1] != "i64 0") {
+  if (!match_memory_global_base_gep_zero(*base_gep1, global.name, global.llvm_type)) {
     return std::nullopt;
   }
-  if (base_gep0->element_type != global.llvm_type || base_gep0->ptr != global_ptr ||
-      base_gep0->indices.size() != 2 || base_gep0->indices[0] != "i64 0" ||
-      base_gep0->indices[1] != "i64 0") {
+  if (!match_memory_global_base_gep_zero(*base_gep0, global.name, global.llvm_type)) {
     return std::nullopt;
   }
-  if (index1->kind != LirCastKind::SExt ||
-      !lir_type_matches_integer_width(index1->from_type, 32) ||
-      !lir_type_matches_integer_width(index1->to_type, 64) || index1->operand != "1") {
+  const auto one_index = match_memory_sext_i32_to_i64_immediate(*index1);
+  if (!one_index.has_value() || *one_index != 1) {
     return std::nullopt;
   }
-  if (index0->kind != LirCastKind::SExt ||
-      !lir_type_matches_integer_width(index0->from_type, 32) ||
-      !lir_type_matches_integer_width(index0->to_type, 64) || index0->operand != "0") {
+  const auto zero_index = match_memory_sext_i32_to_i64_immediate(*index0);
+  if (!zero_index.has_value() || *zero_index != 0) {
     return std::nullopt;
   }
-  if (!lir_type_matches_integer_width(elem_gep1->element_type, 32) ||
-      elem_gep1->ptr != base_gep1->result ||
-      elem_gep1->indices.size() != 1 ||
-      elem_gep1->indices[0] != ("i64 " + index1->result)) {
+  if (!match_memory_indexed_gep_from_result(
+          *elem_gep1, base_gep1->result.str(), "i32", index1->result.str())) {
     return std::nullopt;
   }
-  if (!lir_type_matches_integer_width(elem_gep0->element_type, 32) ||
-      elem_gep0->ptr != base_gep0->result ||
-      elem_gep0->indices.size() != 1 ||
-      elem_gep0->indices[0] != ("i64 " + index0->result)) {
+  if (!match_memory_indexed_gep_from_result(
+          *elem_gep0, base_gep0->result.str(), "i32", index0->result.str())) {
     return std::nullopt;
   }
   if (ptrtoint1->kind != LirCastKind::PtrToInt || !lir_type_is_pointer_like(ptrtoint1->from_type) ||
