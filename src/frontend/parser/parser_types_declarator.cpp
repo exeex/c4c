@@ -558,21 +558,66 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                         bool ok = true;
                         for (size_t i = owner_start + 1; i < owner_chain.size(); ++i) {
                             const Node* nested_decl = nullptr;
+                            const Node* nested_owner = nullptr;
+                            auto matches_owner_segment = [&](const Node* candidate) -> bool {
+                                if (!candidate) return false;
+                                const char* candidate_name = candidate->name;
+                                const char* candidate_unqualified =
+                                    candidate->unqualified_name;
+                                if (candidate_name && owner_chain[i] == candidate_name)
+                                    return true;
+                                if (candidate_unqualified &&
+                                    owner_chain[i] == candidate_unqualified) {
+                                    return true;
+                                }
+                                if (candidate_name) {
+                                    const char* tail = std::strrchr(candidate_name, ':');
+                                    if (tail && tail[1] && owner_chain[i] == (tail + 1))
+                                        return true;
+                                }
+                                return false;
+                            };
                             for (int fi = 0; fi < owner->n_fields; ++fi) {
                                 const Node* field = owner->fields[fi];
-                                if (!field || field->kind != NK_DECL || !field->name ||
-                                    owner_chain[i] != field->name) {
+                                if (!field || field->kind != NK_DECL ||
+                                    !matches_owner_segment(field)) {
                                     continue;
                                 }
                                 nested_decl = field;
                                 break;
+                            }
+                            if (!nested_decl) {
+                                for (int ci = 0; ci < owner->n_children; ++ci) {
+                                    const Node* child = owner->children[ci];
+                                    if (!child || child->kind != NK_STRUCT_DEF ||
+                                        !matches_owner_segment(child)) {
+                                        continue;
+                                    }
+                                    nested_owner = child;
+                                    break;
+                                }
+                            }
+                            if (nested_owner) {
+                                owner = nested_owner;
+                                continue;
                             }
                             if (!nested_decl || !nested_decl->type.tag ||
                                 !nested_decl->type.tag[0]) {
                                 ok = false;
                                 break;
                             }
-                            owner_it = struct_tag_def_map_.find(nested_decl->type.tag);
+                            std::string nested_owner_tag = nested_decl->type.tag;
+                            owner_it = struct_tag_def_map_.find(nested_owner_tag);
+                            if (owner_it == struct_tag_def_map_.end() ||
+                                !owner_it->second) {
+                                const int nested_context =
+                                    nested_decl->namespace_context_id >= 0
+                                        ? nested_decl->namespace_context_id
+                                        : owner->namespace_context_id;
+                                nested_owner_tag = canonical_name_in_context(
+                                    nested_context, nested_decl->type.tag);
+                                owner_it = struct_tag_def_map_.find(nested_owner_tag);
+                            }
                             if (owner_it == struct_tag_def_map_.end() ||
                                 !owner_it->second) {
                                 ok = false;

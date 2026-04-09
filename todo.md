@@ -7,15 +7,14 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 2: review typedef, alias, and qualified cast targets
-- Current slice: continue Step 2 from the now-green namespace-qualified
-  dependent `typename` owner case to the next uncovered qualified/dependent
-  alias-owned cast shape
+- Current slice: continue Step 2 from the now-green global-qualified nested
+  dependent owner case to one more mixed namespace-plus-`template` owner chain
 - Current implementation target: keep Step 2 focused on one new alias-owned
   qualified or dependent cast target at a time without expanding into
   declarator-suffix coverage
-- Next intended slice: probe one additional qualified/dependent owner shape
-  beyond `typename ns::Holder<T>::AliasL` / `AliasR`, likely a global-qualified
-  or mixed namespace-plus-nested owner chain, before switching to Step 3
+- Next intended slice: probe a focused
+  `typename ::ns::Holder<T>::template Rebind<T>::Inner::AliasL` /
+  `AliasR` owner chain before switching to Step 3
 
 ## Completed
 
@@ -192,6 +191,20 @@ Source Plan: plan.md
   the bad temporary materialization path seen in HIR/runtime.
 - Full-suite validation stayed monotonic: `test_fail_before.log` 2856/2856
   passed, `test_fail_after.log` 2857/2857 passed, with zero new failures.
+- Added
+  `tests/cpp/internal/postive_case/c_style_cast_global_qualified_nested_dependent_typename_ref_alias_basic.cpp`
+  to cover global-qualified nested dependent
+  `(typename ::ns::Holder<T>::Inner::AliasL)x` /
+  `(typename ::ns::Holder<T>::Inner::AliasR)x` cast targets, assignment
+  through the aliased references, and overload selection on the cast
+  expressions themselves.
+- Fixed parser-side dependent `typename` nested-owner lookup so
+  global-qualified namespaced owner chains match nested record members by
+  source spelling rather than only their canonicalized namespace-qualified
+  declaration names, which restores the underlying `T&` / `T&&` cast target
+  before HIR lowering.
+- Full-suite validation stayed monotonic: `test_fail_before.log` 2857/2857
+  passed, `test_fail_after.log` 2858/2858 passed, with zero new failures.
 
 ## Notes
 
@@ -248,3 +261,10 @@ Source Plan: plan.md
   instead of the underlying reference-qualified target. That left HIR and
   overload selection treating the cast expression like a non-lvalue reference
   alias until the qualified owner lookup was repaired.
+- The global-qualified nested dependent owner reduction exposed the next parser
+  gap in the same area: once the owner walk reached `::ns::Holder<T>`, nested
+  record members still compared against canonicalized `ns::Inner` declarations
+  instead of the source-spelled `Inner` segment, so
+  `typename ::ns::Holder<T>::Inner::AliasL` / `AliasR` stayed unresolved and
+  lowered through the bad by-value temporary path until the nested-owner match
+  started honoring the unqualified member spelling.
