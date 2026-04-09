@@ -16,6 +16,9 @@ Source Plan: plan.md
   initializers now collapses to lvalue-reference storage in sema and HIR
   instead of tripping the plain rvalue-reference binding rule or materializing
   a temporary.
+- Active implementation slice completed: added focused runtime coverage proving
+  named rvalue-reference variables remain lvalues in overload resolution unless
+  explicitly cast or forwarded back to rvalues.
 
 ## Completed
 
@@ -36,11 +39,18 @@ Source Plan: plan.md
   being rejected or copied into rvalue-reference temporaries.
 - Re-ran the focused `&&` regression set plus the full suite; regression guard
   passed with pass count improving from 3155 to 3157 and zero new failures.
+- Added `named_rvalue_ref_lvalue_overload_basic.cpp` to lock the named
+  rvalue-reference lvalue rule for plain overload resolution, explicit
+  `static_cast<T&&>`, and forwarding-helper recovery.
+- Re-ran the focused named-rvalue-reference regression cluster plus the full
+  suite; regression guard passed with pass count improving from 3155 to 3158
+  and zero new failures.
 
 ## Next Slice
 
-- add focused coverage for named rvalue-reference variables remaining lvalues
-  in overload resolution and forwarding paths
+- add focused coverage for named rvalue-reference variables in parameter and
+  return-value paths where the lvalue rule can interact with forwarding
+  helpers or overload sets
 - keep adjacent library-facing probes bounded to generic language defects only
 
 ## Blockers
@@ -57,4 +67,7 @@ Source Plan: plan.md
 - local `auto&& ref = x;` now aliases the original lvalue in lowered IR, so
   the next bounded slice can stay focused on named-rvalue-reference lvalue
   behavior in overload and forwarding paths
+- named `int&& ref` already lowers through lvalue overload selection, while
+  explicit `static_cast<int&&>(ref)` and `forward_value<int>(ref)` still route
+  to the rvalue overload as expected
 - keep EASTL or libstdc++ findings scoped to generic language defects only
