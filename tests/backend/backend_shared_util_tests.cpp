@@ -2038,7 +2038,6 @@ void test_backend_shared_fallback_preparation_separates_stack_layout_metadata_fr
                       EntryAllocasAndBackendCfg &&
                   preparation.stack_layout_classification.entry_allocas.size() == 1 &&
                   preparation.stack_layout_classification.blocks.size() == 1 &&
-                  preparation.stack_layout_classification.blocks.front().label == "entry" &&
                   preparation.stack_layout_classification.blocks.front().inst_count == 1 &&
                   preparation.stack_layout_classification.escaped_entry_allocas.has_value() &&
                   preparation.stack_layout_classification.escaped_entry_allocas->empty() &&
@@ -2115,7 +2114,6 @@ void test_backend_shared_fallback_preparation_tracks_only_block_instruction_coun
   const auto preparation =
       c4c::backend::stack_layout::prepare_module_function_entry_alloca_preparation(module, 0);
   expect_true(preparation.stack_layout_classification.blocks.size() == 1 &&
-                  preparation.stack_layout_classification.blocks.front().label == "entry" &&
                   preparation.stack_layout_classification.blocks.front().inst_count == 2 &&
                   preparation.backend_cfg_liveness.has_value() &&
                   preparation.backend_cfg_liveness->blocks.size() == 1 &&
@@ -2175,6 +2173,9 @@ void test_backend_shared_fallback_preparation_rehydrates_stack_layout_uses_from_
       c4c::backend::stack_layout::lower_prepared_entry_alloca_function_inputs(preparation);
 
   expect_true(lowered.stack_layout_input.blocks.size() == 3 &&
+                  lowered.stack_layout_input.blocks.front().label == "entry" &&
+                  lowered.stack_layout_input.blocks[1].label == "then" &&
+                  lowered.stack_layout_input.blocks[2].label == "else" &&
                   lowered.stack_layout_input.blocks.front().insts.size() == 1 &&
                   lowered.stack_layout_input.blocks.front().insts.front().used_names.size() == 1 &&
                   lowered.stack_layout_input.blocks.front().insts.front().used_names.front() ==
@@ -2192,6 +2193,45 @@ void test_backend_shared_fallback_preparation_rehydrates_stack_layout_uses_from_
                   preparation.backend_cfg_liveness->blocks.front().terminator_used_names.front() ==
                       "%p.cond",
               "shared prepared fallback carrier should rebuild stack-layout instruction and terminator uses from liveness instead of caching those use lists in the prepared classification input");
+}
+
+void test_backend_shared_fallback_preparation_rehydrates_phi_predecessor_labels_from_liveness() {
+  auto preparation =
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_preparation(
+          make_interval_phi_join_module(), 0);
+  const c4c::backend::RegAllocIntegrationResult regalloc;
+
+  expect_true(preparation.backend_cfg_liveness.has_value() &&
+                  preparation.backend_cfg_liveness->blocks.size() == 4 &&
+                  preparation.backend_cfg_liveness->blocks.front().label == "entry" &&
+                  preparation.backend_cfg_liveness->blocks[1].label == "then" &&
+                  preparation.backend_cfg_liveness->blocks[2].label == "else" &&
+                  preparation.backend_cfg_liveness->blocks[3].label == "join" &&
+                  preparation.stack_layout_classification.blocks.size() == 4 &&
+                  preparation.stack_layout_classification.blocks.front().inst_count == 1 &&
+                  preparation.stack_layout_classification.blocks[1].inst_count == 1 &&
+                  preparation.stack_layout_classification.blocks[2].inst_count == 1 &&
+                  preparation.stack_layout_classification.blocks[3].inst_count == 2,
+              "shared prepared fallback carrier should rely on backend-owned liveness block order for labels while keeping only per-block instruction counts in stack-layout classification");
+
+  const auto lowered =
+      c4c::backend::stack_layout::lower_prepared_entry_alloca_function_inputs(preparation);
+  const auto analysis = c4c::backend::stack_layout::analyze_stack_layout(
+      lowered.stack_layout_input, regalloc, {});
+
+  const auto* then_value_uses = analysis.find_use_blocks("%t1");
+  const auto* else_value_uses = analysis.find_use_blocks("%t2");
+
+  expect_true(lowered.stack_layout_input.blocks.size() == 4 &&
+                  lowered.stack_layout_input.blocks.front().label == "entry" &&
+                  lowered.stack_layout_input.blocks[1].label == "then" &&
+                  lowered.stack_layout_input.blocks[2].label == "else" &&
+                  lowered.stack_layout_input.blocks[3].label == "join" &&
+                  then_value_uses != nullptr && then_value_uses->size() == 1 &&
+                  then_value_uses->front() == 1 &&
+                  else_value_uses != nullptr && else_value_uses->size() == 1 &&
+                  else_value_uses->front() == 2,
+              "shared prepared fallback lowering should rehydrate stack-layout block labels from liveness so phi predecessor-edge analysis still maps incoming values onto the correct predecessor blocks");
 }
 
 void test_backend_shared_fallback_preparation_still_needs_remaining_pointer_escape_facts() {
@@ -2831,6 +2871,7 @@ int main(int argc, char* argv[]) {
   test_backend_shared_fallback_preparation_separates_stack_layout_metadata_from_cfg_classification();
   test_backend_shared_fallback_preparation_tracks_only_block_instruction_counts();
   test_backend_shared_fallback_preparation_rehydrates_stack_layout_uses_from_liveness();
+  test_backend_shared_fallback_preparation_rehydrates_phi_predecessor_labels_from_liveness();
   test_backend_shared_fallback_preparation_still_needs_remaining_pointer_escape_facts();
   test_backend_shared_fallback_preparation_keeps_only_liveness_cfg_state();
   test_backend_shared_prepares_lir_module_for_target();

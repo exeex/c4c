@@ -53,7 +53,6 @@ struct PreparedEntryAllocaStackLayoutMetadata {
 };
 
 struct PreparedEntryAllocaStackLayoutBlock {
-  std::string label;
   std::size_t inst_count = 0;
 };
 

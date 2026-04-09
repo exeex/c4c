@@ -211,7 +211,6 @@ PreparedEntryAllocaStackLayoutClassificationInput lower_prepared_stack_layout_cl
   classification.blocks.reserve(input.blocks.size());
   for (auto& block : input.blocks) {
     PreparedEntryAllocaStackLayoutBlock prepared_block;
-    prepared_block.label = std::move(block.label);
     prepared_block.inst_count = block.insts.size();
     classification.blocks.push_back(std::move(prepared_block));
   }
@@ -229,9 +228,12 @@ StackLayoutInput lower_prepared_stack_layout_input(
   input.entry_alloca_use_blocks = classification.entry_alloca_use_blocks;
   input.entry_alloca_first_accesses = classification.entry_alloca_first_accesses;
   input.blocks.reserve(classification.blocks.size());
-  for (const auto& block : classification.blocks) {
+  for (std::size_t block_index = 0; block_index < classification.blocks.size(); ++block_index) {
+    const auto& block = classification.blocks[block_index];
     StackLayoutBlockInput lowered_block;
-    lowered_block.label = block.label;
+    if (liveness_input != nullptr && block_index < liveness_input->blocks.size()) {
+      lowered_block.label = liveness_input->blocks[block_index].label;
+    }
     lowered_block.insts.reserve(block.inst_count);
     for (std::size_t inst_index = 0; inst_index < block.inst_count; ++inst_index) {
       (void)inst_index;
