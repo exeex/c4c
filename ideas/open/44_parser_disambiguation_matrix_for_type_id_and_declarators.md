@@ -172,6 +172,13 @@ Recommended split of responsibilities:
   - refine the body logic when a family needs semantic assertions that are too
     specific for a generic generator template
 
+For subagent-owned runtime-positive work, treat host-compiler success as part
+of the completion bar:
+
+- the generated case must compile and pass under `g++` or `clang++`
+- only after that host-compiler baseline is green should the case be treated as
+  ready for `c4cll` integration or further compiler-specific investigation
+
 This keeps large-scale generation deterministic while still allowing targeted
 semantic strengthening where it matters.
 
@@ -181,6 +188,8 @@ For runtime-positive cases, align with the existing internal test style:
 
 - `main()` returns `0` when behavior matches the expectation
 - any mismatch returns nonzero
+- subagent completion requires the test to pass under `g++` or `clang++` on the
+  host before calling the case finished
 
 This avoids inventing a separate harness and keeps generated tests compatible
 with the current `ctest` model.
@@ -216,6 +225,14 @@ Less urgent runtime-positive targets:
 
 - pure type-id consumer cases such as `sizeof(...)` that mainly test parser
   classification rather than runtime semantics
+
+For worker handoff, each promoted runtime-positive batch should report:
+
+- which generated files were upgraded
+- whether `g++` or `clang++` was used as the host baseline
+- which command was used to confirm the executable returns `0`
+- whether the case is now ready for `c4cll` adoption or still blocked on a
+  compiler-specific mismatch
 
 ### 7. Record explicit expectations in the manifest
 
