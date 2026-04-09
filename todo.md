@@ -6,8 +6,8 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 2: expand generated `parse_only` coverage beyond the initial
-  `grouped_pointer` family using the new declaration-context-aware generator
+- Step 2: evaluate whether `member_pointer` should join the next generated
+  `parse_only` batch or remain isolated as its own parser-focused follow-up
 
 ## Completed Items
 
@@ -28,13 +28,18 @@ Source Plan: plan.md
   `tests/cpp/internal/InternalTests.cmake`
 - Targeted validation: `ctest --test-dir build -R grouped_pointer
   --output-on-failure` passed all 25 generated cases
+- Expanded the generated `parse_only` matrix batch to include
+  `grouped_lvalue_ref` and `grouped_rvalue_ref` while preserving the existing
+  `grouped_pointer` family in the emitted directory
+- Targeted validation: `ctest --test-dir build -R 'grouped_(pointer|lvalue_ref|rvalue_ref)'
+  --output-on-failure` passed all 75 generated grouped declarator cases
 
 ## Next Slice
 
-- extend the generator-backed parse-only slice to adjacent grouped declarators
-  such as `grouped_lvalue_ref` and `grouped_rvalue_ref`
-- decide whether `member_pointer` should join the next generated batch or stay
-  isolated as its own parser-focused follow-up
+- if `member_pointer` stays in Step 2, materialize its generated `parse_only`
+  matrix family across all owner spellings and plan contexts
+- if `member_pointer` needs parser work first, isolate that family and carry it
+  into Step 3 as the next parser-focused suffix slice
 - keep generation template-driven and separate from the existing hand-written
   reductions in `postive_case/`
 
