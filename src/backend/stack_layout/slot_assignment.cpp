@@ -1,6 +1,7 @@
 #include "slot_assignment.hpp"
 
 #include "alloca_coalescing.hpp"
+#include "regalloc_helpers.hpp"
 #include "../lowering/lir_to_bir.hpp"
 #include "../../codegen/lir/call_args_ops.hpp"
 
@@ -39,6 +40,22 @@ bool is_zero_initializer_store(const EntryAllocaInput& alloca) {
 bool is_scalar_alloca_type(std::string_view type_str) {
   return !type_str.empty() && type_str.front() != '[' && type_str.front() != '{' &&
          type_str.front() != '%';
+}
+
+bool is_callee_saved_reg(PhysReg reg, const std::vector<PhysReg>& callee_saved_regs) {
+  return std::find(callee_saved_regs.begin(), callee_saved_regs.end(), reg) !=
+         callee_saved_regs.end();
+}
+
+EntryAllocaRewriteInput make_entry_alloca_rewrite_input_from_classification(
+    std::vector<EntryAllocaInput> entry_allocas,
+    const PreparedEntryAllocaStackLayoutClassificationInput& classification) {
+  EntryAllocaRewriteInput input;
+  input.entry_allocas = std::move(entry_allocas);
+  input.escaped_entry_allocas = classification.escaped_entry_allocas;
+  input.entry_alloca_use_blocks = classification.entry_alloca_use_blocks;
+  input.entry_alloca_first_accesses = classification.entry_alloca_first_accesses;
+  return input;
 }
 
 std::optional<std::vector<std::string>> collect_prepared_escaped_entry_allocas(
@@ -191,15 +208,6 @@ std::optional<std::vector<EntryAllocaFirstAccess>> collect_prepared_entry_alloca
   return entry_alloca_first_accesses;
 }
 
-void apply_prepared_stack_layout_metadata(
-    StackLayoutInput& input,
-    const PreparedEntryAllocaStackLayoutMetadata& metadata) {
-  input.signature_params = metadata.signature_params;
-  input.return_type = metadata.return_type;
-  input.is_variadic = metadata.is_variadic;
-  input.call_results = metadata.call_results;
-}
-
 PreparedEntryAllocaStackLayoutClassificationInput lower_prepared_stack_layout_classification_input(
     StackLayoutInput input) {
   PreparedEntryAllocaStackLayoutClassificationInput classification;
@@ -208,6 +216,15 @@ PreparedEntryAllocaStackLayoutClassificationInput lower_prepared_stack_layout_cl
   classification.entry_alloca_first_accesses =
       collect_prepared_entry_alloca_first_accesses(input);
   return classification;
+}
+
+void apply_prepared_stack_layout_metadata(
+    StackLayoutInput& input,
+    const PreparedEntryAllocaStackLayoutMetadata& metadata) {
+  input.signature_params = metadata.signature_params;
+  input.return_type = metadata.return_type;
+  input.is_variadic = metadata.is_variadic;
+  input.call_results = metadata.call_results;
 }
 
 StackLayoutInput lower_prepared_stack_layout_input(
@@ -261,8 +278,70 @@ StackLayoutInput lower_prepared_stack_layout_input(
   return input;
 }
 
+EntryAllocaRewriteInput lower_prepared_entry_alloca_rewrite_input(
+    const PreparedEntryAllocaRewriteMetadata& rewrite_metadata,
+    const PreparedEntryAllocaStackLayoutClassificationInput& classification) {
+  return make_entry_alloca_rewrite_input_from_classification(
+      rewrite_metadata.entry_allocas, classification);
+}
+
+EntryAllocaRewriteInput lower_stack_layout_input_to_entry_alloca_rewrite_input(
+    StackLayoutInput input) {
+  auto classification = lower_prepared_stack_layout_classification_input(input);
+  return make_entry_alloca_rewrite_input_from_classification(
+      std::move(input.entry_allocas), classification);
+}
+
+StackLayoutAnalysis analyze_entry_alloca_rewrite_input(
+    const EntryAllocaRewriteInput& input,
+    const RegAllocIntegrationResult& regalloc,
+    const std::vector<PhysReg>& callee_saved_regs) {
+  StackLayoutAnalysis analysis;
+
+  if (input.entry_alloca_use_blocks.has_value()) {
+    for (const auto& use_blocks : *input.entry_alloca_use_blocks) {
+      if (use_blocks.block_indices.empty()) {
+        continue;
+      }
+      analysis.value_use_blocks.emplace(use_blocks.alloca_name, use_blocks.block_indices);
+      analysis.used_values.insert(use_blocks.alloca_name);
+    }
+  }
+
+  if (input.escaped_entry_allocas.has_value()) {
+    for (const auto& alloca_name : *input.escaped_entry_allocas) {
+      analysis.used_values.insert(alloca_name);
+    }
+  }
+
+  if (input.entry_alloca_first_accesses.has_value()) {
+    for (const auto& first_access : *input.entry_alloca_first_accesses) {
+      analysis.used_values.insert(first_access.alloca_name);
+      if (first_access.kind == PointerAccessKind::Store) {
+        analysis.entry_allocas_overwritten_before_read.insert(first_access.alloca_name);
+      }
+    }
+  }
+
+  for (const auto& alloca : input.entry_allocas) {
+    if (!is_param_alloca_name(alloca.alloca_name) || !alloca.paired_store_value.has_value() ||
+        !is_param_name(*alloca.paired_store_value)) {
+      continue;
+    }
+    if (analysis.used_values.find(alloca.alloca_name) != analysis.used_values.end()) {
+      continue;
+    }
+    const auto* assigned_reg = find_assigned_reg(regalloc, *alloca.paired_store_value);
+    if (assigned_reg != nullptr && is_callee_saved_reg(*assigned_reg, callee_saved_regs)) {
+      analysis.dead_param_allocas.insert(alloca.alloca_name);
+    }
+  }
+
+  return analysis;
+}
+
 std::vector<LirInst> build_pruned_entry_alloca_insts(
-    const StackLayoutInput& input,
+    const std::vector<EntryAllocaInput>& entry_allocas,
     const std::vector<EntryAllocaSlotPlan>& plans) {
   std::unordered_map<std::string, EntryAllocaSlotPlan> plans_by_alloca;
   plans_by_alloca.reserve(plans.size());
@@ -271,9 +350,9 @@ std::vector<LirInst> build_pruned_entry_alloca_insts(
   }
 
   std::vector<LirInst> pruned;
-  pruned.reserve(input.entry_allocas.size() * 2);
+  pruned.reserve(entry_allocas.size() * 2);
 
-  for (const auto& alloca : input.entry_allocas) {
+  for (const auto& alloca : entry_allocas) {
     const auto plan_it = plans_by_alloca.find(alloca.alloca_name);
     if (plan_it == plans_by_alloca.end()) {
       pruned.push_back(LirAllocaOp{alloca.alloca_name, alloca.type_str, "", alloca.align});
@@ -434,9 +513,26 @@ EntryAllocaRewritePatch prepare_entry_alloca_rewrite_patch(
     const RegAllocConfig& regalloc_config,
     const std::vector<PhysReg>& asm_clobbered,
     const std::vector<PhysReg>& callee_saved_regs) {
-  const auto bundle = build_stack_layout_plan_bundle(
-      liveness_input, stack_layout_input, regalloc_config, asm_clobbered, callee_saved_regs);
-  return build_entry_alloca_rewrite_patch(stack_layout_input, bundle.entry_alloca_plans);
+  return prepare_entry_alloca_rewrite_patch(
+      liveness_input,
+      lower_stack_layout_input_to_entry_alloca_rewrite_input(stack_layout_input),
+      regalloc_config,
+      asm_clobbered,
+      callee_saved_regs);
+}
+
+EntryAllocaRewritePatch prepare_entry_alloca_rewrite_patch(
+    const LivenessInput& liveness_input,
+    const EntryAllocaRewriteInput& rewrite_input,
+    const RegAllocConfig& regalloc_config,
+    const std::vector<PhysReg>& asm_clobbered,
+    const std::vector<PhysReg>& callee_saved_regs) {
+  const auto regalloc =
+      run_regalloc_and_merge_clobbers(liveness_input, regalloc_config, asm_clobbered);
+  const auto analysis =
+      analyze_entry_alloca_rewrite_input(rewrite_input, regalloc, callee_saved_regs);
+  const auto entry_plans = plan_entry_alloca_slots(rewrite_input, analysis);
+  return build_entry_alloca_rewrite_patch(rewrite_input, entry_plans);
 }
 
 LirModule rewrite_module_entry_allocas(
@@ -451,7 +547,7 @@ LirModule rewrite_module_entry_allocas(
         prepare_module_function_entry_alloca_inputs(module, function_index);
     const auto patch = prepare_entry_alloca_rewrite_patch(
         prepared_inputs.liveness_input,
-        prepared_inputs.stack_layout_input,
+        prepared_inputs.rewrite_input,
         regalloc_config,
         asm_clobbered,
         callee_saved_regs);
@@ -585,14 +681,28 @@ EntryAllocaRewriteInputs lower_prepared_entry_alloca_function_inputs(
       prepared_inputs.stack_layout_classification,
       prepared_inputs.stack_layout_metadata,
       &inputs.liveness_input);
+  inputs.rewrite_input = lower_prepared_entry_alloca_rewrite_input(
+      prepared_inputs.rewrite_metadata,
+      prepared_inputs.stack_layout_classification);
   return inputs;
 }
 
 std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(
     const StackLayoutInput& input,
     const StackLayoutAnalysis& analysis) {
+  return plan_entry_alloca_slots(
+      lower_stack_layout_input_to_entry_alloca_rewrite_input(input), analysis);
+}
+
+std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(
+    const EntryAllocaRewriteInput& input,
+    const StackLayoutAnalysis& analysis) {
   std::vector<EntryAllocaSlotPlan> plans;
-  const auto coalescable_allocas = compute_coalescable_allocas(input, analysis);
+  StackLayoutInput coalescing_input;
+  coalescing_input.entry_allocas = input.entry_allocas;
+  coalescing_input.escaped_entry_allocas = input.escaped_entry_allocas;
+  coalescing_input.entry_alloca_use_blocks = input.entry_alloca_use_blocks;
+  const auto coalescable_allocas = compute_coalescable_allocas(coalescing_input, analysis);
   std::vector<AssignedEntrySlot> assigned_slots;
   std::size_t next_slot = 0;
 
@@ -654,6 +764,13 @@ std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(
 EntryAllocaRewritePatch build_entry_alloca_rewrite_patch(
     const StackLayoutInput& input,
     const std::vector<EntryAllocaSlotPlan>& plans) {
+  return build_entry_alloca_rewrite_patch(
+      lower_stack_layout_input_to_entry_alloca_rewrite_input(input), plans);
+}
+
+EntryAllocaRewritePatch build_entry_alloca_rewrite_patch(
+    const EntryAllocaRewriteInput& input,
+    const std::vector<EntryAllocaSlotPlan>& plans) {
   std::unordered_map<std::size_t, std::string> canonical_by_slot;
   std::unordered_map<std::string, std::string> canonical_by_alloca;
   EntryAllocaRewritePatch patch;
@@ -668,7 +785,7 @@ EntryAllocaRewritePatch build_entry_alloca_rewrite_patch(
     (void)inserted;
   }
 
-  const auto pruned_alloca_insts = build_pruned_entry_alloca_insts(input, plans);
+  const auto pruned_alloca_insts = build_pruned_entry_alloca_insts(input.entry_allocas, plans);
   if (canonical_by_alloca.empty()) {
     patch.alloca_insts = pruned_alloca_insts;
     return patch;

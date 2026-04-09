@@ -1798,11 +1798,21 @@ void test_backend_shared_slot_assignment_prepares_rewrite_patch_from_backend_own
 
   const auto patch = c4c::backend::stack_layout::prepare_entry_alloca_rewrite_patch(
       dead_liveness_input, dead_stack_layout_input, config, {}, {{20}, {21}, {22}});
+  const auto narrowed_patch = c4c::backend::stack_layout::prepare_entry_alloca_rewrite_patch(
+      dead_liveness_input,
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_inputs(
+          make_dead_param_alloca_candidate_module(), 1)
+          .rewrite_input,
+      config,
+      {},
+      {{20}, {21}, {22}});
 
   expect_true(patch.alloca_insts.empty(),
               "shared stack-layout patch prep should preserve dead entry-alloca pruning decisions when callers provide backend-owned inputs");
   expect_true(patch.canonical_allocas.empty(),
               "shared stack-layout patch prep should not invent canonical alloca rewrites when the planned entry alloca is deleted");
+  expect_true(narrowed_patch.alloca_insts.empty() && narrowed_patch.canonical_allocas.empty(),
+              "shared stack-layout patch prep should drive the production rewrite path from the narrower entry-alloca rewrite input without needing the broader stack-layout contract");
 
   c4c::backend::stack_layout::apply_entry_alloca_rewrite_patch(dead_function, patch);
 
@@ -1893,13 +1903,17 @@ void test_backend_shared_slot_assignment_prepares_module_function_inputs() {
                   fallback_inputs.stack_layout_source ==
                       c4c::backend::stack_layout::EntryAllocaRewriteStackLayoutSource::
                           EntryAllocasAndBackendCfg &&
+                  fallback_inputs.rewrite_input.entry_allocas.size() == 1 &&
+                  fallback_inputs.rewrite_input.entry_allocas.front().alloca_name ==
+                      "%lv.buf" &&
+                  fallback_inputs.rewrite_input.entry_alloca_use_blocks.has_value() &&
                   fallback_inputs.stack_layout_input.entry_allocas.size() == 1 &&
                   fallback_inputs.stack_layout_input.entry_allocas.front().alloca_name ==
                       "%lv.buf" &&
                   fallback_inputs.stack_layout_input.return_type ==
                       std::optional<std::string>{"i32"} &&
                   fallback_inputs.liveness_input.entry_insts.size() == 2,
-              "shared entry-alloca rewrite prep should still lower the prepared fallback carrier into the production rewrite-input contract");
+              "shared entry-alloca rewrite prep should lower the prepared fallback carrier into the new narrow rewrite-input contract while preserving the compatibility stack-layout view");
 
   const auto lowerable_inputs =
       c4c::backend::stack_layout::prepare_module_function_entry_alloca_inputs(module, 0);
@@ -1908,11 +1922,12 @@ void test_backend_shared_slot_assignment_prepares_module_function_inputs() {
                   lowerable_inputs.stack_layout_source ==
                       c4c::backend::stack_layout::EntryAllocaRewriteStackLayoutSource::
                           RawLirFunction &&
+                  lowerable_inputs.rewrite_input.entry_allocas.empty() &&
                   lowerable_inputs.stack_layout_input.entry_allocas.empty() &&
                   lowerable_inputs.liveness_input.entry_insts.empty() &&
                   lowerable_inputs.liveness_input.blocks.size() == 1 &&
                   lowerable_inputs.liveness_input.blocks.front().insts.size() == 1,
-              "shared entry-alloca rewrite prep should keep the existing production wrapper contract after routing through the prepared carrier");
+              "shared entry-alloca rewrite prep should keep the existing compatibility wrapper while exposing the narrower production rewrite-input contract");
 }
 
 void test_backend_shared_fallback_entry_alloca_stack_layout_input_preserves_pointer_metadata() {
@@ -2053,6 +2068,12 @@ void test_backend_shared_fallback_preparation_separates_stack_layout_metadata_fr
   const auto lowered =
       c4c::backend::stack_layout::lower_prepared_entry_alloca_function_inputs(preparation);
   expect_true(lowered.stack_layout_input.signature_params.size() == 2 &&
+                  lowered.rewrite_input.entry_allocas.size() == 1 &&
+                  lowered.rewrite_input.entry_allocas.front().alloca_name == "%lv.buf" &&
+                  lowered.rewrite_input.escaped_entry_allocas.has_value() &&
+                  lowered.rewrite_input.escaped_entry_allocas->empty() &&
+                  lowered.rewrite_input.entry_alloca_use_blocks.has_value() &&
+                  lowered.rewrite_input.entry_alloca_use_blocks->empty() &&
                   lowered.stack_layout_input.blocks.size() == 1 &&
                   lowered.stack_layout_input.blocks.front().label == "entry" &&
                   lowered.stack_layout_input.blocks.front().insts.size() == 1 &&
@@ -2073,7 +2094,7 @@ void test_backend_shared_fallback_preparation_separates_stack_layout_metadata_fr
                   lowered.stack_layout_input.call_results.front().value_name == "%call0" &&
                   lowered.stack_layout_input.call_results.front().type_str ==
                       "{ i32, i32 }",
-              "shared prepared fallback carrier should still rehydrate the full rewrite-input stack-layout contract when lowered for production use");
+              "shared prepared fallback carrier should keep rewrite-time ownership on the narrow entry-alloca contract while leaving the broader stack-layout view available only as compatibility state");
 }
 
 void test_backend_shared_fallback_preparation_derives_block_instruction_counts_from_liveness() {

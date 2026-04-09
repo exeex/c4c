@@ -7,18 +7,49 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: audit whether the prepared rewrite-owned entry-alloca seam can
-  narrow beyond `EntryAllocaInput` without breaking slot planning or rewrite
-  patch synthesis
-- Current implementation target: trace the exact `EntryAllocaInput` fields used
-  by `plan_entry_alloca_slots(...)` and `build_entry_alloca_rewrite_patch(...)`
-  and either trim the prepared rewrite carrier further with focused regressions
-  or record the exact remaining invariants
-- Next intended slice: if only a subset of `EntryAllocaInput` is still needed,
-  split a smaller prepared rewrite-owned descriptor from the production
-  `StackLayoutInput` contract and retarget the entry-alloca rewrite path to it
+- Current slice: audit whether `EntryAllocaInput` itself can narrow further now
+  that entry-alloca rewrite production no longer depends on the full
+  `StackLayoutInput` contract
+- Current implementation target: verify whether planning and patch synthesis can
+  split the remaining `EntryAllocaInput` fields, or record that the current
+  `alloca_name` / `type_str` / `align` / `paired_store_value` payload is still
+  the irreducible rewrite-owned seam
+- Next intended slice: if the remaining `EntryAllocaInput` payload cannot
+  narrow further without splitting planner versus patch ownership, record that
+  invariant explicitly and continue the Step 6 public-surface narrowing toward
+  regalloc / stack-layout callers
 
 ## Completed
+
+- Completed the next Step 6 prepared rewrite-contract narrowing slice by
+  introducing a dedicated rewrite-owned `EntryAllocaRewriteInput` and retargeting
+  production entry-alloca rewrite prep away from the broader
+  `StackLayoutInput` contract:
+  - added `EntryAllocaRewriteInput` in
+    `src/backend/stack_layout/slot_assignment.hpp` so production rewrite prep
+    now carries only `entry_allocas` plus the coarse
+    `escaped_entry_allocas` / `entry_alloca_use_blocks` /
+    `entry_alloca_first_accesses` seams instead of the full stack-layout
+    surface
+  - updated `src/backend/stack_layout/slot_assignment.cpp` so
+    `prepare_entry_alloca_rewrite_patch(...)`, prepared entry-alloca lowering,
+    and the production module rewrite path now plan and synthesize patches from
+    the new narrow rewrite input while keeping the full `StackLayoutInput`
+    rehydration only as compatibility state for existing callers and tests
+  - recorded the current invariant that `plan_entry_alloca_slots(...)` plus
+    `build_entry_alloca_rewrite_patch(...)` still jointly require
+    `EntryAllocaInput`'s `alloca_name`, `type_str`, `align`, and
+    `paired_store_value`, so the contract narrowed at the container boundary
+    rather than by deleting any of those fields yet
+  - updated `tests/backend/backend_shared_util_tests.cpp` with focused coverage
+    proving prepared rewrite inputs now expose the narrow rewrite contract and
+    that the production patch-prep path accepts that narrower input directly
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`
+  - rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with the repo’s allowed non-decreasing rule and no new
+    failures (`2809 -> 2809`, same 32 known failing tests as
+    `test_fail_before.log`)
 
 - Completed the next Step 6 prepared fallback `entry_allocas` ownership
   narrowing slice by removing entry-alloca records from the backend-CFG-derived

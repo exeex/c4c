@@ -62,6 +62,13 @@ struct PreparedEntryAllocaRewriteMetadata {
   std::vector<EntryAllocaInput> entry_allocas;
 };
 
+struct EntryAllocaRewriteInput {
+  std::vector<EntryAllocaInput> entry_allocas;
+  std::optional<std::vector<std::string>> escaped_entry_allocas;
+  std::optional<std::vector<EntryAllocaUseBlocks>> entry_alloca_use_blocks;
+  std::optional<std::vector<EntryAllocaFirstAccess>> entry_alloca_first_accesses;
+};
+
 struct PreparedEntryAllocaFunctionInputs {
   PreparedEntryAllocaStackLayoutClassificationInput stack_layout_classification;
   PreparedEntryAllocaStackLayoutMetadata stack_layout_metadata;
@@ -77,6 +84,7 @@ struct PreparedEntryAllocaFunctionInputs {
 struct EntryAllocaRewriteInputs {
   LivenessInput liveness_input;
   StackLayoutInput stack_layout_input;
+  EntryAllocaRewriteInput rewrite_input;
   EntryAllocaRewriteLivenessSource liveness_source =
       EntryAllocaRewriteLivenessSource::RawLirBackendCfg;
   EntryAllocaRewriteStackLayoutSource stack_layout_source =
@@ -99,9 +107,20 @@ EntryAllocaRewritePatch build_entry_alloca_rewrite_patch(
     const StackLayoutInput& input,
     const std::vector<EntryAllocaSlotPlan>& plans);
 
+EntryAllocaRewritePatch build_entry_alloca_rewrite_patch(
+    const EntryAllocaRewriteInput& input,
+    const std::vector<EntryAllocaSlotPlan>& plans);
+
 EntryAllocaRewritePatch prepare_entry_alloca_rewrite_patch(
     const LivenessInput& liveness_input,
     const StackLayoutInput& stack_layout_input,
+    const RegAllocConfig& regalloc_config,
+    const std::vector<PhysReg>& asm_clobbered,
+    const std::vector<PhysReg>& callee_saved_regs);
+
+EntryAllocaRewritePatch prepare_entry_alloca_rewrite_patch(
+    const LivenessInput& liveness_input,
+    const EntryAllocaRewriteInput& rewrite_input,
     const RegAllocConfig& regalloc_config,
     const std::vector<PhysReg>& asm_clobbered,
     const std::vector<PhysReg>& callee_saved_regs);
@@ -133,6 +152,10 @@ void apply_entry_alloca_rewrite_patch(
 
 std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(
     const StackLayoutInput& input,
+    const StackLayoutAnalysis& analysis);
+
+std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(
+    const EntryAllocaRewriteInput& input,
     const StackLayoutAnalysis& analysis);
 
 std::vector<ParamAllocaSlotPlan> plan_param_alloca_slots(
