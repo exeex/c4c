@@ -7,12 +7,13 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 2: review typedef, alias, and qualified cast targets
-- Current slice: widen dependent cast-target coverage beyond the first
-  alias-owned `typename` reference-cast case
-- Current implementation target: the next dependent qualified/template-id cast
-  target that is not already covered by Step 2 regressions
-- Next intended slice: probe global-qualified or nested dependent alias-owned
-  reference-cast targets before widening to more complex template-id suffixes
+- Current slice: probe dependent `::template` alias-owned cast targets after
+  landing the nested dependent alias-owned reference-cast fix
+- Current implementation target: cover a dependent cast target that requires
+  `typename X::template Y<...>::AliasL` / `AliasR` spelling and classify the
+  earliest failing stage if it diverges
+- Next intended slice: widen to dependent template-id alias-owned cast targets
+  only if the `::template` alias case is already green
 
 ## Completed
 
@@ -136,6 +137,19 @@ Source Plan: plan.md
   runtime expectations, so no compiler change was needed for this slice.
 - Full-suite validation stayed monotonic: `test_before.log` 2852/2852 passed,
   `test_after.log` 2853/2853 passed, with zero new failures.
+- Added
+  `tests/cpp/internal/postive_case/c_style_cast_nested_dependent_typename_ref_alias_basic.cpp`
+  to cover nested dependent
+  `(typename Holder<T>::Inner::AliasL)x` /
+  `(typename Holder<T>::Inner::AliasR)x` cast targets, assignment through the
+  aliased references, and overload selection on the cast expressions
+  themselves.
+- Fixed dependent nested member-typedef resolution so parser and HIR preserve
+  reference qualifiers across `typename Holder<T>::Inner::AliasL` /
+  `AliasR`, including the lvalue/rvalue category used by overload selection on
+  the cast expressions.
+- Full-suite validation stayed monotonic: `test_fail_before.log` 2853/2853
+  passed, `test_fail_after.log` 2854/2854 passed, with zero new failures.
 
 ## Notes
 
@@ -170,3 +184,8 @@ Source Plan: plan.md
   `--dump-hir`, and the runtime regression all aligned with the Clang-backed
   expectation for `(typename Holder<T>::AliasL)x` and
   `(typename Holder<T>::AliasR)x`.
+- The nested dependent alias-owned follow-up initially exposed two linked
+  issues: parser-side dependent member-typedef resolution did not synthesize
+  nested owner chains such as `Holder<T>::Inner::AliasL`, and HIR’s fallback
+  member-typedef substitution path dropped outer `&` / `&&` qualifiers when it
+  substituted the inner alias’s `T` binding.

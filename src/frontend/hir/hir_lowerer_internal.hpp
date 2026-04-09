@@ -456,7 +456,7 @@ class Lowerer {
 
   // ── callable and global lowering helpers ─────────────────────────────────
   TypeSpec substitute_signature_template_type(
-      TypeSpec ts, const TypeBindings* tpl_bindings) const;
+      TypeSpec ts, const TypeBindings* tpl_bindings);
 
   void resolve_signature_template_type_if_needed(
       TypeSpec& ts,

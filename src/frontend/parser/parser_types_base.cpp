@@ -1594,9 +1594,16 @@ TypeSpec Parser::parse_base_type() {
                                 for (const auto& [pname, pts] : type_bindings) {
                                     if (member_ts.base == TB_TYPEDEF && member_ts.tag &&
                                         std::string(member_ts.tag) == pname) {
+                                        const bool outer_lref = member_ts.is_lvalue_ref;
+                                        const bool outer_rref = member_ts.is_rvalue_ref;
                                         member_ts.base = pts.base;
                                         member_ts.tag = pts.tag;
                                         member_ts.ptr_level += pts.ptr_level;
+                                        member_ts.is_lvalue_ref =
+                                            pts.is_lvalue_ref || outer_lref;
+                                        member_ts.is_rvalue_ref =
+                                            !member_ts.is_lvalue_ref &&
+                                            (pts.is_rvalue_ref || outer_rref);
                                         member_ts.is_const |= pts.is_const;
                                         member_ts.is_volatile |= pts.is_volatile;
                                     }

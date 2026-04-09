@@ -189,22 +189,46 @@ void Lowerer::lower_function(const Node* fn_node,
 }
 
 TypeSpec Lowerer::substitute_signature_template_type(
-    TypeSpec ts, const TypeBindings* tpl_bindings) const {
-  if (!tpl_bindings || ts.base != TB_TYPEDEF || !ts.tag) return ts;
-  auto it = tpl_bindings->find(ts.tag);
-  if (it == tpl_bindings->end()) return ts;
-  const TypeSpec& concrete = it->second;
+    TypeSpec ts, const TypeBindings* tpl_bindings) {
+  if (ts.base != TB_TYPEDEF || !ts.tag) return ts;
   const int outer_ptr_level = ts.ptr_level;
   const bool outer_lref = ts.is_lvalue_ref;
   const bool outer_rref = ts.is_rvalue_ref;
   const bool outer_const = ts.is_const;
   const bool outer_volatile = ts.is_volatile;
-  ts = concrete;
-  ts.ptr_level += outer_ptr_level;
-  ts.is_lvalue_ref = concrete.is_lvalue_ref || outer_lref;
-  ts.is_rvalue_ref = !ts.is_lvalue_ref && (concrete.is_rvalue_ref || outer_rref);
-  ts.is_const = concrete.is_const || outer_const;
-  ts.is_volatile = concrete.is_volatile || outer_volatile;
+
+  auto apply_concrete = [&](const TypeSpec& concrete) {
+    ts = concrete;
+    ts.ptr_level += outer_ptr_level;
+    ts.is_lvalue_ref = concrete.is_lvalue_ref || outer_lref;
+    ts.is_rvalue_ref =
+        !ts.is_lvalue_ref && (concrete.is_rvalue_ref || outer_rref);
+    ts.is_const = concrete.is_const || outer_const;
+    ts.is_volatile = concrete.is_volatile || outer_volatile;
+  };
+
+  if (tpl_bindings) {
+    auto it = tpl_bindings->find(ts.tag);
+    if (it != tpl_bindings->end()) {
+      apply_concrete(it->second);
+      return ts;
+    }
+  }
+
+  const std::string qualified_name = ts.tag;
+  const size_t split = qualified_name.rfind("::");
+  if (split == std::string::npos) return ts;
+
+  TypeSpec resolved{};
+  if (!resolve_struct_member_typedef_type(
+          qualified_name.substr(0, split), qualified_name.substr(split + 2),
+          &resolved)) {
+    return ts;
+  }
+
+  apply_concrete(resolved);
+  if (tpl_bindings && ts.base == TB_TYPEDEF && ts.tag)
+    return substitute_signature_template_type(ts, tpl_bindings);
   return ts;
 }
 

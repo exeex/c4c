@@ -504,17 +504,77 @@ void Parser::apply_declarator_pointer_token(TypeSpec& ts, TokenKind pointer_tok,
 bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
     ParseContextGuard trace(this, __func__);
     std::string dep_name;
+    QualifiedNameRef qn;
     if (!consume_qualified_type_spelling_with_typename(
             /*require_typename=*/true,
             /*allow_global=*/true,
             /*consume_final_template_args=*/true,
-            &dep_name, nullptr)) {
+            &dep_name, &qn)) {
         return false;
     }
 
     if (out_name) {
         std::string resolved = resolve_visible_type_name(dep_name);
-        if (typedef_types_.count(resolved) == 0) resolved = dep_name;
+        if (typedef_types_.count(resolved) == 0) {
+            resolved = dep_name;
+            if (typedef_types_.count(resolved) == 0 &&
+                !qn.qualifier_segments.empty()) {
+                auto resolve_struct_like = [&](TypeSpec ts) -> TypeSpec {
+                    ts = resolve_typedef_chain(ts, typedef_types_);
+                    if (ts.base == TB_TYPEDEF && ts.tag &&
+                        typedef_types_.count(ts.tag) > 0) {
+                        ts = typedef_types_.at(ts.tag);
+                    }
+                    return ts;
+                };
+                auto follow_nested_owner = [&](const std::vector<std::string>& owner_chain)
+                    -> const Node* {
+                    if (owner_chain.empty()) return nullptr;
+                    std::string owner_tag = owner_chain.front();
+                    if (typedef_types_.count(owner_tag) > 0) {
+                        TypeSpec owner_ts = resolve_struct_like(typedef_types_.at(owner_tag));
+                        if (owner_ts.tag && owner_ts.tag[0]) owner_tag = owner_ts.tag;
+                    }
+                    auto owner_it = struct_tag_def_map_.find(owner_tag);
+                    if (owner_it == struct_tag_def_map_.end() || !owner_it->second)
+                        return nullptr;
+                    const Node* owner = owner_it->second;
+                    for (size_t i = 1; i < owner_chain.size(); ++i) {
+                        const Node* nested_decl = nullptr;
+                        for (int fi = 0; fi < owner->n_fields; ++fi) {
+                            const Node* field = owner->fields[fi];
+                            if (!field || field->kind != NK_DECL || !field->name ||
+                                owner_chain[i] != field->name) {
+                                continue;
+                            }
+                            nested_decl = field;
+                            break;
+                        }
+                        if (!nested_decl || !nested_decl->type.tag ||
+                            !nested_decl->type.tag[0]) {
+                            return nullptr;
+                        }
+                        owner_it = struct_tag_def_map_.find(nested_decl->type.tag);
+                        if (owner_it == struct_tag_def_map_.end() || !owner_it->second)
+                            return nullptr;
+                        owner = owner_it->second;
+                    }
+                    return owner;
+                };
+
+                TypeSpec resolved_member{};
+                if (const Node* owner = follow_nested_owner(qn.qualifier_segments)) {
+                    for (int i = 0; i < owner->n_member_typedefs; ++i) {
+                        const char* name = owner->member_typedef_names[i];
+                        if (!name || qn.base_name != name) continue;
+                        resolved_member = owner->member_typedef_types[i];
+                        typedef_types_[dep_name] = resolved_member;
+                        resolved = dep_name;
+                        break;
+                    }
+                }
+            }
+        }
         *out_name = resolved;
     }
     return true;

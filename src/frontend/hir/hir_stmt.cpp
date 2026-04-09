@@ -35,15 +35,8 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
   d.name = n->name ? n->name : "<anon_local>";
   // Substitute template type parameters in local variable types.
   {
-    TypeSpec decl_ts = n->type;
-    if (ctx.tpl_bindings.size() && decl_ts.base == TB_TYPEDEF && decl_ts.tag) {
-      auto it = ctx.tpl_bindings.find(decl_ts.tag);
-      if (it != ctx.tpl_bindings.end()) {
-        const TypeSpec& concrete = it->second;
-        decl_ts.base = concrete.base;
-        decl_ts.tag = concrete.tag;
-      }
-    }
+    TypeSpec decl_ts =
+        substitute_signature_template_type(n->type, &ctx.tpl_bindings);
     // Resolve pending template struct types in local variable decls.
     seed_and_resolve_pending_template_type_if_needed(
         decl_ts, ctx.tpl_bindings, ctx.nttp_bindings, n,

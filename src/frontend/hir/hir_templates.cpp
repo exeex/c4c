@@ -2085,8 +2085,21 @@ bool Lowerer::resolve_struct_member_typedef_type(const std::string& tag,
                             const TypeBindings& type_bindings,
                             const NttpBindings& nttp_bindings) -> TypeSpec {
     if (ts.base == TB_TYPEDEF && ts.tag) {
+      const int outer_ptr_level = ts.ptr_level;
+      const bool outer_lref = ts.is_lvalue_ref;
+      const bool outer_rref = ts.is_rvalue_ref;
+      const bool outer_const = ts.is_const;
+      const bool outer_volatile = ts.is_volatile;
       auto it = type_bindings.find(ts.tag);
-      if (it != type_bindings.end()) ts = it->second;
+      if (it != type_bindings.end()) {
+        ts = it->second;
+        ts.ptr_level += outer_ptr_level;
+        ts.is_lvalue_ref = ts.is_lvalue_ref || outer_lref;
+        ts.is_rvalue_ref = !ts.is_lvalue_ref &&
+                           (ts.is_rvalue_ref || outer_rref);
+        ts.is_const = ts.is_const || outer_const;
+        ts.is_volatile = ts.is_volatile || outer_volatile;
+      }
     }
     if (ts.tpl_struct_origin) {
       std::vector<std::string> refs;

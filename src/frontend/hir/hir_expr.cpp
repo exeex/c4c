@@ -1710,15 +1710,9 @@ ExprId Lowerer::lower_expr(FunctionCtx* ctx, const Node* n) {
     }
     case NK_CAST: {
       CastExpr c{};
-      TypeSpec cast_ts = n->type;
-      if (ctx && !ctx->tpl_bindings.empty() && cast_ts.base == TB_TYPEDEF && cast_ts.tag) {
-        auto it = ctx->tpl_bindings.find(cast_ts.tag);
-        if (it != ctx->tpl_bindings.end()) {
-          const TypeSpec& concrete = it->second;
-          cast_ts.base = concrete.base;
-          cast_ts.tag = concrete.tag;
-        }
-      }
+      TypeSpec cast_ts =
+          substitute_signature_template_type(
+              n->type, ctx ? &ctx->tpl_bindings : nullptr);
       if (ctx && !ctx->tpl_bindings.empty() && cast_ts.tpl_struct_origin) {
         seed_and_resolve_pending_template_type_if_needed(
             cast_ts, ctx->tpl_bindings, ctx->nttp_bindings, n,
