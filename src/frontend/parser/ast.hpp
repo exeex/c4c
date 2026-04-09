@@ -366,6 +366,7 @@ struct Node {
     bool is_const_method; // NK_FUNCTION: const-qualified member function
     bool is_lvalue_ref_method; // NK_FUNCTION: member function ref-qualified with &
     bool is_rvalue_ref_method; // NK_FUNCTION: member function ref-qualified with &&
+    bool is_concept_id;   // NK_VAR: parsed as a C++ concept-id expression
     bool is_explicit_specialization; // NK_FUNCTION: template<> explicit specialization
     uint8_t visibility; // 0=default, 1=hidden, 2=protected (from #pragma GCC visibility)
     bool is_volatile_asm; // NK_ASM

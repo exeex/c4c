@@ -1512,6 +1512,7 @@ Node* Parser::parse_primary() {
                         ident->template_arg_nttp_names[i] = parsed_args[i].nttp_name;
                         ident->template_arg_exprs[i] = parsed_args[i].expr;
                     }
+                    ident->is_concept_id = is_concept_name(ident->name ? ident->name : "");
                     // Template<A,B>::member — resolve as qualified name.
                     // Re-parse from ident_start to trigger template struct
                     // instantiation and get the mangled tag.

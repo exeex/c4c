@@ -1416,6 +1416,13 @@ ExprId Lowerer::lower_expr(FunctionCtx* ctx, const Node* n) {
     case NK_PACK_EXPANSION:
       return lower_expr(ctx, n->left);
     case NK_VAR: {
+      if (n->is_concept_id) {
+        TypeSpec ts{};
+        ts.base = TB_INT;
+        ts.array_size = -1;
+        ts.inner_rank = -1;
+        return append_expr(n, IntLiteral{1, false}, ts);
+      }
       if (n->name && n->name[0]) {
         if (n->has_template_args && find_template_struct_primary(n->name)) {
           std::string arg_refs;

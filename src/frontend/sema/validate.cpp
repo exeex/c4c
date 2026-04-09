@@ -1308,6 +1308,13 @@ class Validator {
       }
       case NK_VAR: {
         if (!n->name || !n->name[0]) return out;
+        if (n->is_concept_id) {
+          out.valid = true;
+          out.type = make_int_ts();
+          out.is_lvalue = false;
+          out.is_const_lvalue = false;
+          return out;
+        }
         std::string qname = n->name;
         size_t scope_pos = qname.rfind("::");
         if (scope_pos != std::string::npos) {

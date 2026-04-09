@@ -24,6 +24,7 @@ set(CPP_POSITIVE_FRONTEND_STEMS
     template_constexpr_member_runtime
     cpp20_out_of_class_trailing_requires_runtime
     cpp20_record_member_trailing_requires_frontend
+    cpp20_if_constexpr_concept_id_frontend
 )
 
 set(CPP_POSITIVE_PARSE_STEMS

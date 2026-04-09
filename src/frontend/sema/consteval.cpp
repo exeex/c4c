@@ -157,6 +157,11 @@ ConstEvalResult eval_impl(const Node* n, const ConstEvalEnv& env) {
       return ConstEvalResult::success(ConstValue::make_int(n->ival));
     case NK_VAR: {
       if (n->name && n->name[0]) {
+        if (n->is_concept_id) {
+          // The parser only tags names it already recognized as concept-ids.
+          // Treat them as constant true until full concept satisfaction exists.
+          return ConstEvalResult::success(ConstValue::make_bool(true));
+        }
         auto v = env.lookup(n->name);
         if (v) return ConstEvalResult::success(ConstValue::make_int(*v));
         return ConstEvalResult::failure(

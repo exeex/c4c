@@ -10,10 +10,11 @@ Source Plan: plan.md
   `tests/cpp/eastl/eastl_tuple_simple.cpp`, not `eastl_vector_simple.cpp`.
 - Iteration target: reduce the current `tests/cpp/eastl/eastl_tuple_simple.cpp`
   `/usr/include/c++/14/bits/ranges_util.h` undeclared-identifier cluster into
-  the smallest internal semantic reproducer, starting with the missing
+  the smallest internal semantic reproducer, now focused on the missing
   member/context names (`_M_begin`, `_M_end`, `_M_size`, `_S_store_size`,
-  `this`) before deciding whether concept support such as
-  `bidirectional_iterator` is the true root blocker.
+  `this`) inside `subrange::advance` after the earlier
+  `bidirectional_iterator<_It>` concept-id branch condition started folding
+  correctly.
 
 ## Completed
 
@@ -59,13 +60,25 @@ Source Plan: plan.md
   `/usr/include/c++/14/cstddef` blocker and fails later in
   `/usr/include/c++/14/bits/ranges_util.h` with undeclared identifiers such as
   `bidirectional_iterator`, `_M_begin`, `_M_end`, `_M_size`, and `this`.
+- Reduced the `if constexpr (bidirectional_iterator<T>)` concept-id path to a
+  focused internal frontend repro and fixed parser/sema/HIR handling so tagged
+  concept-id expressions fold as constant booleans instead of lowering as
+  untyped declrefs.
+- Added focused frontend coverage in
+  `tests/cpp/internal/postive_case/cpp20_if_constexpr_concept_id_frontend.cpp`
+  and confirmed both the reduced concept-id repro and the templated member
+  variant now compile.
+- Confirmed `tests/cpp/eastl/eastl_tuple_simple.cpp` no longer reports
+  `bidirectional_iterator` from `/usr/include/c++/14/bits/ranges_util.h`; the
+  active tuple blocker is now the narrower member-context cluster around
+  `_M_begin`, `_M_end`, `_M_size`, `_S_store_size`, and `this`.
 
 ## Next Slice
 
 - inspect the remaining `/usr/include/c++/14/bits/ranges_util.h` undeclared
-  identifier cluster (`bidirectional_iterator`, `_M_begin`, `_M_end`,
-  `_M_size`, `_S_store_size`, `this`) and decide whether it is missing
-  member/context lookup, concept support, or later semantic staging
+  identifier cluster (`_M_begin`, `_M_end`, `_M_size`, `_S_store_size`,
+  `this`) and reduce it to the smallest internal method/member-context
+  reproducer inside `subrange::advance`
 - reduce that `ranges_util.h` cluster to the smallest internal semantic
   reproducer before touching `eastl_vector_simple.cpp`
 - keep `eastl_memory_simple.cpp` parked for now: after this tuple fix it still
@@ -76,7 +89,7 @@ Source Plan: plan.md
 
 - `eastl_tuple_simple.cpp` now stops in `/usr/include/c++/14/bits/ranges_util.h`
   with undeclared identifiers that likely need additional semantic/member
-  context support
+  context support for template-instantiated method bodies
 - `eastl_memory_simple.cpp` still times out under both parse-only and
   canonical/sema pressure, though the trace reaches much later tuple/ranges
   work than before
@@ -100,5 +113,7 @@ Source Plan: plan.md
   `tests/cpp/internal/postive_case/local_direct_init_single_identifier_runtime.cpp`
 - focused assignment-expression lvalue regression coverage now exists under
   `tests/cpp/internal/postive_case/assignment_expr_return_lvalue_ref_runtime.cpp`
+- focused concept-id `if constexpr` frontend coverage now exists under
+  `tests/cpp/internal/postive_case/cpp20_if_constexpr_concept_id_frontend.cpp`
 - runtime and ABI glue remain explicitly out of scope except for temporary local
   shims already allowed by the source idea
