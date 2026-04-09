@@ -4,7 +4,9 @@
 #include "../../generation.hpp"
 #include "../../lowering/call_decode.hpp"
 #include "../../lowering/lir_to_bir.hpp"
+#include "../../stack_layout/analysis.hpp"
 #include "../../stack_layout/regalloc_helpers.hpp"
+#include "../../stack_layout/slot_assignment.hpp"
 #include "../../../codegen/lir/call_args.hpp"
 #include "../../../codegen/lir/lir_printer.hpp"
 
@@ -42,6 +44,30 @@ namespace {
 bool is_direct_bir_subset_error(const std::invalid_argument& ex) {
   return std::string_view(ex.what()).find("does not support this direct BIR module") !=
          std::string_view::npos;
+}
+
+c4c::backend::RegAllocIntegrationResult run_shared_x86_regalloc(
+    const c4c::codegen::lir::LirFunction& function);
+
+void prune_dead_entry_allocas(c4c::codegen::lir::LirFunction& function) {
+  const auto regalloc = run_shared_x86_regalloc(function);
+  const std::vector<c4c::backend::PhysReg> callee_saved = {
+      {1}, {2}, {3}, {4}, {5},
+  };
+  const auto analysis =
+      c4c::backend::stack_layout::analyze_stack_layout(function, regalloc, callee_saved);
+  const auto plans =
+      c4c::backend::stack_layout::plan_entry_alloca_slots(function, analysis);
+  c4c::backend::stack_layout::apply_entry_alloca_slot_plan(function, plans);
+}
+
+c4c::codegen::lir::LirModule prune_module_entry_allocas(
+    const c4c::codegen::lir::LirModule& module) {
+  auto prepared = module;
+  for (auto& function : prepared.functions) {
+    prune_dead_entry_allocas(function);
+  }
+  return prepared;
 }
 
 std::string asm_symbol_name(std::string_view target_triple,
@@ -4099,7 +4125,8 @@ std::string emit_module(const c4c::backend::bir::Module& module) {
 }
 
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {
-  if (const auto bir_module = c4c::backend::try_lower_to_bir(module); bir_module.has_value()) {
+  const auto prepared = prune_module_entry_allocas(module);
+  if (const auto bir_module = c4c::backend::try_lower_to_bir(prepared); bir_module.has_value()) {
     try {
       return emit_module(*bir_module);
     } catch (const std::invalid_argument& ex) {
@@ -4108,7 +4135,7 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
       }
     }
   }
-  if (const auto rendered = try_emit_direct_lir_module(module); rendered.has_value()) {
+  if (const auto rendered = try_emit_direct_lir_module(prepared); rendered.has_value()) {
     return *rendered;
   }
   throw_unsupported_direct_lir_module();

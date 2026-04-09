@@ -228,6 +228,13 @@ c4c::codegen::lir::LirModule make_lir_minimal_direct_call_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_lir_minimal_direct_call_with_dead_entry_alloca_module() {
+  auto module = make_lir_minimal_direct_call_module();
+  module.functions.front().alloca_insts.push_back(
+      c4c::codegen::lir::LirAllocaOp{"%dead.slot", "i32", "", 4});
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_lir_minimal_countdown_loop_module() {
   using namespace c4c::codegen::lir;
 
@@ -1242,6 +1249,25 @@ void test_x86_direct_emitter_lowers_minimal_direct_call_via_outer_bir_path() {
                   "x86 direct emitter should still lower the helper call after removing the duplicate inner BIR retry seam");
   expect_not_contains(rendered, "target triple =",
                       "x86 direct emitter should stay on native asm emission when the outer BIR path handles the direct-call module");
+}
+
+void test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_with_dead_entry_alloca_end_to_end() {
+  const auto module = make_lir_minimal_direct_call_with_dead_entry_alloca_module();
+  expect_true(!c4c::backend::try_lower_to_bir(module).has_value(),
+              "raw x86 LIR direct-call input with a dead entry alloca should still miss the bounded shared BIR matcher before backend-side pruning");
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".type helper, %function\nhelper:",
+                  "x86 LIR direct-call input with a dead entry alloca should still emit the helper definition after backend-side pruning");
+  expect_contains(rendered, "mov eax, 42",
+                  "x86 LIR direct-call input with a dead entry alloca should preserve the helper immediate after backend-side pruning");
+  expect_contains(rendered, "call helper",
+                  "x86 LIR direct-call input with a dead entry alloca should still lower the helper call on the native x86 path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR direct-call input with a dead entry alloca should stay on native asm emission instead of falling back to LLVM text");
 }
 
 void test_backend_bir_pipeline_drives_x86_lir_minimal_void_direct_call_imm_return_through_bir_end_to_end() {
@@ -2632,6 +2658,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_lowers_x86_direct_call_helper_families_to_shared_bir_views);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_through_bir_end_to_end);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_direct_call_via_outer_bir_path);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_with_dead_entry_alloca_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_void_direct_call_imm_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_declared_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_direct_call_through_bir_end_to_end);

@@ -7,16 +7,30 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 5: pull phi and CFG normalization behind the BIR boundary
-- Current slice: refresh full-suite validation after pruning the remaining
-  AArch64 direct-LIR phi/predecessor-copy fallback from
-  `src/backend/aarch64/codegen/emit.cpp`
-- Next intended slice: audit the remaining Step 5 CFG-normalization seams
-  outside target-local phi fallback, starting with any residual
-  BIR-lowering-versus-direct-emitter ownership split in
-  `src/backend/lowering/lir_to_backend_ir.cpp` and target entrypoints
+- Current slice: refresh full-suite validation after aligning the x86 direct
+  emitter entrypoint with the shared dead-entry-alloca pruning path used before
+  BIR lowering
+- Next intended slice: continue the Step 5 seam audit around remaining
+  target-entrypoint/backend-boundary asymmetries now that x86 and AArch64 both
+  prepare dead entry allocas before retrying shared BIR lowering
 
 ## Completed
 
+- Closed the x86 target-entrypoint preparation gap for Step 5 CFG ownership:
+  - added a focused regression in
+    `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` proving a minimal
+    helper-call module with a dead entry alloca still misses raw
+    `try_lower_to_bir(...)` but must route through the native x86 backend after
+    backend-side pruning
+  - taught `src/backend/x86/codegen/emit.cpp` to prune dead entry allocas
+    before both the shared BIR retry and the direct-LIR fallback so x86 no
+    longer diverges from the AArch64 entrypoint on this ownership seam
+  - re-ran `backend_bir_tests` for the x86 entrypoint-pruning slice before the
+    full-suite regression pass
+  - regenerated the slice-local full-suite baseline and after-log on the
+    rebuilt tree, then passed the regression guard with no new failures and no
+    pass-count drop (`2809 -> 2809`); the standing 32 failures remain the same
+    pre-existing AArch64 variadic set in both logs
 - Audited the remaining Step 5 AArch64 target-local phi seam and chose the
   direct production prune:
   - rejected `LirPhiOp` in
