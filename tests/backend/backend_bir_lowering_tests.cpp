@@ -561,6 +561,74 @@ c4c::codegen::lir::LirModule make_bir_minimal_scalar_global_load_lir_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_bir_minimal_string_literal_compare_phi_return_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.string_pool.push_back(LirStringConst{"@.str0", "hi", 3});
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.a", "ptr", "", 8});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(
+      LirGepOp{"%t0", "[3 x i8]", "@.str0", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirStoreOp{"ptr", "%t0", "%lv.a"});
+  entry.insts.push_back(LirLoadOp{"%t1", "ptr", "%lv.a"});
+  entry.insts.push_back(LirCastOp{"%t2", LirCastKind::SExt, "i32", "1", "i64"});
+  entry.insts.push_back(LirGepOp{"%t3", "i8", "%t1", false, {"i64 %t2"}});
+  entry.insts.push_back(LirLoadOp{"%t4", "i8", "%t3"});
+  entry.insts.push_back(LirCastOp{"%t5", LirCastKind::SExt, "i8", "%t4", "i32"});
+  entry.insts.push_back(LirCmpOp{"%t6", false, "eq", "i32", "%t5", "105"});
+  entry.insts.push_back(LirCastOp{"%t7", LirCastKind::ZExt, "i1", "%t6", "i32"});
+  entry.insts.push_back(LirCmpOp{"%t8", false, "ne", "i32", "%t7", "0"});
+  entry.terminator = LirCondBr{"%t8", "tern.then.9", "tern.else.11"};
+
+  LirBlock then_block;
+  then_block.id = LirBlockId{1};
+  then_block.label = "tern.then.9";
+  then_block.terminator = LirBr{"tern.then.end.10"};
+
+  LirBlock then_end;
+  then_end.id = LirBlockId{2};
+  then_end.label = "tern.then.end.10";
+  then_end.terminator = LirBr{"tern.end.13"};
+
+  LirBlock else_block;
+  else_block.id = LirBlockId{3};
+  else_block.label = "tern.else.11";
+  else_block.terminator = LirBr{"tern.else.end.12"};
+
+  LirBlock else_end;
+  else_end.id = LirBlockId{4};
+  else_end.label = "tern.else.end.12";
+  else_end.terminator = LirBr{"tern.end.13"};
+
+  LirBlock join;
+  join.id = LirBlockId{5};
+  join.label = "tern.end.13";
+  join.insts.push_back(
+      LirPhiOp{"%t14", "i32", {{"0", "tern.then.end.10"}, {"1", "tern.else.end.12"}}});
+  join.terminator = LirRet{std::string("%t14"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(then_block));
+  function.blocks.push_back(std::move(then_end));
+  function.blocks.push_back(std::move(else_block));
+  function.blocks.push_back(std::move(else_end));
+  function.blocks.push_back(std::move(join));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_bir_minimal_extern_scalar_global_load_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -2463,6 +2531,29 @@ void test_bir_lowering_accepts_minimal_scalar_global_load_lir_module() {
   const auto rendered = c4c::backend::bir::print(*lowered);
   expect_contains(rendered, "entry:\n  %t0 = bir.load_global i32 @g_counter\n  bir.ret i32 %t0\n",
                   "the lowered scalar global-load BIR module should print the bounded bir.load_global contract");
+}
+
+void test_bir_lowering_accepts_minimal_string_literal_compare_phi_return_lir_module() {
+  const auto lowered = c4c::backend::try_lower_to_bir(
+      make_bir_minimal_string_literal_compare_phi_return_lir_module());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the minimal string-literal compare phi-return LIR slice");
+  if (!lowered.has_value()) {
+    return;
+  }
+
+  expect_true(lowered->functions.size() == 1 &&
+                  lowered->functions.front().blocks.size() == 1 &&
+                  lowered->functions.front().blocks.front().insts.empty() &&
+                  lowered->functions.front().blocks.front().terminator.value.has_value() &&
+                  lowered->functions.front().blocks.front().terminator.value->kind ==
+                      c4c::backend::bir::Value::Kind::Immediate &&
+                  lowered->functions.front().blocks.front().terminator.value->immediate == 0,
+              "the lowered string-literal compare phi-return BIR module should collapse to the bounded immediate-return contract");
+
+  const auto rendered = c4c::backend::bir::print(*lowered);
+  expect_contains(rendered, "entry:\n  bir.ret i32 0\n",
+                  "the lowered string-literal compare phi-return BIR module should print the shared immediate-return contract");
 }
 
 void test_bir_lowering_accepts_typed_minimal_scalar_global_load_lir_slice_with_stale_text() {
@@ -4998,6 +5089,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_uses_actual_fixed_vararg_call_types_for_declared_direct_calls);
   RUN_TEST(test_bir_lowering_uses_typed_zero_arg_vararg_declared_direct_call_metadata_when_text_is_stale);
   RUN_TEST(test_bir_lowering_accepts_minimal_scalar_global_load_lir_module);
+  RUN_TEST(test_bir_lowering_accepts_minimal_string_literal_compare_phi_return_lir_module);
   RUN_TEST(test_bir_lowering_accepts_typed_minimal_scalar_global_load_lir_slice_with_stale_text);
   RUN_TEST(test_bir_lowering_accepts_minimal_extern_scalar_global_load_lir_module);
   RUN_TEST(test_bir_lowering_accepts_typed_minimal_extern_scalar_global_load_lir_slice_with_stale_text);

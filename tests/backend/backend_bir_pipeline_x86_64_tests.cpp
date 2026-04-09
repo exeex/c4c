@@ -631,6 +631,74 @@ c4c::codegen::lir::LirModule make_lir_minimal_scalar_global_load_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_lir_minimal_string_literal_compare_phi_return_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.string_pool.push_back(LirStringConst{"@.str0", "hi", 3});
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.a", "ptr", "", 8});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(
+      LirGepOp{"%t0", "[3 x i8]", "@.str0", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirStoreOp{"ptr", "%t0", "%lv.a"});
+  entry.insts.push_back(LirLoadOp{"%t1", "ptr", "%lv.a"});
+  entry.insts.push_back(LirCastOp{"%t2", LirCastKind::SExt, "i32", "1", "i64"});
+  entry.insts.push_back(LirGepOp{"%t3", "i8", "%t1", false, {"i64 %t2"}});
+  entry.insts.push_back(LirLoadOp{"%t4", "i8", "%t3"});
+  entry.insts.push_back(LirCastOp{"%t5", LirCastKind::SExt, "i8", "%t4", "i32"});
+  entry.insts.push_back(LirCmpOp{"%t6", false, "eq", "i32", "%t5", "105"});
+  entry.insts.push_back(LirCastOp{"%t7", LirCastKind::ZExt, "i1", "%t6", "i32"});
+  entry.insts.push_back(LirCmpOp{"%t8", false, "ne", "i32", "%t7", "0"});
+  entry.terminator = LirCondBr{"%t8", "tern.then.9", "tern.else.11"};
+
+  LirBlock then_block;
+  then_block.id = LirBlockId{1};
+  then_block.label = "tern.then.9";
+  then_block.terminator = LirBr{"tern.then.end.10"};
+
+  LirBlock then_end;
+  then_end.id = LirBlockId{2};
+  then_end.label = "tern.then.end.10";
+  then_end.terminator = LirBr{"tern.end.13"};
+
+  LirBlock else_block;
+  else_block.id = LirBlockId{3};
+  else_block.label = "tern.else.11";
+  else_block.terminator = LirBr{"tern.else.end.12"};
+
+  LirBlock else_end;
+  else_end.id = LirBlockId{4};
+  else_end.label = "tern.else.end.12";
+  else_end.terminator = LirBr{"tern.end.13"};
+
+  LirBlock join;
+  join.id = LirBlockId{5};
+  join.label = "tern.end.13";
+  join.insts.push_back(
+      LirPhiOp{"%t14", "i32", {{"0", "tern.then.end.10"}, {"1", "tern.else.end.12"}}});
+  join.terminator = LirRet{std::string("%t14"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(then_block));
+  function.blocks.push_back(std::move(then_end));
+  function.blocks.push_back(std::move(else_block));
+  function.blocks.push_back(std::move(else_end));
+  function.blocks.push_back(std::move(join));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_lir_minimal_extern_scalar_global_load_module() {
   using namespace c4c::codegen::lir;
 
@@ -2007,6 +2075,36 @@ void test_backend_bir_pipeline_drives_x86_lir_minimal_scalar_global_load_through
                       "x86 LIR scalar global-load input should stay on native asm emission instead of falling back to LLVM text");
 }
 
+void test_backend_bir_pipeline_drives_x86_lir_minimal_string_literal_compare_phi_return_through_bir_end_to_end() {
+  const auto lowered_bir =
+      c4c::backend::try_lower_to_bir(make_lir_minimal_string_literal_compare_phi_return_module());
+  expect_true(lowered_bir.has_value(),
+              "x86 LIR string-literal compare phi-return input should now lower into the bounded shared BIR immediate-return shape");
+  if (!lowered_bir.has_value()) {
+    return;
+  }
+
+  expect_true(lowered_bir->functions.size() == 1 &&
+                  lowered_bir->functions.front().blocks.size() == 1 &&
+                  lowered_bir->functions.front().blocks.front().insts.empty() &&
+                  lowered_bir->functions.front().blocks.front().terminator.value.has_value() &&
+                  lowered_bir->functions.front().blocks.front().terminator.value->kind ==
+                      c4c::backend::bir::Value::Kind::Immediate &&
+                  lowered_bir->functions.front().blocks.front().terminator.value->immediate == 0,
+              "x86 LIR string-literal compare phi-return lowering should produce the bounded shared immediate-return contract");
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_lir_minimal_string_literal_compare_phi_return_module()},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, "mov eax, 0",
+                  "x86 LIR string-literal compare phi-return input should materialize the folded shared immediate return on the native x86 path");
+  expect_not_contains(rendered, ".section .rodata",
+                      "x86 LIR string-literal compare phi-return input should stop relying on the direct-LIR string-literal helper once the shared BIR fold owns the seam");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR string-literal compare phi-return input should stay on native asm emission instead of falling back to LLVM text");
+}
+
 void test_backend_bir_pipeline_drives_x86_lir_minimal_extern_scalar_global_load_through_bir_end_to_end() {
   const auto lowered_bir =
       c4c::backend::try_lower_to_bir(make_lir_minimal_extern_scalar_global_load_module());
@@ -2904,6 +3002,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_folded_two_arg_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_countdown_loop_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_scalar_global_load_through_bir_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_string_literal_compare_phi_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_extern_scalar_global_load_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_global_char_pointer_diff_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_global_int_pointer_diff_through_bir_end_to_end);

@@ -7,22 +7,21 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 2: recover the highest-leverage shared BIR seam for the remaining x86
-  unsupported modules, continuing from `00138.c` now that the signed narrow
-  local-slot increment-and-compare slice in `00086.c` lowers through shared BIR
+  unsupported modules, continuing from `00143.c` now that the string-literal
+  compare-with-phi-return slice in `00138.c` lowers through shared BIR
 
 ## Next Slice
 
 - add the narrowest regression around
-  `c_testsuite_x86_backend_src_00138_c`
-- determine whether `00138.c` is now the first global-or-string materialization
-  seam that should move into shared BIR, or whether it belongs to a separate
-  parked family from `00143.c`
-- re-check representative survivors
-  `c_testsuite_x86_backend_src_00143_c` and one later `0018x`-series x86
-  backend failure to confirm the family split after `00086.c`
-- keep the new slice scoped away from the already-fixed local-slot
-  increment-and-compare matcher unless another narrow-slot variant proves
-  blocked on the same ownership point
+  `c_testsuite_x86_backend_src_00143_c`
+- determine whether `00143.c` should still be treated as the next
+  control-flow-heavy Family A survivor or whether it now needs a separate
+  switch/loop-specific parked seam from the fixed `00138.c` string-literal fold
+- re-check one later `0018x`-series x86 backend failure after `00143.c` to keep
+  the Family A vs Family B split current
+- keep the next slice scoped away from the already-fixed `00057.c`,
+  `00086.c`, and `00138.c` constant/immediate folds unless another survivor
+  proves blocked on the same ownership point
 
 ## Completed Items
 
@@ -71,6 +70,20 @@ Source Plan: plan.md
   `test_fail_before.log` = 2656 pass / 187 fail / 2843 total,
   `test_fail_after.log` = 2660 pass / 185 fail / 2845 total,
   zero newly failing tests
+- added an internal x86 backend route regression plus backend BIR lowering and
+  pipeline coverage for the string-literal compare-with-phi-return slice behind
+  `tests/c/external/c-testsuite/src/00138.c`
+- taught shared `lir_to_bir` lowering to fold the bounded string-pool local
+  pointer compare-and-phi-return module into a direct BIR immediate return,
+  covering the `char *a = "hi"; return (a[1] == 'i') ? 0 : 1;` shape without
+  reviving any legacy backend rescue path
+- verified `c_testsuite_x86_backend_src_00138_c` now passes while nearby
+  representative `c_testsuite_x86_backend_src_00143_c` still fails at the same
+  unsupported boundary
+- ran full-suite monotonic validation for the `00138.c` slice:
+  `test_fail_before.log` = 2656 pass / 187 fail / 2843 total,
+  `test_fail_after.log` = 2662 pass / 184 fail / 2846 total,
+  zero newly failing tests
 
 ## Blockers
 
@@ -92,7 +105,9 @@ Source Plan: plan.md
   `c_testsuite_x86_backend_src_00086_c` now routes through shared lowering by
   folding the prepared signed narrow-slot increment-and-compare branch to a
   constant BIR return
-- `00138.c` still fails but now looks more like string/global materialization
-  than the closed `00057.c`/`00086.c` local-slot seam; `00143.c` still looks
-  like a separate control-flow-heavy survivor that needs re-checking before it
-  is grouped with `00138.c`
+- landed the next string-backed/control-flow slice:
+  `c_testsuite_x86_backend_src_00138_c` now routes through shared lowering by
+  folding the string-pool local-pointer compare and phi return to a constant
+  BIR return
+- `00143.c` still looks like the next control-flow-heavy survivor and should be
+  re-checked before it is grouped with later Family A or Family B failures
