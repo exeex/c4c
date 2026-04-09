@@ -25,6 +25,15 @@ bir::LocalSlot make_memory_local_slot(std::string name,
                                       std::size_t size_bytes,
                                       std::size_t align_bytes = 0,
                                       bool is_address_taken = false);
+bir::MemoryAddress make_memory_local_address(std::string slot_name,
+                                             std::size_t byte_offset = 0,
+                                             std::size_t align_bytes = 0);
+bir::MemoryAddress make_memory_global_address(std::string global_name,
+                                              std::size_t byte_offset = 0,
+                                              std::size_t align_bytes = 0);
+bir::MemoryAddress make_memory_pointer_address(bir::Value base_value,
+                                               std::int64_t byte_offset = 0,
+                                               std::size_t align_bytes = 0);
 bir::LoadLocalInst make_memory_load_local(bir::Value result,
                                           std::string slot_name,
                                           std::size_t byte_offset = 0,

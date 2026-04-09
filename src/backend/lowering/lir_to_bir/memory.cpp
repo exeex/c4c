@@ -41,8 +41,8 @@ std::optional<bir::TypeKind> lower_memory_scalar_type(std::string_view type_text
 }
 
 bir::MemoryAddress make_local_memory_address(std::string slot_name,
-                                            std::size_t byte_offset,
-                                            std::size_t align_bytes = 0) {
+                                             std::size_t byte_offset,
+                                             std::size_t align_bytes = 0) {
   bir::MemoryAddress address;
   address.base_kind = bir::MemoryAddress::BaseKind::LocalSlot;
   address.base_name = std::move(slot_name);
@@ -242,16 +242,35 @@ bir::LocalSlot make_memory_local_slot(std::string name,
   };
 }
 
+bir::MemoryAddress make_memory_local_address(std::string slot_name,
+                                             std::size_t byte_offset,
+                                             std::size_t align_bytes) {
+  return make_local_memory_address(std::move(slot_name), byte_offset, align_bytes);
+}
+
+bir::MemoryAddress make_memory_global_address(std::string global_name,
+                                              std::size_t byte_offset,
+                                              std::size_t align_bytes) {
+  return make_global_memory_address(std::move(global_name), byte_offset, align_bytes);
+}
+
+bir::MemoryAddress make_memory_pointer_address(bir::Value base_value,
+                                               std::int64_t byte_offset,
+                                               std::size_t align_bytes) {
+  return make_pointer_memory_address(std::move(base_value), byte_offset, align_bytes);
+}
+
 bir::LoadLocalInst make_memory_load_local(bir::Value result,
                                           std::string slot_name,
                                           std::size_t byte_offset,
                                           std::size_t align_bytes) {
+  const auto address = make_memory_local_address(slot_name, byte_offset, align_bytes);
   return bir::LoadLocalInst{
       .result = std::move(result),
       .slot_name = std::move(slot_name),
       .byte_offset = byte_offset,
       .align_bytes = align_bytes,
-      .address = std::nullopt,
+      .address = std::move(address),
   };
 }
 
@@ -259,12 +278,13 @@ bir::StoreLocalInst make_memory_store_local(std::string slot_name,
                                             bir::Value value,
                                             std::size_t byte_offset,
                                             std::size_t align_bytes) {
+  const auto address = make_memory_local_address(slot_name, byte_offset, align_bytes);
   return bir::StoreLocalInst{
       .slot_name = std::move(slot_name),
       .value = std::move(value),
       .byte_offset = byte_offset,
       .align_bytes = align_bytes,
-      .address = std::nullopt,
+      .address = std::move(address),
   };
 }
 
@@ -272,12 +292,13 @@ bir::LoadGlobalInst make_memory_load_global(bir::Value result,
                                             std::string global_name,
                                             std::size_t byte_offset,
                                             std::size_t align_bytes) {
+  const auto address = make_memory_global_address(global_name, byte_offset, align_bytes);
   return bir::LoadGlobalInst{
       .result = std::move(result),
       .global_name = std::move(global_name),
       .byte_offset = byte_offset,
       .align_bytes = align_bytes,
-      .address = std::nullopt,
+      .address = std::move(address),
   };
 }
 
@@ -285,12 +306,13 @@ bir::StoreGlobalInst make_memory_store_global(std::string global_name,
                                               bir::Value value,
                                               std::size_t byte_offset,
                                               std::size_t align_bytes) {
+  const auto address = make_memory_global_address(global_name, byte_offset, align_bytes);
   return bir::StoreGlobalInst{
       .global_name = std::move(global_name),
       .value = std::move(value),
       .byte_offset = byte_offset,
       .align_bytes = align_bytes,
-      .address = std::nullopt,
+      .address = std::move(address),
   };
 }
 

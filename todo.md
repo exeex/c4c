@@ -191,6 +191,9 @@ Source Plan: plan.md
 - rewired the legacy monolith's first local/global memory materialization sites
   to call `lir_to_bir/memory.cpp` helpers for `LocalSlot`, `LoadLocalInst`,
   `StoreLocalInst`, `LoadGlobalInst`, and `StoreGlobalInst` construction
+- taught the split memory helpers to populate formal `bir::MemoryAddress`
+  metadata for local/global load-store nodes instead of leaving address
+  ownership as bare `byte_offset` fields
 
 ## Blockers
 
