@@ -141,14 +141,26 @@ Step 1 classification snapshot from the current tree on 2026-04-09:
 
 - Family A: single-function alloca-backed local-slot and control-flow modules
   that still miss both the shared BIR contracts and the surviving x86 native
-  direct-LIR subset. Representative current failures:
-  `c_testsuite_x86_backend_src_00057_c`,
-  `c_testsuite_x86_backend_src_00086_c`,
-  `c_testsuite_x86_backend_src_00138_c`,
-  `c_testsuite_x86_backend_src_00141_c`, and
-  `c_testsuite_x86_backend_src_00143_c`.
+  direct-LIR subset.
+  Current-tree status after the `00057.c`, `00086.c`, and `00138.c` slices:
+  - recovered Step 2 representatives:
+    `c_testsuite_x86_backend_src_00057_c`,
+    `c_testsuite_x86_backend_src_00086_c`, and
+    `c_testsuite_x86_backend_src_00138_c`
+  - remaining simple survivor for the active Step 2 lane:
+    `c_testsuite_x86_backend_src_00141_c`
   Common shapes: entry allocas, load/store through local slots, local-array
-  GEPs, compare-and-branch control flow, and switch/phi joins.
+  GEPs, compare-and-branch control flow, and simple local arithmetic.
+- Family A2: switch-entry fallthrough loop modules that still look
+  single-function and local-slot backed, but now appear to require a different
+  shared ownership seam than the earlier constant/immediate folds.
+  Representative current failure:
+  `c_testsuite_x86_backend_src_00143_c`.
+  Common shapes: local arrays plus pointers, a `switch` that enters a
+  fallthrough copy chain, a do-while backedge, and a second verification loop.
+  This seam is now parked separately in
+  `ideas/open/46_x86_64_shared_bir_switch_fallthrough_loop_modules.md` so idea
+  44 can stay focused on the remaining simpler Family A survivor.
 - Family B: global-rich and initializer-heavy modules whose direct-LIR surface
   still exceeds the shared BIR gateway because they carry many globals, string
   pool entries, extern declarations, or helper functions. Representative
@@ -166,7 +178,10 @@ Step 1 classification snapshot from the current tree on 2026-04-09:
 Step 2 should start with Family A. `00057.c` is the narrowest regression
 target because it isolates stack-local array allocas plus a simple compare and
 branch without introducing calls, globals, or helper functions. `00086.c` and
-`00138.c` are the next nearby validations once that seam moves.
+`00138.c` were the next nearby validations once that seam moved. The current
+tree now leaves `00141.c` as the next simple Family A survivor, while
+`00143.c` has been split into the parked Family A2 switch/fallthrough loop
+initiative.
 
 ### Step 2: Recover the highest-leverage shared BIR seam
 

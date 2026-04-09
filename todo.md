@@ -7,18 +7,20 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 2: recover the highest-leverage shared BIR seam for the remaining x86
-  unsupported modules, continuing from `00143.c` now that the string-literal
-  compare-with-phi-return slice in `00138.c` lowers through shared BIR
+  unsupported modules, continuing from `00141.c` now that `00143.c` has been
+  reclassified as a separate switch/fallthrough loop initiative and the
+  string-literal compare-with-phi-return slice in `00138.c` lowers through
+  shared BIR
 
 ## Next Slice
 
 - add the narrowest regression around
-  `c_testsuite_x86_backend_src_00143_c`
-- determine whether `00143.c` should still be treated as the next
-  control-flow-heavy Family A survivor or whether it now needs a separate
-  switch/loop-specific parked seam from the fixed `00138.c` string-literal fold
-- re-check one later `0018x`-series x86 backend failure after `00143.c` to keep
-  the Family A vs Family B split current
+  `c_testsuite_x86_backend_src_00141_c`
+- keep the active Step 2 lane scoped to simple alloca-backed local-slot loads,
+  stores, and arithmetic without pulling in the parked `00143.c`
+  switch/fallthrough copy loop seam from idea 46
+- preserve the Family A vs Family B split confirmed by the later
+  `c_testsuite_x86_backend_src_00180_c` re-check
 - keep the next slice scoped away from the already-fixed `00057.c`,
   `00086.c`, and `00138.c` constant/immediate folds unless another survivor
   proves blocked on the same ownership point
@@ -84,6 +86,19 @@ Source Plan: plan.md
   `test_fail_before.log` = 2656 pass / 187 fail / 2843 total,
   `test_fail_after.log` = 2662 pass / 184 fail / 2846 total,
   zero newly failing tests
+- re-checked `c_testsuite_x86_backend_src_00143_c` on the current tree and
+  confirmed it is not another constant/immediate fold survivor: it lowers as a
+  Duff's-device style switch-entry fallthrough copy loop followed by a
+  verification loop, and still stops at the x86 unsupported direct-LIR
+  boundary
+- re-checked later representative `c_testsuite_x86_backend_src_00180_c` and
+  confirmed the `0018x` lane still belongs to Family B because it pulls in
+  libc-facing externs, globals, and string-heavy declarations rather than the
+  local-slot/control-flow shape from Family A
+- split the `00143.c` switch/fallthrough loop ownership gap into
+  `ideas/open/46_x86_64_shared_bir_switch_fallthrough_loop_modules.md` so the
+  active idea 44 runbook can stay focused on the remaining simpler Family A
+  survivor `00141.c`
 
 ## Blockers
 
@@ -109,5 +124,9 @@ Source Plan: plan.md
   `c_testsuite_x86_backend_src_00138_c` now routes through shared lowering by
   folding the string-pool local-pointer compare and phi return to a constant
   BIR return
-- `00143.c` still looks like the next control-flow-heavy survivor and should be
-  re-checked before it is grouped with later Family A or Family B failures
+- current-tree pre-change baseline for this iteration:
+  `test_before.log` = 2662 pass / 184 fail / 2846 total
+- `00143.c` is now classified as a separate switch-entry fallthrough copy-loop
+  seam and tracked in
+  [ideas/open/46_x86_64_shared_bir_switch_fallthrough_loop_modules.md](/workspaces/c4c/ideas/open/46_x86_64_shared_bir_switch_fallthrough_loop_modules.md)
+- `00141.c` is the next simple Family A survivor for the active Step 2 lane
