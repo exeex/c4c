@@ -299,12 +299,100 @@ bool has_qualified_type_parse_fallback(const QualifiedTypeProbe& probe) {
            probe.has_unresolved_qualified_fallback;
 }
 
+bool starts_parenthesized_member_pointer_declarator(const Parser& parser,
+                                                    int after_pos) {
+    if (after_pos < 0 || after_pos >= static_cast<int>(parser.tokens_.size()) ||
+        parser.tokens_[after_pos].kind != TokenKind::LParen) {
+        return false;
+    }
+
+    int probe = after_pos + 1;
+    auto skip_attributes = [&]() {
+        while (probe < static_cast<int>(parser.tokens_.size()) &&
+               parser.tokens_[probe].kind == TokenKind::KwAttribute) {
+            ++probe;
+            for (int paren = 0; probe < static_cast<int>(parser.tokens_.size()) &&
+                                parser.tokens_[probe].kind == TokenKind::LParen;) {
+                ++paren;
+                ++probe;
+                while (probe < static_cast<int>(parser.tokens_.size()) && paren > 0) {
+                    if (parser.tokens_[probe].kind == TokenKind::LParen) {
+                        ++paren;
+                    } else if (parser.tokens_[probe].kind == TokenKind::RParen) {
+                        --paren;
+                    }
+                    ++probe;
+                }
+            }
+        }
+    };
+
+    skip_attributes();
+    if (probe < static_cast<int>(parser.tokens_.size()) &&
+        parser.tokens_[probe].kind == TokenKind::KwTypename) {
+        ++probe;
+    }
+    if (probe < static_cast<int>(parser.tokens_.size()) &&
+        parser.tokens_[probe].kind == TokenKind::ColonColon) {
+        ++probe;
+    }
+    if (probe >= static_cast<int>(parser.tokens_.size()) ||
+        parser.tokens_[probe].kind != TokenKind::Identifier) {
+        return false;
+    }
+
+    ++probe;
+    while (probe + 1 < static_cast<int>(parser.tokens_.size()) &&
+           parser.tokens_[probe].kind == TokenKind::ColonColon &&
+           parser.tokens_[probe + 1].kind == TokenKind::Identifier) {
+        probe += 2;
+    }
+
+    return probe + 1 < static_cast<int>(parser.tokens_.size()) &&
+           parser.tokens_[probe].kind == TokenKind::ColonColon &&
+           parser.tokens_[probe + 1].kind == TokenKind::Star;
+}
+
+bool starts_qualified_member_pointer_type_id(const Parser& parser,
+                                             int start_pos) {
+    if (start_pos < 0 || start_pos >= static_cast<int>(parser.tokens_.size())) {
+        return false;
+    }
+
+    int probe = start_pos;
+    bool saw_qualified = false;
+    if (parser.tokens_[probe].kind == TokenKind::ColonColon) {
+        saw_qualified = true;
+        ++probe;
+    }
+    if (probe >= static_cast<int>(parser.tokens_.size()) ||
+        parser.tokens_[probe].kind != TokenKind::Identifier) {
+        return false;
+    }
+
+    ++probe;
+    while (probe + 1 < static_cast<int>(parser.tokens_.size()) &&
+           parser.tokens_[probe].kind == TokenKind::ColonColon &&
+           parser.tokens_[probe + 1].kind == TokenKind::Identifier) {
+        saw_qualified = true;
+        probe += 2;
+    }
+
+    return saw_qualified &&
+           starts_parenthesized_member_pointer_declarator(parser, probe);
+}
+
 bool can_start_qualified_type_declaration(const Parser& parser,
                                           const QualifiedTypeProbe& probe,
+                                          int after_pos,
                                           TokenKind trailing_kind) {
     if (probe.has_resolved_typedef) return true;
     if (!probe.has_unresolved_qualified_fallback || !parser.is_cpp_mode()) {
         return false;
+    }
+    if (trailing_kind == TokenKind::LParen &&
+        starts_parenthesized_member_pointer_declarator(parser, after_pos)) {
+        return true;
     }
     if (probe.namespace_context_id < 0)
         return trailing_kind == TokenKind::Less;

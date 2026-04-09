@@ -69,7 +69,12 @@ bool Parser::is_type_start() const {
                 starts_with_value_like_template_expr(*this, tokens_, pos_)) {
                 return false;
             }
-            if (can_start_qualified_type_declaration(*this, probe, trailing_kind))
+            if (trailing_kind == TokenKind::LParen &&
+                starts_parenthesized_member_pointer_declarator(*this, after_pos)) {
+                return true;
+            }
+            if (can_start_qualified_type_declaration(*this, probe, after_pos,
+                                                     trailing_kind))
                 return true;
         }
     }
@@ -93,7 +98,12 @@ bool Parser::is_type_start() const {
                 starts_with_value_like_template_expr(*this, tokens_, pos_)) {
                 return false;
             }
-            if (can_start_qualified_type_declaration(*this, probe, trailing_kind))
+            if (trailing_kind == TokenKind::LParen &&
+                starts_parenthesized_member_pointer_declarator(*this, after_pos)) {
+                return true;
+            }
+            if (can_start_qualified_type_declaration(*this, probe, after_pos,
+                                                     trailing_kind))
                 return true;
         }
     }
@@ -139,7 +149,9 @@ bool Parser::can_start_parameter_type() const {
         pos_ + (qn.is_global_qualified ? 1 : 0) +
         2 * static_cast<int>(qn.qualifier_segments.size()) + 1;
     return after_pos < static_cast<int>(tokens_.size()) &&
-           tokens_[after_pos].kind == TokenKind::Less;
+           (tokens_[after_pos].kind == TokenKind::Less ||
+            (tokens_[after_pos].kind == TokenKind::LParen &&
+             starts_parenthesized_member_pointer_declarator(*this, after_pos)));
 }
 
 bool Parser::looks_like_unresolved_identifier_type_head(int pos) const {

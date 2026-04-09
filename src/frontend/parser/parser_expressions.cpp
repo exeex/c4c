@@ -1,9 +1,11 @@
-#include "parser.hpp"
-
 #include <cassert>
 #include <cstring>
 #include <functional>
 #include <stdexcept>
+
+#include "lexer.hpp"
+#include "parser.hpp"
+#include "types_helpers.hpp"
 
 namespace c4c {
 
@@ -298,7 +300,8 @@ Node* Parser::parse_unary() {
                 {
                     TentativeParseGuard guard(*this);
                     consume();  // consume (
-                    if (is_type_start()) {
+                    if (is_type_start() ||
+                        starts_qualified_member_pointer_type_id(*this, pos_)) {
                         TypeSpec ts = parse_type_name();
                         expect(TokenKind::RParen);
                         guard.commit();
@@ -335,7 +338,8 @@ Node* Parser::parse_unary() {
         case TokenKind::KwGnuAlignof: {
             consume();
             expect(TokenKind::LParen);
-            if (is_type_start()) {
+            if (is_type_start() ||
+                starts_qualified_member_pointer_type_id(*this, pos_)) {
                 TypeSpec ts = parse_type_name();
                 expect(TokenKind::RParen);
                 Node* n = make_node(NK_ALIGNOF_TYPE, ln);
@@ -1131,7 +1135,9 @@ Node* Parser::parse_primary() {
         // Check for cast: (type-name)expr
         // NOTE: This site saves tokens_ in addition to pos_ (for template edge cases).
         // TentativeParseGuard does not snapshot tokens_, so manual save/restore is kept here.
-        if (is_type_start() && has_balanced_template_id_ahead()) {
+        if ((is_type_start() ||
+             starts_qualified_member_pointer_type_id(*this, pos_)) &&
+            has_balanced_template_id_ahead()) {
             int save_pos = pos_;
             std::vector<Token> saved_tokens = tokens_;
             TypeSpec cast_ts = parse_type_name();
@@ -1345,7 +1351,13 @@ Node* Parser::parse_primary() {
                     consume();
                     cast_ts.is_lvalue_ref = true;
                 }
-                if (check(TokenKind::LParen)) {
+                if (check(TokenKind::LParen) &&
+                    starts_parenthesized_member_pointer_declarator(*this, pos_)) {
+                    pos_ = ident_start;
+                    tokens_ = saved_tokens;
+                    last_resolved_typedef_ = saved_typedef;
+                    qn = parse_qualified_name(false);
+                } else if (check(TokenKind::LParen)) {
                     consume();
                     std::vector<Node*> args;
                     if (!check(TokenKind::RParen)) {

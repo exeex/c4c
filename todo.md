@@ -6,11 +6,10 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 2: extend generated `parse_only` coverage into the next
-  function-shaped declarator family by emitting
-  `member_function_pointer` across all tracked owner spellings and all
-  five plan contexts, then validate that generated batch before
-  considering a Step 3 parser-fix split
+- Step 5: close out the function-shaped `parse_only` breadth pass with
+  the validated `member_function_pointer` family recorded, then reassess
+  whether Step 2 is complete enough to move into selected stronger
+  validation promotion work
 
 ## Completed Items
 
@@ -88,16 +87,40 @@ Source Plan: plan.md
   `check_monotonic_regression.py --before test_fail_before.log --after
   test_fail_after.log --allow-non-decreasing-passed` reported PASS with zero
   new failing tests and a +50 pass delta against the stored baseline log
+- Expanded the generated `parse_only` matrix batch to include
+  `member_function_pointer` while preserving the existing grouped,
+  member-pointer, and other function-shaped families in the emitted
+  directory
+- Added the generated `member_function_pointer` `parse_only` family under
+  `tests/cpp/internal/generated/parser_disambiguation_matrix/parse_only/`
+  across all tracked owner spellings and plan contexts
+- Step 3 parser fix: taught qualified type-head disambiguation to keep
+  `qualified-type (owner::*)...` on the type/declarator path in
+  statement, cast/type-id, and parameter contexts so the new qualified
+  `member_function_pointer` family parses cleanly
+- Targeted validation: `ctest --test-dir build -R
+  'decl_member_function_pointer|qualified_member_function_pointer_template_owner_parse'
+  --output-on-failure` passed all 25 generated `member_function_pointer`
+  cases plus adjacent existing qualified member-function-pointer
+  coverage with zero failures
+- Targeted validation: `ctest --test-dir build -R
+  'decl_(function_pointer|function_lvalue_ref|function_rvalue_ref|member_function_pointer)'
+  --output-on-failure` passed all 100 generated function-shaped matrix
+  cases with zero failures
+- Full-suite validation: `ctest --test-dir build -j8 --output-on-failure >
+  test_fail_after.log` completed with 3077/3077 passing tests, and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
+  --before test_fail_before.log --after test_fail_after.log
+  --allow-non-decreasing-passed` reported PASS with zero new failing
+  tests and a +75 pass delta against the stored baseline log
 
 ## Next Slice
 
-- extend Step 2 breadth into the remaining function-shaped declarator families
-- with `member_function_pointer` as the current generated `parse_only`
-  target across all owner spellings and plan contexts
-- if the next function-shaped family reveals a concrete parser split failure,
-  isolate that failing family as the Step 3 parser-fix slice
-- if `member_function_pointer` lands cleanly, reassess whether any additional
-  Step 2 parse-only breadth remains before promoting selected cases
+- reassess whether Step 2 breadth is now complete for the currently
+  planned function-shaped declarator set
+- if no more missing parse-only families remain, move to Step 4 and
+  choose a bounded high-risk family for stronger-than-parse-only
+  validation
 - keep generation template-driven and separate from the existing hand-written
   reductions in `postive_case/`
 

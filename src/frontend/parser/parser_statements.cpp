@@ -1,9 +1,11 @@
-#include "parser.hpp"
-
 #include <cctype>
 #include <stdexcept>
 #include <string>
 #include <vector>
+
+#include "lexer.hpp"
+#include "parser.hpp"
+#include "types_helpers.hpp"
 
 namespace c4c {
 Node* Parser::parse_block() {
@@ -710,6 +712,11 @@ Node* Parser::parse_stmt() {
         return parse_local_decl();
     }
 
+    if (is_cpp_mode() &&
+        starts_qualified_member_pointer_type_id(*this, pos_)) {
+        return parse_local_decl();
+    }
+
     // Local declaration?
     // Disambiguate: Type::Method(args) is a qualified call expression, not a
     // declaration.  When the first identifier is a type but Type::Ident is NOT
@@ -739,6 +746,13 @@ Node* Parser::parse_stmt() {
             // Peek the full qualified name to check if it resolves to a type.
             QualifiedNameRef qn;
             if (peek_qualified_name(&qn, false) && !qn.qualifier_segments.empty()) {
+                const int after_pos =
+                    pos_ + 1 + 2 * static_cast<int>(qn.qualifier_segments.size());
+                if (after_pos < static_cast<int>(tokens_.size()) &&
+                    tokens_[after_pos].kind == TokenKind::LParen &&
+                    starts_parenthesized_member_pointer_declarator(*this, after_pos)) {
+                    return parse_local_decl();
+                }
                 // Build the full qualified name
                 std::string full_name;
                 for (size_t i = 0; i < qn.qualifier_segments.size(); ++i) {
