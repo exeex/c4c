@@ -15,7 +15,10 @@ Source Plan: plan.md
   backend-owned seam
 - Next intended slice: either remove the next redundant prepared fallback field
   with a focused regression or record the exact still-required consumer and
-  invariant in `todo.md`
+  invariant in `todo.md`; if this touches public interfaces, prefer the
+  newly-recorded Step 6-safe split between backend CFG/liveness-core surfaces
+  over broader cleanup now tracked separately in
+  `ideas/open/46_backend_surface_cleanup_after_mir_migration.md`
 
 ## Completed
 

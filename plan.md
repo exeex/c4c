@@ -45,6 +45,8 @@ runbook.
 - Canonical BIR-side ownership for phi/control-flow normalization
 - Backend MIR-owned liveness, regalloc, and stack-layout integration
 - Removal of temporary LIR-side backend ownership shims
+- Narrowed backend analysis/public surfaces so Step 6 compatibility shims stay
+  explicit and bounded
 
 ## Non-Goals
 
@@ -52,6 +54,8 @@ runbook.
 - Expanding BIR beyond what this migration needs
 - Removing textual LIR rendering entirely
 - Silent scope creep into unrelated backend initiatives
+- Broad backend surface cleanup that does not directly unblock the current
+  ownership migration
 
 ## Working Model
 
@@ -192,6 +196,8 @@ Primary targets:
 Concrete actions:
 - add a backend-owned CFG/function representation that can carry the liveness
   inputs needed after the BIR boundary
+- split backend-owned CFG/MIR carrier definitions from liveness-core dataflow
+  APIs when that separation makes the ownership seam clearer
 - provide lowering entry points from current backend-owned forms into that CFG,
   starting with BIR and any temporary LIR compatibility lowering still needed
 - make `LivenessInput` derive from the backend-owned CFG representation rather
@@ -200,6 +206,15 @@ Concrete actions:
   compute_live_intervals(...)`
 - keep `LirFunction -> backend CFG` only as a temporary comparison/transition
   shim while non-production callers are migrated
+- mark any remaining direct-`LirFunction` liveness entrypoints and nearby
+  helper surfaces as compatibility-only instead of leaving them visually
+  equivalent to production paths
+- continue shrinking prepared stack-layout fallback carriers only when each
+  removed field is replaced by a narrower backend-owned seam rather than
+  another ad hoc cache
+- allow small `stack_layout` header/API splits when they directly clarify the
+  Step 6 ownership boundary between planning, prepared fallback metadata, and
+  rewrite application
 - validate interval parity or intended equivalence on narrow backend tests
 
 Suggested slice order:
@@ -219,6 +234,9 @@ Completion check:
   than raw `LirFunction`
 - any remaining `LirFunction` liveness entrypoint is explicitly compatibility-
   only and no longer the primary production surface
+- the Step 6 public surface makes backend-owned versus compatibility-only seams
+  obvious enough that Step 7 can retarget regalloc/stack layout without
+  reopening raw-LIR ownership questions
 
 ### Step 7: Move regalloc and stack layout to backend MIR
 
@@ -272,6 +290,9 @@ Completion check:
 - the post-41 ownership plan for phi, CFG normalization, liveness, and regalloc
   is explicit in code and planning state
 - production regalloc no longer treats raw LIR as the permanent backend layer
+- backend surface cleanup that is useful but not required for this migration is
+  tracked in a separate `ideas/open/` follow-up rather than folded into this
+  runbook
 
 ## Validation
 
