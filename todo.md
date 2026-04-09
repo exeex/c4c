@@ -7,16 +7,15 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 1: audit reference-qualified cast targets
-- Current slice: continue Step 1 after the ref-qualified method-dispatch fix
-  into the next value-category-sensitive casted-reference case, likely field
-  or mutation behavior through `(T&)expr` / `(T&&)expr`
+- Current slice: widen the casted-reference member-access matrix from the now
+  covered `(T&)expr` field-access case to the first `&&` or inherited/base
+  access shape that still lacks explicit regression coverage
 - Current implementation target: `tests/cpp` cast/reference runtime regressions
-  plus the earliest failing frontend or HIR surface the next member-access
-  case exposes
-- Next intended slice: add the first focused value-category-sensitive
-  reference-cast case for field access or mutation through `(T&)expr` or
-  `(T&&)expr`, compare against Clang, and classify any mismatch by earliest
-  failing stage before widening coverage further
+  plus the earliest failing parser, sema, HIR, or lowering surface the first
+  unresolved casted-member-access case exposes
+- Next intended slice: add the narrowest `(T&&)expr` field-access or inherited
+  member-access case, compare against Clang when value category matters, and
+  stop at the earliest failing stage if it does not already pass
 
 ## Completed
 
@@ -45,6 +44,13 @@ Source Plan: plan.md
   survive into overload resolution on the implicit object.
 - Full-suite validation stayed monotonic: `test_fail_before.log` 2843/2843
   passed, `test_fail_after.log` 2844/2844 passed, with zero new failures.
+- Added `tests/cpp/internal/postive_case/c_style_cast_lvalue_ref_field_access.cpp`
+  to cover field read/write through `(Box&)b`.
+- Compared the new field-access case against Clang and confirmed that parser,
+  HIR, lowering, and runtime behavior already match for the `(T&)expr`
+  lvalue-reference member-access slice, so no compiler change was needed.
+- Full-suite validation stayed monotonic: `test_fail_before.log` 2843/2843
+  passed, `test_fail_after.log` 2845/2845 passed, with zero new failures.
 
 ## Notes
 
@@ -56,3 +62,7 @@ Source Plan: plan.md
   implicit object: method ref-overload metadata only tracked explicit
   parameters, so zero-arg `&`/`&&` methods always selected the first overload
   until the parser and overload set started carrying method ref qualifiers.
+- The `(T&)expr` field-access probe did not expose a frontend or HIR bug: HIR
+  preserves `((struct Box&)b).value` as a field lvalue on the original object,
+  and the emitted LLVM IR lowers both read and write through the same storage
+  as Clang.
