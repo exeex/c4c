@@ -11,9 +11,9 @@ Source Plan: plan.md
   `src/backend/lowering/lir_to_bir.cpp` and into
   `src/backend/lowering/lir_to_bir/{cfg,types,memory,calls,phi,aggregates}.cpp`
 - current exact slice:
-  continue the memory/address lane after the extern/global array load move by
-  identifying the next residual global load/store matcher family whose primary
-  work is memory/address ownership and re-home it into
+  continue the memory/address lane after the scalar global-load move by
+  extracting the remaining scalar global store+reload matcher family whose
+  primary work is memory/address ownership out of the monolith and into
   `src/backend/lowering/lir_to_bir/memory.cpp`
 - build/test work is intentionally ignored in this phase per `plan.md`
   until the lane explicitly switches to `Phase 2: Compile recovery`
@@ -22,9 +22,9 @@ Source Plan: plan.md
 
 - make more global/array address-form matchers consume split memory helpers
   instead of rebuilding shape logic in `lir_to_bir.cpp`
-- move the next residual scalar global load/store seam out of the monolith and
-  into `src/backend/lowering/lir_to_bir/memory.cpp`, likely starting with the
-  plain or extern scalar global load matcher family
+- move the remaining scalar global store+reload seam out of the monolith and
+  into `src/backend/lowering/lir_to_bir/memory.cpp` so the split memory lane
+  owns the residual scalar global load/store matcher family coherently
 - once the current ownership-wiring burst is coherent, start a dedicated
   compile-recovery pass for the split seam files before any new targeted tests
 
@@ -96,11 +96,19 @@ Source Plan: plan.md
   `src/backend/lowering/lir_to_bir/memory.cpp`, exporting the split
   memory-owned entry point through `passes.hpp` so the monolith now only
   dispatches that GEP/address-decoding seam
+- moved the minimal plain and extern scalar global-load matcher/module lowerers
+  out of `src/backend/lowering/lir_to_bir.cpp` and into
+  `src/backend/lowering/lir_to_bir/memory.cpp`, exporting the split
+  memory-owned entry points through `passes.hpp` so the monolith now only
+  dispatches those scalar global read seams
 - verified the tree still rebuilds cleanly after the global pointer-diff
   ownership move:
   `cmake --build build -j8` succeeds
 - verified the tree still rebuilds cleanly after the extern/global array-load
   ownership move:
+  `cmake --build build -j8` succeeds
+- verified the tree still rebuilds cleanly after the plain/extern scalar
+  global-load ownership move:
   `cmake --build build -j8` succeeds
 - re-ran the same seam-local backend executables after the global pointer-diff
   ownership move and observed the same pre-existing failure shape:
@@ -109,6 +117,11 @@ Source Plan: plan.md
   still aborts with the existing unsupported direct-LIR rejection
 - re-ran the same seam-local backend executables after the extern/global
   array-load ownership move and observed the same pre-existing failure shape:
+  `./build/backend_bir_tests` still fails across the existing shared-BIR
+  lowering acceptance/support cases, and `./build/backend_shared_util_tests`
+  still aborts with the existing unsupported direct-LIR rejection
+- re-ran the same seam-local backend executables after the plain/extern scalar
+  global-load ownership move and observed the same pre-existing failure shape:
   `./build/backend_bir_tests` still fails across the existing shared-BIR
   lowering acceptance/support cases, and `./build/backend_shared_util_tests`
   still aborts with the existing unsupported direct-LIR rejection
@@ -132,5 +145,8 @@ Source Plan: plan.md
   lane
 - the memory seam now also owns the minimal extern/global array-load matcher;
   keep residual global-address and GEP decoding moves on the split seam side
+- the memory seam now also owns the minimal plain and extern scalar
+  global-load matchers; keep the remaining scalar global store/reload seam on
+  the split seam side as well
 - when this lane switches to compile recovery, start narrow and seam-local
   before restoring broader regression discipline
