@@ -3313,15 +3313,29 @@ std::optional<bir::Function> try_lower_conditional_return_select_function(
 
   const LirBlock* true_ret_block = nullptr;
   const LirBlock* false_ret_block = nullptr;
-  std::size_t next_block_index = 1;
+  std::unordered_map<std::string_view, std::size_t> block_indices_by_label;
+  block_indices_by_label.reserve(lir_function.blocks.size());
+  for (std::size_t i = 1; i < lir_function.blocks.size(); ++i) {
+    const auto& block = lir_function.blocks[i];
+    if (block.label.empty() || !block_indices_by_label.emplace(block.label, i).second) {
+      return std::nullopt;
+    }
+  }
+
+  std::unordered_set<std::size_t> consumed_block_indices;
   auto consume_return_arm = [&](std::string_view branch_label) -> const LirBlock* {
-    while (next_block_index < lir_function.blocks.size()) {
-      const auto& block = lir_function.blocks[next_block_index];
-      if (!block.insts.empty() || block.label != branch_label) {
+    while (true) {
+      const auto block_it = block_indices_by_label.find(branch_label);
+      if (block_it == block_indices_by_label.end()) {
         return nullptr;
       }
 
-      ++next_block_index;
+      const auto block_index = block_it->second;
+      const auto& block = lir_function.blocks[block_index];
+      if (!consumed_block_indices.insert(block_index).second || !block.insts.empty()) {
+        return nullptr;
+      }
+
       if (std::get_if<LirRet>(&block.terminator) != nullptr) {
         return &block;
       }
@@ -3332,13 +3346,12 @@ std::optional<bir::Function> try_lower_conditional_return_select_function(
       }
       branch_label = bridge_br->target_label;
     }
-    return nullptr;
   };
 
   true_ret_block = consume_return_arm(condbr->true_label);
   false_ret_block = consume_return_arm(condbr->false_label);
   if (true_ret_block == nullptr || false_ret_block == nullptr ||
-      next_block_index != lir_function.blocks.size()) {
+      consumed_block_indices.size() + 1 != lir_function.blocks.size()) {
     return std::nullopt;
   }
 
