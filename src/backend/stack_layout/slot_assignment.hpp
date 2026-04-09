@@ -52,9 +52,7 @@ struct PreparedEntryAllocaStackLayoutMetadata {
   std::vector<StackLayoutCallResultInput> call_results;
 };
 
-struct PreparedEntryAllocaStackLayoutPoint {
-  std::vector<PointerAccess> pointer_accesses;
-};
+struct PreparedEntryAllocaStackLayoutPoint {};
 
 struct PreparedEntryAllocaStackLayoutBlock {
   std::string label;

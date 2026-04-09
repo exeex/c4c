@@ -2047,8 +2047,6 @@ void test_backend_shared_fallback_preparation_separates_stack_layout_metadata_fr
                   preparation.stack_layout_classification.escaped_entry_allocas->empty() &&
                   preparation.stack_layout_classification.entry_alloca_use_blocks.has_value() &&
                   preparation.stack_layout_classification.entry_alloca_use_blocks->empty() &&
-                  preparation.stack_layout_classification.blocks.front().insts.front()
-                          .pointer_accesses.empty() &&
                   preparation.stack_layout_metadata.signature_params.size() == 2 &&
                   preparation.stack_layout_metadata.signature_params.front().type == "i32" &&
                   preparation.stack_layout_metadata.signature_params.front().operand == "%p.x" &&
@@ -2159,9 +2157,7 @@ void test_backend_shared_fallback_preparation_still_needs_remaining_pointer_esca
                   .alloca_name == "%lv.x" &&
           scalar_preparation.stack_layout_classification.entry_alloca_first_accesses->front().kind ==
               c4c::backend::stack_layout::PointerAccessKind::Store,
-      "shared prepared fallback carrier should narrow overwrite-before-read classification to a coarse entry-alloca first-access seam instead of depending only on cached per-point pointer accesses");
-  scalar_preparation.stack_layout_classification.blocks.front().insts.front().pointer_accesses
-      .clear();
+      "shared prepared fallback carrier should narrow overwrite-before-read classification to a coarse entry-alloca first-access seam instead of caching per-point pointer accesses");
   const auto scalar_lowered =
       c4c::backend::stack_layout::lower_prepared_entry_alloca_function_inputs(
           scalar_preparation);
@@ -2172,8 +2168,10 @@ void test_backend_shared_fallback_preparation_still_needs_remaining_pointer_esca
   expect_true(scalar_plans.size() == 1 &&
                   scalar_plans.front().alloca_name == "%lv.x" &&
                   scalar_plans.front().needs_stack_slot &&
-                  scalar_plans.front().remove_following_entry_store,
-              "shared prepared fallback carrier should let overwrite-before-read pruning trust the coarse entry-alloca first-access seam even after prepared pointer-access facts are cleared");
+                  scalar_plans.front().remove_following_entry_store &&
+                  scalar_lowered.stack_layout_input.blocks.front().insts.front().pointer_accesses
+                      .empty(),
+              "shared prepared fallback carrier should let overwrite-before-read pruning trust the coarse entry-alloca first-access seam after dropping prepared pointer-access facts entirely");
 
   scalar_preparation.stack_layout_classification.entry_alloca_first_accesses =
       std::vector<c4c::backend::stack_layout::EntryAllocaFirstAccess>{};
@@ -2190,7 +2188,7 @@ void test_backend_shared_fallback_preparation_still_needs_remaining_pointer_esca
                   scalar_without_first_access_plans.front().alloca_name == "%lv.x" &&
                   scalar_without_first_access_plans.front().needs_stack_slot &&
                   !scalar_without_first_access_plans.front().remove_following_entry_store,
-              "shared prepared fallback carrier still needs the coarse entry-alloca first-access seam because clearing both that seam and prepared pointer-access facts drops overwrite-before-read pruning on the current backend-CFG path");
+              "shared prepared fallback carrier still needs the coarse entry-alloca first-access seam because clearing it after removing prepared pointer-access facts drops overwrite-before-read pruning on the current backend-CFG path");
 
   auto aggregate_preparation =
       c4c::backend::stack_layout::prepare_module_function_entry_alloca_preparation(

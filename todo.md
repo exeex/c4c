@@ -7,19 +7,41 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: audit whether any remaining prepared
-  `derived_pointer_root` metadata can be narrowed further without regressing
-  backend-owned stack-layout classification
-- Current implementation target: confirm the prepared fallback carrier can drop
-  per-point `derived_pointer_root` alias metadata now that single-block
-  coalescing and overwrite-before-read pruning round-trip through coarse
-  backend-owned seams
-- Next intended slice: audit whether the prepared fallback carrier still needs
-  per-point `pointer_accesses` once the coarse backend-owned first-access,
-  escape, and use-block seams are the only surviving stack-layout
-  classification inputs
+- Current slice: audit whether the prepared fallback carrier still needs empty
+  per-instruction block scaffolding once stack-layout classification has moved
+  to coarse backend-owned seams
+- Current implementation target: confirm whether prepared
+  `PreparedEntryAllocaStackLayoutBlock` / `PreparedEntryAllocaStackLayoutPoint`
+  shells can collapse further now that pointer-access, escape, and use-block
+  classification all round-trip through coarse seams plus liveness-derived use
+  reconstruction
+- Next intended slice: audit whether the prepared fallback carrier can replace
+  per-instruction point vectors with block-local instruction counts or another
+  smaller arity carrier without regressing liveness-backed stack-layout
+  lowering
 
 ## Completed
+
+- Completed the next Step 6 prepared pointer-access narrowing slice by
+  dropping cached per-point access facts from the prepared fallback
+  stack-layout carrier once coarse backend-owned first-access, use-block, and
+  escape seams covered the remaining consumers:
+  - removed stored `pointer_accesses` payloads from
+    `PreparedEntryAllocaStackLayoutPoint` in
+    `src/backend/stack_layout/slot_assignment.hpp`
+  - updated `src/backend/stack_layout/slot_assignment.cpp` so prepared
+    stack-layout classification now keeps only block labels plus instruction
+    arity for rehydration while the lowered production `StackLayoutInput`
+    leaves per-point `pointer_accesses` empty
+  - extended `tests/backend/backend_shared_util_tests.cpp` with focused
+    coverage proving overwrite-before-read pruning still trusts the coarse
+    `entry_alloca_first_accesses` seam after prepared pointer-access facts are
+    removed entirely, and still regresses once that coarse seam is also cleared
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`
+  - rebuilt the full tree, refreshed `test_after.log`, and passed the
+    regression guard with the repo’s allowed non-decreasing rule and no new
+    failures (`2809 -> 2809`, same 32 known failing tests as `test_before.log`)
 
 - Completed the next Step 6 prepared derived-pointer-root narrowing slice by
   removing cached per-point alias metadata from the prepared fallback
