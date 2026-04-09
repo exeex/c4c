@@ -26,18 +26,6 @@ bool is_entry_alloca_name(std::string_view value_name) {
   return starts_with(value_name, "%lv.");
 }
 
-std::optional<std::string> parse_function_return_type(std::string_view signature_text) {
-  const auto line = c4c::codegen::lir::trim_lir_arg_text(signature_text);
-  const auto first_space = line.find(' ');
-  const auto at_pos = line.find('@');
-  if (first_space == std::string_view::npos || at_pos == std::string_view::npos ||
-      first_space >= at_pos) {
-    return std::nullopt;
-  }
-  return std::string(
-      c4c::codegen::lir::trim_lir_arg_text(line.substr(first_space + 1, at_pos - first_space - 1)));
-}
-
 void append_unique(std::vector<std::string>& values, std::string value) {
   c4c::codegen::lir::append_unique_lir_value_name(values, std::move(value));
 }
@@ -296,23 +284,8 @@ void collect_first_entry_alloca_accesses(
   }
 }
 
-void lower_function_signature_and_entry_allocas(
-    const c4c::codegen::lir::LirFunction& function,
-    StackLayoutInput& input) {
-  if (const auto parsed_signature_params =
-          c4c::backend::parse_backend_function_signature_params(function.signature_text);
-      parsed_signature_params.has_value()) {
-    input.signature_params.reserve(parsed_signature_params->size());
-    for (const auto& param : *parsed_signature_params) {
-      input.signature_params.push_back(
-          StackLayoutSignatureParam{param.type, param.operand, param.is_varargs});
-      input.is_variadic = input.is_variadic || param.is_varargs;
-    }
-  } else {
-    input.is_variadic = function.signature_text.find("...") != std::string::npos;
-  }
-  input.return_type = parse_function_return_type(function.signature_text);
-
+void lower_function_entry_allocas(const c4c::codegen::lir::LirFunction& function,
+                                  StackLayoutInput& input) {
   input.entry_allocas.reserve(function.alloca_insts.size());
   for (std::size_t index = 0; index < function.alloca_insts.size(); ++index) {
     const auto* alloca = std::get_if<c4c::codegen::lir::LirAllocaOp>(&function.alloca_insts[index]);
@@ -334,6 +307,24 @@ void lower_function_signature_and_entry_allocas(
       }
     }
     input.entry_allocas.push_back(std::move(entry_alloca));
+  }
+}
+
+void lower_backend_cfg_signature_and_call_results(
+    const c4c::backend::BackendCfgFunction& backend_cfg,
+    StackLayoutInput& input) {
+  input.signature_params.reserve(backend_cfg.signature_params.size());
+  for (const auto& param : backend_cfg.signature_params) {
+    input.signature_params.push_back(
+        StackLayoutSignatureParam{param.type, param.operand, param.is_varargs});
+    input.is_variadic = input.is_variadic || param.is_varargs;
+  }
+  input.return_type = backend_cfg.return_type;
+
+  input.call_results.reserve(backend_cfg.call_results.size());
+  for (const auto& call_result : backend_cfg.call_results) {
+    input.call_results.push_back(
+        StackLayoutCallResultInput{call_result.value_name, call_result.type_str});
   }
 }
 
@@ -367,14 +358,6 @@ void lower_lir_blocks_to_stack_layout_input(
             } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirCallOp> ||
                                  std::is_same_v<T, c4c::codegen::lir::LirInlineAsmOp>) {
               point.escaped_names = point.used_names;
-              if constexpr (std::is_same_v<T, c4c::codegen::lir::LirCallOp>) {
-                if (!op.result.empty()) {
-                  input.call_results.push_back(StackLayoutCallResultInput{
-                      op.result.str(),
-                      op.return_type.str(),
-                  });
-                }
-              }
             } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirPhiOp>) {
               point.escaped_names = point.used_names;
               point.used_names.clear();
@@ -470,7 +453,9 @@ void lower_backend_cfg_to_stack_layout_input(
 
 StackLayoutInput lower_lir_to_stack_layout_input(const c4c::codegen::lir::LirFunction& function) {
   StackLayoutInput input;
-  lower_function_signature_and_entry_allocas(function, input);
+  const auto backend_cfg = c4c::backend::lower_lir_to_backend_cfg(function);
+  lower_function_entry_allocas(function, input);
+  lower_backend_cfg_signature_and_call_results(backend_cfg, input);
   lower_lir_blocks_to_stack_layout_input(function, input);
   return input;
 }
@@ -479,7 +464,8 @@ StackLayoutInput lower_function_entry_alloca_stack_layout_input(
     const c4c::codegen::lir::LirFunction& function,
     const c4c::backend::BackendCfgFunction& backend_cfg) {
   StackLayoutInput input;
-  lower_function_signature_and_entry_allocas(function, input);
+  lower_function_entry_allocas(function, input);
+  lower_backend_cfg_signature_and_call_results(backend_cfg, input);
   lower_backend_cfg_to_stack_layout_input(backend_cfg, input);
   return input;
 }

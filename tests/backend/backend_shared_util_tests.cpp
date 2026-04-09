@@ -1816,7 +1816,7 @@ void test_backend_shared_slot_assignment_prepares_module_function_inputs() {
                       c4c::backend::stack_layout::EntryAllocaRewriteStackLayoutSource::
                           RawLirFunction &&
                   lowerable_preparation.stack_layout_input.entry_allocas.empty() &&
-                  lowerable_preparation.backend_cfg == std::nullopt &&
+                  lowerable_preparation.backend_cfg_liveness == std::nullopt &&
                   lowerable_preparation.liveness_input.has_value() &&
                   lowerable_preparation.liveness_input->entry_insts.empty() &&
                   lowerable_preparation.liveness_input->blocks.size() == 1 &&
@@ -1842,17 +1842,12 @@ void test_backend_shared_slot_assignment_prepares_module_function_inputs() {
                       std::optional<std::string>{"i32"} &&
                   !fallback_preparation.stack_layout_metadata.is_variadic &&
                   fallback_preparation.stack_layout_metadata.call_results.empty() &&
-                  fallback_preparation.backend_cfg.has_value() &&
-                  fallback_preparation.backend_cfg->signature_params.empty() &&
-                  fallback_preparation.backend_cfg->return_type ==
-                      std::optional<std::string>{"i32"} &&
-                  fallback_preparation.backend_cfg->call_results.empty() &&
-                  !fallback_preparation.backend_cfg->is_variadic &&
+                  fallback_preparation.backend_cfg_liveness.has_value() &&
                   fallback_preparation.stack_layout_input.blocks.size() ==
-                      fallback_preparation.backend_cfg->blocks.size() &&
+                      fallback_preparation.backend_cfg_liveness->blocks.size() &&
                   fallback_preparation.stack_layout_input.blocks.front().insts.empty() &&
                   !fallback_preparation.liveness_input.has_value() &&
-                  fallback_preparation.backend_cfg->entry_insts.size() == 2,
+                  fallback_preparation.backend_cfg_liveness->entry_insts.size() == 2,
               "shared entry-alloca rewrite prep should preserve entry-alloca ownership in the fallback carrier while sourcing block usage from the backend-owned CFG seam instead of the raw-LIR stack-layout lowering path");
 
   const auto fallback_inputs =
@@ -2033,6 +2028,52 @@ void test_backend_shared_fallback_preparation_separates_stack_layout_metadata_fr
                   lowered.stack_layout_input.call_results.front().type_str ==
                       "{ i32, i32 }",
               "shared prepared fallback carrier should still rehydrate the full rewrite-input stack-layout contract when lowered for production use");
+}
+
+void test_backend_shared_fallback_preparation_keeps_only_liveness_cfg_state() {
+  c4c::codegen::lir::LirModule module;
+
+  c4c::codegen::lir::LirFunction function;
+  function.name = "aggregate_variadic_entry_alloca";
+  function.signature_text =
+      "define { i32, i32 } @aggregate_variadic_entry_alloca(i32 %p.x, ...)";
+  function.alloca_insts.push_back(
+      c4c::codegen::lir::LirAllocaOp{"%lv.buf", "{ i32, i32 }", "", 8});
+
+  c4c::codegen::lir::LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(c4c::codegen::lir::LirCallOp{
+      "%call0",
+      c4c::codegen::lir::LirTypeRef("{ i32, i32 }"),
+      "@helper",
+      "(i32)",
+      "i32 %p.x",
+  });
+  entry.terminator = c4c::codegen::lir::LirRet{std::nullopt, "void"};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  const auto preparation =
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_preparation(module, 0);
+  expect_true(preparation.backend_cfg_liveness.has_value() &&
+                  preparation.backend_cfg_liveness->entry_insts.size() == 1 &&
+                  preparation.backend_cfg_liveness->entry_insts.front().used_names.empty() &&
+                  !preparation.backend_cfg_liveness->entry_insts.front().is_call &&
+                  preparation.backend_cfg_liveness->blocks.size() == 1 &&
+                  preparation.backend_cfg_liveness->blocks.front().insts.size() == 1 &&
+                  preparation.backend_cfg_liveness->blocks.front().insts.front().is_call &&
+                  preparation.backend_cfg_liveness->phi_incoming_uses.empty(),
+              "shared prepared fallback carrier should retain only the liveness-relevant backend-CFG block and point state once stack-layout metadata is split away");
+
+  const auto lowered =
+      c4c::backend::stack_layout::lower_prepared_entry_alloca_function_inputs(preparation);
+  expect_true(lowered.liveness_input.entry_insts.size() == 1 &&
+                  lowered.liveness_input.entry_insts.front().used_names.empty() &&
+                  !lowered.liveness_input.entry_insts.front().is_call &&
+                  lowered.liveness_input.blocks.size() == 1 &&
+                  lowered.liveness_input.blocks.front().insts.size() == 1 &&
+                  lowered.liveness_input.blocks.front().insts.front().is_call,
+              "shared prepared fallback carrier should still rebuild production liveness input from the reduced backend-CFG liveness state");
 }
 
 void test_backend_shared_prepares_lir_module_for_target() {
@@ -2509,6 +2550,7 @@ int main(int argc, char* argv[]) {
   test_backend_shared_fallback_entry_alloca_stack_layout_input_preserves_pointer_metadata();
   test_backend_shared_fallback_entry_alloca_stack_layout_input_preserves_signature_and_call_metadata();
   test_backend_shared_fallback_preparation_separates_stack_layout_metadata_from_cfg_classification();
+  test_backend_shared_fallback_preparation_keeps_only_liveness_cfg_state();
   test_backend_shared_prepares_lir_module_for_target();
   test_backend_shared_target_preparation_enables_bir_lowering();
   test_backend_shared_slot_assignment_prunes_dead_entry_alloca_insts();

@@ -40,9 +40,43 @@ struct BackendCfgPhiIncomingUse {
   std::string value_name;
 };
 
+struct BackendCfgSignatureParam {
+  std::string type;
+  std::string operand;
+  bool is_varargs = false;
+};
+
+struct BackendCfgCallResult {
+  std::string value_name;
+  std::string type_str;
+};
+
 struct BackendCfgFunction {
   std::vector<BackendCfgPoint> entry_insts;
+  std::vector<BackendCfgSignatureParam> signature_params;
+  std::optional<std::string> return_type;
+  bool is_variadic = false;
+  std::vector<BackendCfgCallResult> call_results;
   std::vector<BackendCfgBlock> blocks;
+  std::vector<BackendCfgPhiIncomingUse> phi_incoming_uses;
+};
+
+struct BackendCfgLivenessPoint {
+  std::vector<std::string> used_names;
+  std::optional<std::string> result_name;
+  bool is_call = false;
+};
+
+struct BackendCfgLivenessBlock {
+  std::string label;
+  std::vector<BackendCfgLivenessPoint> insts;
+  std::vector<std::string> terminator_used_names;
+  std::vector<std::string> successor_labels;
+};
+
+struct BackendCfgLivenessFunction {
+  std::vector<BackendCfgLivenessPoint> entry_insts;
+  std::vector<BackendCfgLivenessBlock> blocks;
   std::vector<BackendCfgPhiIncomingUse> phi_incoming_uses;
 };
 
@@ -86,6 +120,8 @@ struct LivenessResult {
 
 BackendCfgFunction lower_bir_to_backend_cfg(const bir::Function& function);
 BackendCfgFunction lower_lir_to_backend_cfg(const c4c::codegen::lir::LirFunction& function);
+BackendCfgLivenessFunction lower_backend_cfg_to_liveness_function(const BackendCfgFunction& function);
+LivenessInput lower_backend_cfg_to_liveness_input(const BackendCfgLivenessFunction& function);
 LivenessInput lower_backend_cfg_to_liveness_input(const BackendCfgFunction& function);
 LivenessInput lower_lir_to_liveness_input(const c4c::codegen::lir::LirFunction& function);
 LivenessResult compute_live_intervals(const LivenessInput& input);

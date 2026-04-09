@@ -55,7 +55,7 @@ struct PreparedEntryAllocaStackLayoutMetadata {
 struct PreparedEntryAllocaFunctionInputs {
   StackLayoutInput stack_layout_input;
   PreparedEntryAllocaStackLayoutMetadata stack_layout_metadata;
-  std::optional<BackendCfgFunction> backend_cfg;
+  std::optional<BackendCfgLivenessFunction> backend_cfg_liveness;
   std::optional<LivenessInput> liveness_input;
   EntryAllocaRewriteLivenessSource liveness_source =
       EntryAllocaRewriteLivenessSource::RawLirBackendCfg;

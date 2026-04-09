@@ -1,4 +1,5 @@
 #include "liveness.hpp"
+#include "lowering/call_decode.hpp"
 #include "../codegen/lir/call_args_ops.hpp"
 
 #include <algorithm>
@@ -13,6 +14,9 @@ namespace {
 
 using c4c::backend::BackendCfgBlock;
 using c4c::backend::BackendCfgFunction;
+using c4c::backend::BackendCfgLivenessBlock;
+using c4c::backend::BackendCfgLivenessFunction;
+using c4c::backend::BackendCfgLivenessPoint;
 using c4c::backend::BackendCfgPhiIncomingUse;
 using c4c::backend::BackendCfgPoint;
 using c4c::codegen::lir::LirBlock;
@@ -87,6 +91,18 @@ using BackendCfgPointerAccess = BackendCfgPoint::PointerAccess;
 
 bool is_value_name(std::string_view token) {
   return c4c::codegen::lir::is_lir_value_name(token);
+}
+
+std::optional<std::string> parse_function_return_type(std::string_view signature_text) {
+  const auto line = c4c::codegen::lir::trim_lir_arg_text(signature_text);
+  const auto first_space = line.find(' ');
+  const auto at_pos = line.find('@');
+  if (first_space == std::string_view::npos || at_pos == std::string_view::npos ||
+      first_space >= at_pos) {
+    return std::nullopt;
+  }
+  return std::string(
+      c4c::codegen::lir::trim_lir_arg_text(line.substr(first_space + 1, at_pos - first_space - 1)));
 }
 
 void append_unique(std::vector<std::string>& values, std::string value) {
@@ -549,6 +565,20 @@ BackendCfgFunction lower_bir_to_backend_cfg(const bir::Function& function) {
 
 BackendCfgFunction lower_lir_to_backend_cfg(const c4c::codegen::lir::LirFunction& function) {
   BackendCfgFunction cfg;
+  if (const auto parsed_signature_params =
+          c4c::backend::parse_backend_function_signature_params(function.signature_text);
+      parsed_signature_params.has_value()) {
+    cfg.signature_params.reserve(parsed_signature_params->size());
+    for (const auto& param : *parsed_signature_params) {
+      cfg.signature_params.push_back(
+          BackendCfgSignatureParam{param.type, param.operand, param.is_varargs});
+      cfg.is_variadic = cfg.is_variadic || param.is_varargs;
+    }
+  } else {
+    cfg.is_variadic = function.signature_text.find("...") != std::string::npos;
+  }
+  cfg.return_type = parse_function_return_type(function.signature_text);
+
   cfg.entry_insts.reserve(function.alloca_insts.size());
   for (const auto& inst : function.alloca_insts) {
     std::string result_name = result_name_for_inst(inst);
@@ -581,6 +611,14 @@ BackendCfgFunction lower_lir_to_backend_cfg(const c4c::codegen::lir::LirFunction
           derived_pointer_root_for_inst(inst),
       });
 
+      if (const auto* call = std::get_if<c4c::codegen::lir::LirCallOp>(&inst);
+          call != nullptr && !call->result.empty()) {
+        cfg.call_results.push_back(BackendCfgCallResult{
+            call->result.str(),
+            call->return_type.str(),
+        });
+      }
+
       if (!std::holds_alternative<c4c::codegen::lir::LirPhiOp>(inst)) {
         continue;
       }
@@ -596,7 +634,39 @@ BackendCfgFunction lower_lir_to_backend_cfg(const c4c::codegen::lir::LirFunction
   return cfg;
 }
 
-LivenessInput lower_backend_cfg_to_liveness_input(const BackendCfgFunction& function) {
+BackendCfgLivenessFunction lower_backend_cfg_to_liveness_function(const BackendCfgFunction& function) {
+  BackendCfgLivenessFunction lowered;
+  lowered.entry_insts.reserve(function.entry_insts.size());
+  for (const auto& inst : function.entry_insts) {
+    lowered.entry_insts.push_back(BackendCfgLivenessPoint{
+        inst.used_names,
+        inst.result_name,
+        inst.is_call,
+    });
+  }
+
+  lowered.blocks.reserve(function.blocks.size());
+  for (const auto& block : function.blocks) {
+    BackendCfgLivenessBlock lowered_block;
+    lowered_block.label = block.label;
+    lowered_block.terminator_used_names = block.terminator_used_names;
+    lowered_block.successor_labels = block.successor_labels;
+    lowered_block.insts.reserve(block.insts.size());
+    for (const auto& inst : block.insts) {
+      lowered_block.insts.push_back(BackendCfgLivenessPoint{
+          inst.used_names,
+          inst.result_name,
+          inst.is_call,
+      });
+    }
+    lowered.blocks.push_back(std::move(lowered_block));
+  }
+
+  lowered.phi_incoming_uses = function.phi_incoming_uses;
+  return lowered;
+}
+
+LivenessInput lower_backend_cfg_to_liveness_input(const BackendCfgLivenessFunction& function) {
   LivenessInput input;
   input.entry_insts.reserve(function.entry_insts.size());
   for (const auto& inst : function.entry_insts) {
@@ -633,6 +703,10 @@ LivenessInput lower_backend_cfg_to_liveness_input(const BackendCfgFunction& func
   }
 
   return input;
+}
+
+LivenessInput lower_backend_cfg_to_liveness_input(const BackendCfgFunction& function) {
+  return lower_backend_cfg_to_liveness_input(lower_backend_cfg_to_liveness_function(function));
 }
 
 LivenessInput lower_lir_to_liveness_input(const c4c::codegen::lir::LirFunction& function) {

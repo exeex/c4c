@@ -329,26 +329,26 @@ PreparedEntryAllocaFunctionInputs prepare_module_function_entry_alloca_preparati
     return inputs;
   }
 
-  inputs.backend_cfg = lower_lir_to_backend_cfg(function);
-  inputs.stack_layout_metadata.signature_params.reserve(inputs.backend_cfg->signature_params.size());
-  for (const auto& param : inputs.backend_cfg->signature_params) {
+  const auto backend_cfg = lower_lir_to_backend_cfg(function);
+  inputs.stack_layout_metadata.signature_params.reserve(backend_cfg.signature_params.size());
+  for (const auto& param : backend_cfg.signature_params) {
     inputs.stack_layout_metadata.signature_params.push_back(
         StackLayoutSignatureParam{param.type, param.operand, param.is_varargs});
     inputs.stack_layout_metadata.is_variadic =
         inputs.stack_layout_metadata.is_variadic || param.is_varargs;
   }
-  inputs.stack_layout_metadata.return_type = inputs.backend_cfg->return_type;
-  inputs.stack_layout_metadata.call_results.reserve(inputs.backend_cfg->call_results.size());
-  for (const auto& call_result : inputs.backend_cfg->call_results) {
+  inputs.stack_layout_metadata.return_type = backend_cfg.return_type;
+  inputs.stack_layout_metadata.call_results.reserve(backend_cfg.call_results.size());
+  for (const auto& call_result : backend_cfg.call_results) {
     inputs.stack_layout_metadata.call_results.push_back(
         StackLayoutCallResultInput{call_result.value_name, call_result.type_str});
   }
-  inputs.stack_layout_input =
-      lower_function_entry_alloca_stack_layout_input(function, *inputs.backend_cfg);
+  inputs.stack_layout_input = lower_function_entry_alloca_stack_layout_input(function, backend_cfg);
   inputs.stack_layout_input.signature_params.clear();
   inputs.stack_layout_input.return_type.reset();
   inputs.stack_layout_input.is_variadic = false;
   inputs.stack_layout_input.call_results.clear();
+  inputs.backend_cfg_liveness = lower_backend_cfg_to_liveness_function(backend_cfg);
   inputs.stack_layout_source =
       EntryAllocaRewriteStackLayoutSource::EntryAllocasAndBackendCfg;
   return inputs;
@@ -368,8 +368,9 @@ EntryAllocaRewriteInputs lower_prepared_entry_alloca_function_inputs(
     return inputs;
   }
 
-  if (prepared_inputs.backend_cfg.has_value()) {
-    inputs.liveness_input = lower_backend_cfg_to_liveness_input(*prepared_inputs.backend_cfg);
+  if (prepared_inputs.backend_cfg_liveness.has_value()) {
+    inputs.liveness_input =
+        lower_backend_cfg_to_liveness_input(*prepared_inputs.backend_cfg_liveness);
   }
   return inputs;
 }

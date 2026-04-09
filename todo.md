@@ -8,19 +8,43 @@ Source Plan: plan.md
 
 - Step 6: move liveness to backend MIR
 - Current slice: audit whether the remaining prepared fallback `BackendCfg`
-  carrier can narrow further now that stack-layout signature/call-result
-  metadata is split away from the backend-CFG-owned entry-alloca
-  classification input
+  carrier can narrow further now that the prepared entry-alloca path stores
+  only a liveness-facing backend-CFG subset and keeps signature/call-result
+  metadata outside the classification input
 - Current implementation target: determine whether production
-  `lower_prepared_entry_alloca_function_inputs(...)` still needs the full
-  fallback `BackendCfgFunction` object or can lower liveness from a narrower
-  block/point carrier without regressing the current rewrite planning
+  `lower_prepared_entry_alloca_function_inputs(...)` can stay on a reduced
+  fallback liveness carrier while preserving the current prepared rewrite-input
   contracts
-- Next intended slice: probe whether `lower_backend_cfg_to_liveness_input(...)`
-  can accept a reduced fallback carrier so prepared entry-alloca rewrite state
-  no longer needs to retain signature/call-result fields in the stored CFG
+- Next intended slice: audit whether the prepared fallback
+  `stack_layout_input.blocks` carrier can narrow further now that full
+  `BackendCfgFunction` ownership is gone from stored preparation state, or
+  whether current pointer/escape/coalescing analysis still requires the
+  existing block-level stack-layout input to remain cached
 
 ## Completed
+
+- Completed the next Step 6 bounded prepared-fallback liveness-carrier
+  narrowing slice by removing full `BackendCfgFunction` ownership from the
+  stored rewrite-preparation state:
+  - added `BackendCfgLivenessFunction` in `src/backend/liveness.*` plus a
+    shared `lower_backend_cfg_to_liveness_function(...)` seam so backend CFG
+    lowering can persist just the entry/block/phi data that
+    `lower_backend_cfg_to_liveness_input(...)` actually consumes
+  - updated `src/backend/stack_layout/slot_assignment.*` so
+    `PreparedEntryAllocaFunctionInputs` now stores optional
+    `BackendCfgLivenessFunction` instead of a full `BackendCfgFunction`, while
+    fallback preparation still uses the full local backend CFG only where
+    stack-layout classification needs pointer/escape metadata
+  - extended `tests/backend/backend_shared_util_tests.cpp` with focused
+    coverage proving fallback preparation now retains only liveness-relevant
+    backend-CFG state and still rebuilds the production `LivenessInput`
+    contract from that reduced carrier
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`,
+    rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with the repo’s allowed non-decreasing rule and no new
+    failures (`2809 -> 2809`, same 32 known failing tests as
+    `test_fail_before.log`)
 
 - Completed the next Step 6 bounded prepared-fallback metadata split slice by
   separating non-classification stack-layout metadata from the backend-CFG-
