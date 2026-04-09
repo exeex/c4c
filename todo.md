@@ -6,8 +6,10 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 4: reassess the next stronger-validation promotion after the bounded
-  non-dependent `member_function_pointer` `compile_positive` slice landed
+- Step 4: reassess whether the next stronger-validation promotion should target
+  non-dependent reference-qualified function shapes or isolate the
+  dependent-owner `ctx_c_style_cast_target` frontend failure shared by
+  function-shaped promotions
 
 ## Completed Items
 
@@ -134,16 +136,32 @@ Source Plan: plan.md
   --before test_fail_before.log --after test_fail_after.log
   --allow-non-decreasing-passed` reported PASS with zero new failing
   tests and a +90 pass delta against the stored baseline log
+- Promoted the non-dependent `function_pointer` family (`simple`, `qualified`,
+  `global_qualified` owners across all five contexts) into generated
+  `compile_positive` coverage while preserving the existing promoted
+  `member_function_pointer` files in the same generator-owned tier
+- Targeted validation: `ctest --test-dir build -R
+  'generated_parser_disambiguation_matrix_compile_positive_owner_(simple|qualified|global_qualified)__decl_function_pointer|generated_parser_disambiguation_matrix_compile_positive_owner_(simple|qualified|global_qualified)__decl_member_function_pointer'
+  --output-on-failure` passed all 30 promoted `compile_positive`
+  function-shaped cases with zero failures
+- Full-suite validation: `ctest --test-dir build -j8 --output-on-failure >
+  test_fail_after.log` completed with 3107/3107 passing tests, and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
+  --before test_fail_before.log --after test_fail_after.log
+  --allow-non-decreasing-passed` reported PASS with zero new failing tests
+  and a +105 pass delta against the stored baseline log
 
 ## Next Slice
 
-- choose whether the next Step 4 promotion should widen `compile_positive`
-  coverage to dependent-owner function shapes or instead promote an adjacent
-  function-shaped family such as `function_pointer`
+- choose whether the next Step 4 slice should promote non-dependent
+  `function_lvalue_ref` / `function_rvalue_ref` cases into
+  `compile_positive`, or instead isolate the dependent-owner
+  `ctx_c_style_cast_target` frontend failure shared by promoted
+  function-shaped families
 - if dependent owners become the target, isolate the frontend failure on
-  `ctx_c_style_cast_target` where the generated `H<T>::Type` / `Rebind<U>::Type`
-  owners currently fail with unknown type-name diagnostics in the promoted
-  tier
+  `ctx_c_style_cast_target` where the generated `H<T>::Type` /
+  `Rebind<U>::Type` owners currently fail with unknown type-name diagnostics
+  in the promoted tier
 - keep generation template-driven and separate from the existing hand-written
   reductions in `postive_case/`
 
@@ -166,3 +184,6 @@ Source Plan: plan.md
   `ctx_c_style_cast_target` cases still fail beyond parse-only with unknown
   type-name diagnostics and should be treated as the next focused investigation
   rather than folded silently into this landed slice
+- the same unknown type-name frontend failure also reproduces for dependent
+  `function_pointer` `ctx_c_style_cast_target` cases under `build/c4cll`, so
+  this iteration stays bounded to the three non-dependent owners
