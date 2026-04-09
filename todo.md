@@ -12,9 +12,9 @@ Source Plan: plan.md
   `/usr/include/c++/14/bits/ranges_util.h` undeclared-identifier cluster into
   the smallest internal semantic reproducer, now focused on the missing
   member/context names (`_M_begin`, `_M_end`, `_M_size`, `_S_store_size`,
-  `this`) inside `subrange::advance` after the earlier
-  `bidirectional_iterator<_It>` concept-id branch condition started folding
-  correctly.
+  `this`) inside `subrange::advance`, with the immediate follow-up narrowed to
+  the exact libstdc++ `subrange` shape after the simpler inline-method
+  member-context slice landed.
 
 ## Completed
 
@@ -72,15 +72,24 @@ Source Plan: plan.md
   `bidirectional_iterator` from `/usr/include/c++/14/bits/ranges_util.h`; the
   active tuple blocker is now the narrower member-context cluster around
   `_M_begin`, `_M_end`, `_M_size`, `_S_store_size`, and `this`.
+- Reduced one bounded subcase of that `ranges_util.h` member-context frontier
+  into focused frontend coverage in
+  `tests/cpp/internal/postive_case/template_inline_method_member_context_frontend.cpp`
+  and patched sema so inline class-template methods recover enclosing owner
+  NTTP bindings, implicit member lookup, and `this` during validation.
+- Confirmed the new regression passes and the full `ctest --test-dir build -j`
+  suite remains monotonic, now at 3280/3280 passing tests versus the earlier
+  3278/3278 baseline.
 
 ## Next Slice
 
 - inspect the remaining `/usr/include/c++/14/bits/ranges_util.h` undeclared
   identifier cluster (`_M_begin`, `_M_end`, `_M_size`, `_S_store_size`,
-  `this`) and reduce it to the smallest internal method/member-context
-  reproducer inside `subrange::advance`
-- reduce that `ranges_util.h` cluster to the smallest internal semantic
-  reproducer before touching `eastl_vector_simple.cpp`
+  `this`) and reduce it further to the exact libstdc++ `subrange::advance`
+  shape that still fails after the simpler inline-method member-context fix
+- compare the passing internal `template_inline_method_member_context_frontend`
+  reducer against a closer `subrange`-shaped repro until the remaining tuple
+  blocker is isolated before touching `eastl_vector_simple.cpp`
 - keep `eastl_memory_simple.cpp` parked for now: after this tuple fix it still
   times out under both `--parse-only` and `--dump-canonical`, so it has not
   become the smaller frontier
@@ -88,8 +97,8 @@ Source Plan: plan.md
 ## Blockers
 
 - `eastl_tuple_simple.cpp` now stops in `/usr/include/c++/14/bits/ranges_util.h`
-  with undeclared identifiers that likely need additional semantic/member
-  context support for template-instantiated method bodies
+  with undeclared identifiers that still need an additional reduction beyond
+  the simpler inline-method member-context support now covered internally
 - `eastl_memory_simple.cpp` still times out under both parse-only and
   canonical/sema pressure, though the trace reaches much later tuple/ranges
   work than before
@@ -115,5 +124,8 @@ Source Plan: plan.md
   `tests/cpp/internal/postive_case/assignment_expr_return_lvalue_ref_runtime.cpp`
 - focused concept-id `if constexpr` frontend coverage now exists under
   `tests/cpp/internal/postive_case/cpp20_if_constexpr_concept_id_frontend.cpp`
+- focused inline class-template member-context frontend coverage now exists
+  under
+  `tests/cpp/internal/postive_case/template_inline_method_member_context_frontend.cpp`
 - runtime and ABI glue remain explicitly out of scope except for temporary local
   shims already allowed by the source idea

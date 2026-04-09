@@ -405,6 +405,7 @@ class Validator {
   std::unordered_map<std::string, std::vector<FunctionSig>> cpp_overload_sigs_;
   std::unordered_set<std::string> complete_structs_;
   std::unordered_set<std::string> complete_unions_;
+  std::unordered_map<const Node*, const Node*> method_owner_records_;
   // Struct field names for implicit member lookup in out-of-class method bodies.
   std::unordered_map<std::string, std::unordered_set<std::string>> struct_field_names_;
   std::unordered_map<std::string, std::unordered_map<std::string, TypeSpec>> struct_static_member_types_;
@@ -645,6 +646,33 @@ class Validator {
     return false;
   }
 
+  std::optional<std::string> enclosing_method_owner_struct(const Node* fn) const {
+    if (auto owner = qualified_method_owner_struct(fn); owner.has_value()) {
+      return owner;
+    }
+    auto it = method_owner_records_.find(fn);
+    if (it == method_owner_records_.end() || !it->second || !it->second->name ||
+        !it->second->name[0]) {
+      return std::nullopt;
+    }
+    return std::string(it->second->name);
+  }
+
+  void bind_template_nttps(const Node* n, int line) {
+    if (!n || n->n_template_params <= 0 || !n->template_param_names) return;
+    for (int i = 0; i < n->n_template_params; ++i) {
+      if (!(n->template_param_is_nttp && n->template_param_is_nttp[i]) ||
+          !n->template_param_names[i]) {
+        continue;
+      }
+      TypeSpec nttp_ts{};
+      nttp_ts.base = TB_INT;
+      nttp_ts.array_size = -1;
+      nttp_ts.inner_rank = -1;
+      bind_local(n->template_param_names[i], nttp_ts, true, line);
+    }
+  }
+
   void record_template_type_params_recursive(const Node* n) {
     if (!n) return;
     if (n->n_template_params > 0 &&
@@ -770,6 +798,10 @@ class Validator {
       }
     } else if (n->kind == NK_STRUCT_DEF) {
       note_struct_def(n);
+      for (int i = 0; i < n->n_children; ++i) {
+        const Node* child = n->children[i];
+        if (child && child->kind == NK_FUNCTION) method_owner_records_[child] = n;
+      }
     } else if (n->kind == NK_ENUM_DEF) {
       bind_enum_constants_global(n);
     }
@@ -934,34 +966,29 @@ class Validator {
       bind_local("__FUNCTION__", func_ts, true, 0);
       bind_local("__PRETTY_FUNCTION__", func_ts, true, 0);
     }
-    // Inject non-type template parameter names as int locals so body validation
-    // can resolve references to them.
-    for (int i = 0; i < fn->n_template_params; ++i) {
-      if (fn->template_param_is_nttp && fn->template_param_is_nttp[i] &&
-          fn->template_param_names[i]) {
-        TypeSpec nttp_ts{};
-        nttp_ts.base = TB_INT;
-        nttp_ts.array_size = -1;
-        nttp_ts.inner_rank = -1;
-        bind_local(fn->template_param_names[i], nttp_ts, true, fn->line);
-      }
-    }
+    // Inject non-type template parameter names so dependent expressions in
+    // templated function and method bodies can validate before instantiation.
+    bind_template_nttps(fn, fn->line);
+    const Node* enclosing_record = nullptr;
+    auto owner_it = method_owner_records_.find(fn);
+    if (owner_it != method_owner_records_.end()) enclosing_record = owner_it->second;
+    bind_template_nttps(enclosing_record, fn->line);
     for (int i = 0; i < fn->n_params; ++i) {
       const Node* p = fn->params[i];
       if (!p || !p->name || !p->name[0]) continue;
       bind_local(p->name, p->type, true, p->line);
     }
-    if (auto owner = qualified_method_owner_struct(fn); owner.has_value()) {
+    if (auto owner = enclosing_method_owner_struct(fn); owner.has_value()) {
+      current_method_struct_tag_ = *owner;
       TypeSpec this_ts{};
       this_ts.base = TB_STRUCT;
-      this_ts.tag = owner->c_str();
+      this_ts.tag = current_method_struct_tag_.c_str();
       this_ts.ptr_level = 1;
       this_ts.array_size = -1;
       this_ts.inner_rank = -1;
       // In this codebase, is_const with ptr_level>0 models pointee constness.
       this_ts.is_const = fn->is_const_method;
       bind_local("this", this_ts, true, fn->line);
-      current_method_struct_tag_ = *owner;
     }
 
     // Validate constructor initializer list expressions.
