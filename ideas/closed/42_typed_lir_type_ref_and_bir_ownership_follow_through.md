@@ -1,7 +1,7 @@
 # Typed LIR TypeRef and BIR Ownership Follow-Through
 
-Status: Open
-Last Updated: 2026-04-03
+Status: Completed
+Last Updated: 2026-04-09
 
 ## Goal
 
@@ -89,6 +89,13 @@ That split causes several problems:
 
 ## Execution Notes
 
+- 2026-04-09: completed the final Step 8 closeout audit of the remaining
+  stack-layout helper surface; the surviving broad `StackLayoutInput`
+  rehydration entrypoints are now explicit compatibility helpers used by tests
+  rather than hidden production ownership shims, so the leftover cleanup was
+  split into follow-up idea
+  `ideas/open/47_stack_layout_test_surface_cleanup_after_backend_ownership_migration.md`
+  instead of stretching this ownership migration plan
 - 2026-04-09: a follow-up Step 5 audit confirmed that the shared
   `try_lower_conditional_return_select_function(...)` matcher already handles
   interleaved branch-only conditional-return arm layouts where the true-arm
@@ -221,6 +228,26 @@ Concretely, after this work:
 - register allocation should stop treating `LIR` as the canonical backend
   analysis substrate; it should consume backend-specific `MIR` derived from
   canonical BIR, not raw `LIR`
+
+## Completion Notes
+
+- `LirTypeRef` now carries typed semantic payloads with canonical text kept as
+  a render/debug surface rather than the primary lowering discriminator
+- `src/backend/lowering/lir_to_bir.cpp` now lowers backend scalar/type-sensitive
+  behavior from typed LIR semantics instead of string-first decoding
+- backend phi/CFG normalization, liveness, regalloc, and stack-layout
+  integration now run through backend-owned BIR / backend-CFG-backed seams
+  rather than treating raw `LIR` as the permanent owner of backend analysis
+  state
+- the last production raw-`LIR` stack-layout wrappers were deleted during Step
+  8; surviving broad helper surfaces are explicitly compatibility-only and
+  confined to test parity coverage
+
+## Leftover Follow-Up
+
+- `ideas/open/47_stack_layout_test_surface_cleanup_after_backend_ownership_migration.md`
+  tracks the remaining test-surface cleanup that is no longer part of the
+  ownership migration itself
 
 ## Scope
 

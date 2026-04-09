@@ -149,6 +149,11 @@ EntryAllocaRewritePatch prepare_entry_alloca_rewrite_patch(
     const c4c::codegen::lir::LirModule& module,
     std::size_t function_index);
 
+// Compatibility-only helper that rehydrates the broader stack-layout view for
+// tests that still compare prepared lowering against the historical
+// `StackLayoutInput` seam. Production rewrite flows should stay on
+// `prepare_module_function_entry_alloca_rewrite_only_inputs(...)`, and
+// production emitters should consume the prepared metadata/carrier directly.
 [[nodiscard]] StackLayoutInput lower_prepared_entry_alloca_stack_layout_input(
     const PreparedEntryAllocaFunctionInputs& prepared_inputs);
 
@@ -156,10 +161,8 @@ EntryAllocaRewritePatch prepare_entry_alloca_rewrite_patch(
 lower_prepared_entry_alloca_rewrite_only_inputs(
     const PreparedEntryAllocaFunctionInputs& prepared_inputs);
 
-// Compatibility-only helper that rehydrates the broader stack-layout view for
-// tests that still need it. Production rewrite flows should prefer
-// `prepare_module_function_entry_alloca_rewrite_only_inputs(...)` and
-// production emitters should consume the prepared metadata/carrier directly.
+// Module-level convenience wrapper for production rewrite flows that want the
+// narrowed rewrite/planning/liveness packet directly.
 [[nodiscard]] PreparedEntryAllocaRewriteOnlyInputs
 prepare_module_function_entry_alloca_rewrite_only_inputs(
     const c4c::codegen::lir::LirModule& module,

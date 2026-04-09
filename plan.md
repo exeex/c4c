@@ -1,339 +1,178 @@
-# Typed LIR TypeRef and BIR Ownership Follow-Through
+# C-Style Cast Reference Follow-Ups Review
 
 Status: Active
-Source Idea: ideas/open/42_typed_lir_type_ref_and_bir_ownership_follow_through.md
+Source Idea: ideas/open/43_c_style_cast_reference_followups_review.md
 Activated from: prompts/ACTIVATE_PLAN.md
 
 ## Purpose
 
-Turn the LIR type boundary into a typed semantic boundary, then finish the
-backend-ownership migration that should move phi/CFG normalization, liveness,
-regalloc, and stack-layout integration off ad hoc LIR-side scaffolding and onto
-the canonical BIR -> backend MIR route.
+Review the likely follow-up bug surface around C-style casts targeting complex
+C++ types, with emphasis on reference-qualified, alias-qualified, and
+template-qualified forms that can regress across parser, sema, and later
+value-category-sensitive stages.
 
 ## Goal
 
-Make typed LIR type data the primary source of truth for BIR lowering and move
-machine-facing backend ownership off raw LIR.
+Turn the current cast-follow-up review into an ordered set of narrow,
+stage-classified slices with focused regressions and Clang-backed behavioral
+checks where value-category behavior matters.
 
 ## Core Rule
 
-Keep this work scoped to the linked idea. If execution uncovers a separate
-initiative, record it under `ideas/open/` instead of silently expanding this
-runbook.
+Keep this plan limited to C-style cast follow-up review. If execution uncovers
+a broader language initiative, record it under `ideas/open/` instead of
+silently stretching this runbook.
 
 ## Read First
 
-- [ideas/open/42_typed_lir_type_ref_and_bir_ownership_follow_through.md](/workspaces/c4c/ideas/open/42_typed_lir_type_ref_and_bir_ownership_follow_through.md)
-- [src/codegen/lir/types.hpp](/workspaces/c4c/src/codegen/lir/types.hpp)
-- [src/codegen/lir/verify.cpp](/workspaces/c4c/src/codegen/lir/verify.cpp)
-- [src/backend/lowering/lir_to_bir.cpp](/workspaces/c4c/src/backend/lowering/lir_to_bir.cpp)
-- [src/backend/liveness.hpp](/workspaces/c4c/src/backend/liveness.hpp)
-- [src/backend/liveness.cpp](/workspaces/c4c/src/backend/liveness.cpp)
-- [src/backend/regalloc.hpp](/workspaces/c4c/src/backend/regalloc.hpp)
-- [src/backend/regalloc.cpp](/workspaces/c4c/src/backend/regalloc.cpp)
-- [src/backend/generation.cpp](/workspaces/c4c/src/backend/generation.cpp)
-- [src/backend/bir.hpp](/workspaces/c4c/src/backend/bir.hpp)
-- [src/backend/stack_layout/analysis.cpp](/workspaces/c4c/src/backend/stack_layout/analysis.cpp)
-- [src/backend/stack_layout/slot_assignment.cpp](/workspaces/c4c/src/backend/stack_layout/slot_assignment.cpp)
+- [ideas/open/43_c_style_cast_reference_followups_review.md](/workspaces/c4c/ideas/open/43_c_style_cast_reference_followups_review.md)
+- [tests/cpp](/workspaces/c4c/tests/cpp)
+- [src/frontend/parser](/workspaces/c4c/src/frontend/parser)
+- [src/frontend/sema](/workspaces/c4c/src/frontend/sema)
+- [src/frontend/hir](/workspaces/c4c/src/frontend/hir)
 
 ## Current Targets
 
-- Typed `LirTypeRef` payloads with canonical text preservation
-- Typed `lir_to_bir.cpp` lowering without string-first scalar decoding
-- Verified typed/text consistency in LIR
-- Canonical BIR-side ownership for phi/control-flow normalization
-- Backend MIR-owned liveness, regalloc, and stack-layout integration
-- Removal of temporary LIR-side backend ownership shims
-- Narrowed backend analysis/public surfaces so Step 6 compatibility shims stay
-  explicit and bounded
+- reference-qualified C-style cast targets
+- typedef / alias-owned cast targets
+- qualified and dependent cast targets
+- template-id declarator suffixes inside casts
+- downstream value-category propagation after casts
+- member/base access through casted references
 
 ## Non-Goals
 
-- Broad redesign of unrelated LIR instructions
-- Expanding BIR beyond what this migration needs
-- Removing textual LIR rendering entirely
-- Silent scope creep into unrelated backend initiatives
-- Broad backend surface cleanup that does not directly unblock the current
-  ownership migration
+- broad non-cast reference-feature work
+- unrelated EASTL or STL bring-up
+- silent bundling of parser, sema, and HIR fixes into one unfocused change
+- speculative lowering rewrites before the earliest failing stage is clear
 
 ## Working Model
 
-- `LirTypeRef` must carry exact semantic payload plus renderable canonical text.
-- Text is a rendering/debug surface, not the primary semantic discriminator.
-- Canonical backend ownership is `BIR -> target MIR -> machine-facing analysis`.
-- LIR-side liveness/regalloc paths may exist only as temporary migration shims.
-- Phi and CFG normalization must have one backend-owned home after the BIR
-  boundary.
+- treat each cast family as a separate review lane
+- add the smallest regression that identifies the earliest failing stage
+- use Clang as the behavioral reference for value-category-sensitive cases
+- prefer parser-only or sema-only fixes before touching HIR/lowering
 
 ## Execution Rules
 
-- Follow the migration order in this runbook unless a blocking dependency forces
-  a separately tracked idea.
-- Use test-first slices for implementation work.
-- Compare frontend/backend output against Clang or existing backend contracts
-  when behavior is unclear.
-- Keep `todo.md` current whenever the active slice changes.
-- Do not delete compatibility shims until their replacements are validated.
+- keep `todo.md` current whenever the active slice changes
+- add or update tests before implementation changes
+- classify each mismatch by earliest failing stage
+- compare against Clang before changing behavior for reference-category cases
+- spin out broader reference-completeness work into a separate idea when needed
 
 ## Ordered Steps
 
-### Step 1: Audit the typed type boundary and backend ownership seams
+### Step 1: Audit reference-qualified cast targets
 
-Goal: establish the exact set of LIR type consumers and the backend ownership
-surfaces that still depend on LIR-side scaffolding.
+Goal: establish current parser/sema/runtime coverage for `&` and `&&` cast
+targets and identify the first concrete failing slice.
 
 Primary targets:
-- [src/codegen/lir/types.hpp](/workspaces/c4c/src/codegen/lir/types.hpp)
-- [src/backend/lowering/lir_to_bir.cpp](/workspaces/c4c/src/backend/lowering/lir_to_bir.cpp)
-- [src/backend/liveness.cpp](/workspaces/c4c/src/backend/liveness.cpp)
-- [src/backend/regalloc.cpp](/workspaces/c4c/src/backend/regalloc.cpp)
-- [src/backend/stack_layout/analysis.cpp](/workspaces/c4c/src/backend/stack_layout/analysis.cpp)
-- [src/backend/aarch64/codegen/emit.cpp](/workspaces/c4c/src/backend/aarch64/codegen/emit.cpp)
-- [src/backend/x86/codegen/emit.cpp](/workspaces/c4c/src/backend/x86/codegen/emit.cpp)
+- [tests/cpp](/workspaces/c4c/tests/cpp)
+- [src/frontend/parser](/workspaces/c4c/src/frontend/parser)
+- [src/frontend/sema](/workspaces/c4c/src/frontend/sema)
 
 Concrete actions:
-- inventory `LirTypeRef` construction and use sites
-- classify which users need coarse kind versus exact typed payload
-- inventory every backend path that still depends on LIR for phi, CFG,
-  liveness, regalloc, or stack-layout ownership
-- record any truly separate initiative under `ideas/open/` instead of mutating
-  this runbook
+- inventory existing cast/reference regressions
+- add focused reductions for `(int&)x`, `(const int&)x`, `(volatile int&)x`,
+  and `(int&&)x` where coverage is missing
+- separate parse acceptance from writeback/value-category behavior checks
+- compare Clang behavior for assignment and mutation through casted references
 
 Completion check:
-- the active slice names the concrete files and interfaces to change first
-- the BIR-owned versus MIR-owned follow-through targets are explicit in
+- each reference-qualified cast family has at least one focused regression
+- the earliest failing stage for the first unresolved case is explicit in
   `todo.md`
 
-### Step 2: Finish typed LIR type ownership
+### Step 2: Review typedef, alias, and qualified cast targets
 
-Goal: redesign `LirTypeRef` so exact semantic payload is attached when the type
-object is created and can still render canonical text.
-
-Primary targets:
-- [src/codegen/lir/types.hpp](/workspaces/c4c/src/codegen/lir/types.hpp)
-- LIR builders/constructors that form `LirTypeRef`
-
-Concrete actions:
-- add exact typed payload variants for the LIR type forms needed by current
-  lowering
-- keep canonical text derivation or caching bounded and explicit
-- update LIR construction sites so semantics are attached at creation time
-- add focused tests for typed type creation and round-trip rendering where the
-  repo already covers LIR type behavior
-
-Completion check:
-- `LirTypeRef` carries exact typed payloads needed downstream
-- typed objects still provide stable text for printing/diagnostics
-
-### Step 3: Strengthen LIR verification
-
-Goal: fail early when typed payload and rendered/cached text drift apart.
+Goal: confirm parser/sema consistency when the cast target is hidden behind
+aliases, qualification, or dependent spelling.
 
 Primary targets:
-- [src/codegen/lir/verify.cpp](/workspaces/c4c/src/codegen/lir/verify.cpp)
+- [tests/cpp](/workspaces/c4c/tests/cpp)
+- [src/frontend/parser](/workspaces/c4c/src/frontend/parser)
+- [src/frontend/sema](/workspaces/c4c/src/frontend/sema)
 
 Concrete actions:
-- validate typed/type-text consistency
-- add narrow regressions for inconsistent or unsupported type constructions
+- add focused reductions for typedef/alias-owned reference casts
+- add qualified and dependent target forms with `::`, `typename`, and
+  template-ids
+- classify parser versus sema breakpoints rather than treating them as one bug
 
 Completion check:
-- verifier catches mismatched type semantics before backend lowering
+- alias-qualified and dependent cast targets have explicit coverage
+- unresolved cases are grouped by earliest failing stage
 
-### Step 4: Convert LIR-to-BIR lowering to typed type data
+### Step 3: Review declarator suffix and function-pointer cast forms
 
-Goal: make typed LIR type information the primary discriminator in BIR
-lowering.
+Goal: verify that template-id and declarator suffix parsing remains stable
+across pointer, reference, and function-pointer C-style casts.
 
 Primary targets:
-- [src/backend/lowering/lir_to_bir.cpp](/workspaces/c4c/src/backend/lowering/lir_to_bir.cpp)
+- [tests/cpp](/workspaces/c4c/tests/cpp)
+- [src/frontend/parser](/workspaces/c4c/src/frontend/parser)
 
 Concrete actions:
-- replace string-first helpers such as scalar type text decoding with typed
-  lowering helpers
-- update binop, cmp, cast, return, and signature lowering paths to inspect typed
-  payloads directly
-- keep text lookups only where they remain necessary for diagnostics or bounded
-  legacy compatibility
-- add regressions proving lowering does not depend primarily on `"i8"`,
-  `"i32"`, or `"i64"` string matching
+- add narrow parser reductions for pointer, lvalue-reference, rvalue-reference,
+  cv-qualified pointer, and function-pointer cast targets
+- verify prior template-id parser fixes did not leave suffix-specific holes
 
 Completion check:
-- BIR scalar type lowering no longer branches primarily on type text
+- the cast declarator-suffix matrix is covered by focused parser reductions
 
-### Step 5: Pull phi and CFG normalization behind the BIR boundary
+### Step 4: Validate downstream value-category behavior
 
-Goal: give backend-facing phi/control-flow normalization one canonical
-ownership point.
+Goal: confirm that later semantic consumers observe the correct category after
+reference-qualified casts.
 
 Primary targets:
-- [src/backend/lowering/lir_to_bir.cpp](/workspaces/c4c/src/backend/lowering/lir_to_bir.cpp)
-- [src/backend/bir.hpp](/workspaces/c4c/src/backend/bir.hpp)
-- [src/backend/liveness.cpp](/workspaces/c4c/src/backend/liveness.cpp)
-- target emitters that still perform phi/CFG cleanup
+- [src/frontend/sema](/workspaces/c4c/src/frontend/sema)
+- [src/frontend/hir](/workspaces/c4c/src/frontend/hir)
+- [tests/cpp](/workspaces/c4c/tests/cpp)
 
 Concrete actions:
-- define the canonical post-41 phi strategy
-- move backend-facing CFG normalization into BIR lowering or an explicit
-  BIR-owned normalization stage that feeds the backend-owned CFG/liveness path
-- remove target-local cleanup that exists only because BIR ownership is missing
+- add focused cases for assignment through casted references, overload
+  selection, forwarding, and decltype-like consumers
+- compare against Clang before changing sema or HIR behavior
+- fix one root cause at a time once the earliest failing stage is clear
 
 Completion check:
-- phi and CFG normalization have one canonical BIR-side home
+- value-category-sensitive cast behavior is covered by targeted regressions
+- any landed fix is tied to one demonstrated root cause
 
-### Step 6: Move liveness to backend MIR
+### Step 5: Review member/base access through casted references
 
-Goal: compute liveness from backend MIR rather than raw `LirFunction`.
+Goal: ensure member access and method dispatch preserve the owner/reference
+semantics of the cast result.
 
 Primary targets:
-- [src/backend/bir.hpp](/workspaces/c4c/src/backend/bir.hpp)
-- [src/backend/liveness.hpp](/workspaces/c4c/src/backend/liveness.hpp)
-- [src/backend/liveness.cpp](/workspaces/c4c/src/backend/liveness.cpp)
-- [src/backend/stack_layout/slot_assignment.cpp](/workspaces/c4c/src/backend/stack_layout/slot_assignment.cpp)
-- backend MIR / backend-owned CFG definitions or lowering entry points
-  introduced for this migration
+- [src/frontend/sema](/workspaces/c4c/src/frontend/sema)
+- [src/frontend/hir](/workspaces/c4c/src/frontend/hir)
+- [tests/cpp](/workspaces/c4c/tests/cpp)
 
 Concrete actions:
-- add a backend-owned CFG/function representation that can carry the liveness
-  inputs needed after the BIR boundary
-- split backend-owned CFG/MIR carrier definitions from liveness-core dataflow
-  APIs when that separation makes the ownership seam clearer
-- provide lowering entry points from current backend-owned forms into that CFG,
-  starting with BIR and any temporary LIR compatibility lowering still needed
-- make `LivenessInput` derive from the backend-owned CFG representation rather
-  than constructing it directly from raw `LirFunction`
-- move production callers to `backend CFG -> LivenessInput ->
-  compute_live_intervals(...)`
-- keep `LirFunction -> backend CFG` only as a temporary comparison/transition
-  shim while non-production callers are migrated
-- mark any remaining direct-`LirFunction` liveness entrypoints and nearby
-  helper surfaces as compatibility-only instead of leaving them visually
-  equivalent to production paths
-- continue shrinking prepared stack-layout fallback carriers only when each
-  removed field is replaced by a narrower backend-owned seam rather than
-  another ad hoc cache
-- allow small `stack_layout` header/API splits when they directly clarify the
-  Step 6 ownership boundary between planning, prepared fallback metadata, and
-  rewrite application
-- validate interval parity or intended equivalence on narrow backend tests
-
-Suggested slice order:
-1. introduce the backend-owned CFG carrier and `backend CFG -> LivenessInput`
-   lowering
-2. add `bir::Function -> backend CFG` lowering for the lowerable subset already
-   represented in BIR
-3. retarget production callers that still ask liveness to read raw
-   `LirFunction`
-4. retarget helper/tests to the backend-owned CFG seam and leave direct-LIR
-   lowering as compatibility-only
-5. remove or sharply narrow the raw-LIR public liveness entrypoint once parity
-   coverage exists
+- add focused cases for field access, inherited member access, and method calls
+  through casted references
+- compare against Clang for ref-qualified member behavior when needed
 
 Completion check:
-- production backend liveness derives from backend-owned CFG/MIR inputs rather
-  than raw `LirFunction`
-- any remaining `LirFunction` liveness entrypoint is explicitly compatibility-
-  only and no longer the primary production surface
-- the Step 6 public surface makes backend-owned versus compatibility-only seams
-  obvious enough that Step 7 can retarget regalloc/stack layout without
-  reopening raw-LIR ownership questions
-
-### Step 7: Move regalloc and stack layout to backend MIR
-
-Goal: retarget regalloc and stack-layout integration to machine-facing MIR
-ownership.
-
-Primary targets:
-- [src/backend/regalloc.hpp](/workspaces/c4c/src/backend/regalloc.hpp)
-- [src/backend/regalloc.cpp](/workspaces/c4c/src/backend/regalloc.cpp)
-- [src/backend/generation.cpp](/workspaces/c4c/src/backend/generation.cpp)
-- [src/backend/stack_layout/analysis.cpp](/workspaces/c4c/src/backend/stack_layout/analysis.cpp)
-- related stack-layout/regalloc helper files
-
-Concrete actions:
-- introduce or complete target MIR where needed
-- retarget regalloc interfaces to MIR
-- migrate stack-layout/regalloc integration off LIR-owned interval and phi
-  assumptions
-- keep temporary compatibility wiring only long enough to compare behavior
-- fix Step 7-blocking AArch64 direct-emission regressions introduced or exposed
-  by the ownership migration when they stay on the same seam, especially the
-  prepared stack-layout / direct-LIR variadic path that still rejects
-  backend-owned variadic join shapes needed by current tests
-- treat the current AArch64 variadic/backend red set as Step 7 work when the
-  failures collapse to the same ownership boundary across
-  `backend_lir_aarch64_variadic_*`, `backend_runtime_variadic_*`, and matching
-  `c_testsuite_aarch64_backend_*` coverage
-
-Suggested slice order:
-1. audit stack-layout production entrypoints and classify each remaining
-   raw-`LIR` surface as either production-critical or compatibility-only
-2. mark compatibility-only stack-layout entrypoints explicitly and keep the
-   production route centered on backend-owned liveness plus narrowed planning
-   and rewrite inputs
-3. retarget production stack-layout/regalloc callers so they no longer depend
-   on raw `LirFunction` / `LirModule` ownership when backend-owned inputs
-   already exist
-4. narrow or delete wrapper overloads that only survive to preserve the old
-   raw-`LIR` route after step 3 lands
-5. repair same-seam AArch64 variadic/backend regressions before close when the
-   failures come from Step 7 ownership changes or direct-emitter gating on the
-   remaining compatibility path rather than from a separate backend initiative
-6. leave broad test cleanup and final shim deletion to Step 8 once the new
-   production route is stable
-
-Completion check:
-- production regalloc and stack-layout ownership live on backend MIR
-- any remaining raw-`LIR` stack-layout surface is explicitly compatibility-only
-  and no longer the default production path
-- the known Step 7 AArch64 variadic/backend blocker set is green when those
-  cases depend only on the migrated ownership seam rather than on new backend
-  feature work
-
-### Step 8: Delete temporary LIR-side backend shims
-
-Goal: remove fallback logic that leaves LIR as the hidden owner of backend
-analysis state.
-
-Primary targets:
-- LIR-side liveness/regalloc compatibility entry points
-- backend paths that still treat LIR as the canonical phi/regalloc owner
-- docs/tests covering final ownership
-
-Concrete actions:
-- remove obsolete string-first lowering helpers
-- remove temporary LIR-owned analysis shims
-- update tests and docs to match the final ownership model
-- if Step 7 triage uncovers genuinely separate backend capability work, track
-  it here or in a follow-up idea instead of stretching Step 7 beyond the
-  ownership migration; examples include broader AArch64 variadic ABI expansion,
-  new HFA/HVA or `fp128` support, or other target features not required to make
-  the current Step 7 blocker set green
-
-Completion check:
-- LIR is no longer the permanent owner of backend analysis state
-- any deferred backend failures left after Step 7 are clearly identified as new
-  capability work rather than unresolved ownership-migration regressions
+- casted-reference member/base access has explicit regression coverage
+- remaining failures are classified as sema or HIR/lowering issues
 
 ## Acceptance Checks
 
-- `LirTypeRef` carries exact typed payloads, not only coarse kind
-- typed LIR objects still provide canonical renderable text
-- LIR construction attaches type semantics at creation time
-- verifier checks typed/text consistency
-- `lir_to_bir.cpp` uses typed type information as the primary discriminator
-- scalar lowering no longer depends primarily on string matching
-- focused tests cover typed type creation and typed LIR-to-BIR lowering
-- the post-41 ownership plan for phi, CFG normalization, liveness, and regalloc
-  is explicit in code and planning state
-- production regalloc no longer treats raw LIR as the permanent backend layer
-- backend surface cleanup that is useful but not required for this migration is
-  tracked in a separate `ideas/open/` follow-up rather than folded into this
-  runbook
+- the likely cast/reference follow-up shapes are covered by targeted
+  regressions
+- unresolved cases are classified by earliest failing stage
+- Clang-backed behavior is captured before value-category-sensitive fixes land
+- no nearby cast fix relies on an unreviewed neighboring hole staying dormant
 
 ## Validation
 
-- capture a full-suite baseline before implementation work
-- add or update the narrowest test for each slice before code changes
-- re-run targeted coverage and then full `ctest` before handoff
+- add the narrowest test for each active slice before code changes
+- run targeted parser/sema/HIR tests as appropriate for the slice
+- run the full `ctest -j` suite before handoff
 - require monotonic full-suite results
