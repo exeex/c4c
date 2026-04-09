@@ -7,15 +7,41 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: re-audit stack-layout mutation helpers and target-local
-  entrypoint preparation to confirm the only remaining raw-LIR surfaces are the
-  ones that still must inspect or mutate original LIR instructions
-- Next intended slice: if the re-audit finds another compatibility-only
-  raw-LIR helper, move that path onto an existing lowered backend-owned input;
-  otherwise advance to the next remaining Step 7 MIR-ownership handoff seam
+- Current slice: re-audit the remaining direct-emitter slot ownership seams now
+  that target-local entrypoint preparation shares one backend-owned
+  liveness/regalloc/stack-layout bundle helper and only the final
+  entry-alloca mutation path still needs raw LIR
+- Next intended slice: move the next compatibility-only direct-emitter raw-LIR
+  read onto existing lowered metadata, starting with whichever slot or
+  signature/call-result reparse survives the post-helper audit
 
 ## Completed
 
+- Completed the next Step 6/7 bounded target-local entrypoint preparation
+  cleanup slice by lifting duplicated liveness/regalloc/stack-layout setup
+  behind one shared backend-owned helper while keeping the final mutation step
+  on raw LIR:
+  - added a new
+    `build_stack_layout_plan_bundle(...)` overload in
+    `src/backend/stack_layout/slot_assignment.*` that accepts prelowered
+    `LivenessInput`, `StackLayoutInput`, `RegAllocConfig`, asm clobbers, and
+    callee-saved registers, then runs regalloc-plus-stack-layout bundle setup
+    from that backend-owned surface
+  - retargeted
+    `src/backend/aarch64/codegen/emit.cpp` and
+    `src/backend/x86/codegen/emit.cpp`'s target-local
+    `prune_dead_entry_allocas(...)` entrypoints to use that shared helper
+    instead of open-coding the regalloc/bundle preparation sequence in each
+    emitter
+  - extended `tests/backend/backend_shared_util_tests.cpp` with focused
+    coverage proving the shared prep overload preserves dead-param
+    classification plus entry/param alloca pruning decisions when callers
+    provide backend-owned liveness and stack-layout inputs
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R backend_shared_util_tests --output-on-failure`,
+    rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with no new failures and no pass-count drop
+    (`2809 -> 2809`, same 32 known failing tests as `test_fail_before.log`)
 - Completed the next Step 6 bounded raw-LIR compatibility cleanup slice by
   retiring the remaining shared-test wrappers and target-local regalloc helpers
   that no longer needed `LirFunction` once callers already lowered backend-owned

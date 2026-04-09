@@ -51,14 +51,16 @@ c4c::backend::RegAllocIntegrationResult run_shared_x86_regalloc(
 
 void prune_dead_entry_allocas(c4c::codegen::lir::LirFunction& function) {
   const auto liveness_input = c4c::backend::lower_lir_to_liveness_input(function);
-  const auto regalloc = run_shared_x86_regalloc(liveness_input);
   const auto stack_layout_input =
       c4c::backend::stack_layout::lower_lir_to_stack_layout_input(function);
+  c4c::backend::RegAllocConfig config;
+  config.available_regs = {{1}, {2}, {3}, {4}, {5}};
+  config.caller_saved_regs = {{10}, {11}, {12}, {13}, {14}, {15}};
   const std::vector<c4c::backend::PhysReg> callee_saved = {
       {1}, {2}, {3}, {4}, {5},
   };
   const auto bundle = c4c::backend::stack_layout::build_stack_layout_plan_bundle(
-      stack_layout_input, regalloc, callee_saved);
+      liveness_input, stack_layout_input, config, {}, callee_saved);
   c4c::backend::stack_layout::apply_entry_alloca_slot_plan(function,
                                                            bundle.entry_alloca_plans);
 }

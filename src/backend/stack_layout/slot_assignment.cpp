@@ -167,6 +167,17 @@ StackLayoutPlanBundle build_stack_layout_plan_bundle(
   return bundle;
 }
 
+StackLayoutPlanBundle build_stack_layout_plan_bundle(
+    const LivenessInput& liveness_input,
+    const StackLayoutInput& stack_layout_input,
+    const RegAllocConfig& regalloc_config,
+    const std::vector<PhysReg>& asm_clobbered,
+    const std::vector<PhysReg>& callee_saved_regs) {
+  const auto regalloc =
+      run_regalloc_and_merge_clobbers(liveness_input, regalloc_config, asm_clobbered);
+  return build_stack_layout_plan_bundle(stack_layout_input, regalloc, callee_saved_regs);
+}
+
 std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(
     const StackLayoutInput& input,
     const StackLayoutAnalysis& analysis) {

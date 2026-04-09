@@ -1652,6 +1652,34 @@ void test_backend_shared_slot_assignment_bundle_accepts_backend_owned_input() {
               "backend-owned stack-layout plan bundle should still drive the production entry-alloca mutation step");
 }
 
+void test_backend_shared_slot_assignment_bundle_prepares_from_backend_owned_inputs() {
+  c4c::backend::RegAllocConfig config;
+  config.available_regs = {{20}};
+  config.caller_saved_regs = {{13}};
+
+  const auto dead_param_module = make_dead_param_alloca_candidate_module();
+  const auto& dead_param_function = dead_param_module.functions.back();
+  const auto dead_param_input =
+      c4c::backend::stack_layout::lower_lir_to_stack_layout_input(dead_param_function);
+  const auto dead_param_liveness_input =
+      c4c::backend::lower_lir_to_liveness_input(dead_param_function);
+  const auto prepared_bundle = c4c::backend::stack_layout::build_stack_layout_plan_bundle(
+      dead_param_liveness_input, dead_param_input, config, {}, {{20}, {21}, {22}});
+
+  expect_true(prepared_bundle.entry_alloca_plans.size() == 1 &&
+                  prepared_bundle.entry_alloca_plans.front().alloca_name == "%lv.param.x" &&
+                  !prepared_bundle.entry_alloca_plans.front().needs_stack_slot &&
+                  prepared_bundle.entry_alloca_plans.front().remove_following_entry_store,
+              "shared stack-layout bundle prep should preserve entry-alloca pruning decisions when callers provide backend-owned liveness and stack-layout inputs");
+  expect_true(prepared_bundle.param_alloca_plans.size() == 1 &&
+                  prepared_bundle.param_alloca_plans.front().alloca_name == "%lv.param.x" &&
+                  prepared_bundle.param_alloca_plans.front().param_name == "%p.x" &&
+                  !prepared_bundle.param_alloca_plans.front().needs_stack_slot,
+              "shared stack-layout bundle prep should preserve param-alloca pruning decisions from the same backend-owned inputs");
+  expect_true(prepared_bundle.analysis.is_dead_param_alloca("%lv.param.x"),
+              "shared stack-layout bundle prep should keep the backend-owned dead-param classification available to downstream entrypoint setup");
+}
+
 void test_backend_shared_slot_assignment_prunes_dead_entry_alloca_insts() {
   const c4c::backend::RegAllocIntegrationResult regalloc;
 
@@ -2008,6 +2036,7 @@ int main(int argc, char* argv[]) {
   test_backend_shared_slot_assignment_plans_entry_alloca_slots();
   test_backend_shared_slot_assignment_accepts_backend_owned_input();
   test_backend_shared_slot_assignment_bundle_accepts_backend_owned_input();
+  test_backend_shared_slot_assignment_bundle_prepares_from_backend_owned_inputs();
   test_backend_shared_slot_assignment_prunes_dead_entry_alloca_insts();
   test_backend_shared_slot_assignment_applies_coalesced_entry_slots();
   // TODO: binary-utils contract test disabled — assembler seam changed

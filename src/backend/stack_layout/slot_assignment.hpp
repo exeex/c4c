@@ -34,6 +34,13 @@ StackLayoutPlanBundle build_stack_layout_plan_bundle(
     const RegAllocIntegrationResult& regalloc,
     const std::vector<PhysReg>& callee_saved_regs);
 
+StackLayoutPlanBundle build_stack_layout_plan_bundle(
+    const LivenessInput& liveness_input,
+    const StackLayoutInput& stack_layout_input,
+    const RegAllocConfig& regalloc_config,
+    const std::vector<PhysReg>& asm_clobbered,
+    const std::vector<PhysReg>& callee_saved_regs);
+
 std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(
     const StackLayoutInput& input,
     const StackLayoutAnalysis& analysis);
