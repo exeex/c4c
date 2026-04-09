@@ -11,19 +11,20 @@ Source Plan: plan.md
   keep the active work inside idea 44's x86-native emitter/toolchain lane and
   do not silently absorb the separate shared-BIR select regression
 - current exact slice:
-  move past the now-green single-param local-slot add helper and choose the
-  next bounded x86-native direct-LIR call-family slice without reopening broad
-  `try_lower_to_bir_with_options(...)` ordering changes
+  move past the now-green single-local-arg helper-call slice and finish the
+  remaining adjacent zero-arg helper-call seam
+  without reopening broad `try_lower_to_bir_with_options(...)` ordering
+  changes
 
 ## Next Slice
 
 - keep the separate shared-BIR select regression parked in
   `ideas/open/47_shared_bir_select_route_regression_after_x86_variadic_recovery.md`
   instead of widening idea 44
-- after the now-green `backend_runtime_param_slot` slice, start from the
-  adjacent x86 direct-LIR call lane:
-  `backend_runtime_call_helper` and `backend_runtime_local_arg_call` are the
-  nearest remaining bounded failures and should be sampled before widening into
+- after the now-green `backend_runtime_local_arg_call` slice, keep the active
+  work on the last adjacent single-call-family target:
+  `backend_runtime_call_helper` still fails on the source-produced x86 path and
+  needs its exact prepared-module ownership clarified before widening into
   broader two-arg helper families
 
 ## Recently Completed
@@ -52,6 +53,28 @@ Source Plan: plan.md
   still reports the broader parked full-suite regression lane as red overall,
   but the checked-in after-state improved from `2571 -> 2572` passes and
   `279 -> 278` failures after the param-slot slice
+
+- added bounded x86 direct-LIR matcher/emitter support in
+  `src/backend/x86/codegen/emit.cpp` for the next adjacent call-family lane:
+  a single-function extern zero-arg helper call (`main -> helper()`) and the
+  two-function single-local-slot helper call (`store 5 -> load -> add_one(x)`)
+- covered those native prepared-LIR seams with focused x86 regressions in
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp`
+- verified the focused x86 native prepared-LIR regressions are green:
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_extern_zero_arg_call_slice`
+  and
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_local_arg_call_slice`
+  now pass
+- verified the real internal runtime lane partially improved:
+  `ctest --test-dir build --output-on-failure -R '^(backend_runtime_call_helper|backend_runtime_local_arg_call)$'`
+  now leaves only `backend_runtime_call_helper` failing while
+  `backend_runtime_local_arg_call` passes
+- sampled the unresolved helper-call source shape with the riscv64 BIR text
+  route:
+  `./build/c4cll --codegen asm --target riscv64-unknown-linux-gnu tests/c/internal/backend_case/call_helper.c`
+  prints a zero-arg declaration plus `main -> helper()` BIR call, so the
+  remaining x86 failure is likely in the x86-target prepared-module route
+  rather than the already-green bounded local-arg helper family
 
 - added a bounded x86 direct-LIR local-temp matcher/emitter in
   `src/backend/x86/codegen/emit.cpp` for the one-slot `store imm -> load ->
