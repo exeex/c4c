@@ -271,6 +271,34 @@ c4c::codegen::lir::LirModule make_local_i32_arithmetic_chain_return_immediate_mo
   return module;
 }
 
+c4c::codegen::lir::LirModule make_two_local_i32_zero_init_return_first_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.x", "i32", "", 4});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.y", "i32", "", 4});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{"i32", "0", "%lv.y"});
+  entry.insts.push_back(LirStoreOp{"i32", "0", "%lv.x"});
+  entry.insts.push_back(LirLoadOp{"%t0", "i32", "%lv.x"});
+  entry.terminator = LirRet{std::string("%t0"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_local_i32_pointer_store_zero_load_return_module() {
   using namespace c4c::codegen::lir;
 
@@ -2655,6 +2683,24 @@ void test_bir_lowering_accepts_local_i32_arithmetic_chain_return_immediate_modul
   const auto rendered = c4c::backend::bir::print(*lowered);
   expect_contains(rendered, "bir.func @main() -> i32 {\nentry:\n  bir.ret i32 0\n}\n",
                   "the lowered local i32 arithmetic-chain module should normalize the repeated local-slot arithmetic to a single immediate zero return");
+}
+
+void test_bir_lowering_accepts_two_local_i32_zero_init_return_first_module() {
+  const auto lowered =
+      c4c::backend::try_lower_to_bir(make_two_local_i32_zero_init_return_first_module());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the bounded two-local zero-init return slice through the shared constant-return contract");
+
+  expect_true(lowered->functions.size() == 1 &&
+                  lowered->functions.front().blocks.size() == 1 &&
+                  lowered->functions.front().blocks.front().insts.empty() &&
+                  lowered->functions.front().blocks.front().terminator.kind ==
+                      c4c::backend::bir::TerminatorKind::Return,
+              "the lowered two-local zero-init module should collapse to one canonical constant-return block");
+
+  const auto rendered = c4c::backend::bir::print(*lowered);
+  expect_contains(rendered, "bir.func @main() -> i32 {\nentry:\n  bir.ret i32 0\n}\n",
+                  "the lowered two-local zero-init module should normalize the chained zero stores to a single immediate zero return");
 }
 
 void test_bir_lowering_accepts_local_i32_pointer_store_zero_load_return_module() {
@@ -5315,6 +5361,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_minimal_goto_only_constant_return_lir_module);
   RUN_TEST(test_bir_lowering_accepts_local_i32_store_load_sub_return_immediate_module);
   RUN_TEST(test_bir_lowering_accepts_local_i32_arithmetic_chain_return_immediate_module);
+  RUN_TEST(test_bir_lowering_accepts_two_local_i32_zero_init_return_first_module);
   RUN_TEST(test_bir_lowering_accepts_local_i32_pointer_store_zero_load_return_module);
   RUN_TEST(test_bir_lowering_accepts_double_indirect_local_store_one_final_branch_return_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_countdown_do_while_lir_module);

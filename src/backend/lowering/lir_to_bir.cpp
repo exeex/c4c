@@ -1048,6 +1048,66 @@ std::optional<bir::Module> try_lower_minimal_local_i32_arithmetic_chain_return_i
   return lowered;
 }
 
+std::optional<bir::Module> try_lower_minimal_two_local_i32_zero_init_return_first_module(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || !module.globals.empty() ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      !backend_lir_signature_matches(function.signature_text, "define", "i32", function.name, {}) ||
+      function.entry.value != 0 || function.blocks.size() != 1 || function.alloca_insts.size() != 2 ||
+      !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* first_slot = std::get_if<LirAllocaOp>(&function.alloca_insts[0]);
+  const auto* second_slot = std::get_if<LirAllocaOp>(&function.alloca_insts[1]);
+  if (first_slot == nullptr || second_slot == nullptr || first_slot->result.empty() ||
+      second_slot->result.empty() || !first_slot->count.empty() || !second_slot->count.empty() ||
+      !lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{first_slot->type_str}, 32) ||
+      !lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{second_slot->type_str}, 32)) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  const auto* second_store = entry.insts.size() == 3 ? std::get_if<LirStoreOp>(&entry.insts[0]) : nullptr;
+  const auto* first_store = entry.insts.size() == 3 ? std::get_if<LirStoreOp>(&entry.insts[1]) : nullptr;
+  const auto* first_load = entry.insts.size() == 3 ? std::get_if<LirLoadOp>(&entry.insts[2]) : nullptr;
+  const auto* ret = std::get_if<LirRet>(&entry.terminator);
+  if (entry.label != "entry" || second_store == nullptr || first_store == nullptr ||
+      first_load == nullptr || ret == nullptr || !ret->value_str.has_value() ||
+      lower_function_return_type(function, *ret) != bir::TypeKind::I32 ||
+      *ret->value_str != first_load->result || second_store->ptr != second_slot->result ||
+      first_store->ptr != first_slot->result || first_load->ptr != first_slot->result ||
+      first_load->result.empty() ||
+      !lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{second_store->type_str}, 32) ||
+      !lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{first_store->type_str}, 32) ||
+      !lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{first_load->type_str}, 32) ||
+      second_store->val != "0" || first_store->val != "0") {
+    return std::nullopt;
+  }
+
+  bir::Module lowered;
+  lowered.target_triple = module.target_triple;
+  lowered.data_layout = module.data_layout;
+
+  bir::Function lowered_function;
+  lowered_function.name = function.name;
+  lowered_function.return_type = bir::TypeKind::I32;
+
+  bir::Block lowered_entry;
+  lowered_entry.label = "entry";
+  lowered_entry.terminator.value = bir::Value::immediate_i32(0);
+  lowered_function.blocks.push_back(std::move(lowered_entry));
+  lowered.functions.push_back(std::move(lowered_function));
+  return lowered;
+}
+
 std::optional<bir::Module> try_lower_minimal_local_i32_pointer_store_zero_load_return_module(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
@@ -3419,6 +3479,10 @@ std::optional<bir::Module> try_lower_to_bir_legacy(const c4c::codegen::lir::LirM
   }
   if (const auto lowered =
           try_lower_minimal_local_i32_arithmetic_chain_return_immediate_module(module);
+      lowered.has_value()) {
+    return lowered;
+  }
+  if (const auto lowered = try_lower_minimal_two_local_i32_zero_init_return_first_module(module);
       lowered.has_value()) {
     return lowered;
   }
