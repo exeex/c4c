@@ -8,6 +8,7 @@
 
 #include <charconv>
 #include <cctype>
+#include <limits>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
@@ -23,6 +24,27 @@ struct MinimalStringLiteralCharSlice {
   std::string raw_bytes;
   std::int64_t byte_index = 0;
   c4c::codegen::lir::LirCastKind extend_kind = c4c::codegen::lir::LirCastKind::SExt;
+};
+
+struct MinimalScalarGlobalLoadSlice {
+  std::string function_name;
+  std::string global_name;
+  std::int64_t init_imm = 0;
+  std::size_t align_bytes = 4;
+  bool zero_initializer = false;
+};
+
+struct MinimalScalarGlobalStoreReloadSlice {
+  std::string function_name;
+  std::string global_name;
+  std::int64_t init_imm = 0;
+  std::int64_t store_imm = 0;
+  std::size_t align_bytes = 4;
+};
+
+struct MinimalExternScalarGlobalLoadSlice {
+  std::string function_name;
+  std::string global_name;
 };
 
 struct MinimalVariadicSum2Slice {
@@ -74,6 +96,133 @@ std::optional<std::int64_t> parse_minimal_return_imm(
     return std::nullopt;
   }
   return parse_i64(*block.terminator.value);
+}
+
+std::optional<MinimalScalarGlobalLoadSlice> parse_minimal_scalar_global_load_slice(
+    const c4c::backend::bir::Module& module) {
+  using namespace c4c::backend::bir;
+
+  if (module.functions.size() != 1 || module.globals.size() != 1 ||
+      !module.string_constants.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& global = module.globals.front();
+  if (global.is_extern || global.type != TypeKind::I32 || !global.initializer.has_value() ||
+      global.initializer->kind != c4c::backend::bir::Value::Kind::Immediate ||
+      global.initializer->type != TypeKind::I32) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration || function.return_type != TypeKind::I32 ||
+      !function.params.empty() || !function.local_slots.empty() || function.blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  const auto* load =
+      entry.insts.size() == 1 ? std::get_if<LoadGlobalInst>(&entry.insts.front()) : nullptr;
+  if (entry.label != "entry" || load == nullptr ||
+      load->result.kind != c4c::backend::bir::Value::Kind::Named ||
+      load->result.type != TypeKind::I32 || load->global_name != global.name ||
+      load->byte_offset != 0 || entry.terminator.kind != TerminatorKind::Return ||
+      !entry.terminator.value.has_value() || *entry.terminator.value != load->result) {
+    return std::nullopt;
+  }
+
+  return MinimalScalarGlobalLoadSlice{
+      .function_name = function.name,
+      .global_name = global.name,
+      .init_imm = global.initializer->immediate,
+      .align_bytes = load->align_bytes > 0 ? load->align_bytes : 4,
+      .zero_initializer = global.initializer->immediate == 0,
+  };
+}
+
+std::optional<MinimalExternScalarGlobalLoadSlice> parse_minimal_extern_scalar_global_load_slice(
+    const c4c::backend::bir::Module& module) {
+  using namespace c4c::backend::bir;
+
+  if (module.functions.size() != 1 || module.globals.size() != 1 ||
+      !module.string_constants.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& global = module.globals.front();
+  if (!global.is_extern || global.type != TypeKind::I32 || global.initializer.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration || function.return_type != TypeKind::I32 ||
+      !function.params.empty() || !function.local_slots.empty() || function.blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  const auto* load =
+      entry.insts.size() == 1 ? std::get_if<LoadGlobalInst>(&entry.insts.front()) : nullptr;
+  if (entry.label != "entry" || load == nullptr ||
+      load->result.kind != c4c::backend::bir::Value::Kind::Named ||
+      load->result.type != TypeKind::I32 || load->global_name != global.name ||
+      load->byte_offset != 0 || entry.terminator.kind != TerminatorKind::Return ||
+      !entry.terminator.value.has_value() || *entry.terminator.value != load->result) {
+    return std::nullopt;
+  }
+
+  return MinimalExternScalarGlobalLoadSlice{
+      .function_name = function.name,
+      .global_name = global.name,
+  };
+}
+
+std::optional<MinimalScalarGlobalStoreReloadSlice> parse_minimal_scalar_global_store_reload_slice(
+    const c4c::backend::bir::Module& module) {
+  using namespace c4c::backend::bir;
+
+  if (module.functions.size() != 1 || module.globals.size() != 1 ||
+      !module.string_constants.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& global = module.globals.front();
+  if (global.is_extern || global.type != TypeKind::I32 || !global.initializer.has_value() ||
+      global.initializer->kind != c4c::backend::bir::Value::Kind::Immediate ||
+      global.initializer->type != TypeKind::I32) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration || function.return_type != TypeKind::I32 ||
+      !function.params.empty() || !function.local_slots.empty() || function.blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  const auto* store =
+      entry.insts.size() == 2 ? std::get_if<StoreGlobalInst>(&entry.insts.front()) : nullptr;
+  const auto* load =
+      entry.insts.size() == 2 ? std::get_if<LoadGlobalInst>(&entry.insts.back()) : nullptr;
+  if (entry.label != "entry" || store == nullptr || load == nullptr ||
+      store->global_name != global.name || store->byte_offset != 0 ||
+      store->value.kind != c4c::backend::bir::Value::Kind::Immediate ||
+      store->value.type != TypeKind::I32 ||
+      load->result.kind != c4c::backend::bir::Value::Kind::Named ||
+      load->result.type != TypeKind::I32 ||
+      load->global_name != global.name || load->byte_offset != 0 ||
+      entry.terminator.kind != TerminatorKind::Return ||
+      !entry.terminator.value.has_value() || *entry.terminator.value != load->result) {
+    return std::nullopt;
+  }
+
+  return MinimalScalarGlobalStoreReloadSlice{
+      .function_name = function.name,
+      .global_name = global.name,
+      .init_imm = global.initializer->immediate,
+      .store_imm = store->value.immediate,
+      .align_bytes = load->align_bytes > 0 ? load->align_bytes : 4,
+  };
 }
 
 std::string asm_symbol_name(std::string_view target_triple, std::string_view logical_name) {
@@ -214,6 +363,101 @@ std::string emit_minimal_return_imm_asm(const c4c::backend::bir::Module& module,
       << ".text\n"
       << emit_function_prelude(module.target_triple, symbol)
       << "  mov eax, " << imm << "\n"
+      << "  ret\n";
+  return out.str();
+}
+
+std::string emit_global_symbol_prelude(std::string_view target_triple,
+                                       std::string_view symbol_name,
+                                       std::size_t align_bytes,
+                                       bool is_zero_init) {
+  std::ostringstream out;
+  out << (is_zero_init ? ".bss\n" : ".data\n")
+      << ".globl " << symbol_name << "\n";
+  if (target_triple.find("apple-darwin") == std::string::npos) {
+    out << ".type " << symbol_name << ", @object\n";
+  }
+  if (align_bytes > 1) {
+    out << ".p2align " << (align_bytes == 2 ? 1 : 2) << "\n";
+  }
+  out << symbol_name << ":\n";
+  return out.str();
+}
+
+std::string emit_minimal_scalar_global_load_asm(
+    std::string_view target_triple,
+    const MinimalScalarGlobalLoadSlice& slice) {
+  if (slice.init_imm < std::numeric_limits<std::int32_t>::min() ||
+      slice.init_imm > std::numeric_limits<std::int32_t>::max()) {
+    throw std::invalid_argument(
+        "x86 backend emitter does not support this direct BIR module; only the affine-return subset lowers natively");
+  }
+
+  const auto global_symbol = asm_symbol_name(target_triple, slice.global_name);
+  const auto function_symbol = asm_symbol_name(target_triple, slice.function_name);
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n"
+      << emit_global_symbol_prelude(target_triple, global_symbol, slice.align_bytes,
+                                    slice.zero_initializer);
+  if (slice.zero_initializer) {
+    out << "  .zero 4\n";
+  } else {
+    out << "  .long " << slice.init_imm << "\n";
+  }
+  if (target_triple.find("apple-darwin") == std::string::npos) {
+    out << ".size " << global_symbol << ", 4\n";
+  }
+  out << ".text\n"
+      << emit_function_prelude(target_triple, function_symbol)
+      << "  lea rax, " << global_symbol << "[rip]\n"
+      << "  mov eax, dword ptr [rax]\n"
+      << "  ret\n";
+  return out.str();
+}
+
+std::string emit_minimal_extern_scalar_global_load_asm(
+    std::string_view target_triple,
+    const MinimalExternScalarGlobalLoadSlice& slice) {
+  const auto global_symbol = asm_symbol_name(target_triple, slice.global_name);
+  const auto function_symbol = asm_symbol_name(target_triple, slice.function_name);
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n";
+  if (target_triple.find("apple-darwin") == std::string::npos) {
+    out << ".extern " << global_symbol << "\n";
+  }
+  out << ".text\n"
+      << emit_function_prelude(target_triple, function_symbol)
+      << "  lea rax, " << global_symbol << "[rip]\n"
+      << "  mov eax, dword ptr [rax]\n"
+      << "  ret\n";
+  return out.str();
+}
+
+std::string emit_minimal_scalar_global_store_reload_asm(
+    std::string_view target_triple,
+    const MinimalScalarGlobalStoreReloadSlice& slice) {
+  if (slice.init_imm < std::numeric_limits<std::int32_t>::min() ||
+      slice.init_imm > std::numeric_limits<std::int32_t>::max() ||
+      slice.store_imm < std::numeric_limits<std::int32_t>::min() ||
+      slice.store_imm > std::numeric_limits<std::int32_t>::max()) {
+    throw std::invalid_argument(
+        "x86 backend emitter does not support this direct BIR module; only the affine-return subset lowers natively");
+  }
+
+  const auto global_symbol = asm_symbol_name(target_triple, slice.global_name);
+  const auto function_symbol = asm_symbol_name(target_triple, slice.function_name);
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n"
+      << emit_global_symbol_prelude(target_triple, global_symbol, slice.align_bytes, false)
+      << "  .long " << slice.init_imm << "\n";
+  if (target_triple.find("apple-darwin") == std::string::npos) {
+    out << ".size " << global_symbol << ", 4\n";
+  }
+  out << ".text\n"
+      << emit_function_prelude(target_triple, function_symbol)
+      << "  lea rax, " << global_symbol << "[rip]\n"
+      << "  mov dword ptr [rax], " << slice.store_imm << "\n"
+      << "  mov eax, dword ptr [rax]\n"
       << "  ret\n";
   return out.str();
 }
@@ -695,6 +939,17 @@ std::string emit_minimal_variadic_double_bytes_asm(
 std::optional<std::string> try_emit_module(const c4c::backend::bir::Module& module) {
   if (const auto imm = parse_minimal_return_imm(module); imm.has_value()) {
     return emit_minimal_return_imm_asm(module, *imm);
+  }
+  if (const auto slice = parse_minimal_scalar_global_load_slice(module); slice.has_value()) {
+    return emit_minimal_scalar_global_load_asm(module.target_triple, *slice);
+  }
+  if (const auto slice = parse_minimal_extern_scalar_global_load_slice(module);
+      slice.has_value()) {
+    return emit_minimal_extern_scalar_global_load_asm(module.target_triple, *slice);
+  }
+  if (const auto slice = parse_minimal_scalar_global_store_reload_slice(module);
+      slice.has_value()) {
+    return emit_minimal_scalar_global_store_reload_asm(module.target_triple, *slice);
   }
   return std::nullopt;
 }

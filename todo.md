@@ -11,7 +11,7 @@ Source Plan: plan.md
   keep the active work inside idea 44's x86-native emitter/toolchain lane and
   do not silently absorb the separate shared-BIR select regression
 - current exact slice:
-  move past the now-green minimal prologue/header repair in
+  move past the now-green x86 minimal global-memory contract recovery in
   `src/backend/x86/codegen/emit.cpp` and choose the next smallest x86-local
   runtime or contract probe that still fails after the shared-BIR select
   regression is parked separately
@@ -21,10 +21,10 @@ Source Plan: plan.md
 - keep the separate shared-BIR select regression parked in
   `ideas/open/47_shared_bir_select_route_regression_after_x86_variadic_recovery.md`
   instead of widening idea 44
-- after the minimal x86 asm prologue/header repair, choose the next bounded
+- after the minimal x86 global-memory contract repair, choose the next bounded
   x86-native runtime or contract probe that still fails for x86-local reasons
-  such as `backend_runtime_global_load`, `backend_contract_x86_64_global_load_stdout_object`,
-  or `backend_shared_util_tests`, without reopening broad
+  such as `backend_shared_util_tests` or the next nearby x86-only backend
+  contract/runtime case, without reopening broad
   `try_lower_to_bir_with_options(...)` ordering changes
 
 ## Recently Completed
@@ -43,6 +43,32 @@ Source Plan: plan.md
   `src/backend/x86/codegen/emit.cpp` so the minimal direct-BIR immediate-return
   path and the native string-literal helper now emit `.intel_syntax noprefix`
   and return to `.text` before function bodies
+- added bounded x86 direct-BIR global-memory support in
+  `src/backend/x86/codegen/emit.cpp` for:
+  minimal scalar global load, minimal extern scalar global load, and the
+  matching scalar global store-reload slice
+- verified the focused x86 global-memory seam is green:
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_direct_bir_minimal_scalar_global_load_end_to_end`,
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_direct_bir_minimal_extern_scalar_global_load_end_to_end`,
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_lir_minimal_scalar_global_load_through_bir_end_to_end`,
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_lir_minimal_extern_scalar_global_load_through_bir_end_to_end`,
+  and
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_direct_bir_minimal_scalar_global_store_reload_end_to_end`
+  now pass
+- verified the user-facing x86 internal global-load cases are green again:
+  `ctest --test-dir build --output-on-failure -R '^(backend_runtime_global_load|backend_contract_x86_64_global_load_stdout_object)$'`
+  passes, and
+  `./build/c4cll --codegen asm --target x86_64-unknown-linux-gnu tests/c/internal/backend_case/global_load.c`
+  now emits bounded native assembly instead of failing at the x86 direct-LIR
+  boundary
+- re-ran the required full suite after the x86 global-memory slice and
+  confirmed the checked-in monotonic guard is still red for the same broader
+  separate baseline-drift lane:
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log`
+  reports `2670 -> 2564` passes, `179 -> 286` failures, zero resolved failing
+  tests, and `106` new failing tests spanning `backend_bir_tests`,
+  route tests, and broad x86/runtime families rather than the now-green
+  `global_load` seam
 - normalized the x86 string-literal helper's Intel operand spelling to the
   repo's existing native-asm contract:
   `lea rax, .L.str0[rip]` and `movsx/movzx ... byte ptr [...]`
@@ -259,6 +285,10 @@ Source Plan: plan.md
   focused x86 variadic probes are green, treat the baseline drift as a separate
   blocking investigation before using the checked-in `test_fail_before.log` as
   the acceptance gate for further slices
+- after the x86 global-memory slice, the same broad monotonic guard problem
+  remains separate from the now-green `global_load` seam:
+  `test_fail_after.log` still fails against `test_fail_before.log` with `106`
+  newly failing tests and a `2564/286/2850` pass/fail/total snapshot
 
 ## Notes To Resume
 
