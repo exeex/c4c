@@ -58,6 +58,10 @@ EntryAllocaRewritePatch prepare_entry_alloca_rewrite_patch(
     const std::vector<PhysReg>& asm_clobbered,
     const std::vector<PhysReg>& callee_saved_regs);
 
+[[nodiscard]] std::optional<LivenessInput> try_lower_module_function_to_bir_liveness_input(
+    const c4c::codegen::lir::LirModule& module,
+    std::size_t function_index);
+
 [[nodiscard]] c4c::codegen::lir::LirModule rewrite_module_entry_allocas(
     const c4c::codegen::lir::LirModule& module,
     const RegAllocConfig& regalloc_config,

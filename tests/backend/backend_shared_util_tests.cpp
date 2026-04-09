@@ -34,6 +34,15 @@ c4c::backend::LivenessInput lower_test_backend_cfg_liveness_input(
   return c4c::backend::lower_backend_cfg_to_liveness_input(backend_cfg);
 }
 
+c4c::codegen::lir::LirModule make_mixed_bir_and_entry_alloca_module() {
+  auto module = make_typed_direct_call_two_arg_module();
+  auto dead_alloca_module = make_dead_local_alloca_candidate_module();
+  auto dead_function = dead_alloca_module.functions.front();
+  dead_function.name = "needs_rewrite";
+  module.functions.push_back(std::move(dead_function));
+  return module;
+}
+
 }  // namespace
 
 void test_backend_shared_call_decode_parses_bir_minimal_direct_call_module() {
@@ -1775,6 +1784,25 @@ void test_backend_shared_slot_assignment_rewrites_module_entry_allocas() {
               "shared module entry-alloca rewrite should leave declarations untouched");
   expect_true(rewritten.functions.back().alloca_insts.empty(),
               "shared module entry-alloca rewrite should prune dead param allocas across the whole LIR module");
+}
+
+void test_backend_shared_slot_assignment_prefers_per_function_bir_liveness_when_available() {
+  const auto module = make_mixed_bir_and_entry_alloca_module();
+
+  expect_true(!c4c::backend::try_lower_to_bir(module).has_value(),
+              "shared entry-alloca rewrite coverage should start from a mixed module whose blocking function still prevents whole-module BIR lowering");
+
+  const auto helper_liveness =
+      c4c::backend::stack_layout::try_lower_module_function_to_bir_liveness_input(module, 0);
+  expect_true(helper_liveness.has_value() && helper_liveness->entry_insts.empty() &&
+                  helper_liveness->blocks.size() == 1 &&
+                  helper_liveness->blocks.front().insts.size() == 1,
+              "shared entry-alloca rewrite should be able to lower a lowerable function through the per-function BIR seam even when another function still blocks whole-module BIR lowering");
+
+  const auto blocking_liveness =
+      c4c::backend::stack_layout::try_lower_module_function_to_bir_liveness_input(module, 1);
+  expect_true(!blocking_liveness.has_value(),
+              "shared entry-alloca rewrite should keep the raw-LIR compatibility fallback for functions whose allocas still block BIR lowering");
 }
 
 void test_backend_shared_prepares_lir_module_for_target() {

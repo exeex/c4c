@@ -7,19 +7,48 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: decide whether the remaining Step 6 production path should
-  lower liveness from BIR directly or keep `LirFunction -> backend CFG` as the
-  temporary comparison shim while backend-owned CFG call sites continue to
-  migrate
-- Current implementation target: audit the surviving `lower_lir_to_backend_cfg`
-  production uses around stack-layout preparation and determine whether the
-  next shippable slice is a direct-BIR handoff or further backend-CFG seam
-  tightening
-- Next intended slice: if the direct-BIR path is ready, introduce the smallest
-  production caller conversion and pin it with focused backend coverage before
-  narrowing the raw-LIR compatibility seam further
+- Current slice: record the audited constraint on the remaining Step 6
+  production liveness path around stack-layout preparation, then choose the
+  next seam-tightening change that can move production callers without losing
+  entry-alloca ownership
+- Current implementation target: keep stack-layout rewrite on the
+  `LirFunction -> backend CFG -> LivenessInput` production seam while pinning a
+  narrower per-function BIR liveness probe for allocalless functions and
+  documenting why entry-alloca-bearing functions still need the raw-LIR
+  compatibility path
+- Next intended slice: introduce a backend-owned stack-layout/liveness carrier
+  that preserves entry-alloca ownership, then retest whether the stack-layout
+  preparation path can switch from raw-LIR-backed liveness to a direct-BIR or
+  backend-owned CFG handoff without regression
 
 ## Completed
+
+- Completed the next Step 6 bounded stack-layout liveness audit slice by
+  proving the direct-BIR production handoff is not ready for entry-alloca
+  preparation yet while still pinning a narrower per-function BIR seam:
+  - added
+    `stack_layout::try_lower_module_function_to_bir_liveness_input(...)` in
+    `src/backend/stack_layout/slot_assignment.*` so the backend now has a
+    focused audit helper that lowers one allocalless function plus its
+    declaration/context through `try_lower_to_bir(...)` and into the shared
+    backend-CFG liveness path
+  - extended `tests/backend/backend_shared_util_tests.cpp` with a mixed-module
+    regression that proves whole-module BIR lowering can stay blocked by an
+    entry-alloca-bearing function while the narrower per-function helper still
+    succeeds for a lowerable allocalless function and rejects the blocking
+    function
+  - audited a production caller conversion in
+    `rewrite_module_entry_allocas(...)`, confirmed it regressed stack-layout
+    preparation because current BIR liveness does not preserve hoisted
+    entry-alloca ownership, and left the production path on the existing
+    `LirFunction -> backend CFG -> LivenessInput` seam until a backend-owned
+    stack-layout carrier exists
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`,
+    rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with the repo’s allowed non-decreasing rule and no new
+    failures (`2809 -> 2809`, same 32 known failing tests as
+    `test_fail_before.log`)
 
 - Completed the next Step 6 bounded backend-CFG test-surface retargeting slice
   by moving shared backend liveness/regalloc/stack-layout coverage off the

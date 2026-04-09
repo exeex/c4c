@@ -1,6 +1,7 @@
 #include "slot_assignment.hpp"
 
 #include "alloca_coalescing.hpp"
+#include "../lowering/lir_to_bir.hpp"
 #include "../../codegen/lir/call_args_ops.hpp"
 
 #include <algorithm>
@@ -225,8 +226,7 @@ LirModule rewrite_module_entry_allocas(
     const std::vector<PhysReg>& callee_saved_regs) {
   auto rewritten = module;
   for (auto& function : rewritten.functions) {
-    const auto backend_cfg = lower_lir_to_backend_cfg(function);
-    const auto liveness_input = lower_backend_cfg_to_liveness_input(backend_cfg);
+    const auto liveness_input = lower_backend_cfg_to_liveness_input(lower_lir_to_backend_cfg(function));
     const auto stack_layout_input = lower_lir_to_stack_layout_input(function);
     const auto patch = prepare_entry_alloca_rewrite_patch(
         liveness_input,
@@ -237,6 +237,57 @@ LirModule rewrite_module_entry_allocas(
     apply_entry_alloca_rewrite_patch(function, patch);
   }
   return rewritten;
+}
+
+std::optional<LivenessInput> try_lower_module_function_to_bir_liveness_input(
+    const c4c::codegen::lir::LirModule& module,
+    std::size_t function_index) {
+  if (function_index >= module.functions.size()) {
+    return std::nullopt;
+  }
+
+  const auto& selected_function = module.functions[function_index];
+  if (!selected_function.alloca_insts.empty()) {
+    return std::nullopt;
+  }
+
+  c4c::codegen::lir::LirModule single_function_module;
+  single_function_module.target_triple = module.target_triple;
+  single_function_module.data_layout = module.data_layout;
+  single_function_module.globals = module.globals;
+  single_function_module.string_pool = module.string_pool;
+  single_function_module.extern_decls = module.extern_decls;
+  single_function_module.extern_decl_map = module.extern_decl_map;
+  single_function_module.type_decls = module.type_decls;
+  single_function_module.need_va_start = module.need_va_start;
+  single_function_module.need_va_end = module.need_va_end;
+  single_function_module.need_va_copy = module.need_va_copy;
+  single_function_module.need_memcpy = module.need_memcpy;
+  single_function_module.need_memset = module.need_memset;
+  single_function_module.need_stacksave = module.need_stacksave;
+  single_function_module.need_stackrestore = module.need_stackrestore;
+  single_function_module.need_abs = module.need_abs;
+  single_function_module.need_ptrmask = module.need_ptrmask;
+  single_function_module.spec_entries = module.spec_entries;
+
+  for (const auto& function : module.functions) {
+    if (function.name == selected_function.name || function.is_declaration) {
+      single_function_module.functions.push_back(function);
+    }
+  }
+
+  const auto bir_module = c4c::backend::try_lower_to_bir(single_function_module);
+  if (!bir_module.has_value()) {
+    return std::nullopt;
+  }
+
+  for (const auto& function : bir_module->functions) {
+    if (!function.is_declaration && function.name == selected_function.name) {
+      return lower_backend_cfg_to_liveness_input(lower_bir_to_backend_cfg(function));
+    }
+  }
+
+  return std::nullopt;
 }
 
 std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(
