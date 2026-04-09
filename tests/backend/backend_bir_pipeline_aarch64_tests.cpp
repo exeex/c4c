@@ -76,6 +76,52 @@ c4c::codegen::lir::LirModule make_unsupported_double_return_lir_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_goto_only_constant_return_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.terminator = LirBr{"ulbl_start"};
+
+  LirBlock start;
+  start.id = LirBlockId{1};
+  start.label = "ulbl_start";
+  start.terminator = LirBr{"block_1"};
+
+  LirBlock block_1;
+  block_1.id = LirBlockId{2};
+  block_1.label = "block_1";
+  block_1.terminator = LirBr{"ulbl_next"};
+
+  LirBlock next;
+  next.id = LirBlockId{3};
+  next.label = "ulbl_next";
+  next.terminator = LirBr{"done"};
+
+  LirBlock done;
+  done.id = LirBlockId{4};
+  done.label = "done";
+  done.terminator = LirRet{std::string("9"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(start));
+  function.blocks.push_back(std::move(block_1));
+  function.blocks.push_back(std::move(next));
+  function.blocks.push_back(std::move(done));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_lir_u8_select_post_join_add_module() {
   auto module = make_bir_two_param_u8_select_ne_predecessor_add_phi_post_join_add_module();
   module.target_triple = "aarch64-unknown-linux-gnu";
@@ -2172,6 +2218,19 @@ void test_aarch64_direct_lir_emitter_rejects_alloca_backed_conditional_phi_fallb
   fail("aarch64 direct emitter should reject alloca-backed conditional-phi joins once the general direct-LIR predecessor-copy fallback is pruned");
 }
 
+void test_aarch64_direct_lir_emitter_keeps_goto_only_constant_return_on_explicit_cfg_path() {
+  expect_true(!c4c::backend::try_lower_to_bir(make_goto_only_constant_return_module()).has_value(),
+              "goto-only constant-return input should continue to miss shared BIR lowering so this regression exercises the remaining direct-LIR CFG helper boundary");
+
+  const auto rendered = c4c::backend::aarch64::emit_module(make_goto_only_constant_return_module());
+  expect_contains(rendered, ".main.entry:\n  b .main.ulbl_start\n",
+                  "aarch64 direct emitter should keep goto-only entry routing on the explicit CFG path once the branch-following constant folder is pruned");
+  expect_contains(rendered, ".main.ulbl_start:\n  b .main.block_1\n",
+                  "aarch64 direct emitter should preserve the intermediate goto chain instead of folding it to an immediate return");
+  expect_not_contains(rendered, "mov w0, #9\n  ret\n",
+                      "aarch64 direct emitter should no longer collapse goto-only constant-return modules to the old branch-following immediate-return fallback");
+}
+
 }  // namespace
 
 void run_backend_bir_pipeline_aarch64_tests() {
@@ -2233,4 +2292,5 @@ void run_backend_bir_pipeline_aarch64_tests() {
   RUN_TEST(test_backend_bir_pipeline_rejects_unsupported_direct_bir_input_on_aarch64);
   RUN_TEST(test_aarch64_direct_lir_emitter_rejects_unsupported_input_without_legacy_backend_ir_stub);
   RUN_TEST(test_aarch64_direct_lir_emitter_rejects_alloca_backed_conditional_phi_fallback);
+  RUN_TEST(test_aarch64_direct_lir_emitter_keeps_goto_only_constant_return_on_explicit_cfg_path);
 }

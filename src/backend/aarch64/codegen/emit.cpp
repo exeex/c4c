@@ -1017,7 +1017,7 @@ std::optional<std::int64_t> try_constant_fold_single_block(
   const auto& function = module.functions.front();
   if (function.is_declaration ||
       !c4c::backend::backend_lir_is_i32_definition(function.signature_text) ||
-      function.entry.value != 0 || function.blocks.empty() ||
+      function.entry.value != 0 || function.blocks.size() != 1 ||
       !function.alloca_insts.empty()) {
     return std::nullopt;
   }

@@ -7,15 +7,29 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 5: pull phi and CFG normalization behind the BIR boundary
-- Current slice: continue the Step 5 seam audit after pruning the remaining x86
-  CFG-sensitive direct-LIR helper stubs that were still reviving target-local
-  control-flow ownership when modules missed shared BIR lowering
-- Next intended slice: continue the Step 5 seam audit around remaining
-  target-entrypoint/backend-boundary asymmetries after the x86 direct emitter
-  stops owning those fallback CFG helpers
+- Current slice: continue the Step 5 seam audit around the remaining AArch64
+  direct-LIR/backend-boundary asymmetries after pruning the `goto`-only
+  branch-following constant-fold fallback
+- Next intended slice: classify whether the remaining AArch64 direct-LIR CFG
+  seams are isolated to the broad general assembler path or whether another
+  narrower structured fallback can move behind shared BIR first
 
 ## Completed
 
+- Closed the next Step 5 AArch64 target-entrypoint CFG asymmetry without
+  regressing the broader direct-LIR surface:
+  - restricted `src/backend/aarch64/codegen/emit.cpp`'s
+    `try_constant_fold_single_block(...)` helper to actual one-block modules so
+    the old branch-following `goto`-only constant-return fallback no longer
+    folds multi-block CFG chains after they miss shared BIR lowering
+  - added a focused regression in
+    `tests/backend/backend_bir_pipeline_aarch64_tests.cpp` that constructs a
+    `goto`-only constant-return LIR module and proves the AArch64 direct
+    emitter now stays on the explicit branch-emission path instead of
+    collapsing the CFG to an immediate-return constant-fold
+  - re-ran `backend_bir_tests`, rebuilt the tree, refreshed
+    `test_fail_after.log`, and passed the regression guard with no new failures
+    and no pass-count drop (`2809 -> 2809`)
 - Closed the x86 target-entrypoint preparation gap for Step 5 CFG ownership:
   - added a focused regression in
     `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` proving a minimal
