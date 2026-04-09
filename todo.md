@@ -7,16 +7,43 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: audit the remaining bounded AArch64 stack-slot builder reads
-  that still need raw `LirFunction` after the shared stack-layout input now owns
-  generic value-name and entry-alloca discovery
-- Next intended slice: move the next remaining bounded target-local stack-slot
-  ABI seam off raw `LirFunction` by threading backend-owned input farther into
-  aggregate/parameter slot setup, or perform the equivalent x86 follow-through
-  if that seam is smaller and comparably testable
+- Current slice: audit the remaining target-local stack-slot ABI seams after
+  the AArch64 direct emitter now consumes backend-owned stack-layout signature
+  and aggregate call-result metadata
+- Next intended slice: move the next remaining bounded AArch64/x86
+  signature-driven stack-slot setup seam off raw `LirFunction`, or record a
+  separate follow-on idea if the remaining work no longer fits this plan
 
 ## Completed
 
+- Completed the next Step 6/7 bounded AArch64 stack-slot metadata handoff
+  slice by moving signature and aggregate call-result discovery onto
+  backend-owned stack-layout input and retargeting the direct emitter to
+  consume it:
+  - added
+    `StackLayoutSignatureParam`, `StackLayoutCallResultInput`, plus
+    `StackLayoutInput` fields for parsed signature params, return type,
+    variadic state, and lowered call-result metadata in
+    `src/backend/stack_layout/analysis.*`
+  - taught
+    `src/backend/stack_layout/analysis.cpp`'s
+    `lower_lir_to_stack_layout_input(...)` to preserve function-signature
+    metadata and stack-backed `LirCallOp` result types alongside the existing
+    entry-alloca/CFG lowering
+  - retargeted
+    `src/backend/aarch64/codegen/emit.cpp`'s
+    `gen_build_slots(...)`, sret setup, variadic save-area decision, and
+    parameter-slot initialization to consume `StackLayoutInput` metadata
+    instead of reparsing or rescanning raw `LirFunction`
+  - extended `tests/backend/backend_shared_util_tests.cpp` so the shared
+    backend-owned input regression now proves signature params, return-type /
+    variadic flags, and aggregate call-result metadata survive the lowering
+    handoff needed by downstream slot builders
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R backend_shared_util_tests --output-on-failure`,
+    rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with no new failures and no pass-count drop
+    (`2809 -> 2809`)
 - Completed the next Step 6/7 target-local stack-slot handoff slice by moving
   the AArch64 direct-emitter slot builder's generic value-name and entry-alloca
   discovery onto backend-owned stack-layout input while keeping the remaining

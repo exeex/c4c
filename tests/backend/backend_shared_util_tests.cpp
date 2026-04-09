@@ -1113,6 +1113,42 @@ void test_backend_shared_stack_layout_input_collects_value_names() {
               "backend-owned stack-layout input should preserve body SSA uses for downstream slot builders");
 }
 
+void test_backend_shared_stack_layout_input_preserves_signature_metadata() {
+  c4c::codegen::lir::LirFunction function;
+  function.name = "aggregate_variadic";
+  function.signature_text =
+      "define { i32, i32 } @aggregate_variadic({ i32, i32 } %p.agg, double %p.fp, ...)";
+
+  c4c::codegen::lir::LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(c4c::codegen::lir::LirCallOp{
+      "%call0",
+      c4c::codegen::lir::LirTypeRef("{ i32, i32 }"),
+      "@helper",
+      "(i32)",
+      "i32 7",
+  });
+  entry.terminator = c4c::codegen::lir::LirRet{std::nullopt, "void"};
+  function.blocks.push_back(std::move(entry));
+
+  const auto input = c4c::backend::stack_layout::lower_lir_to_stack_layout_input(function);
+
+  expect_true(input.signature_params.size() == 3 &&
+                  input.signature_params[0].type == "{ i32, i32 }" &&
+                  input.signature_params[0].operand == "%p.agg" &&
+                  input.signature_params[1].type == "double" &&
+                  input.signature_params[1].operand == "%p.fp" &&
+                  input.signature_params[2].is_varargs,
+              "backend-owned stack-layout input should preserve parsed function-signature params for downstream slot builders");
+  expect_true(input.return_type.has_value() && *input.return_type == "{ i32, i32 }" &&
+                  input.is_variadic,
+              "backend-owned stack-layout input should preserve return-type and variadic metadata for downstream slot builders");
+  expect_true(input.call_results.size() == 1 &&
+                  input.call_results.front().value_name == "%call0" &&
+                  input.call_results.front().type_str == "{ i32, i32 }",
+              "backend-owned stack-layout input should preserve stack-backed call-result metadata for downstream slot builders");
+}
+
 void test_backend_shared_stack_layout_analysis_detects_dead_param_allocas() {
   const auto module = make_dead_param_alloca_candidate_module();
   const auto& function = module.functions.back();
@@ -1840,6 +1876,7 @@ int main(int argc, char* argv[]) {
   test_backend_shared_stack_layout_analysis_tracks_phi_use_blocks();
   test_backend_shared_stack_layout_analysis_accepts_backend_owned_input();
   test_backend_shared_stack_layout_input_collects_value_names();
+  test_backend_shared_stack_layout_input_preserves_signature_metadata();
   test_backend_shared_stack_layout_analysis_detects_dead_param_allocas();
   test_backend_shared_stack_layout_analysis_tracks_call_arg_values();
   test_backend_shared_stack_layout_analysis_detects_entry_alloca_overwrite_before_read();

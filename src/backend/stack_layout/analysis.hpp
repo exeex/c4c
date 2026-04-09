@@ -37,6 +37,17 @@ struct EntryAllocaInput {
   std::optional<std::string> paired_store_value;
 };
 
+struct StackLayoutSignatureParam {
+  std::string type;
+  std::string operand;
+  bool is_varargs = false;
+};
+
+struct StackLayoutCallResultInput {
+  std::string value_name;
+  std::string type_str;
+};
+
 struct StackLayoutBlockInput {
   std::string label;
   std::vector<StackLayoutPoint> insts;
@@ -50,6 +61,10 @@ struct PhiIncomingUse {
 
 struct StackLayoutInput {
   std::vector<EntryAllocaInput> entry_allocas;
+  std::vector<StackLayoutSignatureParam> signature_params;
+  std::optional<std::string> return_type;
+  bool is_variadic = false;
+  std::vector<StackLayoutCallResultInput> call_results;
   std::vector<StackLayoutBlockInput> blocks;
   std::vector<PhiIncomingUse> phi_incoming_uses;
 };

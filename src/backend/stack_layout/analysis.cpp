@@ -1,6 +1,7 @@
 #include "analysis.hpp"
 
 #include "regalloc_helpers.hpp"
+#include "../lowering/call_decode.hpp"
 #include "../../codegen/lir/call_args_ops.hpp"
 
 #include <algorithm>
@@ -23,6 +24,18 @@ bool starts_with(std::string_view text, std::string_view prefix) {
 
 bool is_entry_alloca_name(std::string_view value_name) {
   return starts_with(value_name, "%lv.");
+}
+
+std::optional<std::string> parse_function_return_type(std::string_view signature_text) {
+  const auto line = c4c::codegen::lir::trim_lir_arg_text(signature_text);
+  const auto first_space = line.find(' ');
+  const auto at_pos = line.find('@');
+  if (first_space == std::string_view::npos || at_pos == std::string_view::npos ||
+      first_space >= at_pos) {
+    return std::nullopt;
+  }
+  return std::string(
+      c4c::codegen::lir::trim_lir_arg_text(line.substr(first_space + 1, at_pos - first_space - 1)));
 }
 
 void append_unique(std::vector<std::string>& values, std::string value) {
@@ -288,6 +301,19 @@ void collect_first_entry_alloca_accesses(
 StackLayoutInput lower_lir_to_stack_layout_input(const c4c::codegen::lir::LirFunction& function) {
   StackLayoutInput input;
   input.entry_allocas.reserve(function.alloca_insts.size());
+  if (const auto parsed_signature_params =
+          c4c::backend::parse_backend_function_signature_params(function.signature_text);
+      parsed_signature_params.has_value()) {
+    input.signature_params.reserve(parsed_signature_params->size());
+    for (const auto& param : *parsed_signature_params) {
+      input.signature_params.push_back(
+          StackLayoutSignatureParam{param.type, param.operand, param.is_varargs});
+      input.is_variadic = input.is_variadic || param.is_varargs;
+    }
+  } else {
+    input.is_variadic = function.signature_text.find("...") != std::string::npos;
+  }
+  input.return_type = parse_function_return_type(function.signature_text);
 
   for (std::size_t index = 0; index < function.alloca_insts.size(); ++index) {
     const auto* alloca = std::get_if<c4c::codegen::lir::LirAllocaOp>(&function.alloca_insts[index]);
@@ -338,6 +364,14 @@ StackLayoutInput lower_lir_to_stack_layout_input(const c4c::codegen::lir::LirFun
             } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirCallOp> ||
                                  std::is_same_v<T, c4c::codegen::lir::LirInlineAsmOp>) {
               point.escaped_names = point.used_names;
+              if constexpr (std::is_same_v<T, c4c::codegen::lir::LirCallOp>) {
+                if (!op.result.empty()) {
+                  input.call_results.push_back(StackLayoutCallResultInput{
+                      op.result.str(),
+                      op.return_type.str(),
+                  });
+                }
+              }
             } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirPhiOp>) {
               point.escaped_names = point.used_names;
               point.used_names.clear();

@@ -4790,8 +4790,7 @@ static int gen_struct_field_offset(const std::string& ty, int field_idx,
 // Collect all stack-backed SSA names needed by the direct AArch64 emitter.
 static GenSlotMap gen_build_slots(
     const c4c::backend::stack_layout::StackLayoutInput& stack_layout_input,
-    const c4c::codegen::lir::LirFunction& fn,
-                                  const std::vector<std::string>& type_decls) {
+    const std::vector<std::string>& type_decls) {
   GenSlotMap sm;
   for (const auto& value_name :
        c4c::backend::stack_layout::collect_stack_layout_value_names(stack_layout_input)) {
@@ -4804,39 +4803,30 @@ static GenSlotMap gen_build_slots(
     sm.alloc_data(alloca.alloca_name, std::max(elem_size, 8));
   }
 
-  const auto parsed_signature_params =
-      c4c::backend::parse_backend_function_signature_params(fn.signature_text);
-  const auto return_ty = gen_parse_function_return_type(fn.signature_text);
-  if (parsed_signature_params.has_value()) {
-    for (const auto& param : *parsed_signature_params) {
+  for (const auto& param : stack_layout_input.signature_params) {
       if (param.is_varargs || param.operand.empty() || param.operand[0] != '%') continue;
       if (!gen_is_direct_gp_aggregate_type(param.type, type_decls) &&
           !gen_try_parse_hfa_type(param.type, type_decls).has_value()) {
         continue;
       }
       sm.alloc_data(param.operand, gen_type_layout(param.type, type_decls).size);
+  }
+
+  for (const auto& call_result : stack_layout_input.call_results) {
+    if (gen_is_direct_gp_aggregate_type(call_result.type_str, type_decls) ||
+        gen_try_parse_hfa_type(call_result.type_str, type_decls).has_value() ||
+        gen_type_is_sret_aggregate_type(call_result.type_str, type_decls)) {
+      sm.alloc_data(call_result.value_name,
+                    gen_type_layout(call_result.type_str, type_decls).size);
     }
   }
 
-  for (const auto& blk : fn.blocks) {
-    for (const auto& inst : blk.insts) {
-      if (const auto* call = std::get_if<c4c::codegen::lir::LirCallOp>(&inst)) {
-        if (!call->result.empty() &&
-            (gen_is_direct_gp_aggregate_type(call->return_type.str(), type_decls) ||
-             gen_try_parse_hfa_type(call->return_type.str(), type_decls).has_value() ||
-             gen_type_is_sret_aggregate_type(call->return_type.str(), type_decls))) {
-          sm.alloc_data(call->result.str(),
-                        gen_type_layout(call->return_type.str(), type_decls).size);
-        }
-      }
-    }
-  }
-
-  if (fn.signature_text.find("...") != std::string::npos) {
+  if (stack_layout_input.is_variadic) {
     sm.reserve_variadic_save_area();
   }
 
-  if (return_ty.has_value() && gen_type_is_sret_aggregate_type(*return_ty, type_decls)) {
+  if (stack_layout_input.return_type.has_value() &&
+      gen_type_is_sret_aggregate_type(*stack_layout_input.return_type, type_decls)) {
     sm.get_or_alloc("%ret.sret");
   }
 
@@ -5283,38 +5273,33 @@ static std::optional<std::string> try_emit_general_lir_asm(
     // Build slot map
     const auto stack_layout_input =
         c4c::backend::stack_layout::lower_lir_to_stack_layout_input(fn);
-    GenSlotMap sm = gen_build_slots(stack_layout_input, fn, module.type_decls);
-    const auto parsed_signature_params =
-        c4c::backend::parse_backend_function_signature_params(fn.signature_text);
-    const bool is_variadic_function = fn.signature_text.find("...") != std::string::npos;
+    GenSlotMap sm = gen_build_slots(stack_layout_input, module.type_decls);
+    const auto& parsed_signature_params = stack_layout_input.signature_params;
+    const bool is_variadic_function = stack_layout_input.is_variadic;
     int named_gp_count = 0;
     int named_fp_count = 0;
-    if (parsed_signature_params.has_value()) {
-      for (const auto& param : *parsed_signature_params) {
-        if (param.is_varargs) break;
-        if (gen_try_parse_hfa_type(param.type, module.type_decls).has_value()) {
-          named_fp_count = std::min(8, named_fp_count +
-                                           gen_try_parse_hfa_type(param.type, module.type_decls)
-                                               ->elem_count);
-        } else if (gen_is_fp_type(param.type)) {
-          if (named_fp_count < 8) ++named_fp_count;
-        } else if (gen_is_direct_gp_aggregate_type(param.type, module.type_decls)) {
-          const int gp_chunks =
-              (gen_type_layout(param.type, module.type_decls).size + 7) / 8;
-          named_gp_count = std::min(8, named_gp_count + gp_chunks);
-        } else {
-          if (named_gp_count < 8) ++named_gp_count;
-        }
+    for (const auto& param : parsed_signature_params) {
+      if (param.is_varargs) break;
+      if (gen_try_parse_hfa_type(param.type, module.type_decls).has_value()) {
+        named_fp_count = std::min(8, named_fp_count +
+                                         gen_try_parse_hfa_type(param.type, module.type_decls)
+                                             ->elem_count);
+      } else if (gen_is_fp_type(param.type)) {
+        if (named_fp_count < 8) ++named_fp_count;
+      } else if (gen_is_direct_gp_aggregate_type(param.type, module.type_decls)) {
+        const int gp_chunks =
+            (gen_type_layout(param.type, module.type_decls).size + 7) / 8;
+        named_gp_count = std::min(8, named_gp_count + gp_chunks);
+      } else {
+        if (named_gp_count < 8) ++named_gp_count;
       }
     }
     // Keep signature decoding centralized to one shared parse per emitted function.
     {
-      if (parsed_signature_params.has_value()) {
-        for (const auto& param : *parsed_signature_params) {
-          if (param.is_varargs) break;
-          if (!param.operand.empty() && param.operand[0] == '%') {
-            sm.get_or_alloc(param.operand);
-          }
+      for (const auto& param : parsed_signature_params) {
+        if (param.is_varargs) break;
+        if (!param.operand.empty() && param.operand[0] == '%') {
+          sm.get_or_alloc(param.operand);
         }
       }
     }
@@ -5331,9 +5316,9 @@ static std::optional<std::string> try_emit_general_lir_asm(
     gen_emit_sp_adjust(out, "sub", sm.frame_size);
     out << "  str x30, [sp, #0]\n";  // save lr
 
-    const auto fn_return_ty = gen_parse_function_return_type(fn.signature_text);
-    if (fn_return_ty.has_value() &&
-        gen_type_is_sret_aggregate_type(*fn_return_ty, module.type_decls)) {
+    if (stack_layout_input.return_type.has_value() &&
+        gen_type_is_sret_aggregate_type(*stack_layout_input.return_type,
+                                        module.type_decls)) {
       const int sret_off = sm.lookup("%ret.sret");
       if (sret_off >= 0) {
         out << "  str x8, [sp, #" << sret_off << "]\n";
@@ -5343,13 +5328,12 @@ static std::optional<std::string> try_emit_general_lir_asm(
     // Parse parameters from signature_text and store to stack slots
     // signature_text format: "define i32 @func(i32 %p.a, ptr %p.b)\n"
     {
-      if (parsed_signature_params.has_value()) {
+      {
         int next_gp_reg = 0;
         int next_fp_reg = 0;
         int stack_param_bytes = 0;
-        for (size_t i = 0; i < parsed_signature_params->size(); ++i) {
-          if ((*parsed_signature_params)[i].is_varargs) break;
-          const auto& param = (*parsed_signature_params)[i];
+        for (const auto& param : parsed_signature_params) {
+          if (param.is_varargs) break;
           if (gen_is_direct_gp_aggregate_type(param.type, module.type_decls)) {
             const int ptr_off = sm.lookup(param.operand);
             const int data_off = sm.lookup_data(param.operand);
@@ -5444,69 +5428,67 @@ static std::optional<std::string> try_emit_general_lir_asm(
     // Lowered parameter allocas (e.g. %lv.param.x) must be initialized after the
     // alloca address slots have been materialized.
     {
-      if (parsed_signature_params.has_value()) {
-        for (size_t i = 0; i < parsed_signature_params->size() && i < 8; ++i) {
-          if ((*parsed_signature_params)[i].is_varargs) break;
-          const std::string& param_name = (*parsed_signature_params)[i].operand;
-          if (param_name.compare(0, 3, "%p.") != 0) continue;
+      for (size_t i = 0; i < parsed_signature_params.size() && i < 8; ++i) {
+        if (parsed_signature_params[i].is_varargs) break;
+        const std::string& param_name = parsed_signature_params[i].operand;
+        if (param_name.compare(0, 3, "%p.") != 0) continue;
 
-          const std::string param_slot_name =
-              "%lv.param." + param_name.substr(std::string("%p.").size());
-          const int param_ptr_off = sm.lookup(param_slot_name);
-          if (param_ptr_off < 0) continue;
-          const int param_value_off = sm.lookup(param_name);
+        const std::string param_slot_name =
+            "%lv.param." + param_name.substr(std::string("%p.").size());
+        const int param_ptr_off = sm.lookup(param_slot_name);
+        if (param_ptr_off < 0) continue;
+        const int param_value_off = sm.lookup(param_name);
 
-          const std::string param_type = (*parsed_signature_params)[i].type;
-          const auto param_layout = gen_type_layout(param_type, module.type_decls);
-          if (param_layout.size <= 0) continue;
+        const std::string param_type = parsed_signature_params[i].type;
+        const auto param_layout = gen_type_layout(param_type, module.type_decls);
+        if (param_layout.size <= 0) continue;
 
-          out << "  ldr x9, [sp, #" << param_ptr_off << "]\n";
-          if (gen_type_is_memory_value(param_type, module.type_decls)) {
-            if (param_value_off < 0) continue;
-            out << "  ldr x10, [sp, #" << param_value_off << "]\n";
-            int copied = 0;
-            while (copied < param_layout.size) {
-              const int chunk_size =
-                  gen_chunk_size_for_remaining_copy_bytes(param_layout.size - copied);
-              gen_emit_load_chunk_from_addr(out, 11,
-                                            chunk_size == 16 ? "fp128"
-                                                             : gen_chunk_type_for_size(chunk_size),
-                                            10, copied);
-              gen_emit_store_chunk_to_addr(out, 11, chunk_size, 9, copied);
-              copied += chunk_size;
-            }
-            continue;
+        out << "  ldr x9, [sp, #" << param_ptr_off << "]\n";
+        if (gen_type_is_memory_value(param_type, module.type_decls)) {
+          if (param_value_off < 0) continue;
+          out << "  ldr x10, [sp, #" << param_value_off << "]\n";
+          int copied = 0;
+          while (copied < param_layout.size) {
+            const int chunk_size =
+                gen_chunk_size_for_remaining_copy_bytes(param_layout.size - copied);
+            gen_emit_load_chunk_from_addr(out, 11,
+                                          chunk_size == 16 ? "fp128"
+                                                           : gen_chunk_type_for_size(chunk_size),
+                                          10, copied);
+            gen_emit_store_chunk_to_addr(out, 11, chunk_size, 9, copied);
+            copied += chunk_size;
           }
+          continue;
+        }
 
-          if (param_layout.size > 8) continue;
-          if (param_layout.size == 1) {
-            if (param_value_off >= 0) {
-              out << "  ldr w10, [sp, #" << param_value_off << "]\n";
-              out << "  strb w10, [x9]\n";
-            } else {
-              out << "  strb w" << i << ", [x9]\n";
-            }
-          } else if (param_layout.size == 2) {
-            if (param_value_off >= 0) {
-              out << "  ldr w10, [sp, #" << param_value_off << "]\n";
-              out << "  strh w10, [x9]\n";
-            } else {
-              out << "  strh w" << i << ", [x9]\n";
-            }
-          } else if (param_layout.size == 4) {
-            if (param_value_off >= 0) {
-              out << "  ldr w10, [sp, #" << param_value_off << "]\n";
-              out << "  str w10, [x9]\n";
-            } else {
-              out << "  str w" << i << ", [x9]\n";
-            }
+        if (param_layout.size > 8) continue;
+        if (param_layout.size == 1) {
+          if (param_value_off >= 0) {
+            out << "  ldr w10, [sp, #" << param_value_off << "]\n";
+            out << "  strb w10, [x9]\n";
           } else {
-            if (param_value_off >= 0) {
-              out << "  ldr x10, [sp, #" << param_value_off << "]\n";
-              out << "  str x10, [x9]\n";
-            } else {
-              out << "  str x" << i << ", [x9]\n";
-            }
+            out << "  strb w" << i << ", [x9]\n";
+          }
+        } else if (param_layout.size == 2) {
+          if (param_value_off >= 0) {
+            out << "  ldr w10, [sp, #" << param_value_off << "]\n";
+            out << "  strh w10, [x9]\n";
+          } else {
+            out << "  strh w" << i << ", [x9]\n";
+          }
+        } else if (param_layout.size == 4) {
+          if (param_value_off >= 0) {
+            out << "  ldr w10, [sp, #" << param_value_off << "]\n";
+            out << "  str w10, [x9]\n";
+          } else {
+            out << "  str w" << i << ", [x9]\n";
+          }
+        } else {
+          if (param_value_off >= 0) {
+            out << "  ldr x10, [sp, #" << param_value_off << "]\n";
+            out << "  str x10, [x9]\n";
+          } else {
+            out << "  str x" << i << ", [x9]\n";
           }
         }
       }
