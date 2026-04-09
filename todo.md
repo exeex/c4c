@@ -8,17 +8,33 @@ Source Plan: plan.md
 
 - Step 5: pull phi and CFG normalization behind the BIR boundary
 - Current slice: continue the Step 5 AArch64 generic-emitter CFG audit after
-  fencing the narrow constant-selector `switch` seam and re-evaluate whether
-  any remaining multi-block branch or switch shapes can be fenced without
-  cutting into still-broad production fallback coverage or spilling into Step 6
-  MIR-owned liveness/regalloc work
-- Next intended slice: inspect the remaining generic AArch64 multi-block
-  direct-LIR branch/switch surfaces that still succeed after `try_lower_to_bir`
-  declines a module and decide whether the next safe move is another narrow
-  synthetic prune or a shared BIR lowering expansion for one of those shapes
+  widening the synthetic alloca-backed `switch` fence beyond the hard-coded
+  two-case shape and re-evaluate whether the remaining constant-selector or
+  branch-only multi-block direct-LIR seams can be fenced without cutting into
+  still-broad production fallback coverage or spilling into Step 6 MIR-owned
+  liveness/regalloc work
+- Next intended slice: inspect whether synthetic constant-selector single-case
+  `switch` return modules still succeed after `try_lower_to_bir(...)` declines
+  them and decide whether the next safe move is a matching narrow generic-emitter
+  prune or a shared BIR lowering expansion for that family
 
 ## Completed
 
+- Closed the next Step 5 AArch64 synthetic switch seam behind the shared BIR
+  boundary by widening the existing alloca-backed fence beyond the original
+  two-case fixture:
+  - added focused AArch64 coverage in
+    `tests/backend/backend_bir_pipeline_aarch64_tests.cpp` proving a
+    single-case alloca-backed direct-LIR `switch` module still misses
+    `try_lower_to_bir(...)` and must now fail explicitly instead of lowering
+    through the generic AArch64 direct emitter
+  - taught `src/backend/aarch64/codegen/emit.cpp` to reject the broader
+    synthetic alloca-backed switch-return family when every switch target is an
+    empty return block, keeping that CFG ownership behind the shared BIR
+    boundary without touching broader production switch handling
+  - rebuilt `backend_bir_tests`, rebuilt the full tree, refreshed
+    `test_fail_after.log`, and passed the regression guard with no new failures
+    and no pass-count drop (`2809 -> 2809`)
 - Fenced the next narrow Step 5 AArch64 generic-emitter switch seam behind the
   shared BIR boundary:
   - added focused AArch64 coverage in

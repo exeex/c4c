@@ -284,6 +284,43 @@ c4c::codegen::lir::LirModule make_alloca_backed_switch_return_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_alloca_backed_single_case_switch_return_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.sel", "i32", "", 4});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{"i32", "7", "%lv.sel"});
+  entry.insts.push_back(LirLoadOp{"%sel", "i32", "%lv.sel"});
+  entry.terminator = LirSwitch{"%sel", "i32", "default", {{7, "case_hit"}}};
+
+  LirBlock case_hit;
+  case_hit.id = LirBlockId{1};
+  case_hit.label = "case_hit";
+  case_hit.terminator = LirRet{std::string("70"), "i32"};
+
+  LirBlock default_block;
+  default_block.id = LirBlockId{2};
+  default_block.label = "default";
+  default_block.terminator = LirRet{std::string("9"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(case_hit));
+  function.blocks.push_back(std::move(default_block));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_constant_selector_switch_return_module() {
   using namespace c4c::codegen::lir;
 
@@ -2495,6 +2532,24 @@ void test_aarch64_direct_lir_emitter_rejects_alloca_backed_switch_fallback() {
   fail("aarch64 direct emitter should reject alloca-backed switch CFG modules once the general direct-LIR switch fallback is pruned");
 }
 
+void test_aarch64_direct_lir_emitter_rejects_alloca_backed_single_case_switch_fallback() {
+  expect_true(!c4c::backend::try_lower_to_bir(
+                   make_alloca_backed_single_case_switch_return_module())
+                   .has_value(),
+              "single-case alloca-backed switch input should continue to miss shared BIR lowering so this regression exercises the remaining synthetic aarch64 direct-LIR switch boundary");
+
+  try {
+    (void)c4c::backend::aarch64::emit_module(
+        make_alloca_backed_single_case_switch_return_module());
+  } catch (const std::invalid_argument& ex) {
+    expect_contains(ex.what(), "direct LIR module",
+                    "aarch64 direct emitter should reject synthetic single-case alloca-backed switch CFG once ownership stays behind the shared BIR boundary");
+    return;
+  }
+
+  fail("aarch64 direct emitter should reject synthetic single-case alloca-backed switch CFG modules once the generic direct-LIR switch fallback is fenced behind BIR");
+}
+
 void test_aarch64_direct_lir_emitter_rejects_constant_selector_switch_fallback() {
   expect_true(!c4c::backend::try_lower_to_bir(make_constant_selector_switch_return_module())
                    .has_value(),
@@ -2576,5 +2631,6 @@ void run_backend_bir_pipeline_aarch64_tests() {
   RUN_TEST(test_aarch64_direct_emitter_routes_goto_only_constant_return_through_shared_bir);
   RUN_TEST(test_aarch64_direct_lir_emitter_rejects_double_indirect_pointer_conditional_return_fallback);
   RUN_TEST(test_aarch64_direct_lir_emitter_rejects_alloca_backed_switch_fallback);
+  RUN_TEST(test_aarch64_direct_lir_emitter_rejects_alloca_backed_single_case_switch_fallback);
   RUN_TEST(test_aarch64_direct_lir_emitter_rejects_constant_selector_switch_fallback);
 }

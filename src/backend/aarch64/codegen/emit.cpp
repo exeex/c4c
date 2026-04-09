@@ -1512,7 +1512,7 @@ bool is_alloca_backed_switch_return_fallback(const c4c::codegen::lir::LirModule&
   if (function.is_declaration ||
       !c4c::backend::backend_lir_is_zero_arg_i32_definition(function.signature_text) ||
       function.entry.value != 0 || function.alloca_insts.size() != 1 ||
-      function.blocks.size() != 4) {
+      function.blocks.size() < 3) {
     return false;
   }
 
@@ -1524,7 +1524,8 @@ bool is_alloca_backed_switch_return_fallback(const c4c::codegen::lir::LirModule&
   const auto& entry = function.blocks[0];
   const auto* entry_switch = std::get_if<LirSwitch>(&entry.terminator);
   if (entry.label != "entry" || entry.insts.size() != 2 || entry_switch == nullptr ||
-      entry_switch->selector_type != "i32" || entry_switch->cases.size() != 2) {
+      entry_switch->selector_type != "i32" || entry_switch->cases.empty() ||
+      function.blocks.size() != entry_switch->cases.size() + 2) {
     return false;
   }
   if (std::get_if<LirStoreOp>(&entry.insts[0]) == nullptr ||
@@ -1532,9 +1533,19 @@ bool is_alloca_backed_switch_return_fallback(const c4c::codegen::lir::LirModule&
     return false;
   }
 
+  std::unordered_set<std::string_view> expected_labels;
+  expected_labels.insert(entry_switch->default_label);
+  for (const auto& [_, label] : entry_switch->cases) {
+    expected_labels.insert(label);
+  }
+  if (expected_labels.size() != function.blocks.size() - 1) {
+    return false;
+  }
+
   for (std::size_t block_index = 1; block_index < function.blocks.size(); ++block_index) {
     const auto& block = function.blocks[block_index];
-    if (!block.insts.empty() || std::get_if<LirRet>(&block.terminator) == nullptr) {
+    if (expected_labels.find(block.label) == expected_labels.end() || !block.insts.empty() ||
+        std::get_if<LirRet>(&block.terminator) == nullptr) {
       return false;
     }
   }
