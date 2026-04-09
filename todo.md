@@ -8,6 +8,12 @@ Source Plan: plan.md
 
 - Step 2: resume the smallest active EASTL parser frontier from
   `tests/cpp/eastl/eastl_tuple_simple.cpp`, not `eastl_vector_simple.cpp`.
+- Iteration target: reduce the current `tests/cpp/eastl/eastl_tuple_simple.cpp`
+  `/usr/include/c++/14/bits/ranges_util.h` undeclared-identifier cluster into
+  the smallest internal semantic reproducer, starting with the missing
+  member/context names (`_M_begin`, `_M_end`, `_M_size`, `_S_store_size`,
+  `this`) before deciding whether concept support such as
+  `bidirectional_iterator` is the true root blocker.
 
 ## Completed
 
@@ -43,25 +49,37 @@ Source Plan: plan.md
 - Confirmed `tests/cpp/eastl/eastl_tuple_simple.cpp` parse-only now succeeds
   again, and the old `int128.h` local-direct-init undeclared-identifier cluster
   (`tempDivisor`, `bBit`, `bValue1IsPositive`, `bANegative`, etc.) is gone.
+- Reduced the `/usr/include/c++/14/cstddef` lvalue-reference binding failures
+  to assignment expressions incorrectly losing lvalue category.
+- Added focused regression coverage in
+  `tests/cpp/internal/postive_case/assignment_expr_return_lvalue_ref_runtime.cpp`
+  and fixed sema, HIR, and LIR handling so assignment expressions remain usable
+  as `T&` results and reference initializers.
+- Confirmed `tests/cpp/eastl/eastl_tuple_simple.cpp` now moves past the old
+  `/usr/include/c++/14/cstddef` blocker and fails later in
+  `/usr/include/c++/14/bits/ranges_util.h` with undeclared identifiers such as
+  `bidirectional_iterator`, `_M_begin`, `_M_end`, `_M_size`, and `this`.
 
 ## Next Slice
 
-- shrink the `/usr/include/c++/14/cstddef` lvalue-reference binding failures
-  into a focused internal regression and fix the shared semantic mismatch
 - inspect the remaining `/usr/include/c++/14/bits/ranges_util.h` undeclared
-  identifier cluster (`bidirectional_iterator`, `_M_begin`, `_M_size`, `this`)
-  and decide whether it is missing member/context lookup, concept support, or
-  later semantic staging
-- rerun `eastl_memory_simple.cpp` after the next `tuple_simple` sema fix and
-  check whether it shares the same frontier or still has an earlier blocker
+  identifier cluster (`bidirectional_iterator`, `_M_begin`, `_M_end`,
+  `_M_size`, `_S_store_size`, `this`) and decide whether it is missing
+  member/context lookup, concept support, or later semantic staging
+- reduce that `ranges_util.h` cluster to the smallest internal semantic
+  reproducer before touching `eastl_vector_simple.cpp`
+- keep `eastl_memory_simple.cpp` parked for now: after this tuple fix it still
+  times out under both `--parse-only` and `--dump-canonical`, so it has not
+  become the smaller frontier
 
 ## Blockers
 
-- `eastl_tuple_simple.cpp` no longer stops in `int128.h`; its current leading
-  canonical/sema blockers are the `/usr/include/c++/14/cstddef` lvalue-ref
-  diagnostics and the later `ranges_util.h` undeclared-identifier cluster
-- `eastl_memory_simple.cpp` still times out under parse pressure, though the
-  trace now reaches much later tuple/ranges work than before
+- `eastl_tuple_simple.cpp` now stops in `/usr/include/c++/14/bits/ranges_util.h`
+  with undeclared identifiers that likely need additional semantic/member
+  context support
+- `eastl_memory_simple.cpp` still times out under both parse-only and
+  canonical/sema pressure, though the trace reaches much later tuple/ranges
+  work than before
 - `eastl_vector_simple.cpp` also times out deeper in the stack, so it is not
   currently the smallest useful frontier
 
@@ -80,5 +98,7 @@ Source Plan: plan.md
 - focused direct-init regression coverage now exists under
   `tests/cpp/internal/postive_case/local_direct_init_paren_runtime.cpp` and
   `tests/cpp/internal/postive_case/local_direct_init_single_identifier_runtime.cpp`
+- focused assignment-expression lvalue regression coverage now exists under
+  `tests/cpp/internal/postive_case/assignment_expr_return_lvalue_ref_runtime.cpp`
 - runtime and ABI glue remain explicitly out of scope except for temporary local
   shims already allowed by the source idea

@@ -1463,6 +1463,8 @@ class Validator {
         mark_initialized_if_local_var(n->left);
         out.valid = lhs.valid && rhs.valid;
         out.type = lhs.type;
+        out.is_lvalue = lhs.is_lvalue;
+        out.is_const_lvalue = lhs.is_const_lvalue;
         return out;
       }
       case NK_UNARY: {

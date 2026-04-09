@@ -147,6 +147,8 @@ bool Lowerer::is_ast_lvalue(const Node* n, const FunctionCtx* ctx) {
     case NK_VAR:
     case NK_INDEX:
     case NK_DEREF:
+    case NK_ASSIGN:
+    case NK_COMPOUND_ASSIGN:
       return true;
     case NK_MEMBER:
       return n->is_arrow || is_ast_lvalue(n->left, ctx);
@@ -1743,7 +1745,7 @@ ExprId Lowerer::lower_expr(FunctionCtx* ctx, const Node* n) {
       a.op = map_assign_op(n->op, n->kind);
       a.lhs = lower_expr(ctx, n->left);
       a.rhs = lower_expr(ctx, n->right);
-      return append_expr(n, a, n->type);
+      return append_expr(n, a, n->type, ValueCategory::LValue);
     }
     case NK_COMPOUND_ASSIGN: {
       if (n->op && ctx) {
@@ -1768,7 +1770,7 @@ ExprId Lowerer::lower_expr(FunctionCtx* ctx, const Node* n) {
       a.op = map_assign_op(n->op, n->kind);
       a.lhs = lower_expr(ctx, n->left);
       a.rhs = lower_expr(ctx, n->right);
-      return append_expr(n, a, n->type);
+      return append_expr(n, a, n->type, ValueCategory::LValue);
     }
     case NK_CAST: {
       CastExpr c{};
