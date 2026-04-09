@@ -1568,6 +1568,23 @@ void test_backend_direct_bir_i686_target_uses_x86_stack_arg_emitter() {
                   "direct i686 BIR emission should keep the second stack-arg load");
 }
 
+void test_x86_public_lir_emitter_keeps_i686_target_selection_on_shared_backend_entry() {
+  auto lir_module = make_bir_two_param_add_module();
+  lir_module.target_triple = "i686-unknown-linux-gnu";
+
+  const auto shared_rendered =
+      c4c::backend::emit_module(c4c::backend::BackendModuleInput{lir_module},
+                                make_bir_pipeline_options(c4c::backend::Target::I686));
+  const auto x86_rendered = c4c::backend::x86::emit_module(lir_module);
+
+  expect_true(x86_rendered == shared_rendered,
+              "x86 public LIR entry should delegate i686 target selection through the shared backend helper instead of owning a separate compatibility-only route policy");
+  expect_contains(x86_rendered, "DWORD PTR [esp + 4]",
+                  "x86 public LIR entry should still preserve the i686 stack-arg emission contract after shared target selection moves into backend.cpp");
+  expect_contains(x86_rendered, "DWORD PTR [esp + 8]",
+                  "x86 public LIR entry should still preserve the second i686 stack-arg load after shared target selection moves into backend.cpp");
+}
+
 }  // namespace
 
 void run_backend_bir_pipeline_tests() {
@@ -1667,4 +1684,5 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_backend_lowered_riscv_passthrough_is_detached_from_lir_metadata);
   RUN_TEST(test_backend_riscv64_supported_lir_and_direct_bir_share_text_route);
   RUN_TEST(test_backend_direct_bir_i686_target_uses_x86_stack_arg_emitter);
+  RUN_TEST(test_x86_public_lir_emitter_keeps_i686_target_selection_on_shared_backend_entry);
 }

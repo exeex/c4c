@@ -10,16 +10,34 @@ Source Plan: plan.md
 - Current slice: audit the next backend-entry/native-emitter ownership seam
   after shared backend routing fully owns unsupported prepared direct-LIR
   rejection
-- Current implementation target: identify the next compatibility-only direct
-  backend-entry helper split that still leaves x86/aarch64 route policy or
-  target selection duplicated across `src/backend/backend.cpp` and the public
-  target emitter entrypoints
-- Next intended slice: identify and retire the next compatibility-only
-  backend-entry seam that still leaves direct-LIR/native route policy split
-  between target emitters and shared backend helpers after prepared direct-LIR
-  rejection becomes shared-backend-owned
+- Current implementation target: identify the next backend-entry/native-emitter
+  ownership seam after shared backend code takes over the public x86/aarch64
+  `LirModule` entry-wrapper target/route policy
+- Next intended slice: audit remaining public native-emitter wrappers and
+  helper entrypoints for compatibility-only route ownership that should move
+  behind one shared backend helper
 
 ## Completed
+
+- Completed the next Step 6 bounded public target-emitter entry-wrapper
+  cleanup slice by moving compatibility-only x86/aarch64 direct-LIR
+  target-selection/route policy into shared backend code:
+  - added `emit_target_lir_module(...)` in `src/backend/backend.*` so shared
+    backend code now owns the public target-emitter `LirModule` entry route,
+    including the x86 family’s `i686` vs `x86_64` target selection from the
+    module triple
+  - updated `src/backend/x86/codegen/emit.cpp` and
+    `src/backend/aarch64/codegen/emit.cpp` so the public
+    `emit_module(const LirModule&)` wrappers become thin delegates over the
+    shared backend helper instead of carrying their own backend-entry policy
+  - extended `tests/backend/backend_bir_pipeline_tests.cpp` with focused
+    coverage proving the x86 public LIR entry now exactly matches the shared
+    backend `i686` routing path for a lowerable two-argument add module
+  - rebuilt `backend_bir_tests`, passed
+    `ctest --test-dir build -R '^backend_bir_tests$' --output-on-failure`,
+    rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with no new failures and no pass-count drop
+    (`2809 -> 2809`, same 32 known failing tests as `test_fail_before.log`)
 
 - Completed the next Step 6/7 bounded prepared direct-LIR rejection ownership
   cleanup slice by deleting the compatibility-only target-local throwing

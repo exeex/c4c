@@ -131,6 +131,19 @@ c4c::codegen::lir::LirModule prepare_lir_module_for_target(
       module, config.regalloc, {}, config.callee_saved);
 }
 
+std::string emit_target_lir_module(const c4c::codegen::lir::LirModule& module,
+                                   Target public_target) {
+  auto target = public_target;
+  if (public_target == Target::X86_64) {
+    target = target_from_triple(module.target_triple);
+    if (target != Target::I686) {
+      target = Target::X86_64;
+    }
+  }
+
+  return emit_module(BackendModuleInput{module}, BackendOptions{.target = target});
+}
+
 std::string emit_module(const BackendModuleInput& input,
                         const BackendOptions& options) {
   if (input.holds_bir_module()) {

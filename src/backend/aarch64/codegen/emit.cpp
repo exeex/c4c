@@ -6706,9 +6706,7 @@ std::optional<std::string> try_emit_prepared_lir_module(
 }
 
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {
-  return c4c::backend::emit_module(c4c::backend::BackendModuleInput{module},
-                                   c4c::backend::BackendOptions{
-                                       .target = c4c::backend::Target::Aarch64});
+  return c4c::backend::emit_target_lir_module(module, c4c::backend::Target::Aarch64);
 }
 
 assembler::AssembleResult assemble_module(const c4c::codegen::lir::LirModule& module,

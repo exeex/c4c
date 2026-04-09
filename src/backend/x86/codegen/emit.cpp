@@ -4099,12 +4099,7 @@ std::optional<std::string> try_emit_prepared_lir_module(
 }
 
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {
-  auto target = c4c::backend::target_from_triple(module.target_triple);
-  if (target != c4c::backend::Target::I686) {
-    target = c4c::backend::Target::X86_64;
-  }
-  return c4c::backend::emit_module(c4c::backend::BackendModuleInput{module},
-                                   c4c::backend::BackendOptions{.target = target});
+  return c4c::backend::emit_target_lir_module(module, c4c::backend::Target::X86_64);
 }
 
 assembler::AssembleResult assemble_module(const c4c::codegen::lir::LirModule& module,
