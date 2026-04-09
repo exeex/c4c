@@ -1714,7 +1714,7 @@ void test_backend_bir_pipeline_drives_aarch64_select_end_to_end() {
 
 void test_backend_bir_pipeline_drives_aarch64_lir_conditional_phi_join_through_bir_end_to_end() {
   const auto lowered =
-      c4c::backend::try_lower_to_bir(make_bir_single_param_select_eq_phi_module());
+      c4c::backend::try_lower_to_bir(make_lir_single_param_select_eq_phi_module());
   expect_true(lowered.has_value(),
               "aarch64 LIR conditional-phi-join input should lower into a direct BIR module before target emission");
   expect_true(lowered->functions.size() == 1 &&
@@ -1725,7 +1725,7 @@ void test_backend_bir_pipeline_drives_aarch64_lir_conditional_phi_join_through_b
               "aarch64 LIR conditional-phi-join input should collapse to the shared BIR select form before target emission");
 
   const auto rendered = c4c::backend::aarch64::emit_module(
-      make_bir_single_param_select_eq_phi_module());
+      make_lir_single_param_select_eq_phi_module());
 
   expect_contains(rendered, ".globl choose",
                   "aarch64 direct emitter should still reach native asm emission after routing a lowerable conditional-phi-join through the shared BIR path");

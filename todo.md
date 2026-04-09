@@ -7,18 +7,30 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 5: pull phi and CFG normalization behind the BIR boundary
-- Current slice: continue the Step 5 audit after the AArch64 entrypoint move by
-  classifying any remaining target-local phi/CFG cleanup that still must stay
-  outside the canonical BIR route, starting with the residual general-LIR phi
-  copy path in `src/backend/aarch64/codegen/emit.cpp` and the x86 direct-LIR
-  phi interpreter seam
-- Next intended slice: decide whether the next smallest production move is
-  another `try_lower_to_bir(...)` coverage expansion for a residual phi shape
-  or a bounded reduction of target-local phi handling that is now provably
-  unreachable for lowerable modules
+- Current slice: replace the mislabeled native conditional-phi pipeline
+  coverage with a real lowerable LIR phi-join fixture so Step 5 proves the x86
+  and AArch64 emitters route that shape through `try_lower_to_bir(...)`
+  instead of only exercising the already-lowered direct-BIR path
+- Next intended slice: use the strengthened native phi-route coverage to judge
+  whether the next smallest production move is a bounded prune/guard of
+  unreachable target-local phi handling or another `try_lower_to_bir(...)`
+  expansion for a residual phi/CFG shape
 
 ## Completed
 
+- Replaced the mislabeled native Step 5 conditional-phi route coverage with a
+  real lowerable LIR phi-join fixture in
+  `tests/backend/backend_bir_test_support.cpp` and
+  `tests/backend/backend_bir_test_support.hpp` so the pipeline tests no longer
+  exercise only the already-lowered direct-BIR path
+- Switched the x86 and AArch64 native conditional-phi pipeline tests in
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` and
+  `tests/backend/backend_bir_pipeline_aarch64_tests.cpp` to use that LIR
+  fixture and tightened the route assertions so they require the shared BIR
+  select labels while rejecting the old target-local predecessor labels
+- Re-ran `backend_bir_tests`, refreshed `test_fail_after.log`, and passed the
+  regression guard with no new failures and no pass-count drop (`2841 ->
+  2841`)
 - Activated `plan.md` from
   `ideas/open/42_typed_lir_type_ref_and_bir_ownership_follow_through.md`
 - Reset active execution tracking for the new plan
