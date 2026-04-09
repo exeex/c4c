@@ -8,13 +8,12 @@ Source Plan: plan.md
 
 - Step 1: audit the typed type boundary and backend ownership seams
 - Current slice: move the next typed-lowering pass back into
-  `src/backend/lowering/lir_to_bir.cpp` / `src/backend/lowering/call_decode.hpp`
-  and audit the remaining direct-call or declared-extern special cases that
-  still branch primarily on raw integer signature or declaration text instead
-  of typed function, instruction, or global metadata, with the immediate
-  target narrowed to the next direct-call or declared-extern seam that still
-  hard-requires raw helper signature text or call-surface text after the
-  zero-arg helper/caller stale-return gate conversion
+  `src/backend/lowering/lir_to_bir.cpp` and audit the remaining
+  declared-direct-call / declared-extern seams that still hard-require raw
+  declaration text after the zero-param declared-callee and caller/call return
+  gate conversion, with the immediate next target narrowed to the
+  `LirExternDecl.return_type_str` fallback and any nearby shared decode helpers
+  that still cannot prefer structured metadata
 
 ## Completed
 
@@ -258,6 +257,21 @@ Source Plan: plan.md
   `src/backend/lowering/lir_to_bir.cpp` off raw instruction-local/load/store
   /ret `"i32"` text checks and onto semantic `LirTypeRef` integer-width
   inspection plus `lower_function_return_type(...)` for the loop exit return
+- Switched the minimal declared direct-call lowering path in
+  `src/backend/lowering/lir_to_bir.cpp` off raw caller `define i32`, `ret i32`,
+  call `i32`, and declared-callee `declare i32` gates when structured
+  `LirFunction` / `LirCallOp` metadata is already present
+- Taught `src/codegen/lir/hir_to_lir.cpp` to preserve declaration
+  `return_type` and `params` metadata on `LirFunction` declarations instead of
+  leaving declaration functions text-only
+- Added a focused backend regression in
+  `tests/backend/backend_bir_lowering_tests.cpp` that keeps the zero-arg
+  declared direct-call lowering path working when the caller, declared callee,
+  and call instruction carry semantic `i32` metadata while the stored
+  signature and return text are intentionally stale
+- Re-ran `backend_bir_tests`, `backend_shared_util_tests`, and the full suite,
+  refreshed `test_fail_after.log`, and passed the regression guard with no new
+  failures and no pass-count drop (`2841 -> 2841`)
 - Added a focused backend regression in
   `tests/backend/backend_bir_lowering_tests.cpp` that keeps the bounded
   countdown do-while lowering path working when the loop-local alloca,

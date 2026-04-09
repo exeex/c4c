@@ -831,6 +831,11 @@ LirModule lower(const c4c::hir::Module& hir_mod) {
       lir_fn.is_internal = false;
       lir_fn.can_elide_if_unreferenced = false;
       lir_fn.is_declaration = true;
+      lir_fn.return_type = fn.return_type.spec;
+      for (const auto& param : fn.params) {
+        lir_fn.params.push_back(
+            {"%p." + sanitize_llvm_ident(param.name), param.type.spec});
+      }
       lir_fn.signature_text = sig;
       module.functions.push_back(std::move(lir_fn));
     } else {

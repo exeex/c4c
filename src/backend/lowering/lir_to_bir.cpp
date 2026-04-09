@@ -187,6 +187,15 @@ bool lir_function_matches_minimal_no_param_integer_return(
       function.signature_text, "define", "i32", function.name, {});
 }
 
+std::optional<bir::TypeKind> lower_declared_function_return_type(
+    const c4c::codegen::lir::LirFunction& function) {
+  if (const auto lowered_type = lower_minimal_scalar_type(function.return_type);
+      lowered_type.has_value()) {
+    return lowered_type;
+  }
+  return lower_function_signature_return_type(function.signature_text);
+}
+
 std::optional<bir::TypeKind> lower_function_return_type(
     const c4c::codegen::lir::LirFunction& function,
     const c4c::codegen::lir::LirRet& ret) {
@@ -491,8 +500,7 @@ std::optional<bir::Module> try_lower_minimal_declared_direct_call_module(
   const LirFunction* declared_callee = nullptr;
   for (const auto& function : module.functions) {
     if (!function.is_declaration &&
-        backend_lir_signature_matches(
-            function.signature_text, "define", "i32", function.name, {})) {
+        lir_function_matches_minimal_no_param_integer_return(function, 32)) {
       if (main_function != nullptr) {
         return std::nullopt;
       }
@@ -514,7 +522,8 @@ std::optional<bir::Module> try_lower_minimal_declared_direct_call_module(
   const auto& main_lir_block = main_function->blocks.front();
   const auto* main_ret = std::get_if<LirRet>(&main_lir_block.terminator);
   if (main_lir_block.label != "entry" || main_lir_block.insts.size() != 1 || main_ret == nullptr ||
-      !main_ret->value_str.has_value() || main_ret->type_str != "i32") {
+      !main_ret->value_str.has_value() ||
+      lower_function_return_type(*main_function, *main_ret) != bir::TypeKind::I32) {
     return std::nullopt;
   }
 
@@ -524,7 +533,8 @@ std::optional<bir::Module> try_lower_minimal_declared_direct_call_module(
   const auto typed_call =
       call == nullptr ? std::nullopt : parse_lir_typed_call_or_infer_params(*call);
   if (call == nullptr || !symbol_name.has_value() || !typed_call.has_value() ||
-      call->return_type != "i32" || call->result.str().empty() || symbol_name->empty() ||
+      lower_scalar_type(call->return_type) != bir::TypeKind::I32 || call->result.str().empty() ||
+      symbol_name->empty() ||
       typed_call->args.size() > 6) {
     return std::nullopt;
   }
@@ -546,13 +556,24 @@ std::optional<bir::Module> try_lower_minimal_declared_direct_call_module(
     }
   } else {
     if (declared_callee == nullptr || declared_callee->name != *symbol_name ||
-        !backend_lir_signature_matches(
-            declared_callee->signature_text, "declare", "i32", *symbol_name, {})) {
-      const auto params =
-          declared_callee == nullptr
-              ? std::nullopt
-              : parse_backend_function_signature_params(declared_callee->signature_text);
-      if (declared_callee == nullptr || !params.has_value()) {
+        lower_declared_function_return_type(*declared_callee) != bir::TypeKind::I32) {
+      return std::nullopt;
+    }
+
+    const auto declared_params = lower_function_params(*declared_callee);
+    if (declared_params.has_value()) {
+      if (typed_call->param_types.size() != declared_params->size()) {
+        return std::nullopt;
+      }
+      for (std::size_t index = 0; index < declared_params->size(); ++index) {
+        const auto lowered_call_type = lower_minimal_call_arg_type_text(typed_call->param_types[index]);
+        if (!lowered_call_type.has_value() || *lowered_call_type != (*declared_params)[index].type) {
+          return std::nullopt;
+        }
+      }
+    } else {
+      const auto params = parse_backend_function_signature_params(declared_callee->signature_text);
+      if (!params.has_value()) {
         return std::nullopt;
       }
 
@@ -575,6 +596,11 @@ std::optional<bir::Module> try_lower_minimal_declared_direct_call_module(
             trim_lir_arg_text(typed_call->param_types[index])) {
           return std::nullopt;
         }
+      }
+      if (typed_call->param_types.empty() &&
+          !backend_lir_signature_matches(
+              declared_callee->signature_text, "declare", "i32", *symbol_name, {})) {
+        return std::nullopt;
       }
     }
   }
