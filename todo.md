@@ -7,28 +7,31 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 5 full-suite monotonic validation and next-slice selection after the
-  bounded x86 constant-`if` branch seam landed:
-  the focused `backend_runtime_branch_if_*` family is now green on the native
-  x86 path, while the broad-suite comparison against `test_fail_before.log`
+  bounded shared-BIR local-pointer `00004.c` seam landed:
+  the focused `00004.c` source-backed case is now green on the native x86
+  path, while the broad-suite comparison against `test_fail_before.log`
   remains a parked non-monotonic lane and should not be silently treated as
   Step 5 complete
 - current exact slice:
-  the first adjacent early x86 source-backed seam is now recovered for
-  `c_testsuite_x86_backend_src_00003_c`; continue next-slice selection from the
-  remaining red pair `c_testsuite_x86_backend_src_00004_c` and
-  `c_testsuite_x86_backend_src_00006_c`
+  the adjacent early x86 source-backed pair has now split cleanly:
+  `c_testsuite_x86_backend_src_00003_c` and
+  `c_testsuite_x86_backend_src_00004_c` pass, while
+  `c_testsuite_x86_backend_src_00006_c` remains the next red countdown-loop
+  seam at the unsupported x86 boundary
 
 ## Next Slice
 
 - keep the ownership split explicit for the remaining early x86 source cases:
-  `00004.c` local pointer store-reload and `00006.c` countdown loop should
-  stay as separate bounded seams unless the prepared-LIR shape is truly shared
-- add the narrowest regression for `00004.c` before changing ownership, then
-  verify the focused route/runtime cases and recheck whether `00006.c` still
-  belongs to a distinct countdown-loop lane
+  `00006.c` countdown loop should stay separate from the recovered `00003.c`
+  and `00004.c` local-slot constant-return folds unless the prepared-LIR shape
+  proves otherwise
+- add the narrowest regression for `00006.c` before changing ownership, then
+  verify the focused cluster again to confirm the early x86 source lane reduces
+  to that single countdown-loop case
 - if the refreshed broad-suite guard is still red after the branch-family
-  recovery, classify the next highest-value remaining x86-native source-backed
-  seam from the updated after-log instead of widening idea 44 ad hoc
+  and `00004.c` recovery, classify the next highest-value remaining
+  x86-native source-backed seam from the updated after-log instead of widening
+  idea 44 ad hoc
 - keep the separate shared-BIR select regression parked in
   `ideas/open/47_shared_bir_select_route_regression_after_x86_variadic_recovery.md`
   instead of widening idea 44
@@ -37,6 +40,36 @@ Source Plan: plan.md
 
 ## Recently Completed
 
+- recovered the bounded shared-BIR local-pointer store-zero-return seam for the
+  real source-backed `00004.c` route by teaching
+  `src/backend/lowering/lir_to_bir.cpp` to collapse the exact two-local
+  `store 4 -> x; store &x -> p; load p; store 0 through p; load p; load *p; ret`
+  slice to a shared immediate return instead of stopping at the unsupported x86
+  boundary
+- covered that seam with focused shared-lowering and x86 pipeline regressions
+  in `tests/backend/backend_bir_lowering_tests.cpp` and
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` so the local-pointer
+  alias-through-slot shape stays pinned on the BIR route
+- verified the bounded `00004.c` seam end-to-end:
+  `./build/backend_bir_tests test_bir_lowering_accepts_local_i32_pointer_store_zero_load_return_module`,
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_lir_local_i32_pointer_store_zero_load_return_through_bir_end_to_end`,
+  `./build/c4cll --codegen asm --target x86_64-unknown-linux-gnu tests/c/external/c-testsuite/src/00004.c`,
+  and
+  `ctest --test-dir build --output-on-failure -R '^(c_testsuite_x86_backend_src_00004_c)$'`
+  now pass for the owned seam
+- rechecked the adjacent early source-backed x86 cluster after the `00004.c`
+  recovery and confirmed `00006.c` remains a separate next seam:
+  `ctest --test-dir build --output-on-failure -R '^(c_testsuite_x86_backend_src_00003_c|c_testsuite_x86_backend_src_00004_c|c_testsuite_x86_backend_src_00006_c)$'`
+  now leaves only `00006.c` red while `00003.c` and `00004.c` pass
+- refreshed `test_fail_after.log` with
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log` and
+  re-ran the monotonic guard:
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  which still fails against the stale broad-suite baseline
+  (`2670/179/2849` before vs `2609/241/2850` after); the focused `00004.c`
+  seam is green, but the already-parked broader `backend_bir_tests`,
+  riscv-route, and wider x86 source-backed lanes remain unresolved and should
+  not be silently attributed to this bounded local-pointer slice
 - recovered the bounded shared-BIR local-slot constant-return seam for the real
   source-backed `00003.c` route by teaching `src/backend/lowering/lir_to_bir.cpp`
   to collapse the exact one-slot `store 4; load; sub 4; ret` slice to a shared
