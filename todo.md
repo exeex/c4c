@@ -7,15 +7,15 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 2: review typedef, alias, and qualified cast targets
-- Current slice: move from the new member-owned alias reference-cast coverage
-  to the remaining global-qualified spelling with a focused
-  `(::ns::AliasL)x` / `(::ns::AliasR)x` reduction
+- Current slice: move from global-qualified namespace-alias reference casts to
+  the first dependent `typename` reference-cast reduction
 - Current implementation target: `tests/cpp` qualified alias-owned cast
   regressions plus the earliest failing parser, sema, HIR, or lowering surface
-  that the global-qualified `::` reference-cast target exposes
-- Next intended slice: add one focused `(::ns::AliasL)x` /
-  `(::ns::AliasR)x` cast regression, then classify any break before widening to
-  dependent `typename` forms
+  that dependent `typename` reference-cast targets expose
+- Next intended slice: add one focused
+  `(typename Holder<T>::AliasL)x` / `(typename Holder<T>::AliasR)x` cast
+  reduction, then classify the first parser-versus-sema break before widening
+  to additional dependent forms
 
 ## Completed
 
@@ -118,6 +118,17 @@ Source Plan: plan.md
   `(Box::AliasR)x`.
 - Full-suite validation stayed monotonic: `test_fail_before.log` 2850/2850
   passed, `test_fail_after.log` 2851/2851 passed, with zero new failures.
+- Added
+  `tests/cpp/internal/postive_case/c_style_cast_global_qualified_typedef_ref_alias_basic.cpp`
+  to cover global-qualified `::ns::AliasL` / `::ns::AliasR` cast targets,
+  assignment through the aliased references, and overload selection on the
+  cast expressions themselves.
+- Confirmed the global-qualified namespace-alias reference-cast runtime slice
+  already matches Clang: the targeted regression passed without compiler
+  changes, including lvalue and rvalue-reference overload selection through
+  `(::ns::AliasL)x` and `(::ns::AliasR)x`.
+- Full-suite validation stayed monotonic: `test_fail_before.log` 2851/2851
+  passed, `test_fail_after.log` 2852/2852 passed, with zero new failures.
 
 ## Notes
 
