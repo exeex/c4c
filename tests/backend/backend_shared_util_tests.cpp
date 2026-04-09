@@ -2101,14 +2101,14 @@ void test_backend_shared_slot_assignment_prepares_module_function_inputs() {
                   c4c::backend::stack_layout::EntryAllocaRewriteLivenessSource::PerFunctionBir &&
                   lowerable_preparation.stack_layout_source ==
                       c4c::backend::stack_layout::EntryAllocaRewriteStackLayoutSource::
-                          RawLirFunction &&
+                          EntryAllocasAndBackendCfg &&
                   lowerable_preparation.rewrite_metadata.entry_allocas.empty() &&
                   lowerable_preparation.backend_cfg_liveness == std::nullopt &&
                   lowerable_preparation.liveness_input.has_value() &&
                   lowerable_preparation.liveness_input->entry_insts.empty() &&
                   lowerable_preparation.liveness_input->blocks.size() == 1 &&
                   lowerable_preparation.liveness_input->blocks.front().insts.size() == 1,
-              "shared entry-alloca rewrite prep should keep lowerable functions on the narrower per-function BIR seam without synthesizing a fallback backend-CFG carrier");
+              "shared entry-alloca rewrite prep should keep lowerable functions on the per-function BIR liveness seam while sourcing stack-layout metadata through the backend-owned entry-alloca plus CFG carrier");
 
   const auto fallback_preparation =
       c4c::backend::stack_layout::prepare_module_function_entry_alloca_preparation(module, 2);
@@ -2168,14 +2168,14 @@ void test_backend_shared_slot_assignment_prepares_module_function_inputs() {
                   c4c::backend::stack_layout::EntryAllocaRewriteLivenessSource::PerFunctionBir &&
                   lowerable_inputs.stack_layout_source ==
                       c4c::backend::stack_layout::EntryAllocaRewriteStackLayoutSource::
-                          RawLirFunction &&
+                          EntryAllocasAndBackendCfg &&
                   lowerable_inputs.planning_input.entry_allocas.empty() &&
                   lowerable_inputs.rewrite_input.entry_allocas.empty() &&
                   lowerable_inputs.stack_layout_input.entry_allocas.empty() &&
                   lowerable_inputs.liveness_input.entry_insts.empty() &&
                   lowerable_inputs.liveness_input.blocks.size() == 1 &&
                   lowerable_inputs.liveness_input.blocks.front().insts.size() == 1,
-              "shared entry-alloca rewrite prep should keep the existing compatibility wrapper while exposing the narrower production rewrite-input contract");
+              "shared entry-alloca rewrite prep should keep the compatibility wrapper while sourcing lowerable-function stack-layout state through the backend-owned entry-alloca plus CFG contract");
 }
 
 void test_backend_shared_prepared_function_inputs_preserve_emitter_stack_layout_metadata() {

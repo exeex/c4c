@@ -7,18 +7,38 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 7: move regalloc and stack layout to backend MIR
-- Current slice: eliminate the remaining lowerable-function `RawLirFunction`
-  stack-layout source inside prepared per-function entry-alloca setup so the
-  AArch64 emitter is no longer the only production caller off the direct raw
-  helper
-- Current implementation target: replace the lowerable branch in
-  `prepare_module_function_entry_alloca_preparation(...)` with a backend-owned
-  metadata path that does not call `lower_lir_to_stack_layout_input(...)`
-- Next intended slice: audit whether `rewrite_module_entry_allocas(...)` and
-  other prepared stack-layout callers can drop the rehydrated compatibility
-  `StackLayoutInput` earlier once that lowerable-function metadata path exists
+- Current slice: audit whether `rewrite_module_entry_allocas(...)` and other
+  prepared stack-layout callers can drop the rehydrated compatibility
+  `StackLayoutInput` earlier now that lowerable-function preparation also uses
+  the backend-owned entry-alloca plus CFG metadata path
+- Current implementation target: identify which production callers still need
+  the compatibility `StackLayoutInput` versus the narrower planning/rewrite
+  seams after `prepare_module_function_entry_alloca_preparation(...)` no longer
+  calls `lower_lir_to_stack_layout_input(...)` for lowerable functions
+- Next intended slice: narrow `rewrite_module_entry_allocas(...)` around the
+  already-prepared rewrite/planning inputs if that can be done without
+  reintroducing a raw-`LIR` ownership dependency
 
 ## Completed
+
+- Completed the next Step 7 lowerable-function stack-layout-source narrowing
+  slice by removing the remaining prepared per-function
+  `RawLirFunction` source from the lowerable BIR-backed branch:
+  - updated `src/backend/stack_layout/slot_assignment.cpp` so the
+    lowerable-function branch in
+    `prepare_module_function_entry_alloca_preparation(...)` now derives
+    entry-alloca classification and metadata through
+    `lower_function_entry_alloca_stack_layout_input(function, backend_cfg)`
+    instead of calling `lower_lir_to_stack_layout_input(function)`
+  - switched that lowerable prepared carrier to report
+    `EntryAllocasAndBackendCfg` as its stack-layout source so lowerable and
+    fallback preparation now agree on the backend-owned metadata seam while
+    still keeping per-function BIR liveness as the production liveness source
+  - updated `tests/backend/backend_shared_util_tests.cpp` to lock the new
+    source expectation for both prepared preparation and the compatibility
+    wrapper
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`
 
 - Completed the first Step 7 stack-layout entrypoint-splitting slice by marking
   compatibility-only raw-`LIR` surfaces explicitly and retargeting the

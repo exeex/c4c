@@ -822,7 +822,9 @@ PreparedEntryAllocaFunctionInputs prepare_module_function_entry_alloca_preparati
   if (const auto bir_liveness =
           try_lower_module_function_to_bir_liveness_input(module, function_index);
       bir_liveness.has_value()) {
-    auto stack_layout_input = lower_lir_to_stack_layout_input(function);
+    const auto backend_cfg = lower_lir_to_backend_cfg(function);
+    auto stack_layout_input =
+        lower_function_entry_alloca_stack_layout_input(function, backend_cfg);
     inputs.rewrite_metadata.entry_allocas = stack_layout_input.entry_allocas;
     inputs.stack_layout_metadata.signature_params = stack_layout_input.signature_params;
     inputs.stack_layout_metadata.return_type = stack_layout_input.return_type;
@@ -834,6 +836,8 @@ PreparedEntryAllocaFunctionInputs prepare_module_function_entry_alloca_preparati
         inputs.rewrite_metadata, inputs.stack_layout_classification);
     inputs.liveness_input = std::move(*bir_liveness);
     inputs.liveness_source = EntryAllocaRewriteLivenessSource::PerFunctionBir;
+    inputs.stack_layout_source =
+        EntryAllocaRewriteStackLayoutSource::EntryAllocasAndBackendCfg;
     return inputs;
   }
 
