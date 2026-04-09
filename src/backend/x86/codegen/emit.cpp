@@ -748,6 +748,99 @@ parse_minimal_two_arg_second_local_arg_helper_call_slice(
   return try_match(module.functions.back(), module.functions.front());
 }
 
+std::optional<MinimalTwoArgLocalArgHelperCallSlice>
+parse_minimal_two_arg_both_local_arg_helper_call_slice(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 2 || !module.globals.empty() || !module.extern_decls.empty() ||
+      !module.string_pool.empty()) {
+    return std::nullopt;
+  }
+
+  const auto try_match =
+      [](const LirFunction& helper,
+         const LirFunction& entry) -> std::optional<MinimalTwoArgLocalArgHelperCallSlice> {
+    if (entry.is_declaration || entry.entry.value != 0 || entry.blocks.size() != 1 ||
+        entry.alloca_insts.size() != 2 || !entry.stack_objects.empty() ||
+        !c4c::backend::backend_lir_signature_matches(entry.signature_text,
+                                                     "define",
+                                                     "i32",
+                                                     entry.name,
+                                                     {})) {
+      return std::nullopt;
+    }
+
+    const auto parsed_helper =
+        c4c::backend::parse_backend_two_param_add_function(helper, std::nullopt);
+    if (!parsed_helper.has_value()) {
+      return std::nullopt;
+    }
+
+    const auto* lhs_slot = std::get_if<LirAllocaOp>(&entry.alloca_insts[0]);
+    const auto* rhs_slot = std::get_if<LirAllocaOp>(&entry.alloca_insts[1]);
+    if (lhs_slot == nullptr || rhs_slot == nullptr || lhs_slot->result.str().empty() ||
+        rhs_slot->result.str().empty() || lhs_slot->type_str != "i32" ||
+        rhs_slot->type_str != "i32" || !lhs_slot->count.str().empty() ||
+        !rhs_slot->count.str().empty() || lhs_slot->align != 4 || rhs_slot->align != 4) {
+      return std::nullopt;
+    }
+
+    const auto& block = entry.blocks.front();
+    const auto* ret = std::get_if<LirRet>(&block.terminator);
+    const auto* call = block.insts.size() == 5 ? std::get_if<LirCallOp>(&block.insts.back()) : nullptr;
+    const auto call_operands =
+        call == nullptr
+            ? std::nullopt
+            : c4c::backend::parse_backend_direct_global_two_typed_call_operands(
+                  *call, helper.name, "i32", "i32");
+    if (block.label != "entry" || call == nullptr || ret == nullptr || !call_operands.has_value() ||
+        !ret->value_str.has_value() || *ret->value_str != call->result ||
+        c4c::backend::backend_lir_lower_function_return_type(entry, *ret) !=
+            c4c::backend::bir::TypeKind::I32) {
+      return std::nullopt;
+    }
+
+    const auto* lhs_store = std::get_if<LirStoreOp>(&block.insts[0]);
+    const auto* rhs_store = std::get_if<LirStoreOp>(&block.insts[1]);
+    const auto* lhs_load = std::get_if<LirLoadOp>(&block.insts[2]);
+    const auto* rhs_load = std::get_if<LirLoadOp>(&block.insts[3]);
+    if (lhs_store == nullptr || rhs_store == nullptr || lhs_load == nullptr || rhs_load == nullptr ||
+        !c4c::backend::backend_lir_type_is_i32(lhs_store->type_str) ||
+        !c4c::backend::backend_lir_type_is_i32(rhs_store->type_str) ||
+        !c4c::backend::backend_lir_type_is_i32(lhs_load->type_str) ||
+        !c4c::backend::backend_lir_type_is_i32(rhs_load->type_str) ||
+        lhs_store->ptr != lhs_slot->result.str() || rhs_store->ptr != rhs_slot->result.str() ||
+        lhs_load->ptr != lhs_slot->result.str() || rhs_load->ptr != rhs_slot->result.str() ||
+        lhs_load->result != call_operands->first || rhs_load->result != call_operands->second) {
+      return std::nullopt;
+    }
+
+    const auto lhs_call_arg_imm = parse_i64(lhs_store->val);
+    const auto rhs_call_arg_imm = parse_i64(rhs_store->val);
+    if (!lhs_call_arg_imm.has_value() || !rhs_call_arg_imm.has_value() ||
+        *lhs_call_arg_imm < std::numeric_limits<std::int32_t>::min() ||
+        *lhs_call_arg_imm > std::numeric_limits<std::int32_t>::max() ||
+        *rhs_call_arg_imm < std::numeric_limits<std::int32_t>::min() ||
+        *rhs_call_arg_imm > std::numeric_limits<std::int32_t>::max()) {
+      return std::nullopt;
+    }
+
+    return MinimalTwoArgLocalArgHelperCallSlice{
+        .helper_name = helper.name,
+        .entry_name = entry.name,
+        .lhs_call_arg_imm = *lhs_call_arg_imm,
+        .rhs_call_arg_imm = *rhs_call_arg_imm,
+    };
+  };
+
+  if (const auto parsed = try_match(module.functions.front(), module.functions.back());
+      parsed.has_value()) {
+    return parsed;
+  }
+  return try_match(module.functions.back(), module.functions.front());
+}
+
 std::optional<MinimalScalarGlobalLoadSlice> parse_minimal_scalar_global_load_slice(
     const c4c::backend::bir::Module& module) {
   using namespace c4c::backend::bir;
@@ -1800,6 +1893,10 @@ std::optional<std::string> try_emit_prepared_lir_module(
     return emit_minimal_two_arg_local_arg_helper_call_asm(module.target_triple, *slice);
   }
   if (const auto slice = parse_minimal_two_arg_second_local_arg_helper_call_slice(module);
+      slice.has_value()) {
+    return emit_minimal_two_arg_local_arg_helper_call_asm(module.target_triple, *slice);
+  }
+  if (const auto slice = parse_minimal_two_arg_both_local_arg_helper_call_slice(module);
       slice.has_value()) {
     return emit_minimal_two_arg_local_arg_helper_call_asm(module.target_triple, *slice);
   }
