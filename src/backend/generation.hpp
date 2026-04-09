@@ -16,6 +16,11 @@ std::vector<PhysReg> merge_used_regs(const std::vector<PhysReg>& used_regs,
                                      const std::vector<PhysReg>& asm_clobbered);
 
 RegAllocIntegrationResult run_regalloc_and_merge_clobbers(
+    const LivenessInput& input,
+    const RegAllocConfig& config,
+    const std::vector<PhysReg>& asm_clobbered);
+
+RegAllocIntegrationResult run_regalloc_and_merge_clobbers(
     const c4c::codegen::lir::LirFunction& function,
     const RegAllocConfig& config,
     const std::vector<PhysReg>& asm_clobbered);

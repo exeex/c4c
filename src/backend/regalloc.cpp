@@ -81,14 +81,14 @@ std::optional<std::size_t> find_first_free_reg(
 
 namespace c4c::backend {
 
-RegAllocResult allocate_registers(const c4c::codegen::lir::LirFunction& function,
+RegAllocResult allocate_registers(const LivenessInput& input,
                                   const RegAllocConfig& config) {
   if (config.available_regs.empty() && config.caller_saved_regs.empty()) {
     return RegAllocResult{};
   }
 
   RegAllocResult result;
-  result.liveness = compute_live_intervals(function);
+  result.liveness = compute_live_intervals(input);
   auto& liveness = *result.liveness;
 
   std::vector<std::uint32_t> callee_free_until(config.available_regs.size(), 0);
@@ -134,6 +134,11 @@ RegAllocResult allocate_registers(const c4c::codegen::lir::LirFunction& function
   std::sort(result.used_regs.begin(), result.used_regs.end());
 
   return result;
+}
+
+RegAllocResult allocate_registers(const c4c::codegen::lir::LirFunction& function,
+                                  const RegAllocConfig& config) {
+  return allocate_registers(lower_lir_to_liveness_input(function), config);
 }
 
 }  // namespace c4c::backend

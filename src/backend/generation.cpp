@@ -18,15 +18,23 @@ std::vector<PhysReg> merge_used_regs(const std::vector<PhysReg>& used_regs,
 }
 
 RegAllocIntegrationResult run_regalloc_and_merge_clobbers(
-    const c4c::codegen::lir::LirFunction& function,
+    const LivenessInput& input,
     const RegAllocConfig& config,
     const std::vector<PhysReg>& asm_clobbered) {
-  RegAllocResult alloc_result = allocate_registers(function, config);
+  RegAllocResult alloc_result = allocate_registers(input, config);
   return RegAllocIntegrationResult{
       std::move(alloc_result.assignments),
       merge_used_regs(alloc_result.used_regs, asm_clobbered),
       std::move(alloc_result.liveness),
   };
+}
+
+RegAllocIntegrationResult run_regalloc_and_merge_clobbers(
+    const c4c::codegen::lir::LirFunction& function,
+    const RegAllocConfig& config,
+    const std::vector<PhysReg>& asm_clobbered) {
+  return run_regalloc_and_merge_clobbers(lower_lir_to_liveness_input(function), config,
+                                         asm_clobbered);
 }
 
 }  // namespace c4c::backend

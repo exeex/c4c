@@ -840,6 +840,32 @@ void test_backend_shared_liveness_surface_tracks_phi_join_ranges() {
               "shared liveness surface should keep the join result live through the return terminator");
 }
 
+void test_backend_shared_liveness_input_matches_lir_phi_join_ranges() {
+  const auto module = make_interval_phi_join_module();
+  const auto& function = module.functions.front();
+  const auto input = c4c::backend::lower_lir_to_liveness_input(function);
+  const auto liveness = c4c::backend::compute_live_intervals(input);
+
+  expect_true(liveness.call_points.empty(),
+              "backend-owned liveness input should preserve the phi-join slice's lack of call points");
+  const auto* cond = liveness.find_interval("%t0");
+  const auto* then_value = liveness.find_interval("%t1");
+  const auto* else_value = liveness.find_interval("%t2");
+  const auto* phi_value = liveness.find_interval("%t3");
+  const auto* final_sum = liveness.find_interval("%t4");
+
+  expect_true(cond != nullptr && cond->start == 0 && cond->end == 1,
+              "backend-owned liveness input should preserve branch-condition interval endpoints");
+  expect_true(then_value != nullptr && then_value->start == 2 && then_value->end == 3,
+              "backend-owned liveness input should keep phi incoming uses on the predecessor edge");
+  expect_true(else_value != nullptr && else_value->start == 4 && else_value->end == 5,
+              "backend-owned liveness input should keep alternate phi incoming uses on their predecessor edge");
+  expect_true(phi_value != nullptr && phi_value->start == 6 && phi_value->end == 7,
+              "backend-owned liveness input should preserve phi-definition intervals in the join block");
+  expect_true(final_sum != nullptr && final_sum->start == 7 && final_sum->end == 8,
+              "backend-owned liveness input should preserve downstream join-result intervals");
+}
+
 void test_backend_shared_regalloc_surface_uses_caller_saved_for_non_call_interval() {
   const auto module = make_return_add_module();
   const auto& function = module.functions.front();
@@ -883,6 +909,34 @@ void test_backend_shared_regalloc_prefers_callee_saved_for_call_spanning_values(
               "shared regalloc should use caller-saved registers for non-call-spanning intervals");
   expect_true(regalloc.used_regs.size() == 1 && regalloc.used_regs.front().index == 20,
               "shared regalloc should report only the used callee-saved register set");
+}
+
+void test_backend_shared_regalloc_accepts_backend_owned_liveness_input() {
+  const auto module = make_call_crossing_interval_module();
+  const auto& function = module.functions.back();
+  const auto input = c4c::backend::lower_lir_to_liveness_input(function);
+
+  c4c::backend::RegAllocConfig config;
+  config.available_regs = {{20}};
+  config.caller_saved_regs = {{13}};
+
+  const auto regalloc = c4c::backend::allocate_registers(input, config);
+
+  const auto before_call = regalloc.assignments.find("%t0");
+  const auto call_result = regalloc.assignments.find("%t1");
+  const auto final_sum = regalloc.assignments.find("%t2");
+
+  expect_true(before_call != regalloc.assignments.end() && before_call->second.index == 20,
+              "backend-owned regalloc input should keep call-spanning intervals on the callee-saved pool");
+  expect_true(call_result == regalloc.assignments.end(),
+              "backend-owned regalloc input should still spill overlapping call-spanning intervals when callee-saved capacity is exhausted");
+  expect_true(final_sum != regalloc.assignments.end() && final_sum->second.index == 13,
+              "backend-owned regalloc input should still use caller-saved registers for non-call-spanning intervals");
+  expect_true(regalloc.liveness.has_value() &&
+                  regalloc.liveness->find_interval("%t0") != nullptr &&
+                  regalloc.liveness->find_interval("%t1") != nullptr &&
+                  regalloc.liveness->find_interval("%t2") != nullptr,
+              "backend-owned regalloc input should retain cached liveness across the new handoff seam");
 }
 
 void test_backend_shared_regalloc_reuses_register_after_interval_ends() {
@@ -1622,8 +1676,10 @@ int main(int argc, char* argv[]) {
   test_backend_shared_liveness_surface_tracks_result_names();
   test_backend_shared_liveness_surface_tracks_call_crossing_ranges();
   test_backend_shared_liveness_surface_tracks_phi_join_ranges();
+  test_backend_shared_liveness_input_matches_lir_phi_join_ranges();
   test_backend_shared_regalloc_surface_uses_caller_saved_for_non_call_interval();
   test_backend_shared_regalloc_prefers_callee_saved_for_call_spanning_values();
+  test_backend_shared_regalloc_accepts_backend_owned_liveness_input();
   test_backend_shared_regalloc_reuses_register_after_interval_ends();
   test_backend_shared_regalloc_spills_overlapping_values_without_reusing_busy_reg();
   test_backend_shared_regalloc_helper_filters_and_merges_clobbers();

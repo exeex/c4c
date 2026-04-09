@@ -38,6 +38,8 @@ struct RegAllocResult {
   std::optional<LivenessResult> liveness;
 };
 
+RegAllocResult allocate_registers(const LivenessInput& input,
+                                  const RegAllocConfig& config);
 RegAllocResult allocate_registers(const c4c::codegen::lir::LirFunction& function,
                                   const RegAllocConfig& config);
 

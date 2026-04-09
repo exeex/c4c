@@ -333,89 +333,121 @@ const LiveInterval* LivenessResult::find_interval(std::string_view value_name) c
   return nullptr;
 }
 
-LivenessResult compute_live_intervals(const c4c::codegen::lir::LirFunction& function) {
-  if (function.blocks.empty() && function.alloca_insts.empty()) {
+LivenessInput lower_lir_to_liveness_input(const c4c::codegen::lir::LirFunction& function) {
+  LivenessInput input;
+  input.entry_insts.reserve(function.alloca_insts.size());
+  for (const auto& inst : function.alloca_insts) {
+    std::string result_name = result_name_for_inst(inst);
+    input.entry_insts.push_back(LivenessPoint{
+        used_names_for_inst(inst),
+        result_name.empty() ? std::nullopt : std::optional<std::string>(std::move(result_name)),
+        is_call_inst(inst),
+    });
+  }
+
+  input.blocks.reserve(function.blocks.size());
+  for (const auto& block : function.blocks) {
+    LivenessBlockInput lowered_block;
+    lowered_block.label = block.label;
+    lowered_block.terminator_used_names = used_names_for_terminator(block.terminator);
+    lowered_block.successor_labels = successor_labels(block.terminator);
+    lowered_block.insts.reserve(block.insts.size());
+
+    for (const auto& inst : block.insts) {
+      std::string result_name = result_name_for_inst(inst);
+      lowered_block.insts.push_back(LivenessPoint{
+          used_names_for_inst(inst),
+          result_name.empty() ? std::nullopt : std::optional<std::string>(std::move(result_name)),
+          is_call_inst(inst),
+      });
+
+      if (!std::holds_alternative<c4c::codegen::lir::LirPhiOp>(inst)) {
+        continue;
+      }
+      const auto& phi = std::get<c4c::codegen::lir::LirPhiOp>(inst);
+      for (const auto& [value_name, label] : phi.incoming) {
+        input.phi_incoming_uses.push_back(LivenessPhiIncomingUse{label, value_name});
+      }
+    }
+
+    input.blocks.push_back(std::move(lowered_block));
+  }
+
+  return input;
+}
+
+LivenessResult compute_live_intervals(const LivenessInput& input) {
+  if (input.blocks.empty() && input.entry_insts.empty()) {
     return {};
   }
 
   std::unordered_map<std::string, LiveInterval> interval_map;
   std::vector<std::uint32_t> call_points;
-  std::vector<BlockState> blocks(function.blocks.size());
+  std::vector<BlockState> blocks(input.blocks.size());
   std::unordered_map<std::string, std::size_t> label_to_index;
-  label_to_index.reserve(function.blocks.size());
-  for (std::size_t i = 0; i < function.blocks.size(); ++i) {
-    label_to_index.emplace(function.blocks[i].label, i);
+  label_to_index.reserve(input.blocks.size());
+  for (std::size_t i = 0; i < input.blocks.size(); ++i) {
+    label_to_index.emplace(input.blocks[i].label, i);
   }
 
   std::uint32_t point = 0;
-  for (const auto& inst : function.alloca_insts) {
-    for (const auto& used_name : used_names_for_inst(inst)) {
+  for (const auto& inst : input.entry_insts) {
+    for (const auto& used_name : inst.used_names) {
       auto [it, inserted] =
           interval_map.emplace(used_name, LiveInterval{0, point, used_name});
       if (!inserted) {
         it->second.end = std::max(it->second.end, point);
       }
     }
-    const std::string result_name = result_name_for_inst(inst);
-    if (!result_name.empty()) {
-      ensure_interval(interval_map, result_name, point);
+    if (inst.result_name.has_value()) {
+      ensure_interval(interval_map, *inst.result_name, point);
     }
-    if (is_call_inst(inst)) {
+    if (inst.is_call) {
       call_points.push_back(point);
     }
     ++point;
   }
 
-  for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
-    const auto& block = function.blocks[block_index];
+  for (std::size_t block_index = 0; block_index < input.blocks.size(); ++block_index) {
+    const auto& block = input.blocks[block_index];
     auto& block_state = blocks[block_index];
     block_state.start = point;
 
     for (const auto& inst : block.insts) {
-      for (const auto& used_name : used_names_for_inst(inst)) {
+      for (const auto& used_name : inst.used_names) {
         record_use(interval_map, block_state, used_name, point);
       }
-      if (is_call_inst(inst)) {
+      if (inst.is_call) {
         call_points.push_back(point);
       }
-      const std::string result_name = result_name_for_inst(inst);
-      if (!result_name.empty()) {
-        record_def(interval_map, block_state, result_name, point);
+      if (inst.result_name.has_value()) {
+        record_def(interval_map, block_state, *inst.result_name, point);
       }
       ++point;
     }
 
-    for (const auto& used_name : used_names_for_terminator(block.terminator)) {
+    for (const auto& used_name : block.terminator_used_names) {
       record_use(interval_map, block_state, used_name, point);
     }
     block_state.end = point;
     ++point;
   }
 
-  for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
-    const auto& block = function.blocks[block_index];
-    for (const auto& inst : block.insts) {
-      if (!std::holds_alternative<c4c::codegen::lir::LirPhiOp>(inst)) {
-        continue;
-      }
-      const auto& phi = std::get<c4c::codegen::lir::LirPhiOp>(inst);
-      for (const auto& [value_name, label] : phi.incoming) {
-        const auto pred_it = label_to_index.find(label);
-        if (pred_it == label_to_index.end()) {
-          continue;
-        }
-        record_use(interval_map, blocks[pred_it->second], value_name,
-                   blocks[pred_it->second].end);
-      }
+  for (const auto& phi_use : input.phi_incoming_uses) {
+    const auto pred_it = label_to_index.find(phi_use.predecessor_label);
+    if (pred_it == label_to_index.end()) {
+      continue;
     }
+    record_use(interval_map, blocks[pred_it->second], phi_use.value_name,
+               blocks[pred_it->second].end);
   }
 
   bool changed = true;
   while (changed) {
     changed = false;
-    for (std::size_t idx = function.blocks.size(); idx-- > 0;) {
+    for (std::size_t idx = input.blocks.size(); idx-- > 0;) {
       std::set<std::string> next_live_out;
-      for (const auto& label : successor_labels(function.blocks[idx].terminator)) {
+      for (const auto& label : input.blocks[idx].successor_labels) {
         const auto succ_it = label_to_index.find(label);
         if (succ_it == label_to_index.end()) {
           continue;
@@ -432,7 +464,7 @@ LivenessResult compute_live_intervals(const c4c::codegen::lir::LirFunction& func
     }
   }
 
-  for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
+  for (std::size_t block_index = 0; block_index < input.blocks.size(); ++block_index) {
     const auto& block_state = blocks[block_index];
     for (const auto& value_name : block_state.live_in) {
       ensure_interval(interval_map, value_name, block_state.start);
@@ -461,7 +493,11 @@ LivenessResult compute_live_intervals(const c4c::codegen::lir::LirFunction& func
             });
 
   return LivenessResult{std::move(intervals), std::move(call_points),
-                        std::vector<std::uint32_t>(function.blocks.size(), 0)};
+                        std::vector<std::uint32_t>(input.blocks.size(), 0)};
+}
+
+LivenessResult compute_live_intervals(const c4c::codegen::lir::LirFunction& function) {
+  return compute_live_intervals(lower_lir_to_liveness_input(function));
 }
 
 }  // namespace c4c::backend

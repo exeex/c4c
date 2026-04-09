@@ -6,16 +6,37 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 5: pull phi and CFG normalization behind the BIR boundary
-- Current slice: start the Step 6 audit for MIR-owned liveness/regalloc
-  handoff now that the remaining Step 5 branch-only conditional-return
-  goto-chain audit slice stayed on the shared BIR route
-- Next intended slice: inventory the concrete liveness/regalloc entrypoints
-  that still require raw `LirFunction` or LIR-owned CFG state and identify the
-  narrowest backend MIR seam to retarget first
+- Step 6: move liveness to backend MIR
+- Current slice: extend the new backend-owned liveness/regalloc seam through
+  the remaining stack-layout consumers that still require raw `LirFunction`
+  alongside cached liveness
+- Next intended slice: audit `src/backend/stack_layout/analysis.cpp`,
+  `src/backend/stack_layout/alloca_coalescing.cpp`, and
+  `src/backend/stack_layout/slot_assignment.cpp` for the narrowest
+  non-phi/non-CFG use-block surface that can follow the liveness input out of
+  raw LIR
 
 ## Completed
 
+- Completed the first Step 6 MIR-owned liveness/regalloc handoff seam by
+  moving the shared dataflow/regalloc core behind a backend-owned input
+  surface while preserving the existing LIR entrypoints as wrappers:
+  - added `LivenessInput`, `LivenessBlockInput`, and `LivenessPoint` in
+    `src/backend/liveness.hpp` plus `lower_lir_to_liveness_input(...)` so the
+    live-interval walk can consume backend-owned CFG/use-def data instead of
+    requiring raw `LirFunction`
+  - taught `src/backend/liveness.cpp` to compute intervals from that new
+    backend-owned surface and kept `compute_live_intervals(const LirFunction&)`
+    as a compatibility shim that lowers LIR into the new input
+  - added matching backend-owned overloads in `src/backend/regalloc.*` and
+    `src/backend/generation.*` so the shared regalloc path can already run from
+    the lowered liveness surface without introducing target-specific changes
+  - added focused shared util coverage in
+    `tests/backend/backend_shared_util_tests.cpp` proving phi-join interval
+    ranges and call-crossing regalloc behavior are preserved when the shared
+    surfaces consume `LivenessInput` instead of raw LIR
+  - rebuilt `backend_shared_util_tests` and passed
+    `ctest --test-dir build -R backend_shared_util_tests --output-on-failure`
 - Completed the follow-up Step 5 audit for parameter-fed branch-only
   conditional-return goto chains with deeper mixed arm lengths and confirmed
   the shared BIR matcher already owns that reordered CFG family:
