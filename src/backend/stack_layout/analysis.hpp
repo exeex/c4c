@@ -97,9 +97,14 @@ struct StackLayoutAnalysis {
       std::string_view value_name) const;
 };
 
+// Compatibility-only raw-LIR lowering. Production callers should prefer
+// prepared per-function inputs that source stack-layout ownership from
+// BIR/backend-CFG seams before rehydrating this broader view.
 StackLayoutInput lower_lir_to_stack_layout_input(
     const c4c::codegen::lir::LirFunction& function);
 
+// Compatibility-only fallback seam for functions that still need raw entry
+// alloca ownership paired with backend-owned CFG classification.
 StackLayoutInput lower_function_entry_alloca_stack_layout_input(
     const c4c::codegen::lir::LirFunction& function,
     const c4c::backend::BackendCfgFunction& backend_cfg);

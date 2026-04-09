@@ -117,6 +117,7 @@ StackLayoutPlanBundle build_stack_layout_plan_bundle(
     const EntryAllocaPlanningInput& input,
     const StackLayoutAnalysis& analysis);
 
+// Compatibility wrapper around the narrower planning seam.
 StackLayoutPlanBundle build_stack_layout_plan_bundle(
     const StackLayoutInput& input,
     const RegAllocIntegrationResult& regalloc,
@@ -129,6 +130,7 @@ StackLayoutPlanBundle build_stack_layout_plan_bundle(
     const std::vector<PhysReg>& asm_clobbered,
     const std::vector<PhysReg>& callee_saved_regs);
 
+// Compatibility wrapper around the narrower planning seam.
 StackLayoutPlanBundle build_stack_layout_plan_bundle(
     const LivenessInput& liveness_input,
     const StackLayoutInput& stack_layout_input,
@@ -144,6 +146,7 @@ EntryAllocaRewritePatch build_entry_alloca_rewrite_patch(
     const EntryAllocaRewriteInput& input,
     const std::vector<EntryAllocaSlotPlan>& plans);
 
+// Compatibility wrapper around the narrower rewrite seam.
 EntryAllocaRewritePatch prepare_entry_alloca_rewrite_patch(
     const LivenessInput& liveness_input,
     const StackLayoutInput& stack_layout_input,
@@ -183,6 +186,7 @@ void apply_entry_alloca_rewrite_patch(
     c4c::codegen::lir::LirFunction& function,
     const EntryAllocaRewritePatch& patch);
 
+// Compatibility wrapper around the narrower planning seam.
 std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(
     const StackLayoutInput& input,
     const StackLayoutAnalysis& analysis);
@@ -195,6 +199,7 @@ std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(
     const EntryAllocaPlanningInput& input,
     const StackLayoutAnalysis& analysis);
 
+// Compatibility wrapper around the narrower planning seam.
 std::vector<ParamAllocaSlotPlan> plan_param_alloca_slots(
     const StackLayoutInput& input,
     const StackLayoutAnalysis& analysis);

@@ -7,17 +7,44 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 7: move regalloc and stack layout to backend MIR
-- Current slice: audit remaining stack-layout production entrypoints and split
-  them into production-critical versus compatibility-only raw-`LIR` surfaces
-- Current implementation target: identify which `stack_layout` and
-  `slot_assignment` entrypoints still use `LirFunction` / `LirModule` as a
-  production owner even though backend-owned liveness plus narrowed planning or
-  rewrite inputs already exist
-- Next intended slice: mark compatibility-only stack-layout surfaces
-  explicitly, then retarget the highest-value production caller away from the
-  raw-`LIR` route
+- Current slice: eliminate the remaining lowerable-function `RawLirFunction`
+  stack-layout source inside prepared per-function entry-alloca setup so the
+  AArch64 emitter is no longer the only production caller off the direct raw
+  helper
+- Current implementation target: replace the lowerable branch in
+  `prepare_module_function_entry_alloca_preparation(...)` with a backend-owned
+  metadata path that does not call `lower_lir_to_stack_layout_input(...)`
+- Next intended slice: audit whether `rewrite_module_entry_allocas(...)` and
+  other prepared stack-layout callers can drop the rehydrated compatibility
+  `StackLayoutInput` earlier once that lowerable-function metadata path exists
 
 ## Completed
+
+- Completed the first Step 7 stack-layout entrypoint-splitting slice by marking
+  compatibility-only raw-`LIR` surfaces explicitly and retargeting the
+  highest-value production caller onto prepared per-function inputs:
+  - marked `src/backend/stack_layout/analysis.hpp`'s direct raw-`LIR`
+    stack-layout lowerers as compatibility-only surfaces and documented the
+    backend-owned prepared per-function seam as the preferred production path
+  - marked the `StackLayoutInput` overloads in
+    `src/backend/stack_layout/slot_assignment.hpp` as compatibility wrappers
+    around the narrower planning/rewrite seams so the public ownership split is
+    explicit in the shared header
+  - updated `src/backend/aarch64/codegen/emit.cpp` so the general AArch64
+    direct-LIR emitter now gets stack-layout metadata through
+    `prepare_module_function_entry_alloca_inputs(...)` instead of calling
+    `lower_lir_to_stack_layout_input(...)` directly during unsupported-feature
+    gating and stack-slot setup
+  - added focused coverage in `tests/backend/backend_shared_util_tests.cpp`
+    proving prepared per-function stack-layout inputs preserve the slot-building
+    value set and signature/call metadata the emitter needs for both lowerable
+    and fallback functions
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`
+  - rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with the repo's allowed non-decreasing rule and no new
+    failures (`2809 -> 2809`, same 32 known failing tests as
+    `test_fail_before.log`)
 
 - Closed Step 6 as complete enough for plan execution:
   - production liveness/regalloc now center on

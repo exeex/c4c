@@ -5115,10 +5115,13 @@ static std::optional<std::string> try_emit_general_lir_asm(
   std::ostringstream out;
 
   // Reject unsupported features
-  for (const auto& fn : module.functions) {
+  for (std::size_t function_index = 0; function_index < module.functions.size(); ++function_index) {
+    const auto& fn = module.functions[function_index];
     if (fn.is_declaration) continue;
-    const auto stack_layout_input =
-        c4c::backend::stack_layout::lower_lir_to_stack_layout_input(fn);
+    const auto prepared_inputs =
+        c4c::backend::stack_layout::prepare_module_function_entry_alloca_inputs(
+            module, function_index);
+    const auto& stack_layout_input = prepared_inputs.stack_layout_input;
     const auto& return_ty = stack_layout_input.return_type;
     if (!return_ty.has_value()) return std::nullopt;
     const auto return_layout = gen_type_layout(*return_ty, module.type_decls);
@@ -5237,12 +5240,15 @@ static std::optional<std::string> try_emit_general_lir_asm(
 
   int gen_label_counter = 0;
 
-  for (const auto& fn : module.functions) {
+  for (std::size_t function_index = 0; function_index < module.functions.size(); ++function_index) {
+    const auto& fn = module.functions[function_index];
     if (fn.is_declaration) continue;
 
     // Build slot map
-    const auto stack_layout_input =
-        c4c::backend::stack_layout::lower_lir_to_stack_layout_input(fn);
+    const auto prepared_inputs =
+        c4c::backend::stack_layout::prepare_module_function_entry_alloca_inputs(
+            module, function_index);
+    const auto& stack_layout_input = prepared_inputs.stack_layout_input;
     GenSlotMap sm = gen_build_slots(stack_layout_input, module.type_decls);
     const auto& parsed_signature_params = stack_layout_input.signature_params;
     const bool is_variadic_function = stack_layout_input.is_variadic;

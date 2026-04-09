@@ -2178,6 +2178,45 @@ void test_backend_shared_slot_assignment_prepares_module_function_inputs() {
               "shared entry-alloca rewrite prep should keep the existing compatibility wrapper while exposing the narrower production rewrite-input contract");
 }
 
+void test_backend_shared_prepared_function_inputs_preserve_emitter_stack_layout_metadata() {
+  const auto module = make_mixed_bir_and_entry_alloca_module();
+
+  const auto lowerable_prepared =
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_inputs(module, 0);
+  const auto lowerable_direct =
+      c4c::backend::stack_layout::lower_lir_to_stack_layout_input(module.functions[0]);
+  expect_true(
+      c4c::backend::stack_layout::collect_stack_layout_value_names(
+          lowerable_prepared.stack_layout_input) ==
+          c4c::backend::stack_layout::collect_stack_layout_value_names(lowerable_direct) &&
+          lowerable_prepared.stack_layout_input.signature_params.size() ==
+              lowerable_direct.signature_params.size() &&
+          lowerable_prepared.stack_layout_input.return_type == lowerable_direct.return_type &&
+          lowerable_prepared.stack_layout_input.call_results.size() ==
+              lowerable_direct.call_results.size() &&
+          lowerable_prepared.stack_layout_input.blocks.size() == lowerable_direct.blocks.size(),
+      "prepared per-function stack-layout inputs should preserve the slot-building value set and signature metadata for lowerable functions so production emitters do not need to call the raw-LIR helper directly");
+
+  const auto fallback_prepared =
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_inputs(module, 2);
+  const auto fallback_direct =
+      c4c::backend::stack_layout::lower_function_entry_alloca_stack_layout_input(
+          module.functions[2], c4c::backend::lower_lir_to_backend_cfg(module.functions[2]));
+  expect_true(
+      c4c::backend::stack_layout::collect_stack_layout_value_names(
+          fallback_prepared.stack_layout_input) ==
+          c4c::backend::stack_layout::collect_stack_layout_value_names(fallback_direct) &&
+          fallback_prepared.stack_layout_input.entry_allocas.size() ==
+              fallback_direct.entry_allocas.size() &&
+          fallback_prepared.stack_layout_input.signature_params.size() ==
+              fallback_direct.signature_params.size() &&
+          fallback_prepared.stack_layout_input.return_type == fallback_direct.return_type &&
+          fallback_prepared.stack_layout_input.call_results.size() ==
+              fallback_direct.call_results.size() &&
+          fallback_prepared.stack_layout_input.blocks.size() == fallback_direct.blocks.size(),
+      "prepared per-function stack-layout inputs should preserve the fallback backend-CFG-derived metadata needed by production emitters while keeping the raw-LIR surface compatibility-only");
+}
+
 void test_backend_shared_fallback_entry_alloca_stack_layout_input_preserves_pointer_metadata() {
   const c4c::backend::RegAllocIntegrationResult regalloc;
 
