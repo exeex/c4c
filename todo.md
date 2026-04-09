@@ -6,27 +6,46 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 4 focused x86 variadic runtime recovery:
-  the bounded x86-native prepared-LIR two-arg helper lane is now green through
-  the final both-local double-rewrite source shape, so move to the plan's
-  focused variadic ABI/runtime slice without widening back into the parked
-  shared-BIR select regression
+- Step 5 full-suite monotonic validation and next-slice selection:
+  the focused Step 4 x86 variadic/runtime pair is green in the current tree,
+  and the remaining question is whether idea 44 should continue on another
+  owned x86 seam or stop behind the broader stale-suite regression baseline
 - current exact slice:
-  start from `backend_runtime_variadic_sum2`, compare the owned x86 output
-  against Clang on the host triple, and determine whether the minimal fix stays
-  in x86 call lowering/emission or needs a narrower follow-on idea
+  preserve the refreshed `test_fail_after.log`, record that
+  `backend_runtime_variadic_sum2` and `backend_runtime_variadic_double_bytes`
+  already match the current bounded x86-native prepared-LIR ownership, and keep
+  the broader non-monotonic suite delta explicitly parked instead of silently
+  treating Step 5 as green
 
 ## Next Slice
 
 - keep the separate shared-BIR select regression parked in
   `ideas/open/47_shared_bir_select_route_regression_after_x86_variadic_recovery.md`
   instead of widening idea 44
-- after `backend_runtime_variadic_sum2`, take the second focused plan target
-  `backend_runtime_variadic_double_bytes` if the work remains inside idea 44's
-  owned x86 variadic/runtime seam
+- if idea 44 continues, return to the highest-leverage still-owned x86 backend
+  seam that is not already split into the parked shared-BIR select follow-on
+- do not claim Step 5 complete until the full-suite baseline is refreshed or
+  another monotonic comparison target is explicitly chosen for the current lane
 
 ## Recently Completed
 
+- validated the focused Step 4 variadic pair already present in the tree:
+  `ctest --test-dir build --output-on-failure -R '^(backend_runtime_variadic_sum2|backend_runtime_variadic_double_bytes)$'`
+  passes, so the owned x86 variadic/runtime seam itself no longer needs a new
+  code patch in this iteration
+- compared the current bounded x86 asm against Clang on the host triple for
+  `tests/c/internal/backend_case/variadic_sum2.c` and
+  `tests/c/internal/backend_case/variadic_double_bytes.c`; the caller-side
+  SysV variadic ABI signals stay aligned for these exact source shapes
+  (`%al = 0` for the integer-only call and `%al = 1` for the floating
+  variadic call), so no narrower follow-on idea was needed from this check
+- refreshed `test_fail_after.log` with
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log` and
+  re-ran the monotonic guard:
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  which still fails against the stale broad-suite baseline
+  (`2670/179/2849` before vs `2584/266/2850` after) for the already-known
+  wider regression lane rather than the now-green focused variadic seam
 - added a bounded x86 prepared-LIR matcher/emitter in
   `src/backend/x86/codegen/emit.cpp` for the final both-local double-rewrite
   two-arg helper family
