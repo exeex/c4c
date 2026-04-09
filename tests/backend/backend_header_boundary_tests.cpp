@@ -9,7 +9,7 @@ struct IsCompleteType : std::false_type {};
 template <typename T>
 struct IsCompleteType<T, std::void_t<decltype(sizeof(T))>> : std::true_type {};
 
-#include "../../src/backend/x86/codegen/emit.hpp"
+#include "../../src/backend/x86/codegen/x86_codegen.hpp"
 
 static_assert(!IsCompleteType<c4c::codegen::lir::LirModule>::value,
               "x86 emit header should not complete the frontend LIR module just to expose emitter entrypoints");

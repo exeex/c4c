@@ -2,7 +2,7 @@
 
 #include "../../src/backend/lowering/call_decode.hpp"
 #include "../../src/backend/lowering/lir_to_bir.hpp"
-#include "../../src/backend/x86/codegen/emit.hpp"
+#include "../../src/backend/x86/codegen/x86_codegen.hpp"
 
 #include <stdexcept>
 

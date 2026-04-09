@@ -5,7 +5,7 @@
 #include "lowering/lir_to_bir.hpp"
 #include "stack_layout/slot_assignment.hpp"
 #include "x86/assembler/mod.hpp"
-#include "x86/codegen/emit.hpp"
+#include "x86/codegen/x86_codegen.hpp"
 
 #include "../codegen/lir/lir_printer.hpp"
 #include "../codegen/lir/ir.hpp"

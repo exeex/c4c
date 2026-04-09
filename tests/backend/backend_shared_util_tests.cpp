@@ -22,7 +22,7 @@
 #include "../../src/backend/x86/assembler/mod.hpp"
 #include "../../src/backend/x86/assembler/encoder/mod.hpp"
 #include "../../src/backend/x86/assembler/parser.hpp"
-#include "../../src/backend/x86/codegen/emit.hpp"
+#include "../../src/backend/x86/codegen/x86_codegen.hpp"
 #include "../../src/backend/x86/linker/mod.hpp"
 #include "backend_test_helper.hpp"
 
