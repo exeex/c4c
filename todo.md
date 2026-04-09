@@ -7,14 +7,13 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 5: pull phi and CFG normalization behind the BIR boundary
-- Current slice: replace the mislabeled native conditional-phi pipeline
-  coverage with a real lowerable LIR phi-join fixture so Step 5 proves the x86
-  and AArch64 emitters route that shape through `try_lower_to_bir(...)`
-  instead of only exercising the already-lowered direct-BIR path
-- Next intended slice: use the strengthened native phi-route coverage to judge
-  whether the next smallest production move is a bounded prune/guard of
-  unreachable target-local phi handling or another `try_lower_to_bir(...)`
-  expansion for a residual phi/CFG shape
+- Current slice: choose the next remaining Step 5 phi/CFG seam where a
+  lowerable shape still relies on target-local cleanup or lacks end-to-end LIR
+  route coverage
+- Next intended slice: audit the remaining target-local phi handling in
+  `src/backend/x86/codegen/emit.cpp` and `src/backend/aarch64/codegen/emit.cpp`
+  against the now-covered conditional-phi and `u8` post-join-add LIR routes to
+  identify the smallest production prune/guard or missing route test
 
 ## Completed
 
@@ -400,6 +399,17 @@ Source Plan: plan.md
   - no additional generic typed-type conversion remains for Step 1, so the plan
     now advances to BIR-owned phi/CFG normalization instead of stretching the
     typed-type audit further
+- Added x86 and AArch64 end-to-end LIR route coverage in
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` and
+  `tests/backend/backend_bir_pipeline_aarch64_tests.cpp` for the bounded `u8`
+  predecessor-add phi-with-post-join-add slice by retargeting the existing LIR
+  fixture onto each native backend triple and asserting native emission stays
+  on the shared BIR-owned `.Lselect_*` / `.Lselect_join` path instead of
+  target-local predecessor labels
+- Rebuilt `backend_bir_tests`, re-ran it, re-ran the full suite into
+  `test_fail_after.log`, and passed the regression guard in
+  `--allow-non-decreasing-passed` mode with no new failures and no pass-count
+  drop (`2841 -> 2841`)
 
 ## Next
 

@@ -79,6 +79,14 @@ c4c::codegen::lir::LirModule make_unsupported_double_return_lir_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_lir_u8_select_post_join_add_module() {
+  auto module = make_bir_two_param_u8_select_ne_predecessor_add_phi_post_join_add_module();
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_lir_minimal_global_int_pointer_diff_module() {
   using namespace c4c::codegen::lir;
 
@@ -1993,6 +2001,32 @@ void test_backend_bir_pipeline_drives_x86_lir_conditional_phi_join_through_bir_e
                       "x86 LIR conditional-phi-join input should stay on native asm emission instead of falling back to LLVM text");
 }
 
+void test_backend_bir_pipeline_drives_x86_lir_u8_select_post_join_add_through_bir_end_to_end() {
+  const auto lowered = c4c::backend::try_lower_to_bir(make_lir_u8_select_post_join_add_module());
+  expect_true(lowered.has_value(),
+              "x86 LIR u8 select-plus-tail input should lower into a direct BIR module before target emission");
+  expect_true(lowered->functions.size() == 1 &&
+                  lowered->functions.front().blocks.size() == 1,
+              "x86 LIR u8 select-plus-tail input should collapse to a shared one-block BIR function before target emission");
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_lir_u8_select_post_join_add_module()},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl choose2_add_post_ne_u",
+                  "x86 LIR u8 select-plus-tail input should still reach native asm emission after routing through the shared BIR path");
+  expect_contains(rendered, ".Lselect_true:\n  movzx eax, dil\n  add eax, 5\n  jmp .Lselect_join\n",
+                  "x86 LIR u8 select-plus-tail input should preserve the shared BIR-owned then-arm predecessor arithmetic");
+  expect_contains(rendered, ".Lselect_false:\n  movzx eax, sil\n  add eax, 9\n",
+                  "x86 LIR u8 select-plus-tail input should preserve the shared BIR-owned else-arm predecessor arithmetic");
+  expect_contains(rendered, ".Lselect_join:\n  add eax, 6\n  ret\n",
+                  "x86 LIR u8 select-plus-tail input should preserve the shared BIR-owned post-join arithmetic tail");
+  expect_not_contains(rendered, ".choose2_add_post_ne_u.tern.then",
+                      "x86 lowerable u8 select-plus-tail input should no longer emit the original target-local predecessor block labels once the BIR route owns the shape");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR u8 select-plus-tail input should stay on native asm emission instead of falling back to LLVM text");
+}
+
 void test_backend_bir_pipeline_drives_x86_return_add_smoke_case_end_to_end() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_bir_return_add_module()},
@@ -2516,6 +2550,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_call_crossing_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_conditional_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_conditional_phi_join_through_bir_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_u8_select_post_join_add_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_return_add_smoke_case_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_return_sub_smoke_case_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_zero_param_staged_constant_end_to_end);
