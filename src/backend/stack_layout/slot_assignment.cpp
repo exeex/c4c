@@ -106,9 +106,6 @@ std::optional<std::vector<std::string>> collect_prepared_escaped_entry_allocas(
   std::unordered_map<std::string, std::string> pointer_roots;
   pointer_roots.reserve(input.entry_allocas.size());
   for (const auto& alloca : input.entry_allocas) {
-    if (is_param_alloca_name(alloca.alloca_name)) {
-      continue;
-    }
     pointer_roots.emplace(alloca.alloca_name, alloca.alloca_name);
   }
 
@@ -148,9 +145,6 @@ std::optional<std::vector<EntryAllocaUseBlocks>> collect_prepared_entry_alloca_u
   std::unordered_map<std::string, std::string> pointer_roots;
   pointer_roots.reserve(input.entry_allocas.size());
   for (const auto& alloca : input.entry_allocas) {
-    if (is_param_alloca_name(alloca.alloca_name)) {
-      continue;
-    }
     pointer_roots.emplace(alloca.alloca_name, alloca.alloca_name);
   }
 
@@ -201,9 +195,6 @@ std::optional<std::vector<EntryAllocaFirstAccess>> collect_prepared_entry_alloca
   std::unordered_map<std::string, std::string> pointer_roots;
   pointer_roots.reserve(input.entry_allocas.size());
   for (const auto& alloca : input.entry_allocas) {
-    if (is_param_alloca_name(alloca.alloca_name)) {
-      continue;
-    }
     pointer_roots.emplace(alloca.alloca_name, alloca.alloca_name);
   }
 

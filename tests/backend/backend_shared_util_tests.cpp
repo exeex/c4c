@@ -45,6 +45,33 @@ c4c::codegen::lir::LirModule make_mixed_bir_and_entry_alloca_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_live_pointer_param_alloca_candidate_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction function;
+  function.name = "advance";
+  function.signature_text = "define void @advance(ptr %p.p)\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.param.p", "ptr", "", 8});
+  function.alloca_insts.push_back(LirStoreOp{"ptr", "%p.p", "%lv.param.p"});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirLoadOp{"%t0", "ptr", "%lv.param.p"});
+  entry.insts.push_back(LirGepOp{"%t1", "i8", "%t0", false, {"i64 1"}});
+  entry.insts.push_back(LirStoreOp{"ptr", "%t1", "%lv.param.p"});
+  entry.terminator = LirRet{std::nullopt, "void"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 }  // namespace
 
 void test_backend_shared_call_decode_parses_bir_minimal_direct_call_module() {
@@ -2968,6 +2995,24 @@ void test_backend_shared_prepares_lir_module_for_target() {
               "shared backend LIR prep should leave riscv64 modules untouched so the text fallback keeps its current ownership");
 }
 
+void test_backend_shared_prepared_function_inputs_preserve_live_pointer_param_allocas() {
+  const auto module = make_live_pointer_param_alloca_candidate_module();
+  const auto prepared =
+      c4c::backend::prepare_lir_module_for_target(module, c4c::backend::Target::Aarch64);
+  const auto preparation =
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_preparation(prepared, 0);
+
+  expect_true(prepared.functions.size() == 1 &&
+                  prepared.functions.front().alloca_insts.size() ==
+                      module.functions.front().alloca_insts.size(),
+              "shared backend target prep should preserve live pointer param allocas when the function body still reloads and rewrites the pointer slot");
+  expect_true(preparation.rewrite_metadata.entry_allocas.size() == 1 &&
+                  preparation.rewrite_metadata.entry_allocas.front().alloca_name == "%lv.param.p" &&
+                  preparation.planning_input.entry_allocas.size() == 1 &&
+                  preparation.planning_input.entry_allocas.front().alloca_name == "%lv.param.p",
+              "shared prepared function inputs should retain live pointer param allocas on the prepared native-emission seam instead of silently dropping them after target prep");
+}
+
 void test_backend_shared_target_preparation_enables_bir_lowering() {
   const auto module = make_dead_local_alloca_candidate_module();
   const auto x86_prepared = c4c::backend::prepare_lir_module_for_target(
@@ -3463,6 +3508,7 @@ int main(int argc, char* argv[]) {
   test_backend_shared_fallback_preparation_still_needs_remaining_pointer_escape_facts();
   test_backend_shared_fallback_preparation_keeps_only_liveness_cfg_state();
   test_backend_shared_prepares_lir_module_for_target();
+  test_backend_shared_prepared_function_inputs_preserve_live_pointer_param_allocas();
   test_backend_shared_target_preparation_enables_bir_lowering();
   test_backend_shared_slot_assignment_prunes_dead_entry_alloca_insts();
   test_backend_shared_slot_assignment_applies_coalesced_entry_slots();

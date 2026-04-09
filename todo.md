@@ -6,23 +6,41 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 7: move regalloc and stack layout to backend MIR
-- Current slice: hand off the now-explicit compatibility-only raw-`LIR`
-  stack-layout parity coverage and focus Step 7 on the residual AArch64
-  aggregate/ABI blocker pair
-- Current implementation target: investigate why
-  `c_testsuite_aarch64_backend_src_00182_c` and
-  `c_testsuite_aarch64_backend_src_00204_c` still segfault after the prepared
-  direct-LIR variadic path went green, and confirm whether the remaining
-  failure mode stays on the Step 7 ownership seam or needs a separately tracked
-  follow-up
-- Next intended slice: reduce one of the remaining AArch64 failures to a
-  narrow direct backend regression, compare the emitted behavior against Clang
-  or the x86 path as needed, and keep the current compatibility-only
-  stack-layout parity coverage untouched unless that triage exposes a genuine
-  ownership gap
+- Step 8: delete temporary LIR-side backend shims
+- Current slice: audit which raw-`LIR` compatibility helpers still remain now
+  that the Step 7 AArch64 blocker set is green, and separate any real leftover
+  shim deletion from broader backend cleanup that belongs in a follow-up idea
+- Current implementation target: confirm whether the surviving compatibility
+  surfaces around prepared stack-layout lowering, native direct-LIR emission,
+  and any raw-`LIR` analysis entrypoints are still required for bounded
+  fallback ownership or are now removable without reopening the Step 7
+  ownership seam
+- Next intended slice: inventory the remaining compatibility-only raw-`LIR`
+  backend surfaces, delete one narrow shim if it is clearly obsolete, and
+  track any broader backend capability or cleanup work as a separate follow-up
+  instead of stretching this runbook silently
 
 ## Completed
+
+- Completed the Step 7 residual AArch64 aggregate/ABI blocker slice by fixing
+  live param-alloca ownership on the prepared rewrite/native-emission seam:
+  - updated `src/backend/stack_layout/slot_assignment.cpp` so the prepared
+    stack-layout classification now keeps param allocas in the coarse escaped,
+    use-block, and first-access metadata instead of dropping them from the
+    narrowed rewrite/planning carrier
+  - added a focused regression in
+    `tests/backend/backend_shared_util_tests.cpp` covering a live pointer param
+    alloca that survives target prep and still appears in prepared
+    entry-alloca inputs on the AArch64 native-emission seam
+  - rebuilt `backend_shared_util_tests` and `c4cll`; passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`
+  - passed the previously blocked external cases
+    `ctest --test-dir build -R '^c_testsuite_aarch64_backend_src_00182_c$' --output-on-failure`
+    and
+    `ctest --test-dir build -R '^c_testsuite_aarch64_backend_src_00204_c$' --output-on-failure`
+  - refreshed `test_fail_after.log` and passed the regression guard with
+    monotonic full-suite improvement and no new failures
+    (`2809 -> 2841` passed tests); the Step 7 blocker set is now green
 
 - Completed the next Step 7 stack-layout parity-coverage audit slice by moving
   prepared-emitter parity checks onto the backend-CFG-backed compatibility seam
