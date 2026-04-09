@@ -69,7 +69,7 @@ Source Plan: plan.md
   intended baseline, so no cast-specific compiler change was needed for this
   slice.
 - Recorded the broader inherited-record layout and plain base-member lookup gap
-  in `ideas/open/48_inherited_record_layout_and_base_member_access_followup.md`
+  in `ideas/open/45_inherited_record_layout_and_base_member_access_followup.md`
   instead of expanding the active cast-follow-up plan.
 - Full-suite validation stayed monotonic: `test_fail_before.log` 2845/2845
   passed, `test_fail_after.log` 2847/2847 passed, with zero new failures.
@@ -280,7 +280,7 @@ Source Plan: plan.md
 - The first draft of the casted-base-member regression also checked
   `Derived d{{1}};` and `d.value`, which exposed a broader inherited-layout and
   plain base-member lookup problem. That issue was spun out into
-  `ideas/open/48_inherited_record_layout_and_base_member_access_followup.md`
+  `ideas/open/45_inherited_record_layout_and_base_member_access_followup.md`
   so the current plan stays focused on cast-specific behavior.
 - The landed `((Base&&)d).value` regression initially crashed because HIR
   record layout treated `Derived : Base {}` as an empty record. Folding
