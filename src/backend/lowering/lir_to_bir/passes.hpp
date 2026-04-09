@@ -23,6 +23,8 @@ void record_aggregate_lowering_scaffold_notes(const c4c::codegen::lir::LirModule
                                               std::vector<BirLoweringNote>* notes = nullptr);
 std::optional<std::vector<bir::Param>> lower_call_params_from_type_texts(
     const std::vector<std::string_view>& param_types);
+std::optional<std::vector<bir::Param>> lower_function_params(
+    const c4c::codegen::lir::LirFunction& lir_function);
 bir::CallingConv default_calling_convention_for_target(std::string_view target_triple);
 bool function_signature_is_variadic(std::string_view signature_text);
 bir::CallInst make_direct_call_inst(std::string callee,

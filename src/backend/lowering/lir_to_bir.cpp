@@ -18,9 +18,6 @@ namespace c4c::backend {
 
 namespace {
 
-std::optional<std::vector<bir::Param>> lower_function_params(
-    const c4c::codegen::lir::LirFunction& lir_function);
-
 std::optional<bir::TypeKind> lower_minimal_scalar_type(const c4c::TypeSpec& type) {
   if (type.ptr_level != 0 || type.array_rank != 0) {
     return std::nullopt;
@@ -3316,41 +3313,6 @@ std::optional<bir::SelectInst> lower_select_materialization(
   lowered.true_value = *true_value;
   lowered.false_value = *false_value;
   return lowered;
-}
-
-std::optional<std::vector<bir::Param>> lower_function_params(
-    const c4c::codegen::lir::LirFunction& lir_function) {
-  std::vector<bir::Param> params;
-  if (!lir_function.params.empty()) {
-    if (lir_function.params.size() > 2) {
-      return std::nullopt;
-    }
-    params.reserve(lir_function.params.size());
-    for (const auto& [param_name, param_type] : lir_function.params) {
-      const auto lowered_type = lower_minimal_scalar_type(param_type);
-      if (!lowered_type.has_value() || param_name.empty()) {
-        return std::nullopt;
-      }
-      params.push_back(bir::Param{*lowered_type, param_name});
-    }
-    return params;
-  }
-
-  const auto parsed_params =
-      parse_backend_function_signature_params(lir_function.signature_text);
-  if (!parsed_params.has_value() || parsed_params->size() > 2) {
-    return std::nullopt;
-  }
-
-  params.reserve(parsed_params->size());
-  for (const auto& param : *parsed_params) {
-    const auto lowered_type = lower_scalar_type(c4c::codegen::lir::LirTypeRef(param.type));
-    if (param.is_varargs || !lowered_type.has_value() || param.operand.empty()) {
-      return std::nullopt;
-    }
-    params.push_back(bir::Param{*lowered_type, param.operand});
-  }
-  return params;
 }
 
 struct AffineValue {

@@ -171,6 +171,27 @@ struct LoweredCallAbi {
 
 namespace c4c::backend {
 
+namespace {
+
+std::optional<bir::TypeKind> lower_declared_function_param_type(const c4c::TypeSpec& type) {
+  if (type.ptr_level != 0 || type.array_rank != 0) {
+    return std::nullopt;
+  }
+  if (type.base == TB_CHAR || type.base == TB_SCHAR || type.base == TB_UCHAR) {
+    return bir::TypeKind::I8;
+  }
+  if (type.base == TB_INT) {
+    return bir::TypeKind::I32;
+  }
+  if (type.base == TB_LONG || type.base == TB_ULONG || type.base == TB_LONGLONG ||
+      type.base == TB_ULONGLONG) {
+    return bir::TypeKind::I64;
+  }
+  return std::nullopt;
+}
+
+}  // namespace
+
 std::optional<std::vector<bir::Param>> lower_call_params_from_type_texts(
     const std::vector<std::string_view>& param_types) {
   std::vector<bir::Param> params;
@@ -189,6 +210,40 @@ std::optional<std::vector<bir::Param>> lower_call_params_from_type_texts(
         .is_sret = false,
         .is_byval = false,
     });
+  }
+  return params;
+}
+
+std::optional<std::vector<bir::Param>> lower_function_params(
+    const c4c::codegen::lir::LirFunction& lir_function) {
+  std::vector<bir::Param> params;
+  if (!lir_function.params.empty()) {
+    if (lir_function.params.size() > 2) {
+      return std::nullopt;
+    }
+    params.reserve(lir_function.params.size());
+    for (const auto& [param_name, param_type] : lir_function.params) {
+      const auto lowered_type = lower_declared_function_param_type(param_type);
+      if (!lowered_type.has_value() || param_name.empty()) {
+        return std::nullopt;
+      }
+      params.push_back(bir::Param{*lowered_type, param_name});
+    }
+    return params;
+  }
+
+  const auto parsed_params = parse_backend_function_signature_params(lir_function.signature_text);
+  if (!parsed_params.has_value() || parsed_params->size() > 2) {
+    return std::nullopt;
+  }
+
+  params.reserve(parsed_params->size());
+  for (const auto& param : *parsed_params) {
+    const auto lowered_type = lir_to_bir::legalize_call_arg_type(param.type);
+    if (param.is_varargs || !lowered_type.has_value() || param.operand.empty()) {
+      return std::nullopt;
+    }
+    params.push_back(bir::Param{*lowered_type, param.operand});
   }
   return params;
 }

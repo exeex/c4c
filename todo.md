@@ -11,9 +11,10 @@ Source Plan: plan.md
   split lowering scaffolds into a real pass-oriented entry surface and
   stopping further ownership drift into x86 testcase matchers;
   current sub-slice remains in the ownership-wiring phase before broad
-  compile/test recovery, with the immediate lane now focused on finishing the
-  split call seam ownership move and then returning to remaining seam-local
-  compile recovery;
+  compile/test recovery, with the immediate lane now focused on moving
+  declared-function parameter lowering ownership out of the monolith and into
+  the split call seam before returning to remaining seam-local compile
+  recovery;
   build/test work is intentionally ignored until this lane switches to
   compile-recovery
 
@@ -26,8 +27,8 @@ Source Plan: plan.md
   migrating concrete logic out of the legacy monolith one seam at a time
 - continue after the type-helper extraction by moving the next concrete seam
   into split ownership:
-  memory/address lowering first, then finish the remaining call matcher
-  ownership after the direct-call constructor move
+  finish the remaining call matcher/metadata ownership after the direct-call
+  constructor move, then return to memory/address lowering
 - after the current ownership-wiring burst, start a dedicated compile-recovery
   pass over the newly split seam files before attempting new targeted tests
 - avoid adding any new x86 testcase-specific direct-LIR matcher while this
@@ -242,6 +243,19 @@ Source Plan: plan.md
 - attempted seam-local backend validation, but the current `backend_bir_tests`
   and `backend_shared_util_tests` executables still fail in pre-existing
   unrelated areas before they provide a clean regression signal for this slice
+- moved declared-function parameter lowering ownership out of
+  `lir_to_bir.cpp` and into the split call seam by exporting
+  `lower_function_params(...)` through `lir_to_bir/passes.hpp` and
+  implementing it in `lir_to_bir/calls.cpp`
+- verified the tree still rebuilds cleanly after the declared-function
+  parameter ownership move:
+  `cmake --build build -j8` succeeds
+- re-ran seam-local backend validation after the ownership move and confirmed
+  the same pre-existing unrelated failures remain:
+  `backend_bir_tests` still segfaults/fails across existing shared-BIR cases
+  and `backend_shared_util_tests` still aborts with the existing unsupported
+  direct-LIR rejection, so they still do not provide a clean regression signal
+  for this slice
 
 ## Blockers
 
@@ -252,6 +266,9 @@ Source Plan: plan.md
 - baseline reference: [test_x86_64_backend_baseline_20260409T140902Z.log](/workspaces/c4c/test_x86_64_backend_baseline_20260409T140902Z.log)
 - durable classification snapshot recorded in
   [ideas/open/44_x86_64_backend_bringup_after_bir_cutover.md](/workspaces/c4c/ideas/open/44_x86_64_backend_bringup_after_bir_cutover.md)
+- latest Step 2 ownership slice landed in the split call seam:
+  `lower_function_params(...)` now lives in
+  `src/backend/lowering/lir_to_bir/calls.cpp` via `passes.hpp`
 - keep `cpp_eastl_*` parse failures out of scope unless a backend-owned coupling
   is proven
 - preserve idea 41's no-rescue architecture while shrinking the unsupported
