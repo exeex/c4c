@@ -296,11 +296,9 @@ void collect_first_entry_alloca_accesses(
   }
 }
 
-}  // namespace
-
-StackLayoutInput lower_lir_to_stack_layout_input(const c4c::codegen::lir::LirFunction& function) {
-  StackLayoutInput input;
-  input.entry_allocas.reserve(function.alloca_insts.size());
+void lower_function_signature_and_entry_allocas(
+    const c4c::codegen::lir::LirFunction& function,
+    StackLayoutInput& input) {
   if (const auto parsed_signature_params =
           c4c::backend::parse_backend_function_signature_params(function.signature_text);
       parsed_signature_params.has_value()) {
@@ -315,6 +313,7 @@ StackLayoutInput lower_lir_to_stack_layout_input(const c4c::codegen::lir::LirFun
   }
   input.return_type = parse_function_return_type(function.signature_text);
 
+  input.entry_allocas.reserve(function.alloca_insts.size());
   for (std::size_t index = 0; index < function.alloca_insts.size(); ++index) {
     const auto* alloca = std::get_if<c4c::codegen::lir::LirAllocaOp>(&function.alloca_insts[index]);
     if (alloca == nullptr) {
@@ -336,7 +335,11 @@ StackLayoutInput lower_lir_to_stack_layout_input(const c4c::codegen::lir::LirFun
     }
     input.entry_allocas.push_back(std::move(entry_alloca));
   }
+}
 
+void lower_lir_blocks_to_stack_layout_input(
+    const c4c::codegen::lir::LirFunction& function,
+    StackLayoutInput& input) {
   input.blocks.reserve(function.blocks.size());
   for (const auto& block : function.blocks) {
     StackLayoutBlockInput lowered_block;
@@ -424,7 +427,49 @@ StackLayoutInput lower_lir_to_stack_layout_input(const c4c::codegen::lir::LirFun
 
     input.blocks.push_back(std::move(lowered_block));
   }
+}
 
+void lower_backend_cfg_to_stack_layout_input(
+    const c4c::backend::BackendCfgFunction& backend_cfg,
+    StackLayoutInput& input) {
+  input.blocks.reserve(backend_cfg.blocks.size());
+  for (const auto& block : backend_cfg.blocks) {
+    StackLayoutBlockInput lowered_block;
+    lowered_block.label = block.label;
+    lowered_block.terminator_used_names = block.terminator_used_names;
+    lowered_block.insts.reserve(block.insts.size());
+
+    for (const auto& inst : block.insts) {
+      StackLayoutPoint point;
+      point.used_names = inst.used_names;
+      lowered_block.insts.push_back(std::move(point));
+    }
+
+    input.blocks.push_back(std::move(lowered_block));
+  }
+
+  input.phi_incoming_uses.reserve(backend_cfg.phi_incoming_uses.size());
+  for (const auto& phi_use : backend_cfg.phi_incoming_uses) {
+    input.phi_incoming_uses.push_back(
+        PhiIncomingUse{phi_use.predecessor_label, phi_use.value_name});
+  }
+}
+
+}  // namespace
+
+StackLayoutInput lower_lir_to_stack_layout_input(const c4c::codegen::lir::LirFunction& function) {
+  StackLayoutInput input;
+  lower_function_signature_and_entry_allocas(function, input);
+  lower_lir_blocks_to_stack_layout_input(function, input);
+  return input;
+}
+
+StackLayoutInput lower_function_entry_alloca_stack_layout_input(
+    const c4c::codegen::lir::LirFunction& function,
+    const c4c::backend::BackendCfgFunction& backend_cfg) {
+  StackLayoutInput input;
+  lower_function_signature_and_entry_allocas(function, input);
+  lower_backend_cfg_to_stack_layout_input(backend_cfg, input);
   return input;
 }
 

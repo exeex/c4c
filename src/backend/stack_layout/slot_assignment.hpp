@@ -40,12 +40,19 @@ enum class EntryAllocaRewriteLivenessSource {
   PerFunctionBir,
 };
 
+enum class EntryAllocaRewriteStackLayoutSource {
+  RawLirFunction,
+  EntryAllocasAndBackendCfg,
+};
+
 struct PreparedEntryAllocaFunctionInputs {
   StackLayoutInput stack_layout_input;
   std::optional<BackendCfgFunction> backend_cfg;
   std::optional<LivenessInput> liveness_input;
   EntryAllocaRewriteLivenessSource liveness_source =
       EntryAllocaRewriteLivenessSource::RawLirBackendCfg;
+  EntryAllocaRewriteStackLayoutSource stack_layout_source =
+      EntryAllocaRewriteStackLayoutSource::RawLirFunction;
 };
 
 struct EntryAllocaRewriteInputs {
@@ -53,6 +60,8 @@ struct EntryAllocaRewriteInputs {
   StackLayoutInput stack_layout_input;
   EntryAllocaRewriteLivenessSource liveness_source =
       EntryAllocaRewriteLivenessSource::RawLirBackendCfg;
+  EntryAllocaRewriteStackLayoutSource stack_layout_source =
+      EntryAllocaRewriteStackLayoutSource::RawLirFunction;
 };
 
 StackLayoutPlanBundle build_stack_layout_plan_bundle(

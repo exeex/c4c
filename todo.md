@@ -7,19 +7,46 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: audit whether the entry-alloca preparation carrier can lower
-  any stack-layout metadata from backend-owned forms, starting with the bounded
-  dead-entry-alloca path that still depends on
-  `lower_lir_to_stack_layout_input(...)`
-- Current implementation target: identify which `StackLayoutInput` fields used
-  by entry-alloca rewrite planning can be derived from the new prepared carrier
-  instead of the raw-LIR-only stack-layout lowering path
-- Next intended slice: prototype a backend-owned stack-layout preparation seam
-  for dead entry allocas, then retest the mixed-module blocking function to see
-  whether entry-alloca rewrite planning can narrow its remaining raw-LIR
-  dependency
+- Current slice: audit the remaining raw-LIR-only metadata in the prepared
+  entry-alloca rewrite carrier after moving fallback block/phi usage onto the
+  backend-CFG-backed stack-layout seam
+- Current implementation target: identify whether dead/live entry-alloca
+  classification can lower any additional pointer-access or escape metadata
+  from backend-owned forms instead of the compatibility LIR stack-layout
+  lowering path
+- Next intended slice: prototype a narrower prepared fallback path for
+  entry-alloca classification that keeps only entry-alloca declarations on the
+  raw-LIR side while auditing whether dead/local aggregate cases still need
+  full LIR-derived pointer-access metadata
 
 ## Completed
+
+- Completed the next Step 6 bounded backend-owned stack-layout preparation
+  slice by moving prepared fallback block/phi ownership off the raw-LIR
+  stack-layout lowering path while keeping entry-alloca metadata intact:
+  - added
+    `lower_function_entry_alloca_stack_layout_input(const LirFunction&, const BackendCfgFunction&)`
+    in `src/backend/stack_layout/analysis.*` so stack-layout preparation can
+    now rebuild signature, entry-alloca, block, and phi-use metadata from a
+    prepared backend CFG seam instead of lowering whole-function block usage
+    directly from raw LIR
+  - added `EntryAllocaRewriteStackLayoutSource` in
+    `src/backend/stack_layout/slot_assignment.*` and retargeted
+    `prepare_module_function_entry_alloca_preparation(...)` so fallback
+    entry-alloca rewrite prep now tracks that its stack-layout carrier comes
+    from `entry allocas + backend CFG`, while the per-function BIR path keeps
+    the existing raw-LIR compatibility source
+  - extended `tests/backend/backend_shared_util_tests.cpp` with focused
+    coverage proving the mixed-module fallback path now records the new
+    backend-owned stack-layout source and carries block usage through the
+    prepared backend CFG seam instead of the raw-LIR stack-layout lowering
+    path
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`,
+    rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with the repo’s allowed non-decreasing rule and no new
+    failures (`2809 -> 2809`, same 32 known failing tests as
+    `test_fail_before.log`)
 
 - Completed the next Step 6 bounded prepared entry-alloca carrier slice by
   formalizing the mixed-module fallback as one backend-owned preparation seam

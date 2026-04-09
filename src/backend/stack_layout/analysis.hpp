@@ -86,6 +86,10 @@ struct StackLayoutAnalysis {
 StackLayoutInput lower_lir_to_stack_layout_input(
     const c4c::codegen::lir::LirFunction& function);
 
+StackLayoutInput lower_function_entry_alloca_stack_layout_input(
+    const c4c::codegen::lir::LirFunction& function,
+    const c4c::backend::BackendCfgFunction& backend_cfg);
+
 std::vector<std::string> collect_stack_layout_value_names(const StackLayoutInput& input);
 
 StackLayoutAnalysis analyze_stack_layout(
