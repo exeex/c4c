@@ -37,11 +37,6 @@ namespace {
       "x86 backend emitter does not support this direct BIR module; only the affine-return subset lowers natively");
 }
 
-[[noreturn]] void throw_unsupported_direct_lir_module() {
-  throw std::invalid_argument(
-      "x86 backend emitter does not support this direct LIR module; only direct-LIR slices that lower natively or through direct BIR are currently supported");
-}
-
 c4c::backend::RegAllocIntegrationResult run_shared_x86_regalloc(
     const c4c::backend::LivenessInput& liveness_input);
 
@@ -4101,13 +4096,6 @@ std::string emit_module(const c4c::backend::bir::Module& module) {
 std::optional<std::string> try_emit_prepared_lir_module(
     const c4c::codegen::lir::LirModule& module) {
   return try_emit_prepared_lir_module_impl(module);
-}
-
-std::string emit_prepared_lir_module(const c4c::codegen::lir::LirModule& module) {
-  if (const auto rendered = try_emit_prepared_lir_module(module); rendered.has_value()) {
-    return *rendered;
-  }
-  throw_unsupported_direct_lir_module();
 }
 
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {

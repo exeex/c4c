@@ -9,6 +9,11 @@ namespace {
 
 using I8ModuleFactory = c4c::codegen::lir::LirModule (*)();
 
+constexpr std::string_view kExpectedX86UnsupportedDirectLir =
+    "x86 backend emitter does not support this direct LIR module; only direct-LIR slices that lower natively or through direct BIR are currently supported";
+constexpr std::string_view kExpectedAarch64UnsupportedDirectLir =
+    "aarch64 backend emitter does not support this direct LIR module; only direct-LIR slices that lower natively or through direct BIR are currently supported";
+
 c4c::codegen::lir::LirModule make_unsupported_local_array_gep_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -236,6 +241,8 @@ void test_backend_entry_rejects_unsupported_direct_lir_input_on_x86() {
         c4c::backend::BackendModuleInput{make_unsupported_x86_double_return_lir_module()},
         c4c::backend::BackendOptions{c4c::backend::Target::X86_64});
   } catch (const std::invalid_argument& ex) {
+    expect_true(ex.what() == kExpectedX86UnsupportedDirectLir,
+                "shared backend entry should preserve the x86 direct-LIR rejection contract after prepared-LIR throw ownership moves out of the target emitter");
     expect_contains(ex.what(), "direct LIR module",
                     "backend entry should now expose the native x86 direct-LIR subset rejection instead of rescuing unsupported input through LLVM text");
     expect_not_contains(ex.what(), "legacy backend IR",
@@ -252,6 +259,8 @@ void test_backend_entry_rejects_unsupported_direct_lir_input_on_aarch64() {
         c4c::backend::BackendModuleInput{make_unsupported_aarch64_double_return_lir_module()},
         c4c::backend::BackendOptions{c4c::backend::Target::Aarch64});
   } catch (const std::invalid_argument& ex) {
+    expect_true(ex.what() == kExpectedAarch64UnsupportedDirectLir,
+                "shared backend entry should preserve the aarch64 direct-LIR rejection contract after prepared-LIR throw ownership moves out of the target emitter");
     expect_contains(ex.what(), "direct LIR module",
                     "backend entry should now expose the native aarch64 direct-LIR subset rejection instead of rescuing unsupported input through LLVM text");
     expect_not_contains(ex.what(), "legacy backend IR",

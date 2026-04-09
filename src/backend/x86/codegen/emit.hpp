@@ -21,7 +21,6 @@ std::optional<std::string> try_emit_module(const c4c::backend::bir::Module& modu
 std::string emit_module(const c4c::backend::bir::Module& module);
 std::optional<std::string> try_emit_prepared_lir_module(
     const c4c::codegen::lir::LirModule& module);
-std::string emit_prepared_lir_module(const c4c::codegen::lir::LirModule& module);
 std::string emit_module(const c4c::codegen::lir::LirModule& module);
 assembler::AssembleResult assemble_module(const c4c::codegen::lir::LirModule& module,
                                           const std::string& output_path);

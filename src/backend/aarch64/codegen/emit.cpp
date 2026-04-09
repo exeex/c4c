@@ -41,11 +41,6 @@ namespace {
       "aarch64 backend emitter does not support this direct BIR module; only the affine-return subset lowers natively");
 }
 
-[[noreturn]] void fail_unsupported_direct_lir_module() {
-  throw std::invalid_argument(
-      "aarch64 backend emitter does not support this direct LIR module; only direct-LIR slices that lower natively or through direct BIR are currently supported");
-}
-
 void validate_inst(const c4c::codegen::lir::LirInst& inst) {
   if (std::holds_alternative<c4c::codegen::lir::LirSelectOp>(inst)) {
     fail_unsupported("non-ALU/non-branch/non-call/non-memory instructions");
@@ -6708,13 +6703,6 @@ std::optional<std::string> try_emit_prepared_lir_module(
     return gen_asm;
   }
   return std::nullopt;
-}
-
-std::string emit_prepared_lir_module(const c4c::codegen::lir::LirModule& module) {
-  if (auto rendered = try_emit_prepared_lir_module(module); rendered.has_value()) {
-    return *rendered;
-  }
-  fail_unsupported_direct_lir_module();
 }
 
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {

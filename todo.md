@@ -7,21 +7,40 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: audit the next compatibility-only direct-LIR fallback seam
-  that still keeps native emitters aware of raw `LirModule` ownership after the
-  shared backend-owned routing entrypoint took over target preparation, direct
-  BIR retry, and prepared direct-LIR fallback ownership
-- Current implementation target: replace the shared backend's direct-BIR retry
-  exception-string seam with explicit x86/aarch64 `try_emit_module(...)`
-  support probes so prepared direct-LIR fallback routing no longer depends on
-  parsing target-local error text
+- Current slice: audit the next backend-entry/native-emitter ownership seam
+  after shared backend routing fully owns unsupported prepared direct-LIR
+  rejection
+- Current implementation target: identify the next compatibility-only direct
+  backend-entry helper split that still leaves x86/aarch64 route policy or
+  target selection duplicated across `src/backend/backend.cpp` and the public
+  target emitter entrypoints
 - Next intended slice: identify and retire the next compatibility-only
-  direct-LIR fallback seam that still leaves backend codegen route policy split
-  between target emitters and shared backend entrypoints after explicit native
-  BIR support probing replaces the current exception-text retry path
+  backend-entry seam that still leaves direct-LIR/native route policy split
+  between target emitters and shared backend helpers after prepared direct-LIR
+  rejection becomes shared-backend-owned
 
 ## Completed
 
+- Completed the next Step 6/7 bounded prepared direct-LIR rejection ownership
+  cleanup slice by deleting the compatibility-only target-local throwing
+  adapters once shared backend routing already owned support probing:
+  - updated `src/backend/backend.cpp` so the shared backend entrypoint now
+    throws the final x86/aarch64 unsupported direct-LIR rejection itself after
+    explicit prepared direct-LIR support probing returns `nullopt`
+  - removed the now-unused x86/aarch64
+    `emit_prepared_lir_module(const LirModule&)` declarations and definitions
+    from `src/backend/x86/codegen/emit.*` and
+    `src/backend/aarch64/codegen/emit.*`, leaving the target emitters with the
+    explicit `try_emit_prepared_lir_module(...)` probe as their only prepared
+    direct-LIR routing surface
+  - extended `tests/backend/backend_bir_pipeline_tests.cpp` to pin the exact
+    shared-backend-owned x86/aarch64 unsupported direct-LIR rejection
+    contracts
+  - rebuilt `backend_bir_tests`, passed
+    `ctest --test-dir build -R '^backend_bir_tests$' --output-on-failure`,
+    rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with no new failures and no pass-count drop
+    (`2809 -> 2809`, same 32 known failing tests as `test_fail_before.log`)
 - Completed the next Step 6/7 bounded prepared direct-LIR support-probe cleanup
   slice by exposing explicit native fallback support probes before the shared
   backend asks target emitters to throw:
