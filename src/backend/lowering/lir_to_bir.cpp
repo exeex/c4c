@@ -299,8 +299,7 @@ std::optional<bir::Module> try_lower_minimal_direct_call_module(
     using namespace c4c::codegen::lir;
 
     if (main_function.is_declaration || helper.is_declaration ||
-        !backend_lir_signature_matches(
-            main_function.signature_text, "define", "i32", main_function.name, {}) ||
+        !lir_function_matches_minimal_no_param_integer_return(main_function, 32) ||
         !backend_lir_signature_matches(helper.signature_text, "define", "i32", helper.name, {}) ||
         main_function.entry.value != 0 || helper.entry.value != 0 ||
         main_function.blocks.size() != 1 || helper.blocks.size() != 1 ||
@@ -318,7 +317,8 @@ std::optional<bir::Module> try_lower_minimal_direct_call_module(
     const auto& main_block = main_function.blocks.front();
     const auto* main_ret = std::get_if<LirRet>(&main_block.terminator);
     if (main_block.label != "entry" || main_block.insts.size() != 1 || main_ret == nullptr ||
-        !main_ret->value_str.has_value() || main_ret->type_str != "i32") {
+        !main_ret->value_str.has_value() ||
+        lower_function_return_type(main_function, *main_ret) != bir::TypeKind::I32) {
       return std::nullopt;
     }
 
@@ -394,7 +394,7 @@ std::optional<bir::Module> try_lower_minimal_void_direct_call_imm_return_module(
          const LirFunction& helper)
       -> std::optional<std::tuple<std::string, std::string, std::int64_t>> {
     if (caller.is_declaration || helper.is_declaration ||
-        !backend_lir_signature_matches(caller.signature_text, "define", "i32", caller.name, {}) ||
+        !lir_function_matches_minimal_no_param_integer_return(caller, 32) ||
         !backend_lir_signature_matches(helper.signature_text, "define", "void", helper.name, {}) ||
         caller.entry.value != 0 || helper.entry.value != 0 ||
         caller.blocks.size() != 1 || helper.blocks.size() != 1 ||
@@ -413,7 +413,8 @@ std::optional<bir::Module> try_lower_minimal_void_direct_call_imm_return_module(
     const auto& caller_block = caller.blocks.front();
     const auto* caller_ret = std::get_if<LirRet>(&caller_block.terminator);
     if (caller_block.label != "entry" || caller_block.insts.size() != 1 || caller_ret == nullptr ||
-        !caller_ret->value_str.has_value() || caller_ret->type_str != "i32") {
+        !caller_ret->value_str.has_value() ||
+        lower_function_return_type(caller, *caller_ret) != bir::TypeKind::I32) {
       return std::nullopt;
     }
 
@@ -712,8 +713,7 @@ std::optional<bir::Module> try_lower_minimal_two_arg_direct_call_module(
                                   std::int64_t, std::int64_t>> {
     if (main_function.is_declaration || helper.is_declaration ||
         !parse_backend_two_param_add_function(helper, std::nullopt).has_value() ||
-        !backend_lir_signature_matches(
-            main_function.signature_text, "define", "i32", main_function.name, {}) ||
+        !lir_function_matches_minimal_no_param_integer_return(main_function, 32) ||
         helper.entry.value != 0 || main_function.entry.value != 0 || helper.blocks.size() != 1 ||
         main_function.blocks.size() != 1 || !helper.alloca_insts.empty() ||
         !helper.stack_objects.empty() || !main_function.stack_objects.empty()) {
@@ -723,7 +723,8 @@ std::optional<bir::Module> try_lower_minimal_two_arg_direct_call_module(
     const auto& main_block = main_function.blocks.front();
     const auto* main_ret = std::get_if<LirRet>(&main_block.terminator);
     if (main_block.label != "entry" || main_ret == nullptr || !main_ret->value_str.has_value() ||
-        main_ret->type_str != "i32" || main_block.insts.empty()) {
+        lower_function_return_type(main_function, *main_ret) != bir::TypeKind::I32 ||
+        main_block.insts.empty()) {
       return std::nullopt;
     }
 
@@ -883,8 +884,7 @@ std::optional<bir::Module> try_lower_minimal_direct_call_add_imm_module(
       -> std::optional<std::tuple<const LirFunction*, const LirFunction*, const LirCallOp*,
                                   std::int64_t, std::int64_t>> {
     if (caller.is_declaration || helper.is_declaration ||
-        !backend_lir_signature_matches(
-            caller.signature_text, "define", "i32", caller.name, {}) ||
+        !lir_function_matches_minimal_no_param_integer_return(caller, 32) ||
         caller.entry.value != 0 || helper.entry.value != 0 || caller.blocks.size() != 1 ||
         helper.blocks.size() != 1 || !caller.stack_objects.empty()) {
       return std::nullopt;
@@ -903,7 +903,8 @@ std::optional<bir::Module> try_lower_minimal_direct_call_add_imm_module(
     const auto& caller_block = caller.blocks.front();
     const auto* caller_ret = std::get_if<LirRet>(&caller_block.terminator);
     if (caller_block.label != "entry" || caller_ret == nullptr ||
-        !caller_ret->value_str.has_value() || caller_ret->type_str != "i32" ||
+        !caller_ret->value_str.has_value() ||
+        lower_function_return_type(caller, *caller_ret) != bir::TypeKind::I32 ||
         caller_block.insts.empty()) {
       return std::nullopt;
     }
@@ -1032,8 +1033,7 @@ std::optional<bir::Module> try_lower_minimal_direct_call_identity_arg_module(
          const LirFunction& helper)
       -> std::optional<std::tuple<std::string, std::string, std::string, std::int64_t>> {
     if (main_function.is_declaration || helper.is_declaration ||
-        !backend_lir_signature_matches(
-            main_function.signature_text, "define", "i32", main_function.name, {}) ||
+        !lir_function_matches_minimal_no_param_integer_return(main_function, 32) ||
         main_function.entry.value != 0 || helper.entry.value != 0 ||
         main_function.blocks.size() != 1 || helper.blocks.size() != 1 ||
         !main_function.alloca_insts.empty() || !main_function.stack_objects.empty()) {
@@ -1047,7 +1047,8 @@ std::optional<bir::Module> try_lower_minimal_direct_call_identity_arg_module(
     const auto& main_block = main_function.blocks.front();
     const auto* main_ret = std::get_if<LirRet>(&main_block.terminator);
     if (main_block.label != "entry" || main_block.insts.size() != 1 || main_ret == nullptr ||
-        !main_ret->value_str.has_value() || main_ret->type_str != "i32") {
+        !main_ret->value_str.has_value() ||
+        lower_function_return_type(main_function, *main_ret) != bir::TypeKind::I32) {
       return std::nullopt;
     }
 
@@ -1257,8 +1258,7 @@ std::optional<bir::Module> try_lower_minimal_dual_identity_direct_call_sub_modul
                                   std::string, std::string, std::int64_t, std::int64_t>> {
     if (main_function.is_declaration || lhs_helper.is_declaration || rhs_helper.is_declaration ||
         lhs_helper.name == rhs_helper.name ||
-        !backend_lir_signature_matches(
-            main_function.signature_text, "define", "i32", main_function.name, {}) ||
+        !lir_function_matches_minimal_no_param_integer_return(main_function, 32) ||
         main_function.entry.value != 0 || lhs_helper.entry.value != 0 ||
         rhs_helper.entry.value != 0 || main_function.blocks.size() != 1 ||
         lhs_helper.blocks.size() != 1 || rhs_helper.blocks.size() != 1 ||
@@ -1274,7 +1274,8 @@ std::optional<bir::Module> try_lower_minimal_dual_identity_direct_call_sub_modul
     const auto& main_block = main_function.blocks.front();
     const auto* main_ret = std::get_if<LirRet>(&main_block.terminator);
     if (main_block.label != "entry" || main_block.insts.size() != 3 || main_ret == nullptr ||
-        !main_ret->value_str.has_value() || main_ret->type_str != "i32") {
+        !main_ret->value_str.has_value() ||
+        lower_function_return_type(main_function, *main_ret) != bir::TypeKind::I32) {
       return std::nullopt;
     }
 
@@ -1412,8 +1413,7 @@ std::optional<bir::Module> try_lower_minimal_call_crossing_direct_call_module(
       -> std::optional<std::tuple<std::string, std::string, std::string, std::string, std::string,
                                   std::int64_t, std::int64_t, std::string>> {
     if (main_function.is_declaration || helper.is_declaration ||
-        !backend_lir_signature_matches(
-            main_function.signature_text, "define", "i32", main_function.name, {}) ||
+        !lir_function_matches_minimal_no_param_integer_return(main_function, 32) ||
         main_function.entry.value != 0 || helper.entry.value != 0 ||
         main_function.blocks.size() != 1 || helper.blocks.size() != 1 ||
         !main_function.alloca_insts.empty() || !main_function.stack_objects.empty()) {
@@ -1428,7 +1428,8 @@ std::optional<bir::Module> try_lower_minimal_call_crossing_direct_call_module(
     const auto& main_block = main_function.blocks.front();
     const auto* main_ret = std::get_if<LirRet>(&main_block.terminator);
     if (main_block.label.empty() || main_block.insts.size() != 3 || main_ret == nullptr ||
-        !main_ret->value_str.has_value() || main_ret->type_str != "i32") {
+        !main_ret->value_str.has_value() ||
+        lower_function_return_type(main_function, *main_ret) != bir::TypeKind::I32) {
       return std::nullopt;
     }
 

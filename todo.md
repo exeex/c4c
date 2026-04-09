@@ -8,13 +8,12 @@ Source Plan: plan.md
 
 - Step 1: audit the typed type boundary and backend ownership seams
 - Current slice: move the next typed-lowering pass back into
-  `src/backend/lowering/lir_to_bir.cpp` and audit the remaining
-  instruction-local raw integer text checks that still bypass semantic
-  `LirTypeRef` inspection outside the newly-converted widened `i8`
-  add/compare/select seams, with the immediate target narrowed to the extern
-  global-array load and char/int pointer-difference recognizers that still gate
-  on raw cast/GEP/binop/cmp/load integer text instead of semantic
-  `LirTypeRef` widths plus function return metadata
+  `src/backend/lowering/lir_to_bir.cpp` and audit the remaining direct-call or
+  declared-extern special cases that still branch primarily on raw integer
+  signature or declaration text instead of typed function, instruction, or
+  global metadata, with the immediate target narrowed to the next caller/callee
+  surface that still bypasses semantic return or parameter metadata outside the
+  now-converted direct-call caller-return slice
 
 ## Completed
 
@@ -190,6 +189,19 @@ Source Plan: plan.md
 - Re-ran `backend_bir_tests`, `backend_shared_util_tests`, and the full suite
   and passed the regression guard with no new failures and no pass-count drop
   (`2841 -> 2841`)
+- Switched the remaining minimal direct-call caller-return gates in
+  `src/backend/lowering/lir_to_bir.cpp` from raw `define i32` / `ret i32`
+  text checks to `lir_function_matches_minimal_no_param_integer_return(...)`
+  plus `lower_function_return_type(...)` for the two-argument, add-immediate,
+  identity, dual-identity subtraction, and call-crossing slices
+- Added focused backend regressions in
+  `tests/backend/backend_bir_lowering_tests.cpp` that keep those direct-call
+  slices lowering when the caller `LirFunction.return_type` still carries `i32`
+  semantics but the stored caller signature and `ret` render text are
+  intentionally stale
+- Re-ran `backend_bir_tests`, `backend_shared_util_tests`, and the full suite,
+  refreshed `test_fail_after.log`, and passed the regression guard with no new
+  failures and no pass-count drop (`2841 -> 2841`)
 - Switched the minimal extern global-array load and char/int pointer-difference
   recognizers in `src/backend/lowering/lir_to_bir.cpp` off raw
   cast/GEP/binop/cmp/load/ret integer text checks and onto semantic
@@ -249,10 +261,11 @@ Source Plan: plan.md
   `LirTypeRef` inspection outside the widened `i8` add/compare/select seams;
   the generic branch-select/phi-select, countdown-loop, scalar global
   load/store, extern global-array load, and pointer-diff stale-text gates are
-  now covered, so the next audit should target the remaining special-case
-  lowering or declared-extern/direct-call path that still branches primarily on
-  raw integer signature or decl text instead of typed instruction, global, or
-  function metadata
+  now covered, and the direct-call caller-return stale-text gates are also
+  covered, so the next audit should target the remaining special-case lowering
+  or declared-extern/direct-call path that still branches primarily on raw
+  integer helper signature, extern declaration, or call-surface text instead of
+  typed instruction, global, or function metadata
 - keep pointer payload support deferred until a concrete pointer-backed BIR
   lowering consumer appears, then add only the narrow typed payload that
   consumer needs
