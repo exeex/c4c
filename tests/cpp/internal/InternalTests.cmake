@@ -185,6 +185,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     declarator_normal_tail_staging_parse
     declarator_non_parenthesized_suffix_staging_parse
     declarator_plain_function_suffix_staging_parse
+    c_style_cast_dependent_template_member_ptr_parse
     record_nested_aggregate_member_parse
     record_member_typedef_using_parse
     record_member_enum_parse

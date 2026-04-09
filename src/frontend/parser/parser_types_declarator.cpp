@@ -456,12 +456,12 @@ bool Parser::consume_member_pointer_owner_prefix() {
     if (!is_cpp_mode()) return false;
 
     TentativeParseGuard guard(*this);
+    if (check(TokenKind::KwTypename)) consume();
     if (!consume_qualified_type_spelling(/*allow_global=*/true,
-                                         /*consume_final_template_args=*/false,
+                                         /*consume_final_template_args=*/true,
                                          nullptr, nullptr)) {
         return false;
     }
-    consume_template_args_before_scope();
     if (!(check(TokenKind::ColonColon) &&
           pos_ + 1 < static_cast<int>(tokens_.size()) &&
           tokens_[pos_ + 1].kind == TokenKind::Star)) {
@@ -925,7 +925,8 @@ bool Parser::is_parenthesized_pointer_declarator_start() {
 
     if (!is_cpp_mode() ||
         (lookahead != TokenKind::Identifier &&
-         lookahead != TokenKind::ColonColon)) {
+         lookahead != TokenKind::ColonColon &&
+         lookahead != TokenKind::KwTypename)) {
         return false;
     }
 

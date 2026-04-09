@@ -7,18 +7,16 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 3: review declarator suffix and function-pointer cast forms
-- Current slice: probe the next uncovered qualified or dependent template-id
-  declarator-suffix owner-chain combination after closing the plain
-  lvalue/rvalue-reference return-type function-pointer cases
-- Current implementation target: stay in parser-facing Step 3 coverage work
-  and identify whether a namespace-qualified, global-qualified, or dependent
-  template-id owner chain inside a function-pointer or member-pointer cast
-  still exposes a parser-specific hole after the plain return-type matrix is
-  covered
-- Next intended slice: add the narrowest qualified or dependent
-  template-id-owner declarator-suffix parse regression, starting with the
-  smallest function-pointer or member-pointer cast spelling not yet covered by
-  Step 3
+- Current slice: re-probe the remaining qualified owner-chain matrix after
+  landing dependent template-id owner-chain coverage for member-pointer cast
+  targets
+- Current implementation target: repair parser-side member-pointer declarator
+  prefix detection so owner chains with template-ids on non-final segments,
+  such as `Holder<T>::Type::*`, remain type-ids inside C-style cast parsing
+  instead of falling back into expression parsing
+- Next intended slice: add the next narrow qualified-owner parser regression,
+  starting with a namespace-qualified or global-qualified template-id owner
+  chain inside a member-function-pointer cast target
 
 ## Completed
 
@@ -322,6 +320,23 @@ Source Plan: plan.md
 - Full-suite validation stayed monotonic under the repo regression guard:
   `test_fail_before.log` 2865/2865 passed,
   `test_fail_after.log` 2866/2866 passed, with zero new failures.
+- Added
+  `tests/cpp/internal/postive_case/c_style_cast_dependent_template_member_ptr_parse.cpp`
+  as a focused parse-only regression for the dependent owner-chain
+  `int Holder<T>::Type::*member = (int Holder<T>::Type::*)0;`.
+- Fixed parser-side member-pointer owner-prefix detection so
+  `consume_member_pointer_owner_prefix()` accepts qualified owner chains with
+  template-ids on non-final segments, which keeps dependent
+  `Holder<T>::Type::*` and the adjacent member-function-pointer form on the
+  type-id path during C-style cast parsing.
+- Targeted validation passed:
+  `build/c4cll --parse-only tests/cpp/internal/postive_case/c_style_cast_dependent_template_member_ptr_parse.cpp`,
+  `ctest --test-dir build -R 'c_style_cast_(dependent_template_member_ptr_parse|template_member_ptr_parse|template_member_fn_ptr_ref_qual_parse|template_member_fn_ptr_const_parse|template_fn_ptr_lvalue_ref_return_type_parse|template_fn_ptr_rvalue_ref_return_type_parse|template_fn_ptr_return_type_parse)' --output-on-failure`,
+  and an ad-hoc parse-only probe for the corresponding
+  `int (Holder<T>::Type::*fp)(T) &` cast target.
+- Full-suite validation stayed monotonic under the repo regression guard:
+  `test_fail_before.log` 2866/2866 passed,
+  `test_fail_after.log` 2867/2867 passed, with zero new failures.
 
 ## Notes
 
