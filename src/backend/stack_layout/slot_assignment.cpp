@@ -359,8 +359,15 @@ EntryAllocaPlanningInput lower_prepared_entry_alloca_planning_input(
   return lowered;
 }
 
-EntryAllocaPlanningInput lower_stack_layout_input_to_entry_alloca_planning_input(
-    StackLayoutInput input) {
+EntryAllocaRewriteInput lower_stack_layout_input_to_entry_alloca_rewrite_input_impl(
+    const StackLayoutInput& input) {
+  auto classification =
+      lower_stack_layout_input_classification_or_use_embedded_metadata(input);
+  return make_entry_alloca_rewrite_input_from_classification(input.entry_allocas, classification);
+}
+
+EntryAllocaPlanningInput lower_stack_layout_input_to_entry_alloca_planning_input_impl(
+    const StackLayoutInput& input) {
   auto classification =
       lower_stack_layout_input_classification_or_use_embedded_metadata(input);
   EntryAllocaPlanningInput lowered;
@@ -712,6 +719,16 @@ void rewrite_terminator_alloca_refs(LirTerminator& terminator, const Map& canoni
 
 }  // namespace
 
+EntryAllocaRewriteInput lower_stack_layout_input_to_entry_alloca_rewrite_input(
+    const StackLayoutInput& input) {
+  return lower_stack_layout_input_to_entry_alloca_rewrite_input_impl(input);
+}
+
+EntryAllocaPlanningInput lower_stack_layout_input_to_entry_alloca_planning_input(
+    const StackLayoutInput& input) {
+  return lower_stack_layout_input_to_entry_alloca_planning_input_impl(input);
+}
+
 StackLayoutPlanBundle build_stack_layout_plan_bundle(
     const EntryAllocaPlanningInput& input,
     const StackLayoutAnalysis& analysis) {
@@ -728,15 +745,6 @@ std::vector<std::string> collect_prepared_entry_alloca_value_names(
 }
 
 StackLayoutPlanBundle build_stack_layout_plan_bundle(
-    const StackLayoutInput& input,
-    const RegAllocIntegrationResult& regalloc,
-    const std::vector<PhysReg>& callee_saved_regs) {
-  const auto analysis = analyze_stack_layout(input, regalloc, callee_saved_regs);
-  const auto planning_input = lower_stack_layout_input_to_entry_alloca_planning_input(input);
-  return build_stack_layout_plan_bundle(planning_input, analysis);
-}
-
-StackLayoutPlanBundle build_stack_layout_plan_bundle(
     const LivenessInput& liveness_input,
     const EntryAllocaPlanningInput& planning_input,
     const RegAllocConfig& regalloc_config,
@@ -747,39 +755,6 @@ StackLayoutPlanBundle build_stack_layout_plan_bundle(
   const auto analysis = analyze_entry_alloca_planning_input(
       liveness_input, planning_input, regalloc, callee_saved_regs);
   return build_stack_layout_plan_bundle(planning_input, analysis);
-}
-
-StackLayoutPlanBundle build_stack_layout_plan_bundle(
-    const LivenessInput& liveness_input,
-    const StackLayoutInput& stack_layout_input,
-    const RegAllocConfig& regalloc_config,
-    const std::vector<PhysReg>& asm_clobbered,
-    const std::vector<PhysReg>& callee_saved_regs) {
-  const auto planning_input =
-      lower_stack_layout_input_to_entry_alloca_planning_input(stack_layout_input);
-  return build_stack_layout_plan_bundle(
-      liveness_input,
-      planning_input,
-      regalloc_config,
-      asm_clobbered,
-      callee_saved_regs);
-}
-
-EntryAllocaRewritePatch prepare_entry_alloca_rewrite_patch(
-    const LivenessInput& liveness_input,
-    const StackLayoutInput& stack_layout_input,
-    const RegAllocConfig& regalloc_config,
-    const std::vector<PhysReg>& asm_clobbered,
-    const std::vector<PhysReg>& callee_saved_regs) {
-  auto classification =
-      lower_stack_layout_input_classification_or_use_embedded_metadata(stack_layout_input);
-  auto rewrite_input = make_entry_alloca_rewrite_input_from_classification(
-      stack_layout_input.entry_allocas, classification);
-  return prepare_entry_alloca_rewrite_patch(liveness_input,
-                                            rewrite_input,
-                                            regalloc_config,
-                                            asm_clobbered,
-                                            callee_saved_regs);
 }
 
 EntryAllocaRewritePatch prepare_entry_alloca_rewrite_patch(
@@ -980,13 +955,6 @@ PreparedEntryAllocaRewriteOnlyInputs lower_prepared_entry_alloca_rewrite_only_in
 }
 
 std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(
-    const StackLayoutInput& input,
-    const StackLayoutAnalysis& analysis) {
-  return plan_entry_alloca_slots(
-      lower_stack_layout_input_to_entry_alloca_planning_input(input), analysis);
-}
-
-std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(
     const EntryAllocaRewriteInput& input,
     const StackLayoutAnalysis& analysis) {
   return plan_entry_alloca_slots(
@@ -1065,16 +1033,6 @@ std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(
 }
 
 EntryAllocaRewritePatch build_entry_alloca_rewrite_patch(
-    const StackLayoutInput& input,
-    const std::vector<EntryAllocaSlotPlan>& plans) {
-  auto classification = lower_stack_layout_input_classification_or_use_embedded_metadata(input);
-  auto rewrite_input =
-      make_entry_alloca_rewrite_input_from_classification(std::move(input.entry_allocas),
-                                                         classification);
-  return build_entry_alloca_rewrite_patch(rewrite_input, plans);
-}
-
-EntryAllocaRewritePatch build_entry_alloca_rewrite_patch(
     const EntryAllocaRewriteInput& input,
     const std::vector<EntryAllocaSlotPlan>& plans) {
   std::unordered_map<std::size_t, std::string> canonical_by_slot;
@@ -1147,13 +1105,6 @@ void apply_entry_alloca_rewrite_patch(
     }
     rewrite_terminator_alloca_refs(block.terminator, canonical_by_alloca);
   }
-}
-
-std::vector<ParamAllocaSlotPlan> plan_param_alloca_slots(
-    const StackLayoutInput& input,
-    const StackLayoutAnalysis& analysis) {
-  return plan_param_alloca_slots(
-      lower_stack_layout_input_to_entry_alloca_planning_input(input), analysis);
 }
 
 std::vector<ParamAllocaSlotPlan> plan_param_alloca_slots(

@@ -1411,7 +1411,9 @@ void test_backend_shared_stack_layout_analysis_accepts_entry_alloca_first_access
   input.blocks.front().insts.front().pointer_accesses.clear();
 
   const auto analysis = c4c::backend::stack_layout::analyze_stack_layout(input, regalloc, {});
-  const auto plans = c4c::backend::stack_layout::plan_entry_alloca_slots(input, analysis);
+  const auto plans = c4c::backend::stack_layout::plan_entry_alloca_slots(
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_planning_input(input),
+      analysis);
 
   expect_true(analysis.is_entry_alloca_overwritten_before_read("%lv.x") &&
                   plans.size() == 1 &&
@@ -1436,8 +1438,10 @@ void test_backend_shared_slot_assignment_plans_param_alloca_slots() {
       c4c::backend::stack_layout::lower_lir_to_stack_layout_input(dead_function);
   const auto dead_analysis = c4c::backend::stack_layout::analyze_stack_layout(
       dead_input, dead_regalloc, {{20}, {21}, {22}});
-  const auto dead_plans =
-      c4c::backend::stack_layout::plan_param_alloca_slots(dead_input, dead_analysis);
+  const auto dead_plans = c4c::backend::stack_layout::plan_param_alloca_slots(
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_planning_input(
+          dead_input),
+      dead_analysis);
 
   expect_true(dead_plans.size() == 1 && dead_plans.front().alloca_name == "%lv.param.x" &&
                   dead_plans.front().param_name == "%p.x" &&
@@ -1454,8 +1458,10 @@ void test_backend_shared_slot_assignment_plans_param_alloca_slots() {
       c4c::backend::stack_layout::lower_lir_to_stack_layout_input(live_function);
   const auto live_analysis = c4c::backend::stack_layout::analyze_stack_layout(
       live_input, live_regalloc, {{20}, {21}, {22}});
-  const auto live_plans =
-      c4c::backend::stack_layout::plan_param_alloca_slots(live_input, live_analysis);
+  const auto live_plans = c4c::backend::stack_layout::plan_param_alloca_slots(
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_planning_input(
+          live_input),
+      live_analysis);
 
   expect_true(live_plans.size() == 1 && live_plans.front().alloca_name == "%lv.param.x" &&
                   live_plans.front().param_name == "%p.x" &&
@@ -1478,12 +1484,18 @@ void test_backend_shared_slot_assignment_param_alloca_pruning_matches_backend_ow
       c4c::backend::stack_layout::lower_lir_to_stack_layout_input(dead_function);
   const auto dead_analysis = c4c::backend::stack_layout::analyze_stack_layout(
       dead_input, dead_regalloc, {{20}, {21}, {22}});
-  const auto dead_plans =
-      c4c::backend::stack_layout::plan_param_alloca_slots(dead_input, dead_analysis);
-  const auto dead_entry_plans =
-      c4c::backend::stack_layout::plan_entry_alloca_slots(dead_input, dead_analysis);
-  const auto dead_patch =
-      c4c::backend::stack_layout::build_entry_alloca_rewrite_patch(dead_input, dead_entry_plans);
+  const auto dead_plans = c4c::backend::stack_layout::plan_param_alloca_slots(
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_planning_input(
+          dead_input),
+      dead_analysis);
+  const auto dead_entry_plans = c4c::backend::stack_layout::plan_entry_alloca_slots(
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_planning_input(
+          dead_input),
+      dead_analysis);
+  const auto dead_patch = c4c::backend::stack_layout::build_entry_alloca_rewrite_patch(
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_rewrite_input(
+          dead_input),
+      dead_entry_plans);
 
   expect_true(dead_plans.size() == 1 && !dead_plans.front().needs_stack_slot,
               "shared slot-assignment param planning should classify dead param allocas as removable");
@@ -1500,12 +1512,18 @@ void test_backend_shared_slot_assignment_param_alloca_pruning_matches_backend_ow
       c4c::backend::stack_layout::lower_lir_to_stack_layout_input(live_function);
   const auto live_analysis = c4c::backend::stack_layout::analyze_stack_layout(
       live_input, live_regalloc, {{20}, {21}, {22}});
-  const auto live_plans =
-      c4c::backend::stack_layout::plan_param_alloca_slots(live_input, live_analysis);
-  const auto live_entry_plans =
-      c4c::backend::stack_layout::plan_entry_alloca_slots(live_input, live_analysis);
-  const auto live_patch =
-      c4c::backend::stack_layout::build_entry_alloca_rewrite_patch(live_input, live_entry_plans);
+  const auto live_plans = c4c::backend::stack_layout::plan_param_alloca_slots(
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_planning_input(
+          live_input),
+      live_analysis);
+  const auto live_entry_plans = c4c::backend::stack_layout::plan_entry_alloca_slots(
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_planning_input(
+          live_input),
+      live_analysis);
+  const auto live_patch = c4c::backend::stack_layout::build_entry_alloca_rewrite_patch(
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_rewrite_input(
+          live_input),
+      live_entry_plans);
 
   expect_true(live_plans.size() == 1 && live_plans.front().needs_stack_slot,
               "shared slot-assignment param planning should preserve live param allocas");
@@ -1522,8 +1540,10 @@ void test_backend_shared_slot_assignment_plans_entry_alloca_slots() {
       c4c::backend::stack_layout::lower_lir_to_stack_layout_input(dead_function);
   const auto dead_analysis =
       c4c::backend::stack_layout::analyze_stack_layout(dead_input, regalloc, {});
-  const auto dead_plans =
-      c4c::backend::stack_layout::plan_entry_alloca_slots(dead_input, dead_analysis);
+  const auto dead_plans = c4c::backend::stack_layout::plan_entry_alloca_slots(
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_planning_input(
+          dead_input),
+      dead_analysis);
 
   expect_true(dead_plans.size() == 1 && dead_plans.front().alloca_name == "%lv.buf" &&
                   !dead_plans.front().needs_stack_slot &&
@@ -1536,8 +1556,10 @@ void test_backend_shared_slot_assignment_plans_entry_alloca_slots() {
       c4c::backend::stack_layout::lower_lir_to_stack_layout_input(live_function);
   const auto live_analysis =
       c4c::backend::stack_layout::analyze_stack_layout(live_input, regalloc, {});
-  const auto live_plans =
-      c4c::backend::stack_layout::plan_entry_alloca_slots(live_input, live_analysis);
+  const auto live_plans = c4c::backend::stack_layout::plan_entry_alloca_slots(
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_planning_input(
+          live_input),
+      live_analysis);
 
   expect_true(live_plans.size() == 1 && live_plans.front().alloca_name == "%lv.buf" &&
                   live_plans.front().needs_stack_slot &&
@@ -1552,8 +1574,10 @@ void test_backend_shared_slot_assignment_plans_entry_alloca_slots() {
       c4c::backend::stack_layout::lower_lir_to_stack_layout_input(disjoint_function);
   const auto disjoint_analysis =
       c4c::backend::stack_layout::analyze_stack_layout(disjoint_input, regalloc, {});
-  const auto disjoint_plans =
-      c4c::backend::stack_layout::plan_entry_alloca_slots(disjoint_input, disjoint_analysis);
+  const auto disjoint_plans = c4c::backend::stack_layout::plan_entry_alloca_slots(
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_planning_input(
+          disjoint_input),
+      disjoint_analysis);
 
   expect_true(disjoint_plans.size() == 2 &&
                   disjoint_plans[0].alloca_name == "%lv.then" &&
@@ -1570,8 +1594,10 @@ void test_backend_shared_slot_assignment_plans_entry_alloca_slots() {
       c4c::backend::stack_layout::lower_lir_to_stack_layout_input(same_block_function);
   const auto same_block_analysis =
       c4c::backend::stack_layout::analyze_stack_layout(same_block_input, regalloc, {});
-  const auto same_block_plans =
-      c4c::backend::stack_layout::plan_entry_alloca_slots(same_block_input, same_block_analysis);
+  const auto same_block_plans = c4c::backend::stack_layout::plan_entry_alloca_slots(
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_planning_input(
+          same_block_input),
+      same_block_analysis);
 
   expect_true(same_block_plans.size() == 2 &&
                   same_block_plans[0].coalesced_block == 0 &&
@@ -1588,7 +1614,9 @@ void test_backend_shared_slot_assignment_plans_entry_alloca_slots() {
   const auto mixed_lifetime_analysis =
       c4c::backend::stack_layout::analyze_stack_layout(mixed_lifetime_input, regalloc, {});
   const auto mixed_lifetime_plans = c4c::backend::stack_layout::plan_entry_alloca_slots(
-      mixed_lifetime_input, mixed_lifetime_analysis);
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_planning_input(
+          mixed_lifetime_input),
+      mixed_lifetime_analysis);
 
   expect_true(mixed_lifetime_plans.size() == 2 &&
                   mixed_lifetime_plans[0].alloca_name == "%lv.a" &&
@@ -1607,8 +1635,10 @@ void test_backend_shared_slot_assignment_plans_entry_alloca_slots() {
       c4c::backend::stack_layout::lower_lir_to_stack_layout_input(read_first_function);
   const auto read_first_analysis =
       c4c::backend::stack_layout::analyze_stack_layout(read_first_input, regalloc, {});
-  const auto read_first_plans =
-      c4c::backend::stack_layout::plan_entry_alloca_slots(read_first_input, read_first_analysis);
+  const auto read_first_plans = c4c::backend::stack_layout::plan_entry_alloca_slots(
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_planning_input(
+          read_first_input),
+      read_first_analysis);
 
   expect_true(read_first_plans.size() == 1 &&
                   read_first_plans.front().alloca_name == "%lv.buf" &&
@@ -1623,7 +1653,9 @@ void test_backend_shared_slot_assignment_plans_entry_alloca_slots() {
   const auto scalar_overwrite_analysis =
       c4c::backend::stack_layout::analyze_stack_layout(scalar_overwrite_input, regalloc, {});
   const auto scalar_overwrite_plans = c4c::backend::stack_layout::plan_entry_alloca_slots(
-      scalar_overwrite_input, scalar_overwrite_analysis);
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_planning_input(
+          scalar_overwrite_input),
+      scalar_overwrite_analysis);
 
   expect_true(scalar_overwrite_plans.size() == 1 &&
                   scalar_overwrite_plans.front().alloca_name == "%lv.x" &&
@@ -1639,7 +1671,9 @@ void test_backend_shared_slot_assignment_plans_entry_alloca_slots() {
   const auto scalar_read_first_analysis =
       c4c::backend::stack_layout::analyze_stack_layout(scalar_read_first_input, regalloc, {});
   const auto scalar_read_first_plans = c4c::backend::stack_layout::plan_entry_alloca_slots(
-      scalar_read_first_input, scalar_read_first_analysis);
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_planning_input(
+          scalar_read_first_input),
+      scalar_read_first_analysis);
 
   expect_true(scalar_read_first_plans.size() == 1 &&
                   scalar_read_first_plans.front().alloca_name == "%lv.x" &&
@@ -1653,8 +1687,10 @@ void test_backend_shared_slot_assignment_plans_entry_alloca_slots() {
       c4c::backend::stack_layout::lower_lir_to_stack_layout_input(escaped_function);
   const auto escaped_analysis =
       c4c::backend::stack_layout::analyze_stack_layout(escaped_input, regalloc, {});
-  const auto escaped_plans =
-      c4c::backend::stack_layout::plan_entry_alloca_slots(escaped_input, escaped_analysis);
+  const auto escaped_plans = c4c::backend::stack_layout::plan_entry_alloca_slots(
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_planning_input(
+          escaped_input),
+      escaped_analysis);
 
   expect_true(escaped_plans.size() == 1 &&
                   escaped_plans.front().alloca_name == "%lv.buf" &&
@@ -1738,8 +1774,10 @@ void test_backend_shared_slot_assignment_accepts_backend_owned_input() {
       c4c::backend::stack_layout::lower_lir_to_stack_layout_input(scalar_overwrite_function);
   const auto scalar_analysis =
       c4c::backend::stack_layout::analyze_stack_layout(scalar_input, regalloc, {});
-  const auto scalar_plans =
-      c4c::backend::stack_layout::plan_entry_alloca_slots(scalar_input, scalar_analysis);
+  const auto scalar_plans = c4c::backend::stack_layout::plan_entry_alloca_slots(
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_planning_input(
+          scalar_input),
+      scalar_analysis);
 
   expect_true(scalar_plans.size() == 1 &&
                   scalar_plans.front().alloca_name == "%lv.x" &&
@@ -1761,8 +1799,10 @@ void test_backend_shared_slot_assignment_accepts_backend_owned_input() {
       c4c::backend::run_regalloc_and_merge_clobbers(dead_param_liveness_input, config, {});
   const auto dead_analysis = c4c::backend::stack_layout::analyze_stack_layout(
       dead_param_input, dead_regalloc, {{20}, {21}, {22}});
-  const auto dead_param_plans =
-      c4c::backend::stack_layout::plan_param_alloca_slots(dead_param_input, dead_analysis);
+  const auto dead_param_plans = c4c::backend::stack_layout::plan_param_alloca_slots(
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_planning_input(
+          dead_param_input),
+      dead_analysis);
 
   expect_true(dead_param_plans.size() == 1 &&
                   dead_param_plans.front().alloca_name == "%lv.param.x" &&
@@ -1775,12 +1815,14 @@ void test_backend_shared_slot_assignment_accepts_backend_owned_input() {
       c4c::backend::stack_layout::lower_lir_to_stack_layout_input(dead_entry_function);
   const auto dead_entry_analysis = c4c::backend::stack_layout::analyze_stack_layout(
       dead_entry_input, regalloc, {});
-  const auto dead_entry_plans =
-      c4c::backend::stack_layout::plan_entry_alloca_slots(dead_entry_input,
-                                                          dead_entry_analysis);
-  const auto dead_entry_patch =
-      c4c::backend::stack_layout::build_entry_alloca_rewrite_patch(dead_entry_input,
-                                                                   dead_entry_plans);
+  const auto dead_entry_plans = c4c::backend::stack_layout::plan_entry_alloca_slots(
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_planning_input(
+          dead_entry_input),
+      dead_entry_analysis);
+  const auto dead_entry_patch = c4c::backend::stack_layout::build_entry_alloca_rewrite_patch(
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_rewrite_input(
+          dead_entry_input),
+      dead_entry_plans);
   c4c::backend::stack_layout::apply_entry_alloca_rewrite_patch(dead_entry_function,
                                                                dead_entry_patch);
 
@@ -1801,8 +1843,12 @@ void test_backend_shared_slot_assignment_bundle_accepts_backend_owned_input() {
       lower_test_backend_cfg_liveness_input(dead_param_function);
   const auto dead_regalloc =
       c4c::backend::run_regalloc_and_merge_clobbers(dead_param_liveness_input, config, {});
-  const auto dead_bundle = c4c::backend::stack_layout::build_stack_layout_plan_bundle(
+  const auto dead_analysis = c4c::backend::stack_layout::analyze_stack_layout(
       dead_param_input, dead_regalloc, {{20}, {21}, {22}});
+  const auto dead_bundle = c4c::backend::stack_layout::build_stack_layout_plan_bundle(
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_planning_input(
+          dead_param_input),
+      dead_analysis);
 
   expect_true(dead_bundle.entry_alloca_plans.size() == 1 &&
                   dead_bundle.entry_alloca_plans.front().alloca_name == "%lv.param.x" &&
@@ -1817,7 +1863,9 @@ void test_backend_shared_slot_assignment_bundle_accepts_backend_owned_input() {
 
   auto dead_function = dead_param_function;
   const auto dead_patch = c4c::backend::stack_layout::build_entry_alloca_rewrite_patch(
-      dead_param_input, dead_bundle.entry_alloca_plans);
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_rewrite_input(
+          dead_param_input),
+      dead_bundle.entry_alloca_plans);
   c4c::backend::stack_layout::apply_entry_alloca_rewrite_patch(dead_function, dead_patch);
   expect_true(dead_function.alloca_insts.empty(),
               "backend-owned stack-layout plan bundle should still drive the production entry-alloca mutation step");
@@ -1865,7 +1913,7 @@ void test_backend_shared_slot_assignment_bundle_accepts_narrowed_planning_input(
               "shared stack-layout plan bundle should keep the previously computed backend-owned analysis available alongside the narrowed planning surface");
 }
 
-void test_backend_shared_slot_assignment_compatibility_planning_overloads_match_narrowed_input() {
+void test_backend_shared_slot_assignment_stack_layout_lowering_matches_prepared_planning_input() {
   c4c::backend::RegAllocConfig config;
   config.available_regs = {{20}};
   config.caller_saved_regs = {{13}};
@@ -1879,12 +1927,15 @@ void test_backend_shared_slot_assignment_compatibility_planning_overloads_match_
   const auto dead_analysis = c4c::backend::stack_layout::analyze_stack_layout(
       prepared_inputs.stack_layout_input, dead_regalloc, {{20}, {21}, {22}});
 
+  const auto lowered_planning_input =
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_planning_input(
+          prepared_inputs.stack_layout_input);
   const auto backend_entry_plans = c4c::backend::stack_layout::plan_entry_alloca_slots(
-      prepared_inputs.stack_layout_input, dead_analysis);
+      lowered_planning_input, dead_analysis);
   const auto narrowed_entry_plans = c4c::backend::stack_layout::plan_entry_alloca_slots(
       prepared_inputs.planning_input, dead_analysis);
   const auto backend_param_plans = c4c::backend::stack_layout::plan_param_alloca_slots(
-      prepared_inputs.stack_layout_input, dead_analysis);
+      lowered_planning_input, dead_analysis);
   const auto narrowed_param_plans = c4c::backend::stack_layout::plan_param_alloca_slots(
       prepared_inputs.planning_input, dead_analysis);
 
@@ -1900,7 +1951,7 @@ void test_backend_shared_slot_assignment_compatibility_planning_overloads_match_
                       narrowed_entry_plans.front().coalesced_block &&
                   backend_entry_plans.front().assigned_slot ==
                       narrowed_entry_plans.front().assigned_slot,
-              "compatibility entry-alloca planning overloads should match the explicit narrowed planning seam for the same prepared function inputs");
+              "explicit stack-layout-input lowering should match the prepared planning seam for the same prepared function inputs");
   expect_true(backend_param_plans.size() == narrowed_param_plans.size() &&
                   backend_param_plans.size() == 1 &&
                   backend_param_plans.front().alloca_name ==
@@ -1909,7 +1960,7 @@ void test_backend_shared_slot_assignment_compatibility_planning_overloads_match_
                       narrowed_param_plans.front().param_name &&
                   backend_param_plans.front().needs_stack_slot ==
                       narrowed_param_plans.front().needs_stack_slot,
-              "compatibility param-alloca planning overloads should match the explicit narrowed planning seam for the same prepared function inputs");
+              "explicit stack-layout-input lowering should preserve param-alloca planning parity with the prepared planning seam");
 }
 
 void test_backend_shared_slot_assignment_bundle_prepares_from_backend_owned_inputs() {
@@ -1924,7 +1975,12 @@ void test_backend_shared_slot_assignment_bundle_prepares_from_backend_owned_inpu
   const auto dead_param_liveness_input =
       lower_test_backend_cfg_liveness_input(dead_param_function);
   const auto prepared_bundle = c4c::backend::stack_layout::build_stack_layout_plan_bundle(
-      dead_param_liveness_input, dead_param_input, config, {}, {{20}, {21}, {22}});
+      dead_param_liveness_input,
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_planning_input(
+          dead_param_input),
+      config,
+      {},
+      {{20}, {21}, {22}});
 
   expect_true(prepared_bundle.entry_alloca_plans.size() == 1 &&
                   prepared_bundle.entry_alloca_plans.front().alloca_name == "%lv.param.x" &&
@@ -1940,7 +1996,7 @@ void test_backend_shared_slot_assignment_bundle_prepares_from_backend_owned_inpu
               "shared stack-layout bundle prep should keep the backend-owned dead-param classification available to downstream entrypoint setup");
 }
 
-void test_backend_shared_slot_assignment_compatibility_bundle_overload_matches_prepared_planning_input() {
+void test_backend_shared_slot_assignment_stack_layout_lowering_matches_prepared_bundle_input() {
   c4c::backend::RegAllocConfig config;
 
   const auto live_module = make_live_local_alloca_candidate_module();
@@ -1948,8 +2004,11 @@ void test_backend_shared_slot_assignment_compatibility_bundle_overload_matches_p
       c4c::backend::stack_layout::prepare_module_function_entry_alloca_compat_inputs(
           live_module, 0);
 
+  const auto lowered_planning_input =
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_planning_input(
+          prepared_inputs.stack_layout_input);
   const auto compatibility_bundle = c4c::backend::stack_layout::build_stack_layout_plan_bundle(
-      prepared_inputs.liveness_input, prepared_inputs.stack_layout_input, config, {}, {});
+      prepared_inputs.liveness_input, lowered_planning_input, config, {}, {});
   const auto narrowed_bundle = c4c::backend::stack_layout::build_stack_layout_plan_bundle(
       prepared_inputs.liveness_input, prepared_inputs.planning_input, config, {}, {});
 
@@ -1968,10 +2027,10 @@ void test_backend_shared_slot_assignment_compatibility_bundle_overload_matches_p
                   compatibility_bundle.entry_alloca_plans.front().alloca_name == "%lv.buf" &&
                   compatibility_bundle.entry_alloca_plans.front().needs_stack_slot &&
                   compatibility_bundle.entry_alloca_plans.front().coalesced_block == 0,
-              "shared stack-layout bundle compatibility overload should match the explicit prepared planning seam for live local allocas that rely on prepared use-block metadata");
+              "explicit stack-layout-input lowering should match the prepared planning seam for live local allocas that rely on prepared use-block metadata");
   expect_true(compatibility_bundle.param_alloca_plans.empty() &&
                   narrowed_bundle.param_alloca_plans.empty(),
-              "shared stack-layout bundle compatibility overload should not introduce param-alloca plan drift when lowering through the prepared planning seam");
+              "explicit stack-layout-input lowering should not introduce param-alloca plan drift when lowering through the prepared planning seam");
 }
 
 void test_backend_shared_slot_assignment_bundle_prepares_from_narrowed_planning_input() {
@@ -2023,7 +2082,7 @@ void test_backend_shared_slot_assignment_bundle_prepares_from_narrowed_planning_
               "shared stack-layout bundle prep should let planning-only callers drop the compatibility stack-layout wrapper once prepared lowering exposes the narrowed planning payload");
 }
 
-void test_backend_shared_slot_assignment_compatibility_patch_prep_matches_narrowed_rewrite_input() {
+void test_backend_shared_slot_assignment_stack_layout_lowering_matches_prepared_rewrite_input() {
   c4c::backend::RegAllocConfig config;
   config.available_regs = {{20}};
   config.caller_saved_regs = {{13}};
@@ -2035,7 +2094,12 @@ void test_backend_shared_slot_assignment_compatibility_patch_prep_matches_narrow
       c4c::backend::stack_layout::lower_lir_to_stack_layout_input(dead_function);
 
   const auto patch = c4c::backend::stack_layout::prepare_entry_alloca_rewrite_patch(
-      dead_liveness_input, dead_stack_layout_input, config, {}, {{20}, {21}, {22}});
+      dead_liveness_input,
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_rewrite_input(
+          dead_stack_layout_input),
+      config,
+      {},
+      {{20}, {21}, {22}});
   const auto narrowed_patch = c4c::backend::stack_layout::prepare_entry_alloca_rewrite_patch(
       dead_liveness_input,
       c4c::backend::stack_layout::prepare_module_function_entry_alloca_compat_inputs(
@@ -2046,11 +2110,11 @@ void test_backend_shared_slot_assignment_compatibility_patch_prep_matches_narrow
       {{20}, {21}, {22}});
 
   expect_true(patch.alloca_insts.empty(),
-              "shared stack-layout compatibility patch prep should preserve dead entry-alloca pruning decisions when callers provide backend-owned inputs");
+              "explicit stack-layout-input lowering should preserve dead entry-alloca pruning decisions when callers provide backend-owned inputs");
   expect_true(patch.canonical_allocas.empty(),
-              "shared stack-layout compatibility patch prep should not invent canonical alloca rewrites when the planned entry alloca is deleted");
+              "explicit stack-layout-input lowering should not invent canonical alloca rewrites when the planned entry alloca is deleted");
   expect_true(narrowed_patch.alloca_insts.empty() && narrowed_patch.canonical_allocas.empty(),
-              "shared stack-layout patch prep should drive the production rewrite path from the narrower entry-alloca rewrite input without needing the broader stack-layout contract");
+              "shared stack-layout patch prep should drive the production rewrite path from the narrowed entry-alloca rewrite input without needing the broader stack-layout contract");
 
   c4c::backend::stack_layout::apply_entry_alloca_rewrite_patch(dead_function, patch);
 
@@ -2063,7 +2127,12 @@ void test_backend_shared_slot_assignment_compatibility_patch_prep_matches_narrow
   const auto live_stack_layout_input =
       c4c::backend::stack_layout::lower_lir_to_stack_layout_input(live_function);
   const auto live_compat_patch = c4c::backend::stack_layout::prepare_entry_alloca_rewrite_patch(
-      live_liveness_input, live_stack_layout_input, config, {}, {});
+      live_liveness_input,
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_rewrite_input(
+          live_stack_layout_input),
+      config,
+      {},
+      {});
   const auto live_narrowed_patch = c4c::backend::stack_layout::prepare_entry_alloca_rewrite_patch(
       live_liveness_input,
       c4c::backend::stack_layout::prepare_module_function_entry_alloca_compat_inputs(
@@ -2075,7 +2144,7 @@ void test_backend_shared_slot_assignment_compatibility_patch_prep_matches_narrow
 
   expect_true(live_compat_patch.alloca_insts.size() == live_narrowed_patch.alloca_insts.size() &&
                   live_compat_patch.canonical_allocas == live_narrowed_patch.canonical_allocas,
-              "shared stack-layout compatibility patch prep should match the narrowed rewrite seam for live local allocas as well as dead-entry pruning cases");
+              "explicit stack-layout-input lowering should match the narrowed rewrite seam for live local allocas as well as dead-entry pruning cases");
 }
 
 void test_backend_shared_slot_assignment_rewrites_module_entry_allocas() {
@@ -2327,8 +2396,10 @@ void test_backend_shared_fallback_entry_alloca_stack_layout_input_preserves_poin
           scalar_function, c4c::backend::lower_lir_to_backend_cfg(scalar_function));
   const auto scalar_analysis =
       c4c::backend::stack_layout::analyze_stack_layout(scalar_input, regalloc, {});
-  const auto scalar_plans =
-      c4c::backend::stack_layout::plan_entry_alloca_slots(scalar_input, scalar_analysis);
+  const auto scalar_plans = c4c::backend::stack_layout::plan_entry_alloca_slots(
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_planning_input(
+          scalar_input),
+      scalar_analysis);
 
   expect_true(scalar_plans.size() == 1 &&
                   scalar_plans.front().alloca_name == "%lv.x" &&
@@ -2674,7 +2745,7 @@ void test_backend_shared_fallback_preparation_still_needs_remaining_pointer_esca
   const auto scalar_analysis = c4c::backend::stack_layout::analyze_stack_layout(
       scalar_lowered.stack_layout_input, regalloc, {});
   const auto scalar_plans = c4c::backend::stack_layout::plan_entry_alloca_slots(
-      scalar_lowered.stack_layout_input, scalar_analysis);
+      scalar_lowered.planning_input, scalar_analysis);
   expect_true(scalar_plans.size() == 1 &&
                   scalar_plans.front().alloca_name == "%lv.x" &&
                   scalar_plans.front().needs_stack_slot &&
@@ -2693,7 +2764,7 @@ void test_backend_shared_fallback_preparation_still_needs_remaining_pointer_esca
           scalar_without_first_access.stack_layout_input, regalloc, {});
   const auto scalar_without_first_access_plans =
       c4c::backend::stack_layout::plan_entry_alloca_slots(
-          scalar_without_first_access.stack_layout_input, scalar_without_first_access_analysis);
+          scalar_without_first_access.planning_input, scalar_without_first_access_analysis);
   expect_true(scalar_without_first_access_plans.size() == 1 &&
                   scalar_without_first_access_plans.front().alloca_name == "%lv.x" &&
                   scalar_without_first_access_plans.front().needs_stack_slot &&
@@ -2868,10 +2939,14 @@ void test_backend_shared_slot_assignment_prunes_dead_entry_alloca_insts() {
       c4c::backend::stack_layout::lower_lir_to_stack_layout_input(dead_function);
   const auto dead_analysis =
       c4c::backend::stack_layout::analyze_stack_layout(dead_input, regalloc, {});
-  const auto dead_plans =
-      c4c::backend::stack_layout::plan_entry_alloca_slots(dead_input, dead_analysis);
-  const auto dead_patch =
-      c4c::backend::stack_layout::build_entry_alloca_rewrite_patch(dead_input, dead_plans);
+  const auto dead_plans = c4c::backend::stack_layout::plan_entry_alloca_slots(
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_planning_input(
+          dead_input),
+      dead_analysis);
+  const auto dead_patch = c4c::backend::stack_layout::build_entry_alloca_rewrite_patch(
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_rewrite_input(
+          dead_input),
+      dead_plans);
   c4c::backend::stack_layout::apply_entry_alloca_rewrite_patch(dead_function, dead_patch);
 
   expect_true(dead_function.alloca_insts.empty(),
@@ -2883,10 +2958,14 @@ void test_backend_shared_slot_assignment_prunes_dead_entry_alloca_insts() {
       c4c::backend::stack_layout::lower_lir_to_stack_layout_input(live_function);
   const auto live_analysis =
       c4c::backend::stack_layout::analyze_stack_layout(live_input, regalloc, {});
-  const auto live_plans =
-      c4c::backend::stack_layout::plan_entry_alloca_slots(live_input, live_analysis);
-  const auto live_patch =
-      c4c::backend::stack_layout::build_entry_alloca_rewrite_patch(live_input, live_plans);
+  const auto live_plans = c4c::backend::stack_layout::plan_entry_alloca_slots(
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_planning_input(
+          live_input),
+      live_analysis);
+  const auto live_patch = c4c::backend::stack_layout::build_entry_alloca_rewrite_patch(
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_rewrite_input(
+          live_input),
+      live_plans);
   c4c::backend::stack_layout::apply_entry_alloca_rewrite_patch(live_function, live_patch);
 
   expect_true(live_function.alloca_insts.size() == live_module.functions.front().alloca_insts.size(),
@@ -2898,10 +2977,14 @@ void test_backend_shared_slot_assignment_prunes_dead_entry_alloca_insts() {
       c4c::backend::stack_layout::lower_lir_to_stack_layout_input(read_first_function);
   const auto read_first_analysis =
       c4c::backend::stack_layout::analyze_stack_layout(read_first_input, regalloc, {});
-  const auto read_first_plans =
-      c4c::backend::stack_layout::plan_entry_alloca_slots(read_first_input, read_first_analysis);
+  const auto read_first_plans = c4c::backend::stack_layout::plan_entry_alloca_slots(
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_planning_input(
+          read_first_input),
+      read_first_analysis);
   const auto read_first_patch = c4c::backend::stack_layout::build_entry_alloca_rewrite_patch(
-      read_first_input, read_first_plans);
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_rewrite_input(
+          read_first_input),
+      read_first_plans);
   c4c::backend::stack_layout::apply_entry_alloca_rewrite_patch(read_first_function,
                                                                read_first_patch);
 
@@ -2917,10 +3000,13 @@ void test_backend_shared_slot_assignment_prunes_dead_entry_alloca_insts() {
   const auto scalar_overwrite_analysis =
       c4c::backend::stack_layout::analyze_stack_layout(scalar_overwrite_input, regalloc, {});
   const auto scalar_overwrite_plans = c4c::backend::stack_layout::plan_entry_alloca_slots(
-      scalar_overwrite_input, scalar_overwrite_analysis);
-  const auto scalar_overwrite_patch =
-      c4c::backend::stack_layout::build_entry_alloca_rewrite_patch(scalar_overwrite_input,
-                                                                   scalar_overwrite_plans);
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_planning_input(
+          scalar_overwrite_input),
+      scalar_overwrite_analysis);
+  const auto scalar_overwrite_patch = c4c::backend::stack_layout::build_entry_alloca_rewrite_patch(
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_rewrite_input(
+          scalar_overwrite_input),
+      scalar_overwrite_plans);
   c4c::backend::stack_layout::apply_entry_alloca_rewrite_patch(scalar_overwrite_function,
                                                                scalar_overwrite_patch);
 
@@ -2943,10 +3029,14 @@ void test_backend_shared_slot_assignment_applies_coalesced_entry_slots() {
       c4c::backend::stack_layout::lower_lir_to_stack_layout_input(disjoint_function);
   const auto disjoint_analysis =
       c4c::backend::stack_layout::analyze_stack_layout(disjoint_input, regalloc, {});
-  const auto disjoint_plans =
-      c4c::backend::stack_layout::plan_entry_alloca_slots(disjoint_input, disjoint_analysis);
+  const auto disjoint_plans = c4c::backend::stack_layout::plan_entry_alloca_slots(
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_planning_input(
+          disjoint_input),
+      disjoint_analysis);
   const auto disjoint_patch = c4c::backend::stack_layout::build_entry_alloca_rewrite_patch(
-      disjoint_input, disjoint_plans);
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_rewrite_input(
+          disjoint_input),
+      disjoint_plans);
   c4c::backend::stack_layout::apply_entry_alloca_rewrite_patch(disjoint_function,
                                                                disjoint_patch);
 
@@ -2970,11 +3060,14 @@ void test_backend_shared_slot_assignment_applies_coalesced_entry_slots() {
       c4c::backend::stack_layout::lower_lir_to_stack_layout_input(same_block_function);
   const auto same_block_analysis =
       c4c::backend::stack_layout::analyze_stack_layout(same_block_input, regalloc, {});
-  const auto same_block_plans =
-      c4c::backend::stack_layout::plan_entry_alloca_slots(same_block_input, same_block_analysis);
-  const auto same_block_patch =
-      c4c::backend::stack_layout::build_entry_alloca_rewrite_patch(same_block_input,
-                                                                   same_block_plans);
+  const auto same_block_plans = c4c::backend::stack_layout::plan_entry_alloca_slots(
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_planning_input(
+          same_block_input),
+      same_block_analysis);
+  const auto same_block_patch = c4c::backend::stack_layout::build_entry_alloca_rewrite_patch(
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_rewrite_input(
+          same_block_input),
+      same_block_plans);
   c4c::backend::stack_layout::apply_entry_alloca_rewrite_patch(same_block_function,
                                                                same_block_patch);
 
@@ -2988,10 +3081,14 @@ void test_backend_shared_slot_assignment_applies_coalesced_entry_slots() {
   const auto mixed_lifetime_analysis =
       c4c::backend::stack_layout::analyze_stack_layout(mixed_lifetime_input, regalloc, {});
   const auto mixed_lifetime_plans = c4c::backend::stack_layout::plan_entry_alloca_slots(
-      mixed_lifetime_input, mixed_lifetime_analysis);
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_planning_input(
+          mixed_lifetime_input),
+      mixed_lifetime_analysis);
   const auto mixed_lifetime_patch =
-      c4c::backend::stack_layout::build_entry_alloca_rewrite_patch(mixed_lifetime_input,
-                                                                   mixed_lifetime_plans);
+      c4c::backend::stack_layout::build_entry_alloca_rewrite_patch(
+          c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_rewrite_input(
+              mixed_lifetime_input),
+          mixed_lifetime_plans);
   c4c::backend::stack_layout::apply_entry_alloca_rewrite_patch(mixed_lifetime_function,
                                                                mixed_lifetime_patch);
 
@@ -3012,9 +3109,10 @@ void test_backend_shared_slot_assignment_applies_coalesced_entry_slots() {
   };
   const auto call_arg_input =
       c4c::backend::stack_layout::lower_lir_to_stack_layout_input(call_arg_function);
-  const auto call_arg_patch =
-      c4c::backend::stack_layout::build_entry_alloca_rewrite_patch(call_arg_input,
-                                                                   call_arg_plans);
+  const auto call_arg_patch = c4c::backend::stack_layout::build_entry_alloca_rewrite_patch(
+      c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_rewrite_input(
+          call_arg_input),
+      call_arg_plans);
   c4c::backend::stack_layout::apply_entry_alloca_rewrite_patch(call_arg_function,
                                                                call_arg_patch);
 
@@ -3284,11 +3382,11 @@ int main(int argc, char* argv[]) {
   test_backend_shared_slot_assignment_accepts_backend_owned_input();
   test_backend_shared_slot_assignment_bundle_accepts_backend_owned_input();
   test_backend_shared_slot_assignment_bundle_accepts_narrowed_planning_input();
-  test_backend_shared_slot_assignment_compatibility_planning_overloads_match_narrowed_input();
+  test_backend_shared_slot_assignment_stack_layout_lowering_matches_prepared_planning_input();
   test_backend_shared_slot_assignment_bundle_prepares_from_backend_owned_inputs();
-  test_backend_shared_slot_assignment_compatibility_bundle_overload_matches_prepared_planning_input();
+  test_backend_shared_slot_assignment_stack_layout_lowering_matches_prepared_bundle_input();
   test_backend_shared_slot_assignment_bundle_prepares_from_narrowed_planning_input();
-  test_backend_shared_slot_assignment_compatibility_patch_prep_matches_narrowed_rewrite_input();
+  test_backend_shared_slot_assignment_stack_layout_lowering_matches_prepared_rewrite_input();
   test_backend_shared_slot_assignment_rewrites_module_entry_allocas();
   test_backend_shared_slot_assignment_prepares_module_function_inputs();
   test_backend_shared_prepared_function_inputs_preserve_emitter_stack_layout_metadata();

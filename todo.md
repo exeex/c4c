@@ -7,16 +7,18 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 7: move regalloc and stack layout to backend MIR
-- Current slice: make the remaining `StackLayoutInput` stack-layout entrypoints
-  explicit about compatibility-only ownership now that the re-audit shows the
-  broad overloads are test-only
-- Current implementation target: re-audit the remaining compatibility
-  `StackLayoutInput` overloads after the direct-LIR AArch64 emitter narrowing
-  and identify which broad stack-layout helpers can now be deleted outright
-  versus kept as test-only parity seams
-- Next intended slice: once the surviving compatibility wrappers are classified,
-  remove or further narrow the ones with no remaining non-test callers while
-  keeping focused parity coverage around any wrappers that must remain
+- Current slice: re-audit the remaining `prepare_module_function_entry_alloca_compat_inputs(...)`
+  callers after the stack-layout wrapper deletion and decide whether that
+  compatibility packet can now shrink to an emitter-only surface or split into
+  smaller prepared views
+- Current implementation target: inspect the remaining AArch64 emitter and
+  shared-test call sites that still ask for the full compatibility packet, then
+  identify which fields are genuinely still required beyond the already-exposed
+  `planning_input`, `rewrite_input`, and value-name collection seams
+- Next intended slice: narrow or split
+  `prepare_module_function_entry_alloca_compat_inputs(...)` once the remaining
+  caller field requirements are explicit, while preserving focused parity
+  coverage for any compatibility state that still has to survive
 
 ## Completed
 
@@ -66,6 +68,32 @@ Source Plan: plan.md
     parity coverage calls out the compatibility overloads explicitly and proves
     the compatibility patch-prep wrapper matches the narrowed rewrite seam for
     both dead-entry pruning and a live local-alloca case
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`
+  - rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with the repo's allowed non-decreasing rule and no new
+    failures (`2809 -> 2809`, same 32 known failing tests as
+    `test_fail_before.log`)
+
+- Completed the next Step 7 stack-layout wrapper deletion slice by removing the
+  now-test-only broad `StackLayoutInput` planning/rewrite entrypoints in favor
+  of explicit lowering helpers:
+  - added explicit
+    `lower_stack_layout_input_to_entry_alloca_planning_input(...)` and
+    `lower_stack_layout_input_to_entry_alloca_rewrite_input(...)` in
+    `src/backend/stack_layout/slot_assignment.hpp` and
+    `src/backend/stack_layout/slot_assignment.cpp` so callers must cross the
+    broad `StackLayoutInput -> narrowed planning/rewrite` boundary deliberately
+    instead of relying on wrapper overloads
+  - deleted the test-only `StackLayoutInput` overloads for
+    `build_stack_layout_plan_bundle(...)`, `prepare_entry_alloca_rewrite_patch(...)`,
+    `build_entry_alloca_rewrite_patch(...)`, `plan_entry_alloca_slots(...)`,
+    and `plan_param_alloca_slots(...)` from
+    `src/backend/stack_layout/slot_assignment.hpp` and
+    `src/backend/stack_layout/slot_assignment.cpp`
+  - retargeted `tests/backend/backend_shared_util_tests.cpp` to the explicit
+    lowered planning/rewrite seams and renamed the parity coverage so it checks
+    the new lowering helpers instead of deleted compatibility overloads
   - rebuilt `backend_shared_util_tests`, passed
     `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`
   - rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
