@@ -701,6 +701,13 @@ ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
     c.template_info = std::move(tci);
   } else {
     if (n->left && n->left->kind == NK_VAR && n->left->name &&
+        rejected_template_calls_.count(n) > 0) {
+      std::string diag = "error: no viable template instantiation for call to '";
+      diag += n->left->name;
+      diag += "'";
+      throw std::runtime_error(diag);
+    }
+    if (n->left && n->left->kind == NK_VAR && n->left->name &&
         ref_overload_set_.count(n->left->name)) {
       resolved_callee_name = resolve_ref_overload(n->left->name, n, ctx);
       DeclRef dr{};

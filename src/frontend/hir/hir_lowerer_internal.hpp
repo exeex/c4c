@@ -688,7 +688,7 @@ class Lowerer {
   // corresponding call argument's inferred type.
   // Returns the deduced bindings.  May be incomplete if some params cannot
   // be deduced (caller should fill from defaults or reject).
-  static TypeBindings try_deduce_template_type_args(
+  TypeBindings try_deduce_template_type_args(
       const Node* call_node, const Node* fn_def, const Node* enclosing_fn);
 
   // Check if deduced bindings cover all required type parameters (those
@@ -831,6 +831,7 @@ class Lowerer {
     NttpBindings nttp_bindings;
   };
   std::unordered_map<const Node*, DeducedTemplateCall> deduced_template_calls_;
+  std::unordered_set<const Node*> rejected_template_calls_;
   // Constructor overloads per struct tag: tag → list of {mangled, method_node}.
   struct CtorOverload {
     std::string mangled_name;

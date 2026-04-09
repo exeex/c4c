@@ -367,10 +367,20 @@ TypeBindings Lowerer::try_deduce_template_type_args(
 
     const TypeSpec& param_ts = param->type;
 
-    if (param_ts.base == TB_TYPEDEF && param_ts.tag &&
+    const bool is_forwarding_reference_param =
+        param_ts.base == TB_TYPEDEF && param_ts.tag &&
         type_param_names.count(param_ts.tag) &&
         param_ts.ptr_level == 0 && param_ts.array_rank == 0 &&
-        param_ts.is_rvalue_ref) {
+        param_ts.is_rvalue_ref &&
+        !param_ts.is_const && !param_ts.is_volatile;
+
+    const bool is_dependent_rvalue_ref_param =
+        param_ts.base == TB_TYPEDEF && param_ts.tag &&
+        type_param_names.count(param_ts.tag) &&
+        param_ts.ptr_level == 0 && param_ts.array_rank == 0 &&
+        param_ts.is_rvalue_ref;
+
+    if (is_forwarding_reference_param) {
       auto arg_type = try_infer_arg_type_for_deduction(arg, enclosing_fn);
       if (!arg_type) continue;
       TypeSpec deduced_ts = *arg_type;
@@ -390,6 +400,9 @@ TypeBindings Lowerer::try_deduce_template_type_args(
       } else {
         deduced[param_ts.tag] = deduced_ts;
       }
+    } else if (is_dependent_rvalue_ref_param && is_ast_lvalue(arg)) {
+      rejected_template_calls_.insert(call_node);
+      return {};
     } else if (param_ts.base == TB_TYPEDEF && param_ts.tag &&
                type_param_names.count(param_ts.tag) &&
                param_ts.ptr_level == 0 && param_ts.array_rank == 0) {
