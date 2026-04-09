@@ -21,6 +21,10 @@ struct CoalescableAllocas {
 };
 
 CoalescableAllocas compute_coalescable_allocas(
+    const StackLayoutInput& input,
+    const StackLayoutAnalysis& analysis);
+
+CoalescableAllocas compute_coalescable_allocas(
     const c4c::codegen::lir::LirFunction& function,
     const StackLayoutAnalysis& analysis);
 

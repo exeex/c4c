@@ -209,22 +209,14 @@ bool is_callee_saved_reg(PhysReg reg, const std::vector<PhysReg>& callee_saved_r
 }
 
 std::unordered_map<std::string, std::string> collect_param_alloca_inputs(
-    const LirFunction& function) {
+    const StackLayoutInput& input) {
   std::unordered_map<std::string, std::string> param_alloca_inputs;
-  for (std::size_t index = 0; index + 1 < function.alloca_insts.size(); ++index) {
-    const auto* alloca = std::get_if<c4c::codegen::lir::LirAllocaOp>(&function.alloca_insts[index]);
-    const auto* store =
-        std::get_if<c4c::codegen::lir::LirStoreOp>(&function.alloca_insts[index + 1]);
-    if (alloca == nullptr || store == nullptr) {
+  for (const auto& alloca : input.entry_allocas) {
+    if (!starts_with(alloca.alloca_name, "%lv.param.") || !alloca.paired_store_value.has_value() ||
+        !starts_with(*alloca.paired_store_value, "%p.")) {
       continue;
     }
-    if (!starts_with(alloca->result, "%lv.param.")) {
-      continue;
-    }
-    if (store->ptr != alloca->result || !starts_with(store->val, "%p.")) {
-      continue;
-    }
-    param_alloca_inputs.emplace(alloca->result, store->val);
+    param_alloca_inputs.emplace(alloca.alloca_name, *alloca.paired_store_value);
   }
   return param_alloca_inputs;
 }
@@ -247,61 +239,38 @@ void record_first_access(
 }
 
 void collect_first_entry_alloca_accesses(
-    const LirFunction& function,
+    const StackLayoutInput& input,
     std::unordered_set<std::string>& entry_allocas_overwritten_before_read) {
   std::unordered_map<std::string, std::string> pointer_roots;
-  for (const auto& inst : function.alloca_insts) {
-    if (const auto* alloca = std::get_if<c4c::codegen::lir::LirAllocaOp>(&inst)) {
-      if (is_entry_alloca_name(alloca->result)) {
-        pointer_roots.emplace(alloca->result, alloca->result);
-      }
+  for (const auto& alloca : input.entry_allocas) {
+    if (is_entry_alloca_name(alloca.alloca_name)) {
+      pointer_roots.emplace(alloca.alloca_name, alloca.alloca_name);
     }
   }
 
   std::unordered_map<std::string, AllocaAccessKind> first_access_kind;
 
-  for (const auto& block : function.blocks) {
-    for (const auto& inst : block.insts) {
-      std::visit(
-          [&](const auto& op) {
-            using T = std::decay_t<decltype(op)>;
+  for (const auto& block : input.blocks) {
+    for (const auto& point : block.insts) {
+      if (point.derived_pointer_root.has_value()) {
+        const auto base_it = pointer_roots.find(point.derived_pointer_root->second);
+        if (base_it != pointer_roots.end()) {
+          pointer_roots.emplace(point.derived_pointer_root->first, base_it->second);
+        }
+      }
 
-            if constexpr (std::is_same_v<T, c4c::codegen::lir::LirGepOp>) {
-              const auto base_it = pointer_roots.find(op.ptr);
-              if (base_it != pointer_roots.end()) {
-                pointer_roots.emplace(op.result, base_it->second);
-              }
-            } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirLoadOp>) {
-              record_first_access(first_access_kind, pointer_roots, op.ptr,
-                                  AllocaAccessKind::Read);
-            } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirStoreOp>) {
-              record_first_access(first_access_kind, pointer_roots, op.ptr,
-                                  AllocaAccessKind::Store);
-              record_first_access(first_access_kind, pointer_roots, op.val,
-                                  AllocaAccessKind::Read);
-            } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirMemcpyOp>) {
-              record_first_access(first_access_kind, pointer_roots, op.dst,
-                                  AllocaAccessKind::Store);
-              record_first_access(first_access_kind, pointer_roots, op.src,
-                                  AllocaAccessKind::Read);
-            } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirCallOp>) {
-              std::vector<std::string> values;
-              c4c::codegen::lir::collect_lir_value_names_from_call(op, values);
-              for (const auto& value_name : values) {
-                record_first_access(first_access_kind, pointer_roots, value_name,
-                                    AllocaAccessKind::Read);
-              }
-            } else {
-              for (const auto& value_name : used_names_for_inst(inst)) {
-                record_first_access(first_access_kind, pointer_roots, value_name,
-                                    AllocaAccessKind::Read);
-              }
-            }
-          },
-          inst);
+      for (const auto& access : point.pointer_accesses) {
+        record_first_access(first_access_kind, pointer_roots, access.value_name,
+                            access.kind == PointerAccessKind::Store ? AllocaAccessKind::Store
+                                                                    : AllocaAccessKind::Read);
+      }
+      for (const auto& value_name : point.used_names) {
+        record_first_access(first_access_kind, pointer_roots, value_name,
+                            AllocaAccessKind::Read);
+      }
     }
 
-    for (const auto& value_name : used_names_for_terminator(block.terminator)) {
+    for (const auto& value_name : block.terminator_used_names) {
       record_first_access(first_access_kind, pointer_roots, value_name,
                           AllocaAccessKind::Read);
     }
@@ -315,6 +284,115 @@ void collect_first_entry_alloca_accesses(
 }
 
 }  // namespace
+
+StackLayoutInput lower_lir_to_stack_layout_input(const c4c::codegen::lir::LirFunction& function) {
+  StackLayoutInput input;
+  input.entry_allocas.reserve(function.alloca_insts.size());
+
+  for (std::size_t index = 0; index < function.alloca_insts.size(); ++index) {
+    const auto* alloca = std::get_if<c4c::codegen::lir::LirAllocaOp>(&function.alloca_insts[index]);
+    if (alloca == nullptr) {
+      continue;
+    }
+
+    EntryAllocaInput entry_alloca{
+        alloca->result,
+        alloca->type_str,
+        alloca->align,
+        std::nullopt,
+    };
+    if (index + 1 < function.alloca_insts.size()) {
+      if (const auto* store =
+              std::get_if<c4c::codegen::lir::LirStoreOp>(&function.alloca_insts[index + 1]);
+          store != nullptr && store->ptr == alloca->result) {
+        entry_alloca.paired_store_value = store->val;
+      }
+    }
+    input.entry_allocas.push_back(std::move(entry_alloca));
+  }
+
+  input.blocks.reserve(function.blocks.size());
+  for (const auto& block : function.blocks) {
+    StackLayoutBlockInput lowered_block;
+    lowered_block.label = block.label;
+    lowered_block.terminator_used_names = used_names_for_terminator(block.terminator);
+    lowered_block.insts.reserve(block.insts.size());
+
+    for (const auto& inst : block.insts) {
+      StackLayoutPoint point;
+      point.used_names = used_names_for_inst(inst);
+
+      std::visit(
+          [&](const auto& op) {
+            using T = std::decay_t<decltype(op)>;
+
+            if constexpr (std::is_same_v<T, c4c::codegen::lir::LirGepOp>) {
+              point.derived_pointer_root = std::make_pair(op.result, op.ptr);
+            } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirLoadOp>) {
+              point.pointer_accesses.push_back(PointerAccess{op.ptr, PointerAccessKind::Read});
+            } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirStoreOp>) {
+              point.pointer_accesses.push_back(PointerAccess{op.ptr, PointerAccessKind::Store});
+            } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirMemcpyOp>) {
+              point.pointer_accesses.push_back(PointerAccess{op.dst, PointerAccessKind::Store});
+              point.pointer_accesses.push_back(PointerAccess{op.src, PointerAccessKind::Read});
+            } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirCallOp> ||
+                                 std::is_same_v<T, c4c::codegen::lir::LirInlineAsmOp>) {
+              point.escaped_names = point.used_names;
+            } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirPhiOp>) {
+              point.escaped_names = point.used_names;
+              point.used_names.clear();
+              for (const auto& [value_name, label] : op.incoming) {
+                input.phi_incoming_uses.push_back(PhiIncomingUse{label, value_name});
+              }
+            } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirVaStartOp> ||
+                                 std::is_same_v<T, c4c::codegen::lir::LirVaEndOp> ||
+                                 std::is_same_v<T, c4c::codegen::lir::LirVaArgOp>) {
+              point.escaped_names.push_back(op.ap_ptr);
+            } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirVaCopyOp>) {
+              point.escaped_names.push_back(op.dst_ptr);
+              point.escaped_names.push_back(op.src_ptr);
+            } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirCastOp>) {
+              point.escaped_names.push_back(op.operand);
+            } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirBinOp>) {
+              point.escaped_names.push_back(op.lhs);
+              point.escaped_names.push_back(op.rhs);
+            } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirCmpOp>) {
+              point.escaped_names.push_back(op.lhs);
+              point.escaped_names.push_back(op.rhs);
+            } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirSelectOp>) {
+              point.escaped_names.push_back(op.cond);
+              point.escaped_names.push_back(op.true_val);
+              point.escaped_names.push_back(op.false_val);
+            } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirExtractValueOp>) {
+              point.escaped_names.push_back(op.agg);
+            } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirInsertValueOp>) {
+              point.escaped_names.push_back(op.agg);
+              point.escaped_names.push_back(op.elem);
+            } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirInsertElementOp>) {
+              point.escaped_names.push_back(op.vec);
+              point.escaped_names.push_back(op.elem);
+              point.escaped_names.push_back(op.index);
+            } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirExtractElementOp>) {
+              point.escaped_names.push_back(op.vec);
+              point.escaped_names.push_back(op.index);
+            } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirShuffleVectorOp>) {
+              point.escaped_names.push_back(op.vec1);
+              point.escaped_names.push_back(op.vec2);
+              point.escaped_names.push_back(op.mask);
+            } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirIndirectBrOp>) {
+              point.escaped_names.push_back(op.addr);
+            }
+          },
+          inst);
+
+      lowered_block.insts.push_back(std::move(point));
+    }
+
+    input.blocks.push_back(std::move(lowered_block));
+  }
+
+  return input;
+}
 
 const std::vector<std::size_t>* StackLayoutAnalysis::find_use_blocks(
     std::string_view value_name) const {
@@ -340,46 +418,47 @@ bool StackLayoutAnalysis::is_entry_alloca_overwritten_before_read(
 }
 
 StackLayoutAnalysis analyze_stack_layout(
-    const c4c::codegen::lir::LirFunction& function,
+    const StackLayoutInput& input,
     const RegAllocIntegrationResult& regalloc,
     const std::vector<PhysReg>& callee_saved_regs) {
   StackLayoutAnalysis analysis;
 
   std::unordered_map<std::string, std::size_t> label_to_index;
-  label_to_index.reserve(function.blocks.size());
-  for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
-    label_to_index.emplace(function.blocks[block_index].label, block_index);
+  label_to_index.reserve(input.blocks.size());
+  for (std::size_t block_index = 0; block_index < input.blocks.size(); ++block_index) {
+    label_to_index.emplace(input.blocks[block_index].label, block_index);
   }
 
-  for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
-    const auto& block = function.blocks[block_index];
-    for (const auto& inst : block.insts) {
-      if (const auto* phi = std::get_if<c4c::codegen::lir::LirPhiOp>(&inst)) {
-        for (const auto& [value_name, label] : phi->incoming) {
-          const auto pred_it = label_to_index.find(label);
-          const std::size_t use_block =
-              pred_it == label_to_index.end() ? block_index : pred_it->second;
-          record_use_block(analysis.value_use_blocks, value_name, use_block);
-          if (is_value_name(value_name)) {
-            analysis.used_values.insert(value_name);
-          }
-        }
-        continue;
-      }
+  for (const auto& phi_use : input.phi_incoming_uses) {
+    const auto pred_it = label_to_index.find(phi_use.predecessor_label);
+    const std::size_t use_block =
+        pred_it == label_to_index.end() ? 0 : pred_it->second;
+    record_use_block(analysis.value_use_blocks, phi_use.value_name, use_block);
+    if (is_value_name(phi_use.value_name)) {
+      analysis.used_values.insert(phi_use.value_name);
+    }
+  }
 
-      for (const auto& value_name : used_names_for_inst(inst)) {
+  for (std::size_t block_index = 0; block_index < input.blocks.size(); ++block_index) {
+    const auto& block = input.blocks[block_index];
+    for (const auto& point : block.insts) {
+      for (const auto& value_name : point.used_names) {
         record_use_block(analysis.value_use_blocks, value_name, block_index);
+        if (is_value_name(value_name)) {
+          analysis.used_values.insert(value_name);
+        }
+      }
+    }
+
+    for (const auto& value_name : block.terminator_used_names) {
+      record_use_block(analysis.value_use_blocks, value_name, block_index);
+      if (is_value_name(value_name)) {
         analysis.used_values.insert(value_name);
       }
     }
-
-    for (const auto& value_name : used_names_for_terminator(block.terminator)) {
-      record_use_block(analysis.value_use_blocks, value_name, block_index);
-      analysis.used_values.insert(value_name);
-    }
   }
 
-  for (const auto& [alloca_name, param_name] : collect_param_alloca_inputs(function)) {
+  for (const auto& [alloca_name, param_name] : collect_param_alloca_inputs(input)) {
     if (analysis.used_values.find(alloca_name) != analysis.used_values.end()) {
       continue;
     }
@@ -389,10 +468,18 @@ StackLayoutAnalysis analyze_stack_layout(
     }
   }
 
-  collect_first_entry_alloca_accesses(function,
+  collect_first_entry_alloca_accesses(input,
                                       analysis.entry_allocas_overwritten_before_read);
 
   return analysis;
+}
+
+StackLayoutAnalysis analyze_stack_layout(
+    const c4c::codegen::lir::LirFunction& function,
+    const RegAllocIntegrationResult& regalloc,
+    const std::vector<PhysReg>& callee_saved_regs) {
+  return analyze_stack_layout(lower_lir_to_stack_layout_input(function), regalloc,
+                              callee_saved_regs);
 }
 
 }  // namespace c4c::backend::stack_layout

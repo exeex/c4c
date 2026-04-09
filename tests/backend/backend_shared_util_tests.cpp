@@ -1060,6 +1060,29 @@ void test_backend_shared_stack_layout_analysis_tracks_phi_use_blocks() {
               "shared stack-layout analysis should record normal instruction uses in the consuming block");
 }
 
+void test_backend_shared_stack_layout_analysis_accepts_backend_owned_input() {
+  const auto module = make_interval_phi_join_module();
+  const auto& function = module.functions.front();
+  const auto input = c4c::backend::stack_layout::lower_lir_to_stack_layout_input(function);
+  const c4c::backend::RegAllocIntegrationResult regalloc;
+  const auto analysis =
+      c4c::backend::stack_layout::analyze_stack_layout(input, regalloc, {});
+
+  const auto* then_value_uses = analysis.find_use_blocks("%t1");
+  const auto* else_value_uses = analysis.find_use_blocks("%t2");
+  const auto* phi_value_uses = analysis.find_use_blocks("%t3");
+
+  expect_true(then_value_uses != nullptr && then_value_uses->size() == 1 &&
+                  then_value_uses->front() == 1,
+              "backend-owned stack-layout input should preserve predecessor-edge phi use attribution");
+  expect_true(else_value_uses != nullptr && else_value_uses->size() == 1 &&
+                  else_value_uses->front() == 2,
+              "backend-owned stack-layout input should preserve alternate predecessor-edge phi uses");
+  expect_true(phi_value_uses != nullptr && phi_value_uses->size() == 1 &&
+                  phi_value_uses->front() == 3,
+              "backend-owned stack-layout input should preserve normal consuming-block uses");
+}
+
 void test_backend_shared_stack_layout_analysis_detects_dead_param_allocas() {
   const auto module = make_dead_param_alloca_candidate_module();
   const auto& function = module.functions.back();
@@ -1144,6 +1167,20 @@ void test_backend_shared_alloca_coalescing_classifies_non_param_allocas() {
   expect_true(!escaped_coalescing.is_dead_alloca("%lv.buf") &&
                   !escaped_coalescing.find_single_block("%lv.buf").has_value(),
               "shared alloca-coalescing should leave call-escaped allocas out of the single-block pool");
+}
+
+void test_backend_shared_alloca_coalescing_accepts_backend_owned_input() {
+  const c4c::backend::RegAllocIntegrationResult regalloc;
+  const auto module = make_live_local_alloca_candidate_module();
+  const auto& function = module.functions.front();
+  const auto input = c4c::backend::stack_layout::lower_lir_to_stack_layout_input(function);
+  const auto analysis = c4c::backend::stack_layout::analyze_stack_layout(input, regalloc, {});
+  const auto coalescing =
+      c4c::backend::stack_layout::compute_coalescable_allocas(input, analysis);
+
+  expect_true(!coalescing.is_dead_alloca("%lv.buf") &&
+                  coalescing.find_single_block("%lv.buf") == 0,
+              "backend-owned stack-layout input should preserve single-block alloca reuse classification");
 }
 
 void test_backend_shared_slot_assignment_plans_param_alloca_slots() {
@@ -1351,6 +1388,46 @@ void test_backend_shared_slot_assignment_plans_entry_alloca_slots() {
                   escaped_plans.front().needs_stack_slot &&
                   !escaped_plans.front().coalesced_block.has_value(),
               "shared slot-assignment planning should leave call-escaped local allocas out of the single-block reuse pool");
+}
+
+void test_backend_shared_slot_assignment_accepts_backend_owned_input() {
+  const c4c::backend::RegAllocIntegrationResult regalloc;
+
+  const auto scalar_overwrite_module = make_overwrite_first_scalar_local_alloca_candidate_module();
+  const auto& scalar_overwrite_function = scalar_overwrite_module.functions.front();
+  const auto scalar_input =
+      c4c::backend::stack_layout::lower_lir_to_stack_layout_input(scalar_overwrite_function);
+  const auto scalar_analysis =
+      c4c::backend::stack_layout::analyze_stack_layout(scalar_input, regalloc, {});
+  const auto scalar_plans =
+      c4c::backend::stack_layout::plan_entry_alloca_slots(scalar_input, scalar_analysis);
+
+  expect_true(scalar_plans.size() == 1 &&
+                  scalar_plans.front().alloca_name == "%lv.x" &&
+                  scalar_plans.front().needs_stack_slot &&
+                  scalar_plans.front().remove_following_entry_store,
+              "backend-owned stack-layout input should preserve scalar overwrite-before-read slot pruning");
+
+  c4c::backend::RegAllocConfig config;
+  config.available_regs = {{20}};
+  config.caller_saved_regs = {{13}};
+
+  const auto dead_param_module = make_dead_param_alloca_candidate_module();
+  const auto& dead_param_function = dead_param_module.functions.back();
+  const auto dead_param_input =
+      c4c::backend::stack_layout::lower_lir_to_stack_layout_input(dead_param_function);
+  const auto dead_regalloc =
+      c4c::backend::run_regalloc_and_merge_clobbers(dead_param_function, config, {});
+  const auto dead_analysis = c4c::backend::stack_layout::analyze_stack_layout(
+      dead_param_input, dead_regalloc, {{20}, {21}, {22}});
+  const auto dead_param_plans =
+      c4c::backend::stack_layout::plan_param_alloca_slots(dead_param_input, dead_analysis);
+
+  expect_true(dead_param_plans.size() == 1 &&
+                  dead_param_plans.front().alloca_name == "%lv.param.x" &&
+                  dead_param_plans.front().param_name == "%p.x" &&
+                  !dead_param_plans.front().needs_stack_slot,
+              "backend-owned stack-layout input should preserve dead param alloca pruning decisions");
 }
 
 void test_backend_shared_slot_assignment_prunes_dead_entry_alloca_insts() {
@@ -1685,13 +1762,16 @@ int main(int argc, char* argv[]) {
   test_backend_shared_regalloc_helper_filters_and_merges_clobbers();
   test_backend_shared_stack_layout_regalloc_helper_exposes_handoff_view();
   test_backend_shared_stack_layout_analysis_tracks_phi_use_blocks();
+  test_backend_shared_stack_layout_analysis_accepts_backend_owned_input();
   test_backend_shared_stack_layout_analysis_detects_dead_param_allocas();
   test_backend_shared_stack_layout_analysis_tracks_call_arg_values();
   test_backend_shared_stack_layout_analysis_detects_entry_alloca_overwrite_before_read();
   test_backend_shared_alloca_coalescing_classifies_non_param_allocas();
+  test_backend_shared_alloca_coalescing_accepts_backend_owned_input();
   test_backend_shared_slot_assignment_plans_param_alloca_slots();
   test_backend_shared_slot_assignment_prunes_dead_param_alloca_insts();
   test_backend_shared_slot_assignment_plans_entry_alloca_slots();
+  test_backend_shared_slot_assignment_accepts_backend_owned_input();
   test_backend_shared_slot_assignment_prunes_dead_entry_alloca_insts();
   test_backend_shared_slot_assignment_applies_coalesced_entry_slots();
   // TODO: binary-utils contract test disabled — assembler seam changed

@@ -7,17 +7,43 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: extend the new backend-owned liveness/regalloc seam through
-  the remaining stack-layout consumers that still require raw `LirFunction`
-  alongside cached liveness
-- Next intended slice: audit `src/backend/stack_layout/analysis.cpp`,
-  `src/backend/stack_layout/alloca_coalescing.cpp`, and
-  `src/backend/stack_layout/slot_assignment.cpp` for the narrowest
-  non-phi/non-CFG use-block surface that can follow the liveness input out of
-  raw LIR
+- Current slice: add a backend-owned stack-layout input surface, retarget the
+  shared stack-layout analysis/coalescing/slot-assignment core to that input,
+  and keep raw-`LirFunction` entrypoints only as lowering wrappers
+- Next intended slice: thread the new backend-owned stack-layout input through
+  the production AArch64/x86 entry-alloca pruning call sites so the remaining
+  target-local shared path stops passing raw `LirFunction` into stack-layout
+  helpers
 
 ## Completed
 
+- Completed the next Step 6/7 backend-owned stack-layout handoff slice by
+  moving the shared stack-layout analysis/coalescing/slot-assignment planning
+  core behind a backend-owned input surface while preserving raw-`LirFunction`
+  entrypoints as lowering wrappers:
+  - added `StackLayoutInput`, `EntryAllocaInput`, `StackLayoutBlockInput`,
+    `StackLayoutPoint`, `PointerAccess`, and `PhiIncomingUse` in
+    `src/backend/stack_layout/analysis.hpp` plus
+    `lower_lir_to_stack_layout_input(...)` in
+    `src/backend/stack_layout/analysis.cpp` so the stack-layout helpers can
+    consume backend-owned use/access/root metadata instead of rescanning raw
+    `LirFunction`
+  - taught `src/backend/stack_layout/analysis.cpp` to compute use blocks, dead
+    param allocas, and first-access overwrite detection from that new
+    backend-owned surface while keeping
+    `analyze_stack_layout(const LirFunction&, ...)` as a compatibility wrapper
+  - added matching backend-owned overloads in
+    `src/backend/stack_layout/alloca_coalescing.*` and
+    `src/backend/stack_layout/slot_assignment.*` so the shared alloca
+    coalescing and slot-planning core can already run from the lowered
+    stack-layout surface without changing production target call sites yet
+  - added focused shared util coverage in
+    `tests/backend/backend_shared_util_tests.cpp` proving backend-owned
+    stack-layout input preserves phi-edge use attribution, single-block alloca
+    reuse classification, scalar overwrite-before-read slot pruning, and dead
+    param alloca planning
+  - rebuilt `backend_shared_util_tests` and passed
+    `ctest --test-dir build -R backend_shared_util_tests --output-on-failure`
 - Completed the first Step 6 MIR-owned liveness/regalloc handoff seam by
   moving the shared dataflow/regalloc core behind a backend-owned input
   surface while preserving the existing LIR entrypoints as wrappers:

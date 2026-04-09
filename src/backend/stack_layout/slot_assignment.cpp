@@ -29,6 +29,10 @@ bool is_zero_initializer_store(const LirStoreOp* store) {
   return store != nullptr && store->val == "zeroinitializer";
 }
 
+bool is_zero_initializer_store(const EntryAllocaInput& alloca) {
+  return alloca.paired_store_value.has_value() && *alloca.paired_store_value == "zeroinitializer";
+}
+
 bool is_scalar_alloca_type(std::string_view type_str) {
   return !type_str.empty() && type_str.front() != '[' && type_str.front() != '{' &&
          type_str.front() != '%';
@@ -153,50 +157,43 @@ void rewrite_terminator_alloca_refs(LirTerminator& terminator, const Map& canoni
 }  // namespace
 
 std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(
-    const LirFunction& function,
+    const StackLayoutInput& input,
     const StackLayoutAnalysis& analysis) {
   std::vector<EntryAllocaSlotPlan> plans;
-  const auto coalescable_allocas = compute_coalescable_allocas(function, analysis);
+  const auto coalescable_allocas = compute_coalescable_allocas(input, analysis);
   std::vector<AssignedEntrySlot> assigned_slots;
   std::size_t next_slot = 0;
 
-  for (std::size_t index = 0; index < function.alloca_insts.size(); ++index) {
-    const auto* alloca = std::get_if<LirAllocaOp>(&function.alloca_insts[index]);
-    if (alloca == nullptr) {
-      continue;
-    }
-
+  for (const auto& alloca : input.entry_allocas) {
     EntryAllocaSlotPlan plan;
-    plan.alloca_name = alloca->result;
+    plan.alloca_name = alloca.alloca_name;
     plan.needs_stack_slot = true;
 
-    const auto* store = following_entry_store(function, index);
-    const bool has_paired_store = store != nullptr && store->ptr == alloca->result;
+    const bool has_paired_store = alloca.paired_store_value.has_value();
 
-    if (is_param_alloca_name(alloca->result)) {
-      if (has_paired_store && is_param_name(store->val) &&
-          analysis.is_dead_param_alloca(alloca->result)) {
+    if (is_param_alloca_name(alloca.alloca_name)) {
+      if (has_paired_store && is_param_name(*alloca.paired_store_value) &&
+          analysis.is_dead_param_alloca(alloca.alloca_name)) {
         plan.needs_stack_slot = false;
         plan.remove_following_entry_store = true;
       }
-    } else if (!analysis.uses_value(alloca->result)) {
+    } else if (!analysis.uses_value(alloca.alloca_name)) {
       plan.needs_stack_slot = false;
       plan.remove_following_entry_store = has_paired_store;
-    } else if (is_scalar_alloca_type(alloca->type_str) &&
-               is_zero_initializer_store(store) &&
-               analysis.is_entry_alloca_overwritten_before_read(alloca->result)) {
+    } else if (is_scalar_alloca_type(alloca.type_str) && is_zero_initializer_store(alloca) &&
+               analysis.is_entry_alloca_overwritten_before_read(alloca.alloca_name)) {
       plan.remove_following_entry_store = true;
     }
 
-    if (plan.needs_stack_slot && !is_param_alloca_name(alloca->result)) {
-      plan.coalesced_block = coalescable_allocas.find_single_block(alloca->result);
+    if (plan.needs_stack_slot && !is_param_alloca_name(alloca.alloca_name)) {
+      plan.coalesced_block = coalescable_allocas.find_single_block(alloca.alloca_name);
     }
     if (plan.needs_stack_slot) {
       if (plan.coalesced_block.has_value()) {
         for (auto& assigned_slot : assigned_slots) {
           if (assigned_slot.occupied_blocks.empty() ||
-              assigned_slot.type_str != alloca->type_str ||
-              assigned_slot.align != alloca->align ||
+              assigned_slot.type_str != alloca.type_str ||
+              assigned_slot.align != alloca.align ||
               assigned_slot.occupied_blocks.find(*plan.coalesced_block) !=
                   assigned_slot.occupied_blocks.end()) {
             continue;
@@ -208,7 +205,7 @@ std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(
       }
       if (!plan.assigned_slot.has_value()) {
         plan.assigned_slot = next_slot++;
-        AssignedEntrySlot assigned_slot{*plan.assigned_slot, alloca->type_str, alloca->align, {}};
+        AssignedEntrySlot assigned_slot{*plan.assigned_slot, alloca.type_str, alloca.align, {}};
         if (plan.coalesced_block.has_value()) {
           assigned_slot.occupied_blocks.insert(*plan.coalesced_block);
         }
@@ -220,6 +217,12 @@ std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(
   }
 
   return plans;
+}
+
+std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(
+    const LirFunction& function,
+    const StackLayoutAnalysis& analysis) {
+  return plan_entry_alloca_slots(lower_lir_to_stack_layout_input(function), analysis);
 }
 
 void apply_entry_alloca_slot_plan(
@@ -325,34 +328,36 @@ std::vector<c4c::codegen::lir::LirInst> prune_dead_entry_alloca_insts(
 }
 
 std::vector<ParamAllocaSlotPlan> plan_param_alloca_slots(
-    const LirFunction& function,
+    const StackLayoutInput& input,
     const StackLayoutAnalysis& analysis) {
   std::vector<ParamAllocaSlotPlan> plans;
-  const auto entry_plans = plan_entry_alloca_slots(function, analysis);
+  const auto entry_plans = plan_entry_alloca_slots(input, analysis);
 
-  for (std::size_t index = 0; index + 1 < function.alloca_insts.size(); ++index) {
-    const auto* alloca = std::get_if<LirAllocaOp>(&function.alloca_insts[index]);
-    const auto* store = std::get_if<LirStoreOp>(&function.alloca_insts[index + 1]);
-    if (alloca == nullptr || store == nullptr) {
-      continue;
-    }
-    if (!is_param_alloca_name(alloca->result) || store->ptr != alloca->result ||
-        !is_param_name(store->val)) {
+  for (const auto& alloca : input.entry_allocas) {
+    if (!is_param_alloca_name(alloca.alloca_name) || !alloca.paired_store_value.has_value() ||
+        !is_param_name(*alloca.paired_store_value)) {
       continue;
     }
 
     bool needs_stack_slot = true;
     for (const auto& entry_plan : entry_plans) {
-      if (entry_plan.alloca_name == alloca->result) {
+      if (entry_plan.alloca_name == alloca.alloca_name) {
         needs_stack_slot = entry_plan.needs_stack_slot;
         break;
       }
     }
 
-    plans.push_back(ParamAllocaSlotPlan{alloca->result, store->val, needs_stack_slot});
+    plans.push_back(
+        ParamAllocaSlotPlan{alloca.alloca_name, *alloca.paired_store_value, needs_stack_slot});
   }
 
   return plans;
+}
+
+std::vector<ParamAllocaSlotPlan> plan_param_alloca_slots(
+    const LirFunction& function,
+    const StackLayoutAnalysis& analysis) {
+  return plan_param_alloca_slots(lower_lir_to_stack_layout_input(function), analysis);
 }
 
 std::vector<c4c::codegen::lir::LirInst> prune_dead_param_alloca_insts(

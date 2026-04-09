@@ -13,6 +13,47 @@
 
 namespace c4c::backend::stack_layout {
 
+enum class PointerAccessKind {
+  Read,
+  Store,
+};
+
+struct PointerAccess {
+  std::string value_name;
+  PointerAccessKind kind = PointerAccessKind::Read;
+};
+
+struct StackLayoutPoint {
+  std::vector<std::string> used_names;
+  std::vector<PointerAccess> pointer_accesses;
+  std::vector<std::string> escaped_names;
+  std::optional<std::pair<std::string, std::string>> derived_pointer_root;
+};
+
+struct EntryAllocaInput {
+  std::string alloca_name;
+  std::string type_str;
+  int align = 0;
+  std::optional<std::string> paired_store_value;
+};
+
+struct StackLayoutBlockInput {
+  std::string label;
+  std::vector<StackLayoutPoint> insts;
+  std::vector<std::string> terminator_used_names;
+};
+
+struct PhiIncomingUse {
+  std::string predecessor_label;
+  std::string value_name;
+};
+
+struct StackLayoutInput {
+  std::vector<EntryAllocaInput> entry_allocas;
+  std::vector<StackLayoutBlockInput> blocks;
+  std::vector<PhiIncomingUse> phi_incoming_uses;
+};
+
 struct StackLayoutAnalysis {
   std::unordered_map<std::string, std::vector<std::size_t>> value_use_blocks;
   std::unordered_set<std::string> used_values;
@@ -26,6 +67,14 @@ struct StackLayoutAnalysis {
   [[nodiscard]] bool is_entry_alloca_overwritten_before_read(
       std::string_view value_name) const;
 };
+
+StackLayoutInput lower_lir_to_stack_layout_input(
+    const c4c::codegen::lir::LirFunction& function);
+
+StackLayoutAnalysis analyze_stack_layout(
+    const StackLayoutInput& input,
+    const RegAllocIntegrationResult& regalloc,
+    const std::vector<PhysReg>& callee_saved_regs);
 
 StackLayoutAnalysis analyze_stack_layout(
     const c4c::codegen::lir::LirFunction& function,
