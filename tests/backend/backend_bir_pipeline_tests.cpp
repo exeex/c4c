@@ -201,6 +201,40 @@ c4c::codegen::lir::LirModule make_supported_aarch64_string_literal_char_lir_modu
   return module;
 }
 
+c4c::codegen::lir::LirModule make_dead_local_add_store_return_immediate_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.foo", "i32", "", 4});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.bar", "i32", "", 4});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.foobar", "i32", "", 4});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirLoadOp{"%t0", "i32", "%lv.foo"});
+  entry.insts.push_back(LirLoadOp{"%t1", "i32", "%lv.bar"});
+  entry.insts.push_back(LirBinOp{"%t2", "add", "i32", "%t0", "%t1"});
+  entry.insts.push_back(LirStoreOp{"i32", "%t2", "%lv.foobar"});
+  entry.insts.push_back(LirLoadOp{"%t3", "i32", "%lv.foo"});
+  entry.insts.push_back(LirLoadOp{"%t4", "i32", "%lv.bar"});
+  entry.insts.push_back(LirBinOp{"%t5", "add", "i32", "%t3", "%t4"});
+  entry.insts.push_back(LirStoreOp{"i32", "%t5", "%lv.foobar"});
+  entry.terminator = LirRet{std::string("0"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 void expect_i8_bir_route(I8ModuleFactory make_module,
                          std::string_view signature,
                          std::string_view op_text,
@@ -1620,6 +1654,19 @@ void test_backend_bir_pipeline_routes_two_param_staged_affine_chain_through_bir_
                   "explicit BIR selection should expose the trailing staged subtraction on the BIR text path");
 }
 
+void test_backend_bir_pipeline_routes_dead_local_add_store_chain_to_immediate_return() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_dead_local_add_store_return_immediate_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Riscv64));
+
+  expect_contains(rendered, "bir.func @main() -> i32 {",
+                  "explicit BIR selection should preserve the dead-local add/store test signature on the BIR text path");
+  expect_contains(rendered, "bir.ret i32 0",
+                  "explicit BIR selection should fold the dead local-slot add/store chain to the fixed immediate return");
+  expect_not_contains(rendered, "bir.add",
+                      "explicit BIR selection should not keep dead local-slot arithmetic once the chain is proven unobserved");
+}
+
 void test_backend_bir_pipeline_selection_only_applies_at_lir_entry_input() {
   const auto lir_module = make_bir_return_add_module();
   const auto bir_module = c4c::backend::lower_to_bir(lir_module);
@@ -1794,6 +1841,7 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_backend_bir_pipeline_routes_two_param_add_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_two_param_add_sub_chain_through_bir_text_surface);
   RUN_TEST(test_backend_bir_pipeline_routes_two_param_staged_affine_chain_through_bir_text_surface);
+  RUN_TEST(test_backend_bir_pipeline_routes_dead_local_add_store_chain_to_immediate_return);
   RUN_TEST(test_backend_bir_pipeline_selection_only_applies_at_lir_entry_input);
   RUN_TEST(test_backend_lowered_riscv_passthrough_is_detached_from_lir_metadata);
   RUN_TEST(test_backend_riscv64_supported_lir_and_direct_bir_share_text_route);

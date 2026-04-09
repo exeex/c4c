@@ -6,24 +6,22 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 2: recover the highest-leverage shared BIR seam for the remaining x86
-  unsupported modules, continuing from `00141.c` now that `00143.c` has been
-  reclassified as a separate switch/fallthrough loop initiative and the
-  string-literal compare-with-phi-return slice in `00138.c` lowers through
-  shared BIR
+- Step 2: finish the current shared-BIR Family A lane by landing `00141.c`,
+  then reassess whether the next highest-leverage slice should stay in Step 2
+  for a Family B shared seam or move to Step 3/Step 4 now that the simple
+  local-slot survivors are cleared
 
 ## Next Slice
 
-- add the narrowest regression around
-  `c_testsuite_x86_backend_src_00141_c`
-- keep the active Step 2 lane scoped to simple alloca-backed local-slot loads,
-  stores, and arithmetic without pulling in the parked `00143.c`
-  switch/fallthrough copy loop seam from idea 46
-- preserve the Family A vs Family B split confirmed by the later
-  `c_testsuite_x86_backend_src_00180_c` re-check
-- keep the next slice scoped away from the already-fixed `00057.c`,
-  `00086.c`, and `00138.c` constant/immediate folds unless another survivor
-  proves blocked on the same ownership point
+- re-sample the post-`00141.c` x86 failure surface to confirm whether any
+  remaining Step 2 candidate still belongs to a shared-BIR seam rather than
+  the parked `00143.c` Family A2 lane or the x86-native/runtime lanes
+- if Step 2 continues, choose one bounded Family B representative and add the
+  narrowest regression that proves a shared ownership point without absorbing
+  globals/calls-heavy work ad hoc
+- otherwise switch the active item to either Step 3 x86-native direct-LIR seam
+  recovery or Step 4 variadic-runtime investigation with a fresh targeted test
+  slice
 
 ## Completed Items
 
@@ -99,6 +97,19 @@ Source Plan: plan.md
   `ideas/open/46_x86_64_shared_bir_switch_fallthrough_loop_modules.md` so the
   active idea 44 runbook can stay focused on the remaining simpler Family A
   survivor `00141.c`
+- added an internal x86 backend route regression plus backend BIR pipeline
+  coverage for the dead local-slot add/store chain behind
+  `tests/c/external/c-testsuite/src/00141.c`
+- taught shared `lir_to_bir` lowering to fold the bounded alloca-backed dead
+  `i32` add/store chain into a direct-BIR immediate return, covering the
+  macro-expanded `foo + bar` dead-store shape from `00141.c` without reviving
+  any legacy backend rescue path
+- verified `c_testsuite_x86_backend_src_00141_c` now passes and clears the last
+  simple Family A survivor from the active Step 2 lane
+- ran full-suite monotonic validation for the `00141.c` slice:
+  `test_fail_before.log` = 2656 pass / 187 fail / 2843 total,
+  `test_fail_after.log` = 2664 pass / 183 fail / 2847 total,
+  zero newly failing tests
 
 ## Blockers
 
@@ -124,9 +135,14 @@ Source Plan: plan.md
   `c_testsuite_x86_backend_src_00138_c` now routes through shared lowering by
   folding the string-pool local-pointer compare and phi return to a constant
   BIR return
-- current-tree pre-change baseline for this iteration:
-  `test_before.log` = 2662 pass / 184 fail / 2846 total
+- landed the next dead-local arithmetic slice:
+  `c_testsuite_x86_backend_src_00141_c` now routes through shared lowering by
+  folding the dead alloca-backed add/store chain to a constant BIR return
+- current-tree post-change suite state:
+  `test_fail_after.log` = 2664 pass / 183 fail / 2847 total
 - `00143.c` is now classified as a separate switch-entry fallthrough copy-loop
   seam and tracked in
   [ideas/open/46_x86_64_shared_bir_switch_fallthrough_loop_modules.md](/workspaces/c4c/ideas/open/46_x86_64_shared_bir_switch_fallthrough_loop_modules.md)
-- `00141.c` is the next simple Family A survivor for the active Step 2 lane
+- `00141.c` is no longer pending; the next decision is whether idea 44 should
+  continue with a Family B shared-BIR seam or move to the x86-native/runtime
+  stages

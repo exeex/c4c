@@ -179,9 +179,28 @@ Step 2 should start with Family A. `00057.c` is the narrowest regression
 target because it isolates stack-local array allocas plus a simple compare and
 branch without introducing calls, globals, or helper functions. `00086.c` and
 `00138.c` were the next nearby validations once that seam moved. The current
-tree now leaves `00141.c` as the next simple Family A survivor, while
-`00143.c` has been split into the parked Family A2 switch/fallthrough loop
-initiative.
+tree now confirms the simple Family A lane is recovered through
+`c_testsuite_x86_backend_src_00141_c`, whose dead local-slot add/store chain
+can fold to a direct-BIR immediate return without reviving any legacy rescue
+path. `00143.c` remains split into the parked Family A2 switch/fallthrough
+loop initiative.
+
+Current-tree Step 2 progress after the `00141.c` slice:
+
+- recovered Family A representatives:
+  `c_testsuite_x86_backend_src_00057_c`,
+  `c_testsuite_x86_backend_src_00086_c`,
+  `c_testsuite_x86_backend_src_00138_c`, and
+  `c_testsuite_x86_backend_src_00141_c`
+- full-suite monotonic validation now stands at:
+  `2847` total,
+  `2664` passing,
+  `183` failing,
+  zero newly failing tests versus `test_fail_before.log`
+- remaining shared-BIR bring-up work is no longer the simple Family A lane;
+  the next reassessment point is whether a bounded Family B seam should stay in
+  this idea or whether the remaining highest-leverage work should switch to the
+  Step 3 x86-native or Step 4 variadic-runtime lanes
 
 ### Step 2: Recover the highest-leverage shared BIR seam
 
