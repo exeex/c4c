@@ -1089,9 +1089,19 @@ void Parser::parse_parenthesized_function_pointer_suffix(
     bool fn_ptr_variadic = false;
     parse_declarator_parameter_list(&fn_ptr_params, &fn_ptr_variadic);
 
-    // C++ pointer-to-member-function may have cv-qualifiers after params:
-    // R (T::*pm)() const  or  R (T::*pm)() volatile
+    // C++ pointer-to-member-function declarators may carry trailing
+    // cv/ref-qualifiers after the parameter list:
+    // R (T::*pm)() const, R (T::*pm)() volatile,
+    // R (T::*pm)() &, or R (T::*pm)() &&
     while (is_qualifier(cur().kind)) consume();
+    if (is_cpp_mode()) {
+        if (match(TokenKind::AmpAmp)) {
+            // Parse-only: preserve declaration disambiguation even though
+            // TypeSpec does not currently model member-function ref-qualifiers.
+        } else if (match(TokenKind::Amp)) {
+            // Same as above for lvalue-qualified member-function-pointer forms.
+        }
+    }
     ts.is_fn_ptr = true;  // confirmed function pointer: (*name)(params)
 
     if (is_nested_fn_ptr) {

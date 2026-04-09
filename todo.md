@@ -7,14 +7,15 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 3: review declarator suffix and function-pointer cast forms
-- Current slice: probe the next remaining Step 3 template-id cast target after
-  landing member-function-pointer `const` coverage
+- Current slice: re-probe the remaining Step 3 template-id declarator-suffix
+  matrix after landing member-function-pointer ref-qualifier coverage
 - Current implementation target: stay in parser-facing Step 3 coverage work
-  and identify whether any remaining pointer/reference qualifier variant still
-  exposes a parser-specific declarator-suffix hole
-- Next intended slice: probe template-id cast targets that combine remaining
-  pointer/reference qualifiers with nested declarator suffixes and add the
-  next focused regression only if the shape is still uncovered
+  and identify whether any additional template-id declarator-suffix variant
+  still exposes a parser-specific hole after the member-function-pointer
+  `)&` / `)&&` fix
+- Next intended slice: probe the next uncovered nested declarator-suffix
+  combination and add a focused regression only if another parser mismatch is
+  still reproducible
 
 ## Completed
 
@@ -258,6 +259,22 @@ Source Plan: plan.md
   and `ctest --test-dir build -R c_style_cast_template_member_fn_ptr_const_parse --output-on-failure`.
 - Full-suite validation stayed monotonic: `test_fail_before.log` 2860/2860
   passed, `test_fail_after.log` 2862/2862 passed, with zero new failures.
+- Added
+  `tests/cpp/internal/postive_case/c_style_cast_template_member_fn_ptr_ref_qual_parse.cpp`
+  as a focused parse-only regression for
+  `int (Box<int>::*fp)(int) &` /
+  `int (Box<int>::*fp)(int) &&` cast targets with template-id owners.
+- Fixed the parser’s parenthesized function-pointer suffix path so trailing
+  member-function ref-qualifiers after the parameter list are consumed during
+  C-style cast type parsing instead of leaving `=` to start a misclassified
+  expression statement.
+- Targeted validation passed:
+  `build/c4cll --parse-only tests/cpp/internal/postive_case/c_style_cast_template_member_fn_ptr_ref_qual_parse.cpp`,
+  `ctest --test-dir build -R c_style_cast_template_member_fn_ptr_ref_qual_parse --output-on-failure`,
+  and nearby Step 3 parser cases for the return-type, member-`const`, and
+  member-function-pointer suffix variants.
+- Full-suite validation stayed monotonic: `test_before.log` 2862/2862 passed,
+  `test_after.log` 2863/2863 passed, with zero new failures.
 
 ## Notes
 
