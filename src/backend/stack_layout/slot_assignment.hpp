@@ -79,6 +79,7 @@ struct EntryAllocaPlanningInput {
   std::vector<EntryAllocaPlanInput> entry_allocas;
   std::optional<std::vector<std::string>> escaped_entry_allocas;
   std::optional<std::vector<EntryAllocaUseBlocks>> entry_alloca_use_blocks;
+  std::optional<std::vector<EntryAllocaFirstAccess>> entry_alloca_first_accesses;
 };
 
 struct EntryAllocaRewriteInput {
@@ -119,6 +120,13 @@ StackLayoutPlanBundle build_stack_layout_plan_bundle(
 StackLayoutPlanBundle build_stack_layout_plan_bundle(
     const StackLayoutInput& input,
     const RegAllocIntegrationResult& regalloc,
+    const std::vector<PhysReg>& callee_saved_regs);
+
+StackLayoutPlanBundle build_stack_layout_plan_bundle(
+    const LivenessInput& liveness_input,
+    const EntryAllocaPlanningInput& planning_input,
+    const RegAllocConfig& regalloc_config,
+    const std::vector<PhysReg>& asm_clobbered,
     const std::vector<PhysReg>& callee_saved_regs);
 
 StackLayoutPlanBundle build_stack_layout_plan_bundle(

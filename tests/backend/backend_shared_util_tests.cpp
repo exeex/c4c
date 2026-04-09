@@ -1893,6 +1893,54 @@ void test_backend_shared_slot_assignment_bundle_prepares_from_backend_owned_inpu
               "shared stack-layout bundle prep should keep the backend-owned dead-param classification available to downstream entrypoint setup");
 }
 
+void test_backend_shared_slot_assignment_bundle_prepares_from_narrowed_planning_input() {
+  c4c::backend::RegAllocConfig config;
+  config.available_regs = {{20}};
+  config.caller_saved_regs = {{13}};
+
+  const auto scalar_module = make_overwrite_first_scalar_local_alloca_candidate_module();
+  const auto scalar_inputs =
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_inputs(scalar_module, 0);
+  const auto scalar_bundle = c4c::backend::stack_layout::build_stack_layout_plan_bundle(
+      scalar_inputs.liveness_input, scalar_inputs.planning_input, config, {}, {});
+
+  expect_true(
+      scalar_inputs.planning_input.entry_allocas.size() == 1 &&
+          scalar_inputs.planning_input.entry_alloca_first_accesses.has_value() &&
+          scalar_inputs.planning_input.entry_alloca_first_accesses->size() == 1 &&
+          scalar_inputs.planning_input.entry_alloca_first_accesses->front().alloca_name ==
+              "%lv.x" &&
+          scalar_inputs.planning_input.entry_alloca_first_accesses->front().kind ==
+              c4c::backend::stack_layout::PointerAccessKind::Store &&
+          scalar_bundle.entry_alloca_plans.size() == 1 &&
+          scalar_bundle.entry_alloca_plans.front().alloca_name == "%lv.x" &&
+          scalar_bundle.entry_alloca_plans.front().needs_stack_slot &&
+          scalar_bundle.entry_alloca_plans.front().remove_following_entry_store,
+      "shared stack-layout bundle prep should preserve overwrite-before-read pruning when callers provide backend-owned liveness plus the narrowed planning input");
+
+  const auto dead_param_module = make_dead_param_alloca_candidate_module();
+  const auto dead_param_inputs =
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_inputs(
+          dead_param_module, 1);
+  const auto dead_param_bundle = c4c::backend::stack_layout::build_stack_layout_plan_bundle(
+      dead_param_inputs.liveness_input,
+      dead_param_inputs.planning_input,
+      config,
+      {},
+      {{20}, {21}, {22}});
+
+  expect_true(dead_param_bundle.entry_alloca_plans.size() == 1 &&
+                  dead_param_bundle.entry_alloca_plans.front().alloca_name == "%lv.param.x" &&
+                  !dead_param_bundle.entry_alloca_plans.front().needs_stack_slot &&
+                  dead_param_bundle.entry_alloca_plans.front().remove_following_entry_store &&
+                  dead_param_bundle.param_alloca_plans.size() == 1 &&
+                  dead_param_bundle.param_alloca_plans.front().alloca_name == "%lv.param.x" &&
+                  dead_param_bundle.param_alloca_plans.front().param_name == "%p.x" &&
+                  !dead_param_bundle.param_alloca_plans.front().needs_stack_slot &&
+                  dead_param_bundle.analysis.is_dead_param_alloca("%lv.param.x"),
+              "shared stack-layout bundle prep should let planning-only callers drop the compatibility stack-layout wrapper once prepared lowering exposes the narrowed planning payload");
+}
+
 void test_backend_shared_slot_assignment_prepares_rewrite_patch_from_backend_owned_inputs() {
   c4c::backend::RegAllocConfig config;
   config.available_regs = {{20}};
@@ -3019,6 +3067,7 @@ int main(int argc, char* argv[]) {
   test_backend_shared_slot_assignment_bundle_accepts_backend_owned_input();
   test_backend_shared_slot_assignment_bundle_accepts_narrowed_planning_input();
   test_backend_shared_slot_assignment_bundle_prepares_from_backend_owned_inputs();
+  test_backend_shared_slot_assignment_bundle_prepares_from_narrowed_planning_input();
   test_backend_shared_slot_assignment_prepares_rewrite_patch_from_backend_owned_inputs();
   test_backend_shared_slot_assignment_rewrites_module_entry_allocas();
   test_backend_shared_slot_assignment_prepares_module_function_inputs();

@@ -29,6 +29,10 @@ bool is_param_name(std::string_view value_name) {
   return value_name.rfind("%p.", 0) == 0;
 }
 
+bool is_value_name(std::string_view token) {
+  return c4c::codegen::lir::is_lir_value_name(token);
+}
+
 bool is_zero_initializer_store(const LirStoreOp* store) {
   return store != nullptr && store->val == "zeroinitializer";
 }
@@ -84,7 +88,17 @@ EntryAllocaPlanningInput lower_entry_alloca_rewrite_input_to_planning_input(
   }
   lowered.escaped_entry_allocas = input.escaped_entry_allocas;
   lowered.entry_alloca_use_blocks = input.entry_alloca_use_blocks;
+  lowered.entry_alloca_first_accesses = input.entry_alloca_first_accesses;
   return lowered;
+}
+
+void record_use_block(std::unordered_map<std::string, std::vector<std::size_t>>& use_blocks,
+                      std::string_view value_name,
+                      std::size_t block_index) {
+  auto& blocks = use_blocks[std::string(value_name)];
+  if (blocks.empty() || blocks.back() != block_index) {
+    blocks.push_back(block_index);
+  }
 }
 
 std::optional<std::vector<std::string>> collect_prepared_escaped_entry_allocas(
@@ -317,8 +331,15 @@ EntryAllocaRewriteInput lower_prepared_entry_alloca_rewrite_input(
 EntryAllocaPlanningInput lower_prepared_entry_alloca_planning_input(
     const PreparedEntryAllocaRewriteMetadata& rewrite_metadata,
     const PreparedEntryAllocaStackLayoutClassificationInput& classification) {
-  return lower_entry_alloca_rewrite_input_to_planning_input(
-      lower_prepared_entry_alloca_rewrite_input(rewrite_metadata, classification));
+  EntryAllocaPlanningInput lowered;
+  lowered.entry_allocas.reserve(rewrite_metadata.entry_allocas.size());
+  for (const auto& alloca : rewrite_metadata.entry_allocas) {
+    lowered.entry_allocas.push_back(lower_entry_alloca_input_to_plan_input(alloca));
+  }
+  lowered.escaped_entry_allocas = classification.escaped_entry_allocas;
+  lowered.entry_alloca_use_blocks = classification.entry_alloca_use_blocks;
+  lowered.entry_alloca_first_accesses = classification.entry_alloca_first_accesses;
+  return lowered;
 }
 
 EntryAllocaRewriteInput lower_stack_layout_input_to_entry_alloca_rewrite_input(
@@ -370,6 +391,75 @@ StackLayoutAnalysis analyze_entry_alloca_rewrite_input(
     const auto* assigned_reg = find_assigned_reg(regalloc, *alloca.paired_store_value);
     if (assigned_reg != nullptr && is_callee_saved_reg(*assigned_reg, callee_saved_regs)) {
       analysis.dead_param_allocas.insert(alloca.alloca_name);
+    }
+  }
+
+  return analysis;
+}
+
+StackLayoutAnalysis analyze_entry_alloca_planning_input(
+    const LivenessInput& liveness_input,
+    const EntryAllocaPlanningInput& input,
+    const RegAllocIntegrationResult& regalloc,
+    const std::vector<PhysReg>& callee_saved_regs) {
+  StackLayoutAnalysis analysis;
+
+  std::unordered_map<std::string, std::size_t> label_to_index;
+  label_to_index.reserve(liveness_input.blocks.size());
+  for (std::size_t block_index = 0; block_index < liveness_input.blocks.size(); ++block_index) {
+    label_to_index.emplace(liveness_input.blocks[block_index].label, block_index);
+  }
+
+  for (const auto& phi_use : liveness_input.phi_incoming_uses) {
+    const auto pred_it = label_to_index.find(phi_use.predecessor_label);
+    const std::size_t use_block = pred_it == label_to_index.end() ? 0 : pred_it->second;
+    record_use_block(analysis.value_use_blocks, phi_use.value_name, use_block);
+    if (is_value_name(phi_use.value_name)) {
+      analysis.used_values.insert(phi_use.value_name);
+    }
+  }
+
+  auto record_point_uses = [&](const auto& point, std::size_t block_index) {
+    for (const auto& value_name : point.used_names) {
+      record_use_block(analysis.value_use_blocks, value_name, block_index);
+      if (is_value_name(value_name)) {
+        analysis.used_values.insert(value_name);
+      }
+    }
+  };
+
+  for (std::size_t block_index = 0; block_index < liveness_input.blocks.size(); ++block_index) {
+    const auto& block = liveness_input.blocks[block_index];
+    for (const auto& point : block.insts) {
+      record_point_uses(point, block_index);
+    }
+
+    for (const auto& value_name : block.terminator_used_names) {
+      record_use_block(analysis.value_use_blocks, value_name, block_index);
+      if (is_value_name(value_name)) {
+        analysis.used_values.insert(value_name);
+      }
+    }
+  }
+
+  for (const auto& alloca : input.entry_allocas) {
+    if (!is_param_alloca_name(alloca.alloca_name) || !alloca.paired_store.param_name.has_value()) {
+      continue;
+    }
+    if (analysis.used_values.find(alloca.alloca_name) != analysis.used_values.end()) {
+      continue;
+    }
+    const auto* assigned_reg = find_assigned_reg(regalloc, *alloca.paired_store.param_name);
+    if (assigned_reg != nullptr && is_callee_saved_reg(*assigned_reg, callee_saved_regs)) {
+      analysis.dead_param_allocas.insert(alloca.alloca_name);
+    }
+  }
+
+  if (input.entry_alloca_first_accesses.has_value()) {
+    for (const auto& first_access : *input.entry_alloca_first_accesses) {
+      if (first_access.kind == PointerAccessKind::Store) {
+        analysis.entry_allocas_overwritten_before_read.insert(first_access.alloca_name);
+      }
     }
   }
 
@@ -540,6 +630,19 @@ StackLayoutPlanBundle build_stack_layout_plan_bundle(
       lower_entry_alloca_rewrite_input_to_planning_input(
           lower_stack_layout_input_to_entry_alloca_rewrite_input(input)),
       analysis);
+}
+
+StackLayoutPlanBundle build_stack_layout_plan_bundle(
+    const LivenessInput& liveness_input,
+    const EntryAllocaPlanningInput& planning_input,
+    const RegAllocConfig& regalloc_config,
+    const std::vector<PhysReg>& asm_clobbered,
+    const std::vector<PhysReg>& callee_saved_regs) {
+  const auto regalloc =
+      run_regalloc_and_merge_clobbers(liveness_input, regalloc_config, asm_clobbered);
+  const auto analysis = analyze_entry_alloca_planning_input(
+      liveness_input, planning_input, regalloc, callee_saved_regs);
+  return build_stack_layout_plan_bundle(planning_input, analysis);
 }
 
 StackLayoutPlanBundle build_stack_layout_plan_bundle(

@@ -10,15 +10,39 @@ Source Plan: plan.md
 - Current slice: continue Step 6 public-surface narrowing by checking whether
   planning-only callers can drop the compatibility `StackLayoutInput` wrapper
   now that prepared entry-alloca lowering carries an explicit planning payload
-- Current implementation target: identify which remaining bundle or
-  param-planning callsites still depend on `stack_layout_input` only because
-  prepared helpers were not previously exposing `EntryAllocaPlanningInput`
-- Next intended slice: retarget the narrowest remaining planning-only caller to
-  `EntryAllocaPlanningInput`, then see whether any compatibility-only
-  `StackLayoutInput` rehydration can be further constrained without touching
-  rewrite patch synthesis
+- Current implementation target: check whether the remaining
+  `plan_entry_alloca_slots(...)` / `plan_param_alloca_slots(...)` compatibility
+  overloads should now lower directly to `EntryAllocaPlanningInput` without
+  rebuilding the intermediate rewrite wrapper
+- Next intended slice: narrow the next planning-only compatibility helper so
+  callers that already own backend liveness plus prepared planning metadata do
+  not need to materialize broader entry-alloca wrapper state
 
 ## Completed
+
+- Completed the next Step 6 planning-bundle narrowing slice by letting
+  stack-layout bundle preparation derive analysis from backend liveness plus
+  the explicit planning payload instead of the broader compatibility
+  `StackLayoutInput` bundle:
+  - added `entry_alloca_first_accesses` to
+    `src/backend/stack_layout/slot_assignment.hpp`'s
+    `EntryAllocaPlanningInput` so the planning-only contract now carries the
+    remaining overwrite-before-read classification needed for slot pruning
+  - updated `src/backend/stack_layout/slot_assignment.cpp` so prepared
+    lowering populates the new first-access seam and added a
+    `build_stack_layout_plan_bundle(...)` overload that computes
+    `StackLayoutAnalysis` from `LivenessInput + EntryAllocaPlanningInput`
+    directly, including dead-param and overwrite-before-read decisions
+  - extended `tests/backend/backend_shared_util_tests.cpp` with focused
+    coverage proving prepared callers can build stack-layout bundles from the
+    narrowed planning payload while preserving scalar overwrite pruning and
+    dead-param alloca pruning
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`
+  - rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with the repo’s allowed non-decreasing rule and no new
+    failures (`2809 -> 2809`, same 32 known failing tests as
+    `test_fail_before.log`)
 
 - Completed the next Step 6 prepared planning-payload narrowing slice by
   threading a dedicated `EntryAllocaPlanningInput` through prepared
