@@ -1594,29 +1594,6 @@ std::optional<MinimalConditionalReturnSlice::ValueSource> lower_bir_i32_value_so
   return std::nullopt;
 }
 
-struct MinimalConditionalPhiJoinSlice {
-  struct ArithmeticStep {
-    c4c::backend::bir::BinaryOpcode opcode = c4c::backend::bir::BinaryOpcode::Add;
-    std::int64_t imm = 0;
-  };
-
-  struct IncomingValue {
-    std::int64_t base_imm = 0;
-    std::vector<ArithmeticStep> steps;
-  };
-
-  std::string function_name;
-  c4c::codegen::lir::LirCmpPredicate predicate = c4c::codegen::lir::LirCmpPredicate::Eq;
-  std::int64_t lhs_imm = 0;
-  std::int64_t rhs_imm = 0;
-  std::string true_label;
-  std::string false_label;
-  std::string join_label;
-  IncomingValue true_value;
-  IncomingValue false_value;
-  std::optional<std::int64_t> join_add_imm;
-};
-
 struct MinimalConditionalAffineI8ReturnSlice {
   enum class ValueKind : unsigned char {
     Immediate,
@@ -2353,86 +2330,6 @@ std::string gp_reg_name(c4c::backend::PhysReg reg, bool is_32bit) {
 std::int64_t aligned_call_frame_size(std::size_t saved_regs) {
   const std::size_t raw_size = (saved_regs + 1) * sizeof(std::uint64_t);
   return static_cast<std::int64_t>((raw_size + 15) & ~std::size_t{15});
-}
-
-std::optional<MinimalConditionalReturnSlice> parse_minimal_conditional_return_slice(
-    const c4c::codegen::lir::LirModule& module) {
-  using namespace c4c::codegen::lir;
-
-  if (module.functions.size() != 1) return std::nullopt;
-
-  const auto& function = module.functions.front();
-  if (function.is_declaration ||
-      !c4c::backend::backend_lir_is_zero_arg_i32_definition(function.signature_text) ||
-      function.entry.value != 0 || function.blocks.size() != 3 ||
-      !function.alloca_insts.empty() || !function.stack_objects.empty()) {
-    return std::nullopt;
-  }
-
-  const auto& entry = function.blocks[0];
-  if (entry.label != "entry" || entry.insts.size() != 3) {
-    return std::nullopt;
-  }
-
-  const auto* cmp0 = std::get_if<LirCmpOp>(&entry.insts[0]);
-  const auto* cast = std::get_if<LirCastOp>(&entry.insts[1]);
-  const auto* cmp1 = std::get_if<LirCmpOp>(&entry.insts[2]);
-  const auto* condbr = std::get_if<LirCondBr>(&entry.terminator);
-  const auto cmp0_predicate = cmp0 == nullptr ? std::nullopt : cmp0->predicate.typed();
-  const auto cmp1_predicate = cmp1 == nullptr ? std::nullopt : cmp1->predicate.typed();
-  if (cmp0 == nullptr || cast == nullptr || cmp1 == nullptr || condbr == nullptr ||
-      cmp0->is_float || !cmp0_predicate.has_value() ||
-      (*cmp0_predicate != LirCmpPredicate::Slt && *cmp0_predicate != LirCmpPredicate::Sle &&
-       *cmp0_predicate != LirCmpPredicate::Sgt && *cmp0_predicate != LirCmpPredicate::Sge &&
-       *cmp0_predicate != LirCmpPredicate::Ult && *cmp0_predicate != LirCmpPredicate::Ule &&
-       *cmp0_predicate != LirCmpPredicate::Ugt && *cmp0_predicate != LirCmpPredicate::Uge &&
-       *cmp0_predicate != LirCmpPredicate::Eq && *cmp0_predicate != LirCmpPredicate::Ne) ||
-      cmp0->type_str != "i32" ||
-      cast->kind != LirCastKind::ZExt || cast->from_type != "i1" ||
-      cast->operand != cmp0->result || cast->to_type != "i32" || cmp1->is_float ||
-      cmp1_predicate != LirCmpPredicate::Ne || cmp1->type_str != "i32" || cmp1->lhs != cast->result ||
-      cmp1->rhs != "0" || condbr->cond_name != cmp1->result) {
-    return std::nullopt;
-  }
-
-  const auto lhs_imm = parse_i64(cmp0->lhs);
-  const auto rhs_imm = parse_i64(cmp0->rhs);
-  if (!lhs_imm.has_value() || !rhs_imm.has_value()) {
-    return std::nullopt;
-  }
-
-  const auto& true_block = function.blocks[1];
-  const auto& false_block = function.blocks[2];
-  if (true_block.label != condbr->true_label || false_block.label != condbr->false_label ||
-      !true_block.insts.empty() || !false_block.insts.empty()) {
-    return std::nullopt;
-  }
-
-  const auto* true_ret = std::get_if<LirRet>(&true_block.terminator);
-  const auto* false_ret = std::get_if<LirRet>(&false_block.terminator);
-  if (true_ret == nullptr || false_ret == nullptr || !true_ret->value_str.has_value() ||
-      !false_ret->value_str.has_value() || true_ret->type_str != "i32" ||
-      false_ret->type_str != "i32") {
-    return std::nullopt;
-  }
-
-  const auto true_return_imm = parse_i64(*true_ret->value_str);
-  const auto false_return_imm = parse_i64(*false_ret->value_str);
-  if (!true_return_imm.has_value() || !false_return_imm.has_value()) {
-    return std::nullopt;
-  }
-
-  return MinimalConditionalReturnSlice{
-      function.name,
-      0,
-      *cmp0_predicate,
-      {MinimalConditionalReturnSlice::ValueKind::Immediate, *lhs_imm},
-      {MinimalConditionalReturnSlice::ValueKind::Immediate, *rhs_imm},
-      condbr->true_label,
-      condbr->false_label,
-      {MinimalConditionalReturnSlice::ValueKind::Immediate, *true_return_imm},
-      {MinimalConditionalReturnSlice::ValueKind::Immediate, *false_return_imm},
-  };
 }
 
 std::optional<MinimalCountdownLoopSlice> parse_minimal_countdown_loop_slice(

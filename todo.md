@@ -7,13 +7,15 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 5: pull phi and CFG normalization behind the BIR boundary
-- Current slice: continue the Step 5 AArch64 direct-LIR helper re-audit after
-  pruning the redundant minimal conditional-return fallback that sat behind the
-  already-shared `try_lower_to_bir(...)` branch-return route
-- Next intended slice: re-audit the remaining AArch64 direct-LIR helper set
-  after the conditional-return prune and choose the next smallest production
-  multi-block CFG seam that still bypasses canonical BIR ownership, if any,
-  without spilling into Step 6 MIR-owned liveness/regalloc work
+- Current slice: rebuild and validate the Step 5 AArch64 helper re-audit after
+  deleting the now-dead direct-LIR conditional-return parser and unused
+  conditional-phi helper scaffolding that remained after the shared
+  `try_lower_to_bir(...)` branch-return route took ownership
+- Next intended slice: continue the Step 5 AArch64 direct-LIR CFG audit from
+  the generic emitter itself and decide whether any remaining multi-block
+  branch or switch shapes can be fenced behind shared BIR ownership without
+  cutting into still-broad production fallback coverage or spilling into Step 6
+  MIR-owned liveness/regalloc work
 
 ## Completed
 
@@ -48,6 +50,20 @@ Source Plan: plan.md
   - rebuilt `backend_bir_tests`, re-ran it, refreshed `test_fail_after.log`,
     and passed the regression guard with no new failures and no pass-count
     drop (`2809 -> 2809`)
+- Finished the follow-up AArch64 helper re-audit after that prune:
+  - deleted the now-unused direct-LIR
+    `parse_minimal_conditional_return_slice(const LirModule&)` helper from
+    `src/backend/aarch64/codegen/emit.cpp`; the direct emitter no longer calls
+    it after the shared BIR retry took ownership of that bounded branch-return
+    shape
+  - deleted the adjacent unused `MinimalConditionalPhiJoinSlice` scaffolding in
+    the same file, which had become dead once the direct emitter started
+    rejecting target-local phi revival after BIR misses
+  - next audit target remains the generic AArch64 direct emitter's broader
+    multi-block CFG surface rather than any remaining dedicated helper parser
+  - rebuilt the tree, re-ran `backend_bir_tests`, refreshed
+    `test_fail_after.log`, and kept the full-suite baseline flat at 32 failing
+    tests out of 2841 with no new failures
 - Closed the branch-only constant-return Step 5 CFG seam behind shared BIR:
   - taught `src/backend/lowering/lir_to_bir.cpp` to collapse the existing
     `goto`-only empty-block constant-return LIR shape into the canonical
