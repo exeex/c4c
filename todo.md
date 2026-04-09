@@ -7,16 +7,36 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: audit whether the remaining raw-LIR
-  `prune_dead_entry_alloca_insts(...)` helper should stay as focused
-  LIR-mutation coverage or can also be collapsed behind the backend-owned
-  rewrite-patch surface
-- Next intended slice: if the raw-LIR entry-alloca pruning helper is still
-  only serving focused tests, delete it and retarget that coverage to assert on
-  backend-owned rewrite patches plus the isolated apply step
+- Current slice: audit the remaining Step 6/7 stack-layout cleanup surface for
+  any raw-LIR-only compatibility helpers that still exist outside the isolated
+  `apply_entry_alloca_rewrite_patch(...)` mutation step
+- Next intended slice: if no other shared-test-only raw-LIR stack-layout
+  helpers remain, retarget the next focused cleanup to whichever direct-emitter
+  entry-alloca compatibility seam still rebuilds metadata from raw `LirFunction`
 
 ## Completed
 
+- Completed the next Step 6 bounded raw-LIR entry-alloca pruning helper
+  retirement slice by deleting the final shared test-only pruning entrypoint
+  and forcing that regression coverage onto the backend-owned rewrite-patch
+  surface:
+  - removed `prune_dead_entry_alloca_insts(...)` plus its private
+    `following_entry_store(...)` helper from
+    `src/backend/stack_layout/slot_assignment.*`, leaving the explicit
+    rewrite-patch builder/apply flow as the only shared entry-alloca pruning
+    surface
+  - retargeted
+    `tests/backend/backend_shared_util_tests.cpp` so the focused dead/live
+    entry-alloca pruning regressions now assert through
+    `build_entry_alloca_rewrite_patch(...)` and
+    `apply_entry_alloca_rewrite_patch(...)` instead of the deleted raw-LIR
+    pruning helper
+  - rebuilt `backend_shared_util_tests` and `backend_bir_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`
+    and `ctest --test-dir build -R '^backend_bir_tests$' --output-on-failure`,
+    rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with no new failures and no pass-count drop
+    (`2809 -> 2809`, same 32 known failing tests as `test_fail_before.log`)
 - Completed the next Step 6 bounded raw-LIR pruning compatibility cleanup
   slice by deleting the remaining test-only raw-LIR param-pruning helper and
   forcing shared rewrite-patch coverage onto the backend-owned stack-layout

@@ -1733,64 +1733,75 @@ void test_backend_shared_slot_assignment_prunes_dead_entry_alloca_insts() {
   const c4c::backend::RegAllocIntegrationResult regalloc;
 
   const auto dead_module = make_dead_local_alloca_candidate_module();
-  const auto& dead_function = dead_module.functions.front();
+  auto dead_function = dead_module.functions.front();
   const auto dead_input =
       c4c::backend::stack_layout::lower_lir_to_stack_layout_input(dead_function);
   const auto dead_analysis =
       c4c::backend::stack_layout::analyze_stack_layout(dead_input, regalloc, {});
   const auto dead_plans =
       c4c::backend::stack_layout::plan_entry_alloca_slots(dead_input, dead_analysis);
-  const auto dead_pruned =
-      c4c::backend::stack_layout::prune_dead_entry_alloca_insts(dead_function, dead_plans);
+  const auto dead_patch =
+      c4c::backend::stack_layout::build_entry_alloca_rewrite_patch(dead_input, dead_plans);
+  c4c::backend::stack_layout::apply_entry_alloca_rewrite_patch(dead_function, dead_patch);
 
-  expect_true(dead_pruned.empty(),
-              "shared slot-assignment pruning should drop dead non-param entry allocas and their paired zero-init stores");
+  expect_true(dead_function.alloca_insts.empty(),
+              "shared slot-assignment rewrite patches should drop dead non-param entry allocas and their paired zero-init stores");
 
   const auto live_module = make_live_local_alloca_candidate_module();
-  const auto& live_function = live_module.functions.front();
+  auto live_function = live_module.functions.front();
   const auto live_input =
       c4c::backend::stack_layout::lower_lir_to_stack_layout_input(live_function);
   const auto live_analysis =
       c4c::backend::stack_layout::analyze_stack_layout(live_input, regalloc, {});
   const auto live_plans =
       c4c::backend::stack_layout::plan_entry_alloca_slots(live_input, live_analysis);
-  const auto live_pruned =
-      c4c::backend::stack_layout::prune_dead_entry_alloca_insts(live_function, live_plans);
+  const auto live_patch =
+      c4c::backend::stack_layout::build_entry_alloca_rewrite_patch(live_input, live_plans);
+  c4c::backend::stack_layout::apply_entry_alloca_rewrite_patch(live_function, live_patch);
 
-  expect_true(live_pruned.size() == live_function.alloca_insts.size(),
-              "shared slot-assignment pruning should keep aggregate live non-param entry allocas and their paired zero-init stores");
+  expect_true(live_function.alloca_insts.size() == live_module.functions.front().alloca_insts.size(),
+              "shared slot-assignment rewrite patches should keep aggregate live non-param entry allocas and their paired zero-init stores");
 
   const auto read_first_module = make_read_before_store_local_alloca_candidate_module();
-  const auto& read_first_function = read_first_module.functions.front();
+  auto read_first_function = read_first_module.functions.front();
   const auto read_first_input =
       c4c::backend::stack_layout::lower_lir_to_stack_layout_input(read_first_function);
   const auto read_first_analysis =
       c4c::backend::stack_layout::analyze_stack_layout(read_first_input, regalloc, {});
   const auto read_first_plans =
       c4c::backend::stack_layout::plan_entry_alloca_slots(read_first_input, read_first_analysis);
-  const auto read_first_pruned = c4c::backend::stack_layout::prune_dead_entry_alloca_insts(
-      read_first_function, read_first_plans);
+  const auto read_first_patch = c4c::backend::stack_layout::build_entry_alloca_rewrite_patch(
+      read_first_input, read_first_plans);
+  c4c::backend::stack_layout::apply_entry_alloca_rewrite_patch(read_first_function,
+                                                               read_first_patch);
 
-  expect_true(read_first_pruned.size() == read_first_function.alloca_insts.size(),
-              "shared slot-assignment pruning should preserve paired zero-init stores when a live entry alloca is read before the first overwrite");
+  expect_true(
+      read_first_function.alloca_insts.size() ==
+          read_first_module.functions.front().alloca_insts.size(),
+      "shared slot-assignment rewrite patches should preserve paired zero-init stores when a live entry alloca is read before the first overwrite");
 
   const auto scalar_overwrite_module = make_overwrite_first_scalar_local_alloca_candidate_module();
-  const auto& scalar_overwrite_function = scalar_overwrite_module.functions.front();
+  auto scalar_overwrite_function = scalar_overwrite_module.functions.front();
   const auto scalar_overwrite_input =
       c4c::backend::stack_layout::lower_lir_to_stack_layout_input(scalar_overwrite_function);
   const auto scalar_overwrite_analysis =
       c4c::backend::stack_layout::analyze_stack_layout(scalar_overwrite_input, regalloc, {});
   const auto scalar_overwrite_plans = c4c::backend::stack_layout::plan_entry_alloca_slots(
       scalar_overwrite_input, scalar_overwrite_analysis);
-  const auto scalar_overwrite_pruned =
-      c4c::backend::stack_layout::prune_dead_entry_alloca_insts(scalar_overwrite_function,
-                                                                scalar_overwrite_plans);
+  const auto scalar_overwrite_patch =
+      c4c::backend::stack_layout::build_entry_alloca_rewrite_patch(scalar_overwrite_input,
+                                                                   scalar_overwrite_plans);
+  c4c::backend::stack_layout::apply_entry_alloca_rewrite_patch(scalar_overwrite_function,
+                                                               scalar_overwrite_patch);
 
   expect_true(
-      scalar_overwrite_pruned.size() + 1 == scalar_overwrite_function.alloca_insts.size() &&
+      scalar_overwrite_function.alloca_insts.size() + 1 ==
+              scalar_overwrite_module.functions.front().alloca_insts.size() &&
           std::holds_alternative<c4c::codegen::lir::LirAllocaOp>(
-              scalar_overwrite_pruned.front()),
-      "shared slot-assignment pruning should keep scalar live entry allocas while dropping redundant paired zero-init stores");
+              scalar_overwrite_function.alloca_insts.front()) &&
+          !std::holds_alternative<c4c::codegen::lir::LirStoreOp>(
+              scalar_overwrite_function.alloca_insts.back()),
+      "shared slot-assignment rewrite patches should keep scalar live entry allocas while dropping redundant paired zero-init stores");
 }
 
 void test_backend_shared_slot_assignment_applies_coalesced_entry_slots() {

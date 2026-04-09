@@ -39,13 +39,6 @@ bool is_scalar_alloca_type(std::string_view type_str) {
          type_str.front() != '%';
 }
 
-const LirStoreOp* following_entry_store(const LirFunction& function, std::size_t index) {
-  if (index + 1 >= function.alloca_insts.size()) {
-    return nullptr;
-  }
-  return std::get_if<LirStoreOp>(&function.alloca_insts[index + 1]);
-}
-
 std::vector<LirInst> build_pruned_entry_alloca_insts(
     const StackLayoutInput& input,
     const std::vector<EntryAllocaSlotPlan>& plans) {
@@ -360,53 +353,6 @@ void apply_entry_alloca_rewrite_patch(
     }
     rewrite_terminator_alloca_refs(block.terminator, canonical_by_alloca);
   }
-}
-
-std::vector<c4c::codegen::lir::LirInst> prune_dead_entry_alloca_insts(
-    const LirFunction& function,
-    const std::vector<EntryAllocaSlotPlan>& plans) {
-  std::unordered_map<std::string, EntryAllocaSlotPlan> plans_by_alloca;
-  plans_by_alloca.reserve(plans.size());
-  for (const auto& plan : plans) {
-    plans_by_alloca.emplace(plan.alloca_name, plan);
-  }
-
-  std::vector<c4c::codegen::lir::LirInst> pruned;
-  pruned.reserve(function.alloca_insts.size());
-
-  for (std::size_t index = 0; index < function.alloca_insts.size(); ++index) {
-    const auto* alloca = std::get_if<LirAllocaOp>(&function.alloca_insts[index]);
-    if (alloca == nullptr) {
-      pruned.push_back(function.alloca_insts[index]);
-      continue;
-    }
-
-    const auto plan_it = plans_by_alloca.find(alloca->result);
-    if (plan_it == plans_by_alloca.end()) {
-      pruned.push_back(function.alloca_insts[index]);
-      continue;
-    }
-
-    if (plan_it->second.needs_stack_slot) {
-      pruned.push_back(function.alloca_insts[index]);
-      if (plan_it->second.remove_following_entry_store) {
-        const auto* store = following_entry_store(function, index);
-        if (store != nullptr && store->ptr == alloca->result) {
-          ++index;
-        }
-      }
-      continue;
-    }
-
-    if (plan_it->second.remove_following_entry_store) {
-      const auto* store = following_entry_store(function, index);
-      if (store != nullptr && store->ptr == alloca->result) {
-        ++index;
-      }
-    }
-  }
-
-  return pruned;
 }
 
 std::vector<ParamAllocaSlotPlan> plan_param_alloca_slots(
