@@ -8,12 +8,12 @@ Source Plan: plan.md
 
 - Step 5: pull phi and CFG normalization behind the BIR boundary
 - Current slice: continue the Step 5 audit for any remaining AArch64
-  branch-only conditional-return goto-chain families beyond the newly fixed
-  mirrored false-arm double-empty-bridge ordering case
-- Next intended slice: inspect whether any interleaved or otherwise reordered
-  branch-only conditional-return arm layouts still miss shared BIR lowering
-  after the label-driven return-arm matcher without spilling into Step 6
-  MIR-owned liveness/regalloc work
+  branch-only conditional-return goto-chain families beyond the newly covered
+  interleaved two-arm double-empty-bridge ordering case
+- Next intended slice: inspect whether any remaining branch-only
+  conditional-return families with deeper mixed arm lengths or nontrivial
+  compare operands still bypass the shared BIR route before stepping into
+  Step 6 MIR-owned liveness/regalloc work
 
 ## Completed
 
@@ -39,6 +39,22 @@ Source Plan: plan.md
   - rebuilt `backend_bir_tests`, rebuilt the full tree, refreshed
     `test_fail_after.log`, and passed the regression guard with no new
     failures and no pass-count drop (`2809 -> 2809`)
+- Completed the follow-up Step 5 audit for interleaved branch-only
+  conditional-return goto chains and confirmed the shared BIR matcher already
+  owns that reordered CFG family:
+  - added focused shared lowering coverage in
+    `tests/backend/backend_bir_lowering_tests.cpp` proving that an
+    interleaved two-arm double-empty-bridge conditional-return LIR slice still
+    normalizes to one canonical `bir.select ...; bir.ret ...` block even when
+    the true-arm and false-arm empty chains are physically interleaved in
+    `function.blocks`
+  - added focused AArch64 pipeline coverage in
+    `tests/backend/backend_bir_pipeline_aarch64_tests.cpp` proving the native
+    emitter routes that interleaved branch-only fixture through the shared
+    BIR-owned `.Lselect_*` path rather than exposing any of the original
+    `then.bridge*`, `else.bridge*`, `then.ret`, or `else.ret` labels
+  - rebuilt `backend_bir_tests` and confirmed the new interleaved audit slice
+    passes without needing further matcher changes
 - Closed the next Step 5 AArch64 branch-only goto-chain CFG seam behind the
   shared BIR boundary by teaching shared lowering to consume linear empty
   chains instead of stopping after one bridge block:

@@ -89,6 +89,12 @@ That split causes several problems:
 
 ## Execution Notes
 
+- 2026-04-09: a follow-up Step 5 audit confirmed that the shared
+  `try_lower_conditional_return_select_function(...)` matcher already handles
+  interleaved branch-only conditional-return arm layouts where the true-arm
+  and false-arm empty goto chains are physically interleaved in
+  `function.blocks`; added focused shared lowering and AArch64 pipeline
+  regressions to lock that ownership boundary down
 - 2026-04-09: the remaining Step 1 `lir_to_bir.cpp` helper re-audit confirmed
   that `lower_binary(...)`, `lower_compare_materialization(...)`, and
   `lower_select_materialization(...)` already consume semantic `LirTypeRef`

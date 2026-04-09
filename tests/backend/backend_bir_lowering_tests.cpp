@@ -250,6 +250,68 @@ make_bir_minimal_conditional_return_with_mirrored_false_double_empty_bridge_chai
   return module;
 }
 
+c4c::codegen::lir::LirModule
+make_bir_minimal_conditional_return_with_interleaved_double_empty_bridge_chains_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCmpOp{"%t0", false, "slt", "i32", "2", "3"});
+  entry.insts.push_back(LirCastOp{"%t1", LirCastKind::ZExt, "i1", "%t0", "i32"});
+  entry.insts.push_back(LirCmpOp{"%t2", false, "ne", "i32", "%t1", "0"});
+  entry.terminator = LirCondBr{"%t2", "then.bridge0", "else.bridge0"};
+
+  LirBlock then_bridge0;
+  then_bridge0.id = LirBlockId{1};
+  then_bridge0.label = "then.bridge0";
+  then_bridge0.terminator = LirBr{"then.bridge1"};
+
+  LirBlock else_bridge0;
+  else_bridge0.id = LirBlockId{2};
+  else_bridge0.label = "else.bridge0";
+  else_bridge0.terminator = LirBr{"else.bridge1"};
+
+  LirBlock then_bridge1;
+  then_bridge1.id = LirBlockId{3};
+  then_bridge1.label = "then.bridge1";
+  then_bridge1.terminator = LirBr{"then.ret"};
+
+  LirBlock else_bridge1;
+  else_bridge1.id = LirBlockId{4};
+  else_bridge1.label = "else.bridge1";
+  else_bridge1.terminator = LirBr{"else.ret"};
+
+  LirBlock else_ret;
+  else_ret.id = LirBlockId{5};
+  else_ret.label = "else.ret";
+  else_ret.terminator = LirRet{std::string("1"), "i32"};
+
+  LirBlock then_ret;
+  then_ret.id = LirBlockId{6};
+  then_ret.label = "then.ret";
+  then_ret.terminator = LirRet{std::string("0"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(then_bridge0));
+  function.blocks.push_back(std::move(else_bridge0));
+  function.blocks.push_back(std::move(then_bridge1));
+  function.blocks.push_back(std::move(else_bridge1));
+  function.blocks.push_back(std::move(else_ret));
+  function.blocks.push_back(std::move(then_ret));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_bir_minimal_global_int_pointer_diff_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -2229,6 +2291,28 @@ void test_bir_lowering_accepts_minimal_conditional_return_lir_module_with_mirror
   expect_contains(rendered,
                   "bir.func @main() -> i32 {\nentry:\n  %t.select = bir.select slt i32 2, 3, 0, 1\n  bir.ret i32 %t.select\n}\n",
                   "the lowered mirrored false-arm double-empty-bridge conditional-return BIR module should normalize the reordered longer goto chain to one shared select");
+}
+
+void test_bir_lowering_accepts_minimal_conditional_return_lir_module_with_interleaved_double_empty_bridge_chains() {
+  const auto lowered = c4c::backend::try_lower_to_bir(
+      make_bir_minimal_conditional_return_with_interleaved_double_empty_bridge_chains_lir_module());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the interleaved double-empty-bridge conditional-return LIR slice through the shared branch-only select contract");
+
+  expect_true(lowered->functions.size() == 1 &&
+                  lowered->functions.front().blocks.size() == 1 &&
+                  lowered->functions.front().blocks.front().label == "entry" &&
+                  lowered->functions.front().blocks.front().insts.size() == 1 &&
+                  std::holds_alternative<c4c::backend::bir::SelectInst>(
+                      lowered->functions.front().blocks.front().insts.front()) &&
+                  lowered->functions.front().blocks.front().terminator.kind ==
+                      c4c::backend::bir::TerminatorKind::Return,
+              "the lowered interleaved double-empty-bridge conditional-return BIR module should collapse the reordered branch-only CFG to one canonical select-and-return block");
+
+  const auto rendered = c4c::backend::bir::print(*lowered);
+  expect_contains(rendered,
+                  "bir.func @main() -> i32 {\nentry:\n  %t.select = bir.select slt i32 2, 3, 0, 1\n  bir.ret i32 %t.select\n}\n",
+                  "the lowered interleaved double-empty-bridge conditional-return BIR module should normalize the interleaved goto chains to one shared select");
 }
 
 void test_bir_lowering_accepts_minimal_countdown_do_while_lir_module_with_stale_typed_i32_text() {
@@ -4766,6 +4850,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_minimal_conditional_return_lir_module_with_asymmetric_empty_bridge);
   RUN_TEST(test_bir_lowering_accepts_minimal_conditional_return_lir_module_with_double_empty_bridge_chain);
   RUN_TEST(test_bir_lowering_accepts_minimal_conditional_return_lir_module_with_mirrored_false_double_empty_bridge_chain);
+  RUN_TEST(test_bir_lowering_accepts_minimal_conditional_return_lir_module_with_interleaved_double_empty_bridge_chains);
   RUN_TEST(test_bir_lowering_accepts_typed_single_param_select_branch_slice_with_stale_text);
   RUN_TEST(test_bir_lowering_accepts_typed_single_param_select_branch_slice_with_stale_return_text);
   RUN_TEST(test_bir_lowering_accepts_single_param_select_phi_slice);
