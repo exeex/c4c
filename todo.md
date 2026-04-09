@@ -9,16 +9,10 @@ Source Plan: plan.md
 - Step 1 audit outcome: existing parser coverage already covers top-level
   deduction guides, template-id conversion operators, and generated
   disambiguation matrix cases for `&&`.
-- Active implementation slice completed: `const T&&` now rejects lvalue
-  arguments during template deduction instead of being treated as a forwarding
-  reference.
-- Active implementation slice completed: local `auto&&` deduction from lvalue
-  initializers now collapses to lvalue-reference storage in sema and HIR
-  instead of tripping the plain rvalue-reference binding rule or materializing
-  a temporary.
-- Active implementation slice completed: added focused runtime coverage proving
-  named rvalue-reference variables remain lvalues in overload resolution unless
-  explicitly cast or forwarded back to rvalues.
+- Active implementation slice completed: returning a named rvalue-reference
+  parameter through plain `return value;` now triggers the same lvalue-binding
+  rejection used by reference initialization instead of slipping through return
+  type compatibility checks.
 
 ## Completed
 
@@ -45,12 +39,22 @@ Source Plan: plan.md
 - Re-ran the focused named-rvalue-reference regression cluster plus the full
   suite; regression guard passed with pass count improving from 3155 to 3158
   and zero new failures.
+- Added `bad_named_rvalue_ref_return_lvalue.cpp` to lock the rule that named
+  `T&&` parameters stay lvalues in `return` statements unless explicitly cast
+  or forwarded.
+- Reject lvalue returns from `T&&` functions in sema by applying reference
+  binding checks before return-type compatibility.
+- Re-ran the focused named-rvalue-reference return and overload tests plus the
+  full suite; regression guard passed with pass count improving from 3155 to
+  3159 and zero new failures.
 
 ## Next Slice
 
-- add focused coverage for named rvalue-reference variables in parameter and
-  return-value paths where the lvalue rule can interact with forwarding
-  helpers or overload sets
+- add focused coverage for named rvalue-reference parameters in overload paths
+  where plain use stays an lvalue but explicit forwarding still selects the
+  rvalue overload
+- extend that coverage across helper-return paths only if a remaining generic
+  `&&` defect is demonstrated against Clang
 - keep adjacent library-facing probes bounded to generic language defects only
 
 ## Blockers
@@ -70,4 +74,7 @@ Source Plan: plan.md
 - named `int&& ref` already lowers through lvalue overload selection, while
   explicit `static_cast<int&&>(ref)` and `forward_value<int>(ref)` still route
   to the rvalue overload as expected
+- return validation now strips reference wrappers for type compatibility but
+  separately enforces lvalue/rvalue binding rules, matching the existing
+  declaration-initialization behavior more closely
 - keep EASTL or libstdc++ findings scoped to generic language defects only

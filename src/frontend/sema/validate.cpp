@@ -1035,6 +1035,12 @@ class Validator {
             if (!returns_void_expr)
               emit(n->line, "return with a value in function returning void");
           }
+          if (current_fn_ret_.is_lvalue_ref && !rv_info.is_lvalue) {
+            emit(n->line, "lvalue reference must bind to an lvalue");
+          }
+          if (current_fn_ret_.is_rvalue_ref && rv_info.is_lvalue) {
+            emit(n->line, "rvalue reference cannot bind to an lvalue");
+          }
           // Detect direct return of an uninitialized plain-scalar local.
           // Skip if the function has goto/loop statements (complex control flow
           // can make the read unreachable, leading to false positives).
@@ -1048,9 +1054,11 @@ class Validator {
                    rv->name + "'");
             }
           }
+          const TypeSpec return_check_ts =
+              is_any_ref_ty(current_fn_ret_) ? referred_type(current_fn_ret_) : current_fn_ret_;
           if (!fn_returns_void && rv_info.valid &&
               !implicit_convertible(
-                  current_fn_ret_, rv_info.type, is_null_pointer_constant_expr(n->left))) {
+                  return_check_ts, rv_info.type, is_null_pointer_constant_expr(n->left))) {
             emit(n->line, "incompatible return type");
           }
         }
