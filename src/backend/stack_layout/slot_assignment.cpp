@@ -207,16 +207,16 @@ PreparedEntryAllocaStackLayoutClassificationInput lower_prepared_stack_layout_cl
   classification.entry_alloca_use_blocks = collect_prepared_entry_alloca_use_blocks(input);
   classification.entry_alloca_first_accesses =
       collect_prepared_entry_alloca_first_accesses(input);
-  classification.entry_allocas = std::move(input.entry_allocas);
   return classification;
 }
 
 StackLayoutInput lower_prepared_stack_layout_input(
+    const PreparedEntryAllocaRewriteMetadata& rewrite_metadata,
     const PreparedEntryAllocaStackLayoutClassificationInput& classification,
     const PreparedEntryAllocaStackLayoutMetadata& metadata,
     const LivenessInput* liveness_input) {
   StackLayoutInput input;
-  input.entry_allocas = classification.entry_allocas;
+  input.entry_allocas = rewrite_metadata.entry_allocas;
   input.escaped_entry_allocas = classification.escaped_entry_allocas;
   input.entry_alloca_use_blocks = classification.entry_alloca_use_blocks;
   input.entry_alloca_first_accesses = classification.entry_alloca_first_accesses;
@@ -531,6 +531,7 @@ PreparedEntryAllocaFunctionInputs prepare_module_function_entry_alloca_preparati
           try_lower_module_function_to_bir_liveness_input(module, function_index);
       bir_liveness.has_value()) {
     auto stack_layout_input = lower_lir_to_stack_layout_input(function);
+    inputs.rewrite_metadata.entry_allocas = stack_layout_input.entry_allocas;
     inputs.stack_layout_metadata.signature_params = stack_layout_input.signature_params;
     inputs.stack_layout_metadata.return_type = stack_layout_input.return_type;
     inputs.stack_layout_metadata.is_variadic = stack_layout_input.is_variadic;
@@ -556,8 +557,10 @@ PreparedEntryAllocaFunctionInputs prepare_module_function_entry_alloca_preparati
     inputs.stack_layout_metadata.call_results.push_back(
         StackLayoutCallResultInput{call_result.value_name, call_result.type_str});
   }
-  inputs.stack_layout_classification = lower_prepared_stack_layout_classification_input(
-      lower_function_entry_alloca_stack_layout_input(function, backend_cfg));
+  auto stack_layout_input = lower_function_entry_alloca_stack_layout_input(function, backend_cfg);
+  inputs.rewrite_metadata.entry_allocas = stack_layout_input.entry_allocas;
+  inputs.stack_layout_classification =
+      lower_prepared_stack_layout_classification_input(std::move(stack_layout_input));
   inputs.backend_cfg_liveness = lower_backend_cfg_to_liveness_function(backend_cfg);
   inputs.stack_layout_source =
       EntryAllocaRewriteStackLayoutSource::EntryAllocasAndBackendCfg;
@@ -578,6 +581,7 @@ EntryAllocaRewriteInputs lower_prepared_entry_alloca_function_inputs(
   }
 
   inputs.stack_layout_input = lower_prepared_stack_layout_input(
+      prepared_inputs.rewrite_metadata,
       prepared_inputs.stack_layout_classification,
       prepared_inputs.stack_layout_metadata,
       &inputs.liveness_input);

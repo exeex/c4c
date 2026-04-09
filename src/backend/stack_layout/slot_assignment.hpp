@@ -53,15 +53,19 @@ struct PreparedEntryAllocaStackLayoutMetadata {
 };
 
 struct PreparedEntryAllocaStackLayoutClassificationInput {
-  std::vector<EntryAllocaInput> entry_allocas;
   std::optional<std::vector<std::string>> escaped_entry_allocas;
   std::optional<std::vector<EntryAllocaUseBlocks>> entry_alloca_use_blocks;
   std::optional<std::vector<EntryAllocaFirstAccess>> entry_alloca_first_accesses;
 };
 
+struct PreparedEntryAllocaRewriteMetadata {
+  std::vector<EntryAllocaInput> entry_allocas;
+};
+
 struct PreparedEntryAllocaFunctionInputs {
   PreparedEntryAllocaStackLayoutClassificationInput stack_layout_classification;
   PreparedEntryAllocaStackLayoutMetadata stack_layout_metadata;
+  PreparedEntryAllocaRewriteMetadata rewrite_metadata;
   std::optional<BackendCfgLivenessFunction> backend_cfg_liveness;
   std::optional<LivenessInput> liveness_input;
   EntryAllocaRewriteLivenessSource liveness_source =

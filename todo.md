@@ -7,16 +7,45 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: audit whether prepared fallback `entry_allocas` ownership can
-  narrow further without reopening raw-LIR stack-layout decoding
-- Current implementation target: determine whether the prepared fallback
-  carrier still needs to cache full `EntryAllocaInput` records or whether a
-  narrower backend-owned seam can drive rewrite planning and patch synthesis
-- Next intended slice: either remove the next redundant prepared fallback
-  `entry_allocas` field with a focused regression or record the exact rewrite
-  consumer and invariant that still require it
+- Current slice: audit whether the prepared rewrite-owned entry-alloca seam can
+  narrow beyond `EntryAllocaInput` without breaking slot planning or rewrite
+  patch synthesis
+- Current implementation target: trace the exact `EntryAllocaInput` fields used
+  by `plan_entry_alloca_slots(...)` and `build_entry_alloca_rewrite_patch(...)`
+  and either trim the prepared rewrite carrier further with focused regressions
+  or record the exact remaining invariants
+- Next intended slice: if only a subset of `EntryAllocaInput` is still needed,
+  split a smaller prepared rewrite-owned descriptor from the production
+  `StackLayoutInput` contract and retarget the entry-alloca rewrite path to it
 
 ## Completed
+
+- Completed the next Step 6 prepared fallback `entry_allocas` ownership
+  narrowing slice by removing entry-alloca records from the backend-CFG-derived
+  stack-layout classification carrier and moving them onto a dedicated
+  rewrite-owned prepared seam:
+  - removed `entry_allocas` from
+    `src/backend/stack_layout/slot_assignment.hpp`'s
+    `PreparedEntryAllocaStackLayoutClassificationInput`
+  - added `PreparedEntryAllocaRewriteMetadata` in
+    `src/backend/stack_layout/slot_assignment.hpp` so prepared entry-alloca
+    records remain explicitly owned by the rewrite path instead of being mixed
+    into backend-CFG classification state
+  - updated `src/backend/stack_layout/slot_assignment.cpp` so preparation now
+    stores entry-alloca records on the new rewrite-owned seam while lowering
+    still rehydrates production `StackLayoutInput::entry_allocas` before slot
+    planning and rewrite patch synthesis
+  - updated `tests/backend/backend_shared_util_tests.cpp` to prove prepared
+    entry-alloca rewrite prep now exposes those records through rewrite
+    metadata while the classification carrier remains limited to backend-CFG
+    stack-layout facts
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`
+  - rebuilt the full tree, refreshed `test_after.log`, and passed the
+    regression guard with the repo’s allowed non-decreasing rule and no new
+    failures (`2809 -> 2809`, same 32 known failing tests as
+    `test_before.log`; full suite summary `2841` total with `32` failing both
+    before and after)
 
 - Completed the next Step 6 prepared block-arity narrowing slice by removing
   duplicate prepared per-block instruction counts from the stack-layout

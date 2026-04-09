@@ -1857,7 +1857,7 @@ void test_backend_shared_slot_assignment_prepares_module_function_inputs() {
                   lowerable_preparation.stack_layout_source ==
                       c4c::backend::stack_layout::EntryAllocaRewriteStackLayoutSource::
                           RawLirFunction &&
-                  lowerable_preparation.stack_layout_classification.entry_allocas.empty() &&
+                  lowerable_preparation.rewrite_metadata.entry_allocas.empty() &&
                   lowerable_preparation.backend_cfg_liveness == std::nullopt &&
                   lowerable_preparation.liveness_input.has_value() &&
                   lowerable_preparation.liveness_input->entry_insts.empty() &&
@@ -1872,8 +1872,8 @@ void test_backend_shared_slot_assignment_prepares_module_function_inputs() {
                   fallback_preparation.stack_layout_source ==
                       c4c::backend::stack_layout::EntryAllocaRewriteStackLayoutSource::
                           EntryAllocasAndBackendCfg &&
-                  fallback_preparation.stack_layout_classification.entry_allocas.size() == 1 &&
-                  fallback_preparation.stack_layout_classification.entry_allocas.front().alloca_name ==
+                  fallback_preparation.rewrite_metadata.entry_allocas.size() == 1 &&
+                  fallback_preparation.rewrite_metadata.entry_allocas.front().alloca_name ==
                       "%lv.buf" &&
                   fallback_preparation.stack_layout_metadata.signature_params.empty() &&
                   fallback_preparation.stack_layout_metadata.return_type ==
@@ -2030,7 +2030,8 @@ void test_backend_shared_fallback_preparation_separates_stack_layout_metadata_fr
   expect_true(preparation.stack_layout_source ==
                   c4c::backend::stack_layout::EntryAllocaRewriteStackLayoutSource::
                       EntryAllocasAndBackendCfg &&
-                  preparation.stack_layout_classification.entry_allocas.size() == 1 &&
+                  preparation.rewrite_metadata.entry_allocas.size() == 1 &&
+                  preparation.rewrite_metadata.entry_allocas.front().alloca_name == "%lv.buf" &&
                   preparation.stack_layout_classification.escaped_entry_allocas.has_value() &&
                   preparation.stack_layout_classification.escaped_entry_allocas->empty() &&
                   preparation.stack_layout_classification.entry_alloca_use_blocks.has_value() &&
