@@ -1373,6 +1373,8 @@ void Lowerer::lower_struct_def(const Node* sd) {
         // Find the first method's params from pending_methods_.
         for (const auto& pm : pending_methods_) {
           if (pm.mangled == struct_methods_[key]) {
+            e0.method_is_lvalue_ref = pm.method_node->is_lvalue_ref_method;
+            e0.method_is_rvalue_ref = pm.method_node->is_rvalue_ref_method;
             for (int pi = 0; pi < pm.method_node->n_params; ++pi) {
               e0.param_is_rvalue_ref.push_back(pm.method_node->params[pi]->type.is_rvalue_ref);
               e0.param_is_lvalue_ref.push_back(pm.method_node->params[pi]->type.is_lvalue_ref);
@@ -1384,6 +1386,8 @@ void Lowerer::lower_struct_def(const Node* sd) {
       }
       RefOverloadEntry e1;
       e1.mangled_name = mangled;
+      e1.method_is_lvalue_ref = method->is_lvalue_ref_method;
+      e1.method_is_rvalue_ref = method->is_rvalue_ref_method;
       for (int pi = 0; pi < method->n_params; ++pi) {
         e1.param_is_rvalue_ref.push_back(method->params[pi]->type.is_rvalue_ref);
         e1.param_is_lvalue_ref.push_back(method->params[pi]->type.is_lvalue_ref);

@@ -833,11 +833,24 @@ std::string Lowerer::resolve_ref_overload(const std::string& base_name,
   auto ovit = ref_overload_set_.find(base_name);
   if (ovit == ref_overload_set_.end()) return {};
   const auto& overloads = ovit->second;
+  const Node* object_node =
+      (call_node && call_node->left && call_node->left->kind == NK_MEMBER)
+          ? call_node->left->left
+          : nullptr;
+  const bool object_is_lvalue = object_node && is_ast_lvalue(object_node);
   const std::string* best_name = nullptr;
   int best_score = -1;
   for (const auto& ov : overloads) {
     bool viable = true;
     int score = 0;
+    if (object_node) {
+      if (ov.method_is_lvalue_ref && !object_is_lvalue) viable = false;
+      if (ov.method_is_rvalue_ref && object_is_lvalue) viable = false;
+      if (!viable) continue;
+      if (ov.method_is_rvalue_ref && !object_is_lvalue) score += 2;
+      else if (ov.method_is_lvalue_ref && object_is_lvalue) score += 2;
+      else score += 1;
+    }
     for (int i = 0;
          i < call_node->n_children &&
          i < static_cast<int>(ov.param_is_rvalue_ref.size());
@@ -1008,11 +1021,18 @@ ExprId Lowerer::try_lower_operator_call(FunctionCtx* ctx,
   auto ovit = ref_overload_set_.find(base_key);
   if (ovit != ref_overload_set_.end() && !ovit->second.empty()) {
     const auto& overloads = ovit->second;
+    const bool object_is_lvalue = is_ast_lvalue(obj_node);
     const std::string* best_name = nullptr;
     int best_score = -1;
     for (const auto& ov : overloads) {
       bool viable = true;
       int score = 0;
+      if (ov.method_is_lvalue_ref && !object_is_lvalue) viable = false;
+      if (ov.method_is_rvalue_ref && object_is_lvalue) viable = false;
+      if (!viable) continue;
+      if (ov.method_is_rvalue_ref && !object_is_lvalue) score += 2;
+      else if (ov.method_is_lvalue_ref && object_is_lvalue) score += 2;
+      else score += 1;
       for (size_t i = 0; i < arg_nodes.size() && i < ov.param_is_rvalue_ref.size(); ++i) {
         bool arg_is_lvalue = is_ast_lvalue(arg_nodes[i]);
         if (ov.param_is_lvalue_ref[i] && !arg_is_lvalue) {

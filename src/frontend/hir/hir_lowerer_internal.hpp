@@ -842,6 +842,8 @@ class Lowerer {
     std::string mangled_name;
     std::vector<bool> param_is_rvalue_ref;
     std::vector<bool> param_is_lvalue_ref;
+    bool method_is_lvalue_ref = false;
+    bool method_is_rvalue_ref = false;
   };
   std::unordered_map<std::string, std::vector<RefOverloadEntry>> ref_overload_set_;
   // Reverse mapping: AST Node* of overloaded function → mangled name.

@@ -1773,6 +1773,8 @@ Node* Parser::parse_top_level() {
             expect(TokenKind::RParen);
 
             bool is_const_method = false;
+            bool is_lvalue_ref_method = false;
+            bool is_rvalue_ref_method = false;
             while (true) {
                 if (match(TokenKind::KwConst)) {
                     is_const_method = true;
@@ -1783,6 +1785,11 @@ Node* Parser::parse_top_level() {
                 } else {
                     break;
                 }
+            }
+            if (match(TokenKind::AmpAmp)) {
+                is_rvalue_ref_method = true;
+            } else if (match(TokenKind::Amp)) {
+                is_lvalue_ref_method = true;
             }
             skip_exception_spec();
             parse_optional_cpp20_trailing_requires_clause(*this);
@@ -1797,6 +1804,8 @@ Node* Parser::parse_top_level() {
             fn->is_constexpr = is_constexpr;
             fn->is_consteval = is_consteval;
             fn->is_const_method = is_const_method;
+            fn->is_lvalue_ref_method = is_lvalue_ref_method;
+            fn->is_rvalue_ref_method = is_rvalue_ref_method;
             fn->linkage_spec = linkage_spec;
             fn->visibility = visibility_;
             fn->execution_domain = execution_domain_;
@@ -2616,6 +2625,8 @@ top_level_base_ready:
         parse_attributes(&ts);
         skip_attributes();
         bool is_const_method = false;
+        bool is_lvalue_ref_method = false;
+        bool is_rvalue_ref_method = false;
         while (is_cpp_mode() && decl_name && std::string(decl_name).find("::") != std::string::npos) {
             if (match(TokenKind::KwConst)) {
                 is_const_method = true;
@@ -2630,6 +2641,13 @@ top_level_base_ready:
                 continue;
             }
             break;
+        }
+        if (is_cpp_mode() && decl_name && std::string(decl_name).find("::") != std::string::npos) {
+            if (match(TokenKind::AmpAmp)) {
+                is_rvalue_ref_method = true;
+            } else if (match(TokenKind::Amp)) {
+                is_lvalue_ref_method = true;
+            }
         }
         skip_exception_spec();
         if (is_cpp_mode() && match(TokenKind::Arrow)) {
@@ -2741,6 +2759,8 @@ top_level_base_ready:
             fn->is_constexpr = is_constexpr;
             fn->is_consteval = is_consteval;
             fn->is_const_method = is_const_method;
+            fn->is_lvalue_ref_method = is_lvalue_ref_method;
+            fn->is_rvalue_ref_method = is_rvalue_ref_method;
             fn->linkage_spec = linkage_spec;
             fn->visibility = visibility_;
             fn->execution_domain = execution_domain_;
@@ -2770,6 +2790,8 @@ top_level_base_ready:
         fn->is_constexpr = is_constexpr;
         fn->is_consteval = is_consteval;
         fn->is_const_method = is_const_method;
+        fn->is_lvalue_ref_method = is_lvalue_ref_method;
+        fn->is_rvalue_ref_method = is_rvalue_ref_method;
         fn->linkage_spec = linkage_spec;
         fn->visibility = visibility_;
         fn->execution_domain = execution_domain_;

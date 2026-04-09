@@ -1221,6 +1221,8 @@ bool Parser::try_parse_record_method_or_field_member(
         bool is_method_const = false;
         bool is_method_constexpr = false;
         bool is_method_consteval = false;
+        bool is_method_lvalue_ref = false;
+        bool is_method_rvalue_ref = false;
         while (true) {
             if (match(TokenKind::KwConst)) { is_method_const = true; }
             else if (is_cpp_mode() && match(TokenKind::KwConstexpr)) {
@@ -1233,8 +1235,8 @@ bool Parser::try_parse_record_method_or_field_member(
         }
         // Skip C++ ref-qualifiers: & or &&
         if (is_cpp_mode()) {
-            if (check(TokenKind::AmpAmp)) consume();
-            else if (check(TokenKind::Amp)) consume();
+            if (match(TokenKind::AmpAmp)) is_method_rvalue_ref = true;
+            else if (match(TokenKind::Amp)) is_method_lvalue_ref = true;
         }
         skip_exception_spec();
         if (is_cpp_mode() && match(TokenKind::Arrow)) {
@@ -1251,6 +1253,8 @@ bool Parser::try_parse_record_method_or_field_member(
         method->operator_kind = op_kind;
         method->variadic = variadic;
         method->is_const_method = is_method_const;
+        method->is_lvalue_ref_method = is_method_lvalue_ref;
+        method->is_rvalue_ref_method = is_method_rvalue_ref;
         method->is_constexpr = is_method_constexpr;
         method->is_consteval = is_method_consteval;
         method->n_params = static_cast<int>(params.size());
@@ -1337,6 +1341,8 @@ bool Parser::try_parse_record_method_or_field_member(
             bool is_method_const = false;
             bool is_method_constexpr = false;
             bool is_method_consteval = false;
+            bool is_method_lvalue_ref = false;
+            bool is_method_rvalue_ref = false;
             while (true) {
                 if (match(TokenKind::KwConst)) { is_method_const = true; }
                 else if (is_cpp_mode() && match(TokenKind::KwConstexpr)) {
@@ -1348,8 +1354,8 @@ bool Parser::try_parse_record_method_or_field_member(
                 }
             }
             if (is_cpp_mode()) {
-                if (check(TokenKind::AmpAmp)) consume();
-                else if (check(TokenKind::Amp)) consume();
+                if (match(TokenKind::AmpAmp)) is_method_rvalue_ref = true;
+                else if (match(TokenKind::Amp)) is_method_lvalue_ref = true;
             }
             skip_exception_spec();
             if (is_cpp_mode() && match(TokenKind::Arrow)) {
@@ -1364,6 +1370,8 @@ bool Parser::try_parse_record_method_or_field_member(
             method->execution_domain = execution_domain_;
             method->variadic = variadic;
             method->is_const_method = is_method_const;
+            method->is_lvalue_ref_method = is_method_lvalue_ref;
+            method->is_rvalue_ref_method = is_method_rvalue_ref;
             method->is_constexpr = is_method_constexpr;
             method->is_consteval = is_method_consteval;
             method->n_params = static_cast<int>(params.size());
