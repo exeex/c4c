@@ -644,8 +644,6 @@ parse_minimal_double_indirect_local_pointer_conditional_return_imm(
   const auto* current = &function.blocks.front();
   if (current->label != "entry") return std::nullopt;
 
-  std::string predecessor_label;  // tracks the label of the block we branched from
-
   std::size_t step_limit = 200;
   while (step_limit-- > 0) {
     // Interpret instructions.
@@ -837,19 +835,11 @@ parse_minimal_double_indirect_local_pointer_conditional_return_imm(
         auto fv = resolve(sel->false_val);
         if (!tv || !fv || tv->is_ptr || fv->is_ptr) return std::nullopt;
         temps[sel->result] = (cond->ival != 0) ? *tv : *fv;
-      } else if (const auto* phi = std::get_if<LirPhiOp>(&inst)) {
-        if (predecessor_label.empty()) return std::nullopt;
-        bool found = false;
-        for (const auto& [val, label] : phi->incoming) {
-          if (label == predecessor_label) {
-            auto v = resolve(val);
-            if (!v) return std::nullopt;
-            temps[phi->result] = *v;
-            found = true;
-            break;
-          }
-        }
-        if (!found) return std::nullopt;
+      } else if (std::holds_alternative<LirPhiOp>(inst)) {
+        // Canonical phi/join ownership now lives behind the BIR boundary.
+        // The direct-LIR constant-folder must not keep reviving target-local
+        // phi interpretation once a module misses shared BIR lowering.
+        return std::nullopt;
       } else {
         return std::nullopt;
       }
@@ -865,7 +855,6 @@ parse_minimal_double_indirect_local_pointer_conditional_return_imm(
     if (const auto* br = std::get_if<LirBr>(&current->terminator)) {
       auto it = blocks_by_label.find(br->target_label);
       if (it == blocks_by_label.end()) return std::nullopt;
-      predecessor_label = current->label;
       current = it->second;
       continue;
     }
@@ -875,7 +864,6 @@ parse_minimal_double_indirect_local_pointer_conditional_return_imm(
       const auto& target = (cond->ival != 0) ? cbr->true_label : cbr->false_label;
       auto it = blocks_by_label.find(target);
       if (it == blocks_by_label.end()) return std::nullopt;
-      predecessor_label = current->label;
       current = it->second;
       continue;
     }

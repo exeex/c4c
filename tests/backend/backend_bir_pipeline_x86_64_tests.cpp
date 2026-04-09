@@ -79,6 +79,62 @@ c4c::codegen::lir::LirModule make_unsupported_double_return_lir_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_alloca_backed_conditional_phi_constant_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%slot.flag", "i32", "", 0});
+  function.alloca_insts.push_back(LirAllocaOp{"%slot.then", "i32", "", 0});
+  function.alloca_insts.push_back(LirAllocaOp{"%slot.else", "i32", "", 0});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{"1", "%slot.flag", "i32"});
+  entry.insts.push_back(LirStoreOp{"11", "%slot.then", "i32"});
+  entry.insts.push_back(LirStoreOp{"4", "%slot.else", "i32"});
+  entry.insts.push_back(LirLoadOp{"%flag", "i32", "%slot.flag"});
+  entry.insts.push_back(LirCmpOp{"%cond.i1", false, "eq", "i32", "%flag", "1"});
+  entry.insts.push_back(LirCastOp{"%cond.i32", LirCastKind::ZExt, "i1", "%cond.i1", "i32"});
+  entry.insts.push_back(LirCmpOp{"%cond.branch", false, "ne", "i32", "%cond.i32", "0"});
+  entry.terminator = LirCondBr{"%cond.branch", "then", "else"};
+
+  LirBlock then_block;
+  then_block.id = LirBlockId{1};
+  then_block.label = "then";
+  then_block.insts.push_back(LirLoadOp{"%then.value", "i32", "%slot.then"});
+  then_block.terminator = LirBr{"join"};
+
+  LirBlock else_block;
+  else_block.id = LirBlockId{2};
+  else_block.label = "else";
+  else_block.insts.push_back(LirLoadOp{"%else.value", "i32", "%slot.else"});
+  else_block.terminator = LirBr{"join"};
+
+  LirBlock join;
+  join.id = LirBlockId{3};
+  join.label = "join";
+  join.insts.push_back(
+      LirPhiOp{"%selected", "i32", {{"%then.value", "then"}, {"%else.value", "else"}}});
+  join.terminator = LirRet{std::string("%selected"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(then_block));
+  function.blocks.push_back(std::move(else_block));
+  function.blocks.push_back(std::move(join));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_lir_u8_select_post_join_add_module() {
   auto module = make_bir_two_param_u8_select_ne_predecessor_add_phi_post_join_add_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -2541,6 +2597,23 @@ void test_x86_direct_lir_emitter_rejects_unsupported_input_without_legacy_backen
   fail("x86 direct LIR emitter should fail explicitly once unsupported input stops pretending a legacy backend IR route still exists");
 }
 
+void test_x86_direct_lir_emitter_rejects_alloca_backed_conditional_phi_constant_fold_stub() {
+  expect_true(!c4c::backend::try_lower_to_bir(
+                   make_alloca_backed_conditional_phi_constant_module())
+                   .has_value(),
+              "alloca-backed conditional-phi input should bypass the shared BIR lowering seam so this regression exercises the remaining direct-LIR helper boundary");
+
+  try {
+    (void)c4c::backend::x86::emit_module(make_alloca_backed_conditional_phi_constant_module());
+  } catch (const std::invalid_argument& ex) {
+    expect_contains(ex.what(), "direct LIR module",
+                    "x86 direct emitter should reject an alloca-backed conditional-phi join instead of reviving phi-aware constant folding past the BIR boundary");
+    return;
+  }
+
+  fail("x86 direct emitter should reject alloca-backed conditional-phi joins once phi-aware constant folding is pruned from the direct-LIR fallback");
+}
+
 }  // namespace
 
 void run_backend_bir_pipeline_x86_64_tests() {
@@ -2606,4 +2679,5 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_i32_select_mixed_then_deeper_affine_post_join_add_sub_add_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_rejects_unsupported_direct_bir_input_on_x86);
   RUN_TEST(test_x86_direct_lir_emitter_rejects_unsupported_input_without_legacy_backend_ir_stub);
+  RUN_TEST(test_x86_direct_lir_emitter_rejects_alloca_backed_conditional_phi_constant_fold_stub);
 }

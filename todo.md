@@ -7,17 +7,31 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 5: pull phi and CFG normalization behind the BIR boundary
-- Current slice: audit the remaining target-local phi handling in
-  `src/backend/x86/codegen/emit.cpp` and `src/backend/aarch64/codegen/emit.cpp`
-  now that both targets have direct-emitter route coverage for the lowerable
-  conditional-phi and `u8` post-join-add LIR shapes
-- Next intended slice: decide whether the remaining phi-aware x86 direct-LIR
-  constant-folding helper and the AArch64 predecessor-copy fallback should gain
-  an explicit guard for lowerable CFG joins or whether a smaller production
-  prune is already safe without widening the direct-LIR fallback surface
+- Current slice: audit and prune the remaining AArch64 predecessor-copy
+  fallback in `src/backend/aarch64/codegen/emit.cpp` now that both targets have
+  direct-emitter route coverage for the lowerable conditional-phi and `u8`
+  post-join-add LIR shapes
+- Next intended slice: decide whether the AArch64 general LIR emitter should
+  gain an explicit reject-only guard for BIR-lowerable phi/join shapes or
+  whether a smaller predecessor-copy production prune is safe without widening
+  the direct-LIR fallback surface
 
 ## Completed
 
+- Audited the remaining Step 5 target-local phi seams and chose the smaller
+  production prune for x86:
+  - removed `LirPhiOp` interpretation from
+    `src/backend/x86/codegen/emit.cpp`'s
+    `parse_minimal_double_indirect_local_pointer_conditional_return_imm(...)`
+    helper so the legacy direct-LIR constant-folder can no longer revive
+    phi-aware CFG ownership after a module misses shared BIR lowering
+  - added a focused regression in
+    `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` that constructs an
+    alloca-backed conditional-phi join which bypasses `try_lower_to_bir(...)`
+    and now must fail the x86 direct emitter instead of silently constant
+    folding through the legacy phi path
+  - re-ran `backend_bir_tests` for the x86 prune slice before the full-suite
+    regression pass
 - Replaced the mislabeled native Step 5 conditional-phi route coverage with a
   real lowerable LIR phi-join fixture in
   `tests/backend/backend_bir_test_support.cpp` and
