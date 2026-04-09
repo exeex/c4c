@@ -1919,25 +1919,30 @@ void test_backend_shared_slot_assignment_stack_layout_lowering_matches_prepared_
   config.caller_saved_regs = {{13}};
 
   const auto dead_param_module = make_dead_param_alloca_candidate_module();
-  const auto prepared_inputs =
-      c4c::backend::stack_layout::prepare_module_function_entry_alloca_compat_inputs(
+  const auto preparation =
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_preparation(
           dead_param_module, 1);
+  const auto prepared_rewrite_only =
+      c4c::backend::stack_layout::lower_prepared_entry_alloca_rewrite_only_inputs(
+          preparation);
+  const auto prepared_stack_layout_input =
+      c4c::backend::stack_layout::lower_prepared_entry_alloca_stack_layout_input(preparation);
   const auto dead_regalloc = c4c::backend::run_regalloc_and_merge_clobbers(
-      prepared_inputs.liveness_input, config, {});
+      prepared_rewrite_only.liveness_input, config, {});
   const auto dead_analysis = c4c::backend::stack_layout::analyze_stack_layout(
-      prepared_inputs.compat_stack_layout_input, dead_regalloc, {{20}, {21}, {22}});
+      prepared_stack_layout_input, dead_regalloc, {{20}, {21}, {22}});
 
   const auto lowered_planning_input =
       c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_planning_input(
-          prepared_inputs.compat_stack_layout_input);
+          prepared_stack_layout_input);
   const auto backend_entry_plans = c4c::backend::stack_layout::plan_entry_alloca_slots(
       lowered_planning_input, dead_analysis);
   const auto narrowed_entry_plans = c4c::backend::stack_layout::plan_entry_alloca_slots(
-      prepared_inputs.planning_input, dead_analysis);
+      prepared_rewrite_only.planning_input, dead_analysis);
   const auto backend_param_plans = c4c::backend::stack_layout::plan_param_alloca_slots(
       lowered_planning_input, dead_analysis);
   const auto narrowed_param_plans = c4c::backend::stack_layout::plan_param_alloca_slots(
-      prepared_inputs.planning_input, dead_analysis);
+      prepared_rewrite_only.planning_input, dead_analysis);
 
   expect_true(backend_entry_plans.size() == narrowed_entry_plans.size() &&
                   backend_entry_plans.size() == 1 &&
@@ -2000,17 +2005,22 @@ void test_backend_shared_slot_assignment_stack_layout_lowering_matches_prepared_
   c4c::backend::RegAllocConfig config;
 
   const auto live_module = make_live_local_alloca_candidate_module();
-  const auto prepared_inputs =
-      c4c::backend::stack_layout::prepare_module_function_entry_alloca_compat_inputs(
+  const auto preparation =
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_preparation(
           live_module, 0);
+  const auto prepared_rewrite_only =
+      c4c::backend::stack_layout::lower_prepared_entry_alloca_rewrite_only_inputs(
+          preparation);
+  const auto prepared_stack_layout_input =
+      c4c::backend::stack_layout::lower_prepared_entry_alloca_stack_layout_input(preparation);
 
   const auto lowered_planning_input =
       c4c::backend::stack_layout::lower_stack_layout_input_to_entry_alloca_planning_input(
-          prepared_inputs.compat_stack_layout_input);
+          prepared_stack_layout_input);
   const auto compatibility_bundle = c4c::backend::stack_layout::build_stack_layout_plan_bundle(
-      prepared_inputs.liveness_input, lowered_planning_input, config, {}, {});
+      prepared_rewrite_only.liveness_input, lowered_planning_input, config, {}, {});
   const auto narrowed_bundle = c4c::backend::stack_layout::build_stack_layout_plan_bundle(
-      prepared_inputs.liveness_input, prepared_inputs.planning_input, config, {}, {});
+      prepared_rewrite_only.liveness_input, prepared_rewrite_only.planning_input, config, {}, {});
 
   expect_true(compatibility_bundle.entry_alloca_plans.size() == narrowed_bundle.entry_alloca_plans.size() &&
                   compatibility_bundle.entry_alloca_plans.size() == 1 &&
@@ -2040,7 +2050,7 @@ void test_backend_shared_slot_assignment_bundle_prepares_from_narrowed_planning_
 
   const auto scalar_module = make_overwrite_first_scalar_local_alloca_candidate_module();
   const auto scalar_inputs =
-      c4c::backend::stack_layout::prepare_module_function_entry_alloca_compat_inputs(
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_rewrite_only_inputs(
           scalar_module, 0);
   const auto scalar_bundle = c4c::backend::stack_layout::build_stack_layout_plan_bundle(
       scalar_inputs.liveness_input, scalar_inputs.planning_input, config, {}, {});
@@ -2061,7 +2071,7 @@ void test_backend_shared_slot_assignment_bundle_prepares_from_narrowed_planning_
 
   const auto dead_param_module = make_dead_param_alloca_candidate_module();
   const auto dead_param_inputs =
-      c4c::backend::stack_layout::prepare_module_function_entry_alloca_compat_inputs(
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_rewrite_only_inputs(
           dead_param_module, 1);
   const auto dead_param_bundle = c4c::backend::stack_layout::build_stack_layout_plan_bundle(
       dead_param_inputs.liveness_input,
@@ -2100,11 +2110,12 @@ void test_backend_shared_slot_assignment_stack_layout_lowering_matches_prepared_
       config,
       {},
       {{20}, {21}, {22}});
+  const auto narrowed_dead_inputs =
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_rewrite_only_inputs(
+          make_dead_param_alloca_candidate_module(), 1);
   const auto narrowed_patch = c4c::backend::stack_layout::prepare_entry_alloca_rewrite_patch(
       dead_liveness_input,
-      c4c::backend::stack_layout::prepare_module_function_entry_alloca_compat_inputs(
-          make_dead_param_alloca_candidate_module(), 1)
-          .rewrite_input,
+      narrowed_dead_inputs.rewrite_input,
       config,
       {},
       {{20}, {21}, {22}});
@@ -2133,11 +2144,12 @@ void test_backend_shared_slot_assignment_stack_layout_lowering_matches_prepared_
       config,
       {},
       {});
+  const auto live_narrowed_inputs =
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_rewrite_only_inputs(
+          live_module, 0);
   const auto live_narrowed_patch = c4c::backend::stack_layout::prepare_entry_alloca_rewrite_patch(
       live_liveness_input,
-      c4c::backend::stack_layout::prepare_module_function_entry_alloca_compat_inputs(
-          live_module, 0)
-          .rewrite_input,
+      live_narrowed_inputs.rewrite_input,
       config,
       {},
       {});
@@ -2222,93 +2234,92 @@ void test_backend_shared_slot_assignment_prepares_module_function_inputs() {
                   fallback_preparation.backend_cfg_liveness->entry_insts.size() == 2,
               "shared entry-alloca rewrite prep should preserve entry-alloca ownership in the fallback carrier while sourcing block usage from the backend-owned CFG seam instead of the raw-LIR stack-layout lowering path");
 
-  const auto fallback_inputs =
-      c4c::backend::stack_layout::lower_prepared_entry_alloca_compat_inputs(
+  const auto fallback_rewrite_only =
+      c4c::backend::stack_layout::lower_prepared_entry_alloca_rewrite_only_inputs(
           fallback_preparation);
-  expect_true(fallback_inputs.liveness_source ==
+  const auto fallback_stack_layout_input =
+      c4c::backend::stack_layout::lower_prepared_entry_alloca_stack_layout_input(
+          fallback_preparation);
+  expect_true(fallback_rewrite_only.liveness_source ==
                   c4c::backend::stack_layout::EntryAllocaRewriteLivenessSource::RawLirBackendCfg &&
-                  fallback_inputs.stack_layout_source ==
+                  fallback_rewrite_only.stack_layout_source ==
                       c4c::backend::stack_layout::EntryAllocaRewriteStackLayoutSource::
                           EntryAllocasAndBackendCfg &&
-                  fallback_inputs.planning_input.entry_allocas.size() == 1 &&
-                  fallback_inputs.planning_input.entry_allocas.front().alloca_name ==
+                  fallback_rewrite_only.planning_input.entry_allocas.size() == 1 &&
+                  fallback_rewrite_only.planning_input.entry_allocas.front().alloca_name ==
                       "%lv.buf" &&
-                  fallback_inputs.planning_input.entry_allocas.front().paired_store.has_store &&
-                  fallback_inputs.planning_input.entry_allocas.front().paired_store
+                  fallback_rewrite_only.planning_input.entry_allocas.front().paired_store.has_store &&
+                  fallback_rewrite_only.planning_input.entry_allocas.front().paired_store
                       .is_zero_initializer &&
-                  !fallback_inputs.planning_input.entry_allocas.front().paired_store.param_name
+                  !fallback_rewrite_only.planning_input.entry_allocas.front().paired_store.param_name
                        .has_value() &&
-                  fallback_inputs.planning_input.escaped_entry_allocas.has_value() &&
-                  fallback_inputs.planning_input.escaped_entry_allocas->empty() &&
-                  fallback_inputs.planning_input.entry_alloca_use_blocks.has_value() &&
-                  fallback_inputs.planning_input.entry_alloca_use_blocks->empty() &&
-                  fallback_inputs.rewrite_input.entry_allocas.size() == 1 &&
-                  fallback_inputs.rewrite_input.entry_allocas.front().alloca_name ==
+                  fallback_rewrite_only.planning_input.escaped_entry_allocas.has_value() &&
+                  fallback_rewrite_only.planning_input.escaped_entry_allocas->empty() &&
+                  fallback_rewrite_only.planning_input.entry_alloca_use_blocks.has_value() &&
+                  fallback_rewrite_only.planning_input.entry_alloca_use_blocks->empty() &&
+                  fallback_rewrite_only.rewrite_input.entry_allocas.size() == 1 &&
+                  fallback_rewrite_only.rewrite_input.entry_allocas.front().alloca_name ==
                       "%lv.buf" &&
-                  fallback_inputs.rewrite_input.entry_alloca_use_blocks.has_value() &&
-                  fallback_inputs.compat_stack_layout_input.entry_allocas.size() == 1 &&
-                  fallback_inputs.compat_stack_layout_input.entry_allocas.front().alloca_name ==
+                  fallback_rewrite_only.rewrite_input.entry_alloca_use_blocks.has_value() &&
+                  fallback_stack_layout_input.entry_allocas.size() == 1 &&
+                  fallback_stack_layout_input.entry_allocas.front().alloca_name ==
                       "%lv.buf" &&
-                  fallback_inputs.compat_stack_layout_input.return_type ==
+                  fallback_stack_layout_input.return_type ==
                       std::optional<std::string>{"i32"} &&
-                  fallback_inputs.liveness_input.entry_insts.size() == 2,
-              "shared entry-alloca rewrite prep should lower the prepared fallback carrier into the new narrow rewrite-input contract while preserving the compatibility stack-layout view");
+                  fallback_rewrite_only.liveness_input.entry_insts.size() == 2,
+              "shared entry-alloca rewrite prep should lower the prepared fallback carrier into the narrowed rewrite-input contract while keeping stack-layout rehydration as a separate compatibility helper");
 
-  const auto lowerable_inputs =
-      c4c::backend::stack_layout::prepare_module_function_entry_alloca_compat_inputs(
+  const auto lowerable_rewrite_only =
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_rewrite_only_inputs(
           module, 0);
-  expect_true(lowerable_inputs.liveness_source ==
+  const auto lowerable_stack_layout_input =
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_stack_layout_input(
+          module, 0);
+  expect_true(lowerable_rewrite_only.liveness_source ==
                   c4c::backend::stack_layout::EntryAllocaRewriteLivenessSource::PerFunctionBir &&
-                  lowerable_inputs.stack_layout_source ==
+                  lowerable_rewrite_only.stack_layout_source ==
                       c4c::backend::stack_layout::EntryAllocaRewriteStackLayoutSource::
                           EntryAllocasAndBackendCfg &&
-                  lowerable_inputs.planning_input.entry_allocas.empty() &&
-                  lowerable_inputs.rewrite_input.entry_allocas.empty() &&
-                  lowerable_inputs.compat_stack_layout_input.entry_allocas.empty() &&
-                  lowerable_inputs.liveness_input.entry_insts.empty() &&
-                  lowerable_inputs.liveness_input.blocks.size() == 1 &&
-                  lowerable_inputs.liveness_input.blocks.front().insts.size() == 1,
-              "shared entry-alloca rewrite prep should keep the compatibility wrapper while sourcing lowerable-function stack-layout state through the backend-owned entry-alloca plus CFG contract");
+                  lowerable_rewrite_only.planning_input.entry_allocas.empty() &&
+                  lowerable_rewrite_only.rewrite_input.entry_allocas.empty() &&
+                  lowerable_stack_layout_input.entry_allocas.empty() &&
+                  lowerable_rewrite_only.liveness_input.entry_insts.empty() &&
+                  lowerable_rewrite_only.liveness_input.blocks.size() == 1 &&
+                  lowerable_rewrite_only.liveness_input.blocks.front().insts.size() == 1,
+              "shared entry-alloca rewrite prep should keep lowerable-function stack-layout rehydration separate from the narrowed backend-owned rewrite and liveness seams");
 }
 
 void test_backend_shared_prepared_function_inputs_preserve_emitter_stack_layout_metadata() {
   const auto module = make_mixed_bir_and_entry_alloca_module();
 
   const auto lowerable_prepared =
-      c4c::backend::stack_layout::prepare_module_function_entry_alloca_compat_inputs(
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_stack_layout_input(
           module, 0);
   const auto lowerable_direct =
       c4c::backend::stack_layout::lower_lir_to_stack_layout_input(module.functions[0]);
   expect_true(
-      c4c::backend::stack_layout::collect_stack_layout_value_names(
-          lowerable_prepared.compat_stack_layout_input) ==
+      c4c::backend::stack_layout::collect_stack_layout_value_names(lowerable_prepared) ==
           c4c::backend::stack_layout::collect_stack_layout_value_names(lowerable_direct) &&
-          lowerable_prepared.compat_stack_layout_input.signature_params.size() ==
-              lowerable_direct.signature_params.size() &&
-          lowerable_prepared.compat_stack_layout_input.return_type == lowerable_direct.return_type &&
-              lowerable_prepared.compat_stack_layout_input.call_results.size() ==
-              lowerable_direct.call_results.size() &&
-          lowerable_prepared.compat_stack_layout_input.blocks.size() == lowerable_direct.blocks.size(),
+          lowerable_prepared.signature_params.size() == lowerable_direct.signature_params.size() &&
+          lowerable_prepared.return_type == lowerable_direct.return_type &&
+          lowerable_prepared.call_results.size() == lowerable_direct.call_results.size() &&
+          lowerable_prepared.blocks.size() == lowerable_direct.blocks.size(),
       "prepared per-function stack-layout inputs should preserve the slot-building value set and signature metadata for lowerable functions so production emitters do not need to call the raw-LIR helper directly");
 
   const auto fallback_prepared =
-      c4c::backend::stack_layout::prepare_module_function_entry_alloca_compat_inputs(
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_stack_layout_input(
           module, 2);
   const auto fallback_direct =
       c4c::backend::stack_layout::lower_function_entry_alloca_stack_layout_input(
           module.functions[2], c4c::backend::lower_lir_to_backend_cfg(module.functions[2]));
   expect_true(
-      c4c::backend::stack_layout::collect_stack_layout_value_names(
-          fallback_prepared.compat_stack_layout_input) ==
+      c4c::backend::stack_layout::collect_stack_layout_value_names(fallback_prepared) ==
           c4c::backend::stack_layout::collect_stack_layout_value_names(fallback_direct) &&
-          fallback_prepared.compat_stack_layout_input.entry_allocas.size() ==
-              fallback_direct.entry_allocas.size() &&
-          fallback_prepared.compat_stack_layout_input.signature_params.size() ==
-              fallback_direct.signature_params.size() &&
-          fallback_prepared.compat_stack_layout_input.return_type == fallback_direct.return_type &&
-              fallback_prepared.compat_stack_layout_input.call_results.size() ==
-              fallback_direct.call_results.size() &&
-          fallback_prepared.compat_stack_layout_input.blocks.size() == fallback_direct.blocks.size(),
+          fallback_prepared.entry_allocas.size() == fallback_direct.entry_allocas.size() &&
+          fallback_prepared.signature_params.size() == fallback_direct.signature_params.size() &&
+          fallback_prepared.return_type == fallback_direct.return_type &&
+          fallback_prepared.call_results.size() == fallback_direct.call_results.size() &&
+          fallback_prepared.blocks.size() == fallback_direct.blocks.size(),
       "prepared per-function stack-layout inputs should preserve the fallback backend-CFG-derived metadata needed by production emitters while keeping the raw-LIR surface compatibility-only");
 }
 
@@ -2317,26 +2328,28 @@ void test_backend_shared_prepared_function_inputs_collect_emitter_value_names_wi
 
   const auto lowerable_preparation =
       c4c::backend::stack_layout::prepare_module_function_entry_alloca_preparation(module, 0);
-  const auto lowerable_compat =
-      c4c::backend::stack_layout::prepare_module_function_entry_alloca_compat_inputs(module, 0);
+  const auto lowerable_stack_layout_input =
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_stack_layout_input(
+          module, 0);
   expect_true(
       lowerable_preparation.backend_cfg.has_value() &&
           c4c::backend::stack_layout::collect_prepared_entry_alloca_value_names(
               lowerable_preparation) ==
               c4c::backend::stack_layout::collect_stack_layout_value_names(
-                  lowerable_compat.compat_stack_layout_input),
+                  lowerable_stack_layout_input),
       "prepared lowerable function inputs should expose the same emitter-facing value-name set through the backend-CFG-backed carrier without rehydrating the compatibility stack-layout input");
 
   const auto fallback_preparation =
       c4c::backend::stack_layout::prepare_module_function_entry_alloca_preparation(module, 2);
-  const auto fallback_compat =
-      c4c::backend::stack_layout::prepare_module_function_entry_alloca_compat_inputs(module, 2);
+  const auto fallback_stack_layout_input =
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_stack_layout_input(
+          module, 2);
   expect_true(
       fallback_preparation.backend_cfg.has_value() &&
           c4c::backend::stack_layout::collect_prepared_entry_alloca_value_names(
               fallback_preparation) ==
               c4c::backend::stack_layout::collect_stack_layout_value_names(
-                  fallback_compat.compat_stack_layout_input),
+                  fallback_stack_layout_input),
       "prepared fallback function inputs should expose the same emitter-facing value-name set through the backend-CFG-backed carrier without routing through the compatibility stack-layout wrapper");
 }
 
@@ -2344,7 +2357,7 @@ void test_backend_shared_rewrite_only_prepared_function_inputs_preserve_rewrite_
   const auto module = make_mixed_bir_and_entry_alloca_module();
 
   const auto lowerable_full =
-      c4c::backend::stack_layout::prepare_module_function_entry_alloca_compat_inputs(
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_rewrite_only_inputs(
           module, 0);
   const auto lowerable_rewrite_only =
       c4c::backend::stack_layout::prepare_module_function_entry_alloca_rewrite_only_inputs(
@@ -2363,7 +2376,7 @@ void test_backend_shared_rewrite_only_prepared_function_inputs_preserve_rewrite_
       "shared entry-alloca rewrite-only prep should preserve the narrowed rewrite and liveness seams for lowerable functions without routing through the compatibility stack-layout wrapper");
 
   const auto fallback_full =
-      c4c::backend::stack_layout::prepare_module_function_entry_alloca_compat_inputs(
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_rewrite_only_inputs(
           module, 2);
   const auto fallback_rewrite_only =
       c4c::backend::stack_layout::prepare_module_function_entry_alloca_rewrite_only_inputs(
@@ -2523,46 +2536,54 @@ void test_backend_shared_fallback_preparation_separates_stack_layout_metadata_fr
                       "{ i32, i32 }",
               "shared prepared fallback carrier should keep signature and call-result metadata outside the backend-CFG-owned entry-alloca classification input");
 
-  const auto lowered =
-      c4c::backend::stack_layout::lower_prepared_entry_alloca_compat_inputs(preparation);
-  expect_true(lowered.compat_stack_layout_input.signature_params.size() == 2 &&
-                  lowered.planning_input.entry_allocas.size() == 1 &&
-                  lowered.planning_input.entry_allocas.front().alloca_name == "%lv.buf" &&
-                  !lowered.planning_input.entry_allocas.front().paired_store.has_store &&
-                  !lowered.planning_input.entry_allocas.front().paired_store.is_zero_initializer &&
-                  !lowered.planning_input.entry_allocas.front().paired_store.param_name
+  const auto lowered_rewrite_only =
+      c4c::backend::stack_layout::lower_prepared_entry_alloca_rewrite_only_inputs(
+          preparation);
+  const auto lowered_stack_layout_input =
+      c4c::backend::stack_layout::lower_prepared_entry_alloca_stack_layout_input(preparation);
+  expect_true(lowered_stack_layout_input.signature_params.size() == 2 &&
+                  lowered_rewrite_only.planning_input.entry_allocas.size() == 1 &&
+                  lowered_rewrite_only.planning_input.entry_allocas.front().alloca_name ==
+                      "%lv.buf" &&
+                  !lowered_rewrite_only.planning_input.entry_allocas.front().paired_store
+                       .has_store &&
+                  !lowered_rewrite_only.planning_input.entry_allocas.front().paired_store
+                       .is_zero_initializer &&
+                  !lowered_rewrite_only.planning_input.entry_allocas.front().paired_store.param_name
                        .has_value() &&
-                  lowered.planning_input.escaped_entry_allocas.has_value() &&
-                  lowered.planning_input.escaped_entry_allocas->empty() &&
-                  lowered.planning_input.entry_alloca_use_blocks.has_value() &&
-                  lowered.planning_input.entry_alloca_use_blocks->empty() &&
-                  lowered.rewrite_input.entry_allocas.size() == 1 &&
-                  lowered.rewrite_input.entry_allocas.front().alloca_name == "%lv.buf" &&
-                  lowered.rewrite_input.escaped_entry_allocas.has_value() &&
-                  lowered.rewrite_input.escaped_entry_allocas->empty() &&
-                  lowered.rewrite_input.entry_alloca_use_blocks.has_value() &&
-                  lowered.rewrite_input.entry_alloca_use_blocks->empty() &&
-                  lowered.compat_stack_layout_input.blocks.size() == 1 &&
-                  lowered.compat_stack_layout_input.blocks.front().label == "entry" &&
-                  lowered.compat_stack_layout_input.blocks.front().insts.size() == 1 &&
-                  lowered.compat_stack_layout_input.blocks.front().insts.front().used_names.size() == 1 &&
-                  lowered.compat_stack_layout_input.blocks.front().insts.front().used_names.front() ==
+                  lowered_rewrite_only.planning_input.escaped_entry_allocas.has_value() &&
+                  lowered_rewrite_only.planning_input.escaped_entry_allocas->empty() &&
+                  lowered_rewrite_only.planning_input.entry_alloca_use_blocks.has_value() &&
+                  lowered_rewrite_only.planning_input.entry_alloca_use_blocks->empty() &&
+                  lowered_rewrite_only.rewrite_input.entry_allocas.size() == 1 &&
+                  lowered_rewrite_only.rewrite_input.entry_allocas.front().alloca_name ==
+                      "%lv.buf" &&
+                  lowered_rewrite_only.rewrite_input.escaped_entry_allocas.has_value() &&
+                  lowered_rewrite_only.rewrite_input.escaped_entry_allocas->empty() &&
+                  lowered_rewrite_only.rewrite_input.entry_alloca_use_blocks.has_value() &&
+                  lowered_rewrite_only.rewrite_input.entry_alloca_use_blocks->empty() &&
+                  lowered_stack_layout_input.blocks.size() == 1 &&
+                  lowered_stack_layout_input.blocks.front().label == "entry" &&
+                  lowered_stack_layout_input.blocks.front().insts.size() == 1 &&
+                  lowered_stack_layout_input.blocks.front().insts.front().used_names.size() ==
+                      1 &&
+                  lowered_stack_layout_input.blocks.front().insts.front().used_names.front() ==
                       "%p.x" &&
-                  lowered.compat_stack_layout_input.escaped_entry_allocas.has_value() &&
-                  lowered.compat_stack_layout_input.escaped_entry_allocas->empty() &&
-                  lowered.compat_stack_layout_input.entry_alloca_use_blocks.has_value() &&
-                  lowered.compat_stack_layout_input.entry_alloca_use_blocks->empty() &&
-                  lowered.compat_stack_layout_input.signature_params.front().type == "i32" &&
-                  lowered.compat_stack_layout_input.signature_params.front().operand == "%p.x" &&
-                  lowered.compat_stack_layout_input.signature_params.back().is_varargs &&
-                  lowered.compat_stack_layout_input.return_type ==
+                  lowered_stack_layout_input.escaped_entry_allocas.has_value() &&
+                  lowered_stack_layout_input.escaped_entry_allocas->empty() &&
+                  lowered_stack_layout_input.entry_alloca_use_blocks.has_value() &&
+                  lowered_stack_layout_input.entry_alloca_use_blocks->empty() &&
+                  lowered_stack_layout_input.signature_params.front().type == "i32" &&
+                  lowered_stack_layout_input.signature_params.front().operand == "%p.x" &&
+                  lowered_stack_layout_input.signature_params.back().is_varargs &&
+                  lowered_stack_layout_input.return_type ==
                       std::optional<std::string>{"{ i32, i32 }"} &&
-                  lowered.compat_stack_layout_input.is_variadic &&
-                  lowered.compat_stack_layout_input.call_results.size() == 1 &&
-                  lowered.compat_stack_layout_input.call_results.front().value_name == "%call0" &&
-                  lowered.compat_stack_layout_input.call_results.front().type_str ==
+                  lowered_stack_layout_input.is_variadic &&
+                  lowered_stack_layout_input.call_results.size() == 1 &&
+                  lowered_stack_layout_input.call_results.front().value_name == "%call0" &&
+                  lowered_stack_layout_input.call_results.front().type_str ==
                       "{ i32, i32 }",
-              "shared prepared fallback carrier should keep rewrite-time ownership on the narrow entry-alloca contract while leaving the broader stack-layout view available only as compatibility state");
+              "shared prepared fallback carrier should keep rewrite-time ownership on the narrow entry-alloca contract while leaving broader stack-layout rehydration as a separate compatibility helper");
 }
 
 void test_backend_shared_fallback_preparation_derives_block_instruction_counts_from_liveness() {
@@ -2601,16 +2622,16 @@ void test_backend_shared_fallback_preparation_derives_block_instruction_counts_f
               "shared prepared fallback carrier should keep block instruction arity only in the backend-owned liveness seam once liveness owns per-instruction use facts");
 
   const auto lowered =
-      c4c::backend::stack_layout::lower_prepared_entry_alloca_compat_inputs(preparation);
-  expect_true(lowered.compat_stack_layout_input.blocks.size() == 1 &&
-                  lowered.compat_stack_layout_input.blocks.front().insts.size() == 2 &&
-                  lowered.compat_stack_layout_input.blocks.front().insts.front().used_names.size() == 2 &&
-                  lowered.compat_stack_layout_input.blocks.front().insts.front().used_names.front() ==
+      c4c::backend::stack_layout::lower_prepared_entry_alloca_stack_layout_input(preparation);
+  expect_true(lowered.blocks.size() == 1 &&
+                  lowered.blocks.front().insts.size() == 2 &&
+                  lowered.blocks.front().insts.front().used_names.size() == 2 &&
+                  lowered.blocks.front().insts.front().used_names.front() ==
                       "%p.x" &&
-                  lowered.compat_stack_layout_input.blocks.front().insts.front().used_names.back() ==
+                  lowered.blocks.front().insts.front().used_names.back() ==
                       "%p.y" &&
-                  lowered.compat_stack_layout_input.blocks.front().insts.back().used_names.size() == 1 &&
-                  lowered.compat_stack_layout_input.blocks.front().insts.back().used_names.front() ==
+                  lowered.blocks.front().insts.back().used_names.size() == 1 &&
+                  lowered.blocks.front().insts.back().used_names.front() ==
                       "%sum",
               "shared prepared fallback lowering should rebuild the full per-instruction stack-layout arity and use lists directly from liveness without caching prepared block counts");
 }
@@ -2650,18 +2671,18 @@ void test_backend_shared_fallback_preparation_rehydrates_stack_layout_uses_from_
   const auto preparation =
       c4c::backend::stack_layout::prepare_module_function_entry_alloca_preparation(module, 0);
   const auto lowered =
-      c4c::backend::stack_layout::lower_prepared_entry_alloca_compat_inputs(preparation);
+      c4c::backend::stack_layout::lower_prepared_entry_alloca_stack_layout_input(preparation);
 
-  expect_true(lowered.compat_stack_layout_input.blocks.size() == 3 &&
-                  lowered.compat_stack_layout_input.blocks.front().label == "entry" &&
-                  lowered.compat_stack_layout_input.blocks[1].label == "then" &&
-                  lowered.compat_stack_layout_input.blocks[2].label == "else" &&
-                  lowered.compat_stack_layout_input.blocks.front().insts.size() == 1 &&
-                  lowered.compat_stack_layout_input.blocks.front().insts.front().used_names.size() == 1 &&
-                  lowered.compat_stack_layout_input.blocks.front().insts.front().used_names.front() ==
+  expect_true(lowered.blocks.size() == 3 &&
+                  lowered.blocks.front().label == "entry" &&
+                  lowered.blocks[1].label == "then" &&
+                  lowered.blocks[2].label == "else" &&
+                  lowered.blocks.front().insts.size() == 1 &&
+                  lowered.blocks.front().insts.front().used_names.size() == 1 &&
+                  lowered.blocks.front().insts.front().used_names.front() ==
                       "%p.x" &&
-                  lowered.compat_stack_layout_input.blocks.front().terminator_used_names.size() == 1 &&
-                  lowered.compat_stack_layout_input.blocks.front().terminator_used_names.front() ==
+                  lowered.blocks.front().terminator_used_names.size() == 1 &&
+                  lowered.blocks.front().terminator_used_names.front() ==
                       "%p.cond" &&
                   preparation.backend_cfg_liveness.has_value() &&
                   preparation.backend_cfg_liveness->blocks.front().insts.front().used_names.size() ==
@@ -2701,23 +2722,23 @@ void test_backend_shared_fallback_preparation_rehydrates_phi_predecessor_labels_
               "shared prepared fallback carrier should rely on backend-owned liveness for phi predecessor edges, block order, and per-block instruction counts");
 
   const auto lowered =
-      c4c::backend::stack_layout::lower_prepared_entry_alloca_compat_inputs(preparation);
+      c4c::backend::stack_layout::lower_prepared_entry_alloca_stack_layout_input(preparation);
   const auto analysis = c4c::backend::stack_layout::analyze_stack_layout(
-      lowered.compat_stack_layout_input, regalloc, {});
+      lowered, regalloc, {});
 
   const auto* then_value_uses = analysis.find_use_blocks("%t1");
   const auto* else_value_uses = analysis.find_use_blocks("%t2");
 
-  expect_true(lowered.compat_stack_layout_input.blocks.size() == 4 &&
-                  lowered.compat_stack_layout_input.blocks.front().label == "entry" &&
-                  lowered.compat_stack_layout_input.blocks[1].label == "then" &&
-                  lowered.compat_stack_layout_input.blocks[2].label == "else" &&
-                  lowered.compat_stack_layout_input.blocks[3].label == "join" &&
-                  lowered.compat_stack_layout_input.phi_incoming_uses.size() == 2 &&
-                  lowered.compat_stack_layout_input.phi_incoming_uses.front().predecessor_label == "then" &&
-                  lowered.compat_stack_layout_input.phi_incoming_uses.front().value_name == "%t1" &&
-                  lowered.compat_stack_layout_input.phi_incoming_uses.back().predecessor_label == "else" &&
-                  lowered.compat_stack_layout_input.phi_incoming_uses.back().value_name == "%t2" &&
+  expect_true(lowered.blocks.size() == 4 &&
+                  lowered.blocks.front().label == "entry" &&
+                  lowered.blocks[1].label == "then" &&
+                  lowered.blocks[2].label == "else" &&
+                  lowered.blocks[3].label == "join" &&
+                  lowered.phi_incoming_uses.size() == 2 &&
+                  lowered.phi_incoming_uses.front().predecessor_label == "then" &&
+                  lowered.phi_incoming_uses.front().value_name == "%t1" &&
+                  lowered.phi_incoming_uses.back().predecessor_label == "else" &&
+                  lowered.phi_incoming_uses.back().value_name == "%t2" &&
                   then_value_uses != nullptr && then_value_uses->size() == 1 &&
                   then_value_uses->front() == 1 &&
                   else_value_uses != nullptr && else_value_uses->size() == 1 &&
@@ -2740,31 +2761,37 @@ void test_backend_shared_fallback_preparation_still_needs_remaining_pointer_esca
               c4c::backend::stack_layout::PointerAccessKind::Store,
       "shared prepared fallback carrier should narrow overwrite-before-read classification to a coarse entry-alloca first-access seam instead of caching per-point pointer accesses");
   const auto scalar_lowered =
-      c4c::backend::stack_layout::lower_prepared_entry_alloca_compat_inputs(
+      c4c::backend::stack_layout::lower_prepared_entry_alloca_stack_layout_input(
+          scalar_preparation);
+  const auto scalar_rewrite_only =
+      c4c::backend::stack_layout::lower_prepared_entry_alloca_rewrite_only_inputs(
           scalar_preparation);
   const auto scalar_analysis = c4c::backend::stack_layout::analyze_stack_layout(
-      scalar_lowered.compat_stack_layout_input, regalloc, {});
+      scalar_lowered, regalloc, {});
   const auto scalar_plans = c4c::backend::stack_layout::plan_entry_alloca_slots(
-      scalar_lowered.planning_input, scalar_analysis);
+      scalar_rewrite_only.planning_input, scalar_analysis);
   expect_true(scalar_plans.size() == 1 &&
                   scalar_plans.front().alloca_name == "%lv.x" &&
                   scalar_plans.front().needs_stack_slot &&
                   scalar_plans.front().remove_following_entry_store &&
-                  scalar_lowered.compat_stack_layout_input.blocks.front().insts.front().pointer_accesses
-                      .empty(),
+                  scalar_lowered.blocks.front().insts.front().pointer_accesses.empty(),
               "shared prepared fallback carrier should let overwrite-before-read pruning trust the coarse entry-alloca first-access seam after dropping prepared pointer-access facts entirely");
 
   scalar_preparation.stack_layout_classification.entry_alloca_first_accesses =
       std::vector<c4c::backend::stack_layout::EntryAllocaFirstAccess>{};
   const auto scalar_without_first_access =
-      c4c::backend::stack_layout::lower_prepared_entry_alloca_compat_inputs(
+      c4c::backend::stack_layout::lower_prepared_entry_alloca_stack_layout_input(
+          scalar_preparation);
+  const auto scalar_without_first_access_rewrite_only =
+      c4c::backend::stack_layout::lower_prepared_entry_alloca_rewrite_only_inputs(
           scalar_preparation);
   const auto scalar_without_first_access_analysis =
       c4c::backend::stack_layout::analyze_stack_layout(
-          scalar_without_first_access.compat_stack_layout_input, regalloc, {});
+          scalar_without_first_access, regalloc, {});
   const auto scalar_without_first_access_plans =
       c4c::backend::stack_layout::plan_entry_alloca_slots(
-          scalar_without_first_access.planning_input, scalar_without_first_access_analysis);
+          scalar_without_first_access_rewrite_only.planning_input,
+          scalar_without_first_access_analysis);
   expect_true(scalar_without_first_access_plans.size() == 1 &&
                   scalar_without_first_access_plans.front().alloca_name == "%lv.x" &&
                   scalar_without_first_access_plans.front().needs_stack_slot &&
@@ -2785,31 +2812,30 @@ void test_backend_shared_fallback_preparation_still_needs_remaining_pointer_esca
                           .block_indices.front() == 0,
               "shared prepared fallback carrier should narrow single-block coalescing to a coarse entry-alloca use-block classification instead of retaining separate per-point alias metadata");
   const auto aggregate_lowered =
-      c4c::backend::stack_layout::lower_prepared_entry_alloca_compat_inputs(
+      c4c::backend::stack_layout::lower_prepared_entry_alloca_stack_layout_input(
           aggregate_preparation);
   const auto aggregate_analysis = c4c::backend::stack_layout::analyze_stack_layout(
-      aggregate_lowered.compat_stack_layout_input, regalloc, {});
+      aggregate_lowered, regalloc, {});
   const auto aggregate_coalescing =
       c4c::backend::stack_layout::compute_coalescable_allocas(
-          aggregate_lowered.compat_stack_layout_input, aggregate_analysis);
+          aggregate_lowered, aggregate_analysis);
   expect_true(!aggregate_coalescing.is_dead_alloca("%lv.buf") &&
-                  !aggregate_lowered.compat_stack_layout_input.blocks.front().insts.front()
-                           .derived_pointer_root.has_value() &&
+                  !aggregate_lowered.blocks.front().insts.front().derived_pointer_root
+                       .has_value() &&
                   aggregate_coalescing.find_single_block("%lv.buf") == 0,
               "shared prepared fallback carrier should let single-block coalescing trust the coarse entry-alloca use-block seam without rehydrating prepared derived-pointer-root facts");
 
   aggregate_preparation.stack_layout_classification.entry_alloca_use_blocks =
       std::vector<c4c::backend::stack_layout::EntryAllocaUseBlocks>{};
   const auto aggregate_without_use_blocks =
-      c4c::backend::stack_layout::lower_prepared_entry_alloca_compat_inputs(
+      c4c::backend::stack_layout::lower_prepared_entry_alloca_stack_layout_input(
           aggregate_preparation);
   const auto aggregate_without_use_blocks_analysis =
       c4c::backend::stack_layout::analyze_stack_layout(
-          aggregate_without_use_blocks.compat_stack_layout_input, regalloc, {});
+          aggregate_without_use_blocks, regalloc, {});
   const auto aggregate_without_use_blocks_coalescing =
       c4c::backend::stack_layout::compute_coalescable_allocas(
-          aggregate_without_use_blocks.compat_stack_layout_input,
-          aggregate_without_use_blocks_analysis);
+          aggregate_without_use_blocks, aggregate_without_use_blocks_analysis);
   expect_true(aggregate_without_use_blocks_coalescing.is_dead_alloca("%lv.buf") &&
                   !aggregate_without_use_blocks_coalescing.find_single_block("%lv.buf")
                        .has_value(),
@@ -2826,13 +2852,13 @@ void test_backend_shared_fallback_preparation_still_needs_remaining_pointer_esca
               "shared prepared fallback carrier should narrow escaped-alloca classification to a coarse entry-alloca escape set instead of caching per-point escaped-name lists");
   escaped_preparation.stack_layout_classification.escaped_entry_allocas = std::vector<std::string>{};
   const auto escaped_lowered =
-      c4c::backend::stack_layout::lower_prepared_entry_alloca_compat_inputs(
+      c4c::backend::stack_layout::lower_prepared_entry_alloca_stack_layout_input(
           escaped_preparation);
   const auto escaped_analysis = c4c::backend::stack_layout::analyze_stack_layout(
-      escaped_lowered.compat_stack_layout_input, regalloc, {});
+      escaped_lowered, regalloc, {});
   const auto escaped_coalescing =
       c4c::backend::stack_layout::compute_coalescable_allocas(
-          escaped_lowered.compat_stack_layout_input, escaped_analysis);
+          escaped_lowered, escaped_analysis);
   expect_true(escaped_coalescing.is_dead_alloca("%lv.buf") &&
                   !escaped_coalescing.find_single_block("%lv.buf").has_value(),
               "shared prepared fallback carrier still needs escaped-name facts because removing them drops the current escaped-alloca classification entirely on the prepared backend-CFG path");
@@ -2874,7 +2900,8 @@ void test_backend_shared_fallback_preparation_keeps_only_liveness_cfg_state() {
               "shared prepared fallback carrier should retain only the liveness-relevant backend-CFG block and point state once stack-layout metadata is split away");
 
   const auto lowered =
-      c4c::backend::stack_layout::lower_prepared_entry_alloca_compat_inputs(preparation);
+      c4c::backend::stack_layout::lower_prepared_entry_alloca_rewrite_only_inputs(
+          preparation);
   expect_true(lowered.liveness_input.entry_insts.size() == 1 &&
                   lowered.liveness_input.entry_insts.front().used_names.empty() &&
                   !lowered.liveness_input.entry_insts.front().is_call &&

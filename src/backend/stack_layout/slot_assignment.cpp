@@ -843,10 +843,10 @@ std::optional<LivenessInput> try_lower_module_function_to_bir_liveness_input(
   return std::nullopt;
 }
 
-EntryAllocaCompatInputs prepare_module_function_entry_alloca_compat_inputs(
+StackLayoutInput prepare_module_function_entry_alloca_stack_layout_input(
     const c4c::codegen::lir::LirModule& module,
     std::size_t function_index) {
-  return lower_prepared_entry_alloca_compat_inputs(
+  return lower_prepared_entry_alloca_stack_layout_input(
       prepare_module_function_entry_alloca_preparation(module, function_index));
 }
 
@@ -916,22 +916,19 @@ PreparedEntryAllocaFunctionInputs prepare_module_function_entry_alloca_preparati
   return inputs;
 }
 
-EntryAllocaCompatInputs lower_prepared_entry_alloca_compat_inputs(
+StackLayoutInput lower_prepared_entry_alloca_stack_layout_input(
     const PreparedEntryAllocaFunctionInputs& prepared_inputs) {
-  auto lowered_inputs = lower_prepared_entry_alloca_rewrite_only_inputs(prepared_inputs);
-
-  EntryAllocaCompatInputs inputs;
-  inputs.liveness_input = std::move(lowered_inputs.liveness_input);
-  inputs.rewrite_input = std::move(lowered_inputs.rewrite_input);
-  inputs.planning_input = std::move(lowered_inputs.planning_input);
-  inputs.liveness_source = lowered_inputs.liveness_source;
-  inputs.stack_layout_source = lowered_inputs.stack_layout_source;
-  inputs.compat_stack_layout_input = lower_prepared_stack_layout_input(
+  LivenessInput liveness_input;
+  if (prepared_inputs.liveness_input.has_value()) {
+    liveness_input = *prepared_inputs.liveness_input;
+  } else if (prepared_inputs.backend_cfg_liveness.has_value()) {
+    liveness_input = lower_backend_cfg_to_liveness_input(*prepared_inputs.backend_cfg_liveness);
+  }
+  return lower_prepared_stack_layout_input(
       prepared_inputs.rewrite_metadata,
       prepared_inputs.stack_layout_classification,
       prepared_inputs.stack_layout_metadata,
-      &inputs.liveness_input);
-  return inputs;
+      &liveness_input);
 }
 
 PreparedEntryAllocaRewriteOnlyInputs lower_prepared_entry_alloca_rewrite_only_inputs(

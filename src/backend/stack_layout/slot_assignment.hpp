@@ -103,19 +103,6 @@ struct PreparedEntryAllocaFunctionInputs {
       EntryAllocaRewriteStackLayoutSource::RawLirFunction;
 };
 
-// Compatibility-only lowered packet for callers that still need a rehydrated
-// stack-layout view alongside the narrowed rewrite/planning seams.
-struct EntryAllocaCompatInputs {
-  LivenessInput liveness_input;
-  StackLayoutInput compat_stack_layout_input;
-  EntryAllocaRewriteInput rewrite_input;
-  EntryAllocaPlanningInput planning_input;
-  EntryAllocaRewriteLivenessSource liveness_source =
-      EntryAllocaRewriteLivenessSource::RawLirBackendCfg;
-  EntryAllocaRewriteStackLayoutSource stack_layout_source =
-      EntryAllocaRewriteStackLayoutSource::RawLirFunction;
-};
-
 struct PreparedEntryAllocaRewriteOnlyInputs {
   LivenessInput liveness_input;
   EntryAllocaRewriteInput rewrite_input;
@@ -162,17 +149,18 @@ EntryAllocaRewritePatch prepare_entry_alloca_rewrite_patch(
     const c4c::codegen::lir::LirModule& module,
     std::size_t function_index);
 
-[[nodiscard]] EntryAllocaCompatInputs lower_prepared_entry_alloca_compat_inputs(
+[[nodiscard]] StackLayoutInput lower_prepared_entry_alloca_stack_layout_input(
     const PreparedEntryAllocaFunctionInputs& prepared_inputs);
 
 [[nodiscard]] PreparedEntryAllocaRewriteOnlyInputs
 lower_prepared_entry_alloca_rewrite_only_inputs(
     const PreparedEntryAllocaFunctionInputs& prepared_inputs);
 
-// Compatibility-only wrapper that rehydrates the broader stack-layout view for
-// direct-LIR emitters and tests. Production rewrite flows should prefer
-// `prepare_module_function_entry_alloca_rewrite_only_inputs(...)`.
-[[nodiscard]] EntryAllocaCompatInputs prepare_module_function_entry_alloca_compat_inputs(
+// Compatibility-only helper that rehydrates the broader stack-layout view for
+// tests that still need it. Production rewrite flows should prefer
+// `prepare_module_function_entry_alloca_rewrite_only_inputs(...)` and
+// production emitters should consume the prepared metadata/carrier directly.
+[[nodiscard]] StackLayoutInput prepare_module_function_entry_alloca_stack_layout_input(
     const c4c::codegen::lir::LirModule& module,
     std::size_t function_index);
 

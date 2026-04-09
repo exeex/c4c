@@ -7,20 +7,48 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 7: move regalloc and stack layout to backend MIR
-- Current slice: return to the `EntryAllocaCompatInputs` narrowing audit now
-  that the prepared direct-LIR AArch64 variadic/backend blocker set has been
-  reduced to two separately classified aggregate/ABI follow-up cases
-- Current implementation target: continue narrowing the remaining
-  compatibility-only `EntryAllocaCompatInputs` surface without reopening the
-  now-green Step 7 prepared variadic path
-- Next intended slice: either remove another production caller from the broad
-  compatibility packet or split the remaining compatibility carrier further so
-  prepared/emitter-owned seams stay explicit while the two residual
-  `c_testsuite_aarch64_backend_src_00182_c` and
-  `c_testsuite_aarch64_backend_src_00204_c` failures track separately as
-  post-Step-7 aggregate/ABI capability work
+- Current slice: follow through on the now-test-only prepared stack-layout
+  compatibility helper surface after deleting the combined
+  `EntryAllocaCompatInputs` packet
+- Current implementation target: keep rewrite/liveness ownership on
+  `PreparedEntryAllocaRewriteOnlyInputs`, keep stack-layout rehydration as a
+  separate compatibility helper, and avoid reopening the now-green prepared
+  direct-LIR variadic path
+- Next intended slice: decide whether the remaining raw-`LIR`
+  `lower_lir_to_stack_layout_input(...)` parity coverage should stay as
+  explicit compatibility-only test coverage or move onto the prepared
+  stack-layout helper before Step 7 hands off fully to the residual
+  `c_testsuite_aarch64_backend_src_00182_c` /
+  `c_testsuite_aarch64_backend_src_00204_c` aggregate/ABI follow-up work
 
 ## Completed
+
+- Completed the next Step 7 compatibility-packet deletion slice by replacing
+  the remaining combined `EntryAllocaCompatInputs` surface with separate
+  rewrite-only and stack-layout-rehydration helpers now that no production
+  callers remain:
+  - deleted `EntryAllocaCompatInputs`,
+    `lower_prepared_entry_alloca_compat_inputs(...)`, and
+    `prepare_module_function_entry_alloca_compat_inputs(...)` from
+    `src/backend/stack_layout/slot_assignment.hpp` and
+    `src/backend/stack_layout/slot_assignment.cpp`
+  - added the dedicated
+    `lower_prepared_entry_alloca_stack_layout_input(...)` /
+    `prepare_module_function_entry_alloca_stack_layout_input(...)` helper so
+    tests can still rehydrate the broader `StackLayoutInput` view without
+    coupling that compatibility state back onto the narrowed rewrite/liveness
+    packet
+  - retargeted `tests/backend/backend_shared_util_tests.cpp` to compose
+    preparation, rewrite-only lowering, and stack-layout rehydration
+    explicitly, keeping the parity checks while making the compatibility-only
+    stack-layout surface stand alone
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`
+  - rebuilt the full tree and refreshed `test_fail_after.log`; the full-suite
+    regression check finished with the same two residual AArch64 failures
+    (`c_testsuite_aarch64_backend_src_00182_c` and
+    `c_testsuite_aarch64_backend_src_00204_c`) and no newly failing tests
+    relative to the existing Step 7 blocker set
 
 - Completed the Step 7 AArch64 prepared direct-LIR variadic blocker slice by
   restoring bounded phi-edge copies and non-entry alloca materialization on
