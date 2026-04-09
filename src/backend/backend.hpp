@@ -51,6 +51,8 @@ struct BackendOptions {
     const c4c::codegen::lir::LirModule& module,
     Target target);
 
+std::string emit_target_bir_module(const bir::Module& module, Target public_target);
+
 std::string emit_target_lir_module(const c4c::codegen::lir::LirModule& module,
                                    Target public_target);
 

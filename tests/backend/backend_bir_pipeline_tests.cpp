@@ -334,6 +334,55 @@ void test_aarch64_try_emit_prepared_lir_module_reports_direct_lir_support_explic
               "aarch64 prepared direct-LIR support probing should return no native rendering for unsupported floating-return modules instead of requiring exception-text classification");
 }
 
+void test_x86_public_bir_emitter_delegates_direct_bir_route_to_shared_backend() {
+  const auto shared_rendered =
+      c4c::backend::emit_module(c4c::backend::BackendModuleInput{make_return_immediate_module()},
+                                make_bir_pipeline_options(c4c::backend::Target::X86_64));
+  const auto x86_rendered = c4c::backend::x86::emit_module(make_return_immediate_module());
+
+  expect_true(x86_rendered == shared_rendered,
+              "x86 public direct-BIR entry should delegate to the shared backend helper instead of owning its own try-or-throw route policy");
+  expect_contains(x86_rendered, "mov eax, 7",
+                  "x86 public direct-BIR entry should preserve the current affine-return native emission contract after routing moves into backend.cpp");
+
+  try {
+    (void)c4c::backend::x86::emit_module(make_unsupported_multi_function_bir_module());
+  } catch (const std::invalid_argument& ex) {
+    expect_true(
+        std::string_view(ex.what()) ==
+            "x86 backend emitter does not support this direct BIR module; only the affine-return subset lowers natively",
+        "x86 public direct-BIR entry should preserve the existing unsupported-module rejection contract after delegating to the shared backend helper");
+    return;
+  }
+
+  fail("x86 public direct-BIR entry should still reject unsupported multi-function modules");
+}
+
+void test_aarch64_public_bir_emitter_delegates_direct_bir_route_to_shared_backend() {
+  const auto shared_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_return_immediate_module()},
+      make_bir_pipeline_options(c4c::backend::Target::Aarch64));
+  const auto aarch64_rendered =
+      c4c::backend::aarch64::emit_module(make_return_immediate_module());
+
+  expect_true(aarch64_rendered == shared_rendered,
+              "aarch64 public direct-BIR entry should delegate to the shared backend helper instead of owning its own try-or-throw route policy");
+  expect_contains(aarch64_rendered, "mov w0, #7",
+                  "aarch64 public direct-BIR entry should preserve the current affine-return native emission contract after routing moves into backend.cpp");
+
+  try {
+    (void)c4c::backend::aarch64::emit_module(make_unsupported_multi_function_bir_module());
+  } catch (const std::invalid_argument& ex) {
+    expect_true(
+        std::string_view(ex.what()) ==
+            "aarch64 backend emitter does not support this direct BIR module; only the affine-return subset lowers natively",
+        "aarch64 public direct-BIR entry should preserve the existing unsupported-module rejection contract after delegating to the shared backend helper");
+    return;
+  }
+
+  fail("aarch64 public direct-BIR entry should still reject unsupported multi-function modules");
+}
+
 void test_backend_bir_pipeline_is_opt_in_through_backend_options() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_bir_return_add_module()},
@@ -1599,6 +1648,8 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_aarch64_try_emit_module_reports_direct_bir_support_explicitly);
   RUN_TEST(test_x86_try_emit_prepared_lir_module_reports_direct_lir_support_explicitly);
   RUN_TEST(test_aarch64_try_emit_prepared_lir_module_reports_direct_lir_support_explicitly);
+  RUN_TEST(test_x86_public_bir_emitter_delegates_direct_bir_route_to_shared_backend);
+  RUN_TEST(test_aarch64_public_bir_emitter_delegates_direct_bir_route_to_shared_backend);
   RUN_TEST(test_backend_bir_pipeline_is_opt_in_through_backend_options);
   RUN_TEST(test_backend_bir_pipeline_accepts_direct_bir_module_input);
   RUN_TEST(test_backend_bir_pipeline_routes_sub_cluster_through_bir_text_surface);

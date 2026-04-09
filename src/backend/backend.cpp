@@ -131,6 +131,24 @@ c4c::codegen::lir::LirModule prepare_lir_module_for_target(
       module, config.regalloc, {}, config.callee_saved);
 }
 
+std::string emit_target_bir_module(const bir::Module& module, Target public_target) {
+  if (const auto rendered = try_render_bir_module(module, public_target); rendered.has_value()) {
+    return *rendered;
+  }
+  switch (public_target) {
+    case Target::X86_64:
+    case Target::I686:
+      throw std::invalid_argument(
+          "x86 backend emitter does not support this direct BIR module; only the affine-return subset lowers natively");
+    case Target::Aarch64:
+      throw std::invalid_argument(
+          "aarch64 backend emitter does not support this direct BIR module; only the affine-return subset lowers natively");
+    case Target::Riscv64:
+      return c4c::backend::bir::print(module);
+  }
+  throw std::logic_error("unreachable backend target");
+}
+
 std::string emit_target_lir_module(const c4c::codegen::lir::LirModule& module,
                                    Target public_target) {
   auto target = public_target;

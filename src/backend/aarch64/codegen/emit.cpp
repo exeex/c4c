@@ -6679,10 +6679,7 @@ std::optional<std::string> try_emit_module(const c4c::backend::bir::Module& modu
 }
 
 std::string emit_module(const c4c::backend::bir::Module& module) {
-  if (const auto rendered = try_emit_module(module); rendered.has_value()) {
-    return *rendered;
-  }
-  fail_unsupported_direct_bir_module();
+  return c4c::backend::emit_target_bir_module(module, c4c::backend::Target::Aarch64);
 }
 
 std::optional<std::string> try_emit_prepared_lir_module(

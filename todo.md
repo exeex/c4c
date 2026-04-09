@@ -8,16 +8,37 @@ Source Plan: plan.md
 
 - Step 6: move liveness to backend MIR
 - Current slice: audit the next backend-entry/native-emitter ownership seam
-  after shared backend routing fully owns unsupported prepared direct-LIR
-  rejection
-- Current implementation target: identify the next backend-entry/native-emitter
-  ownership seam after shared backend code takes over the public x86/aarch64
-  `LirModule` entry-wrapper target/route policy
-- Next intended slice: audit remaining public native-emitter wrappers and
-  helper entrypoints for compatibility-only route ownership that should move
-  behind one shared backend helper
+  after shared backend routing takes over the public x86/aarch64 direct-BIR
+  wrapper route policy
+- Current implementation target: identify the next public native-emitter
+  wrapper or helper entrypoint that still owns compatibility-only routing after
+  shared backend code takes over the x86/aarch64 direct-BIR wrapper path
+- Next intended slice: audit `assemble_module(...)` and adjacent native-emitter
+  handoff helpers for any remaining compatibility-only route ownership that
+  should move behind one shared backend seam
 
 ## Completed
+
+- Completed the next Step 6 bounded public direct-BIR wrapper cleanup slice by
+  moving compatibility-only x86/aarch64 direct-BIR route ownership into shared
+  backend code:
+  - added `emit_target_bir_module(...)` in `src/backend/backend.*` so shared
+    backend code now owns the public direct-BIR try-or-throw route contract
+    for x86, i686, aarch64, and riscv64 text rendering
+  - updated `src/backend/x86/codegen/emit.cpp` and
+    `src/backend/aarch64/codegen/emit.cpp` so the public
+    `emit_module(const bir::Module&)` wrappers become thin delegates over the
+    shared backend helper instead of carrying their own compatibility-only
+    direct-BIR route policy
+  - extended `tests/backend/backend_bir_pipeline_tests.cpp` with focused
+    coverage proving the public x86/aarch64 direct-BIR wrappers now exactly
+    match the shared backend route for a supported affine-return module and
+    preserve the existing unsupported multi-function rejection contracts
+  - rebuilt `backend_bir_tests`, passed
+    `ctest --test-dir build -R '^backend_bir_tests$' --output-on-failure`,
+    rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with no new failures and no pass-count drop
+    (`2809 -> 2809`, same 32 known failing tests as `test_fail_before.log`)
 
 - Completed the next Step 6 bounded public target-emitter entry-wrapper
   cleanup slice by moving compatibility-only x86/aarch64 direct-LIR
