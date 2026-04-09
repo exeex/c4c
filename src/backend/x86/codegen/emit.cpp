@@ -59,10 +59,8 @@ void prune_dead_entry_allocas(c4c::codegen::lir::LirFunction& function) {
   const std::vector<c4c::backend::PhysReg> callee_saved = {
       {1}, {2}, {3}, {4}, {5},
   };
-  const auto bundle = c4c::backend::stack_layout::build_stack_layout_plan_bundle(
-      liveness_input, stack_layout_input, config, {}, callee_saved);
-  c4c::backend::stack_layout::apply_entry_alloca_slot_plan(function,
-                                                           bundle.entry_alloca_plans);
+  c4c::backend::stack_layout::prepare_and_apply_entry_alloca_slot_plan(
+      function, liveness_input, stack_layout_input, config, {}, callee_saved);
 }
 
 c4c::codegen::lir::LirModule prune_module_entry_allocas(

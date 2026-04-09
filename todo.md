@@ -7,16 +7,41 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: re-audit the remaining direct-emitter slot ownership seams now
-  that AArch64 alloca-slot and param-alloca initialization consume the lowered
-  stack-layout surface and only the final entry-alloca mutation path still
-  needs raw LIR
-- Next intended slice: audit whether the remaining
+- Current slice: audit whether the remaining shared
   `apply_entry_alloca_slot_plan(...)` mutation boundary can shrink further or
-  needs to stay as the last intentional raw-LIR seam while Step 6/7 continues
+  should remain as the last intentional raw-LIR seam now that direct emitters
+  no longer own it
+- Next intended slice: inspect whether the final
+  `apply_entry_alloca_slot_plan(...)` rewrite/prune mutator can be split into a
+  backend-owned patch object plus a narrower LIR applier, or explicitly record
+  why the current shared raw-LIR seam is the intended long-term boundary for
+  Step 6/7
 
 ## Completed
 
+- Completed the next Step 6 bounded direct-emitter entry-alloca seam cleanup
+  slice by moving the final target-local prepare-plus-mutate wiring behind one
+  shared stack-layout helper while keeping the actual raw-LIR mutation bounded
+  to that shared entrypoint:
+  - added
+    `prepare_and_apply_entry_alloca_slot_plan(...)` in
+    `src/backend/stack_layout/slot_assignment.*` so callers can provide
+    backend-owned `LivenessInput`, `StackLayoutInput`, regalloc config, and
+    callee-saved metadata while the final entry-alloca mutation remains shared
+  - retargeted
+    `src/backend/aarch64/codegen/emit.cpp` and
+    `src/backend/x86/codegen/emit.cpp` to call that shared helper instead of
+    open-coding plan-bundle construction plus direct
+    `apply_entry_alloca_slot_plan(...)` mutation in each emitter
+  - extended `tests/backend/backend_shared_util_tests.cpp` with focused
+    coverage proving backend-owned inputs can drive the shared prepare-and-apply
+    entrypoint end to end
+  - rebuilt `backend_shared_util_tests` and `backend_bir_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`
+    and `ctest --test-dir build -R '^backend_bir_tests$' --output-on-failure`,
+    rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with no new failures and no pass-count drop
+    (`2809 -> 2809`, same 32 known failing tests as `test_fail_before.log`)
 - Completed the next Step 6 bounded AArch64 direct-emitter metadata handoff
   slice by retiring the remaining compatibility-only raw-LIR slot-init rescans
   in favor of the already-lowered stack-layout input:

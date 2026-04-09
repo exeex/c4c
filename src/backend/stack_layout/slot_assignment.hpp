@@ -41,6 +41,14 @@ StackLayoutPlanBundle build_stack_layout_plan_bundle(
     const std::vector<PhysReg>& asm_clobbered,
     const std::vector<PhysReg>& callee_saved_regs);
 
+void prepare_and_apply_entry_alloca_slot_plan(
+    c4c::codegen::lir::LirFunction& function,
+    const LivenessInput& liveness_input,
+    const StackLayoutInput& stack_layout_input,
+    const RegAllocConfig& regalloc_config,
+    const std::vector<PhysReg>& asm_clobbered,
+    const std::vector<PhysReg>& callee_saved_regs);
+
 std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(
     const StackLayoutInput& input,
     const StackLayoutAnalysis& analysis);
