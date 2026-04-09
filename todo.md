@@ -7,16 +7,18 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 3: review declarator suffix and function-pointer cast forms
-- Current slice: probe the next uncovered template-id declarator-suffix
-  combination after landing the `T&& (*)(...)` cast case
+- Current slice: probe the next uncovered qualified or dependent template-id
+  declarator-suffix owner-chain combination after closing the plain
+  lvalue/rvalue-reference return-type function-pointer cases
 - Current implementation target: stay in parser-facing Step 3 coverage work
-  and identify whether any additional template-id return-type,
-  data-member-pointer, or grouped declarator-suffix combination still exposes
-  a parser-specific hole after the rvalue-reference function-pointer-return
-  fix
-- Next intended slice: probe the next uncovered qualified or dependent
-  template-id declarator-suffix combination and add a focused regression only
-  if a new parser mismatch is still reproducible
+  and identify whether a namespace-qualified, global-qualified, or dependent
+  template-id owner chain inside a function-pointer or member-pointer cast
+  still exposes a parser-specific hole after the plain return-type matrix is
+  covered
+- Next intended slice: add the narrowest qualified or dependent
+  template-id-owner declarator-suffix parse regression, starting with the
+  smallest function-pointer or member-pointer cast spelling not yet covered by
+  Step 3
 
 ## Completed
 
@@ -306,6 +308,20 @@ Source Plan: plan.md
 - Full-suite validation stayed monotonic under the repo regression guard:
   `test_fail_before.log` 2860/2860 passed,
   `test_fail_after.log` 2865/2865 passed, with zero new failures.
+- Added
+  `tests/cpp/internal/postive_case/c_style_cast_template_fn_ptr_lvalue_ref_return_type_parse.cpp`
+  as a focused parse-only regression for
+  `Box<int>& (*fp)(int) = (Box<int>& (*)(int))raw;`.
+- Confirmed the adjacent Step 3 template-id lvalue-reference function-pointer
+  return-type cast variant already matches the parser baseline in the current
+  tree, so no compiler change was needed for this slice.
+- Targeted validation passed:
+  `build/c4cll --parse-only tests/cpp/internal/postive_case/c_style_cast_template_fn_ptr_lvalue_ref_return_type_parse.cpp`
+  and
+  `ctest --test-dir build -R 'c_style_cast_template_(fn_ptr_return_type_parse|fn_ptr_lvalue_ref_return_type_parse|fn_ptr_rvalue_ref_return_type_parse|member_fn_ptr_ref_qual_parse|member_fn_ptr_const_parse|fn_ptr_param_type_parse|member_ptr_parse)' --output-on-failure`.
+- Full-suite validation stayed monotonic under the repo regression guard:
+  `test_fail_before.log` 2865/2865 passed,
+  `test_fail_after.log` 2866/2866 passed, with zero new failures.
 
 ## Notes
 
