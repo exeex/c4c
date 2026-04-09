@@ -65,6 +65,11 @@ struct EntryAllocaUseBlocks {
   std::vector<std::size_t> block_indices;
 };
 
+struct EntryAllocaFirstAccess {
+  std::string alloca_name;
+  PointerAccessKind kind = PointerAccessKind::Read;
+};
+
 struct StackLayoutInput {
   std::vector<EntryAllocaInput> entry_allocas;
   std::vector<StackLayoutSignatureParam> signature_params;
@@ -75,6 +80,7 @@ struct StackLayoutInput {
   std::vector<PhiIncomingUse> phi_incoming_uses;
   std::optional<std::vector<std::string>> escaped_entry_allocas;
   std::optional<std::vector<EntryAllocaUseBlocks>> entry_alloca_use_blocks;
+  std::optional<std::vector<EntryAllocaFirstAccess>> entry_alloca_first_accesses;
 };
 
 struct StackLayoutAnalysis {

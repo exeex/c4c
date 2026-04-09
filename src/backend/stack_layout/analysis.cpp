@@ -242,6 +242,15 @@ void record_first_access(
 void collect_first_entry_alloca_accesses(
     const StackLayoutInput& input,
     std::unordered_set<std::string>& entry_allocas_overwritten_before_read) {
+  if (input.entry_alloca_first_accesses.has_value()) {
+    for (const auto& first_access : *input.entry_alloca_first_accesses) {
+      if (first_access.kind == PointerAccessKind::Store) {
+        entry_allocas_overwritten_before_read.insert(first_access.alloca_name);
+      }
+    }
+    return;
+  }
+
   std::unordered_map<std::string, std::string> pointer_roots;
   for (const auto& alloca : input.entry_allocas) {
     if (is_entry_alloca_name(alloca.alloca_name)) {

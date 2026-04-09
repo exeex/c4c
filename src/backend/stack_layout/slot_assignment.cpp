@@ -136,6 +136,61 @@ std::optional<std::vector<EntryAllocaUseBlocks>> collect_prepared_entry_alloca_u
   return entry_alloca_use_blocks;
 }
 
+std::optional<std::vector<EntryAllocaFirstAccess>> collect_prepared_entry_alloca_first_accesses(
+    const StackLayoutInput& input) {
+  std::unordered_map<std::string, std::string> pointer_roots;
+  pointer_roots.reserve(input.entry_allocas.size());
+  for (const auto& alloca : input.entry_allocas) {
+    if (is_param_alloca_name(alloca.alloca_name)) {
+      continue;
+    }
+    pointer_roots.emplace(alloca.alloca_name, alloca.alloca_name);
+  }
+
+  std::unordered_map<std::string, PointerAccessKind> first_access_kind;
+  first_access_kind.reserve(pointer_roots.size());
+  auto record_first_access = [&](std::string_view value_name, PointerAccessKind kind) {
+    const auto root_it = pointer_roots.find(std::string(value_name));
+    if (root_it == pointer_roots.end()) {
+      return;
+    }
+    first_access_kind.try_emplace(root_it->second, kind);
+  };
+
+  for (const auto& block : input.blocks) {
+    for (const auto& point : block.insts) {
+      if (point.derived_pointer_root.has_value()) {
+        const auto root_it = pointer_roots.find(point.derived_pointer_root->second);
+        if (root_it != pointer_roots.end()) {
+          pointer_roots.emplace(point.derived_pointer_root->first, root_it->second);
+        }
+      }
+
+      for (const auto& access : point.pointer_accesses) {
+        record_first_access(access.value_name, access.kind);
+      }
+      for (const auto& value_name : point.used_names) {
+        record_first_access(value_name, PointerAccessKind::Read);
+      }
+    }
+
+    for (const auto& value_name : block.terminator_used_names) {
+      record_first_access(value_name, PointerAccessKind::Read);
+    }
+  }
+
+  std::vector<EntryAllocaFirstAccess> entry_alloca_first_accesses;
+  entry_alloca_first_accesses.reserve(first_access_kind.size());
+  for (const auto& [alloca_name, kind] : first_access_kind) {
+    entry_alloca_first_accesses.push_back(EntryAllocaFirstAccess{alloca_name, kind});
+  }
+  std::sort(entry_alloca_first_accesses.begin(), entry_alloca_first_accesses.end(),
+            [](const EntryAllocaFirstAccess& lhs, const EntryAllocaFirstAccess& rhs) {
+              return lhs.alloca_name < rhs.alloca_name;
+            });
+  return entry_alloca_first_accesses;
+}
+
 void apply_prepared_stack_layout_metadata(
     StackLayoutInput& input,
     const PreparedEntryAllocaStackLayoutMetadata& metadata) {
@@ -150,6 +205,8 @@ PreparedEntryAllocaStackLayoutClassificationInput lower_prepared_stack_layout_cl
   PreparedEntryAllocaStackLayoutClassificationInput classification;
   classification.escaped_entry_allocas = collect_prepared_escaped_entry_allocas(input);
   classification.entry_alloca_use_blocks = collect_prepared_entry_alloca_use_blocks(input);
+  classification.entry_alloca_first_accesses =
+      collect_prepared_entry_alloca_first_accesses(input);
   classification.entry_allocas = std::move(input.entry_allocas);
   classification.blocks.reserve(input.blocks.size());
   for (auto& block : input.blocks) {
@@ -176,6 +233,7 @@ StackLayoutInput lower_prepared_stack_layout_input(
   input.entry_allocas = classification.entry_allocas;
   input.escaped_entry_allocas = classification.escaped_entry_allocas;
   input.entry_alloca_use_blocks = classification.entry_alloca_use_blocks;
+  input.entry_alloca_first_accesses = classification.entry_alloca_first_accesses;
   input.blocks.reserve(classification.blocks.size());
   for (const auto& block : classification.blocks) {
     StackLayoutBlockInput lowered_block;

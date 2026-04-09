@@ -7,18 +7,42 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: narrow overwrite-before-read ownership so prepared fallback
-  analysis can trust a coarse backend-owned first-access classification seam
-  instead of depending on cached per-point pointer-access sequencing
-- Current implementation target: add a prepared/lowered entry-alloca
-  first-access classification carrier for overwrite-before-read pruning and
-  retarget stack-layout analysis to trust that seam when present before trying
-  to remove prepared per-point pointer-access storage
-- Next intended slice: remove prepared per-point pointer-access storage once
-  overwrite-before-read pruning can round-trip entirely through the narrower
-  backend-owned seam
+- Current slice: remove prepared per-point pointer-access storage now that
+  overwrite-before-read pruning can round-trip through the coarse backend-owned
+  first-access seam
+- Current implementation target: shrink the prepared stack-layout
+  classification carrier by dropping cached per-point `pointer_accesses` once
+  overwrite-before-read behavior is fully driven by
+  `entry_alloca_first_accesses`
+- Next intended slice: audit whether any remaining prepared
+  `derived_pointer_root` metadata can be narrowed further without regressing
+  backend-owned stack-layout classification
 
 ## Completed
+
+- Completed the next Step 6 prepared overwrite-before-read classification
+  narrowing slice by moving fallback first-access ownership onto a coarse
+  entry-alloca seam:
+  - added optional `entry_alloca_first_accesses` storage to
+    `src/backend/stack_layout/analysis.hpp` and to the prepared fallback
+    classification carrier in `src/backend/stack_layout/slot_assignment.hpp`
+  - taught `src/backend/stack_layout/slot_assignment.cpp` to derive that
+    coarse first-access classification during prepared fallback lowering and to
+    round-trip it back into the production `StackLayoutInput`
+  - updated `src/backend/stack_layout/analysis.cpp` so overwrite-before-read
+    analysis now trusts the coarse `entry_alloca_first_accesses` seam when
+    present instead of rebuilding only from per-point `pointer_accesses`
+  - extended `tests/backend/backend_shared_util_tests.cpp` with focused
+    coverage proving stack-layout analysis accepts the coarse first-access seam
+    directly and that prepared fallback lowering preserves overwrite-before-
+    read pruning after clearing prepared pointer-access facts while still
+    regressing once both the new seam and the old per-point facts are removed
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`
+  - rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with the repo’s allowed non-decreasing rule and no new
+    failures (`2809 -> 2809`, same 32 known failing tests as
+    `test_fail_before.log`)
 
 - Completed the next Step 6 prepared single-block coalescing narrowing slice by
   moving fallback coalescing ownership onto a coarse entry-alloca use-blocks

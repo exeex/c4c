@@ -1400,6 +1400,27 @@ void test_backend_shared_alloca_coalescing_accepts_entry_alloca_use_blocks() {
               "backend-owned alloca coalescing should accept coarse entry-alloca use-block classification when present instead of rebuilding single-block ownership from per-point alias facts");
 }
 
+void test_backend_shared_stack_layout_analysis_accepts_entry_alloca_first_accesses() {
+  const c4c::backend::RegAllocIntegrationResult regalloc;
+  auto input = c4c::backend::stack_layout::lower_lir_to_stack_layout_input(
+      make_overwrite_first_scalar_local_alloca_candidate_module().functions.front());
+  input.entry_alloca_first_accesses =
+      std::vector<c4c::backend::stack_layout::EntryAllocaFirstAccess>{
+          c4c::backend::stack_layout::EntryAllocaFirstAccess{
+              "%lv.x", c4c::backend::stack_layout::PointerAccessKind::Store}};
+  input.blocks.front().insts.front().pointer_accesses.clear();
+
+  const auto analysis = c4c::backend::stack_layout::analyze_stack_layout(input, regalloc, {});
+  const auto plans = c4c::backend::stack_layout::plan_entry_alloca_slots(input, analysis);
+
+  expect_true(analysis.is_entry_alloca_overwritten_before_read("%lv.x") &&
+                  plans.size() == 1 &&
+                  plans.front().alloca_name == "%lv.x" &&
+                  plans.front().needs_stack_slot &&
+                  plans.front().remove_following_entry_store,
+              "backend-owned stack-layout analysis should accept coarse entry-alloca first-access classification when present instead of rebuilding overwrite-before-read only from per-point pointer accesses");
+}
+
 void test_backend_shared_slot_assignment_plans_param_alloca_slots() {
   c4c::backend::RegAllocConfig config;
   config.available_regs = {{20}};
@@ -2133,6 +2154,14 @@ void test_backend_shared_fallback_preparation_still_needs_remaining_pointer_esca
   auto scalar_preparation =
       c4c::backend::stack_layout::prepare_module_function_entry_alloca_preparation(
           make_overwrite_first_scalar_local_alloca_candidate_module(), 0);
+  expect_true(
+      scalar_preparation.stack_layout_classification.entry_alloca_first_accesses.has_value() &&
+          scalar_preparation.stack_layout_classification.entry_alloca_first_accesses->size() == 1 &&
+          scalar_preparation.stack_layout_classification.entry_alloca_first_accesses->front()
+                  .alloca_name == "%lv.x" &&
+          scalar_preparation.stack_layout_classification.entry_alloca_first_accesses->front().kind ==
+              c4c::backend::stack_layout::PointerAccessKind::Store,
+      "shared prepared fallback carrier should narrow overwrite-before-read classification to a coarse entry-alloca first-access seam instead of depending only on cached per-point pointer accesses");
   scalar_preparation.stack_layout_classification.blocks.front().insts.front().pointer_accesses
       .clear();
   const auto scalar_lowered =
@@ -2145,8 +2174,25 @@ void test_backend_shared_fallback_preparation_still_needs_remaining_pointer_esca
   expect_true(scalar_plans.size() == 1 &&
                   scalar_plans.front().alloca_name == "%lv.x" &&
                   scalar_plans.front().needs_stack_slot &&
-                  !scalar_plans.front().remove_following_entry_store,
-              "shared prepared fallback carrier still needs pointer-access facts because removing them regresses overwrite-before-read pruning on the current backend-CFG path");
+                  scalar_plans.front().remove_following_entry_store,
+              "shared prepared fallback carrier should let overwrite-before-read pruning trust the coarse entry-alloca first-access seam even after prepared pointer-access facts are cleared");
+
+  scalar_preparation.stack_layout_classification.entry_alloca_first_accesses =
+      std::vector<c4c::backend::stack_layout::EntryAllocaFirstAccess>{};
+  const auto scalar_without_first_access =
+      c4c::backend::stack_layout::lower_prepared_entry_alloca_function_inputs(
+          scalar_preparation);
+  const auto scalar_without_first_access_analysis =
+      c4c::backend::stack_layout::analyze_stack_layout(
+          scalar_without_first_access.stack_layout_input, regalloc, {});
+  const auto scalar_without_first_access_plans =
+      c4c::backend::stack_layout::plan_entry_alloca_slots(
+          scalar_without_first_access.stack_layout_input, scalar_without_first_access_analysis);
+  expect_true(scalar_without_first_access_plans.size() == 1 &&
+                  scalar_without_first_access_plans.front().alloca_name == "%lv.x" &&
+                  scalar_without_first_access_plans.front().needs_stack_slot &&
+                  !scalar_without_first_access_plans.front().remove_following_entry_store,
+              "shared prepared fallback carrier still needs the coarse entry-alloca first-access seam because clearing both that seam and prepared pointer-access facts drops overwrite-before-read pruning on the current backend-CFG path");
 
   auto aggregate_preparation =
       c4c::backend::stack_layout::prepare_module_function_entry_alloca_preparation(
@@ -2724,6 +2770,7 @@ int main(int argc, char* argv[]) {
   test_backend_shared_alloca_coalescing_classifies_non_param_allocas();
   test_backend_shared_alloca_coalescing_accepts_backend_owned_input();
   test_backend_shared_alloca_coalescing_accepts_entry_alloca_use_blocks();
+  test_backend_shared_stack_layout_analysis_accepts_entry_alloca_first_accesses();
   test_backend_shared_slot_assignment_plans_param_alloca_slots();
   test_backend_shared_slot_assignment_param_alloca_pruning_matches_backend_owned_entry_patch();
   test_backend_shared_slot_assignment_plans_entry_alloca_slots();

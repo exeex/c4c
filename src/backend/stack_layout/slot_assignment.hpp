@@ -68,6 +68,7 @@ struct PreparedEntryAllocaStackLayoutClassificationInput {
   std::vector<PhiIncomingUse> phi_incoming_uses;
   std::optional<std::vector<std::string>> escaped_entry_allocas;
   std::optional<std::vector<EntryAllocaUseBlocks>> entry_alloca_use_blocks;
+  std::optional<std::vector<EntryAllocaFirstAccess>> entry_alloca_first_accesses;
 };
 
 struct PreparedEntryAllocaFunctionInputs {
