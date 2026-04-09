@@ -7,16 +7,31 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 4: validate downstream value-category behavior
-- Current slice: choose the first value-category-sensitive C-style cast case
-  that is not already covered by the current reference-cast runtime matrix
-- Current implementation target: audit whether Step 4 still has an uncovered
-  overload-selection, forwarding, or decltype-like consumer after the existing
-  lvalue/rvalue-reference cast runtime fixes
-- Next intended slice: add the narrowest Step 4 regression that exposes the
-  earliest remaining sema or HIR mismatch, if any; otherwise record Step 4 as
-  coverage-complete and hand off to Step 5 casted member/base access review
+- Step 4: validate downstream value-category behavior
+- Current slice: audit whether Step 4 still has an uncovered decltype-like
+  consumer after the existing overload, forwarding, and member-access slices
+- Current implementation target: probe the narrowest decltype-like cast
+  consumer that can still disagree with Clang on `(T&)expr` / `(T&&)expr`
+  category preservation
+- Next intended slice: add the smallest decltype-like Step 4 regression if one
+  is still uncovered; otherwise record Step 4 as coverage-complete and hand off
+  to Step 5 casted member/base access review
 
 ## Completed
+
+- Added
+  `tests/cpp/internal/postive_case/c_style_cast_forwarding_ref_overload.cpp`
+  as a focused Step 4 regression for a forwarding-reference template consumer
+  that calls `pick((T&&)value)` after a C-style cast.
+- Fixed HIR free-function ref-overload resolution so dependent cast arguments
+  consult the active template bindings when deciding whether a cast expression
+  is an lvalue, which restores reference-collapsing behavior for the
+  `forward_pick<int&>((int&)x)` slice.
+- Targeted validation passed:
+  `ctest --test-dir build -R 'c_style_cast_(forwarding_ref_overload|lvalue_ref_overload|ref_qualified_method|rvalue_ref_field_access|base_rvalue_ref_field_access)' --output-on-failure`.
+- Full-suite validation stayed monotonic under the repo regression guard:
+  `test_fail_before.log` 2873/2873 passed,
+  `test_fail_after.log` 2875/2875 passed, with zero new failures.
 
 - Added
   `tests/cpp/internal/postive_case/c_style_cast_namespace_qualified_template_member_fn_ptr_const_parse.cpp`
@@ -521,3 +536,11 @@ Source Plan: plan.md
   `typename ::ns::Holder<T>::Inner::AliasL` / `AliasR` stayed unresolved and
   lowered through the bad by-value temporary path until the nested-owner match
   started honoring the unqualified member spelling.
+- The first draft of the forwarding-reference regression also checked the
+  `T=int` specialization in the same file. That exposed a separate function
+  template specialization identity collision: both `forward_pick<T=int&>` and
+  `forward_pick<T=int>` lowered to the same emitted function name and only one
+  specialization survived in the module. That broader template-instantiation
+  issue was spun out into
+  `ideas/open/50_function_template_specialization_identity_collision_followup.md`
+  instead of stretching this cast-focused Step 4 slice.

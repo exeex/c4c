@@ -188,7 +188,7 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
             TypeSpec param_ts = ov.method_node->params[pi]->type;
             resolve_typedef_to_struct(param_ts);
             TypeSpec arg_ts = infer_generic_ctrl_type(&ctx, n->children[pi]);
-            bool arg_is_lvalue = is_ast_lvalue(n->children[pi]);
+            bool arg_is_lvalue = is_ast_lvalue(n->children[pi], &ctx);
             // Strip ref qualifiers for base type comparison.
             TypeSpec param_base = param_ts;
             param_base.is_lvalue_ref = false;
@@ -356,7 +356,7 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
     auto cit = struct_constructors_.find(decl_ts.tag);
     if (cit != struct_constructors_.end() && !cit->second.empty()) {
       // Score constructors: prefer T&& for rvalue, const T& for lvalue.
-      bool init_is_lvalue = is_ast_lvalue(n->init);
+      bool init_is_lvalue = is_ast_lvalue(n->init, &ctx);
       const CtorOverload* best = nullptr;
       int best_score = -1;
       for (const auto& ov : cit->second) {
@@ -1897,7 +1897,7 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
               TypeSpec param_ts = ov.method_node->params[pi]->type;
               resolve_typedef_to_struct(param_ts);
               TypeSpec arg_ts = infer_generic_ctrl_type(&ctx, args[pi]);
-              bool arg_is_lvalue = is_ast_lvalue(args[pi]);
+              bool arg_is_lvalue = is_ast_lvalue(args[pi], &ctx);
               TypeSpec param_base = param_ts;
               param_base.is_lvalue_ref = false;
               param_base.is_rvalue_ref = false;
@@ -2020,7 +2020,7 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
                 TypeSpec param_ts = ov.method_node->params[pi]->type;
                 resolve_typedef_to_struct(param_ts);
                 TypeSpec arg_ts = infer_generic_ctrl_type(&ctx, args[pi]);
-                bool arg_is_lvalue = is_ast_lvalue(args[pi]);
+                bool arg_is_lvalue = is_ast_lvalue(args[pi], &ctx);
                 TypeSpec param_base = param_ts;
                 param_base.is_lvalue_ref = false;
                 param_base.is_rvalue_ref = false;

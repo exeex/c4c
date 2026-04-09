@@ -125,7 +125,7 @@ ExprId Lowerer::hoist_compound_literal_to_global(const Node* addr_node,
   return append_expr(addr_node, addr, ptr_ts);
 }
 
-bool Lowerer::is_ast_lvalue(const Node* n) {
+bool Lowerer::is_ast_lvalue(const Node* n, const FunctionCtx* ctx) {
   if (!n) return false;
   switch (n->kind) {
     case NK_VAR:
@@ -133,9 +133,28 @@ bool Lowerer::is_ast_lvalue(const Node* n) {
     case NK_DEREF:
       return true;
     case NK_MEMBER:
-      return n->is_arrow || is_ast_lvalue(n->left);
-    case NK_CAST:
-      return n->type.is_lvalue_ref;
+      return n->is_arrow || is_ast_lvalue(n->left, ctx);
+    case NK_CAST: {
+      TypeSpec cast_ts = n->type;
+      if (ctx && cast_ts.base == TB_TYPEDEF && cast_ts.tag) {
+        const int outer_ptr_level = cast_ts.ptr_level;
+        const bool outer_lref = cast_ts.is_lvalue_ref;
+        const bool outer_rref = cast_ts.is_rvalue_ref;
+        const bool outer_const = cast_ts.is_const;
+        const bool outer_volatile = cast_ts.is_volatile;
+        auto it = ctx->tpl_bindings.find(cast_ts.tag);
+        if (it != ctx->tpl_bindings.end()) {
+          cast_ts = it->second;
+          cast_ts.ptr_level += outer_ptr_level;
+          cast_ts.is_lvalue_ref = cast_ts.is_lvalue_ref || outer_lref;
+          cast_ts.is_rvalue_ref =
+              !cast_ts.is_lvalue_ref && (cast_ts.is_rvalue_ref || outer_rref);
+          cast_ts.is_const = cast_ts.is_const || outer_const;
+          cast_ts.is_volatile = cast_ts.is_volatile || outer_volatile;
+        }
+      }
+      return cast_ts.is_lvalue_ref;
+    }
     default:
       return false;
   }
@@ -154,7 +173,8 @@ std::optional<ExprId> Lowerer::try_lower_rvalue_ref_storage_addr(
       storage_expr = lower_expr(ctx, n->left);
       break;
     case NK_MEMBER:
-      if (n->is_arrow || !n->left || is_ast_lvalue(n->left)) return std::nullopt;
+      if (n->is_arrow || !n->left || is_ast_lvalue(n->left, ctx))
+        return std::nullopt;
       storage_expr = lower_expr(ctx, n);
       break;
     default:
@@ -222,7 +242,7 @@ ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
             TypeSpec param_ts = ov.method_node->params[pi]->type;
             resolve_typedef_to_struct(param_ts);
             TypeSpec arg_ts = infer_generic_ctrl_type(ctx, n->children[pi]);
-            const bool arg_is_lvalue = is_ast_lvalue(n->children[pi]);
+            const bool arg_is_lvalue = is_ast_lvalue(n->children[pi], ctx);
             TypeSpec param_base = param_ts;
             param_base.is_lvalue_ref = false;
             param_base.is_rvalue_ref = false;
@@ -549,7 +569,7 @@ ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
         std::string resolved_method = mit->second;
         auto ovit = ref_overload_set_.find(mit->first);
         if (ovit != ref_overload_set_.end() && !ovit->second.empty()) {
-          resolved_method = resolve_ref_overload(mit->first, n);
+          resolved_method = resolve_ref_overload(mit->first, n, ctx);
         }
         dr.name = resolved_method;
         auto fit = module_->fn_index.find(dr.name);
@@ -682,7 +702,7 @@ ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
   } else {
     if (n->left && n->left->kind == NK_VAR && n->left->name &&
         ref_overload_set_.count(n->left->name)) {
-      resolved_callee_name = resolve_ref_overload(n->left->name, n);
+      resolved_callee_name = resolve_ref_overload(n->left->name, n, ctx);
       DeclRef dr{};
       dr.name = resolved_callee_name;
       auto fit = module_->fn_index.find(dr.name);
@@ -853,7 +873,8 @@ std::optional<ExprId> Lowerer::try_lower_consteval_call_expr(FunctionCtx* ctx,
 }
 
 std::string Lowerer::resolve_ref_overload(const std::string& base_name,
-                                          const Node* call_node) {
+                                          const Node* call_node,
+                                          const FunctionCtx* ctx) {
   auto ovit = ref_overload_set_.find(base_name);
   if (ovit == ref_overload_set_.end()) return {};
   const auto& overloads = ovit->second;
@@ -861,7 +882,7 @@ std::string Lowerer::resolve_ref_overload(const std::string& base_name,
       (call_node && call_node->left && call_node->left->kind == NK_MEMBER)
           ? call_node->left->left
           : nullptr;
-  const bool object_is_lvalue = object_node && is_ast_lvalue(object_node);
+  const bool object_is_lvalue = object_node && is_ast_lvalue(object_node, ctx);
   const std::string* best_name = nullptr;
   int best_score = -1;
   for (const auto& ov : overloads) {
@@ -879,7 +900,7 @@ std::string Lowerer::resolve_ref_overload(const std::string& base_name,
          i < call_node->n_children &&
          i < static_cast<int>(ov.param_is_rvalue_ref.size());
          ++i) {
-      bool arg_is_lvalue = is_ast_lvalue(call_node->children[i]);
+      bool arg_is_lvalue = is_ast_lvalue(call_node->children[i], ctx);
       if (ov.param_is_lvalue_ref[static_cast<size_t>(i)] && !arg_is_lvalue) {
         viable = false;
         break;
@@ -1045,7 +1066,7 @@ ExprId Lowerer::try_lower_operator_call(FunctionCtx* ctx,
   auto ovit = ref_overload_set_.find(base_key);
   if (ovit != ref_overload_set_.end() && !ovit->second.empty()) {
     const auto& overloads = ovit->second;
-    const bool object_is_lvalue = is_ast_lvalue(obj_node);
+    const bool object_is_lvalue = is_ast_lvalue(obj_node, ctx);
     const std::string* best_name = nullptr;
     int best_score = -1;
     for (const auto& ov : overloads) {
@@ -1058,7 +1079,7 @@ ExprId Lowerer::try_lower_operator_call(FunctionCtx* ctx,
       else if (ov.method_is_lvalue_ref && object_is_lvalue) score += 2;
       else score += 1;
       for (size_t i = 0; i < arg_nodes.size() && i < ov.param_is_rvalue_ref.size(); ++i) {
-        bool arg_is_lvalue = is_ast_lvalue(arg_nodes[i]);
+        bool arg_is_lvalue = is_ast_lvalue(arg_nodes[i], ctx);
         if (ov.param_is_lvalue_ref[i] && !arg_is_lvalue) {
           viable = false;
           break;
@@ -1810,7 +1831,7 @@ ExprId Lowerer::lower_expr(FunctionCtx* ctx, const Node* n) {
       m.field = n->name ? n->name : "<anon_field>";
       m.is_arrow = n->is_arrow;
       const ValueCategory category =
-          (n->is_arrow || is_ast_lvalue(n->left))
+          (n->is_arrow || is_ast_lvalue(n->left, ctx))
               ? ValueCategory::LValue
               : ValueCategory::RValue;
       return append_expr(n, m, n->type, category);

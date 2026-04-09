@@ -526,13 +526,14 @@ class Lowerer {
                                                       const Node* n);
 
   // Check if an AST expression is an lvalue (variable, subscript, deref, member).
-  static bool is_ast_lvalue(const Node* n);
+  static bool is_ast_lvalue(const Node* n, const FunctionCtx* ctx = nullptr);
 
   // Resolve a ref-overloaded function call: pick the best overload based on
   // argument value categories. Returns the mangled name of the best match,
   // or empty string if no overload set exists.
   std::string resolve_ref_overload(const std::string& base_name,
-                                   const Node* call_node);
+                                   const Node* call_node,
+                                   const FunctionCtx* ctx = nullptr);
 
   const Node* find_pending_method_by_mangled(
       const std::string& mangled_name) const;
