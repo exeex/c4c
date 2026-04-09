@@ -7,15 +7,38 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: audit the remaining Step 6/7 stack-layout cleanup surface for
-  any raw-LIR-only compatibility helpers that still exist outside the isolated
-  `apply_entry_alloca_rewrite_patch(...)` mutation step
-- Next intended slice: if no other shared-test-only raw-LIR stack-layout
-  helpers remain, retarget the next focused cleanup to whichever direct-emitter
-  entry-alloca compatibility seam still rebuilds metadata from raw `LirFunction`
+- Current slice: audit whether the new shared module-level
+  `rewrite_module_entry_allocas(...)` seam is the last acceptable temporary
+  raw-LIR compatibility layer for entry-alloca pruning or whether the next
+  Step 6/7 slice should push that preparation boundary closer to BIR-backed
+  ownership
+- Next intended slice: if module-level entry-alloca rewriting remains a
+  temporary necessity, retarget the next focused cleanup to the next backend
+  entrypoint that still lowers raw `LirFunction` directly into liveness or
+  stack-layout inputs immediately before emission
 
 ## Completed
 
+- Completed the next Step 6/7 bounded direct-emitter module rewrite cleanup
+  slice by deleting the duplicated target-local `prune_module_entry_allocas(...)`
+  / `prune_dead_entry_allocas(...)` compatibility wrappers and centralizing that
+  temporary module-walk seam in shared stack-layout code:
+  - added `rewrite_module_entry_allocas(...)` in
+    `src/backend/stack_layout/slot_assignment.*` so one shared helper now
+    lowers liveness and stack-layout inputs per function, prepares the explicit
+    entry-alloca rewrite patch, and applies the isolated raw-LIR mutation
+  - updated `src/backend/aarch64/codegen/emit.cpp` and
+    `src/backend/x86/codegen/emit.cpp` so both direct emitters drop their
+    duplicated module/function pruning glue and call the shared module rewrite
+    helper instead
+  - extended `tests/backend/backend_shared_util_tests.cpp` with focused module
+    coverage proving the shared helper preserves declarations and prunes dead
+    param allocas across the rewritten LIR module
+  - rebuilt `backend_shared_util_tests` and `backend_bir_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$|^backend_bir_tests$' --output-on-failure`,
+    refreshed `test_fail_after.log`, and passed the regression guard with no
+    new failures and no pass-count drop
+    (`2809 -> 2809`, same 32 known failing tests as `test_fail_before.log`)
 - Completed the next Step 6 bounded raw-LIR entry-alloca pruning helper
   retirement slice by deleting the final shared test-only pruning entrypoint
   and forcing that regression coverage onto the backend-owned rewrite-patch

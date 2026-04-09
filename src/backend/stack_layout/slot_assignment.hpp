@@ -58,6 +58,12 @@ EntryAllocaRewritePatch prepare_entry_alloca_rewrite_patch(
     const std::vector<PhysReg>& asm_clobbered,
     const std::vector<PhysReg>& callee_saved_regs);
 
+[[nodiscard]] c4c::codegen::lir::LirModule rewrite_module_entry_allocas(
+    const c4c::codegen::lir::LirModule& module,
+    const RegAllocConfig& regalloc_config,
+    const std::vector<PhysReg>& asm_clobbered,
+    const std::vector<PhysReg>& callee_saved_regs);
+
 void apply_entry_alloca_rewrite_patch(
     c4c::codegen::lir::LirFunction& function,
     const EntryAllocaRewritePatch& patch);

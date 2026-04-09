@@ -49,30 +49,6 @@ bool is_direct_bir_subset_error(const std::invalid_argument& ex) {
 c4c::backend::RegAllocIntegrationResult run_shared_x86_regalloc(
     const c4c::backend::LivenessInput& liveness_input);
 
-void prune_dead_entry_allocas(c4c::codegen::lir::LirFunction& function) {
-  const auto liveness_input = c4c::backend::lower_lir_to_liveness_input(function);
-  const auto stack_layout_input =
-      c4c::backend::stack_layout::lower_lir_to_stack_layout_input(function);
-  c4c::backend::RegAllocConfig config;
-  config.available_regs = {{1}, {2}, {3}, {4}, {5}};
-  config.caller_saved_regs = {{10}, {11}, {12}, {13}, {14}, {15}};
-  const std::vector<c4c::backend::PhysReg> callee_saved = {
-      {1}, {2}, {3}, {4}, {5},
-  };
-  const auto patch = c4c::backend::stack_layout::prepare_entry_alloca_rewrite_patch(
-      liveness_input, stack_layout_input, config, {}, callee_saved);
-  c4c::backend::stack_layout::apply_entry_alloca_rewrite_patch(function, patch);
-}
-
-c4c::codegen::lir::LirModule prune_module_entry_allocas(
-    const c4c::codegen::lir::LirModule& module) {
-  auto prepared = module;
-  for (auto& function : prepared.functions) {
-    prune_dead_entry_allocas(function);
-  }
-  return prepared;
-}
-
 std::string asm_symbol_name(std::string_view target_triple,
                             std::string_view logical_name);
 std::string asm_private_data_label(std::string_view target_triple,
@@ -4120,7 +4096,14 @@ std::string emit_module(const c4c::backend::bir::Module& module) {
 }
 
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {
-  const auto prepared = prune_module_entry_allocas(module);
+  c4c::backend::RegAllocConfig config;
+  config.available_regs = {{1}, {2}, {3}, {4}, {5}};
+  config.caller_saved_regs = {{10}, {11}, {12}, {13}, {14}, {15}};
+  const std::vector<c4c::backend::PhysReg> callee_saved = {
+      {1}, {2}, {3}, {4}, {5},
+  };
+  const auto prepared =
+      c4c::backend::stack_layout::rewrite_module_entry_allocas(module, config, {}, callee_saved);
   if (const auto bir_module = c4c::backend::try_lower_to_bir(prepared); bir_module.has_value()) {
     try {
       return emit_module(*bir_module);

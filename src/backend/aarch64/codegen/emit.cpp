@@ -322,30 +322,6 @@ constexpr std::array<c4c::backend::PhysReg, 2> kAarch64CallerSavedRegs = {
     c4c::backend::PhysReg{14},
 };
 
-void prune_dead_entry_allocas(c4c::codegen::lir::LirFunction& function) {
-  c4c::backend::RegAllocConfig config;
-  config.available_regs.assign(kAarch64CalleeSavedRegs.begin(), kAarch64CalleeSavedRegs.end());
-  config.caller_saved_regs.assign(kAarch64CallerSavedRegs.begin(), kAarch64CallerSavedRegs.end());
-
-  const auto liveness_input = c4c::backend::lower_lir_to_liveness_input(function);
-  const auto stack_layout_input =
-      c4c::backend::stack_layout::lower_lir_to_stack_layout_input(function);
-  const std::vector<c4c::backend::PhysReg> callee_saved(kAarch64CalleeSavedRegs.begin(),
-                                                        kAarch64CalleeSavedRegs.end());
-  const auto patch = c4c::backend::stack_layout::prepare_entry_alloca_rewrite_patch(
-      liveness_input, stack_layout_input, config, {}, callee_saved);
-  c4c::backend::stack_layout::apply_entry_alloca_rewrite_patch(function, patch);
-}
-
-c4c::codegen::lir::LirModule prune_module_entry_allocas(
-    const c4c::codegen::lir::LirModule& module) {
-  auto prepared = module;
-  for (auto& function : prepared.functions) {
-    prune_dead_entry_allocas(function);
-  }
-  return prepared;
-}
-
 std::string minimal_single_function_symbol(const c4c::backend::bir::Module& module) {
   return asm_symbol_name(module.target_triple, module.functions.front().name);
 }
@@ -6714,7 +6690,13 @@ std::string emit_module(const c4c::backend::bir::Module& module) {
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {
   const bool needs_nonminimal_lowering = lir_module_needs_nonminimal_lowering(module);
   validate_module(module);
-  const auto prepared = prune_module_entry_allocas(module);
+  c4c::backend::RegAllocConfig config;
+  config.available_regs.assign(kAarch64CalleeSavedRegs.begin(), kAarch64CalleeSavedRegs.end());
+  config.caller_saved_regs.assign(kAarch64CallerSavedRegs.begin(), kAarch64CallerSavedRegs.end());
+  const std::vector<c4c::backend::PhysReg> callee_saved(kAarch64CalleeSavedRegs.begin(),
+                                                        kAarch64CalleeSavedRegs.end());
+  const auto prepared =
+      c4c::backend::stack_layout::rewrite_module_entry_allocas(module, config, {}, callee_saved);
   validate_module(prepared);
   if (const auto bir_module = c4c::backend::try_lower_to_bir(prepared);
       bir_module.has_value()) {

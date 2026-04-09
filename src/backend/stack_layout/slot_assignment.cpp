@@ -15,6 +15,7 @@ namespace {
 using c4c::codegen::lir::LirAllocaOp;
 using c4c::codegen::lir::LirFunction;
 using c4c::codegen::lir::LirInst;
+using c4c::codegen::lir::LirModule;
 using c4c::codegen::lir::LirStoreOp;
 using c4c::codegen::lir::LirTerminator;
 
@@ -215,6 +216,26 @@ EntryAllocaRewritePatch prepare_entry_alloca_rewrite_patch(
   const auto bundle = build_stack_layout_plan_bundle(
       liveness_input, stack_layout_input, regalloc_config, asm_clobbered, callee_saved_regs);
   return build_entry_alloca_rewrite_patch(stack_layout_input, bundle.entry_alloca_plans);
+}
+
+LirModule rewrite_module_entry_allocas(
+    const c4c::codegen::lir::LirModule& module,
+    const RegAllocConfig& regalloc_config,
+    const std::vector<PhysReg>& asm_clobbered,
+    const std::vector<PhysReg>& callee_saved_regs) {
+  auto rewritten = module;
+  for (auto& function : rewritten.functions) {
+    const auto liveness_input = lower_lir_to_liveness_input(function);
+    const auto stack_layout_input = lower_lir_to_stack_layout_input(function);
+    const auto patch = prepare_entry_alloca_rewrite_patch(
+        liveness_input,
+        stack_layout_input,
+        regalloc_config,
+        asm_clobbered,
+        callee_saved_regs);
+    apply_entry_alloca_rewrite_patch(function, patch);
+  }
+  return rewritten;
 }
 
 std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(

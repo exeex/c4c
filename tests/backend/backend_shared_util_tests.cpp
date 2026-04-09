@@ -1729,6 +1729,24 @@ void test_backend_shared_slot_assignment_prepares_rewrite_patch_from_backend_own
               "shared stack-layout patch apply should let callers keep planning on backend-owned inputs while the final raw-LIR mutation stays isolated");
 }
 
+void test_backend_shared_slot_assignment_rewrites_module_entry_allocas() {
+  c4c::backend::RegAllocConfig config;
+  config.available_regs = {{20}};
+  config.caller_saved_regs = {{13}};
+
+  const auto module = make_dead_param_alloca_candidate_module();
+  const auto rewritten = c4c::backend::stack_layout::rewrite_module_entry_allocas(
+      module, config, {}, {{20}, {21}, {22}});
+
+  expect_true(rewritten.functions.size() == module.functions.size(),
+              "shared module entry-alloca rewrite should preserve the function list while retargeting direct-emitter prep off duplicated target-local glue");
+  expect_true(rewritten.functions.front().is_declaration &&
+                  rewritten.functions.front().alloca_insts.empty(),
+              "shared module entry-alloca rewrite should leave declarations untouched");
+  expect_true(rewritten.functions.back().alloca_insts.empty(),
+              "shared module entry-alloca rewrite should prune dead param allocas across the whole LIR module");
+}
+
 void test_backend_shared_slot_assignment_prunes_dead_entry_alloca_insts() {
   const c4c::backend::RegAllocIntegrationResult regalloc;
 
@@ -2114,6 +2132,7 @@ int main(int argc, char* argv[]) {
   test_backend_shared_slot_assignment_bundle_accepts_backend_owned_input();
   test_backend_shared_slot_assignment_bundle_prepares_from_backend_owned_inputs();
   test_backend_shared_slot_assignment_prepares_rewrite_patch_from_backend_owned_inputs();
+  test_backend_shared_slot_assignment_rewrites_module_entry_allocas();
   test_backend_shared_slot_assignment_prunes_dead_entry_alloca_insts();
   test_backend_shared_slot_assignment_applies_coalesced_entry_slots();
   // TODO: binary-utils contract test disabled — assembler seam changed
