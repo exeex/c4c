@@ -1301,6 +1301,46 @@ c4c::codegen::lir::LirModule make_lir_minimal_two_arg_direct_call_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_lir_minimal_two_arg_local_arg_direct_call_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction helper;
+  helper.name = "add_pair";
+  helper.signature_text = "define i32 @add_pair(i32 %lhs, i32 %rhs)\n";
+  helper.entry = LirBlockId{0};
+
+  LirBlock helper_entry;
+  helper_entry.id = LirBlockId{0};
+  helper_entry.label = "entry";
+  helper_entry.insts.push_back(LirBinOp{"%sum", LirBinaryOpcode::Add, "i32", "%lhs", "%rhs"});
+  helper_entry.terminator = LirRet{std::string("%sum"), "i32"};
+  helper.blocks.push_back(std::move(helper_entry));
+
+  LirFunction main_function;
+  main_function.name = "main";
+  main_function.signature_text = "define i32 @main()\n";
+  main_function.entry = LirBlockId{0};
+  main_function.alloca_insts.push_back(LirAllocaOp{"%lv.x", "i32", "", 4});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{"i32", "5", "%lv.x"});
+  entry.insts.push_back(LirLoadOp{"%t0", "i32", "%lv.x"});
+  entry.insts.push_back(LirCallOp{"%t1", "i32", "@add_pair", "(i32, i32)", "i32 %t0, i32 7"});
+  entry.terminator = LirRet{std::string("%t1"), "i32"};
+  main_function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(main_function));
+  module.functions.push_back(std::move(helper));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_lir_minimal_direct_call_add_imm_module() {
   using namespace c4c::codegen::lir;
 
@@ -3381,6 +3421,25 @@ void test_x86_direct_emitter_lowers_minimal_two_arg_helper_call_slice() {
                       "x86 direct emitter should stay on native asm emission for the bounded two-arg helper slice");
 }
 
+void test_x86_direct_emitter_lowers_minimal_two_arg_local_arg_call_slice() {
+  auto module = make_lir_minimal_two_arg_local_arg_direct_call_module();
+
+  const auto rendered = c4c::backend::x86::try_emit_prepared_lir_module(module);
+  expect_true(rendered.has_value(),
+              "x86 direct emitter should accept the bounded first-local two-arg helper call through the native prepared-LIR seam");
+  if (!rendered.has_value()) {
+    return;
+  }
+  expect_contains(*rendered, ".globl add_pair",
+                  "x86 direct emitter should still emit the helper definition for the bounded first-local two-arg direct-LIR slice");
+  expect_contains(*rendered, "add_pair:\n  mov eax, edi\n  add eax, esi\n  ret\n",
+                  "x86 direct emitter should keep the bounded two-parameter helper body on the native direct-LIR path");
+  expect_contains(*rendered, "main:\n  mov edi, 5\n  mov esi, 7\n  call add_pair\n  ret\n",
+                  "x86 direct emitter should materialize the reloaded local first operand and immediate second operand before invoking the helper on the native x86 path");
+  expect_not_contains(*rendered, "target triple =",
+                      "x86 direct emitter should stay on native asm emission for the bounded first-local two-arg helper slice");
+}
+
 void test_x86_direct_lir_emitter_rejects_double_indirect_pointer_conditional_return_fallback() {
   expect_true(
       !c4c::backend::try_lower_to_bir(
@@ -3477,5 +3536,6 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_extern_zero_arg_call_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_local_arg_call_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_helper_call_slice);
+  RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_local_arg_call_slice);
   RUN_TEST(test_x86_direct_lir_emitter_rejects_double_indirect_pointer_conditional_return_fallback);
 }

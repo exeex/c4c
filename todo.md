@@ -11,10 +11,10 @@ Source Plan: plan.md
   keep the active work inside idea 44's x86-native emitter/toolchain lane and
   do not silently absorb the separate shared-BIR select regression
 - current exact slice:
-  move from the now-green minimal two-immediate two-arg helper call into the
-  next adjacent source-produced family:
-  `backend_runtime_two_arg_local_arg`, keeping the work inside idea 44's x86
-  native prepared-LIR seam and not widening into the separate parked
+  move from the now-green first-local second-immediate two-arg helper call into
+  the next adjacent source-produced family:
+  `backend_runtime_two_arg_second_local_arg`, keeping the work inside idea 44's
+  x86 native prepared-LIR seam and not widening into the separate parked
   shared-BIR select regression
 
 ## Next Slice
@@ -24,12 +24,34 @@ Source Plan: plan.md
   instead of widening idea 44
 - after the now-green `backend_runtime_call_helper` slice, keep the active
   work on the next adjacent call-family target:
-  after the now-green `backend_runtime_two_arg_helper` slice, the next bounded
-  source-produced failure is `backend_runtime_two_arg_local_arg`, followed by
-  the remaining second-local and local-rewrite two-arg helper families
+  after the now-green `backend_runtime_two_arg_helper` and
+  `backend_runtime_two_arg_local_arg` slices, the next bounded
+  source-produced failure is `backend_runtime_two_arg_second_local_arg`,
+  followed by the remaining local-rewrite and both-local two-arg helper
+  families
 
 ## Recently Completed
 
+- added a bounded x86 prepared-LIR matcher/emitter in
+  `src/backend/x86/codegen/emit.cpp` for the first-local second-immediate
+  two-arg helper family (`int x = 5; return add_pair(x, 7);`) without widening
+  into the parked second-local or local-rewrite variants
+- covered that native prepared-LIR seam with a focused x86 regression in
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp`
+- verified the focused x86 first-local two-arg seam is green:
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_two_arg_local_arg_call_slice`,
+  `ctest --test-dir build --output-on-failure -R '^backend_runtime_two_arg_local_arg$'`,
+  and
+  `./build/c4cll --codegen asm --target x86_64-unknown-linux-gnu tests/c/internal/backend_case/two_arg_local_arg.c`
+  now pass, with the standalone asm path emitting bounded native assembly for
+  `main -> add_pair(5, 7)` after reloading the local first operand
+- re-checked the adjacent two-arg helper-call lane after the first-local slice
+  landed and confirmed the remaining bounded failures stay parked in the later
+  source shapes:
+  `ctest --test-dir build --output-on-failure -R '^(backend_runtime_two_arg_helper|backend_runtime_two_arg_local_arg|backend_runtime_two_arg_second_local_arg|backend_runtime_two_arg_second_local_rewrite|backend_runtime_two_arg_first_local_rewrite|backend_runtime_two_arg_both_local_arg|backend_runtime_two_arg_both_local_first_rewrite)$'`
+  now leaves only the second-local, local-rewrite, and both-local variants
+  failing while `backend_runtime_two_arg_helper` and
+  `backend_runtime_two_arg_local_arg` pass
 - added a bounded x86 prepared-LIR matcher/emitter in
   `src/backend/x86/codegen/emit.cpp` for the minimal two-function two-arg
   helper family (`add_pair(lhs, rhs) { return lhs + rhs; }` followed by
