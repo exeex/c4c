@@ -51,10 +51,6 @@ EntryAllocaRewritePatch build_entry_alloca_rewrite_patch(
     const StackLayoutInput& input,
     const std::vector<EntryAllocaSlotPlan>& plans);
 
-EntryAllocaRewritePatch build_entry_alloca_rewrite_patch(
-    const c4c::codegen::lir::LirFunction& function,
-    const std::vector<EntryAllocaSlotPlan>& plans);
-
 EntryAllocaRewritePatch prepare_entry_alloca_rewrite_patch(
     const LivenessInput& liveness_input,
     const StackLayoutInput& stack_layout_input,
@@ -77,9 +73,5 @@ std::vector<c4c::codegen::lir::LirInst> prune_dead_entry_alloca_insts(
 std::vector<ParamAllocaSlotPlan> plan_param_alloca_slots(
     const StackLayoutInput& input,
     const StackLayoutAnalysis& analysis);
-
-std::vector<c4c::codegen::lir::LirInst> prune_dead_param_alloca_insts(
-    const c4c::codegen::lir::LirFunction& function,
-    const std::vector<ParamAllocaSlotPlan>& plans);
 
 }  // namespace c4c::backend::stack_layout

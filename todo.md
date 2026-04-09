@@ -7,17 +7,34 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: retarget the entry-alloca rewrite-patch preparation seam so
-  production emitters build the patch from backend-owned
-  `StackLayoutInput::entry_allocas`, leaving raw-LIR ownership only in the
-  final apply step
-- Next intended slice: audit whether the remaining raw-LIR
-  `prune_dead_param_alloca_insts(...)` / entry-alloca pruning helper surface is
-  still production relevant after the rewrite-patch builder stops depending on
-  `LirFunction`
+- Current slice: audit whether the remaining raw-LIR
+  `prune_dead_entry_alloca_insts(...)` helper should stay as focused
+  LIR-mutation coverage or can also be collapsed behind the backend-owned
+  rewrite-patch surface
+- Next intended slice: if the raw-LIR entry-alloca pruning helper is still
+  only serving focused tests, delete it and retarget that coverage to assert on
+  backend-owned rewrite patches plus the isolated apply step
 
 ## Completed
 
+- Completed the next Step 6 bounded raw-LIR pruning compatibility cleanup
+  slice by deleting the remaining test-only raw-LIR param-pruning helper and
+  forcing shared rewrite-patch coverage onto the backend-owned stack-layout
+  surface:
+  - removed the raw-LIR
+    `build_entry_alloca_rewrite_patch(const LirFunction&, ...)` overload and
+    `prune_dead_param_alloca_insts(...)` from
+    `src/backend/stack_layout/slot_assignment.*`, leaving
+    `StackLayoutInput` as the only shared patch-builder input surface
+  - updated `tests/backend/backend_shared_util_tests.cpp` so the param-alloca
+    pruning coverage and coalesced-entry rewrite coverage now build rewrite
+    patches from explicit backend-owned `StackLayoutInput` instead of
+    depending on raw-LIR convenience wrappers
+  - rebuilt `backend_shared_util_tests` and `backend_bir_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$|^backend_bir_tests$' --output-on-failure`,
+    rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with no new failures and no pass-count drop
+    (`2809 -> 2809`, same 32 known failing tests as `test_fail_before.log`)
 - Completed the next Step 6/7 bounded entry-alloca patch-preparation ownership
   slice by moving production rewrite-patch construction onto backend-owned
   stack-layout metadata and leaving raw-LIR ownership only in the final apply

@@ -1382,7 +1382,7 @@ void test_backend_shared_slot_assignment_plans_param_alloca_slots() {
               "shared slot-assignment planning should retain live param allocas when the function body still reads from the parameter slot");
 }
 
-void test_backend_shared_slot_assignment_prunes_dead_param_alloca_insts() {
+void test_backend_shared_slot_assignment_param_alloca_pruning_matches_backend_owned_entry_patch() {
   c4c::backend::RegAllocConfig config;
   config.available_regs = {{20}};
   config.caller_saved_regs = {{13}};
@@ -1399,11 +1399,15 @@ void test_backend_shared_slot_assignment_prunes_dead_param_alloca_insts() {
       dead_input, dead_regalloc, {{20}, {21}, {22}});
   const auto dead_plans =
       c4c::backend::stack_layout::plan_param_alloca_slots(dead_input, dead_analysis);
-  const auto dead_pruned =
-      c4c::backend::stack_layout::prune_dead_param_alloca_insts(dead_function, dead_plans);
+  const auto dead_entry_plans =
+      c4c::backend::stack_layout::plan_entry_alloca_slots(dead_input, dead_analysis);
+  const auto dead_patch =
+      c4c::backend::stack_layout::build_entry_alloca_rewrite_patch(dead_input, dead_entry_plans);
 
-  expect_true(dead_pruned.empty(),
-              "shared slot-assignment pruning should drop dead param allocas and their entry stores");
+  expect_true(dead_plans.size() == 1 && !dead_plans.front().needs_stack_slot,
+              "shared slot-assignment param planning should classify dead param allocas as removable");
+  expect_true(dead_patch.alloca_insts.empty(),
+              "shared slot-assignment backend-owned rewrite patch should drop dead param allocas and their entry stores");
 
   const auto live_module = make_live_param_alloca_candidate_module();
   const auto& live_function = live_module.functions.front();
@@ -1417,11 +1421,15 @@ void test_backend_shared_slot_assignment_prunes_dead_param_alloca_insts() {
       live_input, live_regalloc, {{20}, {21}, {22}});
   const auto live_plans =
       c4c::backend::stack_layout::plan_param_alloca_slots(live_input, live_analysis);
-  const auto live_pruned =
-      c4c::backend::stack_layout::prune_dead_param_alloca_insts(live_function, live_plans);
+  const auto live_entry_plans =
+      c4c::backend::stack_layout::plan_entry_alloca_slots(live_input, live_analysis);
+  const auto live_patch =
+      c4c::backend::stack_layout::build_entry_alloca_rewrite_patch(live_input, live_entry_plans);
 
-  expect_true(live_pruned.size() == live_function.alloca_insts.size(),
-              "shared slot-assignment pruning should preserve live param allocas");
+  expect_true(live_plans.size() == 1 && live_plans.front().needs_stack_slot,
+              "shared slot-assignment param planning should preserve live param allocas");
+  expect_true(live_patch.alloca_insts.size() == live_function.alloca_insts.size(),
+              "shared slot-assignment backend-owned rewrite patch should preserve live param allocas");
 }
 
 void test_backend_shared_slot_assignment_plans_entry_alloca_slots() {
@@ -1624,7 +1632,7 @@ void test_backend_shared_slot_assignment_accepts_backend_owned_input() {
       c4c::backend::stack_layout::plan_entry_alloca_slots(dead_entry_input,
                                                           dead_entry_analysis);
   const auto dead_entry_patch =
-      c4c::backend::stack_layout::build_entry_alloca_rewrite_patch(dead_entry_function,
+      c4c::backend::stack_layout::build_entry_alloca_rewrite_patch(dead_entry_input,
                                                                    dead_entry_plans);
   c4c::backend::stack_layout::apply_entry_alloca_rewrite_patch(dead_entry_function,
                                                                dead_entry_patch);
@@ -1662,7 +1670,7 @@ void test_backend_shared_slot_assignment_bundle_accepts_backend_owned_input() {
 
   auto dead_function = dead_param_function;
   const auto dead_patch = c4c::backend::stack_layout::build_entry_alloca_rewrite_patch(
-      dead_function, dead_bundle.entry_alloca_plans);
+      dead_param_input, dead_bundle.entry_alloca_plans);
   c4c::backend::stack_layout::apply_entry_alloca_rewrite_patch(dead_function, dead_patch);
   expect_true(dead_function.alloca_insts.empty(),
               "backend-owned stack-layout plan bundle should still drive the production entry-alloca mutation step");
@@ -1797,7 +1805,7 @@ void test_backend_shared_slot_assignment_applies_coalesced_entry_slots() {
   const auto disjoint_plans =
       c4c::backend::stack_layout::plan_entry_alloca_slots(disjoint_input, disjoint_analysis);
   const auto disjoint_patch = c4c::backend::stack_layout::build_entry_alloca_rewrite_patch(
-      disjoint_function, disjoint_plans);
+      disjoint_input, disjoint_plans);
   c4c::backend::stack_layout::apply_entry_alloca_rewrite_patch(disjoint_function,
                                                                disjoint_patch);
 
@@ -1824,7 +1832,7 @@ void test_backend_shared_slot_assignment_applies_coalesced_entry_slots() {
   const auto same_block_plans =
       c4c::backend::stack_layout::plan_entry_alloca_slots(same_block_input, same_block_analysis);
   const auto same_block_patch =
-      c4c::backend::stack_layout::build_entry_alloca_rewrite_patch(same_block_function,
+      c4c::backend::stack_layout::build_entry_alloca_rewrite_patch(same_block_input,
                                                                    same_block_plans);
   c4c::backend::stack_layout::apply_entry_alloca_rewrite_patch(same_block_function,
                                                                same_block_patch);
@@ -1841,7 +1849,7 @@ void test_backend_shared_slot_assignment_applies_coalesced_entry_slots() {
   const auto mixed_lifetime_plans = c4c::backend::stack_layout::plan_entry_alloca_slots(
       mixed_lifetime_input, mixed_lifetime_analysis);
   const auto mixed_lifetime_patch =
-      c4c::backend::stack_layout::build_entry_alloca_rewrite_patch(mixed_lifetime_function,
+      c4c::backend::stack_layout::build_entry_alloca_rewrite_patch(mixed_lifetime_input,
                                                                    mixed_lifetime_plans);
   c4c::backend::stack_layout::apply_entry_alloca_rewrite_patch(mixed_lifetime_function,
                                                                mixed_lifetime_patch);
@@ -1861,8 +1869,10 @@ void test_backend_shared_slot_assignment_applies_coalesced_entry_slots() {
       c4c::backend::stack_layout::EntryAllocaSlotPlan{
           "%lv.else", true, false, std::nullopt, std::size_t{0}},
   };
+  const auto call_arg_input =
+      c4c::backend::stack_layout::lower_lir_to_stack_layout_input(call_arg_function);
   const auto call_arg_patch =
-      c4c::backend::stack_layout::build_entry_alloca_rewrite_patch(call_arg_function,
+      c4c::backend::stack_layout::build_entry_alloca_rewrite_patch(call_arg_input,
                                                                    call_arg_plans);
   c4c::backend::stack_layout::apply_entry_alloca_rewrite_patch(call_arg_function,
                                                                call_arg_patch);
@@ -2087,7 +2097,7 @@ int main(int argc, char* argv[]) {
   test_backend_shared_alloca_coalescing_classifies_non_param_allocas();
   test_backend_shared_alloca_coalescing_accepts_backend_owned_input();
   test_backend_shared_slot_assignment_plans_param_alloca_slots();
-  test_backend_shared_slot_assignment_prunes_dead_param_alloca_insts();
+  test_backend_shared_slot_assignment_param_alloca_pruning_matches_backend_owned_entry_patch();
   test_backend_shared_slot_assignment_plans_entry_alloca_slots();
   test_backend_shared_slot_assignment_accepts_backend_owned_input();
   test_backend_shared_slot_assignment_bundle_accepts_backend_owned_input();
