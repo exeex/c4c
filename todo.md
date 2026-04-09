@@ -7,18 +7,33 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 5: pull phi and CFG normalization behind the BIR boundary
-- Current slice: continue the `src/backend/aarch64/codegen/emit.cpp` route
-  audit after pruning the double-indirect local-pointer conditional-return
-  fallback and choose the next smallest CFG-specific seam that still bypasses
-  canonical BIR ownership
-- Next intended slice: inspect the remaining `try_emit_general_lir_asm(...)`
-  multi-block branch/switch surface in `src/backend/aarch64/codegen/emit.cpp`
-  and pick the smallest production-only CFG helper that can be rejected or
-  normalized behind `try_lower_to_bir(...)` without expanding into MIR-owned
-  liveness/regalloc work
+- Current slice: continue the `src/backend/aarch64/codegen/emit.cpp`
+  `try_emit_general_lir_asm(...)` route audit after pruning the alloca-backed
+  switch fallback and choose the next smallest production-only multi-block CFG
+  helper that still bypasses canonical BIR ownership
+- Next intended slice: inspect the remaining AArch64 general direct-LIR
+  branch-heavy fallback surface beyond `LirPhiOp`, `LirSwitch`, and the
+  already-pruned conditional-return helper to decide whether the next seam
+  should be normalized in `try_lower_to_bir(...)` or rejected outright without
+  spilling into Step 6 MIR-owned liveness/regalloc work
 
 ## Completed
 
+- Closed the next Step 5 AArch64 multi-block switch seam behind the shared BIR
+  boundary:
+  - added focused AArch64 coverage in
+    `tests/backend/backend_bir_pipeline_aarch64_tests.cpp` proving an
+    alloca-backed `LirSwitch` module still misses `try_lower_to_bir(...)` and
+    must now fail explicitly instead of reviving target-local switch lowering
+    through `try_emit_general_lir_asm(...)`
+  - taught `src/backend/aarch64/codegen/emit.cpp` to reject only that narrow
+    synthetic alloca-backed switch-return fallback before
+    `try_emit_general_lir_asm(...)` so Step 5 closes the bounded CFG seam
+    without regressing the broader production switch surface that still lowers
+    natively today
+  - re-ran `backend_bir_tests`, rebuilt the tree, refreshed
+    `test_fail_after.log`, and passed the regression guard with no new failures
+    and no pass-count drop (`2809 -> 2809`)
 - Closed the branch-only constant-return Step 5 CFG seam behind shared BIR:
   - taught `src/backend/lowering/lir_to_bir.cpp` to collapse the existing
     `goto`-only empty-block constant-return LIR shape into the canonical

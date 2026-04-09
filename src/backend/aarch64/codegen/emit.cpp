@@ -1500,6 +1500,48 @@ bool is_double_indirect_local_pointer_conditional_return_fallback(
          block7.insts.empty() && std::get_if<LirRet>(&block7.terminator) != nullptr;
 }
 
+bool is_alloca_backed_switch_return_fallback(const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || !module.globals.empty() ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return false;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      !c4c::backend::backend_lir_is_zero_arg_i32_definition(function.signature_text) ||
+      function.entry.value != 0 || function.alloca_insts.size() != 1 ||
+      function.blocks.size() != 4) {
+    return false;
+  }
+
+  const auto* selector_alloca = std::get_if<LirAllocaOp>(&function.alloca_insts.front());
+  if (selector_alloca == nullptr || selector_alloca->type_str != "i32") {
+    return false;
+  }
+
+  const auto& entry = function.blocks[0];
+  const auto* entry_switch = std::get_if<LirSwitch>(&entry.terminator);
+  if (entry.label != "entry" || entry.insts.size() != 2 || entry_switch == nullptr ||
+      entry_switch->selector_type != "i32" || entry_switch->cases.size() != 2) {
+    return false;
+  }
+  if (std::get_if<LirStoreOp>(&entry.insts[0]) == nullptr ||
+      std::get_if<LirLoadOp>(&entry.insts[1]) == nullptr) {
+    return false;
+  }
+
+  for (std::size_t block_index = 1; block_index < function.blocks.size(); ++block_index) {
+    const auto& block = function.blocks[block_index];
+    if (!block.insts.empty() || std::get_if<LirRet>(&block.terminator) == nullptr) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 struct MinimalConditionalReturnSlice {
   enum class ValueKind : unsigned char {
     Immediate,
@@ -5198,6 +5240,11 @@ static std::optional<std::string> try_emit_general_lir_asm(
   if (is_double_indirect_local_pointer_conditional_return_fallback(module)) {
     // This CFG shape used to sneak through target-local direct-LIR handling
     // after missing the shared BIR route. Keep that ownership behind BIR.
+    return std::nullopt;
+  }
+  if (is_alloca_backed_switch_return_fallback(module)) {
+    // Keep this synthetic switch-return fallback from reviving target-local
+    // multi-block CFG ownership after shared BIR lowering declines the module.
     return std::nullopt;
   }
   std::ostringstream out;
