@@ -6711,12 +6711,6 @@ std::optional<std::string> try_emit_direct_lir_module(
     const c4c::codegen::lir::LirModule& module,
     bool needs_nonminimal_lowering) {
   try {
-    if (!needs_nonminimal_lowering) {
-      if (const auto slice = parse_minimal_conditional_return_slice(module);
-          slice.has_value()) {
-        return emit_minimal_conditional_return_asm(module.target_triple, *slice);
-      }
-    }
     if (const auto slice = parse_minimal_scalar_global_store_reload_slice(module);
         slice.has_value()) {
       return emit_minimal_scalar_global_store_reload_asm(module.target_triple, *slice);
