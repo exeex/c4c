@@ -7,12 +7,12 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 5: pull phi and CFG normalization behind the BIR boundary
-- Current slice: refresh full-suite validation after aligning the x86 direct
-  emitter entrypoint with the shared dead-entry-alloca pruning path used before
-  BIR lowering
+- Current slice: continue the Step 5 seam audit after pruning the remaining x86
+  CFG-sensitive direct-LIR helper stubs that were still reviving target-local
+  control-flow ownership when modules missed shared BIR lowering
 - Next intended slice: continue the Step 5 seam audit around remaining
-  target-entrypoint/backend-boundary asymmetries now that x86 and AArch64 both
-  prepare dead entry allocas before retrying shared BIR lowering
+  target-entrypoint/backend-boundary asymmetries after the x86 direct emitter
+  stops owning those fallback CFG helpers
 
 ## Completed
 
@@ -462,6 +462,19 @@ Source Plan: plan.md
   `test_fail_after.log`, and passed the regression guard in
   `--allow-non-decreasing-passed` mode with no new failures and no pass-count
   drop (`2841 -> 2841`)
+- Pruned the remaining x86 CFG-sensitive direct-LIR helper stubs in
+  `src/backend/x86/codegen/emit.cpp` by removing the `goto-only` branch walker
+  and double-indirect local-pointer conditional-return constant-fold fallback
+  from the production direct-emitter entrypoint once those modules miss shared
+  BIR lowering
+- Added focused regressions in
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` that prove both shapes
+  now fail with the normal direct-LIR unsupported error instead of reviving
+  target-local CFG ownership past the BIR boundary
+- Rebuilt `backend_bir_tests`, re-ran it, refreshed `test_fail_after.log`, and
+  passed the regression guard with no new failures and no pass-count drop
+  (`2809 -> 2809` passes, same 32 pre-existing AArch64 variadic/backend
+  failures)
 
 ## Next
 

@@ -4019,14 +4019,6 @@ std::optional<std::string> try_emit_direct_lir_module(
         slice.has_value()) {
       return emit_minimal_multi_printf_vararg_asm(module.target_triple, module, *slice);
     }
-    if (const auto imm = parse_minimal_double_indirect_local_pointer_conditional_return_imm(module);
-        imm.has_value()) {
-      return emit_minimal_return_asm(module.target_triple, imm->function_name, imm->return_imm);
-    }
-    if (const auto imm = parse_minimal_goto_only_constant_return_imm(module);
-        imm.has_value()) {
-      return emit_minimal_return_asm(module.target_triple, imm->function_name, imm->return_imm);
-    }
     if (const auto imm = parse_minimal_lir_return_imm(module); imm.has_value()) {
       return emit_minimal_return_asm(module.target_triple, imm->function_name, imm->return_imm);
     }

@@ -79,6 +79,136 @@ c4c::codegen::lir::LirModule make_unsupported_double_return_lir_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_goto_only_constant_return_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.terminator = LirBr{"ulbl_start"};
+
+  LirBlock start;
+  start.id = LirBlockId{1};
+  start.label = "ulbl_start";
+  start.terminator = LirBr{"block_1"};
+
+  LirBlock block_1;
+  block_1.id = LirBlockId{2};
+  block_1.label = "block_1";
+  block_1.terminator = LirBr{"ulbl_next"};
+
+  LirBlock next;
+  next.id = LirBlockId{3};
+  next.label = "ulbl_next";
+  next.terminator = LirBr{"done"};
+
+  LirBlock done;
+  done.id = LirBlockId{4};
+  done.label = "done";
+  done.terminator = LirRet{std::string("9"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(start));
+  function.blocks.push_back(std::move(block_1));
+  function.blocks.push_back(std::move(next));
+  function.blocks.push_back(std::move(done));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_double_indirect_local_pointer_conditional_return_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.x", "i32", "", 4});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.p", "ptr", "", 8});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.pp", "ptr", "", 8});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{"i32", "0", "%lv.x"});
+  entry.insts.push_back(LirStoreOp{"ptr", "%lv.x", "%lv.p"});
+  entry.insts.push_back(LirStoreOp{"ptr", "%lv.p", "%lv.pp"});
+  entry.insts.push_back(LirLoadOp{"%t0", "ptr", "%lv.p"});
+  entry.insts.push_back(LirLoadOp{"%t1", "i32", "%t0"});
+  entry.insts.push_back(LirCmpOp{"%t2", false, "ne", "i32", "%t1", "0"});
+  entry.terminator = LirCondBr{"%t2", "block_1", "block_2"};
+
+  LirBlock block_1;
+  block_1.id = LirBlockId{1};
+  block_1.label = "block_1";
+  block_1.terminator = LirRet{std::string("1"), "i32"};
+
+  LirBlock block_2;
+  block_2.id = LirBlockId{2};
+  block_2.label = "block_2";
+  block_2.insts.push_back(LirLoadOp{"%t3", "ptr", "%lv.pp"});
+  block_2.insts.push_back(LirLoadOp{"%t4", "ptr", "%t3"});
+  block_2.insts.push_back(LirLoadOp{"%t5", "i32", "%t4"});
+  block_2.insts.push_back(LirCmpOp{"%t6", false, "ne", "i32", "%t5", "0"});
+  block_2.terminator = LirCondBr{"%t6", "block_3", "block_4"};
+
+  LirBlock block_3;
+  block_3.id = LirBlockId{3};
+  block_3.label = "block_3";
+  block_3.terminator = LirRet{std::string("1"), "i32"};
+
+  LirBlock block_4;
+  block_4.id = LirBlockId{4};
+  block_4.label = "block_4";
+  block_4.insts.push_back(LirLoadOp{"%t7", "ptr", "%lv.pp"});
+  block_4.insts.push_back(LirLoadOp{"%t8", "ptr", "%t7"});
+  block_4.insts.push_back(LirStoreOp{"i32", "1", "%t8"});
+  block_4.terminator = LirBr{"block_5"};
+
+  LirBlock block_5;
+  block_5.id = LirBlockId{5};
+  block_5.label = "block_5";
+  block_5.insts.push_back(LirLoadOp{"%t9", "i32", "%lv.x"});
+  block_5.insts.push_back(LirCmpOp{"%t10", false, "ne", "i32", "%t9", "0"});
+  block_5.terminator = LirCondBr{"%t10", "block_6", "block_7"};
+
+  LirBlock block_6;
+  block_6.id = LirBlockId{6};
+  block_6.label = "block_6";
+  block_6.terminator = LirRet{std::string("0"), "i32"};
+
+  LirBlock block_7;
+  block_7.id = LirBlockId{7};
+  block_7.label = "block_7";
+  block_7.terminator = LirRet{std::string("1"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(block_1));
+  function.blocks.push_back(std::move(block_2));
+  function.blocks.push_back(std::move(block_3));
+  function.blocks.push_back(std::move(block_4));
+  function.blocks.push_back(std::move(block_5));
+  function.blocks.push_back(std::move(block_6));
+  function.blocks.push_back(std::move(block_7));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_alloca_backed_conditional_phi_constant_module() {
   using namespace c4c::codegen::lir;
 
@@ -2640,6 +2770,40 @@ void test_x86_direct_lir_emitter_rejects_alloca_backed_conditional_phi_constant_
   fail("x86 direct emitter should reject alloca-backed conditional-phi joins once phi-aware constant folding is pruned from the direct-LIR fallback");
 }
 
+void test_x86_direct_lir_emitter_rejects_goto_only_constant_return_fallback() {
+  expect_true(!c4c::backend::try_lower_to_bir(make_goto_only_constant_return_module()).has_value(),
+              "goto-only constant-return input should continue to miss shared BIR lowering so this regression exercises the remaining direct-LIR CFG helper boundary");
+
+  try {
+    (void)c4c::backend::x86::emit_module(make_goto_only_constant_return_module());
+  } catch (const std::invalid_argument& ex) {
+    expect_contains(ex.what(), "direct LIR module",
+                    "x86 direct emitter should reject goto-only branch walking once CFG ownership stays behind the shared BIR boundary");
+    return;
+  }
+
+  fail("x86 direct emitter should reject goto-only constant-return modules once the direct-LIR CFG helper is pruned");
+}
+
+void test_x86_direct_lir_emitter_rejects_double_indirect_pointer_conditional_return_fallback() {
+  expect_true(
+      !c4c::backend::try_lower_to_bir(
+           make_double_indirect_local_pointer_conditional_return_module())
+           .has_value(),
+      "double-indirect local-pointer conditional-return input should continue to miss shared BIR lowering so this regression exercises the remaining direct-LIR CFG helper boundary");
+
+  try {
+    (void)c4c::backend::x86::emit_module(
+        make_double_indirect_local_pointer_conditional_return_module());
+  } catch (const std::invalid_argument& ex) {
+    expect_contains(ex.what(), "direct LIR module",
+                    "x86 direct emitter should reject double-indirect local-pointer conditional-return folding once CFG ownership stays behind the shared BIR boundary");
+    return;
+  }
+
+  fail("x86 direct emitter should reject double-indirect local-pointer conditional-return modules once the direct-LIR CFG helper is pruned");
+}
+
 }  // namespace
 
 void run_backend_bir_pipeline_x86_64_tests() {
@@ -2707,4 +2871,6 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_rejects_unsupported_direct_bir_input_on_x86);
   RUN_TEST(test_x86_direct_lir_emitter_rejects_unsupported_input_without_legacy_backend_ir_stub);
   RUN_TEST(test_x86_direct_lir_emitter_rejects_alloca_backed_conditional_phi_constant_fold_stub);
+  RUN_TEST(test_x86_direct_lir_emitter_rejects_goto_only_constant_return_fallback);
+  RUN_TEST(test_x86_direct_lir_emitter_rejects_double_indirect_pointer_conditional_return_fallback);
 }
