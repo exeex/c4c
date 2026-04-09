@@ -161,6 +161,10 @@ std::optional<bir::TypeKind> lower_function_return_type(
   return std::nullopt;
 }
 
+bool lir_type_is_i32(const c4c::codegen::lir::LirTypeRef& type) {
+  return lir_type_has_integer_width(type, 32);
+}
+
 std::optional<std::int64_t> parse_immediate(std::string_view text) {
   std::int64_t value = 0;
   const char* begin = text.data();
@@ -1513,7 +1517,7 @@ std::optional<bir::Module> try_lower_minimal_countdown_loop_module(
   }
 
   const auto* slot = std::get_if<LirAllocaOp>(&function.alloca_insts.front());
-  if (slot == nullptr || slot->type_str != "i32" || slot->result.empty()) {
+  if (slot == nullptr || !lir_type_is_i32(slot->type_str) || slot->result.empty()) {
     return std::nullopt;
   }
 
@@ -1522,7 +1526,7 @@ std::optional<bir::Module> try_lower_minimal_countdown_loop_module(
       entry.insts.size() == 1 ? std::get_if<LirStoreOp>(&entry.insts.front()) : nullptr;
   const auto* entry_branch = std::get_if<LirBr>(&entry.terminator);
   if (entry.label != "entry" || entry_store == nullptr || entry_branch == nullptr ||
-      entry_store->type_str != "i32" || entry_store->ptr != slot->result) {
+      !lir_type_is_i32(entry_store->type_str) || entry_store->ptr != slot->result) {
     return std::nullopt;
   }
 
@@ -1556,23 +1560,26 @@ std::optional<bir::Module> try_lower_minimal_countdown_loop_module(
 
     const auto cmp_predicate =
         loop_cmp == nullptr ? std::nullopt : loop_cmp->predicate.typed();
+    const auto exit_ret_type = exit_ret == nullptr
+                                   ? std::nullopt
+                                   : lower_function_return_type(function, *exit_ret);
     const auto sub_opcode =
         body_sub == nullptr ? std::nullopt : body_sub->opcode.typed();
     if (entry_branch->target_label != loop->label || loop_load == nullptr ||
-        loop_cmp == nullptr || loop_branch == nullptr || loop_load->type_str != "i32" ||
+        loop_cmp == nullptr || loop_branch == nullptr || !lir_type_is_i32(loop_load->type_str) ||
         loop_load->ptr != slot->result || loop_cmp->is_float ||
-        cmp_predicate != LirCmpPredicate::Ne || loop_cmp->type_str != "i32" ||
+        cmp_predicate != LirCmpPredicate::Ne || !lir_type_is_i32(loop_cmp->type_str) ||
         loop_cmp->lhs != loop_load->result || loop_cmp->rhs != "0" ||
         loop_branch->cond_name != loop_cmp->result || loop_branch->true_label != body->label ||
         loop_branch->false_label != exit->label || body_load == nullptr ||
         body_sub == nullptr || body_store == nullptr || body_branch == nullptr ||
-        body_load->type_str != "i32" || body_load->ptr != slot->result ||
-        sub_opcode != LirBinaryOpcode::Sub || body_sub->type_str != "i32" ||
+        !lir_type_is_i32(body_load->type_str) || body_load->ptr != slot->result ||
+        sub_opcode != LirBinaryOpcode::Sub || !lir_type_is_i32(body_sub->type_str) ||
         body_sub->lhs != body_load->result || body_sub->rhs != "1" ||
-        body_store->type_str != "i32" || body_store->val != body_sub->result ||
+        !lir_type_is_i32(body_store->type_str) || body_store->val != body_sub->result ||
         body_store->ptr != slot->result || body_branch->target_label != loop->label ||
-        exit_load == nullptr || exit_ret == nullptr || exit_load->type_str != "i32" ||
-        exit_load->ptr != slot->result || exit_ret->type_str != "i32" ||
+        exit_load == nullptr || exit_ret == nullptr || !lir_type_is_i32(exit_load->type_str) ||
+        exit_load->ptr != slot->result || exit_ret_type != bir::TypeKind::I32 ||
         !exit_ret->value_str.has_value() || *exit_ret->value_str != exit_load->result) {
       return std::nullopt;
     }
@@ -1595,25 +1602,28 @@ std::optional<bir::Module> try_lower_minimal_countdown_loop_module(
 
     const auto cmp_predicate =
         loop_cmp == nullptr ? std::nullopt : loop_cmp->predicate.typed();
+    const auto exit_ret_type = exit_ret == nullptr
+                                   ? std::nullopt
+                                   : lower_function_return_type(function, *exit_ret);
     const auto sub_opcode =
         body_sub == nullptr ? std::nullopt : body_sub->opcode.typed();
     if (entry_branch->target_label != body->label || body_load == nullptr ||
         body_sub == nullptr || body_store == nullptr || body_branch == nullptr ||
-        body_load->type_str != "i32" || body_load->ptr != slot->result ||
-        sub_opcode != LirBinaryOpcode::Sub || body_sub->type_str != "i32" ||
+        !lir_type_is_i32(body_load->type_str) || body_load->ptr != slot->result ||
+        sub_opcode != LirBinaryOpcode::Sub || !lir_type_is_i32(body_sub->type_str) ||
         body_sub->lhs != body_load->result || body_sub->rhs != "1" ||
-        body_store->type_str != "i32" || body_store->val != body_sub->result ||
+        !lir_type_is_i32(body_store->type_str) || body_store->val != body_sub->result ||
         body_store->ptr != slot->result || body_branch->target_label != bridge.label ||
         !bridge.insts.empty() || bridge_branch == nullptr ||
         bridge_branch->target_label != loop->label || loop_load == nullptr ||
-        loop_cmp == nullptr || loop_branch == nullptr || loop_load->type_str != "i32" ||
+        loop_cmp == nullptr || loop_branch == nullptr || !lir_type_is_i32(loop_load->type_str) ||
         loop_load->ptr != slot->result || loop_cmp->is_float ||
-        cmp_predicate != LirCmpPredicate::Ne || loop_cmp->type_str != "i32" ||
+        cmp_predicate != LirCmpPredicate::Ne || !lir_type_is_i32(loop_cmp->type_str) ||
         loop_cmp->lhs != loop_load->result || loop_cmp->rhs != "0" ||
         loop_branch->cond_name != loop_cmp->result || loop_branch->true_label != body->label ||
         loop_branch->false_label != exit->label || exit_load == nullptr ||
-        exit_ret == nullptr || exit_load->type_str != "i32" ||
-        exit_load->ptr != slot->result || exit_ret->type_str != "i32" ||
+        exit_ret == nullptr || !lir_type_is_i32(exit_load->type_str) ||
+        exit_load->ptr != slot->result || exit_ret_type != bir::TypeKind::I32 ||
         !exit_ret->value_str.has_value() || *exit_ret->value_str != exit_load->result) {
       return std::nullopt;
     }

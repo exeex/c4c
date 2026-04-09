@@ -1442,6 +1442,46 @@ void test_bir_lowering_accepts_minimal_countdown_do_while_lir_module() {
                   "the lowered countdown do-while BIR module should route through the shared conditional loop header");
 }
 
+void test_bir_lowering_accepts_minimal_countdown_do_while_lir_module_with_stale_typed_i32_text() {
+  auto module = make_bir_minimal_countdown_do_while_lir_module();
+  auto& function = module.functions.front();
+  std::get<c4c::codegen::lir::LirAllocaOp>(function.alloca_insts.front()).type_str =
+      make_test_stale_text_i32_lir_type();
+
+  auto& entry = function.blocks[0];
+  std::get<c4c::codegen::lir::LirStoreOp>(entry.insts.front()).type_str =
+      make_test_stale_text_i32_lir_type();
+
+  auto& body = function.blocks[1];
+  std::get<c4c::codegen::lir::LirLoadOp>(body.insts[0]).type_str =
+      make_test_stale_text_i32_lir_type();
+  std::get<c4c::codegen::lir::LirBinOp>(body.insts[1]).type_str =
+      make_test_stale_text_i32_lir_type();
+  std::get<c4c::codegen::lir::LirStoreOp>(body.insts[2]).type_str =
+      make_test_stale_text_i32_lir_type();
+
+  auto& cond = function.blocks[3];
+  std::get<c4c::codegen::lir::LirLoadOp>(cond.insts[0]).type_str =
+      make_test_stale_text_i32_lir_type();
+  std::get<c4c::codegen::lir::LirCmpOp>(cond.insts[1]).type_str =
+      make_test_stale_text_i32_lir_type();
+
+  auto& exit = function.blocks[4];
+  std::get<c4c::codegen::lir::LirLoadOp>(exit.insts[0]).type_str =
+      make_test_stale_text_i32_lir_type();
+  std::get<c4c::codegen::lir::LirRet>(exit.terminator).type_str = "i8";
+
+  const auto lowered = c4c::backend::lower_to_bir(module);
+  const auto rendered = c4c::backend::bir::print(lowered);
+
+  expect_contains(rendered, "bir.func @main() -> i32 {",
+                  "BIR lowering should preserve the countdown do-while i32 signature when loop-local render text is stale");
+  expect_contains(rendered, "entry:\n  bir.store_local %lv.x, i32 50\n  bir.br cond\n",
+                  "BIR lowering should still recover the countdown entry store from semantic i32 metadata instead of stale loop-local text");
+  expect_contains(rendered, "cond:\n  %t2 = bir.load_local i32 %lv.x\n  %t3 = bir.ne i32 %t2, 0\n  bir.cond_br i32 %t3, body, exit\n",
+                  "BIR lowering should still normalize the countdown loop header when load, compare, and return render text only agree semantically");
+}
+
 void test_bir_lowering_accepts_minimal_scalar_global_load_lir_module() {
   const auto lowered =
       c4c::backend::try_lower_to_bir(make_bir_minimal_scalar_global_load_lir_module());
@@ -3625,6 +3665,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_minimal_call_crossing_direct_call_lir_module_with_helper_first);
   RUN_TEST(test_bir_lowering_accepts_minimal_call_crossing_direct_call_lir_module_with_typed_helper_param);
   RUN_TEST(test_bir_lowering_accepts_minimal_countdown_do_while_lir_module);
+  RUN_TEST(test_bir_lowering_accepts_minimal_countdown_do_while_lir_module_with_stale_typed_i32_text);
   RUN_TEST(test_bir_printer_renders_minimal_add_scaffold);
   RUN_TEST(test_bir_printer_renders_minimal_sub_scaffold);
   RUN_TEST(test_bir_printer_renders_minimal_mul_scaffold);

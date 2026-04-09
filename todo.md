@@ -12,8 +12,8 @@ Source Plan: plan.md
   instruction-local raw integer text checks that still bypass semantic
   `LirTypeRef` inspection outside the newly-converted widened `i8`
   add/compare/select seams, with the immediate target narrowed to the next
-  non-widened generic scalar lowering discriminator that still trusts raw
-  integer text over typed function or instruction metadata
+  special-case recognizer after the completed countdown-loop slice that still
+  trusts instruction-local/load/store/ret `"i32"` text over typed metadata
 
 ## Completed
 
@@ -200,6 +200,18 @@ Source Plan: plan.md
   still match the enclosing function
 - Re-ran `backend_bir_tests` and `backend_shared_util_tests` for the generic
   select stale-text slice before the full-suite check
+- Switched the minimal countdown-loop recognizer in
+  `src/backend/lowering/lir_to_bir.cpp` off raw instruction-local/load/store
+  /ret `"i32"` text checks and onto semantic `LirTypeRef` integer-width
+  inspection plus `lower_function_return_type(...)` for the loop exit return
+- Added a focused backend regression in
+  `tests/backend/backend_bir_lowering_tests.cpp` that keeps the bounded
+  countdown do-while lowering path working when the loop-local alloca,
+  load/store/binop/cmp type refs carry semantic `i32` metadata while their
+  stored text, including the exit `ret`, is intentionally stale
+- Re-ran `backend_bir_tests`, `backend_shared_util_tests`, and the full suite
+  and passed the regression guard with no new failures and no pass-count drop
+  (`2841 -> 2841`)
 
 ## Next
 
@@ -207,9 +219,10 @@ Source Plan: plan.md
   `src/backend/lowering/lir_to_bir.cpp` and audit the remaining
   instruction-local raw integer text checks that still bypass semantic
   `LirTypeRef` inspection outside the widened `i8` add/compare/select seams;
-  the generic branch-select and phi-select stale phi/return-text gates are now
-  covered, so the next audit should target whichever remaining special-case
-  lowering path still branches primarily on raw integer text instead of typed
+  the generic branch-select/phi-select and countdown-loop stale-text gates are
+  now covered, so the next audit should target whichever remaining
+  special-case lowering path, likely the minimal scalar global-load/store
+  recognizers, still branches primarily on raw integer text instead of typed
   instruction or function metadata
 - keep pointer payload support deferred until a concrete pointer-backed BIR
   lowering consumer appears, then add only the narrow typed payload that
