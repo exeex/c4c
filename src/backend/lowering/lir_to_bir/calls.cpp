@@ -201,6 +201,10 @@ bir::CallInst c4c::backend::make_direct_call_inst(std::string callee,
   call.callee = std::move(callee);
   call.return_type = return_type;
   call.return_type_name = std::move(return_type_name);
+  call.arg_types.reserve(args.size());
+  for (const auto& arg : args) {
+    call.arg_types.push_back(arg.type);
+  }
   call.args = std::move(args);
   call.is_indirect = false;
   call.calling_convention = bir::CallingConv::C;

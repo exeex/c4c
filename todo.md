@@ -208,6 +208,10 @@ Source Plan: plan.md
 - moved direct-call argument materialization into `lir_to_bir/calls.cpp` as
   well, so the minimal extern/direct-call lowering no longer owns the
   `ParsedBackendExternCallArg -> bir::Value` switch inline
+- upgraded the split direct-call constructor to populate explicit call-surface
+  metadata:
+  `bir::CallInst.arg_types` now follows the lowered argument values instead of
+  being left empty on the minimal direct-call path
 
 ## Blockers
 
