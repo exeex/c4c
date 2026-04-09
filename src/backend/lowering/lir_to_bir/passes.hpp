@@ -96,6 +96,8 @@ std::optional<bir::Module> try_lower_minimal_global_char_pointer_diff_module(
     const c4c::codegen::lir::LirModule& module);
 std::optional<bir::Module> try_lower_minimal_global_int_pointer_diff_module(
     const c4c::codegen::lir::LirModule& module);
+std::optional<bir::Module> try_lower_minimal_extern_global_array_load_module(
+    const c4c::codegen::lir::LirModule& module);
 bir::LoadLocalInst make_memory_load_local(bir::Value result,
                                           std::string slot_name,
                                           std::size_t byte_offset = 0,

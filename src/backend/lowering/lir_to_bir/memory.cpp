@@ -651,6 +651,116 @@ std::optional<bir::Module> try_lower_minimal_global_int_pointer_diff_module(
   return lowered;
 }
 
+std::optional<bir::Module> try_lower_minimal_extern_global_array_load_module(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (!memory_target_supports_global_pointer_diff(module.target_triple)) {
+    return std::nullopt;
+  }
+
+  if (module.functions.size() != 1 || module.globals.size() != 1 ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& global = module.globals.front();
+  if (global.is_internal || global.is_const || !global.is_extern_decl ||
+      global.linkage_vis != "external " || global.qualifier != "global " ||
+      !global.init_text.empty()) {
+    return std::nullopt;
+  }
+
+  const std::string element_prefix = "[";
+  const std::string element_suffix = " x i32]";
+  if (global.llvm_type.size() <= element_prefix.size() + element_suffix.size() ||
+      global.llvm_type.substr(0, element_prefix.size()) != element_prefix ||
+      global.llvm_type.substr(global.llvm_type.size() - element_suffix.size()) !=
+          element_suffix) {
+    return std::nullopt;
+  }
+
+  const auto element_count_text = global.llvm_type.substr(
+      element_prefix.size(),
+      global.llvm_type.size() - element_prefix.size() - element_suffix.size());
+  const auto element_count = parse_memory_immediate(element_count_text);
+  if (!element_count.has_value() || *element_count <= 0) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      !lir_function_matches_minimal_no_param_integer_return(function, 32) ||
+      function.entry.value != 0 || function.blocks.size() != 1 ||
+      !function.alloca_insts.empty() || !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  if (entry.label != "entry" || entry.insts.size() != 4) {
+    return std::nullopt;
+  }
+
+  const auto* base_gep = std::get_if<LirGepOp>(&entry.insts[0]);
+  const auto* index_cast = std::get_if<LirCastOp>(&entry.insts[1]);
+  const auto* elem_gep = std::get_if<LirGepOp>(&entry.insts[2]);
+  const auto* load = std::get_if<LirLoadOp>(&entry.insts[3]);
+  const auto* ret = std::get_if<LirRet>(&entry.terminator);
+  if (base_gep == nullptr || index_cast == nullptr || elem_gep == nullptr ||
+      load == nullptr || ret == nullptr) {
+    return std::nullopt;
+  }
+
+  if (!match_memory_global_base_gep_zero(*base_gep, global.name, global.llvm_type)) {
+    return std::nullopt;
+  }
+
+  const auto element_index = match_memory_sext_i32_to_i64_immediate(*index_cast);
+  if (!element_index.has_value() || *element_index < 0 || *element_index >= *element_count) {
+    return std::nullopt;
+  }
+
+  if (!match_memory_indexed_gep_from_result(
+          *elem_gep, base_gep->result.str(), "i32", index_cast->result.str())) {
+    return std::nullopt;
+  }
+
+  if (!memory_lir_type_matches_integer_width(load->type_str, 32) || load->ptr != elem_gep->result ||
+      !ret->value_str.has_value() ||
+      lir_to_bir::legalize_function_return_type(function, *ret) != bir::TypeKind::I32 ||
+      *ret->value_str != load->result.str()) {
+    return std::nullopt;
+  }
+
+  bir::Module lowered;
+  lowered.target_triple = module.target_triple;
+  lowered.data_layout = module.data_layout;
+  lowered.globals.push_back(bir::Global{
+      .name = global.name,
+      .type = bir::TypeKind::I32,
+      .is_extern = true,
+      .initializer = std::nullopt,
+  });
+
+  bir::Function lowered_function;
+  lowered_function.name = function.name;
+  lowered_function.return_type = bir::TypeKind::I32;
+
+  bir::Block lowered_entry;
+  lowered_entry.label = "entry";
+  lowered_entry.insts.push_back(make_memory_load_global(
+      bir::Value::named(bir::TypeKind::I32, load->result.str()),
+      global.name,
+      static_cast<std::size_t>(*element_index) * 4));
+  lowered_entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, load->result.str()),
+  };
+
+  lowered_function.blocks.push_back(std::move(lowered_entry));
+  lowered.functions.push_back(std::move(lowered_function));
+  return lowered;
+}
+
 bir::LoadLocalInst make_memory_load_local(bir::Value result,
                                           std::string slot_name,
                                           std::size_t byte_offset,
