@@ -7,17 +7,15 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 2: review typedef, alias, and qualified cast targets
-- Current slice: move from unqualified alias-owned reference casts to qualified
-  alias and dependent target spellings, starting with the narrowest runtime or
-  parse reduction that exercises `::` or member-owned alias names in a
-  reference-qualified C-style cast target
-- Current implementation target: `tests/cpp` alias-owned cast regressions plus
-  the earliest failing parser, sema, HIR, or lowering surface the first
-  typedef/alias-owned reference-cast case exposes
-- Next intended slice: add a focused qualified-alias cast regression such as a
-  namespace- or member-owned `using AliasL = int&;` / `typedef int&& AliasR;`
-  target, then classify any break as parser versus sema/HIR before widening to
-  dependent `typename` forms
+- Current slice: move from namespace-qualified alias-owned reference casts to
+  the next narrow qualified spelling, starting with either a global-qualified
+  `(::ns::AliasL)x` reduction or a member-owned alias target
+- Current implementation target: `tests/cpp` qualified alias-owned cast
+  regressions plus the earliest failing parser, sema, HIR, or lowering surface
+  that the next `::`- or member-owned reference-cast target exposes
+- Next intended slice: add one focused `::ns::AliasL` / `::ns::AliasR` or
+  `Box::AliasL` / `Box::AliasR` cast regression, then classify any break before
+  widening to dependent `typename` forms
 
 ## Completed
 
@@ -98,6 +96,17 @@ Source Plan: plan.md
   rvalue-reference overload selection through `(AliasL)x` and `(AliasR)x`.
 - Full-suite validation stayed monotonic: `test_fail_before.log` 2848/2848
   passed, `test_fail_after.log` 2849/2849 passed, with zero new failures.
+- Added
+  `tests/cpp/internal/postive_case/c_style_cast_qualified_typedef_ref_alias_basic.cpp`
+  to cover namespace-qualified `ns::AliasL` / `ns::AliasR` cast targets,
+  assignment through the aliased references, and overload selection on the
+  cast expressions themselves.
+- Confirmed the namespace-qualified alias-owned reference-cast runtime slice
+  already matches Clang: the targeted regression passed without compiler
+  changes, including lvalue and rvalue-reference overload selection through
+  `(ns::AliasL)x` and `(ns::AliasR)x`.
+- Full-suite validation stayed monotonic: `test_fail_before.log` 2848/2848
+  passed, `test_fail_after.log` 2850/2850 passed, with zero new failures.
 
 ## Notes
 
