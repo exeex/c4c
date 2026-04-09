@@ -64,6 +64,10 @@ Phase 1: Ownership wiring
   modules even if the tree is temporarily not build-clean
 - allow narrow slices that only re-home API surface, helpers, and metadata
   without immediately restoring compilation or tests
+- while this phase is active, explicitly ignore the usual build-first,
+  test-first, and regression-first expectations from
+  `prompts/EXECUTE_PLAN.md`; those requirements are suspended until Phase 2
+  begins
 - forbid new testcase-shaped x86 direct-LIR matchers during this phase
 
 Phase 2: Compile recovery
@@ -87,6 +91,10 @@ Phase 3: Regression validation
   narrow ownership-wiring slice before build/test recovery, but only when the
   slice clearly improves module boundaries and does not claim behavioral
   completion
+- more strongly: while the active slice is marked as Phase 1 ownership wiring,
+  do not stop to restore build/test discipline just because the generic
+  execution prompt says to do so; this runbook overrides that expectation for
+  the current lane
 - once a seam leaves the ownership-wiring phase, return to the normal
   test-backed workflow before claiming coverage recovery
 - compare ABI-sensitive behavior against Clang when runtime lowering is unclear
@@ -134,6 +142,8 @@ new coverage claims:
 - first re-home `lir_to_bir` ownership into split files such as
   `cfg.cpp`, `types.cpp`, `memory.cpp`, `calls.cpp`, `phi.cpp`, and
   `aggregates.cpp`
+- while that ownership-wiring subphase is active, build/test recovery is not a
+  gating requirement
 - then recover compilation for the re-homed seams
 - only then resume targeted regression additions for new shared-BIR behavior
 

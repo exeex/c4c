@@ -123,6 +123,8 @@ This means some near-term slices are expected to:
 - establish split module surfaces under `src/backend/lowering/lir_to_bir/`
 - defer build recovery and regression work until the seam boundary is in the
   right place
+- explicitly override the repo's usual test-first/build-first execution habits
+  while this lane is active
 
 That is intentional. The goal of this lane is to stop further testcase-matcher
 accumulation and re-establish a backend-owned shared lowering structure before
@@ -242,8 +244,8 @@ Immediate subphase actions:
 
 - move helper ownership from `lir_to_bir.cpp` into split lowering files
 - wire pass-oriented entry surfaces and shared metadata first
-- tolerate a temporary build/test gap while these ownership moves are still
-  being connected
+- tolerate and intentionally ignore a temporary build/test gap while these
+  ownership moves are still being connected
 - once the seam stabilizes, restore narrow compile checks
 - only after compile recovery, resume targeted regressions and broader suite
   validation

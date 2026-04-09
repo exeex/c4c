@@ -11,7 +11,9 @@ Source Plan: plan.md
   split lowering scaffolds into a real pass-oriented entry surface and
   stopping further ownership drift into x86 testcase matchers;
   current sub-slice remains in the ownership-wiring phase before compile/test
-  recovery, with the immediate lane focused on split call and memory seams
+  recovery, with the immediate lane focused on split call and memory seams;
+  build/test work is intentionally ignored until this lane switches to
+  compile-recovery
 
 ## Next Slice
 
