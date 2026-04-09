@@ -203,7 +203,7 @@ bool backend_lir_signature_matches(std::string_view signature_text,
 bool backend_lir_is_i32_definition(std::string_view signature_text);
 bool backend_lir_is_zero_arg_i32_definition(std::string_view signature_text);
 
-std::optional<c4c::codegen::lir::ParsedLirDirectGlobalTypedCallView>
+std::optional<ParsedBackendDirectGlobalTypedCallView>
 parse_backend_direct_global_typed_call(const c4c::codegen::lir::LirCallOp& call);
 std::optional<ParsedBackendExternCallArg> parse_backend_extern_call_arg(
     std::string_view type,

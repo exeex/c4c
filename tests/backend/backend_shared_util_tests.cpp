@@ -766,6 +766,22 @@ void test_backend_shared_call_decode_accepts_typed_i32_two_param_add_helper_with
               "shared call-decode should accept the two-parameter add helper when typed function metadata says i32 but the stored helper return text is stale");
 }
 
+void test_backend_shared_call_decode_prefers_typed_vararg_call_args_over_stale_fixed_suffix_text() {
+  const c4c::codegen::lir::LirCallOp call{
+      "%t0",
+      "i32",
+      "@helper_ext",
+      "(i8, ...)",
+      "i32 5, i32 7",
+  };
+
+  const auto operand = c4c::backend::parse_backend_direct_global_single_typed_call_operand(
+      call, "helper_ext", "i32");
+  expect_true(
+      operand.has_value() && *operand == "5",
+      "shared call-decode should recover the fixed typed vararg operand from the actual call args even when the stored fixed-param suffix text is stale");
+}
+
 
 void test_backend_shared_liveness_surface_tracks_result_names() {
   const auto module = make_declaration_module();
@@ -1602,6 +1618,7 @@ int main(int argc, char* argv[]) {
   test_backend_shared_call_decode_accepts_typed_i32_identity_helper_with_stale_return_text();
   test_backend_shared_call_decode_accepts_typed_i32_two_param_add_helper();
   test_backend_shared_call_decode_accepts_typed_i32_two_param_add_helper_with_stale_return_text();
+  test_backend_shared_call_decode_prefers_typed_vararg_call_args_over_stale_fixed_suffix_text();
   test_backend_shared_liveness_surface_tracks_result_names();
   test_backend_shared_liveness_surface_tracks_call_crossing_ranges();
   test_backend_shared_liveness_surface_tracks_phi_join_ranges();

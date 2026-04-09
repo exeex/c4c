@@ -8,10 +8,11 @@ Source Plan: plan.md
 
 - Step 1: audit the typed type boundary and backend ownership seams
 - Current slice: move the next typed-lowering pass to the remaining
-  call-surface typed-call matchers in `src/backend/lowering/call_decode.hpp`,
-  especially the direct-global typed-call operand helpers that still compare
-  parsed parameter type text directly because `ParsedLirTypedCallView` does not
-  yet carry richer semantic payload beyond the stored call-surface text
+  call-surface typed-call/text fallbacks around declared-extern direct-call
+  matching in `src/backend/lowering/lir_to_bir.cpp`, especially the remaining
+  fixed-param vararg comparison path that still requires raw declared-signature
+  text to match the call-surface types exactly when no structured callee param
+  metadata is available
 
 ## Completed
 
@@ -304,15 +305,25 @@ Source Plan: plan.md
 - Re-ran `backend_shared_util_tests`, `backend_bir_tests`, and the full suite,
   refreshed `test_fail_after.log`, and passed the regression guard with no new
   failures and no pass-count drop (`2841 -> 2841`)
+- Switched the backend direct-global typed-call fallback in
+  `src/backend/lowering/call_decode.cpp` to return the backend-owned parsed
+  view and preserve fixed vararg parameter types from the actual typed call
+  args instead of rejecting the parse on stale fixed-param suffix text
+- Added a focused shared-util regression in
+  `tests/backend/backend_shared_util_tests.cpp` that keeps the direct-global
+  typed-call operand helper recovering the fixed typed vararg operand when the
+  stored fixed-param suffix text is intentionally stale
+- Re-ran `backend_shared_util_tests`, `backend_bir_tests`, and the full suite,
+  refreshed `test_fail_after.log`, and passed the regression guard with no new
+  failures and no pass-count drop (`2841 -> 2841`)
 
 ## Next
 
 - move the next typed-lowering slice back to
-  `src/backend/lowering/call_decode.hpp` and audit the remaining
-  helper/caller recognizer gates that still branch on raw `"i32"` call-surface
-  text instead of structured helper metadata or semantic `LirTypeRef`
-  inspection, especially around parsed direct-global typed-call operands where
-  the current parsed call view still preserves only text
+  `src/backend/lowering/lir_to_bir.cpp` and audit the remaining declared-call
+  fallback gates that still branch on raw signature param text, especially the
+  fixed-param vararg compare path in the minimal declared direct-call lowering
+  route when typed callee parameter metadata is absent
 - keep pointer payload support deferred until a concrete pointer-backed BIR
   lowering consumer appears, then add only the narrow typed payload that
   consumer needs
@@ -370,6 +381,9 @@ Source Plan: plan.md
   `test_backend_shared_call_decode_accepts_typed_i32_identity_helper`
   and
   `test_backend_shared_call_decode_accepts_typed_i32_two_param_add_helper`
+  in `tests/backend/backend_shared_util_tests.cpp`.
+- Latest validating target for the direct-global vararg typed-call seam:
+  `test_backend_shared_call_decode_prefers_typed_vararg_call_args_over_stale_fixed_suffix_text`
   in `tests/backend/backend_shared_util_tests.cpp`.
 - Full-suite before/after comparison for this slice should use
   `test_fail_before.log` and `test_fail_after.log` with the regression-guard

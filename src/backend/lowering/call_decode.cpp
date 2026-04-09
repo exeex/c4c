@@ -164,7 +164,7 @@ bool backend_lir_is_zero_arg_i32_definition(std::string_view signature_text) {
   return params.has_value() && params->empty();
 }
 
-std::optional<c4c::codegen::lir::ParsedLirDirectGlobalTypedCallView>
+std::optional<ParsedBackendDirectGlobalTypedCallView>
 parse_backend_direct_global_typed_call(const c4c::codegen::lir::LirCallOp& call) {
   using namespace c4c::codegen::lir;
 
@@ -175,7 +175,10 @@ parse_backend_direct_global_typed_call(const c4c::codegen::lir::LirCallOp& call)
 
   if (const auto parsed = parse_lir_direct_global_typed_call(call);
       parsed.has_value()) {
-    return parsed;
+    return ParsedBackendDirectGlobalTypedCallView{
+        *symbol_name,
+        make_backend_typed_call_view(parsed->typed_call),
+    };
   }
 
   const auto callee_type_suffix = trim_lir_arg_text(call.callee_type_suffix);
@@ -188,15 +191,15 @@ parse_backend_direct_global_typed_call(const c4c::codegen::lir::LirCallOp& call)
     return std::nullopt;
   }
 
-  std::vector<std::string_view> fixed_param_types;
   bool saw_varargs = false;
+  std::size_t fixed_param_count = 0;
   for (auto type : *param_types) {
     const auto trimmed_type = trim_lir_arg_text(type);
     if (trimmed_type == "...") {
       saw_varargs = true;
       break;
     }
-    fixed_param_types.push_back(trimmed_type);
+    ++fixed_param_count;
   }
 
   if (!saw_varargs) {
@@ -204,24 +207,22 @@ parse_backend_direct_global_typed_call(const c4c::codegen::lir::LirCallOp& call)
   }
 
   const auto args = parse_lir_typed_call_args(call.args_str);
-  if (!args.has_value() || args->size() < fixed_param_types.size()) {
+  if (!args.has_value() || args->size() < fixed_param_count) {
     return std::nullopt;
   }
 
-  ParsedLirTypedCallView parsed;
-  parsed.param_types.reserve(fixed_param_types.size());
-  parsed.args.reserve(fixed_param_types.size());
-  for (std::size_t index = 0; index < fixed_param_types.size(); ++index) {
-    if (fixed_param_types[index] != (*args)[index].type) {
-      return std::nullopt;
-    }
-    parsed.param_types.push_back(fixed_param_types[index]);
-    parsed.args.push_back((*args)[index]);
+  ParsedBackendDirectGlobalTypedCallView parsed;
+  parsed.symbol_name = *symbol_name;
+  parsed.typed_call.owned_param_types.reserve(fixed_param_count);
+  parsed.typed_call.param_types.reserve(fixed_param_count);
+  parsed.typed_call.args.reserve(fixed_param_count);
+  for (std::size_t index = 0; index < fixed_param_count; ++index) {
+    parsed.typed_call.owned_param_types.push_back(
+        std::string(trim_lir_arg_text((*args)[index].type)));
+    parsed.typed_call.param_types.push_back(parsed.typed_call.owned_param_types.back());
+    parsed.typed_call.args.push_back((*args)[index]);
   }
-  return ParsedLirDirectGlobalTypedCallView{
-      *symbol_name,
-      std::move(parsed),
-  };
+  return parsed;
 }
 
 std::optional<ParsedBackendExternCallArg> parse_backend_extern_call_arg(
