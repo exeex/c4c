@@ -198,6 +198,10 @@ Source Plan: plan.md
   `lir_to_bir/memory.cpp` helpers:
   zero-base global GEP recognition, `sext i32 -> i64` constant index
   recognition, and single-index derived GEP recognition
+- moved the first string-pool address matcher shape into
+  `lir_to_bir/memory.cpp` as well:
+  zero-base string-constant GEP recognition used by the string-literal
+  compare/phi-return slice
 
 ## Blockers
 

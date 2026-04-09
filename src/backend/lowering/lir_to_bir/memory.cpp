@@ -270,6 +270,13 @@ bool match_memory_global_base_gep_zero(const c4c::codegen::lir::LirGepOp& gep,
          gep.indices.size() == 2 && gep.indices[0] == "i64 0" && gep.indices[1] == "i64 0";
 }
 
+bool match_memory_string_base_gep_zero(const c4c::codegen::lir::LirGepOp& gep,
+                                       std::string_view pool_name,
+                                       std::string_view string_llvm_type) {
+  return gep.element_type == string_llvm_type && gep.ptr == pool_name && gep.indices.size() == 2 &&
+         gep.indices[0] == "i64 0" && gep.indices[1] == "i64 0";
+}
+
 std::optional<std::int64_t> match_memory_sext_i32_to_i64_immediate(
     const c4c::codegen::lir::LirCastOp& cast) {
   if (cast.kind != c4c::codegen::lir::LirCastKind::SExt ||

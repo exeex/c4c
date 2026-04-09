@@ -37,6 +37,9 @@ bir::MemoryAddress make_memory_pointer_address(bir::Value base_value,
 bool match_memory_global_base_gep_zero(const c4c::codegen::lir::LirGepOp& gep,
                                        std::string_view global_name,
                                        std::string_view global_llvm_type);
+bool match_memory_string_base_gep_zero(const c4c::codegen::lir::LirGepOp& gep,
+                                       std::string_view pool_name,
+                                       std::string_view string_llvm_type);
 std::optional<std::int64_t> match_memory_sext_i32_to_i64_immediate(
     const c4c::codegen::lir::LirCastOp& cast);
 bool match_memory_indexed_gep_from_result(const c4c::codegen::lir::LirGepOp& gep,

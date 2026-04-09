@@ -2149,17 +2149,12 @@ std::optional<bir::Module> try_lower_minimal_string_literal_compare_phi_return_m
 
   const auto string_array_type =
       "[" + std::to_string(string_constant.byte_length) + " x i8]";
-  if (base_gep->element_type != string_array_type || base_gep->ptr != string_constant.pool_name ||
-      base_gep->indices.size() != 2 || base_gep->indices[0] != "i64 0" ||
-      base_gep->indices[1] != "i64 0" ||
+  if (!match_memory_string_base_gep_zero(*base_gep, string_constant.pool_name, string_array_type) ||
       store->type_str != "ptr" ||
       store->val != base_gep->result || store->ptr != slot->result || reload->ptr != slot->result ||
       reload->type_str != "ptr" ||
-      index_cast->kind != LirCastKind::SExt ||
-      !lir_type_matches_integer_width(index_cast->from_type, 32) ||
-      !lir_type_matches_integer_width(index_cast->to_type, 64) ||
-      byte_gep->element_type != "i8" || byte_gep->ptr != reload->result ||
-      byte_gep->indices.size() != 1 || byte_gep->indices[0] != ("i64 " + index_cast->result) ||
+      !match_memory_sext_i32_to_i64_immediate(*index_cast).has_value() ||
+      !match_memory_indexed_gep_from_result(*byte_gep, reload->result.str(), "i8", index_cast->result.str()) ||
       !lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{byte_load->type_str}, 8) ||
       byte_load->ptr != byte_gep->result ||
       (extend->kind != LirCastKind::SExt && extend->kind != LirCastKind::ZExt) ||
