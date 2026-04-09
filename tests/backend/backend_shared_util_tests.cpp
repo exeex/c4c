@@ -1149,6 +1149,25 @@ void test_backend_shared_stack_layout_input_preserves_signature_metadata() {
               "backend-owned stack-layout input should preserve stack-backed call-result metadata for downstream slot builders");
 }
 
+void test_backend_shared_stack_layout_input_preserves_aarch64_return_gate_metadata() {
+  c4c::codegen::lir::LirFunction function;
+  function.name = "pair_return";
+  function.signature_text = "define { i32, i32 } @pair_return(i32 %p.x)";
+
+  c4c::codegen::lir::LirBlock entry;
+  entry.label = "entry";
+  entry.terminator = c4c::codegen::lir::LirRet{std::nullopt, "void"};
+  function.blocks.push_back(std::move(entry));
+
+  const auto input = c4c::backend::stack_layout::lower_lir_to_stack_layout_input(function);
+
+  expect_true(input.return_type.has_value() && *input.return_type == "{ i32, i32 }" &&
+                  input.signature_params.size() == 1 &&
+                  input.signature_params.front().type == "i32" &&
+                  input.signature_params.front().operand == "%p.x",
+              "backend-owned stack-layout input should preserve the aggregate return metadata consumed by the direct AArch64 stack-slot support gate");
+}
+
 void test_backend_shared_stack_layout_analysis_detects_dead_param_allocas() {
   const auto module = make_dead_param_alloca_candidate_module();
   const auto& function = module.functions.back();
@@ -1877,6 +1896,7 @@ int main(int argc, char* argv[]) {
   test_backend_shared_stack_layout_analysis_accepts_backend_owned_input();
   test_backend_shared_stack_layout_input_collects_value_names();
   test_backend_shared_stack_layout_input_preserves_signature_metadata();
+  test_backend_shared_stack_layout_input_preserves_aarch64_return_gate_metadata();
   test_backend_shared_stack_layout_analysis_detects_dead_param_allocas();
   test_backend_shared_stack_layout_analysis_tracks_call_arg_values();
   test_backend_shared_stack_layout_analysis_detects_entry_alloca_overwrite_before_read();

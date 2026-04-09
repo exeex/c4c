@@ -5149,7 +5149,9 @@ static std::optional<std::string> try_emit_general_lir_asm(
   // Reject unsupported features
   for (const auto& fn : module.functions) {
     if (fn.is_declaration) continue;
-    const auto return_ty = gen_parse_function_return_type(fn.signature_text);
+    const auto stack_layout_input =
+        c4c::backend::stack_layout::lower_lir_to_stack_layout_input(fn);
+    const auto& return_ty = stack_layout_input.return_type;
     if (!return_ty.has_value()) return std::nullopt;
     const auto return_layout = gen_type_layout(*return_ty, module.type_decls);
     if (return_layout.size > 8 && !return_ty->empty() &&

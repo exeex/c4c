@@ -7,15 +7,31 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: audit the remaining target-local stack-slot ABI seams after
-  the AArch64 direct emitter now consumes backend-owned stack-layout signature
-  and aggregate call-result metadata
-- Next intended slice: move the next remaining bounded AArch64/x86
-  signature-driven stack-slot setup seam off raw `LirFunction`, or record a
-  separate follow-on idea if the remaining work no longer fits this plan
+- Current slice: move the next shared bounded target-local stack-layout /
+  regalloc setup seam off raw `LirFunction` where production emitters still
+  lower through compatibility wrappers
+- Next intended slice: audit the remaining `StackLayoutPlanBundle` /
+  `LivenessInput` compatibility wrappers and either retire one more
+  production-facing raw-`LirFunction` entrypoint or record a separate follow-on
+  idea if the remaining work no longer fits this plan
 
 ## Completed
 
+- Completed the follow-up Step 6/7 target-local stack-slot ABI audit slice by
+  removing the remaining direct AArch64 return-type support gate reparse and
+  keeping that stack-slot admission check on backend-owned lowered metadata:
+  - taught `src/backend/aarch64/codegen/emit.cpp`'s
+    `try_emit_general_lir_asm(...)` unsupported-return filter to consume
+    `lower_lir_to_stack_layout_input(fn).return_type` instead of reparsing
+    `fn.signature_text` for the direct emitter's aggregate/sret return gate
+  - extended `tests/backend/backend_shared_util_tests.cpp` with focused
+    coverage proving the backend-owned stack-layout lowering preserves the
+    aggregate return/signature metadata needed by that AArch64 gate
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R backend_shared_util_tests --output-on-failure`,
+    rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with no new failures and no pass-count drop
+    (`2809 -> 2809`)
 - Completed the next Step 6/7 bounded AArch64 stack-slot metadata handoff
   slice by moving signature and aggregate call-result discovery onto
   backend-owned stack-layout input and retargeting the direct emitter to
