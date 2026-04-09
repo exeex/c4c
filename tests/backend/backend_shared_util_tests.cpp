@@ -1865,7 +1865,7 @@ void test_backend_shared_slot_assignment_bundle_accepts_narrowed_planning_input(
               "shared stack-layout plan bundle should keep the previously computed backend-owned analysis available alongside the narrowed planning surface");
 }
 
-void test_backend_shared_slot_assignment_backend_owned_overloads_match_planning_input() {
+void test_backend_shared_slot_assignment_compatibility_planning_overloads_match_narrowed_input() {
   c4c::backend::RegAllocConfig config;
   config.available_regs = {{20}};
   config.caller_saved_regs = {{13}};
@@ -1900,7 +1900,7 @@ void test_backend_shared_slot_assignment_backend_owned_overloads_match_planning_
                       narrowed_entry_plans.front().coalesced_block &&
                   backend_entry_plans.front().assigned_slot ==
                       narrowed_entry_plans.front().assigned_slot,
-              "backend-owned entry-alloca planning overloads should match the explicit narrowed planning seam for the same prepared function inputs");
+              "compatibility entry-alloca planning overloads should match the explicit narrowed planning seam for the same prepared function inputs");
   expect_true(backend_param_plans.size() == narrowed_param_plans.size() &&
                   backend_param_plans.size() == 1 &&
                   backend_param_plans.front().alloca_name ==
@@ -1909,7 +1909,7 @@ void test_backend_shared_slot_assignment_backend_owned_overloads_match_planning_
                       narrowed_param_plans.front().param_name &&
                   backend_param_plans.front().needs_stack_slot ==
                       narrowed_param_plans.front().needs_stack_slot,
-              "backend-owned param-alloca planning overloads should match the explicit narrowed planning seam for the same prepared function inputs");
+              "compatibility param-alloca planning overloads should match the explicit narrowed planning seam for the same prepared function inputs");
 }
 
 void test_backend_shared_slot_assignment_bundle_prepares_from_backend_owned_inputs() {
@@ -1940,7 +1940,7 @@ void test_backend_shared_slot_assignment_bundle_prepares_from_backend_owned_inpu
               "shared stack-layout bundle prep should keep the backend-owned dead-param classification available to downstream entrypoint setup");
 }
 
-void test_backend_shared_slot_assignment_backend_owned_bundle_overload_matches_prepared_planning_input() {
+void test_backend_shared_slot_assignment_compatibility_bundle_overload_matches_prepared_planning_input() {
   c4c::backend::RegAllocConfig config;
 
   const auto live_module = make_live_local_alloca_candidate_module();
@@ -2023,7 +2023,7 @@ void test_backend_shared_slot_assignment_bundle_prepares_from_narrowed_planning_
               "shared stack-layout bundle prep should let planning-only callers drop the compatibility stack-layout wrapper once prepared lowering exposes the narrowed planning payload");
 }
 
-void test_backend_shared_slot_assignment_prepares_rewrite_patch_from_backend_owned_inputs() {
+void test_backend_shared_slot_assignment_compatibility_patch_prep_matches_narrowed_rewrite_input() {
   c4c::backend::RegAllocConfig config;
   config.available_regs = {{20}};
   config.caller_saved_regs = {{13}};
@@ -2046,9 +2046,9 @@ void test_backend_shared_slot_assignment_prepares_rewrite_patch_from_backend_own
       {{20}, {21}, {22}});
 
   expect_true(patch.alloca_insts.empty(),
-              "shared stack-layout patch prep should preserve dead entry-alloca pruning decisions when callers provide backend-owned inputs");
+              "shared stack-layout compatibility patch prep should preserve dead entry-alloca pruning decisions when callers provide backend-owned inputs");
   expect_true(patch.canonical_allocas.empty(),
-              "shared stack-layout patch prep should not invent canonical alloca rewrites when the planned entry alloca is deleted");
+              "shared stack-layout compatibility patch prep should not invent canonical alloca rewrites when the planned entry alloca is deleted");
   expect_true(narrowed_patch.alloca_insts.empty() && narrowed_patch.canonical_allocas.empty(),
               "shared stack-layout patch prep should drive the production rewrite path from the narrower entry-alloca rewrite input without needing the broader stack-layout contract");
 
@@ -2056,6 +2056,26 @@ void test_backend_shared_slot_assignment_prepares_rewrite_patch_from_backend_own
 
   expect_true(dead_function.alloca_insts.empty(),
               "shared stack-layout patch apply should let callers keep planning on backend-owned inputs while the final raw-LIR mutation stays isolated");
+
+  const auto live_module = make_live_local_alloca_candidate_module();
+  const auto& live_function = live_module.functions.front();
+  const auto live_liveness_input = lower_test_backend_cfg_liveness_input(live_function);
+  const auto live_stack_layout_input =
+      c4c::backend::stack_layout::lower_lir_to_stack_layout_input(live_function);
+  const auto live_compat_patch = c4c::backend::stack_layout::prepare_entry_alloca_rewrite_patch(
+      live_liveness_input, live_stack_layout_input, config, {}, {});
+  const auto live_narrowed_patch = c4c::backend::stack_layout::prepare_entry_alloca_rewrite_patch(
+      live_liveness_input,
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_compat_inputs(
+          live_module, 0)
+          .rewrite_input,
+      config,
+      {},
+      {});
+
+  expect_true(live_compat_patch.alloca_insts.size() == live_narrowed_patch.alloca_insts.size() &&
+                  live_compat_patch.canonical_allocas == live_narrowed_patch.canonical_allocas,
+              "shared stack-layout compatibility patch prep should match the narrowed rewrite seam for live local allocas as well as dead-entry pruning cases");
 }
 
 void test_backend_shared_slot_assignment_rewrites_module_entry_allocas() {
@@ -3236,10 +3256,11 @@ int main(int argc, char* argv[]) {
   test_backend_shared_slot_assignment_accepts_backend_owned_input();
   test_backend_shared_slot_assignment_bundle_accepts_backend_owned_input();
   test_backend_shared_slot_assignment_bundle_accepts_narrowed_planning_input();
+  test_backend_shared_slot_assignment_compatibility_planning_overloads_match_narrowed_input();
   test_backend_shared_slot_assignment_bundle_prepares_from_backend_owned_inputs();
-  test_backend_shared_slot_assignment_backend_owned_bundle_overload_matches_prepared_planning_input();
+  test_backend_shared_slot_assignment_compatibility_bundle_overload_matches_prepared_planning_input();
   test_backend_shared_slot_assignment_bundle_prepares_from_narrowed_planning_input();
-  test_backend_shared_slot_assignment_prepares_rewrite_patch_from_backend_owned_inputs();
+  test_backend_shared_slot_assignment_compatibility_patch_prep_matches_narrowed_rewrite_input();
   test_backend_shared_slot_assignment_rewrites_module_entry_allocas();
   test_backend_shared_slot_assignment_prepares_module_function_inputs();
   test_backend_shared_prepared_function_inputs_preserve_emitter_stack_layout_metadata();

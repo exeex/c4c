@@ -148,6 +148,7 @@ StackLayoutPlanBundle build_stack_layout_plan_bundle(
     const std::vector<PhysReg>& asm_clobbered,
     const std::vector<PhysReg>& callee_saved_regs);
 
+// Compatibility wrapper around the narrower rewrite seam.
 EntryAllocaRewritePatch build_entry_alloca_rewrite_patch(
     const StackLayoutInput& input,
     const std::vector<EntryAllocaSlotPlan>& plans);
@@ -204,6 +205,7 @@ prepare_module_function_entry_alloca_rewrite_only_inputs(
     const std::vector<PhysReg>& asm_clobbered,
     const std::vector<PhysReg>& callee_saved_regs);
 
+// Final raw-LIR mutation stays isolated here after planning/rewrite prep.
 void apply_entry_alloca_rewrite_patch(
     c4c::codegen::lir::LirFunction& function,
     const EntryAllocaRewritePatch& patch);

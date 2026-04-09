@@ -7,19 +7,46 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 7: move regalloc and stack layout to backend MIR
-- Current slice: re-audit the remaining `StackLayoutInput` compatibility
-  overloads to see whether any non-test callers can move onto the narrower
-  planning or rewrite seams next
-- Current implementation target: trace any production uses of the compatibility
-  overloads around `build_stack_layout_plan_bundle(...)`,
-  `prepare_entry_alloca_rewrite_patch(...)`, `plan_entry_alloca_slots(...)`,
-  and `plan_param_alloca_slots(...)` and narrow the next one that is still
-  reachable outside tests
-- Next intended slice: if those overloads are already test-only, tighten their
-  naming/comments the same way the full prepared wrapper now exposes
-  compatibility-only ownership
+- Current slice: make the remaining `StackLayoutInput` stack-layout entrypoints
+  explicit about compatibility-only ownership now that the re-audit shows the
+  broad overloads are test-only
+- Current implementation target: document the remaining compatibility wrappers
+  around `build_stack_layout_plan_bundle(...)`,
+  `prepare_entry_alloca_rewrite_patch(...)`,
+  `build_entry_alloca_rewrite_patch(...)`, `plan_entry_alloca_slots(...)`, and
+  `plan_param_alloca_slots(...)`, then tighten the focused parity coverage that
+  compares them against the narrowed planning/rewrite seams
+- Next intended slice: once the compatibility wrappers are visibly bounded in
+  the public API, re-audit whether the direct-LIR AArch64 emitter can consume a
+  narrower prepared stack-layout carrier than the full rehydrated
+  `StackLayoutInput`
 
 ## Completed
+
+- Completed the next Step 7 compatibility-wrapper audit/documentation slice by
+  confirming the remaining broad stack-layout entrypoints are now test-only and
+  making that compatibility-only ownership explicit:
+  - audited `src/backend/stack_layout/slot_assignment.*` call paths and
+    confirmed the remaining `StackLayoutInput` overloads around
+    `build_stack_layout_plan_bundle(...)`,
+    `prepare_entry_alloca_rewrite_patch(...)`,
+    `build_entry_alloca_rewrite_patch(...)`, `plan_entry_alloca_slots(...)`,
+    and `plan_param_alloca_slots(...)` are no longer reached by production
+    `src/` callers outside the direct-LIR compatibility surface
+  - documented `build_entry_alloca_rewrite_patch(const StackLayoutInput&, ...)`
+    as another compatibility wrapper around the narrower rewrite seam and
+    clarified that `apply_entry_alloca_rewrite_patch(...)` remains the isolated
+    raw-LIR mutation boundary after planning/rewrite prep
+  - tightened `tests/backend/backend_shared_util_tests.cpp` so the focused
+    parity coverage calls out the compatibility overloads explicitly and proves
+    the compatibility patch-prep wrapper matches the narrowed rewrite seam for
+    both dead-entry pruning and a live local-alloca case
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`
+  - rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with the repo's allowed non-decreasing rule and no new
+    failures (`2809 -> 2809`, same 32 known failing tests as
+    `test_fail_before.log`)
 
 - Completed the next Step 7 compatibility-wrapper naming slice by making the
   remaining full prepared stack-layout entrypoint explicit about its
