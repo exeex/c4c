@@ -748,6 +748,21 @@ make_bir_minimal_two_arg_direct_call_lir_module_with_typed_main_return() {
   return module;
 }
 
+c4c::codegen::lir::LirModule
+make_bir_minimal_two_arg_direct_call_local_slot_lir_module_with_stale_typed_slot_text() {
+  auto module = make_bir_minimal_two_arg_direct_call_local_slot_lir_module();
+  auto& main_function = module.functions[0];
+  std::get<c4c::codegen::lir::LirAllocaOp>(main_function.alloca_insts.front()).type_str =
+      make_test_stale_text_i32_lir_type();
+
+  auto& entry = main_function.blocks.front();
+  std::get<c4c::codegen::lir::LirStoreOp>(entry.insts[0]).type_str =
+      make_test_stale_text_i32_lir_type();
+  std::get<c4c::codegen::lir::LirLoadOp>(entry.insts[1]).type_str =
+      make_test_stale_text_i32_lir_type();
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_bir_minimal_direct_call_add_imm_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -810,6 +825,24 @@ c4c::codegen::lir::LirModule
 make_bir_minimal_direct_call_add_imm_lir_module_with_typed_main_return() {
   auto module = make_bir_minimal_direct_call_add_imm_lir_module();
   make_test_stale_typed_i32_main_return(module.functions[0]);
+  return module;
+}
+
+c4c::codegen::lir::LirModule
+make_bir_minimal_direct_call_add_imm_lir_module_with_stale_typed_local_slot_text() {
+  using namespace c4c::codegen::lir;
+
+  auto module = make_bir_minimal_direct_call_add_imm_lir_module();
+  auto& main_function = module.functions[0];
+  main_function.alloca_insts.push_back(
+      LirAllocaOp{"%slot", make_test_stale_text_i32_lir_type(), "", 4});
+
+  auto& entry = main_function.blocks.front();
+  entry.insts.clear();
+  entry.insts.push_back(LirStoreOp{make_test_stale_text_i32_lir_type(), "5", "%slot"});
+  entry.insts.push_back(LirLoadOp{"%t_load", make_test_stale_text_i32_lir_type(), "%slot"});
+  entry.insts.push_back(LirCallOp{"%t0", "i32", "@add_one", "(i32)", "i32 %t_load"});
+  entry.terminator = LirRet{std::string("%t0"), "i32"};
   return module;
 }
 
@@ -1475,6 +1508,21 @@ void test_bir_lowering_accepts_minimal_two_arg_direct_call_local_slot_lir_module
   }
 }
 
+void test_bir_lowering_accepts_minimal_two_arg_direct_call_local_slot_lir_module_with_stale_typed_slot_text() {
+  const auto lowered = c4c::backend::try_lower_to_bir(
+      make_bir_minimal_two_arg_direct_call_local_slot_lir_module_with_stale_typed_slot_text());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the minimal two-argument direct-call local-slot slice when the caller alloca/store/load text is stale but typed metadata still says i32");
+
+  const auto parsed = c4c::backend::parse_bir_minimal_two_arg_direct_call_module(*lowered);
+  expect_true(parsed.has_value(),
+              "the lowered local-slot BIR module should still match the shared minimal two-argument direct-call parser when the caller slot text is stale");
+  if (parsed.has_value()) {
+    expect_true(parsed->lhs_call_arg_imm == 5 && parsed->rhs_call_arg_imm == 7,
+                "the lowered local-slot BIR module should preserve the recovered immediate operands when the caller slot text is stale");
+  }
+}
+
 void test_bir_lowering_accepts_minimal_two_arg_direct_call_lir_module_with_typed_helper_params() {
   const auto lowered = c4c::backend::try_lower_to_bir(
       make_bir_minimal_two_arg_direct_call_lir_module_with_typed_helper_params());
@@ -1545,6 +1593,21 @@ void test_bir_lowering_accepts_minimal_direct_call_add_imm_lir_module_with_typed
   const auto parsed = c4c::backend::parse_bir_minimal_direct_call_add_imm_module(*lowered);
   expect_true(parsed.has_value(),
               "the lowered BIR module should still match the shared add-immediate direct-call BIR parser when the caller return text is stale");
+}
+
+void test_bir_lowering_accepts_minimal_direct_call_add_imm_lir_module_with_stale_typed_local_slot_text() {
+  const auto lowered = c4c::backend::try_lower_to_bir(
+      make_bir_minimal_direct_call_add_imm_lir_module_with_stale_typed_local_slot_text());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the add-immediate direct-call local-slot slice when the caller alloca/store/load text is stale but typed metadata still says i32");
+
+  const auto parsed = c4c::backend::parse_bir_minimal_direct_call_add_imm_module(*lowered);
+  expect_true(parsed.has_value(),
+              "the lowered BIR module should still match the shared add-immediate direct-call parser when the caller slot text is stale");
+  if (parsed.has_value()) {
+    expect_true(parsed->call_arg_imm == 5 && parsed->add_imm == 1,
+                "the lowered BIR module should preserve the call and helper immediates when the caller slot text is stale");
+  }
 }
 
 void test_bir_lowering_accepts_minimal_direct_call_add_imm_slot_lir_module_with_typed_helper_param() {
@@ -4249,11 +4312,13 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_minimal_void_direct_call_imm_return_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_two_arg_direct_call_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_two_arg_direct_call_local_slot_lir_module);
+  RUN_TEST(test_bir_lowering_accepts_minimal_two_arg_direct_call_local_slot_lir_module_with_stale_typed_slot_text);
   RUN_TEST(test_bir_lowering_accepts_minimal_two_arg_direct_call_lir_module_with_typed_helper_params);
   RUN_TEST(test_bir_lowering_accepts_minimal_two_arg_direct_call_lir_module_with_typed_main_return);
   RUN_TEST(test_bir_lowering_accepts_minimal_direct_call_add_imm_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_direct_call_add_imm_lir_module_with_typed_helper_param);
   RUN_TEST(test_bir_lowering_accepts_minimal_direct_call_add_imm_lir_module_with_typed_main_return);
+  RUN_TEST(test_bir_lowering_accepts_minimal_direct_call_add_imm_lir_module_with_stale_typed_local_slot_text);
   RUN_TEST(test_bir_lowering_accepts_minimal_direct_call_add_imm_slot_lir_module_with_typed_helper_param);
   RUN_TEST(test_bir_lowering_accepts_minimal_direct_call_identity_arg_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_direct_call_identity_arg_lir_module_with_helper_first);

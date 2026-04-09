@@ -223,7 +223,7 @@ std::optional<bir::TypeKind> lower_function_return_type(
 }
 
 bool lir_type_is_i32(const c4c::codegen::lir::LirTypeRef& type) {
-  return lir_type_has_integer_width(type, 32);
+  return lir_type_matches_integer_width(type, 32);
 }
 
 std::optional<std::int64_t> parse_immediate(std::string_view text) {

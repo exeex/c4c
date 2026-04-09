@@ -359,8 +359,11 @@ inline std::optional<bir::TypeKind> backend_lir_lower_minimal_scalar_type(const 
 }
 
 inline bool backend_lir_type_is_i32(const c4c::codegen::lir::LirTypeRef& type) {
-  return type.kind() == c4c::codegen::lir::LirTypeKind::Integer &&
-         type.integer_bit_width() == 32;
+  if (type.kind() == c4c::codegen::lir::LirTypeKind::Integer &&
+      type.integer_bit_width() == 32) {
+    return true;
+  }
+  return c4c::codegen::lir::trim_lir_arg_text(type.str()) == "i32";
 }
 
 inline bool backend_lir_function_returns_integer_width(

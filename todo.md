@@ -8,9 +8,10 @@ Source Plan: plan.md
 
 - Step 1: audit the typed type boundary and backend ownership seams
 - Current slice: re-audit `src/backend/lowering/lir_to_bir.cpp` for any
-  remaining typed-lowering fallbacks that still require raw direct-call
-  signature text beyond bounded linkage/name parsing, then prepare the next
-  in-scope follow-through slice from that audit
+  remaining generic scalar/materialization helpers that still prefer raw type
+  text in `lower_binary(...)`, `lower_compare_materialization(...)`, and
+  `lower_select_materialization(...)`, then prepare the next focused typed
+  lowering slice from that audit
 
 ## Completed
 
@@ -336,6 +337,19 @@ Source Plan: plan.md
   declared direct-call vararg slice lowering when the callee carries semantic
   `i32` return metadata while the stored declaration text is intentionally
   stale (`declare i64 @helper_decl(...)`)
+- Re-ran `backend_bir_tests`, `backend_shared_util_tests`, and the full suite,
+  refreshed `test_fail_after.log`, and passed the regression guard with no new
+  failures and no pass-count drop (`2841 -> 2841`)
+- Switched the remaining caller-local-slot `i32` recognizer guards in
+  `src/backend/lowering/call_decode.hpp` and
+  `src/backend/lowering/lir_to_bir.cpp` from typed-only checks to semantic
+  integer-width matching with bounded `i32` text fallback for stale caller
+  alloca/store/load render text
+- Added focused backend regressions in
+  `tests/backend/backend_bir_lowering_tests.cpp` that keep the two-argument
+  local-slot direct-call slice and the add-immediate local-slot direct-call
+  slice lowering when the caller alloca/store/load text is stale but typed
+  metadata still carries `i32`
 - Re-ran `backend_bir_tests`, `backend_shared_util_tests`, and the full suite,
   refreshed `test_fail_after.log`, and passed the regression guard with no new
   failures and no pass-count drop (`2841 -> 2841`)
