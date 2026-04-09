@@ -2003,10 +2003,8 @@ void test_backend_shared_fallback_preparation_separates_stack_layout_metadata_fr
                   preparation.stack_layout_classification.blocks.size() == 1 &&
                   preparation.stack_layout_classification.blocks.front().label == "entry" &&
                   preparation.stack_layout_classification.blocks.front().insts.size() == 1 &&
-                  preparation.stack_layout_classification.blocks.front().insts.front()
-                          .escaped_names.size() == 1 &&
-                  preparation.stack_layout_classification.blocks.front().insts.front()
-                          .escaped_names.front() == "%p.x" &&
+                  preparation.stack_layout_classification.escaped_entry_allocas.has_value() &&
+                  preparation.stack_layout_classification.escaped_entry_allocas->empty() &&
                   preparation.stack_layout_classification.blocks.front().insts.front()
                           .pointer_accesses.empty() &&
                   !preparation.stack_layout_classification.blocks.front().insts.front()
@@ -2034,6 +2032,8 @@ void test_backend_shared_fallback_preparation_separates_stack_layout_metadata_fr
                   lowered.stack_layout_input.blocks.front().insts.front().used_names.size() == 1 &&
                   lowered.stack_layout_input.blocks.front().insts.front().used_names.front() ==
                       "%p.x" &&
+                  lowered.stack_layout_input.escaped_entry_allocas.has_value() &&
+                  lowered.stack_layout_input.escaped_entry_allocas->empty() &&
                   lowered.stack_layout_input.signature_params.front().type == "i32" &&
                   lowered.stack_layout_input.signature_params.front().operand == "%p.x" &&
                   lowered.stack_layout_input.signature_params.back().is_varargs &&
@@ -2145,8 +2145,13 @@ void test_backend_shared_fallback_preparation_still_needs_remaining_pointer_esca
   auto escaped_preparation =
       c4c::backend::stack_layout::prepare_module_function_entry_alloca_preparation(
           make_escaped_local_alloca_candidate_module(), 1);
-  escaped_preparation.stack_layout_classification.blocks.front().insts.front().escaped_names
-      .clear();
+  expect_true(escaped_preparation.stack_layout_classification.escaped_entry_allocas.has_value() &&
+                  escaped_preparation.stack_layout_classification.escaped_entry_allocas->size() ==
+                      1 &&
+                  escaped_preparation.stack_layout_classification.escaped_entry_allocas->front() ==
+                      "%lv.buf",
+              "shared prepared fallback carrier should narrow escaped-alloca classification to a coarse entry-alloca escape set instead of caching per-point escaped-name lists");
+  escaped_preparation.stack_layout_classification.escaped_entry_allocas = std::vector<std::string>{};
   const auto escaped_lowered =
       c4c::backend::stack_layout::lower_prepared_entry_alloca_function_inputs(
           escaped_preparation);

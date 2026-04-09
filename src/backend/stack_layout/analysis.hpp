@@ -5,6 +5,7 @@
 #include "../../codegen/lir/ir.hpp"
 
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -67,6 +68,7 @@ struct StackLayoutInput {
   std::vector<StackLayoutCallResultInput> call_results;
   std::vector<StackLayoutBlockInput> blocks;
   std::vector<PhiIncomingUse> phi_incoming_uses;
+  std::optional<std::vector<std::string>> escaped_entry_allocas;
 };
 
 struct StackLayoutAnalysis {

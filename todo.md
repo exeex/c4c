@@ -7,19 +7,41 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: turn the prepared pointer/escape audit result into explicit
-  regression coverage and record the next seam needed before the prepared
-  fallback carrier can shrink again
-- Current implementation target: pin that the remaining
-  `pointer_accesses`, `escaped_names`, and `derived_pointer_root` facts are all
-  still required by the current prepared fallback path because they directly
-  protect overwrite-before-read pruning, single-block coalescing, and
-  escaped-alloca exclusion
-- Next intended slice: move one of those remaining pointer/escape facts behind
-  a narrower backend-owned stack-layout classification seam, or introduce that
-  seam if needed, before attempting another prepared-carrier field removal
+- Current slice: narrow the prepared fallback escape contract so escaped-alloca
+  classification no longer depends on cached per-point `escaped_names`
+- Current implementation target: replace prepared fallback per-point
+  `escaped_names` storage with a coarse escaped-entry-alloca set that still
+  preserves escaped-alloca exclusion when the prepared carrier is lowered back
+  into production rewrite inputs
+- Next intended slice: move either overwrite-before-read pointer-access facts
+  or derived-pointer-root coalescing facts behind a similarly narrow
+  backend-owned classification seam before attempting another prepared-carrier
+  field removal
 
 ## Completed
+
+- Completed the next Step 6 prepared escaped-alloca classification narrowing
+  slice by moving fallback escape ownership off cached per-point
+  `escaped_names` and onto a narrower coarse escape set:
+  - added `escaped_entry_allocas` to the prepared fallback classification
+    carrier in `src/backend/stack_layout/slot_assignment.*` and taught
+    preparation/lowering to derive and round-trip that coarse entry-alloca
+    escape set while dropping prepared per-point `escaped_names`
+  - updated `src/backend/stack_layout/analysis.hpp` and
+    `src/backend/stack_layout/alloca_coalescing.cpp` so
+    `StackLayoutInput` can carry the optional precomputed escape set and
+    coalescing trusts that narrower seam when present instead of requiring
+    rebuilt per-point escaped-name lists
+  - extended `tests/backend/backend_shared_util_tests.cpp` with focused
+    coverage proving the prepared fallback carrier now stores escaped alloca
+    classification as a coarse set and that clearing that set still regresses
+    escaped-alloca exclusion on the prepared backend-CFG path
+  - rebuilt `backend_shared_util_tests` and passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`
+  - rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with the repo’s allowed non-decreasing rule and no new
+    failures (`2809 -> 2809`, same 32 known failing tests as
+    `test_fail_before.log`)
 
 - Completed the next Step 6 prepared pointer/escape audit slice by proving the
   current fallback carrier cannot shrink beyond the already-removed

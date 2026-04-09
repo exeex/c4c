@@ -41,6 +41,48 @@ bool is_scalar_alloca_type(std::string_view type_str) {
          type_str.front() != '%';
 }
 
+std::optional<std::vector<std::string>> collect_prepared_escaped_entry_allocas(
+    const StackLayoutInput& input) {
+  std::unordered_map<std::string, std::string> pointer_roots;
+  pointer_roots.reserve(input.entry_allocas.size());
+  for (const auto& alloca : input.entry_allocas) {
+    if (is_param_alloca_name(alloca.alloca_name)) {
+      continue;
+    }
+    pointer_roots.emplace(alloca.alloca_name, alloca.alloca_name);
+  }
+
+  std::vector<std::string> escaped_entry_allocas;
+  auto mark_escaped = [&](std::string_view value_name) {
+    const auto it = pointer_roots.find(std::string(value_name));
+    if (it == pointer_roots.end()) {
+      return;
+    }
+    c4c::codegen::lir::append_unique_lir_value_name(escaped_entry_allocas, it->second);
+  };
+
+  for (const auto& block : input.blocks) {
+    for (const auto& point : block.insts) {
+      if (point.derived_pointer_root.has_value()) {
+        const auto root_it = pointer_roots.find(point.derived_pointer_root->second);
+        if (root_it != pointer_roots.end()) {
+          pointer_roots.emplace(point.derived_pointer_root->first, root_it->second);
+        }
+      }
+
+      for (const auto& escaped_name : point.escaped_names) {
+        mark_escaped(escaped_name);
+      }
+    }
+
+    for (const auto& value_name : block.terminator_used_names) {
+      mark_escaped(value_name);
+    }
+  }
+
+  return escaped_entry_allocas;
+}
+
 void apply_prepared_stack_layout_metadata(
     StackLayoutInput& input,
     const PreparedEntryAllocaStackLayoutMetadata& metadata) {
@@ -53,6 +95,7 @@ void apply_prepared_stack_layout_metadata(
 PreparedEntryAllocaStackLayoutClassificationInput lower_prepared_stack_layout_classification_input(
     StackLayoutInput input) {
   PreparedEntryAllocaStackLayoutClassificationInput classification;
+  classification.escaped_entry_allocas = collect_prepared_escaped_entry_allocas(input);
   classification.entry_allocas = std::move(input.entry_allocas);
   classification.blocks.reserve(input.blocks.size());
   for (auto& block : input.blocks) {
@@ -62,7 +105,6 @@ PreparedEntryAllocaStackLayoutClassificationInput lower_prepared_stack_layout_cl
     for (auto& point : block.insts) {
       PreparedEntryAllocaStackLayoutPoint prepared_point;
       prepared_point.pointer_accesses = std::move(point.pointer_accesses);
-      prepared_point.escaped_names = std::move(point.escaped_names);
       prepared_point.derived_pointer_root = std::move(point.derived_pointer_root);
       prepared_block.insts.push_back(std::move(prepared_point));
     }
@@ -78,6 +120,7 @@ StackLayoutInput lower_prepared_stack_layout_input(
     const LivenessInput* liveness_input) {
   StackLayoutInput input;
   input.entry_allocas = classification.entry_allocas;
+  input.escaped_entry_allocas = classification.escaped_entry_allocas;
   input.blocks.reserve(classification.blocks.size());
   for (const auto& block : classification.blocks) {
     StackLayoutBlockInput lowered_block;
@@ -86,7 +129,6 @@ StackLayoutInput lower_prepared_stack_layout_input(
     for (const auto& point : block.insts) {
       StackLayoutPoint lowered_point;
       lowered_point.pointer_accesses = point.pointer_accesses;
-      lowered_point.escaped_names = point.escaped_names;
       lowered_point.derived_pointer_root = point.derived_pointer_root;
       lowered_block.insts.push_back(std::move(lowered_point));
     }

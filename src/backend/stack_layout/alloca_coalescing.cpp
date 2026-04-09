@@ -97,13 +97,23 @@ CoalescableAllocas compute_coalescable_allocas(
       for (const auto& access : point.pointer_accesses) {
         escape_analysis.record_use(access.value_name, block_index);
       }
-      for (const auto& escaped_name : point.escaped_names) {
-        escape_analysis.mark_escaped(escaped_name, block_index);
+      if (!input.escaped_entry_allocas.has_value()) {
+        for (const auto& escaped_name : point.escaped_names) {
+          escape_analysis.mark_escaped(escaped_name, block_index);
+        }
       }
     }
 
-    for (const auto& value_name : block.terminator_used_names) {
-      escape_analysis.mark_escaped(value_name, block_index);
+    if (!input.escaped_entry_allocas.has_value()) {
+      for (const auto& value_name : block.terminator_used_names) {
+        escape_analysis.mark_escaped(value_name, block_index);
+      }
+    }
+  }
+
+  if (input.escaped_entry_allocas.has_value()) {
+    for (const auto& alloca_name : *input.escaped_entry_allocas) {
+      escape_analysis.escaped.insert(alloca_name);
     }
   }
 
