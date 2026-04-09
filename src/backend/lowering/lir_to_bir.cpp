@@ -3278,7 +3278,7 @@ std::optional<bir::Function> try_lower_conditional_return_select_function(
     const std::vector<bir::Param>& params) {
   using namespace c4c::codegen::lir;
 
-  if (lir_function.blocks.size() < 3 || lir_function.blocks.size() > 5) {
+  if (lir_function.blocks.size() < 3) {
     return std::nullopt;
   }
 
@@ -3315,33 +3315,24 @@ std::optional<bir::Function> try_lower_conditional_return_select_function(
   const LirBlock* false_ret_block = nullptr;
   std::size_t next_block_index = 1;
   auto consume_return_arm = [&](std::string_view branch_label) -> const LirBlock* {
-    if (next_block_index >= lir_function.blocks.size()) {
-      return nullptr;
-    }
+    while (next_block_index < lir_function.blocks.size()) {
+      const auto& block = lir_function.blocks[next_block_index];
+      if (!block.insts.empty() || block.label != branch_label) {
+        return nullptr;
+      }
 
-    const auto& first = lir_function.blocks[next_block_index];
-    if (!first.insts.empty() || first.label != branch_label) {
-      return nullptr;
-    }
-
-    if (std::get_if<LirRet>(&first.terminator) != nullptr) {
       ++next_block_index;
-      return &first;
-    }
+      if (std::get_if<LirRet>(&block.terminator) != nullptr) {
+        return &block;
+      }
 
-    const auto* bridge_br = std::get_if<LirBr>(&first.terminator);
-    if (bridge_br == nullptr || next_block_index + 1 >= lir_function.blocks.size()) {
-      return nullptr;
+      const auto* bridge_br = std::get_if<LirBr>(&block.terminator);
+      if (bridge_br == nullptr) {
+        return nullptr;
+      }
+      branch_label = bridge_br->target_label;
     }
-
-    const auto& ret_block = lir_function.blocks[next_block_index + 1];
-    if (!ret_block.insts.empty() || bridge_br->target_label != ret_block.label ||
-        std::get_if<LirRet>(&ret_block.terminator) == nullptr) {
-      return nullptr;
-    }
-
-    next_block_index += 2;
-    return &ret_block;
+    return nullptr;
   };
 
   true_ret_block = consume_return_arm(condbr->true_label);

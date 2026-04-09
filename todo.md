@@ -9,15 +9,36 @@ Source Plan: plan.md
 - Step 5: pull phi and CFG normalization behind the BIR boundary
 - Current slice: resume the Step 5 audit for any remaining AArch64 branch-only
   goto-chain families that still survive after the shared BIR retry, now that
-  the asymmetric empty-bridge conditional-return family is normalized behind
+  the double-empty-bridge conditional-return family is normalized behind
   `try_lower_to_bir(...)`
-- Next intended slice: inspect whether any remaining AArch64 generic-emitter
-  branch-only goto-chain families still miss shared BIR lowering after the
-  asymmetric conditional-return select normalization without spilling into Step
-  6 MIR-owned liveness/regalloc work
+- Next intended slice: inspect whether any remaining mirrored or longer
+  branch-only conditional-return goto chains still miss shared BIR lowering
+  after the new linear empty-chain matcher without spilling into Step 6
+  MIR-owned liveness/regalloc work
 
 ## Completed
 
+- Closed the next Step 5 AArch64 branch-only goto-chain CFG seam behind the
+  shared BIR boundary by teaching shared lowering to consume linear empty
+  chains instead of stopping after one bridge block:
+  - widened `src/backend/lowering/lir_to_bir.cpp`'s
+    `try_lower_conditional_return_select_function(...)` matcher so the shared
+    BIR path now walks a linear chain of empty `br` blocks on each conditional
+    arm before the final `ret`, rather than accepting only a direct return or
+    a single empty bridge
+  - added focused lowering coverage in
+    `tests/backend/backend_bir_lowering_tests.cpp` proving that a
+    double-empty-bridge conditional-return LIR slice now normalizes to one
+    canonical `bir.select ...; bir.ret ...` block instead of missing shared
+    lowering
+  - added focused AArch64 pipeline coverage in
+    `tests/backend/backend_bir_pipeline_aarch64_tests.cpp` proving the native
+    direct emitter now routes that longer empty goto-chain fixture through the
+    shared BIR-owned `.Lselect_*` path rather than exposing the old direct-LIR
+    bridge and return labels
+  - rebuilt `backend_bir_tests`, re-ran it, rebuilt the full tree, refreshed
+    `test_fail_after.log`, and passed the regression guard with no new
+    failures and no pass-count drop (`2809 -> 2809`)
 - Closed the next Step 5 AArch64 branch-only conditional-return CFG seam
   behind the shared BIR boundary by teaching shared lowering to accept
   asymmetric empty-bridge arms:
