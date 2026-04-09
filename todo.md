@@ -7,21 +7,44 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: extend the new shared per-function entry-alloca preparation
-  carrier so entry-alloca-bearing functions can derive liveness from a
-  backend-owned stack-layout/liveness handoff instead of the raw-LIR
-  compatibility seam
-- Current implementation target: preserve the carrier-based production routing
-  in `rewrite_module_entry_allocas(...)` while replacing the fallback
-  `LirFunction -> backend CFG -> LivenessInput` path with a backend-owned
-  preparation form that keeps entry-alloca ownership explicit enough for
-  stack-layout analysis and rewrite planning
-- Next intended slice: prototype a backend-owned entry-alloca preparation form
-  that keeps stack-layout metadata plus liveness points together, then retest
-  whether the blocking mixed-module function can leave the raw-LIR fallback
-  without regressing rewrite behavior
+- Current slice: audit whether the entry-alloca preparation carrier can lower
+  any stack-layout metadata from backend-owned forms, starting with the bounded
+  dead-entry-alloca path that still depends on
+  `lower_lir_to_stack_layout_input(...)`
+- Current implementation target: identify which `StackLayoutInput` fields used
+  by entry-alloca rewrite planning can be derived from the new prepared carrier
+  instead of the raw-LIR-only stack-layout lowering path
+- Next intended slice: prototype a backend-owned stack-layout preparation seam
+  for dead entry allocas, then retest the mixed-module blocking function to see
+  whether entry-alloca rewrite planning can narrow its remaining raw-LIR
+  dependency
 
 ## Completed
+
+- Completed the next Step 6 bounded prepared entry-alloca carrier slice by
+  formalizing the mixed-module fallback as one backend-owned preparation seam
+  before rewrite-input lowering:
+  - added `PreparedEntryAllocaFunctionInputs` plus
+    `prepare_module_function_entry_alloca_preparation(...)` and
+    `lower_prepared_entry_alloca_function_inputs(...)` in
+    `src/backend/stack_layout/slot_assignment.*` so entry-alloca rewrite prep
+    now distinguishes between the per-function BIR liveness path and the
+    fallback backend-CFG preparation carrier without constructing fallback
+    liveness inline
+  - kept `prepare_module_function_entry_alloca_inputs(...)` as the production
+    wrapper over that prepared carrier so existing rewrite callers still
+    consume the same `EntryAllocaRewriteInputs` contract
+  - extended `tests/backend/backend_shared_util_tests.cpp` with focused
+    coverage proving lowerable functions stay on the per-function BIR path,
+    fallback functions now retain `StackLayoutInput` plus an explicit
+    `BackendCfgFunction` carrier, and the prepared fallback still lowers into
+    the existing rewrite-input contract
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`,
+    rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with the repo’s allowed non-decreasing rule and no new
+    failures (`2809 -> 2809`, same 32 known failing tests as
+    `test_fail_before.log`)
 
 - Completed the next Step 6 bounded entry-alloca preparation-carrier slice by
   moving production stack-layout rewrite setup behind one shared per-function

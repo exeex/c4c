@@ -294,7 +294,14 @@ std::optional<LivenessInput> try_lower_module_function_to_bir_liveness_input(
 EntryAllocaRewriteInputs prepare_module_function_entry_alloca_inputs(
     const c4c::codegen::lir::LirModule& module,
     std::size_t function_index) {
-  EntryAllocaRewriteInputs inputs;
+  return lower_prepared_entry_alloca_function_inputs(
+      prepare_module_function_entry_alloca_preparation(module, function_index));
+}
+
+PreparedEntryAllocaFunctionInputs prepare_module_function_entry_alloca_preparation(
+    const c4c::codegen::lir::LirModule& module,
+    std::size_t function_index) {
+  PreparedEntryAllocaFunctionInputs inputs;
   if (function_index >= module.functions.size()) {
     return inputs;
   }
@@ -309,7 +316,24 @@ EntryAllocaRewriteInputs prepare_module_function_entry_alloca_inputs(
     return inputs;
   }
 
-  inputs.liveness_input = lower_backend_cfg_to_liveness_input(lower_lir_to_backend_cfg(function));
+  inputs.backend_cfg = lower_lir_to_backend_cfg(function);
+  return inputs;
+}
+
+EntryAllocaRewriteInputs lower_prepared_entry_alloca_function_inputs(
+    const PreparedEntryAllocaFunctionInputs& prepared_inputs) {
+  EntryAllocaRewriteInputs inputs;
+  inputs.stack_layout_input = prepared_inputs.stack_layout_input;
+  inputs.liveness_source = prepared_inputs.liveness_source;
+
+  if (prepared_inputs.liveness_input.has_value()) {
+    inputs.liveness_input = *prepared_inputs.liveness_input;
+    return inputs;
+  }
+
+  if (prepared_inputs.backend_cfg.has_value()) {
+    inputs.liveness_input = lower_backend_cfg_to_liveness_input(*prepared_inputs.backend_cfg);
+  }
   return inputs;
 }
 

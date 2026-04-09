@@ -40,6 +40,14 @@ enum class EntryAllocaRewriteLivenessSource {
   PerFunctionBir,
 };
 
+struct PreparedEntryAllocaFunctionInputs {
+  StackLayoutInput stack_layout_input;
+  std::optional<BackendCfgFunction> backend_cfg;
+  std::optional<LivenessInput> liveness_input;
+  EntryAllocaRewriteLivenessSource liveness_source =
+      EntryAllocaRewriteLivenessSource::RawLirBackendCfg;
+};
+
 struct EntryAllocaRewriteInputs {
   LivenessInput liveness_input;
   StackLayoutInput stack_layout_input;
@@ -73,6 +81,13 @@ EntryAllocaRewritePatch prepare_entry_alloca_rewrite_patch(
 [[nodiscard]] std::optional<LivenessInput> try_lower_module_function_to_bir_liveness_input(
     const c4c::codegen::lir::LirModule& module,
     std::size_t function_index);
+
+[[nodiscard]] PreparedEntryAllocaFunctionInputs prepare_module_function_entry_alloca_preparation(
+    const c4c::codegen::lir::LirModule& module,
+    std::size_t function_index);
+
+[[nodiscard]] EntryAllocaRewriteInputs lower_prepared_entry_alloca_function_inputs(
+    const PreparedEntryAllocaFunctionInputs& prepared_inputs);
 
 [[nodiscard]] EntryAllocaRewriteInputs prepare_module_function_entry_alloca_inputs(
     const c4c::codegen::lir::LirModule& module,

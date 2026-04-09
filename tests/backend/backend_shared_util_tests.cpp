@@ -1808,6 +1808,41 @@ void test_backend_shared_slot_assignment_prefers_per_function_bir_liveness_when_
 void test_backend_shared_slot_assignment_prepares_module_function_inputs() {
   const auto module = make_mixed_bir_and_entry_alloca_module();
 
+  const auto lowerable_preparation =
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_preparation(module, 0);
+  expect_true(lowerable_preparation.liveness_source ==
+                  c4c::backend::stack_layout::EntryAllocaRewriteLivenessSource::PerFunctionBir &&
+                  lowerable_preparation.stack_layout_input.entry_allocas.empty() &&
+                  lowerable_preparation.backend_cfg == std::nullopt &&
+                  lowerable_preparation.liveness_input.has_value() &&
+                  lowerable_preparation.liveness_input->entry_insts.empty() &&
+                  lowerable_preparation.liveness_input->blocks.size() == 1 &&
+                  lowerable_preparation.liveness_input->blocks.front().insts.size() == 1,
+              "shared entry-alloca rewrite prep should keep lowerable functions on the narrower per-function BIR seam without synthesizing a fallback backend-CFG carrier");
+
+  const auto fallback_preparation =
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_preparation(module, 2);
+  expect_true(fallback_preparation.liveness_source ==
+                  c4c::backend::stack_layout::EntryAllocaRewriteLivenessSource::RawLirBackendCfg &&
+                  fallback_preparation.stack_layout_input.entry_allocas.size() == 1 &&
+                  fallback_preparation.stack_layout_input.entry_allocas.front().alloca_name ==
+                      "%lv.buf" &&
+                  !fallback_preparation.liveness_input.has_value() &&
+                  fallback_preparation.backend_cfg.has_value() &&
+                  fallback_preparation.backend_cfg->entry_insts.size() == 2,
+              "shared entry-alloca rewrite prep should preserve entry-alloca ownership in the fallback carrier while materializing backend-owned CFG prep instead of ad hoc liveness");
+
+  const auto fallback_inputs =
+      c4c::backend::stack_layout::lower_prepared_entry_alloca_function_inputs(
+          fallback_preparation);
+  expect_true(fallback_inputs.liveness_source ==
+                  c4c::backend::stack_layout::EntryAllocaRewriteLivenessSource::RawLirBackendCfg &&
+                  fallback_inputs.stack_layout_input.entry_allocas.size() == 1 &&
+                  fallback_inputs.stack_layout_input.entry_allocas.front().alloca_name ==
+                      "%lv.buf" &&
+                  fallback_inputs.liveness_input.entry_insts.size() == 2,
+              "shared entry-alloca rewrite prep should still lower the prepared fallback carrier into the production rewrite-input contract");
+
   const auto lowerable_inputs =
       c4c::backend::stack_layout::prepare_module_function_entry_alloca_inputs(module, 0);
   expect_true(lowerable_inputs.liveness_source ==
@@ -1816,16 +1851,7 @@ void test_backend_shared_slot_assignment_prepares_module_function_inputs() {
                   lowerable_inputs.liveness_input.entry_insts.empty() &&
                   lowerable_inputs.liveness_input.blocks.size() == 1 &&
                   lowerable_inputs.liveness_input.blocks.front().insts.size() == 1,
-              "shared entry-alloca rewrite prep should use the narrower per-function BIR seam for lowerable functions while keeping stack-layout ownership in one carrier");
-
-  const auto fallback_inputs =
-      c4c::backend::stack_layout::prepare_module_function_entry_alloca_inputs(module, 2);
-  expect_true(fallback_inputs.liveness_source ==
-                  c4c::backend::stack_layout::EntryAllocaRewriteLivenessSource::RawLirBackendCfg &&
-                  fallback_inputs.stack_layout_input.entry_allocas.size() == 1 &&
-                  fallback_inputs.stack_layout_input.entry_allocas.front().alloca_name == "%lv.buf" &&
-                  fallback_inputs.liveness_input.entry_insts.size() == 2,
-              "shared entry-alloca rewrite prep should preserve entry-alloca ownership in the fallback carrier while the production path still relies on the raw-LIR compatibility seam");
+              "shared entry-alloca rewrite prep should keep the existing production wrapper contract after routing through the prepared carrier");
 }
 
 void test_backend_shared_prepares_lir_module_for_target() {
