@@ -347,7 +347,7 @@ std::optional<TypeSpec> Lowerer::find_struct_method_return_type(
 }
 
 std::optional<TypeSpec> Lowerer::infer_call_result_type_from_callee(
-    FunctionCtx* ctx, const Node* callee) {
+    const FunctionCtx* ctx, const Node* callee) {
   if (!callee) return std::nullopt;
   if (callee->kind == NK_DEREF) {
     return infer_call_result_type_from_callee(ctx, callee->left);
@@ -379,6 +379,60 @@ std::optional<TypeSpec> Lowerer::infer_call_result_type_from_callee(
     return module_->functions[fit->second.value].return_type.spec;
   }
   return std::nullopt;
+}
+
+std::optional<TypeSpec> Lowerer::infer_call_result_type(
+    const FunctionCtx* ctx, const Node* call) {
+  if (!call || call->kind != NK_CALL || !call->left) return std::nullopt;
+
+  if (auto dit = deduced_template_calls_.find(call);
+      dit != deduced_template_calls_.end()) {
+    auto fit = module_->fn_index.find(dit->second.mangled_name);
+    if (fit != module_->fn_index.end() &&
+        fit->second.value < module_->functions.size()) {
+      return module_->functions[fit->second.value].return_type.spec;
+    }
+  }
+
+  if (call->left->kind == NK_VAR && call->left->name &&
+      (call->left->n_template_args > 0 || call->left->has_template_args) &&
+      ct_state_->has_template_def(call->left->name) &&
+      !ct_state_->has_consteval_def(call->left->name)) {
+    const TypeBindings* enc =
+        (ctx && !ctx->tpl_bindings.empty()) ? &ctx->tpl_bindings : nullptr;
+    const NttpBindings* enc_nttp =
+        (ctx && !ctx->nttp_bindings.empty()) ? &ctx->nttp_bindings : nullptr;
+    const Node* tpl_fn = ct_state_->find_template_def(call->left->name);
+    if (tpl_fn) {
+      TypeBindings bindings =
+          merge_explicit_and_deduced_type_bindings(call, call->left, tpl_fn, enc);
+      NttpBindings nttp_bindings =
+          build_call_nttp_bindings(call->left, tpl_fn, enc_nttp);
+      std::string resolved_name =
+          mangle_template_name(call->left->name, bindings, nttp_bindings);
+      const auto param_order =
+          get_template_param_order(tpl_fn, &bindings, &nttp_bindings);
+      const SpecializationKey spec_key = nttp_bindings.empty()
+          ? make_specialization_key(call->left->name, param_order, bindings)
+          : make_specialization_key(call->left->name, param_order, bindings,
+                                    nttp_bindings);
+      if (const auto* inst_list = registry_.find_instances(call->left->name)) {
+        for (const auto& inst : *inst_list) {
+          if (inst.spec_key == spec_key) {
+            resolved_name = inst.mangled_name;
+            break;
+          }
+        }
+      }
+      auto fit = module_->fn_index.find(resolved_name);
+      if (fit != module_->fn_index.end() &&
+          fit->second.value < module_->functions.size()) {
+        return module_->functions[fit->second.value].return_type.spec;
+      }
+    }
+  }
+
+  return infer_call_result_type_from_callee(ctx, call->left);
 }
 
 std::optional<TypeSpec> Lowerer::storage_type_for_declref(

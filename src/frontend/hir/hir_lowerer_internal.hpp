@@ -328,7 +328,10 @@ class Lowerer {
   std::optional<FnPtrSig> fn_ptr_sig_from_decl_node(const Node* n);
 
   std::optional<TypeSpec> infer_call_result_type_from_callee(
-      FunctionCtx* ctx, const Node* callee);
+      const FunctionCtx* ctx, const Node* callee);
+
+  std::optional<TypeSpec> infer_call_result_type(
+      const FunctionCtx* ctx, const Node* call);
 
   std::optional<TypeSpec> storage_type_for_declref(FunctionCtx* ctx,
                                                    const DeclRef& r);

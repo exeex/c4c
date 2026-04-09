@@ -275,26 +275,8 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
             // Check if the argument is a function call returning a reference type.
             // In that case, the call already returns a pointer; no AddrOf needed.
             bool arg_returns_ref = false;
-            if (inner->kind == NK_CALL && inner->left &&
-                inner->left->kind == NK_VAR && inner->left->name) {
-              TypeSpec call_ret = infer_generic_ctrl_type(&ctx, arg);
-              (void)call_ret;
-              // infer_generic_ctrl_type strips refs, so check original return type.
-              auto dit = deduced_template_calls_.find(inner);
-              if (dit != deduced_template_calls_.end()) {
-                auto fit = module_->fn_index.find(dit->second.mangled_name);
-                if (fit != module_->fn_index.end()) {
-                  const Function* fn = module_->find_function(fit->second);
-                  if (fn && is_any_ref_ts(fn->return_type.spec)) arg_returns_ref = true;
-                }
-              }
-              if (!arg_returns_ref) {
-                auto fit = module_->fn_index.find(inner->left->name);
-                if (fit != module_->fn_index.end()) {
-                  const Function* fn = module_->find_function(fit->second);
-                  if (fn && is_any_ref_ts(fn->return_type.spec)) arg_returns_ref = true;
-                }
-              }
+            if (auto ts = infer_call_result_type(&ctx, inner)) {
+              arg_returns_ref = is_any_ref_ts(*ts);
             }
             if (arg_returns_ref) {
               // Call already returns a pointer (reference ABI).

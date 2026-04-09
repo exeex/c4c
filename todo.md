@@ -9,10 +9,10 @@ Source Plan: plan.md
 - Step 1 audit outcome: existing parser coverage already covers top-level
   deduction guides, template-id conversion operators, and generated
   disambiguation matrix cases for `&&`.
-- Active implementation slice completed: helper-return paths for a named
-  `T&&` parameter now preserve `T&` lvalue behavior for downstream overload
-  selection while explicit forwarding back to `T&&` still selects the rvalue
-  overload.
+- Active implementation slice completed: explicit-template helper-return paths
+  now preserve instantiated `T&` vs `T&&` call-result category for downstream
+  ref-overload selection instead of materializing `T&` results into rvalue
+  temporaries.
 
 ## Completed
 
@@ -56,11 +56,22 @@ Source Plan: plan.md
 - Re-ran the focused named-rvalue-reference helper-return cluster plus the
   full suite; regression guard passed with pass count improving from 3159 to
   3160 and zero new failures.
+- Added `template_helper_return_overload_basic.cpp` to lock explicit-template
+  helper calls returning instantiated `T&` and `T&&` into downstream
+  ref-overload sets.
+- Resolve explicit-template call return types back to their instantiated
+  callees when HIR decides whether a call expression is an lvalue or already
+  uses the reference ABI, avoiding `T&` helper results being copied into
+  rvalue temporaries.
+- Re-ran the focused helper-return regression cluster plus the full suite;
+  regression guard passed with pass count improving from 3159 to 3161 and
+  zero new failures.
 
 ## Next Slice
 
-- probe template-instantiated helper returns only if a remaining generic `&&`
-  defect is demonstrated beyond the direct function-return path now covered
+- probe ref-qualified member dispatch or binding only if a remaining generic
+  `&&` defect is demonstrated beyond the direct and explicit-template
+  helper-return paths now covered
 - keep any further call-category follow-up bounded to concrete overload or
   binding mismatches against Clang
 - keep adjacent library-facing probes bounded to generic language defects only
@@ -88,4 +99,7 @@ Source Plan: plan.md
 - direct call expressions returning `T&` now restore lvalue behavior in sema
   and HIR ref-overload selection, while reference-returning helper calls stay
   on the reference ABI path instead of materializing temporary by-value args
+- explicit-template helper calls such as `as_lvalue<int>(...)` now resolve
+  their instantiated return type during HIR call lowering, so both overload
+  choice and reference-ABI argument passing see `T&` vs `T&&` correctly
 - keep EASTL or libstdc++ findings scoped to generic language defects only
