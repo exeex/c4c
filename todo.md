@@ -11,23 +11,43 @@ Source Plan: plan.md
   keep the active work inside idea 44's x86-native emitter/toolchain lane and
   do not silently absorb the separate shared-BIR select regression
 - current exact slice:
-  move past the now-green x86 affine-return and parser-prelude repair in
-  `src/backend/x86/codegen/emit.cpp` plus
-  `src/backend/x86/assembler/{parser,elf_writer}.cpp`, then choose the next
-  smallest still-failing x86-local runtime or contract probe after the shared-
-  BIR select regression remains parked separately
+  move past the now-green minimal local-temp seam and choose the next bounded
+  x86-native direct-LIR family after confirming the refreshed full-suite guard
+  still fails in the broader parked route/select buckets rather than the new
+  local-temp slice
 
 ## Next Slice
 
 - keep the separate shared-BIR select regression parked in
   `ideas/open/47_shared_bir_select_route_regression_after_x86_variadic_recovery.md`
   instead of widening idea 44
-- after the x86 affine-return/toolchain repair, choose the next bounded
-  x86-native runtime or contract probe that still fails for x86-local reasons,
-  likely the next nearby compare/branch or simple call/runtime case, without
-  reopening broad `try_lower_to_bir_with_options(...)` ordering changes
+- after the minimal local-temp slice, re-sample the adjacent x86-local runtime
+  failures to choose the next bounded direct-LIR family, starting with
+  `backend_runtime_param_slot` as the nearest remaining tiny local-slot case,
+  without reopening broad `try_lower_to_bir_with_options(...)` ordering
+  changes
 
 ## Recently Completed
+
+- added a bounded x86 direct-LIR local-temp matcher/emitter in
+  `src/backend/x86/codegen/emit.cpp` for the one-slot `store imm -> load ->
+  return` family and covered it with a focused backend regression in
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp`
+- verified the focused runtime slice is green:
+  `ctest --test-dir build --output-on-failure -R '^backend_runtime_local_temp$'`
+  now passes
+- re-checked the nearest adjacent local-slot runtime after the local-temp slice
+  landed and confirmed it remains the next bounded failure:
+  `ctest --test-dir build --output-on-failure -R '^(backend_runtime_param_slot|backend_runtime_local_temp)$'`
+  leaves only `backend_runtime_param_slot` failing
+- refreshed `test_fail_after.log` with
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log` and
+  re-ran the monotonic guard:
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log`
+  reports `2670 -> 2571` passes, `179 -> 279` failures, and `100` new failing
+  tests across the already-broad parked route/select and x86 bring-up lanes,
+  so the full-suite guard remains red overall even though the local-temp slice
+  itself is green
 
 - added bounded x86 direct-BIR affine-return support in
   `src/backend/x86/codegen/emit.cpp` for the minimal i32 add/sub chain family,

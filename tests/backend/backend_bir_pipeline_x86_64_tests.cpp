@@ -79,6 +79,32 @@ c4c::codegen::lir::LirModule make_unsupported_double_return_lir_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_x86_local_temp_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.x", "i32", "", 4});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{"i32", "5", "%lv.x"});
+  entry.insts.push_back(LirLoadOp{"%t0", "i32", "%lv.x"});
+  entry.terminator = LirRet{std::string("%t0"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_goto_only_constant_return_module() {
   using namespace c4c::codegen::lir;
 
@@ -3146,6 +3172,21 @@ void test_x86_direct_emitter_routes_goto_only_constant_return_through_shared_bir
                       "x86 direct emitter should no longer expose the old direct-LIR goto chain once shared BIR owns the branch-only constant-return shape");
 }
 
+void test_x86_direct_emitter_lowers_minimal_local_temp_slice() {
+  auto module = make_x86_local_temp_lir_module();
+
+  expect_true(!c4c::backend::try_lower_to_bir(module).has_value(),
+              "minimal x86 local-temp input should continue to miss shared BIR lowering so this regression exercises the x86-owned direct-LIR seam");
+
+  const auto rendered = c4c::backend::x86::emit_module(module);
+  expect_contains(rendered, ".globl main",
+                  "x86 direct emitter should still emit the function definition for the bounded local-temp direct-LIR slice");
+  expect_contains(rendered, "main:\n  mov eax, 5\n  ret\n",
+                  "x86 direct emitter should fold the bounded store-load local-temp slice into a direct return-immediate sequence");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 direct emitter should stay on native asm emission for the bounded local-temp direct-LIR slice");
+}
+
 void test_x86_direct_lir_emitter_rejects_double_indirect_pointer_conditional_return_fallback() {
   expect_true(
       !c4c::backend::try_lower_to_bir(
@@ -3237,5 +3278,6 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_x86_direct_lir_emitter_rejects_unsupported_input_without_legacy_backend_ir_stub);
   RUN_TEST(test_x86_direct_lir_emitter_rejects_alloca_backed_conditional_phi_constant_fold_stub);
   RUN_TEST(test_x86_direct_emitter_routes_goto_only_constant_return_through_shared_bir);
+  RUN_TEST(test_x86_direct_emitter_lowers_minimal_local_temp_slice);
   RUN_TEST(test_x86_direct_lir_emitter_rejects_double_indirect_pointer_conditional_return_fallback);
 }

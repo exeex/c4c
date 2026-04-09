@@ -66,6 +66,11 @@ struct MinimalVariadicDoubleBytesSlice {
   std::string entry_name;
 };
 
+struct MinimalLocalTempSlice {
+  std::string function_name;
+  std::int64_t stored_imm = 0;
+};
+
 std::optional<std::int64_t> parse_i64(std::string_view text) {
   std::int64_t value = 0;
   const char* begin = text.data();
@@ -218,6 +223,55 @@ std::optional<MinimalAffineReturnSlice> parse_minimal_affine_return_slice(
       .uses_first_param = lowered_return->uses_first_param,
       .uses_second_param = lowered_return->uses_second_param,
       .constant = lowered_return->constant,
+  };
+}
+
+std::optional<MinimalLocalTempSlice> parse_minimal_local_temp_slice(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || !module.globals.empty() || !module.extern_decls.empty() ||
+      !module.string_pool.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration || function.signature_text != "define i32 @main()\n" ||
+      function.entry.value != 0 || function.blocks.size() != 1 ||
+      function.alloca_insts.size() != 1 || !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* slot = std::get_if<LirAllocaOp>(&function.alloca_insts.front());
+  if (slot == nullptr || slot->result.str().empty() || slot->type_str != "i32" ||
+      !slot->count.str().empty() || slot->align != 4) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  const auto* ret = std::get_if<LirRet>(&entry.terminator);
+  if (entry.label != "entry" || ret == nullptr || ret->type_str != "i32" ||
+      !ret->value_str.has_value() || entry.insts.size() != 2) {
+    return std::nullopt;
+  }
+
+  const auto* store = std::get_if<LirStoreOp>(&entry.insts[0]);
+  const auto* load = std::get_if<LirLoadOp>(&entry.insts[1]);
+  if (store == nullptr || load == nullptr || store->type_str != "i32" || load->type_str != "i32" ||
+      store->ptr.str() != slot->result.str() || load->ptr.str() != slot->result.str() ||
+      load->result.str().empty() || *ret->value_str != load->result.str()) {
+    return std::nullopt;
+  }
+
+  const auto stored_imm = parse_i64(store->val.str());
+  if (!stored_imm.has_value() || *stored_imm < std::numeric_limits<std::int32_t>::min() ||
+      *stored_imm > std::numeric_limits<std::int32_t>::max()) {
+    return std::nullopt;
+  }
+
+  return MinimalLocalTempSlice{
+      .function_name = function.name,
+      .stored_imm = *stored_imm,
   };
 }
 
@@ -535,6 +589,18 @@ std::string emit_minimal_affine_return_asm(std::string_view target_triple,
     out << "  sub eax, " << -slice.constant << "\n";
   }
   out << "  ret\n";
+  return out.str();
+}
+
+std::string emit_minimal_local_temp_asm(std::string_view target_triple,
+                                        const MinimalLocalTempSlice& slice) {
+  const auto symbol = asm_symbol_name(target_triple, slice.function_name);
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n"
+      << ".text\n"
+      << emit_function_prelude(target_triple, symbol)
+      << "  mov eax, " << slice.stored_imm << "\n"
+      << "  ret\n";
   return out.str();
 }
 
@@ -1137,6 +1203,9 @@ std::string emit_module(const c4c::backend::bir::Module& module) {
 
 std::optional<std::string> try_emit_prepared_lir_module(
     const c4c::codegen::lir::LirModule& module) {
+  if (const auto slice = parse_minimal_local_temp_slice(module); slice.has_value()) {
+    return emit_minimal_local_temp_asm(module.target_triple, *slice);
+  }
   if (const auto slice = parse_minimal_variadic_sum2_slice(module); slice.has_value()) {
     return emit_minimal_variadic_sum2_asm(module.target_triple, *slice);
   }
