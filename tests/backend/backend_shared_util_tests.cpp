@@ -1428,6 +1428,20 @@ void test_backend_shared_slot_assignment_accepts_backend_owned_input() {
                   dead_param_plans.front().param_name == "%p.x" &&
                   !dead_param_plans.front().needs_stack_slot,
               "backend-owned stack-layout input should preserve dead param alloca pruning decisions");
+
+  auto dead_entry_function = make_dead_local_alloca_candidate_module().functions.front();
+  const auto dead_entry_input =
+      c4c::backend::stack_layout::lower_lir_to_stack_layout_input(dead_entry_function);
+  const auto dead_entry_analysis = c4c::backend::stack_layout::analyze_stack_layout(
+      dead_entry_input, regalloc, {});
+  const auto dead_entry_plans =
+      c4c::backend::stack_layout::plan_entry_alloca_slots(dead_entry_input,
+                                                          dead_entry_analysis);
+  c4c::backend::stack_layout::apply_entry_alloca_slot_plan(dead_entry_function,
+                                                           dead_entry_plans);
+
+  expect_true(dead_entry_function.alloca_insts.empty(),
+              "backend-owned stack-layout input should preserve entry-alloca pruning when the apply step still mutates the original LIR function");
 }
 
 void test_backend_shared_slot_assignment_prunes_dead_entry_alloca_insts() {

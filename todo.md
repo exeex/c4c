@@ -7,16 +7,32 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: add a backend-owned stack-layout input surface, retarget the
-  shared stack-layout analysis/coalescing/slot-assignment core to that input,
-  and keep raw-`LirFunction` entrypoints only as lowering wrappers
-- Next intended slice: thread the new backend-owned stack-layout input through
-  the production AArch64/x86 entry-alloca pruning call sites so the remaining
-  target-local shared path stops passing raw `LirFunction` into stack-layout
-  helpers
+- Current slice: move the remaining production param-alloca pruning and any
+  stack-layout-adjacent target helpers onto the same backend-owned input so the
+  raw-`LirFunction` stack-layout entrypoints are only compatibility wrappers
+- Next intended slice: move the remaining production param-alloca pruning and
+  any stack-layout-adjacent target helpers onto the same backend-owned input so
+  the raw-`LirFunction` stack-layout entrypoints are only compatibility wrappers
 
 ## Completed
 
+- Completed the next Step 6/7 production stack-layout handoff slice by
+  threading the backend-owned stack-layout input through the AArch64/x86
+  entry-alloca pruning path while keeping raw-`LirFunction` stack-layout
+  helpers as compatibility wrappers:
+  - taught `src/backend/aarch64/codegen/emit.cpp` and
+    `src/backend/x86/codegen/emit.cpp` to lower `LirFunction` once into
+    `StackLayoutInput`, then drive shared stack-layout analysis and
+    entry-slot planning from that backend-owned surface before mutating the
+    original LIR with `apply_entry_alloca_slot_plan(...)`
+  - extended `tests/backend/backend_shared_util_tests.cpp` so the backend-owned
+    stack-layout regression now covers the full analyze+plan+apply entry-alloca
+    pruning flow instead of only the planning decision
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R backend_shared_util_tests --output-on-failure`,
+    rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with no new failures and no pass-count drop
+    (`2809 -> 2809`)
 - Completed the next Step 6/7 backend-owned stack-layout handoff slice by
   moving the shared stack-layout analysis/coalescing/slot-assignment planning
   core behind a backend-owned input surface while preserving raw-`LirFunction`
