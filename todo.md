@@ -7,21 +7,47 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: audit whether the remaining prepared fallback `BackendCfg`
-  carrier can narrow further now that the prepared entry-alloca path stores
-  only a liveness-facing backend-CFG subset and keeps signature/call-result
-  metadata outside the classification input
-- Current implementation target: determine whether production
-  `lower_prepared_entry_alloca_function_inputs(...)` can stay on a reduced
-  fallback liveness carrier while preserving the current prepared rewrite-input
-  contracts
+- Current slice: audit whether the prepared fallback stack-layout
+  classification carrier can narrow further than the current
+  block/phi-based `StackLayoutInput` subset now that signature, return, and
+  call-result metadata no longer live in prepared state
+- Current implementation target: determine whether the cached prepared
+  stack-layout state can drop more of the current block-point shape, or
+  whether overwrite/coalescing analysis still requires the existing
+  block-level pointer/use/escape information
 - Next intended slice: audit whether the prepared fallback
-  `stack_layout_input.blocks` carrier can narrow further now that full
-  `BackendCfgFunction` ownership is gone from stored preparation state, or
-  whether current pointer/escape/coalescing analysis still requires the
-  existing block-level stack-layout input to remain cached
+  `stack_layout_classification.blocks` carrier can shrink from
+  `StackLayoutBlockInput` to a dedicated prepared-analysis point shape, or
+  whether current overwrite-before-read and coalescing logic already consume
+  the minimal stable subset that has to remain cached
 
 ## Completed
+
+- Completed the next Step 6 bounded prepared stack-layout carrier narrowing
+  slice by splitting prepared entry-alloca classification state away from the
+  broader public `StackLayoutInput` contract:
+  - added
+    `PreparedEntryAllocaStackLayoutClassificationInput` in
+    `src/backend/stack_layout/slot_assignment.*` so prepared
+    entry-alloca state now stores only `entry_allocas`, block classification
+    state, and phi incoming uses instead of caching the full
+    `StackLayoutInput` surface
+  - updated
+    `prepare_module_function_entry_alloca_preparation(...)` and
+    `lower_prepared_entry_alloca_function_inputs(...)` to round-trip through
+    that reduced classification carrier while continuing to rehydrate the
+    production rewrite-input metadata contract from
+    `PreparedEntryAllocaStackLayoutMetadata`
+  - updated
+    `tests/backend/backend_shared_util_tests.cpp` to pin the new prepared
+    carrier contract and verify lowerable/fallback preparation still rebuilds
+    the production stack-layout inputs correctly
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`,
+    rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with the repo’s allowed non-decreasing rule and no new
+    failures (`2809 -> 2809`, same 32 known failing tests as
+    `test_fail_before.log`)
 
 - Completed the next Step 6 bounded prepared-fallback liveness-carrier
   narrowing slice by removing full `BackendCfgFunction` ownership from the

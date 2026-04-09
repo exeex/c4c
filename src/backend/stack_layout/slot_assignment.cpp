@@ -50,6 +50,26 @@ void apply_prepared_stack_layout_metadata(
   input.call_results = metadata.call_results;
 }
 
+PreparedEntryAllocaStackLayoutClassificationInput lower_prepared_stack_layout_classification_input(
+    StackLayoutInput input) {
+  PreparedEntryAllocaStackLayoutClassificationInput classification;
+  classification.entry_allocas = std::move(input.entry_allocas);
+  classification.blocks = std::move(input.blocks);
+  classification.phi_incoming_uses = std::move(input.phi_incoming_uses);
+  return classification;
+}
+
+StackLayoutInput lower_prepared_stack_layout_input(
+    const PreparedEntryAllocaStackLayoutClassificationInput& classification,
+    const PreparedEntryAllocaStackLayoutMetadata& metadata) {
+  StackLayoutInput input;
+  input.entry_allocas = classification.entry_allocas;
+  input.blocks = classification.blocks;
+  input.phi_incoming_uses = classification.phi_incoming_uses;
+  apply_prepared_stack_layout_metadata(input, metadata);
+  return input;
+}
+
 std::vector<LirInst> build_pruned_entry_alloca_insts(
     const StackLayoutInput& input,
     const std::vector<EntryAllocaSlotPlan>& plans) {
@@ -319,11 +339,13 @@ PreparedEntryAllocaFunctionInputs prepare_module_function_entry_alloca_preparati
   if (const auto bir_liveness =
           try_lower_module_function_to_bir_liveness_input(module, function_index);
       bir_liveness.has_value()) {
-    inputs.stack_layout_input = lower_lir_to_stack_layout_input(function);
-    inputs.stack_layout_metadata.signature_params = inputs.stack_layout_input.signature_params;
-    inputs.stack_layout_metadata.return_type = inputs.stack_layout_input.return_type;
-    inputs.stack_layout_metadata.is_variadic = inputs.stack_layout_input.is_variadic;
-    inputs.stack_layout_metadata.call_results = inputs.stack_layout_input.call_results;
+    auto stack_layout_input = lower_lir_to_stack_layout_input(function);
+    inputs.stack_layout_metadata.signature_params = stack_layout_input.signature_params;
+    inputs.stack_layout_metadata.return_type = stack_layout_input.return_type;
+    inputs.stack_layout_metadata.is_variadic = stack_layout_input.is_variadic;
+    inputs.stack_layout_metadata.call_results = stack_layout_input.call_results;
+    inputs.stack_layout_classification =
+        lower_prepared_stack_layout_classification_input(std::move(stack_layout_input));
     inputs.liveness_input = std::move(*bir_liveness);
     inputs.liveness_source = EntryAllocaRewriteLivenessSource::PerFunctionBir;
     return inputs;
@@ -343,11 +365,8 @@ PreparedEntryAllocaFunctionInputs prepare_module_function_entry_alloca_preparati
     inputs.stack_layout_metadata.call_results.push_back(
         StackLayoutCallResultInput{call_result.value_name, call_result.type_str});
   }
-  inputs.stack_layout_input = lower_function_entry_alloca_stack_layout_input(function, backend_cfg);
-  inputs.stack_layout_input.signature_params.clear();
-  inputs.stack_layout_input.return_type.reset();
-  inputs.stack_layout_input.is_variadic = false;
-  inputs.stack_layout_input.call_results.clear();
+  inputs.stack_layout_classification = lower_prepared_stack_layout_classification_input(
+      lower_function_entry_alloca_stack_layout_input(function, backend_cfg));
   inputs.backend_cfg_liveness = lower_backend_cfg_to_liveness_function(backend_cfg);
   inputs.stack_layout_source =
       EntryAllocaRewriteStackLayoutSource::EntryAllocasAndBackendCfg;
@@ -357,11 +376,10 @@ PreparedEntryAllocaFunctionInputs prepare_module_function_entry_alloca_preparati
 EntryAllocaRewriteInputs lower_prepared_entry_alloca_function_inputs(
     const PreparedEntryAllocaFunctionInputs& prepared_inputs) {
   EntryAllocaRewriteInputs inputs;
-  inputs.stack_layout_input = prepared_inputs.stack_layout_input;
+  inputs.stack_layout_input = lower_prepared_stack_layout_input(
+      prepared_inputs.stack_layout_classification, prepared_inputs.stack_layout_metadata);
   inputs.liveness_source = prepared_inputs.liveness_source;
   inputs.stack_layout_source = prepared_inputs.stack_layout_source;
-  apply_prepared_stack_layout_metadata(inputs.stack_layout_input,
-                                       prepared_inputs.stack_layout_metadata);
 
   if (prepared_inputs.liveness_input.has_value()) {
     inputs.liveness_input = *prepared_inputs.liveness_input;

@@ -52,8 +52,14 @@ struct PreparedEntryAllocaStackLayoutMetadata {
   std::vector<StackLayoutCallResultInput> call_results;
 };
 
+struct PreparedEntryAllocaStackLayoutClassificationInput {
+  std::vector<EntryAllocaInput> entry_allocas;
+  std::vector<StackLayoutBlockInput> blocks;
+  std::vector<PhiIncomingUse> phi_incoming_uses;
+};
+
 struct PreparedEntryAllocaFunctionInputs {
-  StackLayoutInput stack_layout_input;
+  PreparedEntryAllocaStackLayoutClassificationInput stack_layout_classification;
   PreparedEntryAllocaStackLayoutMetadata stack_layout_metadata;
   std::optional<BackendCfgLivenessFunction> backend_cfg_liveness;
   std::optional<LivenessInput> liveness_input;

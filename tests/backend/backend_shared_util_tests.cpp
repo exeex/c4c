@@ -1815,7 +1815,7 @@ void test_backend_shared_slot_assignment_prepares_module_function_inputs() {
                   lowerable_preparation.stack_layout_source ==
                       c4c::backend::stack_layout::EntryAllocaRewriteStackLayoutSource::
                           RawLirFunction &&
-                  lowerable_preparation.stack_layout_input.entry_allocas.empty() &&
+                  lowerable_preparation.stack_layout_classification.entry_allocas.empty() &&
                   lowerable_preparation.backend_cfg_liveness == std::nullopt &&
                   lowerable_preparation.liveness_input.has_value() &&
                   lowerable_preparation.liveness_input->entry_insts.empty() &&
@@ -1830,22 +1830,18 @@ void test_backend_shared_slot_assignment_prepares_module_function_inputs() {
                   fallback_preparation.stack_layout_source ==
                       c4c::backend::stack_layout::EntryAllocaRewriteStackLayoutSource::
                           EntryAllocasAndBackendCfg &&
-                  fallback_preparation.stack_layout_input.entry_allocas.size() == 1 &&
-                  fallback_preparation.stack_layout_input.entry_allocas.front().alloca_name ==
+                  fallback_preparation.stack_layout_classification.entry_allocas.size() == 1 &&
+                  fallback_preparation.stack_layout_classification.entry_allocas.front().alloca_name ==
                       "%lv.buf" &&
-                  fallback_preparation.stack_layout_input.signature_params.empty() &&
-                  !fallback_preparation.stack_layout_input.return_type.has_value() &&
-                  !fallback_preparation.stack_layout_input.is_variadic &&
-                  fallback_preparation.stack_layout_input.call_results.empty() &&
                   fallback_preparation.stack_layout_metadata.signature_params.empty() &&
                   fallback_preparation.stack_layout_metadata.return_type ==
                       std::optional<std::string>{"i32"} &&
                   !fallback_preparation.stack_layout_metadata.is_variadic &&
                   fallback_preparation.stack_layout_metadata.call_results.empty() &&
                   fallback_preparation.backend_cfg_liveness.has_value() &&
-                  fallback_preparation.stack_layout_input.blocks.size() ==
+                  fallback_preparation.stack_layout_classification.blocks.size() ==
                       fallback_preparation.backend_cfg_liveness->blocks.size() &&
-                  fallback_preparation.stack_layout_input.blocks.front().insts.empty() &&
+                  fallback_preparation.stack_layout_classification.blocks.front().insts.empty() &&
                   !fallback_preparation.liveness_input.has_value() &&
                   fallback_preparation.backend_cfg_liveness->entry_insts.size() == 2,
               "shared entry-alloca rewrite prep should preserve entry-alloca ownership in the fallback carrier while sourcing block usage from the backend-owned CFG seam instead of the raw-LIR stack-layout lowering path");
@@ -1995,11 +1991,7 @@ void test_backend_shared_fallback_preparation_separates_stack_layout_metadata_fr
   expect_true(preparation.stack_layout_source ==
                   c4c::backend::stack_layout::EntryAllocaRewriteStackLayoutSource::
                       EntryAllocasAndBackendCfg &&
-                  preparation.stack_layout_input.entry_allocas.size() == 1 &&
-                  preparation.stack_layout_input.signature_params.empty() &&
-                  !preparation.stack_layout_input.return_type.has_value() &&
-                  !preparation.stack_layout_input.is_variadic &&
-                  preparation.stack_layout_input.call_results.empty() &&
+                  preparation.stack_layout_classification.entry_allocas.size() == 1 &&
                   preparation.stack_layout_metadata.signature_params.size() == 2 &&
                   preparation.stack_layout_metadata.signature_params.front().type == "i32" &&
                   preparation.stack_layout_metadata.signature_params.front().operand == "%p.x" &&
