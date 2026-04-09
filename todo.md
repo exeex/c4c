@@ -7,19 +7,39 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: re-audit the remaining prepared pointer/escape facts after the
-  `used_names` duplication removal and identify the next field, if any, that
-  can move behind the liveness or backend-CFG seam
-- Current implementation target: prove whether
-  `pointer_accesses`, `escaped_names`, or `derived_pointer_root` can shrink any
-  further without regressing overwrite-before-read pruning, single-block
-  coalescing, or escaped-alloca exclusion on the prepared fallback path
-- Next intended slice: target the first remaining removable pointer/escape
-  field, if any, with focused backend shared tests for overwrite-before-read
-  pruning, single-block coalescing, escaped-alloca exclusion, and production
-  stack-layout-input rehydration
+- Current slice: turn the prepared pointer/escape audit result into explicit
+  regression coverage and record the next seam needed before the prepared
+  fallback carrier can shrink again
+- Current implementation target: pin that the remaining
+  `pointer_accesses`, `escaped_names`, and `derived_pointer_root` facts are all
+  still required by the current prepared fallback path because they directly
+  protect overwrite-before-read pruning, single-block coalescing, and
+  escaped-alloca exclusion
+- Next intended slice: move one of those remaining pointer/escape facts behind
+  a narrower backend-owned stack-layout classification seam, or introduce that
+  seam if needed, before attempting another prepared-carrier field removal
 
 ## Completed
+
+- Completed the next Step 6 prepared pointer/escape audit slice by proving the
+  current fallback carrier cannot shrink beyond the already-removed
+  `used_names` duplication without a new backend-owned classification seam:
+  - extended `tests/backend/backend_shared_util_tests.cpp` with focused
+    regressions that clear prepared `pointer_accesses`,
+    `derived_pointer_root`, and `escaped_names` one at a time and verify each
+    removal regresses one of the still-required fallback contracts
+    (overwrite-before-read pruning, aggregate single-block coalescing, and
+    escaped-alloca exclusion)
+  - recorded the audit outcome that no further prepared pointer/escape field is
+    removable on today’s backend-CFG/liveness seam, so the next Step 6 slice
+    needs a narrower backend-owned stack-layout classification carrier rather
+    than another blind field deletion
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`,
+    rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with the repo’s allowed non-decreasing rule and no new
+    failures (`2809 -> 2809`, same 32 known failing tests as
+    `test_fail_before.log`)
 
 - Completed the next Step 6 bounded prepared stack-layout use-list narrowing
   slice by removing duplicated `used_names` storage from the prepared

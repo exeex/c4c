@@ -2104,6 +2104,62 @@ void test_backend_shared_fallback_preparation_rehydrates_stack_layout_uses_from_
               "shared prepared fallback carrier should rebuild stack-layout instruction and terminator uses from liveness instead of caching those use lists in the prepared classification input");
 }
 
+void test_backend_shared_fallback_preparation_still_needs_remaining_pointer_escape_facts() {
+  const c4c::backend::RegAllocIntegrationResult regalloc;
+
+  auto scalar_preparation =
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_preparation(
+          make_overwrite_first_scalar_local_alloca_candidate_module(), 0);
+  scalar_preparation.stack_layout_classification.blocks.front().insts.front().pointer_accesses
+      .clear();
+  const auto scalar_lowered =
+      c4c::backend::stack_layout::lower_prepared_entry_alloca_function_inputs(
+          scalar_preparation);
+  const auto scalar_analysis = c4c::backend::stack_layout::analyze_stack_layout(
+      scalar_lowered.stack_layout_input, regalloc, {});
+  const auto scalar_plans = c4c::backend::stack_layout::plan_entry_alloca_slots(
+      scalar_lowered.stack_layout_input, scalar_analysis);
+  expect_true(scalar_plans.size() == 1 &&
+                  scalar_plans.front().alloca_name == "%lv.x" &&
+                  scalar_plans.front().needs_stack_slot &&
+                  !scalar_plans.front().remove_following_entry_store,
+              "shared prepared fallback carrier still needs pointer-access facts because removing them regresses overwrite-before-read pruning on the current backend-CFG path");
+
+  auto aggregate_preparation =
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_preparation(
+          make_live_local_alloca_candidate_module(), 0);
+  aggregate_preparation.stack_layout_classification.blocks.front().insts.front()
+      .derived_pointer_root.reset();
+  const auto aggregate_lowered =
+      c4c::backend::stack_layout::lower_prepared_entry_alloca_function_inputs(
+          aggregate_preparation);
+  const auto aggregate_analysis = c4c::backend::stack_layout::analyze_stack_layout(
+      aggregate_lowered.stack_layout_input, regalloc, {});
+  const auto aggregate_coalescing =
+      c4c::backend::stack_layout::compute_coalescable_allocas(
+          aggregate_lowered.stack_layout_input, aggregate_analysis);
+  expect_true(aggregate_coalescing.is_dead_alloca("%lv.buf") &&
+                  !aggregate_coalescing.find_single_block("%lv.buf").has_value(),
+              "shared prepared fallback carrier still needs derived-pointer-root facts because removing them regresses single-block coalescing on the current backend-CFG path");
+
+  auto escaped_preparation =
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_preparation(
+          make_escaped_local_alloca_candidate_module(), 1);
+  escaped_preparation.stack_layout_classification.blocks.front().insts.front().escaped_names
+      .clear();
+  const auto escaped_lowered =
+      c4c::backend::stack_layout::lower_prepared_entry_alloca_function_inputs(
+          escaped_preparation);
+  const auto escaped_analysis = c4c::backend::stack_layout::analyze_stack_layout(
+      escaped_lowered.stack_layout_input, regalloc, {});
+  const auto escaped_coalescing =
+      c4c::backend::stack_layout::compute_coalescable_allocas(
+          escaped_lowered.stack_layout_input, escaped_analysis);
+  expect_true(escaped_coalescing.is_dead_alloca("%lv.buf") &&
+                  !escaped_coalescing.find_single_block("%lv.buf").has_value(),
+              "shared prepared fallback carrier still needs escaped-name facts because removing them drops the current escaped-alloca classification entirely on the prepared backend-CFG path");
+}
+
 void test_backend_shared_fallback_preparation_keeps_only_liveness_cfg_state() {
   c4c::codegen::lir::LirModule module;
 
@@ -2625,6 +2681,7 @@ int main(int argc, char* argv[]) {
   test_backend_shared_fallback_entry_alloca_stack_layout_input_preserves_signature_and_call_metadata();
   test_backend_shared_fallback_preparation_separates_stack_layout_metadata_from_cfg_classification();
   test_backend_shared_fallback_preparation_rehydrates_stack_layout_uses_from_liveness();
+  test_backend_shared_fallback_preparation_still_needs_remaining_pointer_escape_facts();
   test_backend_shared_fallback_preparation_keeps_only_liveness_cfg_state();
   test_backend_shared_prepares_lir_module_for_target();
   test_backend_shared_target_preparation_enables_bir_lowering();
