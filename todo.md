@@ -11,23 +11,47 @@ Source Plan: plan.md
   keep the active work inside idea 44's x86-native emitter/toolchain lane and
   do not silently absorb the separate shared-BIR select regression
 - current exact slice:
-  move past the now-green minimal local-temp seam and choose the next bounded
-  x86-native direct-LIR family after confirming the refreshed full-suite guard
-  still fails in the broader parked route/select buckets rather than the new
-  local-temp slice
+  move past the now-green single-param local-slot add helper and choose the
+  next bounded x86-native direct-LIR call-family slice without reopening broad
+  `try_lower_to_bir_with_options(...)` ordering changes
 
 ## Next Slice
 
 - keep the separate shared-BIR select regression parked in
   `ideas/open/47_shared_bir_select_route_regression_after_x86_variadic_recovery.md`
   instead of widening idea 44
-- after the minimal local-temp slice, re-sample the adjacent x86-local runtime
-  failures to choose the next bounded direct-LIR family, starting with
-  `backend_runtime_param_slot` as the nearest remaining tiny local-slot case,
-  without reopening broad `try_lower_to_bir_with_options(...)` ordering
-  changes
+- after the now-green `backend_runtime_param_slot` slice, start from the
+  adjacent x86 direct-LIR call lane:
+  `backend_runtime_call_helper` and `backend_runtime_local_arg_call` are the
+  nearest remaining bounded failures and should be sampled before widening into
+  broader two-arg helper families
 
 ## Recently Completed
+
+- added a bounded x86 direct-LIR matcher/emitter in
+  `src/backend/x86/codegen/emit.cpp` for the two-function single-param
+  local-slot add helper family (`add_one(x) { x = x + 1; return x; }`
+  followed by `main -> add_one(5)`)
+- covered that native prepared-LIR seam with a focused x86 regression in
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp`
+- verified the focused x86 slot-add seam is green:
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_param_slot_add_slice`,
+  `./build/c4cll --codegen asm --target x86_64-unknown-linux-gnu tests/c/internal/backend_case/param_slot.c`,
+  and
+  `ctest --test-dir build --output-on-failure -R '^(backend_runtime_local_temp|backend_runtime_param_slot)$'`
+  now pass
+- re-sampled the adjacent x86 direct-LIR call lane after the param-slot slice
+  landed and confirmed `backend_runtime_call_helper` and
+  `backend_runtime_local_arg_call` are the next bounded failures:
+  `ctest --test-dir build --output-on-failure -R '^(backend_runtime_param_slot|backend_runtime_local_arg_call|backend_runtime_call_helper)$'`
+  leaves only those two call-family tests failing
+- refreshed `test_fail_after.log` with
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log` and
+  re-ran the monotonic guard:
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log`
+  still reports the broader parked full-suite regression lane as red overall,
+  but the checked-in after-state improved from `2571 -> 2572` passes and
+  `279 -> 278` failures after the param-slot slice
 
 - added a bounded x86 direct-LIR local-temp matcher/emitter in
   `src/backend/x86/codegen/emit.cpp` for the one-slot `store imm -> load ->

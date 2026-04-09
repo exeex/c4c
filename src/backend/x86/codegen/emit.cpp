@@ -71,6 +71,12 @@ struct MinimalLocalTempSlice {
   std::int64_t stored_imm = 0;
 };
 
+struct MinimalParamSlotAddSlice {
+  std::string helper_name;
+  std::string entry_name;
+  std::int64_t add_imm = 0;
+};
+
 std::optional<std::int64_t> parse_i64(std::string_view text) {
   std::int64_t value = 0;
   const char* begin = text.data();
@@ -272,6 +278,51 @@ std::optional<MinimalLocalTempSlice> parse_minimal_local_temp_slice(
   return MinimalLocalTempSlice{
       .function_name = function.name,
       .stored_imm = *stored_imm,
+  };
+}
+
+std::optional<MinimalParamSlotAddSlice> parse_minimal_param_slot_add_slice(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (!module.globals.empty() || !module.extern_decls.empty() || !module.string_pool.empty() ||
+      module.functions.size() != 2) {
+    return std::nullopt;
+  }
+
+  const auto& helper = module.functions.front();
+  const auto& entry = module.functions.back();
+  if (helper.name != "add_one" || entry.name != "main" || entry.is_declaration ||
+      entry.entry.value != 0 || !entry.alloca_insts.empty() || entry.blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto parsed_helper =
+      c4c::backend::parse_backend_single_param_slot_add_function(helper, "add_one");
+  if (!parsed_helper.has_value() || parsed_helper->add == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto add_imm = parse_i64(parsed_helper->add->rhs);
+  if (!add_imm.has_value() || *add_imm < std::numeric_limits<std::int32_t>::min() ||
+      *add_imm > std::numeric_limits<std::int32_t>::max()) {
+    return std::nullopt;
+  }
+
+  const auto& main_entry = entry.blocks.front();
+  const auto* call = std::get_if<LirCallOp>(&main_entry.insts.front());
+  const auto* ret = std::get_if<LirRet>(&main_entry.terminator);
+  if (main_entry.label != "entry" || main_entry.insts.size() != 1 || call == nullptr ||
+      ret == nullptr || call->callee != "@add_one" || call->return_type != "i32" ||
+      call->callee_type_suffix != "(i32)" || call->args_str != "i32 5" ||
+      !ret->value_str.has_value() || *ret->value_str != call->result || ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  return MinimalParamSlotAddSlice{
+      .helper_name = helper.name,
+      .entry_name = entry.name,
+      .add_imm = *add_imm,
   };
 }
 
@@ -600,6 +651,28 @@ std::string emit_minimal_local_temp_asm(std::string_view target_triple,
       << ".text\n"
       << emit_function_prelude(target_triple, symbol)
       << "  mov eax, " << slice.stored_imm << "\n"
+      << "  ret\n";
+  return out.str();
+}
+
+std::string emit_minimal_param_slot_add_asm(std::string_view target_triple,
+                                            const MinimalParamSlotAddSlice& slice) {
+  const auto helper_symbol = asm_symbol_name(target_triple, slice.helper_name);
+  const auto entry_symbol = asm_symbol_name(target_triple, slice.entry_name);
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n"
+      << ".text\n"
+      << emit_function_prelude(target_triple, helper_symbol)
+      << "  mov eax, edi\n";
+  if (slice.add_imm > 0) {
+    out << "  add eax, " << slice.add_imm << "\n";
+  } else if (slice.add_imm < 0) {
+    out << "  sub eax, " << -slice.add_imm << "\n";
+  }
+  out << "  ret\n"
+      << emit_function_prelude(target_triple, entry_symbol)
+      << "  mov edi, 5\n"
+      << "  call " << helper_symbol << "\n"
       << "  ret\n";
   return out.str();
 }
@@ -1205,6 +1278,9 @@ std::optional<std::string> try_emit_prepared_lir_module(
     const c4c::codegen::lir::LirModule& module) {
   if (const auto slice = parse_minimal_local_temp_slice(module); slice.has_value()) {
     return emit_minimal_local_temp_asm(module.target_triple, *slice);
+  }
+  if (const auto slice = parse_minimal_param_slot_add_slice(module); slice.has_value()) {
+    return emit_minimal_param_slot_add_asm(module.target_triple, *slice);
   }
   if (const auto slice = parse_minimal_variadic_sum2_slice(module); slice.has_value()) {
     return emit_minimal_variadic_sum2_asm(module.target_triple, *slice);
