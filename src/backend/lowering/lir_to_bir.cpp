@@ -1,5 +1,6 @@
 #include "lir_to_bir.hpp"
 #include "call_decode.hpp"
+#include "lir_to_bir/passes.hpp"
 
 #include <charconv>
 #include <algorithm>
@@ -5168,7 +5169,7 @@ std::optional<bir::Function> try_lower_widened_i8_conditional_phi_select_functio
 
 }  // namespace
 
-std::optional<bir::Module> try_lower_to_bir(const c4c::codegen::lir::LirModule& module) {
+std::optional<bir::Module> try_lower_to_bir_legacy(const c4c::codegen::lir::LirModule& module) {
   if (const auto lowered = try_lower_minimal_direct_call_module(module);
       lowered.has_value()) {
     return lowered;
@@ -5496,6 +5497,49 @@ std::optional<bir::Module> try_lower_to_bir(const c4c::codegen::lir::LirModule& 
   function.blocks.push_back(std::move(block));
   lowered.functions.push_back(std::move(function));
   return lowered;
+}
+
+BirLoweringResult try_lower_to_bir_with_options(
+    const c4c::codegen::lir::LirModule& module,
+    const BirLoweringOptions& options) {
+  auto normalized_module = module;
+  std::vector<BirLoweringNote> notes;
+
+  if (options.normalize_cfg) {
+    normalize_cfg_in_place(normalized_module, options, &notes);
+  }
+  if (options.lower_phi) {
+    lower_phi_nodes_in_place(normalized_module, &notes);
+  }
+  if (options.legalize_types) {
+    lir_to_bir::record_type_legalization_scaffold_notes(normalized_module, &notes);
+  }
+  if (options.lower_memory) {
+    record_memory_lowering_scaffold_notes(normalized_module, &notes);
+  }
+  if (options.lower_calls) {
+    record_call_lowering_scaffold_notes(normalized_module, &notes);
+  }
+  if (options.lower_aggregates) {
+    record_aggregate_lowering_scaffold_notes(normalized_module, &notes);
+  }
+
+  auto lowered = try_lower_to_bir_legacy(normalized_module);
+  if (!lowered.has_value()) {
+    notes.push_back(BirLoweringNote{
+        .phase = "legacy-lowering",
+        .message = "legacy monolithic matcher path could not lower the normalized module",
+    });
+  }
+
+  return BirLoweringResult{
+      .module = std::move(lowered),
+      .notes = std::move(notes),
+  };
+}
+
+std::optional<bir::Module> try_lower_to_bir(const c4c::codegen::lir::LirModule& module) {
+  return try_lower_to_bir_with_options(module, BirLoweringOptions{}).module;
 }
 
 bir::Module lower_to_bir(const c4c::codegen::lir::LirModule& module) {

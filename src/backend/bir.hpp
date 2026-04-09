@@ -15,6 +15,34 @@ enum class TypeKind : unsigned char {
   I8,
   I32,
   I64,
+  I128,
+  Ptr,
+  F32,
+  F64,
+  F128,
+};
+
+enum class AddressSpace : unsigned char {
+  Default,
+  Fs,
+  Gs,
+  Tls,
+};
+
+enum class CallingConv : unsigned char {
+  C,
+  SysV,
+  Win64,
+  Fast,
+  Cold,
+};
+
+enum class AbiValueClass : unsigned char {
+  None,
+  Integer,
+  Sse,
+  X87,
+  Memory,
 };
 
 struct Value {
@@ -26,6 +54,7 @@ struct Value {
   Kind kind = Kind::Immediate;
   TypeKind type = TypeKind::Void;
   std::int64_t immediate = 0;
+  std::uint64_t immediate_bits = 0;
   std::string name;
 
   static Value immediate_i8(std::int8_t value);
@@ -46,24 +75,75 @@ inline bool operator!=(const Value& lhs, const Value& rhs) {
 struct Param {
   TypeKind type = TypeKind::Void;
   std::string name;
+  std::size_t size_bytes = 0;
+  std::size_t align_bytes = 0;
+  bool is_varargs = false;
+  bool is_sret = false;
+  bool is_byval = false;
 };
 
 struct LocalSlot {
   std::string name;
   TypeKind type = TypeKind::Void;
   std::size_t size_bytes = 0;
+  std::size_t align_bytes = 0;
+  bool is_address_taken = false;
+  bool is_byval_copy = false;
 };
 
 struct Global {
   std::string name;
   TypeKind type = TypeKind::Void;
   bool is_extern = false;
+  bool is_thread_local = false;
+  bool is_constant = false;
+  std::size_t size_bytes = 0;
+  std::size_t align_bytes = 0;
   std::optional<Value> initializer;
 };
 
 struct StringConstant {
   std::string name;
   std::string bytes;
+  std::size_t align_bytes = 1;
+};
+
+struct MemoryAddress {
+  enum class BaseKind : unsigned char {
+    None,
+    LocalSlot,
+    GlobalSymbol,
+    PointerValue,
+    Label,
+    StringConstant,
+  };
+
+  BaseKind base_kind = BaseKind::None;
+  std::string base_name;
+  Value base_value;
+  std::int64_t byte_offset = 0;
+  std::size_t size_bytes = 0;
+  std::size_t align_bytes = 0;
+  AddressSpace address_space = AddressSpace::Default;
+  bool is_volatile = false;
+};
+
+struct CallArgAbiInfo {
+  TypeKind type = TypeKind::Void;
+  std::size_t size_bytes = 0;
+  std::size_t align_bytes = 0;
+  AbiValueClass primary_class = AbiValueClass::None;
+  AbiValueClass secondary_class = AbiValueClass::None;
+  bool passed_in_register = false;
+  bool passed_on_stack = false;
+  bool byval_copy = false;
+};
+
+struct CallResultAbiInfo {
+  TypeKind type = TypeKind::Void;
+  AbiValueClass primary_class = AbiValueClass::None;
+  AbiValueClass secondary_class = AbiValueClass::None;
+  bool returned_in_memory = false;
 };
 
 enum class BinaryOpcode : unsigned char {
@@ -123,29 +203,49 @@ struct CastInst {
 struct CallInst {
   std::optional<Value> result;
   std::string callee;
+  std::optional<Value> callee_value;
   std::vector<Value> args;
+  std::vector<TypeKind> arg_types;
+  std::vector<CallArgAbiInfo> arg_abi;
   std::string return_type_name;
+  TypeKind return_type = TypeKind::Void;
+  std::optional<CallResultAbiInfo> result_abi;
+  CallingConv calling_convention = CallingConv::C;
+  bool is_indirect = false;
+  bool is_variadic = false;
+  bool is_noreturn = false;
 };
 
 struct LoadLocalInst {
   Value result;
   std::string slot_name;
+  std::size_t byte_offset = 0;
+  std::size_t align_bytes = 0;
+  std::optional<MemoryAddress> address;
 };
 
 struct LoadGlobalInst {
   Value result;
   std::string global_name;
   std::size_t byte_offset = 0;
+  std::size_t align_bytes = 0;
+  std::optional<MemoryAddress> address;
 };
 
 struct StoreGlobalInst {
   std::string global_name;
   Value value;
+  std::size_t byte_offset = 0;
+  std::size_t align_bytes = 0;
+  std::optional<MemoryAddress> address;
 };
 
 struct StoreLocalInst {
   std::string slot_name;
   Value value;
+  std::size_t byte_offset = 0;
+  std::size_t align_bytes = 0;
+  std::optional<MemoryAddress> address;
 };
 
 using Inst = std::variant<BinaryInst,
@@ -205,6 +305,10 @@ struct Block {
 struct Function {
   std::string name;
   TypeKind return_type = TypeKind::Void;
+  std::size_t return_size_bytes = 0;
+  std::size_t return_align_bytes = 0;
+  CallingConv calling_convention = CallingConv::C;
+  bool is_variadic = false;
   std::vector<Param> params;
   std::vector<LocalSlot> local_slots;
   std::vector<Block> blocks;

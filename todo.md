@@ -6,21 +6,20 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 3 continuation after landing the bounded native `00183.c` slice:
-  re-sample the remaining nearby stdio/native survivor `00185.c` and decide
-  whether it is still a bounded native lane or whether idea 44 should return
-  to the heavier Family B shared-BIR seam instead
+- Step 2 architecture reset:
+  promote BIR and `lir_to_bir` back toward a backend-owned seam by wiring the
+  split lowering scaffolds into a real pass-oriented entry surface and
+  stopping further ownership drift into x86 testcase matchers
 
 ## Next Slice
 
-- keep Step 3 active first: sample `00185.c` now that `00183.c` is cleared to
-  see whether the remaining one-function stdio-backed survivor still fits a
-  bounded native `printf` ownership seam
-- if `00185.c` pulls in broader stack-array initialization or indexing
-  ownership than intended for Step 3, return to Step 2 and choose one bounded
-  Family B representative with a narrow shared lowering regression before
-  widening support
-- do not revive any broader fallback behavior while probing either lane
+- keep the new split lowering files as the ownership boundary:
+  `cfg.cpp`, `types.cpp`, `memory.cpp`, `calls.cpp`, `phi.cpp`,
+  `aggregates.cpp`
+- route `lir_to_bir.cpp` through a pass-oriented wrapper first, then start
+  migrating concrete logic out of the legacy monolith one seam at a time
+- avoid adding any new x86 testcase-specific direct-LIR matcher while this
+  reset is in progress
 
 ## Completed Items
 
@@ -165,6 +164,20 @@ Source Plan: plan.md
   `test_fail_before.log` = 2670 pass / 179 fail / 2849 total,
   `test_fail_after.log` = 2672 pass / 178 fail / 2850 total,
   zero newly failing tests
+- expanded `bir.hpp` to carry the missing backend-owned data surface needed
+  for the next BIR/lowering pass split:
+  pointer and floating-point `TypeKind`s, memory-address metadata, call ABI
+  metadata, richer function/global/local-slot metadata
+- added `src/backend/lowering/lir_to_bir/passes.hpp` and moved the new
+  split-lowering seam declarations there so `lir_to_bir.cpp` can stop owning
+  every helper privately
+- wired the translated split lowering scaffolds into the tree and build lists:
+  `cfg.cpp`, `types.cpp`, `memory.cpp`, `calls.cpp`, `phi.cpp`,
+  `aggregates.cpp`
+- wrapped the old monolithic `try_lower_to_bir` body as a legacy path and
+  introduced `try_lower_to_bir_with_options(...)` as the new pass-oriented
+  entry surface that records split-phase notes before falling back to the
+  legacy matcher path
 
 ## Blockers
 
@@ -218,6 +231,11 @@ Source Plan: plan.md
 - the `00184.c` native direct-LIR slice confirms the best next move is still
   Step 3, not a return to Family B shared BIR yet:
   nearby one-function stdio-backed survivors `00183.c` and `00185.c` remain
+  but that conclusion is now superseded by the architecture reset: do not add
+  more x86 testcase matchers until the shared BIR/lowering seams are
+  re-established
+- current architecture-reset slice has not been compile-validated or
+  regression-tested yet; this iteration only moved ownership and API surface
   failing, while the full suite now stands at
   `test_fail_after.log` = 2670 pass / 179 fail / 2849 total
 - the new internal route regression again increases total suite size by one,
