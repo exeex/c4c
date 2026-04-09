@@ -159,6 +159,48 @@ c4c::codegen::lir::LirModule make_x86_constant_div_sub_return_lir_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_x86_constant_branch_if_return_lir_module(
+    std::string predicate,
+    std::string lhs,
+    std::string rhs) {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCmpOp{"%t0", false, std::move(predicate), "i32", std::move(lhs),
+                                 std::move(rhs)});
+  entry.insts.push_back(LirCastOp{"%t1", LirCastKind::ZExt, "i1", "%t0", "i32"});
+  entry.insts.push_back(LirCmpOp{"%t2", false, "ne", "i32", "%t1", "0"});
+  entry.terminator = LirCondBr{"%t2", "block_1", "block_2"};
+
+  LirBlock block_1;
+  block_1.id = LirBlockId{1};
+  block_1.label = "block_1";
+  block_1.terminator = LirRet{std::string("0"), "i32"};
+
+  LirBlock block_2;
+  block_2.id = LirBlockId{2};
+  block_2.label = "block_2";
+  block_2.terminator = LirRet{std::string("1"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(block_1));
+  function.blocks.push_back(std::move(block_2));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_x86_param_slot_add_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -3890,6 +3932,36 @@ void test_x86_direct_emitter_lowers_constant_div_sub_return_slice() {
                       "x86 direct emitter should stay on native asm emission for the bounded sdiv/sub return slice");
 }
 
+void test_x86_direct_emitter_lowers_constant_branch_if_eq_return_slice() {
+  auto module = make_x86_constant_branch_if_return_lir_module("eq", "2", "2");
+
+  const auto rendered = c4c::backend::x86::try_emit_prepared_lir_module(module);
+  expect_true(rendered.has_value(),
+              "x86 direct emitter should accept the bounded constant eq branch-return slice through the native prepared-LIR seam");
+  if (!rendered.has_value()) {
+    return;
+  }
+  expect_contains(*rendered, "main:\n  mov eax, 0\n  ret\n",
+                  "x86 direct emitter should constant-fold the bounded eq branch-return slice down to the selected return immediate");
+  expect_not_contains(*rendered, "target triple =",
+                      "x86 direct emitter should stay on native asm emission for the bounded eq branch-return slice");
+}
+
+void test_x86_direct_emitter_lowers_constant_branch_if_uge_return_slice() {
+  auto module = make_x86_constant_branch_if_return_lir_module("uge", "3", "2");
+
+  const auto rendered = c4c::backend::x86::try_emit_prepared_lir_module(module);
+  expect_true(rendered.has_value(),
+              "x86 direct emitter should accept the bounded constant unsigned-ge branch-return slice through the native prepared-LIR seam");
+  if (!rendered.has_value()) {
+    return;
+  }
+  expect_contains(*rendered, "main:\n  mov eax, 0\n  ret\n",
+                  "x86 direct emitter should constant-fold the bounded unsigned-ge branch-return slice down to the selected return immediate");
+  expect_not_contains(*rendered, "target triple =",
+                      "x86 direct emitter should stay on native asm emission for the bounded unsigned-ge branch-return slice");
+}
+
 void test_x86_direct_emitter_lowers_minimal_param_slot_add_slice() {
   auto module = make_x86_param_slot_add_lir_module();
 
@@ -4218,6 +4290,8 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_local_temp_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_constant_add_mul_sub_return_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_constant_div_sub_return_slice);
+  RUN_TEST(test_x86_direct_emitter_lowers_constant_branch_if_eq_return_slice);
+  RUN_TEST(test_x86_direct_emitter_lowers_constant_branch_if_uge_return_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_param_slot_add_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_extern_zero_arg_call_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_local_arg_call_slice);

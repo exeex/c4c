@@ -7,23 +7,26 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 5 full-suite monotonic validation and next-slice selection after the
-  bounded adjacent x86 stdio source-route seams landed:
-  the real source-backed `00180.c`, `00183.c`, and `00184.c` native routes are
-  now green, while the broad-suite comparison against `test_fail_before.log`
-  remains a parked non-monotonic lane that should not be silently treated as
+  bounded x86 constant-`if` branch seam landed:
+  the focused `backend_runtime_branch_if_*` family is now green on the native
+  x86 path, while the broad-suite comparison against `test_fail_before.log`
+  remains a parked non-monotonic lane and should not be silently treated as
   Step 5 complete
 - current exact slice:
-  classify and recover the next bounded x86-native/source-backed branch seam
-  from the refreshed after-log by targeting the constant `if` branch family
-  that currently fails at the same unsupported direct-LIR boundary in
-  `backend_runtime_branch_if_eq/ne/lt/ge/ult/uge` and the adjacent early
-  c-testsuite x86 sources
+  classify and recover the next bounded x86-native/source-backed seam from the
+  refreshed after-log by targeting the adjacent early x86 source-backed cluster
+  that remains red in `c_testsuite_x86_backend_src_00003_c`,
+  `c_testsuite_x86_backend_src_00004_c`, and
+  `c_testsuite_x86_backend_src_00006_c`
 
 ## Next Slice
 
-- add the narrowest x86 regression for the constant `if` branch family before
-  changing ownership, then verify the focused runtime tests plus adjacent
-  source-backed x86 route cases
+- classify the exact ownership split between the remaining early x86 source
+  cases (`00003.c`, `00004.c`, `00006.c`) before widening coverage: constant
+  local return/load, local pointer store-reload, and countdown loop should stay
+  as separate bounded seams unless the prepared-LIR shape is truly shared
+- add the narrowest x86 regression for the first of those early source-backed
+  seams before changing ownership, then verify the focused route/runtime cases
 - if the refreshed broad-suite guard is still red after the branch-family
   recovery, classify the next highest-value remaining x86-native source-backed
   seam from the updated after-log instead of widening idea 44 ad hoc
@@ -35,6 +38,34 @@ Source Plan: plan.md
 
 ## Recently Completed
 
+- recovered the bounded x86-native constant `if` branch family in
+  `src/backend/x86/codegen/emit.cpp` by teaching the prepared-LIR emitter to
+  constant-fold single-function `icmp` + `zext` + compare-to-zero branch/return
+  slices directly to the selected `mov eax, imm; ret` path
+- covered that seam in `tests/backend/backend_bir_pipeline_x86_64_tests.cpp`
+  with focused x86 regressions for representative signed and unsigned cases
+  (`eq` and `uge`) so the native prepared-LIR path stays pinned for this branch
+  family
+- verified the bounded branch-family seam end-to-end:
+  `ctest --test-dir build --output-on-failure -R '^backend_runtime_branch_if_(eq|ne|lt|le|gt|ge|ult|ule|ugt|uge)$'`
+  and
+  `./build/c4cll --codegen asm --target x86_64-unknown-linux-gnu tests/c/internal/backend_case/branch_if_eq.c`
+  now pass for the owned seam
+- rechecked the adjacent early source-backed x86 cluster after the branch
+  recovery and confirmed it remains a separate next seam:
+  `ctest --test-dir build --output-on-failure -R '^(c_testsuite_x86_backend_src_00003_c|c_testsuite_x86_backend_src_00004_c|c_testsuite_x86_backend_src_00006_c)$'`
+  still leaves `00003.c`, `00004.c`, and `00006.c` red at the same unsupported
+  x86 direct-LIR boundary
+- refreshed `test_fail_after.log` with
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log` and
+  re-ran the monotonic guard:
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  which stays red against the stale broad-suite baseline
+  (`2670/179/2849` before vs `2607/243/2850` after); the targeted branch-family
+  seam is green, but the already-parked wider shared-BIR/select and aggregate
+  `backend_bir_tests` lane remains unresolved and should drive the next
+  broad-suite classification rather than being silently attributed to this x86
+  branch slice
 - recovered the bounded x86 BIR-owned constant-expression return seam for the
   real source-backed `00012.c` and `00064.c` routes by teaching
   `src/backend/x86/codegen/emit.cpp` to fold single-block zero-arg constant
