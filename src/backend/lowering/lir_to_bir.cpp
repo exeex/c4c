@@ -3278,15 +3278,12 @@ std::optional<bir::Function> try_lower_conditional_return_select_function(
     const std::vector<bir::Param>& params) {
   using namespace c4c::codegen::lir;
 
-  if (lir_function.blocks.size() != 3) {
+  if (lir_function.blocks.size() != 3 && lir_function.blocks.size() != 5) {
     return std::nullopt;
   }
 
   const auto& entry = lir_function.blocks[0];
-  const auto& true_block = lir_function.blocks[1];
-  const auto& false_block = lir_function.blocks[2];
-  if (entry.label.empty() || entry.insts.size() != 3 || !true_block.insts.empty() ||
-      !false_block.insts.empty()) {
+  if (entry.label.empty() || entry.insts.size() != 3) {
     return std::nullopt;
   }
 
@@ -3300,8 +3297,7 @@ std::optional<bir::Function> try_lower_conditional_return_select_function(
       cast->kind != LirCastKind::ZExt || !lir_type_has_integer_width(cast->from_type, 1) ||
       cast->operand.str() != cmp0->result.str() || cmp1->predicate.str() != "ne" ||
       cmp1->lhs.str() != cast->result.str() || cmp1->rhs.str() != "0" ||
-      condbr->cond_name != cmp1->result.str() || true_block.label != condbr->true_label ||
-      false_block.label != condbr->false_label) {
+      condbr->cond_name != cmp1->result.str()) {
     return std::nullopt;
   }
 
@@ -3315,8 +3311,38 @@ std::optional<bir::Function> try_lower_conditional_return_select_function(
     return std::nullopt;
   }
 
-  const auto* true_ret = std::get_if<LirRet>(&true_block.terminator);
-  const auto* false_ret = std::get_if<LirRet>(&false_block.terminator);
+  const LirBlock* true_ret_block = nullptr;
+  const LirBlock* false_ret_block = nullptr;
+  if (lir_function.blocks.size() == 3) {
+    const auto& true_block = lir_function.blocks[1];
+    const auto& false_block = lir_function.blocks[2];
+    if (!true_block.insts.empty() || !false_block.insts.empty() ||
+        true_block.label != condbr->true_label || false_block.label != condbr->false_label) {
+      return std::nullopt;
+    }
+    true_ret_block = &true_block;
+    false_ret_block = &false_block;
+  } else {
+    const auto& true_bridge = lir_function.blocks[1];
+    const auto& true_block = lir_function.blocks[2];
+    const auto& false_bridge = lir_function.blocks[3];
+    const auto& false_block = lir_function.blocks[4];
+    const auto* true_br = std::get_if<LirBr>(&true_bridge.terminator);
+    const auto* false_br = std::get_if<LirBr>(&false_bridge.terminator);
+    if (!true_bridge.insts.empty() || !false_bridge.insts.empty() ||
+        !true_block.insts.empty() || !false_block.insts.empty() || true_br == nullptr ||
+        false_br == nullptr || true_bridge.label != condbr->true_label ||
+        false_bridge.label != condbr->false_label ||
+        true_br->target_label != true_block.label ||
+        false_br->target_label != false_block.label) {
+      return std::nullopt;
+    }
+    true_ret_block = &true_block;
+    false_ret_block = &false_block;
+  }
+
+  const auto* true_ret = std::get_if<LirRet>(&true_ret_block->terminator);
+  const auto* false_ret = std::get_if<LirRet>(&false_ret_block->terminator);
   const auto true_ret_type =
       true_ret == nullptr ? std::nullopt : lower_function_return_type(lir_function, *true_ret);
   const auto false_ret_type =

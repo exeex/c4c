@@ -7,17 +7,39 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 5: pull phi and CFG normalization behind the BIR boundary
-- Current slice: re-audit the remaining AArch64 branch-only multi-block
-  direct-LIR fallback seams that still survive after the shared BIR retry and
-  decide whether the next safe move is another narrow generic-emitter prune or
-  a shared BIR lowering expansion
-- Next intended slice: inspect the surviving AArch64 generic-emitter branch-only
-  return families after `try_lower_to_bir(...)` declines them and choose the
-  narrowest fence or shared lowering change that does not spill into Step 6
-  MIR-owned liveness/regalloc work
+- Current slice: re-audit the remaining AArch64 branch-only direct-LIR CFG
+  families that still survive after the shared BIR retry, now that the empty
+  bridge-block conditional-return path is normalized behind
+  `try_lower_to_bir(...)`
+- Next intended slice: inspect whether any remaining AArch64 generic-emitter
+  branch-only conditional-return or goto-chain families still miss shared BIR
+  lowering after the new empty-bridge select normalization and choose the
+  narrowest follow-up without spilling into Step 6 MIR-owned
+  liveness/regalloc work
 
 ## Completed
 
+- Closed the next Step 5 AArch64 branch-only conditional-return CFG seam behind
+  the shared BIR boundary by teaching shared lowering to collapse an empty
+  bridge-only ternary into the canonical select form:
+  - widened `src/backend/lowering/lir_to_bir.cpp`'s
+    `try_lower_conditional_return_select_function(...)` matcher so the shared
+    BIR path now accepts the minimal five-block conditional-return family where
+    each `condbr` arm passes through an empty bridge block before the final
+    return block
+  - added focused shared lowering coverage in
+    `tests/backend/backend_bir_lowering_tests.cpp` proving that empty-bridge
+    conditional-return LIR now normalizes to one canonical
+    `bir.select ...; bir.ret ...` block instead of staying stranded on a
+    target-local CFG surface
+  - added focused AArch64 pipeline coverage in
+    `tests/backend/backend_bir_pipeline_aarch64_tests.cpp` proving the native
+    direct emitter now routes that empty-bridge conditional-return fixture
+    through the shared BIR-owned `.Lselect_*` path rather than exposing the
+    old bridge labels
+  - rebuilt `backend_bir_tests`, re-ran it, rebuilt the full tree, refreshed
+    `test_fail_after.log`, and passed the regression guard with no new failures
+    and no pass-count drop (`2809 -> 2809`)
 - Closed the next Step 5 AArch64 generic-emitter constant-selector `switch`
   seam behind the shared BIR boundary by widening the existing fence beyond the
   hard-coded two-case layout:
