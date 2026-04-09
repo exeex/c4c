@@ -169,6 +169,46 @@ struct LoweredCallAbi {
 
 }  // namespace c4c::backend::lir_to_bir
 
+std::optional<std::vector<bir::Param>> c4c::backend::lower_call_params_from_type_texts(
+    const std::vector<std::string_view>& param_types) {
+  std::vector<bir::Param> params;
+  params.reserve(param_types.size());
+  for (std::size_t index = 0; index < param_types.size(); ++index) {
+    const auto type = lir_to_bir::legalize_call_arg_type(param_types[index]);
+    if (!type.has_value()) {
+      return std::nullopt;
+    }
+    params.push_back(bir::Param{
+        .type = *type,
+        .name = "%arg" + std::to_string(index),
+        .size_bytes = lir_to_bir::legalize_type_size_bytes(*type),
+        .align_bytes = lir_to_bir::legalize_type_align_bytes(*type),
+        .is_varargs = false,
+        .is_sret = false,
+        .is_byval = false,
+    });
+  }
+  return params;
+}
+
+bir::CallInst c4c::backend::make_direct_call_inst(std::string callee,
+                                                  bir::TypeKind return_type,
+                                                  std::string return_type_name,
+                                                  std::optional<bir::Value> result,
+                                                  std::vector<bir::Value> args) {
+  bir::CallInst call;
+  call.result = std::move(result);
+  call.callee = std::move(callee);
+  call.return_type = return_type;
+  call.return_type_name = std::move(return_type_name);
+  call.args = std::move(args);
+  call.is_indirect = false;
+  call.calling_convention = bir::CallingConv::C;
+  call.is_variadic = false;
+  call.is_noreturn = false;
+  return call;
+}
+
 void c4c::backend::record_call_lowering_scaffold_notes(
     const c4c::codegen::lir::LirModule& module,
     std::vector<BirLoweringNote>* notes) {

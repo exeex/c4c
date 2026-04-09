@@ -642,16 +642,17 @@ std::optional<bir::Module> try_lower_minimal_declared_direct_call_module(
   lowered_callee.name = *symbol_name;
   lowered_callee.return_type = bir::TypeKind::I32;
   lowered_callee.is_declaration = true;
-  lowered_callee.params.reserve(backend_typed_call.param_types.size());
-  for (std::size_t index = 0; index < backend_typed_call.param_types.size(); ++index) {
-    const auto type = lower_minimal_call_arg_type_text(backend_typed_call.param_types[index]);
-    if (!type.has_value()) {
+  {
+    std::vector<std::string_view> param_types;
+    param_types.reserve(backend_typed_call.param_types.size());
+    for (const auto param_type : backend_typed_call.param_types) {
+      param_types.push_back(param_type);
+    }
+    const auto lowered_params = lower_call_params_from_type_texts(param_types);
+    if (!lowered_params.has_value()) {
       return std::nullopt;
     }
-    lowered_callee.params.push_back(bir::Param{
-        .type = *type,
-        .name = "%arg" + std::to_string(index),
-    });
+    lowered_callee.params = *lowered_params;
   }
   lowered.functions.push_back(std::move(lowered_callee));
 
@@ -662,30 +663,31 @@ std::optional<bir::Module> try_lower_minimal_declared_direct_call_module(
   bir::Block lowered_entry_block;
   lowered_entry_block.label = "entry";
 
-  bir::CallInst call_inst;
-  call_inst.result = bir::Value::named(bir::TypeKind::I32, call->result.str());
-  call_inst.callee = *symbol_name;
-  call_inst.return_type_name = "i32";
-  call_inst.args.reserve(args->size());
+  std::vector<bir::Value> lowered_args;
+  lowered_args.reserve(args->size());
   for (const auto& arg : *args) {
     switch (arg.kind) {
       case ParsedBackendExternCallArg::Kind::I32Imm:
-        call_inst.args.push_back(bir::Value::immediate_i32(static_cast<std::int32_t>(arg.imm)));
+        lowered_args.push_back(bir::Value::immediate_i32(static_cast<std::int32_t>(arg.imm)));
         break;
       case ParsedBackendExternCallArg::Kind::I64Imm:
-        call_inst.args.push_back(bir::Value::immediate_i64(arg.imm));
+        lowered_args.push_back(bir::Value::immediate_i64(arg.imm));
         break;
       case ParsedBackendExternCallArg::Kind::Ptr: {
         if (arg.operand.empty() || arg.operand.front() != '@') {
           return std::nullopt;
         }
-        call_inst.args.push_back(
-            bir::Value::named(bir::TypeKind::I64, arg.operand.substr(1)));
+        lowered_args.push_back(bir::Value::named(bir::TypeKind::I64, arg.operand.substr(1)));
         break;
       }
     }
   }
-  lowered_entry_block.insts.push_back(std::move(call_inst));
+  lowered_entry_block.insts.push_back(make_direct_call_inst(
+      *symbol_name,
+      bir::TypeKind::I32,
+      "i32",
+      bir::Value::named(bir::TypeKind::I32, call->result.str()),
+      std::move(lowered_args)));
 
   if (return_call_result) {
     lowered_entry_block.terminator.value =

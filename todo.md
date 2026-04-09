@@ -202,6 +202,9 @@ Source Plan: plan.md
   `lir_to_bir/memory.cpp` as well:
   zero-base string-constant GEP recognition used by the string-literal
   compare/phi-return slice
+- moved the first direct-call construction helpers into `lir_to_bir/calls.cpp`:
+  callee param legalization from call-surface type text and direct `bir::CallInst`
+  construction for the minimal direct-call path
 
 ## Blockers
 
@@ -269,6 +272,8 @@ Source Plan: plan.md
 - the next concrete follow-up should make the monolith consume these helpers to
   build `MemoryAddress`-driven lowering for pointer-diff and string-pool
   address cases, not just use them as match predicates
+- the next call-side follow-up should move argument lowering and call metadata
+  population out of the monolith, not just the final `CallInst` construction
   failing, while the full suite now stands at
   `test_fail_after.log` = 2670 pass / 179 fail / 2849 total
 - the new internal route regression again increases total suite size by one,

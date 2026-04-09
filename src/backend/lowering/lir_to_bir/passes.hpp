@@ -20,6 +20,13 @@ void record_call_lowering_scaffold_notes(const c4c::codegen::lir::LirModule& mod
                                          std::vector<BirLoweringNote>* notes = nullptr);
 void record_aggregate_lowering_scaffold_notes(const c4c::codegen::lir::LirModule& module,
                                               std::vector<BirLoweringNote>* notes = nullptr);
+std::optional<std::vector<bir::Param>> lower_call_params_from_type_texts(
+    const std::vector<std::string_view>& param_types);
+bir::CallInst make_direct_call_inst(std::string callee,
+                                    bir::TypeKind return_type,
+                                    std::string return_type_name,
+                                    std::optional<bir::Value> result,
+                                    std::vector<bir::Value> args);
 bir::LocalSlot make_memory_local_slot(std::string name,
                                       bir::TypeKind type,
                                       std::size_t size_bytes,
