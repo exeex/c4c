@@ -715,6 +715,16 @@ if(CLANG_EXECUTABLE)
     )
 
     c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00009_local_arithmetic_chain_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00009.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00009_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.text|.globl main|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()|idiv"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
       backend_codegen_route_x86_64_c_testsuite_00012_retries_after_direct_bir_rejection
       SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00012.c"
       TARGET_TRIPLE x86_64-unknown-linux-gnu

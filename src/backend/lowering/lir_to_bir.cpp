@@ -907,6 +907,147 @@ std::optional<bir::Module> try_lower_minimal_local_i32_store_load_sub_return_imm
   return lowered;
 }
 
+std::optional<bir::Module> try_lower_minimal_local_i32_arithmetic_chain_return_immediate_module(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || !module.globals.empty() ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      !backend_lir_signature_matches(function.signature_text, "define", "i32", function.name, {}) ||
+      function.entry.value != 0 || function.blocks.size() != 1 || function.alloca_insts.size() != 1 ||
+      !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* slot = std::get_if<LirAllocaOp>(&function.alloca_insts.front());
+  if (slot == nullptr || slot->result.empty() || !slot->count.empty() ||
+      !lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{slot->type_str}, 32)) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  const auto* ret = std::get_if<LirRet>(&entry.terminator);
+  if (entry.label != "entry" || ret == nullptr || !ret->value_str.has_value() ||
+      lower_function_return_type(function, *ret) != bir::TypeKind::I32 ||
+      entry.insts.size() < 6 || entry.insts.size() % 3 != 0) {
+    return std::nullopt;
+  }
+
+  const auto* init_store = std::get_if<LirStoreOp>(&entry.insts.front());
+  if (init_store == nullptr || init_store->ptr != slot->result ||
+      !lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{init_store->type_str}, 32)) {
+    return std::nullopt;
+  }
+
+  auto current_value = parse_immediate(init_store->val);
+  if (!current_value.has_value()) {
+    return std::nullopt;
+  }
+  if ((entry.insts.size() - 1) % 3 != 2) {
+    return std::nullopt;
+  }
+
+  std::unordered_set<std::string_view> defined_results;
+  defined_results.reserve(entry.insts.size());
+  for (std::size_t inst_index = 1; inst_index < entry.insts.size(); inst_index += 3) {
+    const bool final_step = inst_index + 2 == entry.insts.size();
+    const auto* load = std::get_if<LirLoadOp>(&entry.insts[inst_index]);
+    const auto* bin = std::get_if<LirBinOp>(&entry.insts[inst_index + 1]);
+    if (load == nullptr || bin == nullptr || load->result.empty() || bin->result.empty() ||
+        !lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{load->type_str}, 32) ||
+        !lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{bin->type_str}, 32) ||
+        load->ptr != slot->result || bin->lhs != load->result ||
+        !defined_results.insert(load->result).second ||
+        !defined_results.insert(bin->result).second) {
+      return std::nullopt;
+    }
+
+    const auto opcode = bin->opcode.typed();
+    const auto rhs_imm = parse_immediate(bin->rhs);
+    if (!opcode.has_value() || !rhs_imm.has_value()) {
+      return std::nullopt;
+    }
+
+    switch (*opcode) {
+      case LirBinaryOpcode::Add:
+        *current_value += *rhs_imm;
+        break;
+      case LirBinaryOpcode::Sub:
+        *current_value -= *rhs_imm;
+        break;
+      case LirBinaryOpcode::Mul:
+        *current_value *= *rhs_imm;
+        break;
+      case LirBinaryOpcode::SDiv:
+        if (*rhs_imm == 0) {
+          return std::nullopt;
+        }
+        *current_value /= *rhs_imm;
+        break;
+      case LirBinaryOpcode::UDiv:
+        if (*current_value < 0 || *rhs_imm <= 0) {
+          return std::nullopt;
+        }
+        *current_value = static_cast<std::int64_t>(
+            static_cast<std::uint64_t>(*current_value) / static_cast<std::uint64_t>(*rhs_imm));
+        break;
+      case LirBinaryOpcode::SRem:
+        if (*rhs_imm == 0) {
+          return std::nullopt;
+        }
+        *current_value %= *rhs_imm;
+        break;
+      case LirBinaryOpcode::URem:
+        if (*current_value < 0 || *rhs_imm <= 0) {
+          return std::nullopt;
+        }
+        *current_value = static_cast<std::int64_t>(
+            static_cast<std::uint64_t>(*current_value) % static_cast<std::uint64_t>(*rhs_imm));
+        break;
+      default:
+        return std::nullopt;
+    }
+
+    if (final_step) {
+      if (*ret->value_str != bin->result) {
+        return std::nullopt;
+      }
+      continue;
+    }
+
+    const auto* store = std::get_if<LirStoreOp>(&entry.insts[inst_index + 2]);
+    if (store == nullptr || store->ptr != slot->result || store->val != bin->result ||
+        !lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{store->type_str}, 32)) {
+      return std::nullopt;
+    }
+  }
+
+  if (!immediate_fits_type(*current_value, bir::TypeKind::I32)) {
+    return std::nullopt;
+  }
+
+  bir::Module lowered;
+  lowered.target_triple = module.target_triple;
+  lowered.data_layout = module.data_layout;
+
+  bir::Function lowered_function;
+  lowered_function.name = function.name;
+  lowered_function.return_type = bir::TypeKind::I32;
+
+  bir::Block lowered_entry;
+  lowered_entry.label = "entry";
+  lowered_entry.terminator.value =
+      bir::Value::immediate_i32(static_cast<std::int32_t>(*current_value));
+  lowered_function.blocks.push_back(std::move(lowered_entry));
+  lowered.functions.push_back(std::move(lowered_function));
+  return lowered;
+}
+
 std::optional<bir::Module> try_lower_minimal_local_i32_pointer_store_zero_load_return_module(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
@@ -3273,6 +3414,11 @@ std::optional<bir::Module> try_lower_to_bir_legacy(const c4c::codegen::lir::LirM
   }
   if (const auto lowered =
           try_lower_minimal_local_i32_store_load_sub_return_immediate_module(module);
+      lowered.has_value()) {
+    return lowered;
+  }
+  if (const auto lowered =
+          try_lower_minimal_local_i32_arithmetic_chain_return_immediate_module(module);
       lowered.has_value()) {
     return lowered;
   }

@@ -234,6 +234,42 @@ c4c::codegen::lir::LirModule make_local_i32_store_load_sub_return_immediate_modu
   return module;
 }
 
+c4c::codegen::lir::LirModule make_local_i32_arithmetic_chain_return_immediate_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.x", "i32", "", 4});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{"i32", "1", "%lv.x"});
+  entry.insts.push_back(LirLoadOp{"%t0", "i32", "%lv.x"});
+  entry.insts.push_back(LirBinOp{"%t1", "mul", "i32", "%t0", "10"});
+  entry.insts.push_back(LirStoreOp{"i32", "%t1", "%lv.x"});
+  entry.insts.push_back(LirLoadOp{"%t2", "i32", "%lv.x"});
+  entry.insts.push_back(LirBinOp{"%t3", "sdiv", "i32", "%t2", "2"});
+  entry.insts.push_back(LirStoreOp{"i32", "%t3", "%lv.x"});
+  entry.insts.push_back(LirLoadOp{"%t4", "i32", "%lv.x"});
+  entry.insts.push_back(LirBinOp{"%t5", "srem", "i32", "%t4", "3"});
+  entry.insts.push_back(LirStoreOp{"i32", "%t5", "%lv.x"});
+  entry.insts.push_back(LirLoadOp{"%t6", "i32", "%lv.x"});
+  entry.insts.push_back(LirBinOp{"%t7", "sub", "i32", "%t6", "2"});
+  entry.terminator = LirRet{std::string("%t7"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_local_i32_pointer_store_zero_load_return_module() {
   using namespace c4c::codegen::lir;
 
@@ -4269,6 +4305,19 @@ void test_x86_direct_emitter_lowers_constant_div_sub_return_slice() {
                       "x86 direct emitter should stay on native asm emission for the bounded sdiv/sub return slice");
 }
 
+void test_x86_direct_emitter_lowers_local_i32_arithmetic_chain_return_slice() {
+  auto module = make_local_i32_arithmetic_chain_return_immediate_module();
+
+  expect_true(c4c::backend::try_lower_to_bir(module).has_value(),
+              "local i32 arithmetic-chain return input should continue to route through shared BIR so this regression pins the x86 BIR-owned source-backed seam");
+
+  const auto rendered = c4c::backend::x86::emit_module(module);
+  expect_contains(rendered, "main:\n  mov eax, 0\n  ret\n",
+                  "x86 direct emitter should constant-fold the bounded local-slot arithmetic chain once the shared-BIR route reaches native x86 emission");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 direct emitter should stay on native asm emission for the bounded local-slot arithmetic-chain slice");
+}
+
 void test_x86_direct_emitter_lowers_constant_branch_if_eq_return_slice() {
   auto module = make_x86_constant_branch_if_return_lir_module("eq", "2", "2");
 
@@ -4631,6 +4680,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_local_temp_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_constant_add_mul_sub_return_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_constant_div_sub_return_slice);
+  RUN_TEST(test_x86_direct_emitter_lowers_local_i32_arithmetic_chain_return_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_constant_branch_if_eq_return_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_constant_branch_if_uge_return_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_param_slot_add_slice);

@@ -7,31 +7,32 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 5 full-suite monotonic validation and next-slice selection after the
-  bounded shared-BIR `00007.c` guarded double-countdown seam landed:
-  the full early source-backed x86 countdown cluster
-  (`00003.c`, `00004.c`, `00006.c`, `00007.c`) is now green on the native x86
-  path, while the broad-suite comparison against `test_fail_before.log`
+  bounded shared-BIR `00009.c` local arithmetic-chain seam landed:
+  the full early source-backed x86 cluster
+  (`00003.c`, `00004.c`, `00005.c`, `00006.c`, `00007.c`, `00009.c`) is now
+  green on the native x86 path, while the broad-suite comparison against
+  `test_fail_before.log`
   remains a parked non-monotonic lane and should not be silently treated as
   Step 5 complete
 - current exact slice:
-  recover the bounded shared-BIR `00005.c` seam by matching the exact
-  three-local alias chain (`x`, `p`, `pp`) where two dead early returns guard
-  `*p` and `**pp`, the false arm stores `1` through `**pp`, and the final
-  `if(x)` branch therefore collapses to the constant `0` return on the native
-  x86 route
+  classify the next bounded red source-backed x86 seam after `00009.c`;
+  `c_testsuite_x86_backend_src_00011_c` is now the next failing early source
+  case and stays a separate ownership question until its prepared-LIR shape is
+  captured and matched to an existing shared-BIR constant-return family or a
+  new bounded slice
 
 ## Next Slice
 
 - keep the ownership split explicit for the remaining early x86 source cases:
-  the full early `00003.c` through `00007.c` source-backed x86 cluster is now
-  green, so the next bounded red source-backed seam is `00009.c`; keep it
-  separate unless its prepared-LIR shape proves it belongs to the already-owned
-  constant-return arithmetic family
-- add the narrowest regression for `00009.c` before changing ownership, then
-  verify whether its local multiply/divide/mod/sub chain can collapse through a
-  shared constant-return BIR slice without widening idea 44 ad hoc
+  `00009.c` is now green, so the next bounded red source-backed seam is
+  `00011.c`; keep it separate unless its prepared-LIR shape proves it belongs
+  to the already-owned local-slot constant-return family
+- add the narrowest regression for `00011.c` before changing ownership, then
+  verify whether its two-local chained zero-initialization (`x = y = 0;
+  return x;`) can collapse through a shared constant-return BIR slice without
+  widening idea 44 ad hoc
 - if the refreshed broad-suite guard is still red after the branch-family
-  and early countdown recoveries, classify the next highest-value remaining
+  and early source-backed recoveries, classify the next highest-value remaining
   x86-native source-backed seam from the updated after-log instead of widening
   idea 44 ad hoc
 - keep the separate shared-BIR select regression parked in
@@ -41,6 +42,42 @@ Source Plan: plan.md
   before choosing the next bounded seam
 
 ## Recently Completed
+
+- recovered the bounded shared-BIR `00009.c` seam by teaching
+  `src/backend/lowering/lir_to_bir.cpp` to recognize the exact one-local
+  arithmetic chain (`store 1; load/mul 10/store; load/sdiv 2/store;
+  load/srem 3/store; load/sub 2; ret`) and collapse that direct-LIR module to
+  the shared constant `0` return instead of stopping at the unsupported x86
+  direct-LIR boundary
+- covered that seam with focused shared-lowering and x86 pipeline regressions
+  in `tests/backend/backend_bir_lowering_tests.cpp` and
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp`, plus a source-backed
+  backend route regression in `tests/c/internal/InternalTests.cmake`
+  (`backend_codegen_route_x86_64_c_testsuite_00009_local_arithmetic_chain_retries_after_direct_bir_rejection`)
+  so the real `00009.c` path stays pinned on native x86 asm instead of falling
+  back to LLVM text or the unsupported direct-LIR error
+- verified the bounded `00009.c` seam end-to-end:
+  `./build/backend_bir_tests test_bir_lowering_accepts_local_i32_arithmetic_chain_return_immediate_module`,
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_local_i32_arithmetic_chain_return_slice`,
+  `ctest --test-dir build --output-on-failure -R '^(backend_codegen_route_x86_64_c_testsuite_00009_local_arithmetic_chain_retries_after_direct_bir_rejection|c_testsuite_x86_backend_src_00009_c)$'`,
+  and
+  `ctest --test-dir build --output-on-failure -R '^(c_testsuite_x86_backend_src_00003_c|c_testsuite_x86_backend_src_00004_c|c_testsuite_x86_backend_src_00005_c|c_testsuite_x86_backend_src_00006_c|c_testsuite_x86_backend_src_00007_c|c_testsuite_x86_backend_src_00009_c)$'`
+  now pass for the owned seam
+- refreshed `test_fail_after.log` with
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log` and
+  re-ran the monotonic guard through the `c4c-regression-guard` skill:
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  which still fails against the stale broad-suite baseline
+  (`2670/179/2849` before vs `2618/236/2854` after), but the refreshed
+  after-state improved again from the prior recorded `2616 -> 2618` passes and
+  `237 -> 236` failures after the `00009.c` slice; the new route test raises
+  total tests from `2853` to `2854`, and the remaining red broad-suite lanes
+  stay parked in the already-known `backend_bir_tests`, riscv select-route,
+  and wider x86 source-backed buckets outside this bounded change
+- classified the next bounded seam from the refreshed after-log:
+  `c_testsuite_x86_backend_src_00011_c` is now the next red source-backed x86
+  case, and its source body stays a compact two-local chained zero-init slice
+  (`int x; int y; x = y = 0; return x;`)
 
 - recovered the bounded shared-BIR `00005.c` seam by teaching
   `src/backend/lowering/lir_to_bir.cpp` to recognize the exact source-backed
