@@ -526,6 +526,14 @@ c4c::codegen::lir::LirTypeRef make_test_stale_text_i1_lir_type() {
   return c4c::codegen::lir::LirTypeRef("i8", c4c::codegen::lir::LirTypeKind::Integer, 1);
 }
 
+c4c::codegen::lir::LirTypeRef make_test_stale_text_i64_lir_type() {
+  return c4c::codegen::lir::LirTypeRef("i32", c4c::codegen::lir::LirTypeKind::Integer, 64);
+}
+
+c4c::codegen::lir::LirTypeRef make_test_stale_text_ptr_lir_type() {
+  return c4c::codegen::lir::LirTypeRef("i32", c4c::codegen::lir::LirTypeKind::Pointer);
+}
+
 c4c::codegen::lir::LirModule
 make_bir_minimal_two_arg_direct_call_lir_module_with_typed_helper_params() {
   using namespace c4c::codegen::lir;
@@ -1594,6 +1602,35 @@ void test_bir_lowering_accepts_minimal_extern_global_array_load_lir_module() {
                   "the lowered extern global-array-load BIR module should print the bounded offset bir.load_global contract");
 }
 
+void test_bir_lowering_accepts_typed_minimal_extern_global_array_load_lir_slice_with_stale_text() {
+  auto module = make_bir_minimal_extern_global_array_load_lir_module();
+  auto& function = module.functions.front();
+  function.return_type.base = c4c::TB_INT;
+
+  auto& entry = function.blocks.front();
+  std::get<c4c::codegen::lir::LirCastOp>(entry.insts[1]).from_type =
+      make_test_stale_text_i32_lir_type();
+  std::get<c4c::codegen::lir::LirCastOp>(entry.insts[1]).to_type =
+      make_test_stale_text_i64_lir_type();
+  std::get<c4c::codegen::lir::LirGepOp>(entry.insts[2]).element_type =
+      make_test_stale_text_i32_lir_type();
+  std::get<c4c::codegen::lir::LirLoadOp>(entry.insts[3]).type_str =
+      make_test_stale_text_i32_lir_type();
+  std::get<c4c::codegen::lir::LirRet>(entry.terminator).type_str = "i8";
+
+  const auto lowered = c4c::backend::try_lower_to_bir(module);
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the minimal extern global-array-load slice when the cast, element, load, and ret text are stale but typed metadata still carries the i32/i64 contract");
+  if (!lowered.has_value()) {
+    return;
+  }
+
+  const auto rendered = c4c::backend::bir::print(*lowered);
+  expect_contains(rendered,
+                  "entry:\n  %t3 = bir.load_global i32 @ext_arr, offset 4\n  bir.ret i32 %t3\n",
+                  "the lowered extern global-array-load BIR module should still recover the canonical i32 contract from semantic instruction and function metadata");
+}
+
 void test_bir_lowering_accepts_minimal_global_char_pointer_diff_lir_module() {
   const auto lowered =
       c4c::backend::try_lower_to_bir(make_bir_minimal_global_char_pointer_diff_lir_module());
@@ -1616,6 +1653,58 @@ void test_bir_lowering_accepts_minimal_global_char_pointer_diff_lir_module() {
                   "the lowered global char pointer-diff BIR module should print the shared immediate-return contract");
 }
 
+void test_bir_lowering_accepts_typed_minimal_global_char_pointer_diff_lir_slice_with_stale_text() {
+  auto module = make_bir_minimal_global_char_pointer_diff_lir_module();
+  auto& function = module.functions.front();
+  function.return_type.base = c4c::TB_INT;
+
+  auto& entry = function.blocks.front();
+  std::get<c4c::codegen::lir::LirCastOp>(entry.insts[1]).from_type =
+      make_test_stale_text_i32_lir_type();
+  std::get<c4c::codegen::lir::LirCastOp>(entry.insts[1]).to_type =
+      make_test_stale_text_i64_lir_type();
+  std::get<c4c::codegen::lir::LirGepOp>(entry.insts[2]).element_type =
+      make_test_stale_text_i8_lir_type();
+  std::get<c4c::codegen::lir::LirCastOp>(entry.insts[4]).from_type =
+      make_test_stale_text_i32_lir_type();
+  std::get<c4c::codegen::lir::LirCastOp>(entry.insts[4]).to_type =
+      make_test_stale_text_i64_lir_type();
+  std::get<c4c::codegen::lir::LirGepOp>(entry.insts[5]).element_type =
+      make_test_stale_text_i8_lir_type();
+  std::get<c4c::codegen::lir::LirCastOp>(entry.insts[6]).from_type =
+      make_test_stale_text_ptr_lir_type();
+  std::get<c4c::codegen::lir::LirCastOp>(entry.insts[6]).to_type =
+      make_test_stale_text_i64_lir_type();
+  std::get<c4c::codegen::lir::LirCastOp>(entry.insts[7]).from_type =
+      make_test_stale_text_ptr_lir_type();
+  std::get<c4c::codegen::lir::LirCastOp>(entry.insts[7]).to_type =
+      make_test_stale_text_i64_lir_type();
+  std::get<c4c::codegen::lir::LirBinOp>(entry.insts[8]).type_str =
+      make_test_stale_text_i64_lir_type();
+  std::get<c4c::codegen::lir::LirCastOp>(entry.insts[9]).from_type =
+      make_test_stale_text_i32_lir_type();
+  std::get<c4c::codegen::lir::LirCastOp>(entry.insts[9]).to_type =
+      make_test_stale_text_i64_lir_type();
+  std::get<c4c::codegen::lir::LirCmpOp>(entry.insts[10]).type_str =
+      make_test_stale_text_i64_lir_type();
+  std::get<c4c::codegen::lir::LirCastOp>(entry.insts[11]).from_type =
+      make_test_stale_text_i1_lir_type();
+  std::get<c4c::codegen::lir::LirCastOp>(entry.insts[11]).to_type =
+      make_test_stale_text_i32_lir_type();
+  std::get<c4c::codegen::lir::LirRet>(entry.terminator).type_str = "i8";
+
+  const auto lowered = c4c::backend::try_lower_to_bir(module);
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the minimal char pointer-diff slice when cast, gep, binop, cmp, and ret text are stale but typed metadata still carries the i8/i32/i64 contract");
+  if (!lowered.has_value()) {
+    return;
+  }
+
+  const auto rendered = c4c::backend::bir::print(*lowered);
+  expect_contains(rendered, "entry:\n  bir.ret i32 1\n",
+                  "the lowered global char pointer-diff BIR module should still recover the shared immediate-return contract from semantic instruction and function metadata");
+}
+
 void test_bir_lowering_accepts_minimal_global_int_pointer_diff_lir_module() {
   const auto lowered =
       c4c::backend::try_lower_to_bir(make_bir_minimal_global_int_pointer_diff_lir_module());
@@ -1636,6 +1725,60 @@ void test_bir_lowering_accepts_minimal_global_int_pointer_diff_lir_module() {
   const auto rendered = c4c::backend::bir::print(*lowered);
   expect_contains(rendered, "entry:\n  bir.ret i32 1\n",
                   "the lowered global int pointer-diff BIR module should print the shared immediate-return contract");
+}
+
+void test_bir_lowering_accepts_typed_minimal_global_int_pointer_diff_lir_slice_with_stale_text() {
+  auto module = make_bir_minimal_global_int_pointer_diff_lir_module();
+  auto& function = module.functions.front();
+  function.return_type.base = c4c::TB_INT;
+
+  auto& entry = function.blocks.front();
+  std::get<c4c::codegen::lir::LirCastOp>(entry.insts[1]).from_type =
+      make_test_stale_text_i32_lir_type();
+  std::get<c4c::codegen::lir::LirCastOp>(entry.insts[1]).to_type =
+      make_test_stale_text_i64_lir_type();
+  std::get<c4c::codegen::lir::LirGepOp>(entry.insts[2]).element_type =
+      make_test_stale_text_i32_lir_type();
+  std::get<c4c::codegen::lir::LirCastOp>(entry.insts[4]).from_type =
+      make_test_stale_text_i32_lir_type();
+  std::get<c4c::codegen::lir::LirCastOp>(entry.insts[4]).to_type =
+      make_test_stale_text_i64_lir_type();
+  std::get<c4c::codegen::lir::LirGepOp>(entry.insts[5]).element_type =
+      make_test_stale_text_i32_lir_type();
+  std::get<c4c::codegen::lir::LirCastOp>(entry.insts[6]).from_type =
+      make_test_stale_text_ptr_lir_type();
+  std::get<c4c::codegen::lir::LirCastOp>(entry.insts[6]).to_type =
+      make_test_stale_text_i64_lir_type();
+  std::get<c4c::codegen::lir::LirCastOp>(entry.insts[7]).from_type =
+      make_test_stale_text_ptr_lir_type();
+  std::get<c4c::codegen::lir::LirCastOp>(entry.insts[7]).to_type =
+      make_test_stale_text_i64_lir_type();
+  std::get<c4c::codegen::lir::LirBinOp>(entry.insts[8]).type_str =
+      make_test_stale_text_i64_lir_type();
+  std::get<c4c::codegen::lir::LirBinOp>(entry.insts[9]).type_str =
+      make_test_stale_text_i64_lir_type();
+  std::get<c4c::codegen::lir::LirCastOp>(entry.insts[10]).from_type =
+      make_test_stale_text_i32_lir_type();
+  std::get<c4c::codegen::lir::LirCastOp>(entry.insts[10]).to_type =
+      make_test_stale_text_i64_lir_type();
+  std::get<c4c::codegen::lir::LirCmpOp>(entry.insts[11]).type_str =
+      make_test_stale_text_i64_lir_type();
+  std::get<c4c::codegen::lir::LirCastOp>(entry.insts[12]).from_type =
+      make_test_stale_text_i1_lir_type();
+  std::get<c4c::codegen::lir::LirCastOp>(entry.insts[12]).to_type =
+      make_test_stale_text_i32_lir_type();
+  std::get<c4c::codegen::lir::LirRet>(entry.terminator).type_str = "i8";
+
+  const auto lowered = c4c::backend::try_lower_to_bir(module);
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the minimal int pointer-diff slice when cast, gep, binop, cmp, and ret text are stale but typed metadata still carries the i32/i64 contract");
+  if (!lowered.has_value()) {
+    return;
+  }
+
+  const auto rendered = c4c::backend::bir::print(*lowered);
+  expect_contains(rendered, "entry:\n  bir.ret i32 1\n",
+                  "the lowered global int pointer-diff BIR module should still recover the shared immediate-return contract from semantic instruction and function metadata");
 }
 
 void test_bir_lowering_accepts_minimal_scalar_global_store_reload_lir_module() {
@@ -3882,8 +4025,12 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_typed_minimal_scalar_global_load_lir_slice_with_stale_text);
   RUN_TEST(test_bir_lowering_accepts_minimal_extern_scalar_global_load_lir_module);
   RUN_TEST(test_bir_lowering_accepts_typed_minimal_extern_scalar_global_load_lir_slice_with_stale_text);
+  RUN_TEST(test_bir_lowering_accepts_minimal_extern_global_array_load_lir_module);
+  RUN_TEST(test_bir_lowering_accepts_typed_minimal_extern_global_array_load_lir_slice_with_stale_text);
   RUN_TEST(test_bir_lowering_accepts_minimal_global_char_pointer_diff_lir_module);
+  RUN_TEST(test_bir_lowering_accepts_typed_minimal_global_char_pointer_diff_lir_slice_with_stale_text);
   RUN_TEST(test_bir_lowering_accepts_minimal_global_int_pointer_diff_lir_module);
+  RUN_TEST(test_bir_lowering_accepts_typed_minimal_global_int_pointer_diff_lir_slice_with_stale_text);
   RUN_TEST(test_bir_lowering_accepts_minimal_scalar_global_store_reload_lir_module);
   RUN_TEST(test_bir_lowering_accepts_typed_minimal_scalar_global_store_reload_lir_slice_with_stale_text);
   RUN_TEST(test_bir_validator_rejects_returning_undefined_named_value);

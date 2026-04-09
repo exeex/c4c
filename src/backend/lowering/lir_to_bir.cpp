@@ -112,6 +112,27 @@ bool lir_type_has_integer_width(const c4c::codegen::lir::LirTypeRef& type,
          type.integer_bit_width() == bit_width;
 }
 
+unsigned scalar_type_bit_width(bir::TypeKind type);
+
+bool lir_type_matches_integer_width(const c4c::codegen::lir::LirTypeRef& type,
+                                    unsigned bit_width) {
+  if (lir_type_has_integer_width(type, bit_width)) {
+    return true;
+  }
+
+  const auto lowered_type = lower_scalar_type_text(type.str());
+  return lowered_type.has_value() && scalar_type_bit_width(*lowered_type) == bit_width;
+}
+
+bool lir_type_is_pointer_like(const c4c::codegen::lir::LirTypeRef& type) {
+  if (type.kind() == c4c::codegen::lir::LirTypeKind::Pointer) {
+    return true;
+  }
+
+  const auto trimmed = c4c::codegen::lir::trim_lir_arg_text(type.str());
+  return trimmed == "ptr" || (!trimmed.empty() && trimmed.back() == '*');
+}
+
 std::optional<bir::TypeKind> lower_global_type(
     const c4c::codegen::lir::LirGlobal& global) {
   if (const auto lowered_type = lower_minimal_scalar_type(global.type);
@@ -1931,7 +1952,7 @@ std::optional<bir::Module> try_lower_minimal_extern_global_array_load_module(
 
   const auto& function = module.functions.front();
   if (function.is_declaration ||
-      !backend_lir_signature_matches(function.signature_text, "define", "i32", function.name, {}) ||
+      !lir_function_matches_minimal_no_param_integer_return(function, 32) ||
       function.entry.value != 0 || function.blocks.size() != 1 ||
       !function.alloca_insts.empty() || !function.stack_objects.empty()) {
     return std::nullopt;
@@ -1957,21 +1978,24 @@ std::optional<bir::Module> try_lower_minimal_extern_global_array_load_module(
       base_gep->indices[1] != "i64 0") {
     return std::nullopt;
   }
-  if (index_cast->kind != LirCastKind::SExt || index_cast->from_type != "i32" ||
-      index_cast->to_type != "i64") {
+  if (index_cast->kind != LirCastKind::SExt ||
+      !lir_type_matches_integer_width(index_cast->from_type, 32) ||
+      !lir_type_matches_integer_width(index_cast->to_type, 64)) {
     return std::nullopt;
   }
   const auto element_index = parse_immediate(index_cast->operand);
   if (!element_index.has_value() || *element_index < 0 || *element_index >= *element_count) {
     return std::nullopt;
   }
-  if (elem_gep->element_type != "i32" || elem_gep->ptr != base_gep->result ||
+  if (!lir_type_matches_integer_width(elem_gep->element_type, 32) ||
+      elem_gep->ptr != base_gep->result ||
       elem_gep->indices.size() != 1 ||
       elem_gep->indices[0] != ("i64 " + index_cast->result)) {
     return std::nullopt;
   }
-  if (load->type_str != "i32" || load->ptr != elem_gep->result ||
-      !ret->value_str.has_value() || ret->type_str != "i32" ||
+  if (!lir_type_matches_integer_width(load->type_str, 32) || load->ptr != elem_gep->result ||
+      !ret->value_str.has_value() ||
+      lower_function_return_type(function, *ret) != bir::TypeKind::I32 ||
       *ret->value_str != load->result.str()) {
     return std::nullopt;
   }
@@ -2046,7 +2070,7 @@ std::optional<bir::Module> try_lower_minimal_global_char_pointer_diff_module(
 
   const auto& function = module.functions.front();
   if (function.is_declaration ||
-      !backend_lir_signature_matches(function.signature_text, "define", "i32", function.name, {}) ||
+      !lir_function_matches_minimal_no_param_integer_return(function, 32) ||
       function.entry.value != 0 || function.blocks.size() != 1 ||
       !function.alloca_insts.empty() || !function.stack_objects.empty()) {
     return std::nullopt;
@@ -2089,8 +2113,9 @@ std::optional<bir::Module> try_lower_minimal_global_char_pointer_diff_module(
     return std::nullopt;
   }
 
-  if (index1->kind != LirCastKind::SExt || index1->from_type != "i32" ||
-      index1->to_type != "i64") {
+  if (index1->kind != LirCastKind::SExt ||
+      !lir_type_matches_integer_width(index1->from_type, 32) ||
+      !lir_type_matches_integer_width(index1->to_type, 64)) {
     return std::nullopt;
   }
   const auto byte_index = parse_immediate(index1->operand);
@@ -2098,37 +2123,43 @@ std::optional<bir::Module> try_lower_minimal_global_char_pointer_diff_module(
     return std::nullopt;
   }
 
-  if (index0->kind != LirCastKind::SExt || index0->from_type != "i32" ||
-      index0->to_type != "i64" || index0->operand != "0") {
+  if (index0->kind != LirCastKind::SExt ||
+      !lir_type_matches_integer_width(index0->from_type, 32) ||
+      !lir_type_matches_integer_width(index0->to_type, 64) || index0->operand != "0") {
     return std::nullopt;
   }
-  if (byte_gep1->element_type != "i8" || byte_gep1->ptr != base_gep1->result ||
+  if (!lir_type_matches_integer_width(byte_gep1->element_type, 8) ||
+      byte_gep1->ptr != base_gep1->result ||
       byte_gep1->indices.size() != 1 ||
       byte_gep1->indices[0] != ("i64 " + index1->result)) {
     return std::nullopt;
   }
-  if (byte_gep0->element_type != "i8" || byte_gep0->ptr != base_gep0->result ||
+  if (!lir_type_matches_integer_width(byte_gep0->element_type, 8) ||
+      byte_gep0->ptr != base_gep0->result ||
       byte_gep0->indices.size() != 1 ||
       byte_gep0->indices[0] != ("i64 " + index0->result)) {
     return std::nullopt;
   }
-  if (ptrtoint1->kind != LirCastKind::PtrToInt || ptrtoint1->from_type != "ptr" ||
-      ptrtoint1->operand != byte_gep1->result || ptrtoint1->to_type != "i64") {
+  if (ptrtoint1->kind != LirCastKind::PtrToInt || !lir_type_is_pointer_like(ptrtoint1->from_type) ||
+      ptrtoint1->operand != byte_gep1->result ||
+      !lir_type_matches_integer_width(ptrtoint1->to_type, 64)) {
     return std::nullopt;
   }
-  if (ptrtoint0->kind != LirCastKind::PtrToInt || ptrtoint0->from_type != "ptr" ||
-      ptrtoint0->operand != byte_gep0->result || ptrtoint0->to_type != "i64") {
+  if (ptrtoint0->kind != LirCastKind::PtrToInt || !lir_type_is_pointer_like(ptrtoint0->from_type) ||
+      ptrtoint0->operand != byte_gep0->result ||
+      !lir_type_matches_integer_width(ptrtoint0->to_type, 64)) {
     return std::nullopt;
   }
 
   const auto diff_opcode = diff->opcode.typed();
-  if (diff_opcode != LirBinaryOpcode::Sub || diff->type_str != "i64" ||
+  if (diff_opcode != LirBinaryOpcode::Sub || !lir_type_matches_integer_width(diff->type_str, 64) ||
       diff->lhs != ptrtoint1->result || diff->rhs != ptrtoint0->result) {
     return std::nullopt;
   }
 
-  if (expected_diff->kind != LirCastKind::SExt || expected_diff->from_type != "i32" ||
-      expected_diff->to_type != "i64") {
+  if (expected_diff->kind != LirCastKind::SExt ||
+      !lir_type_matches_integer_width(expected_diff->from_type, 32) ||
+      !lir_type_matches_integer_width(expected_diff->to_type, 64)) {
     return std::nullopt;
   }
   const auto expected_value = parse_immediate(expected_diff->operand);
@@ -2137,15 +2168,19 @@ std::optional<bir::Module> try_lower_minimal_global_char_pointer_diff_module(
   }
 
   const auto cmp_predicate = cmp->predicate.typed();
-  if (cmp->is_float || cmp_predicate != LirCmpPredicate::Eq || cmp->type_str != "i64" ||
+  if (cmp->is_float || cmp_predicate != LirCmpPredicate::Eq ||
+      !lir_type_matches_integer_width(cmp->type_str, 64) ||
       cmp->lhs != diff->result || cmp->rhs != expected_diff->result) {
     return std::nullopt;
   }
-  if (extend->kind != LirCastKind::ZExt || extend->from_type != "i1" ||
-      extend->operand != cmp->result || extend->to_type != "i32") {
+  if (extend->kind != LirCastKind::ZExt ||
+      !lir_type_matches_integer_width(extend->from_type, 1) ||
+      extend->operand != cmp->result ||
+      !lir_type_matches_integer_width(extend->to_type, 32)) {
     return std::nullopt;
   }
-  if (!ret->value_str.has_value() || ret->type_str != "i32" ||
+  if (!ret->value_str.has_value() ||
+      lower_function_return_type(function, *ret) != bir::TypeKind::I32 ||
       *ret->value_str != extend->result) {
     return std::nullopt;
   }
@@ -2209,7 +2244,7 @@ std::optional<bir::Module> try_lower_minimal_global_int_pointer_diff_module(
 
   const auto& function = module.functions.front();
   if (function.is_declaration ||
-      !backend_lir_signature_matches(function.signature_text, "define", "i32", function.name, {}) ||
+      !lir_function_matches_minimal_no_param_integer_return(function, 32) ||
       function.entry.value != 0 || function.blocks.size() != 1 ||
       !function.alloca_insts.empty() || !function.stack_objects.empty()) {
     return std::nullopt;
@@ -2253,58 +2288,71 @@ std::optional<bir::Module> try_lower_minimal_global_int_pointer_diff_module(
       base_gep0->indices[1] != "i64 0") {
     return std::nullopt;
   }
-  if (index1->kind != LirCastKind::SExt || index1->from_type != "i32" ||
-      index1->to_type != "i64" || index1->operand != "1") {
+  if (index1->kind != LirCastKind::SExt ||
+      !lir_type_matches_integer_width(index1->from_type, 32) ||
+      !lir_type_matches_integer_width(index1->to_type, 64) || index1->operand != "1") {
     return std::nullopt;
   }
-  if (index0->kind != LirCastKind::SExt || index0->from_type != "i32" ||
-      index0->to_type != "i64" || index0->operand != "0") {
+  if (index0->kind != LirCastKind::SExt ||
+      !lir_type_matches_integer_width(index0->from_type, 32) ||
+      !lir_type_matches_integer_width(index0->to_type, 64) || index0->operand != "0") {
     return std::nullopt;
   }
-  if (elem_gep1->element_type != "i32" || elem_gep1->ptr != base_gep1->result ||
+  if (!lir_type_matches_integer_width(elem_gep1->element_type, 32) ||
+      elem_gep1->ptr != base_gep1->result ||
       elem_gep1->indices.size() != 1 ||
       elem_gep1->indices[0] != ("i64 " + index1->result)) {
     return std::nullopt;
   }
-  if (elem_gep0->element_type != "i32" || elem_gep0->ptr != base_gep0->result ||
+  if (!lir_type_matches_integer_width(elem_gep0->element_type, 32) ||
+      elem_gep0->ptr != base_gep0->result ||
       elem_gep0->indices.size() != 1 ||
       elem_gep0->indices[0] != ("i64 " + index0->result)) {
     return std::nullopt;
   }
-  if (ptrtoint1->kind != LirCastKind::PtrToInt || ptrtoint1->from_type != "ptr" ||
-      ptrtoint1->operand != elem_gep1->result || ptrtoint1->to_type != "i64") {
+  if (ptrtoint1->kind != LirCastKind::PtrToInt || !lir_type_is_pointer_like(ptrtoint1->from_type) ||
+      ptrtoint1->operand != elem_gep1->result ||
+      !lir_type_matches_integer_width(ptrtoint1->to_type, 64)) {
     return std::nullopt;
   }
-  if (ptrtoint0->kind != LirCastKind::PtrToInt || ptrtoint0->from_type != "ptr" ||
-      ptrtoint0->operand != elem_gep0->result || ptrtoint0->to_type != "i64") {
+  if (ptrtoint0->kind != LirCastKind::PtrToInt || !lir_type_is_pointer_like(ptrtoint0->from_type) ||
+      ptrtoint0->operand != elem_gep0->result ||
+      !lir_type_matches_integer_width(ptrtoint0->to_type, 64)) {
     return std::nullopt;
   }
 
   const auto diff_opcode = diff->opcode.typed();
-  if (diff_opcode != LirBinaryOpcode::Sub || diff->type_str != "i64" ||
+  if (diff_opcode != LirBinaryOpcode::Sub || !lir_type_matches_integer_width(diff->type_str, 64) ||
       diff->lhs != ptrtoint1->result || diff->rhs != ptrtoint0->result) {
     return std::nullopt;
   }
   const auto scaled_opcode = scaled_diff->opcode.typed();
-  if (scaled_opcode != LirBinaryOpcode::SDiv || scaled_diff->type_str != "i64" ||
+  if (scaled_opcode != LirBinaryOpcode::SDiv ||
+      !lir_type_matches_integer_width(scaled_diff->type_str, 64) ||
       scaled_diff->lhs != diff->result || scaled_diff->rhs != "4") {
     return std::nullopt;
   }
-  if (expected_diff->kind != LirCastKind::SExt || expected_diff->from_type != "i32" ||
-      expected_diff->to_type != "i64" || expected_diff->operand != "1") {
+  if (expected_diff->kind != LirCastKind::SExt ||
+      !lir_type_matches_integer_width(expected_diff->from_type, 32) ||
+      !lir_type_matches_integer_width(expected_diff->to_type, 64) ||
+      expected_diff->operand != "1") {
     return std::nullopt;
   }
 
   const auto cmp_predicate = cmp->predicate.typed();
-  if (cmp->is_float || cmp_predicate != LirCmpPredicate::Eq || cmp->type_str != "i64" ||
+  if (cmp->is_float || cmp_predicate != LirCmpPredicate::Eq ||
+      !lir_type_matches_integer_width(cmp->type_str, 64) ||
       cmp->lhs != scaled_diff->result || cmp->rhs != expected_diff->result) {
     return std::nullopt;
   }
-  if (extend->kind != LirCastKind::ZExt || extend->from_type != "i1" ||
-      extend->operand != cmp->result || extend->to_type != "i32") {
+  if (extend->kind != LirCastKind::ZExt ||
+      !lir_type_matches_integer_width(extend->from_type, 1) ||
+      extend->operand != cmp->result ||
+      !lir_type_matches_integer_width(extend->to_type, 32)) {
     return std::nullopt;
   }
-  if (!ret->value_str.has_value() || ret->type_str != "i32" ||
+  if (!ret->value_str.has_value() ||
+      lower_function_return_type(function, *ret) != bir::TypeKind::I32 ||
       *ret->value_str != extend->result) {
     return std::nullopt;
   }

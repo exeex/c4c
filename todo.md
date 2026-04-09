@@ -11,11 +11,10 @@ Source Plan: plan.md
   `src/backend/lowering/lir_to_bir.cpp` and audit the remaining
   instruction-local raw integer text checks that still bypass semantic
   `LirTypeRef` inspection outside the newly-converted widened `i8`
-  add/compare/select seams, with the immediate target narrowed to the next
-  special-case recognizer after the completed scalar global load/store slice
-  that still trusts raw `"i32"` text, likely the extern global-array and
-  pointer-difference recognizers that still gate on string-only casts/GEP/load
-  operands
+  add/compare/select seams, with the immediate target narrowed to the extern
+  global-array load and char/int pointer-difference recognizers that still gate
+  on raw cast/GEP/binop/cmp/load integer text instead of semantic
+  `LirTypeRef` widths plus function return metadata
 
 ## Completed
 
@@ -191,6 +190,20 @@ Source Plan: plan.md
 - Re-ran `backend_bir_tests`, `backend_shared_util_tests`, and the full suite
   and passed the regression guard with no new failures and no pass-count drop
   (`2841 -> 2841`)
+- Switched the minimal extern global-array load and char/int pointer-difference
+  recognizers in `src/backend/lowering/lir_to_bir.cpp` off raw
+  cast/GEP/binop/cmp/load/ret integer text checks and onto semantic
+  `LirTypeRef` width inspection plus structured function return metadata, while
+  keeping bounded text fallback for untyped cases
+- Added focused backend regressions in
+  `tests/backend/backend_bir_lowering_tests.cpp` that keep the extern
+  global-array load and both pointer-difference slices lowering when the
+  instruction-local cast/GEP/binop/cmp text and `ret` text are intentionally
+  stale but the typed metadata still carries the correct `i8`/`i32`/`i64`
+  semantics
+- Re-ran `backend_bir_tests`, `backend_shared_util_tests`, and the full suite,
+  refreshed `test_fail_after.log`, and passed the regression guard with no new
+  failures and no pass-count drop (`2841 -> 2841`)
 - Switched the minimal scalar global-load, extern scalar global-load, and
   scalar global store-reload recognizers in
   `src/backend/lowering/lir_to_bir.cpp` off raw global/load/store/ret `"i32"`
@@ -234,12 +247,12 @@ Source Plan: plan.md
   `src/backend/lowering/lir_to_bir.cpp` and audit the remaining
   instruction-local raw integer text checks that still bypass semantic
   `LirTypeRef` inspection outside the widened `i8` add/compare/select seams;
-  the generic branch-select/phi-select and countdown-loop stale-text gates are
-  now covered, and the minimal scalar global-load/store stale-text gates are
-  covered too, so the next audit should target whichever remaining
-  special-case lowering path, likely the extern global-array or pointer-diff
-  recognizers, still branches primarily on raw integer text instead of typed
-  instruction, global, or function metadata
+  the generic branch-select/phi-select, countdown-loop, scalar global
+  load/store, extern global-array load, and pointer-diff stale-text gates are
+  now covered, so the next audit should target the remaining special-case
+  lowering or declared-extern/direct-call path that still branches primarily on
+  raw integer signature or decl text instead of typed instruction, global, or
+  function metadata
 - keep pointer payload support deferred until a concrete pointer-backed BIR
   lowering consumer appears, then add only the narrow typed payload that
   consumer needs
