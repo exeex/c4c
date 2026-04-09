@@ -48,6 +48,19 @@ std::optional<bir::TypeKind> lower_scalar_type_text(std::string_view text) {
   return std::nullopt;
 }
 
+std::optional<bir::TypeKind> lower_function_signature_return_type(std::string_view signature_text) {
+  const auto line = c4c::codegen::lir::trim_lir_arg_text(signature_text);
+  const auto first_space = line.find(' ');
+  const auto at_pos = line.find('@');
+  if (first_space == std::string_view::npos || at_pos == std::string_view::npos ||
+      first_space >= at_pos) {
+    return std::nullopt;
+  }
+
+  return lower_scalar_type_text(
+      c4c::codegen::lir::trim_lir_arg_text(line.substr(first_space + 1, at_pos - first_space - 1)));
+}
+
 bool matches_minimal_i32_function_signature(
     const c4c::codegen::lir::LirFunction& function,
     std::initializer_list<std::string_view> signature_param_types) {
@@ -129,6 +142,23 @@ bool lir_function_returns_integer_width(const c4c::codegen::lir::LirFunction& fu
                                         unsigned bit_width) {
   const auto lowered_type = lower_minimal_scalar_type(function.return_type);
   return lowered_type.has_value() && scalar_type_bit_width(*lowered_type) == bit_width;
+}
+
+std::optional<bir::TypeKind> lower_function_return_type(
+    const c4c::codegen::lir::LirFunction& function,
+    const c4c::codegen::lir::LirRet& ret) {
+  if (const auto lowered_type = lower_minimal_scalar_type(function.return_type);
+      lowered_type.has_value()) {
+    return lowered_type;
+  }
+  if (const auto lowered_type = lower_function_signature_return_type(function.signature_text);
+      lowered_type.has_value()) {
+    return lowered_type;
+  }
+  if (const auto lowered_type = lower_scalar_type(ret.type_str); lowered_type.has_value()) {
+    return lowered_type;
+  }
+  return std::nullopt;
 }
 
 std::optional<std::int64_t> parse_immediate(std::string_view text) {
@@ -4414,7 +4444,7 @@ std::optional<bir::Module> try_lower_to_bir(const c4c::codegen::lir::LirModule& 
   if (ret == nullptr || !ret->value_str.has_value()) {
     return std::nullopt;
   }
-  const auto return_type = lower_scalar_type(ret->type_str);
+  const auto return_type = lower_function_return_type(lir_function, *ret);
   if (!return_type.has_value()) {
     return std::nullopt;
   }

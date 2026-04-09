@@ -11,8 +11,9 @@ Source Plan: plan.md
   `src/backend/lowering/lir_to_bir.cpp` and audit the remaining
   instruction-local raw integer text checks that still bypass semantic
   `LirTypeRef` inspection outside the newly-converted widened `i8`
-  add/compare/select seams, with the immediate target narrowed to stale
-  widened-`i8` return-text gates in the add/compare/select helpers
+  add/compare/select seams, with the immediate target narrowed to the next
+  non-widened generic scalar lowering discriminator that still trusts raw
+  integer text over typed function or instruction metadata
 
 ## Completed
 
@@ -175,6 +176,19 @@ Source Plan: plan.md
   `i8` stale-return-text slice before the full-suite check
 - Re-ran the full suite into `test_fail_after.log` and passed the regression
   guard with no new failures and no pass-count drop (`2841 -> 2841`)
+- Switched the generic single-block fallback in
+  `src/backend/lowering/lir_to_bir.cpp` to derive the lowered function return
+  type from structured `LirFunction.return_type` metadata first, then bounded
+  signature text fallback, before trusting raw `LirRet.type_str`
+- Added focused backend regressions in
+  `tests/backend/backend_bir_lowering_tests.cpp` that keep the generic
+  straight-line add, compare-return, branch-return select, and phi-select BIR
+  lowering paths working when instruction-local return/type text is stale but
+  the enclosing function or typed `LirTypeRef` metadata still carries the
+  correct `i32` semantics
+- Re-ran `backend_bir_tests`, `backend_shared_util_tests`, and the full suite
+  and passed the regression guard with no new failures and no pass-count drop
+  (`2841 -> 2841`)
 
 ## Next
 
@@ -182,9 +196,10 @@ Source Plan: plan.md
   `src/backend/lowering/lir_to_bir.cpp` and audit the remaining
   instruction-local raw integer text checks that still bypass semantic
   `LirTypeRef` inspection outside the widened `i8` add/compare/select seams;
-  the stale widened-`i8` return-text gate is now covered, so the next audit
-  should target whichever raw integer text discriminator still remains outside
-  these helpers
+  the generic single-block stale-return-text gate is now covered, so the next
+  audit should target whichever remaining special-case lowering path still
+  branches primarily on raw integer text instead of typed instruction or
+  function metadata
 - keep pointer payload support deferred until a concrete pointer-backed BIR
   lowering consumer appears, then add only the narrow typed payload that
   consumer needs
@@ -206,8 +221,12 @@ Source Plan: plan.md
   text mentions `plan_todo.md`.
 - Immediate validating targets:
   `test_lir_verify_rejects_typed_integer_text_mismatch` and
+  `test_bir_lowering_accepts_typed_tiny_return_add_lir_slice_with_stale_text`
+  `test_bir_lowering_accepts_typed_tiny_return_ne_lir_slice_with_stale_text`
   `test_bir_lowering_accepts_typed_i8_return_add_lir_slice_with_stale_text`
   `test_bir_lowering_accepts_typed_i8_return_ne_lir_slice_with_stale_text`
+  `test_bir_lowering_accepts_typed_single_param_select_branch_slice_with_stale_text`
+  `test_bir_lowering_accepts_typed_single_param_select_phi_slice_with_stale_text`
   `test_bir_lowering_accepts_typed_two_param_u8_select_ne_branch_slice_with_stale_text`
   and
   `test_bir_lowering_accepts_typed_two_param_u8_select_ne_phi_slice_with_stale_text`
