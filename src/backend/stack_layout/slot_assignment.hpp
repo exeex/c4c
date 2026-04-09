@@ -34,17 +34,8 @@ StackLayoutPlanBundle build_stack_layout_plan_bundle(
     const RegAllocIntegrationResult& regalloc,
     const std::vector<PhysReg>& callee_saved_regs);
 
-StackLayoutPlanBundle build_stack_layout_plan_bundle(
-    const c4c::codegen::lir::LirFunction& function,
-    const RegAllocIntegrationResult& regalloc,
-    const std::vector<PhysReg>& callee_saved_regs);
-
 std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(
     const StackLayoutInput& input,
-    const StackLayoutAnalysis& analysis);
-
-std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(
-    const c4c::codegen::lir::LirFunction& function,
     const StackLayoutAnalysis& analysis);
 
 void apply_entry_alloca_slot_plan(
@@ -57,10 +48,6 @@ std::vector<c4c::codegen::lir::LirInst> prune_dead_entry_alloca_insts(
 
 std::vector<ParamAllocaSlotPlan> plan_param_alloca_slots(
     const StackLayoutInput& input,
-    const StackLayoutAnalysis& analysis);
-
-std::vector<ParamAllocaSlotPlan> plan_param_alloca_slots(
-    const c4c::codegen::lir::LirFunction& function,
     const StackLayoutAnalysis& analysis);
 
 std::vector<c4c::codegen::lir::LirInst> prune_dead_param_alloca_insts(

@@ -553,12 +553,4 @@ StackLayoutAnalysis analyze_stack_layout(
   return analysis;
 }
 
-StackLayoutAnalysis analyze_stack_layout(
-    const c4c::codegen::lir::LirFunction& function,
-    const RegAllocIntegrationResult& regalloc,
-    const std::vector<PhysReg>& callee_saved_regs) {
-  return analyze_stack_layout(lower_lir_to_stack_layout_input(function), regalloc,
-                              callee_saved_regs);
-}
-
 }  // namespace c4c::backend::stack_layout

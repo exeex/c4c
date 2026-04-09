@@ -512,6 +512,29 @@ c4c::codegen::lir::LirTypeRef make_test_stale_text_i32_lir_type() {
   return c4c::codegen::lir::LirTypeRef("i8", c4c::codegen::lir::LirTypeKind::Integer, 32);
 }
 
+c4c::backend::stack_layout::StackLayoutAnalysis analyze_stack_layout_from_function(
+    const c4c::codegen::lir::LirFunction& function,
+    const c4c::backend::RegAllocIntegrationResult& regalloc,
+    const std::vector<c4c::backend::PhysReg>& callee_saved_regs) {
+  return c4c::backend::stack_layout::analyze_stack_layout(
+      c4c::backend::stack_layout::lower_lir_to_stack_layout_input(function), regalloc,
+      callee_saved_regs);
+}
+
+std::vector<c4c::backend::stack_layout::EntryAllocaSlotPlan> plan_entry_alloca_slots_from_function(
+    const c4c::codegen::lir::LirFunction& function,
+    const c4c::backend::stack_layout::StackLayoutAnalysis& analysis) {
+  return c4c::backend::stack_layout::plan_entry_alloca_slots(
+      c4c::backend::stack_layout::lower_lir_to_stack_layout_input(function), analysis);
+}
+
+std::vector<c4c::backend::stack_layout::ParamAllocaSlotPlan> plan_param_alloca_slots_from_function(
+    const c4c::codegen::lir::LirFunction& function,
+    const c4c::backend::stack_layout::StackLayoutAnalysis& analysis) {
+  return c4c::backend::stack_layout::plan_param_alloca_slots(
+      c4c::backend::stack_layout::lower_lir_to_stack_layout_input(function), analysis);
+}
+
 }  // namespace
 
 void test_backend_shared_call_decode_accepts_typed_i32_single_add_imm_helper() {
@@ -1081,8 +1104,7 @@ void test_backend_shared_stack_layout_analysis_tracks_phi_use_blocks() {
   const auto module = make_interval_phi_join_module();
   const auto& function = module.functions.front();
   const c4c::backend::RegAllocIntegrationResult regalloc;
-  const auto analysis =
-      c4c::backend::stack_layout::analyze_stack_layout(function, regalloc, {});
+  const auto analysis = analyze_stack_layout_from_function(function, regalloc, {});
 
   const auto* then_value_uses = analysis.find_use_blocks("%t1");
   const auto* else_value_uses = analysis.find_use_blocks("%t2");
@@ -1216,8 +1238,8 @@ void test_backend_shared_stack_layout_analysis_detects_dead_param_allocas() {
   config.caller_saved_regs = {{13}};
   const auto regalloc =
       c4c::backend::run_regalloc_and_merge_clobbers(function, config, {});
-  const auto analysis = c4c::backend::stack_layout::analyze_stack_layout(
-      function, regalloc, {{20}, {21}, {22}});
+  const auto analysis =
+      analyze_stack_layout_from_function(function, regalloc, {{20}, {21}, {22}});
 
   expect_true(analysis.uses_value("%p.x"),
               "shared stack-layout analysis should collect body-used SSA values");
@@ -1231,8 +1253,7 @@ void test_backend_shared_stack_layout_analysis_tracks_call_arg_values() {
   const auto module = make_escaped_local_alloca_candidate_module();
   const auto& function = module.functions.back();
   const c4c::backend::RegAllocIntegrationResult regalloc;
-  const auto analysis =
-      c4c::backend::stack_layout::analyze_stack_layout(function, regalloc, {});
+  const auto analysis = analyze_stack_layout_from_function(function, regalloc, {});
 
   expect_true(analysis.uses_value("%lv.buf"),
               "shared stack-layout analysis should treat typed call-argument operands as real uses");
@@ -1244,14 +1265,14 @@ void test_backend_shared_stack_layout_analysis_detects_entry_alloca_overwrite_be
   const auto overwrite_first_module = make_overwrite_first_scalar_local_alloca_candidate_module();
   const auto& overwrite_first_function = overwrite_first_module.functions.front();
   const auto overwrite_first_analysis =
-      c4c::backend::stack_layout::analyze_stack_layout(overwrite_first_function, regalloc, {});
+      analyze_stack_layout_from_function(overwrite_first_function, regalloc, {});
   expect_true(overwrite_first_analysis.is_entry_alloca_overwritten_before_read("%lv.x"),
               "shared stack-layout analysis should recognize live entry allocas whose first real access overwrites the slot before any read");
 
   const auto read_first_module = make_read_before_store_scalar_local_alloca_candidate_module();
   const auto& read_first_function = read_first_module.functions.front();
   const auto read_first_analysis =
-      c4c::backend::stack_layout::analyze_stack_layout(read_first_function, regalloc, {});
+      analyze_stack_layout_from_function(read_first_function, regalloc, {});
   expect_true(!read_first_analysis.is_entry_alloca_overwritten_before_read("%lv.x"),
               "shared stack-layout analysis should keep entry zero-init stores when the slot is read before it is overwritten");
 }
@@ -1261,8 +1282,7 @@ void test_backend_shared_alloca_coalescing_classifies_non_param_allocas() {
 
   const auto dead_module = make_dead_local_alloca_candidate_module();
   const auto& dead_function = dead_module.functions.front();
-  const auto dead_analysis =
-      c4c::backend::stack_layout::analyze_stack_layout(dead_function, regalloc, {});
+  const auto dead_analysis = analyze_stack_layout_from_function(dead_function, regalloc, {});
   const auto dead_coalescing =
       c4c::backend::stack_layout::compute_coalescable_allocas(dead_function,
                                                               dead_analysis);
@@ -1273,7 +1293,7 @@ void test_backend_shared_alloca_coalescing_classifies_non_param_allocas() {
   const auto single_block_module = make_live_local_alloca_candidate_module();
   const auto& single_block_function = single_block_module.functions.front();
   const auto single_block_analysis =
-      c4c::backend::stack_layout::analyze_stack_layout(single_block_function, regalloc, {});
+      analyze_stack_layout_from_function(single_block_function, regalloc, {});
   const auto single_block_coalescing =
       c4c::backend::stack_layout::compute_coalescable_allocas(single_block_function,
                                                               single_block_analysis);
@@ -1284,7 +1304,7 @@ void test_backend_shared_alloca_coalescing_classifies_non_param_allocas() {
   const auto escaped_module = make_escaped_local_alloca_candidate_module();
   const auto& escaped_function = escaped_module.functions.back();
   const auto escaped_analysis =
-      c4c::backend::stack_layout::analyze_stack_layout(escaped_function, regalloc, {});
+      analyze_stack_layout_from_function(escaped_function, regalloc, {});
   const auto escaped_coalescing =
       c4c::backend::stack_layout::compute_coalescable_allocas(escaped_function,
                                                               escaped_analysis);
@@ -1316,10 +1336,9 @@ void test_backend_shared_slot_assignment_plans_param_alloca_slots() {
   const auto& dead_function = dead_module.functions.back();
   const auto dead_regalloc =
       c4c::backend::run_regalloc_and_merge_clobbers(dead_function, config, {});
-  const auto dead_analysis = c4c::backend::stack_layout::analyze_stack_layout(
-      dead_function, dead_regalloc, {{20}, {21}, {22}});
-  const auto dead_plans =
-      c4c::backend::stack_layout::plan_param_alloca_slots(dead_function, dead_analysis);
+  const auto dead_analysis =
+      analyze_stack_layout_from_function(dead_function, dead_regalloc, {{20}, {21}, {22}});
+  const auto dead_plans = plan_param_alloca_slots_from_function(dead_function, dead_analysis);
 
   expect_true(dead_plans.size() == 1 && dead_plans.front().alloca_name == "%lv.param.x" &&
                   dead_plans.front().param_name == "%p.x" &&
@@ -1330,10 +1349,9 @@ void test_backend_shared_slot_assignment_plans_param_alloca_slots() {
   const auto& live_function = live_module.functions.front();
   const auto live_regalloc =
       c4c::backend::run_regalloc_and_merge_clobbers(live_function, config, {});
-  const auto live_analysis = c4c::backend::stack_layout::analyze_stack_layout(
-      live_function, live_regalloc, {{20}, {21}, {22}});
-  const auto live_plans =
-      c4c::backend::stack_layout::plan_param_alloca_slots(live_function, live_analysis);
+  const auto live_analysis =
+      analyze_stack_layout_from_function(live_function, live_regalloc, {{20}, {21}, {22}});
+  const auto live_plans = plan_param_alloca_slots_from_function(live_function, live_analysis);
 
   expect_true(live_plans.size() == 1 && live_plans.front().alloca_name == "%lv.param.x" &&
                   live_plans.front().param_name == "%p.x" &&
@@ -1350,10 +1368,9 @@ void test_backend_shared_slot_assignment_prunes_dead_param_alloca_insts() {
   const auto& dead_function = dead_module.functions.back();
   const auto dead_regalloc =
       c4c::backend::run_regalloc_and_merge_clobbers(dead_function, config, {});
-  const auto dead_analysis = c4c::backend::stack_layout::analyze_stack_layout(
-      dead_function, dead_regalloc, {{20}, {21}, {22}});
-  const auto dead_plans =
-      c4c::backend::stack_layout::plan_param_alloca_slots(dead_function, dead_analysis);
+  const auto dead_analysis =
+      analyze_stack_layout_from_function(dead_function, dead_regalloc, {{20}, {21}, {22}});
+  const auto dead_plans = plan_param_alloca_slots_from_function(dead_function, dead_analysis);
   const auto dead_pruned =
       c4c::backend::stack_layout::prune_dead_param_alloca_insts(dead_function, dead_plans);
 
@@ -1364,10 +1381,9 @@ void test_backend_shared_slot_assignment_prunes_dead_param_alloca_insts() {
   const auto& live_function = live_module.functions.front();
   const auto live_regalloc =
       c4c::backend::run_regalloc_and_merge_clobbers(live_function, config, {});
-  const auto live_analysis = c4c::backend::stack_layout::analyze_stack_layout(
-      live_function, live_regalloc, {{20}, {21}, {22}});
-  const auto live_plans =
-      c4c::backend::stack_layout::plan_param_alloca_slots(live_function, live_analysis);
+  const auto live_analysis =
+      analyze_stack_layout_from_function(live_function, live_regalloc, {{20}, {21}, {22}});
+  const auto live_plans = plan_param_alloca_slots_from_function(live_function, live_analysis);
   const auto live_pruned =
       c4c::backend::stack_layout::prune_dead_param_alloca_insts(live_function, live_plans);
 
@@ -1380,10 +1396,8 @@ void test_backend_shared_slot_assignment_plans_entry_alloca_slots() {
 
   const auto dead_module = make_dead_local_alloca_candidate_module();
   const auto& dead_function = dead_module.functions.front();
-  const auto dead_analysis =
-      c4c::backend::stack_layout::analyze_stack_layout(dead_function, regalloc, {});
-  const auto dead_plans =
-      c4c::backend::stack_layout::plan_entry_alloca_slots(dead_function, dead_analysis);
+  const auto dead_analysis = analyze_stack_layout_from_function(dead_function, regalloc, {});
+  const auto dead_plans = plan_entry_alloca_slots_from_function(dead_function, dead_analysis);
 
   expect_true(dead_plans.size() == 1 && dead_plans.front().alloca_name == "%lv.buf" &&
                   !dead_plans.front().needs_stack_slot &&
@@ -1392,10 +1406,8 @@ void test_backend_shared_slot_assignment_plans_entry_alloca_slots() {
 
   const auto live_module = make_live_local_alloca_candidate_module();
   const auto& live_function = live_module.functions.front();
-  const auto live_analysis =
-      c4c::backend::stack_layout::analyze_stack_layout(live_function, regalloc, {});
-  const auto live_plans =
-      c4c::backend::stack_layout::plan_entry_alloca_slots(live_function, live_analysis);
+  const auto live_analysis = analyze_stack_layout_from_function(live_function, regalloc, {});
+  const auto live_plans = plan_entry_alloca_slots_from_function(live_function, live_analysis);
 
   expect_true(live_plans.size() == 1 && live_plans.front().alloca_name == "%lv.buf" &&
                   live_plans.front().needs_stack_slot &&
@@ -1407,10 +1419,9 @@ void test_backend_shared_slot_assignment_plans_entry_alloca_slots() {
   const auto disjoint_module = make_disjoint_block_local_alloca_candidate_module();
   const auto& disjoint_function = disjoint_module.functions.front();
   const auto disjoint_analysis =
-      c4c::backend::stack_layout::analyze_stack_layout(disjoint_function, regalloc, {});
+      analyze_stack_layout_from_function(disjoint_function, regalloc, {});
   const auto disjoint_plans =
-      c4c::backend::stack_layout::plan_entry_alloca_slots(disjoint_function,
-                                                          disjoint_analysis);
+      plan_entry_alloca_slots_from_function(disjoint_function, disjoint_analysis);
 
   expect_true(disjoint_plans.size() == 2 &&
                   disjoint_plans[0].alloca_name == "%lv.then" &&
@@ -1424,10 +1435,9 @@ void test_backend_shared_slot_assignment_plans_entry_alloca_slots() {
   const auto same_block_module = make_same_block_local_alloca_candidate_module();
   const auto& same_block_function = same_block_module.functions.front();
   const auto same_block_analysis =
-      c4c::backend::stack_layout::analyze_stack_layout(same_block_function, regalloc, {});
+      analyze_stack_layout_from_function(same_block_function, regalloc, {});
   const auto same_block_plans =
-      c4c::backend::stack_layout::plan_entry_alloca_slots(same_block_function,
-                                                          same_block_analysis);
+      plan_entry_alloca_slots_from_function(same_block_function, same_block_analysis);
 
   expect_true(same_block_plans.size() == 2 &&
                   same_block_plans[0].coalesced_block == 0 &&
@@ -1439,11 +1449,10 @@ void test_backend_shared_slot_assignment_plans_entry_alloca_slots() {
 
   const auto mixed_lifetime_module = make_mixed_lifetime_local_alloca_candidate_module();
   const auto& mixed_lifetime_function = mixed_lifetime_module.functions.front();
-  const auto mixed_lifetime_analysis = c4c::backend::stack_layout::analyze_stack_layout(
-      mixed_lifetime_function, regalloc, {});
+  const auto mixed_lifetime_analysis =
+      analyze_stack_layout_from_function(mixed_lifetime_function, regalloc, {});
   const auto mixed_lifetime_plans =
-      c4c::backend::stack_layout::plan_entry_alloca_slots(mixed_lifetime_function,
-                                                          mixed_lifetime_analysis);
+      plan_entry_alloca_slots_from_function(mixed_lifetime_function, mixed_lifetime_analysis);
 
   expect_true(mixed_lifetime_plans.size() == 2 &&
                   mixed_lifetime_plans[0].alloca_name == "%lv.a" &&
@@ -1459,10 +1468,9 @@ void test_backend_shared_slot_assignment_plans_entry_alloca_slots() {
   const auto read_first_module = make_read_before_store_local_alloca_candidate_module();
   const auto& read_first_function = read_first_module.functions.front();
   const auto read_first_analysis =
-      c4c::backend::stack_layout::analyze_stack_layout(read_first_function, regalloc, {});
+      analyze_stack_layout_from_function(read_first_function, regalloc, {});
   const auto read_first_plans =
-      c4c::backend::stack_layout::plan_entry_alloca_slots(read_first_function,
-                                                          read_first_analysis);
+      plan_entry_alloca_slots_from_function(read_first_function, read_first_analysis);
 
   expect_true(read_first_plans.size() == 1 &&
                   read_first_plans.front().alloca_name == "%lv.buf" &&
@@ -1473,10 +1481,9 @@ void test_backend_shared_slot_assignment_plans_entry_alloca_slots() {
   const auto scalar_overwrite_module = make_overwrite_first_scalar_local_alloca_candidate_module();
   const auto& scalar_overwrite_function = scalar_overwrite_module.functions.front();
   const auto scalar_overwrite_analysis =
-      c4c::backend::stack_layout::analyze_stack_layout(scalar_overwrite_function, regalloc, {});
-  const auto scalar_overwrite_plans =
-      c4c::backend::stack_layout::plan_entry_alloca_slots(scalar_overwrite_function,
-                                                          scalar_overwrite_analysis);
+      analyze_stack_layout_from_function(scalar_overwrite_function, regalloc, {});
+  const auto scalar_overwrite_plans = plan_entry_alloca_slots_from_function(
+      scalar_overwrite_function, scalar_overwrite_analysis);
 
   expect_true(scalar_overwrite_plans.size() == 1 &&
                   scalar_overwrite_plans.front().alloca_name == "%lv.x" &&
@@ -1487,11 +1494,11 @@ void test_backend_shared_slot_assignment_plans_entry_alloca_slots() {
   const auto scalar_read_first_module =
       make_read_before_store_scalar_local_alloca_candidate_module();
   const auto& scalar_read_first_function = scalar_read_first_module.functions.front();
-  const auto scalar_read_first_analysis = c4c::backend::stack_layout::analyze_stack_layout(
-      scalar_read_first_function, regalloc, {});
+  const auto scalar_read_first_analysis =
+      analyze_stack_layout_from_function(scalar_read_first_function, regalloc, {});
   const auto scalar_read_first_plans =
-      c4c::backend::stack_layout::plan_entry_alloca_slots(scalar_read_first_function,
-                                                          scalar_read_first_analysis);
+      plan_entry_alloca_slots_from_function(scalar_read_first_function,
+                                            scalar_read_first_analysis);
 
   expect_true(scalar_read_first_plans.size() == 1 &&
                   scalar_read_first_plans.front().alloca_name == "%lv.x" &&
@@ -1502,10 +1509,9 @@ void test_backend_shared_slot_assignment_plans_entry_alloca_slots() {
   const auto escaped_module = make_escaped_local_alloca_candidate_module();
   const auto& escaped_function = escaped_module.functions.back();
   const auto escaped_analysis =
-      c4c::backend::stack_layout::analyze_stack_layout(escaped_function, regalloc, {});
+      analyze_stack_layout_from_function(escaped_function, regalloc, {});
   const auto escaped_plans =
-      c4c::backend::stack_layout::plan_entry_alloca_slots(escaped_function,
-                                                          escaped_analysis);
+      plan_entry_alloca_slots_from_function(escaped_function, escaped_analysis);
 
   expect_true(escaped_plans.size() == 1 &&
                   escaped_plans.front().alloca_name == "%lv.buf" &&
@@ -1605,10 +1611,8 @@ void test_backend_shared_slot_assignment_prunes_dead_entry_alloca_insts() {
 
   const auto dead_module = make_dead_local_alloca_candidate_module();
   const auto& dead_function = dead_module.functions.front();
-  const auto dead_analysis =
-      c4c::backend::stack_layout::analyze_stack_layout(dead_function, regalloc, {});
-  const auto dead_plans =
-      c4c::backend::stack_layout::plan_entry_alloca_slots(dead_function, dead_analysis);
+  const auto dead_analysis = analyze_stack_layout_from_function(dead_function, regalloc, {});
+  const auto dead_plans = plan_entry_alloca_slots_from_function(dead_function, dead_analysis);
   const auto dead_pruned =
       c4c::backend::stack_layout::prune_dead_entry_alloca_insts(dead_function, dead_plans);
 
@@ -1617,10 +1621,8 @@ void test_backend_shared_slot_assignment_prunes_dead_entry_alloca_insts() {
 
   const auto live_module = make_live_local_alloca_candidate_module();
   const auto& live_function = live_module.functions.front();
-  const auto live_analysis =
-      c4c::backend::stack_layout::analyze_stack_layout(live_function, regalloc, {});
-  const auto live_plans =
-      c4c::backend::stack_layout::plan_entry_alloca_slots(live_function, live_analysis);
+  const auto live_analysis = analyze_stack_layout_from_function(live_function, regalloc, {});
+  const auto live_plans = plan_entry_alloca_slots_from_function(live_function, live_analysis);
   const auto live_pruned =
       c4c::backend::stack_layout::prune_dead_entry_alloca_insts(live_function, live_plans);
 
@@ -1630,10 +1632,9 @@ void test_backend_shared_slot_assignment_prunes_dead_entry_alloca_insts() {
   const auto read_first_module = make_read_before_store_local_alloca_candidate_module();
   const auto& read_first_function = read_first_module.functions.front();
   const auto read_first_analysis =
-      c4c::backend::stack_layout::analyze_stack_layout(read_first_function, regalloc, {});
+      analyze_stack_layout_from_function(read_first_function, regalloc, {});
   const auto read_first_plans =
-      c4c::backend::stack_layout::plan_entry_alloca_slots(read_first_function,
-                                                          read_first_analysis);
+      plan_entry_alloca_slots_from_function(read_first_function, read_first_analysis);
   const auto read_first_pruned = c4c::backend::stack_layout::prune_dead_entry_alloca_insts(
       read_first_function, read_first_plans);
 
@@ -1643,10 +1644,9 @@ void test_backend_shared_slot_assignment_prunes_dead_entry_alloca_insts() {
   const auto scalar_overwrite_module = make_overwrite_first_scalar_local_alloca_candidate_module();
   const auto& scalar_overwrite_function = scalar_overwrite_module.functions.front();
   const auto scalar_overwrite_analysis =
-      c4c::backend::stack_layout::analyze_stack_layout(scalar_overwrite_function, regalloc, {});
-  const auto scalar_overwrite_plans =
-      c4c::backend::stack_layout::plan_entry_alloca_slots(scalar_overwrite_function,
-                                                          scalar_overwrite_analysis);
+      analyze_stack_layout_from_function(scalar_overwrite_function, regalloc, {});
+  const auto scalar_overwrite_plans = plan_entry_alloca_slots_from_function(
+      scalar_overwrite_function, scalar_overwrite_analysis);
   const auto scalar_overwrite_pruned =
       c4c::backend::stack_layout::prune_dead_entry_alloca_insts(scalar_overwrite_function,
                                                                 scalar_overwrite_plans);
@@ -1664,10 +1664,9 @@ void test_backend_shared_slot_assignment_applies_coalesced_entry_slots() {
   const auto disjoint_module = make_disjoint_block_local_alloca_candidate_module();
   auto disjoint_function = disjoint_module.functions.front();
   const auto disjoint_analysis =
-      c4c::backend::stack_layout::analyze_stack_layout(disjoint_function, regalloc, {});
+      analyze_stack_layout_from_function(disjoint_function, regalloc, {});
   const auto disjoint_plans =
-      c4c::backend::stack_layout::plan_entry_alloca_slots(disjoint_function,
-                                                          disjoint_analysis);
+      plan_entry_alloca_slots_from_function(disjoint_function, disjoint_analysis);
   c4c::backend::stack_layout::apply_entry_alloca_slot_plan(disjoint_function, disjoint_plans);
 
   expect_true(disjoint_function.alloca_insts.size() == 1,
@@ -1687,10 +1686,9 @@ void test_backend_shared_slot_assignment_applies_coalesced_entry_slots() {
   const auto same_block_module = make_same_block_local_alloca_candidate_module();
   auto same_block_function = same_block_module.functions.front();
   const auto same_block_analysis =
-      c4c::backend::stack_layout::analyze_stack_layout(same_block_function, regalloc, {});
+      analyze_stack_layout_from_function(same_block_function, regalloc, {});
   const auto same_block_plans =
-      c4c::backend::stack_layout::plan_entry_alloca_slots(same_block_function,
-                                                          same_block_analysis);
+      plan_entry_alloca_slots_from_function(same_block_function, same_block_analysis);
   c4c::backend::stack_layout::apply_entry_alloca_slot_plan(same_block_function, same_block_plans);
 
   expect_true(same_block_function.alloca_insts.size() == 2,
@@ -1698,11 +1696,10 @@ void test_backend_shared_slot_assignment_applies_coalesced_entry_slots() {
 
   const auto mixed_lifetime_module = make_mixed_lifetime_local_alloca_candidate_module();
   auto mixed_lifetime_function = mixed_lifetime_module.functions.front();
-  const auto mixed_lifetime_analysis = c4c::backend::stack_layout::analyze_stack_layout(
-      mixed_lifetime_function, regalloc, {});
+  const auto mixed_lifetime_analysis =
+      analyze_stack_layout_from_function(mixed_lifetime_function, regalloc, {});
   const auto mixed_lifetime_plans =
-      c4c::backend::stack_layout::plan_entry_alloca_slots(mixed_lifetime_function,
-                                                          mixed_lifetime_analysis);
+      plan_entry_alloca_slots_from_function(mixed_lifetime_function, mixed_lifetime_analysis);
   c4c::backend::stack_layout::apply_entry_alloca_slot_plan(mixed_lifetime_function,
                                                            mixed_lifetime_plans);
 

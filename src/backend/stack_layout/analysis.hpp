@@ -93,9 +93,4 @@ StackLayoutAnalysis analyze_stack_layout(
     const RegAllocIntegrationResult& regalloc,
     const std::vector<PhysReg>& callee_saved_regs);
 
-StackLayoutAnalysis analyze_stack_layout(
-    const c4c::codegen::lir::LirFunction& function,
-    const RegAllocIntegrationResult& regalloc,
-    const std::vector<PhysReg>& callee_saved_regs);
-
 }  // namespace c4c::backend::stack_layout

@@ -7,18 +7,39 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: move the next shared bounded target-local stack-layout /
-  regalloc setup seam off raw `LirFunction` where production helpers still
-  expose compatibility overloads after target emitters have switched to
-  backend-owned lowered input
-- Next intended slice: audit the remaining shared stack-layout planning
-  compatibility overloads (`build_stack_layout_plan_bundle(...)`,
-  `analyze_stack_layout(...)`, and neighboring helpers) and either retire one
-  more production-facing raw-`LirFunction` entrypoint or record a follow-on
-  idea if the remaining work no longer fits this plan
+- Current slice: audit the last shared stack-layout compatibility helper
+  around alloca coalescing and confirm whether the raw-`LirFunction`
+  `compute_coalescable_allocas(...)` wrapper should be retired next or left as
+  a bounded bridge for still-LIR-mutating utilities
+- Next intended slice: if the remaining coalescing wrapper is only test
+  compatibility, move that shared coverage to explicit lowered input and
+  remove the wrapper; otherwise record why the surviving raw-LIR helper is
+  still required by the Step 6/7 migration boundary
 
 ## Completed
 
+- Completed the next Step 6 bounded shared stack-layout compatibility cleanup
+  slice by retiring the remaining analysis/planning wrappers over raw
+  `LirFunction` now that production emitters already consume lowered
+  `StackLayoutInput`:
+  - removed the raw-`LirFunction`
+    `analyze_stack_layout(...)`,
+    `build_stack_layout_plan_bundle(...)`,
+    `plan_entry_alloca_slots(...)`, and
+    `plan_param_alloca_slots(...)` overloads from
+    `src/backend/stack_layout/analysis.*` and
+    `src/backend/stack_layout/slot_assignment.*`, leaving the backend-owned
+    `StackLayoutInput` entrypoints as the canonical shared analysis/planning
+    surface
+  - updated `tests/backend/backend_shared_util_tests.cpp` so the shared
+    stack-layout utility regressions now lower functions into
+    `StackLayoutInput` explicitly before invoking the shared analysis/planning
+    helpers, while preserving the LIR-mutating prune/apply validation paths
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R backend_shared_util_tests --output-on-failure`,
+    rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with no new failures and no pass-count drop
+    (`2809 -> 2809`, same 32 known failing tests as `test_fail_before.log`)
 - Completed the next Step 6 bounded production regalloc handoff slice by
   retargeting target emitters to consume backend-owned liveness lowering
   instead of the raw-`LirFunction` regalloc wrapper:
