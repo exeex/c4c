@@ -216,6 +216,10 @@ Source Plan: plan.md
   placeholder call ABI metadata as well:
   `arg_abi` and `result_abi` now carry explicit scalar/integer-class defaults
   instead of remaining empty on the minimal direct-call path
+- started making the split direct-call seam target-aware at the calling
+  convention level:
+  minimal direct-call lowering now derives `calling_convention` from the
+  target triple instead of hardwiring `CallingConv::C`
 
 ## Blockers
 

@@ -641,6 +641,7 @@ std::optional<bir::Module> try_lower_minimal_declared_direct_call_module(
   bir::Function lowered_callee;
   lowered_callee.name = *symbol_name;
   lowered_callee.return_type = bir::TypeKind::I32;
+  lowered_callee.calling_convention = default_calling_convention_for_target(module.target_triple);
   lowered_callee.is_declaration = true;
   {
     std::vector<std::string_view> param_types;
@@ -659,6 +660,8 @@ std::optional<bir::Module> try_lower_minimal_declared_direct_call_module(
   bir::Function lowered_main_function;
   lowered_main_function.name = main_function->name;
   lowered_main_function.return_type = bir::TypeKind::I32;
+  lowered_main_function.calling_convention =
+      default_calling_convention_for_target(module.target_triple);
 
   bir::Block lowered_entry_block;
   lowered_entry_block.label = "entry";
@@ -669,6 +672,7 @@ std::optional<bir::Module> try_lower_minimal_declared_direct_call_module(
   }
   lowered_entry_block.insts.push_back(make_direct_call_inst(
       *symbol_name,
+      default_calling_convention_for_target(module.target_triple),
       bir::TypeKind::I32,
       "i32",
       bir::Value::named(bir::TypeKind::I32, call->result.str()),

@@ -191,7 +191,20 @@ std::optional<std::vector<bir::Param>> c4c::backend::lower_call_params_from_type
   return params;
 }
 
+bir::CallingConv c4c::backend::default_calling_convention_for_target(std::string_view target_triple) {
+  if (target_triple.find("windows") != std::string_view::npos ||
+      target_triple.find("mingw") != std::string_view::npos) {
+    return bir::CallingConv::Win64;
+  }
+  if (target_triple.find("x86_64") != std::string_view::npos ||
+      target_triple.find("amd64") != std::string_view::npos) {
+    return bir::CallingConv::SysV;
+  }
+  return bir::CallingConv::C;
+}
+
 bir::CallInst c4c::backend::make_direct_call_inst(std::string callee,
+                                                  bir::CallingConv calling_convention,
                                                   bir::TypeKind return_type,
                                                   std::string return_type_name,
                                                   std::optional<bir::Value> result,
@@ -231,7 +244,7 @@ bir::CallInst c4c::backend::make_direct_call_inst(std::string callee,
   call.args = std::move(args);
   call.result_abi = classify_scalar_result_abi(return_type);
   call.is_indirect = false;
-  call.calling_convention = bir::CallingConv::C;
+  call.calling_convention = calling_convention;
   call.is_variadic = false;
   call.is_noreturn = false;
   return call;
