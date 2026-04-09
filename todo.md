@@ -6,15 +6,16 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 1: audit reference-qualified cast targets
-- Current slice: move from the now-covered casted base lvalue-member access
-  case to the first xvalue-sensitive inherited/base-member-access reduction
-- Current implementation target: `tests/cpp` cast/reference runtime regressions
-  plus the earliest failing parser, sema, HIR, or lowering surface the next
-  casted inherited/base-member-access case exposes
-- Next intended slice: add the narrowest `((Base&&)expr).member` reduction,
-  compare against Clang for xvalue behavior, and stop at the earliest failing
-  stage if it does not already pass
+- Step 2: review typedef, alias, and qualified cast targets
+- Current slice: start the alias-owned reference-cast audit with the narrowest
+  runtime reductions for `using`/`typedef`-spelled `&` and `&&` cast targets
+- Current implementation target: `tests/cpp` alias-owned cast regressions plus
+  the earliest failing parser, sema, HIR, or lowering surface the first
+  typedef/alias-owned reference-cast case exposes
+- Next intended slice: add focused `using AliasL = int&;` and
+  `using AliasR = int&&;` cast reductions, compare against Clang for
+  value-category behavior, and stop at the earliest failing stage if they do
+  not already pass
 
 ## Completed
 
@@ -73,6 +74,19 @@ Source Plan: plan.md
   instead of expanding the active cast-follow-up plan.
 - Full-suite validation stayed monotonic: `test_fail_before.log` 2845/2845
   passed, `test_fail_after.log` 2847/2847 passed, with zero new failures.
+- Added `tests/cpp/internal/postive_case/c_style_cast_base_rvalue_ref_field_access.cpp`
+  to cover `((Base&&)d).value` readback, overload selection, and `int&&`
+  binding through a casted base subobject.
+- Compared the new `((Base&&)d).value` case against Clang and confirmed the
+  intended xvalue behavior: overload resolution picks `int&&`, and the bound
+  reference aliases the original base-subobject storage rather than a
+  temporary.
+- Fixed HIR record-layout computation so structs with non-virtual base
+  subobjects reserve inherited storage and alignment before their own fields,
+  which prevents base-only derived objects from lowering as zero-sized storage
+  during casted base-reference field access.
+- Full-suite validation stayed monotonic: `test_fail_before.log` 2847/2847
+  passed, `test_fail_after.log` 2848/2848 passed, with zero new failures.
 
 ## Notes
 
@@ -97,3 +111,8 @@ Source Plan: plan.md
   plain base-member lookup problem. That issue was spun out into
   `ideas/open/48_inherited_record_layout_and_base_member_access_followup.md`
   so the current plan stays focused on cast-specific behavior.
+- The landed `((Base&&)d).value` regression initially crashed because HIR
+  record layout treated `Derived : Base {}` as an empty record. Folding
+  inherited base-subobject size/alignment into record layout fixed the
+  cast-blocking runtime issue without absorbing the broader plain
+  inherited-member lookup follow-up into this plan.
