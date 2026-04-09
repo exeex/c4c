@@ -1,7 +1,40 @@
 # Rvalue Reference Completeness Plan
 
-Status: Open
-Last Updated: 2026-04-03
+Status: Closed
+Last Updated: 2026-04-09
+
+## Completion Summary
+
+Completed through the active `plan.md` / `todo.md` runbook and ready for
+archive.
+
+Delivered slices:
+
+- tightened forwarding-reference deduction so plain `const T&&` no longer
+  accepts lvalue arguments through incorrect template deduction
+- fixed local `auto&&` lvalue-initializer deduction and lowered storage so
+  lvalue-backed references alias instead of materializing rvalue temporaries
+- locked named-rvalue-reference lvalue behavior across overload resolution,
+  helper returns, and `return` statements unless explicitly cast or forwarded
+- restored reference-aware call-result tracking so helper functions returning
+  `T&` / `T&&` preserve overload selection and reference ABI lowering
+- fixed forwarding-wrapper and ref-qualified member dispatch, including
+  call-expression prvalue deduction and template-specialization identity
+  collisions between `T=Probe&` and `T=Probe`
+
+Validation outcome:
+
+- targeted `&&` regressions were extended for each slice
+- full-suite regression checks remained monotonic, improving from 3155 passing
+  tests at baseline to 3162 passing tests with zero newly failing tests
+
+## Leftover Notes
+
+- any future work should stay bounded to a concrete, newly demonstrated generic
+  `&&` defect
+- adjacent EASTL or libstdc++ findings should become follow-on idea work only
+  if they expose another generic language bug not covered by the completed
+  slices below
 
 ## Goal
 
