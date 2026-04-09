@@ -98,24 +98,26 @@ std::string emit_module(const BackendModuleInput& input,
   }
 
   const auto& lir_module = input.lir_module();
-  auto bir_module = c4c::backend::try_lower_to_bir(lir_module);
+  const auto prepared_lir_module =
+      c4c::backend::prepare_lir_module_for_target(lir_module, options.target);
+  auto bir_module = c4c::backend::try_lower_to_bir(prepared_lir_module);
   if (!bir_module.has_value()) {
     switch (options.target) {
       case Target::X86_64:
       case Target::I686:
-        return c4c::backend::x86::emit_module(lir_module);
+        return c4c::backend::x86::emit_module(prepared_lir_module);
       case Target::Aarch64:
-        return c4c::backend::aarch64::emit_module(lir_module);
+        return c4c::backend::aarch64::emit_module(prepared_lir_module);
       case Target::Riscv64:
-        return c4c::codegen::lir::print_llvm(lir_module);
+        return c4c::codegen::lir::print_llvm(prepared_lir_module);
     }
     throw std::logic_error("unreachable backend target");
   }
   if (options.target == Target::Riscv64) {
-    if (!lir_module.globals.empty() ||
-        !lir_module.string_pool.empty() ||
-        !lir_module.extern_decls.empty()) {
-      return c4c::codegen::lir::print_llvm(lir_module);
+    if (!prepared_lir_module.globals.empty() ||
+        !prepared_lir_module.string_pool.empty() ||
+        !prepared_lir_module.extern_decls.empty()) {
+      return c4c::codegen::lir::print_llvm(prepared_lir_module);
     }
   }
   return render_bir_module(*bir_module, options.target);

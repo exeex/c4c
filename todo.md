@@ -7,18 +7,32 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: retarget the duplicated target-local
-  `rewrite_module_entry_allocas(...)` preparation wiring behind one shared
-  backend helper so the remaining temporary raw-LIR entry-alloca mutation seam
-  lives outside the per-target emitters
-- Next intended slice: audit whether the shared
-  `prepare_lir_module_for_target(...)` helper should also become the default
-  LIR preparation step in `src/backend/backend.cpp` before BIR lowering, or
-  whether the next Step 6/7 cleanup should instead target the next remaining
-  direct-LIR fallback seam after shared backend preparation is centralized
+- Current slice: audit the remaining direct-LIR fallback seam after the shared
+  `prepare_lir_module_for_target(...)` helper became the default shared backend
+  entry preparation step before BIR lowering
+- Next intended slice: identify and retire the next compatibility-only
+  direct-LIR fallback seam that still keeps native emitters aware of raw
+  `LirModule` ownership after shared backend preparation runs
 
 ## Completed
 
+- Completed the next Step 6/7 bounded shared-backend preparation routing slice
+  by making target-specific LIR preparation the default shared backend entry
+  step before BIR lowering:
+  - updated `src/backend/backend.cpp` so
+    `backend::emit_module(...)` now runs
+    `prepare_lir_module_for_target(...)` before attempting shared BIR lowering,
+    carries the prepared module through the direct native fallback path, and
+    keeps the riscv64 LLVM-text fallback keyed off the prepared module state
+  - extended `tests/backend/backend_shared_util_tests.cpp` with focused
+    coverage proving the shared target-preparation seam turns the dead-local
+    entry-alloca fixture from non-lowerable raw LIR into a BIR-lowerable module
+    for both x86 and aarch64 targets
+  - rebuilt `backend_shared_util_tests` and `backend_bir_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$|^backend_bir_tests$' --output-on-failure`,
+    refreshed `test_fail_after.log`, and passed the regression guard with no
+    new failures and no pass-count drop (`2809 -> 2809`, same 32 known failing
+    tests as `test_fail_before.log`)
 - Completed the next Step 6/7 bounded native-emitter preparation ownership
   cleanup slice by moving the duplicated target-local entry-alloca rewrite prep
   behind one shared backend helper:

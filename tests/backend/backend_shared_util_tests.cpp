@@ -12,6 +12,7 @@
 #include "../../src/codegen/lir/lir_printer.hpp"
 #include "../../src/codegen/lir/verify.hpp"
 #include "../../src/backend/lowering/call_decode.hpp"
+#include "../../src/backend/lowering/lir_to_bir.hpp"
 #include "../../src/backend/elf/mod.hpp"
 #include "../../src/backend/linker_common/mod.hpp"
 #include "../../src/backend/aarch64/assembler/mod.hpp"
@@ -1770,6 +1771,29 @@ void test_backend_shared_prepares_lir_module_for_target() {
               "shared backend LIR prep should leave riscv64 modules untouched so the text fallback keeps its current ownership");
 }
 
+void test_backend_shared_target_preparation_enables_bir_lowering() {
+  const auto module = make_dead_local_alloca_candidate_module();
+  const auto x86_prepared = c4c::backend::prepare_lir_module_for_target(
+      module, c4c::backend::Target::X86_64);
+  const auto aarch64_prepared = c4c::backend::prepare_lir_module_for_target(
+      module, c4c::backend::Target::Aarch64);
+
+  expect_true(!c4c::backend::try_lower_to_bir(module).has_value(),
+              "shared backend prep coverage should start from the current raw-LIR entry-alloca seam that still blocks direct BIR lowering");
+
+  const auto x86_lowered = c4c::backend::try_lower_to_bir(x86_prepared);
+  expect_true(x86_lowered.has_value() && x86_lowered->functions.size() == 1 &&
+                  !x86_lowered->functions.front().is_declaration &&
+                  x86_lowered->functions.front().blocks.size() == 1,
+              "shared backend LIR prep should make the dead-local alloca slice lowerable to BIR for x86 once entry allocas are rewritten");
+
+  const auto aarch64_lowered = c4c::backend::try_lower_to_bir(aarch64_prepared);
+  expect_true(aarch64_lowered.has_value() && aarch64_lowered->functions.size() == 1 &&
+                  !aarch64_lowered->functions.front().is_declaration &&
+                  aarch64_lowered->functions.front().blocks.size() == 1,
+              "shared backend LIR prep should make the same dead-local alloca slice lowerable to BIR for aarch64 before native fallback runs");
+}
+
 void test_backend_shared_slot_assignment_prunes_dead_entry_alloca_insts() {
   const c4c::backend::RegAllocIntegrationResult regalloc;
 
@@ -2157,6 +2181,7 @@ int main(int argc, char* argv[]) {
   test_backend_shared_slot_assignment_prepares_rewrite_patch_from_backend_owned_inputs();
   test_backend_shared_slot_assignment_rewrites_module_entry_allocas();
   test_backend_shared_prepares_lir_module_for_target();
+  test_backend_shared_target_preparation_enables_bir_lowering();
   test_backend_shared_slot_assignment_prunes_dead_entry_alloca_insts();
   test_backend_shared_slot_assignment_applies_coalesced_entry_slots();
   // TODO: binary-utils contract test disabled — assembler seam changed
