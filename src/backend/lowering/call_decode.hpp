@@ -341,9 +341,111 @@ inline bool backend_lir_is_minimal_i32_typespec(const c4c::TypeSpec& type) {
   return type.ptr_level == 0 && type.array_rank == 0 && type.base == TB_INT;
 }
 
+inline std::optional<bir::TypeKind> backend_lir_lower_minimal_scalar_type(const c4c::TypeSpec& type) {
+  if (type.ptr_level != 0 || type.array_rank != 0) {
+    return std::nullopt;
+  }
+  if (type.base == TB_CHAR || type.base == TB_SCHAR || type.base == TB_UCHAR) {
+    return bir::TypeKind::I8;
+  }
+  if (type.base == TB_INT) {
+    return bir::TypeKind::I32;
+  }
+  if (type.base == TB_LONG || type.base == TB_ULONG || type.base == TB_LONGLONG ||
+      type.base == TB_ULONGLONG) {
+    return bir::TypeKind::I64;
+  }
+  return std::nullopt;
+}
+
 inline bool backend_lir_type_is_i32(const c4c::codegen::lir::LirTypeRef& type) {
   return type.kind() == c4c::codegen::lir::LirTypeKind::Integer &&
          type.integer_bit_width() == 32;
+}
+
+inline bool backend_lir_function_returns_integer_width(
+    const c4c::codegen::lir::LirFunction& function,
+    unsigned bit_width) {
+  const auto lowered_type = backend_lir_lower_minimal_scalar_type(function.return_type);
+  if (!lowered_type.has_value()) {
+    return false;
+  }
+
+  switch (*lowered_type) {
+    case bir::TypeKind::I8:
+      return bit_width == 8;
+    case bir::TypeKind::I32:
+      return bit_width == 32;
+    case bir::TypeKind::I64:
+      return bit_width == 64;
+    case bir::TypeKind::Void:
+      return bit_width == 0;
+  }
+  return false;
+}
+
+inline bool backend_lir_function_matches_zero_arg_integer_return(
+    const c4c::codegen::lir::LirFunction& function,
+    unsigned bit_width) {
+  if (!function.params.empty()) {
+    return false;
+  }
+  if (backend_lir_function_returns_integer_width(function, bit_width)) {
+    return true;
+  }
+
+  if (bit_width == 32) {
+    return backend_lir_signature_matches(
+        function.signature_text, "define", "i32", function.name, {});
+  }
+  if (bit_width == 8) {
+    return backend_lir_signature_matches(
+        function.signature_text, "define", "i8", function.name, {});
+  }
+  if (bit_width == 64) {
+    return backend_lir_signature_matches(
+        function.signature_text, "define", "i64", function.name, {});
+  }
+  return false;
+}
+
+inline std::optional<bir::TypeKind> backend_lir_lower_function_return_type(
+    const c4c::codegen::lir::LirFunction& function,
+    const c4c::codegen::lir::LirRet& ret) {
+  if (const auto lowered_type = backend_lir_lower_minimal_scalar_type(function.return_type);
+      lowered_type.has_value()) {
+    return lowered_type;
+  }
+
+  const auto line = c4c::codegen::lir::trim_lir_arg_text(function.signature_text);
+  const auto first_space = line.find(' ');
+  const auto at_pos = line.find('@');
+  if (first_space != std::string_view::npos && at_pos != std::string_view::npos &&
+      first_space < at_pos) {
+    const auto signature_type = c4c::codegen::lir::trim_lir_arg_text(
+        line.substr(first_space + 1, at_pos - first_space - 1));
+    if (signature_type == "i8") {
+      return bir::TypeKind::I8;
+    }
+    if (signature_type == "i32") {
+      return bir::TypeKind::I32;
+    }
+    if (signature_type == "i64") {
+      return bir::TypeKind::I64;
+    }
+  }
+
+  const auto trimmed_ret_type = c4c::codegen::lir::trim_lir_arg_text(ret.type_str);
+  if (trimmed_ret_type == "i32") {
+    return bir::TypeKind::I32;
+  }
+  if (trimmed_ret_type == "i8") {
+    return bir::TypeKind::I8;
+  }
+  if (trimmed_ret_type == "i64") {
+    return bir::TypeKind::I64;
+  }
+  return std::nullopt;
 }
 
 inline std::optional<std::string_view> parse_backend_single_minimal_i32_param_name(
@@ -562,8 +664,7 @@ parse_backend_single_helper_zero_arg_caller_lir_module(
   const LirFunction* helper = nullptr;
   for (const auto& function : module.functions) {
     if (!function.is_declaration &&
-        backend_lir_signature_matches(
-            function.signature_text, "define", "i32", function.name, {})) {
+        backend_lir_function_matches_zero_arg_integer_return(function, 32)) {
       if (main_fn != nullptr) {
         return std::nullopt;
       }
@@ -586,7 +687,8 @@ parse_backend_single_helper_zero_arg_caller_lir_module(
   const auto& main_block = main_fn->blocks.front();
   const auto* main_ret = std::get_if<LirRet>(&main_block.terminator);
   if (main_block.label != "entry" || main_block.insts.size() != expected_main_inst_count ||
-      main_ret == nullptr || !main_ret->value_str.has_value() || main_ret->type_str != "i32") {
+      main_ret == nullptr || !main_ret->value_str.has_value() ||
+      backend_lir_lower_function_return_type(*main_fn, *main_ret) != bir::TypeKind::I32) {
     return std::nullopt;
   }
 
@@ -604,7 +706,8 @@ inline std::optional<std::int64_t> parse_backend_lir_zero_arg_return_imm_functio
   const std::string_view function_name =
       expected_name.has_value() ? *expected_name : std::string_view(function.name);
   if (function.is_declaration ||
-      !backend_lir_signature_matches(function.signature_text, "define", "i32", function_name, {}) ||
+      !backend_lir_function_matches_zero_arg_integer_return(function, 32) ||
+      function.name != function_name ||
       function.entry.value != 0 || function.blocks.size() != 1 || !function.alloca_insts.empty() ||
       !function.stack_objects.empty()) {
     return std::nullopt;
@@ -613,7 +716,8 @@ inline std::optional<std::int64_t> parse_backend_lir_zero_arg_return_imm_functio
   const auto& block = function.blocks.front();
   const auto* ret = std::get_if<c4c::codegen::lir::LirRet>(&block.terminator);
   if (block.label != "entry" || !block.insts.empty() || ret == nullptr ||
-      !ret->value_str.has_value() || ret->type_str != "i32") {
+      !ret->value_str.has_value() ||
+      backend_lir_lower_function_return_type(function, *ret) != bir::TypeKind::I32) {
     return std::nullopt;
   }
 

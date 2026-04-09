@@ -544,6 +544,28 @@ void make_test_stale_typed_i32_main_return(c4c::codegen::lir::LirFunction& funct
   ret.type_str = make_test_stale_text_i32_lir_type();
 }
 
+void make_test_stale_typed_i32_helper_return(c4c::codegen::lir::LirFunction& function) {
+  using namespace c4c::codegen::lir;
+
+  function.return_type.base = c4c::TB_INT;
+  function.signature_text = "define i8 @" + function.name + "()\n";
+
+  auto& ret = std::get<LirRet>(function.blocks.front().terminator);
+  ret.type_str = make_test_stale_text_i32_lir_type();
+}
+
+c4c::codegen::lir::LirModule make_bir_minimal_direct_call_lir_module_with_typed_helper_return() {
+  auto module = make_bir_minimal_direct_call_lir_module();
+  make_test_stale_typed_i32_helper_return(module.functions[1]);
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_bir_minimal_direct_call_lir_module_with_typed_main_return() {
+  auto module = make_bir_minimal_direct_call_lir_module();
+  make_test_stale_typed_i32_main_return(module.functions[0]);
+  return module;
+}
+
 c4c::codegen::lir::LirModule
 make_bir_minimal_two_arg_direct_call_lir_module_with_typed_helper_params() {
   using namespace c4c::codegen::lir;
@@ -977,6 +999,36 @@ void test_bir_lowering_accepts_minimal_direct_call_lir_module() {
                     parsed->main_function != nullptr && parsed->main_function->name == "main" &&
                     parsed->return_imm == 42,
                 "the lowered BIR module should preserve the helper/main structure and immediate return");
+  }
+}
+
+void test_bir_lowering_accepts_minimal_direct_call_lir_module_with_typed_helper_return() {
+  const auto lowered = c4c::backend::try_lower_to_bir(
+      make_bir_minimal_direct_call_lir_module_with_typed_helper_return());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the zero-arg minimal direct-call helper when typed helper return metadata stays i32 but the helper signature and ret text are stale");
+
+  const auto parsed = c4c::backend::parse_bir_minimal_direct_call_module(*lowered);
+  expect_true(parsed.has_value(),
+              "the lowered BIR module should still match the shared minimal direct-call parser when helper typed return metadata is authoritative");
+  if (parsed.has_value()) {
+    expect_true(parsed->return_imm == 42,
+                "the lowered BIR module should preserve the helper immediate return when helper return typing comes from semantic metadata");
+  }
+}
+
+void test_bir_lowering_accepts_minimal_direct_call_lir_module_with_typed_main_return() {
+  const auto lowered =
+      c4c::backend::try_lower_to_bir(make_bir_minimal_direct_call_lir_module_with_typed_main_return());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the zero-arg minimal direct-call caller when typed caller return metadata stays i32 but the caller signature and ret text are stale");
+
+  const auto parsed = c4c::backend::parse_bir_minimal_direct_call_module(*lowered);
+  expect_true(parsed.has_value(),
+              "the lowered BIR module should still match the shared minimal direct-call parser when caller typed return metadata is authoritative");
+  if (parsed.has_value()) {
+    expect_true(parsed->main_function != nullptr && parsed->main_function->name == "main",
+                "the lowered BIR module should preserve the caller identity when caller return typing comes from semantic metadata");
   }
 }
 
@@ -3966,6 +4018,8 @@ void test_bir_validator_rejects_non_widening_sext() {
 
 void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_minimal_direct_call_lir_module);
+  RUN_TEST(test_bir_lowering_accepts_minimal_direct_call_lir_module_with_typed_helper_return);
+  RUN_TEST(test_bir_lowering_accepts_minimal_direct_call_lir_module_with_typed_main_return);
   RUN_TEST(test_bir_lowering_accepts_minimal_void_direct_call_imm_return_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_two_arg_direct_call_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_two_arg_direct_call_local_slot_lir_module);

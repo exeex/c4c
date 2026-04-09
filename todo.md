@@ -8,12 +8,13 @@ Source Plan: plan.md
 
 - Step 1: audit the typed type boundary and backend ownership seams
 - Current slice: move the next typed-lowering pass back into
-  `src/backend/lowering/lir_to_bir.cpp` and audit the remaining direct-call or
-  declared-extern special cases that still branch primarily on raw integer
-  signature or declaration text instead of typed function, instruction, or
-  global metadata, with the immediate target narrowed to the next caller/callee
-  surface that still bypasses semantic return or parameter metadata outside the
-  now-converted direct-call caller-return slice
+  `src/backend/lowering/lir_to_bir.cpp` / `src/backend/lowering/call_decode.hpp`
+  and audit the remaining direct-call or declared-extern special cases that
+  still branch primarily on raw integer signature or declaration text instead
+  of typed function, instruction, or global metadata, with the immediate
+  target narrowed to the next direct-call or declared-extern seam that still
+  hard-requires raw helper signature text or call-surface text after the
+  zero-arg helper/caller stale-return gate conversion
 
 ## Completed
 
@@ -189,6 +190,19 @@ Source Plan: plan.md
 - Re-ran `backend_bir_tests`, `backend_shared_util_tests`, and the full suite
   and passed the regression guard with no new failures and no pass-count drop
   (`2841 -> 2841`)
+- Switched the zero-arg direct-call helper/caller recognizers in
+  `src/backend/lowering/call_decode.hpp` and
+  `src/backend/lowering/lir_to_bir.cpp` off hard `define i32` / `ret i32`
+  gating and onto semantic `LirFunction.return_type` metadata first, with the
+  existing signature/ret text fallback still available for untyped cases
+- Added focused backend regressions in
+  `tests/backend/backend_bir_lowering_tests.cpp` that keep the zero-arg direct
+  call lowering path working when either the helper or caller carries semantic
+  `i32` return metadata while the stored signature and `ret` text are
+  intentionally stale
+- Re-ran `backend_bir_tests`, `backend_shared_util_tests`, and the full suite,
+  refreshed `test_fail_after.log`, and passed the regression guard with no new
+  failures and no pass-count drop (`2841 -> 2841`)
 - Switched the remaining minimal direct-call caller-return gates in
   `src/backend/lowering/lir_to_bir.cpp` from raw `define i32` / `ret i32`
   text checks to `lir_function_matches_minimal_no_param_integer_return(...)`
@@ -262,10 +276,11 @@ Source Plan: plan.md
   the generic branch-select/phi-select, countdown-loop, scalar global
   load/store, extern global-array load, and pointer-diff stale-text gates are
   now covered, and the direct-call caller-return stale-text gates are also
-  covered, so the next audit should target the remaining special-case lowering
-  or declared-extern/direct-call path that still branches primarily on raw
-  integer helper signature, extern declaration, or call-surface text instead of
-  typed instruction, global, or function metadata
+  covered, including the zero-arg direct-call helper/caller return seam, so
+  the next audit should target the remaining special-case lowering or
+  declared-extern/direct-call path that still branches primarily on raw integer
+  helper signature, extern declaration, or call-surface text instead of typed
+  instruction, global, or function metadata
 - keep pointer payload support deferred until a concrete pointer-backed BIR
   lowering consumer appears, then add only the narrow typed payload that
   consumer needs

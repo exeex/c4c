@@ -300,7 +300,7 @@ std::optional<bir::Module> try_lower_minimal_direct_call_module(
 
     if (main_function.is_declaration || helper.is_declaration ||
         !lir_function_matches_minimal_no_param_integer_return(main_function, 32) ||
-        !backend_lir_signature_matches(helper.signature_text, "define", "i32", helper.name, {}) ||
+        !backend_lir_function_matches_zero_arg_integer_return(helper, 32) ||
         main_function.entry.value != 0 || helper.entry.value != 0 ||
         main_function.blocks.size() != 1 || helper.blocks.size() != 1 ||
         !main_function.alloca_insts.empty() || !helper.alloca_insts.empty() ||
