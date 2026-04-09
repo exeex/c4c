@@ -216,6 +216,7 @@ c4c::codegen::lir::LirModule make_x86_declared_zero_arg_call_lir_module() {
   LirFunction decl;
   decl.name = "helper_ext";
   decl.is_declaration = true;
+  decl.params.push_back({"", c4c::TypeSpec{.base = c4c::TB_VOID}});
   decl.signature_text = "declare i32 @helper_ext()\n";
   decl.return_type.base = c4c::TB_INT;
 

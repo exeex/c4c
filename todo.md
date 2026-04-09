@@ -11,9 +11,10 @@ Source Plan: plan.md
   keep the active work inside idea 44's x86-native emitter/toolchain lane and
   do not silently absorb the separate shared-BIR select regression
 - current exact slice:
-  move past the now-green single-local-arg helper-call slice and finish the
-  remaining adjacent zero-arg helper-call seam
-  without reopening broad `try_lower_to_bir_with_options(...)` ordering
+  move from the now-green zero-arg helper-call seam into the next bounded
+  adjacent two-arg helper family,
+  starting with `backend_runtime_two_arg_helper` on the x86 source-produced
+  path without reopening broad `try_lower_to_bir_with_options(...)` ordering
   changes
 
 ## Next Slice
@@ -21,13 +22,43 @@ Source Plan: plan.md
 - keep the separate shared-BIR select regression parked in
   `ideas/open/47_shared_bir_select_route_regression_after_x86_variadic_recovery.md`
   instead of widening idea 44
-- after the now-green `backend_runtime_local_arg_call` slice, keep the active
-  work on the last adjacent single-call-family target:
-  `backend_runtime_call_helper` still fails on the source-produced x86 path and
-  needs its exact prepared-module ownership clarified before widening into
-  broader two-arg helper families
+- after the now-green `backend_runtime_call_helper` slice, keep the active
+  work on the next adjacent call-family target:
+  `backend_runtime_two_arg_helper` is now the first failing broader helper-call
+  source path and should set the ownership pattern before widening into the
+  other two-arg local-rewrite families
 
 ## Recently Completed
+
+- fixed the remaining zero-arg helper-call source-produced x86 path in
+  `src/backend/x86/codegen/emit.cpp` by letting the declared-helper matcher
+  accept frontend-lowered declaration metadata that still carries a synthetic
+  `void` entry in `decl.params` while the signature text remains the true
+  zero-arg contract
+- tightened the focused x86 declared zero-arg helper regression fixture in
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` so it mirrors the real
+  frontend-lowered declaration shape instead of the earlier hand-built empty
+  param vector
+- verified the focused x86 direct-emitter and runtime helper-call seam is
+  green:
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_extern_zero_arg_call_slice`,
+  `ctest --test-dir build --output-on-failure -R '^backend_runtime_call_helper$'`,
+  and
+  `./build/c4cll --codegen asm --target x86_64-unknown-linux-gnu tests/c/internal/backend_case/call_helper.c`
+  now pass, with the standalone asm path emitting bounded native assembly for
+  `main -> helper()`
+- re-checked the adjacent helper-call lane after the zero-arg source path
+  landed and confirmed the next bounded failure is now
+  `backend_runtime_two_arg_helper`:
+  `ctest --test-dir build --output-on-failure -R '^(backend_runtime_call_helper|backend_runtime_local_arg_call|backend_runtime_two_arg_helper)$'`
+  leaves only that two-arg helper family failing
+- refreshed `test_fail_after.log` with
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log` and
+  re-ran the monotonic guard:
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  still reports the broader parked full-suite regression lane as red overall,
+  but the checked-in after-state improved again from `2572 -> 2575` passes and
+  `278 -> 275` failures after the zero-arg helper-call slice
 
 - added a bounded x86 direct-LIR matcher/emitter in
   `src/backend/x86/codegen/emit.cpp` for the two-function single-param

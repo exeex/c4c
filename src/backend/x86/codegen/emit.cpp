@@ -392,7 +392,7 @@ std::optional<MinimalExternZeroArgCallSlice> parse_minimal_declared_zero_arg_cal
     if (function.is_declaration || !decl.is_declaration || function.entry.value != 0 ||
         function.blocks.size() != 1 || !function.alloca_insts.empty() ||
         !function.stack_objects.empty() || !decl.blocks.empty() || !decl.alloca_insts.empty() ||
-        !decl.stack_objects.empty() || !decl.params.empty() || decl.name.empty() ||
+        !decl.stack_objects.empty() || decl.name.empty() ||
         !c4c::backend::backend_lir_signature_matches(decl.signature_text,
                                                      "declare",
                                                      "i32",
