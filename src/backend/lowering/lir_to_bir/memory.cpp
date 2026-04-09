@@ -227,4 +227,71 @@ void record_memory_lowering_scaffold_notes(const c4c::codegen::lir::LirModule& m
   });
 }
 
+bir::LocalSlot make_memory_local_slot(std::string name,
+                                      bir::TypeKind type,
+                                      std::size_t size_bytes,
+                                      std::size_t align_bytes,
+                                      bool is_address_taken) {
+  return bir::LocalSlot{
+      .name = std::move(name),
+      .type = type,
+      .size_bytes = size_bytes,
+      .align_bytes = align_bytes,
+      .is_address_taken = is_address_taken,
+      .is_byval_copy = false,
+  };
+}
+
+bir::LoadLocalInst make_memory_load_local(bir::Value result,
+                                          std::string slot_name,
+                                          std::size_t byte_offset,
+                                          std::size_t align_bytes) {
+  return bir::LoadLocalInst{
+      .result = std::move(result),
+      .slot_name = std::move(slot_name),
+      .byte_offset = byte_offset,
+      .align_bytes = align_bytes,
+      .address = std::nullopt,
+  };
+}
+
+bir::StoreLocalInst make_memory_store_local(std::string slot_name,
+                                            bir::Value value,
+                                            std::size_t byte_offset,
+                                            std::size_t align_bytes) {
+  return bir::StoreLocalInst{
+      .slot_name = std::move(slot_name),
+      .value = std::move(value),
+      .byte_offset = byte_offset,
+      .align_bytes = align_bytes,
+      .address = std::nullopt,
+  };
+}
+
+bir::LoadGlobalInst make_memory_load_global(bir::Value result,
+                                            std::string global_name,
+                                            std::size_t byte_offset,
+                                            std::size_t align_bytes) {
+  return bir::LoadGlobalInst{
+      .result = std::move(result),
+      .global_name = std::move(global_name),
+      .byte_offset = byte_offset,
+      .align_bytes = align_bytes,
+      .address = std::nullopt,
+  };
+}
+
+bir::StoreGlobalInst make_memory_store_global(std::string global_name,
+                                              bir::Value value,
+                                              std::size_t byte_offset,
+                                              std::size_t align_bytes) {
+  return bir::StoreGlobalInst{
+      .global_name = std::move(global_name),
+      .value = std::move(value),
+      .byte_offset = byte_offset,
+      .align_bytes = align_bytes,
+      .address = std::nullopt,
+  };
+}
+
 }  // namespace c4c::backend

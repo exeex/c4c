@@ -20,6 +20,27 @@ void record_call_lowering_scaffold_notes(const c4c::codegen::lir::LirModule& mod
                                          std::vector<BirLoweringNote>* notes = nullptr);
 void record_aggregate_lowering_scaffold_notes(const c4c::codegen::lir::LirModule& module,
                                               std::vector<BirLoweringNote>* notes = nullptr);
+bir::LocalSlot make_memory_local_slot(std::string name,
+                                      bir::TypeKind type,
+                                      std::size_t size_bytes,
+                                      std::size_t align_bytes = 0,
+                                      bool is_address_taken = false);
+bir::LoadLocalInst make_memory_load_local(bir::Value result,
+                                          std::string slot_name,
+                                          std::size_t byte_offset = 0,
+                                          std::size_t align_bytes = 0);
+bir::StoreLocalInst make_memory_store_local(std::string slot_name,
+                                            bir::Value value,
+                                            std::size_t byte_offset = 0,
+                                            std::size_t align_bytes = 0);
+bir::LoadGlobalInst make_memory_load_global(bir::Value result,
+                                            std::string global_name,
+                                            std::size_t byte_offset = 0,
+                                            std::size_t align_bytes = 0);
+bir::StoreGlobalInst make_memory_store_global(std::string global_name,
+                                              bir::Value value,
+                                              std::size_t byte_offset = 0,
+                                              std::size_t align_bytes = 0);
 
 namespace lir_to_bir {
 

@@ -22,7 +22,9 @@ Source Plan: plan.md
   migrating concrete logic out of the legacy monolith one seam at a time
 - continue after the type-helper extraction by moving the next concrete seam
   into split ownership:
-  memory/address lowering first, then call lowering
+  memory/address lowering first, then call lowering;
+  current sub-slice is moving BIR local/global load-store node construction
+  into `lir_to_bir/memory.cpp`
 - avoid adding any new x86 testcase-specific direct-LIR matcher while this
   reset is in progress
 
@@ -186,6 +188,9 @@ Source Plan: plan.md
 - rewired the legacy monolith's core type/legalization helpers to call the new
   split `lir_to_bir/types.cpp` surface instead of privately re-owning those
   decisions inside `lir_to_bir.cpp`
+- rewired the legacy monolith's first local/global memory materialization sites
+  to call `lir_to_bir/memory.cpp` helpers for `LocalSlot`, `LoadLocalInst`,
+  `StoreLocalInst`, `LoadGlobalInst`, and `StoreGlobalInst` construction
 
 ## Blockers
 
@@ -246,6 +251,10 @@ Source Plan: plan.md
   regression-tested yet; this iteration only moved ownership and API surface
 - the next migration target should be concrete memory/address helpers, because
   they currently still live as ad hoc monolith logic even after the pass split
+- after this slice, the next memory migration target should be address
+  formation itself:
+  GEP-derived offsets, pointer-based addressing, and global/slot address
+  classification still live in the monolith
   failing, while the full suite now stands at
   `test_fail_after.log` = 2670 pass / 179 fail / 2849 total
 - the new internal route regression again increases total suite size by one,

@@ -1690,22 +1690,18 @@ std::optional<bir::Module> try_lower_minimal_countdown_loop_module(
   lowered_function.name = function.name;
   lowered_function.return_type = bir::TypeKind::I32;
   lowered_function.local_slots.push_back(
-      bir::LocalSlot{.name = slot->result, .type = bir::TypeKind::I32, .size_bytes = 4});
+      make_memory_local_slot(slot->result.str(), bir::TypeKind::I32, 4));
 
   bir::Block lowered_entry;
   lowered_entry.label = entry.label;
-  lowered_entry.insts.push_back(bir::StoreLocalInst{
-      .slot_name = slot->result,
-      .value = bir::Value::immediate_i32(static_cast<std::int32_t>(*initial_imm)),
-  });
+  lowered_entry.insts.push_back(make_memory_store_local(
+      slot->result.str(), bir::Value::immediate_i32(static_cast<std::int32_t>(*initial_imm))));
   lowered_entry.terminator = bir::BranchTerminator{.target_label = loop->label};
 
   bir::Block lowered_loop;
   lowered_loop.label = loop->label;
-  lowered_loop.insts.push_back(bir::LoadLocalInst{
-      .result = bir::Value::named(bir::TypeKind::I32, loop_load->result.str()),
-      .slot_name = slot->result,
-  });
+  lowered_loop.insts.push_back(make_memory_load_local(
+      bir::Value::named(bir::TypeKind::I32, loop_load->result.str()), slot->result.str()));
   lowered_loop.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Ne,
       .result = bir::Value::named(bir::TypeKind::I32, loop_cmp->result.str()),
@@ -1720,28 +1716,22 @@ std::optional<bir::Module> try_lower_minimal_countdown_loop_module(
 
   bir::Block lowered_body;
   lowered_body.label = body->label;
-  lowered_body.insts.push_back(bir::LoadLocalInst{
-      .result = bir::Value::named(bir::TypeKind::I32, body_load->result.str()),
-      .slot_name = slot->result,
-  });
+  lowered_body.insts.push_back(make_memory_load_local(
+      bir::Value::named(bir::TypeKind::I32, body_load->result.str()), slot->result.str()));
   lowered_body.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Sub,
       .result = bir::Value::named(bir::TypeKind::I32, body_sub->result.str()),
       .lhs = bir::Value::named(bir::TypeKind::I32, body_load->result.str()),
       .rhs = bir::Value::immediate_i32(1),
   });
-  lowered_body.insts.push_back(bir::StoreLocalInst{
-      .slot_name = slot->result,
-      .value = bir::Value::named(bir::TypeKind::I32, body_sub->result.str()),
-  });
+  lowered_body.insts.push_back(make_memory_store_local(
+      slot->result.str(), bir::Value::named(bir::TypeKind::I32, body_sub->result.str())));
   lowered_body.terminator = bir::BranchTerminator{.target_label = loop->label};
 
   bir::Block lowered_exit;
   lowered_exit.label = exit->label;
-  lowered_exit.insts.push_back(bir::LoadLocalInst{
-      .result = bir::Value::named(bir::TypeKind::I32, exit_load->result.str()),
-      .slot_name = slot->result,
-  });
+  lowered_exit.insts.push_back(make_memory_load_local(
+      bir::Value::named(bir::TypeKind::I32, exit_load->result.str()), slot->result.str()));
   lowered_exit.terminator = bir::ReturnTerminator{
       .value = bir::Value::named(bir::TypeKind::I32, exit_load->result.str()),
   };
@@ -2460,10 +2450,8 @@ std::optional<bir::Module> try_lower_minimal_scalar_global_load_module(
 
   bir::Block lowered_entry;
   lowered_entry.label = "entry";
-  lowered_entry.insts.push_back(bir::LoadGlobalInst{
-      .result = bir::Value::named(bir::TypeKind::I32, load->result.str()),
-      .global_name = global.name,
-  });
+  lowered_entry.insts.push_back(make_memory_load_global(
+      bir::Value::named(bir::TypeKind::I32, load->result.str()), global.name));
   lowered_entry.terminator = bir::ReturnTerminator{
       .value = bir::Value::named(bir::TypeKind::I32, load->result.str()),
   };
@@ -2533,10 +2521,8 @@ std::optional<bir::Module> try_lower_minimal_extern_scalar_global_load_module(
 
   bir::Block lowered_entry;
   lowered_entry.label = "entry";
-  lowered_entry.insts.push_back(bir::LoadGlobalInst{
-      .result = bir::Value::named(bir::TypeKind::I32, load->result.str()),
-      .global_name = global.name,
-  });
+  lowered_entry.insts.push_back(make_memory_load_global(
+      bir::Value::named(bir::TypeKind::I32, load->result.str()), global.name));
   lowered_entry.terminator = bir::ReturnTerminator{
       .value = bir::Value::named(bir::TypeKind::I32, load->result.str()),
   };
@@ -2653,11 +2639,10 @@ std::optional<bir::Module> try_lower_minimal_extern_global_array_load_module(
 
   bir::Block lowered_entry;
   lowered_entry.label = "entry";
-  lowered_entry.insts.push_back(bir::LoadGlobalInst{
-      .result = bir::Value::named(bir::TypeKind::I32, load->result.str()),
-      .global_name = global.name,
-      .byte_offset = static_cast<std::size_t>(*element_index) * 4,
-  });
+  lowered_entry.insts.push_back(make_memory_load_global(
+      bir::Value::named(bir::TypeKind::I32, load->result.str()),
+      global.name,
+      static_cast<std::size_t>(*element_index) * 4));
   lowered_entry.terminator = bir::ReturnTerminator{
       .value = bir::Value::named(bir::TypeKind::I32, load->result.str()),
   };
@@ -3090,14 +3075,10 @@ std::optional<bir::Module> try_lower_minimal_scalar_global_store_reload_module(
 
   bir::Block lowered_entry;
   lowered_entry.label = "entry";
-  lowered_entry.insts.push_back(bir::StoreGlobalInst{
-      .global_name = global.name,
-      .value = bir::Value::immediate_i32(static_cast<std::int32_t>(*store_imm)),
-  });
-  lowered_entry.insts.push_back(bir::LoadGlobalInst{
-      .result = bir::Value::named(bir::TypeKind::I32, load->result.str()),
-      .global_name = global.name,
-  });
+  lowered_entry.insts.push_back(make_memory_store_global(
+      global.name, bir::Value::immediate_i32(static_cast<std::int32_t>(*store_imm))));
+  lowered_entry.insts.push_back(make_memory_load_global(
+      bir::Value::named(bir::TypeKind::I32, load->result.str()), global.name));
   lowered_entry.terminator = bir::ReturnTerminator{
       .value = bir::Value::named(bir::TypeKind::I32, load->result.str()),
   };
