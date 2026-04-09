@@ -7,15 +7,39 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: move the remaining production param-alloca pruning and any
-  stack-layout-adjacent target helpers onto the same backend-owned input so the
-  raw-`LirFunction` stack-layout entrypoints are only compatibility wrappers
+- Current slice: audit the remaining target-local stack-layout slot-building
+  helpers that still read raw `LirFunction` directly and identify the next
+  backend-owned input handoff after the shared planning bundle
 - Next intended slice: move the remaining production param-alloca pruning and
-  any stack-layout-adjacent target helpers onto the same backend-owned input so
-  the raw-`LirFunction` stack-layout entrypoints are only compatibility wrappers
+  any stack-layout-adjacent target helpers onto the same backend-owned input by
+  retargeting the next target-local slot-building helper away from raw
+  `LirFunction` scanning where the current stack-layout lowering already has the
+  needed ownership data
 
 ## Completed
 
+- Completed the next Step 6/7 backend-owned stack-layout planning slice by
+  introducing one shared planner bundle over `StackLayoutInput` and routing the
+  production emitter pruning setup through it while keeping raw-`LirFunction`
+  stack-layout entrypoints as compatibility wrappers:
+  - added `StackLayoutPlanBundle` plus
+    `build_stack_layout_plan_bundle(...)` in
+    `src/backend/stack_layout/slot_assignment.*` so one backend-owned helper
+    now computes stack-layout analysis together with entry-alloca and param
+    alloca pruning plans from the lowered stack-layout surface
+  - taught `src/backend/aarch64/codegen/emit.cpp` and
+    `src/backend/x86/codegen/emit.cpp` to use that shared backend-owned
+    planning helper before mutating the original LIR with
+    `apply_entry_alloca_slot_plan(...)`
+  - extended `tests/backend/backend_shared_util_tests.cpp` so the shared bundle
+    regression proves the same lowered stack-layout input preserves both dead
+    param-alloca planning decisions and the production entry-alloca mutation
+    step
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R backend_shared_util_tests --output-on-failure`,
+    rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with no new failures and no pass-count drop
+    (`2809 -> 2809`)
 - Completed the next Step 6/7 production stack-layout handoff slice by
   threading the backend-owned stack-layout input through the AArch64/x86
   entry-alloca pruning path while keeping raw-`LirFunction` stack-layout

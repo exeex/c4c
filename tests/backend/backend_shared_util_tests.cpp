@@ -1444,6 +1444,38 @@ void test_backend_shared_slot_assignment_accepts_backend_owned_input() {
               "backend-owned stack-layout input should preserve entry-alloca pruning when the apply step still mutates the original LIR function");
 }
 
+void test_backend_shared_slot_assignment_bundle_accepts_backend_owned_input() {
+  c4c::backend::RegAllocConfig config;
+  config.available_regs = {{20}};
+  config.caller_saved_regs = {{13}};
+
+  const auto dead_param_module = make_dead_param_alloca_candidate_module();
+  const auto& dead_param_function = dead_param_module.functions.back();
+  const auto dead_param_input =
+      c4c::backend::stack_layout::lower_lir_to_stack_layout_input(dead_param_function);
+  const auto dead_regalloc =
+      c4c::backend::run_regalloc_and_merge_clobbers(dead_param_function, config, {});
+  const auto dead_bundle = c4c::backend::stack_layout::build_stack_layout_plan_bundle(
+      dead_param_input, dead_regalloc, {{20}, {21}, {22}});
+
+  expect_true(dead_bundle.entry_alloca_plans.size() == 1 &&
+                  dead_bundle.entry_alloca_plans.front().alloca_name == "%lv.param.x" &&
+                  !dead_bundle.entry_alloca_plans.front().needs_stack_slot &&
+                  dead_bundle.entry_alloca_plans.front().remove_following_entry_store,
+              "backend-owned stack-layout plan bundle should preserve entry-alloca pruning decisions for dead param allocas");
+  expect_true(dead_bundle.param_alloca_plans.size() == 1 &&
+                  dead_bundle.param_alloca_plans.front().alloca_name == "%lv.param.x" &&
+                  dead_bundle.param_alloca_plans.front().param_name == "%p.x" &&
+                  !dead_bundle.param_alloca_plans.front().needs_stack_slot,
+              "backend-owned stack-layout plan bundle should preserve param-alloca pruning decisions from the same lowered input");
+
+  auto dead_function = dead_param_function;
+  c4c::backend::stack_layout::apply_entry_alloca_slot_plan(dead_function,
+                                                           dead_bundle.entry_alloca_plans);
+  expect_true(dead_function.alloca_insts.empty(),
+              "backend-owned stack-layout plan bundle should still drive the production entry-alloca mutation step");
+}
+
 void test_backend_shared_slot_assignment_prunes_dead_entry_alloca_insts() {
   const c4c::backend::RegAllocIntegrationResult regalloc;
 
@@ -1786,6 +1818,7 @@ int main(int argc, char* argv[]) {
   test_backend_shared_slot_assignment_prunes_dead_param_alloca_insts();
   test_backend_shared_slot_assignment_plans_entry_alloca_slots();
   test_backend_shared_slot_assignment_accepts_backend_owned_input();
+  test_backend_shared_slot_assignment_bundle_accepts_backend_owned_input();
   test_backend_shared_slot_assignment_prunes_dead_entry_alloca_insts();
   test_backend_shared_slot_assignment_applies_coalesced_entry_slots();
   // TODO: binary-utils contract test disabled — assembler seam changed

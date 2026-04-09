@@ -156,6 +156,25 @@ void rewrite_terminator_alloca_refs(LirTerminator& terminator, const Map& canoni
 
 }  // namespace
 
+StackLayoutPlanBundle build_stack_layout_plan_bundle(
+    const StackLayoutInput& input,
+    const RegAllocIntegrationResult& regalloc,
+    const std::vector<PhysReg>& callee_saved_regs) {
+  StackLayoutPlanBundle bundle;
+  bundle.analysis = analyze_stack_layout(input, regalloc, callee_saved_regs);
+  bundle.entry_alloca_plans = plan_entry_alloca_slots(input, bundle.analysis);
+  bundle.param_alloca_plans = plan_param_alloca_slots(input, bundle.analysis);
+  return bundle;
+}
+
+StackLayoutPlanBundle build_stack_layout_plan_bundle(
+    const LirFunction& function,
+    const RegAllocIntegrationResult& regalloc,
+    const std::vector<PhysReg>& callee_saved_regs) {
+  return build_stack_layout_plan_bundle(lower_lir_to_stack_layout_input(function), regalloc,
+                                        callee_saved_regs);
+}
+
 std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(
     const StackLayoutInput& input,
     const StackLayoutAnalysis& analysis) {

@@ -23,6 +23,22 @@ struct ParamAllocaSlotPlan {
   bool needs_stack_slot = true;
 };
 
+struct StackLayoutPlanBundle {
+  StackLayoutAnalysis analysis;
+  std::vector<EntryAllocaSlotPlan> entry_alloca_plans;
+  std::vector<ParamAllocaSlotPlan> param_alloca_plans;
+};
+
+StackLayoutPlanBundle build_stack_layout_plan_bundle(
+    const StackLayoutInput& input,
+    const RegAllocIntegrationResult& regalloc,
+    const std::vector<PhysReg>& callee_saved_regs);
+
+StackLayoutPlanBundle build_stack_layout_plan_bundle(
+    const c4c::codegen::lir::LirFunction& function,
+    const RegAllocIntegrationResult& regalloc,
+    const std::vector<PhysReg>& callee_saved_regs);
+
 std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(
     const StackLayoutInput& input,
     const StackLayoutAnalysis& analysis);
