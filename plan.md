@@ -33,8 +33,9 @@ runbook.
 - [src/backend/regalloc.hpp](/workspaces/c4c/src/backend/regalloc.hpp)
 - [src/backend/regalloc.cpp](/workspaces/c4c/src/backend/regalloc.cpp)
 - [src/backend/generation.cpp](/workspaces/c4c/src/backend/generation.cpp)
+- [src/backend/bir.hpp](/workspaces/c4c/src/backend/bir.hpp)
 - [src/backend/stack_layout/analysis.cpp](/workspaces/c4c/src/backend/stack_layout/analysis.cpp)
-- [src/backend/lowering/lir_to_backend_ir.cpp](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp)
+- [src/backend/stack_layout/slot_assignment.cpp](/workspaces/c4c/src/backend/stack_layout/slot_assignment.cpp)
 
 ## Current Targets
 
@@ -163,13 +164,14 @@ ownership point.
 
 Primary targets:
 - [src/backend/lowering/lir_to_bir.cpp](/workspaces/c4c/src/backend/lowering/lir_to_bir.cpp)
-- [src/backend/lowering/lir_to_backend_ir.cpp](/workspaces/c4c/src/backend/lowering/lir_to_backend_ir.cpp)
+- [src/backend/bir.hpp](/workspaces/c4c/src/backend/bir.hpp)
+- [src/backend/liveness.cpp](/workspaces/c4c/src/backend/liveness.cpp)
 - target emitters that still perform phi/CFG cleanup
 
 Concrete actions:
 - define the canonical post-41 phi strategy
 - move backend-facing CFG normalization into BIR lowering or an explicit
-  BIR-owned normalization stage
+  BIR-owned normalization stage that feeds the backend-owned CFG/liveness path
 - remove target-local cleanup that exists only because BIR ownership is missing
 
 Completion check:
@@ -180,17 +182,43 @@ Completion check:
 Goal: compute liveness from backend MIR rather than raw `LirFunction`.
 
 Primary targets:
+- [src/backend/bir.hpp](/workspaces/c4c/src/backend/bir.hpp)
 - [src/backend/liveness.hpp](/workspaces/c4c/src/backend/liveness.hpp)
 - [src/backend/liveness.cpp](/workspaces/c4c/src/backend/liveness.cpp)
-- backend MIR definitions or lowering entry points introduced for this migration
+- [src/backend/stack_layout/slot_assignment.cpp](/workspaces/c4c/src/backend/stack_layout/slot_assignment.cpp)
+- backend MIR / backend-owned CFG definitions or lowering entry points
+  introduced for this migration
 
 Concrete actions:
-- introduce MIR-side liveness interfaces over the canonical backend-owned CFG
-- keep the LIR-side path only as a temporary comparison shim
+- add a backend-owned CFG/function representation that can carry the liveness
+  inputs needed after the BIR boundary
+- provide lowering entry points from current backend-owned forms into that CFG,
+  starting with BIR and any temporary LIR compatibility lowering still needed
+- make `LivenessInput` derive from the backend-owned CFG representation rather
+  than constructing it directly from raw `LirFunction`
+- move production callers to `backend CFG -> LivenessInput ->
+  compute_live_intervals(...)`
+- keep `LirFunction -> backend CFG` only as a temporary comparison/transition
+  shim while non-production callers are migrated
 - validate interval parity or intended equivalence on narrow backend tests
 
+Suggested slice order:
+1. introduce the backend-owned CFG carrier and `backend CFG -> LivenessInput`
+   lowering
+2. add `bir::Function -> backend CFG` lowering for the lowerable subset already
+   represented in BIR
+3. retarget production callers that still ask liveness to read raw
+   `LirFunction`
+4. retarget helper/tests to the backend-owned CFG seam and leave direct-LIR
+   lowering as compatibility-only
+5. remove or sharply narrow the raw-LIR public liveness entrypoint once parity
+   coverage exists
+
 Completion check:
-- backend liveness no longer requires raw `LirFunction`
+- production backend liveness derives from backend-owned CFG/MIR inputs rather
+  than raw `LirFunction`
+- any remaining `LirFunction` liveness entrypoint is explicitly compatibility-
+  only and no longer the primary production surface
 
 ### Step 7: Move regalloc and stack layout to backend MIR
 
