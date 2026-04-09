@@ -60,6 +60,11 @@ struct PhiIncomingUse {
   std::string value_name;
 };
 
+struct EntryAllocaUseBlocks {
+  std::string alloca_name;
+  std::vector<std::size_t> block_indices;
+};
+
 struct StackLayoutInput {
   std::vector<EntryAllocaInput> entry_allocas;
   std::vector<StackLayoutSignatureParam> signature_params;
@@ -69,6 +74,7 @@ struct StackLayoutInput {
   std::vector<StackLayoutBlockInput> blocks;
   std::vector<PhiIncomingUse> phi_incoming_uses;
   std::optional<std::vector<std::string>> escaped_entry_allocas;
+  std::optional<std::vector<EntryAllocaUseBlocks>> entry_alloca_use_blocks;
 };
 
 struct StackLayoutAnalysis {

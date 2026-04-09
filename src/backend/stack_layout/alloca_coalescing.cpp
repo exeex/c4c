@@ -86,16 +86,18 @@ CoalescableAllocas compute_coalescable_allocas(
   for (std::size_t block_index = 0; block_index < input.blocks.size(); ++block_index) {
     const auto& block = input.blocks[block_index];
     for (const auto& point : block.insts) {
-      if (point.derived_pointer_root.has_value()) {
-        const auto root = escape_analysis.resolve_root(point.derived_pointer_root->second);
-        if (root.has_value()) {
-          escape_analysis.pointer_roots.emplace(point.derived_pointer_root->first, *root);
-          escape_analysis.record_use(point.derived_pointer_root->first, block_index);
+      if (!input.entry_alloca_use_blocks.has_value()) {
+        if (point.derived_pointer_root.has_value()) {
+          const auto root = escape_analysis.resolve_root(point.derived_pointer_root->second);
+          if (root.has_value()) {
+            escape_analysis.pointer_roots.emplace(point.derived_pointer_root->first, *root);
+            escape_analysis.record_use(point.derived_pointer_root->first, block_index);
+          }
         }
-      }
 
-      for (const auto& access : point.pointer_accesses) {
-        escape_analysis.record_use(access.value_name, block_index);
+        for (const auto& access : point.pointer_accesses) {
+          escape_analysis.record_use(access.value_name, block_index);
+        }
       }
       if (!input.escaped_entry_allocas.has_value()) {
         for (const auto& escaped_name : point.escaped_names) {
@@ -114,6 +116,21 @@ CoalescableAllocas compute_coalescable_allocas(
   if (input.escaped_entry_allocas.has_value()) {
     for (const auto& alloca_name : *input.escaped_entry_allocas) {
       escape_analysis.escaped.insert(alloca_name);
+    }
+  }
+
+  if (input.entry_alloca_use_blocks.has_value()) {
+    for (const auto& entry_alloca_use_blocks : *input.entry_alloca_use_blocks) {
+      if (escape_analysis.alloca_set.find(entry_alloca_use_blocks.alloca_name) ==
+          escape_analysis.alloca_set.end()) {
+        continue;
+      }
+      auto& blocks = escape_analysis.use_blocks[entry_alloca_use_blocks.alloca_name];
+      for (const auto block_index : entry_alloca_use_blocks.block_indices) {
+        if (blocks.empty() || blocks.back() != block_index) {
+          blocks.push_back(block_index);
+        }
+      }
     }
   }
 

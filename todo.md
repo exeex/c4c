@@ -7,18 +7,45 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: narrow the prepared fallback escape contract so escaped-alloca
-  classification no longer depends on cached per-point `escaped_names`
-- Current implementation target: replace prepared fallback per-point
-  `escaped_names` storage with a coarse escaped-entry-alloca set that still
-  preserves escaped-alloca exclusion when the prepared carrier is lowered back
-  into production rewrite inputs
-- Next intended slice: move either overwrite-before-read pointer-access facts
-  or derived-pointer-root coalescing facts behind a similarly narrow
-  backend-owned classification seam before attempting another prepared-carrier
-  field removal
+- Current slice: narrow overwrite-before-read ownership so prepared fallback
+  analysis can trust a coarse backend-owned first-access classification seam
+  instead of depending on cached per-point pointer-access sequencing
+- Current implementation target: add a prepared/lowered entry-alloca
+  first-access classification carrier for overwrite-before-read pruning and
+  retarget stack-layout analysis to trust that seam when present before trying
+  to remove prepared per-point pointer-access storage
+- Next intended slice: remove prepared per-point pointer-access storage once
+  overwrite-before-read pruning can round-trip entirely through the narrower
+  backend-owned seam
 
 ## Completed
+
+- Completed the next Step 6 prepared single-block coalescing narrowing slice by
+  moving fallback coalescing ownership onto a coarse entry-alloca use-blocks
+  seam:
+  - added `EntryAllocaUseBlocks` to `src/backend/stack_layout/analysis.hpp`
+    plus optional `entry_alloca_use_blocks` storage on both
+    `StackLayoutInput` and the prepared fallback
+    `PreparedEntryAllocaStackLayoutClassificationInput` carrier in
+    `src/backend/stack_layout/slot_assignment.hpp`
+  - taught `src/backend/stack_layout/slot_assignment.cpp` to derive that coarse
+    per-entry-alloca use-block classification during prepared fallback
+    lowering and to round-trip it back into the production stack-layout input
+  - updated `src/backend/stack_layout/alloca_coalescing.cpp` so single-block
+    reuse classification now trusts the coarse entry-alloca use-block seam when
+    present instead of rebuilding solely from cached per-point
+    `derived_pointer_root` and `pointer_accesses`
+  - extended `tests/backend/backend_shared_util_tests.cpp` with focused
+    coverage proving alloca coalescing accepts the coarse use-block seam and
+    that prepared fallback lowering keeps single-block classification alive
+    after clearing derived-pointer-root facts while still regressing once both
+    the new seam and the old per-point facts are removed
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`,
+    rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with the repo’s allowed non-decreasing rule and no new
+    failures (`2809 -> 2809`, same 32 known failing tests as
+    `test_fail_before.log`)
 
 - Completed the next Step 6 prepared escaped-alloca classification narrowing
   slice by moving fallback escape ownership off cached per-point
