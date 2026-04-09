@@ -504,6 +504,12 @@ void Lowerer::lower_initial_program(const Node* root, Module& m) {
   module_ = &m;
 
   std::vector<const Node*> items = flatten_program_items(root);
+  function_decl_nodes_.clear();
+  for (const Node* item : items) {
+    if (item && item->kind == NK_FUNCTION && item->name && item->name[0]) {
+      function_decl_nodes_.emplace(item->name, item);
+    }
+  }
 
   collect_weak_symbol_names(items);
   collect_initial_type_definitions(items);

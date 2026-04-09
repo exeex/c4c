@@ -680,9 +680,10 @@ class Lowerer {
 
   // Try to infer the type of an AST expression node for template argument
   // deduction.  Only handles cases where the type is statically obvious
-  // from the AST (literals, typed variables, address-of, casts).
+  // from the AST (literals, typed variables, address-of, casts, and calls with
+  // inferable result types).
   // Returns nullopt when the type cannot be determined.
-  static std::optional<TypeSpec> try_infer_arg_type_for_deduction(
+  std::optional<TypeSpec> try_infer_arg_type_for_deduction(
       const Node* expr, const Node* enclosing_fn);
 
   // Try to deduce template type arguments from call arguments.
@@ -818,6 +819,10 @@ class Lowerer {
   std::unordered_map<std::string, std::string> struct_methods_;
   // Struct method return types: "struct_tag::method_name" → return TypeSpec.
   std::unordered_map<std::string, TypeSpec> struct_method_ret_types_;
+  // Top-level function definitions keyed by unqualified name for early
+  // template-deduction return-type probes before ordinary functions are
+  // lowered into the module.
+  std::unordered_map<std::string, const Node*> function_decl_nodes_;
   // Pending struct methods to lower.
   struct PendingMethod {
     std::string mangled;

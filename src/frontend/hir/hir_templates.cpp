@@ -270,6 +270,13 @@ std::optional<TypeSpec> Lowerer::try_infer_arg_type_for_deduction(
     const Node* expr, const Node* enclosing_fn) {
   if (!expr) return std::nullopt;
 
+  if (resolved_types_) {
+    if (auto ct = resolved_types_->lookup(expr)) {
+      TypeSpec ts = sema::typespec_from_canonical(*ct);
+      if (has_concrete_type(ts)) return ts;
+    }
+  }
+
   if (has_concrete_type(expr->type)) return expr->type;
 
   switch (expr->kind) {
@@ -316,6 +323,28 @@ std::optional<TypeSpec> Lowerer::try_infer_arg_type_for_deduction(
     }
     case NK_CAST:
       if (has_concrete_type(expr->type)) return expr->type;
+      return std::nullopt;
+    case NK_CALL:
+    case NK_BUILTIN_CALL:
+      if (resolved_types_ && expr->left) {
+        if (auto callee_ct = resolved_types_->lookup(expr->left);
+            callee_ct && sema::is_callable_type(*callee_ct)) {
+          if (const auto* sig = sema::get_function_sig(*callee_ct);
+              sig && sig->return_type) {
+            return sema::typespec_from_canonical(*sig->return_type);
+          }
+        }
+      }
+      if (expr->left && expr->left->kind == NK_VAR && expr->left->name) {
+        auto fit = function_decl_nodes_.find(expr->left->name);
+        if (fit != function_decl_nodes_.end() &&
+            fit->second && has_concrete_type(fit->second->type)) {
+          return fit->second->type;
+        }
+      }
+      if (auto call_ts = infer_call_result_type(nullptr, expr)) {
+        return reference_value_ts(*call_ts);
+      }
       return std::nullopt;
     case NK_ADDR:
       if (expr->left) {

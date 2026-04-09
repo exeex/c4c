@@ -6,13 +6,9 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 1 audit outcome: existing parser coverage already covers top-level
-  deduction guides, template-id conversion operators, and generated
-  disambiguation matrix cases for `&&`.
-- Active implementation slice completed: explicit-template helper-return paths
-  now preserve instantiated `T&` vs `T&&` call-result category for downstream
-  ref-overload selection instead of materializing `T&` results into rvalue
-  temporaries.
+- Active implementation slice completed: forwarding-reference wrappers now
+  deduce call-expression prvalues such as `make()` and preserve ref-qualified
+  member dispatch across both `T=Probe&` and `T=Probe` specializations.
 
 ## Completed
 
@@ -66,12 +62,26 @@ Source Plan: plan.md
 - Re-ran the focused helper-return regression cluster plus the full suite;
   regression guard passed with pass count improving from 3159 to 3161 and
   zero new failures.
+- Added `forwarding_ref_qualified_member_dispatch.cpp` to lock forwarding
+  wrappers that route lvalue and call-expression prvalue receivers into `&`
+  vs `&&` ref-qualified member overloads.
+- Teach template deduction to recover plain call-expression argument types
+  from early function-definition metadata so wrappers like `call_select(make())`
+  seed the `T=Probe` specialization instead of staying unresolved.
+- Defer early `infer_generic_ctrl_type()` returns for template-bound typedefs
+  so instantiated casts such as `static_cast<T&&>(t)` substitute `T` before
+  method lookup and ref-overload selection.
+- Encode lvalue/rvalue reference qualifiers in template-function mangled names
+  so `T=Probe&` and `T=Probe` specializations no longer collide at materialization.
+- Re-ran the focused ref-qualified-member and named-rvalue-reference cluster
+  plus the full suite; regression guard passed with pass count improving from
+  3159 to 3162 and zero new failures.
 
 ## Next Slice
 
 - probe ref-qualified member dispatch or binding only if a remaining generic
-  `&&` defect is demonstrated beyond the direct and explicit-template
-  helper-return paths now covered
+  `&&` defect is demonstrated beyond the direct, explicit-template, and
+  forwarding-wrapper receiver paths now covered
 - keep any further call-category follow-up bounded to concrete overload or
   binding mismatches against Clang
 - keep adjacent library-facing probes bounded to generic language defects only
@@ -102,4 +112,13 @@ Source Plan: plan.md
 - explicit-template helper calls such as `as_lvalue<int>(...)` now resolve
   their instantiated return type during HIR call lowering, so both overload
   choice and reference-ABI argument passing see `T&` vs `T&&` correctly
+- call-expression arguments such as `make()` now participate in forwarding
+  reference deduction early enough to materialize the correct `T=Probe`
+  specialization before ordinary functions are lowered into the module
+- template-bound typedef spellings like `static_cast<T&&>(t)` now substitute
+  `T` before generic control-type inference short-circuits, which keeps
+  method lookup on `Probe::select` on the method path instead of falling back
+  to field-style member access
+- template function mangling now distinguishes `T=Probe&` from `T=Probe`, so
+  ref-collapsed forwarding and plain value specializations can coexist
 - keep EASTL or libstdc++ findings scoped to generic language defects only

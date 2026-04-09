@@ -1538,7 +1538,16 @@ void Lowerer::lower_global(const Node* gv) {
 
 TypeSpec Lowerer::infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
   if (!n) return {};
-  if (has_concrete_type(n->type)) return n->type;
+  if (has_concrete_type(n->type)) {
+    const bool needs_tpl_typedef_substitution =
+        ctx && !ctx->tpl_bindings.empty() &&
+        n->type.base == TB_TYPEDEF && n->type.tag &&
+        ctx->tpl_bindings.count(n->type.tag) > 0;
+    const bool needs_pending_template_resolution =
+        ctx && !ctx->tpl_bindings.empty() && n->type.tpl_struct_origin;
+    if (!needs_tpl_typedef_substitution && !needs_pending_template_resolution)
+      return n->type;
+  }
   switch (n->kind) {
     case NK_INT_LIT:
       return infer_int_literal_type(n);
