@@ -7,12 +7,15 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 5: pull phi and CFG normalization behind the BIR boundary
-- Current slice: audit `src/backend/backend.cpp`,
-  `src/backend/aarch64/codegen/emit.cpp`, and
-  `src/backend/x86/codegen/emit.cpp` to classify the remaining phi/CFG cleanup
-  that still lives outside the canonical BIR route, then pick the smallest
-  production slice that can move one target-local cleanup responsibility behind
-  `try_lower_to_bir(...)`
+- Current slice: continue the Step 5 audit after the AArch64 entrypoint move by
+  classifying any remaining target-local phi/CFG cleanup that still must stay
+  outside the canonical BIR route, starting with the residual general-LIR phi
+  copy path in `src/backend/aarch64/codegen/emit.cpp` and the x86 direct-LIR
+  phi interpreter seam
+- Next intended slice: decide whether the next smallest production move is
+  another `try_lower_to_bir(...)` coverage expansion for a residual phi shape
+  or a bounded reduction of target-local phi handling that is now provably
+  unreachable for lowerable modules
 
 ## Completed
 
@@ -219,6 +222,25 @@ Source Plan: plan.md
   cast/GEP/binop/cmp/load/ret integer text checks and onto semantic
   `LirTypeRef` width inspection plus structured function return metadata, while
   keeping bounded text fallback for untyped cases
+- Completed the first Step 5 AArch64 ownership move:
+  - audited `src/backend/backend.cpp`, `src/backend/aarch64/codegen/emit.cpp`,
+    and `src/backend/x86/codegen/emit.cpp` for where lowerable phi/select CFG
+    shapes still bypass the canonical BIR route
+  - found that `src/backend/aarch64/codegen/emit.cpp` still attempted
+    target-local direct LIR emission before `try_lower_to_bir(...)`, unlike the
+    shared backend entrypoint and x86
+  - reordered the AArch64 LIR entrypoint to prefer BIR emission when lowering
+    and native BIR emission succeed, while preserving the existing direct-LIR
+    fallback when the lowered BIR module is outside the native AArch64 BIR
+    subset
+  - added an AArch64 backend pipeline regression in
+    `tests/backend/backend_bir_pipeline_aarch64_tests.cpp` that proves a
+    lowerable conditional phi join now routes through the shared BIR-owned
+    select path instead of staying on target-local phi predecessor-copy labels
+- Re-ran `backend_bir_tests`, the four AArch64 route/c-testsuite regressions
+  uncovered by the entrypoint reordering, and the full suite
+- Refreshed `test_fail_after.log` and passed the regression guard with no new
+  failures and no pass-count drop (`2841 -> 2841`)
 - Added focused backend regressions in
   `tests/backend/backend_bir_lowering_tests.cpp` that keep the extern
   global-array load and both pointer-difference slices lowering when the

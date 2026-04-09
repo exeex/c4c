@@ -1712,6 +1712,33 @@ void test_backend_bir_pipeline_drives_aarch64_select_end_to_end() {
                   "aarch64 BIR lowering should materialize the false-value arm for the bounded select slice");
 }
 
+void test_backend_bir_pipeline_drives_aarch64_lir_conditional_phi_join_through_bir_end_to_end() {
+  const auto lowered =
+      c4c::backend::try_lower_to_bir(make_bir_single_param_select_eq_phi_module());
+  expect_true(lowered.has_value(),
+              "aarch64 LIR conditional-phi-join input should lower into a direct BIR module before target emission");
+  expect_true(lowered->functions.size() == 1 &&
+                  lowered->functions.front().blocks.size() == 1 &&
+                  lowered->functions.front().blocks.front().insts.size() == 1 &&
+                  std::holds_alternative<c4c::backend::bir::SelectInst>(
+                      lowered->functions.front().blocks.front().insts.front()),
+              "aarch64 LIR conditional-phi-join input should collapse to the shared BIR select form before target emission");
+
+  const auto rendered = c4c::backend::aarch64::emit_module(
+      make_bir_single_param_select_eq_phi_module());
+
+  expect_contains(rendered, ".globl choose",
+                  "aarch64 direct emitter should still reach native asm emission after routing a lowerable conditional-phi-join through the shared BIR path");
+  expect_contains(rendered, ".Lselect_true:\n  mov w0, #11\n  ret\n",
+                  "aarch64 lowerable conditional-phi-join input should use the shared BIR-owned select labels instead of target-local phi-copy blocks");
+  expect_contains(rendered, ".Lselect_false:\n  mov w0, #4\n  ret\n",
+                  "aarch64 lowerable conditional-phi-join input should preserve the bounded false arm through the BIR-owned select emission");
+  expect_not_contains(rendered, ".choose.tern.then",
+                      "aarch64 lowerable conditional-phi-join input should no longer emit the original target-local phi predecessor block labels once the BIR route owns the shape");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 LIR conditional-phi-join input should stay on native asm emission instead of falling back to LLVM text");
+}
+
 void test_backend_bir_pipeline_drives_aarch64_direct_bir_single_param_select_end_to_end() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{
@@ -2082,6 +2109,7 @@ void run_backend_bir_pipeline_aarch64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_zext_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_trunc_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_select_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_aarch64_lir_conditional_phi_join_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_direct_bir_single_param_select_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_direct_bir_two_param_select_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_direct_bir_u8_select_post_join_add_end_to_end);

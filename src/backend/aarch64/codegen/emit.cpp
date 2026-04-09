@@ -6733,13 +6733,19 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
   validate_module(module);
   const auto prepared = prune_module_entry_allocas(module);
   validate_module(prepared);
+  if (const auto bir_module = c4c::backend::try_lower_to_bir(prepared);
+      bir_module.has_value()) {
+    try {
+      return emit_module(*bir_module);
+    } catch (const std::invalid_argument& ex) {
+      if (!is_direct_bir_subset_error(ex)) {
+        throw;
+      }
+    }
+  }
   if (auto rendered = try_emit_direct_lir_module(prepared, needs_nonminimal_lowering);
       rendered.has_value()) {
     return *rendered;
-  }
-  if (const auto bir_module = c4c::backend::try_lower_to_bir(prepared);
-      bir_module.has_value()) {
-    return emit_module(*bir_module);
   }
   if (!needs_nonminimal_lowering) {
     if (const auto imm2 = try_constant_fold_single_block(prepared); imm2.has_value()) {
