@@ -1,4 +1,4 @@
-# RV64 Backend Codegen Bring-Up From AArch64
+# RV64 Backend Codegen Bring-Up From x86 Architecture Reset
 
 Status: Open
 Last Updated: 2026-04-09
@@ -12,19 +12,24 @@ c4c backend pipeline.
 
 The right first step is not to finish every RISC-V subsystem at once. The
 highest-leverage seam is the native codegen path, especially the emitter and
-lowering surface that AArch64 already proves out.
+lowering surface that the in-progress x86 backend architecture reset is now
+re-establishing as the repo's current backend framework.
 
 This idea therefore narrows RV64 bring-up to native codegen only. The initial
 goal is to establish an RV64 emitter/lowering skeleton by following the
-AArch64 backend structure, rather than widening scope into assembler or linker
-completion.
+backend framework being rebuilt in the active x86 plan, rather than widening
+scope into assembler or linker completion.
 
 ## Source Context
 
 - `src/backend/aarch64/mod.cpp`
 - `src/backend/aarch64/codegen/mod.cpp`
 - `src/backend/aarch64/codegen/emit.cpp`
-- `src/backend/aarch64/codegen/emit.hpp`
+- `src/backend/x86/codegen/x86_codegen.hpp`
+- `src/backend/x86/codegen/emit.cpp`
+- `src/backend/lowering/lir_to_bir.cpp`
+- `src/backend/lowering/lir_to_bir/`
+- `plan.md`
 - `src/backend/riscv/mod.cpp`
 - `src/backend/riscv/codegen/mod.cpp`
 - `src/backend/riscv/codegen/emit.cpp`
@@ -45,28 +50,32 @@ Current shape:
   bring-up target
 - `codegen` contains many translated helpers and structural mirrors
 - the main missing seam is a coherent RV64 emitter/lowering contract comparable
-  to AArch64's native backend path
+  to the backend framework now being rebuilt for x86
 - the repo's current backend runtime and `c-testsuite` harnesses still assume
   native execution on the host CPU rather than cross-run through an emulator
 
 ## Goal
 
-Bring up the first coherent RV64 native codegen path by porting the AArch64
-backend method incrementally, starting from the emitter/lowering seam centered
-on `src/backend/aarch64/codegen/emit.cpp`.
+Bring up the first coherent RV64 native codegen path by porting the current
+backend framework method incrementally, using the active x86 architecture-reset
+runbook as the primary template and AArch64 only as a secondary ISA-specific
+reference where x86 does not answer a RISC-V question directly.
 
 ## Non-Goals
 
 - do not try to finish the RISC-V assembler in the first wave
 - do not try to finish the RISC-V linker in the first wave
 - do not widen this into a full all-target backend rewrite
-- do not force immediate parity with every AArch64 optimization or helper
+- do not force immediate parity with every x86 or AArch64 optimization/helper
 - do not treat the current translated `riscv/*.cpp` files as already integrated
   production code
 
 ## Working Model
 
-- treat AArch64 as the primary reference backend for structure and sequencing
+- treat the active x86 backend runbook and its architecture-reset framework as
+  the primary reference for structure, sequencing, and ownership boundaries
+- treat AArch64 as a secondary local reference for ISA-specific helper layout,
+  not as the main integration template
 - build RV64 around the same backend contracts where possible instead of
   inventing a separate architecture-specific pipeline shape
 - prioritize emitter/lowering seams that unlock end-to-end native codegen
@@ -76,6 +85,19 @@ on `src/backend/aarch64/codegen/emit.cpp`.
 - prefer a thin working RV64 path over a broad but disconnected translation set
 - validate RV64 backend output on the host through Linux user-mode emulation
   rather than requiring a guest-first full-system environment
+
+## Reference Order
+
+When RV64 bring-up needs a structural reference, use this priority order:
+
+1. the active x86 backend runbook in `plan.md`
+2. the split shared lowering structure under `src/backend/lowering/lir_to_bir/`
+3. the x86 codegen class/header split under `src/backend/x86/codegen/`
+4. AArch64 codegen files for target-local helper details only
+
+The intent is that RV64 should follow the backend framework that will exist
+after the x86 architecture reset is complete, not copy AArch64's older module
+boundaries wholesale.
 
 ## Validation Model
 
@@ -102,17 +124,21 @@ for first-wave backend validation.
 
 ## Proposed Plan
 
-### Step 1: Define the RV64 emitter ownership boundary
+### Step 1: Define the RV64 backend ownership boundary
 
 Goal: make `src/backend/riscv/codegen/emit.cpp` the explicit bring-up center.
 
 Concrete actions:
 
-- compare `src/backend/aarch64/codegen/emit.cpp` and
+- compare the active x86 backend framework in `plan.md`,
+  `src/backend/x86/codegen/x86_codegen.hpp`,
+  `src/backend/x86/codegen/emit.cpp`, and
+  `src/backend/lowering/lir_to_bir/` against the current
   `src/backend/riscv/codegen/emit.cpp`
 - identify the minimum shared backend contracts RV64 must satisfy:
   - module validation
   - LIR/BIR entry routing
+  - split ownership between monolithic entrypoints and helper files
   - target register model
   - call ABI scaffolding
   - prologue/epilogue ownership
@@ -121,23 +147,26 @@ Concrete actions:
 
 Completion check:
 
-- RV64 bring-up is framed around a concrete emitter-centered dependency graph
+- RV64 bring-up is framed around a concrete backend-framework dependency graph
 - `emit.cpp` is confirmed as the first integration seam, not just another
   translated file
 
-### Step 2: Port the minimal AArch64 emitter skeleton to RV64
+### Step 2: Port the minimal backend framework skeleton to RV64
 
-Goal: establish the same top-level native codegen flow shape that AArch64 uses.
+Goal: establish the same top-level native codegen flow shape that the active
+x86 backend runbook is rebuilding.
 
 Concrete actions:
 
-- mirror the AArch64 emitter structure into RV64 where architecture-neutral
-  backend flow should match
+- mirror the x86 architecture-reset structure into RV64 where architecture-
+  neutral backend flow should match
 - add or tighten RV64 equivalents for:
   - unsupported-slice diagnostics
   - module/function validation
   - minimal lowering entry points
   - native code emission staging
+- if needed, allow the same phased bring-up used by x86:
+  ownership wiring first, compile recovery second, regression work later
 - keep the first version intentionally narrow, even if many operations still
   fail with explicit unsupported diagnostics
 
@@ -160,6 +189,8 @@ Concrete actions:
   - `prologue.cpp`
   - `memory.cpp`
   - `comparison.cpp`
+- follow the same class/header ownership model now used by x86 rather than
+  leaving RV64 methods trapped in one private emitter translation unit
 - unify any duplicated local stand-in types into the first real RV64 codegen
   surface where necessary
 - avoid broad cleanup; only consolidate what the emitter integration truly
@@ -262,7 +293,9 @@ Completion check:
 
 - the repo has an explicit RV64 backend bring-up plan centered on
   `src/backend/riscv/codegen/emit.cpp`
-- AArch64 is used as the reference structure for RV64 native emitter bring-up
+- the active x86 backend framework is used as the primary reference structure
+  for RV64 native emitter/lowering bring-up
+- AArch64 is retained only as a secondary target-local reference
 - at least one minimal RV64 codegen path is planned as an end-to-end owned seam
 - assembler and linker are explicitly kept out of first-wave scope
 - the idea defines a concrete RV64 validation strategy based on host-side
@@ -276,6 +309,6 @@ Completion check:
 
 - The translated `src/backend/riscv` tree is now useful as implementation
   inventory, but not yet evidence of an integrated backend.
-- The first real integration work should happen where backend ownership is
-  already clearest: the emitter/lowering seam represented by
-  `src/backend/aarch64/codegen/emit.cpp`.
+- The first real integration work should follow the backend framework being
+  established by the active x86 architecture-reset runbook; AArch64 is no
+  longer the main structural template.
