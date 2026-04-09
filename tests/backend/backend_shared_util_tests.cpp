@@ -1747,6 +1747,29 @@ void test_backend_shared_slot_assignment_rewrites_module_entry_allocas() {
               "shared module entry-alloca rewrite should prune dead param allocas across the whole LIR module");
 }
 
+void test_backend_shared_prepares_lir_module_for_target() {
+  const auto module = make_dead_param_alloca_candidate_module();
+  const auto x86_prepared = c4c::backend::prepare_lir_module_for_target(
+      module, c4c::backend::Target::X86_64);
+  const auto aarch64_prepared = c4c::backend::prepare_lir_module_for_target(
+      module, c4c::backend::Target::Aarch64);
+  const auto riscv_prepared = c4c::backend::prepare_lir_module_for_target(
+      module, c4c::backend::Target::Riscv64);
+
+  expect_true(x86_prepared.functions.size() == module.functions.size() &&
+                  x86_prepared.functions.front().is_declaration &&
+                  x86_prepared.functions.back().alloca_insts.empty(),
+              "shared backend LIR prep should preserve declarations and prune dead param allocas for x86-native emission");
+  expect_true(aarch64_prepared.functions.size() == module.functions.size() &&
+                  aarch64_prepared.functions.front().is_declaration &&
+                  aarch64_prepared.functions.back().alloca_insts.empty(),
+              "shared backend LIR prep should preserve declarations and prune dead param allocas for aarch64-native emission");
+  expect_true(riscv_prepared.functions.size() == module.functions.size() &&
+                  riscv_prepared.functions.back().alloca_insts.size() ==
+                      module.functions.back().alloca_insts.size(),
+              "shared backend LIR prep should leave riscv64 modules untouched so the text fallback keeps its current ownership");
+}
+
 void test_backend_shared_slot_assignment_prunes_dead_entry_alloca_insts() {
   const c4c::backend::RegAllocIntegrationResult regalloc;
 
@@ -2133,6 +2156,7 @@ int main(int argc, char* argv[]) {
   test_backend_shared_slot_assignment_bundle_prepares_from_backend_owned_inputs();
   test_backend_shared_slot_assignment_prepares_rewrite_patch_from_backend_owned_inputs();
   test_backend_shared_slot_assignment_rewrites_module_entry_allocas();
+  test_backend_shared_prepares_lir_module_for_target();
   test_backend_shared_slot_assignment_prunes_dead_entry_alloca_insts();
   test_backend_shared_slot_assignment_applies_coalesced_entry_slots();
   // TODO: binary-utils contract test disabled — assembler seam changed

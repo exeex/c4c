@@ -1,5 +1,6 @@
 #include "emit.hpp"
 
+#include "../../backend.hpp"
 #include "../../bir.hpp"
 #include "../../generation.hpp"
 #include "../../lowering/call_decode.hpp"
@@ -4096,14 +4097,8 @@ std::string emit_module(const c4c::backend::bir::Module& module) {
 }
 
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {
-  c4c::backend::RegAllocConfig config;
-  config.available_regs = {{1}, {2}, {3}, {4}, {5}};
-  config.caller_saved_regs = {{10}, {11}, {12}, {13}, {14}, {15}};
-  const std::vector<c4c::backend::PhysReg> callee_saved = {
-      {1}, {2}, {3}, {4}, {5},
-  };
-  const auto prepared =
-      c4c::backend::stack_layout::rewrite_module_entry_allocas(module, config, {}, callee_saved);
+  const auto prepared = c4c::backend::prepare_lir_module_for_target(
+      module, c4c::backend::target_from_triple(module.target_triple));
   if (const auto bir_module = c4c::backend::try_lower_to_bir(prepared); bir_module.has_value()) {
     try {
       return emit_module(*bir_module);

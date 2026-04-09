@@ -7,18 +7,32 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: audit whether the new shared module-level
-  `rewrite_module_entry_allocas(...)` seam is the last acceptable temporary
-  raw-LIR compatibility layer for entry-alloca pruning or whether the next
-  Step 6/7 slice should push that preparation boundary closer to BIR-backed
-  ownership
-- Next intended slice: if module-level entry-alloca rewriting remains a
-  temporary necessity, retarget the next focused cleanup to the next backend
-  entrypoint that still lowers raw `LirFunction` directly into liveness or
-  stack-layout inputs immediately before emission
+- Current slice: retarget the duplicated target-local
+  `rewrite_module_entry_allocas(...)` preparation wiring behind one shared
+  backend helper so the remaining temporary raw-LIR entry-alloca mutation seam
+  lives outside the per-target emitters
+- Next intended slice: audit whether the shared
+  `prepare_lir_module_for_target(...)` helper should also become the default
+  LIR preparation step in `src/backend/backend.cpp` before BIR lowering, or
+  whether the next Step 6/7 cleanup should instead target the next remaining
+  direct-LIR fallback seam after shared backend preparation is centralized
 
 ## Completed
 
+- Completed the next Step 6/7 bounded native-emitter preparation ownership
+  cleanup slice by moving the duplicated target-local entry-alloca rewrite prep
+  behind one shared backend helper:
+  - added `prepare_lir_module_for_target(...)` in `src/backend/backend.*` so
+    target-specific regalloc/callee-saved configuration for temporary
+    entry-alloca rewrites now lives in one shared backend-owned seam
+  - updated `src/backend/x86/codegen/emit.cpp` and
+    `src/backend/aarch64/codegen/emit.cpp` so both native emitters call the
+    shared helper instead of open-coding the same rewrite-module preparation
+    flow locally
+  - extended `tests/backend/backend_shared_util_tests.cpp` with focused
+    coverage proving shared backend prep preserves declarations, prunes dead
+    param allocas for x86/aarch64 native emission, and leaves riscv64 text
+    fallback modules untouched
 - Completed the next Step 6/7 bounded direct-emitter module rewrite cleanup
   slice by deleting the duplicated target-local `prune_module_entry_allocas(...)`
   / `prune_dead_entry_allocas(...)` compatibility wrappers and centralizing that

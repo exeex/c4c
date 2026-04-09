@@ -1,5 +1,6 @@
 #include "emit.hpp"
 
+#include "../../backend.hpp"
 #include "../../bir.hpp"
 #include "../../lowering/call_decode.hpp"
 #include "../../lowering/lir_to_bir.hpp"
@@ -6690,13 +6691,8 @@ std::string emit_module(const c4c::backend::bir::Module& module) {
 std::string emit_module(const c4c::codegen::lir::LirModule& module) {
   const bool needs_nonminimal_lowering = lir_module_needs_nonminimal_lowering(module);
   validate_module(module);
-  c4c::backend::RegAllocConfig config;
-  config.available_regs.assign(kAarch64CalleeSavedRegs.begin(), kAarch64CalleeSavedRegs.end());
-  config.caller_saved_regs.assign(kAarch64CallerSavedRegs.begin(), kAarch64CallerSavedRegs.end());
-  const std::vector<c4c::backend::PhysReg> callee_saved(kAarch64CalleeSavedRegs.begin(),
-                                                        kAarch64CalleeSavedRegs.end());
-  const auto prepared =
-      c4c::backend::stack_layout::rewrite_module_entry_allocas(module, config, {}, callee_saved);
+  const auto prepared = c4c::backend::prepare_lir_module_for_target(
+      module, c4c::backend::target_from_triple(module.target_triple));
   validate_module(prepared);
   if (const auto bir_module = c4c::backend::try_lower_to_bir(prepared);
       bir_module.has_value()) {

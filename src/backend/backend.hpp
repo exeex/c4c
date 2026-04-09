@@ -47,6 +47,10 @@ struct BackendOptions {
   Target target;
 };
 
+[[nodiscard]] c4c::codegen::lir::LirModule prepare_lir_module_for_target(
+    const c4c::codegen::lir::LirModule& module,
+    Target target);
+
 std::string emit_module(const BackendModuleInput& input,
                         const BackendOptions& options);
 

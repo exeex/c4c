@@ -2,16 +2,54 @@
 #include "aarch64/codegen/emit.hpp"
 #include "bir_printer.hpp"
 #include "lowering/lir_to_bir.hpp"
+#include "stack_layout/slot_assignment.hpp"
 #include "x86/codegen/emit.hpp"
 
 #include "../codegen/lir/lir_printer.hpp"
 #include "../codegen/lir/ir.hpp"
 
+#include <array>
 #include <stdexcept>
 
 namespace c4c::backend {
 
 namespace {
+
+struct NativePreparationConfig {
+  RegAllocConfig regalloc;
+  std::vector<PhysReg> callee_saved;
+};
+
+NativePreparationConfig build_native_preparation_config(Target target) {
+  NativePreparationConfig config;
+  switch (target) {
+    case Target::X86_64:
+    case Target::I686:
+      config.regalloc.available_regs = {{1}, {2}, {3}, {4}, {5}};
+      config.regalloc.caller_saved_regs = {{10}, {11}, {12}, {13}, {14}, {15}};
+      config.callee_saved = {{1}, {2}, {3}, {4}, {5}};
+      return config;
+    case Target::Aarch64: {
+      constexpr std::array<PhysReg, 9> kAarch64CalleeSaved = {
+          PhysReg{20}, PhysReg{21}, PhysReg{22}, PhysReg{23}, PhysReg{24},
+          PhysReg{25}, PhysReg{26}, PhysReg{27}, PhysReg{28},
+      };
+      constexpr std::array<PhysReg, 2> kAarch64CallerSaved = {
+          PhysReg{9},
+          PhysReg{10},
+      };
+      config.regalloc.available_regs.assign(
+          kAarch64CalleeSaved.begin(), kAarch64CalleeSaved.end());
+      config.regalloc.caller_saved_regs.assign(
+          kAarch64CallerSaved.begin(), kAarch64CallerSaved.end());
+      config.callee_saved.assign(kAarch64CalleeSaved.begin(), kAarch64CalleeSaved.end());
+      return config;
+    }
+    case Target::Riscv64:
+      return config;
+  }
+  throw std::logic_error("unreachable backend target");
+}
 
 std::string emit_native_bir_module(const bir::Module& module, Target target) {
   switch (target) {
@@ -40,6 +78,18 @@ BackendModuleInput::BackendModuleInput(const bir::Module& bir_module)
 
 BackendModuleInput::BackendModuleInput(const c4c::codegen::lir::LirModule& lir_module)
     : module_(std::cref(lir_module)) {}
+
+c4c::codegen::lir::LirModule prepare_lir_module_for_target(
+    const c4c::codegen::lir::LirModule& module,
+    Target target) {
+  if (target == Target::Riscv64) {
+    return module;
+  }
+
+  const auto config = build_native_preparation_config(target);
+  return c4c::backend::stack_layout::rewrite_module_entry_allocas(
+      module, config.regalloc, {}, config.callee_saved);
+}
 
 std::string emit_module(const BackendModuleInput& input,
                         const BackendOptions& options) {
