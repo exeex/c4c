@@ -8,17 +8,38 @@ Source Plan: plan.md
 
 - Step 8: delete temporary LIR-side backend shims
 - Current slice: re-audit the surviving raw-`LIR` stack-layout lowering
-  helpers now that the dead liveness convenience wrapper is gone, and decide
-  whether another single shim deletion still fits Step 8 or needs a separate
-  follow-up idea
-- Current implementation target: inventory the remaining raw-`LIR`
-  stack-layout-only helpers and separate true shim deletion from broader
-  backend surface cleanup that would silently expand this runbook
-- Next intended slice: either delete one equally narrow stack-layout shim or
-  write a follow-up idea for any broader cleanup that no longer looks like
-  temporary ownership scaffolding
+  surfaces after deleting the test-only prepared stack-layout wrapper, and
+  decide whether the remaining raw-`LIR` helper still qualifies as temporary
+  Step 8 ownership scaffolding or should be left for a separate cleanup idea
+- Current implementation target: confirm whether
+  `lower_lir_to_stack_layout_input(...)` can be narrowed further without
+  rewriting the long-standing raw stack-layout analysis tests that still
+  exercise direct `LirFunction` lowering
+- Next intended slice: either delete one more truly temporary stack-layout
+  shim with focused test retargeting, or write a follow-up idea if the
+  remaining raw helper now represents broader surface cleanup instead of a
+  bounded ownership-shim removal
 
 ## Completed
+
+- Completed the next Step 8 stack-layout shim deletion slice by removing the
+  redundant prepared stack-layout wrapper so tests compose the explicit
+  preparation-plus-lowering seam directly:
+  - deleted
+    `prepare_module_function_entry_alloca_stack_layout_input(...)` from
+    `src/backend/stack_layout/slot_assignment.hpp` and
+    `src/backend/stack_layout/slot_assignment.cpp`; the helper only wrapped
+    `prepare_module_function_entry_alloca_preparation(...)` plus
+    `lower_prepared_entry_alloca_stack_layout_input(...)`
+  - retargeted the affected coverage in
+    `tests/backend/backend_shared_util_tests.cpp` to call the explicit seam
+    directly via a local test helper, preserving the same parity checks while
+    making the compatibility boundary visible in test code
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`
+  - rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with monotonic non-decreasing results and no new failures
+    (`2841 -> 2841` passed tests)
 
 - Completed the next Step 8 obsolete raw-`LIR` liveness wrapper deletion slice
   by removing the dead convenience entrypoint now that backend-CFG lowering is

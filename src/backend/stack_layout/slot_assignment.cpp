@@ -834,13 +834,6 @@ std::optional<LivenessInput> try_lower_module_function_to_bir_liveness_input(
   return std::nullopt;
 }
 
-StackLayoutInput prepare_module_function_entry_alloca_stack_layout_input(
-    const c4c::codegen::lir::LirModule& module,
-    std::size_t function_index) {
-  return lower_prepared_entry_alloca_stack_layout_input(
-      prepare_module_function_entry_alloca_preparation(module, function_index));
-}
-
 PreparedEntryAllocaRewriteOnlyInputs prepare_module_function_entry_alloca_rewrite_only_inputs(
     const c4c::codegen::lir::LirModule& module,
     std::size_t function_index) {

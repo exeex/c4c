@@ -160,10 +160,6 @@ lower_prepared_entry_alloca_rewrite_only_inputs(
 // tests that still need it. Production rewrite flows should prefer
 // `prepare_module_function_entry_alloca_rewrite_only_inputs(...)` and
 // production emitters should consume the prepared metadata/carrier directly.
-[[nodiscard]] StackLayoutInput prepare_module_function_entry_alloca_stack_layout_input(
-    const c4c::codegen::lir::LirModule& module,
-    std::size_t function_index);
-
 [[nodiscard]] PreparedEntryAllocaRewriteOnlyInputs
 prepare_module_function_entry_alloca_rewrite_only_inputs(
     const c4c::codegen::lir::LirModule& module,

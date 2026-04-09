@@ -36,6 +36,14 @@ c4c::backend::LivenessInput lower_test_backend_cfg_liveness_input(
   return c4c::backend::lower_backend_cfg_to_liveness_input(backend_cfg);
 }
 
+c4c::backend::stack_layout::StackLayoutInput lower_test_prepared_entry_alloca_stack_layout_input(
+    const c4c::codegen::lir::LirModule& module,
+    std::size_t function_index) {
+  return c4c::backend::stack_layout::lower_prepared_entry_alloca_stack_layout_input(
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_preparation(
+          module, function_index));
+}
+
 c4c::codegen::lir::LirModule make_mixed_bir_and_entry_alloca_module() {
   auto module = make_typed_direct_call_two_arg_module();
   auto dead_alloca_module = make_dead_local_alloca_candidate_module();
@@ -2300,8 +2308,7 @@ void test_backend_shared_slot_assignment_prepares_module_function_inputs() {
       c4c::backend::stack_layout::prepare_module_function_entry_alloca_rewrite_only_inputs(
           module, 0);
   const auto lowerable_stack_layout_input =
-      c4c::backend::stack_layout::prepare_module_function_entry_alloca_stack_layout_input(
-          module, 0);
+      lower_test_prepared_entry_alloca_stack_layout_input(module, 0);
   expect_true(lowerable_rewrite_only.liveness_source ==
                   c4c::backend::stack_layout::EntryAllocaRewriteLivenessSource::PerFunctionBir &&
                   lowerable_rewrite_only.stack_layout_source ==
@@ -2320,8 +2327,7 @@ void test_backend_shared_prepared_function_inputs_preserve_emitter_stack_layout_
   const auto module = make_mixed_bir_and_entry_alloca_module();
 
   const auto lowerable_prepared =
-      c4c::backend::stack_layout::prepare_module_function_entry_alloca_stack_layout_input(
-          module, 0);
+      lower_test_prepared_entry_alloca_stack_layout_input(module, 0);
   const auto lowerable_direct =
       c4c::backend::stack_layout::lower_function_entry_alloca_stack_layout_input(
           module.functions[0], c4c::backend::lower_lir_to_backend_cfg(module.functions[0]));
@@ -2335,8 +2341,7 @@ void test_backend_shared_prepared_function_inputs_preserve_emitter_stack_layout_
       "prepared per-function stack-layout inputs should preserve the slot-building value set and signature metadata for lowerable functions so production emitters do not need to call the raw-LIR helper directly");
 
   const auto fallback_prepared =
-      c4c::backend::stack_layout::prepare_module_function_entry_alloca_stack_layout_input(
-          module, 2);
+      lower_test_prepared_entry_alloca_stack_layout_input(module, 2);
   const auto fallback_direct =
       c4c::backend::stack_layout::lower_function_entry_alloca_stack_layout_input(
           module.functions[2], c4c::backend::lower_lir_to_backend_cfg(module.functions[2]));
@@ -2390,8 +2395,7 @@ void test_backend_shared_prepared_function_inputs_collect_emitter_value_names_wi
   const auto lowerable_preparation =
       c4c::backend::stack_layout::prepare_module_function_entry_alloca_preparation(module, 0);
   const auto lowerable_stack_layout_input =
-      c4c::backend::stack_layout::prepare_module_function_entry_alloca_stack_layout_input(
-          module, 0);
+      lower_test_prepared_entry_alloca_stack_layout_input(module, 0);
   expect_true(
       lowerable_preparation.backend_cfg.has_value() &&
           c4c::backend::stack_layout::collect_prepared_entry_alloca_value_names(
@@ -2403,8 +2407,7 @@ void test_backend_shared_prepared_function_inputs_collect_emitter_value_names_wi
   const auto fallback_preparation =
       c4c::backend::stack_layout::prepare_module_function_entry_alloca_preparation(module, 2);
   const auto fallback_stack_layout_input =
-      c4c::backend::stack_layout::prepare_module_function_entry_alloca_stack_layout_input(
-          module, 2);
+      lower_test_prepared_entry_alloca_stack_layout_input(module, 2);
   expect_true(
       fallback_preparation.backend_cfg.has_value() &&
           c4c::backend::stack_layout::collect_prepared_entry_alloca_value_names(
