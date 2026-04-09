@@ -210,7 +210,9 @@ std::string emit_minimal_return_imm_asm(const c4c::backend::bir::Module& module,
   std::ostringstream out;
   const auto symbol =
       asm_symbol_name(module.target_triple, module.functions.front().name);
-  out << emit_function_prelude(module.target_triple, symbol)
+  out << ".intel_syntax noprefix\n"
+      << ".text\n"
+      << emit_function_prelude(module.target_triple, symbol)
       << "  mov eax, " << imm << "\n"
       << "  ret\n";
   return out.str();
@@ -223,15 +225,17 @@ std::string emit_minimal_string_literal_char_asm(
   const auto symbol = asm_symbol_name(target_triple, slice.function_name);
 
   std::ostringstream out;
-  out << ".section .rodata\n"
+  out << ".intel_syntax noprefix\n"
+      << ".section .rodata\n"
       << string_label << ":\n"
       << "  .asciz \"" << escape_asm_string(slice.raw_bytes) << "\"\n"
+      << ".text\n"
       << emit_function_prelude(target_triple, symbol)
-      << "  lea rax, [rip + " << string_label << "]\n";
+      << "  lea rax, " << string_label << "[rip]\n";
   if (slice.extend_kind == c4c::codegen::lir::LirCastKind::SExt) {
-    out << "  movsx eax, BYTE PTR [rax + " << slice.byte_index << "]\n";
+    out << "  movsx eax, byte ptr [rax + " << slice.byte_index << "]\n";
   } else {
-    out << "  movzx eax, BYTE PTR [rax + " << slice.byte_index << "]\n";
+    out << "  movzx eax, byte ptr [rax + " << slice.byte_index << "]\n";
   }
   out << "  ret\n";
   return out.str();

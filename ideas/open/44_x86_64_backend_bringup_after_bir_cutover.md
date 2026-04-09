@@ -218,6 +218,19 @@ Current-tree Step 2 progress after the `00141.c` slice:
   the next reassessment point is whether a bounded Family B seam should stay in
   this idea or whether the remaining highest-leverage work should switch to the
   Step 3 x86-native or Step 4 variadic-runtime lanes
+
+Current-tree monotonic-regression recheck after the later variadic-runtime
+slice:
+
+- `test_fail_before.log` versus `test_fail_after.log` is not stale-baseline
+  drift on the current tree
+- the guard reports `2670 -> 2526` passing tests and `179 -> 324` failing tests
+- the new failures split into two families:
+  - a separate cross-target shared-BIR select/route regression, now parked in
+    `ideas/open/47_shared_bir_select_route_regression_after_x86_variadic_recovery.md`
+  - an in-scope x86-native asm/toolchain family that still belongs to this idea
+- the bounded x86 emitter slice should not silently absorb the shared-BIR
+  select regression; keep that as a separate lifecycle item
 - subsequent Step 3/native slices now confirm the next move should stay in the
   bounded x86-owned lane before reopening Family B:
   `c_testsuite_x86_backend_src_00180_c` and

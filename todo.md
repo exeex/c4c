@@ -6,27 +6,49 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 2 architecture reset, now in `Phase 2: Compile recovery`:
-  use the split shared lowering seams as the owning implementation surface and
-  recover compile/test health one seam-local family at a time
+- Step 3 x86-native seam recovery, after settling the monotonic-baseline
+  question:
+  keep the active work inside idea 44's x86-native emitter/toolchain lane and
+  do not silently absorb the separate shared-BIR select regression
 - current exact slice:
-  keep the bounded x86-native variadic runtime lane in
-  `src/backend/x86/codegen/emit.cpp`, but move off the now-green
-  `backend_runtime_variadic_double_bytes` probe and classify the unrelated
-  full-suite monotonic-regression mismatch against the checked-in
-  `test_fail_before.log` baseline before widening this seam further
+  move past the now-green minimal prologue/header repair in
+  `src/backend/x86/codegen/emit.cpp` and choose the next smallest x86-local
+  runtime or contract probe that still fails after the shared-BIR select
+  regression is parked separately
 
 ## Next Slice
 
-- determine whether the current 144-test monotonic delta versus
-  `test_fail_before.log` is stale-baseline drift or a separate regression
-  initiative; if it is separate, record it under `ideas/open/` instead of
-  silently broadening this x86 emitter slice
-- once the regression baseline question is settled, choose the next bounded
-  x86-native runtime probe without reopening broad
+- keep the separate shared-BIR select regression parked in
+  `ideas/open/47_shared_bir_select_route_regression_after_x86_variadic_recovery.md`
+  instead of widening idea 44
+- after the minimal x86 asm prologue/header repair, choose the next bounded
+  x86-native runtime or contract probe that still fails for x86-local reasons
+  such as `backend_runtime_global_load`, `backend_contract_x86_64_global_load_stdout_object`,
+  or `backend_shared_util_tests`, without reopening broad
   `try_lower_to_bir_with_options(...)` ordering changes
 
 ## Recently Completed
+
+- classified the checked-in full-suite monotonic mismatch against
+  `test_fail_before.log` and confirmed it is not stale-baseline drift:
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log`
+  reports `2670 -> 2526` passes, `179 -> 324` failures, zero resolved failing
+  tests, and `144` new failing tests
+- sampled representative failures and split the mismatch into:
+  - a separate shared-BIR select/route regression family
+  - an in-scope x86 asm/toolchain family
+- recorded the separate cross-target shared-BIR regression as
+  `ideas/open/47_shared_bir_select_route_regression_after_x86_variadic_recovery.md`
+- repaired the bounded x86 asm prologue contract in
+  `src/backend/x86/codegen/emit.cpp` so the minimal direct-BIR immediate-return
+  path and the native string-literal helper now emit `.intel_syntax noprefix`
+  and return to `.text` before function bodies
+- normalized the x86 string-literal helper's Intel operand spelling to the
+  repo's existing native-asm contract:
+  `lea rax, .L.str0[rip]` and `movsx/movzx ... byte ptr [...]`
+- verified the focused x86 contract/runtime probes are green:
+  `ctest --test-dir build --output-on-failure -R '^(backend_runtime_return_zero|backend_contract_x86_64_string_literal_char_stdout_object)$'`
+  passes
 
 - added a seam-local x86 prepared-LIR matcher in
   `src/backend/x86/codegen/emit.cpp` for the bounded floating variadic

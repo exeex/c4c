@@ -536,6 +536,10 @@ void test_x86_try_emit_module_reports_direct_bir_support_explicitly() {
   const auto supported = c4c::backend::x86::try_emit_module(make_return_immediate_module());
   expect_true(supported.has_value(),
               "x86 direct BIR support probing should report a bounded affine-return module without requiring a thrown rejection string");
+  expect_contains(*supported, ".intel_syntax noprefix",
+                  "x86 direct BIR support probing should emit Intel-syntax asm so the host assembler can consume the native backend text");
+  expect_contains(*supported, ".text",
+                  "x86 direct BIR support probing should place the bounded affine-return module in the text section before the function body");
   expect_contains(*supported, "mov eax, 7",
                   "x86 direct BIR support probing should still render the bounded affine-return module natively");
 
@@ -565,6 +569,10 @@ void test_x86_try_emit_prepared_lir_module_reports_direct_lir_support_explicitly
   const auto supported = c4c::backend::x86::try_emit_prepared_lir_module(prepared_supported);
   expect_true(supported.has_value(),
               "x86 prepared direct-LIR support probing should report a bounded string-literal module without requiring a thrown rejection string");
+  expect_contains(*supported, ".intel_syntax noprefix",
+                  "x86 prepared direct-LIR support probing should emit Intel-syntax asm so native string-literal helpers assemble on the host toolchain");
+  expect_contains(*supported, ".text",
+                  "x86 prepared direct-LIR support probing should return to the text section before emitting the helper body");
   expect_contains(*supported, "movsx eax",
                   "x86 prepared direct-LIR support probing should still render the bounded string-literal module natively");
 
