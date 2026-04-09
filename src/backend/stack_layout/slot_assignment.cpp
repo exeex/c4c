@@ -208,12 +208,6 @@ PreparedEntryAllocaStackLayoutClassificationInput lower_prepared_stack_layout_cl
   classification.entry_alloca_first_accesses =
       collect_prepared_entry_alloca_first_accesses(input);
   classification.entry_allocas = std::move(input.entry_allocas);
-  classification.blocks.reserve(input.blocks.size());
-  for (auto& block : input.blocks) {
-    PreparedEntryAllocaStackLayoutBlock prepared_block;
-    prepared_block.inst_count = block.insts.size();
-    classification.blocks.push_back(std::move(prepared_block));
-  }
   return classification;
 }
 
@@ -226,15 +220,16 @@ StackLayoutInput lower_prepared_stack_layout_input(
   input.escaped_entry_allocas = classification.escaped_entry_allocas;
   input.entry_alloca_use_blocks = classification.entry_alloca_use_blocks;
   input.entry_alloca_first_accesses = classification.entry_alloca_first_accesses;
-  input.blocks.reserve(classification.blocks.size());
-  for (std::size_t block_index = 0; block_index < classification.blocks.size(); ++block_index) {
-    const auto& block = classification.blocks[block_index];
+  if (liveness_input != nullptr) {
+    input.blocks.reserve(liveness_input->blocks.size());
+  }
+  for (std::size_t block_index = 0; liveness_input != nullptr && block_index < liveness_input->blocks.size();
+       ++block_index) {
+    const auto& liveness_block = liveness_input->blocks[block_index];
     StackLayoutBlockInput lowered_block;
-    if (liveness_input != nullptr && block_index < liveness_input->blocks.size()) {
-      lowered_block.label = liveness_input->blocks[block_index].label;
-    }
-    lowered_block.insts.reserve(block.inst_count);
-    for (std::size_t inst_index = 0; inst_index < block.inst_count; ++inst_index) {
+    lowered_block.label = liveness_block.label;
+    lowered_block.insts.reserve(liveness_block.insts.size());
+    for (std::size_t inst_index = 0; inst_index < liveness_block.insts.size(); ++inst_index) {
       (void)inst_index;
       StackLayoutPoint lowered_point;
       lowered_block.insts.push_back(std::move(lowered_point));
@@ -247,14 +242,12 @@ StackLayoutInput lower_prepared_stack_layout_input(
     return input;
   }
 
-  const auto block_count = std::min(input.blocks.size(), liveness_input->blocks.size());
-  for (std::size_t block_index = 0; block_index < block_count; ++block_index) {
+  for (std::size_t block_index = 0; block_index < input.blocks.size(); ++block_index) {
     auto& lowered_block = input.blocks[block_index];
     const auto& liveness_block = liveness_input->blocks[block_index];
     lowered_block.terminator_used_names = liveness_block.terminator_used_names;
 
-    const auto inst_count = std::min(lowered_block.insts.size(), liveness_block.insts.size());
-    for (std::size_t inst_index = 0; inst_index < inst_count; ++inst_index) {
+    for (std::size_t inst_index = 0; inst_index < lowered_block.insts.size(); ++inst_index) {
       lowered_block.insts[inst_index].used_names = liveness_block.insts[inst_index].used_names;
     }
   }

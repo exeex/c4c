@@ -7,17 +7,37 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: audit the next prepared fallback carrier field after removing
-  duplicate phi predecessor-edge storage
-- Current implementation target: determine whether any remaining prepared
-  stack-layout fallback field beyond per-block instruction counts and the
-  coarse pointer/escape classification seams is still derivable from the
-  backend-owned liveness carrier without introducing a new ownership surface
+- Current slice: audit whether prepared fallback `entry_allocas` ownership can
+  narrow further without reopening raw-LIR stack-layout decoding
+- Current implementation target: determine whether the prepared fallback
+  carrier still needs to cache full `EntryAllocaInput` records or whether a
+  narrower backend-owned seam can drive rewrite planning and patch synthesis
 - Next intended slice: either remove the next redundant prepared fallback
-  field with a focused regression or record the exact still-required consumer
-  and invariant in `todo.md`
+  `entry_allocas` field with a focused regression or record the exact rewrite
+  consumer and invariant that still require it
 
 ## Completed
+
+- Completed the next Step 6 prepared block-arity narrowing slice by removing
+  duplicate prepared per-block instruction counts from the stack-layout
+  fallback carrier and rehydrating block structure entirely from backend-owned
+  liveness:
+  - removed `PreparedEntryAllocaStackLayoutBlock` and the
+    `PreparedEntryAllocaStackLayoutClassificationInput::blocks` cache from
+    `src/backend/stack_layout/slot_assignment.hpp`
+  - updated `src/backend/stack_layout/slot_assignment.cpp` so prepared
+    stack-layout lowering now rebuilds block count, block labels, and
+    per-block instruction arity directly from `LivenessInput` before
+    rehydrating use lists, rather than caching duplicate prepared block counts
+  - updated `tests/backend/backend_shared_util_tests.cpp` to prove prepared
+    fallback lowering now depends on backend-owned liveness for block
+    instruction counts and no longer exposes cached prepared block-count state
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`
+  - rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with the repo’s allowed non-decreasing rule and no new
+    failures (`2809 -> 2809`, same 32 known failing tests as
+    `test_fail_before.log`)
 
 - Completed the next Step 6 prepared phi-edge narrowing slice by removing
   duplicate prepared phi predecessor-use storage from the stack-layout fallback
