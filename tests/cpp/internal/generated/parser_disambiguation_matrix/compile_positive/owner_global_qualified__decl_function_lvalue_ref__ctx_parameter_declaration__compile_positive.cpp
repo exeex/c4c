@@ -44,12 +44,13 @@ int value = 0;
 
 // RUN: %c4cll %s
 
-// owner: simple
-// declarator: member_function_pointer
-// context: c_style_cast_target
+// owner: global_qualified
+// declarator: function_lvalue_ref
+// context: parameter_declaration
 // verification: compile_positive
 
+void probe(::ns::T (&value)(Arg));
+
 int main() {
-    (T (C::*)(Arg))expr;
     return 0;
 }

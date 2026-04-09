@@ -44,12 +44,12 @@ int value = 0;
 
 // RUN: %c4cll %s
 
-// owner: simple
-// declarator: member_function_pointer
+// owner: global_qualified
+// declarator: function_rvalue_ref
 // context: c_style_cast_target
 // verification: compile_positive
 
 int main() {
-    (T (C::*)(Arg))expr;
+    (::ns::T (&&)(Arg))expr;
     return 0;
 }

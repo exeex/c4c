@@ -6,10 +6,10 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 4: reassess whether the next stronger-validation promotion should target
-  non-dependent reference-qualified function shapes or isolate the
-  dependent-owner `ctx_c_style_cast_target` frontend failure shared by
-  function-shaped promotions
+- Step 4: isolate the dependent-owner `ctx_c_style_cast_target` frontend
+  failure shared by the promoted function-shaped families, starting from the
+  generated `function_lvalue_ref` / `function_rvalue_ref` /
+  `function_pointer` cases that still stay bounded to `parse_only`
 
 ## Completed Items
 
@@ -150,14 +150,35 @@ Source Plan: plan.md
   --before test_fail_before.log --after test_fail_after.log
   --allow-non-decreasing-passed` reported PASS with zero new failing tests
   and a +105 pass delta against the stored baseline log
+- Promoted the non-dependent `function_lvalue_ref` and
+  `function_rvalue_ref` families (`simple`, `qualified`, `global_qualified`
+  owners across all five contexts) into generated `compile_positive`
+  coverage while preserving the existing promoted `function_pointer` and
+  `member_function_pointer` files in the same generator-owned tier
+- Generator fix: taught `scripts/generate_parser_disambiguation_matrix.py`
+  to emit initialized local-declaration forms for `compile_positive`
+  function-reference cases by binding them to `support_return<owner>`
+  helpers, keeping the promoted reference-shaped files frontend-valid
+- Targeted validation: `ctest --test-dir build -R
+  'generated_parser_disambiguation_matrix_compile_positive_owner_(simple|qualified|global_qualified)__decl_function_(lvalue_ref|rvalue_ref|pointer)|generated_parser_disambiguation_matrix_compile_positive_owner_(simple|qualified|global_qualified)__decl_member_function_pointer'
+  --output-on-failure` passed all 60 adjacent promoted function-shaped
+  `compile_positive` cases with zero failures
+- Full-suite validation: `ctest --test-dir build -j8 --output-on-failure >
+  test_fail_after.log` completed with 3137/3137 passing tests, and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
+  --before test_fail_before.log --after test_fail_after.log
+  --allow-non-decreasing-passed` reported PASS with zero new failing tests
+  and a +30 pass delta against the refreshed pre-slice baseline log
 
 ## Next Slice
 
-- choose whether the next Step 4 slice should promote non-dependent
-  `function_lvalue_ref` / `function_rvalue_ref` cases into
-  `compile_positive`, or instead isolate the dependent-owner
-  `ctx_c_style_cast_target` frontend failure shared by promoted
-  function-shaped families
+- isolate the dependent-owner `ctx_c_style_cast_target` frontend failure on
+  generated promoted function-shaped cases, starting with
+  `function_lvalue_ref` / `function_rvalue_ref` / `function_pointer`
+  owner spellings `typename H<T>::Type` and
+  `typename H<T>::template Rebind<U>::Type`
+- keep the next slice bounded to frontend diagnosis and the narrowest
+  generator-backed promotion path; do not expand into unrelated sema cleanup
 - if dependent owners become the target, isolate the frontend failure on
   `ctx_c_style_cast_target` where the generated `H<T>::Type` /
   `Rebind<U>::Type` owners currently fail with unknown type-name diagnostics
@@ -187,3 +208,7 @@ Source Plan: plan.md
 - the same unknown type-name frontend failure also reproduces for dependent
   `function_pointer` `ctx_c_style_cast_target` cases under `build/c4cll`, so
   this iteration stays bounded to the three non-dependent owners
+- the non-dependent function-reference promotion uncovered a generator-shape
+  issue rather than a parser defect: `compile_positive` local declarations for
+  function references must be initialized, so the generator now binds those
+  cases to `support_return<owner>` helpers

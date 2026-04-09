@@ -45,11 +45,11 @@ int value = 0;
 // RUN: %c4cll %s
 
 // owner: simple
-// declarator: member_function_pointer
-// context: c_style_cast_target
+// declarator: function_rvalue_ref
+// context: ambiguous_statement_context
 // verification: compile_positive
 
 int main() {
-    (T (C::*)(Arg))expr;
+    T (&&value)(Arg)(value);
     return 0;
 }

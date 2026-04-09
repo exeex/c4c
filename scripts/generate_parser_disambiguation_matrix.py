@@ -138,6 +138,11 @@ struct H {
     };
 };
 
+template <class X>
+X support_return(Arg) {
+    return X{};
+}
+
 void* expr = 0;
 int value = 0;
 """
@@ -279,6 +284,21 @@ def render_test_file(
         f"// verification: {entry['verification']}\n\n"
     )
     body = context.render_test_snippet(entry["type_id"], entry["named_decl"])
+    if (
+        entry["verification"] == "compile_positive"
+        and entry["context_label"] == "local_declaration"
+        and entry["declarator_label"] == "function_lvalue_ref"
+    ):
+        body = f"    {entry['named_decl']} = support_return<{entry['owner_text']}>;\n"
+    elif (
+        entry["verification"] == "compile_positive"
+        and entry["context_label"] == "local_declaration"
+        and entry["declarator_label"] == "function_rvalue_ref"
+    ):
+        body = (
+            f"    {entry['named_decl']} = "
+            f"static_cast<{entry['type_id']}>(support_return<{entry['owner_text']}>);\n"
+        )
 
     if context.scope == "global":
         return (

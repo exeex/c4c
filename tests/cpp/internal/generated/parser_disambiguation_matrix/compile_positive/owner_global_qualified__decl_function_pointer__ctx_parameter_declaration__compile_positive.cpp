@@ -34,6 +34,11 @@ struct H {
     };
 };
 
+template <class X>
+X support_return(Arg) {
+    return X{};
+}
+
 void* expr = 0;
 int value = 0;
 

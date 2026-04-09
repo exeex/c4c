@@ -44,12 +44,13 @@ int value = 0;
 
 // RUN: %c4cll %s
 
-// owner: simple
-// declarator: member_function_pointer
-// context: c_style_cast_target
+// owner: qualified
+// declarator: function_rvalue_ref
+// context: parenthesized_type_id_consumer
 // verification: compile_positive
 
 int main() {
-    (T (C::*)(Arg))expr;
+    int width = sizeof(ns::T (&&)(Arg));
+    (void)width;
     return 0;
 }

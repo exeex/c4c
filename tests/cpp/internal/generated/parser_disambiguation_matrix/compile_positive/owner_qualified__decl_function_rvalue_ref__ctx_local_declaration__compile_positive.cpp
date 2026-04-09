@@ -44,12 +44,12 @@ int value = 0;
 
 // RUN: %c4cll %s
 
-// owner: simple
-// declarator: member_function_pointer
-// context: c_style_cast_target
+// owner: qualified
+// declarator: function_rvalue_ref
+// context: local_declaration
 // verification: compile_positive
 
 int main() {
-    (T (C::*)(Arg))expr;
+    ns::T (&&value)(Arg) = static_cast<ns::T (&&)(Arg)>(support_return<ns::T>);
     return 0;
 }
