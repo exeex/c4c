@@ -855,7 +855,6 @@ Node* Parser::parse_primary() {
                     after_template == TokenKind::RBracket ||
                     after_template == TokenKind::RBrace ||
                     after_template == TokenKind::PipePipe ||
-                    after_template == TokenKind::AmpAmp ||
                     after_template == TokenKind::Pipe ||
                     after_template == TokenKind::Caret) {
                     return false;

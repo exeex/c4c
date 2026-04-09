@@ -7,15 +7,15 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 3: review declarator suffix and function-pointer cast forms
-- Current slice: re-probe the remaining Step 3 template-id declarator-suffix
-  matrix after landing member-function-pointer ref-qualifier coverage
+- Current slice: re-probe adjacent template-id return-type suffixes after
+  landing the `T&& (*)(...)` cast case
 - Current implementation target: stay in parser-facing Step 3 coverage work
-  and identify whether any additional template-id declarator-suffix variant
-  still exposes a parser-specific hole after the member-function-pointer
-  `)&` / `)&&` fix
-- Next intended slice: probe the next uncovered nested declarator-suffix
-  combination and add a focused regression only if another parser mismatch is
-  still reproducible
+  and identify whether any additional template-id return-type or
+  declarator-suffix combination still exposes a parser-specific hole after the
+  rvalue-reference function-pointer-return fix
+- Next intended slice: probe the next uncovered template-id return-type or
+  grouped declarator-suffix combination and add a focused regression only if a
+  new parser mismatch is still reproducible
 
 ## Completed
 
@@ -275,6 +275,23 @@ Source Plan: plan.md
   member-function-pointer suffix variants.
 - Full-suite validation stayed monotonic: `test_before.log` 2862/2862 passed,
   `test_after.log` 2863/2863 passed, with zero new failures.
+- Added
+  `tests/cpp/internal/postive_case/c_style_cast_template_fn_ptr_rvalue_ref_return_type_parse.cpp`
+  as a focused parse-only regression for
+  `Box<int>&& (*fp)(int) = (Box<int>&& (*)(int))raw;`.
+- Fixed the expression-side C-style cast template-id lookahead so
+  `Identifier<...>&&` remains eligible for type-id parsing when a nested
+  function-pointer declarator follows, instead of being rejected as an
+  expression-shaped template head before `parse_type_name()` can consume the
+  cast target.
+- Targeted validation passed:
+  `build/c4cll --parse-only tests/cpp/internal/postive_case/c_style_cast_template_fn_ptr_rvalue_ref_return_type_parse.cpp`,
+  `ctest --test-dir build -R 'c_style_cast_template_(fn_ptr_return_type_parse|fn_ptr_rvalue_ref_return_type_parse|member_fn_ptr_ref_qual_parse|member_fn_ptr_const_parse|fn_ptr_param_type_parse)' --output-on-failure`,
+  and nearby Step 3 parser probes for the lvalue-reference return-type,
+  member-`const`, and member-function-pointer ref-qualifier variants.
+- Full-suite validation stayed monotonic under the repo regression guard:
+  `test_fail_before.log` 2860/2860 passed,
+  `test_fail_after.log` 2864/2864 passed, with zero new failures.
 
 ## Notes
 
