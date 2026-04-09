@@ -13,6 +13,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 
 namespace c4c::backend::x86 {
 
@@ -47,6 +48,14 @@ struct MinimalExternScalarGlobalLoadSlice {
   std::string global_name;
 };
 
+struct MinimalAffineReturnSlice {
+  std::string function_name;
+  std::size_t param_count = 0;
+  bool uses_first_param = false;
+  bool uses_second_param = false;
+  std::int64_t constant = 0;
+};
+
 struct MinimalVariadicSum2Slice {
   std::string helper_name;
   std::string entry_name;
@@ -76,6 +85,12 @@ std::optional<std::int64_t> parse_i64(const c4c::backend::bir::Value& value) {
   return value.immediate;
 }
 
+struct AffineValue {
+  bool uses_first_param = false;
+  bool uses_second_param = false;
+  std::int64_t constant = 0;
+};
+
 bool is_minimal_single_function_asm_slice(const c4c::backend::bir::Module& module) {
   if (module.functions.size() != 1 || !module.globals.empty()) {
     return false;
@@ -84,6 +99,53 @@ bool is_minimal_single_function_asm_slice(const c4c::backend::bir::Module& modul
   return function.params.empty() && function.blocks.size() == 1 &&
          function.blocks.front().label == "entry" &&
          function.return_type == c4c::backend::bir::TypeKind::I32;
+}
+
+std::optional<AffineValue> lower_affine_operand(
+    const c4c::backend::bir::Value& operand,
+    const std::vector<std::string_view>& param_names,
+    const std::unordered_map<std::string, AffineValue>& values) {
+  if (const auto imm = parse_i64(operand); imm.has_value()) {
+    return AffineValue{false, false, *imm};
+  }
+  if (operand.kind != c4c::backend::bir::Value::Kind::Named ||
+      operand.type != c4c::backend::bir::TypeKind::I32) {
+    return std::nullopt;
+  }
+  if (!param_names.empty() && operand.name == param_names[0]) {
+    return AffineValue{true, false, 0};
+  }
+  if (param_names.size() > 1 && operand.name == param_names[1]) {
+    return AffineValue{false, true, 0};
+  }
+  auto it = values.find(operand.name);
+  if (it == values.end()) {
+    return std::nullopt;
+  }
+  return it->second;
+}
+
+std::optional<AffineValue> combine_affine_values(const AffineValue& lhs,
+                                                 const AffineValue& rhs,
+                                                 c4c::backend::bir::BinaryOpcode opcode) {
+  switch (opcode) {
+    case c4c::backend::bir::BinaryOpcode::Add:
+      if ((lhs.uses_first_param && rhs.uses_first_param) ||
+          (lhs.uses_second_param && rhs.uses_second_param)) {
+        return std::nullopt;
+      }
+      return AffineValue{lhs.uses_first_param || rhs.uses_first_param,
+                         lhs.uses_second_param || rhs.uses_second_param,
+                         lhs.constant + rhs.constant};
+    case c4c::backend::bir::BinaryOpcode::Sub:
+      if (rhs.uses_first_param || rhs.uses_second_param) {
+        return std::nullopt;
+      }
+      return AffineValue{lhs.uses_first_param, lhs.uses_second_param,
+                         lhs.constant - rhs.constant};
+    default:
+      return std::nullopt;
+  }
 }
 
 std::optional<std::int64_t> parse_minimal_return_imm(
@@ -96,6 +158,67 @@ std::optional<std::int64_t> parse_minimal_return_imm(
     return std::nullopt;
   }
   return parse_i64(*block.terminator.value);
+}
+
+std::optional<MinimalAffineReturnSlice> parse_minimal_affine_return_slice(
+    const c4c::backend::bir::Module& module) {
+  if (!is_minimal_single_function_asm_slice(module)) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.params.size() > 2) {
+    return std::nullopt;
+  }
+  for (const auto& param : function.params) {
+    if (param.type != c4c::backend::bir::TypeKind::I32 || param.name.empty()) {
+      return std::nullopt;
+    }
+  }
+
+  std::vector<std::string_view> param_names;
+  param_names.reserve(function.params.size());
+  for (const auto& param : function.params) {
+    param_names.push_back(param.name);
+  }
+
+  const auto& block = function.blocks.front();
+  std::unordered_map<std::string, AffineValue> values;
+  for (const auto& inst : block.insts) {
+    const auto* bin = std::get_if<c4c::backend::bir::BinaryInst>(&inst);
+    if (bin == nullptr || bin->result.kind != c4c::backend::bir::Value::Kind::Named ||
+        bin->result.type != c4c::backend::bir::TypeKind::I32 ||
+        bin->result.name.empty()) {
+      return std::nullopt;
+    }
+    const auto lhs = lower_affine_operand(bin->lhs, param_names, values);
+    const auto rhs = lower_affine_operand(bin->rhs, param_names, values);
+    if (!lhs.has_value() || !rhs.has_value()) {
+      return std::nullopt;
+    }
+    const auto combined = combine_affine_values(*lhs, *rhs, bin->opcode);
+    if (!combined.has_value()) {
+      return std::nullopt;
+    }
+    values[bin->result.name] = *combined;
+  }
+
+  if (!block.terminator.value.has_value()) {
+    return std::nullopt;
+  }
+  const auto lowered_return =
+      lower_affine_operand(*block.terminator.value, param_names, values);
+  if (!lowered_return.has_value()) {
+    return std::nullopt;
+  }
+
+  return MinimalAffineReturnSlice{
+      .function_name = function.name,
+      .param_count = function.params.size(),
+      .uses_first_param = lowered_return->uses_first_param,
+      .uses_second_param = lowered_return->uses_second_param,
+      .constant = lowered_return->constant,
+  };
 }
 
 std::optional<MinimalScalarGlobalLoadSlice> parse_minimal_scalar_global_load_slice(
@@ -364,6 +487,54 @@ std::string emit_minimal_return_imm_asm(const c4c::backend::bir::Module& module,
       << emit_function_prelude(module.target_triple, symbol)
       << "  mov eax, " << imm << "\n"
       << "  ret\n";
+  return out.str();
+}
+
+bool target_uses_x86_64_sysv_regs(std::string_view target_triple) {
+  return target_triple.find("x86_64") != std::string::npos ||
+         target_triple.find("amd64") != std::string::npos;
+}
+
+std::string emit_minimal_affine_return_asm(std::string_view target_triple,
+                                           const MinimalAffineReturnSlice& slice) {
+  if (slice.constant < std::numeric_limits<std::int32_t>::min() ||
+      slice.constant > std::numeric_limits<std::int32_t>::max()) {
+    throw std::invalid_argument(
+        "x86 backend emitter does not support this direct BIR module; only the affine-return subset lowers natively");
+  }
+  if ((slice.uses_first_param || slice.uses_second_param) &&
+      !target_uses_x86_64_sysv_regs(target_triple)) {
+    throw std::invalid_argument(
+        "x86 backend emitter does not support this direct BIR module; only the affine-return subset lowers natively");
+  }
+
+  const auto symbol = asm_symbol_name(target_triple, slice.function_name);
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n"
+      << ".text\n"
+      << emit_function_prelude(target_triple, symbol);
+
+  if (!slice.uses_first_param && !slice.uses_second_param) {
+    out << "  mov eax, " << slice.constant << "\n"
+        << "  ret\n";
+    return out.str();
+  }
+
+  if (slice.uses_first_param) {
+    out << "  mov eax, edi\n";
+    if (slice.uses_second_param) {
+      out << "  add eax, esi\n";
+    }
+  } else if (slice.uses_second_param) {
+    out << "  mov eax, esi\n";
+  }
+
+  if (slice.constant > 0) {
+    out << "  add eax, " << slice.constant << "\n";
+  } else if (slice.constant < 0) {
+    out << "  sub eax, " << -slice.constant << "\n";
+  }
+  out << "  ret\n";
   return out.str();
 }
 
@@ -939,6 +1110,9 @@ std::string emit_minimal_variadic_double_bytes_asm(
 std::optional<std::string> try_emit_module(const c4c::backend::bir::Module& module) {
   if (const auto imm = parse_minimal_return_imm(module); imm.has_value()) {
     return emit_minimal_return_imm_asm(module, *imm);
+  }
+  if (const auto slice = parse_minimal_affine_return_slice(module); slice.has_value()) {
+    return emit_minimal_affine_return_asm(module.target_triple, *slice);
   }
   if (const auto slice = parse_minimal_scalar_global_load_slice(module); slice.has_value()) {
     return emit_minimal_scalar_global_load_asm(module.target_triple, *slice);

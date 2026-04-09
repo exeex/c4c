@@ -11,24 +11,40 @@ Source Plan: plan.md
   keep the active work inside idea 44's x86-native emitter/toolchain lane and
   do not silently absorb the separate shared-BIR select regression
 - current exact slice:
-  move past the now-green x86 minimal global-memory contract recovery in
-  `src/backend/x86/codegen/emit.cpp` and choose the next smallest x86-local
-  runtime or contract probe that still fails after the shared-BIR select
-  regression is parked separately
+  move past the now-green x86 affine-return and parser-prelude repair in
+  `src/backend/x86/codegen/emit.cpp` plus
+  `src/backend/x86/assembler/{parser,elf_writer}.cpp`, then choose the next
+  smallest still-failing x86-local runtime or contract probe after the shared-
+  BIR select regression remains parked separately
 
 ## Next Slice
 
 - keep the separate shared-BIR select regression parked in
   `ideas/open/47_shared_bir_select_route_regression_after_x86_variadic_recovery.md`
   instead of widening idea 44
-- after the minimal x86 global-memory contract repair, choose the next bounded
-  x86-native runtime or contract probe that still fails for x86-local reasons
-  such as `backend_shared_util_tests` or the next nearby x86-only backend
-  contract/runtime case, without reopening broad
-  `try_lower_to_bir_with_options(...)` ordering changes
+- after the x86 affine-return/toolchain repair, choose the next bounded
+  x86-native runtime or contract probe that still fails for x86-local reasons,
+  likely the next nearby compare/branch or simple call/runtime case, without
+  reopening broad `try_lower_to_bir_with_options(...)` ordering changes
 
 ## Recently Completed
 
+- added bounded x86 direct-BIR affine-return support in
+  `src/backend/x86/codegen/emit.cpp` for the minimal i32 add/sub chain family,
+  including constant-only return-add and staged add/sub return slices plus the
+  matching one-/two-parameter affine forms on the x86_64 SysV register path
+- repaired the x86 assembler toolchain prelude acceptance in
+  `src/backend/x86/assembler/parser.cpp` and
+  `src/backend/x86/assembler/elf_writer.cpp` so object emission now accepts the
+  emitter's existing optional `.type <symbol>, @function` line instead of
+  treating it as an unsupported bounded slice
+- verified the focused x86 affine-return/runtime and wrapper probes are green:
+  `./build/c4cll --codegen asm --target x86_64-unknown-linux-gnu tests/c/internal/backend_case/return_add.c`,
+  `./build/c4cll --codegen asm --target x86_64-unknown-linux-gnu tests/c/internal/backend_case/return_add_sub_chain.c`,
+  `ctest --test-dir build --output-on-failure -R '^(backend_runtime_return_zero|backend_runtime_return_add|backend_runtime_return_add_sub_chain)$'`,
+  and
+  `ctest --test-dir build --output-on-failure -R '^backend_shared_util_tests$'`
+  now pass
 - classified the checked-in full-suite monotonic mismatch against
   `test_fail_before.log` and confirmed it is not stale-baseline drift:
   `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log`
