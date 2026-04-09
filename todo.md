@@ -11,9 +11,9 @@ Source Plan: plan.md
   keep the active work inside idea 44's x86-native emitter/toolchain lane and
   do not silently absorb the separate shared-BIR select regression
 - current exact slice:
-  move from the now-green both-local first-rewrite two-arg helper call into the
-  next adjacent source-produced family:
-  `backend_runtime_two_arg_both_local_second_rewrite`, keeping the work inside
+  move from the now-green both-local second-rewrite two-arg helper call into
+  the last adjacent source-produced family:
+  `backend_runtime_two_arg_both_local_double_rewrite`, keeping the work inside
   idea 44's x86 native prepared-LIR seam and not widening into the separate
   parked shared-BIR select regression
 
@@ -30,11 +30,33 @@ Source Plan: plan.md
   `backend_runtime_two_arg_second_local_rewrite` and
   `backend_runtime_two_arg_first_local_rewrite` and
   `backend_runtime_two_arg_both_local_arg` and
-  `backend_runtime_two_arg_both_local_first_rewrite` slices, the next bounded
-  source-produced failure is `backend_runtime_two_arg_both_local_second_rewrite`
+  `backend_runtime_two_arg_both_local_first_rewrite` and
+  `backend_runtime_two_arg_both_local_second_rewrite` slices, the next bounded
+  source-produced failure is `backend_runtime_two_arg_both_local_double_rewrite`
 
 ## Recently Completed
 
+- added a bounded x86 prepared-LIR matcher/emitter in
+  `src/backend/x86/codegen/emit.cpp` for the both-local second-rewrite two-arg
+  helper family (`int x = 5; int y = 7; y = y + 0; return add_pair(x, y);`)
+  without widening into the remaining double-rewrite variant
+- covered that native prepared-LIR seam with a focused x86 regression in
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp`, validating the
+  prepared module path that `c4cll --codegen asm` uses
+- verified the focused x86 both-local second-rewrite seam is green:
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_two_arg_both_local_second_rewrite_call_slice`,
+  `ctest --test-dir build --output-on-failure -R '^backend_runtime_two_arg_both_local_second_rewrite$'`,
+  `ctest --test-dir build --output-on-failure -R '^(backend_runtime_two_arg_helper|backend_runtime_two_arg_local_arg|backend_runtime_two_arg_second_local_arg|backend_runtime_two_arg_second_local_rewrite|backend_runtime_two_arg_first_local_rewrite|backend_runtime_two_arg_both_local_arg|backend_runtime_two_arg_both_local_first_rewrite|backend_runtime_two_arg_both_local_second_rewrite|backend_runtime_two_arg_both_local_double_rewrite)$'`,
+  and
+  `./build/c4cll --codegen asm --target x86_64-unknown-linux-gnu tests/c/internal/backend_case/two_arg_both_local_second_rewrite.c`
+  now pass for the owned seam, with the adjacent lane reduced to the remaining
+  `backend_runtime_two_arg_both_local_double_rewrite` family
+- refreshed the current full-suite snapshot with
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log`;
+  the generic `test_fail_before.log` baseline is stale for the current idea 44
+  bring-up lane, but the refreshed after-state still improved again from the
+  prior recorded `2582 -> 2583` passes and `268 -> 267` failures after the
+  both-local second-rewrite two-arg helper slice
 - added a bounded x86 prepared-LIR matcher/emitter in
   `src/backend/x86/codegen/emit.cpp` for the both-local first-rewrite two-arg
   helper family (`int x = 5; int y = 7; x = x + 0; return add_pair(x, y);`)
