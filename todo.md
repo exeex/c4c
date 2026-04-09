@@ -7,20 +7,40 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: audit whether the prepared fallback carrier still needs empty
-  per-instruction block scaffolding once stack-layout classification has moved
-  to coarse backend-owned seams
-- Current implementation target: confirm whether prepared
-  `PreparedEntryAllocaStackLayoutBlock` / `PreparedEntryAllocaStackLayoutPoint`
-  shells can collapse further now that pointer-access, escape, and use-block
-  classification all round-trip through coarse seams plus liveness-derived use
-  reconstruction
-- Next intended slice: audit whether the prepared fallback carrier can replace
-  per-instruction point vectors with block-local instruction counts or another
-  smaller arity carrier without regressing liveness-backed stack-layout
-  lowering
+- Current slice: audit whether prepared fallback blocks still need explicit
+  labels now that the stack-layout classification carrier has collapsed to
+  coarse seams plus block-local instruction counts
+- Current implementation target: confirm whether
+  `PreparedEntryAllocaStackLayoutBlock::label` can be replaced by backend-owned
+  block order without regressing phi-incoming lowering, liveness-backed
+  rehydration, or block-index consumers
+- Next intended slice: if block labels remain required, record the exact
+  consumers and invariants in `todo.md`; otherwise add a focused regression and
+  remove prepared block labels from the fallback carrier
 
 ## Completed
+
+- Completed the next Step 6 prepared fallback carrier arity narrowing slice by
+  replacing empty per-instruction prepared point shells with block-local
+  instruction counts:
+  - removed the unused
+    `PreparedEntryAllocaStackLayoutPoint` type from
+    `src/backend/stack_layout/slot_assignment.hpp` and collapsed
+    `PreparedEntryAllocaStackLayoutBlock` to `{ label, inst_count }`
+  - updated `src/backend/stack_layout/slot_assignment.cpp` so prepared
+    stack-layout classification stores only block labels plus instruction arity
+    and production `StackLayoutInput` rehydration rebuilds empty points from
+    `inst_count` before repopulating use lists from liveness
+  - extended `tests/backend/backend_shared_util_tests.cpp` with focused
+    coverage proving the prepared fallback carrier now tracks only block-local
+    instruction counts while lowering still reconstructs the full per-
+    instruction stack-layout use lists from the liveness seam
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`
+  - rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with the repo’s allowed non-decreasing rule and no new
+    failures (`2809 -> 2809`, same 32 known failing tests as
+    `test_fail_before.log`)
 
 - Completed the next Step 6 prepared pointer-access narrowing slice by
   dropping cached per-point access facts from the prepared fallback

@@ -1883,7 +1883,7 @@ void test_backend_shared_slot_assignment_prepares_module_function_inputs() {
                   fallback_preparation.backend_cfg_liveness.has_value() &&
                   fallback_preparation.stack_layout_classification.blocks.size() ==
                       fallback_preparation.backend_cfg_liveness->blocks.size() &&
-                  fallback_preparation.stack_layout_classification.blocks.front().insts.empty() &&
+                  fallback_preparation.stack_layout_classification.blocks.front().inst_count == 0 &&
                   !fallback_preparation.liveness_input.has_value() &&
                   fallback_preparation.backend_cfg_liveness->entry_insts.size() == 2,
               "shared entry-alloca rewrite prep should preserve entry-alloca ownership in the fallback carrier while sourcing block usage from the backend-owned CFG seam instead of the raw-LIR stack-layout lowering path");
@@ -2033,16 +2033,13 @@ void test_backend_shared_fallback_preparation_separates_stack_layout_metadata_fr
   static_assert(std::is_same_v<
                     std::decay_t<decltype(preparation.stack_layout_classification.blocks.front())>,
                     c4c::backend::stack_layout::PreparedEntryAllocaStackLayoutBlock>);
-  static_assert(std::is_same_v<
-                    std::decay_t<decltype(preparation.stack_layout_classification.blocks.front().insts.front())>,
-                    c4c::backend::stack_layout::PreparedEntryAllocaStackLayoutPoint>);
   expect_true(preparation.stack_layout_source ==
                   c4c::backend::stack_layout::EntryAllocaRewriteStackLayoutSource::
                       EntryAllocasAndBackendCfg &&
                   preparation.stack_layout_classification.entry_allocas.size() == 1 &&
                   preparation.stack_layout_classification.blocks.size() == 1 &&
                   preparation.stack_layout_classification.blocks.front().label == "entry" &&
-                  preparation.stack_layout_classification.blocks.front().insts.size() == 1 &&
+                  preparation.stack_layout_classification.blocks.front().inst_count == 1 &&
                   preparation.stack_layout_classification.escaped_entry_allocas.has_value() &&
                   preparation.stack_layout_classification.escaped_entry_allocas->empty() &&
                   preparation.stack_layout_classification.entry_alloca_use_blocks.has_value() &&
@@ -2085,6 +2082,59 @@ void test_backend_shared_fallback_preparation_separates_stack_layout_metadata_fr
                   lowered.stack_layout_input.call_results.front().type_str ==
                       "{ i32, i32 }",
               "shared prepared fallback carrier should still rehydrate the full rewrite-input stack-layout contract when lowered for production use");
+}
+
+void test_backend_shared_fallback_preparation_tracks_only_block_instruction_counts() {
+  c4c::codegen::lir::LirModule module;
+
+  c4c::codegen::lir::LirFunction function;
+  function.name = "two_inst_entry_alloca";
+  function.signature_text = "define void @two_inst_entry_alloca(i32 %p.x, i32 %p.y)";
+  function.alloca_insts.push_back(c4c::codegen::lir::LirAllocaOp{"%lv.buf", "i32", "", 4});
+
+  c4c::codegen::lir::LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(c4c::codegen::lir::LirBinOp{
+      "%sum",
+      "add",
+      c4c::codegen::lir::LirTypeRef("i32"),
+      "%p.x",
+      "%p.y",
+  });
+  entry.insts.push_back(c4c::codegen::lir::LirCallOp{
+      "%call0",
+      c4c::codegen::lir::LirTypeRef("i32"),
+      "@helper",
+      "(i32)",
+      "i32 %sum",
+  });
+  entry.terminator = c4c::codegen::lir::LirRet{std::nullopt, "void"};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  const auto preparation =
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_preparation(module, 0);
+  expect_true(preparation.stack_layout_classification.blocks.size() == 1 &&
+                  preparation.stack_layout_classification.blocks.front().label == "entry" &&
+                  preparation.stack_layout_classification.blocks.front().inst_count == 2 &&
+                  preparation.backend_cfg_liveness.has_value() &&
+                  preparation.backend_cfg_liveness->blocks.size() == 1 &&
+                  preparation.backend_cfg_liveness->blocks.front().insts.size() == 2,
+              "shared prepared fallback carrier should keep only block-local instruction counts for stack-layout rehydration once liveness owns per-instruction use facts");
+
+  const auto lowered =
+      c4c::backend::stack_layout::lower_prepared_entry_alloca_function_inputs(preparation);
+  expect_true(lowered.stack_layout_input.blocks.size() == 1 &&
+                  lowered.stack_layout_input.blocks.front().insts.size() == 2 &&
+                  lowered.stack_layout_input.blocks.front().insts.front().used_names.size() == 2 &&
+                  lowered.stack_layout_input.blocks.front().insts.front().used_names.front() ==
+                      "%p.x" &&
+                  lowered.stack_layout_input.blocks.front().insts.front().used_names.back() ==
+                      "%p.y" &&
+                  lowered.stack_layout_input.blocks.front().insts.back().used_names.size() == 1 &&
+                  lowered.stack_layout_input.blocks.front().insts.back().used_names.front() ==
+                      "%sum",
+              "shared prepared fallback lowering should rebuild the full per-instruction stack-layout arity and use lists from liveness without storing empty prepared point shells");
 }
 
 void test_backend_shared_fallback_preparation_rehydrates_stack_layout_uses_from_liveness() {
@@ -2779,6 +2829,7 @@ int main(int argc, char* argv[]) {
   test_backend_shared_fallback_entry_alloca_stack_layout_input_preserves_pointer_metadata();
   test_backend_shared_fallback_entry_alloca_stack_layout_input_preserves_signature_and_call_metadata();
   test_backend_shared_fallback_preparation_separates_stack_layout_metadata_from_cfg_classification();
+  test_backend_shared_fallback_preparation_tracks_only_block_instruction_counts();
   test_backend_shared_fallback_preparation_rehydrates_stack_layout_uses_from_liveness();
   test_backend_shared_fallback_preparation_still_needs_remaining_pointer_escape_facts();
   test_backend_shared_fallback_preparation_keeps_only_liveness_cfg_state();

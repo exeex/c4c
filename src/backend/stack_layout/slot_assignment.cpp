@@ -212,11 +212,7 @@ PreparedEntryAllocaStackLayoutClassificationInput lower_prepared_stack_layout_cl
   for (auto& block : input.blocks) {
     PreparedEntryAllocaStackLayoutBlock prepared_block;
     prepared_block.label = std::move(block.label);
-    prepared_block.insts.reserve(block.insts.size());
-    for (auto& point : block.insts) {
-      (void)point;
-      prepared_block.insts.push_back(PreparedEntryAllocaStackLayoutPoint{});
-    }
+    prepared_block.inst_count = block.insts.size();
     classification.blocks.push_back(std::move(prepared_block));
   }
   classification.phi_incoming_uses = std::move(input.phi_incoming_uses);
@@ -236,9 +232,9 @@ StackLayoutInput lower_prepared_stack_layout_input(
   for (const auto& block : classification.blocks) {
     StackLayoutBlockInput lowered_block;
     lowered_block.label = block.label;
-    lowered_block.insts.reserve(block.insts.size());
-    for (const auto& point : block.insts) {
-      (void)point;
+    lowered_block.insts.reserve(block.inst_count);
+    for (std::size_t inst_index = 0; inst_index < block.inst_count; ++inst_index) {
+      (void)inst_index;
       StackLayoutPoint lowered_point;
       lowered_block.insts.push_back(std::move(lowered_point));
     }
