@@ -2142,15 +2142,6 @@ parse_minimal_conditional_affine_i32_return_slice(
   };
 }
 
-c4c::backend::RegAllocIntegrationResult run_shared_aarch64_regalloc(
-    const c4c::codegen::lir::LirFunction& function) {
-  c4c::backend::RegAllocConfig config;
-  config.available_regs.assign(kAarch64CalleeSavedRegs.begin(), kAarch64CalleeSavedRegs.end());
-  config.caller_saved_regs.assign(kAarch64CallerSavedRegs.begin(), kAarch64CallerSavedRegs.end());
-  return c4c::backend::run_regalloc_and_merge_clobbers(
-      c4c::backend::lower_lir_to_liveness_input(function), config, {});
-}
-
 c4c::backend::RegAllocIntegrationResult synthesize_shared_aarch64_call_crossing_regalloc(
     std::string_view source_value) {
   c4c::backend::RegAllocIntegrationResult regalloc;

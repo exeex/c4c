@@ -7,15 +7,36 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: audit whether any remaining Step 7 stack-layout or
-  target-local helpers still expose raw-LIR entrypoints solely for shared-test
-  compatibility after the liveness/regalloc wrapper cleanup
-- Next intended slice: if another raw-LIR helper is only preserving
-  compatibility coverage, move that test path onto the existing backend-owned
-  lowered input and retire the wrapper in one bounded patch
+- Current slice: re-audit stack-layout mutation helpers and target-local
+  entrypoint preparation to confirm the only remaining raw-LIR surfaces are the
+  ones that still must inspect or mutate original LIR instructions
+- Next intended slice: if the re-audit finds another compatibility-only
+  raw-LIR helper, move that path onto an existing lowered backend-owned input;
+  otherwise advance to the next remaining Step 7 MIR-ownership handoff seam
 
 ## Completed
 
+- Completed the next Step 6 bounded raw-LIR compatibility cleanup slice by
+  retiring the remaining shared-test wrappers and target-local regalloc helpers
+  that no longer needed `LirFunction` once callers already lowered backend-owned
+  inputs:
+  - removed the local raw-`LirFunction` stack-layout helper wrappers from
+    `tests/backend/backend_shared_util_tests.cpp` and updated the affected
+    shared analysis / slot-assignment regressions to lower
+    `StackLayoutInput` explicitly before calling the shared helpers
+  - removed the dead
+    `run_shared_aarch64_regalloc(const LirFunction&)` helper from
+    `src/backend/aarch64/codegen/emit.cpp`
+  - retargeted
+    `src/backend/x86/codegen/emit.cpp`'s
+    `run_shared_x86_regalloc(...)` helper to consume only the already-lowered
+    `LivenessInput`, dropping the unused raw-`LirFunction` parameter from that
+    target-local compatibility seam
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R backend_shared_util_tests --output-on-failure`,
+    rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with no new failures and no pass-count drop
+    (`2809 -> 2809`, same 32 known failing tests as `test_fail_before.log`)
 - Completed the next Step 6 bounded shared liveness/regalloc compatibility
   cleanup slice by retiring the remaining raw-`LirFunction` wrapper overloads
   now that production code already lowers to backend-owned `LivenessInput`:
