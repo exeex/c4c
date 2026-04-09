@@ -92,6 +92,10 @@ bool match_memory_indexed_gep_from_result(const c4c::codegen::lir::LirGepOp& gep
                                           std::string_view expected_ptr,
                                           std::string_view expected_element_type,
                                           std::string_view expected_index_name);
+std::optional<bir::Module> try_lower_minimal_global_char_pointer_diff_module(
+    const c4c::codegen::lir::LirModule& module);
+std::optional<bir::Module> try_lower_minimal_global_int_pointer_diff_module(
+    const c4c::codegen::lir::LirModule& module);
 bir::LoadLocalInst make_memory_load_local(bir::Value result,
                                           std::string slot_name,
                                           std::size_t byte_offset = 0,
