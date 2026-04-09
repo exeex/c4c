@@ -1123,6 +1123,53 @@ c4c::codegen::lir::LirModule make_bir_two_param_select_eq_phi_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_bir_two_param_select_ne_branch_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  apply_test_lir_target_profile(module, backend_test_riscv64_profile());
+
+  LirFunction function;
+  function.name = "choose2_ne_branch_u";
+  function.signature_text = "define i8 @choose2_ne_branch_u(i8 %p.x, i8 %p.y)\n";
+  function.return_type.base = c4c::TB_UCHAR;
+  c4c::TypeSpec param_type{};
+  param_type.base = c4c::TB_UCHAR;
+  function.params.push_back({"%p.x", param_type});
+  function.params.push_back({"%p.y", param_type});
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(
+      LirCastOp{"%t0", LirCastKind::ZExt, LirTypeRef::integer(8), "%p.x", LirTypeRef::integer(32)});
+  entry.insts.push_back(
+      LirCastOp{"%t1", LirCastKind::ZExt, LirTypeRef::integer(8), "%p.y", LirTypeRef::integer(32)});
+  entry.insts.push_back(
+      LirCmpOp{"%t2", false, "ne", LirTypeRef::integer(32), "%t0", "%t1"});
+  entry.insts.push_back(LirCastOp{"%t3", LirCastKind::ZExt, "i1", "%t2", LirTypeRef::integer(32)});
+  entry.insts.push_back(
+      LirCmpOp{"%t4", false, "ne", LirTypeRef::integer(32), "%t3", "0"});
+  entry.terminator = LirCondBr{"%t4", "tern.then.5", "tern.else.7"};
+  function.blocks.push_back(std::move(entry));
+
+  LirBlock true_block;
+  true_block.id = LirBlockId{1};
+  true_block.label = "tern.then.5";
+  true_block.terminator = LirRet{std::string("%p.x"), LirTypeRef::integer(8)};
+  function.blocks.push_back(std::move(true_block));
+
+  LirBlock false_block;
+  false_block.id = LirBlockId{2};
+  false_block.label = "tern.else.7";
+  false_block.terminator = LirRet{std::string("%p.y"), LirTypeRef::integer(8)};
+  function.blocks.push_back(std::move(false_block));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_bir_two_param_select_ne_phi_module() {
   using namespace c4c::codegen::lir;
 

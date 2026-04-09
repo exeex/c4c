@@ -2018,9 +2018,11 @@ void test_bir_lowering_accepts_typed_i8_return_add_lir_slice_with_stale_text() {
   auto& entry = module.functions.front().blocks.front();
   auto& add = std::get<c4c::codegen::lir::LirBinOp>(entry.insts[0]);
   auto& trunc = std::get<c4c::codegen::lir::LirCastOp>(entry.insts[1]);
+  auto& ret = std::get<c4c::codegen::lir::LirRet>(entry.terminator);
   add.type_str = make_test_stale_text_i32_lir_type();
   trunc.from_type = make_test_stale_text_i32_lir_type();
   trunc.to_type = make_test_stale_text_i8_lir_type();
+  ret.type_str = "i32";
 
   const auto lowered = c4c::backend::lower_to_bir(module);
   const auto rendered = c4c::backend::bir::print(lowered);
@@ -2088,11 +2090,13 @@ void test_bir_lowering_accepts_typed_i8_return_ne_lir_slice_with_stale_text() {
   auto& cmp = std::get<c4c::codegen::lir::LirCmpOp>(entry.insts[0]);
   auto& cond_cast = std::get<c4c::codegen::lir::LirCastOp>(entry.insts[1]);
   auto& trunc = std::get<c4c::codegen::lir::LirCastOp>(entry.insts[2]);
+  auto& ret = std::get<c4c::codegen::lir::LirRet>(entry.terminator);
   cmp.type_str = make_test_stale_text_i32_lir_type();
   cond_cast.from_type = make_test_stale_text_i1_lir_type();
   cond_cast.to_type = make_test_stale_text_i32_lir_type();
   trunc.from_type = make_test_stale_text_i32_lir_type();
   trunc.to_type = make_test_stale_text_i8_lir_type();
+  ret.type_str = "i32";
 
   const auto lowered = c4c::backend::lower_to_bir(module);
   const auto rendered = c4c::backend::bir::print(lowered);
@@ -2606,6 +2610,31 @@ void test_bir_lowering_accepts_typed_two_param_u8_select_ne_phi_slice() {
                   "BIR lowering should return the typed widened select result on the direct BIR path");
 }
 
+void test_bir_lowering_accepts_typed_two_param_u8_select_ne_branch_slice_with_stale_text() {
+  auto module = make_bir_two_param_select_ne_branch_module();
+  auto& entry = module.functions.front().blocks.front();
+  std::get<c4c::codegen::lir::LirCastOp>(entry.insts[0]).from_type = make_test_stale_text_i8_lir_type();
+  std::get<c4c::codegen::lir::LirCastOp>(entry.insts[0]).to_type = make_test_stale_text_i32_lir_type();
+  std::get<c4c::codegen::lir::LirCastOp>(entry.insts[1]).from_type = make_test_stale_text_i8_lir_type();
+  std::get<c4c::codegen::lir::LirCastOp>(entry.insts[1]).to_type = make_test_stale_text_i32_lir_type();
+  std::get<c4c::codegen::lir::LirCmpOp>(entry.insts[2]).type_str = make_test_stale_text_i32_lir_type();
+  std::get<c4c::codegen::lir::LirCastOp>(entry.insts[3]).from_type = make_test_stale_text_i1_lir_type();
+  std::get<c4c::codegen::lir::LirCastOp>(entry.insts[3]).to_type = make_test_stale_text_i32_lir_type();
+  std::get<c4c::codegen::lir::LirCmpOp>(entry.insts[4]).type_str = make_test_stale_text_i32_lir_type();
+  std::get<c4c::codegen::lir::LirRet>(module.functions.front().blocks[1].terminator).type_str = "i32";
+  std::get<c4c::codegen::lir::LirRet>(module.functions.front().blocks[2].terminator).type_str = "i32";
+
+  const auto lowered = c4c::backend::lower_to_bir(module);
+  const auto rendered = c4c::backend::bir::print(lowered);
+
+  expect_contains(rendered, "bir.func @choose2_ne_branch_u(i8 %p.x, i8 %p.y) -> i8 {",
+                  "BIR lowering should preserve the widened branch-return unsigned-char ternary signature when branch return text is stale");
+  expect_contains(rendered, "%t.select = bir.select ne i8 %p.x, %p.y, %p.x, %p.y",
+                  "BIR lowering should collapse the widened branch-return not-equal ternary from semantic widths instead of stale i8/i32 render text");
+  expect_contains(rendered, "bir.ret i8 %t.select",
+                  "BIR lowering should return the widened branch-return select result on the direct BIR path when typed widths stay authoritative");
+}
+
 void test_bir_lowering_accepts_typed_two_param_u8_select_ne_phi_slice_with_stale_text() {
   auto module = make_bir_two_param_select_ne_phi_module();
   auto& entry = module.functions.front().blocks.front();
@@ -2619,6 +2648,7 @@ void test_bir_lowering_accepts_typed_two_param_u8_select_ne_phi_slice_with_stale
   std::get<c4c::codegen::lir::LirCmpOp>(entry.insts[4]).type_str = make_test_stale_text_i32_lir_type();
   auto& join_block = module.functions.front().blocks.back();
   std::get<c4c::codegen::lir::LirPhiOp>(join_block.insts.front()).type_str = make_test_stale_text_i8_lir_type();
+  std::get<c4c::codegen::lir::LirRet>(join_block.terminator).type_str = "i32";
 
   const auto lowered = c4c::backend::lower_to_bir(module);
   const auto rendered = c4c::backend::bir::print(lowered);
@@ -3558,6 +3588,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_two_param_select_phi_slice);
   RUN_TEST(test_bir_lowering_accepts_two_param_u8_select_ne_phi_slice);
   RUN_TEST(test_bir_lowering_accepts_typed_two_param_u8_select_ne_phi_slice);
+  RUN_TEST(test_bir_lowering_accepts_typed_two_param_u8_select_ne_branch_slice_with_stale_text);
   RUN_TEST(test_bir_lowering_accepts_typed_two_param_u8_select_ne_phi_slice_with_stale_text);
   RUN_TEST(test_bir_lowering_accepts_two_param_u8_select_ne_predecessor_add_phi_post_join_add_slice);
   RUN_TEST(test_bir_lowering_accepts_two_param_u8_select_ne_split_predecessor_add_phi_post_join_add_sub_slice);

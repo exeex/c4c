@@ -11,7 +11,8 @@ Source Plan: plan.md
   `src/backend/lowering/lir_to_bir.cpp` and audit the remaining
   instruction-local raw integer text checks that still bypass semantic
   `LirTypeRef` inspection outside the newly-converted widened `i8`
-  add/compare/select seams
+  add/compare/select seams, with the immediate target narrowed to stale
+  widened-`i8` return-text gates in the add/compare/select helpers
 
 ## Completed
 
@@ -162,13 +163,28 @@ Source Plan: plan.md
   while their stored text is intentionally stale
 - Re-ran `backend_bir_tests` plus the full suite and kept the regression guard
   passing (`2841 -> 2841`)
+- Switched the widened `i8` add/compare/select helpers in
+  `src/backend/lowering/lir_to_bir.cpp` off raw `LirRet.type_str == "i8"`
+  gating and onto semantic `LirFunction.return_type` integer-width inspection
+- Extended focused backend regressions in
+  `tests/backend/backend_bir_lowering_tests.cpp` so widened `i8`
+  add-return, compare-return, branch-return select, and phi-select lowering
+  still succeed when the typed instruction/function metadata is correct but the
+  stored return text is intentionally stale
+- Re-ran `backend_bir_tests` and `backend_shared_util_tests` for the widened
+  `i8` stale-return-text slice before the full-suite check
+- Re-ran the full suite into `test_fail_after.log` and passed the regression
+  guard with no new failures and no pass-count drop (`2841 -> 2841`)
 
 ## Next
 
 - move the next typed-lowering slice back to
   `src/backend/lowering/lir_to_bir.cpp` and audit the remaining
   instruction-local raw integer text checks that still bypass semantic
-  `LirTypeRef` inspection outside the widened `i8` add/compare/select seams
+  `LirTypeRef` inspection outside the widened `i8` add/compare/select seams;
+  the stale widened-`i8` return-text gate is now covered, so the next audit
+  should target whichever raw integer text discriminator still remains outside
+  these helpers
 - keep pointer payload support deferred until a concrete pointer-backed BIR
   lowering consumer appears, then add only the narrow typed payload that
   consumer needs
@@ -192,6 +208,7 @@ Source Plan: plan.md
   `test_lir_verify_rejects_typed_integer_text_mismatch` and
   `test_bir_lowering_accepts_typed_i8_return_add_lir_slice_with_stale_text`
   `test_bir_lowering_accepts_typed_i8_return_ne_lir_slice_with_stale_text`
+  `test_bir_lowering_accepts_typed_two_param_u8_select_ne_branch_slice_with_stale_text`
   and
   `test_bir_lowering_accepts_typed_two_param_u8_select_ne_phi_slice_with_stale_text`
   in

@@ -125,6 +125,12 @@ unsigned scalar_type_bit_width(bir::TypeKind type) {
   return 0;
 }
 
+bool lir_function_returns_integer_width(const c4c::codegen::lir::LirFunction& function,
+                                        unsigned bit_width) {
+  const auto lowered_type = lower_minimal_scalar_type(function.return_type);
+  return lowered_type.has_value() && scalar_type_bit_width(*lowered_type) == bit_width;
+}
+
 std::optional<std::int64_t> parse_immediate(std::string_view text) {
   std::int64_t value = 0;
   const char* begin = text.data();
@@ -3321,7 +3327,8 @@ std::optional<bir::Function> try_lower_widened_i8_add_sub_chain_function(
   const auto* trunc = std::get_if<LirCastOp>(&lir_block.insts.back());
   if (ret == nullptr || trunc == nullptr || !ret->value_str.has_value() ||
       trunc->result.str().empty() || *ret->value_str != trunc->result.str() ||
-      ret->type_str != "i8" || trunc->kind != LirCastKind::Trunc ||
+      !lir_function_returns_integer_width(lir_function, 8) ||
+      trunc->kind != LirCastKind::Trunc ||
       !lir_type_has_integer_width(trunc->from_type, 32) ||
       !lir_type_has_integer_width(trunc->to_type, 8)) {
     return std::nullopt;
@@ -3506,7 +3513,8 @@ std::optional<bir::Function> try_lower_widened_i8_compare_return_function(
   const auto* trunc = std::get_if<LirCastOp>(&lir_block.insts[lir_block.insts.size() - 1]);
   if (ret == nullptr || trunc == nullptr || !ret->value_str.has_value() ||
       trunc->result.str().empty() || *ret->value_str != trunc->result.str() ||
-      ret->type_str != "i8" || trunc->kind != LirCastKind::Trunc ||
+      !lir_function_returns_integer_width(lir_function, 8) ||
+      trunc->kind != LirCastKind::Trunc ||
       !lir_type_has_integer_width(trunc->from_type, 32) ||
       !lir_type_has_integer_width(trunc->to_type, 8) ||
       cmp == nullptr || cmp->is_float || cmp->result.str().empty() ||
@@ -3748,7 +3756,8 @@ std::optional<bir::Function> try_lower_widened_i8_conditional_return_select_func
 
   auto lower_branch_value = [&](const LirBlock& block) -> std::optional<bir::Value> {
     const auto* ret = std::get_if<LirRet>(&block.terminator);
-    if (ret == nullptr || !ret->value_str.has_value() || ret->type_str != "i8") {
+    if (ret == nullptr || !ret->value_str.has_value() ||
+        !lir_function_returns_integer_width(lir_function, 8)) {
       return std::nullopt;
     }
     if (block.insts.empty()) {
@@ -3986,7 +3995,8 @@ std::optional<bir::Function> try_lower_widened_i8_conditional_phi_select_functio
   const auto* phi = join_block->insts.size() > 0 ? std::get_if<LirPhiOp>(&join_block->insts[0]) : nullptr;
   const auto* ret = std::get_if<LirRet>(&join_block->terminator);
   if (phi == nullptr || ret == nullptr || phi->result.str().empty() ||
-      phi->incoming.size() != 2 || !ret->value_str.has_value() || ret->type_str != "i8" ||
+      phi->incoming.size() != 2 || !ret->value_str.has_value() ||
+      !lir_function_returns_integer_width(lir_function, 8) ||
       phi->incoming[0].second != true_phi_pred->label ||
       phi->incoming[1].second != false_phi_pred->label) {
     return std::nullopt;
