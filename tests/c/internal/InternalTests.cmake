@@ -765,6 +765,16 @@ if(CLANG_EXECUTABLE)
     )
 
     c4c_add_backend_codegen_route_test(
+      backend_codegen_route_x86_64_c_testsuite_00183_counted_printf_ternary_loop_retries_after_direct_bir_rejection
+      SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00183.c"
+      TARGET_TRIPLE x86_64-unknown-linux-gnu
+      OUT_TEXT "${CMAKE_BINARY_DIR}/internal_backend_route/c_testsuite_00183_x86_64.s"
+      REQUIRED_SNIPPETS ".intel_syntax noprefix|.section .rodata|cmp eax, 10|imul esi, eax|lea esi, [rax + rax*2]|call printf|mov eax, 0|ret"
+      FORBIDDEN_SNIPPETS "define i32 @main()"
+      LABELS x86_backend
+    )
+
+    c4c_add_backend_codegen_route_test(
       backend_codegen_route_x86_64_c_testsuite_00184_repeated_printf_immediates_retries_after_direct_bir_rejection
       SRC "${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00184.c"
       TARGET_TRIPLE x86_64-unknown-linux-gnu

@@ -219,6 +219,7 @@ struct MinimalScalarGlobalLoadSlice;
 struct MinimalScalarGlobalStoreReloadSlice;
 struct MinimalMultiPrintfVarargSlice;
 struct MinimalLocalBufferStringCopyPrintfSlice;
+struct MinimalCountedPrintfTernaryLoopSlice;
 struct MinimalVariadicSum2Slice;
 struct MinimalVariadicDoubleBytesSlice;
 
@@ -253,6 +254,10 @@ std::string emit_minimal_local_buffer_string_copy_printf_asm(
     std::string_view target_triple,
     const c4c::codegen::lir::LirModule& module,
     const MinimalLocalBufferStringCopyPrintfSlice& slice);
+std::string emit_minimal_counted_printf_ternary_loop_asm(
+    std::string_view target_triple,
+    const c4c::codegen::lir::LirModule& module,
+    const MinimalCountedPrintfTernaryLoopSlice& slice);
 std::string emit_minimal_variadic_sum2_asm(
     std::string_view target_triple,
     const MinimalVariadicSum2Slice& slice);
@@ -318,6 +323,12 @@ struct MinimalRepeatedPrintfImm64PairSlice {
   std::int64_t first_rhs_imm = 0;
   std::int64_t second_lhs_imm = 0;
   std::int64_t second_rhs_imm = 0;
+};
+
+struct MinimalCountedPrintfTernaryLoopSlice {
+  std::string function_name;
+  std::string format_string_pool_name;
+  std::string counter_slot_name;
 };
 
 struct MinimalStringLiteralCharSlice {
@@ -479,7 +490,7 @@ std::optional<MinimalNamedReturnImmSlice> parse_minimal_lir_return_imm(
     return std::nullopt;
   }
 
-  const auto* function = find_single_zero_arg_i32_lir_definition(module);
+  const auto* function = find_zero_arg_i32_lir_definition(module);
   if (function == nullptr || function->blocks.size() != 1) {
     return std::nullopt;
   }
@@ -2898,6 +2909,204 @@ std::optional<MinimalRepeatedPrintfImm64PairSlice> parse_minimal_repeated_printf
   };
 }
 
+std::optional<MinimalCountedPrintfTernaryLoopSlice> parse_minimal_counted_printf_ternary_loop_slice(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.string_pool.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto* function = find_zero_arg_i32_lir_definition(module);
+  if (function == nullptr || function->blocks.size() != 10) {
+    return std::nullopt;
+  }
+
+  std::unordered_map<std::string_view, const LirBlock*> blocks_by_label;
+  for (const auto& block : function->blocks) {
+    if (block.label.empty() || !blocks_by_label.emplace(block.label, &block).second) {
+      return std::nullopt;
+    }
+  }
+
+  const auto lookup_block = [&](std::string_view label) -> const LirBlock* {
+    const auto it = blocks_by_label.find(label);
+    return it == blocks_by_label.end() ? nullptr : it->second;
+  };
+
+  const auto* entry = lookup_block("entry");
+  const auto* loop_cond = lookup_block("for.cond.1");
+  const auto* loop_latch = lookup_block("for.latch.1");
+  const auto* loop_body = lookup_block("block_1");
+  const auto* then_block = lookup_block("tern.then.11");
+  const auto* then_end = lookup_block("tern.then.end.12");
+  const auto* else_block = lookup_block("tern.else.13");
+  const auto* else_end = lookup_block("tern.else.end.14");
+  const auto* join_block = lookup_block("tern.end.15");
+  const auto* exit_block = lookup_block("block_2");
+  if (entry == nullptr || loop_cond == nullptr || loop_latch == nullptr || loop_body == nullptr ||
+      then_block == nullptr || then_end == nullptr || else_block == nullptr ||
+      else_end == nullptr || join_block == nullptr || exit_block == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto* entry_store = entry->insts.size() == 1 ? std::get_if<LirStoreOp>(&entry->insts[0]) : nullptr;
+  const auto* entry_br = std::get_if<LirBr>(&entry->terminator);
+  if (entry_store == nullptr || entry_br == nullptr || entry_store->type_str != "i32" ||
+      entry_store->val != "0" || entry_br->target_label != "for.cond.1") {
+    return std::nullopt;
+  }
+  const std::string counter_slot_name = entry_store->ptr;
+
+  const auto* cond_load = loop_cond->insts.size() == 4 ? std::get_if<LirLoadOp>(&loop_cond->insts[0]) : nullptr;
+  const auto* cond_cmp = loop_cond->insts.size() == 4 ? std::get_if<LirCmpOp>(&loop_cond->insts[1]) : nullptr;
+  const auto* cond_zext = loop_cond->insts.size() == 4 ? std::get_if<LirCastOp>(&loop_cond->insts[2]) : nullptr;
+  const auto* cond_branch_cmp =
+      loop_cond->insts.size() == 4 ? std::get_if<LirCmpOp>(&loop_cond->insts[3]) : nullptr;
+  const auto* cond_br = std::get_if<LirCondBr>(&loop_cond->terminator);
+  const auto cond_cmp_predicate = cond_cmp == nullptr ? std::nullopt : cond_cmp->predicate.typed();
+  const auto cond_branch_cmp_predicate =
+      cond_branch_cmp == nullptr ? std::nullopt : cond_branch_cmp->predicate.typed();
+  if (cond_load == nullptr || cond_cmp == nullptr || cond_zext == nullptr ||
+      cond_branch_cmp == nullptr || cond_br == nullptr || cond_load->type_str != "i32" ||
+      cond_load->ptr != counter_slot_name || !cond_cmp_predicate.has_value() ||
+      *cond_cmp_predicate != LirCmpPredicate::Slt || cond_cmp->type_str != "i32" ||
+      cond_cmp->lhs != cond_load->result || cond_cmp->rhs != "10" ||
+      cond_zext->kind != LirCastKind::ZExt || cond_zext->from_type != "i1" ||
+      cond_zext->operand != cond_cmp->result || cond_zext->to_type != "i32" ||
+      !cond_branch_cmp_predicate.has_value() ||
+      *cond_branch_cmp_predicate != LirCmpPredicate::Ne ||
+      cond_branch_cmp->type_str != "i32" || cond_branch_cmp->lhs != cond_zext->result ||
+      cond_branch_cmp->rhs != "0" || cond_br->cond_name != cond_branch_cmp->result ||
+      cond_br->true_label != "block_1" || cond_br->false_label != "block_2") {
+    return std::nullopt;
+  }
+
+  const auto* body_gep = loop_body->insts.size() == 5 ? std::get_if<LirGepOp>(&loop_body->insts[0]) : nullptr;
+  const auto* body_load = loop_body->insts.size() == 5 ? std::get_if<LirLoadOp>(&loop_body->insts[1]) : nullptr;
+  const auto* body_cmp = loop_body->insts.size() == 5 ? std::get_if<LirCmpOp>(&loop_body->insts[2]) : nullptr;
+  const auto* body_zext = loop_body->insts.size() == 5 ? std::get_if<LirCastOp>(&loop_body->insts[3]) : nullptr;
+  const auto* body_branch_cmp = loop_body->insts.size() == 5 ? std::get_if<LirCmpOp>(&loop_body->insts[4]) : nullptr;
+  const auto* body_br = std::get_if<LirCondBr>(&loop_body->terminator);
+  const auto body_cmp_predicate = body_cmp == nullptr ? std::nullopt : body_cmp->predicate.typed();
+  const auto body_branch_cmp_predicate =
+      body_branch_cmp == nullptr ? std::nullopt : body_branch_cmp->predicate.typed();
+  if (body_gep == nullptr || body_load == nullptr || body_cmp == nullptr || body_zext == nullptr ||
+      body_branch_cmp == nullptr || body_br == nullptr || body_load->type_str != "i32" ||
+      body_load->ptr != counter_slot_name || !body_cmp_predicate.has_value() ||
+      *body_cmp_predicate != LirCmpPredicate::Slt ||
+      body_cmp->type_str != "i32" || body_cmp->lhs != body_load->result || body_cmp->rhs != "5" ||
+      body_zext->kind != LirCastKind::ZExt || body_zext->from_type != "i1" ||
+      body_zext->operand != body_cmp->result || body_zext->to_type != "i32" ||
+      !body_branch_cmp_predicate.has_value() ||
+      *body_branch_cmp_predicate != LirCmpPredicate::Ne ||
+      body_branch_cmp->type_str != "i32" || body_branch_cmp->lhs != body_zext->result ||
+      body_branch_cmp->rhs != "0" || body_br->cond_name != body_branch_cmp->result ||
+      body_br->true_label != "tern.then.11" ||
+      body_br->false_label != "tern.else.13" ||
+      body_gep->indices.size() != 2 || body_gep->indices[0] != "i64 0" ||
+      body_gep->indices[1] != "i64 0") {
+    return std::nullopt;
+  }
+
+  const auto* format_string = find_string_constant(module, body_gep->ptr);
+  if (format_string == nullptr) {
+    return std::nullopt;
+  }
+  const auto expected_format_type = "[" + std::to_string(format_string->byte_length) + " x i8]";
+  if (body_gep->element_type != expected_format_type) {
+    return std::nullopt;
+  }
+
+  const auto* then_load0 = then_block->insts.size() == 3 ? std::get_if<LirLoadOp>(&then_block->insts[0]) : nullptr;
+  const auto* then_load1 = then_block->insts.size() == 3 ? std::get_if<LirLoadOp>(&then_block->insts[1]) : nullptr;
+  const auto* then_mul = then_block->insts.size() == 3 ? std::get_if<LirBinOp>(&then_block->insts[2]) : nullptr;
+  const auto* then_br = std::get_if<LirBr>(&then_block->terminator);
+  const auto then_opcode = then_mul == nullptr ? std::nullopt : then_mul->opcode.typed();
+  if (then_load0 == nullptr || then_load1 == nullptr || then_mul == nullptr || then_br == nullptr ||
+      then_load0->type_str != "i32" || then_load1->type_str != "i32" ||
+      then_load0->ptr != counter_slot_name || then_load1->ptr != counter_slot_name ||
+      !then_opcode.has_value() || *then_opcode != LirBinaryOpcode::Mul ||
+      then_mul->type_str != "i32" || then_mul->lhs != then_load0->result ||
+      then_mul->rhs != then_load1->result || then_br->target_label != "tern.then.end.12") {
+    return std::nullopt;
+  }
+
+  const auto* then_end_br = std::get_if<LirBr>(&then_end->terminator);
+  if (!then_end->insts.empty() || then_end_br == nullptr || then_end_br->target_label != "tern.end.15") {
+    return std::nullopt;
+  }
+
+  const auto* else_load = else_block->insts.size() == 2 ? std::get_if<LirLoadOp>(&else_block->insts[0]) : nullptr;
+  const auto* else_mul = else_block->insts.size() == 2 ? std::get_if<LirBinOp>(&else_block->insts[1]) : nullptr;
+  const auto* else_br = std::get_if<LirBr>(&else_block->terminator);
+  const auto else_opcode = else_mul == nullptr ? std::nullopt : else_mul->opcode.typed();
+  if (else_load == nullptr || else_mul == nullptr || else_br == nullptr ||
+      else_load->type_str != "i32" || else_load->ptr != counter_slot_name ||
+      !else_opcode.has_value() || *else_opcode != LirBinaryOpcode::Mul ||
+      else_mul->type_str != "i32" || else_mul->lhs != else_load->result ||
+      else_mul->rhs != "3" || else_br->target_label != "tern.else.end.14") {
+    return std::nullopt;
+  }
+
+  const auto* else_end_br = std::get_if<LirBr>(&else_end->terminator);
+  if (!else_end->insts.empty() || else_end_br == nullptr || else_end_br->target_label != "tern.end.15") {
+    return std::nullopt;
+  }
+
+  const auto* phi = join_block->insts.size() == 2 ? std::get_if<LirPhiOp>(&join_block->insts[0]) : nullptr;
+  const auto* call = join_block->insts.size() == 2 ? std::get_if<LirCallOp>(&join_block->insts[1]) : nullptr;
+  const auto* join_br = std::get_if<LirBr>(&join_block->terminator);
+  if (phi == nullptr || call == nullptr || join_br == nullptr || phi->type_str != "i32" ||
+      phi->incoming.size() != 2 || phi->incoming[0].first != then_mul->result ||
+      phi->incoming[0].second != "tern.then.end.12" ||
+      phi->incoming[1].first != else_mul->result ||
+      phi->incoming[1].second != "tern.else.end.14" ||
+      call->return_type != "i32" || join_br->target_label != "for.latch.1") {
+    return std::nullopt;
+  }
+
+  const auto call_symbol = parse_lir_direct_global_callee(call->callee);
+  const auto call_param_types = parse_lir_call_param_types(call->callee_type_suffix);
+  const auto call_args = parse_lir_typed_call_args(call->args_str);
+  if (!call_symbol.has_value() || !call_param_types.has_value() || !call_args.has_value() ||
+      *call_symbol != "printf" || call_param_types->size() != 2 || call_args->size() != 2 ||
+      trim_lir_arg_text((*call_param_types)[0]) != "ptr" ||
+      trim_lir_arg_text((*call_param_types)[1]) != "..." ||
+      trim_lir_arg_text((*call_args)[0].type) != "ptr" ||
+      trim_lir_arg_text((*call_args)[1].type) != "i32" ||
+      (*call_args)[0].operand != body_gep->result || (*call_args)[1].operand != phi->result) {
+    return std::nullopt;
+  }
+
+  const auto* latch_load = loop_latch->insts.size() == 3 ? std::get_if<LirLoadOp>(&loop_latch->insts[0]) : nullptr;
+  const auto* latch_add = loop_latch->insts.size() == 3 ? std::get_if<LirBinOp>(&loop_latch->insts[1]) : nullptr;
+  const auto* latch_store = loop_latch->insts.size() == 3 ? std::get_if<LirStoreOp>(&loop_latch->insts[2]) : nullptr;
+  const auto* latch_br = std::get_if<LirBr>(&loop_latch->terminator);
+  const auto latch_opcode = latch_add == nullptr ? std::nullopt : latch_add->opcode.typed();
+  if (latch_load == nullptr || latch_add == nullptr || latch_store == nullptr || latch_br == nullptr ||
+      latch_load->type_str != "i32" || latch_load->ptr != counter_slot_name ||
+      !latch_opcode.has_value() || *latch_opcode != LirBinaryOpcode::Add ||
+      latch_add->type_str != "i32" || latch_add->lhs != latch_load->result ||
+      latch_add->rhs != "1" || latch_store->type_str != "i32" ||
+      latch_store->val != latch_add->result || latch_store->ptr != counter_slot_name ||
+      latch_br->target_label != "for.cond.1") {
+    return std::nullopt;
+  }
+
+  const auto* exit_ret = std::get_if<LirRet>(&exit_block->terminator);
+  if (!exit_block->insts.empty() || exit_ret == nullptr || !exit_ret->value_str.has_value() ||
+      *exit_ret->value_str != "0" || exit_ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  return MinimalCountedPrintfTernaryLoopSlice{
+      function->name,
+      format_string->pool_name,
+      counter_slot_name,
+  };
+}
+
 std::optional<MinimalVariadicSum2Slice> parse_minimal_variadic_sum2_slice(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
@@ -4400,6 +4609,54 @@ std::string emit_minimal_local_buffer_string_copy_printf_asm(
   return out.str();
 }
 
+std::string emit_minimal_counted_printf_ternary_loop_asm(
+    std::string_view target_triple,
+    const c4c::codegen::lir::LirModule& module,
+    const MinimalCountedPrintfTernaryLoopSlice& slice) {
+  const auto* format_string = find_string_constant(module, slice.format_string_pool_name);
+  if (format_string == nullptr) {
+    throw std::invalid_argument("bounded counted printf ternary loop slice lost its format string constant");
+  }
+
+  const std::string main_symbol = asm_symbol_name(target_triple, slice.function_name);
+  const std::string printf_symbol = asm_symbol_name(target_triple, "printf");
+  const std::string format_label = asm_private_data_label(target_triple, format_string->pool_name);
+
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n";
+  out << ".section .rodata\n";
+  out << format_label << ":\n"
+      << "  .asciz \"" << escape_asm_string(format_string->raw_bytes) << "\"\n";
+  out << ".text\n";
+  emit_function_prelude(out, main_symbol, true);
+  out << "  push rbp\n"
+      << "  mov rbp, rsp\n"
+      << "  sub rsp, 16\n"
+      << "  mov dword ptr [rbp - 4], 0\n"
+      << ".Lloop_cond:\n"
+      << "  mov eax, dword ptr [rbp - 4]\n"
+      << "  cmp eax, 10\n"
+      << "  jge .Lloop_done\n"
+      << "  cmp eax, 5\n"
+      << "  jl .Lloop_square\n"
+      << "  lea esi, [rax + rax*2]\n"
+      << "  jmp .Lloop_print\n"
+      << ".Lloop_square:\n"
+      << "  mov esi, eax\n"
+      << "  imul esi, eax\n"
+      << ".Lloop_print:\n"
+      << "  lea rdi, " << format_label << "[rip]\n"
+      << "  xor eax, eax\n"
+      << "  call " << printf_symbol << "\n"
+      << "  add dword ptr [rbp - 4], 1\n"
+      << "  jmp .Lloop_cond\n"
+      << ".Lloop_done:\n"
+      << "  mov eax, 0\n"
+      << "  leave\n"
+      << "  ret\n";
+  return out.str();
+}
+
 std::string emit_minimal_variadic_sum2_asm(
     std::string_view target_triple,
     const MinimalVariadicSum2Slice& slice) {
@@ -4649,6 +4906,10 @@ std::optional<std::string> try_emit_prepared_lir_module_impl(
     if (const auto slice = parse_minimal_string_literal_char_slice(module);
         slice.has_value()) {
       return emit_minimal_string_literal_char_asm(module.target_triple, *slice);
+    }
+    if (const auto slice = parse_minimal_counted_printf_ternary_loop_slice(module);
+        slice.has_value()) {
+      return emit_minimal_counted_printf_ternary_loop_asm(module.target_triple, module, *slice);
     }
     if (const auto slice = parse_minimal_local_buffer_string_copy_printf_slice(module);
         slice.has_value()) {

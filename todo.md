@@ -6,19 +6,20 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 3 continuation after landing the bounded native `00184.c` slice:
-  decide whether the next highest-leverage move should stay in the nearby
-  one-function stdio/native lane (`00183.c` / `00185.c`) or return to the
-  heavier Family B shared-BIR seam
+- Step 3 continuation after landing the bounded native `00183.c` slice:
+  re-sample the remaining nearby stdio/native survivor `00185.c` and decide
+  whether it is still a bounded native lane or whether idea 44 should return
+  to the heavier Family B shared-BIR seam instead
 
 ## Next Slice
 
-- keep Step 3 active first: sample `00183.c` and `00185.c` as the nearest
-  one-function stdio-backed survivors to see whether they fit another bounded
-  native `printf` ownership seam
-- if the nearby stdio lane stops being small and native-owned, return to
-  Step 2 and choose one bounded Family B representative with a narrow shared
-  lowering regression before widening support
+- keep Step 3 active first: sample `00185.c` now that `00183.c` is cleared to
+  see whether the remaining one-function stdio-backed survivor still fits a
+  bounded native `printf` ownership seam
+- if `00185.c` pulls in broader stack-array initialization or indexing
+  ownership than intended for Step 3, return to Step 2 and choose one bounded
+  Family B representative with a narrow shared lowering regression before
+  widening support
 - do not revive any broader fallback behavior while probing either lane
 
 ## Completed Items
@@ -150,6 +151,20 @@ Source Plan: plan.md
   `test_fail_before.log` = 2666 pass / 181 fail / 2847 total,
   `test_fail_after.log` = 2670 pass / 179 fail / 2849 total,
   zero newly failing tests
+- added an internal x86 backend route regression plus backend BIR pipeline
+  coverage for the bounded counted `printf("%d\\n", (Count < 5) ? Count*Count
+  : Count * 3)` loop slice behind
+  `tests/c/external/c-testsuite/src/00183.c`
+- taught the staged x86 prepared-LIR emitter to accept the focused `00183.c`
+  counted ternary `printf` loop module through native direct-LIR assembly
+  instead of rejecting it at the unsupported-module boundary
+- verified `c_testsuite_x86_backend_src_00183_c` now passes in isolation on
+  x86_64 while nearby `c_testsuite_x86_backend_src_00185_c` still fails at the
+  unsupported-module boundary
+- ran full-suite monotonic validation for the `00183.c` Step 3 slice:
+  `test_fail_before.log` = 2670 pass / 179 fail / 2849 total,
+  `test_fail_after.log` = 2672 pass / 178 fail / 2850 total,
+  zero newly failing tests
 
 ## Blockers
 
@@ -208,3 +223,10 @@ Source Plan: plan.md
 - the new internal route regression again increases total suite size by one,
   so the monotonic delta for the `00184.c` slice is
   `+4` passes, `-2` fails, `+2` total versus the saved pre-slice baseline
+- the `00183.c` native direct-LIR slice keeps Step 3 active for one more probe:
+  `00183.c` is now cleared, `00185.c` remains the nearest stdio-backed
+  survivor, and the full suite now stands at
+  `test_fail_after.log` = 2672 pass / 178 fail / 2850 total
+- the new internal route regression increases total suite size by one again, so
+  the monotonic delta for the `00183.c` slice is
+  `+2` passes, `-1` fail, `+1` total versus the saved pre-slice baseline
