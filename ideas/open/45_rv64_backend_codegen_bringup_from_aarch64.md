@@ -46,6 +46,8 @@ Current shape:
 - `codegen` contains many translated helpers and structural mirrors
 - the main missing seam is a coherent RV64 emitter/lowering contract comparable
   to AArch64's native backend path
+- the repo's current backend runtime and `c-testsuite` harnesses still assume
+  native execution on the host CPU rather than cross-run through an emulator
 
 ## Goal
 
@@ -72,6 +74,31 @@ on `src/backend/aarch64/codegen/emit.cpp`.
 - keep assembler and linker out of scope unless a tiny stub is strictly needed
   to keep the codegen work coherent
 - prefer a thin working RV64 path over a broad but disconnected translation set
+- validate RV64 backend output on the host through Linux user-mode emulation
+  rather than requiring a guest-first full-system environment
+
+## Validation Model
+
+The target validation model for first-wave RV64 backend bring-up is:
+
+- compile on the host
+- produce RV64 Linux asm/binary artifacts on the host
+- execute those RV64 Linux binaries on the host through
+  `qemu-riscv64 -L /usr/riscv64-linux-gnu`
+
+This is intentionally lighter than a full guest Linux VM. It matches the
+current need: verify that RV64 backend-emitted asm can be assembled, linked,
+and executed as Linux userland code, including C and C++ paths.
+
+The expected steady-state pipeline is:
+
+1. `c4cll --codegen asm --target riscv64-unknown-linux-gnu ...`
+2. `clang --target=riscv64-unknown-linux-gnu --gcc-toolchain=/usr ...`
+3. `qemu-riscv64 -L /usr/riscv64-linux-gnu <binary>`
+4. compare exit status and stdout/stderr against the existing test oracle
+
+Full-system QEMU remains a later integration option, but it is not required
+for first-wave backend validation.
 
 ## Proposed Plan
 
@@ -183,6 +210,54 @@ Completion check:
 - RV64 codegen support expands through intentional emitter-led slices
 - assembler/linker remain clearly out of first-wave ownership
 
+### Step 6: Wire RV64 validation into the existing backend test harness
+
+Goal: make RV64 backend tests runnable from the host without requiring a native
+RV64 machine.
+
+Concrete actions:
+
+- extend the internal backend runtime harness under
+  `tests/c/internal/cmake/run_backend_positive_case.cmake` to support an
+  optional executable runner
+- add RV64 runner configuration based on:
+  - runner: `qemu-riscv64`
+  - runner args: `-L /usr/riscv64-linux-gnu`
+- stop assuming backend-produced binaries always execute directly on the host
+- add the same runner concept to
+  `tests/c/external/c-testsuite/RunCase.cmake`
+- make `tests/TestEntry.cmake` accept an explicit RV64 backend configuration
+  instead of deriving backend mode only from `CMAKE_HOST_SYSTEM_PROCESSOR`
+
+Completion check:
+
+- RV64 backend runtime cases can compile on the host and execute through QEMU
+- the `c-testsuite` backend path can be configured for RV64 cross-run from the
+  host
+
+### Step 7: Bring RV64 into c-testsuite backend coverage
+
+Goal: reach the same style of backend-validation lane that AArch64 and x86 use,
+but through host-side RV64 emulation.
+
+Concrete actions:
+
+- start with a bounded RV64 subset of internal backend runtime cases
+- after the runner path is stable, register RV64 backend `c-testsuite` cases
+- keep the early RV64 lane narrow and explicit rather than pretending all
+  `c-testsuite` backend cases are ready immediately
+- classify failures by boundary:
+  - emitter unsupported slice
+  - asm/toolchain failure
+  - QEMU/runtime mismatch
+  - harness/runner defect
+
+Completion check:
+
+- RV64 has a real backend-validation lane that executes target binaries
+- the lane follows the same oracle style as existing backend tests, while using
+  QEMU for execution on non-RV64 hosts
+
 ## Acceptance Criteria
 
 - the repo has an explicit RV64 backend bring-up plan centered on
@@ -190,6 +265,10 @@ Completion check:
 - AArch64 is used as the reference structure for RV64 native emitter bring-up
 - at least one minimal RV64 codegen path is planned as an end-to-end owned seam
 - assembler and linker are explicitly kept out of first-wave scope
+- the idea defines a concrete RV64 validation strategy based on host-side
+  compile plus `qemu-riscv64` execution
+- the path from internal backend runtime tests to `c-testsuite` backend
+  coverage is explicit
 - any broader RISC-V subsystem work discovered during execution is split into a
   separate idea instead of silently expanding this one
 
