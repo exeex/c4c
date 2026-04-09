@@ -7,20 +7,35 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 8: delete temporary LIR-side backend shims
-- Current slice: audit which raw-`LIR` compatibility helpers still remain now
-  that the Step 7 AArch64 blocker set is green, and separate any real leftover
-  shim deletion from broader backend cleanup that belongs in a follow-up idea
-- Current implementation target: confirm whether the surviving compatibility
-  surfaces around prepared stack-layout lowering, native direct-LIR emission,
-  and any raw-`LIR` analysis entrypoints are still required for bounded
-  fallback ownership or are now removable without reopening the Step 7
-  ownership seam
-- Next intended slice: inventory the remaining compatibility-only raw-`LIR`
-  backend surfaces, delete one narrow shim if it is clearly obsolete, and
-  track any broader backend capability or cleanup work as a separate follow-up
-  instead of stretching this runbook silently
+- Current slice: re-audit the surviving raw-`LIR` stack-layout lowering
+  helpers now that the dead liveness convenience wrapper is gone, and decide
+  whether another single shim deletion still fits Step 8 or needs a separate
+  follow-up idea
+- Current implementation target: inventory the remaining raw-`LIR`
+  stack-layout-only helpers and separate true shim deletion from broader
+  backend surface cleanup that would silently expand this runbook
+- Next intended slice: either delete one equally narrow stack-layout shim or
+  write a follow-up idea for any broader cleanup that no longer looks like
+  temporary ownership scaffolding
 
 ## Completed
+
+- Completed the next Step 8 obsolete raw-`LIR` liveness wrapper deletion slice
+  by removing the dead convenience entrypoint now that backend-CFG lowering is
+  the only real implementation path:
+  - deleted `lower_lir_to_liveness_input(...)` from
+    `src/backend/liveness.hpp` and `src/backend/liveness.cpp`; the removed
+    helper only forwarded through `lower_lir_to_backend_cfg(...)` and then
+    `lower_backend_cfg_to_liveness_input(...)`
+  - retargeted the remaining shared-backend parity regression in
+    `tests/backend/backend_shared_util_tests.cpp` to compose the explicit
+    backend-CFG lowering path directly instead of depending on the deleted
+    compatibility wrapper
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`
+  - rebuilt the full tree, refreshed `test_fail_before.log` and
+    `test_fail_after.log`, and passed the regression guard with monotonic
+    non-decreasing results and no new failures (`2841 -> 2841` passed tests)
 
 - Completed the Step 7 residual AArch64 aggregate/ABI blocker slice by fixing
   live param-alloca ownership on the prepared rewrite/native-emission seam:

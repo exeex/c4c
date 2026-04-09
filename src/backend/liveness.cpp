@@ -709,12 +709,6 @@ LivenessInput lower_backend_cfg_to_liveness_input(const BackendCfgFunction& func
   return lower_backend_cfg_to_liveness_input(lower_backend_cfg_to_liveness_function(function));
 }
 
-LivenessInput lower_lir_to_liveness_input(const c4c::codegen::lir::LirFunction& function) {
-  const auto cfg = lower_lir_to_backend_cfg(function);
-  auto input = lower_backend_cfg_to_liveness_input(cfg);
-  return input;
-}
-
 LivenessResult compute_live_intervals(const LivenessInput& input) {
   if (input.blocks.empty() && input.entry_insts.empty()) {
     return {};

@@ -896,8 +896,8 @@ void test_backend_shared_liveness_input_matches_lir_phi_join_ranges() {
   const auto module = make_interval_phi_join_module();
   const auto& function = module.functions.front();
   const auto input = lower_test_backend_cfg_liveness_input(function);
-  const auto compatibility_input =
-      c4c::backend::lower_lir_to_liveness_input(function);
+  const auto compatibility_input = c4c::backend::lower_backend_cfg_to_liveness_input(
+      c4c::backend::lower_lir_to_backend_cfg(function));
   const auto liveness = c4c::backend::compute_live_intervals(input);
   const auto compatibility_liveness =
       c4c::backend::compute_live_intervals(compatibility_input);
