@@ -697,6 +697,38 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
         return false;
       return rhs_node->kind == NK_STR_LIT;
     };
+    auto append_base_lvalue = [&](const TypeSpec& owner_ts, ExprId owner_lhs,
+                                  const std::string& base_tag)
+        -> std::optional<std::pair<TypeSpec, ExprId>> {
+      if (!owner_ts.tag || !owner_ts.tag[0]) return std::nullopt;
+      const auto sit = module_->struct_defs.find(owner_ts.tag);
+      if (sit == module_->struct_defs.end()) return std::nullopt;
+      if (sit->second.base_tags.empty() || sit->second.base_tags.front() != base_tag)
+        return std::nullopt;
+      TypeSpec owner_ptr_ts = owner_ts;
+      owner_ptr_ts.ptr_level++;
+      UnaryExpr addr{};
+      addr.op = UnaryOp::AddrOf;
+      addr.operand = owner_lhs;
+      ExprId owner_addr = append_expr(n, addr, owner_ptr_ts);
+
+      TypeSpec base_ptr_ts{};
+      base_ptr_ts.base = TB_STRUCT;
+      base_ptr_ts.tag = base_tag.c_str();
+      base_ptr_ts.ptr_level = 1;
+      CastExpr cast{};
+      cast.to_type = qtype_from(base_ptr_ts, ValueCategory::RValue);
+      cast.expr = owner_addr;
+      ExprId base_ptr = append_expr(n, cast, base_ptr_ts);
+
+      TypeSpec base_ts = base_ptr_ts;
+      base_ts.ptr_level = 0;
+      UnaryExpr deref{};
+      deref.op = UnaryOp::Deref;
+      deref.operand = base_ptr;
+      ExprId base_lhs = append_expr(n, deref, base_ts, ValueCategory::LValue);
+      return std::make_pair(base_ts, base_lhs);
+    };
 
     std::function<void(const TypeSpec&, ExprId, const Node*, int&)> consume_from_list;
     consume_from_list =
@@ -708,17 +740,47 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
             const auto sit = module_->struct_defs.find(cur_ts.tag);
             if (sit == module_->struct_defs.end()) return;
             const auto& sd = sit->second;
+            size_t next_base = 0;
             size_t next_field = 0;
             while (cursor < list_node->n_children) {
               const Node* item = list_node->children[cursor];
               if (!item) {
                 ++cursor;
+                if (next_base < sd.base_tags.size()) {
+                  ++next_base;
+                  continue;
+                }
                 if (next_field < sd.fields.size()) ++next_field;
                 continue;
               }
               const bool has_field_designator =
                   item->kind == NK_INIT_ITEM && item->is_designated &&
                   !item->is_index_desig && item->desig_field;
+              if (!has_field_designator && next_base < sd.base_tags.size()) {
+                const std::string& base_tag = sd.base_tags[next_base];
+                auto base_access = append_base_lvalue(cur_ts, cur_lhs, base_tag);
+                ++next_base;
+                if (!base_access) break;
+                const TypeSpec& base_ts = base_access->first;
+                ExprId base_lhs = base_access->second;
+                const Node* val_node = init_item_value_node(item);
+                if (is_agg(base_ts) || base_ts.array_rank > 0) {
+                  if (val_node && val_node->kind == NK_INIT_LIST) {
+                    int sub_cursor = 0;
+                    consume_from_list(base_ts, base_lhs, val_node, sub_cursor);
+                    ++cursor;
+                  } else if (can_direct_assign_agg(base_ts, val_node)) {
+                    append_assign(base_lhs, base_ts, val_node);
+                    ++cursor;
+                  } else {
+                    consume_from_list(base_ts, base_lhs, list_node, cursor);
+                  }
+                } else {
+                  append_assign(base_lhs, base_ts, val_node);
+                  ++cursor;
+                }
+                continue;
+              }
               if (!has_field_designator && next_field >= sd.fields.size()) break;
               size_t fi = next_field;
               if (has_field_designator) {

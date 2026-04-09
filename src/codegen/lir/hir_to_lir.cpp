@@ -17,6 +17,16 @@ namespace c4c::codegen::lir {
 
 namespace llvm_cc = c4c::codegen::llvm_backend;
 
+namespace {
+
+int align_to_bytes(int value, int align) {
+  if (align <= 1) return value;
+  const int rem = value % align;
+  return rem == 0 ? value : value + (align - rem);
+}
+
+}  // namespace
+
 // ── Module-level orchestration helpers ───────────────────────────────────────
 
 int object_align_bytes(const c4c::hir::Module& mod, const TypeSpec& ts) {
@@ -221,7 +231,7 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod) {
     const auto& sd = it->second;
     const std::string sty = llvm_struct_type_str(tag);
 
-    if (sd.fields.empty()) {
+    if (sd.fields.empty() && sd.base_tags.empty()) {
       if (sd.size_bytes == 0) {
         decls.push_back(sty + " = type {}");
       } else {
@@ -237,8 +247,28 @@ std::vector<std::string> build_type_decls(const c4c::hir::Module& mod) {
       std::ostringstream line;
       line << sty << " = type { ";
       bool first = true;
-      int last_idx = -1;
       int cur_offset = 0;
+      for (const auto& base_tag : sd.base_tags) {
+        const auto bit = mod.struct_defs.find(base_tag);
+        if (bit == mod.struct_defs.end()) continue;
+        const auto& base = bit->second;
+        const int base_align = std::max(1, base.align_bytes);
+        const int base_offset = align_to_bytes(cur_offset, base_align);
+        if (base_offset > cur_offset) {
+          if (!first) line << ", ";
+          first = false;
+          line << "[" << (base_offset - cur_offset) << " x i8]";
+          cur_offset = base_offset;
+        }
+        if (!first) line << ", ";
+        first = false;
+        TypeSpec base_ts{};
+        base_ts.base = TB_STRUCT;
+        base_ts.tag = base.tag.c_str();
+        line << llvm_ty(base_ts);
+        cur_offset = base_offset + std::max(0, base.size_bytes);
+      }
+      int last_idx = -1;
       for (const auto& f : sd.fields) {
         if (f.llvm_idx == last_idx) continue;
         last_idx = f.llvm_idx;

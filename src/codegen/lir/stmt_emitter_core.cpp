@@ -10,6 +10,12 @@ using namespace stmt_emitter_detail;
 
 namespace stmt_emitter_detail {
 
+static int align_to_bytes(int value, int align) {
+  if (align <= 1) return value;
+  const int rem = value % align;
+  return rem == 0 ? value : value + (align - rem);
+}
+
 bool amd64_registers_available(const llvm_cc::Amd64VarargInfo& layout,
                                const Amd64CallArgState& state) {
   if (layout.gp_chunks > 0) {
@@ -171,6 +177,50 @@ std::string llvm_fn_type_suffix_str(const hir::Module& mod, const Function& fn) 
   }
   out << ")";
   return out.str();
+}
+
+int llvm_struct_base_slot(const hir::Module& mod, const HirStructDef& sd,
+                          size_t base_index) {
+  if (sd.is_union) return 0;
+  int cur_offset = 0;
+  int slot = 0;
+  for (size_t i = 0; i < sd.base_tags.size(); ++i) {
+    const auto it = mod.struct_defs.find(sd.base_tags[i]);
+    if (it == mod.struct_defs.end()) continue;
+    const auto& base = it->second;
+    if (base.align_bytes > 0 && cur_offset % base.align_bytes != 0) ++slot;
+    cur_offset = align_to_bytes(cur_offset, std::max(1, base.align_bytes));
+    if (i == base_index) return slot;
+    cur_offset += std::max(0, base.size_bytes);
+    ++slot;
+  }
+  return 0;
+}
+
+int llvm_struct_field_slot(const hir::Module& mod, const HirStructDef& sd,
+                           int target_llvm_idx) {
+  if (sd.is_union) return 0;
+  int last_idx = -1;
+  int cur_offset = 0;
+  int slot = 0;
+  for (const auto& base_tag : sd.base_tags) {
+    const auto it = mod.struct_defs.find(base_tag);
+    if (it == mod.struct_defs.end()) continue;
+    const auto& base = it->second;
+    if (base.align_bytes > 0 && cur_offset % base.align_bytes != 0) ++slot;
+    cur_offset = align_to_bytes(cur_offset, std::max(1, base.align_bytes));
+    cur_offset += std::max(0, base.size_bytes);
+    ++slot;
+  }
+  for (const auto& f : sd.fields) {
+    if (f.llvm_idx == last_idx) continue;
+    last_idx = f.llvm_idx;
+    if (f.offset_bytes > cur_offset) ++slot;
+    if (f.llvm_idx == target_llvm_idx) return slot;
+    cur_offset = f.offset_bytes + std::max(0, f.size_bytes);
+    ++slot;
+  }
+  return 0;
 }
 
 int llvm_struct_field_slot(const HirStructDef& sd, int target_llvm_idx) {
