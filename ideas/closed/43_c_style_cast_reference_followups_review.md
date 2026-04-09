@@ -1,7 +1,7 @@
 # C-Style Cast Reference Follow-Ups Review
 
-Status: Open
-Last Updated: 2026-04-03
+Status: Completed
+Last Updated: 2026-04-09
 
 ## Goal
 
@@ -128,3 +128,24 @@ Questions:
   regressions
 - known mismatches are classified by earliest failing stage
 - no current cast fix relies on an unreviewed neighboring hole staying dormant
+
+## Completion Summary
+
+Closed on 2026-04-09 after finishing the final Step 5 audit and regression
+coverage for casted member/base access.
+
+- added
+  `tests/cpp/internal/postive_case/c_style_cast_base_ref_qualified_method.cpp`
+  to cover inherited ref-qualified method dispatch through `((Base&)derived)`
+  and `((Base&&)derived)`
+- confirmed the inherited casted-base method slice already matches Clang, so
+  the closeout landed as regression-only coverage with no compiler change
+- full validation passed at `2877/2877` tests with 0 failures, and the
+  regression guard passed against `test_fail_before.log` with zero newly
+  failing tests
+
+## Leftover Follow-up
+
+The cast-specific review is complete. Broader non-casted inheritance/layout
+gaps remain tracked separately in
+`ideas/open/45_inherited_record_layout_and_base_member_access_followup.md`.
