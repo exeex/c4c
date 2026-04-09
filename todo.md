@@ -6,10 +6,8 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 5: close out the function-shaped `parse_only` breadth pass with
-  the validated `member_function_pointer` family recorded, then reassess
-  whether Step 2 is complete enough to move into selected stronger
-  validation promotion work
+- Step 4: reassess the next stronger-validation promotion after the bounded
+  non-dependent `member_function_pointer` `compile_positive` slice landed
 
 ## Completed Items
 
@@ -113,14 +111,39 @@ Source Plan: plan.md
   --before test_fail_before.log --after test_fail_after.log
   --allow-non-decreasing-passed` reported PASS with zero new failing
   tests and a +75 pass delta against the stored baseline log
+- Reassessed the current function-shaped `parse_only` breadth pass as complete
+  enough to begin a bounded Step 4 stronger-validation promotion instead of
+  extending Step 2 breadth further
+- Added a generated `compile_positive` tier under
+  `tests/cpp/internal/generated/parser_disambiguation_matrix/compile_positive/`
+  and wired it into `tests/cpp/internal/InternalTests.cmake` as frontend-level
+  validation rather than `parse_only`
+- Promoted the non-dependent `member_function_pointer` family
+  (`simple`, `qualified`, `global_qualified` owners across all five contexts)
+  into generated `compile_positive` coverage while keeping the files
+  template-driven
+- Updated `scripts/generate_parser_disambiguation_matrix.py` so generated test
+  headers record tier-appropriate `RUN:` lines and `expected_stage` metadata
+- Targeted validation: `ctest --test-dir build -R
+  'generated_parser_disambiguation_matrix_(parse_only|compile_positive)_owner_(simple|qualified|global_qualified)__decl_member_function_pointer'
+  --output-on-failure` passed all 30 adjacent parse-only plus promoted
+  compile-positive cases with zero failures
+- Full-suite validation: `ctest --test-dir build -j8 --output-on-failure >
+  test_fail_after.log` completed with 3092/3092 passing tests, and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
+  --before test_fail_before.log --after test_fail_after.log
+  --allow-non-decreasing-passed` reported PASS with zero new failing
+  tests and a +90 pass delta against the stored baseline log
 
 ## Next Slice
 
-- reassess whether Step 2 breadth is now complete for the currently
-  planned function-shaped declarator set
-- if no more missing parse-only families remain, move to Step 4 and
-  choose a bounded high-risk family for stronger-than-parse-only
-  validation
+- choose whether the next Step 4 promotion should widen `compile_positive`
+  coverage to dependent-owner function shapes or instead promote an adjacent
+  function-shaped family such as `function_pointer`
+- if dependent owners become the target, isolate the frontend failure on
+  `ctx_c_style_cast_target` where the generated `H<T>::Type` / `Rebind<U>::Type`
+  owners currently fail with unknown type-name diagnostics in the promoted
+  tier
 - keep generation template-driven and separate from the existing hand-written
   reductions in `postive_case/`
 
@@ -138,3 +161,8 @@ Source Plan: plan.md
   the external c-testsuite submodule commit, so `test_before.log` reflects the
   clean HEAD suite without those external cases, while the current tree still
   finished with zero failing tests
+- the new `compile_positive` promotion is intentionally bounded to
+  non-dependent owners; dependent-owner `member_function_pointer`
+  `ctx_c_style_cast_target` cases still fail beyond parse-only with unknown
+  type-name diagnostics and should be treated as the next focused investigation
+  rather than folded silently into this landed slice
