@@ -48,11 +48,14 @@ StackLayoutPlanBundle build_stack_layout_plan_bundle(
     const std::vector<PhysReg>& callee_saved_regs);
 
 EntryAllocaRewritePatch build_entry_alloca_rewrite_patch(
+    const StackLayoutInput& input,
+    const std::vector<EntryAllocaSlotPlan>& plans);
+
+EntryAllocaRewritePatch build_entry_alloca_rewrite_patch(
     const c4c::codegen::lir::LirFunction& function,
     const std::vector<EntryAllocaSlotPlan>& plans);
 
 EntryAllocaRewritePatch prepare_entry_alloca_rewrite_patch(
-    const c4c::codegen::lir::LirFunction& function,
     const LivenessInput& liveness_input,
     const StackLayoutInput& stack_layout_input,
     const RegAllocConfig& regalloc_config,

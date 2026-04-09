@@ -7,16 +7,41 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: audit the next remaining raw-LIR backend convenience seam
-  after retiring `apply_entry_alloca_slot_plan(...)`, with focus on whether
-  any stack-layout or liveness entrypoint still needs an LIR-owned adapter
-- Next intended slice: trace the next Step 6/7 ownership gap after the
-  entry-alloca wrapper removal and retarget it onto backend-owned
-  liveness/stack-layout inputs if the remaining caller is still production
-  relevant
+- Current slice: retarget the entry-alloca rewrite-patch preparation seam so
+  production emitters build the patch from backend-owned
+  `StackLayoutInput::entry_allocas`, leaving raw-LIR ownership only in the
+  final apply step
+- Next intended slice: audit whether the remaining raw-LIR
+  `prune_dead_param_alloca_insts(...)` / entry-alloca pruning helper surface is
+  still production relevant after the rewrite-patch builder stops depending on
+  `LirFunction`
 
 ## Completed
 
+- Completed the next Step 6/7 bounded entry-alloca patch-preparation ownership
+  slice by moving production rewrite-patch construction onto backend-owned
+  stack-layout metadata and leaving raw-LIR ownership only in the final apply
+  step:
+  - added a backend-owned
+    `build_entry_alloca_rewrite_patch(const StackLayoutInput&, ...)` path in
+    `src/backend/stack_layout/slot_assignment.*` and retargeted
+    `prepare_entry_alloca_rewrite_patch(...)` to use
+    `StackLayoutInput::entry_allocas` instead of rediscovering entry allocas
+    from raw `LirFunction`
+  - updated
+    `src/backend/aarch64/codegen/emit.cpp` and
+    `src/backend/x86/codegen/emit.cpp` so the production emitters no longer
+    pass raw `LirFunction` into rewrite-patch preparation
+  - refreshed the focused coverage in
+    `tests/backend/backend_shared_util_tests.cpp` so the regression now proves
+    patch preparation stays correct when callers provide only backend-owned
+    liveness and stack-layout inputs
+  - rebuilt `backend_shared_util_tests` and `backend_bir_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`
+    and `ctest --test-dir build -R '^backend_bir_tests$' --output-on-failure`,
+    refreshed `test_fail_after.log`, and passed the regression guard with no
+    new failures and no pass-count drop
+    (`2809 -> 2809`, same 32 known failing tests as `test_fail_before.log`)
 - Completed the next Step 6 bounded entry-alloca compatibility-wrapper
   retirement slice by deleting the final shared raw-LIR convenience wrapper
   once the explicit rewrite-patch seam proved sufficient for every remaining

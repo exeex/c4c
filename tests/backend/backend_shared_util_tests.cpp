@@ -1708,7 +1708,7 @@ void test_backend_shared_slot_assignment_prepares_rewrite_patch_from_backend_own
       c4c::backend::stack_layout::lower_lir_to_stack_layout_input(dead_function);
 
   const auto patch = c4c::backend::stack_layout::prepare_entry_alloca_rewrite_patch(
-      dead_function, dead_liveness_input, dead_stack_layout_input, config, {}, {{20}, {21}, {22}});
+      dead_liveness_input, dead_stack_layout_input, config, {}, {{20}, {21}, {22}});
 
   expect_true(patch.alloca_insts.empty(),
               "shared stack-layout patch prep should preserve dead entry-alloca pruning decisions when callers provide backend-owned inputs");

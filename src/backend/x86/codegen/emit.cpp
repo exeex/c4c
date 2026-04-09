@@ -60,7 +60,7 @@ void prune_dead_entry_allocas(c4c::codegen::lir::LirFunction& function) {
       {1}, {2}, {3}, {4}, {5},
   };
   const auto patch = c4c::backend::stack_layout::prepare_entry_alloca_rewrite_patch(
-      function, liveness_input, stack_layout_input, config, {}, callee_saved);
+      liveness_input, stack_layout_input, config, {}, callee_saved);
   c4c::backend::stack_layout::apply_entry_alloca_rewrite_patch(function, patch);
 }
 
