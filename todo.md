@@ -7,16 +7,34 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 5: pull phi and CFG normalization behind the BIR boundary
-- Current slice: continue the Step 5 audit for any remaining AArch64
-  branch-only conditional-return goto-chain families beyond the newly covered
-  interleaved two-arm double-empty-bridge ordering case
-- Next intended slice: inspect whether any remaining branch-only
-  conditional-return families with deeper mixed arm lengths or nontrivial
-  compare operands still bypass the shared BIR route before stepping into
-  Step 6 MIR-owned liveness/regalloc work
+- Current slice: start the Step 6 audit for MIR-owned liveness/regalloc
+  handoff now that the remaining Step 5 branch-only conditional-return
+  goto-chain audit slice stayed on the shared BIR route
+- Next intended slice: inventory the concrete liveness/regalloc entrypoints
+  that still require raw `LirFunction` or LIR-owned CFG state and identify the
+  narrowest backend MIR seam to retarget first
 
 ## Completed
 
+- Completed the follow-up Step 5 audit for parameter-fed branch-only
+  conditional-return goto chains with deeper mixed arm lengths and confirmed
+  the shared BIR matcher already owns that reordered CFG family:
+  - added focused shared lowering coverage in
+    `tests/backend/backend_bir_lowering_tests.cpp` proving that an
+    interleaved mixed-depth conditional-return LIR slice comparing `%lhs`
+    against `%rhs` still normalizes to one canonical
+    `bir.select ...; bir.ret ...` block even when the true arm walks a
+    deeper three-bridge chain and the false arm uses a shorter one-bridge
+    chain
+  - added focused AArch64 pipeline coverage in
+    `tests/backend/backend_bir_pipeline_aarch64_tests.cpp` proving the native
+    emitter routes that parameter-fed mixed-depth fixture through the shared
+    BIR-owned `.Lselect_*` path, preserves the `%lhs`/`%rhs` compare operands,
+    and no longer exposes any of the original `then.bridge*`, `else.bridge0`,
+    `then.ret`, or `else.ret` labels
+  - rebuilt `backend_bir_tests`, rebuilt the full tree, refreshed
+    `test_fail_after.log`, and passed the regression guard with no new
+    failures and no pass-count drop (`2809 -> 2809`)
 - Closed the next Step 5 AArch64 branch-only conditional-return CFG seam
   behind the shared BIR boundary by removing the shared matcher's physical
   block-order dependency for mirrored false-arm goto chains:

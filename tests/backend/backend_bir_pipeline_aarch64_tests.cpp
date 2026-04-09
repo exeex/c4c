@@ -413,6 +413,74 @@ make_lir_minimal_conditional_return_with_interleaved_double_empty_bridge_chains_
   return module;
 }
 
+c4c::codegen::lir::LirModule
+make_lir_param_conditional_return_with_interleaved_mixed_depth_bridge_chains_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction function;
+  function.name = "choose";
+  function.signature_text = "define i32 @choose(i32 %lhs, i32 %rhs)\n";
+  function.entry = LirBlockId{0};
+  function.return_type.base = c4c::TB_INT;
+
+  c4c::TypeSpec param_type{};
+  param_type.base = c4c::TB_INT;
+  function.params.push_back({"%lhs", param_type});
+  function.params.push_back({"%rhs", param_type});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCmpOp{"%t0", false, "slt", "i32", "%lhs", "%rhs"});
+  entry.insts.push_back(LirCastOp{"%t1", LirCastKind::ZExt, "i1", "%t0", "i32"});
+  entry.insts.push_back(LirCmpOp{"%t2", false, "ne", "i32", "%t1", "0"});
+  entry.terminator = LirCondBr{"%t2", "then.bridge0", "else.bridge0"};
+
+  LirBlock then_bridge0;
+  then_bridge0.id = LirBlockId{1};
+  then_bridge0.label = "then.bridge0";
+  then_bridge0.terminator = LirBr{"then.bridge1"};
+
+  LirBlock else_bridge0;
+  else_bridge0.id = LirBlockId{2};
+  else_bridge0.label = "else.bridge0";
+  else_bridge0.terminator = LirBr{"else.ret"};
+
+  LirBlock then_bridge1;
+  then_bridge1.id = LirBlockId{3};
+  then_bridge1.label = "then.bridge1";
+  then_bridge1.terminator = LirBr{"then.bridge2"};
+
+  LirBlock then_bridge2;
+  then_bridge2.id = LirBlockId{4};
+  then_bridge2.label = "then.bridge2";
+  then_bridge2.terminator = LirBr{"then.ret"};
+
+  LirBlock else_ret;
+  else_ret.id = LirBlockId{5};
+  else_ret.label = "else.ret";
+  else_ret.terminator = LirRet{std::string("%rhs"), "i32"};
+
+  LirBlock then_ret;
+  then_ret.id = LirBlockId{6};
+  then_ret.label = "then.ret";
+  then_ret.terminator = LirRet{std::string("%lhs"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(then_bridge0));
+  function.blocks.push_back(std::move(else_bridge0));
+  function.blocks.push_back(std::move(then_bridge1));
+  function.blocks.push_back(std::move(then_bridge2));
+  function.blocks.push_back(std::move(else_ret));
+  function.blocks.push_back(std::move(then_ret));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_double_indirect_local_pointer_conditional_return_module() {
   using namespace c4c::codegen::lir;
 
@@ -2545,6 +2613,50 @@ void test_backend_bir_pipeline_drives_aarch64_lir_conditional_return_with_interl
                       "aarch64 LIR interleaved double-empty-bridge conditional-return input should stay on native asm emission instead of falling back to LLVM text");
 }
 
+void test_backend_bir_pipeline_drives_aarch64_lir_param_conditional_return_with_interleaved_mixed_depth_bridge_chains_through_bir_end_to_end() {
+  const auto lowered = c4c::backend::try_lower_to_bir(
+      make_lir_param_conditional_return_with_interleaved_mixed_depth_bridge_chains_module());
+  expect_true(
+      lowered.has_value(),
+      "aarch64 LIR parameter-fed mixed-depth conditional-return input should lower into a direct BIR module before target emission");
+  expect_true(lowered->functions.size() == 1 &&
+                  lowered->functions.front().blocks.size() == 1 &&
+                  lowered->functions.front().blocks.front().insts.size() == 1 &&
+                  std::holds_alternative<c4c::backend::bir::SelectInst>(
+                      lowered->functions.front().blocks.front().insts.front()),
+              "aarch64 LIR parameter-fed mixed-depth conditional-return input should collapse to the shared BIR select form before target emission");
+
+  const auto rendered = c4c::backend::aarch64::emit_module(
+      make_lir_param_conditional_return_with_interleaved_mixed_depth_bridge_chains_module());
+
+  expect_contains(rendered, ".globl choose",
+                  "aarch64 LIR parameter-fed mixed-depth conditional-return input should still reach native asm emission after routing through the shared BIR path");
+  expect_contains(rendered, "mov w8, w0",
+                  "aarch64 LIR parameter-fed mixed-depth conditional-return input should stage the first incoming integer argument into the compare scratch register");
+  expect_contains(rendered, "mov w9, w1",
+                  "aarch64 LIR parameter-fed mixed-depth conditional-return input should stage the second incoming integer argument into the compare scratch register");
+  expect_contains(rendered, "cmp w8, w9",
+                  "aarch64 LIR parameter-fed mixed-depth conditional-return input should compare both staged integer argument registers on the shared backend path");
+  expect_contains(rendered, ".Lselect_true:\n  ret\n",
+                  "aarch64 LIR parameter-fed mixed-depth conditional-return input should preserve the true-arm parameter return through the BIR-owned select emission");
+  expect_contains(rendered, ".Lselect_false:\n  mov w0, w1\n  ret\n",
+                  "aarch64 LIR parameter-fed mixed-depth conditional-return input should preserve the false-arm parameter return through the BIR-owned select emission");
+  expect_not_contains(rendered, ".choose.then.bridge0:",
+                      "aarch64 LIR parameter-fed mixed-depth conditional-return input should no longer expose the first direct-LIR then bridge label once the shared BIR route owns the shape");
+  expect_not_contains(rendered, ".choose.then.bridge1:",
+                      "aarch64 LIR parameter-fed mixed-depth conditional-return input should no longer expose the second direct-LIR then bridge label once the shared BIR route owns the shape");
+  expect_not_contains(rendered, ".choose.then.bridge2:",
+                      "aarch64 LIR parameter-fed mixed-depth conditional-return input should no longer expose the third direct-LIR then bridge label once the shared BIR route owns the shape");
+  expect_not_contains(rendered, ".choose.else.bridge0:",
+                      "aarch64 LIR parameter-fed mixed-depth conditional-return input should no longer expose the direct-LIR else bridge label once the shared BIR route owns the shape");
+  expect_not_contains(rendered, ".choose.then.ret:",
+                      "aarch64 LIR parameter-fed mixed-depth conditional-return input should no longer expose the direct-LIR then return label once the shared BIR route owns the shape");
+  expect_not_contains(rendered, ".choose.else.ret:",
+                      "aarch64 LIR parameter-fed mixed-depth conditional-return input should no longer expose the direct-LIR else return label once the shared BIR route owns the shape");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 LIR parameter-fed mixed-depth conditional-return input should stay on native asm emission instead of falling back to LLVM text");
+}
+
 void test_backend_bir_pipeline_drives_aarch64_lir_conditional_phi_join_through_bir_end_to_end() {
   const auto lowered =
       c4c::backend::try_lower_to_bir(make_lir_single_param_select_eq_phi_module());
@@ -3091,6 +3203,7 @@ void run_backend_bir_pipeline_aarch64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_lir_conditional_return_with_double_empty_bridge_chain_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_lir_conditional_return_with_mirrored_false_double_empty_bridge_chain_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_lir_conditional_return_with_interleaved_double_empty_bridge_chains_through_bir_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_aarch64_lir_param_conditional_return_with_interleaved_mixed_depth_bridge_chains_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_lir_conditional_phi_join_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_lir_u8_select_post_join_add_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_direct_bir_single_param_select_end_to_end);
