@@ -5119,7 +5119,7 @@ static std::optional<std::string> try_emit_general_lir_asm(
     const auto& fn = module.functions[function_index];
     if (fn.is_declaration) continue;
     const auto prepared_inputs =
-        c4c::backend::stack_layout::prepare_module_function_entry_alloca_inputs(
+        c4c::backend::stack_layout::prepare_module_function_entry_alloca_compat_inputs(
             module, function_index);
     const auto& stack_layout_input = prepared_inputs.stack_layout_input;
     const auto& return_ty = stack_layout_input.return_type;
@@ -5246,7 +5246,7 @@ static std::optional<std::string> try_emit_general_lir_asm(
 
     // Build slot map
     const auto prepared_inputs =
-        c4c::backend::stack_layout::prepare_module_function_entry_alloca_inputs(
+        c4c::backend::stack_layout::prepare_module_function_entry_alloca_compat_inputs(
             module, function_index);
     const auto& stack_layout_input = prepared_inputs.stack_layout_input;
     GenSlotMap sm = gen_build_slots(stack_layout_input, module.type_decls);

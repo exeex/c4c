@@ -7,18 +7,43 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 7: move regalloc and stack layout to backend MIR
-- Current slice: retarget any remaining non-emitter production callers that
-  still go through `prepare_module_function_entry_alloca_inputs(...)` even
-  though they only need rewrite or planning state
-- Current implementation target: audit whether any non-emitter production paths
-  besides `rewrite_module_entry_allocas(...)` still force compatibility
-  `StackLayoutInput` rehydration instead of consuming the narrower prepared
-  rewrite/planning seams directly
-- Next intended slice: if no additional non-emitter production callers remain,
-  narrow the compatibility wrapper naming and comments so emitter-only
-  ownership is explicit at the public `stack_layout` entrypoints
+- Current slice: re-audit the remaining `StackLayoutInput` compatibility
+  overloads to see whether any non-test callers can move onto the narrower
+  planning or rewrite seams next
+- Current implementation target: trace any production uses of the compatibility
+  overloads around `build_stack_layout_plan_bundle(...)`,
+  `prepare_entry_alloca_rewrite_patch(...)`, `plan_entry_alloca_slots(...)`,
+  and `plan_param_alloca_slots(...)` and narrow the next one that is still
+  reachable outside tests
+- Next intended slice: if those overloads are already test-only, tighten their
+  naming/comments the same way the full prepared wrapper now exposes
+  compatibility-only ownership
 
 ## Completed
+
+- Completed the next Step 7 compatibility-wrapper naming slice by making the
+  remaining full prepared stack-layout entrypoint explicit about its
+  compatibility-only ownership after auditing production call sites:
+  - confirmed the only production `src/` callers of the full prepared wrapper
+    were the AArch64 direct-LIR emitter sites in
+    `src/backend/aarch64/codegen/emit.cpp`, while
+    `rewrite_module_entry_allocas(...)` already uses the narrower
+    `prepare_module_function_entry_alloca_rewrite_only_inputs(...)` path
+  - renamed `prepare_module_function_entry_alloca_inputs(...)` to
+    `prepare_module_function_entry_alloca_compat_inputs(...)` in
+    `src/backend/stack_layout/slot_assignment.hpp` and
+    `src/backend/stack_layout/slot_assignment.cpp`, and documented that it
+    exists only to rehydrate the broader `StackLayoutInput` view for direct-LIR
+    emitters and compatibility tests
+  - retargeted the AArch64 direct-LIR emitter and the shared backend util tests
+    to the explicit compatibility entrypoint so the public ownership split is
+    visible at call sites
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`
+  - rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with the repo's allowed non-decreasing rule and no new
+    failures (`2809 -> 2809`, same 32 known failing tests as
+    `test_fail_before.log`)
 
 - Completed the next Step 7 rewrite-only preparation split by letting module
   entry-alloca rewriting consume the narrowed prepared seams without

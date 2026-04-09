@@ -1872,7 +1872,8 @@ void test_backend_shared_slot_assignment_backend_owned_overloads_match_planning_
 
   const auto dead_param_module = make_dead_param_alloca_candidate_module();
   const auto prepared_inputs =
-      c4c::backend::stack_layout::prepare_module_function_entry_alloca_inputs(dead_param_module, 1);
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_compat_inputs(
+          dead_param_module, 1);
   const auto dead_regalloc = c4c::backend::run_regalloc_and_merge_clobbers(
       prepared_inputs.liveness_input, config, {});
   const auto dead_analysis = c4c::backend::stack_layout::analyze_stack_layout(
@@ -1944,7 +1945,8 @@ void test_backend_shared_slot_assignment_backend_owned_bundle_overload_matches_p
 
   const auto live_module = make_live_local_alloca_candidate_module();
   const auto prepared_inputs =
-      c4c::backend::stack_layout::prepare_module_function_entry_alloca_inputs(live_module, 0);
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_compat_inputs(
+          live_module, 0);
 
   const auto compatibility_bundle = c4c::backend::stack_layout::build_stack_layout_plan_bundle(
       prepared_inputs.liveness_input, prepared_inputs.stack_layout_input, config, {}, {});
@@ -1979,7 +1981,8 @@ void test_backend_shared_slot_assignment_bundle_prepares_from_narrowed_planning_
 
   const auto scalar_module = make_overwrite_first_scalar_local_alloca_candidate_module();
   const auto scalar_inputs =
-      c4c::backend::stack_layout::prepare_module_function_entry_alloca_inputs(scalar_module, 0);
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_compat_inputs(
+          scalar_module, 0);
   const auto scalar_bundle = c4c::backend::stack_layout::build_stack_layout_plan_bundle(
       scalar_inputs.liveness_input, scalar_inputs.planning_input, config, {}, {});
 
@@ -1999,7 +2002,7 @@ void test_backend_shared_slot_assignment_bundle_prepares_from_narrowed_planning_
 
   const auto dead_param_module = make_dead_param_alloca_candidate_module();
   const auto dead_param_inputs =
-      c4c::backend::stack_layout::prepare_module_function_entry_alloca_inputs(
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_compat_inputs(
           dead_param_module, 1);
   const auto dead_param_bundle = c4c::backend::stack_layout::build_stack_layout_plan_bundle(
       dead_param_inputs.liveness_input,
@@ -2035,7 +2038,7 @@ void test_backend_shared_slot_assignment_prepares_rewrite_patch_from_backend_own
       dead_liveness_input, dead_stack_layout_input, config, {}, {{20}, {21}, {22}});
   const auto narrowed_patch = c4c::backend::stack_layout::prepare_entry_alloca_rewrite_patch(
       dead_liveness_input,
-      c4c::backend::stack_layout::prepare_module_function_entry_alloca_inputs(
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_compat_inputs(
           make_dead_param_alloca_candidate_module(), 1)
           .rewrite_input,
       config,
@@ -2163,7 +2166,8 @@ void test_backend_shared_slot_assignment_prepares_module_function_inputs() {
               "shared entry-alloca rewrite prep should lower the prepared fallback carrier into the new narrow rewrite-input contract while preserving the compatibility stack-layout view");
 
   const auto lowerable_inputs =
-      c4c::backend::stack_layout::prepare_module_function_entry_alloca_inputs(module, 0);
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_compat_inputs(
+          module, 0);
   expect_true(lowerable_inputs.liveness_source ==
                   c4c::backend::stack_layout::EntryAllocaRewriteLivenessSource::PerFunctionBir &&
                   lowerable_inputs.stack_layout_source ==
@@ -2182,7 +2186,8 @@ void test_backend_shared_prepared_function_inputs_preserve_emitter_stack_layout_
   const auto module = make_mixed_bir_and_entry_alloca_module();
 
   const auto lowerable_prepared =
-      c4c::backend::stack_layout::prepare_module_function_entry_alloca_inputs(module, 0);
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_compat_inputs(
+          module, 0);
   const auto lowerable_direct =
       c4c::backend::stack_layout::lower_lir_to_stack_layout_input(module.functions[0]);
   expect_true(
@@ -2198,7 +2203,8 @@ void test_backend_shared_prepared_function_inputs_preserve_emitter_stack_layout_
       "prepared per-function stack-layout inputs should preserve the slot-building value set and signature metadata for lowerable functions so production emitters do not need to call the raw-LIR helper directly");
 
   const auto fallback_prepared =
-      c4c::backend::stack_layout::prepare_module_function_entry_alloca_inputs(module, 2);
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_compat_inputs(
+          module, 2);
   const auto fallback_direct =
       c4c::backend::stack_layout::lower_function_entry_alloca_stack_layout_input(
           module.functions[2], c4c::backend::lower_lir_to_backend_cfg(module.functions[2]));
@@ -2221,7 +2227,8 @@ void test_backend_shared_rewrite_only_prepared_function_inputs_preserve_rewrite_
   const auto module = make_mixed_bir_and_entry_alloca_module();
 
   const auto lowerable_full =
-      c4c::backend::stack_layout::prepare_module_function_entry_alloca_inputs(module, 0);
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_compat_inputs(
+          module, 0);
   const auto lowerable_rewrite_only =
       c4c::backend::stack_layout::prepare_module_function_entry_alloca_rewrite_only_inputs(
           module, 0);
@@ -2239,7 +2246,8 @@ void test_backend_shared_rewrite_only_prepared_function_inputs_preserve_rewrite_
       "shared entry-alloca rewrite-only prep should preserve the narrowed rewrite and liveness seams for lowerable functions without routing through the compatibility stack-layout wrapper");
 
   const auto fallback_full =
-      c4c::backend::stack_layout::prepare_module_function_entry_alloca_inputs(module, 2);
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_compat_inputs(
+          module, 2);
   const auto fallback_rewrite_only =
       c4c::backend::stack_layout::prepare_module_function_entry_alloca_rewrite_only_inputs(
           module, 2);

@@ -186,7 +186,10 @@ EntryAllocaRewritePatch prepare_entry_alloca_rewrite_patch(
 lower_prepared_entry_alloca_rewrite_only_inputs(
     const PreparedEntryAllocaFunctionInputs& prepared_inputs);
 
-[[nodiscard]] EntryAllocaRewriteInputs prepare_module_function_entry_alloca_inputs(
+// Compatibility-only wrapper that rehydrates the broader stack-layout view for
+// direct-LIR emitters and tests. Production rewrite flows should prefer
+// `prepare_module_function_entry_alloca_rewrite_only_inputs(...)`.
+[[nodiscard]] EntryAllocaRewriteInputs prepare_module_function_entry_alloca_compat_inputs(
     const c4c::codegen::lir::LirModule& module,
     std::size_t function_index);
 

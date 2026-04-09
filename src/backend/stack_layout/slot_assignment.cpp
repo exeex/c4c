@@ -803,7 +803,7 @@ std::optional<LivenessInput> try_lower_module_function_to_bir_liveness_input(
   return std::nullopt;
 }
 
-EntryAllocaRewriteInputs prepare_module_function_entry_alloca_inputs(
+EntryAllocaRewriteInputs prepare_module_function_entry_alloca_compat_inputs(
     const c4c::codegen::lir::LirModule& module,
     std::size_t function_index) {
   return lower_prepared_entry_alloca_function_inputs(
