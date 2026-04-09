@@ -1820,6 +1820,256 @@ std::optional<bir::Module> try_lower_minimal_countdown_loop_module(
   return lowered;
 }
 
+std::optional<bir::Module> try_lower_minimal_signed_narrow_local_slot_increment_compare_module(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || !module.globals.empty() ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      !backend_lir_signature_matches(function.signature_text, "define", "i32", function.name, {}) ||
+      function.entry.value != 0 || function.blocks.size() < 3 || function.alloca_insts.size() != 1 ||
+      !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* slot = std::get_if<LirAllocaOp>(&function.alloca_insts.front());
+  if (slot == nullptr || slot->result.empty()) {
+    return std::nullopt;
+  }
+
+  const auto slot_width =
+      lir_type_has_integer_width(c4c::codegen::lir::LirTypeRef{slot->type_str}, 8)
+          ? std::optional<unsigned>(8)
+          : (lir_type_has_integer_width(c4c::codegen::lir::LirTypeRef{slot->type_str}, 16)
+                 ? std::optional<unsigned>(16)
+                 : std::nullopt);
+  if (!slot_width.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  if (entry.label.empty() || entry.insts.size() != 12) {
+    return std::nullopt;
+  }
+
+  const auto* initial_trunc = std::get_if<LirCastOp>(&entry.insts[0]);
+  const auto* initial_store = std::get_if<LirStoreOp>(&entry.insts[1]);
+  const auto* first_load = std::get_if<LirLoadOp>(&entry.insts[2]);
+  const auto* first_extend = std::get_if<LirCastOp>(&entry.insts[3]);
+  const auto* update = std::get_if<LirBinOp>(&entry.insts[4]);
+  const auto* update_trunc = std::get_if<LirCastOp>(&entry.insts[5]);
+  const auto* update_store = std::get_if<LirStoreOp>(&entry.insts[6]);
+  const auto* second_load = std::get_if<LirLoadOp>(&entry.insts[7]);
+  const auto* second_extend = std::get_if<LirCastOp>(&entry.insts[8]);
+  const auto* compare = std::get_if<LirCmpOp>(&entry.insts[9]);
+  const auto* cond_cast = std::get_if<LirCastOp>(&entry.insts[10]);
+  const auto* branch_cmp = std::get_if<LirCmpOp>(&entry.insts[11]);
+  const auto* condbr = std::get_if<LirCondBr>(&entry.terminator);
+  if (initial_trunc == nullptr || initial_store == nullptr || first_load == nullptr ||
+      first_extend == nullptr || update == nullptr || update_trunc == nullptr ||
+      update_store == nullptr || second_load == nullptr || second_extend == nullptr ||
+      compare == nullptr || cond_cast == nullptr || branch_cmp == nullptr || condbr == nullptr ||
+      initial_trunc->result.str().empty() || first_load->result.str().empty() ||
+      first_extend->result.str().empty() || update->result.str().empty() ||
+      update_trunc->result.str().empty() || second_load->result.str().empty() ||
+      second_extend->result.str().empty() || compare->result.str().empty() ||
+      cond_cast->result.str().empty() || branch_cmp->result.str().empty()) {
+    return std::nullopt;
+  }
+
+  const auto update_opcode = update->opcode.typed();
+  if (initial_trunc->kind != LirCastKind::Trunc ||
+      !lir_type_matches_integer_width(initial_trunc->from_type, 32) ||
+      !lir_type_matches_integer_width(initial_trunc->to_type, *slot_width) ||
+      initial_store->ptr != slot->result || initial_store->val != initial_trunc->result ||
+      !lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{initial_store->type_str},
+                                      *slot_width) ||
+      first_load->ptr != slot->result ||
+      !lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{first_load->type_str},
+                                      *slot_width) ||
+      (first_extend->kind != LirCastKind::SExt && first_extend->kind != LirCastKind::ZExt) ||
+      !lir_type_matches_integer_width(first_extend->from_type, *slot_width) ||
+      !lir_type_matches_integer_width(first_extend->to_type, 32) ||
+      first_extend->operand != first_load->result ||
+      (update_opcode != LirBinaryOpcode::Add && update_opcode != LirBinaryOpcode::Sub) ||
+      !lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{update->type_str}, 32) ||
+      update->lhs != first_extend->result ||
+      update_trunc->kind != LirCastKind::Trunc ||
+      !lir_type_matches_integer_width(update_trunc->from_type, 32) ||
+      !lir_type_matches_integer_width(update_trunc->to_type, *slot_width) ||
+      update_trunc->operand != update->result || update_store->ptr != slot->result ||
+      update_store->val != update_trunc->result ||
+      !lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{update_store->type_str},
+                                      *slot_width) ||
+      second_load->ptr != slot->result ||
+      !lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{second_load->type_str},
+                                      *slot_width) ||
+      second_extend->kind != first_extend->kind ||
+      !lir_type_matches_integer_width(second_extend->from_type, *slot_width) ||
+      !lir_type_matches_integer_width(second_extend->to_type, 32) ||
+      second_extend->operand != second_load->result || compare->is_float ||
+      !lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{compare->type_str}, 32) ||
+      compare->lhs != second_extend->result || cond_cast->kind != LirCastKind::ZExt ||
+      !lir_type_matches_integer_width(cond_cast->from_type, 1) ||
+      !lir_type_matches_integer_width(cond_cast->to_type, 32) ||
+      cond_cast->operand != compare->result || branch_cmp->is_float ||
+      branch_cmp->predicate.str() != "ne" ||
+      !lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{branch_cmp->type_str}, 32) ||
+      branch_cmp->lhs != cond_cast->result || branch_cmp->rhs != "0" ||
+      condbr->cond_name != branch_cmp->result) {
+    return std::nullopt;
+  }
+
+  std::unordered_map<std::string_view, std::size_t> block_indices_by_label;
+  block_indices_by_label.reserve(function.blocks.size());
+  for (std::size_t i = 1; i < function.blocks.size(); ++i) {
+    const auto& block = function.blocks[i];
+    if (block.label.empty() || !block_indices_by_label.emplace(block.label, i).second) {
+      return std::nullopt;
+    }
+  }
+
+  std::unordered_set<std::size_t> consumed_block_indices;
+  auto consume_return_arm = [&](std::string_view branch_label) -> const LirBlock* {
+    while (true) {
+      const auto block_it = block_indices_by_label.find(branch_label);
+      if (block_it == block_indices_by_label.end()) {
+        return nullptr;
+      }
+
+      const auto block_index = block_it->second;
+      const auto& block = function.blocks[block_index];
+      if (!consumed_block_indices.insert(block_index).second || !block.insts.empty()) {
+        return nullptr;
+      }
+
+      if (std::get_if<LirRet>(&block.terminator) != nullptr) {
+        return &block;
+      }
+
+      const auto* bridge_br = std::get_if<LirBr>(&block.terminator);
+      if (bridge_br == nullptr) {
+        return nullptr;
+      }
+      branch_label = bridge_br->target_label;
+    }
+  };
+
+  const auto* true_ret_block = consume_return_arm(condbr->true_label);
+  const auto* false_ret_block = consume_return_arm(condbr->false_label);
+  if (true_ret_block == nullptr || false_ret_block == nullptr ||
+      consumed_block_indices.size() + 1 != function.blocks.size()) {
+    return std::nullopt;
+  }
+
+  const auto* true_ret = std::get_if<LirRet>(&true_ret_block->terminator);
+  const auto* false_ret = std::get_if<LirRet>(&false_ret_block->terminator);
+  if (true_ret == nullptr || false_ret == nullptr || !true_ret->value_str.has_value() ||
+      !false_ret->value_str.has_value() || true_ret->type_str != "i32" ||
+      false_ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto initial_value = parse_immediate(initial_trunc->operand.str());
+  const auto update_value =
+      update->rhs == "0" ? std::optional<std::int64_t>(0) : parse_immediate(update->rhs);
+  const auto compare_rhs = parse_immediate(compare->rhs.str());
+  const auto true_return = parse_immediate(*true_ret->value_str);
+  const auto false_return = parse_immediate(*false_ret->value_str);
+  if (!initial_value.has_value() || !update_value.has_value() || !compare_rhs.has_value() ||
+      !true_return.has_value() || !false_return.has_value()) {
+    return std::nullopt;
+  }
+
+  auto narrow_to_slot = [&](std::int64_t value) -> std::int64_t {
+    if (*slot_width == 8) {
+      const auto narrowed = static_cast<std::uint8_t>(value);
+      if (first_extend->kind == LirCastKind::SExt) {
+        return static_cast<std::int8_t>(narrowed);
+      }
+      return narrowed;
+    }
+
+    const auto narrowed = static_cast<std::uint16_t>(value);
+    if (first_extend->kind == LirCastKind::SExt) {
+      return static_cast<std::int16_t>(narrowed);
+    }
+    return narrowed;
+  };
+
+  const auto initial_slot_value = narrow_to_slot(*initial_value);
+  const auto updated_widened_value =
+      update_opcode == LirBinaryOpcode::Add ? initial_slot_value + *update_value
+                                            : initial_slot_value - *update_value;
+  const auto final_slot_value = narrow_to_slot(updated_widened_value);
+
+  auto evaluate_compare = [&](std::string_view predicate) -> std::optional<bool> {
+    if (predicate == "eq") {
+      return final_slot_value == *compare_rhs;
+    }
+    if (predicate == "ne") {
+      return final_slot_value != *compare_rhs;
+    }
+    if (predicate == "slt") {
+      return final_slot_value < *compare_rhs;
+    }
+    if (predicate == "sle") {
+      return final_slot_value <= *compare_rhs;
+    }
+    if (predicate == "sgt") {
+      return final_slot_value > *compare_rhs;
+    }
+    if (predicate == "sge") {
+      return final_slot_value >= *compare_rhs;
+    }
+    if (predicate == "ult" || predicate == "ule" || predicate == "ugt" || predicate == "uge") {
+      if (final_slot_value < 0 || *compare_rhs < 0) {
+        return std::nullopt;
+      }
+      const auto lhs = static_cast<std::uint64_t>(final_slot_value);
+      const auto rhs = static_cast<std::uint64_t>(*compare_rhs);
+      if (predicate == "ult") {
+        return lhs < rhs;
+      }
+      if (predicate == "ule") {
+        return lhs <= rhs;
+      }
+      if (predicate == "ugt") {
+        return lhs > rhs;
+      }
+      return lhs >= rhs;
+    }
+    return std::nullopt;
+  };
+
+  const auto compare_matches = evaluate_compare(compare->predicate.str());
+  if (!compare_matches.has_value() || !immediate_fits_type(*true_return, bir::TypeKind::I32) ||
+      !immediate_fits_type(*false_return, bir::TypeKind::I32)) {
+    return std::nullopt;
+  }
+
+  bir::Module lowered;
+  lowered.target_triple = module.target_triple;
+  lowered.data_layout = module.data_layout;
+
+  bir::Function lowered_function;
+  lowered_function.name = function.name;
+  lowered_function.return_type = bir::TypeKind::I32;
+
+  bir::Block lowered_entry;
+  lowered_entry.label = entry.label;
+  lowered_entry.terminator.value = bir::Value::immediate_i32(static_cast<std::int32_t>(
+      *compare_matches ? *true_return : *false_return));
+  lowered_function.blocks.push_back(std::move(lowered_entry));
+  lowered.functions.push_back(std::move(lowered_function));
+  return lowered;
+}
+
 std::optional<bir::Module> try_lower_minimal_branch_only_constant_return_module(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
@@ -4658,6 +4908,11 @@ std::optional<bir::Module> try_lower_to_bir(const c4c::codegen::lir::LirModule& 
     return lowered;
   }
   if (const auto lowered = try_lower_minimal_countdown_loop_module(module);
+      lowered.has_value()) {
+    return lowered;
+  }
+  if (const auto lowered =
+          try_lower_minimal_signed_narrow_local_slot_increment_compare_module(module);
       lowered.has_value()) {
     return lowered;
   }

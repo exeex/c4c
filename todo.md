@@ -6,22 +6,23 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 2: recover the highest-leverage shared BIR seam for alloca-backed
-  local-slot and control-flow x86 failures, continuing from `00086.c` after
-  landing the `00057.c` dead-local `sizeof` branch slice
+- Step 2: recover the highest-leverage shared BIR seam for the remaining x86
+  unsupported modules, continuing from `00138.c` now that the signed narrow
+  local-slot increment-and-compare slice in `00086.c` lowers through shared BIR
 
 ## Next Slice
 
 - add the narrowest regression around
-  `c_testsuite_x86_backend_src_00086_c`
-- determine whether the prepared local-slot increment-and-compare shape should
-  lower through the existing shared BIR local-slot contract or needs a new
-  bounded matcher
-- re-check nearby representatives
-  `c_testsuite_x86_backend_src_00138_c` and
-  `c_testsuite_x86_backend_src_00143_c`
-- keep Family B global/initializer-heavy modules parked until the local-slot
-  seam is proven
+  `c_testsuite_x86_backend_src_00138_c`
+- determine whether `00138.c` is now the first global-or-string materialization
+  seam that should move into shared BIR, or whether it belongs to a separate
+  parked family from `00143.c`
+- re-check representative survivors
+  `c_testsuite_x86_backend_src_00143_c` and one later `0018x`-series x86
+  backend failure to confirm the family split after `00086.c`
+- keep the new slice scoped away from the already-fixed local-slot
+  increment-and-compare matcher unless another narrow-slot variant proves
+  blocked on the same ownership point
 
 ## Completed Items
 
@@ -55,6 +56,21 @@ Source Plan: plan.md
   `test_fail_before.log` = 2656 pass / 187 fail / 2843 total,
   `test_fail_after.log` = 2658 pass / 186 fail / 2844 total,
   zero newly failing tests
+- added an internal x86 backend route regression plus backend BIR pipeline
+  coverage for the signed `i16` local-slot increment-and-compare slice behind
+  `tests/c/external/c-testsuite/src/00086.c`
+- taught shared `lir_to_bir` lowering to fold a bounded no-param signed
+  narrow-slot update-and-compare conditional-return module into direct BIR,
+  covering the `short x; x = x + 1; if (x != 1)` shape without reviving any
+  legacy backend rescue path
+- verified `c_testsuite_x86_backend_src_00086_c` now passes while nearby
+  representatives `c_testsuite_x86_backend_src_00138_c` and
+  `c_testsuite_x86_backend_src_00143_c` still fail at the unsupported
+  boundary
+- ran full-suite monotonic validation for the `00086.c` slice:
+  `test_fail_before.log` = 2656 pass / 187 fail / 2843 total,
+  `test_fail_after.log` = 2660 pass / 185 fail / 2845 total,
+  zero newly failing tests
 
 ## Blockers
 
@@ -72,6 +88,11 @@ Source Plan: plan.md
 - landed Step 2 starter slice:
   `c_testsuite_x86_backend_src_00057_c` now routes through shared lowering by
   folding the prepared dead-local `sizeof` branch to a constant BIR return
-- next local-slot/control-flow target remains `00086.c`; `00138.c` still fails
-  but now looks more like string/global materialization than the dead-local
-  `00057.c` seam
+- landed the next local-slot/control-flow slice:
+  `c_testsuite_x86_backend_src_00086_c` now routes through shared lowering by
+  folding the prepared signed narrow-slot increment-and-compare branch to a
+  constant BIR return
+- `00138.c` still fails but now looks more like string/global materialization
+  than the closed `00057.c`/`00086.c` local-slot seam; `00143.c` still looks
+  like a separate control-flow-heavy survivor that needs re-checking before it
+  is grouped with `00138.c`

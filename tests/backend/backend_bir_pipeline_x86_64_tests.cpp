@@ -265,6 +265,54 @@ c4c::codegen::lir::LirModule make_alloca_backed_conditional_phi_constant_module(
   return module;
 }
 
+c4c::codegen::lir::LirModule make_lir_minimal_signed_i16_local_slot_increment_compare_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.x", "i16", "", 2});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCastOp{"%t0", LirCastKind::Trunc, "i32", "0", "i16"});
+  entry.insts.push_back(LirStoreOp{"i16", "%t0", "%lv.x"});
+  entry.insts.push_back(LirLoadOp{"%t1", "i16", "%lv.x"});
+  entry.insts.push_back(LirCastOp{"%t2", LirCastKind::SExt, "i16", "%t1", "i32"});
+  entry.insts.push_back(LirBinOp{"%t3", "add", "i32", "%t2", "1"});
+  entry.insts.push_back(LirCastOp{"%t4", LirCastKind::Trunc, "i32", "%t3", "i16"});
+  entry.insts.push_back(LirStoreOp{"i16", "%t4", "%lv.x"});
+  entry.insts.push_back(LirLoadOp{"%t5", "i16", "%lv.x"});
+  entry.insts.push_back(LirCastOp{"%t6", LirCastKind::SExt, "i16", "%t5", "i32"});
+  entry.insts.push_back(LirCmpOp{"%t7", false, "ne", "i32", "%t6", "1"});
+  entry.insts.push_back(LirCastOp{"%t8", LirCastKind::ZExt, "i1", "%t7", "i32"});
+  entry.insts.push_back(LirCmpOp{"%t9", false, "ne", "i32", "%t8", "0"});
+  entry.terminator = LirCondBr{"%t9", "block_1", "block_2"};
+
+  LirBlock block_1;
+  block_1.id = LirBlockId{1};
+  block_1.label = "block_1";
+  block_1.terminator = LirRet{std::string("1"), "i32"};
+
+  LirBlock block_2;
+  block_2.id = LirBlockId{2};
+  block_2.label = "block_2";
+  block_2.terminator = LirRet{std::string("0"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(block_1));
+  function.blocks.push_back(std::move(block_2));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_lir_u8_select_post_join_add_module() {
   auto module = make_bir_two_param_u8_select_ne_predecessor_add_phi_post_join_add_module();
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -2231,6 +2279,29 @@ void test_backend_bir_pipeline_drives_x86_lir_conditional_phi_join_through_bir_e
                       "x86 direct emitter should no longer emit the original target-local phi predecessor block labels for a lowerable conditional-phi-join route");
 }
 
+void test_backend_bir_pipeline_drives_x86_lir_signed_i16_local_slot_increment_compare_through_bir_end_to_end() {
+  const auto lowered =
+      c4c::backend::try_lower_to_bir(make_lir_minimal_signed_i16_local_slot_increment_compare_module());
+  expect_true(lowered.has_value(),
+              "x86 LIR signed i16 local-slot increment-and-compare input should lower into direct BIR before native x86 emission");
+  expect_true(lowered->functions.size() == 1 &&
+                  lowered->functions.front().blocks.size() == 1 &&
+                  lowered->functions.front().blocks.front().insts.empty(),
+              "x86 LIR signed i16 local-slot increment-and-compare lowering should collapse the bounded no-param local-slot slice to one constant-return BIR block");
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{
+          make_lir_minimal_signed_i16_local_slot_increment_compare_module()},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl main",
+                  "x86 LIR signed i16 local-slot increment-and-compare input should still reach native asm emission after routing through the shared BIR path");
+  expect_contains(rendered, "mov eax, 0",
+                  "x86 LIR signed i16 local-slot increment-and-compare input should preserve the constant false-arm return after bounded shared lowering");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR signed i16 local-slot increment-and-compare input should stay on native asm emission instead of falling back to LLVM text");
+}
+
 void test_backend_bir_pipeline_drives_x86_lir_u8_select_post_join_add_through_bir_end_to_end() {
   const auto lowered = c4c::backend::try_lower_to_bir(make_lir_u8_select_post_join_add_module());
   expect_true(lowered.has_value(),
@@ -2842,6 +2913,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_call_crossing_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_conditional_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_conditional_phi_join_through_bir_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_signed_i16_local_slot_increment_compare_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_u8_select_post_join_add_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_return_add_smoke_case_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_return_sub_smoke_case_end_to_end);
