@@ -113,6 +113,21 @@ keeping idea 41's no-rescue architecture intact.
 - prefer cases that collapse many `c_testsuite_x86_backend_*` failures at once
   instead of chasing unrelated one-offs
 
+## Current Execution Stance
+
+The active runbook now has a deliberate architecture-reset lane inside Step 2.
+
+This means some near-term slices are expected to:
+
+- move ownership out of monolithic files such as `lir_to_bir.cpp`
+- establish split module surfaces under `src/backend/lowering/lir_to_bir/`
+- defer build recovery and regression work until the seam boundary is in the
+  right place
+
+That is intentional. The goal of this lane is to stop further testcase-matcher
+accumulation and re-establish a backend-owned shared lowering structure before
+resuming normal compile/test-driven seam recovery.
+
 ## Proposed Plan
 
 ### Step 1: Classify the current x86 backend failure matrix
@@ -220,6 +235,18 @@ Current-tree Step 2 progress after the `00141.c` slice:
 
 Goal: promote the smallest shared `lir_to_bir` pattern cluster that unlocks the
 largest x86 backend failure bucket.
+
+Current subphase: architecture reset before new coverage claims.
+
+Immediate subphase actions:
+
+- move helper ownership from `lir_to_bir.cpp` into split lowering files
+- wire pass-oriented entry surfaces and shared metadata first
+- tolerate a temporary build/test gap while these ownership moves are still
+  being connected
+- once the seam stabilizes, restore narrow compile checks
+- only after compile recovery, resume targeted regressions and broader suite
+  validation
 
 Concrete actions:
 

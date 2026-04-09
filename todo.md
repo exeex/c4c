@@ -10,8 +10,8 @@ Source Plan: plan.md
   promote BIR and `lir_to_bir` back toward a backend-owned seam by wiring the
   split lowering scaffolds into a real pass-oriented entry surface and
   stopping further ownership drift into x86 testcase matchers;
-  current sub-slice is moving type/legalization helper ownership out of
-  `lir_to_bir.cpp`
+  current sub-slice remains in the ownership-wiring phase before compile/test
+  recovery, with the immediate lane focused on split call and memory seams
 
 ## Next Slice
 
@@ -22,9 +22,9 @@ Source Plan: plan.md
   migrating concrete logic out of the legacy monolith one seam at a time
 - continue after the type-helper extraction by moving the next concrete seam
   into split ownership:
-  memory/address lowering first, then call lowering;
-  current sub-slice is moving BIR local/global load-store node construction
-  into `lir_to_bir/memory.cpp`
+  memory/address lowering first, then call lowering
+- after the current ownership-wiring burst, start a dedicated compile-recovery
+  pass over the newly split seam files before attempting new targeted tests
 - avoid adding any new x86 testcase-specific direct-LIR matcher while this
   reset is in progress
 

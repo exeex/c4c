@@ -53,10 +53,42 @@ emitter seam directly.
 - add the narrowest regression that proves ownership before broadening support
 - preserve explicit unsupported diagnostics for still-unowned shapes
 
+## Execution Phases
+
+This runbook now has an explicit front-loaded structure-reset phase before
+normal compile/test discipline resumes.
+
+Phase 1: Ownership wiring
+
+- prioritize moving ownership into the right `lir_to_bir/*` and backend
+  modules even if the tree is temporarily not build-clean
+- allow narrow slices that only re-home API surface, helpers, and metadata
+  without immediately restoring compilation or tests
+- forbid new testcase-shaped x86 direct-LIR matchers during this phase
+
+Phase 2: Compile recovery
+
+- once a seam family has been re-homed enough to stabilize its ownership,
+  start pulling the build back up for that seam
+- prefer narrow syntax/build recovery over broad regression runs
+- fix interface drift before resuming larger behavioral work
+
+Phase 3: Regression validation
+
+- after ownership and compilation are both back under control for a seam,
+  restore the usual targeted-test and full-suite monotonic workflow
+- only treat a seam as landed after targeted validation and the required
+  monotonic suite check
+
 ## Execution Rules
 
 - start each slice from the highest-priority incomplete item in `todo.md`
-- keep the active slice narrow and test-backed before implementation
+- during the current architecture-reset lane, it is acceptable to land a
+  narrow ownership-wiring slice before build/test recovery, but only when the
+  slice clearly improves module boundaries and does not claim behavioral
+  completion
+- once a seam leaves the ownership-wiring phase, return to the normal
+  test-backed workflow before claiming coverage recovery
 - compare ABI-sensitive behavior against Clang when runtime lowering is unclear
 - record before and after suite logs for each landed slice
 - if execution uncovers separate work, write it into `ideas/open/` instead of
@@ -96,16 +128,31 @@ Primary targets:
 - shared `lir_to_bir` ownership points
 - nearby validation and printer coverage
 
+Step 2 currently begins with an architecture-reset subphase before attempting
+new coverage claims:
+
+- first re-home `lir_to_bir` ownership into split files such as
+  `cfg.cpp`, `types.cpp`, `memory.cpp`, `calls.cpp`, `phi.cpp`, and
+  `aggregates.cpp`
+- then recover compilation for the re-homed seams
+- only then resume targeted regression additions for new shared-BIR behavior
+
 Concrete actions:
 
 - choose the most common Step 1 family that should lower through shared BIR
-- add the narrowest regression that proves the missing shared seam
+- if the current seam is still in the ownership-wiring subphase, first move the
+  relevant helpers, metadata, and matcher fragments into the correct split
+  module even if build/test work follows in later slices
+- after ownership is stable, add the narrowest regression that proves the
+  missing shared seam
 - implement only the required `lir_to_bir`, validation, or printing expansion
 - verify representative x86 failures now route through shared BIR instead of
   stopping at the unsupported direct-LIR boundary
 
 Completion check:
 
+- the targeted seam is no longer primarily owned by the monolithic
+  `lir_to_bir.cpp`
 - at least one representative x86 failing case no longer dies at the
   unsupported direct-LIR boundary
 - nearby backend route tests pin the newly owned seam
