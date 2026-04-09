@@ -89,6 +89,13 @@ struct MinimalLocalArgCallSlice {
   std::int64_t add_imm = 0;
 };
 
+struct MinimalTwoArgHelperCallSlice {
+  std::string helper_name;
+  std::string entry_name;
+  std::int64_t lhs_call_arg_imm = 0;
+  std::int64_t rhs_call_arg_imm = 0;
+};
+
 std::optional<std::int64_t> parse_i64(std::string_view text) {
   std::int64_t value = 0;
   const char* begin = text.data();
@@ -494,6 +501,74 @@ std::optional<MinimalLocalArgCallSlice> parse_minimal_local_arg_call_slice(
         .entry_name = entry.name,
         .call_arg_imm = stored_imm->first,
         .add_imm = *add_imm,
+    };
+  };
+
+  if (const auto parsed = try_match(module.functions.front(), module.functions.back());
+      parsed.has_value()) {
+    return parsed;
+  }
+  return try_match(module.functions.back(), module.functions.front());
+}
+
+std::optional<MinimalTwoArgHelperCallSlice> parse_minimal_two_arg_helper_call_slice(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 2 || !module.globals.empty() || !module.extern_decls.empty() ||
+      !module.string_pool.empty()) {
+    return std::nullopt;
+  }
+
+  const auto try_match =
+      [](const LirFunction& helper,
+         const LirFunction& entry) -> std::optional<MinimalTwoArgHelperCallSlice> {
+    if (entry.is_declaration || entry.entry.value != 0 || entry.blocks.size() != 1 ||
+        !entry.alloca_insts.empty() || !entry.stack_objects.empty() ||
+        !c4c::backend::backend_lir_signature_matches(entry.signature_text,
+                                                     "define",
+                                                     "i32",
+                                                     entry.name,
+                                                     {})) {
+      return std::nullopt;
+    }
+
+    const auto parsed_helper =
+        c4c::backend::parse_backend_two_param_add_function(helper, std::nullopt);
+    if (!parsed_helper.has_value()) {
+      return std::nullopt;
+    }
+
+    const auto& block = entry.blocks.front();
+    const auto* ret = std::get_if<LirRet>(&block.terminator);
+    const auto* call = block.insts.size() == 1 ? std::get_if<LirCallOp>(&block.insts.front()) : nullptr;
+    const auto call_operands =
+        call == nullptr
+            ? std::nullopt
+            : c4c::backend::parse_backend_direct_global_two_typed_call_operands(
+                  *call, helper.name, "i32", "i32");
+    if (block.label != "entry" || call == nullptr || ret == nullptr || !call_operands.has_value() ||
+        !ret->value_str.has_value() || *ret->value_str != call->result ||
+        c4c::backend::backend_lir_lower_function_return_type(entry, *ret) !=
+            c4c::backend::bir::TypeKind::I32) {
+      return std::nullopt;
+    }
+
+    const auto lhs_call_arg_imm = parse_i64(call_operands->first);
+    const auto rhs_call_arg_imm = parse_i64(call_operands->second);
+    if (!lhs_call_arg_imm.has_value() || !rhs_call_arg_imm.has_value() ||
+        *lhs_call_arg_imm < std::numeric_limits<std::int32_t>::min() ||
+        *lhs_call_arg_imm > std::numeric_limits<std::int32_t>::max() ||
+        *rhs_call_arg_imm < std::numeric_limits<std::int32_t>::min() ||
+        *rhs_call_arg_imm > std::numeric_limits<std::int32_t>::max()) {
+      return std::nullopt;
+    }
+
+    return MinimalTwoArgHelperCallSlice{
+        .helper_name = helper.name,
+        .entry_name = entry.name,
+        .lhs_call_arg_imm = *lhs_call_arg_imm,
+        .rhs_call_arg_imm = *rhs_call_arg_imm,
     };
   };
 
@@ -1012,6 +1087,26 @@ std::string emit_minimal_string_literal_char_asm(
   return out.str();
 }
 
+std::string emit_minimal_two_arg_helper_call_asm(
+    std::string_view target_triple,
+    const MinimalTwoArgHelperCallSlice& slice) {
+  const auto helper_symbol = asm_symbol_name(target_triple, slice.helper_name);
+  const auto entry_symbol = asm_symbol_name(target_triple, slice.entry_name);
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n"
+      << ".text\n"
+      << emit_function_prelude(target_triple, helper_symbol)
+      << "  mov eax, edi\n"
+      << "  add eax, esi\n"
+      << "  ret\n"
+      << emit_function_prelude(target_triple, entry_symbol)
+      << "  mov edi, " << slice.lhs_call_arg_imm << "\n"
+      << "  mov esi, " << slice.rhs_call_arg_imm << "\n"
+      << "  call " << helper_symbol << "\n"
+      << "  ret\n";
+  return out.str();
+}
+
 std::optional<MinimalVariadicSum2Slice> parse_minimal_variadic_sum2_slice(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
@@ -1507,6 +1602,9 @@ std::optional<std::string> try_emit_prepared_lir_module(
   }
   if (const auto slice = parse_minimal_local_arg_call_slice(module); slice.has_value()) {
     return emit_minimal_local_arg_call_asm(module.target_triple, *slice);
+  }
+  if (const auto slice = parse_minimal_two_arg_helper_call_slice(module); slice.has_value()) {
+    return emit_minimal_two_arg_helper_call_asm(module.target_triple, *slice);
   }
   if (const auto slice = parse_minimal_variadic_sum2_slice(module); slice.has_value()) {
     return emit_minimal_variadic_sum2_asm(module.target_triple, *slice);

@@ -11,11 +11,11 @@ Source Plan: plan.md
   keep the active work inside idea 44's x86-native emitter/toolchain lane and
   do not silently absorb the separate shared-BIR select regression
 - current exact slice:
-  move from the now-green zero-arg helper-call seam into the next bounded
-  adjacent two-arg helper family,
-  starting with `backend_runtime_two_arg_helper` on the x86 source-produced
-  path without reopening broad `try_lower_to_bir_with_options(...)` ordering
-  changes
+  move from the now-green minimal two-immediate two-arg helper call into the
+  next adjacent source-produced family:
+  `backend_runtime_two_arg_local_arg`, keeping the work inside idea 44's x86
+  native prepared-LIR seam and not widening into the separate parked
+  shared-BIR select regression
 
 ## Next Slice
 
@@ -24,11 +24,38 @@ Source Plan: plan.md
   instead of widening idea 44
 - after the now-green `backend_runtime_call_helper` slice, keep the active
   work on the next adjacent call-family target:
-  `backend_runtime_two_arg_helper` is now the first failing broader helper-call
-  source path and should set the ownership pattern before widening into the
-  other two-arg local-rewrite families
+  after the now-green `backend_runtime_two_arg_helper` slice, the next bounded
+  source-produced failure is `backend_runtime_two_arg_local_arg`, followed by
+  the remaining second-local and local-rewrite two-arg helper families
 
 ## Recently Completed
+
+- added a bounded x86 prepared-LIR matcher/emitter in
+  `src/backend/x86/codegen/emit.cpp` for the minimal two-function two-arg
+  helper family (`add_pair(lhs, rhs) { return lhs + rhs; }` followed by
+  `main -> add_pair(5, 7)`)
+- covered that native prepared-LIR seam with a focused x86 regression in
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp`
+- verified the focused x86 two-arg helper seam is green:
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_two_arg_helper_call_slice`,
+  `ctest --test-dir build --output-on-failure -R '^backend_runtime_two_arg_helper$'`,
+  and
+  `./build/c4cll --codegen asm --target x86_64-unknown-linux-gnu tests/c/internal/backend_case/two_arg_helper.c`
+  now pass, with the standalone asm path emitting bounded native assembly for
+  `main -> add_pair(5, 7)`
+- re-checked the adjacent two-arg helper-call lane after the minimal helper
+  slice landed and confirmed the next bounded failures are still the local-arg
+  and local-rewrite source shapes:
+  `ctest --test-dir build --output-on-failure -R '^(backend_runtime_two_arg_helper|backend_runtime_two_arg_local_arg|backend_runtime_two_arg_second_local_arg|backend_runtime_two_arg_second_local_rewrite|backend_runtime_two_arg_first_local_rewrite|backend_runtime_two_arg_both_local_arg|backend_runtime_two_arg_both_local_first_rewrite)$'`
+  leaves only the six non-minimal local-slot variants failing while
+  `backend_runtime_two_arg_helper` passes
+- refreshed `test_fail_after.log` with
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log` and
+  re-ran the monotonic guard:
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  still reports the broader parked full-suite regression lane as red overall,
+  but the checked-in after-state improved again from `2575 -> 2576` passes and
+  `275 -> 274` failures after the minimal two-arg helper-call slice
 
 - fixed the remaining zero-arg helper-call source-produced x86 path in
   `src/backend/x86/codegen/emit.cpp` by letting the declared-helper matcher
