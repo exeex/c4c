@@ -181,6 +181,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     c_style_cast_template_member_fn_ptr_ref_qual_parse
     c_style_cast_global_qualified_template_member_fn_ptr_const_parse
     c_style_cast_global_qualified_dependent_template_member_fn_ptr_const_parse
+    c_style_cast_global_qualified_dependent_template_member_fn_ptr_ref_qual_parse
     c_style_cast_namespace_qualified_dependent_template_member_fn_ptr_ref_qual_parse
     declarator_parenthesized_member_pointer_prefix_parse
     declarator_parenthesized_pointer_inner_staging_parse
