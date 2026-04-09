@@ -467,6 +467,28 @@ class Validator {
     scope[name] = ScopedSym{ts, initialized};
   }
 
+  TypeSpec deduce_local_decl_type(const Node* decl, const ExprInfo* init_info = nullptr) {
+    if (!decl) return {};
+    TypeSpec deduced = decl->type;
+    if (deduced.base != TB_AUTO || !decl->init) return deduced;
+
+    ExprInfo local_init_info = init_info ? *init_info : infer_expr(decl->init);
+    if (!local_init_info.valid) return deduced;
+
+    deduced = local_init_info.type;
+    deduced.is_const = deduced.is_const || decl->type.is_const;
+    deduced.is_volatile = deduced.is_volatile || decl->type.is_volatile;
+    deduced.is_lvalue_ref = false;
+    deduced.is_rvalue_ref = false;
+    if (decl->type.is_lvalue_ref) {
+      deduced.is_lvalue_ref = true;
+    } else if (decl->type.is_rvalue_ref) {
+      if (local_init_info.is_lvalue) deduced.is_lvalue_ref = true;
+      else deduced.is_rvalue_ref = true;
+    }
+    return deduced;
+  }
+
   std::optional<ScopedSym> lookup_symbol(const std::string& name) const {
     for (auto it = scopes_.rbegin(); it != scopes_.rend(); ++it) {
       auto f = it->find(name);
@@ -898,9 +920,10 @@ class Validator {
   }
 
 
-  void validate_decl_init(const Node* decl) {
+  void validate_decl_init(const Node* decl, const TypeSpec* effective_type = nullptr) {
     if (!decl) return;
-    if (!is_complete_object_type(decl->type)) {
+    const TypeSpec decl_ts = effective_type ? *effective_type : decl->type;
+    if (!is_complete_object_type(decl_ts)) {
       emit(decl->line, "object has incomplete struct/union type");
     }
     // Constructor-initialized declarations: validate the constructor args.
@@ -910,23 +933,23 @@ class Validator {
       }
       return;
     }
-    if (decl->type.is_lvalue_ref && !decl->init) {
+    if (decl_ts.is_lvalue_ref && !decl->init) {
       emit(decl->line, "lvalue reference must be initialized");
     }
-    if (decl->type.is_rvalue_ref && !decl->init) {
+    if (decl_ts.is_rvalue_ref && !decl->init) {
       emit(decl->line, "rvalue reference must be initialized");
     }
     if (decl->init) {
       ExprInfo rhs = infer_expr(decl->init);
-      if (decl->type.is_lvalue_ref && !rhs.is_lvalue) {
+      if (decl_ts.is_lvalue_ref && !rhs.is_lvalue) {
         emit(decl->line, "lvalue reference must bind to an lvalue");
       }
-      if (decl->type.is_rvalue_ref && rhs.is_lvalue) {
+      if (decl_ts.is_rvalue_ref && rhs.is_lvalue) {
         emit(decl->line, "rvalue reference cannot bind to an lvalue");
       }
       if (rhs.valid &&
           is_invalid_pointer_float_implicit_conversion(
-              referred_type(decl->type), rhs.type, is_null_pointer_constant_expr(decl->init))) {
+              referred_type(decl_ts), rhs.type, is_null_pointer_constant_expr(decl->init))) {
         emit(decl->line, "incompatible initializer type");
       }
       mark_initialized_if_local_var(decl);
@@ -948,12 +971,23 @@ class Validator {
         return;
       }
       case NK_DECL: {
-        if (n->name && n->name[0]) bind_local(n->name, n->type, n->init != nullptr || n->is_ctor_init, n->line);
-        validate_decl_init(n);
+        std::optional<TypeSpec> effective_decl_type;
+        if (n->type.base == TB_AUTO && n->init) {
+          effective_decl_type = deduce_local_decl_type(n);
+        }
+        if (n->name && n->name[0]) {
+          bind_local(n->name, effective_decl_type ? *effective_decl_type : n->type,
+                     n->init != nullptr || n->is_ctor_init, n->line);
+        }
+        validate_decl_init(n, effective_decl_type ? &*effective_decl_type : nullptr);
         // Track const/constexpr locals with foldable initializers for case label evaluation.
         if (n->name && n->name[0] && n->init &&
-            (n->type.is_const || n->is_constexpr) &&
-            n->type.ptr_level == 0 && n->type.array_rank == 0) {
+            ((effective_decl_type ? effective_decl_type->is_const : n->type.is_const) ||
+             n->is_constexpr) &&
+            !(effective_decl_type ? effective_decl_type->is_lvalue_ref : n->type.is_lvalue_ref) &&
+            !(effective_decl_type ? effective_decl_type->is_rvalue_ref : n->type.is_rvalue_ref) &&
+            (effective_decl_type ? effective_decl_type->ptr_level : n->type.ptr_level) == 0 &&
+            (effective_decl_type ? effective_decl_type->array_rank : n->type.array_rank) == 0) {
           ConstEvalEnv env;
           env.enum_consts = &enum_const_vals_global_;
           env.enum_scopes = &enum_const_vals_scopes_;

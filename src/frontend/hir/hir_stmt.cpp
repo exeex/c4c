@@ -33,17 +33,33 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
   LocalDecl d{};
   d.id = next_local_id();
   d.name = n->name ? n->name : "<anon_local>";
+  TypeSpec effective_decl_ts{};
   // Substitute template type parameters in local variable types.
   {
     TypeSpec decl_ts =
         substitute_signature_template_type(n->type, &ctx.tpl_bindings);
+    if (decl_ts.base == TB_AUTO && n->init) {
+      TypeSpec deduced_ts = infer_generic_ctrl_type(&ctx, n->init);
+      deduced_ts.is_const = deduced_ts.is_const || decl_ts.is_const;
+      deduced_ts.is_volatile = deduced_ts.is_volatile || decl_ts.is_volatile;
+      deduced_ts.is_lvalue_ref = false;
+      deduced_ts.is_rvalue_ref = false;
+      if (decl_ts.is_lvalue_ref) {
+        deduced_ts.is_lvalue_ref = true;
+      } else if (decl_ts.is_rvalue_ref) {
+        if (is_ast_lvalue(n->init, &ctx)) deduced_ts.is_lvalue_ref = true;
+        else deduced_ts.is_rvalue_ref = true;
+      }
+      decl_ts = deduced_ts;
+    }
+    effective_decl_ts = decl_ts;
     // Resolve pending template struct types in local variable decls.
     seed_and_resolve_pending_template_type_if_needed(
-        decl_ts, ctx.tpl_bindings, ctx.nttp_bindings, n,
+        effective_decl_ts, ctx.tpl_bindings, ctx.nttp_bindings, n,
         PendingTemplateTypeKind::DeclarationType,
         std::string("local-decl:") + d.name);
-    resolve_typedef_to_struct(decl_ts);
-    d.type = qtype_from(reference_storage_ts(decl_ts), ValueCategory::LValue);
+    resolve_typedef_to_struct(effective_decl_ts);
+    d.type = qtype_from(reference_storage_ts(effective_decl_ts), ValueCategory::LValue);
   }
   d.fn_ptr_sig = fn_ptr_sig_from_decl_node(n);
   if (d.fn_ptr_sig) ctx.local_fn_ptr_sigs[d.name] = *d.fn_ptr_sig;
@@ -92,7 +108,7 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
   if (n->init && !n->is_ctor_init && n->init->kind != NK_INIT_LIST &&
       d.type.spec.base == TB_STRUCT && d.type.spec.ptr_level == 0 &&
       d.type.spec.array_rank == 0 && d.type.spec.tag &&
-      !is_lvalue_ref_ts(n->type) && !n->type.is_rvalue_ref) {
+      !is_lvalue_ref_ts(effective_decl_ts) && !effective_decl_ts.is_rvalue_ref) {
     auto cit = struct_constructors_.find(d.type.spec.tag);
     if (cit != struct_constructors_.end()) {
       // Check if any constructor takes a single param of same struct type (copy/move ctor).
@@ -109,12 +125,12 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
       }
     }
   }
-  if (is_lvalue_ref_ts(n->type) && n->init) {
+  if (is_lvalue_ref_ts(effective_decl_ts) && n->init) {
     UnaryExpr addr{};
     addr.op = UnaryOp::AddrOf;
     addr.operand = lower_expr(&ctx, n->init);
     d.init = append_expr(n->init, addr, d.type.spec);
-  } else if (n->type.is_rvalue_ref && n->init) {
+  } else if (effective_decl_ts.is_rvalue_ref && n->init) {
     if (auto storage_addr =
             try_lower_rvalue_ref_storage_addr(&ctx, n->init, d.type.spec)) {
       d.init = *storage_addr;
@@ -122,7 +138,7 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
       // Rvalue reference: materialize the rvalue into a temporary, then
       // store a pointer to that temporary as the reference value.
       ExprId init_val = lower_expr(&ctx, n->init);
-      TypeSpec val_ts = reference_value_ts(n->type);
+      TypeSpec val_ts = reference_value_ts(effective_decl_ts);
       // Create a hidden temporary local for the rvalue
       LocalDecl tmp{};
       tmp.id = next_local_id();
@@ -159,9 +175,9 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
   ctx.local_types[d.id.value] = d.type.spec;
   // Track const/constexpr locals with foldable int initializers.
   if (n->name && n->name[0] && n->init &&
-      (n->type.is_const || n->is_constexpr) &&
-      !n->type.is_lvalue_ref && !n->type.is_rvalue_ref &&
-      n->type.ptr_level == 0 && n->type.array_rank == 0) {
+      (effective_decl_ts.is_const || n->is_constexpr) &&
+      !effective_decl_ts.is_lvalue_ref && !effective_decl_ts.is_rvalue_ref &&
+      effective_decl_ts.ptr_level == 0 && effective_decl_ts.array_rank == 0) {
     ConstEvalEnv cenv{&enum_consts_, &const_int_bindings_, &ctx.local_const_bindings};
     if (auto cr = evaluate_constant_expr(n->init, cenv); cr.ok()) {
       ctx.local_const_bindings[n->name] = cr.as_int();
