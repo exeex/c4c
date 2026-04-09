@@ -472,6 +472,7 @@ struct LirStringConst {
 struct LirExternDecl {
   std::string name;
   std::string return_type_str;  // LLVM return type (temporary; will be TypeSpec later)
+  LirTypeRef return_type;
 };
 
 // ── Function ─────────────────────────────────────────────────────────────────

@@ -196,6 +196,15 @@ std::optional<bir::TypeKind> lower_declared_function_return_type(
   return lower_function_signature_return_type(function.signature_text);
 }
 
+std::optional<bir::TypeKind> lower_extern_decl_return_type(
+    const c4c::codegen::lir::LirExternDecl& decl) {
+  if (const auto lowered_type = lower_scalar_type(decl.return_type);
+      lowered_type.has_value()) {
+    return lowered_type;
+  }
+  return lower_scalar_type_text(c4c::codegen::lir::trim_lir_arg_text(decl.return_type_str));
+}
+
 std::optional<bir::TypeKind> lower_function_return_type(
     const c4c::codegen::lir::LirFunction& function,
     const c4c::codegen::lir::LirRet& ret) {
@@ -551,7 +560,7 @@ std::optional<bir::Module> try_lower_minimal_declared_direct_call_module(
   }
 
   if (extern_callee != nullptr) {
-    if (trim_lir_arg_text(extern_callee->return_type_str) != "i32") {
+    if (lower_extern_decl_return_type(*extern_callee) != bir::TypeKind::I32) {
       return std::nullopt;
     }
   } else {

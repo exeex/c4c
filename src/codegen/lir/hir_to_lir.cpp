@@ -362,6 +362,7 @@ static void finalize_module(LirModule& module,
     LirExternDecl ed;
     ed.name = name;
     ed.return_type_str = ret_ty;
+    ed.return_type = c4c::codegen::lir::LirTypeRef(ret_ty);
     module.extern_decls.push_back(std::move(ed));
   }
 }

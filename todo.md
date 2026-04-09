@@ -11,9 +11,10 @@ Source Plan: plan.md
   `src/backend/lowering/lir_to_bir.cpp` and audit the remaining
   declared-direct-call / declared-extern seams that still hard-require raw
   declaration text after the zero-param declared-callee and caller/call return
-  gate conversion, with the immediate next target narrowed to the
-  `LirExternDecl.return_type_str` fallback and any nearby shared decode helpers
-  that still cannot prefer structured metadata
+  gate conversion, with the immediate next target narrowed to the nearby
+  shared decode helpers and any remaining call-surface integer text checks in
+  `src/backend/lowering/call_decode.hpp` that still bypass structured helper
+  metadata
 
 ## Completed
 
@@ -280,21 +281,30 @@ Source Plan: plan.md
 - Re-ran `backend_bir_tests`, `backend_shared_util_tests`, and the full suite
   and passed the regression guard with no new failures and no pass-count drop
   (`2841 -> 2841`)
+- Added typed `LirExternDecl.return_type` metadata in
+  `src/codegen/lir/ir.hpp`, taught `src/codegen/lir/hir_to_lir.cpp` to
+  populate it from the existing extern declaration map, and switched the
+  minimal declared direct-call extern gate in
+  `src/backend/lowering/lir_to_bir.cpp` to prefer that structured return
+  metadata before falling back to raw `return_type_str`
+- Added a focused backend regression in
+  `tests/backend/backend_bir_lowering_tests.cpp` that keeps the inferred-param
+  extern declared direct-call lowering path working when the extern decl text
+  and call/return render text are intentionally stale but the typed extern and
+  call metadata still carry `i32` semantics
+- Re-ran `backend_bir_tests` and `backend_shared_util_tests` for the typed
+  extern declared-direct-call slice before the full-suite check
+- Re-ran the full suite into `test_fail_after.log` and passed the regression
+  guard with no new failures and no pass-count drop (`2841 -> 2841`)
 
 ## Next
 
 - move the next typed-lowering slice back to
-  `src/backend/lowering/lir_to_bir.cpp` and audit the remaining
-  instruction-local raw integer text checks that still bypass semantic
-  `LirTypeRef` inspection outside the widened `i8` add/compare/select seams;
-  the generic branch-select/phi-select, countdown-loop, scalar global
-  load/store, extern global-array load, and pointer-diff stale-text gates are
-  now covered, and the direct-call caller-return stale-text gates are also
-  covered, including the zero-arg direct-call helper/caller return seam, so
-  the next audit should target the remaining special-case lowering or
-  declared-extern/direct-call path that still branches primarily on raw integer
-  helper signature, extern declaration, or call-surface text instead of typed
-  instruction, global, or function metadata
+  `src/backend/lowering/call_decode.hpp` and audit the remaining
+  helper/caller recognizer gates that still branch on raw `"i32"` call-surface
+  or instruction-local text instead of structured helper metadata or semantic
+  `LirTypeRef` inspection, especially around parsed direct-call operands and
+  the adjacent minimal-helper return/type checks
 - keep pointer payload support deferred until a concrete pointer-backed BIR
   lowering consumer appears, then add only the narrow typed payload that
   consumer needs
