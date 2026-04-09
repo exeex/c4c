@@ -6,9 +6,9 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 2: carry the next function-shaped declarator family into the generated
-  `parse_only` matrix, starting with `function_pointer` unless a narrower
-  parser-only failure surfaces first
+- Step 2: extend generated `parse_only` coverage into the next
+  function-shaped declarator family, starting with `function_lvalue_ref`
+  unless a narrower parser-only failure surfaces first
 
 ## Completed Items
 
@@ -42,12 +42,26 @@ Source Plan: plan.md
 - Targeted validation: `ctest --test-dir build -R 'grouped_(pointer|lvalue_ref|rvalue_ref)|member_pointer'
   --output-on-failure` passed all 100 generated matrix cases plus adjacent
   existing member-pointer coverage with zero failures
+- Expanded the generated `parse_only` matrix batch to include
+  `function_pointer` while preserving the existing grouped and member-pointer
+  families in the emitted directory
+- Added the generated `function_pointer` `parse_only` family under
+  `tests/cpp/internal/generated/parser_disambiguation_matrix/parse_only/`
+  across all tracked owner spellings and plan contexts
+- Targeted validation: `ctest --test-dir build -R 'grouped_(pointer|lvalue_ref|rvalue_ref)|member_pointer|function_pointer'
+  --output-on-failure` passed all 125 generated matrix cases plus adjacent
+  existing function/member-pointer coverage with zero failures
+- Full-suite validation: `ctest --test-dir build -j --output-on-failure >
+  test_fail_after.log` completed with 3002/3002 passing tests, and
+  `check_monotonic_regression.py --before test_fail_before.log --after
+  test_fail_after.log --allow-non-decreasing-passed` reported PASS with zero
+  new failing tests
 
 ## Next Slice
 
-- extend Step 2 breadth into the function-shaped declarator families, starting
-  with generated `function_pointer` `parse_only` coverage across all owner
-  spellings and plan contexts
+- extend Step 2 breadth into the remaining function-shaped declarator families
+  after `function_pointer`, starting with generated `function_lvalue_ref`
+  `parse_only` coverage across all owner spellings and plan contexts
 - if the function-shaped family reveals a concrete parser split failure,
   isolate that failing family as the Step 3 parser-fix slice
 - keep generation template-driven and separate from the existing hand-written
