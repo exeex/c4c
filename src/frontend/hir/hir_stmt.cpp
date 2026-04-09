@@ -162,6 +162,15 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
   } else if (!is_array_with_init_list && !is_array_with_string_init &&
              !is_struct_with_init_list && !is_struct_copy_init && n->init)
     d.init = lower_expr(&ctx, n->init);
+  else if (n->is_ctor_init &&
+           !(effective_decl_ts.base == TB_STRUCT && effective_decl_ts.ptr_level == 0 &&
+             effective_decl_ts.array_rank == 0 && effective_decl_ts.tag) &&
+           n->n_children == 1) {
+    // Parser reuses is_ctor_init for C++ direct-initialization syntax such as
+    // `int i(0)` / `bool b(expr)`. Non-record locals should still lower like a
+    // regular single-expression initializer.
+    d.init = lower_expr(&ctx, n->children[0]);
+  }
   // For aggregate init lists / string array init, emit zeroinitializer first
   // then overlay explicit element/field assignments below.
   if (is_struct_with_init_list || is_array_with_init_list || is_array_with_string_init) {
