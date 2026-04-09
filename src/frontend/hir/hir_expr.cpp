@@ -133,6 +133,8 @@ bool Lowerer::is_ast_lvalue(const Node* n) {
     case NK_DEREF:
     case NK_MEMBER:
       return true;
+    case NK_CAST:
+      return n->type.is_lvalue_ref;
     default:
       return false;
   }
