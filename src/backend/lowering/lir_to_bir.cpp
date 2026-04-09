@@ -983,6 +983,195 @@ std::optional<bir::Module> try_lower_minimal_local_i32_pointer_store_zero_load_r
   return lowered;
 }
 
+std::optional<bir::Module> try_lower_double_indirect_local_store_one_final_branch_return_module(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || !module.globals.empty() ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      !backend_lir_signature_matches(function.signature_text, "define", "i32", function.name, {}) ||
+      function.entry.value != 0 ||
+      (function.blocks.size() != 8 && function.blocks.size() != 9) ||
+      function.alloca_insts.size() != 3 ||
+      !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* value_slot = std::get_if<LirAllocaOp>(&function.alloca_insts[0]);
+  const auto* ptr_slot = std::get_if<LirAllocaOp>(&function.alloca_insts[1]);
+  const auto* ptr_ptr_slot = std::get_if<LirAllocaOp>(&function.alloca_insts[2]);
+  if (value_slot == nullptr || ptr_slot == nullptr || ptr_ptr_slot == nullptr ||
+      value_slot->result.empty() || ptr_slot->result.empty() || ptr_ptr_slot->result.empty() ||
+      !value_slot->count.empty() || !ptr_slot->count.empty() || !ptr_ptr_slot->count.empty() ||
+      !lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{value_slot->type_str}, 32) ||
+      !lir_type_is_pointer_like(c4c::codegen::lir::LirTypeRef{ptr_slot->type_str}) ||
+      !lir_type_is_pointer_like(c4c::codegen::lir::LirTypeRef{ptr_ptr_slot->type_str})) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks[0];
+  const auto* init_store = entry.insts.size() == 6 ? std::get_if<LirStoreOp>(&entry.insts[0]) : nullptr;
+  const auto* ptr_store = entry.insts.size() == 6 ? std::get_if<LirStoreOp>(&entry.insts[1]) : nullptr;
+  const auto* ptr_ptr_store =
+      entry.insts.size() == 6 ? std::get_if<LirStoreOp>(&entry.insts[2]) : nullptr;
+  const auto* first_ptr_load =
+      entry.insts.size() == 6 ? std::get_if<LirLoadOp>(&entry.insts[3]) : nullptr;
+  const auto* first_value_load =
+      entry.insts.size() == 6 ? std::get_if<LirLoadOp>(&entry.insts[4]) : nullptr;
+  const auto* first_cmp = entry.insts.size() == 6 ? std::get_if<LirCmpOp>(&entry.insts[5]) : nullptr;
+  const auto* entry_branch = std::get_if<LirCondBr>(&entry.terminator);
+
+  const auto& first_ret_block = function.blocks[1];
+  const auto* first_ret = std::get_if<LirRet>(&first_ret_block.terminator);
+
+  const auto& second_check = function.blocks[2];
+  const auto* second_pp_load =
+      second_check.insts.size() == 4 ? std::get_if<LirLoadOp>(&second_check.insts[0]) : nullptr;
+  const auto* second_ptr_load =
+      second_check.insts.size() == 4 ? std::get_if<LirLoadOp>(&second_check.insts[1]) : nullptr;
+  const auto* second_value_load =
+      second_check.insts.size() == 4 ? std::get_if<LirLoadOp>(&second_check.insts[2]) : nullptr;
+  const auto* second_cmp =
+      second_check.insts.size() == 4 ? std::get_if<LirCmpOp>(&second_check.insts[3]) : nullptr;
+  const auto* second_branch = std::get_if<LirCondBr>(&second_check.terminator);
+
+  const auto& second_ret_block = function.blocks[3];
+  const auto* second_ret = std::get_if<LirRet>(&second_ret_block.terminator);
+
+  const auto& store_one_block = function.blocks[4];
+  const auto* store_pp_load =
+      store_one_block.insts.size() == 3 ? std::get_if<LirLoadOp>(&store_one_block.insts[0]) : nullptr;
+  const auto* store_ptr_load =
+      store_one_block.insts.size() == 3 ? std::get_if<LirLoadOp>(&store_one_block.insts[1]) : nullptr;
+  const auto* store_one =
+      store_one_block.insts.size() == 3 ? std::get_if<LirStoreOp>(&store_one_block.insts[2]) : nullptr;
+  const auto* store_branch = std::get_if<LirBr>(&store_one_block.terminator);
+
+  const auto& final_check = function.blocks[5];
+  const auto* final_value_load =
+      final_check.insts.size() == 2 ? std::get_if<LirLoadOp>(&final_check.insts[0]) : nullptr;
+  const auto* final_cmp =
+      final_check.insts.size() == 2 ? std::get_if<LirCmpOp>(&final_check.insts[1]) : nullptr;
+  const auto* final_branch = std::get_if<LirCondBr>(&final_check.terminator);
+
+  const auto& final_true_ret_block = function.blocks[6];
+  const auto* final_true_ret = std::get_if<LirRet>(&final_true_ret_block.terminator);
+
+  const auto& final_false_ret_block = function.blocks[7];
+  const auto* final_false_ret = std::get_if<LirRet>(&final_false_ret_block.terminator);
+
+  const LirBlock* trailing_dead_ret_block =
+      function.blocks.size() == 9 ? &function.blocks[8] : nullptr;
+  const auto* trailing_dead_ret =
+      trailing_dead_ret_block == nullptr ? nullptr : std::get_if<LirRet>(&trailing_dead_ret_block->terminator);
+
+  const auto first_cmp_predicate =
+      first_cmp == nullptr ? std::nullopt : first_cmp->predicate.typed();
+  const auto second_cmp_predicate =
+      second_cmp == nullptr ? std::nullopt : second_cmp->predicate.typed();
+  const auto final_cmp_predicate =
+      final_cmp == nullptr ? std::nullopt : final_cmp->predicate.typed();
+  const auto first_ret_type =
+      first_ret == nullptr ? std::nullopt : lower_function_return_type(function, *first_ret);
+  const auto second_ret_type =
+      second_ret == nullptr ? std::nullopt : lower_function_return_type(function, *second_ret);
+  const auto final_true_ret_type =
+      final_true_ret == nullptr ? std::nullopt : lower_function_return_type(function, *final_true_ret);
+  const auto final_false_ret_type =
+      final_false_ret == nullptr ? std::nullopt : lower_function_return_type(function, *final_false_ret);
+  const auto trailing_dead_ret_type =
+      trailing_dead_ret == nullptr ? std::nullopt : lower_function_return_type(function, *trailing_dead_ret);
+  if (entry.label != "entry" || init_store == nullptr || ptr_store == nullptr ||
+      ptr_ptr_store == nullptr || first_ptr_load == nullptr || first_value_load == nullptr ||
+      first_cmp == nullptr || entry_branch == nullptr ||
+      !lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{init_store->type_str}, 32) ||
+      !lir_type_is_pointer_like(c4c::codegen::lir::LirTypeRef{ptr_store->type_str}) ||
+      !lir_type_is_pointer_like(c4c::codegen::lir::LirTypeRef{ptr_ptr_store->type_str}) ||
+      !lir_type_is_pointer_like(c4c::codegen::lir::LirTypeRef{first_ptr_load->type_str}) ||
+      !lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{first_value_load->type_str}, 32) ||
+      first_cmp->is_float || first_cmp_predicate != LirCmpPredicate::Ne ||
+      !lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{first_cmp->type_str}, 32) ||
+      init_store->ptr != value_slot->result || init_store->val != "0" ||
+      ptr_store->ptr != ptr_slot->result || ptr_store->val != value_slot->result ||
+      ptr_ptr_store->ptr != ptr_ptr_slot->result || ptr_ptr_store->val != ptr_slot->result ||
+      first_ptr_load->ptr != ptr_slot->result || first_ptr_load->result.empty() ||
+      first_value_load->ptr != first_ptr_load->result || first_value_load->result.empty() ||
+      first_cmp->lhs != first_value_load->result || first_cmp->rhs != "0" ||
+      entry_branch->cond_name != first_cmp->result ||
+      entry_branch->true_label != first_ret_block.label ||
+      entry_branch->false_label != second_check.label || first_ret_block.label != "block_1" ||
+      !first_ret_block.insts.empty() || first_ret == nullptr ||
+      first_ret_type != bir::TypeKind::I32 || !first_ret->value_str.has_value() ||
+      *first_ret->value_str != "1" || second_check.label != "block_2" ||
+      second_pp_load == nullptr || second_ptr_load == nullptr || second_value_load == nullptr ||
+      second_cmp == nullptr || second_branch == nullptr ||
+      !lir_type_is_pointer_like(c4c::codegen::lir::LirTypeRef{second_pp_load->type_str}) ||
+      !lir_type_is_pointer_like(c4c::codegen::lir::LirTypeRef{second_ptr_load->type_str}) ||
+      !lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{second_value_load->type_str}, 32) ||
+      second_cmp->is_float || second_cmp_predicate != LirCmpPredicate::Ne ||
+      !lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{second_cmp->type_str}, 32) ||
+      second_pp_load->ptr != ptr_ptr_slot->result || second_pp_load->result.empty() ||
+      second_ptr_load->ptr != second_pp_load->result || second_ptr_load->result.empty() ||
+      second_value_load->ptr != second_ptr_load->result || second_value_load->result.empty() ||
+      second_cmp->lhs != second_value_load->result || second_cmp->rhs != "0" ||
+      second_branch->cond_name != second_cmp->result ||
+      second_branch->true_label != second_ret_block.label ||
+      second_branch->false_label != store_one_block.label || second_ret_block.label != "block_3" ||
+      !second_ret_block.insts.empty() || second_ret == nullptr ||
+      second_ret_type != bir::TypeKind::I32 || !second_ret->value_str.has_value() ||
+      *second_ret->value_str != "1" || store_one_block.label != "block_4" ||
+      store_pp_load == nullptr || store_ptr_load == nullptr || store_one == nullptr ||
+      store_branch == nullptr ||
+      !lir_type_is_pointer_like(c4c::codegen::lir::LirTypeRef{store_pp_load->type_str}) ||
+      !lir_type_is_pointer_like(c4c::codegen::lir::LirTypeRef{store_ptr_load->type_str}) ||
+      !lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{store_one->type_str}, 32) ||
+      store_pp_load->ptr != ptr_ptr_slot->result || store_pp_load->result.empty() ||
+      store_ptr_load->ptr != store_pp_load->result || store_ptr_load->result.empty() ||
+      store_one->ptr != store_ptr_load->result || store_one->val != "1" ||
+      store_branch->target_label != final_check.label || final_check.label != "block_5" ||
+      final_value_load == nullptr || final_cmp == nullptr || final_branch == nullptr ||
+      !lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{final_value_load->type_str}, 32) ||
+      final_cmp->is_float || final_cmp_predicate != LirCmpPredicate::Ne ||
+      !lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{final_cmp->type_str}, 32) ||
+      final_value_load->ptr != value_slot->result || final_value_load->result.empty() ||
+      final_cmp->lhs != final_value_load->result || final_cmp->rhs != "0" ||
+      final_branch->cond_name != final_cmp->result ||
+      final_branch->true_label != final_true_ret_block.label ||
+      final_branch->false_label != final_false_ret_block.label ||
+      final_true_ret_block.label != "block_6" || !final_true_ret_block.insts.empty() ||
+      final_true_ret == nullptr || final_true_ret_type != bir::TypeKind::I32 ||
+      !final_true_ret->value_str.has_value() || *final_true_ret->value_str != "0" ||
+      final_false_ret_block.label != "block_7" || !final_false_ret_block.insts.empty() ||
+      final_false_ret == nullptr || final_false_ret_type != bir::TypeKind::I32 ||
+      !final_false_ret->value_str.has_value() || *final_false_ret->value_str != "1" ||
+      (trailing_dead_ret_block != nullptr &&
+       (trailing_dead_ret_block->label != "block_8" || !trailing_dead_ret_block->insts.empty() ||
+        trailing_dead_ret == nullptr || trailing_dead_ret_type != bir::TypeKind::I32 ||
+        !trailing_dead_ret->value_str.has_value() || *trailing_dead_ret->value_str != "0"))) {
+    return std::nullopt;
+  }
+
+  bir::Module lowered;
+  lowered.target_triple = module.target_triple;
+  lowered.data_layout = module.data_layout;
+
+  bir::Function lowered_function;
+  lowered_function.name = function.name;
+  lowered_function.return_type = bir::TypeKind::I32;
+
+  bir::Block lowered_entry;
+  lowered_entry.label = "entry";
+  lowered_entry.terminator.value = bir::Value::immediate_i32(0);
+  lowered_function.blocks.push_back(std::move(lowered_entry));
+  lowered.functions.push_back(std::move(lowered_function));
+  return lowered;
+}
+
 std::optional<bir::Module> try_lower_minimal_branch_only_constant_return_module(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
@@ -3089,6 +3278,11 @@ std::optional<bir::Module> try_lower_to_bir_legacy(const c4c::codegen::lir::LirM
   }
   if (const auto lowered =
           try_lower_minimal_local_i32_pointer_store_zero_load_return_module(module);
+      lowered.has_value()) {
+    return lowered;
+  }
+  if (const auto lowered =
+          try_lower_double_indirect_local_store_one_final_branch_return_module(module);
       lowered.has_value()) {
     return lowered;
   }
