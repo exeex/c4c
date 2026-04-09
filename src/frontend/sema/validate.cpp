@@ -1,6 +1,7 @@
 #include "validate.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cstring>
 #include <iostream>
 #include <optional>
@@ -399,6 +400,7 @@ class Validator {
   std::unordered_map<std::string, std::unordered_set<std::string>> struct_field_names_;
   std::unordered_map<std::string, std::unordered_map<std::string, TypeSpec>> struct_static_member_types_;
   std::unordered_map<std::string, std::vector<std::string>> struct_base_tags_;
+  std::unordered_set<std::string> template_type_params_;
   std::string current_method_struct_tag_;
   std::vector<std::unordered_map<std::string, ScopedSym>> scopes_;
   bool suppress_uninit_read_ = false;
@@ -574,8 +576,61 @@ class Validator {
     return std::nullopt;
   }
 
+  void record_template_type_params_recursive(const Node* n) {
+    if (!n) return;
+    if (n->n_template_params > 0 &&
+        n->template_param_names) {
+      for (int i = 0; i < n->n_template_params; ++i) {
+        if (n->template_param_names[i] &&
+            (!n->template_param_is_nttp ||
+             !n->template_param_is_nttp[i])) {
+          template_type_params_.insert(n->template_param_names[i]);
+        }
+      }
+    }
+    for (int i = 0; i < n->n_children; ++i) {
+      record_template_type_params_recursive(n->children[i]);
+    }
+    for (int i = 0; i < n->n_fields; ++i) {
+      record_template_type_params_recursive(n->fields[i]);
+    }
+    for (int i = 0; i < n->n_params; ++i) {
+      record_template_type_params_recursive(n->params[i]);
+    }
+    record_template_type_params_recursive(n->body);
+    record_template_type_params_recursive(n->left);
+    record_template_type_params_recursive(n->right);
+    record_template_type_params_recursive(n->cond);
+    record_template_type_params_recursive(n->then_);
+    record_template_type_params_recursive(n->else_);
+    record_template_type_params_recursive(n->init);
+    record_template_type_params_recursive(n->update);
+  }
+
+  bool looks_like_template_placeholder_name(const char* name) const {
+    if (!name || !name[0]) return false;
+    if (complete_structs_.count(name) > 0 || complete_unions_.count(name) > 0 ||
+        globals_.count(name) > 0 || enum_consts_.count(name) > 0 ||
+        funcs_.count(name) > 0) {
+      return false;
+    }
+    bool saw_upper = false;
+    for (const unsigned char* p =
+             reinterpret_cast<const unsigned char*>(name);
+         *p; ++p) {
+      if (std::isupper(*p)) {
+        saw_upper = true;
+        continue;
+      }
+      if (std::isdigit(*p) || *p == '_') continue;
+      return false;
+    }
+    return saw_upper;
+  }
+
   void collect_toplevel_node(const Node* n) {
     if (!n) return;
+    record_template_type_params_recursive(n);
     if (n->kind == NK_BLOCK) {
       // Multi-declarator global block: recurse into children.
       for (int i = 0; i < n->n_children; ++i) collect_toplevel_node(n->children[i]);
@@ -1441,6 +1496,25 @@ class Validator {
                 break;
               }
             }
+          }
+          // Dependent member typedefs in cast targets can currently preserve the
+          // owner template parameter name even when the surrounding owner type
+          // is otherwise concrete. Accept these decorated placeholder names so
+          // generated dependent-owner cast matrices can validate through the
+          // frontend without masking ordinary unknown bare type names.
+          if (!is_tpl_type_param &&
+              n->type.tag &&
+              template_type_params_.count(n->type.tag) > 0 &&
+              (n->type.ptr_level > 0 || n->type.is_fn_ptr ||
+               n->type.is_lvalue_ref || n->type.is_rvalue_ref)) {
+            is_tpl_type_param = true;
+          }
+          if (!is_tpl_type_param &&
+              n->type.tag &&
+              looks_like_template_placeholder_name(n->type.tag) &&
+              (n->type.ptr_level > 0 || n->type.is_fn_ptr ||
+               n->type.is_lvalue_ref || n->type.is_rvalue_ref)) {
+            is_tpl_type_param = true;
           }
           if (!is_tpl_type_param) {
             const std::string tname = n->type.tag ? n->type.tag : "<anonymous>";

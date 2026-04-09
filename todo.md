@@ -6,10 +6,10 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 4: isolate the dependent-owner `ctx_c_style_cast_target` frontend
-  failure shared by the promoted function-shaped families, starting from the
-  generated `function_lvalue_ref` / `function_rvalue_ref` /
-  `function_pointer` cases that still stay bounded to `parse_only`
+- Step 4: evaluate whether the same cast-validation gap now cleanly unlocks
+  dependent-owner `member_function_pointer` `ctx_c_style_cast_target`
+  promotion into generated `compile_positive` coverage without widening into
+  unrelated sema or parser work
 
 ## Completed Items
 
@@ -169,22 +169,46 @@ Source Plan: plan.md
   --before test_fail_before.log --after test_fail_after.log
   --allow-non-decreasing-passed` reported PASS with zero new failing tests
   and a +30 pass delta against the refreshed pre-slice baseline log
+- Promoted the dependent-owner `ctx_c_style_cast_target`
+  `function_pointer`, `function_lvalue_ref`, and `function_rvalue_ref`
+  families (`dependent_typename` and `dependent_template_member`) into
+  generated `compile_positive` coverage with six new generated cases under
+  `tests/cpp/internal/generated/parser_disambiguation_matrix/compile_positive/`
+- Step 4 frontend fix: taught `src/frontend/sema/validate.cpp` to defer
+  decorated unresolved template-parameter placeholder names in cast targets,
+  which unblocks dependent owner function-shaped promotions without changing
+  ordinary bare unknown-type diagnostics
+- Targeted validation: `ctest --test-dir build -R
+  'generated_parser_disambiguation_matrix_compile_positive_owner_(dependent_typename|dependent_template_member)__decl_function_(pointer|lvalue_ref|rvalue_ref)__ctx_c_style_cast_target'
+  --output-on-failure` passed all 6 newly promoted dependent-owner cases
+- Targeted validation: `ctest --test-dir build -R
+  'generated_parser_disambiguation_matrix_compile_positive_owner_(simple|qualified|global_qualified|dependent_typename|dependent_template_member)__decl_function_(pointer|lvalue_ref|rvalue_ref)|generated_parser_disambiguation_matrix_compile_positive_owner_(simple|qualified|global_qualified)__decl_member_function_pointer'
+  --output-on-failure` passed all 66 adjacent promoted function-shaped
+  `compile_positive` cases with zero failures
+- Targeted validation: `ctest --test-dir build -R
+  'cpp_positive_sema_c_style_cast_(dependent_typename|dependent_template_member)|qualified_member_function_pointer_template_owner_parse'
+  --output-on-failure` passed 5 adjacent dependent cast/member-function-pointer
+  regressions with zero failures
+- Full-suite validation: `ctest --test-dir build -j8 --output-on-failure >
+  test_fail_after.log` completed with 3143/3143 passing tests, and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
+  --before test_fail_before.log --after test_fail_after.log
+  --allow-non-decreasing-passed` reported PASS with zero new failing tests
+  and a +36 pass delta against the stored baseline log
 
 ## Next Slice
 
-- isolate the dependent-owner `ctx_c_style_cast_target` frontend failure on
-  generated promoted function-shaped cases, starting with
-  `function_lvalue_ref` / `function_rvalue_ref` / `function_pointer`
-  owner spellings `typename H<T>::Type` and
-  `typename H<T>::template Rebind<U>::Type`
-- keep the next slice bounded to frontend diagnosis and the narrowest
-  generator-backed promotion path; do not expand into unrelated sema cleanup
-- if dependent owners become the target, isolate the frontend failure on
-  `ctx_c_style_cast_target` where the generated `H<T>::Type` /
-  `Rebind<U>::Type` owners currently fail with unknown type-name diagnostics
-  in the promoted tier
+- evaluate whether the same cast-validation fix now cleanly unlocks the
+  dependent-owner `member_function_pointer` `ctx_c_style_cast_target`
+  promotion into generated `compile_positive` coverage
+- keep the next slice bounded to the generator-owned promoted tier and the
+  exact dependent-owner declarator family under test; do not expand into
+  unrelated sema or parser work
+- if the dependent `member_function_pointer` promotion still exposes a
+  distinct frontend issue after this cast fix, record that narrower blocker
+  explicitly instead of broadening the current family again
 - keep generation template-driven and separate from the existing hand-written
-  reductions in `postive_case/`
+  reductions in `positive_case/`
 
 ## Blockers
 
@@ -200,14 +224,10 @@ Source Plan: plan.md
   the external c-testsuite submodule commit, so `test_before.log` reflects the
   clean HEAD suite without those external cases, while the current tree still
   finished with zero failing tests
-- the new `compile_positive` promotion is intentionally bounded to
-  non-dependent owners; dependent-owner `member_function_pointer`
-  `ctx_c_style_cast_target` cases still fail beyond parse-only with unknown
-  type-name diagnostics and should be treated as the next focused investigation
-  rather than folded silently into this landed slice
-- the same unknown type-name frontend failure also reproduces for dependent
-  `function_pointer` `ctx_c_style_cast_target` cases under `build/c4cll`, so
-  this iteration stays bounded to the three non-dependent owners
+- the dependent function-shaped `ctx_c_style_cast_target` promotion now lands
+  cleanly for both `typename H<T>::Type` and
+  `typename H<T>::template Rebind<U>::Type`; the next adjacent check is the
+  dependent-owner `member_function_pointer` family in the same promoted tier
 - the non-dependent function-reference promotion uncovered a generator-shape
   issue rather than a parser defect: `compile_positive` local declarations for
   function references must be initialized, so the generator now binds those
