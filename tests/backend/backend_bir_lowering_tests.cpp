@@ -106,6 +106,50 @@ c4c::codegen::lir::LirModule make_bir_minimal_conditional_return_with_empty_brid
   return module;
 }
 
+c4c::codegen::lir::LirModule
+make_bir_minimal_conditional_return_with_asymmetric_empty_bridge_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCmpOp{"%t0", false, "slt", "i32", "2", "3"});
+  entry.insts.push_back(LirCastOp{"%t1", LirCastKind::ZExt, "i1", "%t0", "i32"});
+  entry.insts.push_back(LirCmpOp{"%t2", false, "ne", "i32", "%t1", "0"});
+  entry.terminator = LirCondBr{"%t2", "then.bridge", "else.ret"};
+
+  LirBlock then_bridge;
+  then_bridge.id = LirBlockId{1};
+  then_bridge.label = "then.bridge";
+  then_bridge.terminator = LirBr{"then.ret"};
+
+  LirBlock then_ret;
+  then_ret.id = LirBlockId{2};
+  then_ret.label = "then.ret";
+  then_ret.terminator = LirRet{std::string("0"), "i32"};
+
+  LirBlock else_ret;
+  else_ret.id = LirBlockId{3};
+  else_ret.label = "else.ret";
+  else_ret.terminator = LirRet{std::string("1"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(then_bridge));
+  function.blocks.push_back(std::move(then_ret));
+  function.blocks.push_back(std::move(else_ret));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_bir_minimal_global_int_pointer_diff_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -2019,6 +2063,28 @@ void test_bir_lowering_accepts_minimal_conditional_return_lir_module_with_empty_
   expect_contains(rendered,
                   "bir.func @main() -> i32 {\nentry:\n  %t.select = bir.select slt i32 2, 3, 0, 1\n  bir.ret i32 %t.select\n}\n",
                   "the lowered empty-bridge conditional-return BIR module should normalize the bridge-only CFG to one shared select");
+}
+
+void test_bir_lowering_accepts_minimal_conditional_return_lir_module_with_asymmetric_empty_bridge() {
+  const auto lowered = c4c::backend::try_lower_to_bir(
+      make_bir_minimal_conditional_return_with_asymmetric_empty_bridge_lir_module());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the asymmetric empty-bridge conditional-return LIR slice through the shared branch-only select contract");
+
+  expect_true(lowered->functions.size() == 1 &&
+                  lowered->functions.front().blocks.size() == 1 &&
+                  lowered->functions.front().blocks.front().label == "entry" &&
+                  lowered->functions.front().blocks.front().insts.size() == 1 &&
+                  std::holds_alternative<c4c::backend::bir::SelectInst>(
+                      lowered->functions.front().blocks.front().insts.front()) &&
+                  lowered->functions.front().blocks.front().terminator.kind ==
+                      c4c::backend::bir::TerminatorKind::Return,
+              "the lowered asymmetric empty-bridge conditional-return BIR module should collapse the branch-only CFG to one canonical select-and-return block");
+
+  const auto rendered = c4c::backend::bir::print(*lowered);
+  expect_contains(rendered,
+                  "bir.func @main() -> i32 {\nentry:\n  %t.select = bir.select slt i32 2, 3, 0, 1\n  bir.ret i32 %t.select\n}\n",
+                  "the lowered asymmetric empty-bridge conditional-return BIR module should normalize the mixed direct/bridge CFG to one shared select");
 }
 
 void test_bir_lowering_accepts_minimal_countdown_do_while_lir_module_with_stale_typed_i32_text() {
@@ -4467,6 +4533,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_minimal_call_crossing_direct_call_lir_module_with_typed_main_return);
   RUN_TEST(test_bir_lowering_accepts_minimal_goto_only_constant_return_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_conditional_return_lir_module_with_empty_bridge_blocks);
+  RUN_TEST(test_bir_lowering_accepts_minimal_conditional_return_lir_module_with_asymmetric_empty_bridge);
   RUN_TEST(test_bir_lowering_accepts_minimal_countdown_do_while_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_countdown_do_while_lir_module_with_stale_typed_i32_text);
   RUN_TEST(test_bir_printer_renders_minimal_add_scaffold);

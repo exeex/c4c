@@ -3278,7 +3278,7 @@ std::optional<bir::Function> try_lower_conditional_return_select_function(
     const std::vector<bir::Param>& params) {
   using namespace c4c::codegen::lir;
 
-  if (lir_function.blocks.size() != 3 && lir_function.blocks.size() != 5) {
+  if (lir_function.blocks.size() < 3 || lir_function.blocks.size() > 5) {
     return std::nullopt;
   }
 
@@ -3313,32 +3313,42 @@ std::optional<bir::Function> try_lower_conditional_return_select_function(
 
   const LirBlock* true_ret_block = nullptr;
   const LirBlock* false_ret_block = nullptr;
-  if (lir_function.blocks.size() == 3) {
-    const auto& true_block = lir_function.blocks[1];
-    const auto& false_block = lir_function.blocks[2];
-    if (!true_block.insts.empty() || !false_block.insts.empty() ||
-        true_block.label != condbr->true_label || false_block.label != condbr->false_label) {
-      return std::nullopt;
+  std::size_t next_block_index = 1;
+  auto consume_return_arm = [&](std::string_view branch_label) -> const LirBlock* {
+    if (next_block_index >= lir_function.blocks.size()) {
+      return nullptr;
     }
-    true_ret_block = &true_block;
-    false_ret_block = &false_block;
-  } else {
-    const auto& true_bridge = lir_function.blocks[1];
-    const auto& true_block = lir_function.blocks[2];
-    const auto& false_bridge = lir_function.blocks[3];
-    const auto& false_block = lir_function.blocks[4];
-    const auto* true_br = std::get_if<LirBr>(&true_bridge.terminator);
-    const auto* false_br = std::get_if<LirBr>(&false_bridge.terminator);
-    if (!true_bridge.insts.empty() || !false_bridge.insts.empty() ||
-        !true_block.insts.empty() || !false_block.insts.empty() || true_br == nullptr ||
-        false_br == nullptr || true_bridge.label != condbr->true_label ||
-        false_bridge.label != condbr->false_label ||
-        true_br->target_label != true_block.label ||
-        false_br->target_label != false_block.label) {
-      return std::nullopt;
+
+    const auto& first = lir_function.blocks[next_block_index];
+    if (!first.insts.empty() || first.label != branch_label) {
+      return nullptr;
     }
-    true_ret_block = &true_block;
-    false_ret_block = &false_block;
+
+    if (std::get_if<LirRet>(&first.terminator) != nullptr) {
+      ++next_block_index;
+      return &first;
+    }
+
+    const auto* bridge_br = std::get_if<LirBr>(&first.terminator);
+    if (bridge_br == nullptr || next_block_index + 1 >= lir_function.blocks.size()) {
+      return nullptr;
+    }
+
+    const auto& ret_block = lir_function.blocks[next_block_index + 1];
+    if (!ret_block.insts.empty() || bridge_br->target_label != ret_block.label ||
+        std::get_if<LirRet>(&ret_block.terminator) == nullptr) {
+      return nullptr;
+    }
+
+    next_block_index += 2;
+    return &ret_block;
+  };
+
+  true_ret_block = consume_return_arm(condbr->true_label);
+  false_ret_block = consume_return_arm(condbr->false_label);
+  if (true_ret_block == nullptr || false_ret_block == nullptr ||
+      next_block_index != lir_function.blocks.size()) {
+    return std::nullopt;
   }
 
   const auto* true_ret = std::get_if<LirRet>(&true_ret_block->terminator);

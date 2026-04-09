@@ -208,6 +208,50 @@ c4c::codegen::lir::LirModule make_lir_minimal_conditional_return_with_empty_brid
   return module;
 }
 
+c4c::codegen::lir::LirModule
+make_lir_minimal_conditional_return_with_asymmetric_empty_bridge_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCmpOp{"%t0", false, "slt", "i32", "2", "3"});
+  entry.insts.push_back(LirCastOp{"%t1", LirCastKind::ZExt, "i1", "%t0", "i32"});
+  entry.insts.push_back(LirCmpOp{"%t2", false, "ne", "i32", "%t1", "0"});
+  entry.terminator = LirCondBr{"%t2", "then.bridge", "else.ret"};
+
+  LirBlock then_bridge;
+  then_bridge.id = LirBlockId{1};
+  then_bridge.label = "then.bridge";
+  then_bridge.terminator = LirBr{"then.ret"};
+
+  LirBlock then_ret;
+  then_ret.id = LirBlockId{2};
+  then_ret.label = "then.ret";
+  then_ret.terminator = LirRet{std::string("0"), "i32"};
+
+  LirBlock else_ret;
+  else_ret.id = LirBlockId{3};
+  else_ret.label = "else.ret";
+  else_ret.terminator = LirRet{std::string("1"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(then_bridge));
+  function.blocks.push_back(std::move(then_ret));
+  function.blocks.push_back(std::move(else_ret));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_double_indirect_local_pointer_conditional_return_module() {
   using namespace c4c::codegen::lir;
 
@@ -2200,6 +2244,38 @@ void test_backend_bir_pipeline_drives_aarch64_lir_conditional_return_with_empty_
                       "aarch64 LIR empty-bridge conditional-return input should stay on native asm emission instead of falling back to LLVM text");
 }
 
+void test_backend_bir_pipeline_drives_aarch64_lir_conditional_return_with_asymmetric_empty_bridge_through_bir_end_to_end() {
+  const auto lowered = c4c::backend::try_lower_to_bir(
+      make_lir_minimal_conditional_return_with_asymmetric_empty_bridge_module());
+  expect_true(
+      lowered.has_value(),
+      "aarch64 LIR asymmetric empty-bridge conditional-return input should lower into a direct BIR module before target emission");
+  expect_true(lowered->functions.size() == 1 &&
+                  lowered->functions.front().blocks.size() == 1 &&
+                  lowered->functions.front().blocks.front().insts.size() == 1 &&
+                  std::holds_alternative<c4c::backend::bir::SelectInst>(
+                      lowered->functions.front().blocks.front().insts.front()),
+              "aarch64 LIR asymmetric empty-bridge conditional-return input should collapse to the shared BIR select form before target emission");
+
+  const auto rendered = c4c::backend::aarch64::emit_module(
+      make_lir_minimal_conditional_return_with_asymmetric_empty_bridge_module());
+
+  expect_contains(rendered, ".globl main",
+                  "aarch64 LIR asymmetric empty-bridge conditional-return input should still reach native asm emission after routing through the shared BIR path");
+  expect_contains(rendered, "b.ge .Lselect_false",
+                  "aarch64 LIR asymmetric empty-bridge conditional-return input should lower the fused BIR predicate to the native branch form on the shared backend path");
+  expect_contains(rendered, ".Lselect_true:\n  mov w0, #0\n  ret\n",
+                  "aarch64 LIR asymmetric empty-bridge conditional-return input should preserve the then-arm immediate through the BIR-owned select emission");
+  expect_contains(rendered, ".Lselect_false:\n  mov w0, #1\n  ret\n",
+                  "aarch64 LIR asymmetric empty-bridge conditional-return input should preserve the else-arm immediate through the BIR-owned select emission");
+  expect_not_contains(rendered, ".main.then.bridge:",
+                      "aarch64 LIR asymmetric empty-bridge conditional-return input should no longer expose the original direct-LIR bridge labels once the shared BIR route owns the shape");
+  expect_not_contains(rendered, ".main.else.ret:",
+                      "aarch64 LIR asymmetric empty-bridge conditional-return input should no longer expose the original direct-LIR return labels once the shared BIR route owns the shape");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 LIR asymmetric empty-bridge conditional-return input should stay on native asm emission instead of falling back to LLVM text");
+}
+
 void test_backend_bir_pipeline_drives_aarch64_lir_conditional_phi_join_through_bir_end_to_end() {
   const auto lowered =
       c4c::backend::try_lower_to_bir(make_lir_single_param_select_eq_phi_module());
@@ -2742,6 +2818,7 @@ void run_backend_bir_pipeline_aarch64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_select_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_lir_minimal_conditional_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_lir_conditional_return_with_empty_bridge_blocks_through_bir_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_aarch64_lir_conditional_return_with_asymmetric_empty_bridge_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_lir_conditional_phi_join_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_lir_u8_select_post_join_add_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_aarch64_direct_bir_single_param_select_end_to_end);
