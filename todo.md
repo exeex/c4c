@@ -7,14 +7,15 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 3: review declarator suffix and function-pointer cast forms
-- Current slice: probe the next uncovered Step 3 suffix shape after landing
-  the template-id return-type function-pointer cast-target parser fix
-- Current implementation target: stay in parser-facing Step 3 work and check
-  whether template-id parameter types inside the same abstract function-pointer
-  cast form already parse cleanly before widening into member-pointer or
-  cv-qualified variants
-- Next intended slice: add a focused parse-only regression for
-  `(int (*)(Box<int>))raw` if that parameter-type shape is still uncovered
+- Current slice: probe the next uncovered Step 3 suffix shape after confirming
+  that template-id parameter types inside parenthesized function-pointer cast
+  targets already parse cleanly
+- Current implementation target: stay in parser-facing Step 3 coverage work
+  and identify the next uncovered function-pointer or member-pointer cast
+  target shape after the return-type and parameter-type template-id reductions
+- Next intended slice: add a focused parse-only regression for the next
+  uncovered Step 3 suffix variant, preferring a member-pointer or
+  cv-qualified-function-pointer cast target if it still exposes a parser hole
 
 ## Completed
 
@@ -234,6 +235,18 @@ Source Plan: plan.md
   and `ctest --test-dir build -R c_style_cast_template_fn_ptr_return_type_parse --output-on-failure`.
 - Full-suite validation stayed monotonic: `test_fail_before.log` 2858/2858
   passed, `test_fail_after.log` 2860/2860 passed, with zero new failures.
+- Added
+  `tests/cpp/internal/postive_case/c_style_cast_template_fn_ptr_param_type_parse.cpp`
+  as a focused parse-only regression for
+  `int (*fp)(Box<int>) = (int (*)(Box<int>))raw;`.
+- Confirmed the Step 3 template-id parameter-type variant already matches the
+  parser baseline in the current tree, so no compiler change was needed for
+  this slice.
+- Targeted validation passed:
+  `build/c4cll --parse-only tests/cpp/internal/postive_case/c_style_cast_template_fn_ptr_param_type_parse.cpp`
+  and `ctest --test-dir build -R c_style_cast_template_fn_ptr_param_type_parse --output-on-failure`.
+- Full-suite validation stayed monotonic: `test_fail_before.log` 2860/2860
+  passed, `test_fail_after.log` 2861/2861 passed, with zero new failures.
 
 ## Notes
 
