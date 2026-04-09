@@ -527,43 +527,68 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                     }
                     return ts;
                 };
-                auto follow_nested_owner = [&](const std::vector<std::string>& owner_chain)
-                    -> const Node* {
+                auto follow_nested_owner =
+                    [&](const std::vector<std::string>& owner_chain,
+                        bool global_qualified) -> const Node* {
                     if (owner_chain.empty()) return nullptr;
-                    std::string owner_tag = owner_chain.front();
-                    if (typedef_types_.count(owner_tag) > 0) {
-                        TypeSpec owner_ts = resolve_struct_like(typedef_types_.at(owner_tag));
-                        if (owner_ts.tag && owner_ts.tag[0]) owner_tag = owner_ts.tag;
-                    }
-                    auto owner_it = struct_tag_def_map_.find(owner_tag);
-                    if (owner_it == struct_tag_def_map_.end() || !owner_it->second)
-                        return nullptr;
-                    const Node* owner = owner_it->second;
-                    for (size_t i = 1; i < owner_chain.size(); ++i) {
-                        const Node* nested_decl = nullptr;
-                        for (int fi = 0; fi < owner->n_fields; ++fi) {
-                            const Node* field = owner->fields[fi];
-                            if (!field || field->kind != NK_DECL || !field->name ||
-                                owner_chain[i] != field->name) {
-                                continue;
-                            }
-                            nested_decl = field;
-                            break;
+
+                    for (size_t owner_start = 0; owner_start < owner_chain.size();
+                         ++owner_start) {
+                        std::string owner_tag = owner_chain[owner_start];
+                        if (owner_start > 0 || global_qualified) {
+                            QualifiedNameRef ns_qn;
+                            ns_qn.is_global_qualified = global_qualified;
+                            ns_qn.qualifier_segments.assign(owner_chain.begin(),
+                                                            owner_chain.begin() + owner_start);
+                            int context_id = resolve_namespace_context(ns_qn);
+                            if (context_id < 0) continue;
+                            owner_tag =
+                                canonical_name_in_context(context_id, owner_tag);
                         }
-                        if (!nested_decl || !nested_decl->type.tag ||
-                            !nested_decl->type.tag[0]) {
-                            return nullptr;
+                        if (typedef_types_.count(owner_tag) > 0) {
+                            TypeSpec owner_ts =
+                                resolve_struct_like(typedef_types_.at(owner_tag));
+                            if (owner_ts.tag && owner_ts.tag[0]) owner_tag = owner_ts.tag;
                         }
-                        owner_it = struct_tag_def_map_.find(nested_decl->type.tag);
+                        auto owner_it = struct_tag_def_map_.find(owner_tag);
                         if (owner_it == struct_tag_def_map_.end() || !owner_it->second)
-                            return nullptr;
-                        owner = owner_it->second;
+                            continue;
+
+                        const Node* owner = owner_it->second;
+                        bool ok = true;
+                        for (size_t i = owner_start + 1; i < owner_chain.size(); ++i) {
+                            const Node* nested_decl = nullptr;
+                            for (int fi = 0; fi < owner->n_fields; ++fi) {
+                                const Node* field = owner->fields[fi];
+                                if (!field || field->kind != NK_DECL || !field->name ||
+                                    owner_chain[i] != field->name) {
+                                    continue;
+                                }
+                                nested_decl = field;
+                                break;
+                            }
+                            if (!nested_decl || !nested_decl->type.tag ||
+                                !nested_decl->type.tag[0]) {
+                                ok = false;
+                                break;
+                            }
+                            owner_it = struct_tag_def_map_.find(nested_decl->type.tag);
+                            if (owner_it == struct_tag_def_map_.end() ||
+                                !owner_it->second) {
+                                ok = false;
+                                break;
+                            }
+                            owner = owner_it->second;
+                        }
+                        if (ok) return owner;
                     }
-                    return owner;
+                    return nullptr;
                 };
 
                 TypeSpec resolved_member{};
-                if (const Node* owner = follow_nested_owner(qn.qualifier_segments)) {
+                if (const Node* owner =
+                        follow_nested_owner(qn.qualifier_segments,
+                                            qn.is_global_qualified)) {
                     for (int i = 0; i < owner->n_member_typedefs; ++i) {
                         const char* name = owner->member_typedef_names[i];
                         if (!name || qn.base_name != name) continue;

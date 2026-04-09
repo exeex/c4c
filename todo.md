@@ -7,15 +7,15 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 2: review typedef, alias, and qualified cast targets
-- Current slice: continue Step 2 from the now-green nested dependent
-  template-owner alias case to the next distinct qualified/dependent
+- Current slice: continue Step 2 from the now-green namespace-qualified
+  dependent `typename` owner case to the next uncovered qualified/dependent
   alias-owned cast shape
-- Current implementation target: find the next smallest Step 2 reduction that
-  is not already covered by plain dependent `typename`, nested dependent
-  aliases, or the dependent `::template` owner chain
-- Next intended slice: keep Step 2 focused on one new alias-owned qualified or
-  dependent cast target at a time; do not broaden into declarator-suffix work
-  until a new uncovered shape is identified
+- Current implementation target: keep Step 2 focused on one new alias-owned
+  qualified or dependent cast target at a time without expanding into
+  declarator-suffix coverage
+- Next intended slice: probe one additional qualified/dependent owner shape
+  beyond `typename ns::Holder<T>::AliasL` / `AliasR`, likely a global-qualified
+  or mixed namespace-plus-nested owner chain, before switching to Step 3
 
 ## Completed
 
@@ -178,6 +178,20 @@ Source Plan: plan.md
   compiler change was needed for the slice.
 - Full-suite validation stayed monotonic: `test_fail_before.log` 2855/2855
   passed, `test_fail_after.log` 2856/2856 passed, with zero new failures.
+- Added
+  `tests/cpp/internal/postive_case/c_style_cast_namespace_qualified_dependent_typename_ref_alias_basic.cpp`
+  to cover namespace-qualified dependent
+  `(typename ns::Holder<T>::AliasL)x` /
+  `(typename ns::Holder<T>::AliasR)x` cast targets, assignment through the
+  aliased references, and overload selection on the cast expressions
+  themselves.
+- Fixed parser-side dependent `typename` member-typedef resolution so
+  namespace-qualified owner prefixes are folded into the lookup before HIR
+  lowering. That restores the underlying `T&` / `T&&` cast target on the AST
+  node itself, which in turn preserves lvalue/rvalue classification and avoids
+  the bad temporary materialization path seen in HIR/runtime.
+- Full-suite validation stayed monotonic: `test_fail_before.log` 2856/2856
+  passed, `test_fail_after.log` 2857/2857 passed, with zero new failures.
 
 ## Notes
 
@@ -227,3 +241,10 @@ Source Plan: plan.md
   lowered, and ran with the same lvalue/rvalue overload behavior Clang showed,
   so Step 2 still needs a different uncovered qualified/dependent alias shape
   rather than a fix in this lane.
+- The namespace-qualified dependent owner reduction initially exposed a
+  parser-side gap rather than a pure HIR bug: `typename ns::Holder<T>::AliasL`
+  / `AliasR` parsed, but dependent `typename` resolution did not fold the
+  namespace prefix into owner lookup, so the cast node kept an unresolved alias
+  instead of the underlying reference-qualified target. That left HIR and
+  overload selection treating the cast expression like a non-lvalue reference
+  alias until the qualified owner lookup was repaired.
