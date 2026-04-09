@@ -7,20 +7,50 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 7: move regalloc and stack layout to backend MIR
-- Current slice: triage the pre-existing AArch64 variadic/backend blocker set
-  and separate same-seam Step 7 regressions from true post-Step-7 capability
-  follow-up work before implementation continues on compatibility-surface
-  narrowing
-- Current implementation target: confirm which failures in
-  `backend_lir_aarch64_variadic_*`, `backend_runtime_variadic_*`, and matching
-  `c_testsuite_aarch64_backend_*` coverage share the current Step 7 ownership
-  seam, then repair the smallest common root cause on the AArch64 prepared
-  direct-LIR variadic path
-- Next intended slice: return to the `EntryAllocaCompatInputs` narrowing audit
-  once the Step 7-blocking AArch64 variadic/backend set is green or the
-  remaining red cases are clearly classified as separate Step 8 capability work
+- Current slice: return to the `EntryAllocaCompatInputs` narrowing audit now
+  that the prepared direct-LIR AArch64 variadic/backend blocker set has been
+  reduced to two separately classified aggregate/ABI follow-up cases
+- Current implementation target: continue narrowing the remaining
+  compatibility-only `EntryAllocaCompatInputs` surface without reopening the
+  now-green Step 7 prepared variadic path
+- Next intended slice: either remove another production caller from the broad
+  compatibility packet or split the remaining compatibility carrier further so
+  prepared/emitter-owned seams stay explicit while the two residual
+  `c_testsuite_aarch64_backend_src_00182_c` and
+  `c_testsuite_aarch64_backend_src_00204_c` failures track separately as
+  post-Step-7 aggregate/ABI capability work
 
 ## Completed
+
+- Completed the Step 7 AArch64 prepared direct-LIR variadic blocker slice by
+  restoring bounded phi-edge copies and non-entry alloca materialization on
+  the prepared emitter path:
+  - updated `src/backend/aarch64/codegen/emit.cpp` so the general prepared
+    AArch64 emitter now materializes bounded phi predecessor copies for direct
+    `br` / `condbr` edges instead of rejecting every phi-bearing direct-LIR
+    module before emission
+  - taught the prepared slot-map/bootstrap path to reserve and initialize data
+    storage for prepared function-local allocas beyond the rewritten
+    entry-alloca packet, fixing the aggregate `memcpy` scratch alloca path that
+    surfaced once the variadic phi joins started lowering
+  - added focused regression coverage in
+    `tests/backend/backend_bir_pipeline_tests.cpp` for a bounded prepared
+    pointer-phi join module and updated
+    `tests/backend/backend_bir_pipeline_aarch64_tests.cpp` to lock the now-
+    supported alloca-backed direct-LIR phi path
+  - rebuilt `c4cll`, `backend_bir_tests`, and `backend_shared_util_tests`;
+    passed `./build/backend_bir_tests` and `./build/backend_shared_util_tests`
+  - passed targeted AArch64 regression slices:
+    `ctest --test-dir build -R '^(backend_lir_aarch64_variadic_.*|backend_runtime_variadic_.*)$' --output-on-failure`
+    plus
+    `ctest --test-dir build -R '^c_testsuite_aarch64_backend_src_(00033|00042|00046|00138|00144|00164|00181|00182|00183|00196|00200|00204|00207|00208|00212|00216)_c$' --output-on-failure`
+  - refreshed `test_fail_after.log` with the full-suite regression guard and
+    improved the allowed failure set from 32 failures to 2 with no new
+    failures (`2809 -> 2839` passed tests); the remaining red cases are
+    `c_testsuite_aarch64_backend_src_00182_c` and
+    `c_testsuite_aarch64_backend_src_00204_c`, which no longer match the
+    repaired prepared-variadic ownership seam and should track as separate
+    aggregate/ABI follow-up work
 
 - Completed the next Step 7 compatibility-surface naming slice by making the
   surviving lowered broad packet read explicitly as compatibility state now

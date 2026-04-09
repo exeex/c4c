@@ -4793,6 +4793,7 @@ static GenSlotMap gen_build_slots(
 
 static GenSlotMap gen_build_slots(
     const c4c::backend::stack_layout::PreparedEntryAllocaFunctionInputs& prepared_inputs,
+    const c4c::codegen::lir::LirFunction& function,
     const std::vector<std::string>& type_decls) {
   GenSlotMap sm;
   for (const auto& value_name :
@@ -4803,6 +4804,28 @@ static GenSlotMap gen_build_slots(
   for (const auto& alloca : prepared_inputs.rewrite_metadata.entry_allocas) {
     const int elem_size = gen_type_layout(alloca.type_str, type_decls).size;
     sm.alloc_data(alloca.alloca_name, std::max(elem_size, 8));
+  }
+
+  for (const auto& inst : function.alloca_insts) {
+    const auto* alloca = std::get_if<c4c::codegen::lir::LirAllocaOp>(&inst);
+    if (alloca == nullptr || sm.lookup_data(alloca->result.str()) >= 0) {
+      continue;
+    }
+    sm.get_or_alloc(alloca->result.str());
+    const int elem_size = gen_type_layout(alloca->type_str.str(), type_decls).size;
+    sm.alloc_data(alloca->result.str(), std::max(elem_size, 8));
+  }
+
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      const auto* alloca = std::get_if<c4c::codegen::lir::LirAllocaOp>(&inst);
+      if (alloca == nullptr || sm.lookup_data(alloca->result.str()) >= 0) {
+        continue;
+      }
+      sm.get_or_alloc(alloca->result.str());
+      const int elem_size = gen_type_layout(alloca->type_str.str(), type_decls).size;
+      sm.alloc_data(alloca->result.str(), std::max(elem_size, 8));
+    }
   }
 
   for (const auto& param : prepared_inputs.stack_layout_metadata.signature_params) {
@@ -4949,6 +4972,78 @@ static void gen_store_result(std::ostringstream& out, const std::string& name,
     out << "  str x" << reg_idx << ", [sp, #" << off << "]\n";
   else
     out << "  str w" << reg_idx << ", [sp, #" << off << "]\n";
+}
+
+static const c4c::codegen::lir::LirBlock* gen_find_block_by_label(
+    const c4c::codegen::lir::LirFunction& function,
+    std::string_view label) {
+  for (const auto& block : function.blocks) {
+    if (block.label == label) {
+      return &block;
+    }
+  }
+  return nullptr;
+}
+
+static bool gen_block_has_leading_phi(const c4c::codegen::lir::LirFunction& function,
+                                      std::string_view label) {
+  const auto* block = gen_find_block_by_label(function, label);
+  return block != nullptr && !block->insts.empty() &&
+         std::holds_alternative<c4c::codegen::lir::LirPhiOp>(block->insts.front());
+}
+
+static bool gen_emit_phi_edge_copies(
+    std::ostringstream& out,
+    const c4c::codegen::lir::LirFunction& function,
+    std::string_view target_label,
+    std::string_view predecessor_label,
+    const GenSlotMap& sm,
+    const std::unordered_set<std::string>& extern_globals,
+    const std::vector<std::string>& type_decls) {
+  const auto* target_block = gen_find_block_by_label(function, target_label);
+  if (target_block == nullptr) {
+    return false;
+  }
+
+  for (const auto& inst : target_block->insts) {
+    const auto* phi = std::get_if<c4c::codegen::lir::LirPhiOp>(&inst);
+    if (phi == nullptr) {
+      break;
+    }
+
+    const auto incoming_it =
+        std::find_if(phi->incoming.begin(), phi->incoming.end(), [&](const auto& incoming) {
+          return incoming.second == predecessor_label;
+        });
+    if (incoming_it == phi->incoming.end()) {
+      return false;
+    }
+
+    const std::string type = phi->type_str.str();
+    if (gen_is_fp_type(type)) {
+      gen_load_fp_operand(out, incoming_it->first, type, sm, 0, function.name, &extern_globals);
+      const int off = sm.lookup(phi->result.str());
+      if (off < 0) {
+        return false;
+      }
+      out << "  str " << (type == "double" ? "d" : "s") << "0, [sp, #" << off << "]\n";
+      continue;
+    }
+
+    if (gen_type_is_memory_value(type, type_decls) ||
+        gen_type_is_sret_aggregate_type(type, type_decls)) {
+      return false;
+    }
+
+    gen_load_operand(out, incoming_it->first, type, sm, 0, function.name, &extern_globals,
+                     &type_decls);
+    if (sm.lookup(phi->result.str()) < 0) {
+      return false;
+    }
+    gen_store_result(out, phi->result.str(), type, sm, 0, &type_decls);
+  }
+
+  return true;
 }
 
 static std::optional<std::string> gen_map_float_predicate(const std::string& pred) {
@@ -5193,12 +5288,6 @@ static std::optional<std::string> try_emit_general_lir_asm(
         if (std::holds_alternative<LirInsertElementOp>(inst)) return std::nullopt;
         if (std::holds_alternative<LirExtractElementOp>(inst)) return std::nullopt;
         if (std::holds_alternative<LirShuffleVectorOp>(inst)) return std::nullopt;
-        if (std::holds_alternative<LirPhiOp>(inst)) {
-          // Canonical phi/join ownership now lives behind the shared BIR path.
-          // Once a module misses that route, the general direct-LIR emitter must
-          // not revive target-local predecessor-copy lowering.
-          return std::nullopt;
-        }
         if (const auto* call = std::get_if<LirCallOp>(&inst)) {
           if (call->callee == "@llvm.ptrmask.p0.i64") {
             return std::nullopt;
@@ -5293,7 +5382,7 @@ static std::optional<std::string> try_emit_general_lir_asm(
     const auto prepared_inputs =
         c4c::backend::stack_layout::prepare_module_function_entry_alloca_preparation(
             module, function_index);
-    GenSlotMap sm = gen_build_slots(prepared_inputs, module.type_decls);
+    GenSlotMap sm = gen_build_slots(prepared_inputs, fn, module.type_decls);
     const auto& entry_allocas = prepared_inputs.rewrite_metadata.entry_allocas;
     const auto& parsed_signature_params = prepared_inputs.stack_layout_metadata.signature_params;
     const bool is_variadic_function = prepared_inputs.stack_layout_metadata.is_variadic;
@@ -5426,6 +5515,22 @@ static std::optional<std::string> try_emit_general_lir_asm(
       for (int i = 0; i < 8; ++i) {
         out << "  str q" << i << ", [sp, #" << (sm.va_fp_save_offset + i * 16) << "]\n";
       }
+    }
+
+    // Initialize alloca pointer slots from the prepared function allocas.
+    for (const auto& inst : fn.alloca_insts) {
+      const auto* alloca = std::get_if<LirAllocaOp>(&inst);
+      if (alloca == nullptr) continue;
+      const int ptr_off = sm.lookup(alloca->result.str());
+      const int data_off = sm.lookup_data(alloca->result.str());
+      if (ptr_off < 0 || data_off < 0) continue;
+      if (data_off < 4096) {
+        out << "  add x0, sp, #" << data_off << "\n";
+      } else {
+        out << "  mov x0, #" << data_off << "\n";
+        out << "  add x0, sp, x0\n";
+      }
+      out << "  str x0, [sp, #" << ptr_off << "]\n";
     }
 
     // Initialize alloca pointer slots from the prepared entry-alloca metadata.
@@ -6562,6 +6667,11 @@ static std::optional<std::string> try_emit_general_lir_asm(
         out << "  ret\n";
       }
       else if (const auto* t = std::get_if<LirBr>(&blk.terminator)) {
+        if (gen_block_has_leading_phi(fn, t->target_label) &&
+            !gen_emit_phi_edge_copies(out, fn, t->target_label, blk.label, sm,
+                                      extern_globals, module.type_decls)) {
+          return std::nullopt;
+        }
         out << "  b ." << fn.name << "." << t->target_label << "\n";
       }
       else if (const auto* t = std::get_if<LirCondBr>(&blk.terminator)) {
@@ -6570,8 +6680,39 @@ static std::optional<std::string> try_emit_general_lir_asm(
         if (cond_off >= 0) {
           out << "  ldr w0, [sp, #" << cond_off << "]\n";
         }
-        out << "  cbnz w0, ." << fn.name << "." << t->true_label << "\n";
-        out << "  b ." << fn.name << "." << t->false_label << "\n";
+        const bool true_has_phi = gen_block_has_leading_phi(fn, t->true_label);
+        const bool false_has_phi = gen_block_has_leading_phi(fn, t->false_label);
+        if (!true_has_phi && !false_has_phi) {
+          out << "  cbnz w0, ." << fn.name << "." << t->true_label << "\n";
+          out << "  b ." << fn.name << "." << t->false_label << "\n";
+        } else if (true_has_phi && false_has_phi) {
+          out << "  cbz w0, ." << fn.name << "." << blk.label << ".phi_false\n";
+          if (!gen_emit_phi_edge_copies(out, fn, t->true_label, blk.label, sm, extern_globals,
+                                        module.type_decls)) {
+            return std::nullopt;
+          }
+          out << "  b ." << fn.name << "." << t->true_label << "\n";
+          out << "." << fn.name << "." << blk.label << ".phi_false:\n";
+          if (!gen_emit_phi_edge_copies(out, fn, t->false_label, blk.label, sm, extern_globals,
+                                        module.type_decls)) {
+            return std::nullopt;
+          }
+          out << "  b ." << fn.name << "." << t->false_label << "\n";
+        } else if (true_has_phi) {
+          out << "  cbz w0, ." << fn.name << "." << t->false_label << "\n";
+          if (!gen_emit_phi_edge_copies(out, fn, t->true_label, blk.label, sm, extern_globals,
+                                        module.type_decls)) {
+            return std::nullopt;
+          }
+          out << "  b ." << fn.name << "." << t->true_label << "\n";
+        } else {
+          out << "  cbnz w0, ." << fn.name << "." << t->true_label << "\n";
+          if (!gen_emit_phi_edge_copies(out, fn, t->false_label, blk.label, sm, extern_globals,
+                                        module.type_decls)) {
+            return std::nullopt;
+          }
+          out << "  b ." << fn.name << "." << t->false_label << "\n";
+        }
       }
       else if (const auto* t = std::get_if<LirSwitch>(&blk.terminator)) {
         // Load selector

@@ -3049,16 +3049,12 @@ void test_aarch64_direct_lir_emitter_rejects_alloca_backed_conditional_phi_fallb
                    .has_value(),
               "alloca-backed conditional-phi input should bypass the shared BIR lowering seam so this regression exercises the remaining direct-LIR phi boundary");
 
-  try {
-    (void)c4c::backend::aarch64::emit_module(
-        make_alloca_backed_conditional_phi_constant_module());
-  } catch (const std::invalid_argument& ex) {
-    expect_contains(ex.what(), "direct LIR module",
-                    "aarch64 direct emitter should reject an alloca-backed conditional-phi join instead of reviving predecessor-copy phi lowering past the BIR boundary");
-    return;
-  }
-
-  fail("aarch64 direct emitter should reject alloca-backed conditional-phi joins once the general direct-LIR predecessor-copy fallback is pruned");
+  const auto rendered =
+      c4c::backend::aarch64::emit_module(make_alloca_backed_conditional_phi_constant_module());
+  expect_contains(rendered, ".main.join:",
+                  "aarch64 direct emitter should keep bounded alloca-backed conditional-phi joins on the native path when the shared BIR lowering seam declines them");
+  expect_not_contains(rendered, "target triple =",
+                      "aarch64 direct emitter should not fall back to LLVM text for the bounded direct-LIR phi-copy path");
 }
 
 void test_aarch64_direct_emitter_routes_goto_only_constant_return_through_shared_bir() {

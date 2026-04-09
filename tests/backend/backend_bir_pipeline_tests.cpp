@@ -48,6 +48,55 @@ c4c::codegen::lir::LirModule make_unsupported_local_array_gep_lir_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_pointer_phi_join_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction function;
+  function.name = "choose_ptr";
+  function.signature_text = "define i32 @choose_ptr()";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.a", "i32", "", 4});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.b", "i32", "", 4});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{"i32", "11", "%lv.a"});
+  entry.insts.push_back(LirStoreOp{"i32", "4", "%lv.b"});
+  entry.insts.push_back(
+      LirCmpOp{"%t0", false, LirCmpPredicateRef{"eq"}, "i32", "0", "0"});
+  entry.terminator = LirCondBr{"%t0", "then", "else"};
+
+  LirBlock then_block;
+  then_block.id = LirBlockId{1};
+  then_block.label = "then";
+  then_block.terminator = LirBr{"join"};
+
+  LirBlock else_block;
+  else_block.id = LirBlockId{2};
+  else_block.label = "else";
+  else_block.terminator = LirBr{"join"};
+
+  LirBlock join;
+  join.id = LirBlockId{3};
+  join.label = "join";
+  join.insts.push_back(
+      LirPhiOp{"%t1", "ptr", {{"%lv.a", "then"}, {"%lv.b", "else"}}});
+  join.insts.push_back(LirLoadOp{"%t2", "i32", "%t1"});
+  join.terminator = LirRet{std::string("%t2"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(then_block));
+  function.blocks.push_back(std::move(else_block));
+  function.blocks.push_back(std::move(join));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_unsupported_x86_double_return_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -332,6 +381,19 @@ void test_aarch64_try_emit_prepared_lir_module_reports_direct_lir_support_explic
       c4c::backend::aarch64::try_emit_prepared_lir_module(prepared_unsupported);
   expect_true(!unsupported.has_value(),
               "aarch64 prepared direct-LIR support probing should return no native rendering for unsupported floating-return modules instead of requiring exception-text classification");
+}
+
+void test_aarch64_try_emit_prepared_lir_module_accepts_pointer_phi_join_modules() {
+  const auto prepared = c4c::backend::prepare_lir_module_for_target(
+      make_pointer_phi_join_lir_module(), c4c::backend::Target::Aarch64);
+  const auto rendered = c4c::backend::aarch64::try_emit_prepared_lir_module(prepared);
+
+  expect_true(rendered.has_value(),
+              "aarch64 prepared direct-LIR support probing should keep bounded pointer-phi join modules on the native emitter path instead of rejecting them outright");
+  expect_contains(*rendered, ".choose_ptr.join:",
+                  "aarch64 prepared direct-LIR support probing should still emit the join block after materializing phi-edge copies");
+  expect_not_contains(*rendered, "target triple =",
+                      "aarch64 prepared direct-LIR support probing should not fall back to LLVM text when handling the bounded pointer-phi join path");
 }
 
 void test_x86_public_bir_emitter_delegates_direct_bir_route_to_shared_backend() {
@@ -1648,6 +1710,7 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_aarch64_try_emit_module_reports_direct_bir_support_explicitly);
   RUN_TEST(test_x86_try_emit_prepared_lir_module_reports_direct_lir_support_explicitly);
   RUN_TEST(test_aarch64_try_emit_prepared_lir_module_reports_direct_lir_support_explicitly);
+  RUN_TEST(test_aarch64_try_emit_prepared_lir_module_accepts_pointer_phi_join_modules);
   RUN_TEST(test_x86_public_bir_emitter_delegates_direct_bir_route_to_shared_backend);
   RUN_TEST(test_aarch64_public_bir_emitter_delegates_direct_bir_route_to_shared_backend);
   RUN_TEST(test_backend_bir_pipeline_is_opt_in_through_backend_options);
