@@ -7,14 +7,15 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 2: review typedef, alias, and qualified cast targets
-- Current slice: widen from the green dependent `::template` member-alias case
-  to broader dependent template-id alias-owned cast targets
-- Current implementation target: find the next smallest dependent cast target
-  whose alias owner is itself a dependent template-id, then classify the
-  earliest failing stage if it diverges
-- Next intended slice: continue Step 2 only if the next dependent template-id
-  alias-owned reduction is not already covered by the current parser/runtime
-  surface
+- Current slice: continue Step 2 from the now-green nested dependent
+  template-owner alias case to the next distinct qualified/dependent
+  alias-owned cast shape
+- Current implementation target: find the next smallest Step 2 reduction that
+  is not already covered by plain dependent `typename`, nested dependent
+  aliases, or the dependent `::template` owner chain
+- Next intended slice: keep Step 2 focused on one new alias-owned qualified or
+  dependent cast target at a time; do not broaden into declarator-suffix work
+  until a new uncovered shape is identified
 
 ## Completed
 
@@ -164,6 +165,19 @@ Source Plan: plan.md
   change was needed for the slice.
 - Full-suite validation stayed monotonic: `test_fail_before.log` 2854/2854
   passed, `test_fail_after.log` 2855/2855 passed, with zero new failures.
+- Added
+  `tests/cpp/internal/postive_case/c_style_cast_nested_dependent_template_member_ref_alias_basic.cpp`
+  to cover nested dependent
+  `(typename Holder<T>::template Rebind<T>::Inner::AliasL)x` /
+  `(typename Holder<T>::template Rebind<T>::Inner::AliasR)x` cast targets,
+  assignment through the aliased references, and overload selection on the
+  cast expressions themselves.
+- Compared the nested dependent `::template` owner-chain reference-cast slice
+  against Clang-backed expectations and confirmed that parser, HIR, runtime
+  behavior, and overload selection already match for this reduction, so no
+  compiler change was needed for the slice.
+- Full-suite validation stayed monotonic: `test_fail_before.log` 2855/2855
+  passed, `test_fail_after.log` 2856/2856 passed, with zero new failures.
 
 ## Notes
 
@@ -208,3 +222,8 @@ Source Plan: plan.md
   full-suite check both stayed green for
   `typename Holder<T>::template Rebind<T>::AliasL` /
   `AliasR`.
+- The nested dependent `::template` owner-chain reduction also stayed green:
+  `typename Holder<T>::template Rebind<T>::Inner::AliasL` / `AliasR` parsed,
+  lowered, and ran with the same lvalue/rvalue overload behavior Clang showed,
+  so Step 2 still needs a different uncovered qualified/dependent alias shape
+  rather than a fix in this lane.
