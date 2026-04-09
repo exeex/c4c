@@ -8,7 +8,6 @@ struct Box {
 };
 
 int main() {
-    void* raw = 0;
-    int Box<int>::*member = (int Box<int>::*)raw;
+    int Box<int>::*member = (int Box<int>::*)0;
     return member == 0 ? 0 : 1;
 }

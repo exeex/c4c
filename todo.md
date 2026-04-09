@@ -7,15 +7,16 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 3: review declarator suffix and function-pointer cast forms
-- Current slice: re-probe adjacent template-id return-type suffixes after
-  landing the `T&& (*)(...)` cast case
+- Current slice: probe the next uncovered template-id declarator-suffix
+  combination after landing the `T&& (*)(...)` cast case
 - Current implementation target: stay in parser-facing Step 3 coverage work
-  and identify whether any additional template-id return-type or
-  declarator-suffix combination still exposes a parser-specific hole after the
-  rvalue-reference function-pointer-return fix
-- Next intended slice: probe the next uncovered template-id return-type or
-  grouped declarator-suffix combination and add a focused regression only if a
-  new parser mismatch is still reproducible
+  and identify whether any additional template-id return-type,
+  data-member-pointer, or grouped declarator-suffix combination still exposes
+  a parser-specific hole after the rvalue-reference function-pointer-return
+  fix
+- Next intended slice: probe the next uncovered qualified or dependent
+  template-id declarator-suffix combination and add a focused regression only
+  if a new parser mismatch is still reproducible
 
 ## Completed
 
@@ -292,6 +293,19 @@ Source Plan: plan.md
 - Full-suite validation stayed monotonic under the repo regression guard:
   `test_fail_before.log` 2860/2860 passed,
   `test_fail_after.log` 2864/2864 passed, with zero new failures.
+- Added
+  `tests/cpp/internal/postive_case/c_style_cast_template_member_ptr_parse.cpp`
+  as a focused parse-only regression for
+  `int Box<int>::*member = (int Box<int>::*)0;`.
+- Confirmed the adjacent Step 3 template-id data-member-pointer cast variant
+  already matches the parser baseline in the current tree, so no compiler
+  change was needed for this slice.
+- Targeted validation passed:
+  `build/c4cll --parse-only tests/cpp/internal/postive_case/c_style_cast_template_member_ptr_parse.cpp`
+  and `ctest --test-dir build -R c_style_cast_template_member_ptr_parse --output-on-failure`.
+- Full-suite validation stayed monotonic under the repo regression guard:
+  `test_fail_before.log` 2860/2860 passed,
+  `test_fail_after.log` 2865/2865 passed, with zero new failures.
 
 ## Notes
 
