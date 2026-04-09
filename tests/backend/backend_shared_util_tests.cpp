@@ -1083,6 +1083,36 @@ void test_backend_shared_stack_layout_analysis_accepts_backend_owned_input() {
               "backend-owned stack-layout input should preserve normal consuming-block uses");
 }
 
+void test_backend_shared_stack_layout_input_collects_value_names() {
+  const auto dead_param_module = make_dead_param_alloca_candidate_module();
+  const auto& dead_param_function = dead_param_module.functions.back();
+  const auto dead_param_input =
+      c4c::backend::stack_layout::lower_lir_to_stack_layout_input(dead_param_function);
+  const auto dead_param_value_names =
+      c4c::backend::stack_layout::collect_stack_layout_value_names(dead_param_input);
+
+  const auto escaped_module = make_escaped_local_alloca_candidate_module();
+  const auto& escaped_function = escaped_module.functions.back();
+  const auto escaped_input =
+      c4c::backend::stack_layout::lower_lir_to_stack_layout_input(escaped_function);
+  const auto escaped_value_names =
+      c4c::backend::stack_layout::collect_stack_layout_value_names(escaped_input);
+
+  const auto contains = [](const std::vector<std::string>& value_names,
+                           std::string_view value_name) {
+    return std::find(value_names.begin(), value_names.end(), value_name) != value_names.end();
+  };
+
+  expect_true(contains(dead_param_value_names, "%lv.param.x"),
+              "backend-owned stack-layout input should expose entry alloca names for downstream slot builders");
+  expect_true(contains(dead_param_value_names, "%p.x"),
+              "backend-owned stack-layout input should preserve paired parameter stores for downstream slot builders");
+  expect_true(contains(escaped_value_names, "%lv.buf"),
+              "backend-owned stack-layout input should preserve derived pointer roots for downstream slot builders");
+  expect_true(contains(dead_param_value_names, "%t0"),
+              "backend-owned stack-layout input should preserve body SSA uses for downstream slot builders");
+}
+
 void test_backend_shared_stack_layout_analysis_detects_dead_param_allocas() {
   const auto module = make_dead_param_alloca_candidate_module();
   const auto& function = module.functions.back();
@@ -1809,6 +1839,7 @@ int main(int argc, char* argv[]) {
   test_backend_shared_stack_layout_regalloc_helper_exposes_handoff_view();
   test_backend_shared_stack_layout_analysis_tracks_phi_use_blocks();
   test_backend_shared_stack_layout_analysis_accepts_backend_owned_input();
+  test_backend_shared_stack_layout_input_collects_value_names();
   test_backend_shared_stack_layout_analysis_detects_dead_param_allocas();
   test_backend_shared_stack_layout_analysis_tracks_call_arg_values();
   test_backend_shared_stack_layout_analysis_detects_entry_alloca_overwrite_before_read();

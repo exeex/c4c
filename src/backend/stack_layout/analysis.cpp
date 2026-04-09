@@ -394,6 +394,51 @@ StackLayoutInput lower_lir_to_stack_layout_input(const c4c::codegen::lir::LirFun
   return input;
 }
 
+std::vector<std::string> collect_stack_layout_value_names(const StackLayoutInput& input) {
+  std::vector<std::string> values;
+
+  auto add_name = [&](std::string_view value_name) {
+    if (!is_value_name(value_name)) {
+      return;
+    }
+    append_unique(values, std::string(value_name));
+  };
+
+  for (const auto& alloca : input.entry_allocas) {
+    add_name(alloca.alloca_name);
+    if (alloca.paired_store_value.has_value()) {
+      add_name(*alloca.paired_store_value);
+    }
+  }
+
+  for (const auto& block : input.blocks) {
+    for (const auto& point : block.insts) {
+      for (const auto& value_name : point.used_names) {
+        add_name(value_name);
+      }
+      for (const auto& access : point.pointer_accesses) {
+        add_name(access.value_name);
+      }
+      for (const auto& value_name : point.escaped_names) {
+        add_name(value_name);
+      }
+      if (point.derived_pointer_root.has_value()) {
+        add_name(point.derived_pointer_root->first);
+        add_name(point.derived_pointer_root->second);
+      }
+    }
+    for (const auto& value_name : block.terminator_used_names) {
+      add_name(value_name);
+    }
+  }
+
+  for (const auto& incoming : input.phi_incoming_uses) {
+    add_name(incoming.value_name);
+  }
+
+  return values;
+}
+
 const std::vector<std::size_t>* StackLayoutAnalysis::find_use_blocks(
     std::string_view value_name) const {
   const auto it = value_use_blocks.find(std::string(value_name));

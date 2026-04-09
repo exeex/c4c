@@ -7,17 +7,39 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: audit the remaining target-local stack-layout slot-building
-  helpers that still read raw `LirFunction` directly and identify the next
-  backend-owned input handoff after the shared planning bundle
-- Next intended slice: move the remaining production param-alloca pruning and
-  any stack-layout-adjacent target helpers onto the same backend-owned input by
-  retargeting the next target-local slot-building helper away from raw
-  `LirFunction` scanning where the current stack-layout lowering already has the
-  needed ownership data
+- Current slice: audit the remaining bounded AArch64 stack-slot builder reads
+  that still need raw `LirFunction` after the shared stack-layout input now owns
+  generic value-name and entry-alloca discovery
+- Next intended slice: move the next remaining bounded target-local stack-slot
+  ABI seam off raw `LirFunction` by threading backend-owned input farther into
+  aggregate/parameter slot setup, or perform the equivalent x86 follow-through
+  if that seam is smaller and comparably testable
 
 ## Completed
 
+- Completed the next Step 6/7 target-local stack-slot handoff slice by moving
+  the AArch64 direct-emitter slot builder's generic value-name and entry-alloca
+  discovery onto backend-owned stack-layout input while keeping the remaining
+  ABI-specific signature/call-result reads bounded to the original
+  `LirFunction`:
+  - added
+    `collect_stack_layout_value_names(...)` in
+    `src/backend/stack_layout/analysis.*` so lowered `StackLayoutInput` now
+    exposes the value-name inventory needed by downstream slot builders without
+    rescanning raw LIR instruction variants
+  - taught `src/backend/aarch64/codegen/emit.cpp`'s
+    `gen_build_slots(...)` to consume lowered stack-layout input for generic SSA
+    slot discovery and entry-alloca data-slot planning, leaving only the
+    bounded signature/call-result aggregate ABI cases on raw `LirFunction`
+  - extended `tests/backend/backend_shared_util_tests.cpp` so the shared
+    backend-owned input regression now proves the lowered stack-layout surface
+    preserves entry allocas, paired param stores, derived pointer roots, and
+    body SSA value names for downstream target slot builders
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R backend_shared_util_tests --output-on-failure`,
+    rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with no new failures and no pass-count drop
+    (`2809 -> 2809`)
 - Completed the next Step 6/7 backend-owned stack-layout planning slice by
   introducing one shared planner bundle over `StackLayoutInput` and routing the
   production emitter pruning setup through it while keeping raw-`LirFunction`

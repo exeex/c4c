@@ -4787,77 +4787,22 @@ static int gen_struct_field_offset(const std::string& ty, int field_idx,
   return offset;
 }
 
-// Collect all SSA names used in a function (alloca_insts + block insts + terminators).
-static GenSlotMap gen_build_slots(const c4c::codegen::lir::LirFunction& fn,
+// Collect all stack-backed SSA names needed by the direct AArch64 emitter.
+static GenSlotMap gen_build_slots(
+    const c4c::backend::stack_layout::StackLayoutInput& stack_layout_input,
+    const c4c::codegen::lir::LirFunction& fn,
                                   const std::vector<std::string>& type_decls) {
-  using namespace c4c::codegen::lir;
   GenSlotMap sm;
-
-  auto alloc_operand = [&](const LirOperand& op) {
-    if (!op.empty() && op.kind() == LirOperandKind::SsaValue) {
-      sm.get_or_alloc(op.str());
-    }
-  };
-
-  auto alloc_all_in_inst = [&](const LirInst& inst) {
-    if (const auto* p = std::get_if<LirAllocaOp>(&inst)) { alloc_operand(p->result); }
-    else if (const auto* p = std::get_if<LirLoadOp>(&inst)) { alloc_operand(p->result); alloc_operand(p->ptr); }
-    else if (const auto* p = std::get_if<LirStoreOp>(&inst)) { alloc_operand(p->val); alloc_operand(p->ptr); }
-    else if (const auto* p = std::get_if<LirBinOp>(&inst)) { alloc_operand(p->result); alloc_operand(p->lhs); alloc_operand(p->rhs); }
-    else if (const auto* p = std::get_if<LirCmpOp>(&inst)) { alloc_operand(p->result); alloc_operand(p->lhs); alloc_operand(p->rhs); }
-    else if (const auto* p = std::get_if<LirCastOp>(&inst)) { alloc_operand(p->result); alloc_operand(p->operand); }
-    else if (const auto* p = std::get_if<LirCallOp>(&inst)) {
-      alloc_operand(p->result);
-      std::vector<std::string> call_values;
-      c4c::backend::collect_backend_call_value_names(*p, call_values);
-      for (const auto& value : call_values) {
-        sm.get_or_alloc(value);
-      }
-    }
-    else if (const auto* p = std::get_if<LirGepOp>(&inst)) { alloc_operand(p->result); alloc_operand(p->ptr); }
-    else if (const auto* p = std::get_if<LirPhiOp>(&inst)) { alloc_operand(p->result); }
-    else if (const auto* p = std::get_if<LirSelectOp>(&inst)) {
-      alloc_operand(p->result); alloc_operand(p->cond);
-      alloc_operand(p->true_val); alloc_operand(p->false_val);
-    }
-    else if (const auto* p = std::get_if<LirMemcpyOp>(&inst)) {
-      alloc_operand(p->dst); alloc_operand(p->src); alloc_operand(p->size);
-    }
-    else if (const auto* p = std::get_if<LirMemsetOp>(&inst)) {
-      alloc_operand(p->dst); alloc_operand(p->byte_val); alloc_operand(p->size);
-    }
-    else if (const auto* p = std::get_if<LirAbsOp>(&inst)) {
-      alloc_operand(p->result); alloc_operand(p->arg);
-    }
-    else if (const auto* p = std::get_if<LirExtractValueOp>(&inst)) {
-      alloc_operand(p->result); alloc_operand(p->agg);
-    }
-    else if (const auto* p = std::get_if<LirInsertValueOp>(&inst)) {
-      alloc_operand(p->result); alloc_operand(p->agg); alloc_operand(p->elem);
-    }
-    else if (const auto* p = std::get_if<LirStackSaveOp>(&inst)) { alloc_operand(p->result); }
-    else if (const auto* p = std::get_if<LirStackRestoreOp>(&inst)) { alloc_operand(p->saved_ptr); }
-  };
-
-  for (const auto& inst : fn.alloca_insts) alloc_all_in_inst(inst);
-  for (const auto& blk : fn.blocks)
-    for (const auto& inst : blk.insts) alloc_all_in_inst(inst);
+  for (const auto& value_name :
+       c4c::backend::stack_layout::collect_stack_layout_value_names(stack_layout_input)) {
+    sm.get_or_alloc(value_name);
+  }
 
   // Allocate data areas for allocas (separate from the pointer slot)
-  auto alloc_data_for_alloca = [&](const LirInst& inst) {
-    if (const auto* p = std::get_if<LirAllocaOp>(&inst)) {
-      int elem_size = gen_type_layout(p->type_str.str(), type_decls).size;
-      // Handle dynamic count
-      if (!p->count.empty()) {
-        // Dynamic alloca — allocate a generous default
-        elem_size = std::max(elem_size, 64);
-      }
-      sm.alloc_data(p->result.str(), std::max(elem_size, 8));
-    }
-  };
-  for (const auto& inst : fn.alloca_insts) alloc_data_for_alloca(inst);
-  for (const auto& blk : fn.blocks)
-    for (const auto& inst : blk.insts) alloc_data_for_alloca(inst);
+  for (const auto& alloca : stack_layout_input.entry_allocas) {
+    const int elem_size = gen_type_layout(alloca.type_str, type_decls).size;
+    sm.alloc_data(alloca.alloca_name, std::max(elem_size, 8));
+  }
 
   const auto parsed_signature_params =
       c4c::backend::parse_backend_function_signature_params(fn.signature_text);
@@ -4875,7 +4820,7 @@ static GenSlotMap gen_build_slots(const c4c::codegen::lir::LirFunction& fn,
 
   for (const auto& blk : fn.blocks) {
     for (const auto& inst : blk.insts) {
-      if (const auto* call = std::get_if<LirCallOp>(&inst)) {
+      if (const auto* call = std::get_if<c4c::codegen::lir::LirCallOp>(&inst)) {
         if (!call->result.empty() &&
             (gen_is_direct_gp_aggregate_type(call->return_type.str(), type_decls) ||
              gen_try_parse_hfa_type(call->return_type.str(), type_decls).has_value() ||
@@ -5336,7 +5281,9 @@ static std::optional<std::string> try_emit_general_lir_asm(
     if (fn.is_declaration) continue;
 
     // Build slot map
-    GenSlotMap sm = gen_build_slots(fn, module.type_decls);
+    const auto stack_layout_input =
+        c4c::backend::stack_layout::lower_lir_to_stack_layout_input(fn);
+    GenSlotMap sm = gen_build_slots(stack_layout_input, fn, module.type_decls);
     const auto parsed_signature_params =
         c4c::backend::parse_backend_function_signature_params(fn.signature_text);
     const bool is_variadic_function = fn.signature_text.find("...") != std::string::npos;
