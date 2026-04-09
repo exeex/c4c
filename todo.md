@@ -11,10 +11,10 @@ Source Plan: plan.md
   keep the active work inside idea 44's x86-native emitter/toolchain lane and
   do not silently absorb the separate shared-BIR select regression
 - current exact slice:
-  move from the now-green second-local rewrite two-arg helper call into the
+  move from the now-green first-local rewrite two-arg helper call into the
   next adjacent source-produced family:
-  `backend_runtime_two_arg_first_local_rewrite`, keeping the work inside idea
-  44's x86 native prepared-LIR seam and not widening into the separate parked
+  `backend_runtime_two_arg_both_local_arg`, keeping the work inside idea 44's
+  x86 native prepared-LIR seam and not widening into the separate parked
   shared-BIR select regression
 
 ## Next Slice
@@ -27,12 +27,36 @@ Source Plan: plan.md
   after the now-green `backend_runtime_two_arg_helper` and
   `backend_runtime_two_arg_local_arg` and
   `backend_runtime_two_arg_second_local_arg` and
-  `backend_runtime_two_arg_second_local_rewrite` slices, the next bounded
-  source-produced failure is `backend_runtime_two_arg_first_local_rewrite`,
-  followed by the both-local two-arg helper families
+  `backend_runtime_two_arg_second_local_rewrite` and
+  `backend_runtime_two_arg_first_local_rewrite` slices, the next bounded
+  source-produced failure is `backend_runtime_two_arg_both_local_arg`,
+  followed by `backend_runtime_two_arg_both_local_first_rewrite`
 
 ## Recently Completed
 
+- extended the bounded x86 prepared-LIR matcher/emitter in
+  `src/backend/x86/codegen/emit.cpp` so the existing first-local two-arg
+  helper seam also accepts the adjacent one-rewrite shape
+  (`int x = 5; x = x + 0; return add_pair(x, 7);`) without widening into the
+  remaining both-local variants
+- covered that native prepared-LIR seam with a focused x86 regression in
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp`
+- verified the focused x86 first-local rewrite seam is green:
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_two_arg_first_local_rewrite_call_slice`,
+  `ctest --test-dir build --output-on-failure -R '^backend_runtime_two_arg_first_local_rewrite$'`,
+  `ctest --test-dir build --output-on-failure -R '^(backend_runtime_two_arg_helper|backend_runtime_two_arg_local_arg|backend_runtime_two_arg_second_local_arg|backend_runtime_two_arg_second_local_rewrite|backend_runtime_two_arg_first_local_rewrite|backend_runtime_two_arg_both_local_arg|backend_runtime_two_arg_both_local_first_rewrite)$'`,
+  and
+  `./build/c4cll --codegen asm --target x86_64-unknown-linux-gnu tests/c/internal/backend_case/two_arg_first_local_rewrite.c`
+  now pass for the owned seam, with the adjacent lane reduced to the remaining
+  `backend_runtime_two_arg_both_local_arg` and
+  `backend_runtime_two_arg_both_local_first_rewrite` families
+- refreshed `test_fail_after.log` with
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log` and
+  re-ran the monotonic guard:
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  still reports the broader parked full-suite regression lane as red overall,
+  but the refreshed after-state improved again from `2579 -> 2580` passes and
+  `271 -> 270` failures after the first-local rewrite two-arg helper slice
 - extended the bounded x86 prepared-LIR matcher/emitter in
   `src/backend/x86/codegen/emit.cpp` so the existing second-local two-arg
   helper seam also accepts the adjacent one-rewrite shape
