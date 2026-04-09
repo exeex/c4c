@@ -248,6 +248,7 @@ set(CPP_POSITIVE_PARSE_STEMS
 list(APPEND CPP_POSITIVE_FRONTEND_STEMS
     call_expr_ref_return_lvalue_frontend
     eastl_probe_call_result_lvalue_frontend
+    operator_new_delete_array_placement_overload_frontend
 )
 
 foreach(src IN LISTS INTERNAL_CPP_GENERATED_PARSE_ONLY_TEST_SRCS)

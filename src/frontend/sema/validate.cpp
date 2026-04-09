@@ -247,6 +247,14 @@ bool is_ref_overload(const FunctionSig& a, const FunctionSig& b) {
   return has_ref_diff;
 }
 
+bool supports_cpp_overload_set(const char* name) {
+  if (!name || !name[0]) return false;
+  return std::strcmp(name, "operator_new") == 0 ||
+         std::strcmp(name, "operator_new_array") == 0 ||
+         std::strcmp(name, "operator_delete") == 0 ||
+         std::strcmp(name, "operator_delete_array") == 0;
+}
+
 bool same_tagged_type(const TypeSpec& a, const TypeSpec& b) {
   if (a.base != b.base) return false;
   if (a.base != TB_STRUCT && a.base != TB_UNION && a.base != TB_ENUM) return true;
@@ -394,6 +402,7 @@ class Validator {
   std::unordered_map<std::string, const Node*> consteval_funcs_;
   // Ref-overloaded function signatures: name → multiple overloads differing in ref-qualifier.
   std::unordered_map<std::string, std::vector<FunctionSig>> ref_overload_sigs_;
+  std::unordered_map<std::string, std::vector<FunctionSig>> cpp_overload_sigs_;
   std::unordered_set<std::string> complete_structs_;
   std::unordered_set<std::string> complete_unions_;
   // Struct field names for implicit member lookup in out-of-class method bodies.
@@ -445,6 +454,22 @@ class Validator {
     }
     diags_.push_back(Diagnostic{
         node->file, node->line, node->column > 0 ? node->column : 1, std::move(msg)});
+  }
+
+  void record_cpp_overload(const std::string& name, FunctionSig sig) {
+    auto& ovset = cpp_overload_sigs_[name];
+    if (ovset.empty()) {
+      auto it = funcs_.find(name);
+      if (it != funcs_.end()) ovset.push_back(it->second);
+    }
+    for (FunctionSig& existing : ovset) {
+      if (!function_sig_compatible(existing, sig)) continue;
+      if (existing.unspecified_params && !sig.unspecified_params) {
+        existing = std::move(sig);
+      }
+      return;
+    }
+    ovset.push_back(std::move(sig));
   }
 
   ValidateResult finish() {
@@ -690,14 +715,35 @@ class Validator {
         sig.params.push_back(pt);
         if (param->is_parameter_pack) sig.has_param_pack = true;
       }
-      auto it = funcs_.find(n->name);
-      if (it != funcs_.end()) {
+      auto cpp_ov = cpp_overload_sigs_.find(n->name);
+      if (cpp_ov != cpp_overload_sigs_.end()) {
+        bool matched = false;
+        for (FunctionSig& existing : cpp_ov->second) {
+          if (!function_sig_compatible(existing, sig)) continue;
+          matched = true;
+          if (existing.unspecified_params && !sig.unspecified_params) {
+            existing = std::move(sig);
+          }
+          break;
+        }
+        if (!matched && !n->is_explicit_specialization) {
+          if (supports_cpp_overload_set(n->name)) {
+            cpp_ov->second.push_back(std::move(sig));
+          } else {
+            emit(n, std::string("conflicting types for function '") + n->name + "'");
+          }
+        }
+      } else {
+        auto it = funcs_.find(n->name);
+        if (it != funcs_.end()) {
         if (!function_sig_compatible(it->second, sig) && !n->is_explicit_specialization) {
           // Check if this is a ref-overload (T& vs T&&) before emitting error.
           if (is_ref_overload(it->second, sig)) {
             auto& ovset = ref_overload_sigs_[n->name];
             if (ovset.empty()) ovset.push_back(it->second);
             ovset.push_back(std::move(sig));
+          } else if (supports_cpp_overload_set(n->name)) {
+            record_cpp_overload(n->name, std::move(sig));
           } else {
             emit(n, std::string("conflicting types for function '") + n->name + "'");
           }
@@ -705,8 +751,9 @@ class Validator {
           // Upgrade K&R unspecified-params declaration to the full prototype.
           it->second = std::move(sig);
         }
-      } else {
-        funcs_[n->name] = std::move(sig);
+        } else {
+          funcs_[n->name] = std::move(sig);
+        }
       }
     } else if (n->kind == NK_STRUCT_DEF) {
       note_struct_def(n);
@@ -1298,7 +1345,8 @@ class Validator {
                               out.type.ptr_level == 0 &&
                               out.type.array_rank == 0;
         // Mark function names so that &func doesn't add a spurious ptr_level.
-        out.is_fn_name = funcs_.find(n->name) != funcs_.end();
+        out.is_fn_name = funcs_.find(n->name) != funcs_.end() ||
+                         cpp_overload_sigs_.find(n->name) != cpp_overload_sigs_.end();
         return out;
       }
       case NK_ADDR: {
@@ -1475,6 +1523,35 @@ class Validator {
                 else score += 1;
               }
               if (viable && score > best_score) { best = &sig; best_score = score; }
+            }
+            if (best) {
+              out.valid = true;
+              out.type = referred_type(best->ret);
+              out.is_lvalue = best->ret.is_lvalue_ref;
+              out.is_const_lvalue = out.is_lvalue &&
+                                    out.type.is_const &&
+                                    out.type.ptr_level == 0 &&
+                                    out.type.array_rank == 0;
+            } else {
+              emit(n, "no viable overload for function call");
+          }
+          return out;
+        }
+          auto cpp_ovit = cpp_overload_sigs_.find(n->left->name);
+          if (cpp_ovit != cpp_overload_sigs_.end() && !cpp_ovit->second.empty()) {
+            const auto& overloads = cpp_ovit->second;
+            const int argc = n->n_children;
+            const FunctionSig* best = nullptr;
+            for (const auto& sig : overloads) {
+              const int required = static_cast<int>(sig.params.size());
+              const int min_required = sig.has_param_pack ? required - 1 : required;
+              if (!sig.unspecified_params &&
+                  ((!sig.variadic && !sig.has_param_pack && argc != required) ||
+                   ((sig.variadic || sig.has_param_pack) && argc < min_required))) {
+                continue;
+              }
+              best = &sig;
+              if (!sig.unspecified_params && argc == required) break;
             }
             if (best) {
               out.valid = true;
