@@ -1,6 +1,6 @@
 # Parser Disambiguation Matrix For Type-Id And Declarators
 
-Status: Open
+Status: Complete
 Last Updated: 2026-04-09
 
 ## Goal
@@ -258,6 +258,55 @@ That metadata will make it easier to:
 - identify which failures are parser-only versus later semantic regressions
 - promote a case from parse-only to runtime-positive without renaming the whole
   concept
+
+## Completion Summary
+
+This idea completed as a matrix-driven parser hardening and stronger-validation
+pass for the grouped, member-pointer, and function-shaped declarator families
+called out by the active runbook.
+
+- materialized the manifest views under
+  `ideas/open/44_parser_disambiguation_matrix_patterns*.txt`
+- generated `parse_only` coverage for eight declarator families across all five
+  owner spellings and all five tracked parse contexts
+- fixed the qualified type-head/member-function-pointer split needed to keep
+  generated `member_function_pointer` cases on the type/declarator path
+- promoted selected function-shaped families into generated
+  `compile_positive` coverage, including the dependent-owner cast-target and
+  member-function-pointer slices
+- landed the dependent cast-target sema relaxation needed for decorated
+  unresolved template-parameter placeholder names
+
+## Coverage Audit At Closure
+
+The manifest inventory remains broader than the emitted generated test tiers on
+purpose.
+
+- manifest coverage: 300 combinations
+  `12 declarator families x 5 owner spellings x 5 contexts`
+- emitted `parse_only` coverage: 200 generated files
+  `grouped_pointer`, `grouped_lvalue_ref`, `grouped_rvalue_ref`,
+  `member_pointer`, `function_pointer`, `function_lvalue_ref`,
+  `function_rvalue_ref`, and `member_function_pointer` across all owners and
+  all contexts
+- emitted `compile_positive` coverage: 76 generated files
+  all non-dependent function-shaped families across all contexts, plus the
+  dependent-owner `c_style_cast_target` function-shaped cases, plus the full
+  dependent-owner `member_function_pointer` family across all contexts
+- emitted `runtime_positive` coverage: none in this initiative
+
+## Leftover Follow-Up Space
+
+These are explicit follow-on choices, not incomplete runbook work:
+
+- promote the remaining 24 dependent-owner function-shaped non-cast contexts
+  from `parse_only` to `compile_positive` if stronger frontend coverage becomes
+  important
+- decide whether function/reference/member-pointer matrix families should gain
+  template-driven `runtime_positive` coverage
+- decide separately whether the manifest-only `pointer`, `lvalue_ref`,
+  `rvalue_ref`, and `cv_pointer` families should become generated test tiers or
+  remain audit-only inventory
 
 ## Proposed Approach
 
