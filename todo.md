@@ -10,18 +10,43 @@ Source Plan: plan.md
 - Current slice: make the remaining `StackLayoutInput` stack-layout entrypoints
   explicit about compatibility-only ownership now that the re-audit shows the
   broad overloads are test-only
-- Current implementation target: document the remaining compatibility wrappers
-  around `build_stack_layout_plan_bundle(...)`,
-  `prepare_entry_alloca_rewrite_patch(...)`,
-  `build_entry_alloca_rewrite_patch(...)`, `plan_entry_alloca_slots(...)`, and
-  `plan_param_alloca_slots(...)`, then tighten the focused parity coverage that
-  compares them against the narrowed planning/rewrite seams
-- Next intended slice: once the compatibility wrappers are visibly bounded in
-  the public API, re-audit whether the direct-LIR AArch64 emitter can consume a
-  narrower prepared stack-layout carrier than the full rehydrated
-  `StackLayoutInput`
+- Current implementation target: re-audit the remaining compatibility
+  `StackLayoutInput` overloads after the direct-LIR AArch64 emitter narrowing
+  and identify which broad stack-layout helpers can now be deleted outright
+  versus kept as test-only parity seams
+- Next intended slice: once the surviving compatibility wrappers are classified,
+  remove or further narrow the ones with no remaining non-test callers while
+  keeping focused parity coverage around any wrappers that must remain
 
 ## Completed
+
+- Completed the next Step 7 AArch64 prepared-carrier narrowing slice by moving
+  the general direct-LIR emitter off the full compatibility `StackLayoutInput`
+  and onto the prepared backend-CFG-backed carrier:
+  - added `PreparedEntryAllocaFunctionInputs::backend_cfg` plus
+    `collect_prepared_entry_alloca_value_names(...)` in
+    `src/backend/stack_layout/slot_assignment.hpp` and
+    `src/backend/stack_layout/slot_assignment.cpp` so prepared entry-alloca
+    setup now retains the backend-owned CFG facts the AArch64 emitter needs for
+    slot/value-name collection without rehydrating the broader compatibility
+    stack-layout view
+  - updated `src/backend/aarch64/codegen/emit.cpp` so the general direct-LIR
+    AArch64 emitter now consumes
+    `prepare_module_function_entry_alloca_preparation(...)`,
+    `rewrite_metadata.entry_allocas`, and `stack_layout_metadata` directly for
+    return gating, slot-map construction, variadic-save setup, and parameter
+    alloca materialization instead of routing through
+    `prepare_module_function_entry_alloca_compat_inputs(...)`
+  - added focused coverage in `tests/backend/backend_shared_util_tests.cpp`
+    proving the prepared carrier exposes the same emitter-facing value-name set
+    as the compatibility `StackLayoutInput` for both lowerable and fallback
+    functions
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`
+  - rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with the repo's allowed non-decreasing rule and no new
+    failures (`2809 -> 2809`, same 32 known failing tests as
+    `test_fail_before.log`)
 
 - Completed the next Step 7 compatibility-wrapper audit/documentation slice by
   confirming the remaining broad stack-layout entrypoints are now test-only and

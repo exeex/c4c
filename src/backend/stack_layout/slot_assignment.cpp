@@ -374,6 +374,66 @@ EntryAllocaPlanningInput lower_stack_layout_input_to_entry_alloca_planning_input
   return lowered;
 }
 
+std::vector<std::string> collect_prepared_entry_alloca_value_names_impl(
+    const PreparedEntryAllocaFunctionInputs& prepared_inputs) {
+  std::vector<std::string> values;
+
+  auto add_name = [&](std::string_view value_name) {
+    if (!is_value_name(value_name)) {
+      return;
+    }
+    if (std::find(values.begin(), values.end(), value_name) == values.end()) {
+      values.push_back(std::string(value_name));
+    }
+  };
+
+  for (const auto& alloca : prepared_inputs.rewrite_metadata.entry_allocas) {
+    add_name(alloca.alloca_name);
+    if (alloca.paired_store_value.has_value()) {
+      add_name(*alloca.paired_store_value);
+    }
+  }
+
+  if (!prepared_inputs.backend_cfg.has_value()) {
+    return values;
+  }
+
+  auto add_point_names = [&](const auto& point) {
+    for (const auto& value_name : point.used_names) {
+      add_name(value_name);
+    }
+    for (const auto& access : point.pointer_accesses) {
+      add_name(access.value_name);
+    }
+    for (const auto& value_name : point.escaped_names) {
+      add_name(value_name);
+    }
+    if (point.derived_pointer_root.has_value()) {
+      add_name(point.derived_pointer_root->first);
+      add_name(point.derived_pointer_root->second);
+    }
+  };
+
+  for (const auto& point : prepared_inputs.backend_cfg->entry_insts) {
+    add_point_names(point);
+  }
+
+  for (const auto& block : prepared_inputs.backend_cfg->blocks) {
+    for (const auto& point : block.insts) {
+      add_point_names(point);
+    }
+    for (const auto& value_name : block.terminator_used_names) {
+      add_name(value_name);
+    }
+  }
+
+  for (const auto& incoming : prepared_inputs.backend_cfg->phi_incoming_uses) {
+    add_name(incoming.value_name);
+  }
+
+  return values;
+}
+
 StackLayoutAnalysis analyze_entry_alloca_rewrite_input(
     const EntryAllocaRewriteInput& input,
     const RegAllocIntegrationResult& regalloc,
@@ -662,6 +722,11 @@ StackLayoutPlanBundle build_stack_layout_plan_bundle(
   return bundle;
 }
 
+std::vector<std::string> collect_prepared_entry_alloca_value_names(
+    const PreparedEntryAllocaFunctionInputs& prepared_inputs) {
+  return collect_prepared_entry_alloca_value_names_impl(prepared_inputs);
+}
+
 StackLayoutPlanBundle build_stack_layout_plan_bundle(
     const StackLayoutInput& input,
     const RegAllocIntegrationResult& regalloc,
@@ -830,6 +895,7 @@ PreparedEntryAllocaFunctionInputs prepare_module_function_entry_alloca_preparati
           try_lower_module_function_to_bir_liveness_input(module, function_index);
       bir_liveness.has_value()) {
     const auto backend_cfg = lower_lir_to_backend_cfg(function);
+    inputs.backend_cfg = backend_cfg;
     auto stack_layout_input =
         lower_function_entry_alloca_stack_layout_input(function, backend_cfg);
     inputs.rewrite_metadata.entry_allocas = stack_layout_input.entry_allocas;
@@ -849,6 +915,7 @@ PreparedEntryAllocaFunctionInputs prepare_module_function_entry_alloca_preparati
   }
 
   const auto backend_cfg = lower_lir_to_backend_cfg(function);
+  inputs.backend_cfg = backend_cfg;
   inputs.stack_layout_metadata.signature_params.reserve(backend_cfg.signature_params.size());
   for (const auto& param : backend_cfg.signature_params) {
     inputs.stack_layout_metadata.signature_params.push_back(

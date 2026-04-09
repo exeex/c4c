@@ -94,6 +94,7 @@ struct PreparedEntryAllocaFunctionInputs {
   PreparedEntryAllocaStackLayoutMetadata stack_layout_metadata;
   PreparedEntryAllocaRewriteMetadata rewrite_metadata;
   EntryAllocaPlanningInput planning_input;
+  std::optional<BackendCfgFunction> backend_cfg;
   std::optional<BackendCfgLivenessFunction> backend_cfg_liveness;
   std::optional<LivenessInput> liveness_input;
   EntryAllocaRewriteLivenessSource liveness_source =
@@ -198,6 +199,9 @@ lower_prepared_entry_alloca_rewrite_only_inputs(
 prepare_module_function_entry_alloca_rewrite_only_inputs(
     const c4c::codegen::lir::LirModule& module,
     std::size_t function_index);
+
+std::vector<std::string> collect_prepared_entry_alloca_value_names(
+    const PreparedEntryAllocaFunctionInputs& prepared_inputs);
 
 [[nodiscard]] c4c::codegen::lir::LirModule rewrite_module_entry_allocas(
     const c4c::codegen::lir::LirModule& module,

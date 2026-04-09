@@ -4791,6 +4791,52 @@ static GenSlotMap gen_build_slots(
   return sm;
 }
 
+static GenSlotMap gen_build_slots(
+    const c4c::backend::stack_layout::PreparedEntryAllocaFunctionInputs& prepared_inputs,
+    const std::vector<std::string>& type_decls) {
+  GenSlotMap sm;
+  for (const auto& value_name :
+       c4c::backend::stack_layout::collect_prepared_entry_alloca_value_names(prepared_inputs)) {
+    sm.get_or_alloc(value_name);
+  }
+
+  for (const auto& alloca : prepared_inputs.rewrite_metadata.entry_allocas) {
+    const int elem_size = gen_type_layout(alloca.type_str, type_decls).size;
+    sm.alloc_data(alloca.alloca_name, std::max(elem_size, 8));
+  }
+
+  for (const auto& param : prepared_inputs.stack_layout_metadata.signature_params) {
+    if (param.is_varargs || param.operand.empty() || param.operand[0] != '%') continue;
+    if (!gen_is_direct_gp_aggregate_type(param.type, type_decls) &&
+        !gen_try_parse_hfa_type(param.type, type_decls).has_value()) {
+      continue;
+    }
+    sm.alloc_data(param.operand, gen_type_layout(param.type, type_decls).size);
+  }
+
+  for (const auto& call_result : prepared_inputs.stack_layout_metadata.call_results) {
+    if (gen_is_direct_gp_aggregate_type(call_result.type_str, type_decls) ||
+        gen_try_parse_hfa_type(call_result.type_str, type_decls).has_value() ||
+        gen_type_is_sret_aggregate_type(call_result.type_str, type_decls)) {
+      sm.alloc_data(call_result.value_name,
+                    gen_type_layout(call_result.type_str, type_decls).size);
+    }
+  }
+
+  if (prepared_inputs.stack_layout_metadata.is_variadic) {
+    sm.reserve_variadic_save_area();
+  }
+
+  if (prepared_inputs.stack_layout_metadata.return_type.has_value() &&
+      gen_type_is_sret_aggregate_type(*prepared_inputs.stack_layout_metadata.return_type,
+                                      type_decls)) {
+    sm.get_or_alloc("%ret.sret");
+  }
+
+  sm.finalize();
+  return sm;
+}
+
 static const c4c::backend::stack_layout::StackLayoutSignatureParam* find_signature_param(
     const std::vector<c4c::backend::stack_layout::StackLayoutSignatureParam>& signature_params,
     std::string_view operand) {
@@ -5119,10 +5165,9 @@ static std::optional<std::string> try_emit_general_lir_asm(
     const auto& fn = module.functions[function_index];
     if (fn.is_declaration) continue;
     const auto prepared_inputs =
-        c4c::backend::stack_layout::prepare_module_function_entry_alloca_compat_inputs(
+        c4c::backend::stack_layout::prepare_module_function_entry_alloca_preparation(
             module, function_index);
-    const auto& stack_layout_input = prepared_inputs.stack_layout_input;
-    const auto& return_ty = stack_layout_input.return_type;
+    const auto& return_ty = prepared_inputs.stack_layout_metadata.return_type;
     if (!return_ty.has_value()) return std::nullopt;
     const auto return_layout = gen_type_layout(*return_ty, module.type_decls);
     if (return_layout.size > 8 && !return_ty->empty() &&
@@ -5246,12 +5291,12 @@ static std::optional<std::string> try_emit_general_lir_asm(
 
     // Build slot map
     const auto prepared_inputs =
-        c4c::backend::stack_layout::prepare_module_function_entry_alloca_compat_inputs(
+        c4c::backend::stack_layout::prepare_module_function_entry_alloca_preparation(
             module, function_index);
-    const auto& stack_layout_input = prepared_inputs.stack_layout_input;
-    GenSlotMap sm = gen_build_slots(stack_layout_input, module.type_decls);
-    const auto& parsed_signature_params = stack_layout_input.signature_params;
-    const bool is_variadic_function = stack_layout_input.is_variadic;
+    GenSlotMap sm = gen_build_slots(prepared_inputs, module.type_decls);
+    const auto& entry_allocas = prepared_inputs.rewrite_metadata.entry_allocas;
+    const auto& parsed_signature_params = prepared_inputs.stack_layout_metadata.signature_params;
+    const bool is_variadic_function = prepared_inputs.stack_layout_metadata.is_variadic;
     int named_gp_count = 0;
     int named_fp_count = 0;
     for (const auto& param : parsed_signature_params) {
@@ -5292,8 +5337,8 @@ static std::optional<std::string> try_emit_general_lir_asm(
     gen_emit_sp_adjust(out, "sub", sm.frame_size);
     out << "  str x30, [sp, #0]\n";  // save lr
 
-    if (stack_layout_input.return_type.has_value() &&
-        gen_type_is_sret_aggregate_type(*stack_layout_input.return_type,
+    if (prepared_inputs.stack_layout_metadata.return_type.has_value() &&
+        gen_type_is_sret_aggregate_type(*prepared_inputs.stack_layout_metadata.return_type,
                                         module.type_decls)) {
       const int sret_off = sm.lookup("%ret.sret");
       if (sret_off >= 0) {
@@ -5383,8 +5428,8 @@ static std::optional<std::string> try_emit_general_lir_asm(
       }
     }
 
-    // Initialize alloca pointer slots from the lowered stack-layout surface.
-    for (const auto& alloca : stack_layout_input.entry_allocas) {
+    // Initialize alloca pointer slots from the prepared entry-alloca metadata.
+    for (const auto& alloca : entry_allocas) {
       int ptr_off = sm.lookup(alloca.alloca_name);
       int data_off = sm.lookup_data(alloca.alloca_name);
       if (ptr_off >= 0 && data_off >= 0) {
@@ -5401,7 +5446,7 @@ static std::optional<std::string> try_emit_general_lir_asm(
     // Lowered parameter allocas (e.g. %lv.param.x) must be initialized after the
     // alloca address slots have been materialized.
     {
-      for (const auto& alloca : stack_layout_input.entry_allocas) {
+      for (const auto& alloca : entry_allocas) {
         if (!alloca.paired_store_value.has_value()) continue;
         const std::string& param_name = *alloca.paired_store_value;
         if (param_name.compare(0, 3, "%p.") != 0) continue;
