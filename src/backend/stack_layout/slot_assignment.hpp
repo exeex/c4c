@@ -62,6 +62,25 @@ struct PreparedEntryAllocaRewriteMetadata {
   std::vector<EntryAllocaInput> entry_allocas;
 };
 
+struct EntryAllocaPairedStorePlanInfo {
+  bool has_store = false;
+  bool is_zero_initializer = false;
+  std::optional<std::string> param_name;
+};
+
+struct EntryAllocaPlanInput {
+  std::string alloca_name;
+  std::string type_str;
+  int align = 0;
+  EntryAllocaPairedStorePlanInfo paired_store;
+};
+
+struct EntryAllocaPlanningInput {
+  std::vector<EntryAllocaPlanInput> entry_allocas;
+  std::optional<std::vector<std::string>> escaped_entry_allocas;
+  std::optional<std::vector<EntryAllocaUseBlocks>> entry_alloca_use_blocks;
+};
+
 struct EntryAllocaRewriteInput {
   std::vector<EntryAllocaInput> entry_allocas;
   std::optional<std::vector<std::string>> escaped_entry_allocas;
@@ -156,6 +175,10 @@ std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(
 
 std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(
     const EntryAllocaRewriteInput& input,
+    const StackLayoutAnalysis& analysis);
+
+std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(
+    const EntryAllocaPlanningInput& input,
     const StackLayoutAnalysis& analysis);
 
 std::vector<ParamAllocaSlotPlan> plan_param_alloca_slots(

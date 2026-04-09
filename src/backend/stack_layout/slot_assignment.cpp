@@ -37,6 +37,10 @@ bool is_zero_initializer_store(const EntryAllocaInput& alloca) {
   return alloca.paired_store_value.has_value() && *alloca.paired_store_value == "zeroinitializer";
 }
 
+bool is_zero_initializer_store(const EntryAllocaPlanInput& alloca) {
+  return alloca.paired_store.has_store && alloca.paired_store.is_zero_initializer;
+}
+
 bool is_scalar_alloca_type(std::string_view type_str) {
   return !type_str.empty() && type_str.front() != '[' && type_str.front() != '{' &&
          type_str.front() != '%';
@@ -56,6 +60,31 @@ EntryAllocaRewriteInput make_entry_alloca_rewrite_input_from_classification(
   input.entry_alloca_use_blocks = classification.entry_alloca_use_blocks;
   input.entry_alloca_first_accesses = classification.entry_alloca_first_accesses;
   return input;
+}
+
+EntryAllocaPlanInput lower_entry_alloca_input_to_plan_input(const EntryAllocaInput& alloca) {
+  EntryAllocaPlanInput lowered;
+  lowered.alloca_name = alloca.alloca_name;
+  lowered.type_str = alloca.type_str;
+  lowered.align = alloca.align;
+  lowered.paired_store.has_store = alloca.paired_store_value.has_value();
+  lowered.paired_store.is_zero_initializer = is_zero_initializer_store(alloca);
+  if (alloca.paired_store_value.has_value() && is_param_name(*alloca.paired_store_value)) {
+    lowered.paired_store.param_name = *alloca.paired_store_value;
+  }
+  return lowered;
+}
+
+EntryAllocaPlanningInput lower_entry_alloca_rewrite_input_to_planning_input(
+    const EntryAllocaRewriteInput& input) {
+  EntryAllocaPlanningInput lowered;
+  lowered.entry_allocas.reserve(input.entry_allocas.size());
+  for (const auto& alloca : input.entry_allocas) {
+    lowered.entry_allocas.push_back(lower_entry_alloca_input_to_plan_input(alloca));
+  }
+  lowered.escaped_entry_allocas = input.escaped_entry_allocas;
+  lowered.entry_alloca_use_blocks = input.entry_alloca_use_blocks;
+  return lowered;
 }
 
 std::optional<std::vector<std::string>> collect_prepared_escaped_entry_allocas(
@@ -697,9 +726,20 @@ std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(
 std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(
     const EntryAllocaRewriteInput& input,
     const StackLayoutAnalysis& analysis) {
+  return plan_entry_alloca_slots(
+      lower_entry_alloca_rewrite_input_to_planning_input(input), analysis);
+}
+
+std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(
+    const EntryAllocaPlanningInput& input,
+    const StackLayoutAnalysis& analysis) {
   std::vector<EntryAllocaSlotPlan> plans;
   StackLayoutInput coalescing_input;
-  coalescing_input.entry_allocas = input.entry_allocas;
+  coalescing_input.entry_allocas.reserve(input.entry_allocas.size());
+  for (const auto& alloca : input.entry_allocas) {
+    coalescing_input.entry_allocas.push_back(
+        EntryAllocaInput{alloca.alloca_name, alloca.type_str, alloca.align, std::nullopt});
+  }
   coalescing_input.escaped_entry_allocas = input.escaped_entry_allocas;
   coalescing_input.entry_alloca_use_blocks = input.entry_alloca_use_blocks;
   const auto coalescable_allocas = compute_coalescable_allocas(coalescing_input, analysis);
@@ -711,10 +751,10 @@ std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(
     plan.alloca_name = alloca.alloca_name;
     plan.needs_stack_slot = true;
 
-    const bool has_paired_store = alloca.paired_store_value.has_value();
+    const bool has_paired_store = alloca.paired_store.has_store;
 
     if (is_param_alloca_name(alloca.alloca_name)) {
-      if (has_paired_store && is_param_name(*alloca.paired_store_value) &&
+      if (alloca.paired_store.param_name.has_value() &&
           analysis.is_dead_param_alloca(alloca.alloca_name)) {
         plan.needs_stack_slot = false;
         plan.remove_following_entry_store = true;

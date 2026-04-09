@@ -1663,6 +1663,65 @@ void test_backend_shared_slot_assignment_plans_entry_alloca_slots() {
               "shared slot-assignment planning should leave call-escaped local allocas out of the single-block reuse pool");
 }
 
+void test_backend_shared_slot_assignment_accepts_narrowed_planning_input() {
+  const c4c::backend::RegAllocIntegrationResult regalloc;
+
+  c4c::backend::stack_layout::EntryAllocaPlanningInput scalar_input;
+  scalar_input.entry_allocas.push_back(c4c::backend::stack_layout::EntryAllocaPlanInput{
+      "%lv.x",
+      "i32",
+      4,
+      c4c::backend::stack_layout::EntryAllocaPairedStorePlanInfo{
+          true, true, std::nullopt},
+  });
+  scalar_input.entry_alloca_use_blocks =
+      std::vector<c4c::backend::stack_layout::EntryAllocaUseBlocks>{
+          c4c::backend::stack_layout::EntryAllocaUseBlocks{"%lv.x", {0}}};
+  const auto scalar_analysis = c4c::backend::stack_layout::analyze_stack_layout(
+      c4c::backend::stack_layout::lower_lir_to_stack_layout_input(
+          make_overwrite_first_scalar_local_alloca_candidate_module().functions.front()),
+      regalloc,
+      {});
+  const auto scalar_plans =
+      c4c::backend::stack_layout::plan_entry_alloca_slots(scalar_input, scalar_analysis);
+
+  expect_true(scalar_plans.size() == 1 &&
+                  scalar_plans.front().alloca_name == "%lv.x" &&
+                  scalar_plans.front().needs_stack_slot &&
+                  scalar_plans.front().remove_following_entry_store,
+              "shared slot-assignment planning should accept the narrowed planning surface when zero-init classification is preserved without the literal paired-store operand");
+
+  c4c::backend::RegAllocConfig config;
+  config.available_regs = {{20}};
+  config.caller_saved_regs = {{13}};
+  const auto dead_param_function = make_dead_param_alloca_candidate_module().functions.back();
+  const auto dead_param_liveness_input =
+      lower_test_backend_cfg_liveness_input(dead_param_function);
+  const auto dead_regalloc =
+      c4c::backend::run_regalloc_and_merge_clobbers(dead_param_liveness_input, config, {});
+  const auto dead_param_analysis = c4c::backend::stack_layout::analyze_stack_layout(
+      c4c::backend::stack_layout::lower_lir_to_stack_layout_input(dead_param_function),
+      dead_regalloc,
+      {{20}, {21}, {22}});
+
+  c4c::backend::stack_layout::EntryAllocaPlanningInput dead_param_input;
+  dead_param_input.entry_allocas.push_back(c4c::backend::stack_layout::EntryAllocaPlanInput{
+      "%lv.param.x",
+      "i32",
+      4,
+      c4c::backend::stack_layout::EntryAllocaPairedStorePlanInfo{
+          true, false, std::string("%p.x")},
+  });
+  const auto dead_param_plans =
+      c4c::backend::stack_layout::plan_entry_alloca_slots(dead_param_input, dead_param_analysis);
+
+  expect_true(dead_param_plans.size() == 1 &&
+                  dead_param_plans.front().alloca_name == "%lv.param.x" &&
+                  !dead_param_plans.front().needs_stack_slot &&
+                  dead_param_plans.front().remove_following_entry_store,
+              "shared slot-assignment planning should classify dead param allocas from the narrowed planning surface using param metadata instead of the full paired-store value");
+}
+
 void test_backend_shared_slot_assignment_accepts_backend_owned_input() {
   const c4c::backend::RegAllocIntegrationResult regalloc;
 
@@ -2883,6 +2942,7 @@ int main(int argc, char* argv[]) {
   test_backend_shared_slot_assignment_plans_param_alloca_slots();
   test_backend_shared_slot_assignment_param_alloca_pruning_matches_backend_owned_entry_patch();
   test_backend_shared_slot_assignment_plans_entry_alloca_slots();
+  test_backend_shared_slot_assignment_accepts_narrowed_planning_input();
   test_backend_shared_slot_assignment_accepts_backend_owned_input();
   test_backend_shared_slot_assignment_bundle_accepts_backend_owned_input();
   test_backend_shared_slot_assignment_bundle_prepares_from_backend_owned_inputs();

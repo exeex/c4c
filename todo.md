@@ -7,19 +7,43 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: audit whether `EntryAllocaInput` itself can narrow further now
-  that entry-alloca rewrite production no longer depends on the full
-  `StackLayoutInput` contract
-- Current implementation target: verify whether planning and patch synthesis can
-  split the remaining `EntryAllocaInput` fields, or record that the current
-  `alloca_name` / `type_str` / `align` / `paired_store_value` payload is still
-  the irreducible rewrite-owned seam
-- Next intended slice: if the remaining `EntryAllocaInput` payload cannot
-  narrow further without splitting planner versus patch ownership, record that
-  invariant explicitly and continue the Step 6 public-surface narrowing toward
-  regalloc / stack-layout callers
+- Current slice: continue Step 6 public-surface narrowing by checking whether
+  `build_stack_layout_plan_bundle(...)` and nearby planning callers can accept
+  a dedicated planning-only entry-alloca contract instead of the broader
+  rewrite-owned shape
+- Current implementation target: identify the narrowest next caller-facing seam
+  after `plan_entry_alloca_slots(...)` was split onto
+  `EntryAllocaPlanningInput`, without forcing patch synthesis to give up the
+  literal paired-store payload it still needs to rebuild LIR entry stores
+- Next intended slice: audit whether stack-layout bundle prep and/or
+  param-alloca planning can lower directly onto the new planning contract so
+  Step 6 keeps separating planning surfaces from rewrite surfaces
 
 ## Completed
+
+- Completed the next Step 6 `EntryAllocaInput` payload narrowing slice by
+  splitting slot-planning metadata away from the rewrite-owned literal
+  paired-store payload:
+  - added `EntryAllocaPairedStorePlanInfo`, `EntryAllocaPlanInput`, and
+    `EntryAllocaPlanningInput` in
+    `src/backend/stack_layout/slot_assignment.hpp` so entry-alloca slot
+    planning now consumes only alloca identity/type/alignment plus paired-store
+    classification (`has_store`, `is_zero_initializer`, optional param name)
+    and the coarse escape/use-block seams needed for coalescing
+  - updated `src/backend/stack_layout/slot_assignment.cpp` so
+    `plan_entry_alloca_slots(...)` lowers the rewrite-owned
+    `EntryAllocaRewriteInput` into the new planning-only contract before
+    assigning slots, leaving `build_entry_alloca_rewrite_patch(...)` as the
+    sole owner of the literal `paired_store_value` needed to re-emit entry
+    stores
+  - recorded the new invariant that `alloca_name` / `type_str` / `align` plus
+    paired-store classification are sufficient for planning, while only patch
+    synthesis still requires the full literal paired-store operand
+  - updated `tests/backend/backend_shared_util_tests.cpp` with focused coverage
+    proving the narrowed planning surface still handles zero-init overwrite
+    pruning and dead param-alloca pruning without a full rewrite record
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`
 
 - Completed the next Step 6 prepared rewrite-contract narrowing slice by
   introducing a dedicated rewrite-owned `EntryAllocaRewriteInput` and retargeting
