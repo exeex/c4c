@@ -7,15 +7,17 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 2: review typedef, alias, and qualified cast targets
-- Current slice: start the alias-owned reference-cast audit with the narrowest
-  runtime reductions for `using`/`typedef`-spelled `&` and `&&` cast targets
+- Current slice: move from unqualified alias-owned reference casts to qualified
+  alias and dependent target spellings, starting with the narrowest runtime or
+  parse reduction that exercises `::` or member-owned alias names in a
+  reference-qualified C-style cast target
 - Current implementation target: `tests/cpp` alias-owned cast regressions plus
   the earliest failing parser, sema, HIR, or lowering surface the first
   typedef/alias-owned reference-cast case exposes
-- Next intended slice: add focused `using AliasL = int&;` and
-  `using AliasR = int&&;` cast reductions, compare against Clang for
-  value-category behavior, and stop at the earliest failing stage if they do
-  not already pass
+- Next intended slice: add a focused qualified-alias cast regression such as a
+  namespace- or member-owned `using AliasL = int&;` / `typedef int&& AliasR;`
+  target, then classify any break as parser versus sema/HIR before widening to
+  dependent `typename` forms
 
 ## Completed
 
@@ -87,6 +89,15 @@ Source Plan: plan.md
   during casted base-reference field access.
 - Full-suite validation stayed monotonic: `test_fail_before.log` 2847/2847
   passed, `test_fail_after.log` 2848/2848 passed, with zero new failures.
+- Added `tests/cpp/internal/postive_case/c_style_cast_typedef_ref_alias_basic.cpp`
+  to cover `using`/`typedef`-spelled `int&` and `int&&` cast targets,
+  assignment through the aliased references, and overload selection on the
+  cast expressions themselves.
+- Confirmed the alias-owned reference-cast runtime slice already matches Clang:
+  the targeted regression passed without compiler changes, including lvalue and
+  rvalue-reference overload selection through `(AliasL)x` and `(AliasR)x`.
+- Full-suite validation stayed monotonic: `test_fail_before.log` 2848/2848
+  passed, `test_fail_after.log` 2849/2849 passed, with zero new failures.
 
 ## Notes
 
