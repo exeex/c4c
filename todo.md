@@ -7,31 +7,58 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 5 full-suite monotonic validation and next-slice selection after the
-  bounded `00183.c` x86-native seam landed:
-  the real source-backed counted `printf` ternary loop is now green, while the
-  broad-suite comparison against `test_fail_before.log` remains a parked
-  non-monotonic lane that should not be silently treated as Step 5 complete
+  bounded adjacent x86 stdio source-route seams landed:
+  the real source-backed `00180.c`, `00183.c`, and `00184.c` native routes are
+  now green, while the broad-suite comparison against `test_fail_before.log`
+  remains a parked non-monotonic lane that should not be silently treated as
+  Step 5 complete
 - current exact slice:
-  preserve the refreshed `test_fail_after.log`, record the `00183.c` source
-  route/runtime recovery plus the remaining adjacent `00180.c` / `00184.c`
-  stdio-backed red seams, and keep the broader stale-baseline regression
-  explicitly parked instead of claiming the full-suite guard is green
+  refresh `test_fail_after.log` after the bounded `00180.c` / `00184.c`
+  source-route recovery, rerun the monotonic guard against
+  `test_fail_before.log`, and keep the broader stale-baseline regression
+  explicitly parked unless the full-suite comparison is actually green
 
 ## Next Slice
 
-- reassess the adjacent x86-native stdio-backed source routes
-  `00180.c` and `00184.c`; they remain red in the current tree even though the
-  synthetic/native tests that motivated earlier slices are green, so the next
-  bounded seam likely needs to model the real frontend-prepared declaration
-  surface instead of the smaller hand-built fixtures
+- if the refreshed broad-suite guard is still red, classify the highest-value
+  remaining x86-native source-backed seam from the updated after-log instead of
+  widening idea 44 ad hoc
 - keep the separate shared-BIR select regression parked in
   `ideas/open/47_shared_bir_select_route_regression_after_x86_variadic_recovery.md`
   instead of widening idea 44
-- refresh the full-suite `test_fail_after.log` and rerun the monotonic guard
-  after the bounded x86 seam is green
+- preserve the refreshed `test_fail_after.log` plus the monotonic-guard result
+  before choosing the next bounded seam
 
 ## Recently Completed
 
+- recovered the adjacent real source-backed `00180.c` and `00184.c` x86-native
+  seams in `src/backend/x86/codegen/emit.cpp` by adding bounded prepared-LIR
+  matchers/emitters for the local-buffer `strcpy` + pointer-offset `printf`
+  shape and the repeated `sizeof`-immediate `printf` pair while tolerating the
+  frontend-prepared libc declaration/global noise that the smaller hand-built
+  fixtures did not model
+- covered those noisy source-like seams in
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` so the x86 native path
+  now pins the real declaration-surface tolerance instead of only the smaller
+  synthetic modules
+- verified the bounded `00180.c` / `00184.c` recovery end-to-end:
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_source_like_local_buffer_string_copy_printf_on_native_path`,
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_source_like_repeated_printf_immediates_on_native_path`,
+  and
+  `ctest --test-dir build --output-on-failure -R '^(backend_codegen_route_x86_64_c_testsuite_00180_local_buffer_copy_printf_retries_after_direct_bir_rejection|backend_codegen_route_x86_64_c_testsuite_00184_repeated_printf_immediates_retries_after_direct_bir_rejection|c_testsuite_x86_backend_src_00180_c|c_testsuite_x86_backend_src_00184_c)$'`
+  now pass for the owned seams
+- refreshed `test_fail_after.log` with
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log` and
+  re-ran the monotonic guard:
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  which still fails against the stale broad-suite baseline
+  (`2670/179/2849` before vs `2590/260/2850` after), but the refreshed
+  after-state improved again from the prior recorded `2586 -> 2590` passes and
+  `264 -> 260` failures after the `00180.c` / `00184.c` source-backed slice
+- rechecked the aggregate `backend_bir_tests` ctest target after the refresh
+  and confirmed its failures stay in the already-parked wider select/BIR lane
+  rather than the bounded x86 stdio source-route ownership that this slice
+  touched
 - recovered the real source-backed `00183.c` x86-native seam in
   `src/backend/x86/codegen/emit.cpp` by adding a bounded prepared-LIR matcher
   and emitter for the counted `printf` ternary loop while tolerating the
