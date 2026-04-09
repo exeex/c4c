@@ -7,13 +7,15 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 5: pull phi and CFG normalization behind the BIR boundary
-- Current slice: move the remaining branch-only `goto` constant-return CFG seam
-  behind `try_lower_to_bir(...)` so x86/AArch64 stop depending on target-local
-  direct-LIR handling for that shape
-- Next intended slice: re-audit `src/backend/aarch64/codegen/emit.cpp`'s broad
-  `try_emit_general_lir_asm(...)` surface now that the branch-only constant
-  return shape is shared-BIR owned, then choose the next smallest CFG-specific
-  seam to prune or normalize behind BIR
+- Current slice: continue the `src/backend/aarch64/codegen/emit.cpp` route
+  audit after pruning the double-indirect local-pointer conditional-return
+  fallback and choose the next smallest CFG-specific seam that still bypasses
+  canonical BIR ownership
+- Next intended slice: inspect the remaining `try_emit_general_lir_asm(...)`
+  multi-block branch/switch surface in `src/backend/aarch64/codegen/emit.cpp`
+  and pick the smallest production-only CFG helper that can be rejected or
+  normalized behind `try_lower_to_bir(...)` without expanding into MIR-owned
+  liveness/regalloc work
 
 ## Completed
 
@@ -35,6 +37,19 @@ Source Plan: plan.md
   - re-ran `backend_bir_tests`, rebuilt the tree, refreshed
     `test_fail_after.log`, and passed the regression guard with no new failures
     and no pass-count drop (`2809 -> 2809`)
+- Closed the matching AArch64 Step 5 direct-LIR parity gap for the remaining
+  double-indirect local-pointer conditional-return CFG fallback:
+  - added focused AArch64 coverage in
+    `tests/backend/backend_bir_pipeline_aarch64_tests.cpp` proving the
+    double-indirect local-pointer conditional-return fixture still misses
+    `try_lower_to_bir(...)` and must now fail explicitly instead of reviving
+    target-local multi-block CFG handling
+  - taught `src/backend/aarch64/codegen/emit.cpp` to reject that narrow
+    fallback shape before `try_emit_general_lir_asm(...)` can emit it, keeping
+    ownership behind the shared BIR boundary after the route misses lowering
+  - rebuilt `backend_bir_tests`, re-ran it, refreshed `test_fail_after.log`,
+    and passed the regression guard with no new failures and no pass-count
+    drop (`2809 -> 2809`)
 - Closed the next Step 5 AArch64 target-entrypoint CFG asymmetry without
   regressing the broader direct-LIR surface:
   - restricted `src/backend/aarch64/codegen/emit.cpp`'s

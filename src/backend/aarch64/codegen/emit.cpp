@@ -1411,6 +1411,95 @@ std::optional<std::int64_t> try_constant_fold_single_block(
   return std::nullopt;  // Step limit exceeded
 }
 
+bool is_double_indirect_local_pointer_conditional_return_fallback(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || !module.globals.empty() ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return false;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      !c4c::backend::backend_lir_is_zero_arg_i32_definition(function.signature_text) ||
+      function.entry.value != 0 || function.alloca_insts.size() != 3 ||
+      function.blocks.size() != 8) {
+    return false;
+  }
+
+  const auto alloca0 = std::get_if<LirAllocaOp>(&function.alloca_insts[0]);
+  const auto alloca1 = std::get_if<LirAllocaOp>(&function.alloca_insts[1]);
+  const auto alloca2 = std::get_if<LirAllocaOp>(&function.alloca_insts[2]);
+  if (alloca0 == nullptr || alloca1 == nullptr || alloca2 == nullptr ||
+      alloca0->type_str != "i32" || alloca1->type_str != "ptr" ||
+      alloca2->type_str != "ptr") {
+    return false;
+  }
+
+  const auto& entry = function.blocks[0];
+  const auto* entry_condbr = std::get_if<LirCondBr>(&entry.terminator);
+  if (entry.label != "entry" || entry.insts.size() != 6 || entry_condbr == nullptr) {
+    return false;
+  }
+  if (std::get_if<LirStoreOp>(&entry.insts[0]) == nullptr ||
+      std::get_if<LirStoreOp>(&entry.insts[1]) == nullptr ||
+      std::get_if<LirStoreOp>(&entry.insts[2]) == nullptr ||
+      std::get_if<LirLoadOp>(&entry.insts[3]) == nullptr ||
+      std::get_if<LirLoadOp>(&entry.insts[4]) == nullptr ||
+      std::get_if<LirCmpOp>(&entry.insts[5]) == nullptr) {
+    return false;
+  }
+
+  const auto& block1 = function.blocks[1];
+  if (!block1.insts.empty() || std::get_if<LirRet>(&block1.terminator) == nullptr) {
+    return false;
+  }
+
+  const auto& block2 = function.blocks[2];
+  const auto* block2_condbr = std::get_if<LirCondBr>(&block2.terminator);
+  if (block2.insts.size() != 4 || block2_condbr == nullptr) {
+    return false;
+  }
+  if (std::get_if<LirLoadOp>(&block2.insts[0]) == nullptr ||
+      std::get_if<LirLoadOp>(&block2.insts[1]) == nullptr ||
+      std::get_if<LirLoadOp>(&block2.insts[2]) == nullptr ||
+      std::get_if<LirCmpOp>(&block2.insts[3]) == nullptr) {
+    return false;
+  }
+
+  const auto& block3 = function.blocks[3];
+  if (!block3.insts.empty() || std::get_if<LirRet>(&block3.terminator) == nullptr) {
+    return false;
+  }
+
+  const auto& block4 = function.blocks[4];
+  const auto* block4_br = std::get_if<LirBr>(&block4.terminator);
+  if (block4.insts.size() != 3 || block4_br == nullptr) {
+    return false;
+  }
+  if (std::get_if<LirLoadOp>(&block4.insts[0]) == nullptr ||
+      std::get_if<LirLoadOp>(&block4.insts[1]) == nullptr ||
+      std::get_if<LirStoreOp>(&block4.insts[2]) == nullptr) {
+    return false;
+  }
+
+  const auto& block5 = function.blocks[5];
+  const auto* block5_condbr = std::get_if<LirCondBr>(&block5.terminator);
+  if (block5.insts.size() != 2 || block5_condbr == nullptr) {
+    return false;
+  }
+  if (std::get_if<LirLoadOp>(&block5.insts[0]) == nullptr ||
+      std::get_if<LirCmpOp>(&block5.insts[1]) == nullptr) {
+    return false;
+  }
+
+  const auto& block6 = function.blocks[6];
+  const auto& block7 = function.blocks[7];
+  return block6.insts.empty() && std::get_if<LirRet>(&block6.terminator) != nullptr &&
+         block7.insts.empty() && std::get_if<LirRet>(&block7.terminator) != nullptr;
+}
+
 struct MinimalConditionalReturnSlice {
   enum class ValueKind : unsigned char {
     Immediate,
@@ -5106,6 +5195,11 @@ static void gen_emit_global_init(std::ostringstream& out, const std::string& ini
 static std::optional<std::string> try_emit_general_lir_asm(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
+  if (is_double_indirect_local_pointer_conditional_return_fallback(module)) {
+    // This CFG shape used to sneak through target-local direct-LIR handling
+    // after missing the shared BIR route. Keep that ownership behind BIR.
+    return std::nullopt;
+  }
   std::ostringstream out;
 
   // Reject unsupported features
