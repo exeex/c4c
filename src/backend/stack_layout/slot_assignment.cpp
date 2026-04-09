@@ -314,6 +314,13 @@ EntryAllocaRewriteInput lower_prepared_entry_alloca_rewrite_input(
       rewrite_metadata.entry_allocas, classification);
 }
 
+EntryAllocaPlanningInput lower_prepared_entry_alloca_planning_input(
+    const PreparedEntryAllocaRewriteMetadata& rewrite_metadata,
+    const PreparedEntryAllocaStackLayoutClassificationInput& classification) {
+  return lower_entry_alloca_rewrite_input_to_planning_input(
+      lower_prepared_entry_alloca_rewrite_input(rewrite_metadata, classification));
+}
+
 EntryAllocaRewriteInput lower_stack_layout_input_to_entry_alloca_rewrite_input(
     StackLayoutInput input) {
   auto classification = lower_prepared_stack_layout_classification_input(input);
@@ -673,6 +680,8 @@ PreparedEntryAllocaFunctionInputs prepare_module_function_entry_alloca_preparati
     inputs.stack_layout_metadata.call_results = stack_layout_input.call_results;
     inputs.stack_layout_classification =
         lower_prepared_stack_layout_classification_input(std::move(stack_layout_input));
+    inputs.planning_input = lower_prepared_entry_alloca_planning_input(
+        inputs.rewrite_metadata, inputs.stack_layout_classification);
     inputs.liveness_input = std::move(*bir_liveness);
     inputs.liveness_source = EntryAllocaRewriteLivenessSource::PerFunctionBir;
     return inputs;
@@ -696,6 +705,8 @@ PreparedEntryAllocaFunctionInputs prepare_module_function_entry_alloca_preparati
   inputs.rewrite_metadata.entry_allocas = stack_layout_input.entry_allocas;
   inputs.stack_layout_classification =
       lower_prepared_stack_layout_classification_input(std::move(stack_layout_input));
+  inputs.planning_input = lower_prepared_entry_alloca_planning_input(
+      inputs.rewrite_metadata, inputs.stack_layout_classification);
   inputs.backend_cfg_liveness = lower_backend_cfg_to_liveness_function(backend_cfg);
   inputs.stack_layout_source =
       EntryAllocaRewriteStackLayoutSource::EntryAllocasAndBackendCfg;
@@ -723,6 +734,7 @@ EntryAllocaRewriteInputs lower_prepared_entry_alloca_function_inputs(
   inputs.rewrite_input = lower_prepared_entry_alloca_rewrite_input(
       prepared_inputs.rewrite_metadata,
       prepared_inputs.stack_layout_classification);
+  inputs.planning_input = prepared_inputs.planning_input;
   return inputs;
 }
 

@@ -92,6 +92,7 @@ struct PreparedEntryAllocaFunctionInputs {
   PreparedEntryAllocaStackLayoutClassificationInput stack_layout_classification;
   PreparedEntryAllocaStackLayoutMetadata stack_layout_metadata;
   PreparedEntryAllocaRewriteMetadata rewrite_metadata;
+  EntryAllocaPlanningInput planning_input;
   std::optional<BackendCfgLivenessFunction> backend_cfg_liveness;
   std::optional<LivenessInput> liveness_input;
   EntryAllocaRewriteLivenessSource liveness_source =
@@ -104,6 +105,7 @@ struct EntryAllocaRewriteInputs {
   LivenessInput liveness_input;
   StackLayoutInput stack_layout_input;
   EntryAllocaRewriteInput rewrite_input;
+  EntryAllocaPlanningInput planning_input;
   EntryAllocaRewriteLivenessSource liveness_source =
       EntryAllocaRewriteLivenessSource::RawLirBackendCfg;
   EntryAllocaRewriteStackLayoutSource stack_layout_source =

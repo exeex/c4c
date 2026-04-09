@@ -2011,6 +2011,18 @@ void test_backend_shared_slot_assignment_prepares_module_function_inputs() {
                   fallback_inputs.stack_layout_source ==
                       c4c::backend::stack_layout::EntryAllocaRewriteStackLayoutSource::
                           EntryAllocasAndBackendCfg &&
+                  fallback_inputs.planning_input.entry_allocas.size() == 1 &&
+                  fallback_inputs.planning_input.entry_allocas.front().alloca_name ==
+                      "%lv.buf" &&
+                  fallback_inputs.planning_input.entry_allocas.front().paired_store.has_store &&
+                  fallback_inputs.planning_input.entry_allocas.front().paired_store
+                      .is_zero_initializer &&
+                  !fallback_inputs.planning_input.entry_allocas.front().paired_store.param_name
+                       .has_value() &&
+                  fallback_inputs.planning_input.escaped_entry_allocas.has_value() &&
+                  fallback_inputs.planning_input.escaped_entry_allocas->empty() &&
+                  fallback_inputs.planning_input.entry_alloca_use_blocks.has_value() &&
+                  fallback_inputs.planning_input.entry_alloca_use_blocks->empty() &&
                   fallback_inputs.rewrite_input.entry_allocas.size() == 1 &&
                   fallback_inputs.rewrite_input.entry_allocas.front().alloca_name ==
                       "%lv.buf" &&
@@ -2030,6 +2042,7 @@ void test_backend_shared_slot_assignment_prepares_module_function_inputs() {
                   lowerable_inputs.stack_layout_source ==
                       c4c::backend::stack_layout::EntryAllocaRewriteStackLayoutSource::
                           RawLirFunction &&
+                  lowerable_inputs.planning_input.entry_allocas.empty() &&
                   lowerable_inputs.rewrite_input.entry_allocas.empty() &&
                   lowerable_inputs.stack_layout_input.entry_allocas.empty() &&
                   lowerable_inputs.liveness_input.entry_insts.empty() &&
@@ -2176,6 +2189,16 @@ void test_backend_shared_fallback_preparation_separates_stack_layout_metadata_fr
   const auto lowered =
       c4c::backend::stack_layout::lower_prepared_entry_alloca_function_inputs(preparation);
   expect_true(lowered.stack_layout_input.signature_params.size() == 2 &&
+                  lowered.planning_input.entry_allocas.size() == 1 &&
+                  lowered.planning_input.entry_allocas.front().alloca_name == "%lv.buf" &&
+                  !lowered.planning_input.entry_allocas.front().paired_store.has_store &&
+                  !lowered.planning_input.entry_allocas.front().paired_store.is_zero_initializer &&
+                  !lowered.planning_input.entry_allocas.front().paired_store.param_name
+                       .has_value() &&
+                  lowered.planning_input.escaped_entry_allocas.has_value() &&
+                  lowered.planning_input.escaped_entry_allocas->empty() &&
+                  lowered.planning_input.entry_alloca_use_blocks.has_value() &&
+                  lowered.planning_input.entry_alloca_use_blocks->empty() &&
                   lowered.rewrite_input.entry_allocas.size() == 1 &&
                   lowered.rewrite_input.entry_allocas.front().alloca_name == "%lv.buf" &&
                   lowered.rewrite_input.escaped_entry_allocas.has_value() &&

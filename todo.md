@@ -8,17 +8,39 @@ Source Plan: plan.md
 
 - Step 6: move liveness to backend MIR
 - Current slice: continue Step 6 public-surface narrowing by checking whether
-  prepared entry-alloca/liveness bundle prep can expose a planning-only seam
-  directly, instead of rebuilding the narrower contract ad hoc at each callsite
-- Current implementation target: identify whether
-  `prepare_module_function_entry_alloca_inputs(...)` or nearby prepared-input
-  lowering should carry an explicit planning payload so Step 6 callers stop
-  re-lowering rewrite metadata before bundle/param planning
-- Next intended slice: thread a dedicated planning payload through prepared
-  entry-alloca inputs if that can remove remaining rewrite-to-planning
-  conversions without widening the patch-synthesis surface again
+  planning-only callers can drop the compatibility `StackLayoutInput` wrapper
+  now that prepared entry-alloca lowering carries an explicit planning payload
+- Current implementation target: identify which remaining bundle or
+  param-planning callsites still depend on `stack_layout_input` only because
+  prepared helpers were not previously exposing `EntryAllocaPlanningInput`
+- Next intended slice: retarget the narrowest remaining planning-only caller to
+  `EntryAllocaPlanningInput`, then see whether any compatibility-only
+  `StackLayoutInput` rehydration can be further constrained without touching
+  rewrite patch synthesis
 
 ## Completed
+
+- Completed the next Step 6 prepared planning-payload narrowing slice by
+  threading a dedicated `EntryAllocaPlanningInput` through prepared
+  entry-alloca helpers so planning callers can stop re-lowering rewrite
+  metadata ad hoc:
+  - added `planning_input` to
+    `src/backend/stack_layout/slot_assignment.hpp`'s
+    `PreparedEntryAllocaFunctionInputs` and `EntryAllocaRewriteInputs`
+  - updated `src/backend/stack_layout/slot_assignment.cpp` so prepared
+    entry-alloca lowering derives the planning-only payload once from the
+    rewrite/classification seam and carries it through both the prepared and
+    lowered helper results
+  - extended `tests/backend/backend_shared_util_tests.cpp` with focused
+    coverage proving prepared fallback and mixed-module helper paths now expose
+    the narrowed planning payload directly, including paired-store
+    classification when present
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`
+  - rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with the repo’s allowed non-decreasing rule and no new
+    failures (`2809 -> 2809`, same 32 known failing tests as
+    `test_fail_before.log`)
 
 - Completed the next Step 6 stack-layout planning-surface narrowing slice by
   letting bundle assembly and param-alloca planning consume the dedicated
