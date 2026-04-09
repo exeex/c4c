@@ -7,19 +7,43 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: audit the remaining raw-LIR-only metadata in the prepared
-  entry-alloca rewrite carrier after moving fallback block/phi usage onto the
-  backend-CFG-backed stack-layout seam
-- Current implementation target: audit the remaining raw-LIR-only fallback
-  metadata after threading direct pointer-access, derived-pointer-root, and
-  escape facts through the backend-CFG carrier that feeds entry-alloca
-  classification
-- Next intended slice: determine whether the prepared fallback carrier can now
-  narrow further by separating the still-raw-LIR-only signature/call-result
-  metadata from the backend-CFG-owned entry-alloca classification path without
-  regressing the current rewrite planning contracts
+- Current slice: audit whether the remaining prepared fallback `BackendCfg`
+  carrier can narrow further now that stack-layout signature/call-result
+  metadata is split away from the backend-CFG-owned entry-alloca
+  classification input
+- Current implementation target: determine whether production
+  `lower_prepared_entry_alloca_function_inputs(...)` still needs the full
+  fallback `BackendCfgFunction` object or can lower liveness from a narrower
+  block/point carrier without regressing the current rewrite planning
+  contracts
+- Next intended slice: probe whether `lower_backend_cfg_to_liveness_input(...)`
+  can accept a reduced fallback carrier so prepared entry-alloca rewrite state
+  no longer needs to retain signature/call-result fields in the stored CFG
 
 ## Completed
+
+- Completed the next Step 6 bounded prepared-fallback metadata split slice by
+  separating non-classification stack-layout metadata from the backend-CFG-
+  owned entry-alloca prep carrier:
+  - added `PreparedEntryAllocaStackLayoutMetadata` in
+    `src/backend/stack_layout/slot_assignment.*` and taught
+    `prepare_module_function_entry_alloca_preparation(...)` to store signature,
+    return-type, variadic, and call-result metadata outside the fallback
+    `stack_layout_input` while keeping the production per-function BIR path
+    unchanged
+  - updated `lower_prepared_entry_alloca_function_inputs(...)` so the final
+    production rewrite-input contract still rehydrates the full
+    `StackLayoutInput` before regalloc/stack-layout planning
+  - extended `tests/backend/backend_shared_util_tests.cpp` with focused
+    coverage proving the prepared fallback carrier now keeps signature and
+    call-result metadata separate from the backend-CFG-backed classification
+    input while still lowering back into the existing rewrite-input contract
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`,
+    rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with the repo’s allowed non-decreasing rule and no new
+    failures (`2809 -> 2809`, same 32 known failing tests as
+    `test_fail_before.log`)
 
 - Completed the next Step 6 bounded backend-CFG metadata follow-through slice
   by teaching the prepared fallback carrier to preserve entry-alloca

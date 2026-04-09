@@ -45,8 +45,16 @@ enum class EntryAllocaRewriteStackLayoutSource {
   EntryAllocasAndBackendCfg,
 };
 
+struct PreparedEntryAllocaStackLayoutMetadata {
+  std::vector<StackLayoutSignatureParam> signature_params;
+  std::optional<std::string> return_type;
+  bool is_variadic = false;
+  std::vector<StackLayoutCallResultInput> call_results;
+};
+
 struct PreparedEntryAllocaFunctionInputs {
   StackLayoutInput stack_layout_input;
+  PreparedEntryAllocaStackLayoutMetadata stack_layout_metadata;
   std::optional<BackendCfgFunction> backend_cfg;
   std::optional<LivenessInput> liveness_input;
   EntryAllocaRewriteLivenessSource liveness_source =

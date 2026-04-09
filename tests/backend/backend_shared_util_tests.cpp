@@ -1833,7 +1833,21 @@ void test_backend_shared_slot_assignment_prepares_module_function_inputs() {
                   fallback_preparation.stack_layout_input.entry_allocas.size() == 1 &&
                   fallback_preparation.stack_layout_input.entry_allocas.front().alloca_name ==
                       "%lv.buf" &&
+                  fallback_preparation.stack_layout_input.signature_params.empty() &&
+                  !fallback_preparation.stack_layout_input.return_type.has_value() &&
+                  !fallback_preparation.stack_layout_input.is_variadic &&
+                  fallback_preparation.stack_layout_input.call_results.empty() &&
+                  fallback_preparation.stack_layout_metadata.signature_params.empty() &&
+                  fallback_preparation.stack_layout_metadata.return_type ==
+                      std::optional<std::string>{"i32"} &&
+                  !fallback_preparation.stack_layout_metadata.is_variadic &&
+                  fallback_preparation.stack_layout_metadata.call_results.empty() &&
                   fallback_preparation.backend_cfg.has_value() &&
+                  fallback_preparation.backend_cfg->signature_params.empty() &&
+                  fallback_preparation.backend_cfg->return_type ==
+                      std::optional<std::string>{"i32"} &&
+                  fallback_preparation.backend_cfg->call_results.empty() &&
+                  !fallback_preparation.backend_cfg->is_variadic &&
                   fallback_preparation.stack_layout_input.blocks.size() ==
                       fallback_preparation.backend_cfg->blocks.size() &&
                   fallback_preparation.stack_layout_input.blocks.front().insts.empty() &&
@@ -1852,6 +1866,8 @@ void test_backend_shared_slot_assignment_prepares_module_function_inputs() {
                   fallback_inputs.stack_layout_input.entry_allocas.size() == 1 &&
                   fallback_inputs.stack_layout_input.entry_allocas.front().alloca_name ==
                       "%lv.buf" &&
+                  fallback_inputs.stack_layout_input.return_type ==
+                      std::optional<std::string>{"i32"} &&
                   fallback_inputs.liveness_input.entry_insts.size() == 2,
               "shared entry-alloca rewrite prep should still lower the prepared fallback carrier into the production rewrite-input contract");
 
@@ -1917,6 +1933,106 @@ void test_backend_shared_fallback_entry_alloca_stack_layout_input_preserves_poin
   expect_true(!escaped_coalescing.is_dead_alloca("%lv.buf") &&
                   !escaped_coalescing.find_single_block("%lv.buf").has_value(),
               "shared fallback stack-layout prep should preserve escape metadata through the backend-CFG seam so escaped allocas stay out of the reusable single-block pool");
+}
+
+void test_backend_shared_fallback_entry_alloca_stack_layout_input_preserves_signature_and_call_metadata() {
+  c4c::codegen::lir::LirFunction function;
+  function.name = "aggregate_variadic_entry_alloca";
+  function.signature_text =
+      "define { i32, i32 } @aggregate_variadic_entry_alloca(i32 %p.x, ...)";
+  function.alloca_insts.push_back(
+      c4c::codegen::lir::LirAllocaOp{"%lv.buf", "{ i32, i32 }", "", 8});
+
+  c4c::codegen::lir::LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(c4c::codegen::lir::LirCallOp{
+      "%call0",
+      c4c::codegen::lir::LirTypeRef("{ i32, i32 }"),
+      "@helper",
+      "(i32)",
+      "i32 %p.x",
+  });
+  entry.terminator = c4c::codegen::lir::LirRet{std::nullopt, "void"};
+  function.blocks.push_back(std::move(entry));
+
+  const auto input = c4c::backend::stack_layout::lower_function_entry_alloca_stack_layout_input(
+      function, c4c::backend::lower_lir_to_backend_cfg(function));
+
+  expect_true(input.entry_allocas.size() == 1 &&
+                  input.entry_allocas.front().alloca_name == "%lv.buf" &&
+                  input.signature_params.size() == 2 &&
+                  input.signature_params.front().type == "i32" &&
+                  input.signature_params.front().operand == "%p.x" &&
+                  input.signature_params.back().is_varargs &&
+                  input.return_type == std::optional<std::string>{"{ i32, i32 }"} &&
+                  input.is_variadic &&
+                  input.call_results.size() == 1 &&
+                  input.call_results.front().value_name == "%call0" &&
+                  input.call_results.front().type_str == "{ i32, i32 }",
+              "shared fallback stack-layout prep should preserve signature and call-result metadata through the backend-CFG seam so the prepared entry-alloca carrier no longer depends on raw-LIR block decoding for that metadata");
+}
+
+void test_backend_shared_fallback_preparation_separates_stack_layout_metadata_from_cfg_classification() {
+  c4c::codegen::lir::LirModule module;
+
+  c4c::codegen::lir::LirFunction function;
+  function.name = "aggregate_variadic_entry_alloca";
+  function.signature_text =
+      "define { i32, i32 } @aggregate_variadic_entry_alloca(i32 %p.x, ...)";
+  function.alloca_insts.push_back(
+      c4c::codegen::lir::LirAllocaOp{"%lv.buf", "{ i32, i32 }", "", 8});
+
+  c4c::codegen::lir::LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(c4c::codegen::lir::LirCallOp{
+      "%call0",
+      c4c::codegen::lir::LirTypeRef("{ i32, i32 }"),
+      "@helper",
+      "(i32)",
+      "i32 %p.x",
+  });
+  entry.terminator = c4c::codegen::lir::LirRet{std::nullopt, "void"};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  const auto preparation =
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_preparation(module, 0);
+  expect_true(preparation.stack_layout_source ==
+                  c4c::backend::stack_layout::EntryAllocaRewriteStackLayoutSource::
+                      EntryAllocasAndBackendCfg &&
+                  preparation.stack_layout_input.entry_allocas.size() == 1 &&
+                  preparation.stack_layout_input.signature_params.empty() &&
+                  !preparation.stack_layout_input.return_type.has_value() &&
+                  !preparation.stack_layout_input.is_variadic &&
+                  preparation.stack_layout_input.call_results.empty() &&
+                  preparation.stack_layout_metadata.signature_params.size() == 2 &&
+                  preparation.stack_layout_metadata.signature_params.front().type == "i32" &&
+                  preparation.stack_layout_metadata.signature_params.front().operand == "%p.x" &&
+                  preparation.stack_layout_metadata.signature_params.back().is_varargs &&
+                  preparation.stack_layout_metadata.return_type ==
+                      std::optional<std::string>{"{ i32, i32 }"} &&
+                  preparation.stack_layout_metadata.is_variadic &&
+                  preparation.stack_layout_metadata.call_results.size() == 1 &&
+                  preparation.stack_layout_metadata.call_results.front().value_name ==
+                      "%call0" &&
+                  preparation.stack_layout_metadata.call_results.front().type_str ==
+                      "{ i32, i32 }",
+              "shared prepared fallback carrier should keep signature and call-result metadata outside the backend-CFG-owned entry-alloca classification input");
+
+  const auto lowered =
+      c4c::backend::stack_layout::lower_prepared_entry_alloca_function_inputs(preparation);
+  expect_true(lowered.stack_layout_input.signature_params.size() == 2 &&
+                  lowered.stack_layout_input.signature_params.front().type == "i32" &&
+                  lowered.stack_layout_input.signature_params.front().operand == "%p.x" &&
+                  lowered.stack_layout_input.signature_params.back().is_varargs &&
+                  lowered.stack_layout_input.return_type ==
+                      std::optional<std::string>{"{ i32, i32 }"} &&
+                  lowered.stack_layout_input.is_variadic &&
+                  lowered.stack_layout_input.call_results.size() == 1 &&
+                  lowered.stack_layout_input.call_results.front().value_name == "%call0" &&
+                  lowered.stack_layout_input.call_results.front().type_str ==
+                      "{ i32, i32 }",
+              "shared prepared fallback carrier should still rehydrate the full rewrite-input stack-layout contract when lowered for production use");
 }
 
 void test_backend_shared_prepares_lir_module_for_target() {
@@ -2391,6 +2507,8 @@ int main(int argc, char* argv[]) {
   test_backend_shared_slot_assignment_rewrites_module_entry_allocas();
   test_backend_shared_slot_assignment_prepares_module_function_inputs();
   test_backend_shared_fallback_entry_alloca_stack_layout_input_preserves_pointer_metadata();
+  test_backend_shared_fallback_entry_alloca_stack_layout_input_preserves_signature_and_call_metadata();
+  test_backend_shared_fallback_preparation_separates_stack_layout_metadata_from_cfg_classification();
   test_backend_shared_prepares_lir_module_for_target();
   test_backend_shared_target_preparation_enables_bir_lowering();
   test_backend_shared_slot_assignment_prunes_dead_entry_alloca_insts();

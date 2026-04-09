@@ -41,6 +41,15 @@ bool is_scalar_alloca_type(std::string_view type_str) {
          type_str.front() != '%';
 }
 
+void apply_prepared_stack_layout_metadata(
+    StackLayoutInput& input,
+    const PreparedEntryAllocaStackLayoutMetadata& metadata) {
+  input.signature_params = metadata.signature_params;
+  input.return_type = metadata.return_type;
+  input.is_variadic = metadata.is_variadic;
+  input.call_results = metadata.call_results;
+}
+
 std::vector<LirInst> build_pruned_entry_alloca_insts(
     const StackLayoutInput& input,
     const std::vector<EntryAllocaSlotPlan>& plans) {
@@ -311,14 +320,35 @@ PreparedEntryAllocaFunctionInputs prepare_module_function_entry_alloca_preparati
           try_lower_module_function_to_bir_liveness_input(module, function_index);
       bir_liveness.has_value()) {
     inputs.stack_layout_input = lower_lir_to_stack_layout_input(function);
+    inputs.stack_layout_metadata.signature_params = inputs.stack_layout_input.signature_params;
+    inputs.stack_layout_metadata.return_type = inputs.stack_layout_input.return_type;
+    inputs.stack_layout_metadata.is_variadic = inputs.stack_layout_input.is_variadic;
+    inputs.stack_layout_metadata.call_results = inputs.stack_layout_input.call_results;
     inputs.liveness_input = std::move(*bir_liveness);
     inputs.liveness_source = EntryAllocaRewriteLivenessSource::PerFunctionBir;
     return inputs;
   }
 
   inputs.backend_cfg = lower_lir_to_backend_cfg(function);
+  inputs.stack_layout_metadata.signature_params.reserve(inputs.backend_cfg->signature_params.size());
+  for (const auto& param : inputs.backend_cfg->signature_params) {
+    inputs.stack_layout_metadata.signature_params.push_back(
+        StackLayoutSignatureParam{param.type, param.operand, param.is_varargs});
+    inputs.stack_layout_metadata.is_variadic =
+        inputs.stack_layout_metadata.is_variadic || param.is_varargs;
+  }
+  inputs.stack_layout_metadata.return_type = inputs.backend_cfg->return_type;
+  inputs.stack_layout_metadata.call_results.reserve(inputs.backend_cfg->call_results.size());
+  for (const auto& call_result : inputs.backend_cfg->call_results) {
+    inputs.stack_layout_metadata.call_results.push_back(
+        StackLayoutCallResultInput{call_result.value_name, call_result.type_str});
+  }
   inputs.stack_layout_input =
       lower_function_entry_alloca_stack_layout_input(function, *inputs.backend_cfg);
+  inputs.stack_layout_input.signature_params.clear();
+  inputs.stack_layout_input.return_type.reset();
+  inputs.stack_layout_input.is_variadic = false;
+  inputs.stack_layout_input.call_results.clear();
   inputs.stack_layout_source =
       EntryAllocaRewriteStackLayoutSource::EntryAllocasAndBackendCfg;
   return inputs;
@@ -330,6 +360,8 @@ EntryAllocaRewriteInputs lower_prepared_entry_alloca_function_inputs(
   inputs.stack_layout_input = prepared_inputs.stack_layout_input;
   inputs.liveness_source = prepared_inputs.liveness_source;
   inputs.stack_layout_source = prepared_inputs.stack_layout_source;
+  apply_prepared_stack_layout_metadata(inputs.stack_layout_input,
+                                       prepared_inputs.stack_layout_metadata);
 
   if (prepared_inputs.liveness_input.has_value()) {
     inputs.liveness_input = *prepared_inputs.liveness_input;
