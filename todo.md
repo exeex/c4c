@@ -7,15 +7,12 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 2: review typedef, alias, and qualified cast targets
-- Current slice: move from global-qualified namespace-alias reference casts to
-  the first dependent `typename` reference-cast reduction
-- Current implementation target: `tests/cpp` qualified alias-owned cast
-  regressions plus the earliest failing parser, sema, HIR, or lowering surface
-  that dependent `typename` reference-cast targets expose
-- Next intended slice: add one focused
-  `(typename Holder<T>::AliasL)x` / `(typename Holder<T>::AliasR)x` cast
-  reduction, then classify the first parser-versus-sema break before widening
-  to additional dependent forms
+- Current slice: widen dependent cast-target coverage beyond the first
+  alias-owned `typename` reference-cast case
+- Current implementation target: the next dependent qualified/template-id cast
+  target that is not already covered by Step 2 regressions
+- Next intended slice: probe global-qualified or nested dependent alias-owned
+  reference-cast targets before widening to more complex template-id suffixes
 
 ## Completed
 
@@ -129,6 +126,16 @@ Source Plan: plan.md
   `(::ns::AliasL)x` and `(::ns::AliasR)x`.
 - Full-suite validation stayed monotonic: `test_fail_before.log` 2851/2851
   passed, `test_fail_after.log` 2852/2852 passed, with zero new failures.
+- Added
+  `tests/cpp/internal/postive_case/c_style_cast_dependent_typename_ref_alias_basic.cpp`
+  to cover dependent `(typename Holder<T>::AliasL)x` /
+  `(typename Holder<T>::AliasR)x` cast targets, assignment through the aliased
+  references, and overload selection on the cast expressions themselves.
+- Compared the dependent `typename` alias-owned reference-cast slice against
+  Clang and confirmed the first reduction already matches parser, HIR, and
+  runtime expectations, so no compiler change was needed for this slice.
+- Full-suite validation stayed monotonic: `test_before.log` 2852/2852 passed,
+  `test_after.log` 2853/2853 passed, with zero new failures.
 
 ## Notes
 
@@ -158,3 +165,8 @@ Source Plan: plan.md
   inherited base-subobject size/alignment into record layout fixed the
   cast-blocking runtime issue without absorbing the broader plain
   inherited-member lookup follow-up into this plan.
+- The first dependent `typename` alias-owned reference-cast reduction did not
+  expose a new parser, sema, HIR, or lowering failure: `c4cll --parse-only`,
+  `--dump-hir`, and the runtime regression all aligned with the Clang-backed
+  expectation for `(typename Holder<T>::AliasL)x` and
+  `(typename Holder<T>::AliasR)x`.
