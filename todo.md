@@ -10,15 +10,14 @@ Source Plan: plan.md
   use the split shared lowering seams as the owning implementation surface and
   recover compile/test health one seam-local family at a time
 - current exact slice:
-  continue seam-local compile recovery from the now-green string-literal
-  compare lowering/x86 probe slice into the next bounded x86-native runtime
-  support probe without widening the current plan
+  continue the bounded x86-native variadic runtime lane by moving from the
+  now-green integer-only `backend_runtime_variadic_sum2` prepared-LIR slice to
+  the still-unsupported floating `backend_runtime_variadic_double_bytes` probe
 
 ## Next Slice
 
-- keep x86 native direct-LIR work seam-local in
-  `src/backend/x86/codegen/emit.cpp` and inspect whether the next bounded
-  runtime probe should be the variadic `sum2` or `double_bytes` slice
+- keep the work seam-local in `src/backend/x86/codegen/emit.cpp` and move next
+  to the floating-point variadic `backend_runtime_variadic_double_bytes` probe
 - avoid broad `try_lower_to_bir_with_options(...)` ordering changes; if another
   phi-bearing seam needs pre-phi ownership, add it as an explicit narrow
   pre-phi lowering hook instead of reopening generic pipeline flow
@@ -193,6 +192,15 @@ Source Plan: plan.md
   `test_bir_lowering_accepts_typed_minimal_extern_global_array_load_lir_slice_with_stale_text`,
   and
   `test_bir_lowering_accepts_typed_minimal_scalar_global_store_reload_lir_slice_with_stale_text`
+- added a seam-local x86 prepared-LIR matcher in
+  `src/backend/x86/codegen/emit.cpp` for the narrowed SysV integer variadic
+  `sum2` runtime module after entry-alloca preparation coalesces the temporary
+  va-arg spill into `%lv.second`
+- verified the narrowed x86 variadic integer runtime slice is green again:
+  `./build/c4cll --codegen asm --target x86_64-unknown-linux-gnu tests/c/internal/backend_case/variadic_sum2.c`
+  now emits the expected bounded native assembly, and
+  `ctest --test-dir build --output-on-failure -R '^backend_runtime_variadic_sum2$'`
+  now passes
 
 ## Blockers
 
@@ -200,6 +208,9 @@ Source Plan: plan.md
 - later compile/test recovery still has known unrelated backend test noise, so
   not every existing backend test executable is currently a clean regression
   signal for this lane
+- the adjacent floating-point x86 variadic runtime slice
+  `backend_runtime_variadic_double_bytes` still fails at the unsupported
+  direct-LIR boundary and remains the next bounded probe
 - full-suite monotonic validation against the checked-in
   `test_fail_before.log` baseline is still red, but the failure bucket is the
   same broad pre-existing `backend_bir_tests` / route-test phi-select surface
