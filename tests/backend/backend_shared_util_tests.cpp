@@ -2296,7 +2296,8 @@ void test_backend_shared_prepared_function_inputs_preserve_emitter_stack_layout_
       c4c::backend::stack_layout::prepare_module_function_entry_alloca_stack_layout_input(
           module, 0);
   const auto lowerable_direct =
-      c4c::backend::stack_layout::lower_lir_to_stack_layout_input(module.functions[0]);
+      c4c::backend::stack_layout::lower_function_entry_alloca_stack_layout_input(
+          module.functions[0], c4c::backend::lower_lir_to_backend_cfg(module.functions[0]));
   expect_true(
       c4c::backend::stack_layout::collect_stack_layout_value_names(lowerable_prepared) ==
           c4c::backend::stack_layout::collect_stack_layout_value_names(lowerable_direct) &&
@@ -2321,6 +2322,39 @@ void test_backend_shared_prepared_function_inputs_preserve_emitter_stack_layout_
           fallback_prepared.call_results.size() == fallback_direct.call_results.size() &&
           fallback_prepared.blocks.size() == fallback_direct.blocks.size(),
       "prepared per-function stack-layout inputs should preserve the fallback backend-CFG-derived metadata needed by production emitters while keeping the raw-LIR surface compatibility-only");
+}
+
+void test_backend_shared_raw_lir_stack_layout_lowering_stays_compatibility_only() {
+  const auto module = make_mixed_bir_and_entry_alloca_module();
+
+  const auto lowerable_raw =
+      c4c::backend::stack_layout::lower_lir_to_stack_layout_input(module.functions[0]);
+  const auto lowerable_compat =
+      c4c::backend::stack_layout::lower_function_entry_alloca_stack_layout_input(
+          module.functions[0], c4c::backend::lower_lir_to_backend_cfg(module.functions[0]));
+  expect_true(
+      c4c::backend::stack_layout::collect_stack_layout_value_names(lowerable_raw) ==
+              c4c::backend::stack_layout::collect_stack_layout_value_names(lowerable_compat) &&
+          lowerable_raw.signature_params.size() == lowerable_compat.signature_params.size() &&
+          lowerable_raw.return_type == lowerable_compat.return_type &&
+          lowerable_raw.call_results.size() == lowerable_compat.call_results.size() &&
+          lowerable_raw.blocks.size() == lowerable_compat.blocks.size(),
+      "raw-LIR stack-layout lowering should stay as an explicit compatibility-only wrapper over the backend-CFG-backed stack-layout seam for lowerable functions");
+
+  const auto fallback_raw =
+      c4c::backend::stack_layout::lower_lir_to_stack_layout_input(module.functions[2]);
+  const auto fallback_compat =
+      c4c::backend::stack_layout::lower_function_entry_alloca_stack_layout_input(
+          module.functions[2], c4c::backend::lower_lir_to_backend_cfg(module.functions[2]));
+  expect_true(
+      c4c::backend::stack_layout::collect_stack_layout_value_names(fallback_raw) ==
+              c4c::backend::stack_layout::collect_stack_layout_value_names(fallback_compat) &&
+          fallback_raw.entry_allocas.size() == fallback_compat.entry_allocas.size() &&
+          fallback_raw.signature_params.size() == fallback_compat.signature_params.size() &&
+          fallback_raw.return_type == fallback_compat.return_type &&
+          fallback_raw.call_results.size() == fallback_compat.call_results.size() &&
+          fallback_raw.blocks.size() == fallback_compat.blocks.size(),
+      "raw-LIR stack-layout lowering should stay as an explicit compatibility-only wrapper over the backend-CFG-backed fallback seam for entry-alloca functions");
 }
 
 void test_backend_shared_prepared_function_inputs_collect_emitter_value_names_without_compat_stack_layout() {
@@ -3417,6 +3451,7 @@ int main(int argc, char* argv[]) {
   test_backend_shared_slot_assignment_rewrites_module_entry_allocas();
   test_backend_shared_slot_assignment_prepares_module_function_inputs();
   test_backend_shared_prepared_function_inputs_preserve_emitter_stack_layout_metadata();
+  test_backend_shared_raw_lir_stack_layout_lowering_stays_compatibility_only();
   test_backend_shared_prepared_function_inputs_collect_emitter_value_names_without_compat_stack_layout();
   test_backend_shared_rewrite_only_prepared_function_inputs_preserve_rewrite_and_planning_state();
   test_backend_shared_fallback_entry_alloca_stack_layout_input_preserves_pointer_metadata();

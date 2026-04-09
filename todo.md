@@ -7,21 +7,42 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 7: move regalloc and stack layout to backend MIR
-- Current slice: follow through on the now-test-only prepared stack-layout
-  compatibility helper surface after deleting the combined
-  `EntryAllocaCompatInputs` packet
-- Current implementation target: keep rewrite/liveness ownership on
-  `PreparedEntryAllocaRewriteOnlyInputs`, keep stack-layout rehydration as a
-  separate compatibility helper, and avoid reopening the now-green prepared
-  direct-LIR variadic path
-- Next intended slice: decide whether the remaining raw-`LIR`
-  `lower_lir_to_stack_layout_input(...)` parity coverage should stay as
-  explicit compatibility-only test coverage or move onto the prepared
-  stack-layout helper before Step 7 hands off fully to the residual
-  `c_testsuite_aarch64_backend_src_00182_c` /
-  `c_testsuite_aarch64_backend_src_00204_c` aggregate/ABI follow-up work
+- Current slice: hand off the now-explicit compatibility-only raw-`LIR`
+  stack-layout parity coverage and focus Step 7 on the residual AArch64
+  aggregate/ABI blocker pair
+- Current implementation target: investigate why
+  `c_testsuite_aarch64_backend_src_00182_c` and
+  `c_testsuite_aarch64_backend_src_00204_c` still segfault after the prepared
+  direct-LIR variadic path went green, and confirm whether the remaining
+  failure mode stays on the Step 7 ownership seam or needs a separately tracked
+  follow-up
+- Next intended slice: reduce one of the remaining AArch64 failures to a
+  narrow direct backend regression, compare the emitted behavior against Clang
+  or the x86 path as needed, and keep the current compatibility-only
+  stack-layout parity coverage untouched unless that triage exposes a genuine
+  ownership gap
 
 ## Completed
+
+- Completed the next Step 7 stack-layout parity-coverage audit slice by moving
+  prepared-emitter parity checks onto the backend-CFG-backed compatibility seam
+  while keeping one explicit raw-`LIR` wrapper regression:
+  - retargeted the lowerable prepared stack-layout metadata parity check in
+    `tests/backend/backend_shared_util_tests.cpp` to compare against
+    `lower_function_entry_alloca_stack_layout_input(...)` instead of the broad
+    `lower_lir_to_stack_layout_input(...)` helper
+  - added a dedicated
+    `test_backend_shared_raw_lir_stack_layout_lowering_stays_compatibility_only`
+    regression covering both lowerable and fallback functions so the remaining
+    raw-`LIR` stack-layout route stays explicit as compatibility-only test
+    coverage rather than an implicit production parity dependency
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`
+  - rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with monotonic full-suite results and no new failures
+    (`2809 -> 2839` passed tests); the remaining red cases stay
+    `c_testsuite_aarch64_backend_src_00182_c` and
+    `c_testsuite_aarch64_backend_src_00204_c`
 
 - Completed the next Step 7 compatibility-packet deletion slice by replacing
   the remaining combined `EntryAllocaCompatInputs` surface with separate
