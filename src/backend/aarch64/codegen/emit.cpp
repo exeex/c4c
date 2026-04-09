@@ -327,8 +327,9 @@ void prune_dead_entry_allocas(c4c::codegen::lir::LirFunction& function) {
   config.available_regs.assign(kAarch64CalleeSavedRegs.begin(), kAarch64CalleeSavedRegs.end());
   config.caller_saved_regs.assign(kAarch64CallerSavedRegs.begin(), kAarch64CallerSavedRegs.end());
 
+  const auto liveness_input = c4c::backend::lower_lir_to_liveness_input(function);
   const auto regalloc =
-      c4c::backend::run_regalloc_and_merge_clobbers(function, config, {});
+      c4c::backend::run_regalloc_and_merge_clobbers(liveness_input, config, {});
   const auto stack_layout_input =
       c4c::backend::stack_layout::lower_lir_to_stack_layout_input(function);
   const std::vector<c4c::backend::PhysReg> callee_saved(kAarch64CalleeSavedRegs.begin(),
@@ -2146,7 +2147,8 @@ c4c::backend::RegAllocIntegrationResult run_shared_aarch64_regalloc(
   c4c::backend::RegAllocConfig config;
   config.available_regs.assign(kAarch64CalleeSavedRegs.begin(), kAarch64CalleeSavedRegs.end());
   config.caller_saved_regs.assign(kAarch64CallerSavedRegs.begin(), kAarch64CallerSavedRegs.end());
-  return c4c::backend::run_regalloc_and_merge_clobbers(function, config, {});
+  return c4c::backend::run_regalloc_and_merge_clobbers(
+      c4c::backend::lower_lir_to_liveness_input(function), config, {});
 }
 
 c4c::backend::RegAllocIntegrationResult synthesize_shared_aarch64_call_crossing_regalloc(

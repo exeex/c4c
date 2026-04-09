@@ -1038,6 +1038,45 @@ void test_backend_shared_stack_layout_regalloc_helper_exposes_handoff_view() {
               "shared stack-layout helper should expose cached liveness for downstream stack-layout analysis");
 }
 
+void test_backend_shared_regalloc_helper_accepts_backend_owned_liveness_input() {
+  const auto module = make_call_crossing_interval_module();
+  const auto& function = module.functions.back();
+
+  c4c::backend::RegAllocConfig config;
+  config.available_regs = {{20}};
+  config.caller_saved_regs = {{13}};
+  const std::vector<c4c::backend::PhysReg> asm_clobbered = {{21}};
+
+  const auto input = c4c::backend::lower_lir_to_liveness_input(function);
+  const auto merged =
+      c4c::backend::run_regalloc_and_merge_clobbers(input, config, asm_clobbered);
+
+  const auto* before_call =
+      c4c::backend::stack_layout::find_assigned_reg(merged, "%t0");
+  const auto* call_result =
+      c4c::backend::stack_layout::find_assigned_reg(merged, "%t1");
+  const auto* final_sum =
+      c4c::backend::stack_layout::find_assigned_reg(merged, "%t2");
+  const auto* cached_liveness =
+      c4c::backend::stack_layout::find_cached_liveness(merged);
+
+  expect_true(before_call != nullptr && before_call->index == 20,
+              "backend-owned liveness input should preserve call-spanning regalloc assignments");
+  expect_true(call_result == nullptr,
+              "backend-owned liveness input should preserve spilled call-result assignments");
+  expect_true(final_sum != nullptr && final_sum->index == 13,
+              "backend-owned liveness input should preserve caller-saved assignments");
+  expect_true(c4c::backend::stack_layout::uses_callee_saved_reg(merged, c4c::backend::PhysReg{20}),
+              "backend-owned liveness input should preserve allocator-used callee-saved registers");
+  expect_true(c4c::backend::stack_layout::uses_callee_saved_reg(merged, c4c::backend::PhysReg{21}),
+              "backend-owned liveness input should preserve merged inline-asm clobbers");
+  expect_true(cached_liveness != nullptr &&
+                  cached_liveness->find_interval("%t0") != nullptr &&
+                  cached_liveness->find_interval("%t1") != nullptr &&
+                  cached_liveness->find_interval("%t2") != nullptr,
+              "backend-owned liveness input should preserve cached liveness for downstream stack-layout analysis");
+}
+
 void test_backend_shared_stack_layout_analysis_tracks_phi_use_blocks() {
   const auto module = make_interval_phi_join_module();
   const auto& function = module.functions.front();
@@ -1892,6 +1931,7 @@ int main(int argc, char* argv[]) {
   test_backend_shared_regalloc_spills_overlapping_values_without_reusing_busy_reg();
   test_backend_shared_regalloc_helper_filters_and_merges_clobbers();
   test_backend_shared_stack_layout_regalloc_helper_exposes_handoff_view();
+  test_backend_shared_regalloc_helper_accepts_backend_owned_liveness_input();
   test_backend_shared_stack_layout_analysis_tracks_phi_use_blocks();
   test_backend_shared_stack_layout_analysis_accepts_backend_owned_input();
   test_backend_shared_stack_layout_input_collects_value_names();

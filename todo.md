@@ -8,15 +8,34 @@ Source Plan: plan.md
 
 - Step 6: move liveness to backend MIR
 - Current slice: move the next shared bounded target-local stack-layout /
-  regalloc setup seam off raw `LirFunction` where production emitters still
-  lower through compatibility wrappers
-- Next intended slice: audit the remaining `StackLayoutPlanBundle` /
-  `LivenessInput` compatibility wrappers and either retire one more
-  production-facing raw-`LirFunction` entrypoint or record a separate follow-on
+  regalloc setup seam off raw `LirFunction` where production helpers still
+  expose compatibility overloads after target emitters have switched to
+  backend-owned lowered input
+- Next intended slice: audit the remaining shared stack-layout planning
+  compatibility overloads (`build_stack_layout_plan_bundle(...)`,
+  `analyze_stack_layout(...)`, and neighboring helpers) and either retire one
+  more production-facing raw-`LirFunction` entrypoint or record a follow-on
   idea if the remaining work no longer fits this plan
 
 ## Completed
 
+- Completed the next Step 6 bounded production regalloc handoff slice by
+  retargeting target emitters to consume backend-owned liveness lowering
+  instead of the raw-`LirFunction` regalloc wrapper:
+  - updated `src/backend/aarch64/codegen/emit.cpp` and
+    `src/backend/x86/codegen/emit.cpp` so their shared pruning/regalloc paths
+    lower `LivenessInput` first and then call
+    `run_regalloc_and_merge_clobbers(...)` through the backend-owned input
+    overload rather than the compatibility wrapper over raw `LirFunction`
+  - added focused coverage in `tests/backend/backend_shared_util_tests.cpp`
+    proving the regalloc/clobber handoff still preserves the expected
+    call-spanning assignment, spill behavior, merged callee-saved view, and
+    cached liveness when callers provide prelowered `LivenessInput`
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R backend_shared_util_tests --output-on-failure`,
+    rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with no new failures and no pass-count drop
+    (`2809 -> 2809`)
 - Completed the follow-up Step 6/7 target-local stack-slot ABI audit slice by
   removing the remaining direct AArch64 return-type support gate reparse and
   keeping that stack-slot admission check on backend-owned lowered metadata:
