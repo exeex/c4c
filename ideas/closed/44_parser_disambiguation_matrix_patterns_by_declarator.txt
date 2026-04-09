@@ -1,3 +1,5 @@
+# Archived with idea 44 on 2026-04-09 after restoring full 300-case parse-only matrix coverage.
+
 ## pointer
 samples: T*, ns::T*, ::ns::T*, typename H<T>::Type*, typename H<T>::template Rebind<U>::Type*
 001. owner=simple owner_text="T" declarator=pointer type_id="T*" named_decl="T* value" context=c_style_cast_target verification=parse_only expected_stage=parse source_template=c_style_cast_target high_risk=no example="(T*)expr"

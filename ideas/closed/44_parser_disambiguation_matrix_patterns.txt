@@ -1,3 +1,12 @@
+# Status: Complete
+# Completed: 2026-04-09
+# Completion Notes:
+# - Restored the missing 100 generated parse-only matrix tests for pointer,
+#   lvalue_ref, rvalue_ref, and cv_pointer cases.
+# - `tests/cpp/internal/generated/parser_disambiguation_matrix/parse_only/`
+#   now contains the full 300-case manifest represented by this source matrix.
+# - Full-suite validation after the coverage sync: 3267 passed, 0 failed.
+
 001. owner=simple owner_text="T" declarator=pointer type_id="T*" named_decl="T* value" context=c_style_cast_target verification=parse_only expected_stage=parse source_template=c_style_cast_target high_risk=no example="(T*)expr"
 002. owner=simple owner_text="T" declarator=pointer type_id="T*" named_decl="T* value" context=local_declaration verification=parse_only expected_stage=parse source_template=local_declaration high_risk=no example="T* value;"
 003. owner=simple owner_text="T" declarator=pointer type_id="T*" named_decl="T* value" context=parameter_declaration verification=parse_only expected_stage=parse source_template=parameter_declaration high_risk=no example="void probe(T* value);"
