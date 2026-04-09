@@ -7,16 +7,16 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 3: review declarator suffix and function-pointer cast forms
-- Current slice: re-probe the remaining qualified owner-chain matrix after
-  landing dependent template-id owner-chain coverage for member-pointer cast
-  targets
-- Current implementation target: repair parser-side member-pointer declarator
-  prefix detection so owner chains with template-ids on non-final segments,
-  such as `Holder<T>::Type::*`, remain type-ids inside C-style cast parsing
-  instead of falling back into expression parsing
-- Next intended slice: add the next narrow qualified-owner parser regression,
-  starting with a namespace-qualified or global-qualified template-id owner
-  chain inside a member-function-pointer cast target
+- Current slice: probe the dependent qualified-owner member-function-pointer
+  cast matrix after landing the global-qualified template-id owner-chain
+  regression
+- Current implementation target: add the next narrow parser regression for a
+  namespace-qualified or global-qualified dependent owner chain that also
+  carries a non-final template-id segment inside a member-function-pointer
+  C-style cast target
+- Next intended slice: reduce the first failing dependent qualified-owner
+  member-function-pointer cast form if the new parser regression exposes one;
+  otherwise continue filling the remaining qualified owner-chain matrix
 
 ## Completed
 
@@ -337,6 +337,24 @@ Source Plan: plan.md
 - Full-suite validation stayed monotonic under the repo regression guard:
   `test_fail_before.log` 2866/2866 passed,
   `test_fail_after.log` 2867/2867 passed, with zero new failures.
+- Added
+  `tests/cpp/internal/postive_case/c_style_cast_global_qualified_template_member_fn_ptr_const_parse.cpp`
+  as a focused parse-only regression for
+  `int (::ns::Box<int>::*fp)(int) const =
+  (int (::ns::Box<int>::*)(int) const)raw;`.
+- Confirmed the next Step 3 qualified-owner member-function-pointer cast slice
+  already matches the parser baseline in the current tree, so no compiler
+  change was needed for this regression-only slice.
+- Targeted validation passed:
+  `build/c4cll --parse-only tests/cpp/internal/postive_case/c_style_cast_global_qualified_template_member_fn_ptr_const_parse.cpp`
+  and
+  `ctest --test-dir build -R 'c_style_cast_(global_qualified_template_member_fn_ptr_const_parse|dependent_template_member_ptr_parse|template_member_fn_ptr_const_parse|template_member_fn_ptr_ref_qual_parse|template_member_ptr_parse)' --output-on-failure`.
+- Registered the new regression under `CPP_POSITIVE_PARSE_STEMS` so the
+  internal harness continues treating the file as a parse-only Step 3 probe
+  instead of a compile/runtime positive case.
+- Full-suite validation stayed monotonic under the repo regression guard:
+  `test_fail_before.log` 2867/2867 passed,
+  `test_fail_after.log` 2868/2868 passed, with zero new failures.
 
 ## Notes
 
