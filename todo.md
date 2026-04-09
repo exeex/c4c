@@ -6,10 +6,10 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 4: reassess the remaining dependent-owner
-  `member_function_pointer` contexts after the cast-target promotion and choose
-  the next bounded stronger-validation slice without widening into unrelated
-  sema or parser work
+- Step 5: audit the generated parser-disambiguation matrix manifests and
+  emitted test tiers after closing the dependent-owner function-shaped
+  `compile_positive` promotions, then record any remaining deferred promotion
+  gaps as coverage notes instead of forcing broader frontend work
 
 ## Completed Items
 
@@ -190,6 +190,12 @@ Source Plan: plan.md
   --output-on-failure` passed 5 adjacent dependent cast/member-function-pointer
   regressions with zero failures
 - Full-suite validation: `ctest --test-dir build -j8 --output-on-failure >
+  test_fail_after.log` completed with 3153/3153 passing tests, and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
+  --before test_fail_before.log --after test_fail_after.log
+  --allow-non-decreasing-passed` reported PASS with zero new failing tests
+  and a +8 pass delta against the refreshed pre-slice baseline log
+- Full-suite validation: `ctest --test-dir build -j8 --output-on-failure >
   test_fail_after.log` completed with 3143/3143 passing tests, and
   `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py
   --before test_fail_before.log --after test_fail_after.log
@@ -221,19 +227,37 @@ Source Plan: plan.md
   --before test_fail_before.log --after test_fail_after.log
   --allow-non-decreasing-passed` reported PASS with zero new failing tests
   and a +38 pass delta against the stored baseline log
+- Promoted the remaining dependent-owner `member_function_pointer`
+  `compile_positive` contexts (`local_declaration`, `parameter_declaration`,
+  `parenthesized_type_id_consumer`, and `ambiguous_statement_context`) for both
+  `dependent_typename` and `dependent_template_member`, adding eight generated
+  files under
+  `tests/cpp/internal/generated/parser_disambiguation_matrix/compile_positive/`
+- Probe result: the generator already emitted frontend-valid source for these
+  remaining dependent-owner `member_function_pointer` contexts, so the slice
+  landed as pure stronger-validation coverage with no parser or sema changes
+- Targeted validation: `ctest --test-dir build -R
+  'generated_parser_disambiguation_matrix_compile_positive_owner_(dependent_typename|dependent_template_member)__decl_member_function_pointer__(ctx_(local_declaration|parameter_declaration|parenthesized_type_id_consumer|ambiguous_statement_context)|ctx_c_style_cast_target)'
+  --output-on-failure` passed all 10 dependent-owner promoted
+  `member_function_pointer` cases
+- Targeted validation: `ctest --test-dir build -R
+  'generated_parser_disambiguation_matrix_compile_positive_owner_(simple|qualified|global_qualified|dependent_typename|dependent_template_member)__decl_(function_pointer|function_lvalue_ref|function_rvalue_ref|member_function_pointer)'
+  --output-on-failure` passed all 76 adjacent promoted function-shaped
+  `compile_positive` cases with zero failures
+- Targeted validation: `ctest --test-dir build -R
+  'cpp_positive_sema_c_style_cast_(dependent_typename|dependent_template_member)|qualified_member_function_pointer_template_owner_parse'
+  --output-on-failure` passed 5 adjacent dependent cast/member-function-pointer
+  regressions with zero failures
 
 ## Next Slice
 
-- decide whether the remaining dependent-owner `member_function_pointer`
-  contexts outside `ctx_c_style_cast_target` should be promoted next or left as
-  parse-only coverage for this runbook
-- keep the next slice bounded to the generator-owned promoted tier and the
-  exact dependent-owner declarator/context family under review; do not expand
-  into unrelated sema or parser work
-- if no further bounded promotion is justified, pivot the runbook toward Step 5
-  coverage/closure notes instead of forcing broader validation growth
-- keep generation template-driven and separate from the existing hand-written
-  reductions in `positive_case/`
+- audit the manifest and generated directory so the recorded coverage matches
+  the emitted `parse_only` and `compile_positive` tiers after the final
+  dependent-owner `member_function_pointer` promotion
+- decide whether Step 5 should close with coverage notes only or also record a
+  deferred follow-up idea for any future `runtime_positive` promotion work
+- keep the next slice focused on auditable coverage/closure notes rather than
+  widening the current runbook into new frontend feature work
 
 ## Blockers
 
@@ -252,8 +276,9 @@ Source Plan: plan.md
 - the dependent function-shaped `ctx_c_style_cast_target` promotion now lands
   cleanly for both `typename H<T>::Type` and
   `typename H<T>::template Rebind<U>::Type`; the next adjacent check is the
-  remaining dependent-owner `member_function_pointer` contexts after the
-  now-promoted cast-target family
+  generated coverage audit now that dependent-owner
+  `member_function_pointer` `compile_positive` promotion is complete across all
+  five plan contexts
 - the non-dependent function-reference promotion uncovered a generator-shape
   issue rather than a parser defect: `compile_positive` local declarations for
   function references must be initialized, so the generator now binds those
