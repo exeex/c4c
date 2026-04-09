@@ -131,10 +131,4 @@ CoalescableAllocas compute_coalescable_allocas(
   return result;
 }
 
-CoalescableAllocas compute_coalescable_allocas(
-    const c4c::codegen::lir::LirFunction& function,
-    const StackLayoutAnalysis& analysis) {
-  return compute_coalescable_allocas(lower_lir_to_stack_layout_input(function), analysis);
-}
-
 }  // namespace c4c::backend::stack_layout

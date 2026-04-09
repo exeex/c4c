@@ -1282,20 +1282,24 @@ void test_backend_shared_alloca_coalescing_classifies_non_param_allocas() {
 
   const auto dead_module = make_dead_local_alloca_candidate_module();
   const auto& dead_function = dead_module.functions.front();
-  const auto dead_analysis = analyze_stack_layout_from_function(dead_function, regalloc, {});
+  const auto dead_input =
+      c4c::backend::stack_layout::lower_lir_to_stack_layout_input(dead_function);
+  const auto dead_analysis =
+      c4c::backend::stack_layout::analyze_stack_layout(dead_input, regalloc, {});
   const auto dead_coalescing =
-      c4c::backend::stack_layout::compute_coalescable_allocas(dead_function,
-                                                              dead_analysis);
+      c4c::backend::stack_layout::compute_coalescable_allocas(dead_input, dead_analysis);
   expect_true(dead_coalescing.is_dead_alloca("%lv.buf") &&
                   !dead_coalescing.find_single_block("%lv.buf").has_value(),
               "shared alloca-coalescing should classify unused non-param allocas as dead instead of forcing a permanent slot");
 
   const auto single_block_module = make_live_local_alloca_candidate_module();
   const auto& single_block_function = single_block_module.functions.front();
+  const auto single_block_input =
+      c4c::backend::stack_layout::lower_lir_to_stack_layout_input(single_block_function);
   const auto single_block_analysis =
-      analyze_stack_layout_from_function(single_block_function, regalloc, {});
+      c4c::backend::stack_layout::analyze_stack_layout(single_block_input, regalloc, {});
   const auto single_block_coalescing =
-      c4c::backend::stack_layout::compute_coalescable_allocas(single_block_function,
+      c4c::backend::stack_layout::compute_coalescable_allocas(single_block_input,
                                                               single_block_analysis);
   expect_true(!single_block_coalescing.is_dead_alloca("%lv.buf") &&
                   single_block_coalescing.find_single_block("%lv.buf") == 0,
@@ -1303,11 +1307,12 @@ void test_backend_shared_alloca_coalescing_classifies_non_param_allocas() {
 
   const auto escaped_module = make_escaped_local_alloca_candidate_module();
   const auto& escaped_function = escaped_module.functions.back();
+  const auto escaped_input =
+      c4c::backend::stack_layout::lower_lir_to_stack_layout_input(escaped_function);
   const auto escaped_analysis =
-      analyze_stack_layout_from_function(escaped_function, regalloc, {});
+      c4c::backend::stack_layout::analyze_stack_layout(escaped_input, regalloc, {});
   const auto escaped_coalescing =
-      c4c::backend::stack_layout::compute_coalescable_allocas(escaped_function,
-                                                              escaped_analysis);
+      c4c::backend::stack_layout::compute_coalescable_allocas(escaped_input, escaped_analysis);
   expect_true(!escaped_coalescing.is_dead_alloca("%lv.buf") &&
                   !escaped_coalescing.find_single_block("%lv.buf").has_value(),
               "shared alloca-coalescing should leave call-escaped allocas out of the single-block pool");

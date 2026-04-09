@@ -7,17 +7,33 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: audit the last shared stack-layout compatibility helper
-  around alloca coalescing and confirm whether the raw-`LirFunction`
-  `compute_coalescable_allocas(...)` wrapper should be retired next or left as
-  a bounded bridge for still-LIR-mutating utilities
-- Next intended slice: if the remaining coalescing wrapper is only test
-  compatibility, move that shared coverage to explicit lowered input and
-  remove the wrapper; otherwise record why the surviving raw-LIR helper is
-  still required by the Step 6/7 migration boundary
+- Current slice: audit whether any remaining Step 6/7 shared helpers still
+  expose raw-`LirFunction` entrypoints solely for compatibility after the
+  coalescing wrapper removal
+- Next intended slice: if another remaining raw-LIR shared helper is only
+  preserving test compatibility, move that coverage to backend-owned lowered
+  input and retire the wrapper in the same bounded slice
 
 ## Completed
 
+- Completed the next Step 6 bounded shared stack-layout compatibility cleanup
+  slice by retiring the last raw-`LirFunction`
+  `compute_coalescable_allocas(...)` wrapper after confirming it was only
+  serving shared-util test compatibility:
+  - removed the raw-`LirFunction`
+    `compute_coalescable_allocas(...)` overload from
+    `src/backend/stack_layout/alloca_coalescing.*`, leaving the
+    `StackLayoutInput` entrypoint as the canonical shared alloca-coalescing
+    surface
+  - updated `tests/backend/backend_shared_util_tests.cpp` so the dead,
+    single-block, and escaped alloca coalescing regressions now lower
+    functions into explicit `StackLayoutInput` before invoking shared analysis
+    and coalescing helpers
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R backend_shared_util_tests --output-on-failure`,
+    rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with no new failures and no pass-count drop
+    (`2809 -> 2809`, same 32 known failing tests as `test_fail_before.log`)
 - Completed the next Step 6 bounded shared stack-layout compatibility cleanup
   slice by retiring the remaining analysis/planning wrappers over raw
   `LirFunction` now that production emitters already consume lowered
