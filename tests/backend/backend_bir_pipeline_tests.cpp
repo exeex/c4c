@@ -88,6 +88,65 @@ c4c::codegen::lir::LirModule make_unsupported_aarch64_double_return_lir_module()
   return module;
 }
 
+c4c::codegen::lir::LirModule make_supported_x86_string_literal_char_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.string_pool.push_back(LirStringConst{"@.str0", "hi", 3});
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(
+      LirGepOp{"%t0", "[3 x i8]", "@.str0", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirCastOp{"%t1", LirCastKind::SExt, "i32", "1", "i64"});
+  entry.insts.push_back(LirGepOp{"%t2", "i8", "%t0", false, {"i64 %t1"}});
+  entry.insts.push_back(LirLoadOp{"%t3", "i8", "%t2"});
+  entry.insts.push_back(LirCastOp{"%t4", LirCastKind::SExt, "i8", "%t3", "i32"});
+  entry.terminator = LirRet{std::string("%t4"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_supported_aarch64_string_literal_char_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  module.string_pool.push_back(LirStringConst{"@.str0", "hi", 3});
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(
+      LirGepOp{"%t0", "[3 x i8]", "@.str0", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirCastOp{"%t1", LirCastKind::SExt, "i32", "1", "i64"});
+  entry.insts.push_back(LirGepOp{"%t2", "i8", "%t0", false, {"i64 %t1"}});
+  entry.insts.push_back(LirLoadOp{"%t3", "i8", "%t2"});
+  entry.insts.push_back(LirCastOp{"%t4", LirCastKind::SExt, "i8", "%t3", "i32"});
+  entry.terminator = LirRet{std::string("%t4"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 void expect_i8_bir_route(I8ModuleFactory make_module,
                          std::string_view signature,
                          std::string_view op_text,
@@ -228,6 +287,42 @@ void test_aarch64_try_emit_module_reports_direct_bir_support_explicitly() {
       c4c::backend::aarch64::try_emit_module(make_unsupported_multi_function_bir_module());
   expect_true(!unsupported.has_value(),
               "aarch64 direct BIR support probing should return no native rendering for unsupported multi-function modules instead of requiring exception-text classification");
+}
+
+void test_x86_try_emit_prepared_lir_module_reports_direct_lir_support_explicitly() {
+  const auto prepared_supported = c4c::backend::prepare_lir_module_for_target(
+      make_supported_x86_string_literal_char_lir_module(), c4c::backend::Target::X86_64);
+  const auto supported = c4c::backend::x86::try_emit_prepared_lir_module(prepared_supported);
+  expect_true(supported.has_value(),
+              "x86 prepared direct-LIR support probing should report a bounded string-literal module without requiring a thrown rejection string");
+  expect_contains(*supported, "movsx eax",
+                  "x86 prepared direct-LIR support probing should still render the bounded string-literal module natively");
+
+  const auto prepared_unsupported = c4c::backend::prepare_lir_module_for_target(
+      make_unsupported_x86_double_return_lir_module(), c4c::backend::Target::X86_64);
+  const auto unsupported =
+      c4c::backend::x86::try_emit_prepared_lir_module(prepared_unsupported);
+  expect_true(!unsupported.has_value(),
+              "x86 prepared direct-LIR support probing should return no native rendering for unsupported floating-return modules instead of requiring exception-text classification");
+}
+
+void test_aarch64_try_emit_prepared_lir_module_reports_direct_lir_support_explicitly() {
+  const auto prepared_supported = c4c::backend::prepare_lir_module_for_target(
+      make_supported_aarch64_string_literal_char_lir_module(),
+      c4c::backend::Target::Aarch64);
+  const auto supported =
+      c4c::backend::aarch64::try_emit_prepared_lir_module(prepared_supported);
+  expect_true(supported.has_value(),
+              "aarch64 prepared direct-LIR support probing should report a bounded string-literal module without requiring a thrown rejection string");
+  expect_contains(*supported, "ldrb w0",
+                  "aarch64 prepared direct-LIR support probing should still render the bounded string-literal module natively");
+
+  const auto prepared_unsupported = c4c::backend::prepare_lir_module_for_target(
+      make_unsupported_aarch64_double_return_lir_module(), c4c::backend::Target::Aarch64);
+  const auto unsupported =
+      c4c::backend::aarch64::try_emit_prepared_lir_module(prepared_unsupported);
+  expect_true(!unsupported.has_value(),
+              "aarch64 prepared direct-LIR support probing should return no native rendering for unsupported floating-return modules instead of requiring exception-text classification");
 }
 
 void test_backend_bir_pipeline_is_opt_in_through_backend_options() {
@@ -1476,6 +1571,8 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_backend_entry_rejects_unsupported_direct_lir_input_on_aarch64);
   RUN_TEST(test_x86_try_emit_module_reports_direct_bir_support_explicitly);
   RUN_TEST(test_aarch64_try_emit_module_reports_direct_bir_support_explicitly);
+  RUN_TEST(test_x86_try_emit_prepared_lir_module_reports_direct_lir_support_explicitly);
+  RUN_TEST(test_aarch64_try_emit_prepared_lir_module_reports_direct_lir_support_explicitly);
   RUN_TEST(test_backend_bir_pipeline_is_opt_in_through_backend_options);
   RUN_TEST(test_backend_bir_pipeline_accepts_direct_bir_module_input);
   RUN_TEST(test_backend_bir_pipeline_routes_sub_cluster_through_bir_text_surface);

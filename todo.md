@@ -22,6 +22,27 @@ Source Plan: plan.md
 
 ## Completed
 
+- Completed the next Step 6/7 bounded prepared direct-LIR support-probe cleanup
+  slice by exposing explicit native fallback support probes before the shared
+  backend asks target emitters to throw:
+  - added explicit x86/aarch64
+    `try_emit_prepared_lir_module(const LirModule&)` probes in
+    `src/backend/x86/codegen/emit.*` and
+    `src/backend/aarch64/codegen/emit.*`, leaving the existing throwing
+    `emit_prepared_lir_module(const LirModule&)` wrappers as thin adapters over
+    the new optional render surface
+  - updated `src/backend/backend.cpp` so prepared direct-LIR fallback routing
+    now consults the shared optional probe first and only re-enters the
+    throwing target-local wrappers for the final unsupported direct-LIR error
+  - extended `tests/backend/backend_bir_pipeline_tests.cpp` with focused x86
+    and aarch64 regressions proving the prepared direct-LIR support probes
+    return native renderings for bounded fallback modules and `nullopt` for
+    unsupported floating-return fixtures
+  - rebuilt `backend_bir_tests`, passed
+    `ctest --test-dir build -R '^backend_bir_tests$' --output-on-failure`,
+    rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with no new failures and no pass-count drop
+    (`2809 -> 2809`, same 32 known failing tests as `test_fail_before.log`)
 - Completed the next Step 6/7 bounded direct-BIR support-probe cleanup slice by
   replacing the shared backend's exception-text retry seam with explicit native
   BIR support probing before prepared direct-LIR fallback:

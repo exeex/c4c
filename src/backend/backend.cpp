@@ -54,11 +54,20 @@ NativePreparationConfig build_native_preparation_config(Target target) {
 
 std::string emit_native_prepared_lir_module(const c4c::codegen::lir::LirModule& module,
                                             Target target) {
+  std::optional<std::string> rendered;
   switch (target) {
     case Target::X86_64:
     case Target::I686:
+      rendered = c4c::backend::x86::try_emit_prepared_lir_module(module);
+      if (rendered.has_value()) {
+        return *rendered;
+      }
       return c4c::backend::x86::emit_prepared_lir_module(module);
     case Target::Aarch64:
+      rendered = c4c::backend::aarch64::try_emit_prepared_lir_module(module);
+      if (rendered.has_value()) {
+        return *rendered;
+      }
       return c4c::backend::aarch64::emit_prepared_lir_module(module);
     case Target::Riscv64:
       return c4c::codegen::lir::print_llvm(module);

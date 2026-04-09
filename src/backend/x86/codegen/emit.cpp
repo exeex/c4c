@@ -3962,7 +3962,7 @@ std::string remove_redundant_self_moves(std::string asm_text) {
   return optimized;
 }
 
-std::optional<std::string> try_emit_direct_lir_module(
+std::optional<std::string> try_emit_prepared_lir_module_impl(
     const c4c::codegen::lir::LirModule& module) {
   try {
     // Intended migration order:
@@ -4098,8 +4098,13 @@ std::string emit_module(const c4c::backend::bir::Module& module) {
   throw_unsupported_direct_bir_module();
 }
 
+std::optional<std::string> try_emit_prepared_lir_module(
+    const c4c::codegen::lir::LirModule& module) {
+  return try_emit_prepared_lir_module_impl(module);
+}
+
 std::string emit_prepared_lir_module(const c4c::codegen::lir::LirModule& module) {
-  if (const auto rendered = try_emit_direct_lir_module(module); rendered.has_value()) {
+  if (const auto rendered = try_emit_prepared_lir_module(module); rendered.has_value()) {
     return *rendered;
   }
   throw_unsupported_direct_lir_module();

@@ -6555,7 +6555,7 @@ static std::optional<std::string> try_emit_general_lir_asm(
   return out.str();
 }
 
-std::optional<std::string> try_emit_direct_lir_module(
+std::optional<std::string> try_emit_prepared_lir_module(
     const c4c::codegen::lir::LirModule& module,
     bool needs_nonminimal_lowering) {
   try {
@@ -6690,12 +6690,13 @@ std::string emit_module(const c4c::backend::bir::Module& module) {
   fail_unsupported_direct_bir_module();
 }
 
-std::string emit_prepared_lir_module(const c4c::codegen::lir::LirModule& module) {
+std::optional<std::string> try_emit_prepared_lir_module(
+    const c4c::codegen::lir::LirModule& module) {
   const bool needs_nonminimal_lowering = lir_module_needs_nonminimal_lowering(module);
   validate_module(module);
-  if (auto rendered = try_emit_direct_lir_module(module, needs_nonminimal_lowering);
+  if (auto rendered = try_emit_prepared_lir_module(module, needs_nonminimal_lowering);
       rendered.has_value()) {
-    return *rendered;
+    return rendered;
   }
   if (!needs_nonminimal_lowering) {
     if (const auto imm2 = try_constant_fold_single_block(module); imm2.has_value()) {
@@ -6703,7 +6704,16 @@ std::string emit_prepared_lir_module(const c4c::codegen::lir::LirModule& module)
           module.target_triple, module.functions.front().name, *imm2);
     }
   }
-  if (auto gen_asm = try_emit_general_lir_asm(module)) return *gen_asm;
+  if (auto gen_asm = try_emit_general_lir_asm(module)) {
+    return gen_asm;
+  }
+  return std::nullopt;
+}
+
+std::string emit_prepared_lir_module(const c4c::codegen::lir::LirModule& module) {
+  if (auto rendered = try_emit_prepared_lir_module(module); rendered.has_value()) {
+    return *rendered;
+  }
   fail_unsupported_direct_lir_module();
 }
 
