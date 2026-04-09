@@ -7,13 +7,14 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 5: pull phi and CFG normalization behind the BIR boundary
-- Current slice: choose the next remaining Step 5 phi/CFG seam where a
-  lowerable shape still relies on target-local cleanup or lacks end-to-end LIR
-  route coverage
-- Next intended slice: audit the remaining target-local phi handling in
+- Current slice: audit the remaining target-local phi handling in
   `src/backend/x86/codegen/emit.cpp` and `src/backend/aarch64/codegen/emit.cpp`
-  against the now-covered conditional-phi and `u8` post-join-add LIR routes to
-  identify the smallest production prune/guard or missing route test
+  now that both targets have direct-emitter route coverage for the lowerable
+  conditional-phi and `u8` post-join-add LIR shapes
+- Next intended slice: decide whether the remaining phi-aware x86 direct-LIR
+  constant-folding helper and the AArch64 predecessor-copy fallback should gain
+  an explicit guard for lowerable CFG joins or whether a smaller production
+  prune is already safe without widening the direct-LIR fallback surface
 
 ## Completed
 
@@ -27,6 +28,15 @@ Source Plan: plan.md
   `tests/backend/backend_bir_pipeline_aarch64_tests.cpp` to use that LIR
   fixture and tightened the route assertions so they require the shared BIR
   select labels while rejecting the old target-local predecessor labels
+- Re-ran `backend_bir_tests`, refreshed `test_fail_after.log`, and passed the
+  regression guard with no new failures and no pass-count drop (`2841 ->
+  2841`)
+- Closed the remaining Step 5 x86 route-coverage gap in
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` by proving the direct
+  `c4c::backend::x86::emit_module(...)` LIR entrypoint itself routes the
+  lowerable conditional-phi join and `u8` post-join-add slices through the
+  shared BIR-owned select/join path instead of only covering the generic
+  `c4c::backend::emit_module(...)` front door
 - Re-ran `backend_bir_tests`, refreshed `test_fail_after.log`, and passed the
   regression guard with no new failures and no pass-count drop (`2841 ->
   2841`)

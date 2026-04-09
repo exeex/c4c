@@ -1999,6 +1999,18 @@ void test_backend_bir_pipeline_drives_x86_lir_conditional_phi_join_through_bir_e
                       "x86 lowerable conditional-phi-join input should no longer emit the original target-local phi predecessor block labels once the BIR route owns the shape");
   expect_not_contains(rendered, "target triple =",
                       "x86 LIR conditional-phi-join input should stay on native asm emission instead of falling back to LLVM text");
+
+  const auto direct_rendered =
+      c4c::backend::x86::emit_module(make_lir_single_param_select_eq_phi_module());
+
+  expect_contains(direct_rendered, ".globl choose",
+                  "x86 direct emitter should also route lowerable conditional-phi-join input through the shared BIR path before native asm emission");
+  expect_contains(direct_rendered, ".Lselect_true:\n  mov eax, 11\n  ret\n",
+                  "x86 direct emitter should lower the conditional-phi-join route to the shared BIR-owned select labels");
+  expect_contains(direct_rendered, ".Lselect_false:\n  mov eax, 4\n  ret\n",
+                  "x86 direct emitter should preserve the bounded false arm after routing the conditional-phi-join route through BIR");
+  expect_not_contains(direct_rendered, ".choose.tern.then",
+                      "x86 direct emitter should no longer emit the original target-local phi predecessor block labels for a lowerable conditional-phi-join route");
 }
 
 void test_backend_bir_pipeline_drives_x86_lir_u8_select_post_join_add_through_bir_end_to_end() {
@@ -2025,6 +2037,20 @@ void test_backend_bir_pipeline_drives_x86_lir_u8_select_post_join_add_through_bi
                       "x86 lowerable u8 select-plus-tail input should no longer emit the original target-local predecessor block labels once the BIR route owns the shape");
   expect_not_contains(rendered, "target triple =",
                       "x86 LIR u8 select-plus-tail input should stay on native asm emission instead of falling back to LLVM text");
+
+  const auto direct_rendered =
+      c4c::backend::x86::emit_module(make_lir_u8_select_post_join_add_module());
+
+  expect_contains(direct_rendered, ".globl choose2_add_post_ne_u",
+                  "x86 direct emitter should also route lowerable u8 select-plus-tail input through the shared BIR path before native asm emission");
+  expect_contains(direct_rendered, ".Lselect_true:\n  movzx eax, dil\n  add eax, 5\n  jmp .Lselect_join\n",
+                  "x86 direct emitter should preserve the shared BIR-owned then-arm predecessor arithmetic for the lowerable u8 select-plus-tail route");
+  expect_contains(direct_rendered, ".Lselect_false:\n  movzx eax, sil\n  add eax, 9\n",
+                  "x86 direct emitter should preserve the shared BIR-owned else-arm predecessor arithmetic for the lowerable u8 select-plus-tail route");
+  expect_contains(direct_rendered, ".Lselect_join:\n  add eax, 6\n  ret\n",
+                  "x86 direct emitter should preserve the shared BIR-owned post-join arithmetic tail for the lowerable u8 select-plus-tail route");
+  expect_not_contains(direct_rendered, ".choose2_add_post_ne_u.tern.then",
+                      "x86 direct emitter should no longer emit the original target-local predecessor block labels for a lowerable u8 select-plus-tail route");
 }
 
 void test_backend_bir_pipeline_drives_x86_return_add_smoke_case_end_to_end() {
