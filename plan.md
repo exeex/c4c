@@ -256,6 +256,14 @@ Concrete actions:
 - migrate stack-layout/regalloc integration off LIR-owned interval and phi
   assumptions
 - keep temporary compatibility wiring only long enough to compare behavior
+- fix Step 7-blocking AArch64 direct-emission regressions introduced or exposed
+  by the ownership migration when they stay on the same seam, especially the
+  prepared stack-layout / direct-LIR variadic path that still rejects
+  backend-owned variadic join shapes needed by current tests
+- treat the current AArch64 variadic/backend red set as Step 7 work when the
+  failures collapse to the same ownership boundary across
+  `backend_lir_aarch64_variadic_*`, `backend_runtime_variadic_*`, and matching
+  `c_testsuite_aarch64_backend_*` coverage
 
 Suggested slice order:
 1. audit stack-layout production entrypoints and classify each remaining
@@ -268,13 +276,19 @@ Suggested slice order:
    already exist
 4. narrow or delete wrapper overloads that only survive to preserve the old
    raw-`LIR` route after step 3 lands
-5. leave broad test cleanup and final shim deletion to Step 8 once the new
+5. repair same-seam AArch64 variadic/backend regressions before close when the
+   failures come from Step 7 ownership changes or direct-emitter gating on the
+   remaining compatibility path rather than from a separate backend initiative
+6. leave broad test cleanup and final shim deletion to Step 8 once the new
    production route is stable
 
 Completion check:
 - production regalloc and stack-layout ownership live on backend MIR
 - any remaining raw-`LIR` stack-layout surface is explicitly compatibility-only
   and no longer the default production path
+- the known Step 7 AArch64 variadic/backend blocker set is green when those
+  cases depend only on the migrated ownership seam rather than on new backend
+  feature work
 
 ### Step 8: Delete temporary LIR-side backend shims
 
@@ -290,9 +304,16 @@ Concrete actions:
 - remove obsolete string-first lowering helpers
 - remove temporary LIR-owned analysis shims
 - update tests and docs to match the final ownership model
+- if Step 7 triage uncovers genuinely separate backend capability work, track
+  it here or in a follow-up idea instead of stretching Step 7 beyond the
+  ownership migration; examples include broader AArch64 variadic ABI expansion,
+  new HFA/HVA or `fp128` support, or other target features not required to make
+  the current Step 7 blocker set green
 
 Completion check:
 - LIR is no longer the permanent owner of backend analysis state
+- any deferred backend failures left after Step 7 are clearly identified as new
+  capability work rather than unresolved ownership-migration regressions
 
 ## Acceptance Checks
 

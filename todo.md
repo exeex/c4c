@@ -7,19 +7,18 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 7: move regalloc and stack layout to backend MIR
-- Current slice: inspect whether the remaining `EntryAllocaCompatInputs`
-  surface can shed the rehydrated `compat_stack_layout_input` in favor of a
-  smaller analysis-only compatibility helper for the shared tests that still
-  compare prepared versus explicit stack-layout lowering
-- Current implementation target: audit the shared tests that still analyze
-  `compat_stack_layout_input`, classify which assertions truly need full block /
-  phi / metadata rehydration, and identify the smallest helper that would keep
-  those comparisons explicit without reviving a peer production-looking broad
-  packet
-- Next intended slice: split a smaller analysis-only compatibility carrier out
-  of `EntryAllocaCompatInputs` if the remaining tests only need narrowed
-  liveness-backed stack-layout facts rather than the full rehydrated
-  `StackLayoutInput`
+- Current slice: triage the pre-existing AArch64 variadic/backend blocker set
+  and separate same-seam Step 7 regressions from true post-Step-7 capability
+  follow-up work before implementation continues on compatibility-surface
+  narrowing
+- Current implementation target: confirm which failures in
+  `backend_lir_aarch64_variadic_*`, `backend_runtime_variadic_*`, and matching
+  `c_testsuite_aarch64_backend_*` coverage share the current Step 7 ownership
+  seam, then repair the smallest common root cause on the AArch64 prepared
+  direct-LIR variadic path
+- Next intended slice: return to the `EntryAllocaCompatInputs` narrowing audit
+  once the Step 7-blocking AArch64 variadic/backend set is green or the
+  remaining red cases are clearly classified as separate Step 8 capability work
 
 ## Completed
 
