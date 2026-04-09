@@ -7,18 +7,37 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: remove prepared per-point pointer-access storage now that
-  overwrite-before-read pruning can round-trip through the coarse backend-owned
-  first-access seam
-- Current implementation target: shrink the prepared stack-layout
-  classification carrier by dropping cached per-point `pointer_accesses` once
-  overwrite-before-read behavior is fully driven by
-  `entry_alloca_first_accesses`
-- Next intended slice: audit whether any remaining prepared
+- Current slice: audit whether any remaining prepared
   `derived_pointer_root` metadata can be narrowed further without regressing
   backend-owned stack-layout classification
+- Current implementation target: confirm the prepared fallback carrier can drop
+  per-point `derived_pointer_root` alias metadata now that single-block
+  coalescing and overwrite-before-read pruning round-trip through coarse
+  backend-owned seams
+- Next intended slice: audit whether the prepared fallback carrier still needs
+  per-point `pointer_accesses` once the coarse backend-owned first-access,
+  escape, and use-block seams are the only surviving stack-layout
+  classification inputs
 
 ## Completed
+
+- Completed the next Step 6 prepared derived-pointer-root narrowing slice by
+  removing cached per-point alias metadata from the prepared fallback
+  stack-layout carrier once the coarse backend-owned seams covered the
+  remaining consumers:
+  - removed `derived_pointer_root` from
+    `PreparedEntryAllocaStackLayoutPoint` in
+    `src/backend/stack_layout/slot_assignment.hpp`
+  - updated `src/backend/stack_layout/slot_assignment.cpp` so prepared
+    classification lowering no longer stores per-point derived-pointer-root
+    aliases and lowering back into the production `StackLayoutInput` no longer
+    rehydrates them
+  - extended `tests/backend/backend_shared_util_tests.cpp` with focused
+    coverage proving prepared fallback lowering still preserves single-block
+    coalescing through `entry_alloca_use_blocks` while the lowered
+    `StackLayoutInput` no longer carries prepared derived-pointer-root facts
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`
 
 - Completed the next Step 6 prepared overwrite-before-read classification
   narrowing slice by moving fallback first-access ownership onto a coarse

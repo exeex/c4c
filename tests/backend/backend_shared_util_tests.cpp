@@ -2049,8 +2049,6 @@ void test_backend_shared_fallback_preparation_separates_stack_layout_metadata_fr
                   preparation.stack_layout_classification.entry_alloca_use_blocks->empty() &&
                   preparation.stack_layout_classification.blocks.front().insts.front()
                           .pointer_accesses.empty() &&
-                  !preparation.stack_layout_classification.blocks.front().insts.front()
-                           .derived_pointer_root.has_value() &&
                   preparation.stack_layout_metadata.signature_params.size() == 2 &&
                   preparation.stack_layout_metadata.signature_params.front().type == "i32" &&
                   preparation.stack_layout_metadata.signature_params.front().operand == "%p.x" &&
@@ -2206,9 +2204,7 @@ void test_backend_shared_fallback_preparation_still_needs_remaining_pointer_esca
                           .block_indices.size() == 1 &&
                   aggregate_preparation.stack_layout_classification.entry_alloca_use_blocks->front()
                           .block_indices.front() == 0,
-              "shared prepared fallback carrier should narrow single-block coalescing to a coarse entry-alloca use-block classification instead of depending only on cached derived-pointer-root facts");
-  aggregate_preparation.stack_layout_classification.blocks.front().insts.front()
-      .derived_pointer_root.reset();
+              "shared prepared fallback carrier should narrow single-block coalescing to a coarse entry-alloca use-block classification instead of retaining separate per-point alias metadata");
   const auto aggregate_lowered =
       c4c::backend::stack_layout::lower_prepared_entry_alloca_function_inputs(
           aggregate_preparation);
@@ -2218,8 +2214,10 @@ void test_backend_shared_fallback_preparation_still_needs_remaining_pointer_esca
       c4c::backend::stack_layout::compute_coalescable_allocas(
           aggregate_lowered.stack_layout_input, aggregate_analysis);
   expect_true(!aggregate_coalescing.is_dead_alloca("%lv.buf") &&
+                  !aggregate_lowered.stack_layout_input.blocks.front().insts.front()
+                           .derived_pointer_root.has_value() &&
                   aggregate_coalescing.find_single_block("%lv.buf") == 0,
-              "shared prepared fallback carrier should let single-block coalescing trust the coarse entry-alloca use-block seam even after prepared derived-pointer-root facts are cleared");
+              "shared prepared fallback carrier should let single-block coalescing trust the coarse entry-alloca use-block seam without rehydrating prepared derived-pointer-root facts");
 
   aggregate_preparation.stack_layout_classification.entry_alloca_use_blocks =
       std::vector<c4c::backend::stack_layout::EntryAllocaUseBlocks>{};

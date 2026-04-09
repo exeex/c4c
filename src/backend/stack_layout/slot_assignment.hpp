@@ -54,7 +54,6 @@ struct PreparedEntryAllocaStackLayoutMetadata {
 
 struct PreparedEntryAllocaStackLayoutPoint {
   std::vector<PointerAccess> pointer_accesses;
-  std::optional<std::pair<std::string, std::string>> derived_pointer_root;
 };
 
 struct PreparedEntryAllocaStackLayoutBlock {
