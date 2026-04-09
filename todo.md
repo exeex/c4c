@@ -11,14 +11,41 @@ Source Plan: plan.md
   the next planning-only compatibility helper can stop rebuilding broader
   entry-alloca wrapper state once callers already own backend liveness plus
   prepared planning metadata
-- Current implementation target: inspect the remaining bundle/patch-prep
-  compatibility surfaces and pick the next helper that can accept narrowed
-  prepared planning/rewrite inputs directly
-- Next intended slice: narrow the next planning-only compatibility helper so
-  callers that already own backend liveness plus prepared planning metadata do
-  not need to materialize broader entry-alloca wrapper state
+- Current implementation target: inspect the remaining rewrite-prep
+  compatibility helpers and check whether the `StackLayoutInput` lowering path
+  can reuse embedded prepared rewrite/planning metadata instead of recomputing
+  fallback classification from the broader wrapper
+- Next intended slice: narrow the next rewrite-prep compatibility helper so
+  prepared callers that already carry backend liveness plus narrowed rewrite
+  metadata do not need to rebuild wider stack-layout classification state
 
 ## Completed
+
+- Completed the next Step 6 planning-only compatibility-helper narrowing slice
+  by retargeting the backend-owned stack-layout bundle overload to the prepared
+  planning seam instead of recomputing broader wrapper state:
+  - updated `src/backend/stack_layout/slot_assignment.cpp` so
+    `analyze_entry_alloca_planning_input(...)` now honors embedded prepared
+    `escaped_entry_allocas` and `entry_alloca_use_blocks`, and the
+    `build_stack_layout_plan_bundle(liveness_input, stack_layout_input, ...)`
+    compatibility overload now lowers through `EntryAllocaPlanningInput`
+    instead of re-analyzing the broader `StackLayoutInput` surface
+  - taught `lower_stack_layout_input_to_entry_alloca_rewrite_input(...)` and
+    `lower_stack_layout_input_to_entry_alloca_planning_input(...)` to reuse
+    embedded prepared classification metadata when the compatibility
+    `StackLayoutInput` already carries narrowed escape/use-block/first-access
+    facts, falling back to raw recomputation only when those seams are absent
+  - extended `tests/backend/backend_shared_util_tests.cpp` with a focused
+    regression proving the backend-owned bundle compatibility overload now
+    matches the explicit prepared `planning_input` path for a live local alloca
+    that depends on prepared use-block metadata
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`
+  - rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with the repo’s allowed non-decreasing rule and no new
+    failures (`2809 -> 2809`, same 32 known failing tests as
+    `test_fail_before.log`; full suite summary `2841` total with `32` failing
+    both before and after)
 
 - Completed the next Step 6 planning-helper narrowing slice by making the
   backend-owned `StackLayoutInput` planning overloads lower directly to the
