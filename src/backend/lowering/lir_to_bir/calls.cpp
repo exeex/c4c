@@ -14,10 +14,12 @@
 #include "../../../codegen/lir/ir.hpp"
 #include "../call_decode.hpp"
 
+#include <limits>
 #include <cstddef>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <vector>
 
 namespace c4c::backend::lir_to_bir {
@@ -342,6 +344,292 @@ std::optional<std::vector<bir::Value>> lower_direct_call_args(
     }
   }
   return lowered_args;
+}
+
+namespace {
+
+std::string decode_call_llvm_byte_string(std::string_view text) {
+  std::string bytes;
+  bytes.reserve(text.size());
+  for (std::size_t index = 0; index < text.size(); ++index) {
+    if (text[index] == '\\' && index + 2 < text.size()) {
+      auto hex_val = [](char c) -> int {
+        if (c >= '0' && c <= '9') return c - '0';
+        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+        return -1;
+      };
+      const int hi = hex_val(text[index + 1]);
+      const int lo = hex_val(text[index + 2]);
+      if (hi >= 0 && lo >= 0) {
+        bytes.push_back(static_cast<char>(hi * 16 + lo));
+        index += 2;
+        continue;
+      }
+    }
+    bytes.push_back(text[index]);
+  }
+  return bytes;
+}
+
+}  // namespace
+
+std::optional<bir::Module> try_lower_minimal_declared_direct_call_module(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.empty() || module.functions.size() > 2) {
+    return std::nullopt;
+  }
+
+  const LirFunction* main_function = nullptr;
+  const LirFunction* declared_callee = nullptr;
+  for (const auto& function : module.functions) {
+    if (!function.is_declaration &&
+        backend_lir_signature_matches(function.signature_text, "define", "i32", function.name, {})) {
+      if (main_function != nullptr) {
+        return std::nullopt;
+      }
+      main_function = &function;
+    } else {
+      if (declared_callee != nullptr || !function.is_declaration) {
+        return std::nullopt;
+      }
+      declared_callee = &function;
+    }
+  }
+
+  if (main_function == nullptr || main_function->entry.value != 0 ||
+      main_function->blocks.size() != 1 || !main_function->alloca_insts.empty() ||
+      !main_function->stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& main_lir_block = main_function->blocks.front();
+  const auto* main_ret = std::get_if<LirRet>(&main_lir_block.terminator);
+  if (main_lir_block.label != "entry" || main_lir_block.insts.size() != 1 || main_ret == nullptr ||
+      !main_ret->value_str.has_value() ||
+      lir_to_bir::legalize_function_return_type(*main_function, *main_ret) != bir::TypeKind::I32) {
+    return std::nullopt;
+  }
+
+  const auto* call = std::get_if<LirCallOp>(&main_lir_block.insts.front());
+  const auto symbol_name =
+      call == nullptr ? std::nullopt : parse_lir_direct_global_callee(call->callee);
+  const auto parsed_direct_global_call =
+      call == nullptr ? std::nullopt : parse_backend_direct_global_typed_call(*call);
+  const auto typed_call =
+      call == nullptr ? std::nullopt : parse_lir_typed_call_or_infer_params(*call);
+  if (call == nullptr || !symbol_name.has_value() ||
+      lir_to_bir::legalize_call_arg_type(call->return_type) != bir::TypeKind::I32 ||
+      call->result.str().empty() || symbol_name->empty()) {
+    return std::nullopt;
+  }
+
+  ParsedBackendTypedCallView backend_typed_call;
+  if (typed_call.has_value()) {
+    backend_typed_call = make_backend_typed_call_view(*typed_call);
+  } else if (parsed_direct_global_call.has_value()) {
+    backend_typed_call.args = parsed_direct_global_call->typed_call.args;
+    backend_typed_call.owned_param_types.reserve(parsed_direct_global_call->typed_call.param_types.size());
+    backend_typed_call.param_types.reserve(parsed_direct_global_call->typed_call.param_types.size());
+    for (const auto param_type : parsed_direct_global_call->typed_call.param_types) {
+      backend_typed_call.owned_param_types.push_back(std::string(param_type));
+      backend_typed_call.param_types.push_back(backend_typed_call.owned_param_types.back());
+    }
+  } else {
+    return std::nullopt;
+  }
+
+  if (backend_typed_call.args.size() > 6) {
+    return std::nullopt;
+  }
+
+  const LirExternDecl* extern_callee = nullptr;
+  for (const auto& decl : module.extern_decls) {
+    if (decl.name != *symbol_name) {
+      continue;
+    }
+    if (extern_callee != nullptr) {
+      return std::nullopt;
+    }
+    extern_callee = &decl;
+  }
+
+  if (extern_callee != nullptr) {
+    if (lir_to_bir::legalize_extern_decl_return_type(*extern_callee) != bir::TypeKind::I32) {
+      return std::nullopt;
+    }
+  } else {
+    if (declared_callee == nullptr || declared_callee->name != *symbol_name ||
+        lir_to_bir::legalize_function_decl_return_type(*declared_callee) != bir::TypeKind::I32) {
+      return std::nullopt;
+    }
+
+    const auto declared_call_surface =
+        parsed_direct_global_call.value_or(
+            ParsedBackendDirectGlobalTypedCallView{*symbol_name, backend_typed_call});
+    const auto& declared_param_types = declared_call_surface.typed_call.param_types;
+
+    const auto declared_params = lower_function_params(*declared_callee);
+    if (declared_params.has_value()) {
+      if (declared_param_types.size() != declared_params->size()) {
+        return std::nullopt;
+      }
+      for (std::size_t index = 0; index < declared_params->size(); ++index) {
+        const auto lowered_call_type = lir_to_bir::legalize_call_arg_type(declared_param_types[index]);
+        if (!lowered_call_type.has_value() || *lowered_call_type != (*declared_params)[index].type) {
+          return std::nullopt;
+        }
+      }
+    } else {
+      const auto params = parse_backend_function_signature_params(declared_callee->signature_text);
+      if (!params.has_value()) {
+        return std::nullopt;
+      }
+
+      std::size_t fixed_param_count = 0;
+      bool saw_varargs = false;
+      for (const auto& param : *params) {
+        if (param.is_varargs) {
+          saw_varargs = true;
+          break;
+        }
+        ++fixed_param_count;
+      }
+
+      if (declared_param_types.size() < fixed_param_count ||
+          (!saw_varargs && declared_param_types.size() != fixed_param_count)) {
+        return std::nullopt;
+      }
+      for (std::size_t index = 0; index < fixed_param_count; ++index) {
+        if (trim_lir_arg_text((*params)[index].type) !=
+            trim_lir_arg_text(declared_param_types[index])) {
+          return std::nullopt;
+        }
+      }
+      if (saw_varargs) {
+        backend_typed_call.owned_param_types.clear();
+        backend_typed_call.param_types.clear();
+        backend_typed_call.owned_param_types.reserve(declared_call_surface.typed_call.param_types.size());
+        backend_typed_call.param_types.reserve(declared_call_surface.typed_call.param_types.size());
+        for (const auto param_type : declared_call_surface.typed_call.param_types) {
+          backend_typed_call.owned_param_types.push_back(std::string(param_type));
+          backend_typed_call.param_types.push_back(backend_typed_call.owned_param_types.back());
+        }
+      }
+    }
+  }
+
+  auto args = parse_backend_extern_call_args(backend_typed_call);
+  if (!args.has_value()) {
+    return std::nullopt;
+  }
+
+  const bool return_call_result = *main_ret->value_str == call->result.str();
+  std::int64_t return_imm = 0;
+  if (!return_call_result) {
+    const auto parsed_return = parse_backend_i64_literal(*main_ret->value_str);
+    if (!parsed_return.has_value() ||
+        *parsed_return < std::numeric_limits<std::int32_t>::min() ||
+        *parsed_return > std::numeric_limits<std::int32_t>::max()) {
+      return std::nullopt;
+    }
+    return_imm = *parsed_return;
+  }
+
+  if (!return_call_result && call->result.str().empty()) {
+    return std::nullopt;
+  }
+
+  bir::Module lowered;
+  lowered.target_triple = module.target_triple;
+  lowered.data_layout = module.data_layout;
+
+  lowered.globals.reserve(module.globals.size());
+  for (const auto& global : module.globals) {
+    if (global.name.empty()) {
+      return std::nullopt;
+    }
+    lowered.globals.push_back(bir::Global{
+        .name = global.name,
+        .type = bir::TypeKind::I64,
+        .is_extern = global.is_extern_decl,
+        .initializer = std::nullopt,
+    });
+  }
+
+  lowered.string_constants.reserve(module.string_pool.size());
+  for (const auto& string_constant : module.string_pool) {
+    if (string_constant.pool_name.empty() || string_constant.byte_length < 0) {
+      return std::nullopt;
+    }
+
+    std::string name = string_constant.pool_name;
+    if (!name.empty() && name.front() == '@') {
+      name.erase(name.begin());
+    }
+
+    lowered.string_constants.push_back(bir::StringConstant{
+        .name = std::move(name),
+        .bytes = decode_call_llvm_byte_string(string_constant.raw_bytes),
+    });
+  }
+
+  bir::Function lowered_callee;
+  lowered_callee.name = *symbol_name;
+  lowered_callee.return_type = bir::TypeKind::I32;
+  lowered_callee.calling_convention = default_calling_convention_for_target(module.target_triple);
+  lowered_callee.is_variadic =
+      declared_callee != nullptr && function_signature_is_variadic(declared_callee->signature_text);
+  lowered_callee.is_declaration = true;
+  {
+    std::vector<std::string_view> param_types;
+    param_types.reserve(backend_typed_call.param_types.size());
+    for (const auto param_type : backend_typed_call.param_types) {
+      param_types.push_back(param_type);
+    }
+    const auto lowered_params = lower_call_params_from_type_texts(param_types);
+    if (!lowered_params.has_value()) {
+      return std::nullopt;
+    }
+    lowered_callee.params = *lowered_params;
+  }
+  lowered.functions.push_back(std::move(lowered_callee));
+
+  bir::Function lowered_main_function;
+  lowered_main_function.name = main_function->name;
+  lowered_main_function.return_type = bir::TypeKind::I32;
+  lowered_main_function.calling_convention =
+      default_calling_convention_for_target(module.target_triple);
+
+  bir::Block lowered_entry_block;
+  lowered_entry_block.label = "entry";
+
+  auto lowered_args = lower_direct_call_args(*args);
+  if (!lowered_args.has_value()) {
+    return std::nullopt;
+  }
+  lowered_entry_block.insts.push_back(make_direct_call_inst(
+      std::string(*symbol_name),
+      default_calling_convention_for_target(module.target_triple),
+      lowered_callee.is_variadic,
+      bir::TypeKind::I32,
+      "i32",
+      bir::Value::named(bir::TypeKind::I32, call->result.str()),
+      std::move(*lowered_args)));
+
+  if (return_call_result) {
+    lowered_entry_block.terminator.value =
+        bir::Value::named(bir::TypeKind::I32, call->result.str());
+  } else {
+    lowered_entry_block.terminator.value =
+        bir::Value::immediate_i32(static_cast<std::int32_t>(return_imm));
+  }
+
+  lowered_main_function.blocks.push_back(std::move(lowered_entry_block));
+  lowered.functions.push_back(std::move(lowered_main_function));
+  return lowered;
 }
 
 void record_call_lowering_scaffold_notes(const c4c::codegen::lir::LirModule& module,

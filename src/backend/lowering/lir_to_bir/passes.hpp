@@ -27,6 +27,8 @@ std::optional<std::vector<bir::Param>> lower_function_params(
     const c4c::codegen::lir::LirFunction& lir_function);
 bir::CallingConv default_calling_convention_for_target(std::string_view target_triple);
 bool function_signature_is_variadic(std::string_view signature_text);
+std::optional<bir::Module> try_lower_minimal_declared_direct_call_module(
+    const c4c::codegen::lir::LirModule& module);
 bir::CallInst make_direct_call_inst(std::string callee,
                                     bir::CallingConv calling_convention,
                                     bool is_variadic,

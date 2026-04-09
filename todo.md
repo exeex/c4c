@@ -10,13 +10,18 @@ Source Plan: plan.md
   move shared lowering ownership out of monolithic
   `src/backend/lowering/lir_to_bir.cpp` and into
   `src/backend/lowering/lir_to_bir/{cfg,types,memory,calls,phi,aggregates}.cpp`
+- current exact slice:
+  return to the next remaining ownership move after the declared direct-call
+  extraction, with memory/address formation helpers next unless another
+  clearly isolated call matcher fragment blocks the seam
 - build/test work is intentionally ignored in this phase per `plan.md`
   until the lane explicitly switches to `Phase 2: Compile recovery`
 
 ## Next Slice
 
 - finish the remaining call-side ownership move out of the monolith:
-  keep pushing direct/declared-call metadata and helper logic into
+  keep pushing the remaining direct/declared-call matcher, metadata, and
+  helper logic into
   `src/backend/lowering/lir_to_bir/calls.cpp`
 - continue the memory/address lane after that:
   make more GEP/address formation paths consume split memory helpers instead of
@@ -41,6 +46,22 @@ Source Plan: plan.md
 - split direct-call metadata further so the split call seam now owns:
   `arg_types`, placeholder `arg_abi/result_abi`,
   target-derived `calling_convention`, and declared-function `is_variadic`
+- moved the minimal declared direct-call matcher/module lowering path out of
+  `src/backend/lowering/lir_to_bir.cpp` and into
+  `src/backend/lowering/lir_to_bir/calls.cpp`, including declared/extern
+  return-type validation, typed-call surface reconciliation, string-pool
+  materialization, and direct-call BIR module construction
+- rewired `src/backend/lowering/lir_to_bir.cpp` dispatch through the exported
+  split call-seam entry point and removed the now-dead monolith helper
+  wrappers for that path
+- verified the tree rebuilds cleanly after the declared direct-call ownership
+  move:
+  `cmake --build build -j8` succeeds
+- re-ran seam-local backend validation after the declared direct-call move and
+  confirmed the same pre-existing unrelated failure buckets remain:
+  `./build/backend_bir_tests` still fails across existing shared-BIR lowering
+  acceptance/support cases, and `./build/backend_shared_util_tests` still
+  aborts with the existing unsupported direct-LIR rejection
 
 ## Blockers
 
