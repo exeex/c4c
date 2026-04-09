@@ -67,10 +67,6 @@ std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(
     const StackLayoutInput& input,
     const StackLayoutAnalysis& analysis);
 
-void apply_entry_alloca_slot_plan(
-    c4c::codegen::lir::LirFunction& function,
-    const std::vector<EntryAllocaSlotPlan>& plans);
-
 std::vector<c4c::codegen::lir::LirInst> prune_dead_entry_alloca_insts(
     const c4c::codegen::lir::LirFunction& function,
     const std::vector<EntryAllocaSlotPlan>& plans);

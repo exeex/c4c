@@ -328,12 +328,6 @@ void apply_entry_alloca_rewrite_patch(
   }
 }
 
-void apply_entry_alloca_slot_plan(
-    LirFunction& function,
-    const std::vector<EntryAllocaSlotPlan>& plans) {
-  apply_entry_alloca_rewrite_patch(function, build_entry_alloca_rewrite_patch(function, plans));
-}
-
 std::vector<c4c::codegen::lir::LirInst> prune_dead_entry_alloca_insts(
     const LirFunction& function,
     const std::vector<EntryAllocaSlotPlan>& plans) {
