@@ -1,7 +1,33 @@
 # Function Template Specialization Identity Collision Follow-Up
 
-Status: Open
+Status: Closed
 Last Updated: 2026-04-09
+
+## Completion Summary
+
+Closed after confirming the underlying specialization-identity fix had already
+landed during the just-finished rvalue-reference work and adding an exact-shape
+regression for the original `forward_pick<int&>` / `forward_pick<int>` case.
+
+Delivered in this follow-up:
+
+- added `tests/cpp/internal/postive_case/template_forward_pick_specialization_identity.cpp`
+  to lock the runtime behavior for both specializations in one TU
+- added focused internal HIR and LLVM metadata checks in
+  `tests/cpp/internal/InternalTests.cmake` so both
+  `forward_pick<T=int&>` and `forward_pick<T=int>` stay materialized with
+  distinct specialization metadata
+- revalidated the full suite with the regression guard:
+  baseline 3162 passing tests, after 3167 passing tests, zero newly failing
+  tests
+
+## Leftover Notes
+
+- the exact collision described here is now covered directly, not only through
+  the broader `forwarding_ref_qualified_member_dispatch.cpp` regression
+- future template-identity work should only reopen as a new idea if a distinct
+  specialization shape demonstrates a fresh collision beyond the now-covered
+  ref-qualified forwarding path
 
 ## Goal
 

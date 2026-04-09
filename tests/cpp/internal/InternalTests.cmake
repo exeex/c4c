@@ -1465,6 +1465,42 @@ set_tests_properties(cpp_llvm_spec_key_named_metadata_entry PROPERTIES
 )
 
 add_test(
+  NAME cpp_hir_forward_pick_ref_specialization_identity
+  COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/template_forward_pick_specialization_identity.cpp"
+)
+set_tests_properties(cpp_hir_forward_pick_ref_specialization_identity PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "template forward_pick<typename T> \\[2 instantiations\\].*-> forward_pick_i_ref \\{T=int&\\} key=forward_pick<T=int&>.*-> forward_pick_i \\{T=int\\} key=forward_pick<T=int>"
+)
+
+add_test(
+  NAME cpp_llvm_forward_pick_specialization_metadata
+  COMMAND c4cll "${INTERNAL_CPP_TEST_ROOT}/postive_case/template_forward_pick_specialization_identity.cpp"
+)
+set_tests_properties(cpp_llvm_forward_pick_specialization_metadata PROPERTIES
+  LABELS "internal;positive_case;cpp;llvm"
+  PASS_REGULAR_EXPRESSION "!c4c\\.specializations = !\\{!0, !1\\}"
+)
+
+add_test(
+  NAME cpp_llvm_forward_pick_ref_specialization_metadata_entry
+  COMMAND c4cll "${INTERNAL_CPP_TEST_ROOT}/postive_case/template_forward_pick_specialization_identity.cpp"
+)
+set_tests_properties(cpp_llvm_forward_pick_ref_specialization_metadata_entry PROPERTIES
+  LABELS "internal;positive_case;cpp;llvm"
+  PASS_REGULAR_EXPRESSION "!\"forward_pick<T=int&>\""
+)
+
+add_test(
+  NAME cpp_llvm_forward_pick_value_specialization_metadata_entry
+  COMMAND c4cll "${INTERNAL_CPP_TEST_ROOT}/postive_case/template_forward_pick_specialization_identity.cpp"
+)
+set_tests_properties(cpp_llvm_forward_pick_value_specialization_metadata_entry PROPERTIES
+  LABELS "internal;positive_case;cpp;llvm"
+  PASS_REGULAR_EXPRESSION "!\"forward_pick<T=int>\""
+)
+
+add_test(
   NAME cpp_llvm_initializer_list_runtime_materialization
   COMMAND c4cll "${INTERNAL_CPP_TEST_ROOT}/postive_case/eastl_probe_initializer_list_runtime.cpp"
 )
