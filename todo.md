@@ -11,22 +11,19 @@ Source Plan: plan.md
   `src/backend/lowering/lir_to_bir.cpp` and into
   `src/backend/lowering/lir_to_bir/{cfg,types,memory,calls,phi,aggregates}.cpp`
 - current exact slice:
-  extract the remaining minimal direct-call lowering helper cluster from
-  `src/backend/lowering/lir_to_bir.cpp` into
-  `src/backend/lowering/lir_to_bir/calls.cpp`, leaving the monolith with
-  dispatch only for those call-owned patterns
+  continue the memory/address lane after the call seam cleanup by moving more
+  GEP/address-formation ownership out of `src/backend/lowering/lir_to_bir.cpp`
+  and into `src/backend/lowering/lir_to_bir/memory.cpp`
 - build/test work is intentionally ignored in this phase per `plan.md`
   until the lane explicitly switches to `Phase 2: Compile recovery`
 
 ## Next Slice
 
-- finish the remaining call-side ownership move out of the monolith:
-  inspect `src/backend/lowering/lir_to_bir.cpp` for any residual call-only
-  matcher or ABI helper still trapped there after the direct-call cluster move,
-  and move that final fragment into `src/backend/lowering/lir_to_bir/calls.cpp`
-- continue the memory/address lane after that:
-  make more GEP/address formation paths consume split memory helpers instead of
+- make more GEP/address formation paths consume split memory helpers instead of
   rebuilding shape logic in `lir_to_bir.cpp`
+- identify the next memory-owned matcher family whose address decoding is still
+  duplicated in the monolith and re-home that fragment into
+  `src/backend/lowering/lir_to_bir/memory.cpp`
 - once the current ownership-wiring burst is coherent, start a dedicated
   compile-recovery pass for the split seam files before any new targeted tests
 
@@ -64,11 +61,19 @@ Source Plan: plan.md
 - rewired `src/backend/lowering/lir_to_bir.cpp` dispatch through the exported
   split call-seam entry point and removed the now-dead monolith helper
   wrappers for that path
+- moved the last shared minimal-signature/direct-call helper cluster out of
+  `src/backend/lowering/lir_to_bir.cpp` and into
+  `src/backend/lowering/lir_to_bir/calls.cpp`, exporting the call-owned
+  signature/return-width helpers through `passes.hpp` so the monolith no
+  longer owns duplicate copies
 - verified the tree rebuilds cleanly after the declared direct-call ownership
   move:
   `cmake --build build -j8` succeeds
 - verified the tree still rebuilds cleanly after the remaining minimal
   direct-call helper extraction:
+  `cmake --build build -j8` succeeds
+- verified the tree still rebuilds cleanly after centralizing the residual
+  call-owned signature helpers in `calls.cpp`:
   `cmake --build build -j8` succeeds
 - re-ran seam-local backend validation after the declared direct-call move and
   confirmed the same pre-existing unrelated failure buckets remain:
@@ -93,5 +98,7 @@ Source Plan: plan.md
 - do not add any new testcase-shaped x86 direct-LIR matcher while this reset
   is active
 - the current goal is structural ownership, not behavioral completion
+- the call seam now owns the minimal signature/return-width helper family;
+  next slices should avoid reintroducing those helpers into the monolith
 - when this lane switches to compile recovery, start narrow and seam-local
   before restoring broader regression discipline

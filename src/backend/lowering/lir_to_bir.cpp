@@ -1,5 +1,4 @@
 #include "lir_to_bir.hpp"
-#include "call_decode.hpp"
 #include "lir_to_bir/passes.hpp"
 
 #include <charconv>
@@ -17,71 +16,6 @@
 namespace c4c::backend {
 
 namespace {
-
-std::optional<bir::TypeKind> lower_minimal_scalar_type(const c4c::TypeSpec& type) {
-  if (type.ptr_level != 0 || type.array_rank != 0) {
-    return std::nullopt;
-  }
-  if (type.base == TB_CHAR || type.base == TB_SCHAR || type.base == TB_UCHAR) {
-    return bir::TypeKind::I8;
-  }
-  if (type.base == TB_INT) {
-    return bir::TypeKind::I32;
-  }
-  if (type.base == TB_LONG || type.base == TB_ULONG || type.base == TB_LONGLONG ||
-      type.base == TB_ULONGLONG) {
-    return bir::TypeKind::I64;
-  }
-  return std::nullopt;
-}
-
-std::optional<bir::TypeKind> lower_scalar_type_text(std::string_view text) {
-  if (text == "i8") {
-    return bir::TypeKind::I8;
-  }
-  if (text == "i32") {
-    return bir::TypeKind::I32;
-  }
-  if (text == "i64") {
-    return bir::TypeKind::I64;
-  }
-  return std::nullopt;
-}
-
-std::optional<bir::TypeKind> lower_function_signature_return_type(std::string_view signature_text) {
-  const auto line = c4c::codegen::lir::trim_lir_arg_text(signature_text);
-  const auto first_space = line.find(' ');
-  const auto at_pos = line.find('@');
-  if (first_space == std::string_view::npos || at_pos == std::string_view::npos ||
-      first_space >= at_pos) {
-    return std::nullopt;
-  }
-
-  return lower_scalar_type_text(
-      c4c::codegen::lir::trim_lir_arg_text(line.substr(first_space + 1, at_pos - first_space - 1)));
-}
-
-bool matches_minimal_i32_function_signature(
-    const c4c::codegen::lir::LirFunction& function,
-    std::initializer_list<std::string_view> signature_param_types) {
-  if (!function.params.empty()) {
-    const auto lowered_return_type = lower_minimal_scalar_type(function.return_type);
-    if (lowered_return_type != bir::TypeKind::I32 ||
-        function.params.size() != signature_param_types.size()) {
-      return false;
-    }
-
-    for (const auto& [param_name, param_type] : function.params) {
-      if (param_name.empty() || lower_minimal_scalar_type(param_type) != bir::TypeKind::I32) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  return backend_lir_signature_matches(
-      function.signature_text, "define", "i32", function.name, signature_param_types);
-}
 
 std::optional<bir::TypeKind> lower_scalar_type(
     const c4c::codegen::lir::LirTypeRef& type) {
@@ -145,25 +79,6 @@ unsigned scalar_type_bit_width(bir::TypeKind type) {
       return 0;
   }
   return 0;
-}
-
-bool lir_function_returns_integer_width(const c4c::codegen::lir::LirFunction& function,
-                                        unsigned bit_width) {
-  const auto lowered_type = lower_minimal_scalar_type(function.return_type);
-  return lowered_type.has_value() && scalar_type_bit_width(*lowered_type) == bit_width;
-}
-
-bool lir_function_matches_minimal_no_param_integer_return(
-    const c4c::codegen::lir::LirFunction& function,
-    unsigned bit_width) {
-  if (!function.params.empty()) {
-    return false;
-  }
-  if (lir_function_returns_integer_width(function, bit_width)) {
-    return true;
-  }
-  return backend_lir_signature_matches(
-      function.signature_text, "define", "i32", function.name, {});
 }
 
 std::optional<bir::TypeKind> lower_function_return_type(

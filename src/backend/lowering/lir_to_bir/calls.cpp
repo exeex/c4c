@@ -347,8 +347,6 @@ std::optional<std::vector<bir::Value>> lower_direct_call_args(
   return lowered_args;
 }
 
-namespace {
-
 std::optional<bir::TypeKind> lower_minimal_scalar_type(const c4c::TypeSpec& type) {
   if (type.ptr_level != 0 || type.array_rank != 0) {
     return std::nullopt;
@@ -456,6 +454,8 @@ bool lir_function_matches_minimal_no_param_integer_return(
   return backend_lir_signature_matches(
       function.signature_text, "define", "i32", function.name, {});
 }
+
+namespace {
 
 std::optional<bir::TypeKind> lower_function_return_type(
     const c4c::codegen::lir::LirFunction& function,

@@ -3,6 +3,7 @@
 #include "../lir_to_bir.hpp"
 #include "../call_decode.hpp"
 
+#include <initializer_list>
 #include <cstddef>
 #include <optional>
 #include <string_view>
@@ -31,6 +32,17 @@ std::optional<std::vector<bir::Param>> lower_function_params(
     const c4c::codegen::lir::LirFunction& lir_function);
 bir::CallingConv default_calling_convention_for_target(std::string_view target_triple);
 bool function_signature_is_variadic(std::string_view signature_text);
+std::optional<bir::TypeKind> lower_minimal_scalar_type(const c4c::TypeSpec& type);
+std::optional<bir::TypeKind> lower_scalar_type_text(std::string_view text);
+bool matches_minimal_i32_function_signature(
+    const c4c::codegen::lir::LirFunction& function,
+    std::initializer_list<std::string_view> signature_param_types);
+bool lir_function_matches_minimal_no_param_integer_return(
+    const c4c::codegen::lir::LirFunction& function,
+    unsigned bit_width);
+bool lir_function_returns_integer_width(
+    const c4c::codegen::lir::LirFunction& function,
+    unsigned bit_width);
 std::optional<bir::Module> try_lower_minimal_declared_direct_call_module(
     const c4c::codegen::lir::LirModule& module);
 std::optional<bir::Module> try_lower_minimal_two_arg_direct_call_module(
