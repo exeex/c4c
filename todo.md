@@ -11,18 +11,20 @@ Source Plan: plan.md
   `src/backend/lowering/lir_to_bir.cpp` and into
   `src/backend/lowering/lir_to_bir/{cfg,types,memory,calls,phi,aggregates}.cpp`
 - current exact slice:
-  continue the memory/address lane after the scalar global store+reload move
-  by consolidating more residual global/array address-form helpers around the
-  split memory seam instead of rebuilding shape logic in the monolith
+  the global/array address-form burst is now coherent enough to switch the
+  memory seam from residual ownership extraction into a dedicated
+  seam-local compile-recovery pass
 - build/test work is intentionally ignored in this phase per `plan.md`
   until the lane explicitly switches to `Phase 2: Compile recovery`
 
 ## Next Slice
 
-- make more global/array address-form matchers consume split memory helpers
-  instead of rebuilding shape logic in `lir_to_bir.cpp`
-- once the current ownership-wiring burst is coherent, start a dedicated
-  compile-recovery pass for the split seam files before any new targeted tests
+- review the split `lir_to_bir/memory.cpp` seam for duplicate typed-text
+  predicates and residual monolith helper dependencies that should be
+  normalized before broader behavioral work
+- if the memory seam stays stable after that cleanup, explicitly advance this
+  lane from `Phase 1: Ownership wiring` into `Phase 2: Compile recovery`
+  before any new targeted tests
 
 ## Recently Completed
 
@@ -135,6 +137,20 @@ Source Plan: plan.md
   `./build/backend_bir_tests` still fails across the existing shared-BIR
   lowering acceptance/support cases, and `./build/backend_shared_util_tests`
   still aborts with the existing unsupported direct-LIR rejection
+- moved the minimal string-literal compare phi-return matcher/module lowerer
+  out of `src/backend/lowering/lir_to_bir.cpp` and into
+  `src/backend/lowering/lir_to_bir/memory.cpp`, exporting the split
+  memory-owned entry point through `passes.hpp` so the monolith now only
+  dispatches that residual string/global byte-address seam
+- verified the tree still rebuilds cleanly after the string-literal
+  compare phi-return ownership move:
+  `cmake --build build -j8` succeeds
+- re-ran the same seam-local backend executables after the string-literal
+  compare phi-return ownership move and observed the same pre-existing
+  failure shape:
+  `./build/backend_bir_tests` still fails across the existing shared-BIR
+  lowering acceptance/support cases, and `./build/backend_shared_util_tests`
+  still aborts with the existing unsupported direct-LIR rejection
 
 ## Blockers
 
@@ -158,5 +174,9 @@ Source Plan: plan.md
 - the memory seam now also owns the minimal plain and extern scalar
   global-load matchers plus the remaining scalar global store/reload seam;
   keep follow-on scalar global load/store ownership on the split seam side
+- the memory seam now also owns the minimal string-literal compare
+  phi-return seam; use that split implementation as the home for any
+  remaining string/global byte-address cleanup instead of rebuilding those
+  matchers in the monolith
 - when this lane switches to compile recovery, start narrow and seam-local
   before restoring broader regression discipline

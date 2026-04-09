@@ -17,6 +17,8 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -53,6 +55,30 @@ std::optional<std::int64_t> parse_memory_immediate(std::string_view text) {
     return std::nullopt;
   }
   return value;
+}
+
+std::string decode_memory_llvm_byte_string(std::string_view text) {
+  std::string bytes;
+  bytes.reserve(text.size());
+  for (std::size_t index = 0; index < text.size(); ++index) {
+    if (text[index] == '\\' && index + 2 < text.size()) {
+      auto hex_val = [](char c) -> int {
+        if (c >= '0' && c <= '9') return c - '0';
+        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+        return -1;
+      };
+      const int hi = hex_val(text[index + 1]);
+      const int lo = hex_val(text[index + 2]);
+      if (hi >= 0 && lo >= 0) {
+        bytes.push_back(static_cast<char>(hi * 16 + lo));
+        index += 2;
+        continue;
+      }
+    }
+    bytes.push_back(text[index]);
+  }
+  return bytes;
 }
 
 bool memory_target_supports_global_pointer_diff(std::string_view target_triple) {
@@ -992,6 +1018,202 @@ std::optional<bir::Module> try_lower_minimal_scalar_global_store_reload_module(
       .value = bir::Value::named(bir::TypeKind::I32, load->result.str()),
   };
 
+  lowered_function.blocks.push_back(std::move(lowered_entry));
+  lowered.functions.push_back(std::move(lowered_function));
+  return lowered;
+}
+
+std::optional<bir::Module> try_lower_minimal_string_literal_compare_phi_return_module(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || module.string_pool.size() != 1 ||
+      !module.globals.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& string_constant = module.string_pool.front();
+  const auto decoded_bytes = decode_memory_llvm_byte_string(string_constant.raw_bytes);
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      !lir_function_matches_minimal_no_param_integer_return(function, 32) ||
+      function.entry.value != 0 || function.blocks.size() < 4 || function.alloca_insts.size() != 1 ||
+      !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* slot = std::get_if<LirAllocaOp>(&function.alloca_insts.front());
+  if (slot == nullptr || slot->result.empty() || slot->type_str != "ptr") {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  if (entry.label.empty() || entry.insts.size() != 10) {
+    return std::nullopt;
+  }
+
+  const auto* base_gep = std::get_if<LirGepOp>(&entry.insts[0]);
+  const auto* store = std::get_if<LirStoreOp>(&entry.insts[1]);
+  const auto* reload = std::get_if<LirLoadOp>(&entry.insts[2]);
+  const auto* index_cast = std::get_if<LirCastOp>(&entry.insts[3]);
+  const auto* byte_gep = std::get_if<LirGepOp>(&entry.insts[4]);
+  const auto* byte_load = std::get_if<LirLoadOp>(&entry.insts[5]);
+  const auto* extend = std::get_if<LirCastOp>(&entry.insts[6]);
+  const auto* compare = std::get_if<LirCmpOp>(&entry.insts[7]);
+  const auto* cond_cast = std::get_if<LirCastOp>(&entry.insts[8]);
+  const auto* branch_cmp = std::get_if<LirCmpOp>(&entry.insts[9]);
+  const auto* condbr = std::get_if<LirCondBr>(&entry.terminator);
+  if (base_gep == nullptr || store == nullptr || reload == nullptr || index_cast == nullptr ||
+      byte_gep == nullptr || byte_load == nullptr || extend == nullptr || compare == nullptr ||
+      cond_cast == nullptr || branch_cmp == nullptr || condbr == nullptr ||
+      base_gep->result.empty() || reload->result.empty() || index_cast->result.empty() ||
+      byte_gep->result.empty() || byte_load->result.empty() || extend->result.empty() ||
+      compare->result.empty() || cond_cast->result.empty() || branch_cmp->result.empty()) {
+    return std::nullopt;
+  }
+
+  const auto string_array_type =
+      "[" + std::to_string(string_constant.byte_length) + " x i8]";
+  if (!match_memory_string_base_gep_zero(*base_gep, string_constant.pool_name, string_array_type) ||
+      store->type_str != "ptr" ||
+      store->val != base_gep->result || store->ptr != slot->result || reload->ptr != slot->result ||
+      reload->type_str != "ptr" ||
+      !match_memory_sext_i32_to_i64_immediate(*index_cast).has_value() ||
+      !match_memory_indexed_gep_from_result(*byte_gep, reload->result.str(), "i8", index_cast->result.str()) ||
+      !memory_lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{byte_load->type_str}, 8) ||
+      byte_load->ptr != byte_gep->result ||
+      (extend->kind != LirCastKind::SExt && extend->kind != LirCastKind::ZExt) ||
+      !memory_lir_type_matches_integer_width(extend->from_type, 8) ||
+      !memory_lir_type_matches_integer_width(extend->to_type, 32) ||
+      extend->operand != byte_load->result || compare->is_float ||
+      compare->predicate.str() != "eq" ||
+      !memory_lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{compare->type_str}, 32) ||
+      compare->lhs != extend->result || cond_cast->kind != LirCastKind::ZExt ||
+      !memory_lir_type_matches_integer_width(cond_cast->from_type, 1) ||
+      !memory_lir_type_matches_integer_width(cond_cast->to_type, 32) ||
+      cond_cast->operand != compare->result || branch_cmp->is_float ||
+      branch_cmp->predicate.str() != "ne" ||
+      !memory_lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{branch_cmp->type_str}, 32) ||
+      branch_cmp->lhs != cond_cast->result || branch_cmp->rhs != "0" ||
+      condbr->cond_name != branch_cmp->result) {
+    return std::nullopt;
+  }
+
+  const auto byte_index = parse_memory_immediate(index_cast->operand.str());
+  const auto compare_rhs = parse_memory_immediate(compare->rhs.str());
+  if (!byte_index.has_value() || !compare_rhs.has_value() || *byte_index < 0 ||
+      static_cast<std::size_t>(*byte_index) >= decoded_bytes.size()) {
+    return std::nullopt;
+  }
+
+  std::unordered_map<std::string_view, std::size_t> block_indices_by_label;
+  block_indices_by_label.reserve(function.blocks.size());
+  for (std::size_t i = 1; i < function.blocks.size(); ++i) {
+    const auto& block = function.blocks[i];
+    if (block.label.empty() || !block_indices_by_label.emplace(block.label, i).second) {
+      return std::nullopt;
+    }
+  }
+
+  std::unordered_set<std::size_t> consumed_block_indices;
+  auto consume_join_arm = [&](std::string_view branch_label) -> const LirBlock* {
+    while (true) {
+      const auto block_it = block_indices_by_label.find(branch_label);
+      if (block_it == block_indices_by_label.end()) {
+        return nullptr;
+      }
+
+      const auto block_index = block_it->second;
+      const auto& block = function.blocks[block_index];
+      if (!consumed_block_indices.insert(block_index).second || !block.insts.empty()) {
+        return nullptr;
+      }
+
+      if (const auto* br = std::get_if<LirBr>(&block.terminator); br != nullptr) {
+        const auto join_it = block_indices_by_label.find(br->target_label);
+        if (join_it == block_indices_by_label.end()) {
+          return nullptr;
+        }
+
+        const auto& join_block = function.blocks[join_it->second];
+        if (join_block.insts.size() == 1 && std::get_if<LirPhiOp>(&join_block.insts.front()) != nullptr &&
+            std::get_if<LirRet>(&join_block.terminator) != nullptr) {
+          return &block;
+        }
+
+        branch_label = br->target_label;
+        continue;
+      }
+
+      return nullptr;
+    }
+  };
+
+  const auto* true_pred_block = consume_join_arm(condbr->true_label);
+  const auto* false_pred_block = consume_join_arm(condbr->false_label);
+  if (true_pred_block == nullptr || false_pred_block == nullptr ||
+      consumed_block_indices.size() + 2 != function.blocks.size()) {
+    return std::nullopt;
+  }
+
+  const auto* true_br = std::get_if<LirBr>(&true_pred_block->terminator);
+  const auto* false_br = std::get_if<LirBr>(&false_pred_block->terminator);
+  if (true_br == nullptr || false_br == nullptr || true_br->target_label != false_br->target_label) {
+    return std::nullopt;
+  }
+
+  const auto join_it = block_indices_by_label.find(true_br->target_label);
+  if (join_it == block_indices_by_label.end()) {
+    return std::nullopt;
+  }
+  const auto& join_block = function.blocks[join_it->second];
+  const auto* phi = join_block.insts.size() == 1 ? std::get_if<LirPhiOp>(&join_block.insts.front()) : nullptr;
+  const auto* ret = std::get_if<LirRet>(&join_block.terminator);
+  if (phi == nullptr || ret == nullptr || !ret->value_str.has_value() || *ret->value_str != phi->result ||
+      !memory_lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{phi->type_str}, 32) ||
+      lir_to_bir::legalize_function_return_type(function, *ret) != bir::TypeKind::I32 ||
+      phi->incoming.size() != 2) {
+    return std::nullopt;
+  }
+
+  std::optional<std::int64_t> true_value;
+  std::optional<std::int64_t> false_value;
+  for (const auto& incoming : phi->incoming) {
+    const auto value = parse_memory_immediate(incoming.first);
+    if (!value.has_value()) {
+      return std::nullopt;
+    }
+    if (incoming.second == true_pred_block->label) {
+      true_value = *value;
+    } else if (incoming.second == false_pred_block->label) {
+      false_value = *value;
+    }
+  }
+  if (!true_value.has_value() || !false_value.has_value() ||
+      !lir_to_bir::legalize_immediate_fits_type(*true_value, bir::TypeKind::I32) ||
+      !lir_to_bir::legalize_immediate_fits_type(*false_value, bir::TypeKind::I32)) {
+    return std::nullopt;
+  }
+
+  const auto loaded_byte = static_cast<unsigned char>(decoded_bytes[static_cast<std::size_t>(*byte_index)]);
+  const auto widened_byte = extend->kind == LirCastKind::SExt
+                                ? static_cast<std::int64_t>(static_cast<std::int8_t>(loaded_byte))
+                                : static_cast<std::int64_t>(loaded_byte);
+  const auto compare_matches = widened_byte == *compare_rhs;
+
+  bir::Module lowered;
+  lowered.target_triple = module.target_triple;
+  lowered.data_layout = module.data_layout;
+
+  bir::Function lowered_function;
+  lowered_function.name = function.name;
+  lowered_function.return_type = bir::TypeKind::I32;
+
+  bir::Block lowered_entry;
+  lowered_entry.label = entry.label;
+  lowered_entry.terminator.value = bir::Value::immediate_i32(
+      static_cast<std::int32_t>(compare_matches ? *true_value : *false_value));
   lowered_function.blocks.push_back(std::move(lowered_entry));
   lowered.functions.push_back(std::move(lowered_function));
   return lowered;
