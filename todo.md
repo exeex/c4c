@@ -7,20 +7,41 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 8: delete temporary LIR-side backend shims
-- Current slice: re-audit the surviving raw-`LIR` stack-layout lowering
-  surfaces after deleting the test-only prepared stack-layout wrapper, and
-  decide whether the remaining raw-`LIR` helper still qualifies as temporary
-  Step 8 ownership scaffolding or should be left for a separate cleanup idea
-- Current implementation target: confirm whether
-  `lower_lir_to_stack_layout_input(...)` can be narrowed further without
-  rewriting the long-standing raw stack-layout analysis tests that still
-  exercise direct `LirFunction` lowering
-- Next intended slice: either delete one more truly temporary stack-layout
-  shim with focused test retargeting, or write a follow-up idea if the
-  remaining raw helper now represents broader surface cleanup instead of a
-  bounded ownership-shim removal
+- Current slice: re-audit the remaining compatibility-only stack-layout
+  overloads after deleting the last raw-`LIR` stack-layout lowering wrapper,
+  and confirm whether any surviving helper is still a bounded Step 8 ownership
+  shim or now just broad test-surface cleanup
+- Current implementation target: inspect the `StackLayoutInput`-based helper
+  overloads that still survive in stack-layout analysis/planning tests and
+  decide whether another explicit compatibility wrapper can be narrowed without
+  reopening production ownership seams
+- Next intended slice: either delete one more obsolete compatibility helper
+  with focused test retargeting, or write a follow-up idea if the remaining
+  overloads are only broad test cleanup rather than temporary backend-ownership
+  scaffolding
 
 ## Completed
+
+- Completed the next Step 8 raw stack-layout wrapper deletion slice by
+  removing the final direct `LirFunction -> StackLayoutInput` helper now that
+  tests can call the explicit backend-CFG-backed seam directly:
+  - deleted `lower_lir_to_stack_layout_input(...)` from
+    `src/backend/stack_layout/analysis.hpp` and
+    `src/backend/stack_layout/analysis.cpp`; the removed helper only wrapped
+    `lower_lir_to_backend_cfg(...)`, entry-alloca lowering, and stack-layout
+    metadata collection before lowering blocks from raw `LIR`
+  - added a focused local test helper in
+    `tests/backend/backend_shared_util_tests.cpp` and retargeted the existing
+    stack-layout analysis/slot-assignment coverage to call
+    `lower_function_entry_alloca_stack_layout_input(...)` through the explicit
+    backend-CFG path instead of the deleted wrapper
+  - removed the now-redundant regression that only asserted the deleted raw
+    helper matched the explicit compatibility seam
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`
+  - rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with monotonic non-decreasing results and no new failures
+    (`2841 -> 2841` passed tests)
 
 - Completed the next Step 8 stack-layout shim deletion slice by removing the
   redundant prepared stack-layout wrapper so tests compose the explicit

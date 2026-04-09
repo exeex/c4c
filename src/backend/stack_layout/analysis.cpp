@@ -494,15 +494,6 @@ void lower_backend_cfg_to_stack_layout_input(
 
 }  // namespace
 
-StackLayoutInput lower_lir_to_stack_layout_input(const c4c::codegen::lir::LirFunction& function) {
-  StackLayoutInput input;
-  const auto backend_cfg = c4c::backend::lower_lir_to_backend_cfg(function);
-  lower_function_entry_allocas(function, input);
-  lower_backend_cfg_signature_and_call_results(backend_cfg, input);
-  lower_lir_blocks_to_stack_layout_input(function, input);
-  return input;
-}
-
 StackLayoutInput lower_function_entry_alloca_stack_layout_input(
     const c4c::codegen::lir::LirFunction& function,
     const c4c::backend::BackendCfgFunction& backend_cfg) {
