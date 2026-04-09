@@ -50,6 +50,5 @@ struct LivenessResult {
 
 LivenessInput lower_lir_to_liveness_input(const c4c::codegen::lir::LirFunction& function);
 LivenessResult compute_live_intervals(const LivenessInput& input);
-LivenessResult compute_live_intervals(const c4c::codegen::lir::LirFunction& function);
 
 }  // namespace c4c::backend

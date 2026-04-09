@@ -136,9 +136,4 @@ RegAllocResult allocate_registers(const LivenessInput& input,
   return result;
 }
 
-RegAllocResult allocate_registers(const c4c::codegen::lir::LirFunction& function,
-                                  const RegAllocConfig& config) {
-  return allocate_registers(lower_lir_to_liveness_input(function), config);
-}
-
 }  // namespace c4c::backend

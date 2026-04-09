@@ -29,12 +29,4 @@ RegAllocIntegrationResult run_regalloc_and_merge_clobbers(
   };
 }
 
-RegAllocIntegrationResult run_regalloc_and_merge_clobbers(
-    const c4c::codegen::lir::LirFunction& function,
-    const RegAllocConfig& config,
-    const std::vector<PhysReg>& asm_clobbered) {
-  return run_regalloc_and_merge_clobbers(lower_lir_to_liveness_input(function), config,
-                                         asm_clobbered);
-}
-
 }  // namespace c4c::backend

@@ -20,9 +20,4 @@ RegAllocIntegrationResult run_regalloc_and_merge_clobbers(
     const RegAllocConfig& config,
     const std::vector<PhysReg>& asm_clobbered);
 
-RegAllocIntegrationResult run_regalloc_and_merge_clobbers(
-    const c4c::codegen::lir::LirFunction& function,
-    const RegAllocConfig& config,
-    const std::vector<PhysReg>& asm_clobbered);
-
 }  // namespace c4c::backend

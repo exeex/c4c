@@ -809,7 +809,8 @@ void test_backend_shared_call_decode_prefers_typed_vararg_call_args_over_stale_f
 void test_backend_shared_liveness_surface_tracks_result_names() {
   const auto module = make_declaration_module();
   const auto& function = module.functions.back();
-  const auto liveness = c4c::backend::compute_live_intervals(function);
+  const auto input = c4c::backend::lower_lir_to_liveness_input(function);
+  const auto liveness = c4c::backend::compute_live_intervals(input);
 
   expect_true(liveness.call_points.size() == 1 && liveness.call_points.front() == 0,
               "shared liveness surface should record call program points for typed call ops");
@@ -825,7 +826,8 @@ void test_backend_shared_liveness_surface_tracks_result_names() {
 void test_backend_shared_liveness_surface_tracks_call_crossing_ranges() {
   const auto module = make_call_crossing_interval_module();
   const auto& function = module.functions.back();
-  const auto liveness = c4c::backend::compute_live_intervals(function);
+  const auto input = c4c::backend::lower_lir_to_liveness_input(function);
+  const auto liveness = c4c::backend::compute_live_intervals(input);
 
   expect_true(liveness.call_points.size() == 1 && liveness.call_points.front() == 1,
               "shared liveness surface should record the direct call program point");
@@ -843,7 +845,8 @@ void test_backend_shared_liveness_surface_tracks_call_crossing_ranges() {
 void test_backend_shared_liveness_surface_tracks_phi_join_ranges() {
   const auto module = make_interval_phi_join_module();
   const auto& function = module.functions.front();
-  const auto liveness = c4c::backend::compute_live_intervals(function);
+  const auto input = c4c::backend::lower_lir_to_liveness_input(function);
+  const auto liveness = c4c::backend::compute_live_intervals(input);
 
   const auto* cond = liveness.find_interval("%t0");
   const auto* then_value = liveness.find_interval("%t1");
@@ -892,12 +895,13 @@ void test_backend_shared_liveness_input_matches_lir_phi_join_ranges() {
 void test_backend_shared_regalloc_surface_uses_caller_saved_for_non_call_interval() {
   const auto module = make_return_add_module();
   const auto& function = module.functions.front();
+  const auto input = c4c::backend::lower_lir_to_liveness_input(function);
 
   c4c::backend::RegAllocConfig config;
   config.available_regs = {{20}, {21}};
   config.caller_saved_regs = {{13}};
 
-  const auto regalloc = c4c::backend::allocate_registers(function, config);
+  const auto regalloc = c4c::backend::allocate_registers(input, config);
   expect_true(regalloc.assignments.size() == 1,
               "shared regalloc surface should assign one register for the single-result helper slice");
   const auto it = regalloc.assignments.find("%t0");
@@ -913,12 +917,13 @@ void test_backend_shared_regalloc_surface_uses_caller_saved_for_non_call_interva
 void test_backend_shared_regalloc_prefers_callee_saved_for_call_spanning_values() {
   const auto module = make_call_crossing_interval_module();
   const auto& function = module.functions.back();
+  const auto input = c4c::backend::lower_lir_to_liveness_input(function);
 
   c4c::backend::RegAllocConfig config;
   config.available_regs = {{20}};
   config.caller_saved_regs = {{13}};
 
-  const auto regalloc = c4c::backend::allocate_registers(function, config);
+  const auto regalloc = c4c::backend::allocate_registers(input, config);
 
   const auto before_call = regalloc.assignments.find("%t0");
   const auto call_result = regalloc.assignments.find("%t1");
@@ -965,11 +970,12 @@ void test_backend_shared_regalloc_accepts_backend_owned_liveness_input() {
 void test_backend_shared_regalloc_reuses_register_after_interval_ends() {
   const auto module = make_non_overlapping_interval_module();
   const auto& function = module.functions.front();
+  const auto input = c4c::backend::lower_lir_to_liveness_input(function);
 
   c4c::backend::RegAllocConfig config;
   config.available_regs = {{20}};
 
-  const auto regalloc = c4c::backend::allocate_registers(function, config);
+  const auto regalloc = c4c::backend::allocate_registers(input, config);
 
   const auto first_value = regalloc.assignments.find("%t0");
   const auto later_value = regalloc.assignments.find("%t2");
@@ -985,11 +991,12 @@ void test_backend_shared_regalloc_reuses_register_after_interval_ends() {
 void test_backend_shared_regalloc_spills_overlapping_values_without_reusing_busy_reg() {
   const auto module = make_overlapping_interval_module();
   const auto& function = module.functions.front();
+  const auto input = c4c::backend::lower_lir_to_liveness_input(function);
 
   c4c::backend::RegAllocConfig config;
   config.available_regs = {{20}};
 
-  const auto regalloc = c4c::backend::allocate_registers(function, config);
+  const auto regalloc = c4c::backend::allocate_registers(input, config);
 
   expect_true(regalloc.assignments.size() == 1,
               "shared regalloc should spill one of two overlapping intervals when only one register is available");
@@ -1012,8 +1019,10 @@ void test_backend_shared_regalloc_helper_filters_and_merges_clobbers() {
   const auto module = make_return_add_module();
   c4c::backend::RegAllocConfig config;
   config.available_regs = filtered;
+  const auto input =
+      c4c::backend::lower_lir_to_liveness_input(module.functions.front());
   const auto merged = c4c::backend::run_regalloc_and_merge_clobbers(
-      module.functions.front(), config, asm_clobbered);
+      input, config, asm_clobbered);
 
   expect_true(merged.used_callee_saved.size() == 2 &&
                   merged.used_callee_saved.front().index == 20 &&
@@ -1024,6 +1033,7 @@ void test_backend_shared_regalloc_helper_filters_and_merges_clobbers() {
 void test_backend_shared_stack_layout_regalloc_helper_exposes_handoff_view() {
   const auto module = make_call_crossing_interval_module();
   const auto& function = module.functions.back();
+  const auto input = c4c::backend::lower_lir_to_liveness_input(function);
 
   c4c::backend::RegAllocConfig config;
   config.available_regs = {{20}};
@@ -1031,7 +1041,7 @@ void test_backend_shared_stack_layout_regalloc_helper_exposes_handoff_view() {
   const std::vector<c4c::backend::PhysReg> asm_clobbered = {{21}};
 
   const auto merged =
-      c4c::backend::run_regalloc_and_merge_clobbers(function, config, asm_clobbered);
+      c4c::backend::run_regalloc_and_merge_clobbers(input, config, asm_clobbered);
 
   const auto* before_call =
       c4c::backend::stack_layout::find_assigned_reg(merged, "%t0");
@@ -1236,8 +1246,10 @@ void test_backend_shared_stack_layout_analysis_detects_dead_param_allocas() {
   c4c::backend::RegAllocConfig config;
   config.available_regs = {{20}};
   config.caller_saved_regs = {{13}};
+  const auto dead_param_input =
+      c4c::backend::lower_lir_to_liveness_input(function);
   const auto regalloc =
-      c4c::backend::run_regalloc_and_merge_clobbers(function, config, {});
+      c4c::backend::run_regalloc_and_merge_clobbers(dead_param_input, config, {});
   const auto analysis =
       analyze_stack_layout_from_function(function, regalloc, {{20}, {21}, {22}});
 
@@ -1339,8 +1351,10 @@ void test_backend_shared_slot_assignment_plans_param_alloca_slots() {
 
   const auto dead_module = make_dead_param_alloca_candidate_module();
   const auto& dead_function = dead_module.functions.back();
+  const auto dead_liveness_input =
+      c4c::backend::lower_lir_to_liveness_input(dead_function);
   const auto dead_regalloc =
-      c4c::backend::run_regalloc_and_merge_clobbers(dead_function, config, {});
+      c4c::backend::run_regalloc_and_merge_clobbers(dead_liveness_input, config, {});
   const auto dead_analysis =
       analyze_stack_layout_from_function(dead_function, dead_regalloc, {{20}, {21}, {22}});
   const auto dead_plans = plan_param_alloca_slots_from_function(dead_function, dead_analysis);
@@ -1352,8 +1366,10 @@ void test_backend_shared_slot_assignment_plans_param_alloca_slots() {
 
   const auto live_module = make_live_param_alloca_candidate_module();
   const auto& live_function = live_module.functions.front();
+  const auto live_liveness_input =
+      c4c::backend::lower_lir_to_liveness_input(live_function);
   const auto live_regalloc =
-      c4c::backend::run_regalloc_and_merge_clobbers(live_function, config, {});
+      c4c::backend::run_regalloc_and_merge_clobbers(live_liveness_input, config, {});
   const auto live_analysis =
       analyze_stack_layout_from_function(live_function, live_regalloc, {{20}, {21}, {22}});
   const auto live_plans = plan_param_alloca_slots_from_function(live_function, live_analysis);
@@ -1371,8 +1387,10 @@ void test_backend_shared_slot_assignment_prunes_dead_param_alloca_insts() {
 
   const auto dead_module = make_dead_param_alloca_candidate_module();
   const auto& dead_function = dead_module.functions.back();
+  const auto dead_liveness_input =
+      c4c::backend::lower_lir_to_liveness_input(dead_function);
   const auto dead_regalloc =
-      c4c::backend::run_regalloc_and_merge_clobbers(dead_function, config, {});
+      c4c::backend::run_regalloc_and_merge_clobbers(dead_liveness_input, config, {});
   const auto dead_analysis =
       analyze_stack_layout_from_function(dead_function, dead_regalloc, {{20}, {21}, {22}});
   const auto dead_plans = plan_param_alloca_slots_from_function(dead_function, dead_analysis);
@@ -1384,8 +1402,10 @@ void test_backend_shared_slot_assignment_prunes_dead_param_alloca_insts() {
 
   const auto live_module = make_live_param_alloca_candidate_module();
   const auto& live_function = live_module.functions.front();
+  const auto live_liveness_input =
+      c4c::backend::lower_lir_to_liveness_input(live_function);
   const auto live_regalloc =
-      c4c::backend::run_regalloc_and_merge_clobbers(live_function, config, {});
+      c4c::backend::run_regalloc_and_merge_clobbers(live_liveness_input, config, {});
   const auto live_analysis =
       analyze_stack_layout_from_function(live_function, live_regalloc, {{20}, {21}, {22}});
   const auto live_plans = plan_param_alloca_slots_from_function(live_function, live_analysis);
@@ -1551,8 +1571,10 @@ void test_backend_shared_slot_assignment_accepts_backend_owned_input() {
   const auto& dead_param_function = dead_param_module.functions.back();
   const auto dead_param_input =
       c4c::backend::stack_layout::lower_lir_to_stack_layout_input(dead_param_function);
+  const auto dead_param_liveness_input =
+      c4c::backend::lower_lir_to_liveness_input(dead_param_function);
   const auto dead_regalloc =
-      c4c::backend::run_regalloc_and_merge_clobbers(dead_param_function, config, {});
+      c4c::backend::run_regalloc_and_merge_clobbers(dead_param_liveness_input, config, {});
   const auto dead_analysis = c4c::backend::stack_layout::analyze_stack_layout(
       dead_param_input, dead_regalloc, {{20}, {21}, {22}});
   const auto dead_param_plans =
@@ -1588,8 +1610,10 @@ void test_backend_shared_slot_assignment_bundle_accepts_backend_owned_input() {
   const auto& dead_param_function = dead_param_module.functions.back();
   const auto dead_param_input =
       c4c::backend::stack_layout::lower_lir_to_stack_layout_input(dead_param_function);
+  const auto dead_param_liveness_input =
+      c4c::backend::lower_lir_to_liveness_input(dead_param_function);
   const auto dead_regalloc =
-      c4c::backend::run_regalloc_and_merge_clobbers(dead_param_function, config, {});
+      c4c::backend::run_regalloc_and_merge_clobbers(dead_param_liveness_input, config, {});
   const auto dead_bundle = c4c::backend::stack_layout::build_stack_layout_plan_bundle(
       dead_param_input, dead_regalloc, {{20}, {21}, {22}});
 

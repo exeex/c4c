@@ -496,8 +496,4 @@ LivenessResult compute_live_intervals(const LivenessInput& input) {
                         std::vector<std::uint32_t>(input.blocks.size(), 0)};
 }
 
-LivenessResult compute_live_intervals(const c4c::codegen::lir::LirFunction& function) {
-  return compute_live_intervals(lower_lir_to_liveness_input(function));
-}
-
 }  // namespace c4c::backend

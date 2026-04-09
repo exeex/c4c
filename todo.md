@@ -7,15 +7,36 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: audit whether any remaining Step 6/7 shared helpers still
-  expose raw-`LirFunction` entrypoints solely for compatibility after the
-  coalescing wrapper removal
-- Next intended slice: if another remaining raw-LIR shared helper is only
-  preserving test compatibility, move that coverage to backend-owned lowered
-  input and retire the wrapper in the same bounded slice
+- Current slice: audit whether any remaining Step 7 stack-layout or
+  target-local helpers still expose raw-LIR entrypoints solely for shared-test
+  compatibility after the liveness/regalloc wrapper cleanup
+- Next intended slice: if another raw-LIR helper is only preserving
+  compatibility coverage, move that test path onto the existing backend-owned
+  lowered input and retire the wrapper in one bounded patch
 
 ## Completed
 
+- Completed the next Step 6 bounded shared liveness/regalloc compatibility
+  cleanup slice by retiring the remaining raw-`LirFunction` wrapper overloads
+  now that production code already lowers to backend-owned `LivenessInput`:
+  - removed the raw-`LirFunction` overloads for
+    `compute_live_intervals(...)`,
+    `allocate_registers(...)`, and
+    `run_regalloc_and_merge_clobbers(...)` from
+    `src/backend/liveness.*`,
+    `src/backend/regalloc.*`, and
+    `src/backend/generation.*`, leaving the backend-owned
+    `LivenessInput` entrypoints as the canonical shared liveness/regalloc
+    surface
+  - updated `tests/backend/backend_shared_util_tests.cpp` so the shared
+    liveness, regalloc, regalloc/clobber-merge, and downstream stack-layout
+    regressions lower `LirFunction` fixtures into `LivenessInput` explicitly
+    before invoking the shared helpers
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R backend_shared_util_tests --output-on-failure`,
+    rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with no new failures and no pass-count drop
+    (`2809 -> 2809`, same 32 known failing tests as `test_fail_before.log`)
 - Completed the next Step 6 bounded shared stack-layout compatibility cleanup
   slice by retiring the last raw-`LirFunction`
   `compute_coalescable_allocas(...)` wrapper after confirming it was only
