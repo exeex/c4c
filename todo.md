@@ -7,21 +7,46 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: audit whether the prepared fallback stack-layout
-  classification carrier can narrow further than the current
-  block/phi-based `StackLayoutInput` subset now that signature, return, and
-  call-result metadata no longer live in prepared state
-- Current implementation target: determine whether the cached prepared
-  stack-layout state can drop more of the current block-point shape, or
-  whether overwrite/coalescing analysis still requires the existing
-  block-level pointer/use/escape information
-- Next intended slice: audit whether the prepared fallback
-  `stack_layout_classification.blocks` carrier can shrink from
-  `StackLayoutBlockInput` to a dedicated prepared-analysis point shape, or
-  whether current overwrite-before-read and coalescing logic already consume
-  the minimal stable subset that has to remain cached
+- Current slice: audit whether the new prepared-analysis point carrier can
+  shrink any remaining fields beyond the current pointer/use/escape subset now
+  that it is no longer coupled to the public `StackLayoutInput` block types
+- Current implementation target: prove whether `used_names`,
+  `terminator_used_names`, or any point-level pointer/escape facts are still
+  required by prepared overwrite-before-read and alloca-coalescing consumers,
+  and record the next removable field without regressing the current fallback
+  analyses
+- Next intended slice: target the first removable prepared-analysis field, if
+  any, with focused backend shared tests for overwrite-before-read pruning,
+  single-block coalescing, escaped-alloca exclusion, and rehydration back into
+  the production `StackLayoutInput` contract
 
 ## Completed
+
+- Completed the next Step 6 bounded prepared-analysis carrier split slice by
+  isolating cached fallback stack-layout block/point state from the public
+  `StackLayoutInput` surface while preserving the minimal prepared analysis
+  facts currently consumed by overwrite/coalescing:
+  - added `PreparedEntryAllocaStackLayoutPoint` and
+    `PreparedEntryAllocaStackLayoutBlock` in
+    `src/backend/stack_layout/slot_assignment.*` so the prepared fallback
+    carrier no longer stores public `StackLayoutPoint`/`StackLayoutBlockInput`
+    objects directly
+  - updated prepared stack-layout classification lowering and rehydration in
+    `src/backend/stack_layout/slot_assignment.cpp` so the cached fallback
+    carrier still round-trips the current used-name, pointer-access,
+    escape-name, derived-pointer-root, and terminator-use subset back into the
+    production `StackLayoutInput`
+  - extended
+    `tests/backend/backend_shared_util_tests.cpp` with focused coverage proving
+    the prepared fallback carrier now owns the dedicated prepared-analysis
+    block/point types and still preserves the block payload needed to rehydrate
+    the production rewrite-input contract
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`,
+    rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with the repo’s allowed non-decreasing rule and no new
+    failures (`2809 -> 2809`, same 32 known failing tests as
+    `test_fail_before.log`)
 
 - Completed the next Step 6 bounded prepared stack-layout carrier narrowing
   slice by splitting prepared entry-alloca classification state away from the

@@ -54,7 +54,22 @@ PreparedEntryAllocaStackLayoutClassificationInput lower_prepared_stack_layout_cl
     StackLayoutInput input) {
   PreparedEntryAllocaStackLayoutClassificationInput classification;
   classification.entry_allocas = std::move(input.entry_allocas);
-  classification.blocks = std::move(input.blocks);
+  classification.blocks.reserve(input.blocks.size());
+  for (auto& block : input.blocks) {
+    PreparedEntryAllocaStackLayoutBlock prepared_block;
+    prepared_block.label = std::move(block.label);
+    prepared_block.terminator_used_names = std::move(block.terminator_used_names);
+    prepared_block.insts.reserve(block.insts.size());
+    for (auto& point : block.insts) {
+      PreparedEntryAllocaStackLayoutPoint prepared_point;
+      prepared_point.used_names = std::move(point.used_names);
+      prepared_point.pointer_accesses = std::move(point.pointer_accesses);
+      prepared_point.escaped_names = std::move(point.escaped_names);
+      prepared_point.derived_pointer_root = std::move(point.derived_pointer_root);
+      prepared_block.insts.push_back(std::move(prepared_point));
+    }
+    classification.blocks.push_back(std::move(prepared_block));
+  }
   classification.phi_incoming_uses = std::move(input.phi_incoming_uses);
   return classification;
 }
@@ -64,7 +79,22 @@ StackLayoutInput lower_prepared_stack_layout_input(
     const PreparedEntryAllocaStackLayoutMetadata& metadata) {
   StackLayoutInput input;
   input.entry_allocas = classification.entry_allocas;
-  input.blocks = classification.blocks;
+  input.blocks.reserve(classification.blocks.size());
+  for (const auto& block : classification.blocks) {
+    StackLayoutBlockInput lowered_block;
+    lowered_block.label = block.label;
+    lowered_block.terminator_used_names = block.terminator_used_names;
+    lowered_block.insts.reserve(block.insts.size());
+    for (const auto& point : block.insts) {
+      StackLayoutPoint lowered_point;
+      lowered_point.used_names = point.used_names;
+      lowered_point.pointer_accesses = point.pointer_accesses;
+      lowered_point.escaped_names = point.escaped_names;
+      lowered_point.derived_pointer_root = point.derived_pointer_root;
+      lowered_block.insts.push_back(std::move(lowered_point));
+    }
+    input.blocks.push_back(std::move(lowered_block));
+  }
   input.phi_incoming_uses = classification.phi_incoming_uses;
   apply_prepared_stack_layout_metadata(input, metadata);
   return input;

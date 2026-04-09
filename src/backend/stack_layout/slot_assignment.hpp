@@ -52,9 +52,22 @@ struct PreparedEntryAllocaStackLayoutMetadata {
   std::vector<StackLayoutCallResultInput> call_results;
 };
 
+struct PreparedEntryAllocaStackLayoutPoint {
+  std::vector<std::string> used_names;
+  std::vector<PointerAccess> pointer_accesses;
+  std::vector<std::string> escaped_names;
+  std::optional<std::pair<std::string, std::string>> derived_pointer_root;
+};
+
+struct PreparedEntryAllocaStackLayoutBlock {
+  std::string label;
+  std::vector<PreparedEntryAllocaStackLayoutPoint> insts;
+  std::vector<std::string> terminator_used_names;
+};
+
 struct PreparedEntryAllocaStackLayoutClassificationInput {
   std::vector<EntryAllocaInput> entry_allocas;
-  std::vector<StackLayoutBlockInput> blocks;
+  std::vector<PreparedEntryAllocaStackLayoutBlock> blocks;
   std::vector<PhiIncomingUse> phi_incoming_uses;
 };
 

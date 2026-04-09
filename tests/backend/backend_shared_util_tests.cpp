@@ -26,6 +26,8 @@
 #include "../../src/backend/x86/linker/mod.hpp"
 #include "backend_test_helper.hpp"
 
+#include <type_traits>
+
 namespace {
 
 c4c::backend::LivenessInput lower_test_backend_cfg_liveness_input(
@@ -1988,10 +1990,31 @@ void test_backend_shared_fallback_preparation_separates_stack_layout_metadata_fr
 
   const auto preparation =
       c4c::backend::stack_layout::prepare_module_function_entry_alloca_preparation(module, 0);
+  static_assert(std::is_same_v<
+                    std::decay_t<decltype(preparation.stack_layout_classification.blocks.front())>,
+                    c4c::backend::stack_layout::PreparedEntryAllocaStackLayoutBlock>);
+  static_assert(std::is_same_v<
+                    std::decay_t<decltype(preparation.stack_layout_classification.blocks.front().insts.front())>,
+                    c4c::backend::stack_layout::PreparedEntryAllocaStackLayoutPoint>);
   expect_true(preparation.stack_layout_source ==
                   c4c::backend::stack_layout::EntryAllocaRewriteStackLayoutSource::
                       EntryAllocasAndBackendCfg &&
                   preparation.stack_layout_classification.entry_allocas.size() == 1 &&
+                  preparation.stack_layout_classification.blocks.size() == 1 &&
+                  preparation.stack_layout_classification.blocks.front().label == "entry" &&
+                  preparation.stack_layout_classification.blocks.front().insts.size() == 1 &&
+                  preparation.stack_layout_classification.blocks.front().insts.front().used_names
+                          .size() == 1 &&
+                  preparation.stack_layout_classification.blocks.front().insts.front().used_names
+                          .front() == "%p.x" &&
+                  preparation.stack_layout_classification.blocks.front().insts.front()
+                          .escaped_names.size() == 1 &&
+                  preparation.stack_layout_classification.blocks.front().insts.front()
+                          .escaped_names.front() == "%p.x" &&
+                  preparation.stack_layout_classification.blocks.front().insts.front()
+                          .pointer_accesses.empty() &&
+                  !preparation.stack_layout_classification.blocks.front().insts.front()
+                           .derived_pointer_root.has_value() &&
                   preparation.stack_layout_metadata.signature_params.size() == 2 &&
                   preparation.stack_layout_metadata.signature_params.front().type == "i32" &&
                   preparation.stack_layout_metadata.signature_params.front().operand == "%p.x" &&
@@ -2009,6 +2032,12 @@ void test_backend_shared_fallback_preparation_separates_stack_layout_metadata_fr
   const auto lowered =
       c4c::backend::stack_layout::lower_prepared_entry_alloca_function_inputs(preparation);
   expect_true(lowered.stack_layout_input.signature_params.size() == 2 &&
+                  lowered.stack_layout_input.blocks.size() == 1 &&
+                  lowered.stack_layout_input.blocks.front().label == "entry" &&
+                  lowered.stack_layout_input.blocks.front().insts.size() == 1 &&
+                  lowered.stack_layout_input.blocks.front().insts.front().used_names.size() == 1 &&
+                  lowered.stack_layout_input.blocks.front().insts.front().used_names.front() ==
+                      "%p.x" &&
                   lowered.stack_layout_input.signature_params.front().type == "i32" &&
                   lowered.stack_layout_input.signature_params.front().operand == "%p.x" &&
                   lowered.stack_layout_input.signature_params.back().is_varargs &&
