@@ -46,11 +46,6 @@ namespace {
       "aarch64 backend emitter does not support this direct LIR module; only direct-LIR slices that lower natively or through direct BIR are currently supported");
 }
 
-bool is_direct_bir_subset_error(const std::invalid_argument& ex) {
-  return std::string_view(ex.what()).find("does not support this direct BIR module") !=
-         std::string_view::npos;
-}
-
 void validate_inst(const c4c::codegen::lir::LirInst& inst) {
   if (std::holds_alternative<c4c::codegen::lir::LirSelectOp>(inst)) {
     fail_unsupported("non-ALU/non-branch/non-call/non-memory instructions");
@@ -6599,7 +6594,7 @@ std::optional<std::string> try_emit_direct_lir_module(
 
 }  // namespace
 
-std::string emit_module(const c4c::backend::bir::Module& module) {
+std::optional<std::string> try_emit_module(const c4c::backend::bir::Module& module) {
   if (const auto slice = c4c::backend::parse_bir_minimal_direct_call_module(module);
       slice.has_value()) {
     return emit_minimal_direct_call_asm(module, *slice);
@@ -6684,6 +6679,13 @@ std::string emit_module(const c4c::backend::bir::Module& module) {
   if (const auto slice = parse_minimal_countdown_loop_slice(module);
       slice.has_value()) {
     return emit_minimal_countdown_loop_asm(module.target_triple, *slice);
+  }
+  return std::nullopt;
+}
+
+std::string emit_module(const c4c::backend::bir::Module& module) {
+  if (const auto rendered = try_emit_module(module); rendered.has_value()) {
+    return *rendered;
   }
   fail_unsupported_direct_bir_module();
 }

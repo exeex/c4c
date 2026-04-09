@@ -2,6 +2,7 @@
 
 #include "../assembler/mod.hpp"
 
+#include <optional>
 #include <string>
 
 namespace c4c::codegen::lir {
@@ -16,6 +17,7 @@ struct Module;
 
 namespace c4c::backend::x86 {
 
+std::optional<std::string> try_emit_module(const c4c::backend::bir::Module& module);
 std::string emit_module(const c4c::backend::bir::Module& module);
 std::string emit_prepared_lir_module(const c4c::codegen::lir::LirModule& module);
 std::string emit_module(const c4c::codegen::lir::LirModule& module);

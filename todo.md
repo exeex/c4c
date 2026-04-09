@@ -11,13 +11,39 @@ Source Plan: plan.md
   that still keeps native emitters aware of raw `LirModule` ownership after the
   shared backend-owned routing entrypoint took over target preparation, direct
   BIR retry, and prepared direct-LIR fallback ownership
+- Current implementation target: replace the shared backend's direct-BIR retry
+  exception-string seam with explicit x86/aarch64 `try_emit_module(...)`
+  support probes so prepared direct-LIR fallback routing no longer depends on
+  parsing target-local error text
 - Next intended slice: identify and retire the next compatibility-only
   direct-LIR fallback seam that still leaves backend codegen route policy split
-  between target emitters and shared backend entrypoints after the public
-  x86/aarch64 `emit_module(const LirModule&)` wrappers became thin delegates
+  between target emitters and shared backend entrypoints after explicit native
+  BIR support probing replaces the current exception-text retry path
 
 ## Completed
 
+- Completed the next Step 6/7 bounded direct-BIR support-probe cleanup slice by
+  replacing the shared backend's exception-text retry seam with explicit native
+  BIR support probing before prepared direct-LIR fallback:
+  - added explicit x86/aarch64
+    `try_emit_module(const bir::Module&)` probes in
+    `src/backend/x86/codegen/emit.*` and
+    `src/backend/aarch64/codegen/emit.*`, leaving the existing throwing
+    `emit_module(const bir::Module&)` wrappers as thin adapters over the new
+    optional render surface
+  - updated `src/backend/backend.cpp` so direct BIR input still throws through
+    the target-local emitters, while LIR-owned routing now uses the shared
+    optional BIR probe directly and falls back to prepared direct LIR without
+    parsing target-local rejection text
+  - extended `tests/backend/backend_bir_pipeline_tests.cpp` with focused x86
+    and aarch64 regressions proving the new support probes return native
+    renderings for a supported affine-return BIR module and `nullopt` for the
+    unsupported multi-function BIR fixture
+  - rebuilt `backend_bir_tests`, passed
+    `ctest --test-dir build -R '^backend_bir_tests$' --output-on-failure`,
+    rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with no new failures and no pass-count drop
+    (`2809 -> 2809`, same 32 known failing tests as `test_fail_before.log`)
 - Completed the next Step 6/7 bounded backend-entry routing ownership slice by
   moving target `LirModule -> prepare -> try_lower_to_bir -> direct native
   fallback` control into shared backend code and leaving x86/aarch64 emitters

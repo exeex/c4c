@@ -1,7 +1,9 @@
 #include "backend_bir_test_support.hpp"
 
+#include "../../src/backend/aarch64/codegen/emit.hpp"
 #include "../../src/backend/bir_printer.hpp"
 #include "../../src/backend/lowering/lir_to_bir.hpp"
+#include "../../src/backend/x86/codegen/emit.hpp"
 
 namespace {
 
@@ -199,6 +201,33 @@ void test_backend_entry_rejects_unsupported_direct_lir_input_on_aarch64() {
   }
 
   fail("backend entry should reject unsupported aarch64 direct LIR input once the backend.cpp LLVM rescue seam is removed");
+}
+
+void test_x86_try_emit_module_reports_direct_bir_support_explicitly() {
+  const auto supported = c4c::backend::x86::try_emit_module(make_return_immediate_module());
+  expect_true(supported.has_value(),
+              "x86 direct BIR support probing should report a bounded affine-return module without requiring a thrown rejection string");
+  expect_contains(*supported, "mov eax, 7",
+                  "x86 direct BIR support probing should still render the bounded affine-return module natively");
+
+  const auto unsupported =
+      c4c::backend::x86::try_emit_module(make_unsupported_multi_function_bir_module());
+  expect_true(!unsupported.has_value(),
+              "x86 direct BIR support probing should return no native rendering for unsupported multi-function modules instead of requiring exception-text classification");
+}
+
+void test_aarch64_try_emit_module_reports_direct_bir_support_explicitly() {
+  const auto supported =
+      c4c::backend::aarch64::try_emit_module(make_return_immediate_module());
+  expect_true(supported.has_value(),
+              "aarch64 direct BIR support probing should report a bounded affine-return module without requiring a thrown rejection string");
+  expect_contains(*supported, "mov w0, #7",
+                  "aarch64 direct BIR support probing should still render the bounded affine-return module natively");
+
+  const auto unsupported =
+      c4c::backend::aarch64::try_emit_module(make_unsupported_multi_function_bir_module());
+  expect_true(!unsupported.has_value(),
+              "aarch64 direct BIR support probing should return no native rendering for unsupported multi-function modules instead of requiring exception-text classification");
 }
 
 void test_backend_bir_pipeline_is_opt_in_through_backend_options() {
@@ -1445,6 +1474,8 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_backend_riscv64_path_keeps_unsupported_direct_lir_on_llvm_text_surface);
   RUN_TEST(test_backend_entry_rejects_unsupported_direct_lir_input_on_x86);
   RUN_TEST(test_backend_entry_rejects_unsupported_direct_lir_input_on_aarch64);
+  RUN_TEST(test_x86_try_emit_module_reports_direct_bir_support_explicitly);
+  RUN_TEST(test_aarch64_try_emit_module_reports_direct_bir_support_explicitly);
   RUN_TEST(test_backend_bir_pipeline_is_opt_in_through_backend_options);
   RUN_TEST(test_backend_bir_pipeline_accepts_direct_bir_module_input);
   RUN_TEST(test_backend_bir_pipeline_routes_sub_cluster_through_bir_text_surface);

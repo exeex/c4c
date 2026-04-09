@@ -9,7 +9,7 @@
 #include "../codegen/lir/ir.hpp"
 
 #include <array>
-#include <string_view>
+#include <optional>
 #include <stdexcept>
 
 namespace c4c::backend {
@@ -52,24 +52,6 @@ NativePreparationConfig build_native_preparation_config(Target target) {
   throw std::logic_error("unreachable backend target");
 }
 
-std::string emit_native_bir_module(const bir::Module& module, Target target) {
-  switch (target) {
-    case Target::X86_64:
-    case Target::I686:
-      return c4c::backend::x86::emit_module(module);
-    case Target::Aarch64:
-      return c4c::backend::aarch64::emit_module(module);
-    case Target::Riscv64:
-      throw std::logic_error("riscv64 native BIR emission is handled by the caller");
-  }
-  throw std::logic_error("unreachable backend target");
-}
-
-bool is_direct_bir_subset_error(const std::invalid_argument& ex) {
-  return std::string_view(ex.what()).find("does not support this direct BIR module") !=
-         std::string_view::npos;
-}
-
 std::string emit_native_prepared_lir_module(const c4c::codegen::lir::LirModule& module,
                                             Target target) {
   switch (target) {
@@ -84,11 +66,39 @@ std::string emit_native_prepared_lir_module(const c4c::codegen::lir::LirModule& 
   throw std::logic_error("unreachable backend target");
 }
 
-std::string render_bir_module(const bir::Module& module, Target target) {
+std::optional<std::string> try_render_bir_module(const bir::Module& module, Target target) {
   if (target == Target::Riscv64) {
     return c4c::backend::bir::print(module);
   }
-  return emit_native_bir_module(module, target);
+  std::optional<std::string> rendered;
+  switch (target) {
+    case Target::X86_64:
+    case Target::I686:
+      rendered = c4c::backend::x86::try_emit_module(module);
+      break;
+    case Target::Aarch64:
+      rendered = c4c::backend::aarch64::try_emit_module(module);
+      break;
+    case Target::Riscv64:
+      throw std::logic_error("riscv64 BIR rendering is handled above");
+  }
+  return rendered;
+}
+
+std::string render_direct_bir_module(const bir::Module& module, Target target) {
+  if (const auto rendered = try_render_bir_module(module, target); rendered.has_value()) {
+    return *rendered;
+  }
+  switch (target) {
+    case Target::X86_64:
+    case Target::I686:
+      return c4c::backend::x86::emit_module(module);
+    case Target::Aarch64:
+      return c4c::backend::aarch64::emit_module(module);
+    case Target::Riscv64:
+      return c4c::backend::bir::print(module);
+  }
+  throw std::logic_error("unreachable backend target");
 }
 
 }  // namespace
@@ -114,7 +124,7 @@ c4c::codegen::lir::LirModule prepare_lir_module_for_target(
 std::string emit_module(const BackendModuleInput& input,
                         const BackendOptions& options) {
   if (input.holds_bir_module()) {
-    return render_bir_module(input.bir_module(), options.target);
+    return render_direct_bir_module(input.bir_module(), options.target);
   }
 
   const auto& lir_module = input.lir_module();
@@ -131,12 +141,9 @@ std::string emit_module(const BackendModuleInput& input,
       return c4c::codegen::lir::print_llvm(prepared_lir_module);
     }
   }
-  try {
-    return render_bir_module(*bir_module, options.target);
-  } catch (const std::invalid_argument& ex) {
-    if (!is_direct_bir_subset_error(ex)) {
-      throw;
-    }
+  if (const auto rendered = try_render_bir_module(*bir_module, options.target);
+      rendered.has_value()) {
+    return *rendered;
   }
   return emit_native_prepared_lir_module(prepared_lir_module, options.target);
 }
