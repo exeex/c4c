@@ -6,137 +6,36 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 6: move liveness to backend MIR
-- Current slice: continue Step 6 public-surface narrowing by checking whether
-  the next planning-only compatibility helper can stop rebuilding broader
-  entry-alloca wrapper state once callers already own backend liveness plus
-  prepared planning metadata
-- Current implementation target: inspect the remaining rewrite-prep
-  compatibility helpers and check whether the `StackLayoutInput` lowering path
-  can reuse embedded prepared rewrite/planning metadata instead of recomputing
-  fallback classification from the broader wrapper
-- Next intended slice: narrow the next rewrite-prep compatibility helper so
-  prepared callers that already carry backend liveness plus narrowed rewrite
-  metadata do not need to rebuild wider stack-layout classification state
+- Step 7: move regalloc and stack layout to backend MIR
+- Current slice: audit remaining stack-layout production entrypoints and split
+  them into production-critical versus compatibility-only raw-`LIR` surfaces
+- Current implementation target: identify which `stack_layout` and
+  `slot_assignment` entrypoints still use `LirFunction` / `LirModule` as a
+  production owner even though backend-owned liveness plus narrowed planning or
+  rewrite inputs already exist
+- Next intended slice: mark compatibility-only stack-layout surfaces
+  explicitly, then retarget the highest-value production caller away from the
+  raw-`LIR` route
 
 ## Completed
 
-- Completed the next Step 6 planning-only compatibility-helper narrowing slice
-  by retargeting the backend-owned stack-layout bundle overload to the prepared
-  planning seam instead of recomputing broader wrapper state:
-  - updated `src/backend/stack_layout/slot_assignment.cpp` so
-    `analyze_entry_alloca_planning_input(...)` now honors embedded prepared
-    `escaped_entry_allocas` and `entry_alloca_use_blocks`, and the
-    `build_stack_layout_plan_bundle(liveness_input, stack_layout_input, ...)`
-    compatibility overload now lowers through `EntryAllocaPlanningInput`
-    instead of re-analyzing the broader `StackLayoutInput` surface
-  - taught `lower_stack_layout_input_to_entry_alloca_rewrite_input(...)` and
-    `lower_stack_layout_input_to_entry_alloca_planning_input(...)` to reuse
-    embedded prepared classification metadata when the compatibility
-    `StackLayoutInput` already carries narrowed escape/use-block/first-access
-    facts, falling back to raw recomputation only when those seams are absent
-  - extended `tests/backend/backend_shared_util_tests.cpp` with a focused
-    regression proving the backend-owned bundle compatibility overload now
-    matches the explicit prepared `planning_input` path for a live local alloca
-    that depends on prepared use-block metadata
-  - rebuilt `backend_shared_util_tests`, passed
-    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`
-  - rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
-    regression guard with the repo’s allowed non-decreasing rule and no new
-    failures (`2809 -> 2809`, same 32 known failing tests as
-    `test_fail_before.log`; full suite summary `2841` total with `32` failing
-    both before and after)
+- Closed Step 6 as complete enough for plan execution:
+  - production liveness/regalloc now center on
+    `backend CFG -> LivenessInput -> compute_live_intervals(...)`
+  - the remaining direct raw-`LIR` liveness entrypoint is explicitly marked
+    compatibility-only in `src/backend/liveness.hpp`
+  - follow-up Step 6 narrowing in `stack_layout` clarified planning and
+    rewrite seams enough that Step 7 can proceed without reopening liveness
+    ownership
 
-- Completed the next Step 6 planning-helper narrowing slice by making the
-  backend-owned `StackLayoutInput` planning overloads lower directly to the
-  explicit planning seam instead of round-tripping through the rewrite wrapper:
-  - updated `src/backend/stack_layout/slot_assignment.cpp` so
-    `build_stack_layout_plan_bundle(...)`,
-    `plan_entry_alloca_slots(...)`, and `plan_param_alloca_slots(...)`
-    now lower `StackLayoutInput` straight into `EntryAllocaPlanningInput`
-    while leaving rewrite-owned lowering in place only for patch synthesis
-  - extended `tests/backend/backend_shared_util_tests.cpp` with focused
-    coverage proving the backend-owned planning overloads produce the same
-    entry-alloca and param-alloca plans as the explicit `planning_input`
-    exported from the same prepared function inputs
-  - rebuilt `backend_shared_util_tests`, passed
-    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`
-  - refreshed `test_fail_after.log`, and passed the regression guard with the
-    repo’s allowed non-decreasing rule and no new failures (`2809 -> 2809`,
-    same 32 known failing tests as `test_fail_before.log`; full suite summary
-    `2841` total with `32` failing both before and after)
+## Notes
 
-- Completed the next Step 6 planning-bundle narrowing slice by letting
-  stack-layout bundle preparation derive analysis from backend liveness plus
-  the explicit planning payload instead of the broader compatibility
-  `StackLayoutInput` bundle:
-  - added `entry_alloca_first_accesses` to
-    `src/backend/stack_layout/slot_assignment.hpp`'s
-    `EntryAllocaPlanningInput` so the planning-only contract now carries the
-    remaining overwrite-before-read classification needed for slot pruning
-  - updated `src/backend/stack_layout/slot_assignment.cpp` so prepared
-    lowering populates the new first-access seam and added a
-    `build_stack_layout_plan_bundle(...)` overload that computes
-    `StackLayoutAnalysis` from `LivenessInput + EntryAllocaPlanningInput`
-    directly, including dead-param and overwrite-before-read decisions
-  - extended `tests/backend/backend_shared_util_tests.cpp` with focused
-    coverage proving prepared callers can build stack-layout bundles from the
-    narrowed planning payload while preserving scalar overwrite pruning and
-    dead-param alloca pruning
-  - rebuilt `backend_shared_util_tests`, passed
-    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`
-  - rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
-    regression guard with the repo’s allowed non-decreasing rule and no new
-    failures (`2809 -> 2809`, same 32 known failing tests as
-    `test_fail_before.log`)
-
-- Completed the next Step 6 prepared planning-payload narrowing slice by
-  threading a dedicated `EntryAllocaPlanningInput` through prepared
-  entry-alloca helpers so planning callers can stop re-lowering rewrite
-  metadata ad hoc:
-  - added `planning_input` to
-    `src/backend/stack_layout/slot_assignment.hpp`'s
-    `PreparedEntryAllocaFunctionInputs` and `EntryAllocaRewriteInputs`
-  - updated `src/backend/stack_layout/slot_assignment.cpp` so prepared
-    entry-alloca lowering derives the planning-only payload once from the
-    rewrite/classification seam and carries it through both the prepared and
-    lowered helper results
-  - extended `tests/backend/backend_shared_util_tests.cpp` with focused
-    coverage proving prepared fallback and mixed-module helper paths now expose
-    the narrowed planning payload directly, including paired-store
-    classification when present
-  - rebuilt `backend_shared_util_tests`, passed
-    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`
-  - rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
-    regression guard with the repo’s allowed non-decreasing rule and no new
-    failures (`2809 -> 2809`, same 32 known failing tests as
-    `test_fail_before.log`)
-
-- Completed the next Step 6 stack-layout planning-surface narrowing slice by
-  letting bundle assembly and param-alloca planning consume the dedicated
-  planning-only entry-alloca contract after backend-owned analysis is already
-  computed:
-  - added `EntryAllocaPlanningInput` overloads for
-    `build_stack_layout_plan_bundle(...)` and `plan_param_alloca_slots(...)` in
-    `src/backend/stack_layout/slot_assignment.hpp` so planning callers can
-    reuse the narrowed alloca/type/alignment plus paired-store classification
-    seam without depending on the broader rewrite-owned payload
-  - updated `src/backend/stack_layout/slot_assignment.cpp` so the production
-    `StackLayoutInput` bundle path now computes analysis from the backend-owned
-    surface and then lowers into the planning-only contract before entry-alloca
-    and param-alloca plan synthesis
-  - kept the rewrite surface explicit by leaving
-    `EntryAllocaRewriteInput` ownership with patch preparation and only
-    deriving planning metadata when slot-planning logic actually needs it
-  - extended `tests/backend/backend_shared_util_tests.cpp` with focused
-    coverage proving narrowed planning input now supports param-alloca
-    planning and bundle assembly while preserving dead-param pruning decisions
-  - rebuilt `backend_shared_util_tests`, passed
-    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`
-  - refreshed `test_after.log` with the full `ctest --test-dir build -j
-    --output-on-failure` suite and passed the regression guard with the repo’s
-    allowed non-decreasing rule and no new failures (`2809 -> 2809`, same 32
-    known failing tests as `test_fail_before.log`)
+- The largest remaining raw-`LIR` ownership seam is now in
+  `src/backend/stack_layout/analysis.*` and
+  `src/backend/stack_layout/slot_assignment.*`, not in `liveness` /
+  `regalloc`.
+- Worker packet files from the previous subagent round have been cleared so the
+  repo returns to one canonical `todo.md`.
 
 - Completed the next Step 6 `EntryAllocaInput` payload narrowing slice by
   splitting slot-planning metadata away from the rewrite-owned literal

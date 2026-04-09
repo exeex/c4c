@@ -123,6 +123,9 @@ BackendCfgFunction lower_lir_to_backend_cfg(const c4c::codegen::lir::LirFunction
 BackendCfgLivenessFunction lower_backend_cfg_to_liveness_function(const BackendCfgFunction& function);
 LivenessInput lower_backend_cfg_to_liveness_input(const BackendCfgLivenessFunction& function);
 LivenessInput lower_backend_cfg_to_liveness_input(const BackendCfgFunction& function);
+// Compatibility-only raw-LIR entrypoint. Prefer backend CFG/MIR-derived inputs
+// in production paths.
+[[deprecated("compatibility-only; prefer backend CFG/MIR inputs")]]
 LivenessInput lower_lir_to_liveness_input(const c4c::codegen::lir::LirFunction& function);
 LivenessResult compute_live_intervals(const LivenessInput& input);
 

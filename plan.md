@@ -257,8 +257,24 @@ Concrete actions:
   assumptions
 - keep temporary compatibility wiring only long enough to compare behavior
 
+Suggested slice order:
+1. audit stack-layout production entrypoints and classify each remaining
+   raw-`LIR` surface as either production-critical or compatibility-only
+2. mark compatibility-only stack-layout entrypoints explicitly and keep the
+   production route centered on backend-owned liveness plus narrowed planning
+   and rewrite inputs
+3. retarget production stack-layout/regalloc callers so they no longer depend
+   on raw `LirFunction` / `LirModule` ownership when backend-owned inputs
+   already exist
+4. narrow or delete wrapper overloads that only survive to preserve the old
+   raw-`LIR` route after step 3 lands
+5. leave broad test cleanup and final shim deletion to Step 8 once the new
+   production route is stable
+
 Completion check:
 - production regalloc and stack-layout ownership live on backend MIR
+- any remaining raw-`LIR` stack-layout surface is explicitly compatibility-only
+  and no longer the default production path
 
 ### Step 8: Delete temporary LIR-side backend shims
 

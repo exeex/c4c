@@ -293,6 +293,40 @@ void collect_first_entry_alloca_accesses(
   }
 }
 
+std::unordered_set<std::string> collect_entry_alloca_names(const StackLayoutInput& input) {
+  std::unordered_set<std::string> names;
+  names.reserve(input.entry_allocas.size());
+  for (const auto& alloca : input.entry_allocas) {
+    if (is_entry_alloca_name(alloca.alloca_name)) {
+      names.insert(alloca.alloca_name);
+    }
+  }
+  return names;
+}
+
+void seed_entry_alloca_use_blocks_from_coarse_seam(
+    const StackLayoutInput& input,
+    StackLayoutAnalysis& analysis) {
+  if (!input.entry_alloca_use_blocks.has_value()) {
+    return;
+  }
+
+  const auto entry_alloca_names = collect_entry_alloca_names(input);
+  for (const auto& use_blocks : *input.entry_alloca_use_blocks) {
+    if (entry_alloca_names.find(use_blocks.alloca_name) == entry_alloca_names.end()) {
+      continue;
+    }
+
+    analysis.used_values.insert(use_blocks.alloca_name);
+    auto& recorded_blocks = analysis.value_use_blocks[use_blocks.alloca_name];
+    for (const auto block_index : use_blocks.block_indices) {
+      if (recorded_blocks.empty() || recorded_blocks.back() != block_index) {
+        recorded_blocks.push_back(block_index);
+      }
+    }
+  }
+}
+
 void lower_function_entry_allocas(const c4c::codegen::lir::LirFunction& function,
                                   StackLayoutInput& input) {
   input.entry_allocas.reserve(function.alloca_insts.size());
@@ -568,6 +602,8 @@ StackLayoutAnalysis analyze_stack_layout(
       analysis.used_values.insert(phi_use.value_name);
     }
   }
+
+  seed_entry_alloca_use_blocks_from_coarse_seam(input, analysis);
 
   for (std::size_t block_index = 0; block_index < input.blocks.size(); ++block_index) {
     const auto& block = input.blocks[block_index];
