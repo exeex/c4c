@@ -8,16 +8,37 @@ Source Plan: plan.md
 
 - Step 6: move liveness to backend MIR
 - Current slice: audit the next backend-entry/native-emitter ownership seam
-  after shared backend routing takes over the public x86/aarch64 direct-BIR
-  wrapper route policy
+  after shared backend takes over the public x86/aarch64 `assemble_module(...)`
+  handoff
 - Current implementation target: identify the next public native-emitter
-  wrapper or helper entrypoint that still owns compatibility-only routing after
-  shared backend code takes over the x86/aarch64 direct-BIR wrapper path
-- Next intended slice: audit `assemble_module(...)` and adjacent native-emitter
-  handoff helpers for any remaining compatibility-only route ownership that
-  should move behind one shared backend seam
+  contract or binary-utils seam that still owns compatibility-only routing
+  after shared backend now centralizes text-to-object staging for target LIR
+  assembly
+- Next intended slice: inspect the disabled binary-utils contract/object-parse
+  coverage and adjacent assembler-facing helpers to decide whether the next
+  cleanup is test reactivation around the shared assembly seam or a separate
+  shared backend/native-emitter ownership move
 
 ## Completed
+
+- Completed the next Step 6 bounded native-emitter assembly-handoff cleanup
+  slice by moving compatibility-only x86/aarch64 `assemble_module(...)`
+  routing behind one shared backend seam:
+  - added `assemble_target_lir_module(...)` plus shared public-target
+    resolution in `src/backend/backend.*` so shared backend code now owns the
+    `LirModule -> emitted asm text -> target assembler request/result` handoff
+    for the public x86/aarch64 assembly wrappers
+  - updated `src/backend/x86/codegen/emit.cpp` and
+    `src/backend/aarch64/codegen/emit.cpp` so the public
+    `assemble_module(const LirModule&, output_path)` wrappers become thin
+    delegates over the shared backend helper instead of pairing local
+    `emit_module(...)` calls with target-local assembler dispatch
+  - extended `tests/backend/backend_shared_util_tests.cpp` with focused
+    coverage proving the shared assembly helper matches the public x86/aarch64
+    wrapper staging contracts and still emits objects for the bounded return-add
+    slice
+  - rebuilt `backend_shared_util_tests` and passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`
 
 - Completed the next Step 6 bounded public direct-BIR wrapper cleanup slice by
   moving compatibility-only x86/aarch64 direct-BIR route ownership into shared

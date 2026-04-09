@@ -2096,6 +2096,44 @@ void test_shared_linker_parses_builtin_return_add_object() {
   std::filesystem::remove(object_path);
 }
 
+void test_backend_shared_assemble_target_lir_module_matches_public_wrappers() {
+  const auto x86_module = make_return_add_module();
+  const auto shared_x86_path = make_temp_output_path("c4c_x86_shared_assemble");
+  const auto wrapper_x86_path = make_temp_output_path("c4c_x86_wrapper_assemble");
+  const auto shared_x86 = c4c::backend::assemble_target_lir_module(
+      x86_module, c4c::backend::Target::X86_64, shared_x86_path);
+  const auto wrapper_x86 = c4c::backend::x86::assemble_module(x86_module, wrapper_x86_path);
+  expect_true(shared_x86.staged_text == wrapper_x86.staged_text &&
+                  shared_x86.object_emitted == wrapper_x86.object_emitted &&
+                  shared_x86.error == wrapper_x86.error,
+              "shared backend assembly handoff should match the x86 public wrapper staging contract");
+  expect_true(shared_x86.output_path == shared_x86_path &&
+                  wrapper_x86.output_path == wrapper_x86_path &&
+                  shared_x86.object_emitted && wrapper_x86.object_emitted,
+              "shared backend assembly handoff should preserve x86 output destinations while emitting objects");
+  std::filesystem::remove(shared_x86_path);
+  std::filesystem::remove(wrapper_x86_path);
+
+  auto aarch64_module = make_return_add_module();
+  aarch64_module.target_triple = "aarch64-unknown-linux-gnu";
+  aarch64_module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+  const auto shared_aarch64_path = make_temp_output_path("c4c_aarch64_shared_assemble");
+  const auto wrapper_aarch64_path = make_temp_output_path("c4c_aarch64_wrapper_assemble");
+  const auto shared_aarch64 = c4c::backend::assemble_target_lir_module(
+      aarch64_module, c4c::backend::Target::Aarch64, shared_aarch64_path);
+  const auto wrapper_aarch64 =
+      c4c::backend::aarch64::assemble_module(aarch64_module, wrapper_aarch64_path);
+  expect_true(shared_aarch64.staged_text == wrapper_aarch64.staged_text &&
+                  shared_aarch64.object_emitted == wrapper_aarch64.object_emitted,
+              "shared backend assembly handoff should match the aarch64 public wrapper staging contract");
+  expect_true(shared_aarch64.output_path == shared_aarch64_path &&
+                  wrapper_aarch64.output_path == wrapper_aarch64_path &&
+                  shared_aarch64.object_emitted && wrapper_aarch64.object_emitted,
+              "shared backend assembly handoff should preserve aarch64 output destinations while emitting objects");
+  std::filesystem::remove(shared_aarch64_path);
+  std::filesystem::remove(wrapper_aarch64_path);
+}
+
 void test_shared_linker_parses_single_member_archive_fixture() {
   const auto fixture = make_single_member_archive_fixture();
   std::string error;
@@ -2184,6 +2222,7 @@ int main(int argc, char* argv[]) {
   test_backend_shared_target_preparation_enables_bir_lowering();
   test_backend_shared_slot_assignment_prunes_dead_entry_alloca_insts();
   test_backend_shared_slot_assignment_applies_coalesced_entry_slots();
+  test_backend_shared_assemble_target_lir_module_matches_public_wrappers();
   // TODO: binary-utils contract test disabled — assembler seam changed
   // test_backend_binary_utils_contract_headers_are_include_reachable();
   test_shared_linker_parses_minimal_relocation_object_fixture();

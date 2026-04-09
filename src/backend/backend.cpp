@@ -1,8 +1,10 @@
 #include "backend.hpp"
+#include "aarch64/assembler/mod.hpp"
 #include "aarch64/codegen/emit.hpp"
 #include "bir_printer.hpp"
 #include "lowering/lir_to_bir.hpp"
 #include "stack_layout/slot_assignment.hpp"
+#include "x86/assembler/mod.hpp"
 #include "x86/codegen/emit.hpp"
 
 #include "../codegen/lir/lir_printer.hpp"
@@ -111,6 +113,19 @@ std::string render_direct_bir_module(const bir::Module& module, Target target) {
   throw std::logic_error("unreachable backend target");
 }
 
+Target resolve_public_lir_target(const c4c::codegen::lir::LirModule& module,
+                                 Target public_target) {
+  if (public_target != Target::X86_64) {
+    return public_target;
+  }
+
+  auto target = target_from_triple(module.target_triple);
+  if (target != Target::I686) {
+    target = Target::X86_64;
+  }
+  return target;
+}
+
 }  // namespace
 
 BackendModuleInput::BackendModuleInput(const bir::Module& bir_module)
@@ -151,15 +166,52 @@ std::string emit_target_bir_module(const bir::Module& module, Target public_targ
 
 std::string emit_target_lir_module(const c4c::codegen::lir::LirModule& module,
                                    Target public_target) {
-  auto target = public_target;
-  if (public_target == Target::X86_64) {
-    target = target_from_triple(module.target_triple);
-    if (target != Target::I686) {
-      target = Target::X86_64;
-    }
-  }
-
+  const auto target = resolve_public_lir_target(module, public_target);
   return emit_module(BackendModuleInput{module}, BackendOptions{.target = target});
+}
+
+BackendAssembleResult assemble_target_lir_module(
+    const c4c::codegen::lir::LirModule& module,
+    Target public_target,
+    const std::string& output_path) {
+  const auto target = resolve_public_lir_target(module, public_target);
+  const auto emitted = emit_module(BackendModuleInput{module}, BackendOptions{.target = target});
+
+  switch (target) {
+    case Target::X86_64:
+    case Target::I686: {
+      const auto assembled = c4c::backend::x86::assembler::assemble(
+          c4c::backend::x86::assembler::AssembleRequest{
+              .asm_text = emitted,
+              .output_path = output_path,
+          });
+      return BackendAssembleResult{
+          .staged_text = assembled.staged_text,
+          .output_path = assembled.output_path,
+          .object_emitted = assembled.object_emitted,
+          .error = assembled.error,
+      };
+    }
+    case Target::Aarch64: {
+      const auto assembled = c4c::backend::aarch64::assembler::assemble(
+          c4c::backend::aarch64::assembler::AssembleRequest{
+              .asm_text = emitted,
+              .output_path = output_path,
+          });
+      return BackendAssembleResult{
+          .staged_text = assembled.staged_text,
+          .output_path = assembled.output_path,
+          .object_emitted = assembled.object_emitted,
+      };
+    }
+    case Target::Riscv64:
+      return BackendAssembleResult{
+          .staged_text = emitted,
+          .output_path = output_path,
+          .object_emitted = false,
+      };
+  }
+  throw std::logic_error("unreachable backend target");
 }
 
 std::string emit_module(const BackendModuleInput& input,

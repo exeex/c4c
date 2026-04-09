@@ -47,6 +47,13 @@ struct BackendOptions {
   Target target;
 };
 
+struct BackendAssembleResult {
+  std::string staged_text;
+  std::string output_path;
+  bool object_emitted = false;
+  std::string error;
+};
+
 [[nodiscard]] c4c::codegen::lir::LirModule prepare_lir_module_for_target(
     const c4c::codegen::lir::LirModule& module,
     Target target);
@@ -55,6 +62,11 @@ std::string emit_target_bir_module(const bir::Module& module, Target public_targ
 
 std::string emit_target_lir_module(const c4c::codegen::lir::LirModule& module,
                                    Target public_target);
+
+BackendAssembleResult assemble_target_lir_module(
+    const c4c::codegen::lir::LirModule& module,
+    Target public_target,
+    const std::string& output_path);
 
 std::string emit_module(const BackendModuleInput& input,
                         const BackendOptions& options);

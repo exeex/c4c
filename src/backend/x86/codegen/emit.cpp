@@ -4101,8 +4101,14 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
 
 assembler::AssembleResult assemble_module(const c4c::codegen::lir::LirModule& module,
                                           const std::string& output_path) {
-  return assembler::assemble(
-      assembler::AssembleRequest{.asm_text = emit_module(module), .output_path = output_path});
+  const auto assembled =
+      c4c::backend::assemble_target_lir_module(module, c4c::backend::Target::X86_64, output_path);
+  return assembler::AssembleResult{
+      .staged_text = assembled.staged_text,
+      .output_path = assembled.output_path,
+      .object_emitted = assembled.object_emitted,
+      .error = assembled.error,
+  };
 }
 
 }  // namespace c4c::backend::x86
