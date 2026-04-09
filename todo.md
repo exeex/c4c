@@ -6,25 +6,22 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 2 architecture reset, still in `Phase 1: Ownership wiring`:
-  move shared lowering ownership out of monolithic
-  `src/backend/lowering/lir_to_bir.cpp` and into
-  `src/backend/lowering/lir_to_bir/{cfg,types,memory,calls,phi,aggregates}.cpp`
+- Step 2 architecture reset, now in `Phase 2: Compile recovery`:
+  use the split shared lowering seams as the owning implementation surface and
+  recover compile/test health one seam-local family at a time
 - current exact slice:
-  the global/array address-form burst is now coherent enough to switch the
-  memory seam from residual ownership extraction into a dedicated
-  seam-local compile-recovery pass
-- build/test work is intentionally ignored in this phase per `plan.md`
-  until the lane explicitly switches to `Phase 2: Compile recovery`
+  start narrow compile recovery around the memory-owned global/string address
+  seam now that the duplicate typed-width and pointer-value legalization
+  predicates have been normalized into `lir_to_bir/types.cpp`
 
 ## Next Slice
 
-- review the split `lir_to_bir/memory.cpp` seam for duplicate typed-text
-  predicates and residual monolith helper dependencies that should be
-  normalized before broader behavioral work
-- if the memory seam stays stable after that cleanup, explicitly advance this
-  lane from `Phase 1: Ownership wiring` into `Phase 2: Compile recovery`
-  before any new targeted tests
+- run narrow seam-local compile recovery on the memory-owned lowering burst,
+  starting with the focused backend utility/bir executables that exercise:
+  scalar global load/store, extern array loads, global pointer-diff, and
+  string-literal compare lowering
+- classify the first post-split failure by owning boundary and add the
+  narrowest regression before touching broader backend routing
 
 ## Recently Completed
 
@@ -151,6 +148,12 @@ Source Plan: plan.md
   `./build/backend_bir_tests` still fails across the existing shared-BIR
   lowering acceptance/support cases, and `./build/backend_shared_util_tests`
   still aborts with the existing unsupported direct-LIR rejection
+- normalized the duplicate integer-width and memory-value legalization
+  predicates out of `src/backend/lowering/lir_to_bir/memory.cpp` and the
+  monolith into shared `src/backend/lowering/lir_to_bir/types.cpp` helpers so
+  the split memory seam no longer owns its own ad hoc typed-text parsing
+- verified the tree rebuilds cleanly after that predicate normalization:
+  `cmake --build build -j8` succeeds
 
 ## Blockers
 

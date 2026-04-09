@@ -32,20 +32,6 @@ struct MemoryLoweringFrame {
   bir::Block* bir_block = nullptr;
 };
 
-std::optional<bir::TypeKind> lower_memory_scalar_type(std::string_view type_text) {
-  if (type_text == "i8" || type_text == "char" || type_text == "signed char" ||
-      type_text == "unsigned char") {
-    return bir::TypeKind::I8;
-  }
-  if (type_text == "i32" || type_text == "int") {
-    return bir::TypeKind::I32;
-  }
-  if (type_text == "i64" || type_text == "ptr" || (!type_text.empty() && type_text.back() == '*')) {
-    return bir::TypeKind::I64;
-  }
-  return std::nullopt;
-}
-
 std::optional<std::int64_t> parse_memory_immediate(std::string_view text) {
   std::int64_t value = 0;
   const char* begin = text.data();
@@ -89,27 +75,7 @@ bool memory_target_supports_global_pointer_diff(std::string_view target_triple) 
 
 bool memory_lir_type_matches_integer_width(const c4c::codegen::lir::LirTypeRef& type,
                                            unsigned bit_width) {
-  if (type.kind() == c4c::codegen::lir::LirTypeKind::Integer &&
-      type.integer_bit_width() == bit_width) {
-    return true;
-  }
-
-  const auto lowered_type = lower_scalar_type_text(type.str());
-  if (!lowered_type.has_value()) {
-    return false;
-  }
-
-  switch (*lowered_type) {
-    case bir::TypeKind::I8:
-      return bit_width == 8;
-    case bir::TypeKind::I32:
-      return bit_width == 32;
-    case bir::TypeKind::I64:
-      return bit_width == 64;
-    case bir::TypeKind::Void:
-      return bit_width == 0;
-  }
-  return false;
+  return lir_to_bir::legalize_lir_type_matches_integer_width(type, bit_width);
 }
 
 bir::MemoryAddress make_local_memory_address(std::string slot_name,
@@ -239,7 +205,7 @@ void lower_load_inst(MemoryLoweringFrame& frame,
     return;
   }
 
-  const auto loaded_type = lower_memory_scalar_type(load.type_str.str());
+  const auto loaded_type = lir_to_bir::legalize_memory_value_type(load.type_str);
   if (!loaded_type.has_value()) {
     return;
   }
@@ -262,7 +228,7 @@ void lower_store_inst(MemoryLoweringFrame& frame,
     return;
   }
 
-  const auto stored_type = lower_memory_scalar_type(store.type_str.str());
+  const auto stored_type = lir_to_bir::legalize_memory_value_type(store.type_str);
   if (!stored_type.has_value()) {
     return;
   }

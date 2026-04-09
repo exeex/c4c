@@ -248,6 +248,28 @@ bool legalize_lir_type_is_i32(const c4c::codegen::lir::LirTypeRef& type) {
   return lir_type_matches_integer_width(type, 32);
 }
 
+bool legalize_lir_type_matches_integer_width(const c4c::codegen::lir::LirTypeRef& type,
+                                             unsigned bit_width) {
+  return lir_type_matches_integer_width(type, bit_width);
+}
+
+std::optional<bir::TypeKind> legalize_memory_value_type(
+    const c4c::codegen::lir::LirTypeRef& type) {
+  if (const auto lowered_type = lower_scalar_type(type); lowered_type.has_value()) {
+    return lowered_type;
+  }
+
+  if (const auto lowered_type = lower_scalar_type_text(type.str()); lowered_type.has_value()) {
+    return lowered_type;
+  }
+
+  if (lir_type_is_pointer_like(type)) {
+    return bir::TypeKind::I64;
+  }
+
+  return std::nullopt;
+}
+
 std::size_t legalize_type_size_bytes(bir::TypeKind type) {
   switch (type) {
     case bir::TypeKind::Void:

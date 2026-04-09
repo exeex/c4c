@@ -136,6 +136,10 @@ std::optional<bir::TypeKind> legalize_global_type(const c4c::codegen::lir::LirGl
 std::optional<bir::TypeKind> legalize_call_arg_type(std::string_view text);
 bool legalize_lir_type_is_pointer_like(const c4c::codegen::lir::LirTypeRef& type);
 bool legalize_lir_type_is_i32(const c4c::codegen::lir::LirTypeRef& type);
+bool legalize_lir_type_matches_integer_width(const c4c::codegen::lir::LirTypeRef& type,
+                                             unsigned bit_width);
+std::optional<bir::TypeKind> legalize_memory_value_type(
+    const c4c::codegen::lir::LirTypeRef& type);
 std::size_t legalize_type_size_bytes(bir::TypeKind type);
 std::size_t legalize_type_align_bytes(bir::TypeKind type);
 bool legalize_types_compatible(bir::TypeKind lhs, bir::TypeKind rhs);

@@ -50,12 +50,7 @@ unsigned scalar_type_bit_width(bir::TypeKind type);
 
 bool lir_type_matches_integer_width(const c4c::codegen::lir::LirTypeRef& type,
                                     unsigned bit_width) {
-  if (lir_type_has_integer_width(type, bit_width)) {
-    return true;
-  }
-
-  const auto lowered_type = lower_scalar_type_text(type.str());
-  return lowered_type.has_value() && scalar_type_bit_width(*lowered_type) == bit_width;
+  return lir_to_bir::legalize_lir_type_matches_integer_width(type, bit_width);
 }
 
 bool lir_type_is_pointer_like(const c4c::codegen::lir::LirTypeRef& type) {
