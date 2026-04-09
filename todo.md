@@ -6,18 +6,33 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 4: validate downstream value-category behavior
-- Step 4: validate downstream value-category behavior
-- Current slice: audit whether Step 4 still has an uncovered decltype-like
-  consumer after the existing overload, forwarding, and member-access slices
-- Current implementation target: probe the narrowest decltype-like cast
-  consumer that can still disagree with Clang on `(T&)expr` / `(T&&)expr`
-  category preservation
-- Next intended slice: add the smallest decltype-like Step 4 regression if one
-  is still uncovered; otherwise record Step 4 as coverage-complete and hand off
-  to Step 5 casted member/base access review
+- Step 5: review member/base access through casted references
+- Current slice: audit whether Step 5 still has an uncovered method-call or
+  inherited-member access path after the existing field-access and
+  ref-qualified-method regressions
+- Current implementation target: probe the narrowest remaining casted
+  member/base access case that can still disagree with Clang on owner or
+  reference-category preservation
+- Next intended slice: add the smallest Step 5 regression for any uncovered
+  casted member/base access hole; if the matrix is already covered, record Step
+  5 as complete and prepare the plan for closure
 
 ## Completed
+
+- Added
+  `tests/cpp/internal/postive_case/c_style_cast_decltype_value_category.cpp`
+  as a focused Step 4 regression proving that `decltype((int&)x)` and
+  `decltype((int&&)x)` preserve C-style cast reference categories when consumed
+  as declaration types.
+- Fixed parser `decltype(...)` type inference so parenthesized C-style cast
+  operands preserve their reference-qualified cast target instead of falling
+  back to plain `int`, which restores the downstream aliasing behavior for
+  `decltype((int&)x)` / `decltype((int&&)x)`.
+- Targeted validation passed:
+  `ctest --test-dir build -R 'c_style_cast_(decltype_value_category|forwarding_ref_overload|lvalue_ref_overload|ref_qualified_method|rvalue_ref_field_access|base_rvalue_ref_field_access)' --output-on-failure`.
+- Full-suite validation stayed monotonic under the repo regression guard:
+  `test_fail_before.log` 2873/2873 passed,
+  `test_fail_after.log` 2876/2876 passed, with zero new failures.
 
 - Added
   `tests/cpp/internal/postive_case/c_style_cast_forwarding_ref_overload.cpp`

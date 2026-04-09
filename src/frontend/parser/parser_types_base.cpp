@@ -431,6 +431,25 @@ TypeSpec Parser::parse_base_type() {
     };
     auto infer_typeof_like_operand_type = [&](TypeSpec* out, bool strip_qual) -> bool {
         if (!out) return false;
+        if (check(TokenKind::LParen)) {
+            const int saved_pos = pos_;
+            consume();
+            if (is_type_start()) {
+                bool save_c = out->is_const, save_v = out->is_volatile;
+                *out = parse_type_name();
+                if (check(TokenKind::RParen)) {
+                    consume();
+                    if (strip_qual) {
+                        out->is_const = false;
+                        out->is_volatile = false;
+                    }
+                    out->is_const |= save_c;
+                    out->is_volatile |= save_v;
+                    return true;
+                }
+            }
+            pos_ = saved_pos;
+        }
         if (check(TokenKind::KwNullptr) ||
             (check(TokenKind::Identifier) && cur().lexeme == "nullptr")) {
             out->base = TB_VOID;
