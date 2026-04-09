@@ -1683,6 +1683,7 @@ Node* Parser::parse_primary() {
                     call->children = arena_.alloc_array<Node*>(call->n_children);
                     for (int i = 0; i < call->n_children; ++i) call->children[i] = args[i];
                 }
+                guard.commit();
                 return parse_postfix(call);
             }
             Node* operand = args.empty() ? make_int_lit(0, ln) : args[0];
