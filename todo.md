@@ -189,6 +189,17 @@ Source Plan: plan.md
 - Re-ran `backend_bir_tests`, `backend_shared_util_tests`, and the full suite
   and passed the regression guard with no new failures and no pass-count drop
   (`2841 -> 2841`)
+- Switched the generic conditional branch-select and phi-select fast paths in
+  `src/backend/lowering/lir_to_bir.cpp` off raw `ret.type_str` /
+  `phi.type_str` text equality and onto typed scalar checks via
+  `lower_function_return_type(...)` and semantic `LirTypeRef` inspection
+- Added focused backend regressions in
+  `tests/backend/backend_bir_lowering_tests.cpp` that keep the generic
+  one-parameter branch-select and phi-select lowering paths working when the
+  branch/join return text or phi render text is stale but the typed semantics
+  still match the enclosing function
+- Re-ran `backend_bir_tests` and `backend_shared_util_tests` for the generic
+  select stale-text slice before the full-suite check
 
 ## Next
 
@@ -196,10 +207,10 @@ Source Plan: plan.md
   `src/backend/lowering/lir_to_bir.cpp` and audit the remaining
   instruction-local raw integer text checks that still bypass semantic
   `LirTypeRef` inspection outside the widened `i8` add/compare/select seams;
-  the generic single-block stale-return-text gate is now covered, so the next
-  audit should target whichever remaining special-case lowering path still
-  branches primarily on raw integer text instead of typed instruction or
-  function metadata
+  the generic branch-select and phi-select stale phi/return-text gates are now
+  covered, so the next audit should target whichever remaining special-case
+  lowering path still branches primarily on raw integer text instead of typed
+  instruction or function metadata
 - keep pointer payload support deferred until a concrete pointer-backed BIR
   lowering consumer appears, then add only the narrow typed payload that
   consumer needs
@@ -226,7 +237,9 @@ Source Plan: plan.md
   `test_bir_lowering_accepts_typed_i8_return_add_lir_slice_with_stale_text`
   `test_bir_lowering_accepts_typed_i8_return_ne_lir_slice_with_stale_text`
   `test_bir_lowering_accepts_typed_single_param_select_branch_slice_with_stale_text`
+  `test_bir_lowering_accepts_typed_single_param_select_branch_slice_with_stale_return_text`
   `test_bir_lowering_accepts_typed_single_param_select_phi_slice_with_stale_text`
+  `test_bir_lowering_accepts_typed_single_param_select_phi_slice_with_stale_phi_text`
   `test_bir_lowering_accepts_typed_two_param_u8_select_ne_branch_slice_with_stale_text`
   and
   `test_bir_lowering_accepts_typed_two_param_u8_select_ne_phi_slice_with_stale_text`

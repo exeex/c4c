@@ -2621,6 +2621,22 @@ void test_bir_lowering_accepts_typed_single_param_select_branch_slice_with_stale
                   "BIR lowering should return the typed branch-select result on the direct BIR path when only semantic widths agree");
 }
 
+void test_bir_lowering_accepts_typed_single_param_select_branch_slice_with_stale_return_text() {
+  auto module = make_bir_single_param_select_eq_branch_module();
+  std::get<c4c::codegen::lir::LirRet>(module.functions.front().blocks[1].terminator).type_str = "i8";
+  std::get<c4c::codegen::lir::LirRet>(module.functions.front().blocks[2].terminator).type_str = "i8";
+
+  const auto lowered = c4c::backend::lower_to_bir(module);
+  const auto rendered = c4c::backend::bir::print(lowered);
+
+  expect_contains(rendered, "bir.func @choose(i32 %p.x) -> i32 {",
+                  "BIR lowering should preserve the one-parameter branch-return ternary when the branch return text is stale but the function metadata still carries the right scalar type");
+  expect_contains(rendered, "%t.select = bir.select eq i32 %p.x, 7, 11, 4",
+                  "BIR lowering should keep the bounded branch-return select on the typed path when only the branch return text is stale");
+  expect_contains(rendered, "bir.ret i32 %t.select",
+                  "BIR lowering should return the typed branch-select result instead of trusting stale branch return text");
+}
+
 void test_bir_lowering_accepts_single_param_select_phi_slice() {
   const auto lowered =
       c4c::backend::lower_to_bir(make_bir_single_param_select_eq_phi_module());
@@ -2657,6 +2673,23 @@ void test_bir_lowering_accepts_typed_single_param_select_phi_slice_with_stale_te
                   "BIR lowering should collapse the phi-join ternary from typed integer widths instead of stale render text");
   expect_contains(rendered, "bir.ret i32 %t8",
                   "BIR lowering should return the typed phi-select result on the direct BIR path when only semantic widths agree");
+}
+
+void test_bir_lowering_accepts_typed_single_param_select_phi_slice_with_stale_phi_text() {
+  auto module = make_bir_single_param_select_eq_phi_module();
+  auto& join_block = module.functions.front().blocks.back();
+  std::get<c4c::codegen::lir::LirPhiOp>(join_block.insts.front()).type_str = make_test_stale_text_i32_lir_type();
+  std::get<c4c::codegen::lir::LirRet>(join_block.terminator).type_str = "i8";
+
+  const auto lowered = c4c::backend::lower_to_bir(module);
+  const auto rendered = c4c::backend::bir::print(lowered);
+
+  expect_contains(rendered, "bir.func @choose(i32 %p.x) -> i32 {",
+                  "BIR lowering should preserve the one-parameter phi ternary when the phi and join return text are stale but their typed semantics still match the enclosing function");
+  expect_contains(rendered, "%t8 = bir.select eq i32 %p.x, 7, 11, 4",
+                  "BIR lowering should collapse the phi-join ternary from typed phi semantics instead of raw phi text equality");
+  expect_contains(rendered, "bir.ret i32 %t8",
+                  "BIR lowering should return the typed phi-select result instead of trusting stale phi or join return text");
 }
 
 void test_bir_lowering_accepts_two_param_select_phi_slice() {
@@ -3677,8 +3710,10 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_i8_return_immediate);
   RUN_TEST(test_bir_lowering_accepts_single_param_select_branch_slice);
   RUN_TEST(test_bir_lowering_accepts_typed_single_param_select_branch_slice_with_stale_text);
+  RUN_TEST(test_bir_lowering_accepts_typed_single_param_select_branch_slice_with_stale_return_text);
   RUN_TEST(test_bir_lowering_accepts_single_param_select_phi_slice);
   RUN_TEST(test_bir_lowering_accepts_typed_single_param_select_phi_slice_with_stale_text);
+  RUN_TEST(test_bir_lowering_accepts_typed_single_param_select_phi_slice_with_stale_phi_text);
   RUN_TEST(test_bir_lowering_accepts_two_param_select_phi_slice);
   RUN_TEST(test_bir_lowering_accepts_two_param_u8_select_ne_phi_slice);
   RUN_TEST(test_bir_lowering_accepts_typed_two_param_u8_select_ne_phi_slice);

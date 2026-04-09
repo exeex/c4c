@@ -3082,9 +3082,14 @@ std::optional<bir::Function> try_lower_conditional_return_select_function(
 
   const auto* true_ret = std::get_if<LirRet>(&true_block.terminator);
   const auto* false_ret = std::get_if<LirRet>(&false_block.terminator);
+  const auto true_ret_type =
+      true_ret == nullptr ? std::nullopt : lower_function_return_type(lir_function, *true_ret);
+  const auto false_ret_type =
+      false_ret == nullptr ? std::nullopt : lower_function_return_type(lir_function, *false_ret);
   if (true_ret == nullptr || false_ret == nullptr || !true_ret->value_str.has_value() ||
-      !false_ret->value_str.has_value() || true_ret->type_str != cmp0->type_str ||
-      false_ret->type_str != cmp0->type_str) {
+      !false_ret->value_str.has_value() || !true_ret_type.has_value() ||
+      !false_ret_type.has_value() || *true_ret_type != *compare_type ||
+      *false_ret_type != *compare_type) {
     return std::nullopt;
   }
 
@@ -3205,10 +3210,12 @@ std::optional<bir::Function> try_lower_conditional_phi_select_function(
 
   const auto* phi = join_block->insts.size() > 0 ? std::get_if<LirPhiOp>(&join_block->insts[0]) : nullptr;
   const auto* ret = std::get_if<LirRet>(&join_block->terminator);
+  const auto phi_type = phi == nullptr ? std::nullopt : lower_scalar_type(phi->type_str);
+  const auto return_type = ret == nullptr ? std::nullopt : lower_function_return_type(lir_function, *ret);
   if (phi == nullptr || ret == nullptr ||
-      phi->result.str().empty() || phi->type_str.str() != cmp0->type_str.str() ||
+      phi->result.str().empty() || !phi_type.has_value() || *phi_type != *compare_type ||
       phi->incoming.size() != 2 || !ret->value_str.has_value() ||
-      ret->type_str != cmp0->type_str ||
+      !return_type.has_value() || *return_type != *compare_type ||
       phi->incoming[0].second != true_phi_pred->label ||
       phi->incoming[1].second != false_phi_pred->label) {
     return std::nullopt;
