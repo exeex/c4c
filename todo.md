@@ -6,20 +6,20 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 2 / Step 3 reassessment after closing the focused Step 4 variadic lane:
-  decide whether the next highest-leverage slice should return to a bounded
-  Family B shared-BIR seam or move into a native x86 direct-LIR ownership gap
-  now that the two targeted variadic runtime failures no longer block the plan
+- Step 2 / Step 3 follow-on reassessment after landing the bounded native
+  `00180.c` slice:
+  decide whether the next highest-leverage move should return to a Family B
+  shared-BIR seam or continue with another still-native x86 ownership gap
 
 ## Next Slice
 
-- re-sample the remaining x86 failure surface after the variadic slice to
-  confirm whether the best next move is still a globals-heavy Family B shared
-  seam or an x86-native direct-LIR slice
+- re-sample the remaining unsupported x86 bucket after the `00180.c` recovery
+  to confirm whether the best next slice is still a globals-heavy Family B
+  shared seam or another bounded native direct-LIR ownership gap
 - if Step 2 resumes, choose one bounded Family B representative and prove the
   shared ownership point with a narrow regression before widening support
-- if Step 3 starts instead, pick the smallest still-native x86 ownership gap
-  rather than reviving any broader fallback behavior
+- if Step 3 continues instead, pick the smallest still-native x86 ownership
+  gap rather than reviving any broader fallback behavior
 
 ## Completed Items
 
@@ -122,6 +122,19 @@ Source Plan: plan.md
   `test_fail_before.log` = 2656 pass / 187 fail / 2843 total,
   `test_fail_after.log` = 2666 pass / 181 fail / 2847 total,
   zero newly failing tests
+- added an internal x86 backend route regression plus backend BIR pipeline
+  coverage for the bounded local-buffer `strcpy` plus
+  `printf("%s\\n", &a[1])` slice behind
+  `tests/c/external/c-testsuite/src/00180.c`
+- taught the staged x86 prepared-LIR emitter to accept the focused `00180.c`
+  one-function stack-buffer copy-and-print module through native direct-LIR
+  assembly instead of rejecting it at the unsupported-module boundary
+- verified `c_testsuite_x86_backend_src_00180_c` now passes in isolation on
+  x86_64
+- ran full-suite monotonic validation for the `00180.c` Step 3 slice:
+  `test_fail_before.log` = 2666 pass / 181 fail / 2847 total,
+  `test_fail_after.log` = 2668 pass / 180 fail / 2848 total,
+  zero newly failing tests
 
 ## Blockers
 
@@ -167,3 +180,8 @@ Source Plan: plan.md
   follow-on should return to Step 2 Family B or move to Step 3
 - current-tree post-variadic suite state:
   `test_fail_after.log` = 2666 pass / 181 fail / 2847 total
+- the `00180.c` native direct-LIR slice is now landed:
+  current-tree suite state is
+  `test_fail_after.log` = 2668 pass / 180 fail / 2848 total
+- the new internal route regression increases the total suite size by one, so
+  the monotonic delta for this slice is `+2` passes, `-1` fails, `+1` total

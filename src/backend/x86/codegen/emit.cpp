@@ -107,6 +107,13 @@ struct MinimalMemberArrayRuntimeSlice {
   std::int64_t second_imm = 0;
 };
 
+struct MinimalLocalBufferStringCopyPrintfSlice {
+  std::string function_name;
+  std::string source_string_pool_name;
+  std::string format_string_pool_name;
+  std::int64_t printf_byte_offset = 0;
+};
+
 struct MinimalConditionalReturnSlice {
   enum class ValueKind : unsigned char {
     Immediate,
@@ -211,6 +218,7 @@ struct MinimalExternGlobalArrayLoadSlice;
 struct MinimalScalarGlobalLoadSlice;
 struct MinimalScalarGlobalStoreReloadSlice;
 struct MinimalMultiPrintfVarargSlice;
+struct MinimalLocalBufferStringCopyPrintfSlice;
 struct MinimalVariadicSum2Slice;
 struct MinimalVariadicDoubleBytesSlice;
 
@@ -241,6 +249,10 @@ std::string emit_minimal_multi_printf_vararg_asm(
     std::string_view target_triple,
     const c4c::codegen::lir::LirModule& module,
     const MinimalMultiPrintfVarargSlice& slice);
+std::string emit_minimal_local_buffer_string_copy_printf_asm(
+    std::string_view target_triple,
+    const c4c::codegen::lir::LirModule& module,
+    const MinimalLocalBufferStringCopyPrintfSlice& slice);
 std::string emit_minimal_variadic_sum2_asm(
     std::string_view target_triple,
     const MinimalVariadicSum2Slice& slice);
@@ -3238,6 +3250,186 @@ std::optional<MinimalMemberArrayRuntimeSlice> parse_minimal_member_array_runtime
   return slice;
 }
 
+std::optional<MinimalLocalBufferStringCopyPrintfSlice>
+parse_minimal_local_buffer_string_copy_printf_slice(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.string_pool.size() != 2) {
+    return std::nullopt;
+  }
+
+  const auto* function = find_zero_arg_i32_lir_definition(module);
+  if (function == nullptr || function->blocks.size() != 1 || !function->stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* alloca = static_cast<const LirAllocaOp*>(nullptr);
+  for (const auto& inst : function->alloca_insts) {
+    const auto* candidate = std::get_if<LirAllocaOp>(&inst);
+    if (candidate == nullptr || candidate->type_str != "[10 x i8]" || !candidate->count.empty()) {
+      continue;
+    }
+    if (alloca != nullptr) {
+      return std::nullopt;
+    }
+    alloca = candidate;
+  }
+  if (alloca == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function->blocks.front();
+  const auto* ret = std::get_if<LirRet>(&entry.terminator);
+  if (entry.label != "entry" || ret == nullptr ||
+      !ret->value_str.has_value() || *ret->value_str != "0" || ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto* local_gep0 = static_cast<const LirGepOp*>(nullptr);
+  const auto* source_gep = static_cast<const LirGepOp*>(nullptr);
+  const auto* strcpy_call = static_cast<const LirCallOp*>(nullptr);
+  const auto* format_gep = static_cast<const LirGepOp*>(nullptr);
+  const auto* local_gep1 = static_cast<const LirGepOp*>(nullptr);
+  const auto* offset_cast = static_cast<const LirCastOp*>(nullptr);
+  const auto* offset_gep = static_cast<const LirGepOp*>(nullptr);
+  const auto* printf_call = static_cast<const LirCallOp*>(nullptr);
+  const auto* source_string = static_cast<const LirStringConst*>(nullptr);
+  const auto* format_string = static_cast<const LirStringConst*>(nullptr);
+
+  for (const auto& inst : entry.insts) {
+    if (local_gep0 == nullptr) {
+      const auto* gep = std::get_if<LirGepOp>(&inst);
+      if (gep == nullptr || gep->element_type != "[10 x i8]" || gep->ptr != alloca->result ||
+          gep->indices != std::vector<std::string>{"i64 0", "i64 0"}) {
+        continue;
+      }
+      local_gep0 = gep;
+      continue;
+    }
+
+    if (source_gep == nullptr) {
+      const auto* gep = std::get_if<LirGepOp>(&inst);
+      if (gep == nullptr || gep->indices != std::vector<std::string>{"i64 0", "i64 0"}) {
+        continue;
+      }
+      const auto* string_constant = find_string_constant(module, gep->ptr);
+      if (string_constant == nullptr) {
+        continue;
+      }
+      const auto expected_type = "[" + std::to_string(string_constant->byte_length) + " x i8]";
+      if (gep->element_type != expected_type) {
+        continue;
+      }
+      source_gep = gep;
+      source_string = string_constant;
+      continue;
+    }
+
+    if (strcpy_call == nullptr) {
+      const auto* call = std::get_if<LirCallOp>(&inst);
+      if (call == nullptr) {
+        continue;
+      }
+      const auto symbol = parse_lir_direct_global_callee(call->callee);
+      const auto param_types = parse_lir_call_param_types(call->callee_type_suffix);
+      const auto args = parse_lir_typed_call_args(call->args_str);
+      if (!symbol.has_value() || !param_types.has_value() || !args.has_value() ||
+          *symbol != "strcpy" || call->return_type != "ptr" || param_types->size() != 2 ||
+          trim_lir_arg_text((*param_types)[0]) != "ptr" ||
+          trim_lir_arg_text((*param_types)[1]) != "ptr" || args->size() != 2 ||
+          trim_lir_arg_text((*args)[0].type) != "ptr" ||
+          trim_lir_arg_text((*args)[1].type) != "ptr" ||
+          (*args)[0].operand != local_gep0->result || (*args)[1].operand != source_gep->result) {
+        continue;
+      }
+      strcpy_call = call;
+      continue;
+    }
+
+    if (format_gep == nullptr) {
+      const auto* gep = std::get_if<LirGepOp>(&inst);
+      if (gep == nullptr || gep->indices != std::vector<std::string>{"i64 0", "i64 0"}) {
+        continue;
+      }
+      const auto* string_constant = find_string_constant(module, gep->ptr);
+      if (string_constant == nullptr || string_constant == source_string) {
+        continue;
+      }
+      const auto expected_type = "[" + std::to_string(string_constant->byte_length) + " x i8]";
+      if (gep->element_type != expected_type) {
+        continue;
+      }
+      format_gep = gep;
+      format_string = string_constant;
+      continue;
+    }
+
+    if (local_gep1 == nullptr) {
+      const auto* gep = std::get_if<LirGepOp>(&inst);
+      if (gep == nullptr || gep->element_type != "[10 x i8]" || gep->ptr != alloca->result ||
+          gep->indices != std::vector<std::string>{"i64 0", "i64 0"}) {
+        continue;
+      }
+      local_gep1 = gep;
+      continue;
+    }
+
+    if (offset_cast == nullptr) {
+      const auto* cast = std::get_if<LirCastOp>(&inst);
+      if (cast == nullptr || cast->kind != LirCastKind::SExt || cast->from_type != "i32" ||
+          cast->operand != "1" || cast->to_type != "i64") {
+        continue;
+      }
+      offset_cast = cast;
+      continue;
+    }
+
+    if (offset_gep == nullptr) {
+      const auto* gep = std::get_if<LirGepOp>(&inst);
+      if (gep == nullptr || gep->element_type != "i8" || gep->ptr != local_gep1->result ||
+          gep->indices != std::vector<std::string>{"i64 " + offset_cast->result}) {
+        continue;
+      }
+      offset_gep = gep;
+      continue;
+    }
+
+    if (printf_call == nullptr) {
+      const auto* call = std::get_if<LirCallOp>(&inst);
+      if (call == nullptr) {
+        continue;
+      }
+      const auto symbol = parse_lir_direct_global_callee(call->callee);
+      const auto param_types = parse_lir_call_param_types(call->callee_type_suffix);
+      const auto args = parse_lir_typed_call_args(call->args_str);
+      if (!symbol.has_value() || !param_types.has_value() || !args.has_value() ||
+          *symbol != "printf" || call->return_type != "i32" || param_types->size() != 2 ||
+          trim_lir_arg_text((*param_types)[0]) != "ptr" ||
+          trim_lir_arg_text((*param_types)[1]) != "..." || args->size() != 2 ||
+          trim_lir_arg_text((*args)[0].type) != "ptr" ||
+          trim_lir_arg_text((*args)[1].type) != "ptr" ||
+          (*args)[0].operand != format_gep->result || (*args)[1].operand != offset_gep->result) {
+        continue;
+      }
+      printf_call = call;
+      break;
+    }
+  }
+
+  if (source_string == nullptr || format_string == nullptr || strcpy_call == nullptr ||
+      printf_call == nullptr) {
+    return std::nullopt;
+  }
+
+  return MinimalLocalBufferStringCopyPrintfSlice{
+      .function_name = function->name,
+      .source_string_pool_name = source_string->pool_name,
+      .format_string_pool_name = format_string->pool_name,
+      .printf_byte_offset = 1,
+  };
+}
+
 void emit_function_prelude(std::ostringstream& out,
                            std::string_view symbol,
                            bool is_global) {
@@ -4035,6 +4227,45 @@ std::string emit_minimal_multi_printf_vararg_asm(
   return out.str();
 }
 
+std::string emit_minimal_local_buffer_string_copy_printf_asm(
+    std::string_view target_triple,
+    const c4c::codegen::lir::LirModule& module,
+    const MinimalLocalBufferStringCopyPrintfSlice& slice) {
+  const auto* source_string = find_string_constant(module, slice.source_string_pool_name);
+  const auto* format_string = find_string_constant(module, slice.format_string_pool_name);
+  if (source_string == nullptr || format_string == nullptr) {
+    throw std::invalid_argument("bounded local-buffer copy/printf slice lost one of its string constants");
+  }
+
+  const std::string main_symbol = asm_symbol_name(target_triple, slice.function_name);
+  const std::string strcpy_symbol = asm_symbol_name(target_triple, "strcpy");
+  const std::string printf_symbol = asm_symbol_name(target_triple, "printf");
+  const std::string source_label = asm_private_data_label(target_triple, source_string->pool_name);
+  const std::string format_label = asm_private_data_label(target_triple, format_string->pool_name);
+
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n";
+  out << ".section .rodata\n";
+  out << source_label << ":\n"
+      << "  .asciz \"" << escape_asm_string(source_string->raw_bytes) << "\"\n";
+  out << format_label << ":\n"
+      << "  .asciz \"" << escape_asm_string(format_string->raw_bytes) << "\"\n";
+  out << ".text\n";
+  emit_function_prelude(out, main_symbol, true);
+  out << "  sub rsp, 24\n";
+  out << "  lea rdi, [rsp + 8]\n";
+  out << "  lea rsi, " << source_label << "[rip]\n";
+  out << "  call " << strcpy_symbol << "\n";
+  out << "  lea rdi, " << format_label << "[rip]\n";
+  out << "  lea rsi, [rsp + " << (8 + slice.printf_byte_offset) << "]\n";
+  out << "  xor eax, eax\n";
+  out << "  call " << printf_symbol << "\n";
+  out << "  add rsp, 24\n";
+  out << "  mov eax, 0\n";
+  out << "  ret\n";
+  return out.str();
+}
+
 std::string emit_minimal_variadic_sum2_asm(
     std::string_view target_triple,
     const MinimalVariadicSum2Slice& slice) {
@@ -4284,6 +4515,10 @@ std::optional<std::string> try_emit_prepared_lir_module_impl(
     if (const auto slice = parse_minimal_string_literal_char_slice(module);
         slice.has_value()) {
       return emit_minimal_string_literal_char_asm(module.target_triple, *slice);
+    }
+    if (const auto slice = parse_minimal_local_buffer_string_copy_printf_slice(module);
+        slice.has_value()) {
+      return emit_minimal_local_buffer_string_copy_printf_asm(module.target_triple, module, *slice);
     }
     if (const auto slice = parse_minimal_multi_printf_vararg_slice(module);
         slice.has_value()) {
