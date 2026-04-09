@@ -722,6 +722,37 @@ Node* Parser::parse_stmt() {
     // declaration.  When the first identifier is a type but Type::Ident is NOT
     // a known type, route to expression parsing for qualified calls.
     if (is_type_start()) {
+        auto follows_assignment_operator = [&](int pos) -> bool {
+            if (pos < 0 || pos >= static_cast<int>(tokens_.size())) return false;
+            switch (tokens_[pos].kind) {
+                case TokenKind::Assign:
+                case TokenKind::PlusAssign:
+                case TokenKind::MinusAssign:
+                case TokenKind::StarAssign:
+                case TokenKind::SlashAssign:
+                case TokenKind::PercentAssign:
+                case TokenKind::AmpAssign:
+                case TokenKind::PipeAssign:
+                case TokenKind::CaretAssign:
+                case TokenKind::LessLessAssign:
+                case TokenKind::GreaterGreaterAssign:
+                    return true;
+                default:
+                    return false;
+            }
+        };
+        auto has_visible_value_binding = [&](const std::string& name) -> bool {
+            if (name.empty()) return false;
+            const std::string resolved = resolve_visible_value_name(name);
+            return var_types_.count(name) > 0 || known_fn_names_.count(name) > 0 ||
+                   var_types_.count(resolved) > 0 ||
+                   known_fn_names_.count(resolved) > 0;
+        };
+        if (is_cpp_mode() && check(TokenKind::Identifier) &&
+            has_visible_value_binding(cur().lexeme) &&
+            follows_assignment_operator(pos_ + 1)) {
+            goto expr_stmt;
+        }
         if (is_cpp_mode() && check(TokenKind::Identifier) &&
             (peek(1).kind == TokenKind::Dot || peek(1).kind == TokenKind::Arrow)) {
             const std::string visible_value = resolve_visible_value_name(cur().lexeme);

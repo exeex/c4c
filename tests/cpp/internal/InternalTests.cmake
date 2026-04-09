@@ -53,6 +53,10 @@ set(CPP_POSITIVE_PARSE_STEMS
     operator_shift_static_member_call_parse
     template_anon_param_extern_cxx_parse
     template_bool_specialization_parse
+    local_value_shadows_tag_assign_expr_parse
+    local_value_shadows_tag_compound_assign_expr_parse
+    local_value_shadows_typedef_assign_expr_parse
+    local_value_shadows_using_alias_assign_expr_parse
     scope_resolution_expr_parse
     template_dependent_enum_parse
     template_dependent_enum_sizeof_parse
