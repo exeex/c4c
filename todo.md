@@ -7,21 +7,46 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: record the audited constraint on the remaining Step 6
-  production liveness path around stack-layout preparation, then choose the
-  next seam-tightening change that can move production callers without losing
-  entry-alloca ownership
-- Current implementation target: keep stack-layout rewrite on the
-  `LirFunction -> backend CFG -> LivenessInput` production seam while pinning a
-  narrower per-function BIR liveness probe for allocalless functions and
-  documenting why entry-alloca-bearing functions still need the raw-LIR
-  compatibility path
-- Next intended slice: introduce a backend-owned stack-layout/liveness carrier
-  that preserves entry-alloca ownership, then retest whether the stack-layout
-  preparation path can switch from raw-LIR-backed liveness to a direct-BIR or
-  backend-owned CFG handoff without regression
+- Current slice: extend the new shared per-function entry-alloca preparation
+  carrier so entry-alloca-bearing functions can derive liveness from a
+  backend-owned stack-layout/liveness handoff instead of the raw-LIR
+  compatibility seam
+- Current implementation target: preserve the carrier-based production routing
+  in `rewrite_module_entry_allocas(...)` while replacing the fallback
+  `LirFunction -> backend CFG -> LivenessInput` path with a backend-owned
+  preparation form that keeps entry-alloca ownership explicit enough for
+  stack-layout analysis and rewrite planning
+- Next intended slice: prototype a backend-owned entry-alloca preparation form
+  that keeps stack-layout metadata plus liveness points together, then retest
+  whether the blocking mixed-module function can leave the raw-LIR fallback
+  without regressing rewrite behavior
 
 ## Completed
+
+- Completed the next Step 6 bounded entry-alloca preparation-carrier slice by
+  moving production stack-layout rewrite setup behind one shared per-function
+  helper while keeping explicit seam tracking for the remaining fallback:
+  - added `EntryAllocaRewriteInputs` plus
+    `prepare_module_function_entry_alloca_inputs(...)` in
+    `src/backend/stack_layout/slot_assignment.*` so the production
+    entry-alloca rewrite path now receives one carrier with both
+    `StackLayoutInput` and `LivenessInput`, along with an enum recording
+    whether the function used the narrower per-function BIR seam or the
+    raw-LIR backend-CFG compatibility seam
+  - updated `rewrite_module_entry_allocas(...)` to route each function through
+    the new helper instead of reconstructing raw-LIR liveness and stack-layout
+    inputs inline
+  - extended `tests/backend/backend_shared_util_tests.cpp` with focused
+    coverage proving the new carrier chooses per-function BIR for a lowerable
+    function, preserves entry-alloca metadata on the blocking fallback path,
+    and keeps the existing per-function BIR probe pinned to the actual
+    mixed-module blocking function
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`,
+    rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with the repo’s allowed non-decreasing rule and no new
+    failures (`2809 -> 2809`, same 32 known failing tests as
+    `test_fail_before.log`)
 
 - Completed the next Step 6 bounded stack-layout liveness audit slice by
   proving the direct-BIR production handoff is not ready for entry-alloca

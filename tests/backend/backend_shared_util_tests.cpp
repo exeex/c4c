@@ -1800,9 +1800,32 @@ void test_backend_shared_slot_assignment_prefers_per_function_bir_liveness_when_
               "shared entry-alloca rewrite should be able to lower a lowerable function through the per-function BIR seam even when another function still blocks whole-module BIR lowering");
 
   const auto blocking_liveness =
-      c4c::backend::stack_layout::try_lower_module_function_to_bir_liveness_input(module, 1);
+      c4c::backend::stack_layout::try_lower_module_function_to_bir_liveness_input(module, 2);
   expect_true(!blocking_liveness.has_value(),
               "shared entry-alloca rewrite should keep the raw-LIR compatibility fallback for functions whose allocas still block BIR lowering");
+}
+
+void test_backend_shared_slot_assignment_prepares_module_function_inputs() {
+  const auto module = make_mixed_bir_and_entry_alloca_module();
+
+  const auto lowerable_inputs =
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_inputs(module, 0);
+  expect_true(lowerable_inputs.liveness_source ==
+                  c4c::backend::stack_layout::EntryAllocaRewriteLivenessSource::PerFunctionBir &&
+                  lowerable_inputs.stack_layout_input.entry_allocas.empty() &&
+                  lowerable_inputs.liveness_input.entry_insts.empty() &&
+                  lowerable_inputs.liveness_input.blocks.size() == 1 &&
+                  lowerable_inputs.liveness_input.blocks.front().insts.size() == 1,
+              "shared entry-alloca rewrite prep should use the narrower per-function BIR seam for lowerable functions while keeping stack-layout ownership in one carrier");
+
+  const auto fallback_inputs =
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_inputs(module, 2);
+  expect_true(fallback_inputs.liveness_source ==
+                  c4c::backend::stack_layout::EntryAllocaRewriteLivenessSource::RawLirBackendCfg &&
+                  fallback_inputs.stack_layout_input.entry_allocas.size() == 1 &&
+                  fallback_inputs.stack_layout_input.entry_allocas.front().alloca_name == "%lv.buf" &&
+                  fallback_inputs.liveness_input.entry_insts.size() == 2,
+              "shared entry-alloca rewrite prep should preserve entry-alloca ownership in the fallback carrier while the production path still relies on the raw-LIR compatibility seam");
 }
 
 void test_backend_shared_prepares_lir_module_for_target() {
@@ -2275,6 +2298,7 @@ int main(int argc, char* argv[]) {
   test_backend_shared_slot_assignment_bundle_prepares_from_backend_owned_inputs();
   test_backend_shared_slot_assignment_prepares_rewrite_patch_from_backend_owned_inputs();
   test_backend_shared_slot_assignment_rewrites_module_entry_allocas();
+  test_backend_shared_slot_assignment_prepares_module_function_inputs();
   test_backend_shared_prepares_lir_module_for_target();
   test_backend_shared_target_preparation_enables_bir_lowering();
   test_backend_shared_slot_assignment_prunes_dead_entry_alloca_insts();

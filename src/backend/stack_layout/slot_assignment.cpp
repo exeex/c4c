@@ -225,12 +225,13 @@ LirModule rewrite_module_entry_allocas(
     const std::vector<PhysReg>& asm_clobbered,
     const std::vector<PhysReg>& callee_saved_regs) {
   auto rewritten = module;
-  for (auto& function : rewritten.functions) {
-    const auto liveness_input = lower_backend_cfg_to_liveness_input(lower_lir_to_backend_cfg(function));
-    const auto stack_layout_input = lower_lir_to_stack_layout_input(function);
+  for (std::size_t function_index = 0; function_index < rewritten.functions.size(); ++function_index) {
+    auto& function = rewritten.functions[function_index];
+    const auto prepared_inputs =
+        prepare_module_function_entry_alloca_inputs(module, function_index);
     const auto patch = prepare_entry_alloca_rewrite_patch(
-        liveness_input,
-        stack_layout_input,
+        prepared_inputs.liveness_input,
+        prepared_inputs.stack_layout_input,
         regalloc_config,
         asm_clobbered,
         callee_saved_regs);
@@ -288,6 +289,28 @@ std::optional<LivenessInput> try_lower_module_function_to_bir_liveness_input(
   }
 
   return std::nullopt;
+}
+
+EntryAllocaRewriteInputs prepare_module_function_entry_alloca_inputs(
+    const c4c::codegen::lir::LirModule& module,
+    std::size_t function_index) {
+  EntryAllocaRewriteInputs inputs;
+  if (function_index >= module.functions.size()) {
+    return inputs;
+  }
+
+  const auto& function = module.functions[function_index];
+  inputs.stack_layout_input = lower_lir_to_stack_layout_input(function);
+  if (const auto bir_liveness =
+          try_lower_module_function_to_bir_liveness_input(module, function_index);
+      bir_liveness.has_value()) {
+    inputs.liveness_input = std::move(*bir_liveness);
+    inputs.liveness_source = EntryAllocaRewriteLivenessSource::PerFunctionBir;
+    return inputs;
+  }
+
+  inputs.liveness_input = lower_backend_cfg_to_liveness_input(lower_lir_to_backend_cfg(function));
+  return inputs;
 }
 
 std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(

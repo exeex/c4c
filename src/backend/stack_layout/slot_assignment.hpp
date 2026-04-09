@@ -35,6 +35,18 @@ struct EntryAllocaRewritePatch {
   std::vector<std::pair<std::string, std::string>> canonical_allocas;
 };
 
+enum class EntryAllocaRewriteLivenessSource {
+  RawLirBackendCfg,
+  PerFunctionBir,
+};
+
+struct EntryAllocaRewriteInputs {
+  LivenessInput liveness_input;
+  StackLayoutInput stack_layout_input;
+  EntryAllocaRewriteLivenessSource liveness_source =
+      EntryAllocaRewriteLivenessSource::RawLirBackendCfg;
+};
+
 StackLayoutPlanBundle build_stack_layout_plan_bundle(
     const StackLayoutInput& input,
     const RegAllocIntegrationResult& regalloc,
@@ -59,6 +71,10 @@ EntryAllocaRewritePatch prepare_entry_alloca_rewrite_patch(
     const std::vector<PhysReg>& callee_saved_regs);
 
 [[nodiscard]] std::optional<LivenessInput> try_lower_module_function_to_bir_liveness_input(
+    const c4c::codegen::lir::LirModule& module,
+    std::size_t function_index);
+
+[[nodiscard]] EntryAllocaRewriteInputs prepare_module_function_entry_alloca_inputs(
     const c4c::codegen::lir::LirModule& module,
     std::size_t function_index);
 
