@@ -1501,6 +1501,31 @@ void test_bir_lowering_accepts_minimal_scalar_global_load_lir_module() {
                   "the lowered scalar global-load BIR module should print the bounded bir.load_global contract");
 }
 
+void test_bir_lowering_accepts_typed_minimal_scalar_global_load_lir_slice_with_stale_text() {
+  auto module = make_bir_minimal_scalar_global_load_lir_module();
+  module.globals.front().type.base = c4c::TB_INT;
+  module.globals.front().llvm_type = "i8";
+
+  auto& function = module.functions.front();
+  function.return_type.base = c4c::TB_INT;
+
+  auto& entry = function.blocks.front();
+  std::get<c4c::codegen::lir::LirLoadOp>(entry.insts.front()).type_str =
+      make_test_stale_text_i32_lir_type();
+  std::get<c4c::codegen::lir::LirRet>(entry.terminator).type_str = "i8";
+
+  const auto lowered = c4c::backend::try_lower_to_bir(module);
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the minimal scalar global-load slice when the global, load, and ret text are stale but typed metadata still says i32");
+  if (!lowered.has_value()) {
+    return;
+  }
+
+  const auto rendered = c4c::backend::bir::print(*lowered);
+  expect_contains(rendered, "entry:\n  %t0 = bir.load_global i32 @g_counter\n  bir.ret i32 %t0\n",
+                  "the lowered scalar global-load BIR module should still recover the canonical i32 contract from semantic global and load metadata");
+}
+
 void test_bir_lowering_accepts_minimal_extern_scalar_global_load_lir_module() {
   const auto lowered =
       c4c::backend::try_lower_to_bir(make_bir_minimal_extern_scalar_global_load_lir_module());
@@ -1519,6 +1544,31 @@ void test_bir_lowering_accepts_minimal_extern_scalar_global_load_lir_module() {
   const auto rendered = c4c::backend::bir::print(*lowered);
   expect_contains(rendered, "entry:\n  %t0 = bir.load_global i32 @g_counter\n  bir.ret i32 %t0\n",
                   "the lowered extern scalar global-load BIR module should print the bounded bir.load_global contract");
+}
+
+void test_bir_lowering_accepts_typed_minimal_extern_scalar_global_load_lir_slice_with_stale_text() {
+  auto module = make_bir_minimal_extern_scalar_global_load_lir_module();
+  module.globals.front().type.base = c4c::TB_INT;
+  module.globals.front().llvm_type = "i8";
+
+  auto& function = module.functions.front();
+  function.return_type.base = c4c::TB_INT;
+
+  auto& entry = function.blocks.front();
+  std::get<c4c::codegen::lir::LirLoadOp>(entry.insts.front()).type_str =
+      make_test_stale_text_i32_lir_type();
+  std::get<c4c::codegen::lir::LirRet>(entry.terminator).type_str = "i8";
+
+  const auto lowered = c4c::backend::try_lower_to_bir(module);
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the minimal extern scalar global-load slice when the global, load, and ret text are stale but typed metadata still says i32");
+  if (!lowered.has_value()) {
+    return;
+  }
+
+  const auto rendered = c4c::backend::bir::print(*lowered);
+  expect_contains(rendered, "entry:\n  %t0 = bir.load_global i32 @g_counter\n  bir.ret i32 %t0\n",
+                  "the lowered extern scalar global-load BIR module should still recover the canonical i32 contract from semantic global and load metadata");
 }
 
 void test_bir_lowering_accepts_minimal_extern_global_array_load_lir_module() {
@@ -1608,6 +1658,34 @@ void test_bir_lowering_accepts_minimal_scalar_global_store_reload_lir_module() {
   expect_contains(rendered,
                   "entry:\n  bir.store_global @g_counter, i32 7\n  %t0 = bir.load_global i32 @g_counter\n  bir.ret i32 %t0\n",
                   "the lowered scalar global store-reload BIR module should print the bounded bir.store_global plus bir.load_global contract");
+}
+
+void test_bir_lowering_accepts_typed_minimal_scalar_global_store_reload_lir_slice_with_stale_text() {
+  auto module = make_bir_minimal_scalar_global_store_reload_lir_module();
+  module.globals.front().type.base = c4c::TB_INT;
+  module.globals.front().llvm_type = "i8";
+
+  auto& function = module.functions.front();
+  function.return_type.base = c4c::TB_INT;
+
+  auto& entry = function.blocks.front();
+  std::get<c4c::codegen::lir::LirStoreOp>(entry.insts[0]).type_str =
+      make_test_stale_text_i32_lir_type();
+  std::get<c4c::codegen::lir::LirLoadOp>(entry.insts[1]).type_str =
+      make_test_stale_text_i32_lir_type();
+  std::get<c4c::codegen::lir::LirRet>(entry.terminator).type_str = "i8";
+
+  const auto lowered = c4c::backend::try_lower_to_bir(module);
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the minimal scalar global store-reload slice when the global, store, load, and ret text are stale but typed metadata still says i32");
+  if (!lowered.has_value()) {
+    return;
+  }
+
+  const auto rendered = c4c::backend::bir::print(*lowered);
+  expect_contains(rendered,
+                  "entry:\n  bir.store_global @g_counter, i32 7\n  %t0 = bir.load_global i32 @g_counter\n  bir.ret i32 %t0\n",
+                  "the lowered scalar global store-reload BIR module should still recover the canonical i32 store/load contract from semantic global and instruction metadata");
 }
 
 void test_bir_printer_renders_minimal_lshr_scaffold() {
@@ -3801,10 +3879,13 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_minimal_declared_direct_call_lir_module);
   RUN_TEST(test_bir_lowering_infers_extern_decl_params_from_typed_call_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_scalar_global_load_lir_module);
+  RUN_TEST(test_bir_lowering_accepts_typed_minimal_scalar_global_load_lir_slice_with_stale_text);
   RUN_TEST(test_bir_lowering_accepts_minimal_extern_scalar_global_load_lir_module);
+  RUN_TEST(test_bir_lowering_accepts_typed_minimal_extern_scalar_global_load_lir_slice_with_stale_text);
   RUN_TEST(test_bir_lowering_accepts_minimal_global_char_pointer_diff_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_global_int_pointer_diff_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_scalar_global_store_reload_lir_module);
+  RUN_TEST(test_bir_lowering_accepts_typed_minimal_scalar_global_store_reload_lir_slice_with_stale_text);
   RUN_TEST(test_bir_validator_rejects_returning_undefined_named_value);
   RUN_TEST(test_bir_validator_rejects_return_type_mismatch);
   RUN_TEST(test_bir_validator_rejects_non_widening_sext);

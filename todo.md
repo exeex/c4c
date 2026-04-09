@@ -12,8 +12,10 @@ Source Plan: plan.md
   instruction-local raw integer text checks that still bypass semantic
   `LirTypeRef` inspection outside the newly-converted widened `i8`
   add/compare/select seams, with the immediate target narrowed to the next
-  special-case recognizer after the completed countdown-loop slice that still
-  trusts instruction-local/load/store/ret `"i32"` text over typed metadata
+  special-case recognizer after the completed scalar global load/store slice
+  that still trusts raw `"i32"` text, likely the extern global-array and
+  pointer-difference recognizers that still gate on string-only casts/GEP/load
+  operands
 
 ## Completed
 
@@ -189,6 +191,19 @@ Source Plan: plan.md
 - Re-ran `backend_bir_tests`, `backend_shared_util_tests`, and the full suite
   and passed the regression guard with no new failures and no pass-count drop
   (`2841 -> 2841`)
+- Switched the minimal scalar global-load, extern scalar global-load, and
+  scalar global store-reload recognizers in
+  `src/backend/lowering/lir_to_bir.cpp` off raw global/load/store/ret `"i32"`
+  string checks and onto semantic global `TypeSpec`, instruction `LirTypeRef`,
+  and function return metadata with the existing text fallback still available
+- Added focused backend regressions in
+  `tests/backend/backend_bir_lowering_tests.cpp` that keep those three scalar
+  global slices lowering when the global text, load/store `LirTypeRef` render
+  text, and `ret` render text are intentionally stale but the typed metadata
+  still says `i32`
+- Re-ran `backend_bir_tests` and the full suite, refreshed
+  `test_fail_after.log`, and passed the regression guard with no new failures
+  and no pass-count drop (`2841 -> 2841`)
 - Switched the generic conditional branch-select and phi-select fast paths in
   `src/backend/lowering/lir_to_bir.cpp` off raw `ret.type_str` /
   `phi.type_str` text equality and onto typed scalar checks via
@@ -220,10 +235,11 @@ Source Plan: plan.md
   instruction-local raw integer text checks that still bypass semantic
   `LirTypeRef` inspection outside the widened `i8` add/compare/select seams;
   the generic branch-select/phi-select and countdown-loop stale-text gates are
-  now covered, so the next audit should target whichever remaining
-  special-case lowering path, likely the minimal scalar global-load/store
+  now covered, and the minimal scalar global-load/store stale-text gates are
+  covered too, so the next audit should target whichever remaining
+  special-case lowering path, likely the extern global-array or pointer-diff
   recognizers, still branches primarily on raw integer text instead of typed
-  instruction or function metadata
+  instruction, global, or function metadata
 - keep pointer payload support deferred until a concrete pointer-backed BIR
   lowering consumer appears, then add only the narrow typed payload that
   consumer needs
@@ -256,6 +272,10 @@ Source Plan: plan.md
   `test_bir_lowering_accepts_typed_two_param_u8_select_ne_branch_slice_with_stale_text`
   and
   `test_bir_lowering_accepts_typed_two_param_u8_select_ne_phi_slice_with_stale_text`
+  `test_bir_lowering_accepts_typed_minimal_scalar_global_load_lir_slice_with_stale_text`
+  `test_bir_lowering_accepts_typed_minimal_extern_scalar_global_load_lir_slice_with_stale_text`
+  and
+  `test_bir_lowering_accepts_typed_minimal_scalar_global_store_reload_lir_slice_with_stale_text`
   in
   `tests/backend/backend_bir_lowering_tests.cpp`.
 - Latest validating targets for the direct-call helper seam:

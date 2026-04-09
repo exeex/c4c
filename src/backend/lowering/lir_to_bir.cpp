@@ -112,6 +112,15 @@ bool lir_type_has_integer_width(const c4c::codegen::lir::LirTypeRef& type,
          type.integer_bit_width() == bit_width;
 }
 
+std::optional<bir::TypeKind> lower_global_type(
+    const c4c::codegen::lir::LirGlobal& global) {
+  if (const auto lowered_type = lower_minimal_scalar_type(global.type);
+      lowered_type.has_value()) {
+    return lowered_type;
+  }
+  return lower_scalar_type_text(global.llvm_type);
+}
+
 std::optional<bir::TypeKind> lower_minimal_call_arg_type_text(std::string_view text) {
   if (const auto scalar = lower_scalar_type_text(text); scalar.has_value()) {
     return scalar;
@@ -142,6 +151,19 @@ bool lir_function_returns_integer_width(const c4c::codegen::lir::LirFunction& fu
                                         unsigned bit_width) {
   const auto lowered_type = lower_minimal_scalar_type(function.return_type);
   return lowered_type.has_value() && scalar_type_bit_width(*lowered_type) == bit_width;
+}
+
+bool lir_function_matches_minimal_no_param_integer_return(
+    const c4c::codegen::lir::LirFunction& function,
+    unsigned bit_width) {
+  if (!function.params.empty()) {
+    return false;
+  }
+  if (lir_function_returns_integer_width(function, bit_width)) {
+    return true;
+  }
+  return backend_lir_signature_matches(
+      function.signature_text, "define", "i32", function.name, {});
 }
 
 std::optional<bir::TypeKind> lower_function_return_type(
@@ -1727,7 +1749,7 @@ std::optional<bir::Module> try_lower_minimal_scalar_global_load_module(
   const auto& global = module.globals.front();
   if (global.is_internal || global.is_const || global.is_extern_decl ||
       global.linkage_vis != "" || global.qualifier != "global " ||
-      global.llvm_type != "i32") {
+      lower_global_type(global) != bir::TypeKind::I32) {
     return std::nullopt;
   }
 
@@ -1746,7 +1768,7 @@ std::optional<bir::Module> try_lower_minimal_scalar_global_load_module(
 
   const auto& function = module.functions.front();
   if (function.is_declaration ||
-      !backend_lir_signature_matches(function.signature_text, "define", "i32", function.name, {}) ||
+      !lir_function_matches_minimal_no_param_integer_return(function, 32) ||
       function.entry.value != 0 || function.blocks.size() != 1 ||
       !function.alloca_insts.empty() || !function.stack_objects.empty()) {
     return std::nullopt;
@@ -1757,8 +1779,9 @@ std::optional<bir::Module> try_lower_minimal_scalar_global_load_module(
   const auto* load =
       entry.insts.size() == 1 ? std::get_if<LirLoadOp>(&entry.insts.front()) : nullptr;
   if (entry.label != "entry" || ret == nullptr || load == nullptr ||
-      load->type_str != "i32" || load->ptr != ("@" + global.name) ||
-      !ret->value_str.has_value() || ret->type_str != "i32" ||
+      lower_scalar_type(load->type_str) != bir::TypeKind::I32 ||
+      load->ptr != ("@" + global.name) || !ret->value_str.has_value() ||
+      lower_function_return_type(function, *ret) != bir::TypeKind::I32 ||
       *ret->value_str != load->result.str()) {
     return std::nullopt;
   }
@@ -1812,13 +1835,13 @@ std::optional<bir::Module> try_lower_minimal_extern_scalar_global_load_module(
   const auto& global = module.globals.front();
   if (global.is_internal || global.is_const || !global.is_extern_decl ||
       global.linkage_vis != "external " || global.qualifier != "global " ||
-      global.llvm_type != "i32" || !global.init_text.empty()) {
+      lower_global_type(global) != bir::TypeKind::I32 || !global.init_text.empty()) {
     return std::nullopt;
   }
 
   const auto& function = module.functions.front();
   if (function.is_declaration ||
-      !backend_lir_signature_matches(function.signature_text, "define", "i32", function.name, {}) ||
+      !lir_function_matches_minimal_no_param_integer_return(function, 32) ||
       function.entry.value != 0 || function.blocks.size() != 1 ||
       !function.alloca_insts.empty() || !function.stack_objects.empty()) {
     return std::nullopt;
@@ -1829,8 +1852,9 @@ std::optional<bir::Module> try_lower_minimal_extern_scalar_global_load_module(
   const auto* load =
       entry.insts.size() == 1 ? std::get_if<LirLoadOp>(&entry.insts.front()) : nullptr;
   if (entry.label != "entry" || ret == nullptr || load == nullptr ||
-      load->type_str != "i32" || load->ptr != ("@" + global.name) ||
-      !ret->value_str.has_value() || ret->type_str != "i32" ||
+      lower_scalar_type(load->type_str) != bir::TypeKind::I32 ||
+      load->ptr != ("@" + global.name) || !ret->value_str.has_value() ||
+      lower_function_return_type(function, *ret) != bir::TypeKind::I32 ||
       *ret->value_str != load->result.str()) {
     return std::nullopt;
   }
@@ -2322,7 +2346,7 @@ std::optional<bir::Module> try_lower_minimal_scalar_global_store_reload_module(
   const auto& global = module.globals.front();
   if (global.is_internal || global.is_const || global.is_extern_decl ||
       global.linkage_vis != "" || global.qualifier != "global " ||
-      global.llvm_type != "i32") {
+      lower_global_type(global) != bir::TypeKind::I32) {
     return std::nullopt;
   }
 
@@ -2336,7 +2360,7 @@ std::optional<bir::Module> try_lower_minimal_scalar_global_store_reload_module(
 
   const auto& function = module.functions.front();
   if (function.is_declaration ||
-      !backend_lir_signature_matches(function.signature_text, "define", "i32", function.name, {}) ||
+      !lir_function_matches_minimal_no_param_integer_return(function, 32) ||
       function.entry.value != 0 || function.blocks.size() != 1 ||
       !function.alloca_insts.empty() || !function.stack_objects.empty()) {
     return std::nullopt;
@@ -2349,9 +2373,11 @@ std::optional<bir::Module> try_lower_minimal_scalar_global_store_reload_module(
   const auto* load =
       entry.insts.size() == 2 ? std::get_if<LirLoadOp>(&entry.insts[1]) : nullptr;
   if (entry.label != "entry" || ret == nullptr || store == nullptr || load == nullptr ||
-      store->type_str != "i32" || load->type_str != "i32" ||
+      lower_scalar_type(store->type_str) != bir::TypeKind::I32 ||
+      lower_scalar_type(load->type_str) != bir::TypeKind::I32 ||
       store->ptr != ("@" + global.name) || load->ptr != ("@" + global.name) ||
-      !ret->value_str.has_value() || ret->type_str != "i32" ||
+      !ret->value_str.has_value() ||
+      lower_function_return_type(function, *ret) != bir::TypeKind::I32 ||
       *ret->value_str != load->result.str()) {
     return std::nullopt;
   }
