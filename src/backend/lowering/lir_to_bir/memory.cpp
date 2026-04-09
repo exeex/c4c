@@ -78,6 +78,29 @@ bool memory_lir_type_matches_integer_width(const c4c::codegen::lir::LirTypeRef& 
   return lir_to_bir::legalize_lir_type_matches_integer_width(type, bit_width);
 }
 
+bool memory_lir_type_matches_expected_scalar(
+    const c4c::codegen::lir::LirTypeRef& type,
+    bir::TypeKind expected_type) {
+  return lir_to_bir::legalize_memory_value_type(type) == expected_type;
+}
+
+bool memory_gep_element_matches(std::string_view expected_element_type,
+                                const c4c::codegen::lir::LirTypeRef& element_type) {
+  if (element_type == expected_element_type) {
+    return true;
+  }
+  if (expected_element_type == "i8") {
+    return memory_lir_type_matches_integer_width(element_type, 8);
+  }
+  if (expected_element_type == "i32") {
+    return memory_lir_type_matches_integer_width(element_type, 32);
+  }
+  if (expected_element_type == "i64") {
+    return memory_lir_type_matches_integer_width(element_type, 64);
+  }
+  return false;
+}
+
 bir::MemoryAddress make_local_memory_address(std::string slot_name,
                                              std::size_t byte_offset,
                                              std::size_t align_bytes = 0) {
@@ -336,7 +359,8 @@ bool match_memory_indexed_gep_from_result(const c4c::codegen::lir::LirGepOp& gep
                                           std::string_view expected_ptr,
                                           std::string_view expected_element_type,
                                           std::string_view expected_index_name) {
-  return gep.element_type == expected_element_type && gep.ptr == expected_ptr &&
+  return memory_gep_element_matches(expected_element_type, gep.element_type) &&
+         gep.ptr == expected_ptr &&
          gep.indices.size() == 1 &&
          gep.indices[0] == ("i64 " + std::string(expected_index_name));
 }
@@ -690,7 +714,7 @@ std::optional<bir::Module> try_lower_minimal_scalar_global_load_module(
   const auto* load =
       entry.insts.size() == 1 ? std::get_if<LirLoadOp>(&entry.insts.front()) : nullptr;
   if (entry.label != "entry" || ret == nullptr || load == nullptr ||
-      lower_scalar_type_text(load->type_str) != bir::TypeKind::I32 ||
+      !memory_lir_type_matches_expected_scalar(load->type_str, bir::TypeKind::I32) ||
       load->ptr != ("@" + global.name) || !ret->value_str.has_value() ||
       lir_to_bir::legalize_function_return_type(function, *ret) != bir::TypeKind::I32 ||
       *ret->value_str != load->result.str()) {
@@ -757,7 +781,7 @@ std::optional<bir::Module> try_lower_minimal_extern_scalar_global_load_module(
   const auto* load =
       entry.insts.size() == 1 ? std::get_if<LirLoadOp>(&entry.insts.front()) : nullptr;
   if (entry.label != "entry" || ret == nullptr || load == nullptr ||
-      lower_scalar_type_text(load->type_str) != bir::TypeKind::I32 ||
+      !memory_lir_type_matches_expected_scalar(load->type_str, bir::TypeKind::I32) ||
       load->ptr != ("@" + global.name) || !ret->value_str.has_value() ||
       lir_to_bir::legalize_function_return_type(function, *ret) != bir::TypeKind::I32 ||
       *ret->value_str != load->result.str()) {
@@ -944,8 +968,8 @@ std::optional<bir::Module> try_lower_minimal_scalar_global_store_reload_module(
   const auto* load =
       entry.insts.size() == 2 ? std::get_if<LirLoadOp>(&entry.insts[1]) : nullptr;
   if (entry.label != "entry" || ret == nullptr || store == nullptr || load == nullptr ||
-      lower_scalar_type_text(store->type_str) != bir::TypeKind::I32 ||
-      lower_scalar_type_text(load->type_str) != bir::TypeKind::I32 ||
+      !memory_lir_type_matches_expected_scalar(store->type_str, bir::TypeKind::I32) ||
+      !memory_lir_type_matches_expected_scalar(load->type_str, bir::TypeKind::I32) ||
       store->ptr != ("@" + global.name) || load->ptr != ("@" + global.name) ||
       !ret->value_str.has_value() ||
       lir_to_bir::legalize_function_return_type(function, *ret) != bir::TypeKind::I32 ||

@@ -10,18 +10,19 @@ Source Plan: plan.md
   use the split shared lowering seams as the owning implementation surface and
   recover compile/test health one seam-local family at a time
 - current exact slice:
-  start narrow compile recovery around the memory-owned global/string address
-  seam now that the duplicate typed-width and pointer-value legalization
-  predicates have been normalized into `lir_to_bir/types.cpp`
+  continue narrow compile recovery around the remaining memory-owned
+  string-literal compare lowering and the matching x86 prepared direct-LIR
+  support probe now that the typed stale-text global/global-array load-store
+  checks route through split type legalization instead of raw text
 
 ## Next Slice
 
-- run narrow seam-local compile recovery on the memory-owned lowering burst,
-  starting with the focused backend utility/bir executables that exercise:
-  scalar global load/store, extern array loads, global pointer-diff, and
-  string-literal compare lowering
-- classify the first post-split failure by owning boundary and add the
-  narrowest regression before touching broader backend routing
+- inspect the failing string-literal compare fold in
+  `src/backend/lowering/lir_to_bir/memory.cpp` and classify whether the
+  remaining break is in the shared fold matcher itself or only in the x86
+  prepared-LIR route that should consume it
+- keep the next validation seam-local: re-run the focused string-literal
+  lowering and x86 probe tests before touching broader backend routing
 
 ## Recently Completed
 
@@ -154,6 +155,20 @@ Source Plan: plan.md
   the split memory seam no longer owns its own ad hoc typed-text parsing
 - verified the tree rebuilds cleanly after that predicate normalization:
   `cmake --build build -j8` succeeds
+- switched the split memory-owned typed global/global-array load and
+  store-reload matchers to semantic type legalization instead of stale
+  text-only checks, so the seam now accepts:
+  `test_bir_lowering_accepts_typed_minimal_scalar_global_load_lir_slice_with_stale_text`,
+  `test_bir_lowering_accepts_typed_minimal_extern_scalar_global_load_lir_slice_with_stale_text`,
+  `test_bir_lowering_accepts_typed_minimal_extern_global_array_load_lir_slice_with_stale_text`,
+  and
+  `test_bir_lowering_accepts_typed_minimal_scalar_global_store_reload_lir_slice_with_stale_text`
+- re-ran the nearby non-stale memory-owned global lowering checks after that
+  change and confirmed they still pass:
+  `test_bir_lowering_accepts_minimal_scalar_global_load_lir_module`,
+  `test_bir_lowering_accepts_minimal_extern_scalar_global_load_lir_module`,
+  `test_bir_lowering_accepts_minimal_extern_global_array_load_lir_module`, and
+  `test_bir_lowering_accepts_minimal_scalar_global_store_reload_lir_module`
 
 ## Blockers
 
@@ -161,6 +176,12 @@ Source Plan: plan.md
 - later compile/test recovery still has known unrelated backend test noise, so
   not every existing backend test executable is currently a clean regression
   signal for this lane
+- the remaining seam-local failure in this burst is the string-literal compare
+  lowering path:
+  `test_bir_lowering_accepts_minimal_string_literal_compare_phi_return_lir_module`
+  still fails, and the paired x86 support probe
+  `test_x86_try_emit_prepared_lir_module_reports_direct_lir_support_explicitly`
+  still reports no native rendering for the bounded string-literal module
 
 ## Notes To Resume
 
@@ -183,3 +204,7 @@ Source Plan: plan.md
   matchers in the monolith
 - when this lane switches to compile recovery, start narrow and seam-local
   before restoring broader regression discipline
+- the typed stale-text regressions for scalar global load/store and extern
+  global-array load are now green, so the next memory slice should start from
+  the still-failing string-literal compare fold rather than reopening those
+  already recovered checks
