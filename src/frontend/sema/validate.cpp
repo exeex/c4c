@@ -435,7 +435,16 @@ class Validator {
   }
 
   void emit(int line, std::string msg) {
-    diags_.push_back(Diagnostic{line, std::move(msg)});
+    diags_.push_back(Diagnostic{nullptr, line, 1, std::move(msg)});
+  }
+
+  void emit(const Node* node, std::string msg) {
+    if (!node) {
+      emit(0, std::move(msg));
+      return;
+    }
+    diags_.push_back(Diagnostic{
+        node->file, node->line, node->column > 0 ? node->column : 1, std::move(msg)});
   }
 
   ValidateResult finish() {
@@ -661,7 +670,7 @@ class Validator {
     if (n->kind == NK_GLOBAL_VAR) {
       if (n->name && n->name[0]) globals_[n->name] = n->type;
       if (!is_complete_object_type(n->type)) {
-        emit(n->line, "object has incomplete struct/union type");
+        emit(n, "object has incomplete struct/union type");
       }
     } else if (n->kind == NK_FUNCTION) {
       if (!n->name || !n->name[0]) return;
@@ -690,7 +699,7 @@ class Validator {
             if (ovset.empty()) ovset.push_back(it->second);
             ovset.push_back(std::move(sig));
           } else {
-            emit(n->line, std::string("conflicting types for function '") + n->name + "'");
+            emit(n, std::string("conflicting types for function '") + n->name + "'");
           }
         } else if (it->second.unspecified_params && !sig.unspecified_params) {
           // Upgrade K&R unspecified-params declaration to the full prototype.
@@ -746,7 +755,7 @@ class Validator {
     env.local_const_scopes = &local_const_vals_scopes_;
 
     if (auto r = evaluate_constant_expr(n->left, env); r.ok()) {
-      if (r.as_int() == 0) emit(n->line, "_Static_assert condition is false");
+      if (r.as_int() == 0) emit(n, "_Static_assert condition is false");
       return;
     }
 
@@ -767,7 +776,7 @@ class Validator {
         if (args_ok) {
           auto r = hir::evaluate_consteval_call(it->second, args, env, consteval_funcs_);
           if (r.ok()) {
-            if (r.as_int() == 0) emit(n->line, "_Static_assert condition is false");
+            if (r.as_int() == 0) emit(n, "_Static_assert condition is false");
             return;
           }
         }
@@ -780,7 +789,7 @@ class Validator {
       return;
     }
 
-    emit(n->line, "_Static_assert requires an integer constant expression");
+    emit(n, "_Static_assert requires an integer constant expression");
   }
 
   void validate_global(const Node* n) {
@@ -790,23 +799,23 @@ class Validator {
     // understand (e.g. reference-returning functions like char(&f(T(&x)[N]))[N]).
     if (n->n_template_params > 0) return;
     if (n->type.is_lvalue_ref && !n->init) {
-      emit(n->line, "lvalue reference must be initialized");
+      emit(n, "lvalue reference must be initialized");
     }
     if (n->type.is_rvalue_ref && !n->init) {
-      emit(n->line, "rvalue reference must be initialized");
+      emit(n, "rvalue reference must be initialized");
     }
     if (n->init) {
       ExprInfo rhs = infer_expr(n->init);
       if (n->type.is_lvalue_ref && !rhs.is_lvalue) {
-        emit(n->line, "lvalue reference must bind to an lvalue");
+        emit(n, "lvalue reference must bind to an lvalue");
       }
       if (n->type.is_rvalue_ref && rhs.is_lvalue) {
-        emit(n->line, "rvalue reference cannot bind to an lvalue");
+        emit(n, "rvalue reference cannot bind to an lvalue");
       }
       if (rhs.valid &&
           is_invalid_pointer_float_implicit_conversion(
               referred_type(n->type), rhs.type, is_null_pointer_constant_expr(n->init))) {
-        emit(n->line, "incompatible initializer type");
+        emit(n, "incompatible initializer type");
       }
     }
   }
@@ -924,7 +933,7 @@ class Validator {
     if (!decl) return;
     const TypeSpec decl_ts = effective_type ? *effective_type : decl->type;
     if (!is_complete_object_type(decl_ts)) {
-      emit(decl->line, "object has incomplete struct/union type");
+      emit(decl, "object has incomplete struct/union type");
     }
     // Constructor-initialized declarations: validate the constructor args.
     if (decl->is_ctor_init) {
@@ -934,23 +943,23 @@ class Validator {
       return;
     }
     if (decl_ts.is_lvalue_ref && !decl->init) {
-      emit(decl->line, "lvalue reference must be initialized");
+      emit(decl, "lvalue reference must be initialized");
     }
     if (decl_ts.is_rvalue_ref && !decl->init) {
-      emit(decl->line, "rvalue reference must be initialized");
+      emit(decl, "rvalue reference must be initialized");
     }
     if (decl->init) {
       ExprInfo rhs = infer_expr(decl->init);
       if (decl_ts.is_lvalue_ref && !rhs.is_lvalue) {
-        emit(decl->line, "lvalue reference must bind to an lvalue");
+        emit(decl, "lvalue reference must bind to an lvalue");
       }
       if (decl_ts.is_rvalue_ref && rhs.is_lvalue) {
-        emit(decl->line, "rvalue reference cannot bind to an lvalue");
+        emit(decl, "rvalue reference cannot bind to an lvalue");
       }
       if (rhs.valid &&
           is_invalid_pointer_float_implicit_conversion(
               referred_type(decl_ts), rhs.type, is_null_pointer_constant_expr(decl->init))) {
-        emit(decl->line, "incompatible initializer type");
+        emit(decl, "incompatible initializer type");
       }
       mark_initialized_if_local_var(decl);
     }
@@ -1009,7 +1018,7 @@ class Validator {
       }
       case NK_RETURN: {
         if (!in_function_) {
-          emit(n->line, "return statement not within function");
+          emit(n, "return statement not within function");
           return;
         }
 
@@ -1033,13 +1042,13 @@ class Validator {
                 rv_info.type.ptr_level == 0 &&
                 rv_info.type.array_rank == 0;
             if (!returns_void_expr)
-              emit(n->line, "return with a value in function returning void");
+              emit(n, "return with a value in function returning void");
           }
           if (current_fn_ret_.is_lvalue_ref && !rv_info.is_lvalue) {
-            emit(n->line, "lvalue reference must bind to an lvalue");
+            emit(n, "lvalue reference must bind to an lvalue");
           }
           if (current_fn_ret_.is_rvalue_ref && rv_info.is_lvalue) {
-            emit(n->line, "rvalue reference cannot bind to an lvalue");
+            emit(n, "rvalue reference cannot bind to an lvalue");
           }
           // Detect direct return of an uninitialized plain-scalar local.
           // Skip if the function has goto/loop statements (complex control flow
@@ -1050,8 +1059,8 @@ class Validator {
             auto sym = lookup_symbol(rv->name);
             if (sym.has_value() && !sym->initialized &&
                 tracks_uninit_read(sym->type)) {
-              emit(rv->line, std::string("read of uninitialized variable '") +
-                   rv->name + "'");
+              emit(rv, std::string("read of uninitialized variable '") +
+                              rv->name + "'");
             }
           }
           const TypeSpec return_check_ts =
@@ -1059,7 +1068,7 @@ class Validator {
           if (!fn_returns_void && rv_info.valid &&
               !implicit_convertible(
                   return_check_ts, rv_info.type, is_null_pointer_constant_expr(n->left))) {
-            emit(n->line, "incompatible return type");
+            emit(n, "incompatible return type");
           }
         }
         return;
@@ -1122,7 +1131,7 @@ class Validator {
         if (n->cond) {
           ExprInfo c = infer_expr(n->cond);
           if (c.valid && !is_switch_integer_type(c.type)) {
-            emit(n->line, "switch quantity is not an integer");
+            emit(n, "switch quantity is not an integer");
           }
         }
         switch_stack_.push_back(SwitchCtx{});
@@ -1132,21 +1141,21 @@ class Validator {
       }
       case NK_CASE: {
         if (switch_stack_.empty()) {
-          emit(n->line, "case label not within a switch statement");
+          emit(n, "case label not within a switch statement");
         } else if (n->left) {
           ExprInfo case_expr = infer_expr(n->left);
           if (case_expr.valid && !is_switch_integer_type(case_expr.type)) {
-            emit(n->line, "case label does not have an integer type");
+            emit(n, "case label does not have an integer type");
           }
           ConstEvalEnv case_env;
           case_env.enum_consts = &enum_const_vals_global_;
           case_env.enum_scopes = &enum_const_vals_scopes_;
           case_env.local_const_scopes = &local_const_vals_scopes_;
           if (auto r = evaluate_constant_expr(n->left, case_env); !r.ok()) {
-            emit(n->line, "case label does not reduce to an integer constant");
+            emit(n, "case label does not reduce to an integer constant");
           } else {
             auto [it, inserted] = switch_stack_.back().case_vals.insert(r.as_int());
-            if (!inserted) emit(n->line, "duplicate case label in switch");
+            if (!inserted) emit(n, "duplicate case label in switch");
           }
         }
         if (n->body) visit_stmt(n->body);
@@ -1154,9 +1163,9 @@ class Validator {
       }
       case NK_DEFAULT: {
         if (switch_stack_.empty()) {
-          emit(n->line, "default label not within a switch statement");
+          emit(n, "default label not within a switch statement");
         } else if (switch_stack_.back().has_default) {
-          emit(n->line, "duplicate default label in switch");
+          emit(n, "duplicate default label in switch");
         } else {
           switch_stack_.back().has_default = true;
         }
@@ -1165,13 +1174,13 @@ class Validator {
       }
       case NK_BREAK: {
         if (loop_depth_ <= 0 && switch_stack_.empty()) {
-          emit(n->line, "break statement not within loop or switch");
+          emit(n, "break statement not within loop or switch");
         }
         return;
       }
       case NK_CONTINUE: {
         if (loop_depth_ <= 0) {
-          emit(n->line, "continue statement not within loop");
+          emit(n, "continue statement not within loop");
         }
         return;
       }
@@ -1276,7 +1285,7 @@ class Validator {
               return out;
             }
           }
-          emit(n->line, std::string("use of undeclared identifier '") + n->name + "'");
+          emit(n, std::string("use of undeclared identifier '") + n->name + "'");
           return out;
         }
         out.valid = true;
@@ -1380,7 +1389,7 @@ class Validator {
         suppress_uninit_read_ = old_suppress;
         ExprInfo rhs = infer_expr(n->right);
         if (lhs.is_const_lvalue) {
-          emit(n->line, "assignment to const-qualified lvalue");
+          emit(n, "assignment to const-qualified lvalue");
         }
         // Note: assigning const T* to T* discards const but is GCC-warned, not
         // an error (C11 6.5.16.1p2); we only reject const writes (is_const_lvalue).
@@ -1390,7 +1399,7 @@ class Validator {
         if (is_simple_assign && lhs.valid && rhs.valid &&
             is_invalid_pointer_float_implicit_conversion(
                 lhs.type, rhs.type, is_null_pointer_constant_expr(n->right))) {
-          emit(n->line, "incompatible assignment type");
+          emit(n, "incompatible assignment type");
         }
         mark_initialized_if_local_var(n->left);
         out.valid = lhs.valid && rhs.valid;
@@ -1403,7 +1412,7 @@ class Validator {
         if (n->op &&
             (std::string(n->op).rfind("++", 0) == 0 || std::string(n->op).rfind("--", 0) == 0)) {
           if (e.is_const_lvalue) {
-            emit(n->line, "increment/decrement of const-qualified object");
+            emit(n, "increment/decrement of const-qualified object");
           }
         }
         out.is_lvalue = false;
@@ -1416,7 +1425,7 @@ class Validator {
         if (n->op &&
             (std::string(n->op).rfind("++", 0) == 0 || std::string(n->op).rfind("--", 0) == 0)) {
           if (e.is_const_lvalue) {
-            emit(n->line, "increment/decrement of const-qualified object");
+            emit(n, "increment/decrement of const-qualified object");
           }
         }
         out.is_lvalue = false;
@@ -1476,7 +1485,7 @@ class Validator {
                                     out.type.ptr_level == 0 &&
                                     out.type.array_rank == 0;
             } else {
-              emit(n->line, "no viable overload for function call");
+              emit(n, "no viable overload for function call");
             }
             return out;
           }
@@ -1489,7 +1498,7 @@ class Validator {
             if (!sig.unspecified_params &&
                 ((!sig.variadic && !sig.has_param_pack && argc != required) ||
                  ((sig.variadic || sig.has_param_pack) && argc < min_required))) {
-              emit(n->line, "function call arity mismatch");
+              emit(n, "function call arity mismatch");
             }
             const int check_n = std::min(argc, required);
             for (int i = 0; i < check_n; ++i) {
@@ -1499,17 +1508,17 @@ class Validator {
                   (sig.params[i].is_lvalue_ref || sig.params[i].is_rvalue_ref);
               if (!dependent_ref_param &&
                   sig.params[i].is_lvalue_ref && arg.valid && !arg.is_lvalue) {
-                emit(n->line, "function call argument must be an lvalue for reference parameter");
+                emit(n, "function call argument must be an lvalue for reference parameter");
               }
               if (!dependent_ref_param &&
                   sig.params[i].is_rvalue_ref && arg.valid && arg.is_lvalue) {
-                emit(n->line, "rvalue reference parameter cannot bind to an lvalue argument");
+                emit(n, "rvalue reference parameter cannot bind to an lvalue argument");
               }
               if (arg.valid &&
                   is_invalid_pointer_float_implicit_conversion(
                       referred_type(sig.params[i]), arg.type,
                       is_null_pointer_constant_expr(n->children[i]))) {
-                emit(n->line, "function call argument type mismatch");
+                emit(n, "function call argument type mismatch");
               }
             }
             out.valid = true;
@@ -1570,11 +1579,11 @@ class Validator {
           }
           if (!is_tpl_type_param) {
             const std::string tname = n->type.tag ? n->type.tag : "<anonymous>";
-            emit(n->line, "cast to unknown type name '" + tname + "'");
+            emit(n, "cast to unknown type name '" + tname + "'");
           }
         }
         if (!is_complete_object_type(n->type)) {
-          emit(n->line, "cast to incomplete struct/union object type");
+          emit(n, "cast to incomplete struct/union object type");
         }
         // Note: explicit C casts that discard const are permitted by the
         // standard (C11 6.3.2.3); GCC emits a -Wcast-qual warning but not
@@ -1646,7 +1655,7 @@ class Validator {
           ExprInfo e = infer_expr(n->left);
           suppress_uninit_read_ = old_suppress;
           if (e.valid && !is_complete_object_type(e.type)) {
-            emit(n->line, "invalid application of sizeof to incomplete type");
+            emit(n, "invalid application of sizeof to incomplete type");
           }
         }
         out.valid = true;
@@ -1656,7 +1665,7 @@ class Validator {
         return out;
       case NK_SIZEOF_TYPE:
         if (!is_complete_object_type(n->type)) {
-          emit(n->line, "invalid application of sizeof to incomplete type");
+          emit(n, "invalid application of sizeof to incomplete type");
         }
         out.valid = true;
         return out;
@@ -1671,7 +1680,7 @@ class Validator {
         return out;
       case NK_ALIGNOF_TYPE:
         if (!is_complete_object_type(n->type)) {
-          emit(n->line, "invalid application of _Alignof to incomplete type");
+          emit(n, "invalid application of _Alignof to incomplete type");
         }
         out.valid = true;
         return out;
@@ -1702,7 +1711,10 @@ ValidateResult validate_program(const Node* root) {
 
 void print_diagnostics(const std::vector<Diagnostic>& diags, const std::string& file) {
   for (const auto& d : diags) {
-    std::cerr << file << ":" << d.line << ":1: error: " << d.message << "\n";
+    const char* diag_file = (d.file && d.file[0]) ? d.file : file.c_str();
+    const int diag_column = d.column > 0 ? d.column : 1;
+    std::cerr << diag_file << ":" << d.line << ":" << diag_column
+              << ": error: " << d.message << "\n";
   }
 }
 

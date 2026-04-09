@@ -255,6 +255,8 @@ enum NodeKind {
 struct Node {
     NodeKind kind;
     int line;
+    int column;
+    const char* file;
     int namespace_context_id; // owning namespace for declarations / resolved namespace for refs
 
     // --- type (for NK_DECL, NK_GLOBAL_VAR, NK_FUNCTION ret, NK_CAST,

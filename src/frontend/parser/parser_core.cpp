@@ -1372,6 +1372,26 @@ Node* Parser::make_node(NodeKind k, int line) {
     std::memset(n, 0, sizeof(Node));
     n->kind = k;
     n->line = line;
+    n->column = 1;
+    n->file = arena_.strdup(source_file_);
+    int loc_index = -1;
+    if (pos_ >= 0 && pos_ < static_cast<int>(tokens_.size()) &&
+        tokens_[pos_].line == line) {
+        loc_index = pos_;
+    } else if (pos_ > 0 && pos_ - 1 < static_cast<int>(tokens_.size()) &&
+               tokens_[pos_ - 1].line == line) {
+        loc_index = pos_ - 1;
+    } else if (pos_ >= 0 && pos_ < static_cast<int>(tokens_.size())) {
+        loc_index = pos_;
+    } else if (!tokens_.empty()) {
+        loc_index = static_cast<int>(tokens_.size()) - 1;
+    }
+    if (loc_index >= 0 && loc_index < static_cast<int>(tokens_.size())) {
+        n->column = tokens_[loc_index].column;
+        if (!tokens_[loc_index].file.empty()) {
+            n->file = arena_.strdup(tokens_[loc_index].file);
+        }
+    }
     n->ival = -1;  // -1 = not a bitfield (for struct field declarations)
     n->builtin_id = BuiltinId::Unknown;
     n->type.array_size = -1;
