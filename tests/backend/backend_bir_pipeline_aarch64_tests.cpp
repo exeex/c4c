@@ -361,6 +361,40 @@ c4c::codegen::lir::LirModule make_constant_selector_switch_return_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_constant_selector_single_case_switch_return_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  module.data_layout = "e-m:e-i64:64-i128:128-n32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.terminator = LirSwitch{"7", "i32", "default", {{7, "case_hit"}}};
+
+  LirBlock case_hit;
+  case_hit.id = LirBlockId{1};
+  case_hit.label = "case_hit";
+  case_hit.terminator = LirRet{std::string("70"), "i32"};
+
+  LirBlock default_block;
+  default_block.id = LirBlockId{2};
+  default_block.label = "default";
+  default_block.terminator = LirRet{std::string("9"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(case_hit));
+  function.blocks.push_back(std::move(default_block));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_lir_u8_select_post_join_add_module() {
   auto module = make_bir_two_param_u8_select_ne_predecessor_add_phi_post_join_add_module();
   module.target_triple = "aarch64-unknown-linux-gnu";
@@ -2566,6 +2600,26 @@ void test_aarch64_direct_lir_emitter_rejects_constant_selector_switch_fallback()
   fail("aarch64 direct emitter should reject constant-selector switch CFG modules once the generic direct-LIR switch fallback is fenced behind BIR");
 }
 
+void test_aarch64_direct_lir_emitter_rejects_constant_selector_single_case_switch_fallback() {
+  expect_true(
+      !c4c::backend::try_lower_to_bir(
+           make_constant_selector_single_case_switch_return_module())
+           .has_value(),
+      "single-case constant-selector switch input should continue to miss shared BIR lowering so this regression exercises the remaining synthetic aarch64 direct-LIR switch boundary in the generic emitter");
+
+  try {
+    (void)c4c::backend::aarch64::emit_module(
+        make_constant_selector_single_case_switch_return_module());
+  } catch (const std::invalid_argument& ex) {
+    expect_contains(
+        ex.what(), "direct LIR module",
+        "aarch64 direct emitter should reject synthetic single-case constant-selector switch CFG once ownership stays behind the shared BIR boundary");
+    return;
+  }
+
+  fail("aarch64 direct emitter should reject synthetic single-case constant-selector switch CFG modules once the generic direct-LIR switch fallback is fenced behind BIR");
+}
+
 }  // namespace
 
 void run_backend_bir_pipeline_aarch64_tests() {
@@ -2633,4 +2687,5 @@ void run_backend_bir_pipeline_aarch64_tests() {
   RUN_TEST(test_aarch64_direct_lir_emitter_rejects_alloca_backed_switch_fallback);
   RUN_TEST(test_aarch64_direct_lir_emitter_rejects_alloca_backed_single_case_switch_fallback);
   RUN_TEST(test_aarch64_direct_lir_emitter_rejects_constant_selector_switch_fallback);
+  RUN_TEST(test_aarch64_direct_lir_emitter_rejects_constant_selector_single_case_switch_fallback);
 }

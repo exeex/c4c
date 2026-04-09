@@ -7,19 +7,33 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 5: pull phi and CFG normalization behind the BIR boundary
-- Current slice: continue the Step 5 AArch64 generic-emitter CFG audit after
-  widening the synthetic alloca-backed `switch` fence beyond the hard-coded
-  two-case shape and re-evaluate whether the remaining constant-selector or
-  branch-only multi-block direct-LIR seams can be fenced without cutting into
-  still-broad production fallback coverage or spilling into Step 6 MIR-owned
-  liveness/regalloc work
-- Next intended slice: inspect whether synthetic constant-selector single-case
-  `switch` return modules still succeed after `try_lower_to_bir(...)` declines
-  them and decide whether the next safe move is a matching narrow generic-emitter
-  prune or a shared BIR lowering expansion for that family
+- Current slice: re-audit the remaining AArch64 branch-only multi-block
+  direct-LIR fallback seams that still survive after the shared BIR retry and
+  decide whether the next safe move is another narrow generic-emitter prune or
+  a shared BIR lowering expansion
+- Next intended slice: inspect the surviving AArch64 generic-emitter branch-only
+  return families after `try_lower_to_bir(...)` declines them and choose the
+  narrowest fence or shared lowering change that does not spill into Step 6
+  MIR-owned liveness/regalloc work
 
 ## Completed
 
+- Closed the next Step 5 AArch64 generic-emitter constant-selector `switch`
+  seam behind the shared BIR boundary by widening the existing fence beyond the
+  hard-coded two-case layout:
+  - added focused AArch64 coverage in
+    `tests/backend/backend_bir_pipeline_aarch64_tests.cpp` proving a
+    single-case constant-selector direct-LIR `switch` module still misses
+    `try_lower_to_bir(...)` and must now fail explicitly instead of lowering
+    through the generic AArch64 direct emitter
+  - taught `src/backend/aarch64/codegen/emit.cpp` to reject the broader
+    synthetic constant-selector switch-return family when the selector is an
+    immediate `i32` and every target/default block is an empty return block,
+    keeping that CFG ownership behind the shared BIR boundary without reviving
+    target-local switch lowering after a shared BIR miss
+  - rebuilt `backend_bir_tests`, rebuilt the full tree, refreshed
+    `test_fail_after.log`, and passed the regression guard with no new failures
+    and no pass-count drop (`2809 -> 2809`)
 - Closed the next Step 5 AArch64 synthetic switch seam behind the shared BIR
   boundary by widening the existing alloca-backed fence beyond the original
   two-case fixture:
