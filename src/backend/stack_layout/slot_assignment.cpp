@@ -178,8 +178,8 @@ StackLayoutPlanBundle build_stack_layout_plan_bundle(
   return build_stack_layout_plan_bundle(stack_layout_input, regalloc, callee_saved_regs);
 }
 
-void prepare_and_apply_entry_alloca_slot_plan(
-    LirFunction& function,
+EntryAllocaRewritePatch prepare_entry_alloca_rewrite_patch(
+    const LirFunction& function,
     const LivenessInput& liveness_input,
     const StackLayoutInput& stack_layout_input,
     const RegAllocConfig& regalloc_config,
@@ -187,7 +187,7 @@ void prepare_and_apply_entry_alloca_slot_plan(
     const std::vector<PhysReg>& callee_saved_regs) {
   const auto bundle = build_stack_layout_plan_bundle(
       liveness_input, stack_layout_input, regalloc_config, asm_clobbered, callee_saved_regs);
-  apply_entry_alloca_slot_plan(function, bundle.entry_alloca_plans);
+  return build_entry_alloca_rewrite_patch(function, bundle.entry_alloca_plans);
 }
 
 std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(
@@ -253,11 +253,12 @@ std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(
   return plans;
 }
 
-void apply_entry_alloca_slot_plan(
-    LirFunction& function,
+EntryAllocaRewritePatch build_entry_alloca_rewrite_patch(
+    const LirFunction& function,
     const std::vector<EntryAllocaSlotPlan>& plans) {
   std::unordered_map<std::size_t, std::string> canonical_by_slot;
   std::unordered_map<std::string, std::string> canonical_by_alloca;
+  EntryAllocaRewritePatch patch;
 
   for (const auto& plan : plans) {
     if (!plan.needs_stack_slot || !plan.assigned_slot.has_value()) {
@@ -269,36 +270,55 @@ void apply_entry_alloca_slot_plan(
     (void)inserted;
   }
 
-  function.alloca_insts = prune_dead_entry_alloca_insts(function, plans);
+  const auto pruned_alloca_insts = prune_dead_entry_alloca_insts(function, plans);
   if (canonical_by_alloca.empty()) {
-    return;
+    patch.alloca_insts = pruned_alloca_insts;
+    return patch;
   }
 
-  std::vector<c4c::codegen::lir::LirInst> rewritten_alloca_insts;
-  rewritten_alloca_insts.reserve(function.alloca_insts.size());
+  patch.alloca_insts.reserve(pruned_alloca_insts.size());
   std::unordered_set<std::string> kept_allocas;
 
-  for (auto inst : function.alloca_insts) {
+  for (auto inst : pruned_alloca_insts) {
     rewrite_inst_alloca_refs(inst, canonical_by_alloca);
 
     const auto* alloca = std::get_if<LirAllocaOp>(&inst);
     if (alloca == nullptr) {
-      rewritten_alloca_insts.push_back(std::move(inst));
+      patch.alloca_insts.push_back(std::move(inst));
       continue;
     }
 
     const auto canonical_it = canonical_by_alloca.find(alloca->result);
     if (canonical_it == canonical_by_alloca.end()) {
-      rewritten_alloca_insts.push_back(std::move(inst));
+      patch.alloca_insts.push_back(std::move(inst));
       continue;
     }
     if (!kept_allocas.insert(canonical_it->second).second) {
       continue;
     }
-    rewritten_alloca_insts.push_back(std::move(inst));
+    patch.alloca_insts.push_back(std::move(inst));
   }
 
-  function.alloca_insts = std::move(rewritten_alloca_insts);
+  patch.canonical_allocas.reserve(canonical_by_alloca.size());
+  for (const auto& [alloca_name, canonical_name] : canonical_by_alloca) {
+    patch.canonical_allocas.emplace_back(alloca_name, canonical_name);
+  }
+  return patch;
+}
+
+void apply_entry_alloca_rewrite_patch(
+    LirFunction& function,
+    const EntryAllocaRewritePatch& patch) {
+  function.alloca_insts = patch.alloca_insts;
+  if (patch.canonical_allocas.empty()) {
+    return;
+  }
+
+  std::unordered_map<std::string, std::string> canonical_by_alloca;
+  canonical_by_alloca.reserve(patch.canonical_allocas.size());
+  for (const auto& [alloca_name, canonical_name] : patch.canonical_allocas) {
+    canonical_by_alloca.emplace(alloca_name, canonical_name);
+  }
 
   for (auto& block : function.blocks) {
     for (auto& inst : block.insts) {
@@ -306,6 +326,12 @@ void apply_entry_alloca_slot_plan(
     }
     rewrite_terminator_alloca_refs(block.terminator, canonical_by_alloca);
   }
+}
+
+void apply_entry_alloca_slot_plan(
+    LirFunction& function,
+    const std::vector<EntryAllocaSlotPlan>& plans) {
+  apply_entry_alloca_rewrite_patch(function, build_entry_alloca_rewrite_patch(function, plans));
 }
 
 std::vector<c4c::codegen::lir::LirInst> prune_dead_entry_alloca_insts(

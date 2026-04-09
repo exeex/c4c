@@ -1692,7 +1692,7 @@ void test_backend_shared_slot_assignment_bundle_prepares_from_backend_owned_inpu
               "shared stack-layout bundle prep should keep the backend-owned dead-param classification available to downstream entrypoint setup");
 }
 
-void test_backend_shared_slot_assignment_prepares_and_applies_from_backend_owned_inputs() {
+void test_backend_shared_slot_assignment_prepares_rewrite_patch_from_backend_owned_inputs() {
   c4c::backend::RegAllocConfig config;
   config.available_regs = {{20}};
   config.caller_saved_regs = {{13}};
@@ -1703,11 +1703,18 @@ void test_backend_shared_slot_assignment_prepares_and_applies_from_backend_owned
   const auto dead_stack_layout_input =
       c4c::backend::stack_layout::lower_lir_to_stack_layout_input(dead_function);
 
-  c4c::backend::stack_layout::prepare_and_apply_entry_alloca_slot_plan(
+  const auto patch = c4c::backend::stack_layout::prepare_entry_alloca_rewrite_patch(
       dead_function, dead_liveness_input, dead_stack_layout_input, config, {}, {{20}, {21}, {22}});
 
+  expect_true(patch.alloca_insts.empty(),
+              "shared stack-layout patch prep should preserve dead entry-alloca pruning decisions when callers provide backend-owned inputs");
+  expect_true(patch.canonical_allocas.empty(),
+              "shared stack-layout patch prep should not invent canonical alloca rewrites when the planned entry alloca is deleted");
+
+  c4c::backend::stack_layout::apply_entry_alloca_rewrite_patch(dead_function, patch);
+
   expect_true(dead_function.alloca_insts.empty(),
-              "shared stack-layout prepare-and-apply should let callers keep planning on backend-owned inputs while the final entry-alloca mutation stays shared");
+              "shared stack-layout patch apply should let callers keep planning on backend-owned inputs while the final raw-LIR mutation stays isolated");
 }
 
 void test_backend_shared_slot_assignment_prunes_dead_entry_alloca_insts() {
@@ -2068,7 +2075,7 @@ int main(int argc, char* argv[]) {
   test_backend_shared_slot_assignment_accepts_backend_owned_input();
   test_backend_shared_slot_assignment_bundle_accepts_backend_owned_input();
   test_backend_shared_slot_assignment_bundle_prepares_from_backend_owned_inputs();
-  test_backend_shared_slot_assignment_prepares_and_applies_from_backend_owned_inputs();
+  test_backend_shared_slot_assignment_prepares_rewrite_patch_from_backend_owned_inputs();
   test_backend_shared_slot_assignment_prunes_dead_entry_alloca_insts();
   test_backend_shared_slot_assignment_applies_coalesced_entry_slots();
   // TODO: binary-utils contract test disabled — assembler seam changed

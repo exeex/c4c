@@ -8,17 +8,43 @@ Source Plan: plan.md
 
 - Step 6: move liveness to backend MIR
 - Current slice: audit whether the remaining shared
-  `apply_entry_alloca_slot_plan(...)` mutation boundary can shrink further or
-  should remain as the last intentional raw-LIR seam now that direct emitters
-  no longer own it
+  `apply_entry_alloca_slot_plan(...)` compatibility wrapper can now be retired
+  or should remain as the last intentional raw-LIR convenience seam now that
+  production entrypoints consume an explicit rewrite patch object
 - Next intended slice: inspect whether the final
-  `apply_entry_alloca_slot_plan(...)` rewrite/prune mutator can be split into a
-  backend-owned patch object plus a narrower LIR applier, or explicitly record
-  why the current shared raw-LIR seam is the intended long-term boundary for
-  Step 6/7
+  `apply_entry_alloca_slot_plan(...)` wrapper still carries any production or
+  test-only value; if not, delete it after confirming the explicit
+  `prepare_entry_alloca_rewrite_patch(...)` +
+  `apply_entry_alloca_rewrite_patch(...)` seam is sufficient across the
+  remaining backend-owned stack-layout callers
 
 ## Completed
 
+- Completed the next Step 6/7 bounded entry-alloca mutation seam split slice by
+  turning the shared prepare-plus-mutate helper into an explicit backend-owned
+  rewrite patch plus a thinner raw-LIR applier:
+  - added `EntryAllocaRewritePatch`,
+    `build_entry_alloca_rewrite_patch(...)`,
+    `prepare_entry_alloca_rewrite_patch(...)`, and
+    `apply_entry_alloca_rewrite_patch(...)` in
+    `src/backend/stack_layout/slot_assignment.*` so the prune/rewrite decision
+    can be computed first and the final raw-LIR mutation stays isolated to one
+    narrow apply entrypoint
+  - retargeted
+    `src/backend/aarch64/codegen/emit.cpp` and
+    `src/backend/x86/codegen/emit.cpp` to prepare the entry-alloca rewrite
+    patch from backend-owned liveness/stack-layout inputs and then apply it as
+    a separate step instead of using the old prepare-and-mutate helper
+  - extended `tests/backend/backend_shared_util_tests.cpp` with focused
+    coverage proving backend-owned inputs can prepare the explicit rewrite patch
+    and that the isolated apply step still removes the dead entry alloca as
+    expected
+  - rebuilt `backend_shared_util_tests` and `backend_bir_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`
+    and `ctest --test-dir build -R '^backend_bir_tests$' --output-on-failure`,
+    rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with no new failures and no pass-count drop
+    (`2809 -> 2809`, same 32 known failing tests as `test_fail_before.log`)
 - Completed the next Step 6 bounded direct-emitter entry-alloca seam cleanup
   slice by moving the final target-local prepare-plus-mutate wiring behind one
   shared stack-layout helper while keeping the actual raw-LIR mutation bounded

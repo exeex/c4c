@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace c4c::backend::stack_layout {
@@ -29,6 +30,11 @@ struct StackLayoutPlanBundle {
   std::vector<ParamAllocaSlotPlan> param_alloca_plans;
 };
 
+struct EntryAllocaRewritePatch {
+  std::vector<c4c::codegen::lir::LirInst> alloca_insts;
+  std::vector<std::pair<std::string, std::string>> canonical_allocas;
+};
+
 StackLayoutPlanBundle build_stack_layout_plan_bundle(
     const StackLayoutInput& input,
     const RegAllocIntegrationResult& regalloc,
@@ -41,13 +47,21 @@ StackLayoutPlanBundle build_stack_layout_plan_bundle(
     const std::vector<PhysReg>& asm_clobbered,
     const std::vector<PhysReg>& callee_saved_regs);
 
-void prepare_and_apply_entry_alloca_slot_plan(
-    c4c::codegen::lir::LirFunction& function,
+EntryAllocaRewritePatch build_entry_alloca_rewrite_patch(
+    const c4c::codegen::lir::LirFunction& function,
+    const std::vector<EntryAllocaSlotPlan>& plans);
+
+EntryAllocaRewritePatch prepare_entry_alloca_rewrite_patch(
+    const c4c::codegen::lir::LirFunction& function,
     const LivenessInput& liveness_input,
     const StackLayoutInput& stack_layout_input,
     const RegAllocConfig& regalloc_config,
     const std::vector<PhysReg>& asm_clobbered,
     const std::vector<PhysReg>& callee_saved_regs);
+
+void apply_entry_alloca_rewrite_patch(
+    c4c::codegen::lir::LirFunction& function,
+    const EntryAllocaRewritePatch& patch);
 
 std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(
     const StackLayoutInput& input,
