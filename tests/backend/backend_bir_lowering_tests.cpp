@@ -10,6 +10,108 @@
 
 namespace {
 
+c4c::codegen::lir::LirModule make_double_countdown_guarded_zero_return_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.type_decls.push_back("%struct.__va_list_tag_ = type { i32, i32, ptr, ptr }");
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.x", "i32", "", 4});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{"i32", "1", "%lv.x"});
+  entry.insts.push_back(LirStoreOp{"i32", "10", "%lv.x"});
+  entry.terminator = LirBr{"for.cond.1"};
+
+  LirBlock first_cond;
+  first_cond.id = LirBlockId{1};
+  first_cond.label = "for.cond.1";
+  first_cond.insts.push_back(LirLoadOp{"%t0", "i32", "%lv.x"});
+  first_cond.insts.push_back(LirCmpOp{"%t1", false, "ne", "i32", "%t0", "0"});
+  first_cond.terminator = LirCondBr{"%t1", "block_1", "block_2"};
+
+  LirBlock first_latch;
+  first_latch.id = LirBlockId{2};
+  first_latch.label = "for.latch.1";
+  first_latch.insts.push_back(LirLoadOp{"%t2", "i32", "%lv.x"});
+  first_latch.insts.push_back(LirBinOp{"%t3", "sub", "i32", "%t2", "1"});
+  first_latch.insts.push_back(LirStoreOp{"i32", "%t3", "%lv.x"});
+  first_latch.terminator = LirBr{"for.cond.1"};
+
+  LirBlock first_body;
+  first_body.id = LirBlockId{3};
+  first_body.label = "block_1";
+  first_body.terminator = LirBr{"for.latch.1"};
+
+  LirBlock guard;
+  guard.id = LirBlockId{4};
+  guard.label = "block_2";
+  guard.insts.push_back(LirLoadOp{"%t4", "i32", "%lv.x"});
+  guard.insts.push_back(LirCmpOp{"%t5", false, "ne", "i32", "%t4", "0"});
+  guard.terminator = LirCondBr{"%t5", "block_3", "block_4"};
+
+  LirBlock guarded_return;
+  guarded_return.id = LirBlockId{5};
+  guarded_return.label = "block_3";
+  guarded_return.terminator = LirRet{std::string("1"), "i32"};
+
+  LirBlock second_init;
+  second_init.id = LirBlockId{6};
+  second_init.label = "block_4";
+  second_init.insts.push_back(LirStoreOp{"i32", "10", "%lv.x"});
+  second_init.terminator = LirBr{"for.cond.5"};
+
+  LirBlock second_cond;
+  second_cond.id = LirBlockId{7};
+  second_cond.label = "for.cond.5";
+  second_cond.insts.push_back(LirLoadOp{"%t6", "i32", "%lv.x"});
+  second_cond.insts.push_back(LirCmpOp{"%t7", false, "ne", "i32", "%t6", "0"});
+  second_cond.terminator = LirCondBr{"%t7", "block_5", "block_6"};
+
+  LirBlock second_latch;
+  second_latch.id = LirBlockId{8};
+  second_latch.label = "for.latch.5";
+  second_latch.terminator = LirBr{"for.cond.5"};
+
+  LirBlock second_body;
+  second_body.id = LirBlockId{9};
+  second_body.label = "block_5";
+  second_body.insts.push_back(LirLoadOp{"%t8", "i32", "%lv.x"});
+  second_body.insts.push_back(LirBinOp{"%t9", "sub", "i32", "%t8", "1"});
+  second_body.insts.push_back(LirStoreOp{"i32", "%t9", "%lv.x"});
+  second_body.terminator = LirBr{"for.latch.5"};
+
+  LirBlock exit;
+  exit.id = LirBlockId{10};
+  exit.label = "block_6";
+  exit.insts.push_back(LirLoadOp{"%t10", "i32", "%lv.x"});
+  exit.terminator = LirRet{std::string("%t10"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(first_cond));
+  function.blocks.push_back(std::move(first_latch));
+  function.blocks.push_back(std::move(first_body));
+  function.blocks.push_back(std::move(guard));
+  function.blocks.push_back(std::move(guarded_return));
+  function.blocks.push_back(std::move(second_init));
+  function.blocks.push_back(std::move(second_cond));
+  function.blocks.push_back(std::move(second_latch));
+  function.blocks.push_back(std::move(second_body));
+  function.blocks.push_back(std::move(exit));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_bir_minimal_global_char_pointer_diff_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -2608,6 +2710,25 @@ void test_bir_lowering_accepts_minimal_countdown_do_while_lir_module_with_stale_
                   "BIR lowering should still normalize the countdown loop header when load, compare, and return render text only agree semantically");
 }
 
+void test_bir_lowering_accepts_double_countdown_guarded_zero_return_lir_module() {
+  const auto lowered =
+      c4c::backend::try_lower_to_bir(make_double_countdown_guarded_zero_return_module());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the bounded double-countdown guarded-return LIR slice through a shared constant-return contract");
+
+  expect_true(lowered->functions.size() == 1 &&
+                  lowered->functions.front().blocks.size() == 1 &&
+                  lowered->functions.front().blocks.front().label == "entry" &&
+                  lowered->functions.front().blocks.front().insts.empty() &&
+                  lowered->functions.front().blocks.front().terminator.kind ==
+                      c4c::backend::bir::TerminatorKind::Return,
+              "the lowered double-countdown guarded-return BIR module should collapse to one canonical constant-return block");
+
+  const auto rendered = c4c::backend::bir::print(*lowered);
+  expect_contains(rendered, "bir.func @main() -> i32 {\nentry:\n  bir.ret i32 0\n}\n",
+                  "the lowered double-countdown guarded-return BIR module should normalize the two countdown loops and dead guard to the constant zero result");
+}
+
 void test_bir_lowering_accepts_minimal_scalar_global_load_lir_module() {
   const auto lowered =
       c4c::backend::try_lower_to_bir(make_bir_minimal_scalar_global_load_lir_module());
@@ -5040,6 +5161,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_local_i32_pointer_store_zero_load_return_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_countdown_do_while_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_countdown_do_while_lir_module_with_stale_typed_i32_text);
+  RUN_TEST(test_bir_lowering_accepts_double_countdown_guarded_zero_return_lir_module);
   RUN_TEST(test_bir_printer_renders_minimal_add_scaffold);
   RUN_TEST(test_bir_printer_renders_minimal_sub_scaffold);
   RUN_TEST(test_bir_printer_renders_minimal_mul_scaffold);

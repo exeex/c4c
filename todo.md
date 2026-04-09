@@ -7,32 +7,33 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 5 full-suite monotonic validation and next-slice selection after the
-  bounded shared-BIR `00006.c` countdown-loop seam landed:
+  bounded shared-BIR `00007.c` guarded double-countdown seam landed:
   the full early source-backed x86 countdown cluster
-  (`00003.c`, `00004.c`, `00006.c`) is now green on the native x86 path,
-  while the broad-suite comparison against `test_fail_before.log` remains a
-  parked non-monotonic lane and should not be silently treated as Step 5
-  complete
+  (`00003.c`, `00004.c`, `00006.c`, `00007.c`) is now green on the native x86
+  path, while the broad-suite comparison against `test_fail_before.log`
+  remains a parked non-monotonic lane and should not be silently treated as
+  Step 5 complete
 - current exact slice:
-  the bounded shared-BIR x86 countdown-loop route now covers both the focused
-  direct-BIR fixture and the real source-backed `00006.c` case, but the
-  refreshed broad-suite guard still fails against the stale baseline
-  (`2670/179/2849` before vs `2612/239/2851` after) because the already-parked
-  `backend_bir_tests`, riscv-route, and wider x86 source-backed lanes remain
-  unresolved outside this slice
+  the bounded shared-BIR x86 route now also covers the real source-backed
+  `00007.c` case by collapsing its exact two-countdown-plus-dead-guard LIR
+  shape to the shared constant-zero return, but the refreshed broad-suite
+  guard still fails against the stale baseline (`2670/179/2849` before vs
+  `2614/238/2852` after) because the already-parked `backend_bir_tests`,
+  riscv-route/select, and wider x86 source-backed lanes remain unresolved
+  outside this slice
 
 ## Next Slice
 
 - keep the ownership split explicit for the remaining early x86 source cases:
-  `00007.c` should stay separate from the recovered `00003.c` / `00004.c`
-  constant-return folds and the landed `00006.c` while-countdown seam unless
-  the prepared-LIR shape proves it is the same normalized loop family
-- add the narrowest regression for `00007.c` before changing ownership, then
-  verify the focused early source cluster again to confirm the next red lane is
-  either the for-countdown normalization or a clearly separate seam such as
-  `00005.c`
+  `00005.c` is now the next bounded red source-backed seam in the early cluster
+  after `00007.c` recovered, and it should stay separate from the landed
+  `00003.c` / `00004.c` constant-return folds plus the `00006.c` / `00007.c`
+  loop-owned routes unless its prepared-LIR shape proves it is the same family
+- add the narrowest regression for `00005.c` before changing ownership, then
+  verify the focused early source cluster again to confirm whether the next red
+  lane after that remains in the same family or moves to a separate seam
 - if the refreshed broad-suite guard is still red after the branch-family
-  and `00006.c` recovery, classify the next highest-value remaining
+  and early countdown recoveries, classify the next highest-value remaining
   x86-native source-backed seam from the updated after-log instead of widening
   idea 44 ad hoc
 - keep the separate shared-BIR select regression parked in
@@ -43,6 +44,37 @@ Source Plan: plan.md
 
 ## Recently Completed
 
+- recovered the bounded shared-BIR guarded double-countdown seam for the real
+  source-backed `00007.c` route by teaching
+  `src/backend/lowering/lir_to_bir.cpp` to recognize the exact
+  two-countdown-plus-dead-guard one-slot LIR module (`store 1; store 10;
+  first countdown to zero; dead if(x) return 1; store 10; second countdown;
+  return x`) and collapse it to the shared constant `0` return instead of
+  stopping at the unsupported x86 direct-LIR boundary
+- covered that seam with focused shared-lowering and x86 pipeline regressions
+  in `tests/backend/backend_bir_lowering_tests.cpp` and
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp`, plus a source-backed
+  backend route regression in `tests/c/internal/InternalTests.cmake`
+  (`backend_codegen_route_x86_64_c_testsuite_00007_double_countdown_guarded_zero_return_retries_after_direct_bir_rejection`)
+  so the real `00007.c` path stays pinned on native x86 asm instead of falling
+  back to LLVM text or the unsupported direct-LIR error
+- verified the bounded `00007.c` seam end-to-end:
+  `./build/c4cll --codegen asm --target x86_64-unknown-linux-gnu tests/c/external/c-testsuite/src/00007.c`,
+  `ctest --test-dir build --output-on-failure -R '^(backend_codegen_route_x86_64_c_testsuite_00007_double_countdown_guarded_zero_return_retries_after_direct_bir_rejection|c_testsuite_x86_backend_src_00007_c)$'`,
+  and
+  `ctest --test-dir build --output-on-failure -R '^(c_testsuite_x86_backend_src_00003_c|c_testsuite_x86_backend_src_00004_c|c_testsuite_x86_backend_src_00005_c|c_testsuite_x86_backend_src_00006_c|c_testsuite_x86_backend_src_00007_c)$'`
+  now pass for the owned seam, with that focused early-cluster recheck leaving
+  only `00005.c` red
+- refreshed `test_fail_after.log` with
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log` and
+  re-ran the monotonic guard through the `c4c-regression-guard` skill:
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  which still fails against the stale broad-suite baseline
+  (`2670/179/2849` before vs `2614/238/2852` after), but the refreshed
+  after-state improved again from the prior recorded `2612 -> 2614` passes and
+  `239 -> 238` failures after the `00007.c` slice; the new route test raises
+  total tests from `2851` to `2852`, and the remaining red broad-suite lanes
+  stay parked outside this bounded guarded-countdown change
 - recovered the bounded shared-BIR countdown-loop seam for the real
   source-backed `00006.c` route by teaching
   `src/backend/x86/codegen/emit.cpp` to render the exact four-block direct-BIR

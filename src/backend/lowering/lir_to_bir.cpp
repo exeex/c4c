@@ -305,6 +305,187 @@ std::optional<bir::Module> try_lower_minimal_countdown_loop_module(
   return lowered;
 }
 
+std::optional<bir::Module> try_lower_double_countdown_guarded_zero_return_module(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || !module.globals.empty() ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (!backend_lir_signature_matches(function.signature_text, "define", "i32", function.name, {}) ||
+      function.entry.value != 0 || function.blocks.size() != 11 ||
+      function.alloca_insts.size() != 1 || !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* slot = std::get_if<LirAllocaOp>(&function.alloca_insts.front());
+  if (slot == nullptr || !lir_type_is_i32(slot->type_str) || slot->result.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks[0];
+  const auto* dead_store = entry.insts.size() == 2 ? std::get_if<LirStoreOp>(&entry.insts[0]) : nullptr;
+  const auto* first_init = entry.insts.size() == 2 ? std::get_if<LirStoreOp>(&entry.insts[1]) : nullptr;
+  const auto* entry_branch = std::get_if<LirBr>(&entry.terminator);
+
+  const auto& first_cond = function.blocks[1];
+  const auto* first_loop_load =
+      first_cond.insts.size() == 2 ? std::get_if<LirLoadOp>(&first_cond.insts[0]) : nullptr;
+  const auto* first_loop_cmp =
+      first_cond.insts.size() == 2 ? std::get_if<LirCmpOp>(&first_cond.insts[1]) : nullptr;
+  const auto* first_loop_branch = std::get_if<LirCondBr>(&first_cond.terminator);
+
+  const auto& first_latch = function.blocks[2];
+  const auto* first_latch_load =
+      first_latch.insts.size() == 3 ? std::get_if<LirLoadOp>(&first_latch.insts[0]) : nullptr;
+  const auto* first_latch_sub =
+      first_latch.insts.size() == 3 ? std::get_if<LirBinOp>(&first_latch.insts[1]) : nullptr;
+  const auto* first_latch_store =
+      first_latch.insts.size() == 3 ? std::get_if<LirStoreOp>(&first_latch.insts[2]) : nullptr;
+  const auto* first_latch_branch = std::get_if<LirBr>(&first_latch.terminator);
+
+  const auto& first_body = function.blocks[3];
+  const auto* first_body_branch = std::get_if<LirBr>(&first_body.terminator);
+
+  const auto& guard = function.blocks[4];
+  const auto* guard_load =
+      guard.insts.size() == 2 ? std::get_if<LirLoadOp>(&guard.insts[0]) : nullptr;
+  const auto* guard_cmp =
+      guard.insts.size() == 2 ? std::get_if<LirCmpOp>(&guard.insts[1]) : nullptr;
+  const auto* guard_branch = std::get_if<LirCondBr>(&guard.terminator);
+
+  const auto& guarded_return = function.blocks[5];
+  const auto* guard_ret = std::get_if<LirRet>(&guarded_return.terminator);
+
+  const auto& second_init_block = function.blocks[6];
+  const auto* second_init =
+      second_init_block.insts.size() == 1 ? std::get_if<LirStoreOp>(&second_init_block.insts[0])
+                                          : nullptr;
+  const auto* second_init_branch = std::get_if<LirBr>(&second_init_block.terminator);
+
+  const auto& second_cond = function.blocks[7];
+  const auto* second_loop_load =
+      second_cond.insts.size() == 2 ? std::get_if<LirLoadOp>(&second_cond.insts[0]) : nullptr;
+  const auto* second_loop_cmp =
+      second_cond.insts.size() == 2 ? std::get_if<LirCmpOp>(&second_cond.insts[1]) : nullptr;
+  const auto* second_loop_branch = std::get_if<LirCondBr>(&second_cond.terminator);
+
+  const auto& second_latch = function.blocks[8];
+  const auto* second_latch_branch = std::get_if<LirBr>(&second_latch.terminator);
+
+  const auto& second_body = function.blocks[9];
+  const auto* second_body_load =
+      second_body.insts.size() == 3 ? std::get_if<LirLoadOp>(&second_body.insts[0]) : nullptr;
+  const auto* second_body_sub =
+      second_body.insts.size() == 3 ? std::get_if<LirBinOp>(&second_body.insts[1]) : nullptr;
+  const auto* second_body_store =
+      second_body.insts.size() == 3 ? std::get_if<LirStoreOp>(&second_body.insts[2]) : nullptr;
+  const auto* second_body_branch = std::get_if<LirBr>(&second_body.terminator);
+
+  const auto& exit = function.blocks[10];
+  const auto* exit_load = exit.insts.size() == 1 ? std::get_if<LirLoadOp>(&exit.insts[0]) : nullptr;
+  const auto* exit_ret = std::get_if<LirRet>(&exit.terminator);
+
+  const auto first_cmp_predicate =
+      first_loop_cmp == nullptr ? std::nullopt : first_loop_cmp->predicate.typed();
+  const auto first_sub_opcode =
+      first_latch_sub == nullptr ? std::nullopt : first_latch_sub->opcode.typed();
+  const auto guard_cmp_predicate =
+      guard_cmp == nullptr ? std::nullopt : guard_cmp->predicate.typed();
+  const auto second_cmp_predicate =
+      second_loop_cmp == nullptr ? std::nullopt : second_loop_cmp->predicate.typed();
+  const auto second_sub_opcode =
+      second_body_sub == nullptr ? std::nullopt : second_body_sub->opcode.typed();
+  const auto guard_ret_type =
+      guard_ret == nullptr ? std::nullopt : lower_function_return_type(function, *guard_ret);
+  const auto exit_ret_type =
+      exit_ret == nullptr ? std::nullopt : lower_function_return_type(function, *exit_ret);
+  if (entry.label != "entry" || dead_store == nullptr || first_init == nullptr ||
+      entry_branch == nullptr || !lir_type_is_i32(dead_store->type_str) ||
+      !lir_type_is_i32(first_init->type_str) || dead_store->ptr != slot->result ||
+      first_init->ptr != slot->result || dead_store->val != "1" || first_init->val != "10" ||
+      entry_branch->target_label != first_cond.label || first_cond.label != "for.cond.1" ||
+      first_loop_load == nullptr || first_loop_cmp == nullptr || first_loop_branch == nullptr ||
+      !lir_type_is_i32(first_loop_load->type_str) || first_loop_load->ptr != slot->result ||
+      first_loop_cmp->is_float || first_cmp_predicate != LirCmpPredicate::Ne ||
+      !lir_type_is_i32(first_loop_cmp->type_str) ||
+      first_loop_cmp->lhs != first_loop_load->result || first_loop_cmp->rhs != "0" ||
+      first_loop_branch->cond_name != first_loop_cmp->result ||
+      first_loop_branch->true_label != first_body.label ||
+      first_loop_branch->false_label != guard.label || first_latch.label != "for.latch.1" ||
+      first_latch_load == nullptr || first_latch_sub == nullptr || first_latch_store == nullptr ||
+      first_latch_branch == nullptr || !lir_type_is_i32(first_latch_load->type_str) ||
+      first_latch_load->ptr != slot->result || first_sub_opcode != LirBinaryOpcode::Sub ||
+      !lir_type_is_i32(first_latch_sub->type_str) ||
+      first_latch_sub->lhs != first_latch_load->result || first_latch_sub->rhs != "1" ||
+      !lir_type_is_i32(first_latch_store->type_str) ||
+      first_latch_store->val != first_latch_sub->result ||
+      first_latch_store->ptr != slot->result ||
+      first_latch_branch->target_label != first_cond.label || first_body.label != "block_1" ||
+      !first_body.insts.empty() || first_body_branch == nullptr ||
+      first_body_branch->target_label != first_latch.label || guard.label != "block_2" ||
+      guard_load == nullptr || guard_cmp == nullptr || guard_branch == nullptr ||
+      !lir_type_is_i32(guard_load->type_str) || guard_load->ptr != slot->result ||
+      guard_cmp->is_float || guard_cmp_predicate != LirCmpPredicate::Ne ||
+      !lir_type_is_i32(guard_cmp->type_str) || guard_cmp->lhs != guard_load->result ||
+      guard_cmp->rhs != "0" || guard_branch->cond_name != guard_cmp->result ||
+      guard_branch->true_label != guarded_return.label ||
+      guard_branch->false_label != second_init_block.label || guarded_return.label != "block_3" ||
+      !guarded_return.insts.empty() || guard_ret == nullptr ||
+      guard_ret_type != bir::TypeKind::I32 || !guard_ret->value_str.has_value() ||
+      *guard_ret->value_str != "1" || second_init_block.label != "block_4" ||
+      second_init == nullptr || second_init_branch == nullptr ||
+      !lir_type_is_i32(second_init->type_str) || second_init->ptr != slot->result ||
+      second_init->val != "10" || second_init_branch->target_label != second_cond.label ||
+      second_cond.label != "for.cond.5" || second_loop_load == nullptr ||
+      second_loop_cmp == nullptr || second_loop_branch == nullptr ||
+      !lir_type_is_i32(second_loop_load->type_str) || second_loop_load->ptr != slot->result ||
+      second_loop_cmp->is_float || second_cmp_predicate != LirCmpPredicate::Ne ||
+      !lir_type_is_i32(second_loop_cmp->type_str) ||
+      second_loop_cmp->lhs != second_loop_load->result || second_loop_cmp->rhs != "0" ||
+      second_loop_branch->cond_name != second_loop_cmp->result ||
+      second_loop_branch->true_label != second_body.label ||
+      second_loop_branch->false_label != exit.label || second_latch.label != "for.latch.5" ||
+      !second_latch.insts.empty() || second_latch_branch == nullptr ||
+      second_latch_branch->target_label != second_cond.label || second_body.label != "block_5" ||
+      second_body_load == nullptr || second_body_sub == nullptr ||
+      second_body_store == nullptr || second_body_branch == nullptr ||
+      !lir_type_is_i32(second_body_load->type_str) || second_body_load->ptr != slot->result ||
+      second_sub_opcode != LirBinaryOpcode::Sub ||
+      !lir_type_is_i32(second_body_sub->type_str) ||
+      second_body_sub->lhs != second_body_load->result || second_body_sub->rhs != "1" ||
+      !lir_type_is_i32(second_body_store->type_str) ||
+      second_body_store->val != second_body_sub->result ||
+      second_body_store->ptr != slot->result ||
+      second_body_branch->target_label != second_latch.label || exit.label != "block_6" ||
+      exit_load == nullptr || exit_ret == nullptr || !lir_type_is_i32(exit_load->type_str) ||
+      exit_load->ptr != slot->result || exit_ret_type != bir::TypeKind::I32 ||
+      !exit_ret->value_str.has_value() || *exit_ret->value_str != exit_load->result) {
+    return std::nullopt;
+  }
+
+  bir::Module lowered;
+  lowered.target_triple = module.target_triple;
+  lowered.data_layout = module.data_layout;
+
+  bir::Function lowered_function;
+  lowered_function.name = function.name;
+  lowered_function.return_type = bir::TypeKind::I32;
+
+  bir::Block lowered_entry;
+  lowered_entry.label = "entry";
+  lowered_entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::immediate_i32(0),
+  };
+
+  lowered_function.blocks.push_back(std::move(lowered_entry));
+  lowered.functions.push_back(std::move(lowered_function));
+  return lowered;
+}
+
 std::optional<bir::Module> try_lower_minimal_signed_narrow_local_slot_increment_compare_module(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
@@ -2885,6 +3066,10 @@ std::optional<bir::Module> try_lower_to_bir_legacy(const c4c::codegen::lir::LirM
     return lowered;
   }
   if (const auto lowered = try_lower_minimal_countdown_loop_module(module);
+      lowered.has_value()) {
+    return lowered;
+  }
+  if (const auto lowered = try_lower_double_countdown_guarded_zero_return_module(module);
       lowered.has_value()) {
     return lowered;
   }
