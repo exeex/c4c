@@ -13,20 +13,19 @@ Source Plan: plan.md
   remains a parked non-monotonic lane and should not be silently treated as
   Step 5 complete
 - current exact slice:
-  classify and recover the next bounded x86-native/source-backed seam from the
-  refreshed after-log by targeting the adjacent early x86 source-backed cluster
-  that remains red in `c_testsuite_x86_backend_src_00003_c`,
-  `c_testsuite_x86_backend_src_00004_c`, and
+  the first adjacent early x86 source-backed seam is now recovered for
+  `c_testsuite_x86_backend_src_00003_c`; continue next-slice selection from the
+  remaining red pair `c_testsuite_x86_backend_src_00004_c` and
   `c_testsuite_x86_backend_src_00006_c`
 
 ## Next Slice
 
-- classify the exact ownership split between the remaining early x86 source
-  cases (`00003.c`, `00004.c`, `00006.c`) before widening coverage: constant
-  local return/load, local pointer store-reload, and countdown loop should stay
-  as separate bounded seams unless the prepared-LIR shape is truly shared
-- add the narrowest x86 regression for the first of those early source-backed
-  seams before changing ownership, then verify the focused route/runtime cases
+- keep the ownership split explicit for the remaining early x86 source cases:
+  `00004.c` local pointer store-reload and `00006.c` countdown loop should
+  stay as separate bounded seams unless the prepared-LIR shape is truly shared
+- add the narrowest regression for `00004.c` before changing ownership, then
+  verify the focused route/runtime cases and recheck whether `00006.c` still
+  belongs to a distinct countdown-loop lane
 - if the refreshed broad-suite guard is still red after the branch-family
   recovery, classify the next highest-value remaining x86-native source-backed
   seam from the updated after-log instead of widening idea 44 ad hoc
@@ -38,6 +37,21 @@ Source Plan: plan.md
 
 ## Recently Completed
 
+- recovered the bounded shared-BIR local-slot constant-return seam for the real
+  source-backed `00003.c` route by teaching `src/backend/lowering/lir_to_bir.cpp`
+  to collapse the exact one-slot `store 4; load; sub 4; ret` slice to a shared
+  immediate return instead of stopping at the unsupported x86 boundary
+- covered that seam with focused shared-lowering and x86 pipeline regressions
+  in `tests/backend/backend_bir_lowering_tests.cpp` and
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` so the first early
+  source-backed constant local return/load lane stays pinned on the BIR route
+- verified the bounded `00003.c` seam end-to-end:
+  `./build/backend_bir_tests test_bir_lowering_accepts_local_i32_store_load_sub_return_immediate_module`,
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_lir_local_i32_store_load_sub_return_through_bir_end_to_end`,
+  and
+  `ctest --test-dir build --output-on-failure -R '^(c_testsuite_x86_backend_src_00003_c)$'`
+  now pass; the adjacent cluster recheck confirms `00004.c` and `00006.c`
+  remain red at the unsupported x86 direct-LIR boundary
 - recovered the bounded x86-native constant `if` branch family in
   `src/backend/x86/codegen/emit.cpp` by teaching the prepared-LIR emitter to
   constant-fold single-function `icmp` + `zext` + compare-to-zero branch/return

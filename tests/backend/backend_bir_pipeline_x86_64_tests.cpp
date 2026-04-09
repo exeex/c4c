@@ -106,6 +106,33 @@ c4c::codegen::lir::LirModule make_x86_local_temp_lir_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_local_i32_store_load_sub_return_immediate_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.x", "i32", "", 4});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{"i32", "4", "%lv.x"});
+  entry.insts.push_back(LirLoadOp{"%t0", "i32", "%lv.x"});
+  entry.insts.push_back(LirBinOp{"%t1", "sub", "i32", "%t0", "4"});
+  entry.terminator = LirRet{std::string("%t1"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_x86_constant_add_mul_sub_return_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -3335,6 +3362,28 @@ void test_backend_bir_pipeline_drives_x86_lir_signed_i16_local_slot_increment_co
                       "x86 LIR signed i16 local-slot increment-and-compare input should stay on native asm emission instead of falling back to LLVM text");
 }
 
+void test_backend_bir_pipeline_drives_x86_lir_local_i32_store_load_sub_return_through_bir_end_to_end() {
+  const auto lowered =
+      c4c::backend::try_lower_to_bir(make_local_i32_store_load_sub_return_immediate_module());
+  expect_true(lowered.has_value(),
+              "x86 LIR local i32 store-load-sub-return input should lower into direct BIR before native x86 emission");
+  expect_true(lowered->functions.size() == 1 &&
+                  lowered->functions.front().blocks.size() == 1 &&
+                  lowered->functions.front().blocks.front().insts.empty(),
+              "x86 LIR local i32 store-load-sub-return lowering should collapse the bounded local-slot slice to one constant-return BIR block");
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_local_i32_store_load_sub_return_immediate_module()},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl main",
+                  "x86 LIR local i32 store-load-sub-return input should still reach native asm emission after routing through the shared BIR path");
+  expect_contains(rendered, "mov eax, 0",
+                  "x86 LIR local i32 store-load-sub-return input should preserve the folded zero return after bounded shared lowering");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR local i32 store-load-sub-return input should stay on native asm emission instead of falling back to LLVM text");
+}
+
 void test_backend_bir_pipeline_drives_x86_lir_u8_select_post_join_add_through_bir_end_to_end() {
   const auto lowered = c4c::backend::try_lower_to_bir(make_lir_u8_select_post_join_add_module());
   expect_true(lowered.has_value(),
@@ -4255,6 +4304,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_conditional_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_conditional_phi_join_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_signed_i16_local_slot_increment_compare_through_bir_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_local_i32_store_load_sub_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_u8_select_post_join_add_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_return_add_smoke_case_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_return_sub_smoke_case_end_to_end);
