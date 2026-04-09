@@ -1865,6 +1865,52 @@ void test_backend_shared_slot_assignment_bundle_accepts_narrowed_planning_input(
               "shared stack-layout plan bundle should keep the previously computed backend-owned analysis available alongside the narrowed planning surface");
 }
 
+void test_backend_shared_slot_assignment_backend_owned_overloads_match_planning_input() {
+  c4c::backend::RegAllocConfig config;
+  config.available_regs = {{20}};
+  config.caller_saved_regs = {{13}};
+
+  const auto dead_param_module = make_dead_param_alloca_candidate_module();
+  const auto prepared_inputs =
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_inputs(dead_param_module, 1);
+  const auto dead_regalloc = c4c::backend::run_regalloc_and_merge_clobbers(
+      prepared_inputs.liveness_input, config, {});
+  const auto dead_analysis = c4c::backend::stack_layout::analyze_stack_layout(
+      prepared_inputs.stack_layout_input, dead_regalloc, {{20}, {21}, {22}});
+
+  const auto backend_entry_plans = c4c::backend::stack_layout::plan_entry_alloca_slots(
+      prepared_inputs.stack_layout_input, dead_analysis);
+  const auto narrowed_entry_plans = c4c::backend::stack_layout::plan_entry_alloca_slots(
+      prepared_inputs.planning_input, dead_analysis);
+  const auto backend_param_plans = c4c::backend::stack_layout::plan_param_alloca_slots(
+      prepared_inputs.stack_layout_input, dead_analysis);
+  const auto narrowed_param_plans = c4c::backend::stack_layout::plan_param_alloca_slots(
+      prepared_inputs.planning_input, dead_analysis);
+
+  expect_true(backend_entry_plans.size() == narrowed_entry_plans.size() &&
+                  backend_entry_plans.size() == 1 &&
+                  backend_entry_plans.front().alloca_name ==
+                      narrowed_entry_plans.front().alloca_name &&
+                  backend_entry_plans.front().needs_stack_slot ==
+                      narrowed_entry_plans.front().needs_stack_slot &&
+                  backend_entry_plans.front().remove_following_entry_store ==
+                      narrowed_entry_plans.front().remove_following_entry_store &&
+                  backend_entry_plans.front().coalesced_block ==
+                      narrowed_entry_plans.front().coalesced_block &&
+                  backend_entry_plans.front().assigned_slot ==
+                      narrowed_entry_plans.front().assigned_slot,
+              "backend-owned entry-alloca planning overloads should match the explicit narrowed planning seam for the same prepared function inputs");
+  expect_true(backend_param_plans.size() == narrowed_param_plans.size() &&
+                  backend_param_plans.size() == 1 &&
+                  backend_param_plans.front().alloca_name ==
+                      narrowed_param_plans.front().alloca_name &&
+                  backend_param_plans.front().param_name ==
+                      narrowed_param_plans.front().param_name &&
+                  backend_param_plans.front().needs_stack_slot ==
+                      narrowed_param_plans.front().needs_stack_slot,
+              "backend-owned param-alloca planning overloads should match the explicit narrowed planning seam for the same prepared function inputs");
+}
+
 void test_backend_shared_slot_assignment_bundle_prepares_from_backend_owned_inputs() {
   c4c::backend::RegAllocConfig config;
   config.available_regs = {{20}};

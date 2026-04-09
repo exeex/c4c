@@ -349,6 +349,20 @@ EntryAllocaRewriteInput lower_stack_layout_input_to_entry_alloca_rewrite_input(
       std::move(input.entry_allocas), classification);
 }
 
+EntryAllocaPlanningInput lower_stack_layout_input_to_entry_alloca_planning_input(
+    StackLayoutInput input) {
+  auto classification = lower_prepared_stack_layout_classification_input(input);
+  EntryAllocaPlanningInput lowered;
+  lowered.entry_allocas.reserve(input.entry_allocas.size());
+  for (const auto& alloca : input.entry_allocas) {
+    lowered.entry_allocas.push_back(lower_entry_alloca_input_to_plan_input(alloca));
+  }
+  lowered.escaped_entry_allocas = classification.escaped_entry_allocas;
+  lowered.entry_alloca_use_blocks = classification.entry_alloca_use_blocks;
+  lowered.entry_alloca_first_accesses = classification.entry_alloca_first_accesses;
+  return lowered;
+}
+
 StackLayoutAnalysis analyze_entry_alloca_rewrite_input(
     const EntryAllocaRewriteInput& input,
     const RegAllocIntegrationResult& regalloc,
@@ -627,9 +641,7 @@ StackLayoutPlanBundle build_stack_layout_plan_bundle(
     const std::vector<PhysReg>& callee_saved_regs) {
   const auto analysis = analyze_stack_layout(input, regalloc, callee_saved_regs);
   return build_stack_layout_plan_bundle(
-      lower_entry_alloca_rewrite_input_to_planning_input(
-          lower_stack_layout_input_to_entry_alloca_rewrite_input(input)),
-      analysis);
+      lower_stack_layout_input_to_entry_alloca_planning_input(input), analysis);
 }
 
 StackLayoutPlanBundle build_stack_layout_plan_bundle(
@@ -845,7 +857,7 @@ std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(
     const StackLayoutInput& input,
     const StackLayoutAnalysis& analysis) {
   return plan_entry_alloca_slots(
-      lower_stack_layout_input_to_entry_alloca_rewrite_input(input), analysis);
+      lower_stack_layout_input_to_entry_alloca_planning_input(input), analysis);
 }
 
 std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(
@@ -1012,7 +1024,7 @@ std::vector<ParamAllocaSlotPlan> plan_param_alloca_slots(
     const StackLayoutInput& input,
     const StackLayoutAnalysis& analysis) {
   return plan_param_alloca_slots(
-      lower_stack_layout_input_to_entry_alloca_rewrite_input(input), analysis);
+      lower_stack_layout_input_to_entry_alloca_planning_input(input), analysis);
 }
 
 std::vector<ParamAllocaSlotPlan> plan_param_alloca_slots(

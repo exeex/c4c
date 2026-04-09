@@ -8,17 +8,36 @@ Source Plan: plan.md
 
 - Step 6: move liveness to backend MIR
 - Current slice: continue Step 6 public-surface narrowing by checking whether
-  planning-only callers can drop the compatibility `StackLayoutInput` wrapper
-  now that prepared entry-alloca lowering carries an explicit planning payload
-- Current implementation target: check whether the remaining
-  `plan_entry_alloca_slots(...)` / `plan_param_alloca_slots(...)` compatibility
-  overloads should now lower directly to `EntryAllocaPlanningInput` without
-  rebuilding the intermediate rewrite wrapper
+  the next planning-only compatibility helper can stop rebuilding broader
+  entry-alloca wrapper state once callers already own backend liveness plus
+  prepared planning metadata
+- Current implementation target: inspect the remaining bundle/patch-prep
+  compatibility surfaces and pick the next helper that can accept narrowed
+  prepared planning/rewrite inputs directly
 - Next intended slice: narrow the next planning-only compatibility helper so
   callers that already own backend liveness plus prepared planning metadata do
   not need to materialize broader entry-alloca wrapper state
 
 ## Completed
+
+- Completed the next Step 6 planning-helper narrowing slice by making the
+  backend-owned `StackLayoutInput` planning overloads lower directly to the
+  explicit planning seam instead of round-tripping through the rewrite wrapper:
+  - updated `src/backend/stack_layout/slot_assignment.cpp` so
+    `build_stack_layout_plan_bundle(...)`,
+    `plan_entry_alloca_slots(...)`, and `plan_param_alloca_slots(...)`
+    now lower `StackLayoutInput` straight into `EntryAllocaPlanningInput`
+    while leaving rewrite-owned lowering in place only for patch synthesis
+  - extended `tests/backend/backend_shared_util_tests.cpp` with focused
+    coverage proving the backend-owned planning overloads produce the same
+    entry-alloca and param-alloca plans as the explicit `planning_input`
+    exported from the same prepared function inputs
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`
+  - refreshed `test_fail_after.log`, and passed the regression guard with the
+    repo’s allowed non-decreasing rule and no new failures (`2809 -> 2809`,
+    same 32 known failing tests as `test_fail_before.log`; full suite summary
+    `2841` total with `32` failing both before and after)
 
 - Completed the next Step 6 planning-bundle narrowing slice by letting
   stack-layout bundle preparation derive analysis from backend liveness plus
