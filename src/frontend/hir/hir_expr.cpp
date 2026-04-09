@@ -26,6 +26,22 @@ namespace c4c::hir {
 
 namespace {
 
+const HirStructField* find_struct_instance_field_including_bases(
+    const hir::Module& module, const std::string& tag, const std::string& field) {
+  auto sit = module.struct_defs.find(tag);
+  if (sit == module.struct_defs.end()) return nullptr;
+  for (const auto& fld : sit->second.fields) {
+    if (fld.name == field) return &fld;
+  }
+  for (const auto& base_tag : sit->second.base_tags) {
+    if (const HirStructField* inherited =
+            find_struct_instance_field_including_bases(module, base_tag, field)) {
+      return inherited;
+    }
+  }
+  return nullptr;
+}
+
 class LayoutQueries {
  public:
   explicit LayoutQueries(const hir::Module& module) : module_(module) {}
@@ -1553,25 +1569,23 @@ ExprId Lowerer::lower_expr(FunctionCtx* ctx, const Node* n) {
           return append_expr(n, IntLiteral{*v, false}, ts);
         }
         auto sit = module_->struct_defs.find(ctx->method_struct_tag);
-        if (sit != module_->struct_defs.end()) {
-          for (const auto& fld : sit->second.fields) {
-            if (fld.name == r.name) {
-              DeclRef this_ref{};
-              this_ref.name = "this";
-              auto pit = ctx->params.find("this");
-              if (pit != ctx->params.end()) this_ref.param_index = pit->second;
-              TypeSpec this_ts{};
-              this_ts.base = TB_STRUCT;
-              this_ts.tag = sit->second.tag.c_str();
-              this_ts.ptr_level = 1;
-              ExprId this_id = append_expr(n, this_ref, this_ts, ValueCategory::LValue);
-              MemberExpr me{};
-              me.base = this_id;
-              me.field = r.name;
-              me.is_arrow = true;
-              return append_expr(n, me, n->type, ValueCategory::LValue);
-            }
-          }
+        if (sit != module_->struct_defs.end() &&
+            find_struct_instance_field_including_bases(*module_, ctx->method_struct_tag,
+                                                       r.name)) {
+          DeclRef this_ref{};
+          this_ref.name = "this";
+          auto pit = ctx->params.find("this");
+          if (pit != ctx->params.end()) this_ref.param_index = pit->second;
+          TypeSpec this_ts{};
+          this_ts.base = TB_STRUCT;
+          this_ts.tag = sit->second.tag.c_str();
+          this_ts.ptr_level = 1;
+          ExprId this_id = append_expr(n, this_ref, this_ts, ValueCategory::LValue);
+          MemberExpr me{};
+          me.base = this_id;
+          me.field = r.name;
+          me.is_arrow = true;
+          return append_expr(n, me, n->type, ValueCategory::LValue);
         }
       }
       TypeSpec var_ts = n->type;

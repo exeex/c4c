@@ -632,6 +632,19 @@ class Validator {
     return std::nullopt;
   }
 
+  bool has_struct_instance_field(const std::string& tag,
+                                 const std::string& member) const {
+    auto fit = struct_field_names_.find(tag);
+    if (fit != struct_field_names_.end() && fit->second.count(member)) return true;
+    auto bit = struct_base_tags_.find(tag);
+    if (bit != struct_base_tags_.end()) {
+      for (const auto& base_tag : bit->second) {
+        if (has_struct_instance_field(base_tag, member)) return true;
+      }
+    }
+    return false;
+  }
+
   void record_template_type_params_recursive(const Node* n) {
     if (!n) return;
     if (n->n_template_params > 0 &&
@@ -1324,9 +1337,7 @@ class Validator {
           // struct fields (implicit this->field).  Accept them here; the HIR
           // lowerer resolves them via MemberExpr.
           if (!current_method_struct_tag_.empty()) {
-            auto fit = struct_field_names_.find(current_method_struct_tag_);
-            if (fit != struct_field_names_.end() &&
-                fit->second.count(n->name)) {
+            if (has_struct_instance_field(current_method_struct_tag_, n->name)) {
               out.valid = true;
               out.is_lvalue = true;
               return out;
