@@ -151,6 +151,16 @@ bool starts_with_value_like_template_expr(const Parser& parser,
 
         if (pos < static_cast<int>(tokens.size()) &&
             tokens[pos].kind == TokenKind::LParen) {
+            const int declarator_probe = pos + 1;
+            if (declarator_probe < static_cast<int>(tokens.size())) {
+                const TokenKind declarator_kind = tokens[declarator_probe].kind;
+                if (declarator_kind == TokenKind::Star ||
+                    declarator_kind == TokenKind::Caret ||
+                    declarator_kind == TokenKind::Amp ||
+                    declarator_kind == TokenKind::AmpAmp) {
+                    return false;
+                }
+            }
             return saw_scope || saw_template_args || !first_identifier_is_known_type;
         }
 

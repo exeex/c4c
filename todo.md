@@ -7,15 +7,14 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 3: review declarator suffix and function-pointer cast forms
-- Current slice: start Step 3 with one narrow template-id declarator-suffix
-  parser/runtime matrix case that is not already covered by the existing
-  staging parses
-- Current implementation target: keep Step 3 limited to one parser-facing
-  cast-target spelling at a time without re-opening Step 2 alias-owned
-  dependent lookup
-- Next intended slice: probe a focused template-id function-pointer or
-  cv-qualified pointer cast target once the first Step 3 suffix hole is
-  classified
+- Current slice: probe the next uncovered Step 3 suffix shape after landing
+  the template-id return-type function-pointer cast-target parser fix
+- Current implementation target: stay in parser-facing Step 3 work and check
+  whether template-id parameter types inside the same abstract function-pointer
+  cast form already parse cleanly before widening into member-pointer or
+  cv-qualified variants
+- Next intended slice: add a focused parse-only regression for
+  `(int (*)(Box<int>))raw` if that parameter-type shape is still uncovered
 
 ## Completed
 
@@ -218,6 +217,23 @@ Source Plan: plan.md
   was needed for the final Step 2 alias-owned qualified/dependent case.
 - Full-suite validation stayed monotonic: `test_fail_before.log` 2858/2858
   passed, `test_fail_after.log` 2859/2859 passed, with zero new failures.
+- Isolated the first Step 3 parser hole with reduced `--parse-only` probes:
+  plain template-id pointer casts such as `(Box<int>* const)raw` already
+  parse, but a template-id return type inside a function-pointer declarator
+  like `Box<int> (*fp)(int) = (Box<int> (*)(int))raw;` is misclassified as an
+  expression statement before the cast target can be parsed.
+- Added
+  `tests/cpp/internal/postive_case/c_style_cast_template_fn_ptr_return_type_parse.cpp`
+  as a parse-only regression for `Box<int> (*fp)(int) = (Box<int> (*)(int))raw;`.
+- Fixed the parser’s value-like template-expression heuristic so
+  `Identifier<...>(*)` / `(&)` / `(&&)` heads stay eligible for local
+  declaration parsing instead of being forced down the expression-statement
+  path before Step 3 function-pointer cast targets can be recognized.
+- Targeted validation passed:
+  `build/c4cll --parse-only tests/cpp/internal/postive_case/c_style_cast_template_fn_ptr_return_type_parse.cpp`
+  and `ctest --test-dir build -R c_style_cast_template_fn_ptr_return_type_parse --output-on-failure`.
+- Full-suite validation stayed monotonic: `test_fail_before.log` 2858/2858
+  passed, `test_fail_after.log` 2860/2860 passed, with zero new failures.
 
 ## Notes
 
