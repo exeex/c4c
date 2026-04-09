@@ -208,7 +208,7 @@ std::unordered_set<std::size_t> find_conflicting_phis(
     if (!src.has_value()) {
       continue;
     }
-    if (*src != dest && dest_names.contains(*src)) {
+    if (*src != dest && dest_names.find(*src) != dest_names.end()) {
       needs_temp.insert(index);
     }
   }
@@ -221,7 +221,7 @@ std::unordered_set<std::size_t> find_conflicting_phis(
       }
     }
     for (std::size_t index = 0; index < copies.size(); ++index) {
-      if (conflicting_sources.contains(copies[index].first)) {
+      if (conflicting_sources.find(copies[index].first) != conflicting_sources.end()) {
         needs_temp.insert(index);
       }
     }

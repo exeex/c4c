@@ -323,12 +323,14 @@ std::optional<bir::Module> try_lower_minimal_direct_call_module(
 
   bir::Block main_entry;
   main_entry.label = "entry";
-  main_entry.insts.push_back(bir::CallInst{
-      .result = bir::Value::named(bir::TypeKind::I32, call_result),
-      .callee = helper_name,
-      .args = {},
-      .return_type_name = "i32",
-  });
+  main_entry.insts.push_back(make_direct_call_inst(
+      helper_name,
+      default_calling_convention_for_target(module.target_triple),
+      false,
+      bir::TypeKind::I32,
+      "i32",
+      bir::Value::named(bir::TypeKind::I32, call_result),
+      {}));
   main_entry.terminator.value = bir::Value::named(bir::TypeKind::I32, call_result);
   main_function.blocks.push_back(std::move(main_entry));
   lowered.functions.push_back(std::move(main_function));
@@ -420,12 +422,14 @@ std::optional<bir::Module> try_lower_minimal_void_direct_call_imm_return_module(
 
   bir::Block main_entry;
   main_entry.label = "entry";
-  main_entry.insts.push_back(bir::CallInst{
-      .result = std::nullopt,
-      .callee = helper_name,
-      .args = {},
-      .return_type_name = "void",
-  });
+  main_entry.insts.push_back(make_direct_call_inst(
+      helper_name,
+      default_calling_convention_for_target(module.target_triple),
+      false,
+      bir::TypeKind::Void,
+      "void",
+      std::nullopt,
+      {}));
   main_entry.terminator.value =
       bir::Value::immediate_i32(static_cast<std::int32_t>(return_imm));
   main_function.blocks.push_back(std::move(main_entry));
@@ -673,7 +677,7 @@ std::optional<bir::Module> try_lower_minimal_declared_direct_call_module(
     return std::nullopt;
   }
   lowered_entry_block.insts.push_back(make_direct_call_inst(
-      *symbol_name,
+      std::string(*symbol_name),
       default_calling_convention_for_target(module.target_triple),
       lowered_callee.is_variadic,
       bir::TypeKind::I32,
@@ -850,15 +854,17 @@ std::optional<bir::Module> try_lower_minimal_two_arg_direct_call_module(
 
   bir::Block main_entry;
   main_entry.label = "entry";
-  main_entry.insts.push_back(bir::CallInst{
-      .result = bir::Value::named(bir::TypeKind::I32, call->result.str()),
-      .callee = helper_function->name,
-      .args = {
+  main_entry.insts.push_back(make_direct_call_inst(
+      helper_function->name,
+      default_calling_convention_for_target(module.target_triple),
+      false,
+      bir::TypeKind::I32,
+      "i32",
+      bir::Value::named(bir::TypeKind::I32, call->result.str()),
+      {
           bir::Value::immediate_i32(static_cast<std::int32_t>(lhs_call_arg_imm)),
           bir::Value::immediate_i32(static_cast<std::int32_t>(rhs_call_arg_imm)),
-      },
-      .return_type_name = "i32",
-  });
+      }));
   main_entry.terminator.value =
       bir::Value::named(bir::TypeKind::I32, call->result.str());
   main_function.blocks.push_back(std::move(main_entry));
@@ -1002,14 +1008,16 @@ std::optional<bir::Module> try_lower_minimal_direct_call_add_imm_module(
 
   bir::Block main_entry;
   main_entry.label = "entry";
-  main_entry.insts.push_back(bir::CallInst{
-      .result = bir::Value::named(bir::TypeKind::I32, call->result.str()),
-      .callee = helper_function->name,
-      .args = {
+  main_entry.insts.push_back(make_direct_call_inst(
+      helper_function->name,
+      default_calling_convention_for_target(module.target_triple),
+      false,
+      bir::TypeKind::I32,
+      "i32",
+      bir::Value::named(bir::TypeKind::I32, call->result.str()),
+      {
           bir::Value::immediate_i32(static_cast<std::int32_t>(call_arg_imm)),
-      },
-      .return_type_name = "i32",
-  });
+      }));
   main_entry.terminator.value = bir::Value::named(bir::TypeKind::I32, call->result.str());
   main_function.blocks.push_back(std::move(main_entry));
   lowered.functions.push_back(std::move(main_function));
@@ -1104,14 +1112,16 @@ std::optional<bir::Module> try_lower_minimal_direct_call_identity_arg_module(
 
   bir::Block main_entry;
   main_entry.label = "entry";
-  main_entry.insts.push_back(bir::CallInst{
-      .result = bir::Value::named(bir::TypeKind::I32, call_result),
-      .callee = helper_name,
-      .args = {
+  main_entry.insts.push_back(make_direct_call_inst(
+      helper_name,
+      default_calling_convention_for_target(module.target_triple),
+      false,
+      bir::TypeKind::I32,
+      "i32",
+      bir::Value::named(bir::TypeKind::I32, call_result),
+      {
           bir::Value::immediate_i32(static_cast<std::int32_t>(call_arg_imm)),
-      },
-      .return_type_name = "i32",
-  });
+      }));
   main_entry.terminator.value = bir::Value::named(bir::TypeKind::I32, call_result);
   main_function.blocks.push_back(std::move(main_entry));
   lowered.functions.push_back(std::move(main_function));
@@ -1371,18 +1381,22 @@ std::optional<bir::Module> try_lower_minimal_dual_identity_direct_call_sub_modul
 
   bir::Block entry;
   entry.label = entry_label;
-  entry.insts.push_back(bir::CallInst{
-      .result = bir::Value::named(bir::TypeKind::I32, lhs_call_result),
-      .callee = lhs_helper_name,
-      .args = {bir::Value::immediate_i32(static_cast<std::int32_t>(lhs_call_arg_imm))},
-      .return_type_name = "i32",
-  });
-  entry.insts.push_back(bir::CallInst{
-      .result = bir::Value::named(bir::TypeKind::I32, rhs_call_result),
-      .callee = rhs_helper_name,
-      .args = {bir::Value::immediate_i32(static_cast<std::int32_t>(rhs_call_arg_imm))},
-      .return_type_name = "i32",
-  });
+  entry.insts.push_back(make_direct_call_inst(
+      lhs_helper_name,
+      default_calling_convention_for_target(module.target_triple),
+      false,
+      bir::TypeKind::I32,
+      "i32",
+      bir::Value::named(bir::TypeKind::I32, lhs_call_result),
+      {bir::Value::immediate_i32(static_cast<std::int32_t>(lhs_call_arg_imm))}));
+  entry.insts.push_back(make_direct_call_inst(
+      rhs_helper_name,
+      default_calling_convention_for_target(module.target_triple),
+      false,
+      bir::TypeKind::I32,
+      "i32",
+      bir::Value::named(bir::TypeKind::I32, rhs_call_result),
+      {bir::Value::immediate_i32(static_cast<std::int32_t>(rhs_call_arg_imm))}));
   entry.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Sub,
       .result = bir::Value::named(bir::TypeKind::I32, sub_result),
@@ -1519,14 +1533,16 @@ std::optional<bir::Module> try_lower_minimal_call_crossing_direct_call_module(
       .lhs = bir::Value::immediate_i32(static_cast<std::int32_t>(source_imm)),
       .rhs = bir::Value::immediate_i32(0),
   });
-  entry.insts.push_back(bir::CallInst{
-      .result = bir::Value::named(bir::TypeKind::I32, call_result),
-      .callee = helper_name,
-      .args = {
+  entry.insts.push_back(make_direct_call_inst(
+      helper_name,
+      default_calling_convention_for_target(module.target_triple),
+      false,
+      bir::TypeKind::I32,
+      "i32",
+      bir::Value::named(bir::TypeKind::I32, call_result),
+      {
           bir::Value::named(bir::TypeKind::I32, source_add_result),
-      },
-      .return_type_name = "i32",
-  });
+      }));
   entry.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::Add,
       .result = bir::Value::named(bir::TypeKind::I32, final_add_result),

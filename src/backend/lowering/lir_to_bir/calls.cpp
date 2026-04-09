@@ -169,7 +169,9 @@ struct LoweredCallAbi {
 
 }  // namespace c4c::backend::lir_to_bir
 
-std::optional<std::vector<bir::Param>> c4c::backend::lower_call_params_from_type_texts(
+namespace c4c::backend {
+
+std::optional<std::vector<bir::Param>> lower_call_params_from_type_texts(
     const std::vector<std::string_view>& param_types) {
   std::vector<bir::Param> params;
   params.reserve(param_types.size());
@@ -191,7 +193,7 @@ std::optional<std::vector<bir::Param>> c4c::backend::lower_call_params_from_type
   return params;
 }
 
-bir::CallingConv c4c::backend::default_calling_convention_for_target(std::string_view target_triple) {
+bir::CallingConv default_calling_convention_for_target(std::string_view target_triple) {
   if (target_triple.find("windows") != std::string_view::npos ||
       target_triple.find("mingw") != std::string_view::npos) {
     return bir::CallingConv::Win64;
@@ -203,7 +205,7 @@ bir::CallingConv c4c::backend::default_calling_convention_for_target(std::string
   return bir::CallingConv::C;
 }
 
-bool c4c::backend::function_signature_is_variadic(std::string_view signature_text) {
+bool function_signature_is_variadic(std::string_view signature_text) {
   const auto params = parse_backend_function_signature_params(signature_text);
   if (!params.has_value()) {
     return false;
@@ -216,13 +218,13 @@ bool c4c::backend::function_signature_is_variadic(std::string_view signature_tex
   return false;
 }
 
-bir::CallInst c4c::backend::make_direct_call_inst(std::string callee,
-                                                  bir::CallingConv calling_convention,
-                                                  bool is_variadic,
-                                                  bir::TypeKind return_type,
-                                                  std::string return_type_name,
-                                                  std::optional<bir::Value> result,
-                                                  std::vector<bir::Value> args) {
+bir::CallInst make_direct_call_inst(std::string callee,
+                                    bir::CallingConv calling_convention,
+                                    bool is_variadic,
+                                    bir::TypeKind return_type,
+                                    std::string return_type_name,
+                                    std::optional<bir::Value> result,
+                                    std::vector<bir::Value> args) {
   auto classify_scalar_arg_abi = [](bir::TypeKind type) {
     return bir::CallArgAbiInfo{
         .type = type,
@@ -264,7 +266,7 @@ bir::CallInst c4c::backend::make_direct_call_inst(std::string callee,
   return call;
 }
 
-std::optional<std::vector<bir::Value>> c4c::backend::lower_direct_call_args(
+std::optional<std::vector<bir::Value>> lower_direct_call_args(
     const std::vector<ParsedBackendExternCallArg>& args) {
   std::vector<bir::Value> lowered_args;
   lowered_args.reserve(args.size());
@@ -287,9 +289,8 @@ std::optional<std::vector<bir::Value>> c4c::backend::lower_direct_call_args(
   return lowered_args;
 }
 
-void c4c::backend::record_call_lowering_scaffold_notes(
-    const c4c::codegen::lir::LirModule& module,
-    std::vector<BirLoweringNote>* notes) {
+void record_call_lowering_scaffold_notes(const c4c::codegen::lir::LirModule& module,
+                                         std::vector<BirLoweringNote>* notes) {
   (void)module;
   if (notes == nullptr) {
     return;
@@ -299,3 +300,5 @@ void c4c::backend::record_call_lowering_scaffold_notes(
       .message = "call ABI and call lowering scaffold lives in lir_to_bir/calls.cpp",
   });
 }
+
+}  // namespace c4c::backend

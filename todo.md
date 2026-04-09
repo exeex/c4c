@@ -10,8 +10,10 @@ Source Plan: plan.md
   promote BIR and `lir_to_bir` back toward a backend-owned seam by wiring the
   split lowering scaffolds into a real pass-oriented entry surface and
   stopping further ownership drift into x86 testcase matchers;
-  current sub-slice remains in the ownership-wiring phase before compile/test
-  recovery, with the immediate lane focused on split call and memory seams;
+  current sub-slice remains in the ownership-wiring phase before broad
+  compile/test recovery, with the immediate lane now focused on finishing the
+  split call seam ownership move and then returning to remaining seam-local
+  compile recovery;
   build/test work is intentionally ignored until this lane switches to
   compile-recovery
 
@@ -24,7 +26,8 @@ Source Plan: plan.md
   migrating concrete logic out of the legacy monolith one seam at a time
 - continue after the type-helper extraction by moving the next concrete seam
   into split ownership:
-  memory/address lowering first, then call lowering
+  memory/address lowering first, then finish the remaining call matcher
+  ownership after the direct-call constructor move
 - after the current ownership-wiring burst, start a dedicated compile-recovery
   pass over the newly split seam files before attempting new targeted tests
 - avoid adding any new x86 testcase-specific direct-LIR matcher while this
@@ -226,6 +229,19 @@ Source Plan: plan.md
   declared-function path:
   minimal direct-call lowering now derives `is_variadic` from parsed function
   signatures when the callee declaration is available
+- moved the remaining minimal direct-call `bir::CallInst` construction sites
+  in `lir_to_bir.cpp` onto the split `make_direct_call_inst(...)` helper so
+  direct-call ABI and call-surface metadata stop being rebuilt ad hoc inside
+  the monolith
+- repaired split call/phi seam compile blockers uncovered by that wiring pass:
+  `lir_to_bir/calls.cpp` helper definitions now compile under a real
+  `c4c::backend` namespace boundary, and `lir_to_bir/phi.cpp` no longer uses
+  C++20-only `unordered_set::contains`
+- verified the current tree builds again with the split seam wired through:
+  `cmake --build build -j8` succeeds after the direct-call constructor move
+- attempted seam-local backend validation, but the current `backend_bir_tests`
+  and `backend_shared_util_tests` executables still fail in pre-existing
+  unrelated areas before they provide a clean regression signal for this slice
 
 ## Blockers
 
