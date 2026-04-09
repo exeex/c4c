@@ -705,7 +705,7 @@ parse_minimal_two_arg_second_local_arg_helper_call_slice(
 
     const auto& block = entry.blocks.front();
     const auto* ret = std::get_if<LirRet>(&block.terminator);
-    const auto* call = block.insts.size() == 3 ? std::get_if<LirCallOp>(&block.insts[2]) : nullptr;
+    const auto* call = block.insts.size() >= 3 ? std::get_if<LirCallOp>(&block.insts.back()) : nullptr;
     const auto call_operands =
         call == nullptr
             ? std::nullopt
@@ -726,9 +726,8 @@ parse_minimal_two_arg_second_local_arg_helper_call_slice(
     }
 
     std::vector<LirInst> prefix_insts;
-    prefix_insts.reserve(2);
-    prefix_insts.push_back(block.insts[0]);
-    prefix_insts.push_back(block.insts[1]);
+    prefix_insts.reserve(block.insts.size() - 1);
+    prefix_insts.insert(prefix_insts.end(), block.insts.begin(), block.insts.end() - 1);
     const auto stored_imm = c4c::backend::parse_backend_single_local_i32_slot_call_operand_imm(
         prefix_insts, slot->result.str(), call_operands->first, call_operands->second);
     if (!stored_imm.has_value() || stored_imm->second) {
