@@ -1714,12 +1714,19 @@ void test_backend_shared_slot_assignment_accepts_narrowed_planning_input() {
   });
   const auto dead_param_plans =
       c4c::backend::stack_layout::plan_entry_alloca_slots(dead_param_input, dead_param_analysis);
+  const auto dead_param_slot_plans =
+      c4c::backend::stack_layout::plan_param_alloca_slots(dead_param_input, dead_param_analysis);
 
   expect_true(dead_param_plans.size() == 1 &&
                   dead_param_plans.front().alloca_name == "%lv.param.x" &&
                   !dead_param_plans.front().needs_stack_slot &&
                   dead_param_plans.front().remove_following_entry_store,
               "shared slot-assignment planning should classify dead param allocas from the narrowed planning surface using param metadata instead of the full paired-store value");
+  expect_true(dead_param_slot_plans.size() == 1 &&
+                  dead_param_slot_plans.front().alloca_name == "%lv.param.x" &&
+                  dead_param_slot_plans.front().param_name == "%p.x" &&
+                  !dead_param_slot_plans.front().needs_stack_slot,
+              "shared param-alloca planning should accept the narrowed planning surface without rebuilding the literal paired-store operand");
 }
 
 void test_backend_shared_slot_assignment_accepts_backend_owned_input() {
@@ -1814,6 +1821,48 @@ void test_backend_shared_slot_assignment_bundle_accepts_backend_owned_input() {
   c4c::backend::stack_layout::apply_entry_alloca_rewrite_patch(dead_function, dead_patch);
   expect_true(dead_function.alloca_insts.empty(),
               "backend-owned stack-layout plan bundle should still drive the production entry-alloca mutation step");
+}
+
+void test_backend_shared_slot_assignment_bundle_accepts_narrowed_planning_input() {
+  c4c::backend::RegAllocConfig config;
+  config.available_regs = {{20}};
+  config.caller_saved_regs = {{13}};
+
+  const auto dead_param_module = make_dead_param_alloca_candidate_module();
+  const auto& dead_param_function = dead_param_module.functions.back();
+  const auto dead_param_liveness_input =
+      lower_test_backend_cfg_liveness_input(dead_param_function);
+  const auto dead_regalloc =
+      c4c::backend::run_regalloc_and_merge_clobbers(dead_param_liveness_input, config, {});
+  const auto dead_analysis = c4c::backend::stack_layout::analyze_stack_layout(
+      c4c::backend::stack_layout::lower_lir_to_stack_layout_input(dead_param_function),
+      dead_regalloc,
+      {{20}, {21}, {22}});
+
+  c4c::backend::stack_layout::EntryAllocaPlanningInput dead_param_input;
+  dead_param_input.entry_allocas.push_back(c4c::backend::stack_layout::EntryAllocaPlanInput{
+      "%lv.param.x",
+      "i32",
+      4,
+      c4c::backend::stack_layout::EntryAllocaPairedStorePlanInfo{
+          true, false, std::string("%p.x")},
+  });
+
+  const auto dead_bundle = c4c::backend::stack_layout::build_stack_layout_plan_bundle(
+      dead_param_input, dead_analysis);
+
+  expect_true(dead_bundle.entry_alloca_plans.size() == 1 &&
+                  dead_bundle.entry_alloca_plans.front().alloca_name == "%lv.param.x" &&
+                  !dead_bundle.entry_alloca_plans.front().needs_stack_slot &&
+                  dead_bundle.entry_alloca_plans.front().remove_following_entry_store,
+              "shared stack-layout plan bundle should accept narrowed planning input once analysis has already been computed from the backend-owned surface");
+  expect_true(dead_bundle.param_alloca_plans.size() == 1 &&
+                  dead_bundle.param_alloca_plans.front().alloca_name == "%lv.param.x" &&
+                  dead_bundle.param_alloca_plans.front().param_name == "%p.x" &&
+                  !dead_bundle.param_alloca_plans.front().needs_stack_slot,
+              "shared stack-layout plan bundle should preserve param-alloca pruning from the narrowed planning surface");
+  expect_true(dead_bundle.analysis.is_dead_param_alloca("%lv.param.x"),
+              "shared stack-layout plan bundle should keep the previously computed backend-owned analysis available alongside the narrowed planning surface");
 }
 
 void test_backend_shared_slot_assignment_bundle_prepares_from_backend_owned_inputs() {
@@ -2945,6 +2994,7 @@ int main(int argc, char* argv[]) {
   test_backend_shared_slot_assignment_accepts_narrowed_planning_input();
   test_backend_shared_slot_assignment_accepts_backend_owned_input();
   test_backend_shared_slot_assignment_bundle_accepts_backend_owned_input();
+  test_backend_shared_slot_assignment_bundle_accepts_narrowed_planning_input();
   test_backend_shared_slot_assignment_bundle_prepares_from_backend_owned_inputs();
   test_backend_shared_slot_assignment_prepares_rewrite_patch_from_backend_owned_inputs();
   test_backend_shared_slot_assignment_rewrites_module_entry_allocas();

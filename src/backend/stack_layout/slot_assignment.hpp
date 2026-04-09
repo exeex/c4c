@@ -111,6 +111,10 @@ struct EntryAllocaRewriteInputs {
 };
 
 StackLayoutPlanBundle build_stack_layout_plan_bundle(
+    const EntryAllocaPlanningInput& input,
+    const StackLayoutAnalysis& analysis);
+
+StackLayoutPlanBundle build_stack_layout_plan_bundle(
     const StackLayoutInput& input,
     const RegAllocIntegrationResult& regalloc,
     const std::vector<PhysReg>& callee_saved_regs);
@@ -183,6 +187,14 @@ std::vector<EntryAllocaSlotPlan> plan_entry_alloca_slots(
 
 std::vector<ParamAllocaSlotPlan> plan_param_alloca_slots(
     const StackLayoutInput& input,
+    const StackLayoutAnalysis& analysis);
+
+std::vector<ParamAllocaSlotPlan> plan_param_alloca_slots(
+    const EntryAllocaRewriteInput& input,
+    const StackLayoutAnalysis& analysis);
+
+std::vector<ParamAllocaSlotPlan> plan_param_alloca_slots(
+    const EntryAllocaPlanningInput& input,
     const StackLayoutAnalysis& analysis);
 
 }  // namespace c4c::backend::stack_layout

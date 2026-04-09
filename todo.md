@@ -8,18 +8,43 @@ Source Plan: plan.md
 
 - Step 6: move liveness to backend MIR
 - Current slice: continue Step 6 public-surface narrowing by checking whether
-  `build_stack_layout_plan_bundle(...)` and nearby planning callers can accept
-  a dedicated planning-only entry-alloca contract instead of the broader
-  rewrite-owned shape
-- Current implementation target: identify the narrowest next caller-facing seam
-  after `plan_entry_alloca_slots(...)` was split onto
-  `EntryAllocaPlanningInput`, without forcing patch synthesis to give up the
-  literal paired-store payload it still needs to rebuild LIR entry stores
-- Next intended slice: audit whether stack-layout bundle prep and/or
-  param-alloca planning can lower directly onto the new planning contract so
-  Step 6 keeps separating planning surfaces from rewrite surfaces
+  prepared entry-alloca/liveness bundle prep can expose a planning-only seam
+  directly, instead of rebuilding the narrower contract ad hoc at each callsite
+- Current implementation target: identify whether
+  `prepare_module_function_entry_alloca_inputs(...)` or nearby prepared-input
+  lowering should carry an explicit planning payload so Step 6 callers stop
+  re-lowering rewrite metadata before bundle/param planning
+- Next intended slice: thread a dedicated planning payload through prepared
+  entry-alloca inputs if that can remove remaining rewrite-to-planning
+  conversions without widening the patch-synthesis surface again
 
 ## Completed
+
+- Completed the next Step 6 stack-layout planning-surface narrowing slice by
+  letting bundle assembly and param-alloca planning consume the dedicated
+  planning-only entry-alloca contract after backend-owned analysis is already
+  computed:
+  - added `EntryAllocaPlanningInput` overloads for
+    `build_stack_layout_plan_bundle(...)` and `plan_param_alloca_slots(...)` in
+    `src/backend/stack_layout/slot_assignment.hpp` so planning callers can
+    reuse the narrowed alloca/type/alignment plus paired-store classification
+    seam without depending on the broader rewrite-owned payload
+  - updated `src/backend/stack_layout/slot_assignment.cpp` so the production
+    `StackLayoutInput` bundle path now computes analysis from the backend-owned
+    surface and then lowers into the planning-only contract before entry-alloca
+    and param-alloca plan synthesis
+  - kept the rewrite surface explicit by leaving
+    `EntryAllocaRewriteInput` ownership with patch preparation and only
+    deriving planning metadata when slot-planning logic actually needs it
+  - extended `tests/backend/backend_shared_util_tests.cpp` with focused
+    coverage proving narrowed planning input now supports param-alloca
+    planning and bundle assembly while preserving dead-param pruning decisions
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`
+  - refreshed `test_after.log` with the full `ctest --test-dir build -j
+    --output-on-failure` suite and passed the regression guard with the repo’s
+    allowed non-decreasing rule and no new failures (`2809 -> 2809`, same 32
+    known failing tests as `test_fail_before.log`)
 
 - Completed the next Step 6 `EntryAllocaInput` payload narrowing slice by
   splitting slot-planning metadata away from the rewrite-owned literal

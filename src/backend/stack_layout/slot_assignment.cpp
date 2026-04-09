@@ -515,14 +515,24 @@ void rewrite_terminator_alloca_refs(LirTerminator& terminator, const Map& canoni
 }  // namespace
 
 StackLayoutPlanBundle build_stack_layout_plan_bundle(
-    const StackLayoutInput& input,
-    const RegAllocIntegrationResult& regalloc,
-    const std::vector<PhysReg>& callee_saved_regs) {
+    const EntryAllocaPlanningInput& input,
+    const StackLayoutAnalysis& analysis) {
   StackLayoutPlanBundle bundle;
-  bundle.analysis = analyze_stack_layout(input, regalloc, callee_saved_regs);
+  bundle.analysis = analysis;
   bundle.entry_alloca_plans = plan_entry_alloca_slots(input, bundle.analysis);
   bundle.param_alloca_plans = plan_param_alloca_slots(input, bundle.analysis);
   return bundle;
+}
+
+StackLayoutPlanBundle build_stack_layout_plan_bundle(
+    const StackLayoutInput& input,
+    const RegAllocIntegrationResult& regalloc,
+    const std::vector<PhysReg>& callee_saved_regs) {
+  const auto analysis = analyze_stack_layout(input, regalloc, callee_saved_regs);
+  return build_stack_layout_plan_bundle(
+      lower_entry_alloca_rewrite_input_to_planning_input(
+          lower_stack_layout_input_to_entry_alloca_rewrite_input(input)),
+      analysis);
 }
 
 StackLayoutPlanBundle build_stack_layout_plan_bundle(
@@ -886,12 +896,25 @@ void apply_entry_alloca_rewrite_patch(
 std::vector<ParamAllocaSlotPlan> plan_param_alloca_slots(
     const StackLayoutInput& input,
     const StackLayoutAnalysis& analysis) {
+  return plan_param_alloca_slots(
+      lower_stack_layout_input_to_entry_alloca_rewrite_input(input), analysis);
+}
+
+std::vector<ParamAllocaSlotPlan> plan_param_alloca_slots(
+    const EntryAllocaRewriteInput& input,
+    const StackLayoutAnalysis& analysis) {
+  return plan_param_alloca_slots(
+      lower_entry_alloca_rewrite_input_to_planning_input(input), analysis);
+}
+
+std::vector<ParamAllocaSlotPlan> plan_param_alloca_slots(
+    const EntryAllocaPlanningInput& input,
+    const StackLayoutAnalysis& analysis) {
   std::vector<ParamAllocaSlotPlan> plans;
   const auto entry_plans = plan_entry_alloca_slots(input, analysis);
 
   for (const auto& alloca : input.entry_allocas) {
-    if (!is_param_alloca_name(alloca.alloca_name) || !alloca.paired_store_value.has_value() ||
-        !is_param_name(*alloca.paired_store_value)) {
+    if (!is_param_alloca_name(alloca.alloca_name) || !alloca.paired_store.param_name.has_value()) {
       continue;
     }
 
@@ -904,7 +927,7 @@ std::vector<ParamAllocaSlotPlan> plan_param_alloca_slots(
     }
 
     plans.push_back(
-        ParamAllocaSlotPlan{alloca.alloca_name, *alloca.paired_store_value, needs_stack_slot});
+        ParamAllocaSlotPlan{alloca.alloca_name, *alloca.paired_store.param_name, needs_stack_slot});
   }
 
   return plans;
