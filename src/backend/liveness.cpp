@@ -83,6 +83,8 @@ bool is_call_inst(const c4c::codegen::lir::LirInst& inst) {
          std::holds_alternative<c4c::codegen::lir::LirCallOp>(inst);
 }
 
+using BackendCfgPointerAccess = BackendCfgPoint::PointerAccess;
+
 bool is_value_name(std::string_view token) {
   return c4c::codegen::lir::is_lir_value_name(token);
 }
@@ -212,6 +214,94 @@ std::vector<std::string> used_names_for_inst(const LirInst& inst) {
         return values;
       },
       inst);
+}
+
+std::vector<BackendCfgPointerAccess> pointer_accesses_for_inst(const LirInst& inst) {
+  return std::visit(
+      [](const auto& op) -> std::vector<BackendCfgPointerAccess> {
+        using T = std::decay_t<decltype(op)>;
+
+        if constexpr (std::is_same_v<T, c4c::codegen::lir::LirLoadOp>) {
+          return {{op.ptr, BackendCfgPointerAccess::Kind::Read}};
+        } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirStoreOp>) {
+          return {{op.ptr, BackendCfgPointerAccess::Kind::Store}};
+        } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirMemcpyOp>) {
+          return {
+              {op.dst, BackendCfgPointerAccess::Kind::Store},
+              {op.src, BackendCfgPointerAccess::Kind::Read},
+          };
+        } else {
+          return {};
+        }
+      },
+      inst);
+}
+
+std::vector<std::string> escaped_names_for_inst(const LirInst& inst) {
+  return std::visit(
+      [](const auto& op) -> std::vector<std::string> {
+        using T = std::decay_t<decltype(op)>;
+
+        if constexpr (std::is_same_v<T, c4c::codegen::lir::LirCallOp>) {
+          std::vector<std::string> values;
+          c4c::codegen::lir::collect_lir_value_names_from_call(op, values);
+          return values;
+        } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirInlineAsmOp>) {
+          std::vector<std::string> values;
+          if (is_value_name(op.args_str)) {
+            append_unique(values, op.args_str);
+          } else {
+            c4c::codegen::lir::collect_lir_value_names_from_text(op.args_str, values);
+          }
+          return values;
+        } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirPhiOp>) {
+          std::vector<std::string> values;
+          values.reserve(op.incoming.size());
+          for (const auto& [value_name, _] : op.incoming) {
+            if (is_value_name(value_name)) {
+              append_unique(values, value_name);
+            }
+          }
+          return values;
+        } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirVaStartOp> ||
+                             std::is_same_v<T, c4c::codegen::lir::LirVaEndOp> ||
+                             std::is_same_v<T, c4c::codegen::lir::LirVaArgOp>) {
+          return {op.ap_ptr};
+        } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirVaCopyOp>) {
+          return {op.dst_ptr, op.src_ptr};
+        } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirCastOp>) {
+          return {op.operand};
+        } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirBinOp>) {
+          return {op.lhs, op.rhs};
+        } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirCmpOp>) {
+          return {op.lhs, op.rhs};
+        } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirSelectOp>) {
+          return {op.cond, op.true_val, op.false_val};
+        } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirExtractValueOp>) {
+          return {op.agg};
+        } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirInsertValueOp>) {
+          return {op.agg, op.elem};
+        } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirInsertElementOp>) {
+          return {op.vec, op.elem, op.index};
+        } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirExtractElementOp>) {
+          return {op.vec, op.index};
+        } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirShuffleVectorOp>) {
+          return {op.vec1, op.vec2, op.mask};
+        } else if constexpr (std::is_same_v<T, c4c::codegen::lir::LirIndirectBrOp>) {
+          return {op.addr};
+        } else {
+          return {};
+        }
+      },
+      inst);
+}
+
+std::optional<std::pair<std::string, std::string>> derived_pointer_root_for_inst(
+    const LirInst& inst) {
+  if (const auto* gep = std::get_if<c4c::codegen::lir::LirGepOp>(&inst); gep != nullptr) {
+    return std::make_pair(gep->result, gep->ptr);
+  }
+  return std::nullopt;
 }
 
 std::vector<std::string> used_names_for_terminator(const LirTerminator& terminator) {
@@ -446,6 +536,9 @@ BackendCfgFunction lower_bir_to_backend_cfg(const bir::Function& function) {
           used_names_for_bir_inst(inst),
           result_name_for_bir_inst(inst),
           is_call_inst(inst),
+          {},
+          {},
+          std::nullopt,
       });
     }
 
@@ -463,6 +556,9 @@ BackendCfgFunction lower_lir_to_backend_cfg(const c4c::codegen::lir::LirFunction
         used_names_for_inst(inst),
         result_name.empty() ? std::nullopt : std::optional<std::string>(std::move(result_name)),
         is_call_inst(inst),
+        pointer_accesses_for_inst(inst),
+        escaped_names_for_inst(inst),
+        derived_pointer_root_for_inst(inst),
     });
   }
 
@@ -480,6 +576,9 @@ BackendCfgFunction lower_lir_to_backend_cfg(const c4c::codegen::lir::LirFunction
           used_names_for_inst(inst),
           result_name.empty() ? std::nullopt : std::optional<std::string>(std::move(result_name)),
           is_call_inst(inst),
+          pointer_accesses_for_inst(inst),
+          escaped_names_for_inst(inst),
+          derived_pointer_root_for_inst(inst),
       });
 
       if (!std::holds_alternative<c4c::codegen::lir::LirPhiOp>(inst)) {

@@ -1869,6 +1869,56 @@ void test_backend_shared_slot_assignment_prepares_module_function_inputs() {
               "shared entry-alloca rewrite prep should keep the existing production wrapper contract after routing through the prepared carrier");
 }
 
+void test_backend_shared_fallback_entry_alloca_stack_layout_input_preserves_pointer_metadata() {
+  const c4c::backend::RegAllocIntegrationResult regalloc;
+
+  const auto scalar_module = make_overwrite_first_scalar_local_alloca_candidate_module();
+  const auto& scalar_function = scalar_module.functions.front();
+  const auto scalar_input =
+      c4c::backend::stack_layout::lower_function_entry_alloca_stack_layout_input(
+          scalar_function, c4c::backend::lower_lir_to_backend_cfg(scalar_function));
+  const auto scalar_analysis =
+      c4c::backend::stack_layout::analyze_stack_layout(scalar_input, regalloc, {});
+  const auto scalar_plans =
+      c4c::backend::stack_layout::plan_entry_alloca_slots(scalar_input, scalar_analysis);
+
+  expect_true(scalar_plans.size() == 1 &&
+                  scalar_plans.front().alloca_name == "%lv.x" &&
+                  scalar_plans.front().needs_stack_slot &&
+                  scalar_plans.front().remove_following_entry_store,
+              "shared fallback stack-layout prep should preserve direct pointer store metadata through the backend-CFG seam so scalar overwrite-before-read pruning still works");
+
+  const auto aggregate_module = make_live_local_alloca_candidate_module();
+  const auto& aggregate_function = aggregate_module.functions.front();
+  const auto aggregate_input =
+      c4c::backend::stack_layout::lower_function_entry_alloca_stack_layout_input(
+          aggregate_function, c4c::backend::lower_lir_to_backend_cfg(aggregate_function));
+  const auto aggregate_analysis =
+      c4c::backend::stack_layout::analyze_stack_layout(aggregate_input, regalloc, {});
+  const auto aggregate_coalescing =
+      c4c::backend::stack_layout::compute_coalescable_allocas(aggregate_input,
+                                                              aggregate_analysis);
+
+  expect_true(!aggregate_coalescing.is_dead_alloca("%lv.buf") &&
+                  aggregate_coalescing.find_single_block("%lv.buf") == 0,
+              "shared fallback stack-layout prep should preserve derived-pointer metadata through the backend-CFG seam so aggregate single-block reuse classification still works");
+
+  const auto escaped_module = make_escaped_local_alloca_candidate_module();
+  const auto& escaped_function = escaped_module.functions.back();
+  const auto escaped_input =
+      c4c::backend::stack_layout::lower_function_entry_alloca_stack_layout_input(
+          escaped_function, c4c::backend::lower_lir_to_backend_cfg(escaped_function));
+  const auto escaped_analysis =
+      c4c::backend::stack_layout::analyze_stack_layout(escaped_input, regalloc, {});
+  const auto escaped_coalescing =
+      c4c::backend::stack_layout::compute_coalescable_allocas(escaped_input,
+                                                              escaped_analysis);
+
+  expect_true(!escaped_coalescing.is_dead_alloca("%lv.buf") &&
+                  !escaped_coalescing.find_single_block("%lv.buf").has_value(),
+              "shared fallback stack-layout prep should preserve escape metadata through the backend-CFG seam so escaped allocas stay out of the reusable single-block pool");
+}
+
 void test_backend_shared_prepares_lir_module_for_target() {
   const auto module = make_dead_param_alloca_candidate_module();
   const auto x86_prepared = c4c::backend::prepare_lir_module_for_target(
@@ -2340,6 +2390,7 @@ int main(int argc, char* argv[]) {
   test_backend_shared_slot_assignment_prepares_rewrite_patch_from_backend_owned_inputs();
   test_backend_shared_slot_assignment_rewrites_module_entry_allocas();
   test_backend_shared_slot_assignment_prepares_module_function_inputs();
+  test_backend_shared_fallback_entry_alloca_stack_layout_input_preserves_pointer_metadata();
   test_backend_shared_prepares_lir_module_for_target();
   test_backend_shared_target_preparation_enables_bir_lowering();
   test_backend_shared_slot_assignment_prunes_dead_entry_alloca_insts();

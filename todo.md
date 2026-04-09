@@ -10,16 +10,39 @@ Source Plan: plan.md
 - Current slice: audit the remaining raw-LIR-only metadata in the prepared
   entry-alloca rewrite carrier after moving fallback block/phi usage onto the
   backend-CFG-backed stack-layout seam
-- Current implementation target: identify whether dead/live entry-alloca
-  classification can lower any additional pointer-access or escape metadata
-  from backend-owned forms instead of the compatibility LIR stack-layout
-  lowering path
-- Next intended slice: prototype a narrower prepared fallback path for
-  entry-alloca classification that keeps only entry-alloca declarations on the
-  raw-LIR side while auditing whether dead/local aggregate cases still need
-  full LIR-derived pointer-access metadata
+- Current implementation target: audit the remaining raw-LIR-only fallback
+  metadata after threading direct pointer-access, derived-pointer-root, and
+  escape facts through the backend-CFG carrier that feeds entry-alloca
+  classification
+- Next intended slice: determine whether the prepared fallback carrier can now
+  narrow further by separating the still-raw-LIR-only signature/call-result
+  metadata from the backend-CFG-owned entry-alloca classification path without
+  regressing the current rewrite planning contracts
 
 ## Completed
+
+- Completed the next Step 6 bounded backend-CFG metadata follow-through slice
+  by teaching the prepared fallback carrier to preserve entry-alloca
+  pointer/escape classification facts through the backend-owned seam:
+  - extended `BackendCfgPoint` in `src/backend/liveness.*` with
+    pointer-access, escaped-name, and derived-pointer-root metadata and taught
+    `lower_lir_to_backend_cfg(...)` to populate those facts from raw LIR while
+    leaving the BIR-owned lowering route unchanged
+  - updated `src/backend/stack_layout/analysis.cpp` so
+    `lower_function_entry_alloca_stack_layout_input(...)` now rebuilds
+    `StackLayoutPoint` pointer-access, escape, and GEP-root metadata from the
+    prepared backend CFG instead of dropping those facts on the fallback path
+  - extended `tests/backend/backend_shared_util_tests.cpp` with focused
+    coverage proving the backend-CFG-backed fallback path now preserves scalar
+    overwrite-before-read pruning, aggregate single-block coalescing, and
+    escaped-alloca exclusion without falling back to whole-function raw-LIR
+    stack-layout lowering
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`,
+    rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with the repo’s allowed non-decreasing rule and no new
+    failures (`2809 -> 2809`, same 32 known failing tests as
+    `test_fail_before.log`)
 
 - Completed the next Step 6 bounded backend-owned stack-layout preparation
   slice by moving prepared fallback block/phi ownership off the raw-LIR

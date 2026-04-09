@@ -7,6 +7,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace c4c::backend {
@@ -15,6 +16,16 @@ struct BackendCfgPoint {
   std::vector<std::string> used_names;
   std::optional<std::string> result_name;
   bool is_call = false;
+  struct PointerAccess {
+    std::string value_name;
+    enum class Kind {
+      Read,
+      Store,
+    } kind = Kind::Read;
+  };
+  std::vector<PointerAccess> pointer_accesses;
+  std::vector<std::string> escaped_names;
+  std::optional<std::pair<std::string, std::string>> derived_pointer_root;
 };
 
 struct BackendCfgBlock {

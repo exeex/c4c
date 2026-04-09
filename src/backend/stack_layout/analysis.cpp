@@ -442,6 +442,17 @@ void lower_backend_cfg_to_stack_layout_input(
     for (const auto& inst : block.insts) {
       StackLayoutPoint point;
       point.used_names = inst.used_names;
+      point.escaped_names = inst.escaped_names;
+      point.derived_pointer_root = inst.derived_pointer_root;
+      point.pointer_accesses.reserve(inst.pointer_accesses.size());
+      for (const auto& access : inst.pointer_accesses) {
+        point.pointer_accesses.push_back(PointerAccess{
+            access.value_name,
+            access.kind == c4c::backend::BackendCfgPoint::PointerAccess::Kind::Store
+                ? PointerAccessKind::Store
+                : PointerAccessKind::Read,
+        });
+      }
       lowered_block.insts.push_back(std::move(point));
     }
 
