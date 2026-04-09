@@ -7,15 +7,14 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 1: audit reference-qualified cast targets
-- Current slice: move from the now-covered `((T&&)expr).field` case to the
-  first inherited/base-member-access reduction that still lacks explicit
-  coverage
+- Current slice: move from the now-covered casted base lvalue-member access
+  case to the first xvalue-sensitive inherited/base-member-access reduction
 - Current implementation target: `tests/cpp` cast/reference runtime regressions
-  plus the earliest failing parser, sema, HIR, or lowering surface the first
+  plus the earliest failing parser, sema, HIR, or lowering surface the next
   casted inherited/base-member-access case exposes
-- Next intended slice: add the narrowest inherited/base member-access
-  reduction, compare against Clang when value category matters, and stop at the
-  earliest failing stage if it does not already pass
+- Next intended slice: add the narrowest `((Base&&)expr).member` reduction,
+  compare against Clang for xvalue behavior, and stop at the earliest failing
+  stage if it does not already pass
 
 ## Completed
 
@@ -62,6 +61,18 @@ Source Plan: plan.md
   reuses existing member storage instead of materializing a temporary.
 - Full-suite validation stayed monotonic: `test_fail_before.log` 2845/2845
   passed, `test_fail_after.log` 2846/2846 passed, with zero new failures.
+- Added `tests/cpp/internal/postive_case/c_style_cast_base_lvalue_ref_field_access.cpp`
+  to cover read/write through `((Base&)derived).value` without depending on
+  broader inherited-layout initialization.
+- Compared the scoped casted-base field-access case against Clang and confirmed
+  that the read/write behavior for `((Base&)derived).value` matches the
+  intended baseline, so no cast-specific compiler change was needed for this
+  slice.
+- Recorded the broader inherited-record layout and plain base-member lookup gap
+  in `ideas/open/48_inherited_record_layout_and_base_member_access_followup.md`
+  instead of expanding the active cast-follow-up plan.
+- Full-suite validation stayed monotonic: `test_fail_before.log` 2845/2845
+  passed, `test_fail_after.log` 2847/2847 passed, with zero new failures.
 
 ## Notes
 
@@ -81,3 +92,8 @@ Source Plan: plan.md
   it as non-assignable, so the landed regression checks xvalue-sensitive
   behavior through overload selection plus `int&&` binding instead of treating
   `((Box&&)b).value = ...` as the reference baseline.
+- The first draft of the casted-base-member regression also checked
+  `Derived d{{1}};` and `d.value`, which exposed a broader inherited-layout and
+  plain base-member lookup problem. That issue was spun out into
+  `ideas/open/48_inherited_record_layout_and_base_member_access_followup.md`
+  so the current plan stays focused on cast-specific behavior.
