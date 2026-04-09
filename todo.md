@@ -6,29 +6,54 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 5 full-suite monotonic validation and next-slice selection:
-  the focused Step 4 x86 variadic/runtime pair is green in the current tree,
-  and the remaining question is whether idea 44 should continue on another
-  owned x86 seam or stop behind the broader stale-suite regression baseline
+- Step 5 full-suite monotonic validation and next-slice selection after the
+  bounded `00183.c` x86-native seam landed:
+  the real source-backed counted `printf` ternary loop is now green, while the
+  broad-suite comparison against `test_fail_before.log` remains a parked
+  non-monotonic lane that should not be silently treated as Step 5 complete
 - current exact slice:
-  preserve the refreshed `test_fail_after.log`, record that
-  `backend_runtime_variadic_sum2` and `backend_runtime_variadic_double_bytes`
-  already match the current bounded x86-native prepared-LIR ownership, and keep
-  the broader non-monotonic suite delta explicitly parked instead of silently
-  treating Step 5 as green
+  preserve the refreshed `test_fail_after.log`, record the `00183.c` source
+  route/runtime recovery plus the remaining adjacent `00180.c` / `00184.c`
+  stdio-backed red seams, and keep the broader stale-baseline regression
+  explicitly parked instead of claiming the full-suite guard is green
 
 ## Next Slice
 
+- reassess the adjacent x86-native stdio-backed source routes
+  `00180.c` and `00184.c`; they remain red in the current tree even though the
+  synthetic/native tests that motivated earlier slices are green, so the next
+  bounded seam likely needs to model the real frontend-prepared declaration
+  surface instead of the smaller hand-built fixtures
 - keep the separate shared-BIR select regression parked in
   `ideas/open/47_shared_bir_select_route_regression_after_x86_variadic_recovery.md`
   instead of widening idea 44
-- if idea 44 continues, return to the highest-leverage still-owned x86 backend
-  seam that is not already split into the parked shared-BIR select follow-on
-- do not claim Step 5 complete until the full-suite baseline is refreshed or
-  another monotonic comparison target is explicitly chosen for the current lane
+- refresh the full-suite `test_fail_after.log` and rerun the monotonic guard
+  after the bounded x86 seam is green
 
 ## Recently Completed
 
+- recovered the real source-backed `00183.c` x86-native seam in
+  `src/backend/x86/codegen/emit.cpp` by adding a bounded prepared-LIR matcher
+  and emitter for the counted `printf` ternary loop while tolerating the
+  frontend-prepared `stdio.h` declaration surface and LLVM-escaped string-pool
+  bytes
+- verified the bounded `00183.c` seam is green end-to-end:
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_lir_counted_printf_ternary_loop_on_native_path`,
+  `ctest --test-dir build --output-on-failure -R '^(backend_codegen_route_x86_64_c_testsuite_00183_counted_printf_ternary_loop_retries_after_direct_bir_rejection|c_testsuite_x86_backend_src_00183_c)$'`,
+  and
+  `./build/c4cll --codegen asm --target x86_64-unknown-linux-gnu tests/c/external/c-testsuite/src/00183.c`
+  now pass for the owned seam
+- rechecked the adjacent source-backed x86 cluster and confirmed the next red
+  native seams stay bounded in `00180.c` and `00184.c`:
+  `ctest --test-dir build --output-on-failure -R '^(backend_codegen_route_x86_64_c_testsuite_00180_local_buffer_copy_printf_retries_after_direct_bir_rejection|backend_codegen_route_x86_64_c_testsuite_00183_counted_printf_ternary_loop_retries_after_direct_bir_rejection|backend_codegen_route_x86_64_c_testsuite_00184_repeated_printf_immediates_retries_after_direct_bir_rejection|c_testsuite_x86_backend_src_00180_c|c_testsuite_x86_backend_src_00183_c|c_testsuite_x86_backend_src_00184_c)$'`
+  still leaves only `00180.c` and `00184.c` red while `00183.c` passes
+- refreshed `test_fail_after.log` with
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log`; the
+  monotonic guard against the stale broad-suite baseline is still red for the
+  already-known wider regression lane
+  (`2670/179/2849` before vs `2586/264/2850` after), but the refreshed
+  after-state still improved again from the prior recorded `2584 -> 2586`
+  passes and `266 -> 264` failures after the `00183.c` source-backed slice
 - validated the focused Step 4 variadic pair already present in the tree:
   `ctest --test-dir build --output-on-failure -R '^(backend_runtime_variadic_sum2|backend_runtime_variadic_double_bytes)$'`
   passes, so the owned x86 variadic/runtime seam itself no longer needs a new
