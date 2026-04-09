@@ -7,17 +7,31 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 5: pull phi and CFG normalization behind the BIR boundary
-- Current slice: audit and prune the remaining AArch64 predecessor-copy
-  fallback in `src/backend/aarch64/codegen/emit.cpp` now that both targets have
-  direct-emitter route coverage for the lowerable conditional-phi and `u8`
-  post-join-add LIR shapes
-- Next intended slice: decide whether the AArch64 general LIR emitter should
-  gain an explicit reject-only guard for BIR-lowerable phi/join shapes or
-  whether a smaller predecessor-copy production prune is safe without widening
-  the direct-LIR fallback surface
+- Current slice: refresh full-suite validation after pruning the remaining
+  AArch64 direct-LIR phi/predecessor-copy fallback from
+  `src/backend/aarch64/codegen/emit.cpp`
+- Next intended slice: audit the remaining Step 5 CFG-normalization seams
+  outside target-local phi fallback, starting with any residual
+  BIR-lowering-versus-direct-emitter ownership split in
+  `src/backend/lowering/lir_to_backend_ir.cpp` and target entrypoints
 
 ## Completed
 
+- Audited the remaining Step 5 AArch64 target-local phi seam and chose the
+  direct production prune:
+  - rejected `LirPhiOp` in
+    `src/backend/aarch64/codegen/emit.cpp`'s general direct-LIR emitter so
+    modules that miss `try_lower_to_bir(...)` can no longer revive
+    predecessor-copy phi lowering past the shared BIR boundary
+  - deleted the now-dead AArch64 predecessor-copy collection/emission scaffold
+    from the general direct-LIR emitter
+  - added a focused regression in
+    `tests/backend/backend_bir_pipeline_aarch64_tests.cpp` that constructs an
+    alloca-backed conditional-phi join which bypasses `try_lower_to_bir(...)`
+    and now must fail the AArch64 direct emitter instead of silently lowering
+    through the old target-local phi-copy path
+  - re-ran `backend_bir_tests` for the AArch64 prune slice before the full-suite
+    regression pass
 - Audited the remaining Step 5 target-local phi seams and chose the smaller
   production prune for x86:
   - removed `LirPhiOp` interpretation from

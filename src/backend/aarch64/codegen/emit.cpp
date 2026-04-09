@@ -5137,6 +5137,12 @@ static std::optional<std::string> try_emit_general_lir_asm(
         if (std::holds_alternative<LirInsertElementOp>(inst)) return std::nullopt;
         if (std::holds_alternative<LirExtractElementOp>(inst)) return std::nullopt;
         if (std::holds_alternative<LirShuffleVectorOp>(inst)) return std::nullopt;
+        if (std::holds_alternative<LirPhiOp>(inst)) {
+          // Canonical phi/join ownership now lives behind the shared BIR path.
+          // Once a module misses that route, the general direct-LIR emitter must
+          // not revive target-local predecessor-copy lowering.
+          return std::nullopt;
+        }
         if (const auto* call = std::get_if<LirCallOp>(&inst)) {
           if (call->callee == "@llvm.ptrmask.p0.i64") {
             return std::nullopt;
@@ -5365,31 +5371,6 @@ static std::optional<std::string> try_emit_general_lir_asm(
       }
       for (int i = 0; i < 8; ++i) {
         out << "  str q" << i << ", [sp, #" << (sm.va_fp_save_offset + i * 16) << "]\n";
-      }
-    }
-
-    // Pre-pass: collect phi node info for predecessor copies
-    // For each phi: at end of each predecessor (before terminator), copy incoming value to phi result slot
-    struct PhiCopy {
-      std::string pred_label;  // predecessor block label
-      std::string value;       // incoming value (SSA name or literal)
-      std::string type;        // phi type
-      std::string result;      // phi result SSA name
-    };
-    std::unordered_map<std::string, std::vector<PhiCopy>> phi_copies;  // block_label → copies to emit before terminator
-
-    for (const auto& blk : fn.blocks) {
-      for (const auto& inst : blk.insts) {
-        if (const auto* phi = std::get_if<LirPhiOp>(&inst)) {
-          for (const auto& [val, label] : phi->incoming) {
-            PhiCopy pc;
-            pc.pred_label = label;
-            pc.value = val;
-            pc.type = phi->type_str.str();
-            pc.result = phi->result.str();
-            phi_copies[label].push_back(pc);
-          }
-        }
       }
     }
 
@@ -6497,15 +6478,6 @@ static std::optional<std::string> try_emit_general_lir_asm(
         else {
           // Unknown instruction type — bail out
           return std::nullopt;
-        }
-      }
-
-      // Emit phi copies for this block (before terminator)
-      auto phi_it = phi_copies.find(blk.label);
-      if (phi_it != phi_copies.end()) {
-        for (const auto& pc : phi_it->second) {
-          gen_load_operand(out, pc.value, pc.type, sm, 0, fn.name, &extern_globals);
-          gen_store_result(out, pc.result, pc.type, sm, 0);
         }
       }
 
