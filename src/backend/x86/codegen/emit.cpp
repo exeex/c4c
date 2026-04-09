@@ -172,6 +172,11 @@ struct AffineValue {
   std::int64_t constant = 0;
 };
 
+const c4c::backend::bir::BinaryInst* get_binary_inst(
+    const c4c::backend::bir::Inst& inst) {
+  return std::get_if<c4c::backend::bir::BinaryInst>(&inst);
+}
+
 bool is_minimal_single_function_asm_slice(const c4c::backend::bir::Module& module) {
   if (module.functions.size() != 1 || !module.globals.empty()) {
     return false;
@@ -239,6 +244,80 @@ std::optional<std::int64_t> parse_minimal_return_imm(
     return std::nullopt;
   }
   return parse_i64(*block.terminator.value);
+}
+
+std::optional<std::int64_t> parse_minimal_constant_return_imm(
+    const c4c::backend::bir::Module& module) {
+  if (!is_minimal_single_function_asm_slice(module)) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (!function.params.empty()) {
+    return std::nullopt;
+  }
+
+  std::unordered_map<std::string, std::int64_t> values;
+  auto resolve_value = [&](const c4c::backend::bir::Value& value)
+      -> std::optional<std::int64_t> {
+    if (const auto imm = parse_i64(value); imm.has_value()) {
+      return imm;
+    }
+    if (value.kind != c4c::backend::bir::Value::Kind::Named || value.name.empty() ||
+        value.type != c4c::backend::bir::TypeKind::I32) {
+      return std::nullopt;
+    }
+    const auto it = values.find(value.name);
+    if (it == values.end()) {
+      return std::nullopt;
+    }
+    return it->second;
+  };
+
+  const auto& block = function.blocks.front();
+  for (const auto& inst : block.insts) {
+    const auto* bin = get_binary_inst(inst);
+    if (bin == nullptr || bin->result.kind != c4c::backend::bir::Value::Kind::Named ||
+        bin->result.name.empty() || bin->result.type != c4c::backend::bir::TypeKind::I32) {
+      return std::nullopt;
+    }
+
+    const auto lhs = resolve_value(bin->lhs);
+    const auto rhs = resolve_value(bin->rhs);
+    if (!lhs.has_value() || !rhs.has_value()) {
+      return std::nullopt;
+    }
+
+    std::optional<std::int64_t> result;
+    switch (bin->opcode) {
+      case c4c::backend::bir::BinaryOpcode::Add:
+        result = *lhs + *rhs;
+        break;
+      case c4c::backend::bir::BinaryOpcode::Sub:
+        result = *lhs - *rhs;
+        break;
+      case c4c::backend::bir::BinaryOpcode::Mul:
+        result = *lhs * *rhs;
+        break;
+      case c4c::backend::bir::BinaryOpcode::SDiv:
+        if (*rhs == 0) return std::nullopt;
+        result = *lhs / *rhs;
+        break;
+      case c4c::backend::bir::BinaryOpcode::SRem:
+        if (*rhs == 0) return std::nullopt;
+        result = *lhs % *rhs;
+        break;
+      default:
+        return std::nullopt;
+    }
+
+    values[bin->result.name] = *result;
+  }
+
+  if (!block.terminator.value.has_value()) {
+    return std::nullopt;
+  }
+  return resolve_value(*block.terminator.value);
 }
 
 std::optional<MinimalAffineReturnSlice> parse_minimal_affine_return_slice(
@@ -2751,6 +2830,9 @@ std::string emit_minimal_variadic_double_bytes_asm(
 
 std::optional<std::string> try_emit_module(const c4c::backend::bir::Module& module) {
   if (const auto imm = parse_minimal_return_imm(module); imm.has_value()) {
+    return emit_minimal_return_imm_asm(module, *imm);
+  }
+  if (const auto imm = parse_minimal_constant_return_imm(module); imm.has_value()) {
     return emit_minimal_return_imm_asm(module, *imm);
   }
   if (const auto slice = parse_minimal_affine_return_slice(module); slice.has_value()) {

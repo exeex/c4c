@@ -106,6 +106,59 @@ c4c::codegen::lir::LirModule make_x86_local_temp_lir_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_x86_constant_add_mul_sub_return_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.type_decls.push_back("%struct.__va_list_tag_ = type { i32, i32, ptr, ptr }");
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirBinOp{"%t0", "add", "i32", "2", "2"});
+  entry.insts.push_back(LirBinOp{"%t1", "mul", "i32", "%t0", "2"});
+  entry.insts.push_back(LirBinOp{"%t2", "sub", "i32", "%t1", "8"});
+  entry.terminator = LirRet{std::string("%t2"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_x86_constant_div_sub_return_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.type_decls.push_back("%struct.__va_list_tag_ = type { i32, i32, ptr, ptr }");
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirBinOp{"%t0", "sdiv", "i32", "6", "2"});
+  entry.insts.push_back(LirBinOp{"%t1", "sub", "i32", "%t0", "3"});
+  entry.terminator = LirRet{std::string("%t1"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_x86_param_slot_add_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -3811,6 +3864,32 @@ void test_x86_direct_emitter_lowers_minimal_local_temp_slice() {
                       "x86 direct emitter should stay on native asm emission for the bounded local-temp direct-LIR slice");
 }
 
+void test_x86_direct_emitter_lowers_constant_add_mul_sub_return_slice() {
+  auto module = make_x86_constant_add_mul_sub_return_lir_module();
+
+  expect_true(c4c::backend::try_lower_to_bir(module).has_value(),
+              "constant add/mul/sub return input should continue to route through shared BIR so this regression pins the x86 BIR-owned emission seam");
+
+  const auto rendered = c4c::backend::x86::emit_module(module);
+  expect_contains(rendered, "main:\n  mov eax, 0\n  ret\n",
+                  "x86 direct emitter should constant-fold the bounded add/mul/sub return chain once the shared-BIR route reaches native x86 emission");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 direct emitter should stay on native asm emission for the bounded add/mul/sub return slice");
+}
+
+void test_x86_direct_emitter_lowers_constant_div_sub_return_slice() {
+  auto module = make_x86_constant_div_sub_return_lir_module();
+
+  expect_true(c4c::backend::try_lower_to_bir(module).has_value(),
+              "constant sdiv/sub return input should continue to route through shared BIR so this regression pins the x86 BIR-owned emission seam");
+
+  const auto rendered = c4c::backend::x86::emit_module(module);
+  expect_contains(rendered, "main:\n  mov eax, 0\n  ret\n",
+                  "x86 direct emitter should constant-fold the bounded sdiv/sub return chain once the shared-BIR route reaches native x86 emission");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 direct emitter should stay on native asm emission for the bounded sdiv/sub return slice");
+}
+
 void test_x86_direct_emitter_lowers_minimal_param_slot_add_slice() {
   auto module = make_x86_param_slot_add_lir_module();
 
@@ -4137,6 +4216,8 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_x86_direct_lir_emitter_rejects_alloca_backed_conditional_phi_constant_fold_stub);
   RUN_TEST(test_x86_direct_emitter_routes_goto_only_constant_return_through_shared_bir);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_local_temp_slice);
+  RUN_TEST(test_x86_direct_emitter_lowers_constant_add_mul_sub_return_slice);
+  RUN_TEST(test_x86_direct_emitter_lowers_constant_div_sub_return_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_param_slot_add_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_extern_zero_arg_call_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_local_arg_call_slice);

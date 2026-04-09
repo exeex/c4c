@@ -13,16 +13,20 @@ Source Plan: plan.md
   remains a parked non-monotonic lane that should not be silently treated as
   Step 5 complete
 - current exact slice:
-  refresh `test_fail_after.log` after the bounded `00180.c` / `00184.c`
-  source-route recovery, rerun the monotonic guard against
-  `test_fail_before.log`, and keep the broader stale-baseline regression
-  explicitly parked unless the full-suite comparison is actually green
+  classify and recover the next bounded x86-native/source-backed branch seam
+  from the refreshed after-log by targeting the constant `if` branch family
+  that currently fails at the same unsupported direct-LIR boundary in
+  `backend_runtime_branch_if_eq/ne/lt/ge/ult/uge` and the adjacent early
+  c-testsuite x86 sources
 
 ## Next Slice
 
-- if the refreshed broad-suite guard is still red, classify the highest-value
-  remaining x86-native source-backed seam from the updated after-log instead of
-  widening idea 44 ad hoc
+- add the narrowest x86 regression for the constant `if` branch family before
+  changing ownership, then verify the focused runtime tests plus adjacent
+  source-backed x86 route cases
+- if the refreshed broad-suite guard is still red after the branch-family
+  recovery, classify the next highest-value remaining x86-native source-backed
+  seam from the updated after-log instead of widening idea 44 ad hoc
 - keep the separate shared-BIR select regression parked in
   `ideas/open/47_shared_bir_select_route_regression_after_x86_variadic_recovery.md`
   instead of widening idea 44
@@ -31,6 +35,38 @@ Source Plan: plan.md
 
 ## Recently Completed
 
+- recovered the bounded x86 BIR-owned constant-expression return seam for the
+  real source-backed `00012.c` and `00064.c` routes by teaching
+  `src/backend/x86/codegen/emit.cpp` to fold single-block zero-arg constant
+  `i32` return chains (`add`/`sub`/`mul`/`sdiv`/`srem`) after shared-BIR
+  lowering instead of stopping at the unsupported x86 boundary
+- covered that seam in `tests/backend/backend_bir_pipeline_x86_64_tests.cpp`
+  with focused x86 regressions for the two representative constant-return
+  chains (`add`/`mul`/`sub` and `sdiv`/`sub`) so the native emitter path stays
+  pinned at `mov eax, 0; ret`
+- verified the bounded `00012.c` / `00064.c` seam end-to-end:
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_constant_add_mul_sub_return_slice`,
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_constant_div_sub_return_slice`,
+  `ctest --test-dir build --output-on-failure -R '^(backend_codegen_route_x86_64_c_testsuite_00012_retries_after_direct_bir_rejection|backend_codegen_route_x86_64_c_testsuite_00064_retries_after_direct_bir_rejection|c_testsuite_x86_backend_src_00012_c|c_testsuite_x86_backend_src_00064_c)$'`,
+  and
+  `./build/c4cll --codegen asm --target x86_64-unknown-linux-gnu tests/c/external/c-testsuite/src/00012.c`
+  / `00064.c`
+  now pass for the owned seam
+- refreshed `test_fail_after.log` with
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log` and
+  re-ran the monotonic guard:
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  which still fails against the stale broad-suite baseline
+  (`2670/179/2849` before vs `2596/254/2850` after), but the refreshed
+  after-state improved again from the prior recorded `2590 -> 2596` passes and
+  `260 -> 254` failures after the `00012.c` / `00064.c` constant-chain slice
+- classified the next bounded seam from the refreshed after-log:
+  the constant `if` branch family remains red in
+  `backend_runtime_branch_if_eq`, `backend_runtime_branch_if_ne`,
+  `backend_runtime_branch_if_lt`, `backend_runtime_branch_if_ge`,
+  `backend_runtime_branch_if_ult`, and `backend_runtime_branch_if_uge`, each
+  failing at the same unsupported x86 direct-LIR boundary and matching the
+  adjacent early source-backed x86 cluster
 - recovered the adjacent real source-backed `00180.c` and `00184.c` x86-native
   seams in `src/backend/x86/codegen/emit.cpp` by adding bounded prepared-LIR
   matchers/emitters for the local-buffer `strcpy` + pointer-offset `printf`
