@@ -21,6 +21,10 @@ void record_call_lowering_scaffold_notes(const c4c::codegen::lir::LirModule& mod
                                          std::vector<BirLoweringNote>* notes = nullptr);
 void record_aggregate_lowering_scaffold_notes(const c4c::codegen::lir::LirModule& module,
                                               std::vector<BirLoweringNote>* notes = nullptr);
+std::optional<bir::Module> try_lower_minimal_direct_call_module(
+    const c4c::codegen::lir::LirModule& module);
+std::optional<bir::Module> try_lower_minimal_void_direct_call_imm_return_module(
+    const c4c::codegen::lir::LirModule& module);
 std::optional<std::vector<bir::Param>> lower_call_params_from_type_texts(
     const std::vector<std::string_view>& param_types);
 std::optional<std::vector<bir::Param>> lower_function_params(
@@ -28,6 +32,18 @@ std::optional<std::vector<bir::Param>> lower_function_params(
 bir::CallingConv default_calling_convention_for_target(std::string_view target_triple);
 bool function_signature_is_variadic(std::string_view signature_text);
 std::optional<bir::Module> try_lower_minimal_declared_direct_call_module(
+    const c4c::codegen::lir::LirModule& module);
+std::optional<bir::Module> try_lower_minimal_two_arg_direct_call_module(
+    const c4c::codegen::lir::LirModule& module);
+std::optional<bir::Module> try_lower_minimal_direct_call_add_imm_module(
+    const c4c::codegen::lir::LirModule& module);
+std::optional<bir::Module> try_lower_minimal_direct_call_identity_arg_module(
+    const c4c::codegen::lir::LirModule& module);
+std::optional<bir::Module> try_lower_minimal_folded_two_arg_direct_call_module(
+    const c4c::codegen::lir::LirModule& module);
+std::optional<bir::Module> try_lower_minimal_dual_identity_direct_call_sub_module(
+    const c4c::codegen::lir::LirModule& module);
+std::optional<bir::Module> try_lower_minimal_call_crossing_direct_call_module(
     const c4c::codegen::lir::LirModule& module);
 bir::CallInst make_direct_call_inst(std::string callee,
                                     bir::CallingConv calling_convention,
