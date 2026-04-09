@@ -7,13 +7,14 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 2: review typedef, alias, and qualified cast targets
-- Current slice: probe dependent `::template` alias-owned cast targets after
-  landing the nested dependent alias-owned reference-cast fix
-- Current implementation target: cover a dependent cast target that requires
-  `typename X::template Y<...>::AliasL` / `AliasR` spelling and classify the
+- Current slice: widen from the green dependent `::template` member-alias case
+  to broader dependent template-id alias-owned cast targets
+- Current implementation target: find the next smallest dependent cast target
+  whose alias owner is itself a dependent template-id, then classify the
   earliest failing stage if it diverges
-- Next intended slice: widen to dependent template-id alias-owned cast targets
-  only if the `::template` alias case is already green
+- Next intended slice: continue Step 2 only if the next dependent template-id
+  alias-owned reduction is not already covered by the current parser/runtime
+  surface
 
 ## Completed
 
@@ -150,6 +151,19 @@ Source Plan: plan.md
   the cast expressions.
 - Full-suite validation stayed monotonic: `test_fail_before.log` 2853/2853
   passed, `test_fail_after.log` 2854/2854 passed, with zero new failures.
+- Added
+  `tests/cpp/internal/postive_case/c_style_cast_dependent_template_member_ref_alias_basic.cpp`
+  to cover dependent
+  `(typename Holder<T>::template Rebind<T>::AliasL)x` /
+  `(typename Holder<T>::template Rebind<T>::AliasR)x` cast targets,
+  assignment through the aliased references, and overload selection on the
+  cast expressions themselves.
+- Compared the dependent `::template` member-alias reference-cast slice against
+  Clang-backed expectations and confirmed that parser, HIR, runtime behavior,
+  and overload selection already match for this reduction, so no compiler
+  change was needed for the slice.
+- Full-suite validation stayed monotonic: `test_fail_before.log` 2854/2854
+  passed, `test_fail_after.log` 2855/2855 passed, with zero new failures.
 
 ## Notes
 
@@ -189,3 +203,8 @@ Source Plan: plan.md
   nested owner chains such as `Holder<T>::Inner::AliasL`, and HIR’s fallback
   member-typedef substitution path dropped outer `&` / `&&` qualifiers when it
   substituted the inner alias’s `T` binding.
+- The dependent `::template` member-alias reduction did not expose a new
+  parser, sema, HIR, or lowering mismatch: the focused runtime regression and
+  full-suite check both stayed green for
+  `typename Holder<T>::template Rebind<T>::AliasL` /
+  `AliasR`.
