@@ -128,33 +128,16 @@ bool lir_type_matches_integer_width(const c4c::codegen::lir::LirTypeRef& type,
 }
 
 bool lir_type_is_pointer_like(const c4c::codegen::lir::LirTypeRef& type) {
-  if (type.kind() == c4c::codegen::lir::LirTypeKind::Pointer) {
-    return true;
-  }
-
-  const auto trimmed = c4c::codegen::lir::trim_lir_arg_text(type.str());
-  return trimmed == "ptr" || (!trimmed.empty() && trimmed.back() == '*');
+  return lir_to_bir::legalize_lir_type_is_pointer_like(type);
 }
 
 std::optional<bir::TypeKind> lower_global_type(
     const c4c::codegen::lir::LirGlobal& global) {
-  if (const auto lowered_type = lower_minimal_scalar_type(global.type);
-      lowered_type.has_value()) {
-    return lowered_type;
-  }
-  return lower_scalar_type_text(global.llvm_type);
+  return lir_to_bir::legalize_global_type(global);
 }
 
 std::optional<bir::TypeKind> lower_minimal_call_arg_type_text(std::string_view text) {
-  if (const auto scalar = lower_scalar_type_text(text); scalar.has_value()) {
-    return scalar;
-  }
-
-  const auto trimmed = c4c::codegen::lir::trim_lir_arg_text(text);
-  if (trimmed == "ptr" || (!trimmed.empty() && trimmed.back() == '*')) {
-    return bir::TypeKind::I64;
-  }
-  return std::nullopt;
+  return lir_to_bir::legalize_call_arg_type(text);
 }
 
 unsigned scalar_type_bit_width(bir::TypeKind type) {
@@ -192,41 +175,22 @@ bool lir_function_matches_minimal_no_param_integer_return(
 
 std::optional<bir::TypeKind> lower_declared_function_return_type(
     const c4c::codegen::lir::LirFunction& function) {
-  if (const auto lowered_type = lower_minimal_scalar_type(function.return_type);
-      lowered_type.has_value()) {
-    return lowered_type;
-  }
-  return lower_function_signature_return_type(function.signature_text);
+  return lir_to_bir::legalize_function_decl_return_type(function);
 }
 
 std::optional<bir::TypeKind> lower_extern_decl_return_type(
     const c4c::codegen::lir::LirExternDecl& decl) {
-  if (const auto lowered_type = lower_scalar_type(decl.return_type);
-      lowered_type.has_value()) {
-    return lowered_type;
-  }
-  return lower_scalar_type_text(c4c::codegen::lir::trim_lir_arg_text(decl.return_type_str));
+  return lir_to_bir::legalize_extern_decl_return_type(decl);
 }
 
 std::optional<bir::TypeKind> lower_function_return_type(
     const c4c::codegen::lir::LirFunction& function,
     const c4c::codegen::lir::LirRet& ret) {
-  if (const auto lowered_type = lower_minimal_scalar_type(function.return_type);
-      lowered_type.has_value()) {
-    return lowered_type;
-  }
-  if (const auto lowered_type = lower_function_signature_return_type(function.signature_text);
-      lowered_type.has_value()) {
-    return lowered_type;
-  }
-  if (const auto lowered_type = lower_scalar_type(ret.type_str); lowered_type.has_value()) {
-    return lowered_type;
-  }
-  return std::nullopt;
+  return lir_to_bir::legalize_function_return_type(function, ret);
 }
 
 bool lir_type_is_i32(const c4c::codegen::lir::LirTypeRef& type) {
-  return lir_type_matches_integer_width(type, 32);
+  return lir_to_bir::legalize_lir_type_is_i32(type);
 }
 
 std::optional<std::int64_t> parse_immediate(std::string_view text) {
@@ -241,43 +205,12 @@ std::optional<std::int64_t> parse_immediate(std::string_view text) {
 }
 
 bool immediate_fits_type(std::int64_t value, bir::TypeKind type) {
-  switch (type) {
-    case bir::TypeKind::I8:
-      return value >= -128 && value <= 127;
-    case bir::TypeKind::I32:
-      return value >= std::numeric_limits<std::int32_t>::min() &&
-             value <= std::numeric_limits<std::int32_t>::max();
-    case bir::TypeKind::I64:
-      return true;
-    case bir::TypeKind::Void:
-      return false;
-  }
-  return false;
+  return lir_to_bir::legalize_immediate_fits_type(value, type);
 }
 
 std::optional<bir::Value> lower_immediate_or_name(std::string_view value_text,
                                                   bir::TypeKind type) {
-  if (value_text.empty()) {
-    return std::nullopt;
-  }
-  if (value_text.front() == '%') {
-    return bir::Value::named(type, std::string(value_text));
-  }
-  const auto immediate = parse_immediate(value_text);
-  if (!immediate.has_value() || !immediate_fits_type(*immediate, type)) {
-    return std::nullopt;
-  }
-  switch (type) {
-    case bir::TypeKind::I8:
-      return bir::Value::immediate_i8(static_cast<std::int8_t>(*immediate));
-    case bir::TypeKind::I32:
-      return bir::Value::immediate_i32(static_cast<std::int32_t>(*immediate));
-    case bir::TypeKind::I64:
-      return bir::Value::immediate_i64(*immediate);
-    case bir::TypeKind::Void:
-      return std::nullopt;
-  }
-  return std::nullopt;
+  return lir_to_bir::legalize_immediate_or_name(value_text, type);
 }
 
 std::string decode_llvm_byte_string(std::string_view text) {

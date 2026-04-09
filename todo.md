@@ -9,7 +9,9 @@ Source Plan: plan.md
 - Step 2 architecture reset:
   promote BIR and `lir_to_bir` back toward a backend-owned seam by wiring the
   split lowering scaffolds into a real pass-oriented entry surface and
-  stopping further ownership drift into x86 testcase matchers
+  stopping further ownership drift into x86 testcase matchers;
+  current sub-slice is moving type/legalization helper ownership out of
+  `lir_to_bir.cpp`
 
 ## Next Slice
 
@@ -18,6 +20,9 @@ Source Plan: plan.md
   `aggregates.cpp`
 - route `lir_to_bir.cpp` through a pass-oriented wrapper first, then start
   migrating concrete logic out of the legacy monolith one seam at a time
+- continue after the type-helper extraction by moving the next concrete seam
+  into split ownership:
+  memory/address lowering first, then call lowering
 - avoid adding any new x86 testcase-specific direct-LIR matcher while this
   reset is in progress
 
@@ -178,6 +183,9 @@ Source Plan: plan.md
   introduced `try_lower_to_bir_with_options(...)` as the new pass-oriented
   entry surface that records split-phase notes before falling back to the
   legacy matcher path
+- rewired the legacy monolith's core type/legalization helpers to call the new
+  split `lir_to_bir/types.cpp` surface instead of privately re-owning those
+  decisions inside `lir_to_bir.cpp`
 
 ## Blockers
 
@@ -236,6 +244,8 @@ Source Plan: plan.md
   re-established
 - current architecture-reset slice has not been compile-validated or
   regression-tested yet; this iteration only moved ownership and API surface
+- the next migration target should be concrete memory/address helpers, because
+  they currently still live as ad hoc monolith logic even after the pass split
   failing, while the full suite now stands at
   `test_fail_after.log` = 2670 pass / 179 fail / 2849 total
 - the new internal route regression again increases total suite size by one,
