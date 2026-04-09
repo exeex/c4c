@@ -420,6 +420,24 @@ ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
   }
 
   CallExpr c{};
+  auto call_returns_ref = [&](const Node* call_node) -> bool {
+    if (!call_node || call_node->kind != NK_CALL || !call_node->left ||
+        call_node->left->kind != NK_VAR || !call_node->left->name) {
+      return false;
+    }
+    auto dit = deduced_template_calls_.find(call_node);
+    if (dit != deduced_template_calls_.end()) {
+      auto fit = module_->fn_index.find(dit->second.mangled_name);
+      if (fit != module_->fn_index.end()) {
+        const Function* fn = module_->find_function(fit->second);
+        if (fn && is_any_ref_ts(fn->return_type.spec)) return true;
+      }
+    }
+    auto fit = module_->fn_index.find(call_node->left->name);
+    if (fit == module_->fn_index.end()) return false;
+    const Function* fn = module_->find_function(fit->second);
+    return fn && is_any_ref_ts(fn->return_type.spec);
+  };
   auto maybe_lower_ref_arg = [&](const Node* arg_node, const TypeSpec* param_ts) -> ExprId {
     if (ctx && arg_node && arg_node->kind == NK_INIT_LIST && param_ts &&
         !param_ts->is_lvalue_ref && !param_ts->is_rvalue_ref) {
@@ -434,6 +452,7 @@ ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
     }
     if (!param_ts || (!param_ts->is_lvalue_ref && !param_ts->is_rvalue_ref))
       return lower_expr(ctx, arg_node);
+    if (call_returns_ref(arg_node)) return lower_expr(ctx, arg_node);
     TypeSpec storage_ts = reference_storage_ts(*param_ts);
     if (param_ts->is_rvalue_ref) {
       if (auto storage_addr =
@@ -882,6 +901,25 @@ std::optional<ExprId> Lowerer::try_lower_consteval_call_expr(FunctionCtx* ctx,
 std::string Lowerer::resolve_ref_overload(const std::string& base_name,
                                           const Node* call_node,
                                           const FunctionCtx* ctx) {
+  auto expr_is_lvalue = [&](const Node* expr) -> bool {
+    if (is_ast_lvalue(expr, ctx)) return true;
+    if (!expr || expr->kind != NK_CALL || !expr->left ||
+        expr->left->kind != NK_VAR || !expr->left->name) {
+      return false;
+    }
+    auto dit = deduced_template_calls_.find(expr);
+    if (dit != deduced_template_calls_.end()) {
+      auto fit = module_->fn_index.find(dit->second.mangled_name);
+      if (fit != module_->fn_index.end()) {
+        const Function* fn = module_->find_function(fit->second);
+        if (fn) return fn->return_type.spec.is_lvalue_ref;
+      }
+    }
+    auto fit = module_->fn_index.find(expr->left->name);
+    if (fit == module_->fn_index.end()) return false;
+    const Function* fn = module_->find_function(fit->second);
+    return fn && fn->return_type.spec.is_lvalue_ref;
+  };
   auto ovit = ref_overload_set_.find(base_name);
   if (ovit == ref_overload_set_.end()) return {};
   const auto& overloads = ovit->second;
@@ -889,7 +927,7 @@ std::string Lowerer::resolve_ref_overload(const std::string& base_name,
       (call_node && call_node->left && call_node->left->kind == NK_MEMBER)
           ? call_node->left->left
           : nullptr;
-  const bool object_is_lvalue = object_node && is_ast_lvalue(object_node, ctx);
+  const bool object_is_lvalue = object_node && expr_is_lvalue(object_node);
   const std::string* best_name = nullptr;
   int best_score = -1;
   for (const auto& ov : overloads) {
@@ -907,7 +945,7 @@ std::string Lowerer::resolve_ref_overload(const std::string& base_name,
          i < call_node->n_children &&
          i < static_cast<int>(ov.param_is_rvalue_ref.size());
          ++i) {
-      bool arg_is_lvalue = is_ast_lvalue(call_node->children[i], ctx);
+      bool arg_is_lvalue = expr_is_lvalue(call_node->children[i]);
       if (ov.param_is_lvalue_ref[static_cast<size_t>(i)] && !arg_is_lvalue) {
         viable = false;
         break;
@@ -1073,7 +1111,26 @@ ExprId Lowerer::try_lower_operator_call(FunctionCtx* ctx,
   auto ovit = ref_overload_set_.find(base_key);
   if (ovit != ref_overload_set_.end() && !ovit->second.empty()) {
     const auto& overloads = ovit->second;
-    const bool object_is_lvalue = is_ast_lvalue(obj_node, ctx);
+    auto expr_is_lvalue = [&](const Node* expr) -> bool {
+      if (is_ast_lvalue(expr, ctx)) return true;
+      if (!expr || expr->kind != NK_CALL || !expr->left ||
+          expr->left->kind != NK_VAR || !expr->left->name) {
+        return false;
+      }
+      auto dit = deduced_template_calls_.find(expr);
+      if (dit != deduced_template_calls_.end()) {
+        auto fit = module_->fn_index.find(dit->second.mangled_name);
+        if (fit != module_->fn_index.end()) {
+          const Function* fn = module_->find_function(fit->second);
+          if (fn) return fn->return_type.spec.is_lvalue_ref;
+        }
+      }
+      auto fit = module_->fn_index.find(expr->left->name);
+      if (fit == module_->fn_index.end()) return false;
+      const Function* fn = module_->find_function(fit->second);
+      return fn && fn->return_type.spec.is_lvalue_ref;
+    };
+    const bool object_is_lvalue = expr_is_lvalue(obj_node);
     const std::string* best_name = nullptr;
     int best_score = -1;
     for (const auto& ov : overloads) {
@@ -1086,7 +1143,7 @@ ExprId Lowerer::try_lower_operator_call(FunctionCtx* ctx,
       else if (ov.method_is_lvalue_ref && object_is_lvalue) score += 2;
       else score += 1;
       for (size_t i = 0; i < arg_nodes.size() && i < ov.param_is_rvalue_ref.size(); ++i) {
-        bool arg_is_lvalue = is_ast_lvalue(arg_nodes[i], ctx);
+        bool arg_is_lvalue = expr_is_lvalue(arg_nodes[i]);
         if (ov.param_is_lvalue_ref[i] && !arg_is_lvalue) {
           viable = false;
           break;
@@ -1169,6 +1226,22 @@ ExprId Lowerer::try_lower_operator_call(FunctionCtx* ctx,
   auto lower_operator_ref_arg = [&](const Node* arg_node, const TypeSpec* param_ts) -> ExprId {
     if (!param_ts || (!param_ts->is_lvalue_ref && !param_ts->is_rvalue_ref)) {
       return lower_expr(ctx, arg_node);
+    }
+    if (arg_node && arg_node->kind == NK_CALL && arg_node->left &&
+        arg_node->left->kind == NK_VAR && arg_node->left->name) {
+      auto dit = deduced_template_calls_.find(arg_node);
+      if (dit != deduced_template_calls_.end()) {
+        auto fit = module_->fn_index.find(dit->second.mangled_name);
+        if (fit != module_->fn_index.end()) {
+          const Function* fn = module_->find_function(fit->second);
+          if (fn && is_any_ref_ts(fn->return_type.spec)) return lower_expr(ctx, arg_node);
+        }
+      }
+      auto fit = module_->fn_index.find(arg_node->left->name);
+      if (fit != module_->fn_index.end()) {
+        const Function* fn = module_->find_function(fit->second);
+        if (fn && is_any_ref_ts(fn->return_type.spec)) return lower_expr(ctx, arg_node);
+      }
     }
     TypeSpec storage_ts = reference_storage_ts(*param_ts);
     if (param_ts->is_rvalue_ref) {

@@ -1469,7 +1469,12 @@ class Validator {
             }
             if (best) {
               out.valid = true;
-              out.type = best->ret;
+              out.type = referred_type(best->ret);
+              out.is_lvalue = best->ret.is_lvalue_ref;
+              out.is_const_lvalue = out.is_lvalue &&
+                                    out.type.is_const &&
+                                    out.type.ptr_level == 0 &&
+                                    out.type.array_rank == 0;
             } else {
               emit(n->line, "no viable overload for function call");
             }
@@ -1508,7 +1513,12 @@ class Validator {
               }
             }
             out.valid = true;
-            out.type = sig.ret;
+            out.type = referred_type(sig.ret);
+            out.is_lvalue = sig.ret.is_lvalue_ref;
+            out.is_const_lvalue = out.is_lvalue &&
+                                  out.type.is_const &&
+                                  out.type.ptr_level == 0 &&
+                                  out.type.array_rank == 0;
             return out;
           }
         }

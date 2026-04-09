@@ -9,10 +9,10 @@ Source Plan: plan.md
 - Step 1 audit outcome: existing parser coverage already covers top-level
   deduction guides, template-id conversion operators, and generated
   disambiguation matrix cases for `&&`.
-- Active implementation slice completed: returning a named rvalue-reference
-  parameter through plain `return value;` now triggers the same lvalue-binding
-  rejection used by reference initialization instead of slipping through return
-  type compatibility checks.
+- Active implementation slice completed: helper-return paths for a named
+  `T&&` parameter now preserve `T&` lvalue behavior for downstream overload
+  selection while explicit forwarding back to `T&&` still selects the rvalue
+  overload.
 
 ## Completed
 
@@ -47,14 +47,22 @@ Source Plan: plan.md
 - Re-ran the focused named-rvalue-reference return and overload tests plus the
   full suite; regression guard passed with pass count improving from 3155 to
   3159 and zero new failures.
+- Added `named_rvalue_ref_helper_return_overload_basic.cpp` to lock helper
+  return paths where a named `T&&` parameter is returned as `T&` or forwarded
+  back as `T&&` before downstream overload resolution.
+- Restore lvalue call-result tracking in sema and keep reference-returning
+  helper calls on the reference ABI path in HIR so overload selection matches
+  the helper return type.
+- Re-ran the focused named-rvalue-reference helper-return cluster plus the
+  full suite; regression guard passed with pass count improving from 3159 to
+  3160 and zero new failures.
 
 ## Next Slice
 
-- add focused coverage for named rvalue-reference parameters in overload paths
-  where plain use stays an lvalue but explicit forwarding still selects the
-  rvalue overload
-- extend that coverage across helper-return paths only if a remaining generic
-  `&&` defect is demonstrated against Clang
+- probe template-instantiated helper returns only if a remaining generic `&&`
+  defect is demonstrated beyond the direct function-return path now covered
+- keep any further call-category follow-up bounded to concrete overload or
+  binding mismatches against Clang
 - keep adjacent library-facing probes bounded to generic language defects only
 
 ## Blockers
@@ -77,4 +85,7 @@ Source Plan: plan.md
 - return validation now strips reference wrappers for type compatibility but
   separately enforces lvalue/rvalue binding rules, matching the existing
   declaration-initialization behavior more closely
+- direct call expressions returning `T&` now restore lvalue behavior in sema
+  and HIR ref-overload selection, while reference-returning helper calls stay
+  on the reference ABI path instead of materializing temporary by-value args
 - keep EASTL or libstdc++ findings scoped to generic language defects only
