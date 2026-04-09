@@ -1027,7 +1027,7 @@ std::optional<bir::Module> try_lower_minimal_string_literal_compare_phi_return_m
 
   const auto& function = module.functions.front();
   if (function.is_declaration ||
-      !lir_function_matches_minimal_no_param_integer_return(function, 32) ||
+      !backend_lir_signature_matches(function.signature_text, "define", "i32", function.name, {}) ||
       function.entry.value != 0 || function.blocks.size() < 4 || function.alloca_insts.size() != 1 ||
       !function.stack_objects.empty()) {
     return std::nullopt;
@@ -1162,7 +1162,7 @@ std::optional<bir::Module> try_lower_minimal_string_literal_compare_phi_return_m
   const auto* ret = std::get_if<LirRet>(&join_block.terminator);
   if (phi == nullptr || ret == nullptr || !ret->value_str.has_value() || *ret->value_str != phi->result ||
       !memory_lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{phi->type_str}, 32) ||
-      lir_to_bir::legalize_function_return_type(function, *ret) != bir::TypeKind::I32 ||
+      ret->type_str != "i32" ||
       phi->incoming.size() != 2) {
     return std::nullopt;
   }

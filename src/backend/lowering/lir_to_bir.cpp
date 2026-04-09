@@ -3038,6 +3038,19 @@ BirLoweringResult try_lower_to_bir_with_options(
   if (options.normalize_cfg) {
     normalize_cfg_in_place(normalized_module, options, &notes);
   }
+  if (auto lowered =
+          try_lower_minimal_string_literal_compare_phi_return_module(normalized_module);
+      lowered.has_value()) {
+    notes.push_back(BirLoweringNote{
+        .phase = "legacy-lowering",
+        .message =
+            "string-literal compare memory seam lowered the CFG-normalized module before phi-lowering rewrite erased the join phi",
+    });
+    return BirLoweringResult{
+        .module = std::move(lowered),
+        .notes = std::move(notes),
+    };
+  }
   if (options.lower_phi) {
     lower_phi_nodes_in_place(normalized_module, &notes);
   }

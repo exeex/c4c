@@ -10,19 +10,18 @@ Source Plan: plan.md
   use the split shared lowering seams as the owning implementation surface and
   recover compile/test health one seam-local family at a time
 - current exact slice:
-  continue narrow compile recovery around the remaining memory-owned
-  string-literal compare lowering and the matching x86 prepared direct-LIR
-  support probe now that the typed stale-text global/global-array load-store
-  checks route through split type legalization instead of raw text
+  continue seam-local compile recovery from the now-green string-literal
+  compare lowering/x86 probe slice into the next bounded x86-native runtime
+  support probe without widening the current plan
 
 ## Next Slice
 
-- inspect the failing string-literal compare fold in
-  `src/backend/lowering/lir_to_bir/memory.cpp` and classify whether the
-  remaining break is in the shared fold matcher itself or only in the x86
-  prepared-LIR route that should consume it
-- keep the next validation seam-local: re-run the focused string-literal
-  lowering and x86 probe tests before touching broader backend routing
+- keep x86 native direct-LIR work seam-local in
+  `src/backend/x86/codegen/emit.cpp` and inspect whether the next bounded
+  runtime probe should be the variadic `sum2` or `double_bytes` slice
+- avoid broad `try_lower_to_bir_with_options(...)` ordering changes; if another
+  phi-bearing seam needs pre-phi ownership, add it as an explicit narrow
+  pre-phi lowering hook instead of reopening generic pipeline flow
 
 ## Recently Completed
 
@@ -169,6 +168,31 @@ Source Plan: plan.md
   `test_bir_lowering_accepts_minimal_extern_scalar_global_load_lir_module`,
   `test_bir_lowering_accepts_minimal_extern_global_array_load_lir_module`, and
   `test_bir_lowering_accepts_minimal_scalar_global_store_reload_lir_module`
+- restored the memory-owned minimal string-literal compare phi-return fold by
+  letting `try_lower_to_bir_with_options(...)` give that exact seam one
+  pre-phi lowering attempt after CFG normalization but before the scaffold
+  phi-erasure pass destroys the join phi shape
+- verified the focused shared-BIR string-literal seam is green again:
+  `test_bir_lowering_accepts_minimal_string_literal_compare_phi_return_lir_module`
+  and
+  `test_backend_bir_pipeline_drives_x86_lir_minimal_string_literal_compare_phi_return_through_bir_end_to_end`
+  now pass
+- added the first x86-native explicit support probes in
+  `src/backend/x86/codegen/emit.cpp` for:
+  direct-BIR single-block immediate returns and prepared-LIR minimal
+  string-literal byte loads
+- verified the paired x86 native support probes are green:
+  `test_x86_try_emit_module_reports_direct_bir_support_explicitly` and
+  `test_x86_try_emit_prepared_lir_module_reports_direct_lir_support_explicitly`
+  now pass
+- re-ran the nearby memory-owned stale-text/global seam checks after the
+  string-literal fix and confirmed they still pass:
+  `test_bir_lowering_accepts_minimal_scalar_global_load_lir_module`,
+  `test_bir_lowering_accepts_typed_minimal_scalar_global_load_lir_slice_with_stale_text`,
+  `test_bir_lowering_accepts_typed_minimal_extern_scalar_global_load_lir_slice_with_stale_text`,
+  `test_bir_lowering_accepts_typed_minimal_extern_global_array_load_lir_slice_with_stale_text`,
+  and
+  `test_bir_lowering_accepts_typed_minimal_scalar_global_store_reload_lir_slice_with_stale_text`
 
 ## Blockers
 
@@ -176,12 +200,11 @@ Source Plan: plan.md
 - later compile/test recovery still has known unrelated backend test noise, so
   not every existing backend test executable is currently a clean regression
   signal for this lane
-- the remaining seam-local failure in this burst is the string-literal compare
-  lowering path:
-  `test_bir_lowering_accepts_minimal_string_literal_compare_phi_return_lir_module`
-  still fails, and the paired x86 support probe
-  `test_x86_try_emit_prepared_lir_module_reports_direct_lir_support_explicitly`
-  still reports no native rendering for the bounded string-literal module
+- full-suite monotonic validation against the checked-in
+  `test_fail_before.log` baseline is still red, but the failure bucket is the
+  same broad pre-existing `backend_bir_tests` / route-test phi-select surface
+  already visible before this slice rather than a new seam-local
+  string-literal/x86-probe regression
 
 ## Notes To Resume
 
@@ -202,9 +225,12 @@ Source Plan: plan.md
   phi-return seam; use that split implementation as the home for any
   remaining string/global byte-address cleanup instead of rebuilding those
   matchers in the monolith
+- the string-literal seam depends on seeing the join phi before scaffold
+  phi-erasure; keep that exception explicit and narrow instead of changing the
+  global pre-phi lowering order
 - when this lane switches to compile recovery, start narrow and seam-local
   before restoring broader regression discipline
 - the typed stale-text regressions for scalar global load/store and extern
-  global-array load are now green, so the next memory slice should start from
-  the still-failing string-literal compare fold rather than reopening those
-  already recovered checks
+  global-array load plus the bounded string-literal compare fold are now green,
+  so the next slice should move forward from the x86 probe/runtime surface
+  rather than reopening those recovered memory checks
