@@ -212,6 +212,10 @@ Source Plan: plan.md
   metadata:
   `bir::CallInst.arg_types` now follows the lowered argument values instead of
   being left empty on the minimal direct-call path
+- upgraded the same split direct-call constructor to populate conservative
+  placeholder call ABI metadata as well:
+  `arg_abi` and `result_abi` now carry explicit scalar/integer-class defaults
+  instead of remaining empty on the minimal direct-call path
 
 ## Blockers
 
@@ -284,6 +288,9 @@ Source Plan: plan.md
 - the next concrete call-side target should be call metadata:
   `arg_types`, `return_type`, and eventually `arg_abi/result_abi` should be
   populated from the split call seam rather than left implicit
+- after this slice, the next call-side target should be replacing these
+  placeholder ABI defaults with target-aware classification or clearly scoped
+  target-specific follow-up seams
   failing, while the full suite now stands at
   `test_fail_after.log` = 2670 pass / 179 fail / 2849 total
 - the new internal route regression again increases total suite size by one,

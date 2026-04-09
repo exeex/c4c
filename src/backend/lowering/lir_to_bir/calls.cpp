@@ -196,16 +196,40 @@ bir::CallInst c4c::backend::make_direct_call_inst(std::string callee,
                                                   std::string return_type_name,
                                                   std::optional<bir::Value> result,
                                                   std::vector<bir::Value> args) {
+  auto classify_scalar_arg_abi = [](bir::TypeKind type) {
+    return bir::CallArgAbiInfo{
+        .type = type,
+        .size_bytes = lir_to_bir::legalize_type_size_bytes(type),
+        .align_bytes = lir_to_bir::legalize_type_align_bytes(type),
+        .primary_class = bir::AbiValueClass::Integer,
+        .secondary_class = bir::AbiValueClass::None,
+        .passed_in_register = true,
+        .passed_on_stack = false,
+        .byval_copy = false,
+    };
+  };
+  auto classify_scalar_result_abi = [](bir::TypeKind type) {
+    return bir::CallResultAbiInfo{
+        .type = type,
+        .primary_class = bir::AbiValueClass::Integer,
+        .secondary_class = bir::AbiValueClass::None,
+        .returned_in_memory = false,
+    };
+  };
+
   bir::CallInst call;
   call.result = std::move(result);
   call.callee = std::move(callee);
   call.return_type = return_type;
   call.return_type_name = std::move(return_type_name);
   call.arg_types.reserve(args.size());
+  call.arg_abi.reserve(args.size());
   for (const auto& arg : args) {
     call.arg_types.push_back(arg.type);
+    call.arg_abi.push_back(classify_scalar_arg_abi(arg.type));
   }
   call.args = std::move(args);
+  call.result_abi = classify_scalar_result_abi(return_type);
   call.is_indirect = false;
   call.calling_convention = bir::CallingConv::C;
   call.is_variadic = false;
