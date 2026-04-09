@@ -137,6 +137,37 @@ Completion check:
 - the large failure bucket is reduced to a small named family list
 - each family has at least one representative regression target
 
+Step 1 classification snapshot from the current tree on 2026-04-09:
+
+- Family A: single-function alloca-backed local-slot and control-flow modules
+  that still miss both the shared BIR contracts and the surviving x86 native
+  direct-LIR subset. Representative current failures:
+  `c_testsuite_x86_backend_src_00057_c`,
+  `c_testsuite_x86_backend_src_00086_c`,
+  `c_testsuite_x86_backend_src_00138_c`,
+  `c_testsuite_x86_backend_src_00141_c`, and
+  `c_testsuite_x86_backend_src_00143_c`.
+  Common shapes: entry allocas, load/store through local slots, local-array
+  GEPs, compare-and-branch control flow, and switch/phi joins.
+- Family B: global-rich and initializer-heavy modules whose direct-LIR surface
+  still exceeds the shared BIR gateway because they carry many globals, string
+  pool entries, extern declarations, or helper functions. Representative
+  failures from the saved baseline sample:
+  `c_testsuite_x86_backend_src_00200_c`,
+  `c_testsuite_x86_backend_src_00216_c`, and
+  `c_testsuite_x86_backend_src_00040_c`.
+  Common shapes: multi-function modules, libc-facing extern call surfaces,
+  aggregate initializers, and global/string-backed pointer materialization.
+- Family C: baseline drift that should not be used as a current failing target.
+  The 2026-04-09 saved log still lists some cases that now pass on the current
+  tree, including `c_testsuite_x86_backend_src_00065_c` and
+  `c_testsuite_x86_backend_src_00116_c`.
+
+Step 2 should start with Family A. `00057.c` is the narrowest regression
+target because it isolates stack-local array allocas plus a simple compare and
+branch without introducing calls, globals, or helper functions. `00086.c` and
+`00138.c` are the next nearby validations once that seam moves.
+
 ### Step 2: Recover the highest-leverage shared BIR seam
 
 Goal: promote the smallest shared `lir_to_bir` pattern cluster that unlocks the
