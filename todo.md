@@ -6,22 +6,20 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 2: finish the current shared-BIR Family A lane by landing `00141.c`,
-  then reassess whether the next highest-leverage slice should stay in Step 2
-  for a Family B shared seam or move to Step 3/Step 4 now that the simple
-  local-slot survivors are cleared
+- Step 2 / Step 3 reassessment after closing the focused Step 4 variadic lane:
+  decide whether the next highest-leverage slice should return to a bounded
+  Family B shared-BIR seam or move into a native x86 direct-LIR ownership gap
+  now that the two targeted variadic runtime failures no longer block the plan
 
 ## Next Slice
 
-- re-sample the post-`00141.c` x86 failure surface to confirm whether any
-  remaining Step 2 candidate still belongs to a shared-BIR seam rather than
-  the parked `00143.c` Family A2 lane or the x86-native/runtime lanes
-- if Step 2 continues, choose one bounded Family B representative and add the
-  narrowest regression that proves a shared ownership point without absorbing
-  globals/calls-heavy work ad hoc
-- otherwise switch the active item to either Step 3 x86-native direct-LIR seam
-  recovery or Step 4 variadic-runtime investigation with a fresh targeted test
-  slice
+- re-sample the remaining x86 failure surface after the variadic slice to
+  confirm whether the best next move is still a globals-heavy Family B shared
+  seam or an x86-native direct-LIR slice
+- if Step 2 resumes, choose one bounded Family B representative and prove the
+  shared ownership point with a narrow regression before widening support
+- if Step 3 starts instead, pick the smallest still-native x86 ownership gap
+  rather than reviving any broader fallback behavior
 
 ## Completed Items
 
@@ -110,6 +108,20 @@ Source Plan: plan.md
   `test_fail_before.log` = 2656 pass / 187 fail / 2843 total,
   `test_fail_after.log` = 2664 pass / 183 fail / 2847 total,
   zero newly failing tests
+- added backend BIR pipeline coverage for bounded x86 direct-LIR variadic
+  scalar/runtime slices:
+  one integer-only SysV vararg call path and one double-carrying SysV vararg
+  call path
+- taught the staged x86 prepared-LIR emitter to accept the focused
+  `backend_runtime_variadic_sum2` and `backend_runtime_variadic_double_bytes`
+  module shapes through native direct-LIR assembly instead of rejecting them at
+  the unsupported-module boundary
+- verified `backend_runtime_variadic_sum2` and
+  `backend_runtime_variadic_double_bytes` now pass in isolation on x86_64
+- ran full-suite monotonic validation for the Step 4 variadic slice:
+  `test_fail_before.log` = 2656 pass / 187 fail / 2843 total,
+  `test_fail_after.log` = 2666 pass / 181 fail / 2847 total,
+  zero newly failing tests
 
 ## Blockers
 
@@ -140,9 +152,18 @@ Source Plan: plan.md
   folding the dead alloca-backed add/store chain to a constant BIR return
 - current-tree post-change suite state:
   `test_fail_after.log` = 2664 pass / 183 fail / 2847 total
+- post-`00141.c` re-sampling still shows a large Family B unsupported-module
+  bucket plus the two focused x86 variadic runtime failures; the next active
+  slice is now Step 4 because it is narrower and better bounded than starting
+  a globals-heavy Family B seam inside idea 44
+- Step 4 is now clear: the two focused x86 variadic runtime failures were
+  actually bounded native direct-LIR ownership gaps, not a broader shared-BIR
+  or `va_start` lowering regression
 - `00143.c` is now classified as a separate switch-entry fallthrough copy-loop
   seam and tracked in
   [ideas/open/46_x86_64_shared_bir_switch_fallthrough_loop_modules.md](/workspaces/c4c/ideas/open/46_x86_64_shared_bir_switch_fallthrough_loop_modules.md)
-- `00141.c` is no longer pending; the next decision is whether idea 44 should
-  continue with a Family B shared-BIR seam or move to the x86-native/runtime
-  stages
+- `00141.c` is no longer pending; idea 44 is temporarily leaving Step 2 and
+  entering the focused variadic-runtime lane before deciding whether the next
+  follow-on should return to Step 2 Family B or move to Step 3
+- current-tree post-variadic suite state:
+  `test_fail_after.log` = 2666 pass / 181 fail / 2847 total

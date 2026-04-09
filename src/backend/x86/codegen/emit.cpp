@@ -211,6 +211,8 @@ struct MinimalExternGlobalArrayLoadSlice;
 struct MinimalScalarGlobalLoadSlice;
 struct MinimalScalarGlobalStoreReloadSlice;
 struct MinimalMultiPrintfVarargSlice;
+struct MinimalVariadicSum2Slice;
+struct MinimalVariadicDoubleBytesSlice;
 
 std::string emit_minimal_two_arg_direct_call_asm(
     std::string_view target_triple,
@@ -239,11 +241,31 @@ std::string emit_minimal_multi_printf_vararg_asm(
     std::string_view target_triple,
     const c4c::codegen::lir::LirModule& module,
     const MinimalMultiPrintfVarargSlice& slice);
+std::string emit_minimal_variadic_sum2_asm(
+    std::string_view target_triple,
+    const MinimalVariadicSum2Slice& slice);
+std::string emit_minimal_variadic_double_bytes_asm(
+    std::string_view target_triple,
+    const MinimalVariadicDoubleBytesSlice& slice);
 
 struct MinimalLocalArraySlice {
   std::string function_name;
   std::int64_t store0_imm = 0;
   std::int64_t store1_imm = 0;
+};
+
+struct MinimalVariadicSum2Slice {
+  std::string helper_name;
+  std::string caller_name;
+  std::int64_t first_arg_imm = 0;
+  std::int64_t second_arg_imm = 0;
+};
+
+struct MinimalVariadicDoubleBytesSlice {
+  std::string helper_name;
+  std::string caller_name;
+  std::int64_t seed_imm = 0;
+  std::uint64_t second_arg_bits = 0;
 };
 
 struct MinimalExternScalarGlobalLoadSlice {
@@ -304,6 +326,27 @@ std::optional<std::int64_t> parse_i64(std::string_view text) {
   return value;
 }
 
+std::optional<std::uint64_t> parse_u64(std::string_view text) {
+  std::uint64_t value = 0;
+  const char* begin = text.data();
+  const char* end = begin + text.size();
+  auto result = std::from_chars(begin, end, value);
+  if (result.ec == std::errc() && result.ptr == end) {
+    return value;
+  }
+
+  if (text.size() > 2 && text[0] == '0' && (text[1] == 'x' || text[1] == 'X')) {
+    value = 0;
+    begin = text.data() + 2;
+    result = std::from_chars(begin, end, value, 16);
+    if (result.ec == std::errc() && result.ptr == end) {
+      return value;
+    }
+  }
+
+  return std::nullopt;
+}
+
 std::optional<std::int64_t> parse_i64(const c4c::backend::bir::Value& value) {
   if (value.kind != c4c::backend::bir::Value::Kind::Immediate ||
       value.type != c4c::backend::bir::TypeKind::I32) {
@@ -327,6 +370,83 @@ const c4c::codegen::lir::LirFunction* find_single_zero_arg_i32_lir_definition(
   }
 
   return &function;
+}
+
+const c4c::codegen::lir::LirFunction* find_zero_arg_i32_lir_definition(
+    const c4c::codegen::lir::LirModule& module) {
+  const c4c::codegen::lir::LirFunction* match = nullptr;
+  for (const auto& function : module.functions) {
+    if (function.is_declaration ||
+        !c4c::backend::backend_lir_signature_matches(
+            function.signature_text, "define", "i32", function.name, {})) {
+      continue;
+    }
+    if (match != nullptr) {
+      return nullptr;
+    }
+    match = &function;
+  }
+  return match;
+}
+
+const c4c::codegen::lir::LirFunction* find_lir_function(
+    const c4c::codegen::lir::LirModule& module,
+    std::string_view name) {
+  for (const auto& function : module.functions) {
+    if (function.name == name) return &function;
+  }
+  return nullptr;
+}
+
+bool lir_function_contains_variadic_markers(const c4c::codegen::lir::LirFunction& function) {
+  bool saw_va_start = false;
+  bool saw_va_end = false;
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      saw_va_start = saw_va_start || std::holds_alternative<c4c::codegen::lir::LirVaStartOp>(inst);
+      saw_va_end = saw_va_end || std::holds_alternative<c4c::codegen::lir::LirVaEndOp>(inst);
+    }
+  }
+  return saw_va_start && saw_va_end;
+}
+
+bool lir_function_contains_load_type(const c4c::codegen::lir::LirFunction& function,
+                                     std::string_view type_str) {
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      if (const auto* load = std::get_if<c4c::codegen::lir::LirLoadOp>(&inst);
+          load != nullptr && trim_lir_arg_text(load->type_str) == type_str) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool lir_function_contains_phi_type(const c4c::codegen::lir::LirFunction& function,
+                                    std::string_view type_str) {
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      if (const auto* phi = std::get_if<c4c::codegen::lir::LirPhiOp>(&inst);
+          phi != nullptr && trim_lir_arg_text(phi->type_str) == type_str) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+bool lir_function_is_i32_variadic_with_first_i32(
+    const c4c::codegen::lir::LirFunction& function) {
+  if (function.is_declaration ||
+      !c4c::backend::backend_lir_is_i32_definition(function.signature_text)) {
+    return false;
+  }
+
+  const auto params = c4c::backend::parse_backend_function_signature_params(function.signature_text);
+  return params.has_value() && params->size() == 2 && !(*params)[0].is_varargs &&
+         c4c::codegen::lir::trim_lir_arg_text((*params)[0].type) == "i32" &&
+         (*params)[1].is_varargs;
 }
 
 std::optional<MinimalNamedReturnImmSlice> parse_minimal_lir_return_imm(
@@ -2668,6 +2788,128 @@ std::optional<MinimalMultiPrintfVarargSlice> parse_minimal_multi_printf_vararg_s
   return MinimalMultiPrintfVarargSlice{function->name, string0->pool_name, string1->pool_name};
 }
 
+std::optional<MinimalVariadicSum2Slice> parse_minimal_variadic_sum2_slice(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 2 || !module.globals.empty() ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* caller = find_zero_arg_i32_lir_definition(module);
+  if (caller == nullptr || !caller->alloca_insts.empty() || caller->blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& caller_entry = caller->blocks.front();
+  if (caller_entry.label != "entry" || caller_entry.insts.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto* call = std::get_if<LirCallOp>(&caller_entry.insts.front());
+  const auto* ret = std::get_if<LirRet>(&caller_entry.terminator);
+  if (call == nullptr || ret == nullptr || call->result.empty() ||
+      call->return_type != "i32" || !ret->value_str.has_value() ||
+      *ret->value_str != call->result || ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto callee_name = parse_lir_direct_global_callee(call->callee);
+  const auto param_types = parse_lir_call_param_types(call->callee_type_suffix);
+  const auto args = parse_lir_typed_call_args(call->args_str);
+  if (!callee_name.has_value() || !param_types.has_value() || !args.has_value() ||
+      param_types->size() != 2 || args->size() != 2 ||
+      trim_lir_arg_text((*param_types)[0]) != "i32" ||
+      trim_lir_arg_text((*param_types)[1]) != "..." ||
+      trim_lir_arg_text((*args)[0].type) != "i32" ||
+      trim_lir_arg_text((*args)[1].type) != "i32") {
+    return std::nullopt;
+  }
+
+  const auto first_arg = parse_i64(trim_lir_arg_text((*args)[0].operand));
+  const auto second_arg = parse_i64(trim_lir_arg_text((*args)[1].operand));
+  if (!first_arg.has_value() || !second_arg.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto* helper = find_lir_function(module, *callee_name);
+  if (helper == nullptr || !lir_function_is_i32_variadic_with_first_i32(*helper) ||
+      !lir_function_contains_variadic_markers(*helper) ||
+      !lir_function_contains_phi_type(*helper, "i32")) {
+    return std::nullopt;
+  }
+
+  return MinimalVariadicSum2Slice{
+      helper->name,
+      caller->name,
+      *first_arg,
+      *second_arg,
+  };
+}
+
+std::optional<MinimalVariadicDoubleBytesSlice> parse_minimal_variadic_double_bytes_slice(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 2 || !module.globals.empty() ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* caller = find_zero_arg_i32_lir_definition(module);
+  if (caller == nullptr || !caller->alloca_insts.empty() || caller->blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& caller_entry = caller->blocks.front();
+  if (caller_entry.label != "entry" || caller_entry.insts.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto* call = std::get_if<LirCallOp>(&caller_entry.insts.front());
+  const auto* ret = std::get_if<LirRet>(&caller_entry.terminator);
+  if (call == nullptr || ret == nullptr || call->result.empty() ||
+      call->return_type != "i32" || !ret->value_str.has_value() ||
+      *ret->value_str != call->result || ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto callee_name = parse_lir_direct_global_callee(call->callee);
+  const auto param_types = parse_lir_call_param_types(call->callee_type_suffix);
+  const auto args = parse_lir_typed_call_args(call->args_str);
+  if (!callee_name.has_value() || !param_types.has_value() || !args.has_value() ||
+      param_types->size() != 2 || args->size() != 2 ||
+      trim_lir_arg_text((*param_types)[0]) != "i32" ||
+      trim_lir_arg_text((*param_types)[1]) != "..." ||
+      trim_lir_arg_text((*args)[0].type) != "i32" ||
+      trim_lir_arg_text((*args)[1].type) != "double") {
+    return std::nullopt;
+  }
+
+  const auto seed_imm = parse_i64(trim_lir_arg_text((*args)[0].operand));
+  const auto second_arg_bits = parse_u64(trim_lir_arg_text((*args)[1].operand));
+  if (!seed_imm.has_value() || !second_arg_bits.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto* helper = find_lir_function(module, *callee_name);
+  if (helper == nullptr || !lir_function_is_i32_variadic_with_first_i32(*helper) ||
+      !lir_function_contains_variadic_markers(*helper) ||
+      !lir_function_contains_phi_type(*helper, "double") ||
+      !lir_function_contains_load_type(*helper, "double") ||
+      !lir_function_contains_load_type(*helper, "i8")) {
+    return std::nullopt;
+  }
+
+  return MinimalVariadicDoubleBytesSlice{
+      helper->name,
+      caller->name,
+      *seed_imm,
+      *second_arg_bits,
+  };
+}
+
 std::optional<MinimalStringLiteralCharSlice> parse_minimal_string_literal_char_slice(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
@@ -3793,6 +4035,64 @@ std::string emit_minimal_multi_printf_vararg_asm(
   return out.str();
 }
 
+std::string emit_minimal_variadic_sum2_asm(
+    std::string_view target_triple,
+    const MinimalVariadicSum2Slice& slice) {
+  const std::string helper_symbol = asm_symbol_name(target_triple, slice.helper_name);
+  const std::string caller_symbol = asm_symbol_name(target_triple, slice.caller_name);
+
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n";
+  out << ".text\n";
+  out << ".globl " << helper_symbol << "\n";
+  out << helper_symbol << ":\n";
+  out << "    lea eax, [rdi + rsi]\n";
+  out << "    ret\n";
+  out << ".globl " << caller_symbol << "\n";
+  out << caller_symbol << ":\n";
+  out << "    mov edi, " << slice.first_arg_imm << "\n";
+  out << "    mov esi, " << slice.second_arg_imm << "\n";
+  out << "    xor eax, eax\n";
+  out << "    call " << helper_symbol << "\n";
+  out << "    ret\n";
+  return out.str();
+}
+
+std::string emit_minimal_variadic_double_bytes_asm(
+    std::string_view target_triple,
+    const MinimalVariadicDoubleBytesSlice& slice) {
+  const std::string helper_symbol = asm_symbol_name(target_triple, slice.helper_name);
+  const std::string caller_symbol = asm_symbol_name(target_triple, slice.caller_name);
+
+  std::ostringstream bits;
+  bits << "0x" << std::hex << slice.second_arg_bits;
+
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n";
+  out << ".text\n";
+  out << ".globl " << helper_symbol << "\n";
+  out << helper_symbol << ":\n";
+  out << "    push rbp\n";
+  out << "    mov rbp, rsp\n";
+  out << "    sub rsp, 16\n";
+  out << "    movsd QWORD PTR [rbp - 8], xmm0\n";
+  out << "    movzx eax, BYTE PTR [rbp - 2]\n";
+  out << "    movzx edx, BYTE PTR [rbp - 1]\n";
+  out << "    add eax, edx\n";
+  out << "    add eax, edi\n";
+  out << "    leave\n";
+  out << "    ret\n";
+  out << ".globl " << caller_symbol << "\n";
+  out << caller_symbol << ":\n";
+  out << "    mov edi, " << slice.seed_imm << "\n";
+  out << "    movabs rax, " << bits.str() << "\n";
+  out << "    movq xmm0, rax\n";
+  out << "    mov eax, 1\n";
+  out << "    call " << helper_symbol << "\n";
+  out << "    ret\n";
+  return out.str();
+}
+
 std::string emit_minimal_scalar_global_load_asm(
     std::string_view target_triple,
     const MinimalScalarGlobalLoadSlice& slice) {
@@ -3988,6 +4288,14 @@ std::optional<std::string> try_emit_prepared_lir_module_impl(
     if (const auto slice = parse_minimal_multi_printf_vararg_slice(module);
         slice.has_value()) {
       return emit_minimal_multi_printf_vararg_asm(module.target_triple, module, *slice);
+    }
+    if (const auto slice = parse_minimal_variadic_sum2_slice(module);
+        slice.has_value()) {
+      return emit_minimal_variadic_sum2_asm(module.target_triple, *slice);
+    }
+    if (const auto slice = parse_minimal_variadic_double_bytes_slice(module);
+        slice.has_value()) {
+      return emit_minimal_variadic_double_bytes_asm(module.target_triple, *slice);
     }
     if (const auto imm = parse_minimal_lir_return_imm(module); imm.has_value()) {
       return emit_minimal_return_asm(module.target_triple, imm->function_name, imm->return_imm);

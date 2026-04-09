@@ -201,6 +201,184 @@ c4c::codegen::lir::LirModule make_supported_aarch64_string_literal_char_lir_modu
   return module;
 }
 
+c4c::codegen::lir::LirModule make_supported_x86_variadic_sum2_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction sum2;
+  sum2.name = "sum2";
+  sum2.signature_text = "define i32 @sum2(i32 %p.first, ...)";
+  sum2.entry = LirBlockId{0};
+  sum2.alloca_insts.push_back(LirAllocaOp{"%lv.ap", "%struct.__va_list_tag_", "", 16});
+  sum2.alloca_insts.push_back(LirAllocaOp{"%lv.second", "i32", "", 4});
+  sum2.alloca_insts.push_back(LirAllocaOp{"%t13", "i32", "", 4});
+  sum2.alloca_insts.push_back(LirAllocaOp{"%t17", "i32", "", 4});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirVaStartOp{"%lv.ap"});
+  entry.insts.push_back(LirGepOp{"%t0", "%struct.__va_list_tag_", "%lv.ap", false, {"i32 0", "i32 0"}});
+  entry.insts.push_back(LirGepOp{"%t1", "%struct.__va_list_tag_", "%lv.ap", false, {"i32 0", "i32 1"}});
+  entry.insts.push_back(LirGepOp{"%t2", "%struct.__va_list_tag_", "%lv.ap", false, {"i32 0", "i32 2"}});
+  entry.insts.push_back(LirGepOp{"%t3", "%struct.__va_list_tag_", "%lv.ap", false, {"i32 0", "i32 3"}});
+  entry.insts.push_back(LirLoadOp{"%t4", "ptr", "%t3"});
+  entry.insts.push_back(LirLoadOp{"%t5", "i32", "%t0"});
+  entry.insts.push_back(LirCmpOp{"%t6", false, LirCmpPredicateRef{"sle"}, "i32", "%t5", "40"});
+  entry.terminator = LirCondBr{"%t6", "vaarg.amd64.reg.7", "vaarg.amd64.stack.8"};
+
+  LirBlock reg;
+  reg.id = LirBlockId{1};
+  reg.label = "vaarg.amd64.reg.7";
+  reg.insts.push_back(LirCastOp{"%t10", LirCastKind::SExt, "i32", "%t5", "i64"});
+  reg.insts.push_back(LirGepOp{"%t11", "i8", "%t4", false, {"i64 %t10"}});
+  reg.insts.push_back(LirBinOp{"%t12", "add", "i32", "%t5", "8"});
+  reg.insts.push_back(LirStoreOp{"i32", "%t12", "%t0"});
+  reg.insts.push_back(LirMemcpyOp{"%t13", "%t11", "4", false});
+  reg.insts.push_back(LirLoadOp{"%t14", "i32", "%t13"});
+  reg.terminator = LirBr{"vaarg.amd64.join.9"};
+
+  LirBlock stack;
+  stack.id = LirBlockId{2};
+  stack.label = "vaarg.amd64.stack.8";
+  stack.insts.push_back(LirLoadOp{"%t15", "ptr", "%t2"});
+  stack.insts.push_back(LirGepOp{"%t16", "i8", "%t15", false, {"i64 8"}});
+  stack.insts.push_back(LirStoreOp{"ptr", "%t16", "%t2"});
+  stack.insts.push_back(LirMemcpyOp{"%t17", "%t15", "4", false});
+  stack.insts.push_back(LirLoadOp{"%t18", "i32", "%t17"});
+  stack.terminator = LirBr{"vaarg.amd64.join.9"};
+
+  LirBlock join;
+  join.id = LirBlockId{3};
+  join.label = "vaarg.amd64.join.9";
+  join.insts.push_back(LirPhiOp{"%t19", "i32", {{"%t14", "vaarg.amd64.reg.7"}, {"%t18", "vaarg.amd64.stack.8"}}});
+  join.insts.push_back(LirStoreOp{"i32", "%t19", "%lv.second"});
+  join.insts.push_back(LirVaEndOp{"%lv.ap"});
+  join.insts.push_back(LirLoadOp{"%t20", "i32", "%lv.second"});
+  join.insts.push_back(LirBinOp{"%t21", "add", "i32", "%p.first", "%t20"});
+  join.terminator = LirRet{std::string("%t21"), "i32"};
+
+  sum2.blocks.push_back(std::move(entry));
+  sum2.blocks.push_back(std::move(reg));
+  sum2.blocks.push_back(std::move(stack));
+  sum2.blocks.push_back(std::move(join));
+
+  LirFunction main;
+  main.name = "main";
+  main.signature_text = "define i32 @main()";
+  main.entry = LirBlockId{0};
+
+  LirBlock main_entry;
+  main_entry.id = LirBlockId{0};
+  main_entry.label = "entry";
+  main_entry.insts.push_back(LirCallOp{"%t0", "i32", "@sum2", "(i32, ...)", "i32 10, i32 32"});
+  main_entry.terminator = LirRet{std::string("%t0"), "i32"};
+  main.blocks.push_back(std::move(main_entry));
+
+  module.functions.push_back(std::move(sum2));
+  module.functions.push_back(std::move(main));
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_supported_x86_variadic_double_bytes_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction helper;
+  helper.name = "variadic_double_bytes";
+  helper.signature_text = "define i32 @variadic_double_bytes(i32 %p.seed, ...)";
+  helper.entry = LirBlockId{0};
+  helper.alloca_insts.push_back(LirAllocaOp{"%lv.ap", "%struct.__va_list_tag_", "", 16});
+  helper.alloca_insts.push_back(LirAllocaOp{"%lv.second", "double", "", 8});
+  helper.alloca_insts.push_back(LirAllocaOp{"%lv.bytes", "ptr", "", 8});
+  helper.alloca_insts.push_back(LirAllocaOp{"%t13", "double", "", 8});
+  helper.alloca_insts.push_back(LirAllocaOp{"%t17", "double", "", 8});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirVaStartOp{"%lv.ap"});
+  entry.insts.push_back(LirGepOp{"%t0", "%struct.__va_list_tag_", "%lv.ap", false, {"i32 0", "i32 0"}});
+  entry.insts.push_back(LirGepOp{"%t1", "%struct.__va_list_tag_", "%lv.ap", false, {"i32 0", "i32 1"}});
+  entry.insts.push_back(LirGepOp{"%t2", "%struct.__va_list_tag_", "%lv.ap", false, {"i32 0", "i32 2"}});
+  entry.insts.push_back(LirGepOp{"%t3", "%struct.__va_list_tag_", "%lv.ap", false, {"i32 0", "i32 3"}});
+  entry.insts.push_back(LirLoadOp{"%t4", "ptr", "%t3"});
+  entry.insts.push_back(LirLoadOp{"%t5", "i32", "%t1"});
+  entry.insts.push_back(LirCmpOp{"%t6", false, LirCmpPredicateRef{"sle"}, "i32", "%t5", "160"});
+  entry.terminator = LirCondBr{"%t6", "vaarg.amd64.reg.7", "vaarg.amd64.stack.8"};
+
+  LirBlock reg;
+  reg.id = LirBlockId{1};
+  reg.label = "vaarg.amd64.reg.7";
+  reg.insts.push_back(LirCastOp{"%t10", LirCastKind::SExt, "i32", "%t5", "i64"});
+  reg.insts.push_back(LirGepOp{"%t11", "i8", "%t4", false, {"i64 %t10"}});
+  reg.insts.push_back(LirBinOp{"%t12", "add", "i32", "%t5", "16"});
+  reg.insts.push_back(LirStoreOp{"i32", "%t12", "%t1"});
+  reg.insts.push_back(LirMemcpyOp{"%t13", "%t11", "8", false});
+  reg.insts.push_back(LirLoadOp{"%t14", "double", "%t13"});
+  reg.terminator = LirBr{"vaarg.amd64.join.9"};
+
+  LirBlock stack;
+  stack.id = LirBlockId{2};
+  stack.label = "vaarg.amd64.stack.8";
+  stack.insts.push_back(LirLoadOp{"%t15", "ptr", "%t2"});
+  stack.insts.push_back(LirGepOp{"%t16", "i8", "%t15", false, {"i64 8"}});
+  stack.insts.push_back(LirStoreOp{"ptr", "%t16", "%t2"});
+  stack.insts.push_back(LirMemcpyOp{"%t17", "%t15", "8", false});
+  stack.insts.push_back(LirLoadOp{"%t18", "double", "%t17"});
+  stack.terminator = LirBr{"vaarg.amd64.join.9"};
+
+  LirBlock join;
+  join.id = LirBlockId{3};
+  join.label = "vaarg.amd64.join.9";
+  join.insts.push_back(LirPhiOp{"%t19", "double", {{"%t14", "vaarg.amd64.reg.7"}, {"%t18", "vaarg.amd64.stack.8"}}});
+  join.insts.push_back(LirStoreOp{"double", "%t19", "%lv.second"});
+  join.insts.push_back(LirVaEndOp{"%lv.ap"});
+  join.insts.push_back(LirStoreOp{"ptr", "%lv.second", "%lv.bytes"});
+  join.insts.push_back(LirLoadOp{"%t20", "ptr", "%lv.bytes"});
+  join.insts.push_back(LirGepOp{"%t22", "i8", "%t20", false, {"i64 6"}});
+  join.insts.push_back(LirLoadOp{"%t23", "i8", "%t22"});
+  join.insts.push_back(LirCastOp{"%t24", LirCastKind::ZExt, "i8", "%t23", "i32"});
+  join.insts.push_back(LirBinOp{"%t25", "add", "i32", "%p.seed", "%t24"});
+  join.insts.push_back(LirLoadOp{"%t26", "ptr", "%lv.bytes"});
+  join.insts.push_back(LirGepOp{"%t28", "i8", "%t26", false, {"i64 7"}});
+  join.insts.push_back(LirLoadOp{"%t29", "i8", "%t28"});
+  join.insts.push_back(LirCastOp{"%t30", LirCastKind::ZExt, "i8", "%t29", "i32"});
+  join.insts.push_back(LirBinOp{"%t31", "add", "i32", "%t25", "%t30"});
+  join.terminator = LirRet{std::string("%t31"), "i32"};
+
+  helper.blocks.push_back(std::move(entry));
+  helper.blocks.push_back(std::move(reg));
+  helper.blocks.push_back(std::move(stack));
+  helper.blocks.push_back(std::move(join));
+
+  LirFunction main;
+  main.name = "main";
+  main.signature_text = "define i32 @main()";
+  main.entry = LirBlockId{0};
+
+  LirBlock main_entry;
+  main_entry.id = LirBlockId{0};
+  main_entry.label = "entry";
+  main_entry.insts.push_back(
+      LirCallOp{"%t0", "i32", "@variadic_double_bytes", "(i32, ...)",
+                "i32 1, double 0x4002000000000000"});
+  main_entry.terminator = LirRet{std::string("%t0"), "i32"};
+  main.blocks.push_back(std::move(main_entry));
+
+  module.functions.push_back(std::move(helper));
+  module.functions.push_back(std::move(main));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_dead_local_add_store_return_immediate_module() {
   using namespace c4c::codegen::lir;
 
@@ -396,6 +574,32 @@ void test_x86_try_emit_prepared_lir_module_reports_direct_lir_support_explicitly
       c4c::backend::x86::try_emit_prepared_lir_module(prepared_unsupported);
   expect_true(!unsupported.has_value(),
               "x86 prepared direct-LIR support probing should return no native rendering for unsupported floating-return modules instead of requiring exception-text classification");
+}
+
+void test_x86_try_emit_prepared_lir_module_accepts_variadic_sum2_runtime_slice() {
+  const auto prepared = c4c::backend::prepare_lir_module_for_target(
+      make_supported_x86_variadic_sum2_lir_module(), c4c::backend::Target::X86_64);
+  const auto rendered = c4c::backend::x86::try_emit_prepared_lir_module(prepared);
+
+  expect_true(rendered.has_value(),
+              "x86 prepared direct-LIR probing should accept the bounded variadic i32 runtime slice instead of rejecting it at the unsupported-module boundary");
+  expect_contains(*rendered, "lea eax, [rdi + rsi]",
+                  "x86 prepared direct-LIR probing should lower the bounded variadic i32 helper through the native integer register path");
+  expect_contains(*rendered, "xor eax, eax",
+                  "x86 prepared direct-LIR probing should clear the SysV variadic SSE-count register on integer-only call sites");
+}
+
+void test_x86_try_emit_prepared_lir_module_accepts_variadic_double_bytes_runtime_slice() {
+  const auto prepared = c4c::backend::prepare_lir_module_for_target(
+      make_supported_x86_variadic_double_bytes_lir_module(), c4c::backend::Target::X86_64);
+  const auto rendered = c4c::backend::x86::try_emit_prepared_lir_module(prepared);
+
+  expect_true(rendered.has_value(),
+              "x86 prepared direct-LIR probing should accept the bounded variadic double-byte runtime slice instead of rejecting it at the unsupported-module boundary");
+  expect_contains(*rendered, "movsd QWORD PTR [rbp - 8], xmm0",
+                  "x86 prepared direct-LIR probing should preserve the incoming variadic double in the bounded helper frame");
+  expect_contains(*rendered, "mov eax, 1",
+                  "x86 prepared direct-LIR probing should set the SysV variadic SSE-count register for the double call site");
 }
 
 void test_aarch64_try_emit_prepared_lir_module_reports_direct_lir_support_explicitly() {
@@ -1756,6 +1960,8 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_x86_try_emit_module_reports_direct_bir_support_explicitly);
   RUN_TEST(test_aarch64_try_emit_module_reports_direct_bir_support_explicitly);
   RUN_TEST(test_x86_try_emit_prepared_lir_module_reports_direct_lir_support_explicitly);
+  RUN_TEST(test_x86_try_emit_prepared_lir_module_accepts_variadic_sum2_runtime_slice);
+  RUN_TEST(test_x86_try_emit_prepared_lir_module_accepts_variadic_double_bytes_runtime_slice);
   RUN_TEST(test_aarch64_try_emit_prepared_lir_module_reports_direct_lir_support_explicitly);
   RUN_TEST(test_aarch64_try_emit_prepared_lir_module_accepts_pointer_phi_join_modules);
   RUN_TEST(test_x86_public_bir_emitter_delegates_direct_bir_route_to_shared_backend);
