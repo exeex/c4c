@@ -93,6 +93,12 @@ std::optional<bir::TypeKind> lower_scalar_type(
   }
 }
 
+bool lir_type_has_integer_width(const c4c::codegen::lir::LirTypeRef& type,
+                                unsigned bit_width) {
+  return type.kind() == c4c::codegen::lir::LirTypeKind::Integer &&
+         type.integer_bit_width() == bit_width;
+}
+
 std::optional<bir::TypeKind> lower_minimal_call_arg_type_text(std::string_view text) {
   if (const auto scalar = lower_scalar_type_text(text); scalar.has_value()) {
     return scalar;
@@ -2537,7 +2543,8 @@ std::optional<bir::BinaryInst> lower_compare_materialization(
   const auto* cast = std::get_if<c4c::codegen::lir::LirCastOp>(&cast_inst);
   if (cmp == nullptr || cast == nullptr || cmp->is_float || cmp->result.str().empty() ||
       cast->result.str().empty() ||
-      cast->kind != c4c::codegen::lir::LirCastKind::ZExt || cast->from_type.str() != "i1" ||
+      cast->kind != c4c::codegen::lir::LirCastKind::ZExt ||
+      !lir_type_has_integer_width(cast->from_type, 1) ||
       cast->operand.str() != cmp->result.str()) {
     return std::nullopt;
   }
@@ -3019,7 +3026,7 @@ std::optional<bir::Function> try_lower_conditional_return_select_function(
   if (cmp0 == nullptr || cast == nullptr || cmp1 == nullptr || condbr == nullptr ||
       cmp0->is_float || cmp0->result.str().empty() ||
       cast->result.str().empty() || cmp1->is_float || cmp1->result.str().empty() ||
-      cast->kind != LirCastKind::ZExt || cast->from_type.str() != "i1" ||
+      cast->kind != LirCastKind::ZExt || !lir_type_has_integer_width(cast->from_type, 1) ||
       cast->operand.str() != cmp0->result.str() || cmp1->predicate.str() != "ne" ||
       cmp1->lhs.str() != cast->result.str() || cmp1->rhs.str() != "0" ||
       condbr->cond_name != cmp1->result.str() || true_block.label != condbr->true_label ||
@@ -3105,7 +3112,7 @@ std::optional<bir::Function> try_lower_conditional_phi_select_function(
   if (entry.label.empty() || entry.insts.size() != 3 || cmp0 == nullptr || cast == nullptr ||
       cmp1 == nullptr || condbr == nullptr || cmp0->is_float || cmp0->result.str().empty() ||
       cast->result.str().empty() || cmp1->is_float || cmp1->result.str().empty() ||
-      cast->kind != LirCastKind::ZExt || cast->from_type.str() != "i1" ||
+      cast->kind != LirCastKind::ZExt || !lir_type_has_integer_width(cast->from_type, 1) ||
       cast->operand.str() != cmp0->result.str() || cmp1->predicate.str() != "ne" ||
       cmp1->lhs.str() != cast->result.str() || cmp1->rhs.str() != "0" ||
       condbr->cond_name != cmp1->result.str()) {
@@ -3315,7 +3322,8 @@ std::optional<bir::Function> try_lower_widened_i8_add_sub_chain_function(
   if (ret == nullptr || trunc == nullptr || !ret->value_str.has_value() ||
       trunc->result.str().empty() || *ret->value_str != trunc->result.str() ||
       ret->type_str != "i8" || trunc->kind != LirCastKind::Trunc ||
-      trunc->from_type.str() != "i32" || trunc->to_type.str() != "i8") {
+      !lir_type_has_integer_width(trunc->from_type, 32) ||
+      !lir_type_has_integer_width(trunc->to_type, 8)) {
     return std::nullopt;
   }
 
@@ -3382,7 +3390,8 @@ std::optional<bir::Function> try_lower_widened_i8_add_sub_chain_function(
     if (const auto* cast = std::get_if<LirCastOp>(&lir_block.insts[inst_index]); cast != nullptr) {
       if (cast->result.str().empty() || name_is_defined(cast->result.str()) ||
           (cast->kind != LirCastKind::SExt && cast->kind != LirCastKind::ZExt) ||
-          cast->from_type.str() != "i8" || cast->to_type.str() != "i32") {
+          !lir_type_has_integer_width(cast->from_type, 8) ||
+          !lir_type_has_integer_width(cast->to_type, 32)) {
         return std::nullopt;
       }
       const auto source = lower_immediate_or_name(cast->operand.str(), bir::TypeKind::I8);
@@ -3498,11 +3507,14 @@ std::optional<bir::Function> try_lower_widened_i8_compare_return_function(
   if (ret == nullptr || trunc == nullptr || !ret->value_str.has_value() ||
       trunc->result.str().empty() || *ret->value_str != trunc->result.str() ||
       ret->type_str != "i8" || trunc->kind != LirCastKind::Trunc ||
-      trunc->from_type.str() != "i32" || trunc->to_type.str() != "i8" ||
+      !lir_type_has_integer_width(trunc->from_type, 32) ||
+      !lir_type_has_integer_width(trunc->to_type, 8) ||
       cmp == nullptr || cmp->is_float || cmp->result.str().empty() ||
       cond_cast == nullptr || cond_cast->result.str().empty() ||
-      cond_cast->kind != LirCastKind::ZExt || cond_cast->from_type.str() != "i1" ||
-      cond_cast->to_type.str() != "i32" || cond_cast->operand.str() != cmp->result.str() ||
+      cond_cast->kind != LirCastKind::ZExt ||
+      !lir_type_has_integer_width(cond_cast->from_type, 1) ||
+      !lir_type_has_integer_width(cond_cast->to_type, 32) ||
+      cond_cast->operand.str() != cmp->result.str() ||
       trunc->operand.str() != cond_cast->result.str()) {
     return std::nullopt;
   }
@@ -3547,8 +3559,8 @@ std::optional<bir::Function> try_lower_widened_i8_compare_return_function(
       return std::nullopt;
     }
 
-    if (cast->kind == LirCastKind::Trunc && cast->from_type.str() == "i32" &&
-        cast->to_type.str() == "i8") {
+    if (cast->kind == LirCastKind::Trunc && lir_type_has_integer_width(cast->from_type, 32) &&
+        lir_type_has_integer_width(cast->to_type, 8)) {
       const auto source = lower_immediate_or_name(cast->operand.str(), bir::TypeKind::I32);
       if (!source.has_value() || source->kind != bir::Value::Kind::Immediate ||
           !immediate_fits_type(source->immediate, bir::TypeKind::I8)) {
@@ -3561,7 +3573,8 @@ std::optional<bir::Function> try_lower_widened_i8_compare_return_function(
     }
 
     if ((cast->kind != LirCastKind::SExt && cast->kind != LirCastKind::ZExt) ||
-        cast->from_type.str() != "i8" || cast->to_type.str() != "i32") {
+        !lir_type_has_integer_width(cast->from_type, 8) ||
+        !lir_type_has_integer_width(cast->to_type, 32)) {
       return std::nullopt;
     }
 
@@ -3579,7 +3592,7 @@ std::optional<bir::Function> try_lower_widened_i8_compare_return_function(
   }
 
   const auto predicate = lower_compare_materialization_opcode(cmp->predicate.str());
-  if (!predicate.has_value() || cmp->type_str.str() != "i32") {
+  if (!predicate.has_value() || !lir_type_has_integer_width(cmp->type_str, 32)) {
     return std::nullopt;
   }
 
@@ -3644,9 +3657,11 @@ std::optional<bir::Function> try_lower_widened_i8_conditional_return_select_func
   if (cmp0 == nullptr || cond_cast == nullptr || cmp1 == nullptr || condbr == nullptr ||
       cmp0->is_float || cmp0->result.str().empty() || cond_cast->result.str().empty() ||
       cmp1->is_float || cmp1->result.str().empty() ||
-      cond_cast->kind != LirCastKind::ZExt || cond_cast->from_type.str() != "i1" ||
-      cond_cast->to_type.str() != "i32" || cond_cast->operand.str() != cmp0->result.str() ||
-      cmp1->predicate.str() != "ne" || cmp1->type_str.str() != "i32" ||
+      cond_cast->kind != LirCastKind::ZExt ||
+      !lir_type_has_integer_width(cond_cast->from_type, 1) ||
+      !lir_type_has_integer_width(cond_cast->to_type, 32) ||
+      cond_cast->operand.str() != cmp0->result.str() || cmp1->predicate.str() != "ne" ||
+      !lir_type_has_integer_width(cmp1->type_str, 32) ||
       cmp1->lhs.str() != cond_cast->result.str() || cmp1->rhs.str() != "0" ||
       condbr->cond_name != cmp1->result.str() || condbr->true_label != true_block.label ||
       condbr->false_label != false_block.label) {
@@ -3694,7 +3709,8 @@ std::optional<bir::Function> try_lower_widened_i8_conditional_return_select_func
     const auto* cast = std::get_if<LirCastOp>(&entry.insts[inst_index]);
     if (cast == nullptr || cast->result.str().empty() || name_is_defined(cast->result.str()) ||
         (cast->kind != LirCastKind::SExt && cast->kind != LirCastKind::ZExt) ||
-        cast->from_type.str() != "i8" || cast->to_type.str() != "i32") {
+        !lir_type_has_integer_width(cast->from_type, 8) ||
+        !lir_type_has_integer_width(cast->to_type, 32)) {
       return std::nullopt;
     }
 
@@ -3712,7 +3728,7 @@ std::optional<bir::Function> try_lower_widened_i8_conditional_return_select_func
   }
 
   const auto predicate = lower_compare_materialization_opcode(cmp0->predicate.str());
-  if (!predicate.has_value() || cmp0->type_str.str() != "i32") {
+  if (!predicate.has_value() || !lir_type_has_integer_width(cmp0->type_str, 32)) {
     return std::nullopt;
   }
 
@@ -3748,8 +3764,9 @@ std::optional<bir::Function> try_lower_widened_i8_conditional_return_select_func
 
     const auto* trunc = std::get_if<LirCastOp>(&block.insts.front());
     if (trunc == nullptr || trunc->result.str().empty() || *ret->value_str != trunc->result.str() ||
-        trunc->kind != LirCastKind::Trunc || trunc->from_type.str() != "i32" ||
-        trunc->to_type.str() != "i8") {
+        trunc->kind != LirCastKind::Trunc ||
+        !lir_type_has_integer_width(trunc->from_type, 32) ||
+        !lir_type_has_integer_width(trunc->to_type, 8)) {
       return std::nullopt;
     }
 
@@ -3830,9 +3847,11 @@ std::optional<bir::Function> try_lower_widened_i8_conditional_phi_select_functio
   if (cmp0 == nullptr || cond_cast == nullptr || cmp1 == nullptr || condbr == nullptr ||
       cmp0->is_float || cmp0->result.str().empty() || cond_cast->result.str().empty() ||
       cmp1->is_float || cmp1->result.str().empty() ||
-      cond_cast->kind != LirCastKind::ZExt || cond_cast->from_type.str() != "i1" ||
-      cond_cast->to_type.str() != "i32" || cond_cast->operand.str() != cmp0->result.str() ||
-      cmp1->predicate.str() != "ne" || cmp1->type_str.str() != "i32" ||
+      cond_cast->kind != LirCastKind::ZExt ||
+      !lir_type_has_integer_width(cond_cast->from_type, 1) ||
+      !lir_type_has_integer_width(cond_cast->to_type, 32) ||
+      cond_cast->operand.str() != cmp0->result.str() || cmp1->predicate.str() != "ne" ||
+      !lir_type_has_integer_width(cmp1->type_str, 32) ||
       cmp1->lhs.str() != cond_cast->result.str() || cmp1->rhs.str() != "0" ||
       condbr->cond_name != cmp1->result.str()) {
     return std::nullopt;
@@ -3892,7 +3911,8 @@ std::optional<bir::Function> try_lower_widened_i8_conditional_phi_select_functio
     const auto* cast = std::get_if<LirCastOp>(&entry.insts[inst_index]);
     if (cast == nullptr || cast->result.str().empty() || name_is_defined(cast->result.str()) ||
         (cast->kind != LirCastKind::SExt && cast->kind != LirCastKind::ZExt) ||
-        cast->from_type.str() != "i8" || cast->to_type.str() != "i32") {
+        !lir_type_has_integer_width(cast->from_type, 8) ||
+        !lir_type_has_integer_width(cast->to_type, 32)) {
       return std::nullopt;
     }
 
@@ -3910,7 +3930,7 @@ std::optional<bir::Function> try_lower_widened_i8_conditional_phi_select_functio
   }
 
   const auto predicate = lower_compare_materialization_opcode(cmp0->predicate.str());
-  if (!predicate.has_value() || cmp0->type_str.str() != "i32") {
+  if (!predicate.has_value() || !lir_type_has_integer_width(cmp0->type_str, 32)) {
     return std::nullopt;
   }
 
@@ -3994,7 +4014,8 @@ std::optional<bir::Function> try_lower_widened_i8_conditional_phi_select_functio
           return false;
         }
         if ((cast->kind == LirCastKind::SExt || cast->kind == LirCastKind::ZExt) &&
-            cast->from_type.str() == "i8" && cast->to_type.str() == "i32") {
+            lir_type_has_integer_width(cast->from_type, 8) &&
+            lir_type_has_integer_width(cast->to_type, 32)) {
           const auto source = lower_immediate_or_name(cast->operand.str(), bir::TypeKind::I8);
           if (!source.has_value()) {
             return false;
@@ -4007,8 +4028,8 @@ std::optional<bir::Function> try_lower_widened_i8_conditional_phi_select_functio
           local_values.push_back(*resolved_source);
           return true;
         }
-        if (cast->kind == LirCastKind::Trunc && cast->from_type.str() == "i32" &&
-            cast->to_type.str() == "i8") {
+        if (cast->kind == LirCastKind::Trunc && lir_type_has_integer_width(cast->from_type, 32) &&
+            lir_type_has_integer_width(cast->to_type, 8)) {
           const auto source = lower_immediate_or_name(cast->operand.str(), bir::TypeKind::I32);
           if (!source.has_value()) {
             return false;
@@ -4078,16 +4099,23 @@ std::optional<bir::Function> try_lower_widened_i8_conditional_phi_select_functio
     return LoweredWidenedChain{std::move(lowered), *narrow_value};
   };
 
+  const auto phi_type = lir_type_has_integer_width(phi->type_str, 8)
+                            ? std::optional<bir::TypeKind>(bir::TypeKind::I8)
+                            : (lir_type_has_integer_width(phi->type_str, 32)
+                                   ? std::optional<bir::TypeKind>(bir::TypeKind::I32)
+                                   : std::nullopt);
+  if (!phi_type.has_value()) {
+    return std::nullopt;
+  }
+
   const auto true_chain =
       lower_widened_chain(*true_value_block,
                           lir_function.blocks.size() == 4 ? nullptr : true_phi_pred,
-                          phi->incoming[0].first,
-                          phi->type_str.str() == "i8" ? bir::TypeKind::I8 : bir::TypeKind::I32);
+                          phi->incoming[0].first, *phi_type);
   const auto false_chain =
       lower_widened_chain(*false_value_block,
                           lir_function.blocks.size() == 4 ? nullptr : false_phi_pred,
-                          phi->incoming[1].first,
-                          phi->type_str.str() == "i8" ? bir::TypeKind::I8 : bir::TypeKind::I32);
+                          phi->incoming[1].first, *phi_type);
   if (!true_chain.has_value() || !false_chain.has_value()) {
     return std::nullopt;
   }
@@ -4148,7 +4176,7 @@ std::optional<bir::Function> try_lower_widened_i8_conditional_phi_select_functio
            available_names.end();
   };
 
-  if (phi->type_str.str() == "i8" && join_block->insts.size() == 1 &&
+  if (*phi_type == bir::TypeKind::I8 && join_block->insts.size() == 1 &&
       *ret->value_str == phi->result.str()) {
     block.terminator.value = bir::Value::named(bir::TypeKind::I8, phi->result.str());
     function.blocks.push_back(std::move(block));
@@ -4157,9 +4185,11 @@ std::optional<bir::Function> try_lower_widened_i8_conditional_phi_select_functio
 
   const auto* trunc =
       join_block->insts.empty() ? nullptr : std::get_if<LirCastOp>(&join_block->insts.back());
-  if (phi->type_str.str() != "i32" || trunc == nullptr || trunc->result.str().empty() ||
-      trunc->kind != LirCastKind::Trunc || trunc->from_type.str() != "i32" ||
-      trunc->to_type.str() != "i8" || *ret->value_str != trunc->result.str()) {
+  if (*phi_type != bir::TypeKind::I32 || trunc == nullptr || trunc->result.str().empty() ||
+      trunc->kind != LirCastKind::Trunc ||
+      !lir_type_has_integer_width(trunc->from_type, 32) ||
+      !lir_type_has_integer_width(trunc->to_type, 8) ||
+      *ret->value_str != trunc->result.str()) {
     return std::nullopt;
   }
 

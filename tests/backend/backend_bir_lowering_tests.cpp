@@ -518,6 +518,14 @@ c4c::codegen::lir::LirTypeRef make_test_stale_text_i32_lir_type() {
   return c4c::codegen::lir::LirTypeRef("i8", c4c::codegen::lir::LirTypeKind::Integer, 32);
 }
 
+c4c::codegen::lir::LirTypeRef make_test_stale_text_i8_lir_type() {
+  return c4c::codegen::lir::LirTypeRef("i32", c4c::codegen::lir::LirTypeKind::Integer, 8);
+}
+
+c4c::codegen::lir::LirTypeRef make_test_stale_text_i1_lir_type() {
+  return c4c::codegen::lir::LirTypeRef("i8", c4c::codegen::lir::LirTypeKind::Integer, 1);
+}
+
 c4c::codegen::lir::LirModule
 make_bir_minimal_two_arg_direct_call_lir_module_with_typed_helper_params() {
   using namespace c4c::codegen::lir;
@@ -2005,6 +2013,26 @@ void test_bir_lowering_accepts_tiny_return_add_lir_slice() {
                   "BIR lowering should return the named BIR result instead of falling back to legacy text");
 }
 
+void test_bir_lowering_accepts_typed_i8_return_add_lir_slice_with_stale_text() {
+  auto module = make_bir_i8_return_add_module();
+  auto& entry = module.functions.front().blocks.front();
+  auto& add = std::get<c4c::codegen::lir::LirBinOp>(entry.insts[0]);
+  auto& trunc = std::get<c4c::codegen::lir::LirCastOp>(entry.insts[1]);
+  add.type_str = make_test_stale_text_i32_lir_type();
+  trunc.from_type = make_test_stale_text_i32_lir_type();
+  trunc.to_type = make_test_stale_text_i8_lir_type();
+
+  const auto lowered = c4c::backend::lower_to_bir(module);
+  const auto rendered = c4c::backend::bir::print(lowered);
+
+  expect_contains(rendered, "bir.func @choose_add_u() -> i8 {",
+                  "BIR lowering should preserve the widened i8 add signature when the widened instruction type refs only agree semantically");
+  expect_contains(rendered, "%t0 = bir.add i8 2, 3",
+                  "BIR lowering should lower widened i8 add/trunc slices from typed widths instead of stale render text");
+  expect_contains(rendered, "bir.ret i8 %t0",
+                  "BIR lowering should keep the widened add result on the direct BIR path when typed widths stay authoritative");
+}
+
 void test_bir_lowering_accepts_tiny_return_sub_lir_slice() {
   const auto lowered = c4c::backend::lower_to_bir(make_bir_return_sub_module());
   const auto rendered = c4c::backend::bir::print(lowered);
@@ -2052,6 +2080,29 @@ void test_bir_lowering_accepts_typed_tiny_return_zext_lir_slice() {
                   "BIR lowering should materialize typed straight-line zext slices in BIR terms");
   expect_contains(rendered, "bir.ret i32 %t0",
                   "BIR lowering should return the typed zext result on the direct BIR path");
+}
+
+void test_bir_lowering_accepts_typed_i8_return_ne_lir_slice_with_stale_text() {
+  auto module = make_bir_i8_return_ne_module();
+  auto& entry = module.functions.front().blocks.front();
+  auto& cmp = std::get<c4c::codegen::lir::LirCmpOp>(entry.insts[0]);
+  auto& cond_cast = std::get<c4c::codegen::lir::LirCastOp>(entry.insts[1]);
+  auto& trunc = std::get<c4c::codegen::lir::LirCastOp>(entry.insts[2]);
+  cmp.type_str = make_test_stale_text_i32_lir_type();
+  cond_cast.from_type = make_test_stale_text_i1_lir_type();
+  cond_cast.to_type = make_test_stale_text_i32_lir_type();
+  trunc.from_type = make_test_stale_text_i32_lir_type();
+  trunc.to_type = make_test_stale_text_i8_lir_type();
+
+  const auto lowered = c4c::backend::lower_to_bir(module);
+  const auto rendered = c4c::backend::bir::print(lowered);
+
+  expect_contains(rendered, "bir.func @choose_ne_u() -> i8 {",
+                  "BIR lowering should preserve the widened i8 compare-return signature when compare and cast type refs only agree semantically");
+  expect_contains(rendered, "%t1 = bir.ne i8 7, 3",
+                  "BIR lowering should lower widened compare materialization from typed widths instead of stale i32/i8 text");
+  expect_contains(rendered, "bir.ret i8 %t1",
+                  "BIR lowering should keep the widened compare result on the direct BIR path when only the typed widths agree");
 }
 
 void test_bir_lowering_accepts_tiny_return_trunc_lir_slice() {
@@ -2553,6 +2604,31 @@ void test_bir_lowering_accepts_typed_two_param_u8_select_ne_phi_slice() {
                   "BIR lowering should collapse the typed widened two-parameter not-equal phi join into a direct i8 BIR select");
   expect_contains(rendered, "bir.ret i8 %t5",
                   "BIR lowering should return the typed widened select result on the direct BIR path");
+}
+
+void test_bir_lowering_accepts_typed_two_param_u8_select_ne_phi_slice_with_stale_text() {
+  auto module = make_bir_two_param_select_ne_phi_module();
+  auto& entry = module.functions.front().blocks.front();
+  std::get<c4c::codegen::lir::LirCastOp>(entry.insts[0]).from_type = make_test_stale_text_i8_lir_type();
+  std::get<c4c::codegen::lir::LirCastOp>(entry.insts[0]).to_type = make_test_stale_text_i32_lir_type();
+  std::get<c4c::codegen::lir::LirCastOp>(entry.insts[1]).from_type = make_test_stale_text_i8_lir_type();
+  std::get<c4c::codegen::lir::LirCastOp>(entry.insts[1]).to_type = make_test_stale_text_i32_lir_type();
+  std::get<c4c::codegen::lir::LirCmpOp>(entry.insts[2]).type_str = make_test_stale_text_i32_lir_type();
+  std::get<c4c::codegen::lir::LirCastOp>(entry.insts[3]).from_type = make_test_stale_text_i1_lir_type();
+  std::get<c4c::codegen::lir::LirCastOp>(entry.insts[3]).to_type = make_test_stale_text_i32_lir_type();
+  std::get<c4c::codegen::lir::LirCmpOp>(entry.insts[4]).type_str = make_test_stale_text_i32_lir_type();
+  auto& join_block = module.functions.front().blocks.back();
+  std::get<c4c::codegen::lir::LirPhiOp>(join_block.insts.front()).type_str = make_test_stale_text_i8_lir_type();
+
+  const auto lowered = c4c::backend::lower_to_bir(module);
+  const auto rendered = c4c::backend::bir::print(lowered);
+
+  expect_contains(rendered, "bir.func @choose2_ne_u(i8 %p.x, i8 %p.y) -> i8 {",
+                  "BIR lowering should preserve the typed widened two-parameter unsigned-char ternary signature when entry and phi type refs only agree semantically");
+  expect_contains(rendered, "%t5 = bir.select ne i8 %p.x, %p.y, %p.x, %p.y",
+                  "BIR lowering should collapse the widened not-equal phi join from semantic widths instead of stale i8/i32 render text");
+  expect_contains(rendered, "bir.ret i8 %t5",
+                  "BIR lowering should return the widened select result on the direct BIR path when typed widths stay authoritative");
 }
 
 void test_bir_lowering_accepts_two_param_u8_select_ne_predecessor_add_phi_post_join_add_slice() {
@@ -3431,10 +3507,12 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_validator_accepts_minimal_select_scaffold);
   RUN_TEST(test_lir_verify_rejects_typed_integer_text_mismatch);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_add_lir_slice);
+  RUN_TEST(test_bir_lowering_accepts_typed_i8_return_add_lir_slice_with_stale_text);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_sub_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_sext_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_zext_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_typed_tiny_return_zext_lir_slice);
+  RUN_TEST(test_bir_lowering_accepts_typed_i8_return_ne_lir_slice_with_stale_text);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_trunc_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_mul_lir_slice);
   RUN_TEST(test_bir_lowering_accepts_tiny_return_and_lir_slice);
@@ -3480,6 +3558,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_two_param_select_phi_slice);
   RUN_TEST(test_bir_lowering_accepts_two_param_u8_select_ne_phi_slice);
   RUN_TEST(test_bir_lowering_accepts_typed_two_param_u8_select_ne_phi_slice);
+  RUN_TEST(test_bir_lowering_accepts_typed_two_param_u8_select_ne_phi_slice_with_stale_text);
   RUN_TEST(test_bir_lowering_accepts_two_param_u8_select_ne_predecessor_add_phi_post_join_add_slice);
   RUN_TEST(test_bir_lowering_accepts_two_param_u8_select_ne_split_predecessor_add_phi_post_join_add_sub_slice);
   RUN_TEST(test_bir_lowering_accepts_two_param_u8_select_ne_split_predecessor_add_phi_post_join_add_sub_add_slice);

@@ -8,9 +8,10 @@ Source Plan: plan.md
 
 - Step 1: audit the typed type boundary and backend ownership seams
 - Current slice: move the next typed-lowering pass back into
-  `src/backend/lowering/lir_to_bir.cpp` and replace the remaining
-  instruction-local raw `i8`/`i32`/`i64` checks that still bypass semantic
-  `LirTypeRef` inspection
+  `src/backend/lowering/lir_to_bir.cpp` and audit the remaining
+  instruction-local raw integer text checks that still bypass semantic
+  `LirTypeRef` inspection outside the newly-converted widened `i8`
+  add/compare/select seams
 
 ## Completed
 
@@ -150,13 +151,24 @@ Source Plan: plan.md
     integer and signature-shape driven; pointer handling remains confined to
     declared-extern parsing and can stay deferred until the first
     pointer-backed BIR consumer is converted
+- Switched the widened `i8` instruction-local cast/cmp/phi checks in
+  `src/backend/lowering/lir_to_bir.cpp` from raw `i1`/`i8`/`i32` text matching
+  to semantic integer-width inspection, including the nearby generic compare
+  materialization and conditional-select zext guards
+- Added focused backend regressions in
+  `tests/backend/backend_bir_lowering_tests.cpp` that keep the widened `i8`
+  add, compare-return, and two-parameter select-phi BIR lowering paths working
+  when instruction-local `LirTypeRef` objects carry semantic integer widths
+  while their stored text is intentionally stale
+- Re-ran `backend_bir_tests` plus the full suite and kept the regression guard
+  passing (`2841 -> 2841`)
 
 ## Next
 
 - move the next typed-lowering slice back to
   `src/backend/lowering/lir_to_bir.cpp` and audit the remaining
-  instruction-local raw text checks for `i8`/`i32`/`i64` that still bypass
-  semantic `LirTypeRef` inspection
+  instruction-local raw integer text checks that still bypass semantic
+  `LirTypeRef` inspection outside the widened `i8` add/compare/select seams
 - keep pointer payload support deferred until a concrete pointer-backed BIR
   lowering consumer appears, then add only the narrow typed payload that
   consumer needs
@@ -178,7 +190,11 @@ Source Plan: plan.md
   text mentions `plan_todo.md`.
 - Immediate validating targets:
   `test_lir_verify_rejects_typed_integer_text_mismatch` and
-  `test_bir_lowering_accepts_typed_two_param_u8_select_ne_phi_slice` in
+  `test_bir_lowering_accepts_typed_i8_return_add_lir_slice_with_stale_text`
+  `test_bir_lowering_accepts_typed_i8_return_ne_lir_slice_with_stale_text`
+  and
+  `test_bir_lowering_accepts_typed_two_param_u8_select_ne_phi_slice_with_stale_text`
+  in
   `tests/backend/backend_bir_lowering_tests.cpp`.
 - Latest validating targets for the direct-call helper seam:
   `test_bir_lowering_accepts_minimal_direct_call_add_imm_lir_module_with_typed_helper_param`
