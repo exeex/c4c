@@ -1162,6 +1162,18 @@ void test_backend_shared_stack_layout_input_collects_value_names() {
               "backend-owned stack-layout input should preserve body SSA uses for downstream slot builders");
 }
 
+void test_backend_shared_stack_layout_input_preserves_param_alloca_metadata() {
+  const auto module = make_dead_param_alloca_candidate_module();
+  const auto& function = module.functions.back();
+  const auto input = c4c::backend::stack_layout::lower_lir_to_stack_layout_input(function);
+
+  expect_true(input.entry_allocas.size() == 1 &&
+                  input.entry_allocas.front().alloca_name == "%lv.param.x" &&
+                  input.entry_allocas.front().type_str == "i32" &&
+                  input.entry_allocas.front().paired_store_value == std::optional<std::string>{"%p.x"},
+              "backend-owned stack-layout input should preserve param alloca names, types, and paired stores for direct-emitter slot initialization");
+}
+
 void test_backend_shared_stack_layout_input_preserves_signature_metadata() {
   c4c::codegen::lir::LirFunction function;
   function.name = "aggregate_variadic";
@@ -2024,6 +2036,7 @@ int main(int argc, char* argv[]) {
   test_backend_shared_stack_layout_analysis_tracks_phi_use_blocks();
   test_backend_shared_stack_layout_analysis_accepts_backend_owned_input();
   test_backend_shared_stack_layout_input_collects_value_names();
+  test_backend_shared_stack_layout_input_preserves_param_alloca_metadata();
   test_backend_shared_stack_layout_input_preserves_signature_metadata();
   test_backend_shared_stack_layout_input_preserves_aarch64_return_gate_metadata();
   test_backend_shared_stack_layout_analysis_detects_dead_param_allocas();

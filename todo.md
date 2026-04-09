@@ -8,15 +8,35 @@ Source Plan: plan.md
 
 - Step 6: move liveness to backend MIR
 - Current slice: re-audit the remaining direct-emitter slot ownership seams now
-  that target-local entrypoint preparation shares one backend-owned
-  liveness/regalloc/stack-layout bundle helper and only the final
-  entry-alloca mutation path still needs raw LIR
-- Next intended slice: move the next compatibility-only direct-emitter raw-LIR
-  read onto existing lowered metadata, starting with whichever slot or
-  signature/call-result reparse survives the post-helper audit
+  that AArch64 alloca-slot and param-alloca initialization consume the lowered
+  stack-layout surface and only the final entry-alloca mutation path still
+  needs raw LIR
+- Next intended slice: audit whether the remaining
+  `apply_entry_alloca_slot_plan(...)` mutation boundary can shrink further or
+  needs to stay as the last intentional raw-LIR seam while Step 6/7 continues
 
 ## Completed
 
+- Completed the next Step 6 bounded AArch64 direct-emitter metadata handoff
+  slice by retiring the remaining compatibility-only raw-LIR slot-init rescans
+  in favor of the already-lowered stack-layout input:
+  - updated
+    `src/backend/aarch64/codegen/emit.cpp` so the direct emitter now
+    initializes alloca pointer slots from
+    `StackLayoutInput::entry_allocas` instead of rescanning
+    `fn.alloca_insts`
+  - retargeted the direct emitter's lowered param-alloca initialization path
+    to use `entry_allocas[].paired_store_value` plus
+    `signature_params` metadata instead of rebuilding `%lv.param.*` ownership
+    from raw-LIR signature order
+  - extended `tests/backend/backend_shared_util_tests.cpp` with focused
+    coverage proving backend-owned stack-layout input preserves param-alloca
+    names, types, and paired stores for that direct-emitter slot-init path
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R backend_shared_util_tests --output-on-failure`,
+    rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with no new failures and no pass-count drop
+    (`2809 -> 2809`, same 32 known failing tests as `test_fail_before.log`)
 - Completed the next Step 6/7 bounded target-local entrypoint preparation
   cleanup slice by lifting duplicated liveness/regalloc/stack-layout setup
   behind one shared backend-owned helper while keeping the final mutation step

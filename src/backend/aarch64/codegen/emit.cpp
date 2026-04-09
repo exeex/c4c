@@ -4825,6 +4825,17 @@ static GenSlotMap gen_build_slots(
   return sm;
 }
 
+static const c4c::backend::stack_layout::StackLayoutSignatureParam* find_signature_param(
+    const std::vector<c4c::backend::stack_layout::StackLayoutSignatureParam>& signature_params,
+    std::string_view operand) {
+  for (const auto& param : signature_params) {
+    if (!param.is_varargs && param.operand == operand) {
+      return &param;
+    }
+  }
+  return nullptr;
+}
+
 // Emit load of an operand into a register.  Handles SSA values, immediates,
 // special tokens (null/true/false), and globals.
 static void gen_load_operand(std::ostringstream& out, const std::string& op,
@@ -5318,8 +5329,7 @@ static std::optional<std::string> try_emit_general_lir_asm(
       }
     }
 
-    // Parse parameters from signature_text and store to stack slots
-    // signature_text format: "define i32 @func(i32 %p.a, ptr %p.b)\n"
+    // Materialize named parameters into the backend-owned stack slots.
     {
       {
         int next_gp_reg = 0;
@@ -5401,38 +5411,37 @@ static std::optional<std::string> try_emit_general_lir_asm(
       }
     }
 
-    // Emit alloca_insts: store pointer to data area in the alloca result slot
-    for (const auto& inst : fn.alloca_insts) {
-      if (const auto* p = std::get_if<LirAllocaOp>(&inst)) {
-        int ptr_off = sm.lookup(p->result.str());
-        int data_off = sm.lookup_data(p->result.str());
-        if (ptr_off >= 0 && data_off >= 0) {
-          if (data_off < 4096) {
-            out << "  add x0, sp, #" << data_off << "\n";
-          } else {
-            out << "  mov x0, #" << data_off << "\n";
-            out << "  add x0, sp, x0\n";
-          }
-          out << "  str x0, [sp, #" << ptr_off << "]\n";
+    // Initialize alloca pointer slots from the lowered stack-layout surface.
+    for (const auto& alloca : stack_layout_input.entry_allocas) {
+      int ptr_off = sm.lookup(alloca.alloca_name);
+      int data_off = sm.lookup_data(alloca.alloca_name);
+      if (ptr_off >= 0 && data_off >= 0) {
+        if (data_off < 4096) {
+          out << "  add x0, sp, #" << data_off << "\n";
+        } else {
+          out << "  mov x0, #" << data_off << "\n";
+          out << "  add x0, sp, x0\n";
         }
+        out << "  str x0, [sp, #" << ptr_off << "]\n";
       }
     }
 
     // Lowered parameter allocas (e.g. %lv.param.x) must be initialized after the
     // alloca address slots have been materialized.
     {
-      for (size_t i = 0; i < parsed_signature_params.size() && i < 8; ++i) {
-        if (parsed_signature_params[i].is_varargs) break;
-        const std::string& param_name = parsed_signature_params[i].operand;
+      for (const auto& alloca : stack_layout_input.entry_allocas) {
+        if (!alloca.paired_store_value.has_value()) continue;
+        const std::string& param_name = *alloca.paired_store_value;
         if (param_name.compare(0, 3, "%p.") != 0) continue;
+        const auto* param = find_signature_param(parsed_signature_params, param_name);
+        if (param == nullptr) continue;
 
-        const std::string param_slot_name =
-            "%lv.param." + param_name.substr(std::string("%p.").size());
-        const int param_ptr_off = sm.lookup(param_slot_name);
+        const int param_ptr_off = sm.lookup(alloca.alloca_name);
         if (param_ptr_off < 0) continue;
         const int param_value_off = sm.lookup(param_name);
+        if (param_value_off < 0) continue;
 
-        const std::string param_type = parsed_signature_params[i].type;
+        const std::string& param_type = param->type;
         const auto param_layout = gen_type_layout(param_type, module.type_decls);
         if (param_layout.size <= 0) continue;
 
@@ -5456,33 +5465,17 @@ static std::optional<std::string> try_emit_general_lir_asm(
 
         if (param_layout.size > 8) continue;
         if (param_layout.size == 1) {
-          if (param_value_off >= 0) {
-            out << "  ldr w10, [sp, #" << param_value_off << "]\n";
-            out << "  strb w10, [x9]\n";
-          } else {
-            out << "  strb w" << i << ", [x9]\n";
-          }
+          out << "  ldr w10, [sp, #" << param_value_off << "]\n";
+          out << "  strb w10, [x9]\n";
         } else if (param_layout.size == 2) {
-          if (param_value_off >= 0) {
-            out << "  ldr w10, [sp, #" << param_value_off << "]\n";
-            out << "  strh w10, [x9]\n";
-          } else {
-            out << "  strh w" << i << ", [x9]\n";
-          }
+          out << "  ldr w10, [sp, #" << param_value_off << "]\n";
+          out << "  strh w10, [x9]\n";
         } else if (param_layout.size == 4) {
-          if (param_value_off >= 0) {
-            out << "  ldr w10, [sp, #" << param_value_off << "]\n";
-            out << "  str w10, [x9]\n";
-          } else {
-            out << "  str w" << i << ", [x9]\n";
-          }
+          out << "  ldr w10, [sp, #" << param_value_off << "]\n";
+          out << "  str w10, [x9]\n";
         } else {
-          if (param_value_off >= 0) {
-            out << "  ldr x10, [sp, #" << param_value_off << "]\n";
-            out << "  str x10, [x9]\n";
-          } else {
-            out << "  str x" << i << ", [x9]\n";
-          }
+          out << "  ldr x10, [sp, #" << param_value_off << "]\n";
+          out << "  str x10, [x9]\n";
         }
       }
     }
