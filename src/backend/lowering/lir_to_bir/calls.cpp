@@ -203,8 +203,22 @@ bir::CallingConv c4c::backend::default_calling_convention_for_target(std::string
   return bir::CallingConv::C;
 }
 
+bool c4c::backend::function_signature_is_variadic(std::string_view signature_text) {
+  const auto params = parse_backend_function_signature_params(signature_text);
+  if (!params.has_value()) {
+    return false;
+  }
+  for (const auto& param : *params) {
+    if (param.is_varargs) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bir::CallInst c4c::backend::make_direct_call_inst(std::string callee,
                                                   bir::CallingConv calling_convention,
+                                                  bool is_variadic,
                                                   bir::TypeKind return_type,
                                                   std::string return_type_name,
                                                   std::optional<bir::Value> result,
@@ -245,7 +259,7 @@ bir::CallInst c4c::backend::make_direct_call_inst(std::string callee,
   call.result_abi = classify_scalar_result_abi(return_type);
   call.is_indirect = false;
   call.calling_convention = calling_convention;
-  call.is_variadic = false;
+  call.is_variadic = is_variadic;
   call.is_noreturn = false;
   return call;
 }

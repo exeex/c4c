@@ -220,6 +220,10 @@ Source Plan: plan.md
   convention level:
   minimal direct-call lowering now derives `calling_convention` from the
   target triple instead of hardwiring `CallingConv::C`
+- started carrying variadic metadata through the same split call seam for the
+  declared-function path:
+  minimal direct-call lowering now derives `is_variadic` from parsed function
+  signatures when the callee declaration is available
 
 ## Blockers
 
@@ -295,6 +299,9 @@ Source Plan: plan.md
 - after this slice, the next call-side target should be replacing these
   placeholder ABI defaults with target-aware classification or clearly scoped
   target-specific follow-up seams
+- if we want variadic metadata on extern declarations too, the next prerequisite
+  is expanding `LirExternDecl` to carry structured signature information rather
+  than only a return type
   failing, while the full suite now stands at
   `test_fail_after.log` = 2670 pass / 179 fail / 2849 total
 - the new internal route regression again increases total suite size by one,

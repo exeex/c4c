@@ -642,6 +642,8 @@ std::optional<bir::Module> try_lower_minimal_declared_direct_call_module(
   lowered_callee.name = *symbol_name;
   lowered_callee.return_type = bir::TypeKind::I32;
   lowered_callee.calling_convention = default_calling_convention_for_target(module.target_triple);
+  lowered_callee.is_variadic =
+      declared_callee != nullptr && function_signature_is_variadic(declared_callee->signature_text);
   lowered_callee.is_declaration = true;
   {
     std::vector<std::string_view> param_types;
@@ -673,6 +675,7 @@ std::optional<bir::Module> try_lower_minimal_declared_direct_call_module(
   lowered_entry_block.insts.push_back(make_direct_call_inst(
       *symbol_name,
       default_calling_convention_for_target(module.target_triple),
+      lowered_callee.is_variadic,
       bir::TypeKind::I32,
       "i32",
       bir::Value::named(bir::TypeKind::I32, call->result.str()),

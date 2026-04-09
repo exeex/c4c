@@ -24,8 +24,10 @@ void record_aggregate_lowering_scaffold_notes(const c4c::codegen::lir::LirModule
 std::optional<std::vector<bir::Param>> lower_call_params_from_type_texts(
     const std::vector<std::string_view>& param_types);
 bir::CallingConv default_calling_convention_for_target(std::string_view target_triple);
+bool function_signature_is_variadic(std::string_view signature_text);
 bir::CallInst make_direct_call_inst(std::string callee,
                                     bir::CallingConv calling_convention,
+                                    bool is_variadic,
                                     bir::TypeKind return_type,
                                     std::string return_type_name,
                                     std::optional<bir::Value> result,
