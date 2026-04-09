@@ -7,17 +7,19 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 2: recover the highest-leverage shared BIR seam for alloca-backed
-  local-slot and control-flow x86 failures, starting from `00057.c`
+  local-slot and control-flow x86 failures, continuing from `00086.c` after
+  landing the `00057.c` dead-local `sizeof` branch slice
 
 ## Next Slice
 
 - add the narrowest regression around
-  `c_testsuite_x86_backend_src_00057_c`
-- teach shared lowering or validation to accept the minimum alloca-backed
-  local-slot/control-flow seam needed for that case
+  `c_testsuite_x86_backend_src_00086_c`
+- determine whether the prepared local-slot increment-and-compare shape should
+  lower through the existing shared BIR local-slot contract or needs a new
+  bounded matcher
 - re-check nearby representatives
-  `c_testsuite_x86_backend_src_00086_c` and
-  `c_testsuite_x86_backend_src_00138_c`
+  `c_testsuite_x86_backend_src_00138_c` and
+  `c_testsuite_x86_backend_src_00143_c`
 - keep Family B global/initializer-heavy modules parked until the local-slot
   seam is proven
 
@@ -38,6 +40,21 @@ Source Plan: plan.md
   `c_testsuite_x86_backend_src_00138_c`, and
   `c_testsuite_x86_backend_src_00143_c` still fail at the x86 unsupported
   direct-LIR/direct-BIR boundary
+- added an internal x86 backend route regression for
+  `tests/c/external/c-testsuite/src/00057.c` that requires native asm output
+  and forbids LLVM text fallback
+- taught shared `lir_to_bir` conditional-return lowering to fold the prepared
+  dead-local `sizeof` compare-and-branch slice when the compare width stays
+  wider than the branch/return width
+- verified `c_testsuite_x86_backend_src_00057_c` now passes while nearby
+  representatives `c_testsuite_x86_backend_src_00086_c` and
+  `c_testsuite_x86_backend_src_00138_c` still fail at the same unsupported
+  boundary
+- ran full-suite monotonic validation against the saved 2026-04-09 x86
+  baseline:
+  `test_fail_before.log` = 2656 pass / 187 fail / 2843 total,
+  `test_fail_after.log` = 2658 pass / 186 fail / 2844 total,
+  zero newly failing tests
 
 ## Blockers
 
@@ -52,5 +69,9 @@ Source Plan: plan.md
   is proven
 - preserve idea 41's no-rescue architecture while shrinking the unsupported
   x86 surface
-- first Step 2 target: `00057.c` as the smallest alloca-backed local-slot plus
-  compare-and-branch seam
+- landed Step 2 starter slice:
+  `c_testsuite_x86_backend_src_00057_c` now routes through shared lowering by
+  folding the prepared dead-local `sizeof` branch to a constant BIR return
+- next local-slot/control-flow target remains `00086.c`; `00138.c` still fails
+  but now looks more like string/global materialization than the dead-local
+  `00057.c` seam

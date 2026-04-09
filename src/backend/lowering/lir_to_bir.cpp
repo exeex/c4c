@@ -3306,8 +3306,7 @@ std::optional<bir::Function> try_lower_conditional_return_select_function(
   const auto widened_type = lower_scalar_type(cast->to_type);
   const auto cond_type = lower_scalar_type(cmp1->type_str);
   if (!predicate.has_value() || !compare_type.has_value() || !widened_type.has_value() ||
-      !cond_type.has_value() || *compare_type != *widened_type ||
-      *compare_type != *cond_type) {
+      !cond_type.has_value() || *widened_type != *cond_type) {
     return std::nullopt;
   }
 
@@ -3363,18 +3362,45 @@ std::optional<bir::Function> try_lower_conditional_return_select_function(
       false_ret == nullptr ? std::nullopt : lower_function_return_type(lir_function, *false_ret);
   if (true_ret == nullptr || false_ret == nullptr || !true_ret->value_str.has_value() ||
       !false_ret->value_str.has_value() || !true_ret_type.has_value() ||
-      !false_ret_type.has_value() || *true_ret_type != *compare_type ||
-      *false_ret_type != *compare_type) {
+      !false_ret_type.has_value() || *true_ret_type != *false_ret_type) {
     return std::nullopt;
   }
 
   const auto lhs = lower_immediate_or_name(cmp0->lhs.str(), *compare_type);
   const auto rhs = lower_immediate_or_name(cmp0->rhs.str(), *compare_type);
-  const auto true_value = lower_immediate_or_name(*true_ret->value_str, *compare_type);
-  const auto false_value = lower_immediate_or_name(*false_ret->value_str, *compare_type);
+  const auto true_value = lower_immediate_or_name(*true_ret->value_str, *true_ret_type);
+  const auto false_value = lower_immediate_or_name(*false_ret->value_str, *true_ret_type);
   if (!lhs.has_value() || !rhs.has_value() || !true_value.has_value() ||
       !false_value.has_value()) {
     return std::nullopt;
+  }
+
+  if (*compare_type != *widened_type) {
+    if (lhs->kind != bir::Value::Kind::Immediate ||
+        rhs->kind != bir::Value::Kind::Immediate ||
+        true_value->kind != bir::Value::Kind::Immediate ||
+        false_value->kind != bir::Value::Kind::Immediate) {
+      return std::nullopt;
+    }
+
+    const auto predicate_value = evaluate_predicate(
+        AffineValue{false, false, lhs->immediate},
+        AffineValue{false, false, rhs->immediate},
+        *predicate);
+    if (!predicate_value.has_value()) {
+      return std::nullopt;
+    }
+
+    bir::Function function;
+    function.name = lir_function.name;
+    function.return_type = *true_ret_type;
+    function.params = params;
+
+    bir::Block block;
+    block.label = entry.label;
+    block.terminator.value = *predicate_value ? *true_value : *false_value;
+    function.blocks.push_back(std::move(block));
+    return function;
   }
 
   auto operand_is_param_or_immediate = [&](const bir::Value& value) {
@@ -3393,20 +3419,20 @@ std::optional<bir::Function> try_lower_conditional_return_select_function(
 
   bir::Function function;
   function.name = lir_function.name;
-  function.return_type = *compare_type;
+  function.return_type = *true_ret_type;
   function.params = params;
 
   bir::Block block;
   block.label = entry.label;
   block.insts.push_back(bir::SelectInst{
       *predicate,
-      bir::Value::named(*compare_type, "%t.select"),
+      bir::Value::named(*true_ret_type, "%t.select"),
       *lhs,
       *rhs,
       *true_value,
       *false_value,
   });
-  block.terminator.value = bir::Value::named(*compare_type, "%t.select");
+  block.terminator.value = bir::Value::named(*true_ret_type, "%t.select");
   function.blocks.push_back(std::move(block));
   return function;
 }
