@@ -5,6 +5,10 @@ file(GLOB INTERNAL_CPP_POSITIVE_TEST_SRCS CONFIGURE_DEPENDS
      "${INTERNAL_CPP_TEST_ROOT}/postive_case/*.cpp")
 file(GLOB INTERNAL_CPP_NEGATIVE_TEST_SRCS CONFIGURE_DEPENDS
      "${INTERNAL_CPP_TEST_ROOT}/negative_case/*.cpp")
+file(GLOB_RECURSE INTERNAL_CPP_GENERATED_PARSE_ONLY_TEST_SRCS CONFIGURE_DEPENDS
+     "${INTERNAL_CPP_TEST_ROOT}/generated/parser_disambiguation_matrix/parse_only/*.cpp")
+
+list(APPEND INTERNAL_CPP_POSITIVE_TEST_SRCS ${INTERNAL_CPP_GENERATED_PARSE_ONLY_TEST_SRCS})
 
 set(CPP_POSITIVE_FRONTEND_STEMS
     if_constexpr_template_chain
@@ -236,6 +240,11 @@ list(APPEND CPP_POSITIVE_FRONTEND_STEMS
     call_expr_ref_return_lvalue_frontend
     eastl_probe_call_result_lvalue_frontend
 )
+
+foreach(src IN LISTS INTERNAL_CPP_GENERATED_PARSE_ONLY_TEST_SRCS)
+  get_filename_component(stem "${src}" NAME_WE)
+  list(APPEND CPP_POSITIVE_PARSE_STEMS "${stem}")
+endforeach()
 
 foreach(src IN LISTS INTERNAL_CPP_NEGATIVE_TEST_SRCS)
   get_filename_component(stem "${src}" NAME_WE)
