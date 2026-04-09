@@ -122,29 +122,34 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
     addr.operand = lower_expr(&ctx, n->init);
     d.init = append_expr(n->init, addr, d.type.spec);
   } else if (n->type.is_rvalue_ref && n->init) {
-    // Rvalue reference: materialize the rvalue into a temporary, then
-    // store a pointer to that temporary as the reference value.
-    ExprId init_val = lower_expr(&ctx, n->init);
-    TypeSpec val_ts = reference_value_ts(n->type);
-    // Create a hidden temporary local for the rvalue
-    LocalDecl tmp{};
-    tmp.id = next_local_id();
-    tmp.name = ("__rref_tmp_" + std::to_string(d.id.value)).c_str();
-    tmp.type = qtype_from(val_ts, ValueCategory::LValue);
-    tmp.init = init_val;
-    const LocalId tmp_lid = tmp.id;
-    ctx.locals[tmp.name] = tmp.id;
-    ctx.local_types[tmp.id.value] = val_ts;
-    append_stmt(ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(n)});
-    // Take address of temporary
-    DeclRef tmp_ref{};
-    tmp_ref.name = ("__rref_tmp_" + std::to_string(d.id.value)).c_str();
-    tmp_ref.local = tmp_lid;
-    ExprId var_id = append_expr(n->init, tmp_ref, val_ts, ValueCategory::LValue);
-    UnaryExpr addr{};
-    addr.op = UnaryOp::AddrOf;
-    addr.operand = var_id;
-    d.init = append_expr(n->init, addr, d.type.spec);
+    if (auto storage_addr =
+            try_lower_rvalue_ref_storage_addr(&ctx, n->init, d.type.spec)) {
+      d.init = *storage_addr;
+    } else {
+      // Rvalue reference: materialize the rvalue into a temporary, then
+      // store a pointer to that temporary as the reference value.
+      ExprId init_val = lower_expr(&ctx, n->init);
+      TypeSpec val_ts = reference_value_ts(n->type);
+      // Create a hidden temporary local for the rvalue
+      LocalDecl tmp{};
+      tmp.id = next_local_id();
+      tmp.name = ("__rref_tmp_" + std::to_string(d.id.value)).c_str();
+      tmp.type = qtype_from(val_ts, ValueCategory::LValue);
+      tmp.init = init_val;
+      const LocalId tmp_lid = tmp.id;
+      ctx.locals[tmp.name] = tmp.id;
+      ctx.local_types[tmp.id.value] = val_ts;
+      append_stmt(ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(n)});
+      // Take address of temporary
+      DeclRef tmp_ref{};
+      tmp_ref.name = ("__rref_tmp_" + std::to_string(d.id.value)).c_str();
+      tmp_ref.local = tmp_lid;
+      ExprId var_id = append_expr(n->init, tmp_ref, val_ts, ValueCategory::LValue);
+      UnaryExpr addr{};
+      addr.op = UnaryOp::AddrOf;
+      addr.operand = var_id;
+      d.init = append_expr(n->init, addr, d.type.spec);
+    }
   } else if (!is_array_with_init_list && !is_array_with_string_init &&
              !is_struct_with_init_list && !is_struct_copy_init && n->init)
     d.init = lower_expr(&ctx, n->init);

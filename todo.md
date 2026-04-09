@@ -7,15 +7,15 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 1: audit reference-qualified cast targets
-- Current slice: widen the casted-reference member-access matrix from the now
-  covered `(T&)expr` field-access case to the first `&&` or inherited/base
-  access shape that still lacks explicit regression coverage
+- Current slice: move from the now-covered `((T&&)expr).field` case to the
+  first inherited/base-member-access reduction that still lacks explicit
+  coverage
 - Current implementation target: `tests/cpp` cast/reference runtime regressions
   plus the earliest failing parser, sema, HIR, or lowering surface the first
-  unresolved casted-member-access case exposes
-- Next intended slice: add the narrowest `(T&&)expr` field-access or inherited
-  member-access case, compare against Clang when value category matters, and
-  stop at the earliest failing stage if it does not already pass
+  casted inherited/base-member-access case exposes
+- Next intended slice: add the narrowest inherited/base member-access
+  reduction, compare against Clang when value category matters, and stop at the
+  earliest failing stage if it does not already pass
 
 ## Completed
 
@@ -51,6 +51,17 @@ Source Plan: plan.md
   lvalue-reference member-access slice, so no compiler change was needed.
 - Full-suite validation stayed monotonic: `test_fail_before.log` 2843/2843
   passed, `test_fail_after.log` 2845/2845 passed, with zero new failures.
+- Added `tests/cpp/internal/postive_case/c_style_cast_rvalue_ref_field_access.cpp`
+  to cover `((Box&&)b).value` readback, rvalue-ref overload selection, and
+  binding an `int&&` directly to the casted field.
+- Compared the new `((Box&&)b).value` case against Clang and confirmed the
+  intended xvalue behavior: overload resolution picks `int&&`, and the bound
+  reference aliases the original field storage rather than a temporary copy.
+- Fixed sema/HIR value-category propagation so member access through an rvalue
+  reference cast is no longer forced to lvalue, and rvalue-reference binding
+  reuses existing member storage instead of materializing a temporary.
+- Full-suite validation stayed monotonic: `test_fail_before.log` 2845/2845
+  passed, `test_fail_after.log` 2846/2846 passed, with zero new failures.
 
 ## Notes
 
@@ -66,3 +77,7 @@ Source Plan: plan.md
   preserves `((struct Box&)b).value` as a field lvalue on the original object,
   and the emitted LLVM IR lowers both read and write through the same storage
   as Clang.
+- The first `((T&&)expr).field` draft tried direct assignment and Clang rejected
+  it as non-assignable, so the landed regression checks xvalue-sensitive
+  behavior through overload selection plus `int&&` binding instead of treating
+  `((Box&&)b).value = ...` as the reference baseline.

@@ -1270,9 +1270,9 @@ class Validator {
         // We don't track struct field types, so mark valid=false to suppress
         // false-positive incompatible-assignment-type errors for member accesses.
         out.valid = false;
-        out.is_lvalue = true;
+        out.is_lvalue = n->is_arrow || base.is_lvalue;
         out.type = make_int_ts();
-        out.is_const_lvalue = base.is_const_lvalue;
+        out.is_const_lvalue = out.is_lvalue && base.is_const_lvalue;
         return out;
       }
       case NK_ASSIGN:

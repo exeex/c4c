@@ -131,13 +131,40 @@ bool Lowerer::is_ast_lvalue(const Node* n) {
     case NK_VAR:
     case NK_INDEX:
     case NK_DEREF:
-    case NK_MEMBER:
       return true;
+    case NK_MEMBER:
+      return n->is_arrow || is_ast_lvalue(n->left);
     case NK_CAST:
       return n->type.is_lvalue_ref;
     default:
       return false;
   }
+}
+
+std::optional<ExprId> Lowerer::try_lower_rvalue_ref_storage_addr(
+    FunctionCtx* ctx,
+    const Node* n,
+    const TypeSpec& storage_ts) {
+  if (!ctx || !n) return std::nullopt;
+
+  ExprId storage_expr{};
+  switch (n->kind) {
+    case NK_CAST:
+      if (!n->type.is_rvalue_ref || !n->left) return std::nullopt;
+      storage_expr = lower_expr(ctx, n->left);
+      break;
+    case NK_MEMBER:
+      if (n->is_arrow || !n->left || is_ast_lvalue(n->left)) return std::nullopt;
+      storage_expr = lower_expr(ctx, n);
+      break;
+    default:
+      return std::nullopt;
+  }
+
+  UnaryExpr addr{};
+  addr.op = UnaryOp::AddrOf;
+  addr.operand = storage_expr;
+  return append_expr(n, addr, storage_ts);
 }
 
 ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
@@ -389,12 +416,9 @@ ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
       return lower_expr(ctx, arg_node);
     TypeSpec storage_ts = reference_storage_ts(*param_ts);
     if (param_ts->is_rvalue_ref) {
-      if (arg_node && arg_node->kind == NK_CAST && arg_node->type.is_rvalue_ref &&
-          arg_node->left) {
-        UnaryExpr addr{};
-        addr.op = UnaryOp::AddrOf;
-        addr.operand = lower_expr(ctx, arg_node->left);
-        return append_expr(arg_node, addr, storage_ts);
+      if (auto storage_addr =
+              try_lower_rvalue_ref_storage_addr(ctx, arg_node, storage_ts)) {
+        return *storage_addr;
       }
       ExprId arg_val = lower_expr(ctx, arg_node);
       TypeSpec val_ts = reference_value_ts(*param_ts);
@@ -1120,12 +1144,9 @@ ExprId Lowerer::try_lower_operator_call(FunctionCtx* ctx,
     }
     TypeSpec storage_ts = reference_storage_ts(*param_ts);
     if (param_ts->is_rvalue_ref) {
-      if (arg_node && arg_node->kind == NK_CAST && arg_node->type.is_rvalue_ref &&
-          arg_node->left) {
-        UnaryExpr addr_e{};
-        addr_e.op = UnaryOp::AddrOf;
-        addr_e.operand = lower_expr(ctx, arg_node->left);
-        return append_expr(arg_node, addr_e, storage_ts);
+      if (auto storage_addr =
+              try_lower_rvalue_ref_storage_addr(ctx, arg_node, storage_ts)) {
+        return *storage_addr;
       }
       ExprId arg_val = lower_expr(ctx, arg_node);
       TypeSpec val_ts = reference_value_ts(*param_ts);
@@ -1794,7 +1815,11 @@ ExprId Lowerer::lower_expr(FunctionCtx* ctx, const Node* n) {
       m.base = lower_expr(ctx, n->left);
       m.field = n->name ? n->name : "<anon_field>";
       m.is_arrow = n->is_arrow;
-      return append_expr(n, m, n->type, ValueCategory::LValue);
+      const ValueCategory category =
+          (n->is_arrow || is_ast_lvalue(n->left))
+              ? ValueCategory::LValue
+              : ValueCategory::RValue;
+      return append_expr(n, m, n->type, category);
     }
     case NK_TERNARY: {
       if (const Node* cond = (n->cond ? n->cond : n->left)) {

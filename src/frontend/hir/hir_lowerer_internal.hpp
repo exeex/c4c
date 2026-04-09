@@ -333,6 +333,11 @@ class Lowerer {
   std::optional<TypeSpec> storage_type_for_declref(FunctionCtx* ctx,
                                                    const DeclRef& r);
 
+  std::optional<ExprId> try_lower_rvalue_ref_storage_addr(
+      FunctionCtx* ctx,
+      const Node* n,
+      const TypeSpec& storage_ts);
+
   // ── block / expression construction helpers ──────────────────────────────
   TypeSpec infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n);
 
