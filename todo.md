@@ -7,15 +7,45 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 6: move liveness to backend MIR
-- Current slice: audit the remaining direct-LIR fallback seam after the shared
-  `prepare_lir_module_for_target(...)` helper became the default shared backend
-  entry preparation step before BIR lowering
+- Current slice: audit the next compatibility-only direct-LIR fallback seam
+  that still keeps native emitters aware of raw `LirModule` ownership after the
+  shared backend-owned routing entrypoint took over target preparation, direct
+  BIR retry, and prepared direct-LIR fallback ownership
 - Next intended slice: identify and retire the next compatibility-only
-  direct-LIR fallback seam that still keeps native emitters aware of raw
-  `LirModule` ownership after shared backend preparation runs
+  direct-LIR fallback seam that still leaves backend codegen route policy split
+  between target emitters and shared backend entrypoints after the public
+  x86/aarch64 `emit_module(const LirModule&)` wrappers became thin delegates
 
 ## Completed
 
+- Completed the next Step 6/7 bounded backend-entry routing ownership slice by
+  moving target `LirModule -> prepare -> try_lower_to_bir -> direct native
+  fallback` control into shared backend code and leaving x86/aarch64 emitters
+  with prepared direct-LIR fallback ownership only:
+  - added `emit_prepared_lir_module(...)` in
+    `src/backend/x86/codegen/emit.*` and
+    `src/backend/aarch64/codegen/emit.*` so target emitters expose only the
+    prepared direct-LIR/native fallback surface needed by shared backend
+    routing
+  - updated `src/backend/backend.cpp` so the shared backend entrypoint now owns
+    direct-BIR subset retry handling for LIR input and dispatches prepared
+    direct-LIR fallback through the new target-local prepared helper instead of
+    re-entering the public target emitter wrappers
+  - updated `src/codegen/llvm/llvm_codegen.cpp` so production `--codegen asm`
+    routing now goes through the shared backend LIR entrypoint, while keeping
+    the existing riscv64 early rejection for unsupported asm cases that never
+    lower to BIR
+  - extended
+    `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` and
+    `tests/backend/backend_bir_pipeline_aarch64_tests.cpp` with focused
+    regressions proving the public target emitter LIR wrappers now match the
+    shared backend entrypoint exactly for a lowerable direct-call module
+  - rebuilt `backend_bir_tests`, `backend_shared_util_tests`, and `c4cll`;
+    passed the focused x86/aarch64 backend suites plus the targeted riscv64
+    route/unsupported-asm coverage; rebuilt the full tree, refreshed
+    `test_fail_after.log`, and passed the regression guard with no new failures
+    and no pass-count drop (`2809 -> 2809`, same 32 known failing tests as
+    `test_fail_before.log`)
 - Completed the next Step 6/7 bounded shared-backend preparation routing slice
   by making target-specific LIR preparation the default shared backend entry
   step before BIR lowering:

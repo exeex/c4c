@@ -6688,34 +6688,27 @@ std::string emit_module(const c4c::backend::bir::Module& module) {
   fail_unsupported_direct_bir_module();
 }
 
-std::string emit_module(const c4c::codegen::lir::LirModule& module) {
+std::string emit_prepared_lir_module(const c4c::codegen::lir::LirModule& module) {
   const bool needs_nonminimal_lowering = lir_module_needs_nonminimal_lowering(module);
   validate_module(module);
-  const auto prepared = c4c::backend::prepare_lir_module_for_target(
-      module, c4c::backend::target_from_triple(module.target_triple));
-  validate_module(prepared);
-  if (const auto bir_module = c4c::backend::try_lower_to_bir(prepared);
-      bir_module.has_value()) {
-    try {
-      return emit_module(*bir_module);
-    } catch (const std::invalid_argument& ex) {
-      if (!is_direct_bir_subset_error(ex)) {
-        throw;
-      }
-    }
-  }
-  if (auto rendered = try_emit_direct_lir_module(prepared, needs_nonminimal_lowering);
+  if (auto rendered = try_emit_direct_lir_module(module, needs_nonminimal_lowering);
       rendered.has_value()) {
     return *rendered;
   }
   if (!needs_nonminimal_lowering) {
-    if (const auto imm2 = try_constant_fold_single_block(prepared); imm2.has_value()) {
+    if (const auto imm2 = try_constant_fold_single_block(module); imm2.has_value()) {
       return emit_minimal_return_imm_asm(
-          prepared.target_triple, prepared.functions.front().name, *imm2);
+          module.target_triple, module.functions.front().name, *imm2);
     }
   }
-  if (auto gen_asm = try_emit_general_lir_asm(prepared)) return *gen_asm;
+  if (auto gen_asm = try_emit_general_lir_asm(module)) return *gen_asm;
   fail_unsupported_direct_lir_module();
+}
+
+std::string emit_module(const c4c::codegen::lir::LirModule& module) {
+  return c4c::backend::emit_module(c4c::backend::BackendModuleInput{module},
+                                   c4c::backend::BackendOptions{
+                                       .target = c4c::backend::Target::Aarch64});
 }
 
 assembler::AssembleResult assemble_module(const c4c::codegen::lir::LirModule& module,

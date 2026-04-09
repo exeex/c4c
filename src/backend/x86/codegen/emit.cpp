@@ -4096,22 +4096,20 @@ std::string emit_module(const c4c::backend::bir::Module& module) {
   throw_unsupported_direct_bir_module();
 }
 
-std::string emit_module(const c4c::codegen::lir::LirModule& module) {
-  const auto prepared = c4c::backend::prepare_lir_module_for_target(
-      module, c4c::backend::target_from_triple(module.target_triple));
-  if (const auto bir_module = c4c::backend::try_lower_to_bir(prepared); bir_module.has_value()) {
-    try {
-      return emit_module(*bir_module);
-    } catch (const std::invalid_argument& ex) {
-      if (!is_direct_bir_subset_error(ex)) {
-        throw;
-      }
-    }
-  }
-  if (const auto rendered = try_emit_direct_lir_module(prepared); rendered.has_value()) {
+std::string emit_prepared_lir_module(const c4c::codegen::lir::LirModule& module) {
+  if (const auto rendered = try_emit_direct_lir_module(module); rendered.has_value()) {
     return *rendered;
   }
   throw_unsupported_direct_lir_module();
+}
+
+std::string emit_module(const c4c::codegen::lir::LirModule& module) {
+  auto target = c4c::backend::target_from_triple(module.target_triple);
+  if (target != c4c::backend::Target::I686) {
+    target = c4c::backend::Target::X86_64;
+  }
+  return c4c::backend::emit_module(c4c::backend::BackendModuleInput{module},
+                                   c4c::backend::BackendOptions{.target = target});
 }
 
 assembler::AssembleResult assemble_module(const c4c::codegen::lir::LirModule& module,

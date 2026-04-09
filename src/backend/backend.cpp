@@ -9,6 +9,7 @@
 #include "../codegen/lir/ir.hpp"
 
 #include <array>
+#include <string_view>
 #include <stdexcept>
 
 namespace c4c::backend {
@@ -64,6 +65,25 @@ std::string emit_native_bir_module(const bir::Module& module, Target target) {
   throw std::logic_error("unreachable backend target");
 }
 
+bool is_direct_bir_subset_error(const std::invalid_argument& ex) {
+  return std::string_view(ex.what()).find("does not support this direct BIR module") !=
+         std::string_view::npos;
+}
+
+std::string emit_native_prepared_lir_module(const c4c::codegen::lir::LirModule& module,
+                                            Target target) {
+  switch (target) {
+    case Target::X86_64:
+    case Target::I686:
+      return c4c::backend::x86::emit_prepared_lir_module(module);
+    case Target::Aarch64:
+      return c4c::backend::aarch64::emit_prepared_lir_module(module);
+    case Target::Riscv64:
+      return c4c::codegen::lir::print_llvm(module);
+  }
+  throw std::logic_error("unreachable backend target");
+}
+
 std::string render_bir_module(const bir::Module& module, Target target) {
   if (target == Target::Riscv64) {
     return c4c::backend::bir::print(module);
@@ -102,16 +122,7 @@ std::string emit_module(const BackendModuleInput& input,
       c4c::backend::prepare_lir_module_for_target(lir_module, options.target);
   auto bir_module = c4c::backend::try_lower_to_bir(prepared_lir_module);
   if (!bir_module.has_value()) {
-    switch (options.target) {
-      case Target::X86_64:
-      case Target::I686:
-        return c4c::backend::x86::emit_module(prepared_lir_module);
-      case Target::Aarch64:
-        return c4c::backend::aarch64::emit_module(prepared_lir_module);
-      case Target::Riscv64:
-        return c4c::codegen::lir::print_llvm(prepared_lir_module);
-    }
-    throw std::logic_error("unreachable backend target");
+    return emit_native_prepared_lir_module(prepared_lir_module, options.target);
   }
   if (options.target == Target::Riscv64) {
     if (!prepared_lir_module.globals.empty() ||
@@ -120,7 +131,14 @@ std::string emit_module(const BackendModuleInput& input,
       return c4c::codegen::lir::print_llvm(prepared_lir_module);
     }
   }
-  return render_bir_module(*bir_module, options.target);
+  try {
+    return render_bir_module(*bir_module, options.target);
+  } catch (const std::invalid_argument& ex) {
+    if (!is_direct_bir_subset_error(ex)) {
+      throw;
+    }
+  }
+  return emit_native_prepared_lir_module(prepared_lir_module, options.target);
 }
 
 }  // namespace c4c::backend

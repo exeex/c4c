@@ -1888,7 +1888,11 @@ void test_backend_bir_pipeline_drives_aarch64_lir_minimal_direct_call_through_bi
 }
 
 void test_aarch64_direct_emitter_lowers_minimal_direct_call_via_outer_bir_path() {
-  const auto rendered = c4c::backend::aarch64::emit_module(make_lir_minimal_direct_call_module());
+  const auto module = make_lir_minimal_direct_call_module();
+  const auto shared_rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{module},
+      make_bir_pipeline_options(c4c::backend::Target::Aarch64));
+  const auto rendered = c4c::backend::aarch64::emit_module(module);
 
   expect_contains(rendered, ".type helper, %function\nhelper:",
                   "aarch64 direct emitter should still emit the helper definition when direct-LIR staging declines a BIR-lowerable direct-call module");
@@ -1898,6 +1902,8 @@ void test_aarch64_direct_emitter_lowers_minimal_direct_call_via_outer_bir_path()
                   "aarch64 direct emitter should still lower the helper call after removing the duplicate inner BIR retry seam");
   expect_not_contains(rendered, "target triple =",
                       "aarch64 direct emitter should stay on native asm emission when the outer BIR path handles the direct-call module");
+  expect_true(rendered == shared_rendered,
+              "aarch64 direct emitter should now match the shared backend entrypoint exactly once raw LIR routing is centralized");
 }
 
 void test_backend_bir_pipeline_drives_aarch64_lir_minimal_direct_call_with_dead_entry_alloca_end_to_end() {
