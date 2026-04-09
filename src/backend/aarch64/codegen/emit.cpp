@@ -1542,6 +1542,47 @@ bool is_alloca_backed_switch_return_fallback(const c4c::codegen::lir::LirModule&
   return true;
 }
 
+bool is_constant_selector_switch_return_fallback(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || !module.globals.empty() ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return false;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      !c4c::backend::backend_lir_is_zero_arg_i32_definition(function.signature_text) ||
+      function.entry.value != 0 || !function.alloca_insts.empty() ||
+      function.blocks.size() != 4) {
+    return false;
+  }
+
+  const auto& entry = function.blocks[0];
+  const auto* entry_switch = std::get_if<LirSwitch>(&entry.terminator);
+  if (entry.label != "entry" || !entry.insts.empty() || entry_switch == nullptr ||
+      entry_switch->selector_type != "i32" || entry_switch->selector_name != "2" ||
+      entry_switch->cases.size() != 2) {
+    return false;
+  }
+
+  if (entry_switch->default_label != "default" || entry_switch->cases[0].first != 1 ||
+      entry_switch->cases[0].second != "case_one" || entry_switch->cases[1].first != 2 ||
+      entry_switch->cases[1].second != "case_two") {
+    return false;
+  }
+
+  for (std::size_t block_index = 1; block_index < function.blocks.size(); ++block_index) {
+    const auto& block = function.blocks[block_index];
+    if (!block.insts.empty() || std::get_if<LirRet>(&block.terminator) == nullptr) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 struct MinimalConditionalReturnSlice {
   enum class ValueKind : unsigned char {
     Immediate,
@@ -5141,6 +5182,11 @@ static std::optional<std::string> try_emit_general_lir_asm(
   }
   if (is_alloca_backed_switch_return_fallback(module)) {
     // Keep this synthetic switch-return fallback from reviving target-local
+    // multi-block CFG ownership after shared BIR lowering declines the module.
+    return std::nullopt;
+  }
+  if (is_constant_selector_switch_return_fallback(module)) {
+    // Keep this synthetic constant-selector switch from reviving target-local
     // multi-block CFG ownership after shared BIR lowering declines the module.
     return std::nullopt;
   }

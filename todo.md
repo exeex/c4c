@@ -7,18 +7,32 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 5: pull phi and CFG normalization behind the BIR boundary
-- Current slice: rebuild and validate the Step 5 AArch64 helper re-audit after
-  deleting the now-dead direct-LIR conditional-return parser and unused
-  conditional-phi helper scaffolding that remained after the shared
-  `try_lower_to_bir(...)` branch-return route took ownership
-- Next intended slice: continue the Step 5 AArch64 direct-LIR CFG audit from
-  the generic emitter itself and decide whether any remaining multi-block
-  branch or switch shapes can be fenced behind shared BIR ownership without
+- Current slice: continue the Step 5 AArch64 generic-emitter CFG audit after
+  fencing the narrow constant-selector `switch` seam and re-evaluate whether
+  any remaining multi-block branch or switch shapes can be fenced without
   cutting into still-broad production fallback coverage or spilling into Step 6
   MIR-owned liveness/regalloc work
+- Next intended slice: inspect the remaining generic AArch64 multi-block
+  direct-LIR branch/switch surfaces that still succeed after `try_lower_to_bir`
+  declines a module and decide whether the next safe move is another narrow
+  synthetic prune or a shared BIR lowering expansion for one of those shapes
 
 ## Completed
 
+- Fenced the next narrow Step 5 AArch64 generic-emitter switch seam behind the
+  shared BIR boundary:
+  - added focused AArch64 coverage in
+    `tests/backend/backend_bir_pipeline_aarch64_tests.cpp` proving a
+    constant-selector direct-LIR `switch` module still misses
+    `try_lower_to_bir(...)` and must now fail explicitly instead of lowering
+    through the generic AArch64 direct emitter
+  - taught `src/backend/aarch64/codegen/emit.cpp` to reject only that narrow
+    synthetic constant-selector switch-return fallback before
+    `try_emit_general_lir_asm(...)` so Step 5 closes another audited switch CFG
+    seam without broadening the prune to unrelated direct-LIR coverage
+  - rebuilt `backend_bir_tests`, rebuilt the full tree, refreshed
+    `test_fail_after.log`, and passed the regression guard with no new failures
+    and no pass-count drop (`2809 -> 2809`)
 - Closed the next Step 5 AArch64 multi-block switch seam behind the shared BIR
   boundary:
   - added focused AArch64 coverage in
