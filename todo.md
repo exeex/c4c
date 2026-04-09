@@ -7,15 +7,34 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 5: pull phi and CFG normalization behind the BIR boundary
-- Current slice: continue the Step 5 seam audit around the remaining AArch64
-  direct-LIR/backend-boundary asymmetries after pruning the `goto`-only
-  branch-following constant-fold fallback
-- Next intended slice: classify whether the remaining AArch64 direct-LIR CFG
-  seams are isolated to the broad general assembler path or whether another
-  narrower structured fallback can move behind shared BIR first
+- Current slice: move the remaining branch-only `goto` constant-return CFG seam
+  behind `try_lower_to_bir(...)` so x86/AArch64 stop depending on target-local
+  direct-LIR handling for that shape
+- Next intended slice: re-audit `src/backend/aarch64/codegen/emit.cpp`'s broad
+  `try_emit_general_lir_asm(...)` surface now that the branch-only constant
+  return shape is shared-BIR owned, then choose the next smallest CFG-specific
+  seam to prune or normalize behind BIR
 
 ## Completed
 
+- Closed the branch-only constant-return Step 5 CFG seam behind shared BIR:
+  - taught `src/backend/lowering/lir_to_bir.cpp` to collapse the existing
+    `goto`-only empty-block constant-return LIR shape into the canonical
+    single-block immediate-return BIR form instead of leaving it stranded on
+    target-local direct-LIR handling
+  - added focused lowering coverage in
+    `tests/backend/backend_bir_lowering_tests.cpp` proving
+    `try_lower_to_bir(...)` now accepts that branch-only constant-return slice
+    and normalizes it to one shared `bir.ret i32 9` block
+  - updated
+    `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` and
+    `tests/backend/backend_bir_pipeline_aarch64_tests.cpp` so the native
+    emitters now must route the old `goto`-only constant-return fixture through
+    the shared BIR-owned immediate-return path instead of target-local
+    direct-LIR CFG behavior
+  - re-ran `backend_bir_tests`, rebuilt the tree, refreshed
+    `test_fail_after.log`, and passed the regression guard with no new failures
+    and no pass-count drop (`2809 -> 2809`)
 - Closed the next Step 5 AArch64 target-entrypoint CFG asymmetry without
   regressing the broader direct-LIR surface:
   - restricted `src/backend/aarch64/codegen/emit.cpp`'s

@@ -9,6 +9,8 @@
 #include <string>
 #include <string_view>
 #include <tuple>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace c4c::backend {
@@ -1816,6 +1818,87 @@ std::optional<bir::Module> try_lower_minimal_countdown_loop_module(
   lowered_function.blocks.push_back(std::move(lowered_exit));
   lowered.functions.push_back(std::move(lowered_function));
   return lowered;
+}
+
+std::optional<bir::Module> try_lower_minimal_branch_only_constant_return_module(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || !module.globals.empty() ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      !lir_function_matches_minimal_no_param_integer_return(function, 32) ||
+      function.entry.value != 0 || function.blocks.empty() || !function.alloca_insts.empty() ||
+      !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  std::unordered_map<std::string, const LirBlock*> blocks_by_label;
+  for (const auto& block : function.blocks) {
+    if (block.label.empty() || !blocks_by_label.emplace(block.label, &block).second) {
+      return std::nullopt;
+    }
+  }
+
+  auto entry_it = blocks_by_label.find("entry");
+  if (entry_it == blocks_by_label.end()) {
+    return std::nullopt;
+  }
+
+  std::unordered_set<std::string> visited_labels;
+  const LirBlock* current = entry_it->second;
+  while (current != nullptr) {
+    if (!visited_labels.insert(current->label).second || !current->insts.empty()) {
+      return std::nullopt;
+    }
+
+    if (const auto* ret = std::get_if<LirRet>(&current->terminator)) {
+      if (!ret->value_str.has_value() ||
+          lower_function_return_type(function, *ret) != bir::TypeKind::I32) {
+        return std::nullopt;
+      }
+
+      const auto return_imm = parse_immediate(*ret->value_str);
+      if (!return_imm.has_value() ||
+          *return_imm < std::numeric_limits<std::int32_t>::min() ||
+          *return_imm > std::numeric_limits<std::int32_t>::max()) {
+        return std::nullopt;
+      }
+
+      bir::Module lowered;
+      lowered.target_triple = module.target_triple;
+      lowered.data_layout = module.data_layout;
+
+      bir::Function lowered_function;
+      lowered_function.name = function.name;
+      lowered_function.return_type = bir::TypeKind::I32;
+
+      bir::Block lowered_entry;
+      lowered_entry.label = "entry";
+      lowered_entry.terminator.value =
+          bir::Value::immediate_i32(static_cast<std::int32_t>(*return_imm));
+      lowered_function.blocks.push_back(std::move(lowered_entry));
+      lowered.functions.push_back(std::move(lowered_function));
+      return lowered;
+    }
+
+    const auto* branch = std::get_if<LirBr>(&current->terminator);
+    if (branch == nullptr) {
+      return std::nullopt;
+    }
+
+    auto next_it = blocks_by_label.find(branch->target_label);
+    if (next_it == blocks_by_label.end()) {
+      return std::nullopt;
+    }
+    current = next_it->second;
+  }
+
+  return std::nullopt;
 }
 
 std::optional<bir::Module> try_lower_minimal_scalar_global_load_module(
@@ -4501,6 +4584,10 @@ std::optional<bir::Module> try_lower_to_bir(const c4c::codegen::lir::LirModule& 
     return lowered;
   }
   if (const auto lowered = try_lower_minimal_call_crossing_direct_call_module(module);
+      lowered.has_value()) {
+    return lowered;
+  }
+  if (const auto lowered = try_lower_minimal_branch_only_constant_return_module(module);
       lowered.has_value()) {
     return lowered;
   }

@@ -2770,19 +2770,15 @@ void test_x86_direct_lir_emitter_rejects_alloca_backed_conditional_phi_constant_
   fail("x86 direct emitter should reject alloca-backed conditional-phi joins once phi-aware constant folding is pruned from the direct-LIR fallback");
 }
 
-void test_x86_direct_lir_emitter_rejects_goto_only_constant_return_fallback() {
-  expect_true(!c4c::backend::try_lower_to_bir(make_goto_only_constant_return_module()).has_value(),
-              "goto-only constant-return input should continue to miss shared BIR lowering so this regression exercises the remaining direct-LIR CFG helper boundary");
+void test_x86_direct_emitter_routes_goto_only_constant_return_through_shared_bir() {
+  expect_true(c4c::backend::try_lower_to_bir(make_goto_only_constant_return_module()).has_value(),
+              "goto-only constant-return input should now lower through the shared BIR boundary instead of depending on the deleted x86 direct-LIR CFG helper");
 
-  try {
-    (void)c4c::backend::x86::emit_module(make_goto_only_constant_return_module());
-  } catch (const std::invalid_argument& ex) {
-    expect_contains(ex.what(), "direct LIR module",
-                    "x86 direct emitter should reject goto-only branch walking once CFG ownership stays behind the shared BIR boundary");
-    return;
-  }
-
-  fail("x86 direct emitter should reject goto-only constant-return modules once the direct-LIR CFG helper is pruned");
+  const auto rendered = c4c::backend::x86::emit_module(make_goto_only_constant_return_module());
+  expect_contains(rendered, "main:\n  mov eax, 9\n  ret\n",
+                  "x86 direct emitter should now use the shared BIR-owned immediate-return route for the goto-only constant-return slice");
+  expect_not_contains(rendered, "ulbl_start",
+                      "x86 direct emitter should no longer expose the old direct-LIR goto chain once shared BIR owns the branch-only constant-return shape");
 }
 
 void test_x86_direct_lir_emitter_rejects_double_indirect_pointer_conditional_return_fallback() {
@@ -2871,6 +2867,6 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_rejects_unsupported_direct_bir_input_on_x86);
   RUN_TEST(test_x86_direct_lir_emitter_rejects_unsupported_input_without_legacy_backend_ir_stub);
   RUN_TEST(test_x86_direct_lir_emitter_rejects_alloca_backed_conditional_phi_constant_fold_stub);
-  RUN_TEST(test_x86_direct_lir_emitter_rejects_goto_only_constant_return_fallback);
+  RUN_TEST(test_x86_direct_emitter_routes_goto_only_constant_return_through_shared_bir);
   RUN_TEST(test_x86_direct_lir_emitter_rejects_double_indirect_pointer_conditional_return_fallback);
 }

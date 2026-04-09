@@ -160,6 +160,47 @@ c4c::codegen::lir::LirModule make_bir_minimal_countdown_do_while_lir_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_bir_minimal_goto_only_constant_return_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.terminator = LirBr{"ulbl_start"};
+
+  LirBlock start;
+  start.id = LirBlockId{1};
+  start.label = "ulbl_start";
+  start.terminator = LirBr{"block_1"};
+
+  LirBlock middle;
+  middle.id = LirBlockId{2};
+  middle.label = "block_1";
+  middle.terminator = LirBr{"ulbl_next"};
+
+  LirBlock next;
+  next.id = LirBlockId{3};
+  next.label = "ulbl_next";
+  next.terminator = LirRet{std::string("9"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(start));
+  function.blocks.push_back(std::move(middle));
+  function.blocks.push_back(std::move(next));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_bir_minimal_scalar_global_load_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -1889,6 +1930,24 @@ void test_bir_lowering_accepts_minimal_countdown_do_while_lir_module() {
                   "the lowered countdown do-while BIR module should preserve the initial counter while normalizing the loop header");
   expect_contains(rendered, "cond:\n  %t2 = bir.load_local i32 %lv.x\n  %t3 = bir.ne i32 %t2, 0\n  bir.cond_br i32 %t3, body, exit\n",
                   "the lowered countdown do-while BIR module should route through the shared conditional loop header");
+}
+
+void test_bir_lowering_accepts_minimal_goto_only_constant_return_lir_module() {
+  const auto lowered =
+      c4c::backend::try_lower_to_bir(make_bir_minimal_goto_only_constant_return_lir_module());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the goto-only constant-return LIR slice through the shared branch-only constant-return contract");
+
+  expect_true(lowered->functions.size() == 1 &&
+                  lowered->functions.front().blocks.size() == 1 &&
+                  lowered->functions.front().blocks.front().label == "entry" &&
+                  lowered->functions.front().blocks.front().terminator.kind ==
+                      c4c::backend::bir::TerminatorKind::Return,
+              "the lowered goto-only constant-return BIR module should collapse the empty branch chain to one canonical return block");
+
+  const auto rendered = c4c::backend::bir::print(*lowered);
+  expect_contains(rendered, "bir.func @main() -> i32 {\nentry:\n  bir.ret i32 9\n}\n",
+                  "the lowered goto-only constant-return BIR module should normalize the empty branch chain to a single immediate return");
 }
 
 void test_bir_lowering_accepts_minimal_countdown_do_while_lir_module_with_stale_typed_i32_text() {
@@ -4335,6 +4394,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_minimal_call_crossing_direct_call_lir_module_with_helper_first);
   RUN_TEST(test_bir_lowering_accepts_minimal_call_crossing_direct_call_lir_module_with_typed_helper_param);
   RUN_TEST(test_bir_lowering_accepts_minimal_call_crossing_direct_call_lir_module_with_typed_main_return);
+  RUN_TEST(test_bir_lowering_accepts_minimal_goto_only_constant_return_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_countdown_do_while_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_countdown_do_while_lir_module_with_stale_typed_i32_text);
   RUN_TEST(test_bir_printer_renders_minimal_add_scaffold);

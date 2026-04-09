@@ -2218,17 +2218,15 @@ void test_aarch64_direct_lir_emitter_rejects_alloca_backed_conditional_phi_fallb
   fail("aarch64 direct emitter should reject alloca-backed conditional-phi joins once the general direct-LIR predecessor-copy fallback is pruned");
 }
 
-void test_aarch64_direct_lir_emitter_keeps_goto_only_constant_return_on_explicit_cfg_path() {
-  expect_true(!c4c::backend::try_lower_to_bir(make_goto_only_constant_return_module()).has_value(),
-              "goto-only constant-return input should continue to miss shared BIR lowering so this regression exercises the remaining direct-LIR CFG helper boundary");
+void test_aarch64_direct_emitter_routes_goto_only_constant_return_through_shared_bir() {
+  expect_true(c4c::backend::try_lower_to_bir(make_goto_only_constant_return_module()).has_value(),
+              "goto-only constant-return input should now lower through the shared BIR boundary instead of staying stranded on the aarch64 direct-LIR CFG helper path");
 
   const auto rendered = c4c::backend::aarch64::emit_module(make_goto_only_constant_return_module());
-  expect_contains(rendered, ".main.entry:\n  b .main.ulbl_start\n",
-                  "aarch64 direct emitter should keep goto-only entry routing on the explicit CFG path once the branch-following constant folder is pruned");
-  expect_contains(rendered, ".main.ulbl_start:\n  b .main.block_1\n",
-                  "aarch64 direct emitter should preserve the intermediate goto chain instead of folding it to an immediate return");
-  expect_not_contains(rendered, "mov w0, #9\n  ret\n",
-                      "aarch64 direct emitter should no longer collapse goto-only constant-return modules to the old branch-following immediate-return fallback");
+  expect_contains(rendered, "mov w0, #9\n  ret\n",
+                  "aarch64 direct emitter should now use the shared BIR-owned immediate-return route for the goto-only constant-return slice");
+  expect_not_contains(rendered, ".main.ulbl_start:",
+                      "aarch64 direct emitter should no longer expose the old target-local goto chain once shared BIR owns the branch-only constant-return shape");
 }
 
 }  // namespace
@@ -2292,5 +2290,5 @@ void run_backend_bir_pipeline_aarch64_tests() {
   RUN_TEST(test_backend_bir_pipeline_rejects_unsupported_direct_bir_input_on_aarch64);
   RUN_TEST(test_aarch64_direct_lir_emitter_rejects_unsupported_input_without_legacy_backend_ir_stub);
   RUN_TEST(test_aarch64_direct_lir_emitter_rejects_alloca_backed_conditional_phi_fallback);
-  RUN_TEST(test_aarch64_direct_lir_emitter_keeps_goto_only_constant_return_on_explicit_cfg_path);
+  RUN_TEST(test_aarch64_direct_emitter_routes_goto_only_constant_return_through_shared_bir);
 }
