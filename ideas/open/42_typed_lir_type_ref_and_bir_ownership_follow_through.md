@@ -87,6 +87,19 @@ That split causes several problems:
 - new targets such as RV32/RV64 would otherwise inherit LIR-coupled regalloc
   and CFG cleanup instead of consuming a cleaner backend-owned contract
 
+## Execution Notes
+
+- 2026-04-09: the remaining Step 1 `lir_to_bir.cpp` helper re-audit confirmed
+  that `lower_binary(...)`, `lower_compare_materialization(...)`, and
+  `lower_select_materialization(...)` already consume semantic `LirTypeRef`
+  width metadata via `lower_scalar_type(const LirTypeRef&)` rather than
+  reparsing raw type text
+- 2026-04-09: any remaining raw-text checks in `src/backend/lowering/lir_to_bir.cpp`
+  are now specific fallback recognizers or backend-ownership seams, not generic
+  scalar/materialization helpers; the next active migration slice should move
+  to canonical BIR-owned phi/CFG normalization instead of extending the typed
+  helper audit
+
 ## Concrete File Inventory
 
 These are the current concrete ownership points that make this work necessary.

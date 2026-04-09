@@ -6,12 +6,13 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 1: audit the typed type boundary and backend ownership seams
-- Current slice: re-audit `src/backend/lowering/lir_to_bir.cpp` for any
-  remaining generic scalar/materialization helpers that still prefer raw type
-  text in `lower_binary(...)`, `lower_compare_materialization(...)`, and
-  `lower_select_materialization(...)`, then prepare the next focused typed
-  lowering slice from that audit
+- Step 5: pull phi and CFG normalization behind the BIR boundary
+- Current slice: audit `src/backend/backend.cpp`,
+  `src/backend/aarch64/codegen/emit.cpp`, and
+  `src/backend/x86/codegen/emit.cpp` to classify the remaining phi/CFG cleanup
+  that still lives outside the canonical BIR route, then pick the smallest
+  production slice that can move one target-local cleanup responsibility behind
+  `try_lower_to_bir(...)`
 
 ## Completed
 
@@ -353,13 +354,27 @@ Source Plan: plan.md
 - Re-ran `backend_bir_tests`, `backend_shared_util_tests`, and the full suite,
   refreshed `test_fail_after.log`, and passed the regression guard with no new
   failures and no pass-count drop (`2841 -> 2841`)
+- Completed the remaining Step 1 helper re-audit in
+  `src/backend/lowering/lir_to_bir.cpp`:
+  - `lower_binary(...)`, `lower_compare_materialization(...)`, and
+    `lower_select_materialization(...)` already lower scalar kinds from
+    semantic `LirTypeRef` width metadata through
+    `lower_scalar_type(const LirTypeRef&)`
+  - the remaining raw-text sites in `lir_to_bir.cpp` are no longer generic
+    scalar/materialization helpers; they are specific fallback recognizers or
+    backend-ownership seams that belong to the next migration stage
+  - no additional generic typed-type conversion remains for Step 1, so the plan
+    now advances to BIR-owned phi/CFG normalization instead of stretching the
+    typed-type audit further
 
 ## Next
 
-- finish the direct-call fallback re-audit in
-  `src/backend/lowering/lir_to_bir.cpp`; if the declared-call typed-lowering
-  seam is exhausted, move the next implementation slice to the plan’s
-  BIR-owned phi/CFG normalization step instead of stretching Step 1 further
+- audit `src/backend/backend.cpp`, `src/backend/aarch64/codegen/emit.cpp`, and
+  `src/backend/x86/codegen/emit.cpp` to classify which phi/CFG-sensitive cases
+  still bypass the canonical BIR route or still require target-local cleanup
+- choose the narrowest production slice that can move one of those remaining
+  phi/CFG responsibilities behind `try_lower_to_bir(...)` without expanding
+  scope into MIR-owned liveness/regalloc work
 - keep pointer payload support deferred until a concrete pointer-backed BIR
   lowering consumer appears, then add only the narrow typed payload that
   consumer needs
