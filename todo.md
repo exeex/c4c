@@ -6,20 +6,20 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 2 / Step 3 follow-on reassessment after landing the bounded native
-  `00180.c` slice:
-  decide whether the next highest-leverage move should return to a Family B
-  shared-BIR seam or continue with another still-native x86 ownership gap
+- Step 3 continuation after landing the bounded native `00184.c` slice:
+  decide whether the next highest-leverage move should stay in the nearby
+  one-function stdio/native lane (`00183.c` / `00185.c`) or return to the
+  heavier Family B shared-BIR seam
 
 ## Next Slice
 
-- re-sample the remaining unsupported x86 bucket after the `00180.c` recovery
-  to confirm whether the best next slice is still a globals-heavy Family B
-  shared seam or another bounded native direct-LIR ownership gap
-- if Step 2 resumes, choose one bounded Family B representative and prove the
-  shared ownership point with a narrow regression before widening support
-- if Step 3 continues instead, pick the smallest still-native x86 ownership
-  gap rather than reviving any broader fallback behavior
+- keep Step 3 active first: sample `00183.c` and `00185.c` as the nearest
+  one-function stdio-backed survivors to see whether they fit another bounded
+  native `printf` ownership seam
+- if the nearby stdio lane stops being small and native-owned, return to
+  Step 2 and choose one bounded Family B representative with a narrow shared
+  lowering regression before widening support
+- do not revive any broader fallback behavior while probing either lane
 
 ## Completed Items
 
@@ -135,6 +135,21 @@ Source Plan: plan.md
   `test_fail_before.log` = 2666 pass / 181 fail / 2847 total,
   `test_fail_after.log` = 2668 pass / 180 fail / 2848 total,
   zero newly failing tests
+- added an internal x86 backend route regression for the bounded repeated
+  `printf("%d %d\\n", imm, imm)` immediate-argument slice behind
+  `tests/c/external/c-testsuite/src/00184.c`
+- taught the staged x86 prepared-LIR emitter to accept the focused `00184.c`
+  one-function repeated-`printf` immediate-argument module through native
+  direct-LIR assembly instead of rejecting it at the unsupported-module
+  boundary
+- verified `c_testsuite_x86_backend_src_00184_c` now passes in isolation on
+  x86_64 while nearby `c_testsuite_x86_backend_src_00183_c` and
+  `c_testsuite_x86_backend_src_00185_c` still fail at the unsupported-module
+  boundary
+- ran full-suite monotonic validation for the `00184.c` Step 3 slice:
+  `test_fail_before.log` = 2666 pass / 181 fail / 2847 total,
+  `test_fail_after.log` = 2670 pass / 179 fail / 2849 total,
+  zero newly failing tests
 
 ## Blockers
 
@@ -185,3 +200,11 @@ Source Plan: plan.md
   `test_fail_after.log` = 2668 pass / 180 fail / 2848 total
 - the new internal route regression increases the total suite size by one, so
   the monotonic delta for this slice is `+2` passes, `-1` fails, `+1` total
+- the `00184.c` native direct-LIR slice confirms the best next move is still
+  Step 3, not a return to Family B shared BIR yet:
+  nearby one-function stdio-backed survivors `00183.c` and `00185.c` remain
+  failing, while the full suite now stands at
+  `test_fail_after.log` = 2670 pass / 179 fail / 2849 total
+- the new internal route regression again increases total suite size by one,
+  so the monotonic delta for the `00184.c` slice is
+  `+4` passes, `-2` fails, `+2` total versus the saved pre-slice baseline

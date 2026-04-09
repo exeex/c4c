@@ -201,6 +201,20 @@ Current-tree Step 2 progress after the `00141.c` slice:
   the next reassessment point is whether a bounded Family B seam should stay in
   this idea or whether the remaining highest-leverage work should switch to the
   Step 3 x86-native or Step 4 variadic-runtime lanes
+- subsequent Step 3/native slices now confirm the next move should stay in the
+  bounded x86-owned lane before reopening Family B:
+  `c_testsuite_x86_backend_src_00180_c` and
+  `c_testsuite_x86_backend_src_00184_c` now pass through native direct-LIR
+  assembly, while nearby one-function stdio-backed survivors
+  `c_testsuite_x86_backend_src_00183_c` and
+  `c_testsuite_x86_backend_src_00185_c` still fail at the same unsupported
+  module boundary
+- current-tree full-suite monotonic validation after the `00184.c` slice now
+  stands at:
+  `2849` total,
+  `2670` passing,
+  `179` failing,
+  zero newly failing tests versus `test_fail_before.log`
 
 ### Step 2: Recover the highest-leverage shared BIR seam
 

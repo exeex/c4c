@@ -311,6 +311,15 @@ struct MinimalMultiPrintfVarargSlice {
   std::string second_string_pool_name;
 };
 
+struct MinimalRepeatedPrintfImm64PairSlice {
+  std::string function_name;
+  std::string format_string_pool_name;
+  std::int64_t first_lhs_imm = 0;
+  std::int64_t first_rhs_imm = 0;
+  std::int64_t second_lhs_imm = 0;
+  std::int64_t second_rhs_imm = 0;
+};
+
 struct MinimalStringLiteralCharSlice {
   std::string function_name;
   std::string pool_name;
@@ -2800,6 +2809,95 @@ std::optional<MinimalMultiPrintfVarargSlice> parse_minimal_multi_printf_vararg_s
   return MinimalMultiPrintfVarargSlice{function->name, string0->pool_name, string1->pool_name};
 }
 
+std::optional<MinimalRepeatedPrintfImm64PairSlice> parse_minimal_repeated_printf_imm64_pair_slice(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.string_pool.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto* function = find_zero_arg_i32_lir_definition(module);
+  if (function == nullptr || function->blocks.size() != 1 || !function->stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function->blocks.front();
+  const auto* ret = std::get_if<LirRet>(&entry.terminator);
+  if (entry.label != "entry" || entry.insts.size() != 4 || ret == nullptr ||
+      !ret->value_str.has_value() || *ret->value_str != "0" || ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto* gep0 = std::get_if<LirGepOp>(&entry.insts[0]);
+  const auto* call0 = std::get_if<LirCallOp>(&entry.insts[1]);
+  const auto* gep1 = std::get_if<LirGepOp>(&entry.insts[2]);
+  const auto* call1 = std::get_if<LirCallOp>(&entry.insts[3]);
+  if (gep0 == nullptr || call0 == nullptr || gep1 == nullptr || call1 == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto* string_constant = find_string_constant(module, gep0->ptr);
+  if (string_constant == nullptr || find_string_constant(module, gep1->ptr) != string_constant) {
+    return std::nullopt;
+  }
+
+  const auto expected_type = "[" + std::to_string(string_constant->byte_length) + " x i8]";
+  if (gep0->element_type != expected_type || gep1->element_type != expected_type ||
+      gep0->indices.size() != 2 || gep1->indices.size() != 2 ||
+      gep0->indices[0] != "i64 0" || gep0->indices[1] != "i64 0" ||
+      gep1->indices[0] != "i64 0" || gep1->indices[1] != "i64 0") {
+    return std::nullopt;
+  }
+
+  const auto symbol0 = parse_lir_direct_global_callee(call0->callee);
+  const auto symbol1 = parse_lir_direct_global_callee(call1->callee);
+  const auto call0_param_types = parse_lir_call_param_types(call0->callee_type_suffix);
+  const auto call1_param_types = parse_lir_call_param_types(call1->callee_type_suffix);
+  const auto call0_args = parse_lir_typed_call_args(call0->args_str);
+  const auto call1_args = parse_lir_typed_call_args(call1->args_str);
+  if (!symbol0.has_value() || !symbol1.has_value() || !call0_param_types.has_value() ||
+      !call1_param_types.has_value() || !call0_args.has_value() || !call1_args.has_value() ||
+      *symbol0 != "printf" || *symbol1 != "printf" ||
+      call0->return_type != "i32" || call1->return_type != "i32" ||
+      call0_param_types->size() != 2 || call1_param_types->size() != 2 ||
+      trim_lir_arg_text((*call0_param_types)[0]) != "ptr" ||
+      trim_lir_arg_text((*call0_param_types)[1]) != "..." ||
+      trim_lir_arg_text((*call1_param_types)[0]) != "ptr" ||
+      trim_lir_arg_text((*call1_param_types)[1]) != "..." ||
+      call0_args->size() != 3 || call1_args->size() != 3 ||
+      trim_lir_arg_text((*call0_args)[0].type) != "ptr" ||
+      trim_lir_arg_text((*call1_args)[0].type) != "ptr" ||
+      trim_lir_arg_text((*call0_args)[1].type) != "i64" ||
+      trim_lir_arg_text((*call0_args)[2].type) != "i64" ||
+      trim_lir_arg_text((*call1_args)[1].type) != "i64" ||
+      trim_lir_arg_text((*call1_args)[2].type) != "i64") {
+    return std::nullopt;
+  }
+
+  if ((*call0_args)[0].operand != gep0->result || (*call1_args)[0].operand != gep1->result) {
+    return std::nullopt;
+  }
+
+  const auto first_lhs = parse_i64((*call0_args)[1].operand);
+  const auto first_rhs = parse_i64((*call0_args)[2].operand);
+  const auto second_lhs = parse_i64((*call1_args)[1].operand);
+  const auto second_rhs = parse_i64((*call1_args)[2].operand);
+  if (!first_lhs.has_value() || !first_rhs.has_value() ||
+      !second_lhs.has_value() || !second_rhs.has_value()) {
+    return std::nullopt;
+  }
+
+  return MinimalRepeatedPrintfImm64PairSlice{
+      function->name,
+      string_constant->pool_name,
+      *first_lhs,
+      *first_rhs,
+      *second_lhs,
+      *second_rhs,
+  };
+}
+
 std::optional<MinimalVariadicSum2Slice> parse_minimal_variadic_sum2_slice(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
@@ -4227,6 +4325,42 @@ std::string emit_minimal_multi_printf_vararg_asm(
   return out.str();
 }
 
+std::string emit_minimal_repeated_printf_imm64_pair_asm(
+    std::string_view target_triple,
+    const c4c::codegen::lir::LirModule& module,
+    const MinimalRepeatedPrintfImm64PairSlice& slice) {
+  const auto* format_string = find_string_constant(module, slice.format_string_pool_name);
+  if (format_string == nullptr) {
+    throw std::invalid_argument("bounded repeated printf slice lost its format string constant");
+  }
+
+  const std::string main_symbol = asm_symbol_name(target_triple, slice.function_name);
+  const std::string printf_symbol = asm_symbol_name(target_triple, "printf");
+  const std::string format_label = asm_private_data_label(target_triple, format_string->pool_name);
+
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n";
+  out << ".section .rodata\n";
+  out << format_label << ":\n"
+      << "  .asciz \"" << escape_asm_string(format_string->raw_bytes) << "\"\n";
+  out << ".text\n";
+  out << ".globl " << main_symbol << "\n";
+  out << main_symbol << ":\n";
+  out << "  lea rdi, " << format_label << "[rip]\n";
+  out << "  mov rsi, " << slice.first_lhs_imm << "\n";
+  out << "  mov rdx, " << slice.first_rhs_imm << "\n";
+  out << "  mov al, 0\n";
+  out << "  call " << printf_symbol << "\n";
+  out << "  lea rdi, " << format_label << "[rip]\n";
+  out << "  mov rsi, " << slice.second_lhs_imm << "\n";
+  out << "  mov rdx, " << slice.second_rhs_imm << "\n";
+  out << "  mov al, 0\n";
+  out << "  call " << printf_symbol << "\n";
+  out << "  mov eax, 0\n";
+  out << "  ret\n";
+  return out.str();
+}
+
 std::string emit_minimal_local_buffer_string_copy_printf_asm(
     std::string_view target_triple,
     const c4c::codegen::lir::LirModule& module,
@@ -4523,6 +4657,10 @@ std::optional<std::string> try_emit_prepared_lir_module_impl(
     if (const auto slice = parse_minimal_multi_printf_vararg_slice(module);
         slice.has_value()) {
       return emit_minimal_multi_printf_vararg_asm(module.target_triple, module, *slice);
+    }
+    if (const auto slice = parse_minimal_repeated_printf_imm64_pair_slice(module);
+        slice.has_value()) {
+      return emit_minimal_repeated_printf_imm64_pair_asm(module.target_triple, module, *slice);
     }
     if (const auto slice = parse_minimal_variadic_sum2_slice(module);
         slice.has_value()) {
