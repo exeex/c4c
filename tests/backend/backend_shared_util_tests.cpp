@@ -2217,6 +2217,50 @@ void test_backend_shared_prepared_function_inputs_preserve_emitter_stack_layout_
       "prepared per-function stack-layout inputs should preserve the fallback backend-CFG-derived metadata needed by production emitters while keeping the raw-LIR surface compatibility-only");
 }
 
+void test_backend_shared_rewrite_only_prepared_function_inputs_preserve_rewrite_and_planning_state() {
+  const auto module = make_mixed_bir_and_entry_alloca_module();
+
+  const auto lowerable_full =
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_inputs(module, 0);
+  const auto lowerable_rewrite_only =
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_rewrite_only_inputs(
+          module, 0);
+  expect_true(
+      lowerable_rewrite_only.liveness_source == lowerable_full.liveness_source &&
+          lowerable_rewrite_only.stack_layout_source == lowerable_full.stack_layout_source &&
+          lowerable_rewrite_only.rewrite_input.entry_allocas.size() ==
+              lowerable_full.rewrite_input.entry_allocas.size() &&
+          lowerable_rewrite_only.planning_input.entry_allocas.size() ==
+              lowerable_full.planning_input.entry_allocas.size() &&
+          lowerable_rewrite_only.liveness_input.entry_insts.size() ==
+              lowerable_full.liveness_input.entry_insts.size() &&
+          lowerable_rewrite_only.liveness_input.blocks.size() ==
+              lowerable_full.liveness_input.blocks.size(),
+      "shared entry-alloca rewrite-only prep should preserve the narrowed rewrite and liveness seams for lowerable functions without routing through the compatibility stack-layout wrapper");
+
+  const auto fallback_full =
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_inputs(module, 2);
+  const auto fallback_rewrite_only =
+      c4c::backend::stack_layout::prepare_module_function_entry_alloca_rewrite_only_inputs(
+          module, 2);
+  expect_true(
+      fallback_rewrite_only.liveness_source == fallback_full.liveness_source &&
+          fallback_rewrite_only.stack_layout_source == fallback_full.stack_layout_source &&
+          fallback_rewrite_only.rewrite_input.entry_allocas.size() ==
+              fallback_full.rewrite_input.entry_allocas.size() &&
+          fallback_rewrite_only.rewrite_input.entry_allocas.front().alloca_name ==
+              fallback_full.rewrite_input.entry_allocas.front().alloca_name &&
+          fallback_rewrite_only.planning_input.entry_allocas.size() ==
+              fallback_full.planning_input.entry_allocas.size() &&
+          fallback_rewrite_only.planning_input.entry_alloca_use_blocks.has_value() ==
+              fallback_full.planning_input.entry_alloca_use_blocks.has_value() &&
+          fallback_rewrite_only.liveness_input.entry_insts.size() ==
+              fallback_full.liveness_input.entry_insts.size() &&
+          fallback_rewrite_only.liveness_input.blocks.size() ==
+              fallback_full.liveness_input.blocks.size(),
+      "shared entry-alloca rewrite-only prep should preserve the narrowed fallback rewrite/planning seams so rewrite_module_entry_allocas no longer has to rehydrate a compatibility stack-layout input first");
+}
+
 void test_backend_shared_fallback_entry_alloca_stack_layout_input_preserves_pointer_metadata() {
   const c4c::backend::RegAllocIntegrationResult regalloc;
 
@@ -3190,6 +3234,8 @@ int main(int argc, char* argv[]) {
   test_backend_shared_slot_assignment_prepares_rewrite_patch_from_backend_owned_inputs();
   test_backend_shared_slot_assignment_rewrites_module_entry_allocas();
   test_backend_shared_slot_assignment_prepares_module_function_inputs();
+  test_backend_shared_prepared_function_inputs_preserve_emitter_stack_layout_metadata();
+  test_backend_shared_rewrite_only_prepared_function_inputs_preserve_rewrite_and_planning_state();
   test_backend_shared_fallback_entry_alloca_stack_layout_input_preserves_pointer_metadata();
   test_backend_shared_fallback_entry_alloca_stack_layout_input_preserves_signature_and_call_metadata();
   test_backend_shared_fallback_preparation_separates_stack_layout_metadata_from_cfg_classification();

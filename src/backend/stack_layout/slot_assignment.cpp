@@ -740,7 +740,7 @@ LirModule rewrite_module_entry_allocas(
   for (std::size_t function_index = 0; function_index < rewritten.functions.size(); ++function_index) {
     auto& function = rewritten.functions[function_index];
     const auto prepared_inputs =
-        prepare_module_function_entry_alloca_inputs(module, function_index);
+        prepare_module_function_entry_alloca_rewrite_only_inputs(module, function_index);
     const auto patch = prepare_entry_alloca_rewrite_patch(
         prepared_inputs.liveness_input,
         prepared_inputs.rewrite_input,
@@ -810,6 +810,13 @@ EntryAllocaRewriteInputs prepare_module_function_entry_alloca_inputs(
       prepare_module_function_entry_alloca_preparation(module, function_index));
 }
 
+PreparedEntryAllocaRewriteOnlyInputs prepare_module_function_entry_alloca_rewrite_only_inputs(
+    const c4c::codegen::lir::LirModule& module,
+    std::size_t function_index) {
+  return lower_prepared_entry_alloca_rewrite_only_inputs(
+      prepare_module_function_entry_alloca_preparation(module, function_index));
+}
+
 PreparedEntryAllocaFunctionInputs prepare_module_function_entry_alloca_preparation(
     const c4c::codegen::lir::LirModule& module,
     std::size_t function_index) {
@@ -869,7 +876,25 @@ PreparedEntryAllocaFunctionInputs prepare_module_function_entry_alloca_preparati
 
 EntryAllocaRewriteInputs lower_prepared_entry_alloca_function_inputs(
     const PreparedEntryAllocaFunctionInputs& prepared_inputs) {
+  auto lowered_inputs = lower_prepared_entry_alloca_rewrite_only_inputs(prepared_inputs);
+
   EntryAllocaRewriteInputs inputs;
+  inputs.liveness_input = std::move(lowered_inputs.liveness_input);
+  inputs.rewrite_input = std::move(lowered_inputs.rewrite_input);
+  inputs.planning_input = std::move(lowered_inputs.planning_input);
+  inputs.liveness_source = lowered_inputs.liveness_source;
+  inputs.stack_layout_source = lowered_inputs.stack_layout_source;
+  inputs.stack_layout_input = lower_prepared_stack_layout_input(
+      prepared_inputs.rewrite_metadata,
+      prepared_inputs.stack_layout_classification,
+      prepared_inputs.stack_layout_metadata,
+      &inputs.liveness_input);
+  return inputs;
+}
+
+PreparedEntryAllocaRewriteOnlyInputs lower_prepared_entry_alloca_rewrite_only_inputs(
+    const PreparedEntryAllocaFunctionInputs& prepared_inputs) {
+  PreparedEntryAllocaRewriteOnlyInputs inputs;
   inputs.liveness_source = prepared_inputs.liveness_source;
   inputs.stack_layout_source = prepared_inputs.stack_layout_source;
 
@@ -880,11 +905,6 @@ EntryAllocaRewriteInputs lower_prepared_entry_alloca_function_inputs(
         lower_backend_cfg_to_liveness_input(*prepared_inputs.backend_cfg_liveness);
   }
 
-  inputs.stack_layout_input = lower_prepared_stack_layout_input(
-      prepared_inputs.rewrite_metadata,
-      prepared_inputs.stack_layout_classification,
-      prepared_inputs.stack_layout_metadata,
-      &inputs.liveness_input);
   inputs.rewrite_input = lower_prepared_entry_alloca_rewrite_input(
       prepared_inputs.rewrite_metadata,
       prepared_inputs.stack_layout_classification);

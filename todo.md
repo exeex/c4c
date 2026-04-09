@@ -7,19 +7,44 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 7: move regalloc and stack layout to backend MIR
-- Current slice: audit whether `rewrite_module_entry_allocas(...)` and other
-  prepared stack-layout callers can drop the rehydrated compatibility
-  `StackLayoutInput` earlier now that lowerable-function preparation also uses
-  the backend-owned entry-alloca plus CFG metadata path
-- Current implementation target: identify which production callers still need
-  the compatibility `StackLayoutInput` versus the narrower planning/rewrite
-  seams after `prepare_module_function_entry_alloca_preparation(...)` no longer
-  calls `lower_lir_to_stack_layout_input(...)` for lowerable functions
-- Next intended slice: narrow `rewrite_module_entry_allocas(...)` around the
-  already-prepared rewrite/planning inputs if that can be done without
-  reintroducing a raw-`LIR` ownership dependency
+- Current slice: retarget any remaining non-emitter production callers that
+  still go through `prepare_module_function_entry_alloca_inputs(...)` even
+  though they only need rewrite or planning state
+- Current implementation target: audit whether any non-emitter production paths
+  besides `rewrite_module_entry_allocas(...)` still force compatibility
+  `StackLayoutInput` rehydration instead of consuming the narrower prepared
+  rewrite/planning seams directly
+- Next intended slice: if no additional non-emitter production callers remain,
+  narrow the compatibility wrapper naming and comments so emitter-only
+  ownership is explicit at the public `stack_layout` entrypoints
 
 ## Completed
+
+- Completed the next Step 7 rewrite-only preparation split by letting module
+  entry-alloca rewriting consume the narrowed prepared seams without
+  rehydrating the compatibility `StackLayoutInput`:
+  - added `PreparedEntryAllocaRewriteOnlyInputs` plus
+    `lower_prepared_entry_alloca_rewrite_only_inputs(...)` /
+    `prepare_module_function_entry_alloca_rewrite_only_inputs(...)` in
+    `src/backend/stack_layout/slot_assignment.hpp` and
+    `src/backend/stack_layout/slot_assignment.cpp`
+  - retargeted `rewrite_module_entry_allocas(...)` to the new rewrite-only
+    prepared-input path so the module rewrite flow now consumes only
+    `liveness_input` plus the narrowed rewrite/planning state, leaving the
+    full compatibility `StackLayoutInput` rehydration to callers that still
+    need slot-building metadata
+  - kept `prepare_module_function_entry_alloca_inputs(...)` as the compatibility
+    wrapper used by the AArch64 direct-LIR emitter and tests that explicitly
+    exercise the rehydrated stack-layout view
+  - added focused coverage in `tests/backend/backend_shared_util_tests.cpp`
+    proving the rewrite-only prepared-input path preserves the same narrowed
+    rewrite/planning/liveness state for both lowerable and fallback functions
+  - rebuilt `backend_shared_util_tests`, passed
+    `ctest --test-dir build -R '^backend_shared_util_tests$' --output-on-failure`
+  - rebuilt the full tree, refreshed `test_fail_after.log`, and passed the
+    regression guard with the repo's allowed non-decreasing rule and no new
+    failures (`2809 -> 2809`, same 32 known failing tests as
+    `test_fail_before.log`)
 
 - Completed the next Step 7 lowerable-function stack-layout-source narrowing
   slice by removing the remaining prepared per-function
