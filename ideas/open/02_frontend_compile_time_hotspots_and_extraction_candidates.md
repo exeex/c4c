@@ -1106,3 +1106,62 @@ Follow-on note:
   `src/codegen/lir/stmt_emitter_call_vaarg_amd64.cpp` at `2.370s`, and
   `src/frontend/hir/hir_templates.cpp` at `2.100s`, so the next iteration
   should stay in `hir_expr.cpp`
+
+## 2026-04-10 Step 4 Twenty-Fourth Extraction Slice
+
+The refreshed direct comparison after the operator/member split still left
+`src/frontend/hir/hir_expr.cpp` in the lead at `2.480s`, just ahead of
+`src/frontend/hir/hir_stmt.cpp` at `2.450s`, the reduced
+`src/codegen/lir/stmt_emitter_call_vaarg_amd64.cpp` at `2.370s`, and
+`src/frontend/hir/hir_templates.cpp` at `2.100s`.
+
+That kept the next extraction in `hir_expr.cpp`, where the remaining
+scalar/control lowering cases inside `Lowerer::lower_expr` formed the next
+cohesive seam that could move into helper methods without changing the
+dispatcher contract.
+
+Executed the scalar/control helper split:
+
+- moved `lower_var_expr`, `lower_unary_expr`, `lower_postfix_expr`,
+  `lower_addr_expr`, `lower_deref_expr`, `lower_comma_expr`,
+  `lower_binary_expr`, `lower_assign_expr`,
+  `lower_compound_assign_expr`, `lower_cast_expr`, `lower_va_arg_expr`,
+  `lower_index_expr`, `lower_ternary_expr`, `lower_generic_expr`,
+  `lower_stmt_expr`, `lower_complex_part_expr`, `lower_sizeof_expr`, and
+  `lower_sizeof_pack_expr` into the new
+  `src/frontend/hir/hir_expr_scalar_control.cpp`
+- kept `src/frontend/hir/hir_expr.cpp` focused on lvalue classification, the
+  top-level expression dispatcher, and the already-extracted call/object/
+  operator/builtin helper entry points
+- added focused HIR coverage in
+  `tests/cpp/internal/hir_case/hir_expr_scalar_control_helper_hir.cpp` and
+  wired `cpp_hir_expr_scalar_control_helper` into
+  `tests/cpp/internal/InternalTests.cmake`
+
+Measured result:
+
+- compiling the pre-split `src/frontend/hir/hir_expr.cpp` from `HEAD` on the
+  direct optimized command took `2.556s`
+- the direct post-split rerun of `src/frontend/hir/hir_expr.cpp` took `1.470s`
+- the new `src/frontend/hir/hir_expr_scalar_control.cpp` compiled in `2.356s`
+- this reduced the main hotspot TU by `1.086s` (about `42.5%`) on the direct
+  comparison
+
+Validation result:
+
+- focused coverage passed:
+  `cpp_hir_expr_scalar_control_helper`,
+  `cpp_hir_expr_operator_member_helper`,
+  `cpp_hir_expr_call_member_helper`, and
+  `cpp_hir_expr_object_materialization_helper`
+- full-suite regression guard passed with `3330/3330` tests passing before and
+  `3342/3342` after, with no new failures
+
+Follow-on note:
+
+- a refreshed direct comparison now reads `src/frontend/hir/hir_stmt.cpp` at
+  `2.612s`, the reduced
+  `src/codegen/lir/stmt_emitter_call_vaarg_amd64.cpp` at `2.291s`,
+  `src/frontend/hir/hir_templates.cpp` at `2.002s`, and the reduced
+  `src/frontend/hir/hir_expr.cpp` at `1.123s`, so the next iteration should
+  move to `hir_stmt.cpp`

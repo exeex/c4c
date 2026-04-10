@@ -1389,6 +1389,15 @@ set_tests_properties(cpp_hir_expr_operator_member_helper PROPERTIES
 )
 
 add_test(
+  NAME cpp_hir_expr_scalar_control_helper
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/hir_expr_scalar_control_helper_hir.cpp"
+)
+set_tests_properties(cpp_hir_expr_scalar_control_helper PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "decl local: int = \\(input#P1 \\+ bias\\).*\\(local#L1 \\+= this#P0->base\\).*decl __tern_tmp: int = 0.*if \\(\\(local#L1 > 6\\)\\) -> block#.*decl picked: int = __tern_tmp#L3.*\\(__real__z#L6\\) = 3.*\\(__imag__z#L6\\) = 4.*return \\(\\(\\(\\(picked#L2 \\+ \\(\\(int\\)\\(__real__z#L6\\)\\)\\) \\+ \\(\\(int\\)\\(__imag__z#L6\\)\\)\\) \\+ values#L7\\[1\\]\\) \\+ \\(\\(int\\)sizeof\\(values#L7\\[0\\]\\)\\)\\)"
+)
+
+add_test(
   NAME cpp_hir_stmt_control_flow_helper
   COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/hir_stmt_control_flow_helper_hir.cpp"
 )

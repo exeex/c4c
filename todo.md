@@ -6,13 +6,46 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 4: extract the next measured `hir_expr.cpp` helper family, because the
-  refreshed direct-TU comparison after the operator/member split now reads
-  `hir_expr.cpp` at `2.480s`, `hir_stmt.cpp` at `2.450s`,
-  `stmt_emitter_call_vaarg_amd64.cpp` at `2.370s`, and
-  `hir_templates.cpp` at `2.100s`.
+- Step 4: extract the next measured `hir_stmt.cpp` helper family, because the
+  refreshed direct-TU comparison after the scalar/control split now reads
+  `hir_stmt.cpp` at `2.612s`, `stmt_emitter_call_vaarg_amd64.cpp` at `2.291s`,
+  `hir_templates.cpp` at `2.002s`, and the reduced `hir_expr.cpp` at
+  `1.123s`.
 
 ## Completed
+
+- Added focused HIR coverage in
+  `tests/cpp/internal/hir_case/hir_expr_scalar_control_helper_hir.cpp` and
+  wired the new `cpp_hir_expr_scalar_control_helper` test into
+  `tests/cpp/internal/InternalTests.cmake`.
+- Executed the twenty-fourth Step 4 slice by moving the scalar/control
+  expression helper family
+  (`lower_var_expr`, `lower_unary_expr`, `lower_postfix_expr`,
+  `lower_addr_expr`, `lower_deref_expr`, `lower_comma_expr`,
+  `lower_binary_expr`, `lower_assign_expr`,
+  `lower_compound_assign_expr`, `lower_cast_expr`, `lower_va_arg_expr`,
+  `lower_index_expr`, `lower_ternary_expr`, `lower_generic_expr`,
+  `lower_stmt_expr`, `lower_complex_part_expr`, `lower_sizeof_expr`, and
+  `lower_sizeof_pack_expr`) out of `src/frontend/hir/hir_expr.cpp` into the
+  new `src/frontend/hir/hir_expr_scalar_control.cpp`.
+- Rebuilt after the split and re-ran focused coverage:
+  `cpp_hir_expr_scalar_control_helper`,
+  `cpp_hir_expr_operator_member_helper`,
+  `cpp_hir_expr_call_member_helper`, and
+  `cpp_hir_expr_object_materialization_helper`.
+- Re-ran the full suite into `test_fail_after.log`; the regression guard
+  passed with `3330/3330` tests passing before and `3342/3342` after, with no
+  new failures.
+- Recorded the twenty-fourth before/after extraction measurement: compiling
+  the pre-split `src/frontend/hir/hir_expr.cpp` from `HEAD` on the generated
+  optimized command took `2.556s`, the reduced
+  `src/frontend/hir/hir_expr.cpp` took `1.470s`, and the new
+  `src/frontend/hir/hir_expr_scalar_control.cpp` compiled in `2.356s` on the
+  direct comparison rerun.
+- Refreshed the direct hotspot comparison after the scalar/control split:
+  `hir_stmt.cpp` measured `2.612s`,
+  `stmt_emitter_call_vaarg_amd64.cpp` `2.291s`,
+  `hir_templates.cpp` `2.002s`, and the reduced `hir_expr.cpp` `1.123s`.
 
 - Added focused HIR coverage in
   `tests/cpp/internal/hir_case/hir_expr_operator_member_helper_hir.cpp` and
