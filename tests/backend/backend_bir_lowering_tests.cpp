@@ -435,6 +435,42 @@ c4c::codegen::lir::LirModule make_local_i32_array_two_slot_sum_sub_three_module(
   return module;
 }
 
+c4c::codegen::lir::LirModule
+make_local_i32_array_second_slot_pointer_store_zero_load_return_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.arr", "[2 x i32]", "", 4});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.p", "ptr", "", 8});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{"%t0", "[2 x i32]", "%lv.arr", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirCastOp{"%t1", LirCastKind::SExt, "i32", "1", "i64"});
+  entry.insts.push_back(LirGepOp{"%t2", "i32", "%t0", false, {"i64 %t1"}});
+  entry.insts.push_back(LirStoreOp{"ptr", "%t2", "%lv.p"});
+  entry.insts.push_back(LirLoadOp{"%t3", "ptr", "%lv.p"});
+  entry.insts.push_back(LirStoreOp{"i32", "0", "%t3"});
+  entry.insts.push_back(LirGepOp{"%t4", "[2 x i32]", "%lv.arr", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirCastOp{"%t5", LirCastKind::SExt, "i32", "1", "i64"});
+  entry.insts.push_back(LirGepOp{"%t6", "i32", "%t4", false, {"i64 %t5"}});
+  entry.insts.push_back(LirLoadOp{"%t7", "i32", "%t6"});
+  entry.terminator = LirRet{std::string("%t7"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_double_indirect_local_store_one_final_branch_return_module() {
   using namespace c4c::codegen::lir;
 
@@ -2878,6 +2914,25 @@ void test_bir_lowering_accepts_local_i32_array_two_slot_sum_sub_three_module() {
   const auto rendered = c4c::backend::bir::print(*lowered);
   expect_contains(rendered, "bir.func @main() -> i32 {\nentry:\n  bir.ret i32 0\n}\n",
                   "the lowered two-slot local-array sum-sub-three module should normalize the constant indexed array stores and arithmetic tail to a single immediate zero return");
+}
+
+void test_bir_lowering_accepts_local_i32_array_second_slot_pointer_store_zero_load_return_module() {
+  const auto lowered =
+      c4c::backend::try_lower_to_bir(
+          make_local_i32_array_second_slot_pointer_store_zero_load_return_module());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the bounded local-array second-slot pointer-store-zero-load-return slice through the shared constant-return contract");
+
+  expect_true(lowered->functions.size() == 1 &&
+                  lowered->functions.front().blocks.size() == 1 &&
+                  lowered->functions.front().blocks.front().insts.empty() &&
+                  lowered->functions.front().blocks.front().terminator.kind ==
+                      c4c::backend::bir::TerminatorKind::Return,
+              "the lowered local-array second-slot pointer-store-zero-load-return module should collapse to one canonical constant-return block");
+
+  const auto rendered = c4c::backend::bir::print(*lowered);
+  expect_contains(rendered, "bir.func @main() -> i32 {\nentry:\n  bir.ret i32 0\n}\n",
+                  "the lowered local-array second-slot pointer-store-zero-load-return module should normalize the aliased second-slot zero-store to a single immediate zero return");
 }
 
 void test_bir_lowering_accepts_double_indirect_local_store_one_final_branch_return_module() {
@@ -5525,6 +5580,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_local_i32_pointer_gep_zero_load_return_module);
   RUN_TEST(test_bir_lowering_accepts_local_i32_pointer_gep_zero_store_slot_load_return_module);
   RUN_TEST(test_bir_lowering_accepts_local_i32_array_two_slot_sum_sub_three_module);
+  RUN_TEST(test_bir_lowering_accepts_local_i32_array_second_slot_pointer_store_zero_load_return_module);
   RUN_TEST(test_bir_lowering_accepts_double_indirect_local_store_one_final_branch_return_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_countdown_do_while_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_countdown_do_while_lir_module_with_stale_typed_i32_text);

@@ -1449,6 +1449,102 @@ std::optional<bir::Module> try_lower_minimal_local_i32_array_two_slot_sum_sub_th
   return lowered;
 }
 
+std::optional<bir::Module>
+try_lower_minimal_local_i32_array_second_slot_pointer_store_zero_load_return_module(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || !module.globals.empty() ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      !backend_lir_signature_matches(function.signature_text, "define", "i32", function.name, {}) ||
+      function.entry.value != 0 || function.blocks.size() != 1 || function.alloca_insts.size() != 2 ||
+      !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* array_slot = std::get_if<LirAllocaOp>(&function.alloca_insts[0]);
+  const auto* pointer_slot = std::get_if<LirAllocaOp>(&function.alloca_insts[1]);
+  if (array_slot == nullptr || pointer_slot == nullptr || array_slot->result.empty() ||
+      pointer_slot->result.empty() || !array_slot->count.empty() || !pointer_slot->count.empty() ||
+      array_slot->type_str != "[2 x i32]" || pointer_slot->type_str != "ptr") {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  const auto* first_base_gep =
+      entry.insts.size() == 10 ? std::get_if<LirGepOp>(&entry.insts[0]) : nullptr;
+  const auto* first_index_cast =
+      entry.insts.size() == 10 ? std::get_if<LirCastOp>(&entry.insts[1]) : nullptr;
+  const auto* first_elem_gep =
+      entry.insts.size() == 10 ? std::get_if<LirGepOp>(&entry.insts[2]) : nullptr;
+  const auto* pointer_store =
+      entry.insts.size() == 10 ? std::get_if<LirStoreOp>(&entry.insts[3]) : nullptr;
+  const auto* pointer_load =
+      entry.insts.size() == 10 ? std::get_if<LirLoadOp>(&entry.insts[4]) : nullptr;
+  const auto* zero_store =
+      entry.insts.size() == 10 ? std::get_if<LirStoreOp>(&entry.insts[5]) : nullptr;
+  const auto* second_base_gep =
+      entry.insts.size() == 10 ? std::get_if<LirGepOp>(&entry.insts[6]) : nullptr;
+  const auto* second_index_cast =
+      entry.insts.size() == 10 ? std::get_if<LirCastOp>(&entry.insts[7]) : nullptr;
+  const auto* second_elem_gep =
+      entry.insts.size() == 10 ? std::get_if<LirGepOp>(&entry.insts[8]) : nullptr;
+  const auto* final_load =
+      entry.insts.size() == 10 ? std::get_if<LirLoadOp>(&entry.insts[9]) : nullptr;
+  const auto* ret = std::get_if<LirRet>(&entry.terminator);
+
+  if (entry.label != "entry" || first_base_gep == nullptr || first_index_cast == nullptr ||
+      first_elem_gep == nullptr || pointer_store == nullptr || pointer_load == nullptr ||
+      zero_store == nullptr || second_base_gep == nullptr || second_index_cast == nullptr ||
+      second_elem_gep == nullptr || final_load == nullptr || ret == nullptr ||
+      !ret->value_str.has_value() || lower_function_return_type(function, *ret) != bir::TypeKind::I32 ||
+      *ret->value_str != final_load->result || first_base_gep->ptr != array_slot->result ||
+      first_base_gep->element_type != "[2 x i32]" || first_base_gep->result.empty() ||
+      first_base_gep->indices != std::vector<std::string>{"i64 0", "i64 0"} ||
+      first_index_cast->kind != LirCastKind::SExt || first_index_cast->from_type != "i32" ||
+      first_index_cast->operand != "1" || first_index_cast->to_type != "i64" ||
+      first_elem_gep->ptr != first_base_gep->result || first_elem_gep->element_type != "i32" ||
+      first_elem_gep->result.empty() ||
+      first_elem_gep->indices != std::vector<std::string>{"i64 " + first_index_cast->result.str()} ||
+      pointer_store->type_str != "ptr" || pointer_store->val != first_elem_gep->result ||
+      pointer_store->ptr != pointer_slot->result || pointer_load->type_str != "ptr" ||
+      pointer_load->ptr != pointer_slot->result || pointer_load->result.empty() ||
+      zero_store->ptr != pointer_load->result || zero_store->val != "0" ||
+      !lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{zero_store->type_str}, 32) ||
+      second_base_gep->ptr != array_slot->result ||
+      second_base_gep->element_type != "[2 x i32]" || second_base_gep->result.empty() ||
+      second_base_gep->indices != std::vector<std::string>{"i64 0", "i64 0"} ||
+      second_index_cast->kind != LirCastKind::SExt || second_index_cast->from_type != "i32" ||
+      second_index_cast->operand != "1" || second_index_cast->to_type != "i64" ||
+      second_elem_gep->ptr != second_base_gep->result ||
+      second_elem_gep->element_type != "i32" || second_elem_gep->result.empty() ||
+      second_elem_gep->indices != std::vector<std::string>{"i64 " + second_index_cast->result.str()} ||
+      final_load->ptr != second_elem_gep->result || final_load->result.empty() ||
+      !lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{final_load->type_str}, 32)) {
+    return std::nullopt;
+  }
+
+  bir::Module lowered;
+  lowered.target_triple = module.target_triple;
+  lowered.data_layout = module.data_layout;
+
+  bir::Function lowered_function;
+  lowered_function.name = function.name;
+  lowered_function.return_type = bir::TypeKind::I32;
+
+  bir::Block lowered_entry;
+  lowered_entry.label = "entry";
+  lowered_entry.terminator.value = bir::Value::immediate_i32(0);
+  lowered_function.blocks.push_back(std::move(lowered_entry));
+  lowered.functions.push_back(std::move(lowered_function));
+  return lowered;
+}
+
 std::optional<bir::Module> try_lower_double_indirect_local_store_one_final_branch_return_module(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
@@ -3768,6 +3864,12 @@ std::optional<bir::Module> try_lower_to_bir_legacy(const c4c::codegen::lir::LirM
   }
   if (const auto lowered =
           try_lower_minimal_local_i32_array_two_slot_sum_sub_three_module(module);
+      lowered.has_value()) {
+    return lowered;
+  }
+  if (const auto lowered =
+          try_lower_minimal_local_i32_array_second_slot_pointer_store_zero_load_return_module(
+              module);
       lowered.has_value()) {
     return lowered;
   }

@@ -7,24 +7,26 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 5 full-suite monotonic validation and next-slice selection after the
-  bounded shared-BIR `00015.c` local-array two-slot sum-sub-three seam landed
+  bounded shared-BIR `00016.c` second-array-slot pointer zero-store seam
+  landed
 - current exact slice:
   preserve the refreshed focused-x86 and full-suite validation results after
-  the `00015.c` recovery; the early source-backed cluster through `00015.c`
+  the `00016.c` recovery; the early source-backed cluster through `00016.c`
   is now green, while the broad-suite comparison against `test_fail_before.log`
   remains a parked non-monotonic lane and should not be silently treated as
-  Step 5 complete because the stale baseline still reports unrelated broad red
-  lanes outside this bounded shared-BIR slice
+  Step 5 complete because the refreshed after-log still reports unrelated broad
+  red lanes outside this bounded shared-BIR slice, including the already-known
+  broad `backend_bir_tests` and riscv64 select-route buckets
 
 ## Next Slice
 
 - keep the ownership split explicit for the remaining early x86 source cases:
-  `00011.c`, `00012.c`, `00013.c`, `00014.c`, and `00015.c` are now green, so
-  `c_testsuite_x86_backend_src_00016_c` is the next earliest failing
+  `00011.c`, `00012.c`, `00013.c`, `00014.c`, `00015.c`, and `00016.c` are now
+  green, so `c_testsuite_x86_backend_src_00017_c` is the next earliest failing
   source-backed seam to classify from the refreshed after-log instead of
-  widening the `00015.c` slice ad hoc; its source body is the compact local
-  pointer-to-second-array-slot zero-store slice (`int arr[2]; int *p; p =
-  &arr[1]; *p = 0; return arr[1];`)
+  widening the `00016.c` slice ad hoc; its source body is the compact local
+  two-field struct arithmetic seam (`struct { int x; int y; } s; s.x = 3; s.y
+  = 5; return s.y - s.x - 2;`)
 - if the refreshed broad-suite guard is still red after the branch-family
   and early source-backed recoveries, keep treating the stale baseline as a
   parked comparison and classify the next highest-value remaining x86-native
@@ -37,6 +39,41 @@ Source Plan: plan.md
   before choosing the next bounded seam
 
 ## Recently Completed
+
+- recovered the bounded shared-BIR `00016.c` seam by teaching
+  `src/backend/lowering/lir_to_bir.cpp` to recognize the exact source-backed
+  second-array-slot pointer alias slice (`alloca [2 x i32]`, pointer local,
+  base `gep` to index `1`, store derived pointer, reload pointer, store `0`
+  through that alias, reload `arr[1]`, `ret`) and collapse that direct-LIR
+  module to the shared constant `0` return instead of stopping at the
+  unsupported x86 direct-LIR boundary
+- covered that seam with focused shared-lowering and x86 pipeline regressions
+  in `tests/backend/backend_bir_lowering_tests.cpp` and
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp`, plus a source-backed
+  backend route regression in `tests/c/internal/InternalTests.cmake`
+  (`backend_codegen_route_x86_64_c_testsuite_00016_local_array_second_slot_pointer_store_zero_retries_after_direct_bir_rejection`)
+  so the real `00016.c` path stays pinned on native x86 asm instead of falling
+  back to LLVM text or the unsupported direct-LIR error
+- verified the bounded `00016.c` seam end-to-end:
+  `./build/backend_bir_tests test_bir_lowering_accepts_local_i32_array_second_slot_pointer_store_zero_load_return_module`,
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_lir_local_i32_array_second_slot_pointer_store_zero_load_return_through_bir_end_to_end`,
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_local_i32_array_second_slot_pointer_store_zero_load_return_slice`,
+  and
+  `ctest --test-dir build --output-on-failure -R '^(backend_codegen_route_x86_64_c_testsuite_00015_local_array_two_slot_sum_sub_three_retries_after_direct_bir_rejection|backend_codegen_route_x86_64_c_testsuite_00016_local_array_second_slot_pointer_store_zero_retries_after_direct_bir_rejection|c_testsuite_x86_backend_src_00015_c|c_testsuite_x86_backend_src_00016_c)$'`
+  now pass for the owned seam cluster
+- refreshed `test_fail_after.log` with
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log` and
+  re-ran the monotonic guard through the `c4c-regression-guard` skill:
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  which still fails against the broad parked baseline
+  (`2670/179/2849` before vs `2628/231/2859` after); the refreshed after-log
+  now records `00016.c` as resolved, but the remaining red broad-suite lanes
+  still include unrelated `backend_bir_tests`, riscv64 select-route, and wider
+  x86 source-backed buckets outside this bounded change
+- classified the next bounded seam from the refreshed after-log:
+  `c_testsuite_x86_backend_src_00017_c` is now the next red source-backed x86
+  case, and its source body stays a compact local two-field struct arithmetic
+  slice (`struct { int x; int y; } s; s.x = 3; s.y = 5; return s.y - s.x - 2;`)
 
 - recovered the bounded shared-BIR `00015.c` seam by teaching
   `src/backend/lowering/lir_to_bir.cpp` to recognize the exact source-backed
