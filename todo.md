@@ -7,9 +7,9 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 2 bounded shared-BIR classification and recovery planning for the next
-  source-backed x86 case after recovering `00079.c`
+  source-backed x86 case after recovering `00080.c`
 - current exact slice:
-  classify the refreshed post-`00079.c` targeted state and recover the next
+  refresh the post-`00080.c` targeted state and recover the next
   earliest remaining non-parked source-backed x86 case from the updated
   after-log without widening idea 44 ad hoc
 
@@ -36,24 +36,46 @@ Source Plan: plan.md
   instead of widening idea 44
 - preserve the refreshed `test_fail_after.log` plus the monotonic-guard result
   before choosing the next bounded seam
-- after the bounded `00079.c` recovery, classify the next earliest remaining
-  non-parked source-backed x86 case from the refreshed after-log; the current
-  earliest failing source-backed x86 case is now
-  `c_testsuite_x86_backend_src_00080_c`
+- after the bounded `00080.c` recovery, classify the next earliest remaining
+  non-parked source-backed x86 case from the refreshed after-log instead of
+  widening idea 44 ad hoc
 
 ## Current Iteration Notes
 
-- refreshed `test_fail_after.log` now shows
-  `c_testsuite_x86_backend_src_00080_c` as the next earliest remaining
-  non-parked source-backed x86 failure after the bounded `00079.c` recovery;
+- the bounded `00080.c` seam is now recovered on native x86 asm, but the next
+  earliest remaining non-parked source-backed x86 failure still needs to be
+  reclassified from a refreshed `test_fail_after.log`;
   `00040.c` remains parked in
   `ideas/open/48_shared_bir_family_b_recursive_global_pointer_routes_after_x86_00040.md`
   and `00051.c` remains parked in
   `ideas/open/49_x86_64_shared_bir_switch_case_goto_entry_modules_after_x86_00051.md`,
-  so the next active slice should continue from `00080.c` rather than widen
-  idea 44 ad hoc
+  so the next active slice should continue from the refreshed earliest
+  non-parked source-backed x86 failure rather than widen idea 44 ad hoc
 
 ## Recently Completed
+
+- recovered the bounded x86 `00080.c` seam by teaching
+  `src/backend/x86/codegen/emit.cpp` to own the exact native direct-LIR
+  fallback shape that `c4cll --codegen asm` emits for this case: the
+  two-function `voidfn(); return 0;` module, plus the helper-only and
+  main-only one-function variants encountered on adjacent x86 fallback paths;
+  the new bounded x86 matchers now emit native asm for `voidfn` and `main`
+  instead of stopping at the unsupported direct-LIR boundary
+- covered the bounded `00080.c` seam with focused x86 direct-emitter and
+  shared-pipeline regressions in `tests/backend/backend_bir_pipeline_x86_64_tests.cpp`,
+  plus a source-backed x86 route regression in
+  `tests/c/internal/InternalTests.cmake`
+  (`backend_codegen_route_x86_64_c_testsuite_00080_void_direct_call_zero_return_retries_after_direct_bir_rejection`)
+  so the real `00080.c` path stays pinned on native x86 asm with `call voidfn`
+  and `mov eax, 0` instead of falling back to LLVM text or the unsupported
+  direct-LIR error
+- verified the bounded `00080.c` seam with
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_source_00080_void_helper_call_slice`,
+  `./build/backend_shared_util_tests test_backend_bir_pipeline_drives_x86_lir_source_00080_void_direct_call_zero_return_through_bir_end_to_end`,
+  `ctest --test-dir build --output-on-failure -R '^(backend_codegen_route_x86_64_c_testsuite_00080_void_direct_call_zero_return_retries_after_direct_bir_rejection|c_testsuite_x86_backend_src_00080_c)$'`,
+  and `./build/c4cll --codegen asm --target x86_64-unknown-linux-gnu tests/c/external/c-testsuite/src/00080.c`,
+  which now emits native x86 asm containing `voidfn: ret` and
+  `main: call voidfn; mov eax, 0; ret`
 
 - recovered the bounded shared-BIR `00079.c` seam by teaching
   `src/backend/lowering/lir_to_bir/calls.cpp` to recognize and collapse the

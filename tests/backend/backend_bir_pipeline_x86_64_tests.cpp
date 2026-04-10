@@ -4840,6 +4840,90 @@ c4c::codegen::lir::LirModule make_lir_minimal_void_direct_call_imm_return_module
   return module;
 }
 
+c4c::codegen::lir::LirModule make_lir_source_00080_void_direct_call_zero_return_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.type_decls.push_back("%struct.__va_list_tag_ = type { i32, i32, ptr, ptr }");
+
+  LirFunction helper;
+  helper.name = "voidfn";
+  helper.signature_text = "define void @voidfn()\n";
+  helper.entry = LirBlockId{0};
+
+  LirBlock helper_entry;
+  helper_entry.id = LirBlockId{0};
+  helper_entry.label = "entry";
+  helper_entry.terminator = LirRet{std::nullopt, "void"};
+  helper.blocks.push_back(std::move(helper_entry));
+
+  LirFunction main_function;
+  main_function.name = "main";
+  main_function.signature_text = "define i32 @main()\n";
+  main_function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{"", "void", "@voidfn", "()", ""});
+  entry.terminator = LirRet{std::string("0"), "i32"};
+  main_function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(helper));
+  module.functions.push_back(std::move(main_function));
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_lir_source_00080_void_helper_only_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction helper;
+  helper.name = "voidfn";
+  helper.signature_text = "define void @voidfn()\n";
+  helper.entry = LirBlockId{0};
+
+  LirBlock helper_entry;
+  helper_entry.id = LirBlockId{0};
+  helper_entry.label = "entry";
+  helper_entry.terminator = LirRet{std::nullopt, "void"};
+  helper.blocks.push_back(std::move(helper_entry));
+
+  module.functions.push_back(std::move(helper));
+  return module;
+}
+
+c4c::codegen::lir::LirModule make_lir_source_00080_main_only_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction main_function;
+  main_function.name = "main";
+  main_function.signature_text = "define i32 @main()\n";
+  main_function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{"", "void", "@voidfn", "", ""});
+  entry.terminator = LirRet{std::string("0"), "i32"};
+  main_function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(main_function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_lir_minimal_short_circuit_effect_zero_return_module() {
   using namespace c4c::codegen::lir;
 
@@ -5959,6 +6043,21 @@ void test_backend_bir_pipeline_drives_x86_lir_minimal_void_direct_call_imm_retur
                   "x86 LIR void direct-call input should preserve the fixed caller return immediate on the BIR-owned route");
   expect_not_contains(rendered, "target triple =",
                       "x86 LIR void direct-call input should stay on native asm emission instead of falling back to LLVM text");
+}
+
+void test_backend_bir_pipeline_drives_x86_lir_source_00080_void_direct_call_zero_return_through_bir_end_to_end() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_lir_source_00080_void_direct_call_zero_return_module()},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".type voidfn, %function\nvoidfn:\n",
+                  "the `00080.c` x86 LIR route should still emit the helper definition after routing through the shared BIR path");
+  expect_contains(rendered, "call voidfn",
+                  "the `00080.c` x86 LIR route should lower the helper call on the native x86 path");
+  expect_contains(rendered, "mov eax, 0",
+                  "the `00080.c` x86 LIR route should preserve the fixed zero return on the BIR-owned path");
+  expect_not_contains(rendered, "target triple =",
+                      "the `00080.c` x86 LIR route should stay on native asm emission instead of falling back to LLVM text");
 }
 
 void test_backend_bir_pipeline_drives_x86_lir_declared_direct_call_through_bir_end_to_end() {
@@ -9047,6 +9146,61 @@ void test_x86_direct_emitter_lowers_minimal_extern_zero_arg_call_slice() {
                       "x86 direct emitter should stay on native asm emission for the bounded extern zero-arg call slice");
 }
 
+void test_x86_direct_emitter_lowers_source_00080_void_helper_only_slice() {
+  auto module = make_lir_source_00080_void_helper_only_module();
+
+  const auto rendered = c4c::backend::x86::try_emit_prepared_lir_module(module);
+  expect_true(rendered.has_value(),
+              "x86 direct emitter should accept the helper-only `voidfn` slice produced along the `00080.c` native asm route");
+  if (!rendered.has_value()) {
+    return;
+  }
+  expect_contains(*rendered, ".globl voidfn",
+                  "x86 direct emitter should emit the standalone `voidfn` helper symbol for the `00080.c` route");
+  expect_contains(*rendered, "voidfn:\n  ret\n",
+                  "x86 direct emitter should lower the bounded helper-only void body to a bare return");
+  expect_not_contains(*rendered, "target triple =",
+                      "x86 direct emitter should stay on native asm emission for the helper-only `00080.c` slice");
+}
+
+void test_x86_direct_emitter_lowers_source_00080_void_helper_call_slice() {
+  auto module = make_lir_source_00080_void_direct_call_zero_return_module();
+
+  const auto rendered = c4c::backend::x86::try_emit_prepared_lir_module(module);
+  expect_true(rendered.has_value(),
+              "x86 direct emitter should accept the bounded two-function `voidfn(); return 0;` slice from `00080.c` on the native direct-LIR path");
+  if (!rendered.has_value()) {
+    return;
+  }
+  expect_contains(*rendered, ".globl voidfn",
+                  "x86 direct emitter should emit the helper symbol for the two-function `00080.c` slice");
+  expect_contains(*rendered, ".globl main",
+                  "x86 direct emitter should emit the main symbol for the two-function `00080.c` slice");
+  expect_contains(*rendered, "voidfn:\n  ret\n",
+                  "x86 direct emitter should lower the bounded helper body to a bare return for `00080.c`");
+  expect_contains(*rendered, "main:\n  call voidfn\n  mov eax, 0\n  ret\n",
+                  "x86 direct emitter should lower the bounded `voidfn(); return 0;` main body on the native x86 path");
+  expect_not_contains(*rendered, "target triple =",
+                      "x86 direct emitter should stay on native asm emission for the two-function `00080.c` slice");
+}
+
+void test_x86_direct_emitter_lowers_source_00080_main_only_void_call_zero_return_slice() {
+  auto module = make_lir_source_00080_main_only_module();
+
+  const auto rendered = c4c::backend::x86::try_emit_prepared_lir_module(module);
+  expect_true(rendered.has_value(),
+              "x86 direct emitter should accept the main-only `voidfn()` plus zero-return slice produced along the `00080.c` native asm route");
+  if (!rendered.has_value()) {
+    return;
+  }
+  expect_contains(*rendered, ".extern voidfn\n",
+                  "x86 direct emitter should preserve the helper symbol reference when the `00080.c` main body is emitted as a standalone native slice");
+  expect_contains(*rendered, "main:\n  call voidfn\n  mov eax, 0\n  ret\n",
+                  "x86 direct emitter should lower the bounded main-only `voidfn()` plus zero return slice on the native path");
+  expect_not_contains(*rendered, "target triple =",
+                      "x86 direct emitter should stay on native asm emission for the main-only `00080.c` slice");
+}
+
 void test_x86_direct_emitter_lowers_minimal_local_arg_call_slice() {
   auto module = make_x86_local_arg_call_lir_module();
 
@@ -9282,6 +9436,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_direct_call_via_outer_bir_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_with_dead_entry_alloca_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_void_direct_call_imm_return_through_bir_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_source_00080_void_direct_call_zero_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_declared_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_string_literal_strlen_sub_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_string_literal_char_sub_through_bir_end_to_end);
@@ -9406,6 +9561,9 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_x86_direct_emitter_lowers_constant_branch_if_uge_return_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_param_slot_add_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_extern_zero_arg_call_slice);
+  RUN_TEST(test_x86_direct_emitter_lowers_source_00080_void_helper_only_slice);
+  RUN_TEST(test_x86_direct_emitter_lowers_source_00080_void_helper_call_slice);
+  RUN_TEST(test_x86_direct_emitter_lowers_source_00080_main_only_void_call_zero_return_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_local_arg_call_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_helper_call_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_local_arg_call_slice);

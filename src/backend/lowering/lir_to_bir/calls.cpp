@@ -600,17 +600,31 @@ std::optional<bir::Module> try_lower_minimal_void_direct_call_imm_return_module(
     return std::nullopt;
   }
 
+  const auto matches_zero_arg_void_call =
+      [](const LirCallOp& call, const std::string& helper_name) {
+        const auto callee_name =
+            parse_backend_zero_arg_direct_global_typed_call(call);
+        if (callee_name.has_value() && *callee_name == helper_name) {
+          return true;
+        }
+
+        if (call.callee != "@" + helper_name || !call.args_str.empty()) {
+          return false;
+        }
+
+        const auto suffix = c4c::codegen::lir::trim_lir_arg_text(call.callee_type_suffix);
+        return suffix.empty() || suffix == "()";
+      };
+
   const auto try_match =
       [](const LirFunction& caller,
-         const LirFunction& helper)
+         const LirFunction& helper,
+         const auto& zero_arg_void_call_matches)
       -> std::optional<std::tuple<std::string, std::string, std::int64_t>> {
     if (caller.is_declaration || helper.is_declaration ||
         !lir_function_matches_minimal_no_param_integer_return(caller, 32) ||
         !backend_lir_signature_matches(helper.signature_text, "define", "void", helper.name, {}) ||
-        caller.entry.value != 0 || helper.entry.value != 0 ||
-        caller.blocks.size() != 1 || helper.blocks.size() != 1 ||
-        !caller.alloca_insts.empty() || !helper.alloca_insts.empty() ||
-        !caller.stack_objects.empty() || !helper.stack_objects.empty()) {
+        caller.blocks.size() != 1 || helper.blocks.size() != 1) {
       return std::nullopt;
     }
 
@@ -630,12 +644,10 @@ std::optional<bir::Module> try_lower_minimal_void_direct_call_imm_return_module(
     }
 
     const auto* call = std::get_if<LirCallOp>(&caller_block.insts.front());
-    const auto callee_name =
-        call == nullptr ? std::nullopt : parse_backend_zero_arg_direct_global_typed_call(*call);
     const auto return_imm =
         caller_ret->value_str.has_value() ? parse_backend_i64_literal(*caller_ret->value_str)
                                           : std::nullopt;
-    if (call == nullptr || !callee_name.has_value() || *callee_name != helper.name ||
+    if (call == nullptr || !zero_arg_void_call_matches(*call, helper.name) ||
         call->return_type != "void" || !call->result.empty() || !return_imm.has_value() ||
         *return_imm < std::numeric_limits<std::int32_t>::min() ||
         *return_imm > std::numeric_limits<std::int32_t>::max()) {
@@ -649,9 +661,9 @@ std::optional<bir::Module> try_lower_minimal_void_direct_call_imm_return_module(
     };
   };
 
-  auto parsed = try_match(module.functions[0], module.functions[1]);
+  auto parsed = try_match(module.functions[0], module.functions[1], matches_zero_arg_void_call);
   if (!parsed.has_value()) {
-    parsed = try_match(module.functions[1], module.functions[0]);
+    parsed = try_match(module.functions[1], module.functions[0], matches_zero_arg_void_call);
   }
   if (!parsed.has_value()) {
     return std::nullopt;
