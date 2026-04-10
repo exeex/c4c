@@ -7296,6 +7296,21 @@ void test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_identity_arg_o
                       "x86 LIR identity direct-call input should stay on native asm emission instead of falling back to LLVM text");
 }
 
+void test_backend_bir_pipeline_drives_x86_lir_minimal_param_slot_add_on_native_x86_path() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_x86_param_slot_add_lir_module()},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl add_one",
+                  "x86 LIR single-parameter slot helper input should still emit the helper definition on the native x86 path");
+  expect_contains(rendered, "add_one:\n  mov eax, edi\n  add eax, 1\n  ret\n",
+                  "x86 LIR single-parameter slot helper input should still lower to the native helper add-immediate body after shared BIR canonicalization on the public x86 path");
+  expect_contains(rendered, "main:\n  mov edi, 5\n  call add_one\n  ret\n",
+                  "x86 LIR single-parameter slot helper input should materialize the immediate caller operand before lowering the helper call on the native x86 path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR single-parameter slot helper input should stay on native asm emission instead of falling back to LLVM text");
+}
+
 void test_backend_bir_pipeline_drives_x86_lir_minimal_local_arg_direct_call_on_native_x86_path() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_x86_local_arg_call_lir_module()},
@@ -10972,6 +10987,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_add_imm_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_identity_arg_on_native_x86_path);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_param_slot_add_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_local_arg_direct_call_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_folded_two_arg_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_local_arg_direct_call_on_native_x86_path);

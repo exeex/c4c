@@ -13,18 +13,19 @@ Source Plan: plan.md
   surface alongside the existing two-function and main-only `00080.c` routes
 - immediate target:
   choose the next still-direct-emitter-only public backend representative from
-  the remaining native prepared-LIR helper families after the helper-only
-  `00080.c` slice confirmed the existing owner path only needed assertion
-  alignment, not new matcher work
+  the remaining SysV argument-lowering helper families after the
+  single-parameter slot slice confirmed the shared backend entry already
+  canonicalizes that helper body while preserving native x86 ownership; the
+  next smallest candidate is the seventh-parameter caller-stack helper family
 
 ## Next Slice
 
-- after the zero-arg extern/declared entrypoint slice, choose the next
+- after the single-parameter slot helper slice, choose the next
   still-direct-emitter-only public backend representative from the remaining
-  native prepared-LIR helper families instead of adding more
-  direct-emitter-only assertions; the next obvious candidate is the helper-only
-  `00080.c` `voidfn` body slice if Step 3 keeps prioritizing public-entry
-  coverage over matcher expansion
+  SysV argument-lowering helper families instead of adding more
+  direct-emitter-only assertions; the next obvious candidates are the
+  seventh-stack-param and mixed register-plus-stack helper families if Step 3
+  keeps prioritizing public-entry coverage over matcher expansion
 - if a future x86 ABI policy change ever enables partial GP-register plus
   caller-stack aggregate splits, re-open `StructSplitRegStack` as a separate
   owner-path cutover item instead of silently folding it into the current
@@ -36,6 +37,27 @@ Source Plan: plan.md
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration adds the missing shared backend entrypoint coverage for the
+  still-direct-emitter-only single-parameter slot helper-call family:
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` now pins
+  `make_x86_param_slot_add_lir_module()` at `c4c::backend::emit_module(...)`
+  so the public x86 backend entry surface, not just the direct-emitter seam,
+  owns the bounded helper-alloca/store/reload source shape
+- public-path behavior note:
+  the shared BIR route canonicalizes that helper body back to
+  `mov eax, edi; add eax, 1; ret` before native x86 emission, so the new
+  regression asserts native-asm ownership and helper/caller shape rather than
+  the direct-emitter-only stack-slot sequence
+- focused validation passed:
+  `cmake --build --preset default --target backend_bir_tests -j8`,
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_lir_minimal_param_slot_add_on_native_x86_path`,
+  and
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_param_slot_add_slice`
+- broad validation note:
+  still deferred for this bounded prepared-LIR helper-family coverage slice per
+  the active plan note to wait for a larger owner-path cutover before
+  rerunning the monotonic full-suite guard
 
 - this iteration adds the missing shared backend entrypoint coverage for the
   helper-only `00080.c` `voidfn` body slice:
