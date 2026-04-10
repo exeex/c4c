@@ -53,6 +53,9 @@ std::optional<bir::Module> try_lower_minimal_direct_call_add_imm_module(
     const c4c::codegen::lir::LirModule& module);
 std::optional<bir::Module> try_lower_minimal_direct_call_identity_arg_module(
     const c4c::codegen::lir::LirModule& module);
+std::optional<bir::Module>
+try_lower_minimal_local_array_pointer_alias_sizeof_helper_call_zero_return_module(
+    const c4c::codegen::lir::LirModule& module);
 std::optional<bir::Module> try_lower_minimal_folded_two_arg_direct_call_module(
     const c4c::codegen::lir::LirModule& module);
 std::optional<bir::Module> try_lower_minimal_repeated_zero_arg_call_compare_zero_return_module(

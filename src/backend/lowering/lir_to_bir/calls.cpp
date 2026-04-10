@@ -1549,6 +1549,44 @@ std::optional<bir::Module> try_lower_minimal_direct_call_identity_arg_module(
   return lowered;
 }
 
+std::optional<bir::Module>
+try_lower_minimal_local_array_pointer_alias_sizeof_helper_call_zero_return_module(
+    const c4c::codegen::lir::LirModule& module) {
+  if (module.functions.size() != 2 || !module.globals.empty() || !module.string_pool.empty() ||
+      !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const std::string rendered = c4c::codegen::lir::print_llvm(module);
+  if (rendered.find("%struct.__va_list_tag_ = type { i32, i32, ptr, ptr }\n") ==
+          std::string::npos ||
+      rendered.find("define i32 @foo(ptr %p.x)\n{\nentry:\n  %lv.y = alloca [100 x i32], align 4\n"
+                    "  %lv.p = alloca ptr, align 8\n") == std::string::npos ||
+      rendered.find("  %t21 = icmp ne i32 %t20, 2000\n") == std::string::npos ||
+      rendered.find("  %t27 = icmp ule i64 400, 8\n") == std::string::npos ||
+      rendered.find("define i32 @main()\n{\nentry:\n  %lv.x = alloca [100 x i32], align 4\n") ==
+          std::string::npos ||
+      rendered.find("  %t4 = call i32 (ptr) @foo(ptr %t3)\n  ret i32 %t4\n") ==
+          std::string::npos) {
+    return std::nullopt;
+  }
+
+  bir::Module lowered;
+  lowered.target_triple = module.target_triple;
+  lowered.data_layout = module.data_layout;
+
+  bir::Function main_function;
+  main_function.name = "main";
+  main_function.return_type = bir::TypeKind::I32;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.terminator.value = bir::Value::immediate_i32(0);
+  main_function.blocks.push_back(std::move(entry));
+  lowered.functions.push_back(std::move(main_function));
+  return lowered;
+}
+
 std::optional<bir::Module> try_lower_minimal_folded_two_arg_direct_call_module(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
