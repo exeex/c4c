@@ -69,6 +69,26 @@ bool Parser::ensure_template_struct_instantiated_from_args(
 
     const std::string instance_key =
         make_template_struct_instance_key(primary_tpl, args);
+
+    // Typed fast path: an explicit full specialization already exists as a
+    // concrete struct node, so we can register/use it directly without
+    // rebuilding tokens and reparsing the instantiation spelling.
+    if (selected != primary_tpl && selected->n_template_params == 0 &&
+        selected->name && selected->name[0]) {
+        if (!struct_tag_def_map_.count(*out_mangled)) {
+            struct_tag_def_map_[*out_mangled] = const_cast<Node*>(selected);
+            defined_struct_tags_.insert(*out_mangled);
+        }
+        if (out_resolved) {
+            *out_resolved = {};
+            out_resolved->array_size = -1;
+            out_resolved->inner_rank = -1;
+            out_resolved->base = TB_STRUCT;
+            out_resolved->tag = arena_.strdup(out_mangled->c_str());
+        }
+        return true;
+    }
+
     if (!struct_tag_def_map_.count(*out_mangled)) {
         if (!instantiated_template_struct_keys_.count(instance_key) ||
             !struct_tag_def_map_.count(*out_mangled)) {

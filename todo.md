@@ -87,3 +87,7 @@ Source Plan: plan.md
   `Parser::build_template_struct_mangled_name(...)`, so pack/default-aware
   instantiation naming is now shared between the main parser instantiation path
   and the new parser instantiation seam.
+- Added the first true typed fast path inside
+  `Parser::ensure_template_struct_instantiated_from_args(...)`: explicit full
+  specializations can now register/use their existing concrete struct node
+  directly without going through injected parse.
