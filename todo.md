@@ -27,9 +27,44 @@ Source Plan: plan.md
   contract first, likely starting with direct integer-register and stack-scalar
   `ParamRef` loads before widening into dead-param-alloca pre-store, SSE, or
   aggregate parameter classes
+- keep the translated prologue owner parked out of build until the public
+  x86 codegen header exposes enough complete backend surface for
+  `src/backend/x86/codegen/prologue.cpp` to compile cleanly
+- continue using build-active direct-emitter slices to lock the intended x86
+  parameter-stack behavior meanwhile, likely by widening from the seventh
+  scalar stack arg into mixed register-plus-stack helper coverage
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration added a build-active x86 direct-emitter stack-scalar slice
+  for the first incoming stack argument beyond the six SysV integer arg
+  registers: `src/backend/x86/codegen/direct_calls.cpp` now recognizes a
+  bounded seven-parameter helper shape and emits the helper with an explicit
+  `%rbp+16` incoming stack load plus caller-side seventh-arg stack staging and
+  cleanup
+- `src/backend/x86/codegen/direct_dispatch.cpp` and
+  `src/backend/x86/codegen/x86_codegen.hpp` now expose that new
+  `try_emit_minimal_seventh_param_stack_add_module(...)` seam so the active
+  build can exercise a concrete stack-scalar parameter path even while the
+  translated `prologue.cpp` owner remains out of build
+- added focused x86 backend coverage in
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` that locks the new
+  seventh-parameter helper route, including the helper-side
+  `mov eax, DWORD PTR [rbp + 16]` load and the caller-side `push 7` /
+  `add rsp, 8` stack-arg discipline
+- focused validation passed for this slice:
+  `cmake --build build -j8 --target backend_bir_tests`,
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_seventh_param_stack_add_slice`,
+  and
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_param_slot_add_slice`
+- investigation note:
+  `src/backend/x86/codegen/prologue.cpp` is still intentionally out of the
+  active build and does not compile standalone against the current public
+  `x86_codegen.hpp` surface because that header only exposes forward
+  declarations for much of the translated owner state; keep the next owner-path
+  slice scoped to helper-surface expansion or a deliberate header-wiring
+  change, not a silent CMake hookup
 
 - this iteration removed the invalid placeholder emission from
   `src/backend/x86/codegen/prologue.cpp` `emit_store_params_impl(...)` and

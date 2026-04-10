@@ -18,6 +18,13 @@ struct MinimalParamSlotAddSlice {
   std::int64_t add_imm = 0;
 };
 
+struct MinimalSeventhParamStackAddSlice {
+  std::string helper_name;
+  std::string entry_name;
+  std::int64_t add_imm = 0;
+  std::int64_t seventh_arg_imm = 0;
+};
+
 struct MinimalLocalArgCallSlice {
   std::string helper_name;
   std::string entry_name;
@@ -182,6 +189,81 @@ std::optional<MinimalExternZeroArgCallSlice> parse_minimal_declared_zero_arg_cal
     return parsed;
   }
   return try_match(module.functions.back(), module.functions.front());
+}
+
+std::optional<MinimalSeventhParamStackAddSlice> parse_minimal_seventh_param_stack_add_slice(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (!module.globals.empty() || !module.extern_decls.empty() || !module.string_pool.empty() ||
+      module.functions.size() != 2) {
+    return std::nullopt;
+  }
+
+  const auto& helper = module.functions.front();
+  const auto& entry = module.functions.back();
+  if (helper.name != "add_stack_param" || entry.name != "main" || helper.is_declaration ||
+      entry.is_declaration || helper.entry.value != 0 || entry.entry.value != 0 ||
+      helper.alloca_insts.size() != 2 || helper.blocks.size() != 1 || !helper.stack_objects.empty() ||
+      !entry.alloca_insts.empty() || !entry.stack_objects.empty() || entry.blocks.size() != 1 ||
+      helper.signature_text !=
+          "define i32 @add_stack_param(i32 %p.a, i32 %p.b, i32 %p.c, i32 %p.d, i32 %p.e, i32 %p.f, i32 %p.g)\n") {
+    return std::nullopt;
+  }
+
+  const auto* param_slot = std::get_if<LirAllocaOp>(&helper.alloca_insts.front());
+  if (param_slot == nullptr || param_slot->result.str() != "%lv.param.g" || param_slot->type_str != "i32" ||
+      !param_slot->count.str().empty() || param_slot->align != 4) {
+    return std::nullopt;
+  }
+
+  const auto* param_store = std::get_if<LirStoreOp>(&helper.alloca_insts[1]);
+  if (param_store == nullptr || param_store->type_str != "i32" || param_store->val != "%p.g" ||
+      param_store->ptr != "%lv.param.g") {
+    return std::nullopt;
+  }
+
+  const auto& helper_entry = helper.blocks.front();
+  if (helper_entry.label != "entry" || helper_entry.insts.size() != 2) {
+    return std::nullopt;
+  }
+
+  const auto* helper_load0 = std::get_if<LirLoadOp>(&helper_entry.insts[0]);
+  const auto* helper_add = std::get_if<LirBinOp>(&helper_entry.insts[1]);
+  const auto* helper_ret = std::get_if<LirRet>(&helper_entry.terminator);
+  if (helper_load0 == nullptr || helper_add == nullptr || helper_ret == nullptr ||
+      helper_load0->type_str != "i32" ||
+      helper_load0->ptr != "%lv.param.g" || helper_add->opcode.typed() != LirBinaryOpcode::Add ||
+      helper_add->type_str != "i32" || helper_add->lhs != helper_load0->result ||
+      !helper_ret->value_str.has_value() || *helper_ret->value_str != helper_add->result ||
+      helper_ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto add_imm = parse_i64(helper_add->rhs);
+  if (!add_imm.has_value() || *add_imm < std::numeric_limits<std::int32_t>::min() ||
+      *add_imm > std::numeric_limits<std::int32_t>::max()) {
+    return std::nullopt;
+  }
+
+  const auto& main_entry = entry.blocks.front();
+  const auto* call = main_entry.insts.size() == 1 ? std::get_if<LirCallOp>(&main_entry.insts.front())
+                                                  : nullptr;
+  const auto* ret = std::get_if<LirRet>(&main_entry.terminator);
+  if (main_entry.label != "entry" || call == nullptr || ret == nullptr ||
+      call->callee != "@add_stack_param" || call->return_type != "i32" ||
+      call->callee_type_suffix != "(i32, i32, i32, i32, i32, i32, i32)" ||
+      call->args_str != "i32 1, i32 2, i32 3, i32 4, i32 5, i32 6, i32 7" ||
+      !ret->value_str.has_value() || *ret->value_str != call->result || ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  return MinimalSeventhParamStackAddSlice{
+      .helper_name = helper.name,
+      .entry_name = entry.name,
+      .add_imm = *add_imm,
+      .seventh_arg_imm = 7,
+  };
 }
 
 std::optional<MinimalTwoArgHelperCallSlice> parse_minimal_two_arg_helper_call_slice(
@@ -1128,6 +1210,39 @@ std::string emit_minimal_param_slot_add_asm(std::string_view target_triple,
   return out.str();
 }
 
+std::string emit_minimal_seventh_param_stack_add_asm(
+    std::string_view target_triple,
+    const MinimalSeventhParamStackAddSlice& slice) {
+  const auto helper_symbol = asm_symbol_name(target_triple, slice.helper_name);
+  const auto entry_symbol = asm_symbol_name(target_triple, slice.entry_name);
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n"
+      << ".text\n"
+      << emit_function_prelude(target_triple, helper_symbol)
+      << "  push rbp\n"
+      << "  mov rbp, rsp\n"
+      << "  mov eax, DWORD PTR [rbp + 16]\n";
+  if (slice.add_imm > 0) {
+    out << "  add eax, " << slice.add_imm << "\n";
+  } else if (slice.add_imm < 0) {
+    out << "  sub eax, " << -slice.add_imm << "\n";
+  }
+  out << "  pop rbp\n"
+      << "  ret\n"
+      << emit_function_prelude(target_triple, entry_symbol);
+
+  static constexpr std::int64_t kFirstSixCallImms[] = {1, 2, 3, 4, 5, 6};
+  for (std::size_t index = 0; index < std::size(kFirstSixCallImms); ++index) {
+    out << "  mov " << reg_name_to_32(x86_arg_reg_name(index)) << ", " << kFirstSixCallImms[index]
+        << "\n";
+  }
+  out << "  push " << slice.seventh_arg_imm << "\n"
+      << "  call " << helper_symbol << "\n"
+      << "  add rsp, 8\n"
+      << "  ret\n";
+  return out.str();
+}
+
 std::string emit_minimal_extern_zero_arg_call_asm(
     std::string_view target_triple,
     const MinimalExternZeroArgCallSlice& slice) {
@@ -1193,6 +1308,14 @@ std::optional<std::string> try_emit_minimal_param_slot_add_module(
     const c4c::codegen::lir::LirModule& module) {
   if (const auto slice = parse_minimal_param_slot_add_slice(module); slice.has_value()) {
     return emit_minimal_param_slot_add_asm(module.target_triple, *slice);
+  }
+  return std::nullopt;
+}
+
+std::optional<std::string> try_emit_minimal_seventh_param_stack_add_module(
+    const c4c::codegen::lir::LirModule& module) {
+  if (const auto slice = parse_minimal_seventh_param_stack_add_slice(module); slice.has_value()) {
+    return emit_minimal_seventh_param_stack_add_asm(module.target_triple, *slice);
   }
   return std::nullopt;
 }

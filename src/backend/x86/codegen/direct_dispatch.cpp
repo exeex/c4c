@@ -61,6 +61,10 @@ std::optional<std::string> try_emit_direct_prepared_lir_helper_module(
   if (const auto asm_text = try_emit_minimal_param_slot_add_module(module); asm_text.has_value()) {
     return asm_text;
   }
+  if (const auto asm_text = try_emit_minimal_seventh_param_stack_add_module(module);
+      asm_text.has_value()) {
+    return asm_text;
+  }
   if (const auto asm_text = try_emit_minimal_extern_zero_arg_call_module(module);
       asm_text.has_value()) {
     return asm_text;

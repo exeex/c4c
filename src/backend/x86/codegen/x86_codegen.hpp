@@ -490,6 +490,8 @@ std::optional<std::string> try_emit_minimal_constant_branch_return_module(
     const c4c::codegen::lir::LirModule& module);
 std::optional<std::string> try_emit_minimal_param_slot_add_module(
     const c4c::codegen::lir::LirModule& module);
+std::optional<std::string> try_emit_minimal_seventh_param_stack_add_module(
+    const c4c::codegen::lir::LirModule& module);
 std::optional<std::string> try_emit_minimal_extern_zero_arg_call_module(
     const c4c::codegen::lir::LirModule& module);
 std::optional<std::string> try_emit_minimal_local_arg_call_module(
