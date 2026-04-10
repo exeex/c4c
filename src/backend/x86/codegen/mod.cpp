@@ -438,6 +438,46 @@ std::int64_t x86_param_struct_reg_dest_offset(std::int64_t slot_offset, std::siz
   return slot_offset + static_cast<std::int64_t>(qword_index) * 8;
 }
 
+const char* x86_param_struct_sse_arg_reg(std::size_t fp_reg_index) {
+  return x86_float_arg_reg_name(fp_reg_index);
+}
+
+std::int64_t x86_param_struct_sse_dest_offset(std::int64_t slot_offset, std::size_t qword_index) {
+  return slot_offset + static_cast<std::int64_t>(qword_index) * 8;
+}
+
+const char* x86_param_struct_mixed_int_sse_int_arg_reg(std::size_t int_reg_index) {
+  return x86_arg_reg_name(int_reg_index);
+}
+
+const char* x86_param_struct_mixed_int_sse_fp_arg_reg(std::size_t fp_reg_index) {
+  return x86_float_arg_reg_name(fp_reg_index);
+}
+
+std::int64_t x86_param_struct_mixed_int_sse_int_dest_offset(std::int64_t slot_offset) {
+  return slot_offset;
+}
+
+std::int64_t x86_param_struct_mixed_int_sse_fp_dest_offset(std::int64_t slot_offset) {
+  return slot_offset + 8;
+}
+
+const char* x86_param_struct_mixed_sse_int_fp_arg_reg(std::size_t fp_reg_index) {
+  return x86_float_arg_reg_name(fp_reg_index);
+}
+
+const char* x86_param_struct_mixed_sse_int_int_arg_reg(std::size_t int_reg_index) {
+  return x86_arg_reg_name(int_reg_index);
+}
+
+std::int64_t x86_param_struct_mixed_sse_int_fp_dest_offset(std::int64_t slot_offset) {
+  return slot_offset;
+}
+
+std::int64_t x86_param_struct_mixed_sse_int_int_dest_offset(std::int64_t slot_offset) {
+  return slot_offset + 8;
+}
+
 std::size_t x86_param_aggregate_copy_qword_count(std::size_t size_bytes) {
   return (size_bytes + 7) / 8;
 }

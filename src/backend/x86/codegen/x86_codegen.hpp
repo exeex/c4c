@@ -434,6 +434,16 @@ const char* x86_param_prestore_dest_reg(c4c::backend::PhysReg reg, std::string_v
 std::size_t x86_param_struct_reg_qword_count(std::size_t size_bytes);
 const char* x86_param_struct_reg_arg_reg(std::size_t base_reg_index, std::size_t qword_index);
 std::int64_t x86_param_struct_reg_dest_offset(std::int64_t slot_offset, std::size_t qword_index);
+const char* x86_param_struct_sse_arg_reg(std::size_t fp_reg_index);
+std::int64_t x86_param_struct_sse_dest_offset(std::int64_t slot_offset, std::size_t qword_index);
+const char* x86_param_struct_mixed_int_sse_int_arg_reg(std::size_t int_reg_index);
+const char* x86_param_struct_mixed_int_sse_fp_arg_reg(std::size_t fp_reg_index);
+std::int64_t x86_param_struct_mixed_int_sse_int_dest_offset(std::int64_t slot_offset);
+std::int64_t x86_param_struct_mixed_int_sse_fp_dest_offset(std::int64_t slot_offset);
+const char* x86_param_struct_mixed_sse_int_fp_arg_reg(std::size_t fp_reg_index);
+const char* x86_param_struct_mixed_sse_int_int_arg_reg(std::size_t int_reg_index);
+std::int64_t x86_param_struct_mixed_sse_int_fp_dest_offset(std::int64_t slot_offset);
+std::int64_t x86_param_struct_mixed_sse_int_int_dest_offset(std::int64_t slot_offset);
 std::size_t x86_param_aggregate_copy_qword_count(std::size_t size_bytes);
 std::int64_t x86_param_aggregate_copy_src_offset(std::int64_t class_stack_offset,
                                                  std::size_t qword_index);
