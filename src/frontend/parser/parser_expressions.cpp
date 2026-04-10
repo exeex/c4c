@@ -313,7 +313,7 @@ Node* Parser::parse_unary() {
                 // Could be sizeof(type) or sizeof(expr)
                 // Disambiguate: if first token inside is a type keyword, it's a type
                 {
-                    TentativeParseGuard guard(*this);
+                    TentativeParseGuardLite guard(*this);
                     consume();  // consume (
                     if (is_type_start() ||
                         starts_qualified_member_pointer_type_id(*this, pos_)) {

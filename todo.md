@@ -6,8 +6,8 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 3: Migrate the safest common-path probes to the lite guard, starting
-  with `sizeof(type)` vs `sizeof(expr)`.
+- Step 3: evaluate the next lite-safe statement/declaration probe after the
+  `sizeof(type)` vs `sizeof(expr)` migration.
 
 ## Pending Items
 
@@ -53,22 +53,44 @@ Source Plan: plan.md
       `cpp_parser_debug_tentative_cli_only`
     - full suite:
       `3307/3307` passed
-    - regression guard:
+  - regression guard:
       `test_fail_before.log` vs `test_fail_after.log` passed with no new
       failures and no pass-count drop
+- Step 3 `sizeof` slice completed:
+  - switched `parser_expressions.cpp` `sizeof(type)` vs `sizeof(expr)` probing
+    to `TentativeParseGuardLite`
+  - added `tests/cpp/internal/negative_case/parser_debug_sizeof_type_tentative_lite.cpp`
+    plus `cpp_parser_debug_sizeof_type_tentative_lite` to lock the lite-mode
+    tentative commit detail on the `sizeof(type)` path
+  - targeted validation passed:
+    - `cpp_parser_debug_tentative_template_arg_lifecycle`
+    - `cpp_parser_debug_tentative_cli_only`
+    - `cpp_parser_debug_sizeof_type_tentative_lite`
+  - full clean rebuild + suite result:
+    - `3307/3309` passed, `2` failed
+    - regression guard failed because the fresh `test_fail_after.log` added two
+      pre-existing positive-case failures not present in the stale baseline log:
+      `cpp_positive_sema_scoped_enum_bitwise_runtime_cpp` and
+      `cpp_positive_sema_template_angle_bracket_validation_cpp`
+    - confirmed both failures reproduce on a pristine `HEAD` snapshot and emit
+      invalid LLVM IR unrelated to `sizeof` tentative parsing, so this slice did
+      not introduce them
 
 ## Next Intended Slice
 
-- switch `parser_expressions.cpp` `sizeof(type)` vs `sizeof(expr)` probing to
-  `TentativeParseGuardLite`
-- add or confirm focused coverage for the `sizeof` ambiguity path before moving
-  additional statement/declaration probes
-- only after `sizeof` is stable, evaluate `if` declaration-condition probing
-  and range-for detection for the next lite migration wave
+- evaluate `if` declaration-condition probing for lite-safety and add focused
+  parser-debug or parse coverage before switching that call site
+- if `if` probing stays syntax-only, review range-for detection as the next
+  statement-path lite migration candidate
 
 ## Blockers
 
-- none recorded
+- clean full-suite monotonic comparison is currently blocked by a stale
+  `test_fail_before.log` baseline versus a clean rebuild after-log; the fresh
+  after-log surfaced two pre-existing positive-case invalid-IR failures
+  (`cpp_positive_sema_scoped_enum_bitwise_runtime_cpp`,
+  `cpp_positive_sema_template_angle_bracket_validation_cpp`) that also
+  reproduce on pristine `HEAD`
 
 ## Resume Notes
 
@@ -76,4 +98,7 @@ Source Plan: plan.md
   proven lite-safe
 - heavy semantic probes in template/declarator/struct parsing remain out of
   scope for the next slice unless `sizeof` uncovers a hidden dependency
+- the `sizeof` lite probe still nests heavy tentative parsing inside
+  `parse_type_name()`; only the outer ambiguity guard moved to lite, which is
+  the intended incremental boundary for this slice
 - use EASTL `--parse-only` timing as the main performance comparison point
