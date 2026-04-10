@@ -7328,6 +7328,40 @@ void test_backend_bir_pipeline_drives_x86_lir_minimal_seventh_param_stack_add_on
                       "x86 LIR seventh-parameter stack-scalar helper input should stay on native asm emission instead of falling back to LLVM text");
 }
 
+void test_backend_bir_pipeline_drives_x86_lir_minimal_mixed_reg_stack_param_add_on_native_x86_path() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_x86_mixed_reg_stack_param_add_lir_module()},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl add_first_and_stack_param",
+                  "x86 LIR mixed register-plus-stack parameter helper input should still emit the helper definition on the native x86 path");
+  expect_contains(rendered,
+                  "add_first_and_stack_param:\n  push rbp\n  mov rbp, rsp\n  mov eax, edi\n  add eax, DWORD PTR [rbp + 16]\n  pop rbp\n  ret\n",
+                  "x86 LIR mixed register-plus-stack parameter helper input should preserve the first integer parameter in its ABI register while loading the seventh incoming caller-stack parameter on the public x86 path");
+  expect_contains(rendered,
+                  "main:\n  mov edi, 1\n  mov esi, 2\n  mov edx, 3\n  mov ecx, 4\n  mov r8d, 5\n  mov r9d, 6\n  push 7\n  call add_first_and_stack_param\n  add rsp, 8\n  ret\n",
+                  "x86 LIR mixed register-plus-stack parameter helper input should still stage the first six integer arguments in registers, spill the seventh on the stack, and clean up the outgoing caller stack slot on the native x86 path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR mixed register-plus-stack parameter helper input should stay on native asm emission instead of falling back to LLVM text");
+}
+
+void test_backend_bir_pipeline_drives_x86_lir_minimal_mixed_reg_stack_param_add_i64_on_native_x86_path() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_x86_mixed_reg_stack_param_add_i64_lir_module()},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl add_first_and_stack_param_i64",
+                  "x86 LIR i64 mixed register-plus-stack parameter helper input should still emit the helper definition on the native x86 path");
+  expect_contains(rendered,
+                  "add_first_and_stack_param_i64:\n  push rbp\n  mov rbp, rsp\n  mov rax, rdi\n  add rax, QWORD PTR [rbp + 16]\n  pop rbp\n  ret\n",
+                  "x86 LIR i64 mixed register-plus-stack parameter helper input should preserve the first i64 parameter in its ABI register while loading the seventh incoming caller-stack parameter on the public x86 path");
+  expect_contains(rendered,
+                  "main:\n  mov rdi, 1\n  mov rsi, 2\n  mov rdx, 3\n  mov rcx, 4\n  mov r8, 5\n  mov r9, 6\n  push 7\n  call add_first_and_stack_param_i64\n  add rsp, 8\n  ret\n",
+                  "x86 LIR i64 mixed register-plus-stack parameter helper input should still stage the first six integer arguments in registers, spill the seventh on the stack, and clean up the outgoing caller stack slot on the native x86 path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR i64 mixed register-plus-stack parameter helper input should stay on native asm emission instead of falling back to LLVM text");
+}
+
 void test_backend_bir_pipeline_drives_x86_lir_minimal_local_arg_direct_call_on_native_x86_path() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_x86_local_arg_call_lir_module()},
@@ -11006,6 +11040,8 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_identity_arg_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_param_slot_add_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_seventh_param_stack_add_on_native_x86_path);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_mixed_reg_stack_param_add_on_native_x86_path);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_mixed_reg_stack_param_add_i64_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_local_arg_direct_call_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_folded_two_arg_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_local_arg_direct_call_on_native_x86_path);
