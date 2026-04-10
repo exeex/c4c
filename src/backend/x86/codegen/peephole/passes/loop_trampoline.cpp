@@ -104,6 +104,14 @@ bool is_supported_stack_reload_copy(std::string_view trimmed, RegId dst_fam) {
          is_movslq_reg_reg(trimmed, "%eax", dst_reg);
 }
 
+bool is_supported_direct_stack_reload(std::string_view trimmed, RegId dst_fam) {
+  if (dst_fam == REG_NONE || dst_fam == 0) {
+    return false;
+  }
+  const std::string dst_reg = std::string("%") + kReg64Names[dst_fam];
+  return starts_with(trimmed, "movq ") && trailing_operand(trimmed) == dst_reg;
+}
+
 RegId effective_dest_reg(const LineInfo& info, std::string_view trimmed) {
   if (info.dest_reg != REG_NONE) {
     return info.dest_reg;
@@ -192,12 +200,21 @@ std::optional<TrampolineBlock> collect_trampoline_block(const LineStore* store,
   TrampolineBlock block;
   std::size_t index = next_real_line(infos, label_index + 1, len);
   while (index < len) {
+    const auto trimmed = trimmed_line(store, infos[index], index);
     if (infos[index].kind == LineKind::Jmp) {
       block.jump_index = index;
       return block;
     }
-    if (infos[index].kind == LineKind::LoadRbp &&
-        effective_dest_reg(infos[index], trimmed_line(store, infos[index], index)) == 0) {
+    if (infos[index].kind == LineKind::LoadRbp) {
+      const auto load_dst = effective_dest_reg(infos[index], trimmed);
+      if (is_supported_direct_stack_reload(trimmed, load_dst)) {
+        block.stack_loads.push_back(TrampolineStackLoad{infos[index].rbp_offset, load_dst, index, len});
+        index = next_real_line(infos, index + 1, len);
+        continue;
+      }
+      if (load_dst != 0) {
+        return std::nullopt;
+      }
       const auto next_index = next_real_line(infos, index + 1, len);
       if (next_index >= len || infos[next_index].kind != LineKind::Other) {
         return std::nullopt;
@@ -216,7 +233,6 @@ std::optional<TrampolineBlock> collect_trampoline_block(const LineStore* store,
     if (infos[index].kind != LineKind::Other) {
       return std::nullopt;
     }
-    const auto trimmed = trimmed_line(store, infos[index], index);
     const auto move = parse_trampoline_reg_move(trimmed);
     if (!move.has_value()) {
       return std::nullopt;
@@ -560,7 +576,9 @@ bool eliminate_loop_trampolines(LineStore* store, LineInfo* infos) {
         copy_indices.push_back(copy_index);
         store_indices.push_back(store_index);
         trampoline_stack_indices.push_back(stack_load.load_index);
-        trampoline_stack_indices.push_back(stack_load.copy_index);
+        if (stack_load.copy_index < len) {
+          trampoline_stack_indices.push_back(stack_load.copy_index);
+        }
         rewrites.insert(rewrites.end(), stack_rewrites.begin(), stack_rewrites.end());
       }
     }
