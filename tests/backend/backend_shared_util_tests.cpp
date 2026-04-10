@@ -303,6 +303,14 @@ void test_x86_translated_asm_emitter_helpers_match_shared_contract() {
                   c4c::backend::x86::x86_variadic_sse_save_offset(-176, 7) == -16,
               "x86 translated prologue-side helpers should keep the ref callee-saved mapping, typed integer ParamRef register/stack load contract, parameter-storage / ParamRef pre-store policy, variadic register-save-area sizing, and 16-byte frame-alignment contract for the future translated prologue owner path");
 
+  std::unordered_set<std::size_t> pre_stored_params;
+  c4c::backend::x86::x86_mark_param_prestored(pre_stored_params, 1);
+  c4c::backend::x86::x86_mark_param_prestored(pre_stored_params, 4);
+  expect_true(!c4c::backend::x86::x86_param_is_prestored(pre_stored_params, 0) &&
+                  c4c::backend::x86::x86_param_is_prestored(pre_stored_params, 1) &&
+                  c4c::backend::x86::x86_param_is_prestored(pre_stored_params, 4),
+              "x86 translated prologue pre-store bookkeeping helpers should preserve the param indices already saved into their non-alloca-backed owner location");
+
   expect_true(std::string(c4c::backend::x86::phys_reg_name(c4c::backend::PhysReg{1})) == "rbx" &&
                   std::string(c4c::backend::x86::phys_reg_name(c4c::backend::PhysReg{12})) == "r8" &&
                   std::string(c4c::backend::x86::phys_reg_name_32(c4c::backend::PhysReg{5})) == "r15d" &&

@@ -10,8 +10,9 @@ Source Plan: plan.md
   around the x86 entry/support helper surface after the legacy matcher body
   removal in `src/backend/x86/codegen/emit.cpp`
 - immediate target:
-  widen the parked translated prologue helper seam beyond the landed
-  non-alloca-backed integer and float-register pre-store owner slices without
+  keep the parked translated prologue helper seam coherent after the landed
+  non-alloca-backed integer and float-register pre-store owner slices by
+  recording pre-stored param indices through a shared helper contract without
   pulling the parked translated prologue owner into the active build yet
   - keep the slice helper-focused: shared helper contract plus parked
     translated `prologue.cpp` usage only
@@ -22,7 +23,8 @@ Source Plan: plan.md
 
 - widen the helper-backed prologue seam beyond the landed integer-register and
   `ParamClass::FloatReg` non-alloca-backed pre-store contracts, with aggregate
-  or split-register parameter classes as the leading candidate
+  or split-register parameter classes as the leading candidate once the
+  pre-store bookkeeping contract is already shared and test-locked
 - keep the translated prologue owner parked out of build until the public
   x86 codegen header exposes enough complete backend surface for
   `src/backend/x86/codegen/prologue.cpp` to compile cleanly
@@ -32,6 +34,26 @@ Source Plan: plan.md
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration added a shared parked-prologue bookkeeping seam for
+  non-alloca-backed parameter pre-store tracking:
+  `src/backend/x86/codegen/mod.cpp` and `x86_codegen.hpp` now expose
+  `x86_mark_param_prestored(...)` and `x86_param_is_prestored(...)` so the
+  parked translated prologue owner can record which parameter indices were
+  already preserved into their assigned callee-saved location
+- `src/backend/x86/codegen/prologue.cpp` now uses that helper seam when
+  emitting the landed integer-register and float-register pre-store moves, so
+  parked `emit_param_ref_impl(...)` skips duplicate reload emission for those
+  already-preserved parameter indices instead of relying on an untracked local
+  set mutation
+- `tests/backend/backend_shared_util_tests.cpp` now locks the new bookkeeping
+  helper contract alongside the existing pre-store helper coverage
+- focused validation passed for this slice:
+  `cmake --build build -j8 --target backend_shared_util_tests` and
+  `ctest --test-dir build -R backend_shared_util_tests --output-on-failure`
+- broad validation note:
+  skipped for this helper-only parked-owner slice per the current plan note to
+  defer the monotonic full-suite guard until a larger owner-path cutover lands
 
 - this iteration widened the parked translated x86 prologue helper seam from
   the earlier integer-only non-alloca-backed pre-store contract into the first

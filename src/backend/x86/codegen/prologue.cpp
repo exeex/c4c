@@ -188,6 +188,7 @@ void X86Codegen::emit_store_params_impl(const IrFunction& func) {
       const auto* dest_reg = x86_param_prestore_dest_reg(assigned->second);
       if (move_instr[0] != '\0' && src_reg[0] != '\0' && dest_reg[0] != '\0') {
         this->state.emit_fmt(format_args!("    {} %{}, %{}", move_instr, src_reg, dest_reg));
+        x86_mark_param_prestored(this->state.param_pre_stored, index);
       }
     } else if (const auto* reg =
                    std::get_if<ParamClass::FloatReg>(&classification.classes[index].data)) {
@@ -197,6 +198,7 @@ void X86Codegen::emit_store_params_impl(const IrFunction& func) {
       const auto* dest_reg = x86_param_prestore_dest_reg(assigned->second, scalar_type);
       if (move_instr[0] != '\0' && src_reg[0] != '\0' && dest_reg[0] != '\0') {
         this->state.emit_fmt(format_args!("    {} %{}, %{}", move_instr, src_reg, dest_reg));
+        x86_mark_param_prestored(this->state.param_pre_stored, index);
       }
     }
   }
@@ -206,7 +208,7 @@ void X86Codegen::emit_param_ref_impl(const Value& dest, std::size_t param_idx, I
   if (param_idx >= this->state.param_classes.size()) {
     return;
   }
-  if (this->state.param_pre_stored.contains(param_idx)) {
+  if (x86_param_is_prestored(this->state.param_pre_stored, param_idx)) {
     return;
   }
   const auto scalar_type = scalar_param_ref_type_name(ty);

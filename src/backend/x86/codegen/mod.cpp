@@ -423,6 +423,16 @@ const char* x86_param_prestore_dest_reg(c4c::backend::PhysReg reg, std::string_v
   return "";
 }
 
+void x86_mark_param_prestored(std::unordered_set<std::size_t>& pre_stored_params,
+                              std::size_t param_index) {
+  pre_stored_params.insert(param_index);
+}
+
+bool x86_param_is_prestored(const std::unordered_set<std::size_t>& pre_stored_params,
+                            std::size_t param_index) {
+  return pre_stored_params.find(param_index) != pre_stored_params.end();
+}
+
 std::int64_t x86_variadic_reg_save_area_size(bool no_sse) { return no_sse ? 48 : 176; }
 
 std::int64_t x86_aligned_frame_size(std::int64_t raw_space) {
