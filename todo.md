@@ -10,10 +10,14 @@ Source Plan: plan.md
   grouped parser symbol-table accessors instead of direct top-level member
   storage assumptions, starting with typedef/value registration and
   namespace-aware lookup helpers
-- Current slice: continue `parser_types_struct.cpp` migration by moving the
-  remaining direct typedef-related plumbing after migrating template-member
-  prelude typedef seeding plus record/enum self-tag injection and finalization
-  registration onto parser-local helpers
+- Current slice: continue Step 3 by shrinking the remaining parser-local
+  compatibility-reference use in `src/frontend/parser/parser_types_struct.cpp`
+  and then reassess whether the next bounded typedef-access cleanup should stay
+  in record parsing or move to another parser type-parsing surface
+- Iteration target: migrate the remaining `TemplateParamGuard` dependency on
+  the compatibility `typedefs_` reference in
+  `src/frontend/parser/parser_types_struct.cpp` onto a parser-local helper or
+  grouped-state-aware guard without widening scope
 
 ## Completed Items
 
@@ -121,13 +125,30 @@ Source Plan: plan.md
 - Revalidated this slice with targeted record/type parser tests plus full
   `ctest --test-dir build -j8 --output-on-failure` and regression guard:
   3348/3348 tests passed, no new failures
+- Added parser-local typedef-chain resolution in
+  `src/frontend/parser/parser.hpp` and `src/frontend/parser/parser_core.cpp`
+  so record/enum parsing can resolve typedef-backed type metadata without
+  direct grouped typedef-map access
+- Migrated the remaining direct `typedef_types_` reads in
+  `src/frontend/parser/parser_types_struct.cpp` onto parser-local helpers for
+  record enum member underlying-base propagation, template-origin setup, and
+  enum fixed underlying-type resolution
+- Added parse-only regression
+  `tests/cpp/internal/postive_case/record_template_enum_underlying_typedef_parse.cpp`
+  plus `cpp_parse_record_template_enum_underlying_typedef_dump` in
+  `tests/cpp/internal/InternalTests.cmake` to cover a template-specialized
+  record body that uses a local typedef as an enum fixed underlying type
+- Revalidated this slice with targeted record/enum parser tests, clean rebuild,
+  full `ctest --test-dir build -j8 --output-on-failure`, and regression guard:
+  3350/3350 tests passed, no new failures
 
 ## Next Intended Slice
 
-- Continue shrinking direct grouped typedef-map reads in
-  `src/frontend/parser/parser_types_struct.cpp`, especially the remaining
-  `typedef_types_` plumbing around template-origin setup, enum underlying-type
-  resolution, and local enum/record type handoff reads
+- Finish the remaining `parser_types_struct.cpp` compatibility-reference use by
+  replacing the `TemplateParamGuard` dependency on raw `typedefs_` storage with
+  a parser-local/state-aware helper
+- After that, reassess whether the next Step 3 typedef-access cleanup should
+  stay in record parsing or move to another localized parser type-parsing file
 - Leave namespace-state grouping for a separate slice unless it becomes
   necessary for the chosen accessor migration
 
@@ -149,5 +170,6 @@ Source Plan: plan.md
   mutation and cache-population paths for later Step 3 slices
 - Read-only type-parser probes and the targeted dependent-member cache writes
   now use parser-local typedef helpers; the remaining raw accesses are mostly
-  typedef-map plumbing helpers and a few localized read-only
-  `typedef_types_` lookups in `parser_types_struct.cpp`
+  compatibility-reference uses, with `parser_types_struct.cpp` now reduced to
+  the `TemplateParamGuard` `typedefs_` reference and the broader repo still
+  carrying non-Step-3 direct typedef map consumers outside this slice

@@ -466,6 +466,15 @@ set_tests_properties(cpp_parse_record_member_underlying_type_dump PROPERTIES
 )
 
 add_test(
+  NAME cpp_parse_record_template_enum_underlying_typedef_dump
+  COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/postive_case/record_template_enum_underlying_typedef_parse.cpp"
+)
+set_tests_properties(cpp_parse_record_template_enum_underlying_typedef_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;parse"
+  PASS_REGULAR_EXPRESSION "Decl\\(kind\\)"
+)
+
+add_test(
   NAME cpp_parse_record_base_variable_template_value_arg_dump
   COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/parse_only_case/record_base_variable_template_value_arg_parse.cpp"
 )

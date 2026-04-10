@@ -501,6 +501,7 @@ class Parser {
   const TypeSpec* find_typedef_type(const std::string& name) const;
   bool has_visible_typedef_type(const std::string& name) const;
   const TypeSpec* find_visible_typedef_type(const std::string& name) const;
+  TypeSpec resolve_typedef_type_chain(TypeSpec ts) const;
   void register_typedef_name(const std::string& name, bool is_user_typedef);
   void register_typedef_binding(const std::string& name, const TypeSpec& type,
                                 bool is_user_typedef);

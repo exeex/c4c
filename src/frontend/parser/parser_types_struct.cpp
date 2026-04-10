@@ -804,9 +804,8 @@ bool Parser::try_parse_record_enum_member(
             // Prefer enum type tag if available
             fts.base = TB_ENUM;
             fts.tag  = ed->name;
-            auto it = typedef_types_.find(ed->name);
-            if (it != typedef_types_.end())
-                fts.enum_underlying_base = it->second.enum_underlying_base;
+            if (const TypeSpec* enum_type = find_typedef_type(ed->name))
+                fts.enum_underlying_base = enum_type->enum_underlying_base;
         }
         while (true) {
             TypeSpec cur_fts = fts;
@@ -1719,7 +1718,7 @@ void Parser::begin_record_body_context(const char* tag,
         return;
 
     register_typedef_name(template_origin_name, false);
-    if (typedef_types_.count(template_origin_name) == 0) {
+    if (!has_typedef_type(template_origin_name)) {
         register_tag_type_binding(template_origin_name, TB_STRUCT, tag);
     }
 }
@@ -2159,7 +2158,7 @@ Node* Parser::parse_enum() {
     if (match(TokenKind::Colon)) {
         // Preserve fixed underlying-type metadata for layout-sensitive queries.
         TypeSpec underlying_ts = parse_base_type();
-        underlying_ts = resolve_typedef_chain(underlying_ts, typedef_types_);
+        underlying_ts = resolve_typedef_type_chain(underlying_ts);
         enum_underlying_base = effective_scalar_base(underlying_ts);
         skip_attributes();
     }

@@ -301,6 +301,10 @@ const TypeSpec* Parser::find_visible_typedef_type(const std::string& name) const
     return find_typedef_type(resolved);
 }
 
+TypeSpec Parser::resolve_typedef_type_chain(TypeSpec ts) const {
+    return resolve_typedef_chain(ts, symbol_tables_.typedef_types);
+}
+
 void Parser::register_typedef_name(const std::string& name,
                                    bool is_user_typedef) {
     symbol_tables_.typedefs.insert(name);
