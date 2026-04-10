@@ -374,3 +374,35 @@ Interpretation:
   produce a measured hotspot reduction on the main TU.
 - The main `hir_templates.cpp` rebuild surface dropped by `0.846s`, about
   `16.6%`, while preserving the template-struct body/materialization behavior.
+
+## Step 4: Ninth Executed Slice
+
+- Extracted the builtin-call helper family from
+  `src/codegen/lir/stmt_emitter_call.cpp` into the new
+  `src/codegen/lir/stmt_emitter_call_builtin.cpp`.
+- Kept the extracted logic as existing `StmtEmitter` methods, so this remains a
+  translation-unit ownership split around builtin dispatch rather than a
+  semantic rewrite.
+- Added focused runtime coverage in
+  `tests/c/internal/positive_case/ok_call_builtin_runtime.c` for the
+  integer-bit, floating-point math, `__builtin_classify_type`, and complex
+  conjugation call paths exercised by the extracted helper family.
+- Re-ran nearby call-lowering coverage with
+  `tests/c/internal/compare_case/smoke_call_lowering.c` in compare mode.
+
+## Step 4: Ninth Slice Measurements
+
+Optimized single-TU compile timings for the builtin-call split:
+
+| Translation unit | Before `-O2 -c` (s) | After `-O2 -c` (s) | Notes |
+| --- | ---: | ---: | --- |
+| `src/codegen/lir/stmt_emitter_call.cpp` | 4.463 | 4.007 | before compiled from `HEAD^`, after from the working tree |
+| `src/codegen/lir/stmt_emitter_call_builtin.cpp` | n/a | 2.718 | new extracted TU |
+
+Interpretation:
+
+- This slice preserved behavior and reduced the main call-lowering hotspot TU
+  by `0.456s`, about `10.2%`.
+- With `stmt_emitter_call.cpp` now lower than its pre-split measurement, the
+  next extraction choice should refresh the current HIR/LIR tier before picking
+  the next seam between `hir_templates.cpp` and `hir_stmt.cpp`.

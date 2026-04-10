@@ -6,9 +6,9 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 5: start from the refreshed hotspot edge between `hir_templates.cpp`
-  and `stmt_emitter_call.cpp`, then choose the lower-risk remaining extraction
-  seam for the next measured slice.
+- Step 5: refresh the optimized hotspot snapshot after the
+  `stmt_emitter_call.cpp` builtin split, then pick the lower-risk next slice
+  between the remaining HIR leaders (`hir_templates.cpp` and `hir_stmt.cpp`).
 
 ## Completed
 
@@ -233,15 +233,36 @@ Source Plan: plan.md
   `hir_templates.cpp` measured 4.279s, `stmt_emitter_call.cpp` 4.086s,
   `hir_stmt.cpp` 3.923s, `hir_expr.cpp` 3.615s, and
   `stmt_emitter_expr.cpp` 3.270s.
+- Added `tests/c/internal/positive_case/ok_call_builtin_runtime.c` as focused
+  runtime coverage for the builtin-call helper family split from
+  `stmt_emitter_call.cpp`.
+- Executed the ninth Step 4 slice by moving the builtin-call helper family
+  (`prepare_builtin_int_arg`, `narrow_builtin_int_result`, the
+  `emit_builtin_*` / `promote_builtin_*` methods, `emit_post_builtin_call`,
+  and the final builtin dispatch inside `emit_rval_payload`) out of
+  `src/codegen/lir/stmt_emitter_call.cpp` into the new
+  `src/codegen/lir/stmt_emitter_call_builtin.cpp`.
+- Rebuilt after the split and re-ran focused coverage:
+  `positive_sema_ok_call_builtin_runtime_c` and
+  `tests/c/internal/compare_case/smoke_call_lowering.c` in compare mode.
+- Re-ran the full suite into `test_fail_after.log`; the regression guard passed
+  with 3327/3327 tests passing after the new focused runtime test was added and
+  no new failures.
+- Recorded the ninth before/after extraction measurement: compiling the
+  pre-split `src/codegen/lir/stmt_emitter_call.cpp` from `HEAD^` on the
+  generated optimized command took 4.463s, the post-split
+  `src/codegen/lir/stmt_emitter_call.cpp` took 4.007s, and the new
+  `src/codegen/lir/stmt_emitter_call_builtin.cpp` compiled in 2.718s.
 
 ## Next Slice
 
-- `hir_templates.cpp` still edges `stmt_emitter_call.cpp` in the refreshed
-  snapshot, but the gap is now small enough that the next slice should prefer
-  the lower-risk remaining seam rather than forcing another HIR extraction.
-- If a cohesive remaining helper family in `hir_templates.cpp` is not clearly
-  smaller than the next `stmt_emitter_call.cpp` dispatcher/helper split,
-  switch to `stmt_emitter_call.cpp` for the next measured extraction.
+- `stmt_emitter_call.cpp` has now dropped after the builtin split, so the next
+  iteration should re-measure the active hotspot tier before picking another
+  extraction target.
+- Unless a refreshed ranking shows `stmt_emitter_call.cpp` still leading, the
+  next measured slice should likely return to the remaining HIR leaders,
+  starting with the lower-risk seam between `hir_templates.cpp` and
+  `hir_stmt.cpp`.
 
 ## Blockers
 
@@ -258,7 +279,7 @@ Source Plan: plan.md
 - Step 2 is complete: the top-five hotspot tier is optimizer heavy rather than
   parse-heavy, though all five keep a meaningful `-fsyntax-only` floor.
 - The latest `ctest --test-dir build -j --output-on-failure` rerun passes
-  3324/3324 tests, and the monotonic regression guard remains green.
+  3327/3327 tests, and the monotonic regression guard remains green.
 - The first executed extraction slice reduced the hottest TU,
   `src/codegen/lir/stmt_emitter_expr.cpp`, by 1.219s on the optimized
   single-TU compile command.

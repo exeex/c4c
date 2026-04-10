@@ -246,6 +246,40 @@ Current follow-on direction:
   `try_eval_instantiated_struct_static_member_const`) unless inspection shows
   that `stmt_emitter_call.cpp` has become the lower-risk next slice
 
+## 2026-04-10 Step 4 Ninth Extraction Slice
+
+The refreshed gap between `hir_templates.cpp` and `stmt_emitter_call.cpp` had
+become small enough that the next slice favored the lower-risk LIR seam.
+
+Executed slice:
+
+- moved the builtin-call helper family
+  (`prepare_builtin_int_arg`, `narrow_builtin_int_result`,
+  `emit_builtin_*`, `promote_builtin_*`, `emit_post_builtin_call`, and the
+  final builtin dispatch in `emit_rval_payload`) out of
+  `src/codegen/lir/stmt_emitter_call.cpp` into the new
+  `src/codegen/lir/stmt_emitter_call_builtin.cpp`
+- added focused runtime coverage in
+  `tests/c/internal/positive_case/ok_call_builtin_runtime.c`
+- re-ran `tests/c/internal/compare_case/smoke_call_lowering.c` in compare mode
+  to keep the broader call-lowering behavior pinned
+
+Measurements:
+
+- compiling the pre-split `src/codegen/lir/stmt_emitter_call.cpp` from
+  `HEAD^` on the generated optimized command took `4.463s`
+- the post-split `src/codegen/lir/stmt_emitter_call.cpp` took `4.007s`
+- the new `src/codegen/lir/stmt_emitter_call_builtin.cpp` compiled in `2.718s`
+
+Interpretation:
+
+- this slice produced another measured reduction on a current hotspot TU while
+  keeping the call-lowering behavior stable
+- because the active LIR call hotspot dropped after the split, the next Step 4
+  choice should refresh the current ranking and likely shift back to the HIR
+  tier (`hir_templates.cpp` versus `hir_stmt.cpp`) rather than forcing another
+  immediate `stmt_emitter_call.cpp` extraction
+
 ## 2026-04-10 Step 4 First Extraction Slice
 
 Executed the first low-risk slice from that ranking:
