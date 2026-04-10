@@ -411,6 +411,7 @@ std::optional<c4c::backend::PhysReg> x86_constraint_to_callee_saved(std::string_
 std::optional<c4c::backend::PhysReg> x86_clobber_name_to_callee_saved(std::string_view name);
 const char* x86_arg_reg_name(std::size_t reg_index);
 std::int64_t x86_param_stack_base_offset();
+std::int64_t x86_param_stack_offset(std::int64_t class_stack_offset);
 bool x86_phys_reg_is_callee_saved(c4c::backend::PhysReg reg);
 bool x86_param_can_prestore_direct_to_reg(bool has_stack_slot,
                                           std::optional<c4c::backend::PhysReg> assigned_reg,

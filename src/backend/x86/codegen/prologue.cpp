@@ -134,9 +134,10 @@ void X86Codegen::emit_epilogue_impl(std::int64_t frame_size) {
 }
 
 void X86Codegen::emit_store_params_impl(const IrFunction& func) {
-  // The ref backend preloads ABI parameters into stack slots and, when safe,
-  // directly into assigned callee-saved registers.
-  this->state.emit("    <store-parameters>");
+  const auto config = this->call_abi_config_impl();
+  const auto classification = classify_params_full(func, config);
+  this->state.param_classes = classification.classes;
+  this->state.param_pre_stored.clear();
 }
 
 void X86Codegen::emit_param_ref_impl(const Value& dest, std::size_t param_idx, IrType ty) {

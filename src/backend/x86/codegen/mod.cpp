@@ -295,6 +295,10 @@ const char* x86_arg_reg_name(std::size_t reg_index) {
 
 std::int64_t x86_param_stack_base_offset() { return kX86ParamStackBase; }
 
+std::int64_t x86_param_stack_offset(std::int64_t class_stack_offset) {
+  return x86_param_stack_base_offset() + class_stack_offset;
+}
+
 bool x86_phys_reg_is_callee_saved(c4c::backend::PhysReg reg) {
   return reg.index >= 1 && reg.index <= 5;
 }

@@ -21,14 +21,37 @@ Source Plan: plan.md
 
 ## Next Slice
 
-- continue from the new shared parameter-storage helper surface into the next
-  bounded `emit_store_params_impl` / `emit_param_ref_impl` translation slice
+- continue from the new `emit_store_params_impl` state-priming slice into the
+  first real `emit_param_ref_impl` translation path
 - route the provisional x86 prologue through the already-exposed helper
-  contract first, likely starting with the integer-register + dead-param-alloca
-  pre-store path before widening into SSE or stack-only parameter classes
+  contract first, likely starting with direct integer-register and stack-scalar
+  `ParamRef` loads before widening into dead-param-alloca pre-store, SSE, or
+  aggregate parameter classes
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration removed the invalid placeholder emission from
+  `src/backend/x86/codegen/prologue.cpp` `emit_store_params_impl(...)` and
+  replaced it with real x86 SysV parameter-classification caching via
+  `classify_params_full(...)`, so the provisional owner path now records the
+  translated parameter classes instead of emitting a literal
+  `<store-parameters>` asm stub
+- exposed `x86_param_stack_offset(...)` through
+  `src/backend/x86/codegen/mod.cpp` and `x86_codegen.hpp` so the incoming
+  `%rbp+16+offset` stack-parameter address rule is shared and test-locked for
+  the next `emit_param_ref_impl` stack-scalar slice
+- focused validation passed for this slice:
+  `cmake --build build -j8 --target backend_shared_util_tests`,
+  `./build/backend_shared_util_tests`, and
+  `ctest --test-dir build -R backend_shared_util_tests --output-on-failure`
+- broad validation passed against the stored matched rerun baseline:
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log 2>&1`
+  plus
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_after_rerun.log --after test_fail_after.log --allow-non-decreasing-passed`
+  reported `3190` passed / `186` failed before and after, with no newly
+  failing tests; the checker did note one new `>30s` case
+  `backend_bir_tests`, but timeout enforcement was not enabled for this slice
 
 - this iteration exposed the translated x86 parameter-storage / `ParamRef`
   helper seam through `src/backend/x86/codegen/mod.cpp` and

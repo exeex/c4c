@@ -199,6 +199,8 @@ void test_x86_translated_asm_emitter_helpers_match_shared_contract() {
                   std::string(c4c::backend::x86::x86_arg_reg_name(5)) == "r9" &&
                   std::string(c4c::backend::x86::x86_arg_reg_name(6)).empty() &&
                   c4c::backend::x86::x86_param_stack_base_offset() == 16 &&
+                  c4c::backend::x86::x86_param_stack_offset(0) == 16 &&
+                  c4c::backend::x86::x86_param_stack_offset(8) == 24 &&
                   c4c::backend::x86::x86_phys_reg_is_callee_saved(c4c::backend::PhysReg{1}) &&
                   !c4c::backend::x86::x86_phys_reg_is_callee_saved(c4c::backend::PhysReg{12}) &&
                   c4c::backend::x86::x86_param_can_prestore_direct_to_reg(
