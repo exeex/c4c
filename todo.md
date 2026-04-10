@@ -647,3 +647,17 @@ Source Plan: plan.md
   `cpp_qualified_template_call_template_arg_perf` case in isolation after a
   transient full-suite failure, and confirmed a second full ctest rerun
   returned to the baseline `181`-failure count with no newly failing tests
+- compiled the translated `peephole/passes/frame_compact.cpp` unit into the
+  real x86 backend and test builds
+- wired the translated frame-compaction pass into the live x86 peephole
+  pipeline only for the bounded zero-byte frame-adjustment case
+- added a direct regression test that proves the live x86 peephole now drops
+  `subq $0, %rsp` while preserving the surrounding prologue/body shape
+- focused checks passed:
+  `./build/backend_bir_tests test_x86_peephole_eliminates_zero_byte_frame_adjustment`
+  plus the surrounding `test_x86_peephole_` subset and the existing direct
+  countdown-loop peephole route regression
+- the broad `ctest --test-dir build -j8 --output-on-failure` rerun remained
+  monotonic against `test_fail_before.log`; the regression guard reported
+  `2723` passed / `181` failed after with no newly failing tests, and the
+  existing `backend_bir_tests` `>30s` warning remained the only timeout note

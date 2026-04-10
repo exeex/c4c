@@ -81,6 +81,7 @@ std::string peephole_optimize(std::string asm_text) {
   }
 
   eliminate_unused_callee_saves(&store, infos.data());
+  compact_frame(&store, infos.data());
 
   return render_line_store(store, infos);
 }

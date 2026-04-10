@@ -9833,6 +9833,27 @@ void test_x86_peephole_eliminates_unused_callee_save_restore_pair() {
                   "x86 peephole should preserve the function body while removing only the dead callee-save save/restore pair");
 }
 
+void test_x86_peephole_eliminates_zero_byte_frame_adjustment() {
+  const std::string input =
+      ".text\n"
+      "helper:\n"
+      "  pushq %rbp\n"
+      "  movq %rsp, %rbp\n"
+      "  subq $0, %rsp\n"
+      "  movl $7, %eax\n"
+      "  movq %rbp, %rsp\n"
+      "  popq %rbp\n"
+      "  ret\n";
+
+  const auto optimized = c4c::backend::x86::codegen::peephole::peephole_optimize(input);
+  expect_not_contains(optimized, "  subq $0, %rsp\n",
+                      "x86 peephole should drop a zero-byte frame adjustment once the translated frame-compaction pass is live");
+  expect_contains(optimized, "  movl $7, %eax\n",
+                  "x86 peephole should preserve the function body while removing only the redundant zero-byte frame adjustment");
+  expect_contains(optimized, "helper:\n  pushq %rbp\n  movq %rsp, %rbp\n  movl $7, %eax\n",
+                  "x86 peephole should keep the surrounding prologue shape intact after removing the zero-byte stack subtraction");
+}
+
 void test_x86_direct_emitter_routes_minimal_countdown_loop_through_peephole() {
   const auto rendered = c4c::backend::x86::emit_module(make_minimal_countdown_loop_bir_module());
 
@@ -10314,6 +10335,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_x86_peephole_folds_bounded_stack_load_into_alu_source_operand);
   RUN_TEST(test_x86_peephole_keeps_stack_load_when_alu_destination_matches_loaded_register);
   RUN_TEST(test_x86_peephole_eliminates_unused_callee_save_restore_pair);
+  RUN_TEST(test_x86_peephole_eliminates_zero_byte_frame_adjustment);
   RUN_TEST(test_x86_direct_emitter_routes_minimal_countdown_loop_through_peephole);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_param_slot_add_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_extern_zero_arg_call_slice);
