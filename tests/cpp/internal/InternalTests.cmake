@@ -1353,6 +1353,15 @@ set_tests_properties(cpp_hir_template_member_owner_field_and_local PROPERTIES
 )
 
 add_test(
+  NAME cpp_hir_template_member_owner_signature_local
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_member_owner_signature_local_hir.cpp"
+)
+set_tests_properties(cpp_hir_template_member_owner_signature_local PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "fn bounce_i\\(input: int\\) -> int.*decl local: int = input#P0.*return local#L0"
+)
+
+add_test(
   NAME cpp_hir_template_function_signature_binding
   COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/template_fn_struct.cpp"
 )

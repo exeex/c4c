@@ -56,6 +56,7 @@ set(FRONTEND_CXX_COMMON_SRCS
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_printer.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_stmt.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_templates.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_templates_member_typedef.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_types.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/inline_expand.cpp"
     "${PROJECT_SOURCE_DIR}/src/codegen/llvm/calling_convention.cpp"

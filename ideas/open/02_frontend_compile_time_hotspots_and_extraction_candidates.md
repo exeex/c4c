@@ -284,6 +284,62 @@ Current follow-on:
 - if `hir_templates.cpp` stays near the top, move the next extraction slice to
   the member-typedef/deferred-template-resolution helper cluster
 
+## 2026-04-10 Refreshed Hotspot Ranking After The LIR Splits
+
+The optimized single-TU rerun used to pick the next slice now ranks the top
+hotspots as:
+
+1. `src/frontend/hir/hir_expr.cpp` - 4.933s
+2. `src/frontend/hir/hir_templates.cpp` - 4.295s
+3. `src/frontend/hir/hir_stmt.cpp` - 4.275s
+4. `src/codegen/lir/stmt_emitter_call.cpp` - 3.547s
+5. `src/codegen/lir/stmt_emitter_expr.cpp` - 2.986s
+
+This moved the active extraction focus from the LIR expression path to the HIR
+template tier.
+
+## 2026-04-10 Step 4 Third Extraction Slice
+
+Executed the `hir_templates.cpp` follow-on helper split:
+
+- moved the deferred template-owner/member-typedef helper cluster
+  (`require_pending_template_type_primary`,
+  `resolve_pending_template_owner_if_ready`,
+  `spawn_pending_template_owner_work`,
+  `ensure_pending_template_owner_ready`,
+  `resolve_deferred_member_typedef_type`,
+  `seed_template_type_dependency_if_needed`, and
+  `seed_and_resolve_pending_template_type_if_needed`) into the new
+  `src/frontend/hir/hir_templates_member_typedef.cpp`
+- kept the logic as existing `Lowerer` methods, so the slice remains a
+  translation-unit ownership split rather than a semantic rewrite
+- added `tests/cpp/internal/hir_case/template_member_owner_signature_local_hir.cpp`
+  as focused HIR coverage for deferred member-typedef resolution across a
+  function signature plus an instantiated local
+
+Measured result:
+
+- `src/frontend/hir/hir_templates.cpp` was `4.295s` before the split and
+  measured between `4.342s` and `4.527s` across three post-split reruns
+- the new `src/frontend/hir/hir_templates_member_typedef.cpp` compiles between
+  `1.443s` and `1.487s` across the same reruns
+- this means the slice did not demonstrate a single-TU compile-time win, so it
+  should be treated as structural preparation for later HIR extractions rather
+  than as a measured performance improvement
+
+Validation result:
+
+- focused coverage passed:
+  `cpp_hir_template_member_owner_chain`,
+  `cpp_hir_template_member_owner_field_and_local`,
+  `cpp_hir_template_member_owner_signature_local`,
+  `cpp_positive_sema_template_alias_member_typedef_dependent_ref_runtime_cpp`,
+  `cpp_positive_sema_template_alias_member_typedef_reordered_owner_runtime_cpp`,
+  `cpp_positive_sema_template_member_owner_resolution_cpp`, and
+  `cpp_positive_sema_template_variable_alias_member_typedef_runtime_cpp`
+- full-suite regression guard passed with `3319/3319` tests passing before and
+  `3321/3321` after, with no new failures
+
 ## Non-Goals
 
 - no backend architecture work

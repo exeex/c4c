@@ -6,9 +6,10 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 4: Re-measure the remaining hotspot order after the binary-expression
-  split and choose between a follow-on unary extraction in
-  `stmt_emitter_expr.cpp` and the `hir_templates.cpp` helper split.
+- Step 4: Re-rank the HIR hotspot tier after the `hir_templates.cpp`
+  member-typedef helper split and choose whether the next extraction should
+  move to `hir_expr.cpp`, `hir_stmt.cpp`, or a different `hir_templates.cpp`
+  seam.
 
 ## Completed
 
@@ -68,15 +69,47 @@ Source Plan: plan.md
   single-TU compile for `src/codegen/lir/stmt_emitter_expr.cpp` improved from
   6.021s before the split to 3.401s after it, and the new
   `src/codegen/lir/stmt_emitter_expr_binary.cpp` compiles in 2.679s.
+- Re-measured the current hotspot tier after the two
+  `stmt_emitter_expr.cpp` splits: `hir_expr.cpp` is now 4.933s,
+  `hir_templates.cpp` 4.295s, `hir_stmt.cpp` 4.275s,
+  `stmt_emitter_call.cpp` 3.547s, and `stmt_emitter_expr.cpp` 2.986s on the
+  optimized single-TU compile commands from `build/compile_commands.json`.
+- Chose `src/frontend/hir/hir_templates.cpp` as the next Step 4 slice because
+  it remains in the leading hotspot tier while `stmt_emitter_expr.cpp` has
+  dropped below both `hir_templates.cpp` and `stmt_emitter_call.cpp`.
+- Added focused HIR coverage in
+  `tests/cpp/internal/hir_case/template_member_owner_signature_local_hir.cpp`
+  and wired the new `cpp_hir_template_member_owner_signature_local` test into
+  `tests/cpp/internal/InternalTests.cmake`.
+- Executed the third Step 4 slice by moving the deferred
+  template-owner/member-typedef helper cluster out of
+  `src/frontend/hir/hir_templates.cpp` into the new
+  `src/frontend/hir/hir_templates_member_typedef.cpp`.
+- Rebuilt after the split and re-ran focused coverage:
+  `cpp_hir_template_member_owner_chain`,
+  `cpp_hir_template_member_owner_field_and_local`,
+  `cpp_hir_template_member_owner_signature_local`,
+  `cpp_positive_sema_template_alias_member_typedef_dependent_ref_runtime_cpp`,
+  `cpp_positive_sema_template_alias_member_typedef_reordered_owner_runtime_cpp`,
+  `cpp_positive_sema_template_member_owner_resolution_cpp`, and
+  `cpp_positive_sema_template_variable_alias_member_typedef_runtime_cpp`.
+- Re-ran the full suite into `test_fail_after.log`; the regression guard passed
+  with 3321/3321 tests passing after the new focused HIR test was added and no
+  new failures.
+- Recorded the third before/after extraction measurement: the optimized
+  single-TU compile for `src/frontend/hir/hir_templates.cpp` was 4.295s before
+  the split and ranged from 4.342s to 4.527s across three post-split reruns;
+  the new `src/frontend/hir/hir_templates_member_typedef.cpp` ranged from
+  1.443s to 1.487s.
 
 ## Next Slice
 
-- Re-rank the current hotspots now that `stmt_emitter_expr.cpp` has dropped to
-  3.401s and likely no longer leads the table.
-- If `hir_templates.cpp` remains in the top hotspot tier, switch the next Step
-  4 slice to the member-typedef/deferred-template-resolution extraction.
-- Otherwise inspect the remaining unary-only cluster in
-  `stmt_emitter_expr.cpp` for another low-risk out-of-line split.
+- Refresh the current HIR/LIR hotspot order after the `hir_templates.cpp`
+  split, because the next leading candidates should now be `hir_expr.cpp`,
+  `hir_stmt.cpp`, and `hir_templates.cpp`.
+- If a further `hir_templates.cpp` seam still looks competitive, prefer one
+  that is measurably larger than the member-typedef helper block; otherwise
+  switch Step 4 to the hottest remaining HIR file.
 
 ## Blockers
 
@@ -93,10 +126,17 @@ Source Plan: plan.md
 - Step 2 is complete: the top-five hotspot tier is optimizer heavy rather than
   parse-heavy, though all five keep a meaningful `-fsyntax-only` floor.
 - The latest `ctest --test-dir build -j --output-on-failure` rerun passes
-  3320/3320 tests, and the monotonic regression guard remains green.
+  3321/3321 tests, and the monotonic regression guard remains green.
 - The first executed extraction slice reduced the hottest TU,
   `src/codegen/lir/stmt_emitter_expr.cpp`, by 1.219s on the optimized
   single-TU compile command.
 - The second extraction slice reduced `src/codegen/lir/stmt_emitter_expr.cpp`
   by another 2.620s versus the immediate pre-split baseline used this
   iteration.
+- The refreshed hotspot order now leads with `src/frontend/hir/hir_expr.cpp`
+  at 4.933s; `src/frontend/hir/hir_templates.cpp` and
+  `src/frontend/hir/hir_stmt.cpp` follow at 4.295s and 4.275s, so the stale
+  inventory has been superseded for Step 4 selection.
+- The third extraction slice preserved behavior but did not show a clear
+  compile-time improvement on `src/frontend/hir/hir_templates.cpp`, so no
+  compile-time win should be claimed from this helper split in isolation.

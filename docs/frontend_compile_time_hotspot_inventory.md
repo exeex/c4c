@@ -149,3 +149,59 @@ Interpretation:
   `stmt_emitter_expr.cpp`. A full clean build now also compiles the new
   `stmt_emitter_vaarg.cpp`, so the result should be read as a reduced hotspot
   rebuild surface rather than a claim about total whole-project compile time.
+
+## Step 4: Refreshed Ranking After The `stmt_emitter_expr.cpp` Splits
+
+The targeted optimized single-TU rerun used to select the next slice produced
+this updated hotspot order:
+
+| Rank | Translation unit | Optimized compile (s) |
+| --- | --- | ---: |
+| 1 | `src/frontend/hir/hir_expr.cpp` | 4.933 |
+| 2 | `src/frontend/hir/hir_templates.cpp` | 4.295 |
+| 3 | `src/frontend/hir/hir_stmt.cpp` | 4.275 |
+| 4 | `src/codegen/lir/stmt_emitter_call.cpp` | 3.547 |
+| 5 | `src/codegen/lir/stmt_emitter_expr.cpp` | 2.986 |
+
+Interpretation:
+
+- After the two `stmt_emitter_expr.cpp` extractions, the next hottest tier is
+  HIR-led rather than LIR-led.
+- `hir_templates.cpp` stayed close enough to the top that the member-typedef
+  helper seam remained a valid Step 4 follow-on.
+
+## Step 4: Third Executed Slice
+
+- Extracted the deferred template-owner/member-typedef helper cluster
+  (`require_pending_template_type_primary`,
+  `resolve_pending_template_owner_if_ready`,
+  `spawn_pending_template_owner_work`,
+  `ensure_pending_template_owner_ready`,
+  `resolve_deferred_member_typedef_type`,
+  `seed_template_type_dependency_if_needed`, and
+  `seed_and_resolve_pending_template_type_if_needed`) out of
+  `src/frontend/hir/hir_templates.cpp` into the new
+  `src/frontend/hir/hir_templates_member_typedef.cpp`.
+- Added focused HIR coverage in
+  `tests/cpp/internal/hir_case/template_member_owner_signature_local_hir.cpp`
+  to keep deferred member-typedef resolution concrete across both function
+  signatures and instantiated locals.
+
+## Step 4: Third Slice Measurements
+
+Optimized single-TU compile timings after the split, using regenerated
+`build/compile_commands.json` commands:
+
+| Translation unit | Before `-O2 -c` (s) | After `-O2 -c` (s) | Notes |
+| --- | ---: | ---: | --- |
+| `src/frontend/hir/hir_templates.cpp` | 4.295 | 4.342 to 4.527 | three reruns after the split |
+| `src/frontend/hir/hir_templates_member_typedef.cpp` | n/a | 1.443 to 1.487 | three reruns after the split |
+
+Interpretation:
+
+- This slice succeeded as a behavior-preserving file-boundary extraction, but
+  the current timing reruns do not show a clear compile-time improvement for
+  `hir_templates.cpp`.
+- Because the before/after delta is roughly flat to slightly worse on the main
+  hotspot TU, this change should be treated as structure preparation for later
+  HIR work rather than as a measured compile-time win.
