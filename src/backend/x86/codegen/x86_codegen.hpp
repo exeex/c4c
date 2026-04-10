@@ -416,6 +416,7 @@ std::int64_t x86_param_stack_base_offset();
 std::int64_t x86_param_stack_offset(std::int64_t class_stack_offset);
 std::string x86_param_slot_name(std::string_view param_name);
 bool x86_param_slot_matches(std::string_view slot_name, std::string_view param_name);
+bool x86_allow_struct_split_reg_stack();
 const char* x86_param_ref_scalar_load_instr(std::string_view scalar_type);
 const char* x86_param_ref_scalar_dest_reg(std::string_view scalar_type);
 const char* x86_param_ref_scalar_arg_reg(std::size_t reg_index, std::string_view scalar_type);

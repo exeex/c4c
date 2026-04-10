@@ -211,6 +211,7 @@ void test_x86_translated_asm_emitter_helpers_match_shared_contract() {
                   c4c::backend::x86::x86_param_slot_name("%p.").empty() &&
                   c4c::backend::x86::x86_param_slot_matches("%lv.param.arg", "%p.arg") &&
                   !c4c::backend::x86::x86_param_slot_matches("%lv.param.other", "%p.arg") &&
+                  !c4c::backend::x86::x86_allow_struct_split_reg_stack() &&
                   std::string(c4c::backend::x86::x86_param_ref_scalar_load_instr("i32")) ==
                       "movslq" &&
                   std::string(c4c::backend::x86::x86_param_ref_scalar_load_instr("u32")) ==
@@ -372,7 +373,7 @@ void test_x86_translated_asm_emitter_helpers_match_shared_contract() {
                   c4c::backend::x86::x86_variadic_gp_save_offset(-176, 5) == -136 &&
                   c4c::backend::x86::x86_variadic_sse_save_offset(-176, 0) == -128 &&
                   c4c::backend::x86::x86_variadic_sse_save_offset(-176, 7) == -16,
-              "x86 translated prologue-side helpers should keep the ref callee-saved mapping, typed integer ParamRef register/stack load contract, parameter-storage / ParamRef pre-store policy, variadic register-save-area sizing, and 16-byte frame-alignment contract for the future translated prologue owner path");
+              "x86 translated prologue-side helpers should keep the ref callee-saved mapping, no-partial-reg-stack aggregate ABI policy, typed integer ParamRef register/stack load contract, parameter-storage / ParamRef pre-store policy, variadic register-save-area sizing, and 16-byte frame-alignment contract for the future translated prologue owner path");
 
   std::unordered_set<std::size_t> pre_stored_params;
   c4c::backend::x86::x86_mark_param_prestored(pre_stored_params, 1);

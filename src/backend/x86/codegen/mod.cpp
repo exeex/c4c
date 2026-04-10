@@ -320,6 +320,8 @@ bool x86_param_slot_matches(std::string_view slot_name, std::string_view param_n
   return !expected_slot_name.empty() && slot_name == expected_slot_name;
 }
 
+bool x86_allow_struct_split_reg_stack() { return false; }
+
 const char* x86_param_ref_scalar_load_instr(std::string_view scalar_type) {
   if (scalar_type == "i32") {
     return "movslq";

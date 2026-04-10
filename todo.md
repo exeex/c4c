@@ -6,15 +6,14 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 3 translated-owner cutover for the remaining direct dispatcher surface
-  around the x86 entry/support helper surface after the legacy matcher body
-  removal in `src/backend/x86/codegen/emit.cpp`
+- Step 3 translated-owner cutover follow-on around the x86 entry/support
+  helper surface after the legacy matcher body removal in
+  `src/backend/x86/codegen/emit.cpp`
 - immediate target:
-  resolve the remaining aggregate param-slot storage follow-on from the parked
-  translated prologue consumer wiring after landing the helper-backed by-value
-  and stack-copy branches
-  - keep this slice on aggregate storage owner wiring rather than reopening
-    scalar, peephole, or call-lowering work
+  record and lock the `StructSplitRegStack` decision for the remaining
+  aggregate param-slot storage follow-on
+  - keep this slice on aggregate storage owner wiring decisions rather than
+    reopening scalar, peephole, or call-lowering work
   - keep the translated prologue owner parked out of build until the public
     x86 codegen header exposes enough complete backend surface for a broader
     prologue-owner cutover
@@ -24,21 +23,40 @@ Source Plan: plan.md
 
 ## Next Slice
 
-- widen the active slot-backed aggregate parameter storage owner beyond the
-  newly landed `StructByValReg`, `StructStack`, and `LargeStructStack`
-  branches by deciding whether `StructSplitRegStack` belongs in the parked
-  translated owner path or should remain deferred with the broader prologue
-  cutover
+- look for the first backend-facing x86 aggregate path that can exercise one of
+  the already-active slot-backed aggregate branches end to end instead of
+  helper-only coverage
+- if a future x86 ABI policy change ever enables partial GP-register plus
+  caller-stack aggregate splits, re-open `StructSplitRegStack` as a separate
+  owner-path cutover item instead of silently folding it into the current
+  parked-owner work
 - keep the translated prologue owner parked out of build; a brief CMake
   wiring experiment confirmed `src/backend/x86/codegen/prologue.cpp` still
   depends on incomplete public x86 backend/type surface and is not ready for
   direct target inclusion
-- look for the first x86 backend-facing lowering route that can expose a real
-  end-to-end aggregate asm regression, so future active-branch iterations are
-  not limited to compile coverage plus helper/backend-slice tests
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration resolved the remaining `StructSplitRegStack` decision for the
+  current x86 aggregate param-slot owner slice without reopening the broader
+  ABI policy: the shared x86 helper surface now exposes the translated
+  `allow_struct_split_reg_stack = false` contract directly, the live x86
+  `CallAbiConfig` consumes that helper, and focused helper coverage locks the
+  ref rule that x86_64 does not permit partial GP-register plus caller-stack
+  aggregate splits
+- implication:
+  because the active x86 ABI config still forbids partial reg/stack aggregate
+  splits, `ParamClass::StructSplitRegStack` remains deferred with any future
+  ABI-policy change rather than joining the current parked translated prologue
+  owner path
+- focused validation target for this slice:
+  `cmake --build build -j8 --target backend_shared_util_tests` and
+  `ctest --test-dir build -R backend_shared_util_tests --output-on-failure`
+- broad validation note:
+  skipped for this helper-only ABI-policy bookkeeping slice per the current
+  plan note to defer the monotonic full-suite guard until a larger owner-path
+  cutover lands
 
 - this iteration widened the parked translated aggregate param-slot consumer
   seam in `src/backend/x86/codegen/prologue.cpp` to cover the reference-backed

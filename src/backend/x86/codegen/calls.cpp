@@ -13,7 +13,9 @@ CallAbiConfig X86Codegen::call_abi_config_impl() const {
       .large_struct_by_ref = false,
       .use_sysv_struct_classification = true,
       .use_riscv_float_struct_classification = false,
-      .allow_struct_split_reg_stack = false,
+      // Match the ref SysV x86_64 ABI contract: no partial GP-register plus
+      // caller-stack aggregate split until the backend policy itself changes.
+      .allow_struct_split_reg_stack = x86_allow_struct_split_reg_stack(),
       .align_struct_pairs = false,
       .sret_uses_dedicated_reg = false,
   };
