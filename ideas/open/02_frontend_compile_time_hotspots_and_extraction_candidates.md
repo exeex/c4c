@@ -995,3 +995,58 @@ Follow-on note:
 - no backend architecture work
 - no speculative rewrite of the entire frontend around a new IR or parser model
 - no unmeasured "performance cleanup" bundle that mixes unrelated changes
+
+## 2026-04-10 Step 4 Twenty-Second Extraction Slice
+
+The refreshed direct comparison after the deferred NTTP evaluator split left
+`src/frontend/hir/hir_templates.cpp` ahead at `2.672s`, with
+`src/frontend/hir/hir_expr.cpp` at `2.402s`,
+`src/frontend/hir/hir_stmt.cpp` at `2.330s`, and the reduced
+`src/codegen/lir/stmt_emitter_call_vaarg_amd64.cpp` at `2.147s`.
+
+That kept the next extraction in `hir_templates.cpp`, where the template
+call-binding and deduction helper family was the smallest cohesive seam that
+could move behind its own translation-unit boundary without changing template
+realization flow.
+
+Executed the deduction/helper split:
+
+- moved `build_call_bindings`, `build_call_nttp_bindings`,
+  `has_forwarded_nttp`, `try_infer_arg_type_for_deduction`,
+  `try_deduce_template_type_args`, `deduction_covers_all_type_params`,
+  `fill_deduced_defaults`, and `merge_explicit_and_deduced_type_bindings`
+  into the new `src/frontend/hir/hir_templates_deduction.cpp`
+- kept `src/frontend/hir/hir_templates.cpp` focused on template-struct
+  realization, deferred-type resolution, and pattern selection instead of the
+  function-call deduction path
+- added focused HIR coverage in
+  `tests/cpp/internal/hir_case/template_function_deduction_binding_hir.cpp`
+  and wired `cpp_hir_template_function_deduction_binding` into
+  `tests/cpp/internal/InternalTests.cmake`
+
+Measured result:
+
+- compiling the pre-split `src/frontend/hir/hir_templates.cpp` from `HEAD` on
+  the direct optimized command took `4.623s`
+- the direct post-split rerun of `src/frontend/hir/hir_templates.cpp` took
+  `3.907s`
+- the new `src/frontend/hir/hir_templates_deduction.cpp` compiled in `2.809s`
+- this reduced the main hotspot TU by `0.716s` (about `15.5%`) on the direct
+  comparison
+
+Validation result:
+
+- focused coverage passed:
+  `cpp_hir_template_function_deduction_binding`,
+  `cpp_hir_forward_pick_ref_specialization_identity`, and
+  `cpp_positive_sema_template_arg_deduction_cpp`
+- full-suite regression guard passed with `3330/3330` tests passing before and
+  `3340/3340` after, with no new failures
+
+Follow-on note:
+
+- a refreshed direct comparison now reads `src/frontend/hir/hir_expr.cpp` at
+  `2.740s`, `src/frontend/hir/hir_templates.cpp` at `2.592s`,
+  `src/frontend/hir/hir_stmt.cpp` at `2.510s`, and the reduced
+  `src/codegen/lir/stmt_emitter_call_vaarg_amd64.cpp` at `2.492s`, so the
+  next iteration should move back to `hir_expr.cpp`

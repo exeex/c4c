@@ -1452,6 +1452,15 @@ set_tests_properties(cpp_hir_template_struct_arg_materialization PROPERTIES
 )
 
 add_test(
+  NAME cpp_hir_template_function_deduction_binding
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_function_deduction_binding_hir.cpp"
+)
+set_tests_properties(cpp_hir_template_function_deduction_binding PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "template forward_pick<typename T> \\[2 instantiations\\].*forward_pick_TProbe_ref \\{T=struct Probe&\\} key=forward_pick<T=struct\\.Probe&>.*forward_pick_TProbe \\{T=struct Probe\\} key=forward_pick<T=struct\\.Probe>.*template read_ptr<typename T> \\[1 instantiation\\].*read_ptr_TProbe \\{T=struct Probe\\} key=read_ptr<T=struct\\.Probe>"
+)
+
+add_test(
   NAME cpp_hir_template_function_pack_signature_binding
   COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_function_pack_signature_hir.cpp"
 )

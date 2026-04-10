@@ -6,12 +6,42 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 4: extract the next measured `hir_templates.cpp` helper family, since
-  the refreshed direct-TU comparison still leaves the reduced
-  `hir_templates.cpp` ahead of `hir_expr.cpp`, `hir_stmt.cpp`, and the
-  reduced `stmt_emitter_call_vaarg_amd64.cpp`.
+- Step 4: extract the next measured `hir_expr.cpp` helper family, since the
+  refreshed direct-TU comparison now reads `hir_expr.cpp` at `2.740s`,
+  `hir_templates.cpp` at `2.592s`, `hir_stmt.cpp` at `2.510s`, and the
+  reduced `stmt_emitter_call_vaarg_amd64.cpp` at `2.492s`.
 
 ## Completed
+
+- Added focused HIR coverage in
+  `tests/cpp/internal/hir_case/template_function_deduction_binding_hir.cpp`
+  and wired the new `cpp_hir_template_function_deduction_binding` test into
+  `tests/cpp/internal/InternalTests.cmake`.
+- Executed the twenty-second Step 4 slice by moving the template
+  call-binding and deduction helper family
+  (`build_call_bindings`, `build_call_nttp_bindings`, `has_forwarded_nttp`,
+  `try_infer_arg_type_for_deduction`, `try_deduce_template_type_args`,
+  `deduction_covers_all_type_params`, `fill_deduced_defaults`, and
+  `merge_explicit_and_deduced_type_bindings`) out of
+  `src/frontend/hir/hir_templates.cpp` into the new
+  `src/frontend/hir/hir_templates_deduction.cpp`.
+- Rebuilt after the split and re-ran focused coverage:
+  `cpp_hir_template_function_deduction_binding`,
+  `cpp_hir_forward_pick_ref_specialization_identity`, and
+  `cpp_positive_sema_template_arg_deduction_cpp`.
+- Re-ran the full suite into `test_fail_after.log`; the regression guard
+  passed with `3330/3330` tests passing before and `3340/3340` after, with no
+  new failures.
+- Recorded the twenty-second before/after extraction measurement: compiling the
+  pre-split `src/frontend/hir/hir_templates.cpp` from `HEAD` on the generated
+  optimized command took `4.623s`, the reduced
+  `src/frontend/hir/hir_templates.cpp` took `3.907s`, and the new
+  `src/frontend/hir/hir_templates_deduction.cpp` compiled in `2.809s` on the
+  direct comparison rerun.
+- Refreshed the direct hotspot comparison after the deduction split:
+  `hir_expr.cpp` measured `2.740s`, `hir_templates.cpp` `2.592s`,
+  `hir_stmt.cpp` `2.510s`, and
+  `stmt_emitter_call_vaarg_amd64.cpp` `2.492s`.
 
 - Added focused x86_64 LLVM IR coverage in
   `backend_ir_x86_64_variadic_pair_amd64_vaarg` to pin the AMD64 register /
