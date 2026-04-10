@@ -621,10 +621,33 @@ void Parser::maybe_emit_parse_debug_progress() {
     parse_debug_last_progress_at_ = now;
 }
 
-void Parser::note_tentative_parse_event(const char* kind,
+void Parser::note_tentative_parse_event(TentativeParseMode mode,
+                                        const char* kind,
                                         int start_pos,
                                         int end_pos) {
-    const std::string detail = format_tentative_parse_detail(start_pos, end_pos);
+    int* counter = nullptr;
+    switch (mode) {
+        case TentativeParseMode::Heavy:
+            if (std::strcmp(kind, "tentative_enter") == 0)
+                counter = &tentative_parse_stats_.heavy_enter;
+            else if (std::strcmp(kind, "tentative_commit") == 0)
+                counter = &tentative_parse_stats_.heavy_commit;
+            else if (std::strcmp(kind, "tentative_rollback") == 0)
+                counter = &tentative_parse_stats_.heavy_rollback;
+            break;
+        case TentativeParseMode::Lite:
+            if (std::strcmp(kind, "tentative_enter") == 0)
+                counter = &tentative_parse_stats_.lite_enter;
+            else if (std::strcmp(kind, "tentative_commit") == 0)
+                counter = &tentative_parse_stats_.lite_commit;
+            else if (std::strcmp(kind, "tentative_rollback") == 0)
+                counter = &tentative_parse_stats_.lite_rollback;
+            break;
+    }
+    if (counter) ++(*counter);
+
+    const std::string detail =
+        format_tentative_parse_detail(mode, kind, start_pos, end_pos);
     note_parse_debug_event(kind, detail.c_str());
 }
 
@@ -770,9 +793,34 @@ std::string Parser::format_parse_failure_token_window(
     return oss.str();
 }
 
-std::string Parser::format_tentative_parse_detail(int start_pos, int end_pos) const {
+std::string Parser::format_tentative_parse_detail(TentativeParseMode mode,
+                                                  const char* kind,
+                                                  int start_pos,
+                                                  int end_pos) const {
     std::ostringstream oss;
-    oss << "start=" << start_pos << " end=" << end_pos;
+    oss << "mode="
+        << (mode == TentativeParseMode::Heavy ? "heavy" : "lite")
+        << " start=" << start_pos
+        << " end=" << end_pos;
+    if (kind && kind[0]) {
+        int count = 0;
+        if (mode == TentativeParseMode::Heavy) {
+            if (std::strcmp(kind, "tentative_enter") == 0)
+                count = tentative_parse_stats_.heavy_enter;
+            else if (std::strcmp(kind, "tentative_commit") == 0)
+                count = tentative_parse_stats_.heavy_commit;
+            else if (std::strcmp(kind, "tentative_rollback") == 0)
+                count = tentative_parse_stats_.heavy_rollback;
+        } else {
+            if (std::strcmp(kind, "tentative_enter") == 0)
+                count = tentative_parse_stats_.lite_enter;
+            else if (std::strcmp(kind, "tentative_commit") == 0)
+                count = tentative_parse_stats_.lite_commit;
+            else if (std::strcmp(kind, "tentative_rollback") == 0)
+                count = tentative_parse_stats_.lite_rollback;
+        }
+        if (count > 0) oss << " count=" << count;
+    }
     return oss.str();
 }
 

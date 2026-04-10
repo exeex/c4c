@@ -1005,7 +1005,7 @@ add_test(
           -DSRC=${INTERNAL_CPP_TEST_ROOT}/negative_case/parser_debug_qualified_type_spelling_stack.cpp
           "-DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=parse_top_level_parameter_list"
           "-DEXPECT_STACK_SUBSTRING:STRING=[pdebug] kind=tentative_rollback fn=try_parse_template_type_arg"
-          "-DEXPECT_CONTEXT_SUBSTRING:STRING=[pdebug] kind=tentative_commit fn=try_parse_template_type_arg line=15 col=23 detail=\"start="
+          "-DEXPECT_CONTEXT_SUBSTRING:STRING=[pdebug] kind=tentative_commit fn=try_parse_template_type_arg line=15 col=23 detail=\"mode=heavy start="
           -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
 )
 set_tests_properties(cpp_parser_debug_tentative_template_arg_lifecycle PROPERTIES
@@ -1020,7 +1020,7 @@ add_test(
           "-DPARSER_DEBUG_ARGS:STRING=--parser-debug-tentative"
           "-DEXPECT_ERROR_SUBSTRING:STRING=parse_fn=parse_top_level_parameter_list"
           "-DEXPECT_STACK_SUBSTRING:STRING=[pdebug] kind=tentative_rollback fn=try_parse_template_type_arg"
-          "-DEXPECT_CONTEXT_SUBSTRING:STRING=[pdebug] kind=tentative_commit fn=try_parse_template_type_arg line=15 col=23 detail=\"start="
+          "-DEXPECT_CONTEXT_SUBSTRING:STRING=[pdebug] kind=tentative_commit fn=try_parse_template_type_arg line=15 col=23 detail=\"mode=heavy start="
           "-DEXPECT_ABSENT_SUBSTRING:STRING=[pdebug] kind=enter fn=parse_top_level"
           -P "${INTERNAL_C_TEST_CMAKE_ROOT}/run_parser_debug_case.cmake"
 )

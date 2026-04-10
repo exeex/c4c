@@ -7,12 +7,29 @@ namespace c4c {
 
 // ── ParserSnapshot save / restore ────────────────────────────────────────────
 
-Parser::ParserSnapshot Parser::save_state() const {
-    ParserSnapshot snap;
-    snap.pos                  = pos_;
+Parser::ParserLiteSnapshot Parser::save_lite_state() const {
+    ParserLiteSnapshot snap;
+    snap.pos = pos_;
     snap.last_resolved_typedef = last_resolved_typedef_;
     snap.template_arg_expr_depth = template_arg_expr_depth_;
     snap.token_mutation_count = token_mutations_.size();
+    return snap;
+}
+
+void Parser::restore_lite_state(const ParserLiteSnapshot& snap) {
+    pos_ = snap.pos;
+    last_resolved_typedef_ = snap.last_resolved_typedef;
+    template_arg_expr_depth_ = snap.template_arg_expr_depth;
+    while (token_mutations_.size() > snap.token_mutation_count) {
+        const TokenMutation& mutation = token_mutations_.back();
+        tokens_[mutation.pos] = mutation.token;
+        token_mutations_.pop_back();
+    }
+}
+
+Parser::ParserSnapshot Parser::save_state() const {
+    ParserSnapshot snap;
+    snap.lite = save_lite_state();
 #if ENABLE_HEAVY_TENTATIVE_SNAPSHOT
     snap.typedefs             = typedefs_;
     snap.user_typedefs        = user_typedefs_;
@@ -23,20 +40,13 @@ Parser::ParserSnapshot Parser::save_state() const {
 }
 
 void Parser::restore_state(const ParserSnapshot& snap) {
-    pos_                   = snap.pos;
-    last_resolved_typedef_ = snap.last_resolved_typedef;
-    template_arg_expr_depth_ = snap.template_arg_expr_depth;
+    restore_lite_state(snap.lite);
 #if ENABLE_HEAVY_TENTATIVE_SNAPSHOT
     typedefs_              = snap.typedefs;
     user_typedefs_         = snap.user_typedefs;
     typedef_types_         = snap.typedef_types;
     var_types_             = snap.var_types;
 #endif
-    while (token_mutations_.size() > snap.token_mutation_count) {
-        const TokenMutation& mutation = token_mutations_.back();
-        tokens_[mutation.pos] = mutation.token;
-        token_mutations_.pop_back();
-    }
 }
 
 

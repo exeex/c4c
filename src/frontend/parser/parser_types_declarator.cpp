@@ -337,7 +337,7 @@ bool Parser::consume_qualified_type_spelling(bool allow_global,
                                              QualifiedNameRef* out_qn) {
     ParseContextGuard trace(this, __func__);
     TentativeParseGuard guard(*this);
-    const int start_pos = guard.snapshot.pos;
+    const int start_pos = guard.snapshot.lite.pos;
     QualifiedNameRef qn;
 
     auto consume_optional_template_args = [&]() -> bool {
