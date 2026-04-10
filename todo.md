@@ -11,13 +11,12 @@ Source Plan: plan.md
   `strcpy`/`printf` direct-LIR routes moved into
   `src/backend/x86/codegen/direct_printf.cpp`
 - immediate target:
-  continue Step 4 after the bounded `string_literal_char` direct-LIR route
-  moved out of `emit.cpp` and into `src/backend/x86/codegen/direct_printf.cpp`
-  by moving the bounded prepared-LIR `void` direct-call routes
-  (`voidfn`, `voidfn(); return imm;`, and the main-only extern-void call plus
-  immediate return shape) into a new sibling seam that still compiles cleanly
-  against the current transitional helpers without widening unrelated x86
-  emitter support
+  continue Step 4 after the bounded single-local prepared-LIR helper-call
+  route moved out of `emit.cpp` and into
+  `src/backend/x86/codegen/direct_calls.cpp` by moving the neighboring
+  two-argument helper-call routes in bounded sub-slices, starting with the
+  immediate/immediate helper-call form before the local-slot-fed two-argument
+  variants
   - keep translated `variadic.cpp` itself parked until `X86Codegen` grows the
     state/method surface it still references
   - keep `frame_compact.cpp` parked until a future iteration can prove a real
@@ -41,6 +40,10 @@ Source Plan: plan.md
   now live in `src/backend/x86/codegen/direct_calls.cpp`, continue Step 4 with
   the remaining prepared-LIR integer helper-call routes there: the single-local
   helper call first, then the two-arg helper variants
+- after the bounded single-local helper-call route now lives in
+  `src/backend/x86/codegen/direct_calls.cpp`, continue Step 4 there with the
+  neighboring immediate/immediate two-argument helper-call route before moving
+  to the local-slot-fed two-argument variants
 - keep translated `variadic.cpp` parked until a future iteration can expose
   the missing `X86Codegen` state/method surface intentionally instead of
   compiling placeholder member bodies by accident
@@ -64,6 +67,20 @@ Source Plan: plan.md
   bounded sibling seam: the x86 prepared-LIR `param_slot_add` route plus the
   zero-arg extern/declared-call route now live in
   `src/backend/x86/codegen/direct_calls.cpp` instead of `emit.cpp`
+- this iteration extends that direct-calls sibling seam one bounded step
+  further: the x86 prepared-LIR single-local helper-call route now lives in
+  `src/backend/x86/codegen/direct_calls.cpp` instead of `emit.cpp`
+- added a focused backend regression that calls the moved single-local helper
+  seam explicitly so the Step 4 ownership move stays observable apart from the
+  broader prepared-LIR dispatcher coverage
+- focused checks passed:
+  `./build/backend_bir_tests test_x86_direct_call_helper_accepts_local_arg_call_slice`
+  plus `test_x86_direct_call_helper_accepts_param_slot_add_slice` and
+  `test_x86_try_emit_prepared_lir_module_reports_direct_lir_support_explicitly`
+- the broad `ctest --test-dir build -j8 --output-on-failure` rerun remained
+  monotonic against `test_fail_before.log`; the regression guard reported
+  `1217` passed / `181` failed before versus `2723` passed / `181` failed
+  after, with no newly failing tests
 - added a focused backend regression that calls the new direct call-helper seam
   explicitly so the Step 4 ownership move stays observable apart from the
   broader prepared-LIR dispatcher coverage
