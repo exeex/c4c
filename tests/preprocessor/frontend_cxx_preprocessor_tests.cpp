@@ -10,6 +10,7 @@
 
 namespace fs = std::filesystem;
 using c4c::Preprocessor;
+using c4c::SourceProfile;
 
 namespace {
 
@@ -290,6 +291,26 @@ void test_predefined_lp64_macro() {
   std::string out = pp.preprocess_file(file.string());
   expect_contains(out, "int lp64 = 1;", "__LP64__ should be predefined on the current target model");
   expect_not_contains(out, "int lp64 = 0;", "__LP64__ false branch should be inactive");
+}
+
+void test_predefined_no_structured_binding_macro() {
+  fs::path dir = make_test_dir("predefined_no_structured_binding_macro");
+  fs::path file = dir / "main.cpp";
+
+  write_text(file,
+             "#if defined(EA_COMPILER_NO_STRUCTURED_BINDING)\n"
+             "int no_structured_binding = EA_COMPILER_NO_STRUCTURED_BINDING;\n"
+             "#else\n"
+             "int no_structured_binding = 0;\n"
+             "#endif\n");
+
+  Preprocessor pp;
+  pp.set_source_profile(SourceProfile::CppSubset);
+  std::string out = pp.preprocess_file(file.string());
+  expect_contains(out, "int no_structured_binding = 1;",
+                  "EA_COMPILER_NO_STRUCTURED_BINDING should be predefined for C++ profiles");
+  expect_not_contains(out, "int no_structured_binding = 0;",
+                      "EA_COMPILER_NO_STRUCTURED_BINDING false branch should be inactive");
 }
 
 // ---- README-aligned pending skeletons ----
@@ -1390,6 +1411,7 @@ int main() {
     test_anti_paste_guards();
     test_multiline_funclike_invocation();
     test_predefined_lp64_macro();
+    test_predefined_no_structured_binding_macro();
     test_line_directive();
     test_config_toggle_macros();
     test_include_next();

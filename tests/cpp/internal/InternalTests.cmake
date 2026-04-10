@@ -1618,18 +1618,17 @@ set_tests_properties(cpp_eastl_vector_parse_recipe PROPERTIES
 )
 
 add_test(
-  NAME cpp_eastl_memory_uses_allocator_timeout_baseline
+  NAME cpp_eastl_memory_uses_allocator_parse_recipe
   COMMAND "${CMAKE_COMMAND}"
           -DCOMPILER=$<TARGET_FILE:c4cll>
           -DROOT=${PROJECT_SOURCE_DIR}
           -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/eastl/eastl_memory_uses_allocator_frontier.cpp
-          -DEXPECT_TIMEOUT_SEC=25
-          "-DPARSER_DEBUG_ARGS:STRING=--parser-debug --parser-debug-tentative"
-          "-DEXPECT_STDERR_SUBSTRING:STRING=[pdebug] progress"
-          -P "${PROJECT_SOURCE_DIR}/tests/cpp/eastl/run_eastl_timeout_baseline.cmake"
+          -DCASE_TIMEOUT_SEC=25
+          -DEXPECT_SUCCESS=ON
+          -P "${PROJECT_SOURCE_DIR}/tests/cpp/eastl/run_eastl_parse_recipe.cmake"
 )
-set_tests_properties(cpp_eastl_memory_uses_allocator_timeout_baseline PROPERTIES
-  LABELS "internal;negative_case;cpp;workflow;diagnostic_format"
+set_tests_properties(cpp_eastl_memory_uses_allocator_parse_recipe PROPERTIES
+  LABELS "internal;positive_case;cpp;workflow"
   TIMEOUT 35
   RUN_SERIAL TRUE
 )

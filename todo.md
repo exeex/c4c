@@ -10,15 +10,38 @@ Source Plan: plan.md
   `eastl_utility_simple.cpp` and `eastl_tuple_simple.cpp` canonical blockers
   are gone.
 - Iteration target: work from the reduced header-only parse timeout behind
-  `tests/cpp/eastl/eastl_memory_uses_allocator_frontier.cpp`, using the full
-  `eastl_memory_simple.cpp` driver only to confirm that the smaller header path
-  still matches the active stack.
+  `tests/cpp/eastl/eastl_memory_uses_allocator_frontier.cpp`, but the concrete
+  target is now the unsupported structured-binding bridge in
+  `EASTL/utility.h` / `EASTL/tuple.h` that gets enabled by our predefined macro
+  surface.
 - This slice is specifically transitioning from timeout reduction by testcase
-  triage into parser-cost reduction on the new bounded
-  `EASTL/internal/memory_uses_allocator.h` frontier.
+  triage into a bounded preprocessor/profile fix: stop advertising structured
+  binding support to EASTL until the frontend can actually parse `auto [a, b]`,
+  then convert the reduced memory frontier from a timeout baseline into a real
+  parse-success workflow.
 
 ## Completed
 
+- Reduced the `eastl_memory_uses_allocator_frontier.cpp` parser timeout to the
+  unsupported structured-binding bridge enabled by our predefined macro
+  surface: defining `EA_COMPILER_NO_STRUCTURED_BINDING` makes both
+  `EASTL/utility.h` and `EASTL/tuple.h` parse comfortably again.
+- Confirmed the frontend still rejects real structured binding declarations
+  (`auto [a, b] = ...`) while EASTL/EABase was enabling the optional
+  structured-binding bridge based only on `__cplusplus >= 201703L`.
+- Added focused preprocessor coverage in
+  `tests/preprocessor/frontend_cxx_preprocessor_tests.cpp` and now predefine
+  `EA_COMPILER_NO_STRUCTURED_BINDING` for the C++ source profiles until the
+  frontend actually supports that language feature.
+- Converted
+  `cpp_eastl_memory_uses_allocator_timeout_baseline` into the positive workflow
+  test `cpp_eastl_memory_uses_allocator_parse_recipe`, and confirmed
+  `tests/cpp/eastl/eastl_memory_uses_allocator_frontier.cpp` now completes
+  through both `--parse-only` and `--dump-canonical`.
+- Confirmed `tests/cpp/eastl/eastl_memory_simple.cpp --parse-only` now succeeds
+  too; the full memory driver has moved from a parse timeout into a later
+  canonical-timeout stage, while `eastl_vector_simple.cpp` remains the next
+  parse-timeout frontier.
 - Reopened `ideas/open/47_eastl_container_bringup_plan.md` as the active idea.
 - Activated `plan.md` from `ideas/open/47_eastl_container_bringup_plan.md`.
 - Preserved the current EASTL baseline from
@@ -188,25 +211,25 @@ Source Plan: plan.md
 
 ## Next Slice
 
-- reduce the `eastl_memory_uses_allocator_frontier.cpp` 25s parser-debug
-  timeout to the next concrete parser mechanism before reopening
-  `eastl_vector_simple.cpp`
+- keep the new structured-binding feature gate in place and work from the
+  moved `eastl_memory_simple.cpp` canonical-timeout stage or the still-timing
+  out `eastl_vector_simple.cpp`, whichever produces the smaller next generic
+  mechanism
 - keep the new HIR re-entrant method-lowering regression green while working
   back outward from the remaining EASTL timeout cases
-- use `eastl_vector_simple.cpp` only as a comparison case while checking
-  whether the memory and vector timeouts share the same parser root cause
+- use `eastl_vector_simple.cpp` as the primary remaining parse-timeout
+  comparison case now that the reduced memory frontier itself parses
 
 ## Blockers
 
-- `eastl_memory_simple.cpp` still times out under both parse-only and
-  canonical/sema pressure, though the trace reaches much later tuple/ranges
-  work than before
-- `tests/cpp/eastl/eastl_memory_uses_allocator_frontier.cpp` is smaller and
-  now reproducible in CTest, but it still has not been reduced from "late
-  parser progress through allocator/function machinery" to a single concrete
-  parser construct
+- structured bindings themselves are still unsupported in the frontend, so the
+  compiler must continue advertising `EA_COMPILER_NO_STRUCTURED_BINDING` until
+  a dedicated structured-binding implementation lands
+- `eastl_memory_simple.cpp` still times out under `--dump-canonical`, though
+  the old parse timeout is gone
 - `eastl_vector_simple.cpp` also times out deeper in the stack, so it is not
-  currently a better frontier than `eastl_memory_simple.cpp`
+  yet clear whether vector or the later memory canonical path is the smaller
+  next mechanism
 
 ## Resume Notes
 
@@ -251,5 +274,9 @@ Source Plan: plan.md
   the member-init `first` diagnostic is gone, and both
   `eastl_utility_simple.cpp` and `eastl_tuple_simple.cpp` now complete through
   `--dump-canonical`
+- `EA_COMPILER_NO_STRUCTURED_BINDING` is now predefined for C++ source
+  profiles because the frontend still rejects `auto [a, b]`
+- `eastl_memory_uses_allocator_frontier.cpp` now passes parse-only and
+  canonical, and `eastl_memory_simple.cpp` now passes parse-only
 - runtime and ABI glue remain explicitly out of scope except for temporary local
   shims already allowed by the source idea
