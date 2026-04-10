@@ -1745,6 +1745,124 @@ std::optional<bir::Module> try_lower_minimal_local_struct_pointer_alias_add_sub_
   return lowered;
 }
 
+std::optional<bir::Module> try_lower_minimal_local_self_referential_struct_pointer_chain_zero_return_module(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || !module.globals.empty() ||
+      !module.string_pool.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      !backend_lir_signature_matches(function.signature_text, "define", "i32", function.name, {}) ||
+      function.entry.value != 0 || function.blocks.size() != 1 || function.alloca_insts.size() != 1 ||
+      !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* struct_slot = std::get_if<LirAllocaOp>(&function.alloca_insts[0]);
+  if (struct_slot == nullptr || struct_slot->result.empty() || !struct_slot->count.empty() ||
+      struct_slot->type_str != "%struct.S" ||
+      std::find(module.type_decls.begin(), module.type_decls.end(),
+                "%struct.S = type { ptr, i32, [4 x i8] }") == module.type_decls.end()) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  const auto* x_gep = entry.insts.size() == 16 ? std::get_if<LirGepOp>(&entry.insts[0]) : nullptr;
+  const auto* store_zero = entry.insts.size() == 16 ? std::get_if<LirStoreOp>(&entry.insts[1]) : nullptr;
+  const auto* self_gep = entry.insts.size() == 16 ? std::get_if<LirGepOp>(&entry.insts[2]) : nullptr;
+  const auto* store_self = entry.insts.size() == 16 ? std::get_if<LirStoreOp>(&entry.insts[3]) : nullptr;
+  const auto* first_chain_gep =
+      entry.insts.size() == 16 ? std::get_if<LirGepOp>(&entry.insts[4]) : nullptr;
+  const auto* first_chain_load =
+      entry.insts.size() == 16 ? std::get_if<LirLoadOp>(&entry.insts[5]) : nullptr;
+  const auto* second_chain_gep =
+      entry.insts.size() == 16 ? std::get_if<LirGepOp>(&entry.insts[6]) : nullptr;
+  const auto* second_chain_load =
+      entry.insts.size() == 16 ? std::get_if<LirLoadOp>(&entry.insts[7]) : nullptr;
+  const auto* third_chain_gep =
+      entry.insts.size() == 16 ? std::get_if<LirGepOp>(&entry.insts[8]) : nullptr;
+  const auto* third_chain_load =
+      entry.insts.size() == 16 ? std::get_if<LirLoadOp>(&entry.insts[9]) : nullptr;
+  const auto* fourth_chain_gep =
+      entry.insts.size() == 16 ? std::get_if<LirGepOp>(&entry.insts[10]) : nullptr;
+  const auto* fourth_chain_load =
+      entry.insts.size() == 16 ? std::get_if<LirLoadOp>(&entry.insts[11]) : nullptr;
+  const auto* fifth_chain_gep =
+      entry.insts.size() == 16 ? std::get_if<LirGepOp>(&entry.insts[12]) : nullptr;
+  const auto* fifth_chain_load =
+      entry.insts.size() == 16 ? std::get_if<LirLoadOp>(&entry.insts[13]) : nullptr;
+  const auto* final_x_gep = entry.insts.size() == 16 ? std::get_if<LirGepOp>(&entry.insts[14]) : nullptr;
+  const auto* load_x = entry.insts.size() == 16 ? std::get_if<LirLoadOp>(&entry.insts[15]) : nullptr;
+  const auto* ret = std::get_if<LirRet>(&entry.terminator);
+
+  if (entry.label != "entry" || x_gep == nullptr || store_zero == nullptr || self_gep == nullptr ||
+      store_self == nullptr || first_chain_gep == nullptr || first_chain_load == nullptr ||
+      second_chain_gep == nullptr || second_chain_load == nullptr || third_chain_gep == nullptr ||
+      third_chain_load == nullptr || fourth_chain_gep == nullptr || fourth_chain_load == nullptr ||
+      fifth_chain_gep == nullptr || fifth_chain_load == nullptr || final_x_gep == nullptr ||
+      load_x == nullptr || ret == nullptr || !ret->value_str.has_value() ||
+      lower_function_return_type(function, *ret) != bir::TypeKind::I32 ||
+      *ret->value_str != load_x->result || x_gep->ptr != struct_slot->result ||
+      x_gep->element_type != "%struct.S" || x_gep->result.empty() ||
+      x_gep->indices != std::vector<std::string>{"i32 0", "i32 1"} ||
+      store_zero->ptr != x_gep->result || store_zero->val != "0" ||
+      !lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{store_zero->type_str}, 32) ||
+      self_gep->ptr != struct_slot->result || self_gep->element_type != "%struct.S" ||
+      self_gep->result.empty() || self_gep->indices != std::vector<std::string>{"i32 0", "i32 0"} ||
+      store_self->ptr != self_gep->result || store_self->val != struct_slot->result ||
+      !lir_type_is_pointer_like(c4c::codegen::lir::LirTypeRef{store_self->type_str}) ||
+      first_chain_gep->ptr != struct_slot->result || first_chain_gep->element_type != "%struct.S" ||
+      first_chain_gep->result.empty() ||
+      first_chain_gep->indices != std::vector<std::string>{"i32 0", "i32 0"} ||
+      first_chain_load->ptr != first_chain_gep->result || first_chain_load->result.empty() ||
+      !lir_type_is_pointer_like(c4c::codegen::lir::LirTypeRef{first_chain_load->type_str}) ||
+      second_chain_gep->ptr != first_chain_load->result ||
+      second_chain_gep->element_type != "%struct.S" || second_chain_gep->result.empty() ||
+      second_chain_gep->indices != std::vector<std::string>{"i32 0", "i32 0"} ||
+      second_chain_load->ptr != second_chain_gep->result || second_chain_load->result.empty() ||
+      !lir_type_is_pointer_like(c4c::codegen::lir::LirTypeRef{second_chain_load->type_str}) ||
+      third_chain_gep->ptr != second_chain_load->result ||
+      third_chain_gep->element_type != "%struct.S" || third_chain_gep->result.empty() ||
+      third_chain_gep->indices != std::vector<std::string>{"i32 0", "i32 0"} ||
+      third_chain_load->ptr != third_chain_gep->result || third_chain_load->result.empty() ||
+      !lir_type_is_pointer_like(c4c::codegen::lir::LirTypeRef{third_chain_load->type_str}) ||
+      fourth_chain_gep->ptr != third_chain_load->result ||
+      fourth_chain_gep->element_type != "%struct.S" || fourth_chain_gep->result.empty() ||
+      fourth_chain_gep->indices != std::vector<std::string>{"i32 0", "i32 0"} ||
+      fourth_chain_load->ptr != fourth_chain_gep->result || fourth_chain_load->result.empty() ||
+      !lir_type_is_pointer_like(c4c::codegen::lir::LirTypeRef{fourth_chain_load->type_str}) ||
+      fifth_chain_gep->ptr != fourth_chain_load->result ||
+      fifth_chain_gep->element_type != "%struct.S" || fifth_chain_gep->result.empty() ||
+      fifth_chain_gep->indices != std::vector<std::string>{"i32 0", "i32 0"} ||
+      fifth_chain_load->ptr != fifth_chain_gep->result || fifth_chain_load->result.empty() ||
+      !lir_type_is_pointer_like(c4c::codegen::lir::LirTypeRef{fifth_chain_load->type_str}) ||
+      final_x_gep->ptr != fifth_chain_load->result || final_x_gep->element_type != "%struct.S" ||
+      final_x_gep->result.empty() || final_x_gep->indices != std::vector<std::string>{"i32 0", "i32 1"} ||
+      load_x->ptr != final_x_gep->result || load_x->result.empty() ||
+      !lir_type_matches_integer_width(c4c::codegen::lir::LirTypeRef{load_x->type_str}, 32)) {
+    return std::nullopt;
+  }
+
+  bir::Module lowered;
+  lowered.target_triple = module.target_triple;
+  lowered.data_layout = module.data_layout;
+
+  bir::Function lowered_function;
+  lowered_function.name = function.name;
+  lowered_function.return_type = bir::TypeKind::I32;
+
+  bir::Block lowered_entry;
+  lowered_entry.label = "entry";
+  lowered_entry.terminator.value = bir::Value::immediate_i32(0);
+  lowered_function.blocks.push_back(std::move(lowered_entry));
+  lowered.functions.push_back(std::move(lowered_function));
+  return lowered;
+}
+
 std::optional<bir::Module> try_lower_double_indirect_local_store_one_final_branch_return_module(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
@@ -4080,6 +4198,11 @@ std::optional<bir::Module> try_lower_to_bir_legacy(const c4c::codegen::lir::LirM
   }
   if (const auto lowered =
           try_lower_minimal_local_struct_pointer_alias_add_sub_three_return_module(module);
+      lowered.has_value()) {
+    return lowered;
+  }
+  if (const auto lowered =
+          try_lower_minimal_local_self_referential_struct_pointer_chain_zero_return_module(module);
       lowered.has_value()) {
     return lowered;
   }

@@ -546,6 +546,47 @@ c4c::codegen::lir::LirModule make_local_struct_pointer_alias_add_sub_three_retur
   return module;
 }
 
+c4c::codegen::lir::LirModule make_local_self_referential_struct_pointer_chain_zero_return_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.type_decls.push_back("%struct.S = type { ptr, i32, [4 x i8] }");
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.s", "%struct.S", "", 8});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{"%t0", "%struct.S", "%lv.s", false, {"i32 0", "i32 1"}});
+  entry.insts.push_back(LirStoreOp{"i32", "0", "%t0"});
+  entry.insts.push_back(LirGepOp{"%t1", "%struct.S", "%lv.s", false, {"i32 0", "i32 0"}});
+  entry.insts.push_back(LirStoreOp{"ptr", "%lv.s", "%t1"});
+  entry.insts.push_back(LirGepOp{"%t2", "%struct.S", "%lv.s", false, {"i32 0", "i32 0"}});
+  entry.insts.push_back(LirLoadOp{"%t3", "ptr", "%t2"});
+  entry.insts.push_back(LirGepOp{"%t4", "%struct.S", "%t3", false, {"i32 0", "i32 0"}});
+  entry.insts.push_back(LirLoadOp{"%t5", "ptr", "%t4"});
+  entry.insts.push_back(LirGepOp{"%t6", "%struct.S", "%t5", false, {"i32 0", "i32 0"}});
+  entry.insts.push_back(LirLoadOp{"%t7", "ptr", "%t6"});
+  entry.insts.push_back(LirGepOp{"%t8", "%struct.S", "%t7", false, {"i32 0", "i32 0"}});
+  entry.insts.push_back(LirLoadOp{"%t9", "ptr", "%t8"});
+  entry.insts.push_back(LirGepOp{"%t10", "%struct.S", "%t9", false, {"i32 0", "i32 0"}});
+  entry.insts.push_back(LirLoadOp{"%t11", "ptr", "%t10"});
+  entry.insts.push_back(LirGepOp{"%t12", "%struct.S", "%t11", false, {"i32 0", "i32 1"}});
+  entry.insts.push_back(LirLoadOp{"%t13", "i32", "%t12"});
+  entry.terminator = LirRet{std::string("%t13"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_double_indirect_local_store_one_final_branch_return_module() {
   using namespace c4c::codegen::lir;
 
@@ -3044,6 +3085,24 @@ void test_bir_lowering_accepts_local_struct_pointer_alias_add_sub_three_return_m
   const auto rendered = c4c::backend::bir::print(*lowered);
   expect_contains(rendered, "bir.func @main() -> i32 {\nentry:\n  bir.ret i32 0\n}\n",
                   "the lowered local struct-pointer alias add-sub-three module should normalize the aliased field stores and arithmetic tail to a single immediate zero return");
+}
+
+void test_bir_lowering_accepts_local_self_referential_struct_pointer_chain_zero_return_module() {
+  const auto lowered = c4c::backend::try_lower_to_bir(
+      make_local_self_referential_struct_pointer_chain_zero_return_module());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the bounded local self-referential struct-pointer chain slice through the shared constant-return contract");
+
+  expect_true(lowered->functions.size() == 1 &&
+                  lowered->functions.front().blocks.size() == 1 &&
+                  lowered->functions.front().blocks.front().insts.empty() &&
+                  lowered->functions.front().blocks.front().terminator.kind ==
+                      c4c::backend::bir::TerminatorKind::Return,
+              "the lowered local self-referential struct-pointer chain module should collapse to one canonical constant-return block");
+
+  const auto rendered = c4c::backend::bir::print(*lowered);
+  expect_contains(rendered, "bir.func @main() -> i32 {\nentry:\n  bir.ret i32 0\n}\n",
+                  "the lowered local self-referential struct-pointer chain module should normalize the repeated self-load field chain to a single immediate zero return");
 }
 
 void test_bir_lowering_accepts_double_indirect_local_store_one_final_branch_return_module() {
@@ -5694,6 +5753,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_local_i32_array_second_slot_pointer_store_zero_load_return_module);
   RUN_TEST(test_bir_lowering_accepts_local_two_field_struct_sub_sub_two_return_module);
   RUN_TEST(test_bir_lowering_accepts_local_struct_pointer_alias_add_sub_three_return_module);
+  RUN_TEST(test_bir_lowering_accepts_local_self_referential_struct_pointer_chain_zero_return_module);
   RUN_TEST(test_bir_lowering_accepts_double_indirect_local_store_one_final_branch_return_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_countdown_do_while_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_countdown_do_while_lir_module_with_stale_typed_i32_text);
