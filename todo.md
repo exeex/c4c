@@ -64,6 +64,9 @@ Source Plan: plan.md
   longer reports any call sites for the marked string-fallback helpers during
   `c4cll` build, so remaining cleanup can focus on deleting or narrowing those
   helpers rather than hunting more users.
+- HIR dead-helper cleanup: `collect_template_arg_debug_refs(...)` and
+  `assign_template_arg_debug_refs(...)` are now fully removed from
+  `src/frontend/hir/`.
 
 ## Completed
 
@@ -166,3 +169,7 @@ Source Plan: plan.md
   `resolve_struct_member_typedef_type(...)` with a local `TemplateArgRef`
   rebuild, so the current `c4cll` build no longer reports deprecated
   call sites for the marked string-fallback helpers.
+- Deleted the now-unused HIR debug-ref helper pair from
+  [hir_templates.cpp](/workspaces/c4c/src/frontend/hir/hir_templates.cpp):
+  `collect_template_arg_debug_refs(...)` and
+  `assign_template_arg_debug_refs(...)`.

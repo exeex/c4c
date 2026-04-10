@@ -98,32 +98,6 @@ bool matches_trait_family(const std::string& name, const char* suffix) {
          name.compare(name.size() - std::strlen(suffix) - 2, 2, "::") == 0;
 }
 
-[[deprecated("prefer structured TemplateArgRef access over debug-ref collection")]]
-std::vector<std::string> collect_template_arg_debug_refs(const TypeSpec& ts) {
-  std::vector<std::string> refs;
-  refs.reserve(ts.tpl_struct_args.size);
-  for (int i = 0; i < ts.tpl_struct_args.size; ++i) {
-    refs.push_back(template_arg_debug_text_at(ts, i));
-  }
-  return refs;
-}
-
-[[deprecated("prefer assign_template_arg_refs_from_hir_args or typed TemplateArgRef writes")]]
-void assign_template_arg_debug_refs(TypeSpec* ts,
-                                    const std::vector<std::string>& refs) {
-  if (!ts) return;
-  ts->tpl_struct_args.data = nullptr;
-  ts->tpl_struct_args.size = 0;
-  if (refs.empty()) return;
-
-  ts->tpl_struct_args.data = new TemplateArgRef[refs.size()]();
-  ts->tpl_struct_args.size = static_cast<int>(refs.size());
-  for (size_t i = 0; i < refs.size(); ++i) {
-    ts->tpl_struct_args.data[i].kind = TemplateArgKind::Type;
-    ts->tpl_struct_args.data[i].debug_text = ::strdup(refs[i].c_str());
-  }
-}
-
 void assign_template_arg_refs_from_hir_args(
     TypeSpec* ts,
     const std::vector<HirTemplateArg>& args) {
