@@ -614,6 +614,7 @@ std::string make_template_struct_instance_key(
     std::string key = primary_tpl->name;
     key += "<";
     bool first = true;
+    int arg_idx = 0;
     for (int pi = 0; pi < primary_tpl->n_template_params; ++pi) {
         const char* param_name = primary_tpl->template_param_names[pi];
         if (!param_name) continue;
@@ -621,20 +622,46 @@ std::string make_template_struct_instance_key(
         first = false;
         key += param_name;
         key += "=";
-        if (pi >= static_cast<int>(concrete_args.size())) {
+        const bool is_pack =
+            primary_tpl->template_param_is_pack &&
+            primary_tpl->template_param_is_pack[pi];
+        if (is_pack) {
+            bool first_pack_arg = true;
+            while (arg_idx < static_cast<int>(concrete_args.size())) {
+                if (!first_pack_arg) key += "|";
+                first_pack_arg = false;
+                if (concrete_args[arg_idx].is_value) {
+                    if (concrete_args[arg_idx].nttp_name &&
+                        concrete_args[arg_idx].nttp_name[0] &&
+                        std::strncmp(concrete_args[arg_idx].nttp_name, "$expr:", 6) == 0) {
+                        key += concrete_args[arg_idx].nttp_name;
+                    } else {
+                        key += std::to_string(concrete_args[arg_idx].value);
+                    }
+                } else {
+                    key += canonical_template_struct_type_key(
+                        concrete_args[arg_idx].type);
+                }
+                ++arg_idx;
+            }
+            continue;
+        }
+        if (arg_idx >= static_cast<int>(concrete_args.size())) {
             key += "?";
             continue;
         }
-        if (concrete_args[pi].is_value) {
-            if (concrete_args[pi].nttp_name && concrete_args[pi].nttp_name[0] &&
-                std::strncmp(concrete_args[pi].nttp_name, "$expr:", 6) == 0) {
-                key += concrete_args[pi].nttp_name;
+        if (concrete_args[arg_idx].is_value) {
+            if (concrete_args[arg_idx].nttp_name &&
+                concrete_args[arg_idx].nttp_name[0] &&
+                std::strncmp(concrete_args[arg_idx].nttp_name, "$expr:", 6) == 0) {
+                key += concrete_args[arg_idx].nttp_name;
             } else {
-                key += std::to_string(concrete_args[pi].value);
+                key += std::to_string(concrete_args[arg_idx].value);
             }
         } else {
-            key += canonical_template_struct_type_key(concrete_args[pi].type);
+            key += canonical_template_struct_type_key(concrete_args[arg_idx].type);
         }
+        ++arg_idx;
     }
     key += ">";
     return key;
@@ -731,28 +758,50 @@ const Node* select_template_struct_pattern(
     out_nttp_bindings->clear();
     if (!primary_tpl) return nullptr;
     int arg_idx = 0;
-    for (; arg_idx < static_cast<int>(actual_args.size()) &&
-           arg_idx < primary_tpl->n_template_params; ++arg_idx) {
-        const char* param_name = primary_tpl->template_param_names[arg_idx];
-        if (primary_tpl->template_param_is_nttp[arg_idx]) {
-            if (!actual_args[arg_idx].is_value) return nullptr;
-            out_nttp_bindings->push_back({param_name, actual_args[arg_idx].value});
-        } else {
-            if (actual_args[arg_idx].is_value) return nullptr;
-            out_type_bindings->push_back({param_name, actual_args[arg_idx].type});
-        }
-    }
-    while (arg_idx < primary_tpl->n_template_params) {
-        if (primary_tpl->template_param_has_default &&
-            primary_tpl->template_param_has_default[arg_idx]) {
-            const char* param_name = primary_tpl->template_param_names[arg_idx];
-            if (primary_tpl->template_param_is_nttp[arg_idx]) {
-                out_nttp_bindings->push_back({param_name, primary_tpl->template_param_default_values[arg_idx]});
-            } else {
-                out_type_bindings->push_back({param_name, primary_tpl->template_param_default_types[arg_idx]});
+    for (int pi = 0; pi < primary_tpl->n_template_params; ++pi) {
+        const char* param_name = primary_tpl->template_param_names[pi];
+        const bool is_pack =
+            primary_tpl->template_param_is_pack &&
+            primary_tpl->template_param_is_pack[pi];
+        if (is_pack) {
+            while (arg_idx < static_cast<int>(actual_args.size())) {
+                if (primary_tpl->template_param_is_nttp[pi]) {
+                    if (!actual_args[arg_idx].is_value) return nullptr;
+                    out_nttp_bindings->push_back({param_name, actual_args[arg_idx].value});
+                } else {
+                    if (actual_args[arg_idx].is_value) return nullptr;
+                    out_type_bindings->push_back({param_name, actual_args[arg_idx].type});
+                }
+                ++arg_idx;
             }
+            continue;
         }
-        ++arg_idx;
+        if (arg_idx < static_cast<int>(actual_args.size())) {
+            if (primary_tpl->template_param_is_nttp[pi]) {
+                if (!actual_args[arg_idx].is_value) return nullptr;
+                out_nttp_bindings->push_back({param_name, actual_args[arg_idx].value});
+            } else {
+                if (actual_args[arg_idx].is_value) return nullptr;
+                out_type_bindings->push_back({param_name, actual_args[arg_idx].type});
+            }
+            ++arg_idx;
+            continue;
+        }
+        if (primary_tpl->template_param_has_default &&
+            primary_tpl->template_param_has_default[pi]) {
+            if (primary_tpl->template_param_is_nttp[pi]) {
+                out_nttp_bindings->push_back(
+                    {param_name, primary_tpl->template_param_default_values[pi]});
+            } else {
+                out_type_bindings->push_back(
+                    {param_name, primary_tpl->template_param_default_types[pi]});
+            }
+            continue;
+        }
+        return nullptr;
+    }
+    if (arg_idx != static_cast<int>(actual_args.size())) {
+        return nullptr;
     }
     return primary_tpl;
 }

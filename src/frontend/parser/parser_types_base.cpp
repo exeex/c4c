@@ -1065,37 +1065,70 @@ TypeSpec Parser::parse_base_type() {
                                 }
                                 resolved_alias_args.push_back(default_arg);
                             }
-                            std::unordered_map<std::string, std::string> subst;
-                            for (size_t ai = 0; ai < resolved_alias_args.size(); ++ai) {
-                                if (ai >= ati.param_names.size()) {
-                                    alias_parse_ok = false;
-                                    break;
-                                }
-                                if (ati.param_is_nttp[ai] !=
-                                    resolved_alias_args[ai].is_value) {
-                                    alias_parse_ok = false;
-                                    break;
-                                }
-                                if (resolved_alias_args[ai].is_value) {
-                                    if (resolved_alias_args[ai].nttp_name &&
-                                        resolved_alias_args[ai].nttp_name[0]) {
-                                        subst[ati.param_names[ai]] =
-                                            resolved_alias_args[ai].nttp_name;
-                                    } else {
-                                        subst[ati.param_names[ai]] =
-                                            std::to_string(
-                                                resolved_alias_args[ai].value);
+                            auto render_alias_arg_ref =
+                                [&](const TemplateArgParseResult& arg) -> std::string {
+                                    if (arg.is_value) {
+                                        if (arg.nttp_name && arg.nttp_name[0])
+                                            return arg.nttp_name;
+                                        return std::to_string(arg.value);
                                     }
-                                } else {
+                                    if (arg.type.tpl_struct_origin) {
+                                        std::string ref = "@";
+                                        ref += arg.type.tpl_struct_origin;
+                                        ref += ":";
+                                        ref += arg.type.tpl_struct_arg_refs
+                                            ? arg.type.tpl_struct_arg_refs
+                                            : "";
+                                        return ref;
+                                    }
+                                    if (arg.type.tag) return arg.type.tag;
                                     std::string mangled;
-                                    if (resolved_alias_args[ai].type.tag)
-                                        mangled = resolved_alias_args[ai].type.tag;
-                                    else
-                                        append_type_mangled_suffix(
-                                            mangled,
-                                            resolved_alias_args[ai].type);
-                                    subst[ati.param_names[ai]] = mangled;
+                                    append_type_mangled_suffix(mangled, arg.type);
+                                    return mangled;
+                                };
+
+                            std::unordered_map<std::string, std::string> subst;
+                            size_t bound_arg_index = 0;
+                            for (size_t pi = 0; pi < ati.param_names.size(); ++pi) {
+                                const bool is_pack =
+                                    pi < ati.param_is_pack.size() && ati.param_is_pack[pi];
+                                const bool expects_value =
+                                    pi < ati.param_is_nttp.size() && ati.param_is_nttp[pi];
+                                if (is_pack) {
+                                    std::string packed_refs;
+                                    while (bound_arg_index < resolved_alias_args.size()) {
+                                        if (resolved_alias_args[bound_arg_index].is_value !=
+                                            expects_value) {
+                                            alias_parse_ok = false;
+                                            break;
+                                        }
+                                        if (!packed_refs.empty()) packed_refs += ",";
+                                        packed_refs +=
+                                            render_alias_arg_ref(
+                                                resolved_alias_args[bound_arg_index]);
+                                        ++bound_arg_index;
+                                    }
+                                    if (!alias_parse_ok) break;
+                                    subst[ati.param_names[pi]] = packed_refs;
+                                    continue;
                                 }
+                                if (bound_arg_index >= resolved_alias_args.size()) {
+                                    alias_parse_ok = false;
+                                    break;
+                                }
+                                if (resolved_alias_args[bound_arg_index].is_value !=
+                                    expects_value) {
+                                    alias_parse_ok = false;
+                                    break;
+                                }
+                                subst[ati.param_names[pi]] =
+                                    render_alias_arg_ref(
+                                        resolved_alias_args[bound_arg_index]);
+                                ++bound_arg_index;
+                            }
+                            if (alias_parse_ok &&
+                                bound_arg_index != resolved_alias_args.size()) {
+                                alias_parse_ok = false;
                             }
                             if (!alias_parse_ok) {
                                 // alias_guard restores pos_ on scope exit
@@ -1311,7 +1344,12 @@ TypeSpec Parser::parse_base_type() {
                                         resolved_alias_member =
                                             apply_unary_alias_transform(owner_name, member_name) ||
                                             resolve_alias_member_type(owner_name, member_name);
-                                    if (!resolved_alias_member) {
+                                    const bool can_try_derived_alias_member =
+                                        (ts.base == TB_TYPEDEF && ts.tag) ||
+                                        ts.base == TB_STRUCT ||
+                                        (!owner_name.empty() && !member_name.empty());
+                                    if (!resolved_alias_member &&
+                                        can_try_derived_alias_member) {
                                         auto [derived_owner, derived_member] =
                                             derive_alias_owner_and_member(alias_template_name);
                                         if (!derived_owner.empty() && !derived_member.empty())
@@ -1587,18 +1625,45 @@ TypeSpec Parser::parse_base_type() {
                     const std::string family_name =
                         tpl_def->template_origin_name ? tpl_def->template_origin_name : tpl_name;
                     std::string mangled = family_name;
+                    int mangled_arg_index = 0;
                     for (int pi = 0; primary_tpl && pi < primary_tpl->n_template_params; ++pi) {
                         mangled += "_";
                         mangled += primary_tpl->template_param_names[pi];
-                        mangled += "_";
-                        if (pi < static_cast<int>(concrete_args.size()) && concrete_args[pi].is_value) {
-                            mangled += std::to_string(concrete_args[pi].value);
-                        } else {
-                            if (pi < static_cast<int>(concrete_args.size()) && !concrete_args[pi].is_value)
-                                append_type_mangled_suffix(mangled, concrete_args[pi].type);
-                            else
-                                mangled += primary_tpl->template_param_is_nttp[pi] ? "0" : "T";
+                        const bool is_pack =
+                            primary_tpl->template_param_is_pack &&
+                            primary_tpl->template_param_is_pack[pi];
+                        if (is_pack) {
+                            while (mangled_arg_index < static_cast<int>(concrete_args.size())) {
+                                mangled += "_";
+                                if (concrete_args[mangled_arg_index].is_value) {
+                                    mangled += std::to_string(
+                                        concrete_args[mangled_arg_index].value);
+                                } else {
+                                    append_type_mangled_suffix(
+                                        mangled,
+                                        concrete_args[mangled_arg_index].type);
+                                }
+                                ++mangled_arg_index;
+                            }
+                            continue;
                         }
+                        mangled += "_";
+                        if (mangled_arg_index < static_cast<int>(concrete_args.size()) &&
+                            concrete_args[mangled_arg_index].is_value) {
+                            mangled +=
+                                std::to_string(concrete_args[mangled_arg_index].value);
+                        } else {
+                            if (mangled_arg_index < static_cast<int>(concrete_args.size()) &&
+                                !concrete_args[mangled_arg_index].is_value) {
+                                append_type_mangled_suffix(
+                                    mangled,
+                                    concrete_args[mangled_arg_index].type);
+                            } else {
+                                mangled +=
+                                    primary_tpl->template_param_is_nttp[pi] ? "0" : "T";
+                            }
+                        }
+                        ++mangled_arg_index;
                     }
                     // Check if any type arg is an unresolved template param
                     // or a pending template struct (e.g. Pair<T> inside Box<Pair<T>>).

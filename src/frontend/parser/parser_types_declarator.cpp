@@ -277,6 +277,13 @@ bool Parser::is_clearly_value_template_arg(const Node* primary_tpl, int arg_idx,
             primary_tpl->template_param_is_nttp &&
             primary_tpl->template_param_is_nttp[arg_idx];
     }
+    if (check(TokenKind::Identifier)) {
+        const std::string resolved = resolve_visible_type_name(cur().lexeme);
+        if (alias_template_info_.count(cur().lexeme) > 0 ||
+            alias_template_info_.count(resolved) > 0) {
+            return false;
+        }
+    }
     if (starts_with_value_like_template_expr(*this, tokens_, pos_)) return true;
     return expect_value && (
         check(TokenKind::IntLit) || check(TokenKind::CharLit) ||
