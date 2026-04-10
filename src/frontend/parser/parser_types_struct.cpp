@@ -250,7 +250,18 @@ void Parser::parse_record_template_member_prelude(
         } else if (consume_template_parameter_type_start(/*allow_typename_keyword=*/true)) {
             while (check(TokenKind::Star) || is_qualifier(cur().kind)) consume();
             if (check(TokenKind::Ellipsis)) consume();
-            if (check(TokenKind::Identifier)) consume();
+            if (check(TokenKind::Identifier)) {
+                std::string pname = cur().lexeme;
+                consume();
+                typedefs_.insert(pname);
+                TypeSpec param_ts{};
+                param_ts.array_size = -1;
+                param_ts.inner_rank = -1;
+                param_ts.base = TB_TYPEDEF;
+                param_ts.tag = arena_.strdup(pname.c_str());
+                typedef_types_[pname] = param_ts;
+                injected_type_params->push_back(std::move(pname));
+            }
             if (check(TokenKind::Assign)) {
                 consume();
                 int depth = 0, paren_depth = 0;
@@ -281,6 +292,79 @@ void Parser::parse_record_template_member_prelude(
                 }
             }
         } else if (is_cpp_mode()) {
+            bool parsed_constrained_type_param = false;
+            {
+                TentativeParseGuard guard(*this);
+                std::string constraint_name;
+                if (consume_qualified_type_spelling(
+                        /*allow_global=*/true,
+                        /*consume_final_template_args=*/true,
+                        &constraint_name, nullptr) &&
+                    (check(TokenKind::Ellipsis) || check(TokenKind::Identifier))) {
+                    if (check(TokenKind::Ellipsis)) consume();
+                    if (check(TokenKind::Identifier)) {
+                        std::string pname = cur().lexeme;
+                        consume();
+                        typedefs_.insert(pname);
+                        TypeSpec param_ts{};
+                        param_ts.array_size = -1;
+                        param_ts.inner_rank = -1;
+                        param_ts.base = TB_TYPEDEF;
+                        param_ts.tag = arena_.strdup(pname.c_str());
+                        typedef_types_[pname] = param_ts;
+                        injected_type_params->push_back(std::move(pname));
+                    }
+                    if (check(TokenKind::Assign)) {
+                        consume();
+                        bool parsed_default_type = false;
+                        {
+                            TentativeParseGuard default_guard(*this);
+                            try {
+                                TypeSpec ignored_default = parse_type_name();
+                                (void)ignored_default;
+                                default_guard.commit();
+                                parsed_default_type = true;
+                            } catch (...) {
+                                // default_guard restores pos_ on scope exit
+                            }
+                        }
+                        if (!parsed_default_type) {
+                            int depth = 0, paren_depth = 0;
+                            while (!at_end()) {
+                                if (check(TokenKind::Less) || check(TokenKind::LParen)) {
+                                    if (check(TokenKind::LParen)) ++paren_depth;
+                                    else ++depth;
+                                } else if (check(TokenKind::RParen)) {
+                                    if (paren_depth > 0) --paren_depth;
+                                } else if (check(TokenKind::GreaterGreater)) {
+                                    if (paren_depth == 0 && depth <= 0) break;
+                                    if (paren_depth == 0 && depth == 1) {
+                                        parse_greater_than_in_template_list(false);
+                                        break;
+                                    }
+                                    if (depth >= 2) depth -= 2;
+                                    else if (depth == 1) --depth;
+                                    consume();
+                                    continue;
+                                } else if (check(TokenKind::Greater)) {
+                                    if (paren_depth == 0 && depth == 0) break;
+                                    if (depth > 0) --depth;
+                                } else if (check(TokenKind::Comma) && depth == 0 &&
+                                           paren_depth == 0) {
+                                    break;
+                                }
+                                consume();
+                            }
+                        }
+                    }
+                    parsed_constrained_type_param =
+                        check(TokenKind::Comma) || check_template_close();
+                    if (parsed_constrained_type_param) guard.commit();
+                }
+            }
+            if (parsed_constrained_type_param) {
+                // C++20 constrained type parameter, e.g. `template<C T>`.
+            } else {
             bool parsed_typed_nttp = false;
             {
                 TentativeParseGuard guard(*this);
@@ -440,6 +524,7 @@ void Parser::parse_record_template_member_prelude(
                         consume();
                     }
                 }
+            }
             }
         } else {
             consume();
@@ -1008,9 +1093,28 @@ bool Parser::try_parse_record_method_or_field_member(
     // C++ conversion operators (e.g., operator bool()) have no return
     // type prefix, so KwOperator can appear directly here.
     bool is_conversion_operator = false;
-    if (is_cpp_mode() && check(TokenKind::KwOperator)) {
-        is_conversion_operator = true;
-    } else if (!is_type_start()) {
+    if (is_cpp_mode()) {
+        TentativeParseGuard operator_guard(*this);
+        while (!at_end()) {
+            if (check(TokenKind::KwOperator)) {
+                is_conversion_operator = true;
+                break;
+            }
+            if (check(TokenKind::KwConst) || check(TokenKind::KwVolatile) ||
+                check(TokenKind::KwInline) || check(TokenKind::KwExtern) ||
+                check(TokenKind::KwStatic) || check(TokenKind::KwConstexpr) ||
+                check(TokenKind::KwConsteval) || check(TokenKind::KwMutable)) {
+                consume();
+                continue;
+            }
+            if (check(TokenKind::KwExplicit)) {
+                consume_optional_cpp_explicit_specifier(this);
+                continue;
+            }
+            break;
+        }
+    }
+    if (!is_conversion_operator && !is_type_start()) {
         // unknown token in struct body — skip
         consume();
         return true;
@@ -1045,6 +1149,22 @@ bool Parser::try_parse_record_method_or_field_member(
     if (!is_conversion_operator) {
         fts = parse_base_type();
         parse_attributes(&fts);
+    } else if (is_cpp_mode()) {
+        while (!at_end()) {
+            if (check(TokenKind::KwOperator)) break;
+            if (check(TokenKind::KwConst) || check(TokenKind::KwVolatile) ||
+                check(TokenKind::KwInline) || check(TokenKind::KwExtern) ||
+                check(TokenKind::KwStatic) || check(TokenKind::KwConstexpr) ||
+                check(TokenKind::KwConsteval) || check(TokenKind::KwMutable)) {
+                consume();
+                continue;
+            }
+            if (check(TokenKind::KwExplicit)) {
+                consume_optional_cpp_explicit_specifier(this);
+                continue;
+            }
+            break;
+        }
     }
 
     // C++ operator method: <return-type> operator<symbol>(<params>) { ... }
@@ -1068,12 +1188,23 @@ bool Parser::try_parse_record_method_or_field_member(
         // Determine which operator
         std::string conversion_mangled_name;
         if (is_type_start() || can_start_parameter_type() ||
+            check(TokenKind::Identifier) ||
             check(TokenKind::ColonColon)) {
             // Conversion operator: operator T() — the token after 'operator'
             // is a type name. This covers both standalone 'operator T()' and
             // prefix forms like 'explicit operator T()' / 'constexpr explicit operator T()'.
             is_conversion_operator = true;
-            fts = parse_base_type();
+            if (check(TokenKind::Identifier) && !is_type_start() &&
+                !can_start_parameter_type()) {
+                fts = TypeSpec{};
+                fts.base = TB_TYPEDEF;
+                fts.tag = arena_.strdup(cur().lexeme);
+                fts.array_size = -1;
+                fts.inner_rank = -1;
+                consume();
+            } else {
+                fts = parse_base_type();
+            }
             parse_attributes(&fts);
             if (check(TokenKind::Star)) {
                 while (check(TokenKind::Star)) {

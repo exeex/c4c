@@ -787,8 +787,19 @@ bool Parser::parse_operator_declarator_name(std::string* out_name) {
         op_name = extra_mangled;
         consume();
     } else if (is_type_start() || can_start_parameter_type() ||
+               check(TokenKind::Identifier) ||
                check(TokenKind::ColonColon)) {
-        TypeSpec conv_ts = parse_base_type();
+        TypeSpec conv_ts{};
+        if (check(TokenKind::Identifier) && !is_type_start() &&
+            !can_start_parameter_type()) {
+            conv_ts.base = TB_TYPEDEF;
+            conv_ts.tag = arena_.strdup(cur().lexeme);
+            conv_ts.array_size = -1;
+            conv_ts.inner_rank = -1;
+            consume();
+        } else {
+            conv_ts = parse_base_type();
+        }
         parse_attributes(&conv_ts);
         while (check(TokenKind::Star)) {
             consume();

@@ -13,6 +13,10 @@ Source Plan: plan.md
   undeclared-identifier cluster around `_M_begin`, `_M_end`, `_M_size`,
   `_S_store_size`, and `this` now that constrained concept-shorthand template
   primaries instantiate correctly again.
+- This slice is specifically targeting the still-live
+  `ranges::subrange<_It, _Sent, _Kind>::advance` member-context failure under
+  `--dump-canonical`, with the goal of promoting the next smallest reproducer
+  into a focused internal frontend regression before any compiler change.
 
 ## Completed
 
@@ -92,28 +96,38 @@ Source Plan: plan.md
   `Box<int>` reproducer now instantiates and lowers correctly, and the full
   regression guard remains monotonic at 3281/3281 passing tests versus the
   earlier 3280/3280 baseline.
+- Reduced the remaining `ranges::subrange` member-context failure further to a
+  focused constrained member-template conversion-operator reproducer: inside a
+  class template, `template<C Pair> constexpr operator Pair() const` was
+  ejecting later members out of the record body, which then broke follow-up
+  member parsing and lowering.
+- Added focused frontend coverage in
+  `tests/cpp/internal/postive_case/constrained_member_conversion_operator_frontend.cpp`
+  and fixed record-member parsing so prefixed conversion operators following
+  constrained member-template preludes stay attached to the class body.
+- Confirmed the reduced constrained conversion-operator repro now parses and
+  lowers correctly again, and `tests/cpp/eastl/eastl_tuple_simple.cpp` moves
+  past the old `/usr/include/c++/14/bits/ranges_util.h` undeclared-identifier
+  cluster into a later semantic failure: `initializer for scalar member 'first'
+  must have exactly one argument`.
 
 ## Next Slice
 
-- rerun `tests/cpp/eastl/eastl_tuple_simple.cpp` and update
-  `tests/cpp/eastl/README.md` if its earliest failing stage moves again
-- reduce the still-live `ranges::subrange::advance` member-context failure to
-  the next smallest internal semantic reproducer now that constrained
-  concept-shorthand template primaries instantiate correctly
-- compare that reduced `ranges::subrange<_It, _Sent, _Kind>::advance` follow-up
-  against `eastl_tuple_simple.cpp` before touching `eastl_vector_simple.cpp`
+- reduce the new `eastl_tuple_simple.cpp` semantic failure
+  `initializer for scalar member 'first' must have exactly one argument` to the
+  next smallest internal reproducer
+- compare that reduced aggregate/initializer follow-up against
+  `eastl_tuple_simple.cpp` before touching `eastl_vector_simple.cpp`
 - keep `eastl_memory_simple.cpp` parked for now: after this tuple fix it still
   times out under both `--parse-only` and `--dump-canonical`, so it has not
   become the smaller frontier
 
 ## Blockers
 
-- `eastl_tuple_simple.cpp` now stops in `/usr/include/c++/14/bits/ranges_util.h`
-  with undeclared identifiers that still need an additional reduction beyond
-  the simpler inline-method member-context support now covered internally
-- the constrained concept-shorthand instantiation fix was necessary but not
-  sufficient: `eastl_tuple_simple.cpp` still fails deterministically in
-  `ranges_util.h:407-417` with missing member-context names
+- `eastl_tuple_simple.cpp` no longer stops in `ranges_util.h`, but the next
+  semantic failure still needs a fresh reduction because the current diagnostic
+  only reports `initializer for scalar member 'first' must have exactly one
+  argument` without a narrowed internal testcase yet
 - `eastl_memory_simple.cpp` still times out under both parse-only and
   canonical/sema pressure, though the trace reaches much later tuple/ranges
   work than before
@@ -144,8 +158,12 @@ Source Plan: plan.md
   `tests/cpp/internal/postive_case/template_inline_method_member_context_frontend.cpp`
 - focused constrained concept-shorthand frontend coverage now exists under
   `tests/cpp/internal/postive_case/constrained_template_method_call_frontend.cpp`
+- focused constrained member-template conversion-operator frontend coverage now
+  exists under
+  `tests/cpp/internal/postive_case/constrained_member_conversion_operator_frontend.cpp`
 - the older constrained concept-shorthand scratch repro now parses and lowers,
-  but `tests/cpp/eastl/eastl_tuple_simple.cpp` still fails in
-  `/usr/include/c++/14/bits/ranges_util.h:407-417`
+  and the later constrained conversion-operator follow-up also parses, but
+  `tests/cpp/eastl/eastl_tuple_simple.cpp` now fails later with
+  `initializer for scalar member 'first' must have exactly one argument`
 - runtime and ABI glue remain explicitly out of scope except for temporary local
   shims already allowed by the source idea
