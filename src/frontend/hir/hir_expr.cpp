@@ -1481,6 +1481,16 @@ ExprId Lowerer::lower_expr(FunctionCtx* ctx, const Node* n) {
         if (scope_pos != std::string::npos) {
           std::string struct_tag = qname.substr(0, scope_pos);
           std::string member = qname.substr(scope_pos + 2);
+          if (n->has_template_args) {
+            if (auto v = try_eval_template_static_member_const(
+                    ctx, struct_tag, n, member)) {
+              TypeSpec ts{};
+              if (const Node* decl = find_struct_static_member_decl(struct_tag, member))
+                ts = decl->type;
+              if (ts.base == TB_VOID) ts.base = TB_INT;
+              return append_expr(n, IntLiteral{*v, false}, ts);
+            }
+          }
           if (!find_struct_static_member_decl(struct_tag, member) &&
               n->has_template_args && find_template_struct_primary(struct_tag)) {
             std::string arg_refs;
@@ -1564,6 +1574,12 @@ ExprId Lowerer::lower_expr(FunctionCtx* ctx, const Node* n) {
         if (!has_local_binding) {
           auto pit = ctx->params.find(r.name);
           if (pit != ctx->params.end()) r.param_index = pit->second;
+        }
+      }
+      if (!has_local_binding) {
+        if (auto instantiated = ensure_template_global_instance(ctx, n)) {
+          r.global = *instantiated;
+          if (const GlobalVar* gv = module_->find_global(*r.global)) r.name = gv->name;
         }
       }
       if (!has_local_binding) {

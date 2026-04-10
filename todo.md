@@ -7,15 +7,19 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 3: keep `eastl_type_traits_simple.cpp` as the active EASTL frontier, but
-  treat the `std::byte` backend verifier failure as a scoped-enum parser gap.
-- Iteration target: teach the parser to accept `enum class` / scoped-enum
-  declarations as real enums, register the resulting enum type names for later
-  lookup, and validate the fix with the smallest runtime repro before
-  re-running `eastl_type_traits_simple_workflow`.
-- Reduced repro: `enum class Byte : unsigned char { A = 1, B = 2 };` was being
-  parsed as `StructDef(struct Byte)` plus an empty declaration, so canonical
-  and HIR later treated scoped enums like `std::byte` as structs instead of
-  enums.
+  treat the remaining workflow mismatch as a variable-template trait
+  normalization gap for alias-transformed types.
+- Iteration target: reduce why alias-backed trait operands such as
+  `eastl::add_lvalue_reference_t<T>`, `eastl::remove_reference_t<T&>`,
+  `eastl::remove_cv_t<const volatile T>`, `eastl::conditional_t<...>`, and
+  `eastl::enable_if_t<...>` still reach `is_reference_v` / `is_same_v` as
+  unresolved member-typedef spellings after the signedness slice moved the
+  workflow from exit `10` to exit `22`.
+- Reduced repro: `eastl_type_traits_simple_workflow` now gets past
+  `check_signed_traits<int>()`, but `check_reference_transforms<int>()`
+  returns `22` because `eastl::is_reference_v<eastl::add_lvalue_reference_t<T>>`
+  still lowers as false, and nearby `is_same_v` variable-template instances
+  backed by alias transforms remain `0` too.
 
 ## Completed
 
@@ -313,16 +317,36 @@ Source Plan: plan.md
   `build/eastl_type_traits_simple/eastl_type_traits_simple.ll:316` because
   `%p.__l` has type `%\"struct.std::byte\"` while `or i32` expects an integer
   operand.
+- Added focused runtime coverage in
+  `tests/cpp/internal/postive_case/template_variable_trait_runtime.cpp` so
+  variable-template trait adapters that read inherited dependent `::value`
+  members stay covered through runtime lowering.
+- Added on-demand HIR materialization for referenced variable-template globals
+  instead of lowering only the unspecialized primary, which fixes the old
+  `eastl::is_signed_v<int>` / `eastl::is_unsigned_v<int>` mismatch and moves
+  `eastl_type_traits_simple_workflow` past exit `10`.
+- Narrowed the new template-static-member fast path to the signedness /
+  sameness / reference / const trait families so existing NTTP-default and
+  `sizeof...(pack)` static-member paths keep their old behavior.
+- Re-ran the focused scoped-enum and template-variable runtime regressions plus
+  the full `ctest --test-dir build -j8 --output-on-failure` suite; the
+  regression guard remains monotonic at 3295/3295 passing tests versus the
+  earlier 3278/3278 baseline, with zero failing tests.
+- Re-ran `cmake --build build --target eastl_type_traits_simple_workflow -j8`
+  and confirmed the active type-traits blocker moved again: the c4c-built
+  binary no longer exits `10`, but now exits `22`, so signedness is fixed and
+  the next slice is alias-transformed trait normalization.
 
 ## Next Slice
 
 - keep the structured-binding feature gate in place and treat vector as
   revalidated rather than active
 - reduce the new `eastl_type_traits_simple_workflow` runtime mismatch to the
-  smallest EASTL or internal reproducer behind `check_signed_traits<int>()`
-  returning `10`
-- keep the new scoped-enum runtime regression green while tracing why
-  `eastl::is_signed_v<int>` evaluates incorrectly in the c4c-built binary
+  smallest EASTL or internal reproducer behind
+  `check_reference_transforms<int>()` returning `22`
+- keep the new scoped-enum and template-variable runtime regressions green
+  while tracing why alias-backed trait operands still miss `is_reference_v`
+  and `is_same_v` in the c4c-built binary
 
 ## Blockers
 
@@ -331,7 +355,7 @@ Source Plan: plan.md
   a dedicated structured-binding implementation lands
 - `eastl_type_traits_simple.cpp` no longer fails in the parser/backend path,
   but its standalone workflow still diverges at runtime: the c4c-built binary
-  exits `10` while the host binary exits `0`
+  now exits `22` while the host binary exits `0`
 
 ## Resume Notes
 
@@ -346,7 +370,8 @@ Source Plan: plan.md
   longer the active EASTL frontier
 - `eastl_type_traits_simple.cpp` now also passes `--dump-canonical`; the active
   frontier is the standalone workflow runtime mismatch, not the old sema or
-  `std::byte` backend verifier cluster
+  `std::byte` backend verifier cluster; the signedness half is fixed, but the
+  alias-transformed trait half is still open
 - focused scoped-enum runtime coverage now exists under
   `tests/cpp/internal/postive_case/scoped_enum_bitwise_runtime.cpp`
 - focused parser coverage now exists for shadowed-name assignment dispatch

@@ -220,6 +220,8 @@ class Lowerer {
 
   void collect_function_template_specializations(const std::vector<const Node*>& items);
 
+  void collect_template_global_definitions(const std::vector<const Node*>& items);
+
   void collect_depth0_template_instantiations(const std::vector<const Node*>& items);
 
   void realize_consteval_template_seeds_fixpoint(
@@ -521,7 +523,10 @@ class Lowerer {
   // Returns the ExprId of an AddrOf(DeclRef{clit_name}) expression.
   ExprId hoist_compound_literal_to_global(const Node* addr_node, const Node* clit);
 
-  void lower_global(const Node* gv);
+  void lower_global(const Node* gv,
+                    const std::string* name_override = nullptr,
+                    const TypeBindings* tpl_override = nullptr,
+                    const NttpBindings* nttp_override = nullptr);
 
   void lower_local_decl_stmt(FunctionCtx& ctx, const Node* n);
 
@@ -788,6 +793,16 @@ class Lowerer {
   const Node* find_template_struct_primary(const std::string& name) const;
   const std::vector<const Node*>* find_template_struct_specializations(
       const Node* primary_tpl) const;
+  const Node* find_template_global_primary(const std::string& name) const;
+  const std::vector<const Node*>* find_template_global_specializations(
+      const Node* primary_tpl) const;
+  std::optional<long long> try_eval_template_static_member_const(
+      FunctionCtx* ctx,
+      const std::string& tpl_name,
+      const Node* ref,
+      const std::string& member);
+  std::optional<GlobalId> ensure_template_global_instance(FunctionCtx* ctx,
+                                                          const Node* ref);
   TemplateStructEnv build_template_struct_env(const Node* primary_tpl) const;
   void register_template_struct_primary(const std::string& name, const Node* node);
   void register_template_struct_specialization(const Node* primary_tpl,
@@ -807,6 +822,10 @@ class Lowerer {
   std::unordered_map<std::string, const Node*> template_struct_defs_;
   // Template struct specializations indexed by primary template name.
   std::unordered_map<std::string, std::vector<const Node*>> template_struct_specializations_;
+  std::unordered_map<std::string, const Node*> template_global_defs_;
+  std::unordered_map<std::string, std::vector<const Node*>> template_global_specializations_;
+  std::unordered_map<TemplateStructInstanceKey, GlobalId, TemplateStructInstanceKeyHash>
+      instantiated_template_globals_;
   // Already-instantiated template structs, keyed by semantic identity
   // (primary template + concrete bindings), not by printed/mangled name.
   std::unordered_set<TemplateStructInstanceKey, TemplateStructInstanceKeyHash>

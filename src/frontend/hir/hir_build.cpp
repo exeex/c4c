@@ -483,6 +483,12 @@ void Lowerer::lower_non_method_functions_and_globals(
         }
       }
     } else if (item->kind == NK_GLOBAL_VAR) {
+      if (item->name && item->name[0] &&
+          (template_global_defs_.count(item->name) > 0 ||
+           template_global_specializations_.count(item->name) > 0) &&
+          (item->n_template_params > 0 || item->n_template_args > 0)) {
+        continue;
+      }
       lower_global(item);
     }
   }
@@ -516,6 +522,7 @@ void Lowerer::lower_initial_program(const Node* root, Module& m) {
   collect_consteval_function_definitions(items);
   collect_template_function_definitions(items);
   collect_function_template_specializations(items);
+  collect_template_global_definitions(items);
   collect_depth0_template_instantiations(items);
   registry_.realize_seeds();
   realize_consteval_template_seeds_fixpoint(items);

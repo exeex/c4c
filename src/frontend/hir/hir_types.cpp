@@ -1455,9 +1455,17 @@ void Lowerer::lower_struct_def(const Node* sd) {
   }
 }
 
-void Lowerer::lower_global(const Node* gv) {
+void Lowerer::lower_global(const Node* gv,
+                           const std::string* name_override,
+                           const TypeBindings* tpl_override,
+                           const NttpBindings* nttp_override) {
   GlobalInit computed_init{};
   bool has_init = false;
+  const bool has_tpl_overrides =
+      tpl_override != nullptr || nttp_override != nullptr;
+  FunctionCtx init_ctx{};
+  if (tpl_override) init_ctx.tpl_bindings = *tpl_override;
+  if (nttp_override) init_ctx.nttp_bindings = *nttp_override;
 
   // Handle compound literal at global scope: `T *p = &(T){...};`
   // The compound literal must be lowered to a separate static global, and
@@ -1477,20 +1485,21 @@ void Lowerer::lower_global(const Node* gv) {
   GlobalInit early_init{};
   bool early_init_done = false;
   if (!has_init && gv->init) {
-    early_init = lower_global_init(gv->init, nullptr, gv->type.is_const || gv->is_constexpr);
+    early_init = lower_global_init(
+        gv->init, has_tpl_overrides ? &init_ctx : nullptr,
+        gv->type.is_const || gv->is_constexpr);
     early_init_done = true;
   }
 
   GlobalVar g{};
   g.id = next_global_id();
-  g.name = gv->name ? gv->name : "<anon_global>";
+  g.name = name_override ? *name_override : (gv->name ? gv->name : "<anon_global>");
   g.ns_qual = make_ns_qual(gv);
   {
-    TypeBindings empty_tpl_bindings;
-    NttpBindings empty_nttp_bindings;
     TypeSpec global_ts = gv->type;
     seed_and_resolve_pending_template_type_if_needed(
-        global_ts, empty_tpl_bindings, empty_nttp_bindings, gv,
+        global_ts, tpl_override ? *tpl_override : TypeBindings{},
+        nttp_override ? *nttp_override : NttpBindings{}, gv,
         PendingTemplateTypeKind::DeclarationType,
         std::string("global-decl:") + g.name);
     resolve_typedef_to_struct(global_ts);
