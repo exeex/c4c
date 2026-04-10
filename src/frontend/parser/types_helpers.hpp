@@ -104,6 +104,110 @@ bool token_can_follow_value_like_template_arg(TokenKind kind) {
     }
 }
 
+void append_qualified_name_tokens(std::vector<Token>* out,
+                                  const Token& seed,
+                                  const std::string& name) {
+    if (!out || name.empty()) return;
+    size_t start = 0;
+    while (start < name.size()) {
+        size_t sep = name.find("::", start);
+        Token name_tok = seed;
+        name_tok.kind = TokenKind::Identifier;
+        name_tok.lexeme = sep == std::string::npos
+            ? name.substr(start)
+            : name.substr(start, sep - start);
+        out->push_back(name_tok);
+        if (sep == std::string::npos) break;
+        Token cc_tok = seed;
+        cc_tok.kind = TokenKind::ColonColon;
+        cc_tok.lexeme = "::";
+        out->push_back(cc_tok);
+        start = sep + 2;
+    }
+}
+
+void append_typespec_reparse_tokens(std::vector<Token>* out,
+                                    const Token& seed,
+                                    const TypeSpec& ts) {
+    if (!out) return;
+    auto emit = [&](TokenKind kind, const char* lexeme) {
+        Token tok = seed;
+        tok.kind = kind;
+        tok.lexeme = lexeme;
+        out->push_back(tok);
+    };
+
+    if (ts.is_const) emit(TokenKind::KwConst, "const");
+    if (ts.is_volatile) emit(TokenKind::KwVolatile, "volatile");
+
+    bool emitted_head = false;
+    if (ts.tag && ts.tag[0]) {
+        append_qualified_name_tokens(out, seed, ts.tag);
+        emitted_head = true;
+    } else {
+        switch (ts.base) {
+            case TB_VOID: emit(TokenKind::KwVoid, "void"); emitted_head = true; break;
+            case TB_BOOL: emit(TokenKind::KwBool, "bool"); emitted_head = true; break;
+            case TB_CHAR: emit(TokenKind::KwChar, "char"); emitted_head = true; break;
+            case TB_SCHAR:
+                emit(TokenKind::KwSigned, "signed");
+                emit(TokenKind::KwChar, "char");
+                emitted_head = true;
+                break;
+            case TB_UCHAR:
+                emit(TokenKind::KwUnsigned, "unsigned");
+                emit(TokenKind::KwChar, "char");
+                emitted_head = true;
+                break;
+            case TB_SHORT: emit(TokenKind::KwShort, "short"); emitted_head = true; break;
+            case TB_USHORT:
+                emit(TokenKind::KwUnsigned, "unsigned");
+                emit(TokenKind::KwShort, "short");
+                emitted_head = true;
+                break;
+            case TB_INT: emit(TokenKind::KwInt, "int"); emitted_head = true; break;
+            case TB_UINT:
+                emit(TokenKind::KwUnsigned, "unsigned");
+                emit(TokenKind::KwInt, "int");
+                emitted_head = true;
+                break;
+            case TB_LONG: emit(TokenKind::KwLong, "long"); emitted_head = true; break;
+            case TB_ULONG:
+                emit(TokenKind::KwUnsigned, "unsigned");
+                emit(TokenKind::KwLong, "long");
+                emitted_head = true;
+                break;
+            case TB_LONGLONG:
+                emit(TokenKind::KwLong, "long");
+                emit(TokenKind::KwLong, "long");
+                emitted_head = true;
+                break;
+            case TB_ULONGLONG:
+                emit(TokenKind::KwUnsigned, "unsigned");
+                emit(TokenKind::KwLong, "long");
+                emit(TokenKind::KwLong, "long");
+                emitted_head = true;
+                break;
+            case TB_FLOAT: emit(TokenKind::KwFloat, "float"); emitted_head = true; break;
+            case TB_DOUBLE: emit(TokenKind::KwDouble, "double"); emitted_head = true; break;
+            default:
+                break;
+        }
+    }
+
+    if (!emitted_head) {
+        Token tok = seed;
+        tok.kind = TokenKind::Identifier;
+        tok.lexeme = "int";
+        out->push_back(tok);
+        return;
+    }
+
+    for (int i = 0; i < ts.ptr_level; ++i) emit(TokenKind::Star, "*");
+    if (ts.is_lvalue_ref) emit(TokenKind::Amp, "&");
+    if (ts.is_rvalue_ref) emit(TokenKind::AmpAmp, "&&");
+}
+
 bool is_known_simple_type_head(const Parser& parser, const std::string& name) {
     if (match_floatn_keyword_base(name, nullptr)) return true;
     if (parser.is_template_scope_type_param(name)) return true;

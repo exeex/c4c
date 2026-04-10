@@ -63,3 +63,6 @@ Source Plan: plan.md
   now go through shared `decode_type_tokens(...)` instead of a builtin-only
   text parser, letting qualified and other structured type spellings reach the
   common path as typed args earlier.
+- Introduced a shared parser-side `TypeSpec -> token` helper and switched the
+  deferred `Trait<args>::member` token-injection path to use it, replacing the
+  old ad hoc subset emitter for injected type args.

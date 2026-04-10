@@ -512,25 +512,7 @@ bool Parser::eval_deferred_nttp_expr_tokens(
         if (!struct_tag_def_map_.count(ref_mangled)) {
             std::vector<Token> inject_toks;
             Token t; t.line = ref_primary->line; t.column = 0;
-            auto append_qualified_name_tokens = [&](const std::string& name) {
-                size_t start = 0;
-                while (start < name.size()) {
-                    size_t sep = name.find("::", start);
-                    Token name_tok = t;
-                    name_tok.kind = TokenKind::Identifier;
-                    name_tok.lexeme = sep == std::string::npos
-                        ? name.substr(start)
-                        : name.substr(start, sep - start);
-                    inject_toks.push_back(name_tok);
-                    if (sep == std::string::npos) break;
-                    Token cc_tok = t;
-                    cc_tok.kind = TokenKind::ColonColon;
-                    cc_tok.lexeme = "::";
-                    inject_toks.push_back(cc_tok);
-                    start = sep + 2;
-                }
-            };
-            append_qualified_name_tokens(resolved_ref_tpl_name);
+            append_qualified_name_tokens(&inject_toks, t, resolved_ref_tpl_name);
             t.kind = TokenKind::Less; t.lexeme = "<";
             inject_toks.push_back(t);
             for (int ai = 0; ai < (int)ref_args.size(); ++ai) {
@@ -541,25 +523,7 @@ bool Parser::eval_deferred_nttp_expr_tokens(
                     else { t.kind = TokenKind::IntLit; t.lexeme = std::to_string(ref_args[ai].value); }
                     inject_toks.push_back(t);
                 } else {
-                    const TypeSpec& ats = ref_args[ai].type;
-                    t.kind = TokenKind::Identifier;
-                    if (ats.tag) {
-                        t.lexeme = ats.tag;
-                    } else {
-                        switch (ats.base) {
-                            case TB_INT: t.kind = TokenKind::KwInt; t.lexeme = "int"; break;
-                            case TB_UINT: t.kind = TokenKind::KwUnsigned; t.lexeme = "unsigned"; break;
-                            case TB_CHAR: t.kind = TokenKind::KwChar; t.lexeme = "char"; break;
-                            case TB_VOID: t.kind = TokenKind::KwVoid; t.lexeme = "void"; break;
-                            case TB_FLOAT: t.kind = TokenKind::KwFloat; t.lexeme = "float"; break;
-                            case TB_DOUBLE: t.kind = TokenKind::KwDouble; t.lexeme = "double"; break;
-                            case TB_LONG: t.kind = TokenKind::KwLong; t.lexeme = "long"; break;
-                            case TB_SHORT: t.kind = TokenKind::KwShort; t.lexeme = "short"; break;
-                            case TB_BOOL: t.kind = TokenKind::KwBool; t.lexeme = "bool"; break;
-                            default: { std::string nm; append_type_mangled_suffix(nm, ats); t.lexeme = nm; } break;
-                        }
-                    }
-                    inject_toks.push_back(t);
+                    append_typespec_reparse_tokens(&inject_toks, t, ref_args[ai].type);
                 }
             }
             t.kind = TokenKind::Greater; t.lexeme = ">";
