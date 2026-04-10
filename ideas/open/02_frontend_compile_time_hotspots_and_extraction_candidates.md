@@ -665,6 +665,58 @@ Follow-on note:
   `hir_templates.cpp` deduction/materialization seams before returning to
   LIR follow-up work
 
+## 2026-04-10 Step 4 Fifteenth Extraction Slice
+
+The refreshed hotspot order after the object-materialization split left
+`hir_templates.cpp` back in the lead, so the next extraction stayed in the
+remaining template-struct materialization cluster.
+
+Executed the template-struct materialization split:
+
+- moved `materialize_template_args`,
+  `prepare_template_struct_instance`,
+  `build_template_mangled_name`, and the private
+  `HirTemplateArgMaterializer` family into the new
+  `src/frontend/hir/hir_templates_materialization.cpp`
+- kept the logic as existing `Lowerer` methods plus TU-local helpers, so the
+  slice remains a translation-unit ownership split rather than a semantic
+  rewrite
+- added `tests/cpp/internal/hir_case/template_struct_arg_materialization_hir.cpp`
+  as focused HIR coverage for defaulted type/value template arguments and
+  explicit value-driven template-struct materialization
+
+Measured result:
+
+- compiling the pre-split `src/frontend/hir/hir_templates.cpp` from `HEAD^`
+  on the generated optimized command took `4.145s`
+- the direct post-split `src/frontend/hir/hir_templates.cpp` rerun took
+  `3.250s`
+- a refreshed hotspot sweep measured the reduced `hir_templates.cpp` at
+  `2.953s`
+- the new `src/frontend/hir/hir_templates_materialization.cpp` compiles in
+  `2.786s`
+- this means the slice did demonstrate a single-TU compile-time win for the
+  main hotspot TU, reducing `hir_templates.cpp` by `0.895s` (about `21.6%`)
+  on the direct comparison
+
+Validation result:
+
+- focused coverage passed:
+  `cpp_hir_template_struct_arg_materialization`,
+  `cpp_hir_template_struct_body_instantiation`,
+  `cpp_hir_template_value_arg_static_member_trait`, and
+  `cpp_hir_template_global_specialization`
+- full-suite regression guard passed with `3330/3330` tests passing before and
+  `3333/3333` after, with no new failures
+
+Follow-on note:
+
+- a refreshed hotspot rerun now leaves `src/codegen/lir/stmt_emitter_expr.cpp`
+  ahead at `3.435s`, with `src/codegen/lir/stmt_emitter_call.cpp` next at
+  `3.106s` and the reduced `src/frontend/hir/hir_templates.cpp` at `2.953s`,
+  so the next iteration should shift back to LIR helper extraction before
+  returning to the remaining frontend seams
+
 ## Non-Goals
 
 - no backend architecture work

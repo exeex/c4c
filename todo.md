@@ -6,10 +6,10 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 5: preserve the latest `hir_expr.cpp` object-materialization extraction
-  measurements and validation state, then hand off the refreshed hotspot
-  comparison with `hir_templates.cpp` now back in the lead over
-  `stmt_emitter_call.cpp` and the reduced `hir_stmt.cpp`.
+- Step 4: inspect `src/codegen/lir/stmt_emitter_expr.cpp` as the refreshed
+  hotspot leader, with `src/codegen/lir/stmt_emitter_call.cpp` as the fallback
+  if the remaining `stmt_emitter_expr.cpp` helper families do not expose a
+  cleaner extraction seam than the residual call-lowering cluster.
 
 ## Completed
 
@@ -403,15 +403,44 @@ Source Plan: plan.md
 - Refreshed the optimized hotspot ranking after the object-materialization
   split: `hir_templates.cpp` is now 3.522s, `stmt_emitter_call.cpp` 3.036s,
   `hir_stmt.cpp` 2.773s, and the reduced `hir_expr.cpp` 2.639s.
+- Added focused HIR coverage in
+  `tests/cpp/internal/hir_case/template_struct_arg_materialization_hir.cpp`
+  and wired the new `cpp_hir_template_struct_arg_materialization` test into
+  `tests/cpp/internal/InternalTests.cmake`.
+- Executed the fifteenth Step 4 slice by moving the template-struct argument
+  materialization and mangling cluster
+  (`materialize_template_args`, `prepare_template_struct_instance`,
+  `build_template_mangled_name`, and the private `HirTemplateArgMaterializer`
+  family) out of `src/frontend/hir/hir_templates.cpp` into the new
+  `src/frontend/hir/hir_templates_materialization.cpp`.
+- Rebuilt after the split and re-ran focused coverage:
+  `cpp_hir_template_struct_arg_materialization`,
+  `cpp_hir_template_struct_body_instantiation`,
+  `cpp_hir_template_value_arg_static_member_trait`, and
+  `cpp_hir_template_global_specialization`.
+- Re-ran the full suite into `test_fail_after.log`; the regression guard passed
+  with 3330/3330 tests passing before and 3333/3333 after, with no new
+  failures.
+- Recorded the fifteenth before/after extraction measurement: compiling the
+  pre-split `src/frontend/hir/hir_templates.cpp` from `HEAD^` on the generated
+  optimized command took 4.145s, the post-split
+  `src/frontend/hir/hir_templates.cpp` measured 3.250s on the direct
+  comparison rerun and 2.953s on the refreshed hotspot sweep, and the new
+  `src/frontend/hir/hir_templates_materialization.cpp` compiled in 2.786s.
+- Refreshed the optimized hotspot ranking after the materialization split:
+  `stmt_emitter_expr.cpp` measured 3.435s, `stmt_emitter_call.cpp` 3.106s,
+  `hir_templates.cpp` 2.953s, `hir_expr.cpp` 2.639s, and `hir_stmt.cpp`
+  2.565s.
 
 ## Next Slice
 
-- Return to `src/frontend/hir/hir_templates.cpp` and inspect the remaining
-  deduction/materialization helper families now that it has retaken the lead
-  in the refreshed hotspot tier.
+- Inspect the remaining helper families inside
+  `src/codegen/lir/stmt_emitter_expr.cpp` first, because the refreshed hotspot
+  sweep now puts it back in the lead over both `stmt_emitter_call.cpp` and the
+  reduced `hir_templates.cpp`.
 - Keep `src/codegen/lir/stmt_emitter_call.cpp` as the immediate fallback if
-  `hir_templates.cpp` no longer exposes a cleaner seam than the remaining
-  builtin/call-lowering helpers.
+  `stmt_emitter_expr.cpp` no longer exposes a lower-risk seam than the
+  remaining call-lowering helpers.
 
 ## Blockers
 
@@ -525,3 +554,15 @@ Source Plan: plan.md
   `src/frontend/hir/hir_stmt.cpp` at 2.773s, and the reduced
   `src/frontend/hir/hir_expr.cpp` at 2.639s, so the next
   highest-value slice should move back to `hir_templates.cpp`.
+- The fifteenth extraction slice reduced `src/frontend/hir/hir_templates.cpp`
+  from 4.145s to 3.250s on the direct `HEAD^` versus working-tree compile
+  comparison, so this materialization/mangling split counts as another
+  measured hotspot reduction for that TU.
+- The latest full-suite rerun passes 3333/3333 tests, and the monotonic
+  regression guard remains green.
+- The refreshed post-fifteenth-slice hotspot order is now led by
+  `src/codegen/lir/stmt_emitter_expr.cpp` at 3.435s, followed by
+  `src/codegen/lir/stmt_emitter_call.cpp` at 3.106s and the reduced
+  `src/frontend/hir/hir_templates.cpp` at 2.953s, so the next
+  highest-value slice should shift back to LIR helper extraction before
+  returning to the remaining frontend seams.

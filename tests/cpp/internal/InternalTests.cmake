@@ -1443,6 +1443,15 @@ set_tests_properties(cpp_hir_template_struct_body_instantiation PROPERTIES
 )
 
 add_test(
+  NAME cpp_hir_template_struct_arg_materialization
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_struct_arg_materialization_hir.cpp"
+)
+set_tests_properties(cpp_hir_template_struct_arg_materialization PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "struct Holder_T_short_N_2 size=4 align=2.*field data: short\\[2\\] llvm_idx=0 offset=0 size=4 align=2.*struct Holder_T_int_N_4 size=16 align=4.*field data: int\\[4\\] llvm_idx=0 offset=0 size=16 align=4"
+)
+
+add_test(
   NAME cpp_hir_template_function_pack_signature_binding
   COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_function_pack_signature_hir.cpp"
 )
