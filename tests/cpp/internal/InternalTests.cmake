@@ -1560,6 +1560,15 @@ set_tests_properties(cpp_hir_template_value_arg_static_member_trait PROPERTIES
 )
 
 add_test(
+  NAME cpp_hir_template_global_specialization
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_global_specialization_hir.cpp"
+)
+set_tests_properties(cpp_hir_template_global_specialization PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "global ns::value_T_i: int.* = 4"
+)
+
+add_test(
   NAME cpp_hir_template_deferred_nttp_sizeof_pack_expr
   COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_deferred_nttp_sizeof_pack_expr_hir.cpp"
 )

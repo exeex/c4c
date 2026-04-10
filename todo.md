@@ -6,10 +6,10 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 5: preserve the latest `hir_stmt.cpp` control-flow extraction
-  measurements and validation state, then return to `hir_templates.cpp` for
-  the next measured helper split now that `hir_stmt.cpp` is no longer the
-  leading HIR hotspot in the direct comparison.
+- Step 5: preserve the latest `hir_templates.cpp` template-global extraction
+  measurements and validation state, then refresh the hotspot comparison
+  before choosing the next helper family split from the remaining
+  template-heavy lowering paths.
 
 ## Completed
 
@@ -315,15 +315,38 @@ Source Plan: plan.md
 - Measured the current `src/frontend/hir/hir_templates.cpp` optimized
   single-TU compile at 4.14s, which leaves it ahead of the newly reduced
   `src/frontend/hir/hir_stmt.cpp` in the direct comparison.
+- Added focused HIR coverage in
+  `tests/cpp/internal/hir_case/template_global_specialization_hir.cpp` and
+  wired the new `cpp_hir_template_global_specialization` test into
+  `tests/cpp/internal/InternalTests.cmake`.
+- Executed the twelfth Step 4 slice by moving the template-global helper
+  family (`collect_template_global_definitions`,
+  `find_template_global_primary`,
+  `find_template_global_specializations`, and
+  `ensure_template_global_instance`) out of
+  `src/frontend/hir/hir_templates.cpp` into the new
+  `src/frontend/hir/hir_templates_global.cpp`.
+- Rebuilt after the split and re-ran focused coverage:
+  `cpp_hir_template_global_specialization`,
+  `cpp_hir_template_value_arg_static_member_trait`,
+  `cpp_hir_template_inherited_member_typedef_trait`, and
+  `cpp_positive_sema_qualified_variable_template_compare_parse_cpp`.
+- Re-ran the full suite into `test_fail_after.log`; the regression guard passed
+  with 3325/3325 tests passing before and 3330/3330 after, with no new
+  failures.
+- Recorded the twelfth before/after extraction measurement: the direct
+  optimized compile of `src/frontend/hir/hir_templates.cpp` improved from
+  4.14s to 3.864s, and the new
+  `src/frontend/hir/hir_templates_global.cpp` compiled in 1.658s.
 
 ## Next Slice
 
-- Return to `src/frontend/hir/hir_templates.cpp` for the next measured helper
-  extraction, because the latest direct comparison now has it above
-  `src/frontend/hir/hir_stmt.cpp`.
-- Prefer another template helper family with a narrow HIR-focused validation
-  surface rather than continuing to fragment `hir_stmt.cpp` after the
-  control-flow split.
+- Refresh the optimized hotspot ranking after the template-global split and
+  confirm whether `src/frontend/hir/hir_templates.cpp` still leads the HIR
+  tier.
+- If it does, choose the next low-risk `hir_templates.cpp` helper family from
+  the remaining deduction/materialization paths with another narrow HIR-first
+  validation slice.
 
 ## Blockers
 
@@ -403,3 +426,9 @@ Source Plan: plan.md
 - The post-split direct comparison now has `src/frontend/hir/hir_templates.cpp`
   at 4.14s versus `src/frontend/hir/hir_stmt.cpp` at 3.57s, so the next
   highest-value slice should move back to `hir_templates.cpp`.
+- The twelfth extraction slice reduced `src/frontend/hir/hir_templates.cpp`
+  from 4.14s to 3.864s on the direct optimized compile command, so this
+  template-global split counts as another measured hotspot reduction for that
+  TU.
+- The latest full-suite rerun passes 3330/3330 tests, and the monotonic
+  regression guard remains green.

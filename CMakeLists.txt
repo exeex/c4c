@@ -60,6 +60,7 @@ set(FRONTEND_CXX_COMMON_SRCS
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_stmt_range_for.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_stmt_switch.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_templates.cpp"
+    "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_templates_global.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_templates_member_typedef.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_templates_struct_instantiation.cpp"
     "${PROJECT_SOURCE_DIR}/src/frontend/hir/hir_templates_type_resolution.cpp"
