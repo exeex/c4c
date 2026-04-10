@@ -9,14 +9,16 @@ Source Plan: plan.md
 - Step 3 continue expanding the translated x86 peephole subtree beyond the
   first live optimization round
 - immediate target:
-  validate the conservative translated `loop_trampoline.cpp` compile-in against
-  the full suite and record the next translated peephole candidate after the
-  new single-entry trampoline subset
+  decide whether the remaining translated trampoline coalescing work should
+  move into a shared operand/destination helper or stay local to
+  `loop_trampoline.cpp` for the next bounded slice
 
 ## Next Slice
 
-- validate whether the remaining translated trampoline logic needs extra shared
-  register-rewrite helpers before a wider coalescing slice can be enabled
+- evaluate whether the remaining translated trampoline cases beyond
+  register-register `movq` copies need a shared trimmed-destination helper in
+  `types.cpp` or can stay local until stack-load and `movslq` variants are
+  ready
 - keep `frame_compact.cpp` parked until dead-store and callee-save translated
   passes are live enough for frame shrinking to be meaningful
 - continue evaluating which remaining translated peephole units can be compiled
@@ -47,6 +49,11 @@ Source Plan: plan.md
   before it became reachable: `types.cpp` now classifies `cmp*` lines as
   `LineKind::Cmp`, which lets the pass fuse cmp/setcc/test/jcc sequences on the
   real x86 peephole path
+- the loop-trampoline coalescing slice exposed another operand-classification
+  seam: many comma-separated AT&T instructions still leave `LineInfo.dest_reg`
+  unset because the trailing operand is not trimmed before family lookup, so
+  the live trampoline pass currently uses a local trimmed-destination fallback
+  instead of broadening that shared parser mid-slice
 
 ## Recently Completed
 
@@ -85,5 +92,11 @@ Source Plan: plan.md
 - added a direct regression test that proves the live x86 peephole now
   rewrites a sole incoming branch away from a label-only trampoline block onto
   the real loop header while preserving the current emitted label syntax
+- widened the live translated loop-trampoline pass to coalesce a bounded
+  register-register `movq` trampoline copy back into the predecessor update
+  chain before redirecting the branch onto the real loop header
+- added a direct regression test that proves the live x86 peephole now rewrites
+  `movq %loop_reg, %tmp` / mutate `%tmp` / trampoline `movq %tmp, %loop_reg`
+  into a direct mutation of the loop-carried register
 - rebuilt and reran the full ctest suite with monotonic results:
   `181` failures before, `181` failures after, no newly failing tests
