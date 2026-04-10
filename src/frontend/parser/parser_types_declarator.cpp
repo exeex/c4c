@@ -607,16 +607,6 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
             }
             resolved = dep_name;
             if (!has_typedef_type(resolved) && !qn.qualifier_segments.empty()) {
-                auto resolve_struct_like = [&](TypeSpec ts) -> TypeSpec {
-                    ts = resolve_typedef_chain(ts, typedef_types_);
-                    if (ts.base == TB_TYPEDEF && ts.tag) {
-                        if (const TypeSpec* typedef_type =
-                                find_typedef_type(ts.tag)) {
-                            ts = *typedef_type;
-                        }
-                    }
-                    return ts;
-                };
                 auto follow_nested_owner =
                     [&](const std::vector<std::string>& owner_chain,
                         bool global_qualified) -> const Node* {
@@ -638,7 +628,7 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                         if (const TypeSpec* owner_typedef =
                                 find_typedef_type(owner_tag)) {
                             TypeSpec owner_ts =
-                                resolve_struct_like(*owner_typedef);
+                                resolve_struct_like_typedef_type(*owner_typedef);
                             if (owner_ts.tag && owner_ts.tag[0]) owner_tag = owner_ts.tag;
                         }
                         auto owner_it = struct_tag_def_map_.find(owner_tag);

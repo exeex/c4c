@@ -1387,6 +1387,15 @@ set_tests_properties(cpp_hir_template_member_owner_decl_and_cast PROPERTIES
 )
 
 add_test(
+  NAME cpp_hir_template_alias_member_owner
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_alias_member_owner_hir.cpp"
+)
+set_tests_properties(cpp_hir_template_alias_member_owner PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "fn project_i\\(value: int\\) -> \\?.*decl local: \\? = value#P0.*return local#L0"
+)
+
+add_test(
   NAME cpp_hir_template_member_owner_field_and_local
   COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/template_member_owner_field_and_local_hir.cpp"
 )

@@ -305,18 +305,27 @@ TypeSpec Parser::resolve_typedef_type_chain(TypeSpec ts) const {
     return resolve_typedef_chain(ts, symbol_tables_.typedef_types);
 }
 
+TypeSpec Parser::resolve_struct_like_typedef_type(TypeSpec ts) const {
+    ts = resolve_typedef_type_chain(ts);
+    if (ts.base == TB_TYPEDEF && ts.tag) {
+        if (const TypeSpec* typedef_type = find_typedef_type(ts.tag)) {
+            ts = *typedef_type;
+        }
+    }
+    return ts;
+}
+
 bool Parser::are_types_compatible(const TypeSpec& lhs,
                                   const TypeSpec& rhs) const {
     return types_compatible_p(lhs, rhs, symbol_tables_.typedef_types);
 }
 
 bool Parser::resolves_to_record_ctor_type(TypeSpec ts) const {
-    ts = resolve_typedef_chain(ts, symbol_tables_.typedef_types);
-    if (ts.base == TB_TYPEDEF && ts.tag) {
-        if (defined_struct_tags_.count(ts.tag) > 0 ||
-            template_struct_defs_.count(ts.tag) > 0) {
-            return true;
-        }
+    ts = resolve_struct_like_typedef_type(ts);
+    if (ts.base == TB_TYPEDEF && ts.tag &&
+        (defined_struct_tags_.count(ts.tag) > 0 ||
+         template_struct_defs_.count(ts.tag) > 0)) {
+        return true;
     }
     return ts.base == TB_STRUCT || ts.base == TB_UNION;
 }

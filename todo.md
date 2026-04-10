@@ -8,16 +8,16 @@ Source Plan: plan.md
 
 - Step 3: migrate the next narrow speculative/state-management call sites onto
   grouped parser symbol-table accessors instead of direct top-level member
-  storage assumptions, continuing into the next parser-local typedef/value
-  helper surface after the declaration parser cleanup
-- Current slice: continue past the template/type helper cleanup into the next
-  parser-local typedef chain/read surface, starting with the remaining direct
-  `resolve_typedef_chain(..., typedef_types_)` use in
-  `parser_types_declarator.cpp` and any nearby parser-local typedef reads that
-  still bypass the accessor layer
+  storage assumptions, continuing into the next parser-local typedef/template
+  helper surface after the dependent-typename owner cleanup
+- Current slice: continue from the declarator cleanup into template helper
+  wrappers, starting with `select_template_struct_pattern_for_args()` in
+  `parser_types_template.cpp` and any adjacent parser-local template selection
+  reads that still pass raw typedef-map storage through parser implementation
+  files
 - Iteration target: keep reducing parser call sites that still need raw
-  typedef-map parameters, without widening into namespace-state grouping or
-  backend work
+  typedef-map parameters, without widening into namespace-state grouping,
+  non-parser storage redesign, or backend work
 
 ## Completed Items
 
@@ -218,6 +218,26 @@ Source Plan: plan.md
   clean rebuild, full `ctest --test-dir build -j8 --output-on-failure`, and
   regression guard:
   3355/3355 tests passed, no new failures
+- Added parser-local struct-like typedef resolution in
+  `src/frontend/parser/parser.hpp` and `src/frontend/parser/parser_core.cpp`
+  so dependent-typename owner discovery can collapse typedef chains without
+  directly reaching into grouped typedef-map storage
+- Migrated the remaining direct
+  `resolve_typedef_chain(..., typedef_types_)` use in
+  `src/frontend/parser/parser_types_declarator.cpp` onto
+  `resolve_struct_like_typedef_type()` for qualified dependent member-typedef
+  owner resolution
+- Added HIR regression
+  `tests/cpp/internal/hir_case/template_alias_member_owner_hir.cpp` plus
+  `cpp_hir_template_alias_member_owner` in
+  `tests/cpp/internal/InternalTests.cmake` to cover alias-template owners used
+  in dependent `typename ...::value_type` spellings
+- Revalidated this slice with
+  `ctest --test-dir build -R 'cpp_hir_template_alias_member_owner|cpp_hir_template_member_owner_(chain|decl_and_cast|field_and_local|signature_local)|template_alias_qualified_typedef_resolution_parse|qualified_type_spelling_shared_parse' --output-on-failure`,
+  full `ctest --test-dir build -j8 --output-on-failure`, and regression
+  guard:
+  3358/3358 tests passed, no new failures; previously failing
+  `cpp_hir_template_visible_typedef_deferred_nttp` now passes
 - Added parser-owned template helper wrappers in
   `src/frontend/parser/parser.hpp` and `src/frontend/parser/parser_core.cpp`
   for typedef compatibility checks and template specialization-pattern
