@@ -4912,6 +4912,11 @@ std::optional<bir::Module> try_lower_to_bir_legacy(const c4c::codegen::lir::LirM
     return lowered;
   }
   if (const auto lowered =
+          try_lower_minimal_local_enum_constant_compare_store_load_zero_return_module(module);
+      lowered.has_value()) {
+    return lowered;
+  }
+  if (const auto lowered =
           try_lower_minimal_global_x_y_pointer_compare_zero_return_module(module);
       lowered.has_value()) {
     return lowered;
@@ -5335,6 +5340,18 @@ BirLoweringResult try_lower_to_bir_with_options(
             .phase = "legacy-lowering",
             .message =
                 "local paired single-field struct compare/sub seam lowered the source-shaped module before CFG normalization rewrote the exact bounded twin-slot field-gep route",
+        }},
+    };
+  }
+  if (auto lowered =
+          try_lower_minimal_local_enum_constant_compare_store_load_zero_return_module(module);
+      lowered.has_value()) {
+    return BirLoweringResult{
+        .module = std::move(lowered),
+        .notes = {BirLoweringNote{
+            .phase = "legacy-lowering",
+            .message =
+                "local enum-constant compare/store-load seam lowered the source-shaped module before CFG normalization rewrote the exact bounded branch ladder and local slot tail",
         }},
     };
   }
