@@ -310,7 +310,7 @@ inline std::string encode_pending_type_ref(const TypeSpec& ts) {
   out += "|origin=";
   out += ts.tpl_struct_origin ? ts.tpl_struct_origin : "";
   out += "|args=";
-  out += ts.tpl_struct_arg_refs ? ts.tpl_struct_arg_refs : "";
+  out += encode_template_arg_debug_list(ts);
   out += "|member=";
   out += ts.deferred_member_type_name ? ts.deferred_member_type_name : "";
   return out;

@@ -15,6 +15,7 @@
 #include <cctype>
 #include <cstddef>
 #include <cstring>
+#include <string>
 
 #include "../builtin.hpp"
 
@@ -78,6 +79,11 @@ enum TypeBase {
     TB_AUTO,               // C++ auto type deduction placeholder
 };
 
+enum class TemplateArgKind : uint8_t {
+    Type = 0,
+    Value = 1,
+};
+
 struct TypeSpec {
     TypeBase base;
     TypeBase enum_underlying_base; // fixed underlying base for TB_ENUM, or TB_VOID when unknown/default
@@ -110,7 +116,11 @@ struct TypeSpec {
     // depends on unresolved template type params (e.g., Pair<T> inside a
     // template function body).  The HIR resolves it during instantiation.
     const char* tpl_struct_origin;     // original template struct name (e.g., "Pair")
-    const char* tpl_struct_arg_refs;   // comma-sep arg refs in param order (e.g., "T" or "T,4")
+    TemplateArgKind* tpl_struct_arg_kinds; // parallel template arg kinds
+    TypeSpec* tpl_struct_arg_types;        // parallel type args when kind=Type
+    long long* tpl_struct_arg_values;      // parallel NTTP values when kind=Value
+    const char** tpl_struct_arg_debug_texts; // optional debug spellings per arg
+    int n_tpl_struct_args;                 // number of carried template args
     const char* deferred_member_type_name; // pending `StructLike::type`-style member typedef
 };
 
@@ -443,9 +453,82 @@ inline bool text_mentions_template_param(const Node* node, const char* text) {
     return false;
 }
 
+inline bool typespec_mentions_template_param(const TypeSpec& ts, const Node* node);
+
+inline bool template_arg_list_mentions_template_param(const TypeSpec& ts,
+                                                      const Node* node) {
+    if (!node || ts.n_tpl_struct_args <= 0) return false;
+    for (int i = 0; i < ts.n_tpl_struct_args; ++i) {
+        if (ts.tpl_struct_arg_kinds &&
+            ts.tpl_struct_arg_kinds[i] == TemplateArgKind::Type) {
+            if (ts.tpl_struct_arg_types &&
+                typespec_mentions_template_param(ts.tpl_struct_arg_types[i], node)) {
+                return true;
+            }
+        }
+        if (ts.tpl_struct_arg_debug_texts &&
+            text_mentions_template_param(node, ts.tpl_struct_arg_debug_texts[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+inline std::string encode_template_arg_debug_ref(const TypeSpec& ts) {
+    std::string out;
+    out += "base=" + std::to_string(static_cast<int>(ts.base));
+    out += ",tag=";
+    out += ts.tag ? ts.tag : "";
+    out += ",ptr=" + std::to_string(ts.ptr_level);
+    out += ",arr=" + std::to_string(ts.array_rank);
+    return out;
+}
+
+inline std::string encode_template_arg_debug_list(const TypeSpec& ts) {
+    std::string out;
+    for (int i = 0; i < ts.n_tpl_struct_args; ++i) {
+        if (i > 0) out += ",";
+        if (ts.tpl_struct_arg_debug_texts && ts.tpl_struct_arg_debug_texts[i] &&
+            ts.tpl_struct_arg_debug_texts[i][0]) {
+            out += ts.tpl_struct_arg_debug_texts[i];
+            continue;
+        }
+        if (ts.tpl_struct_arg_kinds &&
+            ts.tpl_struct_arg_kinds[i] == TemplateArgKind::Value) {
+            out += std::to_string(
+                ts.tpl_struct_arg_values ? ts.tpl_struct_arg_values[i] : 0);
+            continue;
+        }
+        if (ts.tpl_struct_arg_types) {
+            out += "{";
+            out += encode_template_arg_debug_ref(ts.tpl_struct_arg_types[i]);
+            out += "}";
+        } else {
+            out += "?";
+        }
+    }
+    return out;
+}
+
+inline std::string template_arg_debug_text_at(const TypeSpec& ts, int index) {
+    if (index < 0 || index >= ts.n_tpl_struct_args) return {};
+    if (ts.tpl_struct_arg_debug_texts && ts.tpl_struct_arg_debug_texts[index] &&
+        ts.tpl_struct_arg_debug_texts[index][0]) {
+        return ts.tpl_struct_arg_debug_texts[index];
+    }
+    if (ts.tpl_struct_arg_kinds &&
+        ts.tpl_struct_arg_kinds[index] == TemplateArgKind::Value) {
+        return std::to_string(
+            ts.tpl_struct_arg_values ? ts.tpl_struct_arg_values[index] : 0);
+    }
+    if (ts.tpl_struct_arg_types) return encode_template_arg_debug_ref(
+        ts.tpl_struct_arg_types[index]);
+    return {};
+}
+
 inline bool typespec_mentions_template_param(const TypeSpec& ts, const Node* node) {
     return node_has_template_param_name(node, ts.tag) ||
-           text_mentions_template_param(node, ts.tpl_struct_arg_refs) ||
+           template_arg_list_mentions_template_param(ts, node) ||
            text_mentions_template_param(node, ts.deferred_member_type_name);
 }
 

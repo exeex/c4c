@@ -584,7 +584,7 @@ std::string canonical_template_struct_type_key(const TypeSpec& ts) {
             if (ts.tpl_struct_origin && ts.tpl_struct_origin[0]) {
                 out += std::string("pending.") + ts.tpl_struct_origin;
                 out += "<";
-                out += ts.tpl_struct_arg_refs ? ts.tpl_struct_arg_refs : "";
+                out += encode_template_arg_debug_list(ts);
                 out += ">";
             } else {
                 out += ts.tag ? std::string("typedef.") + ts.tag : "typedef.?";
@@ -594,7 +594,7 @@ std::string canonical_template_struct_type_key(const TypeSpec& ts) {
             if (ts.tpl_struct_origin && ts.tpl_struct_origin[0]) {
                 out += std::string("pending.") + ts.tpl_struct_origin;
                 out += "<";
-                out += ts.tpl_struct_arg_refs ? ts.tpl_struct_arg_refs : "";
+                out += encode_template_arg_debug_list(ts);
                 out += ">";
             } else {
                 out += "unknown";

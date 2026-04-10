@@ -96,6 +96,36 @@ bool matches_trait_family(const std::string& name, const char* suffix) {
          name.compare(name.size() - std::strlen(suffix) - 2, 2, "::") == 0;
 }
 
+std::vector<std::string> collect_template_arg_debug_refs(const TypeSpec& ts) {
+  std::vector<std::string> refs;
+  refs.reserve(ts.n_tpl_struct_args);
+  for (int i = 0; i < ts.n_tpl_struct_args; ++i) {
+    refs.push_back(template_arg_debug_text_at(ts, i));
+  }
+  return refs;
+}
+
+void assign_template_arg_debug_refs(TypeSpec* ts,
+                                    const std::vector<std::string>& refs) {
+  if (!ts) return;
+  ts->tpl_struct_arg_kinds = nullptr;
+  ts->tpl_struct_arg_types = nullptr;
+  ts->tpl_struct_arg_values = nullptr;
+  ts->tpl_struct_arg_debug_texts = nullptr;
+  ts->n_tpl_struct_args = 0;
+  if (refs.empty()) return;
+
+  ts->tpl_struct_arg_kinds = new TemplateArgKind[refs.size()];
+  ts->tpl_struct_arg_types = new TypeSpec[refs.size()]();
+  ts->tpl_struct_arg_values = new long long[refs.size()]();
+  ts->tpl_struct_arg_debug_texts = new const char*[refs.size()];
+  ts->n_tpl_struct_args = static_cast<int>(refs.size());
+  for (size_t i = 0; i < refs.size(); ++i) {
+    ts->tpl_struct_arg_kinds[i] = TemplateArgKind::Type;
+    ts->tpl_struct_arg_debug_texts[i] = ::strdup(refs[i].c_str());
+  }
+}
+
 }  // namespace
 
 std::string encode_template_type_arg_ref_hir(const TypeSpec& ts) {
@@ -103,7 +133,7 @@ std::string encode_template_type_arg_ref_hir(const TypeSpec& ts) {
     std::string ref = "@";
     ref += ts.tpl_struct_origin;
     ref += ":";
-    ref += ts.tpl_struct_arg_refs ? ts.tpl_struct_arg_refs : "";
+    ref += encode_template_arg_debug_list(ts);
     if (ts.deferred_member_type_name && ts.deferred_member_type_name[0]) {
       ref += "$";
       ref += ts.deferred_member_type_name;
@@ -1592,7 +1622,8 @@ ResolvedTemplateArgs Lowerer::materialize_template_args(
       nested_ts.array_size = -1;
       nested_ts.inner_rank = -1;
       nested_ts.tpl_struct_origin = ::strdup(inner_origin.c_str());
-      nested_ts.tpl_struct_arg_refs = ::strdup(inner_args.c_str());
+      assign_template_arg_debug_refs(
+          &nested_ts, split_deferred_template_arg_refs(inner_args));
       if (member_sep != std::string::npos && member_sep + 1 < ref.size()) {
         nested_ts.deferred_member_type_name =
             ::strdup(ref.substr(member_sep + 1).c_str());
@@ -2611,10 +2642,7 @@ bool Lowerer::resolve_struct_member_typedef_type(const std::string& tag,
       }
     }
     if (ts.tpl_struct_origin) {
-      std::vector<std::string> refs;
-      if (ts.tpl_struct_arg_refs) {
-        refs = split_deferred_template_arg_refs(ts.tpl_struct_arg_refs);
-      }
+      std::vector<std::string> refs = collect_template_arg_debug_refs(ts);
       std::string updated_refs;
       for (size_t i = 0; i < refs.size(); ++i) {
         std::string part = refs[i];
@@ -2671,7 +2699,10 @@ bool Lowerer::resolve_struct_member_typedef_type(const std::string& tag,
         if (i) updated_refs += ",";
         updated_refs += part;
       }
-      if (!updated_refs.empty()) ts.tpl_struct_arg_refs = ::strdup(updated_refs.c_str());
+      if (!updated_refs.empty()) {
+        assign_template_arg_debug_refs(
+            &ts, split_deferred_template_arg_refs(updated_refs));
+      }
       seed_and_resolve_pending_template_type_if_needed(
           ts, type_bindings, nttp_bindings, nullptr,
           PendingTemplateTypeKind::MemberTypedef,
@@ -2840,9 +2871,7 @@ bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
     if (!primary_tpl) return false;
 
     std::vector<std::string> arg_refs;
-    if (ts->tpl_struct_arg_refs) {
-      arg_refs = split_deferred_template_arg_refs(ts->tpl_struct_arg_refs);
-    }
+    arg_refs = collect_template_arg_debug_refs(*ts);
     TypeBindings empty_tb;
     NttpBindings empty_nb;
     ResolvedTemplateArgs resolved =
@@ -2928,9 +2957,7 @@ void Lowerer::realize_template_struct(
   if (primary_tpl->name) ts.tpl_struct_origin = primary_tpl->name;
 
   std::vector<std::string> arg_refs;
-  if (ts.tpl_struct_arg_refs) {
-    arg_refs = split_deferred_template_arg_refs(ts.tpl_struct_arg_refs);
-  }
+  arg_refs = collect_template_arg_debug_refs(ts);
 
   ResolvedTemplateArgs resolved =
       materialize_template_args(primary_tpl, arg_refs, tpl_bindings, nttp_bindings);
@@ -2971,7 +2998,11 @@ void Lowerer::realize_template_struct(
   }
   if (!ts.deferred_member_type_name) {
     ts.tpl_struct_origin = nullptr;
-    ts.tpl_struct_arg_refs = nullptr;
+    ts.tpl_struct_arg_kinds = nullptr;
+    ts.tpl_struct_arg_types = nullptr;
+    ts.tpl_struct_arg_values = nullptr;
+    ts.tpl_struct_arg_debug_texts = nullptr;
+    ts.n_tpl_struct_args = 0;
   }
 }
 

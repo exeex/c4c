@@ -1230,8 +1230,23 @@ Node* Parser::parse_top_level() {
                             alias_ts.base = TB_STRUCT;
                             alias_ts.tag = arena_.strdup(owner_name.c_str());
                             alias_ts.tpl_struct_origin = alias_ts.tag;
-                            alias_ts.tpl_struct_arg_refs =
-                                arena_.strdup(owner_arg_refs.c_str());
+                            if (!owner_arg_refs.empty()) {
+                                alias_ts.n_tpl_struct_args = 1;
+                                alias_ts.tpl_struct_arg_kinds =
+                                    arena_.alloc_array<TemplateArgKind>(1);
+                                alias_ts.tpl_struct_arg_types =
+                                    arena_.alloc_array<TypeSpec>(1);
+                                alias_ts.tpl_struct_arg_values =
+                                    arena_.alloc_array<long long>(1);
+                                alias_ts.tpl_struct_arg_debug_texts =
+                                    arena_.alloc_array<const char*>(1);
+                                alias_ts.tpl_struct_arg_kinds[0] =
+                                    TemplateArgKind::Type;
+                                alias_ts.tpl_struct_arg_types[0] = {};
+                                alias_ts.tpl_struct_arg_values[0] = 0;
+                                alias_ts.tpl_struct_arg_debug_texts[0] =
+                                    arena_.strdup(owner_arg_refs.c_str());
+                            }
                             alias_ts.deferred_member_type_name =
                                 arena_.strdup(member_name.c_str());
                         }

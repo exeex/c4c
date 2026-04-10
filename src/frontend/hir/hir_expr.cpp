@@ -1442,12 +1442,18 @@ ExprId Lowerer::lower_expr(FunctionCtx* ctx, const Node* n) {
               arg_refs += encode_template_type_arg_ref_hir(arg_ts);
             }
           }
-          TypeSpec tmp_ts{};
-          tmp_ts.base = TB_STRUCT;
-          tmp_ts.array_size = -1;
-          tmp_ts.inner_rank = -1;
-          tmp_ts.tpl_struct_origin = n->name;
-          tmp_ts.tpl_struct_arg_refs = ::strdup(arg_refs.c_str());
+	          TypeSpec tmp_ts{};
+	          tmp_ts.base = TB_STRUCT;
+	          tmp_ts.array_size = -1;
+	          tmp_ts.inner_rank = -1;
+	          tmp_ts.tpl_struct_origin = n->name;
+	          tmp_ts.tpl_struct_arg_kinds = new TemplateArgKind[1];
+	          tmp_ts.tpl_struct_arg_types = new TypeSpec[1]();
+	          tmp_ts.tpl_struct_arg_values = new long long[1]();
+	          tmp_ts.tpl_struct_arg_debug_texts = new const char*[1];
+	          tmp_ts.tpl_struct_arg_kinds[0] = TemplateArgKind::Type;
+	          tmp_ts.tpl_struct_arg_debug_texts[0] = ::strdup(arg_refs.c_str());
+	          tmp_ts.n_tpl_struct_args = 1;
           const Node* primary_tpl = find_template_struct_primary(n->name);
           TypeBindings tpl_empty;
           NttpBindings nttp_empty;
@@ -1508,12 +1514,18 @@ ExprId Lowerer::lower_expr(FunctionCtx* ctx, const Node* n) {
                 arg_refs += encode_template_type_arg_ref_hir(arg_ts);
               }
             }
-            TypeSpec pending_ts{};
-            pending_ts.base = TB_STRUCT;
-            pending_ts.array_size = -1;
-            pending_ts.inner_rank = -1;
-            pending_ts.tpl_struct_origin = ::strdup(struct_tag.c_str());
-            pending_ts.tpl_struct_arg_refs = ::strdup(arg_refs.c_str());
+	            TypeSpec pending_ts{};
+	            pending_ts.base = TB_STRUCT;
+	            pending_ts.array_size = -1;
+	            pending_ts.inner_rank = -1;
+	            pending_ts.tpl_struct_origin = ::strdup(struct_tag.c_str());
+	            pending_ts.tpl_struct_arg_kinds = new TemplateArgKind[1];
+	            pending_ts.tpl_struct_arg_types = new TypeSpec[1]();
+	            pending_ts.tpl_struct_arg_values = new long long[1]();
+	            pending_ts.tpl_struct_arg_debug_texts = new const char*[1];
+	            pending_ts.tpl_struct_arg_kinds[0] = TemplateArgKind::Type;
+	            pending_ts.tpl_struct_arg_debug_texts[0] = ::strdup(arg_refs.c_str());
+	            pending_ts.n_tpl_struct_args = 1;
             const Node* primary_tpl = find_template_struct_primary(struct_tag);
             TypeBindings tpl_empty;
             NttpBindings nttp_empty;
