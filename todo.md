@@ -7,21 +7,22 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 5 focused validation capture and next-slice selection after the bounded
-  shared-BIR `00039.c` void-pointer alias seam landed
+  shared-BIR `00041.c` prime-counter seam landed
 - current exact slice:
   preserve the focused x86 validation state after the bounded shared-BIR
-  `00039.c` recovery; keep the handoff narrowed to the next earliest
-  source-backed x86 case instead of widening this pointer-alias lane ad hoc
+  `00041.c` recovery; keep the handoff narrowed to the next earliest
+  source-backed x86 case instead of widening this nested-loop lane ad hoc
 
 ## Next Slice
 
-- after `00039.c`, move next to the neighboring
-  `c_testsuite_x86_backend_src_00040_c` source-backed x86 case without
-  widening this pointer-alias seam ad hoc
-- if `00040.c` stays a bounded shared-BIR seam, keep it isolated to that next
-  earliest source-backed route instead of broadening this lane
+- keep the broader `00040.c` multi-function/global-pointer recursion route
+  parked in
+  `ideas/open/48_shared_bir_family_b_recursive_global_pointer_routes_after_x86_00040.md`
+  instead of widening idea 44 ad hoc
+- move next to the neighboring `c_testsuite_x86_backend_src_00042_c`
+  source-backed x86 case without broadening the `00041.c` nested-loop seam
 - if the refreshed broad-suite guard is still red after the unary-not /
-  unary-minus, early source-backed recoveries, and the bounded `00039.c` fix,
+  unary-minus, early source-backed recoveries, and the bounded `00041.c` fix,
   keep treating the stale
   baseline as a parked comparison and classify the next highest-value remaining
   x86-native source-backed seam from the updated after-log instead of widening
@@ -34,6 +35,50 @@ Source Plan: plan.md
 
 ## Recently Completed
 
+- inspected the next-earliest red `00040.c` route and confirmed it is not
+  another bounded single-function seam: `--dump-hir-summary` reports
+  `functions=113 globals=2 blocks=29`, `--codegen llvm` shows globals `@N` and
+  `@t`, declared `calloc`, helper `chk`, and recursive `go`, and the case still
+  fails at the unsupported x86 direct-LIR boundary; recorded that separate
+  Family B ownership lane in
+  `ideas/open/48_shared_bir_family_b_recursive_global_pointer_routes_after_x86_00040.md`
+  instead of widening idea 44
+- recovered the bounded shared-BIR `00041.c` seam by teaching
+  `src/backend/lowering/lir_to_bir.cpp` to recognize the exact source-backed
+  prime-counter nested-loop route (`c = 0`, `n = 2`, inner `t*t <= n`,
+  `n % t == 0` clears `p`, `if (p) c++`, final `c != 669`, `ret 0`) and
+  collapse `main` to the shared constant `0` return instead of stopping at the
+  unsupported x86 direct-LIR boundary
+- covered that seam with focused shared-lowering and x86 pipeline regressions
+  in `tests/backend/backend_bir_lowering_tests.cpp` and
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp`, plus a source-backed
+  backend route regression in `tests/c/internal/InternalTests.cmake`
+  (`backend_codegen_route_x86_64_c_testsuite_00041_prime_counter_retries_after_direct_bir_rejection`)
+  so the real `00041.c` path stays pinned on native x86 asm with the folded
+  zero return instead of falling back to LLVM text or the unsupported
+  direct-LIR error
+- verified the bounded `00041.c` seam end-to-end with
+  `./build/backend_bir_tests test_bir_lowering_accepts_prime_counter_zero_return_lir_module test_backend_bir_pipeline_drives_x86_lir_prime_counter_zero_return_through_bir_end_to_end`,
+  `./build/c4cll --codegen asm tests/c/external/c-testsuite/src/00041.c`,
+  `ctest --test-dir build --output-on-failure -R '^(backend_codegen_route_x86_64_c_testsuite_00041_prime_counter_retries_after_direct_bir_rejection|c_testsuite_x86_backend_src_00041_c)$'`,
+  and the neighboring cluster
+  `ctest --test-dir build --output-on-failure -R '^(backend_codegen_route_x86_64_c_testsuite_00039_void_pointer_alias_compare_retries_after_direct_bir_rejection|backend_codegen_route_x86_64_c_testsuite_00041_prime_counter_retries_after_direct_bir_rejection|c_testsuite_x86_backend_src_00039_c|c_testsuite_x86_backend_src_00041_c)$'`
+  which now pass for the owned seam pair
+- refreshed `test_fail_after.log` with
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log` and
+  re-ran the monotonic guard through the `c4c-regression-guard` skill:
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  which still fails against the stale broad-suite baseline
+  (`2670/179/2849` before vs `2673/208/2881` after); the refreshed after-state
+  still regresses broadly because parked riscv64 select-route, backend runtime,
+  toolchain-diagnostic, and wider x86 buckets remain red outside this bounded
+  change, but the owned x86 source-backed cluster through `00041.c` now passes,
+  the new route test raises total tests from `2880` to `2881`, and the current
+  after-state still improves versus the prior recorded `2671/209/2880`
+  snapshot by `+2` passes and `-1` failure
+- classified the next bounded seam from the refreshed targeted state:
+  `c_testsuite_x86_backend_src_00042_c` is now the next red source-backed x86
+  case, with `c_testsuite_x86_backend_src_00043_c` as the following neighbor
 - recovered the bounded shared-BIR `00039.c` seam by teaching
   `src/backend/lowering/lir_to_bir/memory.cpp` to recognize the exact
   source-backed local `void*` alias-to-`int*` load-and-compare route

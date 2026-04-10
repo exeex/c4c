@@ -282,6 +282,144 @@ c4c::codegen::lir::LirModule make_double_countdown_guarded_zero_return_module() 
   return module;
 }
 
+c4c::codegen::lir::LirModule make_prime_counter_zero_return_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.type_decls.push_back("%struct.__va_list_tag_ = type { i32, i32, ptr, ptr }");
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.n", "i32", "", 4});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.t", "i32", "", 4});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.c", "i32", "", 4});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.p", "i32", "", 4});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{"i32", "0", "%lv.c"});
+  entry.insts.push_back(LirStoreOp{"i32", "2", "%lv.n"});
+  entry.terminator = LirBr{"block_1"};
+
+  LirBlock block_1;
+  block_1.id = LirBlockId{1};
+  block_1.label = "block_1";
+  block_1.insts.push_back(LirLoadOp{"%t0", "i32", "%lv.n"});
+  block_1.insts.push_back(LirCmpOp{"%t1", false, "slt", "i32", "%t0", "5000"});
+  block_1.insts.push_back(LirCastOp{"%t2", LirCastKind::ZExt, "i1", "%t1", "i32"});
+  block_1.insts.push_back(LirCmpOp{"%t3", false, "ne", "i32", "%t2", "0"});
+  block_1.terminator = LirCondBr{"%t3", "block_2", "block_3"};
+
+  LirBlock block_2;
+  block_2.id = LirBlockId{2};
+  block_2.label = "block_2";
+  block_2.insts.push_back(LirStoreOp{"i32", "2", "%lv.t"});
+  block_2.insts.push_back(LirStoreOp{"i32", "1", "%lv.p"});
+  block_2.terminator = LirBr{"block_4"};
+
+  LirBlock block_3;
+  block_3.id = LirBlockId{3};
+  block_3.label = "block_3";
+  block_3.insts.push_back(LirLoadOp{"%t4", "i32", "%lv.c"});
+  block_3.insts.push_back(LirCmpOp{"%t5", false, "ne", "i32", "%t4", "669"});
+  block_3.insts.push_back(LirCastOp{"%t6", LirCastKind::ZExt, "i1", "%t5", "i32"});
+  block_3.insts.push_back(LirCmpOp{"%t7", false, "ne", "i32", "%t6", "0"});
+  block_3.terminator = LirCondBr{"%t7", "block_11", "block_12"};
+
+  LirBlock block_4;
+  block_4.id = LirBlockId{4};
+  block_4.label = "block_4";
+  block_4.insts.push_back(LirLoadOp{"%t8", "i32", "%lv.t"});
+  block_4.insts.push_back(LirLoadOp{"%t9", "i32", "%lv.t"});
+  block_4.insts.push_back(LirBinOp{"%t10", "mul", "i32", "%t8", "%t9"});
+  block_4.insts.push_back(LirLoadOp{"%t11", "i32", "%lv.n"});
+  block_4.insts.push_back(LirCmpOp{"%t12", false, "sle", "i32", "%t10", "%t11"});
+  block_4.insts.push_back(LirCastOp{"%t13", LirCastKind::ZExt, "i1", "%t12", "i32"});
+  block_4.insts.push_back(LirCmpOp{"%t14", false, "ne", "i32", "%t13", "0"});
+  block_4.terminator = LirCondBr{"%t14", "block_5", "block_6"};
+
+  LirBlock block_5;
+  block_5.id = LirBlockId{5};
+  block_5.label = "block_5";
+  block_5.insts.push_back(LirLoadOp{"%t15", "i32", "%lv.n"});
+  block_5.insts.push_back(LirLoadOp{"%t16", "i32", "%lv.t"});
+  block_5.insts.push_back(LirBinOp{"%t17", "srem", "i32", "%t15", "%t16"});
+  block_5.insts.push_back(LirCmpOp{"%t18", false, "eq", "i32", "%t17", "0"});
+  block_5.insts.push_back(LirCastOp{"%t19", LirCastKind::ZExt, "i1", "%t18", "i32"});
+  block_5.insts.push_back(LirCmpOp{"%t20", false, "ne", "i32", "%t19", "0"});
+  block_5.terminator = LirCondBr{"%t20", "block_7", "block_8"};
+
+  LirBlock block_6;
+  block_6.id = LirBlockId{6};
+  block_6.label = "block_6";
+  block_6.insts.push_back(LirLoadOp{"%t21", "i32", "%lv.n"});
+  block_6.insts.push_back(LirBinOp{"%t22", "add", "i32", "%t21", "1"});
+  block_6.insts.push_back(LirStoreOp{"i32", "%t22", "%lv.n"});
+  block_6.insts.push_back(LirLoadOp{"%t23", "i32", "%lv.p"});
+  block_6.insts.push_back(LirCmpOp{"%t24", false, "ne", "i32", "%t23", "0"});
+  block_6.terminator = LirCondBr{"%t24", "block_9", "block_10"};
+
+  LirBlock block_7;
+  block_7.id = LirBlockId{7};
+  block_7.label = "block_7";
+  block_7.insts.push_back(LirStoreOp{"i32", "0", "%lv.p"});
+  block_7.terminator = LirBr{"block_8"};
+
+  LirBlock block_8;
+  block_8.id = LirBlockId{8};
+  block_8.label = "block_8";
+  block_8.insts.push_back(LirLoadOp{"%t25", "i32", "%lv.t"});
+  block_8.insts.push_back(LirBinOp{"%t26", "add", "i32", "%t25", "1"});
+  block_8.insts.push_back(LirStoreOp{"i32", "%t26", "%lv.t"});
+  block_8.terminator = LirBr{"block_4"};
+
+  LirBlock block_9;
+  block_9.id = LirBlockId{9};
+  block_9.label = "block_9";
+  block_9.insts.push_back(LirLoadOp{"%t27", "i32", "%lv.c"});
+  block_9.insts.push_back(LirBinOp{"%t28", "add", "i32", "%t27", "1"});
+  block_9.insts.push_back(LirStoreOp{"i32", "%t28", "%lv.c"});
+  block_9.terminator = LirBr{"block_10"};
+
+  LirBlock block_10;
+  block_10.id = LirBlockId{10};
+  block_10.label = "block_10";
+  block_10.terminator = LirBr{"block_1"};
+
+  LirBlock block_11;
+  block_11.id = LirBlockId{11};
+  block_11.label = "block_11";
+  block_11.terminator = LirRet{std::string("1"), "i32"};
+
+  LirBlock block_12;
+  block_12.id = LirBlockId{12};
+  block_12.label = "block_12";
+  block_12.terminator = LirRet{std::string("0"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(block_1));
+  function.blocks.push_back(std::move(block_2));
+  function.blocks.push_back(std::move(block_3));
+  function.blocks.push_back(std::move(block_4));
+  function.blocks.push_back(std::move(block_5));
+  function.blocks.push_back(std::move(block_6));
+  function.blocks.push_back(std::move(block_7));
+  function.blocks.push_back(std::move(block_8));
+  function.blocks.push_back(std::move(block_9));
+  function.blocks.push_back(std::move(block_10));
+  function.blocks.push_back(std::move(block_11));
+  function.blocks.push_back(std::move(block_12));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_lir_minimal_global_char_pointer_diff_module() {
   using namespace c4c::codegen::lir;
 
@@ -5431,6 +5569,37 @@ void test_backend_bir_pipeline_drives_x86_lir_loop_break_ladder_zero_return_thro
                       "x86 LIR loop-break ladder input should stay on native asm emission instead of falling back to LLVM text");
 }
 
+void test_backend_bir_pipeline_drives_x86_lir_prime_counter_zero_return_through_bir_end_to_end() {
+  const auto lowered_bir = c4c::backend::try_lower_to_bir(make_prime_counter_zero_return_module());
+  expect_true(lowered_bir.has_value(),
+              "x86 LIR prime-counter nested-loop input should now lower into the bounded shared constant-return shape");
+  if (!lowered_bir.has_value()) {
+    return;
+  }
+  expect_true(lowered_bir->functions.size() == 1 &&
+                  lowered_bir->functions.front().blocks.size() == 1 &&
+                  lowered_bir->functions.front().blocks.front().label == "entry" &&
+                  lowered_bir->functions.front().blocks.front().insts.empty() &&
+                  lowered_bir->functions.front().blocks.front().terminator.kind ==
+                      c4c::backend::bir::TerminatorKind::Return,
+              "x86 LIR prime-counter nested-loop lowering should collapse the bounded `00041.c` source slice to one constant-return block");
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_prime_counter_zero_return_module()},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl main",
+                  "x86 LIR prime-counter nested-loop input should still reach native asm emission after routing through the shared BIR path");
+  expect_contains(rendered, "mov eax, 0",
+                  "x86 LIR prime-counter nested-loop input should preserve the folded zero return after bounded shared lowering");
+  expect_not_contains(rendered, "idiv",
+                      "x86 LIR prime-counter nested-loop input should no longer carry the signed remainder loop after shared lowering");
+  expect_not_contains(rendered, "cmp eax, 669",
+                      "x86 LIR prime-counter nested-loop input should no longer carry the terminal prime-count compare after shared lowering");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR prime-counter nested-loop input should stay on native asm emission instead of falling back to LLVM text");
+}
+
 void test_backend_bir_pipeline_drives_x86_lir_minimal_dual_identity_direct_call_sub_through_bir_end_to_end() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_lir_minimal_dual_identity_direct_call_sub_module()},
@@ -6892,6 +7061,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_countdown_do_while_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_double_countdown_guarded_zero_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_loop_break_ladder_zero_return_through_bir_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_prime_counter_zero_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_dual_identity_direct_call_sub_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_call_crossing_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_conditional_return_through_bir_end_to_end);
