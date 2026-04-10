@@ -75,14 +75,6 @@ struct MinimalConstantBranchReturnSlice {
   std::int64_t returned_imm = 0;
 };
 
-struct MinimalRepeatedPrintfLocalI32CallsBirSlice {
-  std::string function_name;
-  std::string first_pool_name;
-  std::string first_raw_bytes;
-  std::string second_pool_name;
-  std::string second_raw_bytes;
-};
-
 std::optional<std::int64_t> parse_i64(std::string_view text) {
   std::int64_t value = 0;
   const char* begin = text.data();
@@ -1058,119 +1050,6 @@ std::string emit_global_symbol_prelude(std::string_view target_triple,
   return out.str();
 }
 
-std::optional<MinimalRepeatedPrintfLocalI32CallsBirSlice>
-parse_minimal_repeated_printf_local_i32_calls_bir_slice(
-    const c4c::backend::bir::Module& module) {
-  using namespace c4c::backend::bir;
-
-  if (module.globals.size() != 0 || module.string_constants.size() != 2 ||
-      module.functions.size() != 2) {
-    return std::nullopt;
-  }
-
-  const auto& printf_decl = module.functions.front();
-  const auto& main = module.functions.back();
-  if (!printf_decl.is_declaration || printf_decl.name != "printf" ||
-      !printf_decl.is_variadic || printf_decl.return_type != TypeKind::I32 ||
-      printf_decl.params.size() != 1 || printf_decl.params.front().type != TypeKind::Ptr ||
-      main.is_declaration || main.name != "main" || main.return_type != TypeKind::I32 ||
-      !main.params.empty() || !main.local_slots.empty() || main.blocks.size() != 1) {
-    return std::nullopt;
-  }
-
-  const auto& first_string = module.string_constants[0];
-  const auto& second_string = module.string_constants[1];
-  if (first_string.name.empty() || second_string.name.empty()) {
-    return std::nullopt;
-  }
-
-  const auto& entry = main.blocks.front();
-  const auto* first_call =
-      entry.insts.size() == 3 ? std::get_if<CallInst>(&entry.insts[0]) : nullptr;
-  const auto* second_call =
-      entry.insts.size() == 3 ? std::get_if<CallInst>(&entry.insts[1]) : nullptr;
-  const auto* third_call =
-      entry.insts.size() == 3 ? std::get_if<CallInst>(&entry.insts[2]) : nullptr;
-  if (entry.label != "entry" || first_call == nullptr || second_call == nullptr ||
-      third_call == nullptr || entry.terminator.kind != TerminatorKind::Return ||
-      entry.terminator.value != bir::Value::immediate_i32(0)) {
-    return std::nullopt;
-  }
-
-  const auto match_printf_call =
-      [](const CallInst& call,
-         std::string_view pool_name,
-         std::initializer_list<std::int32_t> immediates) {
-        if (call.callee != "printf" || !call.is_variadic || call.return_type != TypeKind::I32 ||
-            !call.result.has_value() || call.result->kind != bir::Value::Kind::Named ||
-            call.result->type != TypeKind::I32 ||
-            call.args.size() != immediates.size() + 1 ||
-            call.args.front().kind != bir::Value::Kind::Named ||
-            call.args.front().type != TypeKind::Ptr ||
-            call.args.front().name != pool_name) {
-          return false;
-        }
-        std::size_t index = 1;
-        for (const auto immediate : immediates) {
-          if (call.args[index] != bir::Value::immediate_i32(immediate)) {
-            return false;
-          }
-          ++index;
-        }
-        return true;
-      };
-  if (!match_printf_call(*first_call, first_string.name, {42}) ||
-      !match_printf_call(*second_call, first_string.name, {64}) ||
-      !match_printf_call(*third_call, second_string.name, {12, 34})) {
-    return std::nullopt;
-  }
-
-  return MinimalRepeatedPrintfLocalI32CallsBirSlice{
-      .function_name = main.name,
-      .first_pool_name = first_string.name,
-      .first_raw_bytes = first_string.bytes,
-      .second_pool_name = second_string.name,
-      .second_raw_bytes = second_string.bytes,
-  };
-}
-
-std::string emit_minimal_repeated_printf_local_i32_calls_bir_asm(
-    std::string_view target_triple,
-    const MinimalRepeatedPrintfLocalI32CallsBirSlice& slice) {
-  const auto first_label = asm_private_data_label(target_triple, slice.first_pool_name);
-  const auto second_label = asm_private_data_label(target_triple, slice.second_pool_name);
-  const auto symbol = asm_symbol_name(target_triple, slice.function_name);
-
-  std::ostringstream out;
-  out << ".intel_syntax noprefix\n"
-      << ".section .rodata\n"
-      << first_label << ":\n"
-      << "  .asciz \"" << escape_asm_string(slice.first_raw_bytes) << "\"\n"
-      << second_label << ":\n"
-      << "  .asciz \"" << escape_asm_string(slice.second_raw_bytes) << "\"\n";
-  if (target_triple.find("apple-darwin") == std::string::npos) {
-    out << ".extern printf\n";
-  }
-  out << ".text\n"
-      << emit_function_prelude(target_triple, symbol)
-      << "  lea rdi, " << first_label << "[rip]\n"
-      << "  mov esi, 42\n"
-      << "  mov eax, 0\n"
-      << "  call printf\n"
-      << "  lea rdi, " << first_label << "[rip]\n"
-      << "  mov esi, 64\n"
-      << "  mov eax, 0\n"
-      << "  call printf\n"
-      << "  lea rdi, " << second_label << "[rip]\n"
-      << "  mov esi, 12\n"
-      << "  mov edx, 34\n"
-      << "  mov eax, 0\n"
-      << "  call printf\n"
-      << "  mov eax, 0\n"
-      << "  ret\n";
-  return out.str();
-}
-
 [[noreturn]] void throw_unsupported_direct_bir_module() {
   throw std::invalid_argument(
       "x86 backend emitter does not support this direct BIR module; only the affine-return subset lowers natively");
@@ -1231,9 +1110,9 @@ std::optional<std::string> try_emit_module(const c4c::backend::bir::Module& modu
       asm_text.has_value()) {
     return asm_text;
   }
-  if (const auto slice = parse_minimal_repeated_printf_local_i32_calls_bir_slice(module);
-      slice.has_value()) {
-    return emit_minimal_repeated_printf_local_i32_calls_bir_asm(module.target_triple, *slice);
+  if (const auto asm_text = try_emit_minimal_repeated_printf_local_i32_calls_bir_module(module);
+      asm_text.has_value()) {
+    return asm_text;
   }
   return std::nullopt;
 }

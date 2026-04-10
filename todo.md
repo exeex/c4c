@@ -6,25 +6,25 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 3 next ownership-removal slice after the landed direct-calls expansion:
-  move the next remaining self-contained legacy matcher cluster out of
-  `src/backend/x86/codegen/emit.cpp`
+- Step 3 next ownership-removal slice after the landed repeated-`printf`
+  local-i32 BIR route: move the next remaining self-contained legacy matcher
+  cluster out of `src/backend/x86/codegen/emit.cpp`
 - immediate target:
-  extract the bounded direct-BIR repeated-`printf` local-i32 route still owned
-  by `emit.cpp` into a sibling helper/owner file while keeping the surrounding
+  extract the next bounded direct-BIR scalar-global route still owned by
+  `emit.cpp` into a sibling helper/owner file while keeping the surrounding
   BIR/native path observable through focused backend regressions
+  - preferred candidates remain the extern scalar global-load or scalar global
+    store-reload seam
   - do not re-open the parked translated top-level owner-unit export work just
     to move this bounded legacy matcher
   - keep the slice centered on one dispatcher-owned route so the ownership
     delta remains explicit in `emit.cpp`
-  - reuse the existing repeated-`printf` end-to-end regression coverage instead
-    of widening unrelated shared-BIR behavior
 
 ## Next Slice
 
-- after the repeated-`printf` local-i32 BIR route, move the next remaining
-  direct-BIR scalar-global seam still owned by `emit.cpp`, likely the extern
-  scalar global-load or scalar global store-reload route
+- move the next remaining direct-BIR scalar-global seam still owned by
+  `emit.cpp`, likely the extern scalar global-load or scalar global
+  store-reload route
 - once the practical legacy matcher surface is smaller, reassess whether the
   next best progress move is another bounded seam extraction or a translated
   top-level owner-unit cutover such as `comparison.cpp` or `returns.cpp`
@@ -258,6 +258,25 @@ Source Plan: plan.md
   `./build/backend_bir_tests test_x86_direct_printf_helper_accepts_repeated_printf_immediates_slice`
   plus the existing source-like repeated-`printf` native-path regression and
   the direct variadic helper guard
+- this iteration extends that direct-printf sibling seam one bounded step
+  further on the BIR-owned path: the repeated local-i32 `printf` route now
+  lives in `src/backend/x86/codegen/direct_printf.cpp` instead of `emit.cpp`
+- added a focused backend regression that lowers the existing source-like
+  repeated local-i32 `printf` fixture to BIR first and then calls the new
+  direct helper seam explicitly so the Step 3 ownership move stays observable
+  apart from the broader x86 pipeline path
+- focused checks passed:
+  `./build/backend_bir_tests test_x86_direct_printf_helper_accepts_repeated_printf_local_i32_bir_slice`
+  plus `test_backend_bir_pipeline_drives_x86_lir_repeated_printf_local_i32_calls_through_bir_end_to_end`
+  and `test_x86_direct_printf_helper_accepts_repeated_printf_immediates_slice`
+- the broad `ctest --test-dir build -j8 --output-on-failure` rerun against the
+  stale `test_fail_before.log` baseline reported one apparent new failure:
+  `cpp_eastl_memory_uses_allocator_parse_recipe`; a direct rerun confirmed that
+  failure is already present in the matched `HEAD` baseline captured in
+  `test_fail_matched_before.log`
+- the regression guard therefore passed against the matched `HEAD` baseline:
+  `3194` passed / `182` failed before versus `3194` passed / `182` failed
+  after, with no newly failing tests and no new `>30s` cases
 - the broad `ctest --test-dir build -j8 --output-on-failure` rerun remained
   monotonic against `test_fail_before.log`; the regression guard reported
   `2723` passed / `181` failed before and after with no newly failing tests

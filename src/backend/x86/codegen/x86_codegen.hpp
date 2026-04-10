@@ -422,6 +422,8 @@ std::optional<std::string> try_emit_minimal_variadic_double_bytes_module(
     const c4c::codegen::lir::LirModule& module);
 std::optional<std::string> try_emit_minimal_repeated_printf_immediates_module(
     const c4c::codegen::lir::LirModule& module);
+std::optional<std::string> try_emit_minimal_repeated_printf_local_i32_calls_bir_module(
+    const c4c::backend::bir::Module& module);
 std::optional<std::string> try_emit_minimal_local_buffer_string_copy_printf_module(
     const c4c::codegen::lir::LirModule& module);
 std::optional<std::string> try_emit_minimal_counted_printf_ternary_loop_module(
