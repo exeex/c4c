@@ -249,7 +249,7 @@ ExprId Lowerer::try_lower_operator_call(FunctionCtx* ctx,
       tmp.init = arg_val;
       const LocalId tmp_lid = tmp.id;
       ctx->locals[tmp.name] = tmp.id;
-      ctx->local_types[tmp.id.value] = val_ts;
+      ctx->local_types.insert(tmp.id, val_ts);
       append_stmt(*ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(arg_node)});
       DeclRef tmp_ref{};
       tmp_ref.name = "__rref_arg_tmp";
@@ -323,7 +323,7 @@ ExprId Lowerer::lower_member_expr(FunctionCtx* ctx, const Node* n) {
         tmp.init = arrow_ptr;
         const LocalId tmp_lid = tmp.id;
         ctx->locals[tmp.name] = tmp.id;
-        ctx->local_types[tmp.id.value] = rts;
+        ctx->local_types.insert(tmp.id, rts);
         append_stmt(*ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(n)});
         DeclRef tmp_ref{};
         tmp_ref.name = "__arrow_tmp";

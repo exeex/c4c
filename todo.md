@@ -6,14 +6,14 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 4: record the landed `InlineCloneContext` migration and define the next
-  bounded dense-ID helper follow-on
-- Current slice: leave `InlineCloneContext::{local_map,block_map,expr_map}` on
-  `OptionalDenseIdMap` and evaluate whether `param_to_local` should join the
-  helper family or stay as a separate sparse parameter-binding table
-- Iteration target: identify the next dense allocator-produced HIR/lowering map
-  that benefits from checked dense-ID access without widening into
-  string-keyed lowering state
+- Step 4: record the landed `local_types` migration and queue the next bounded
+  dense-ID helper candidate
+- Current slice: leave `InlineCloneContext::param_to_local` as a separate
+  parameter-index table and evaluate whether `run_inline_expansion`'s
+  `callee_expand_count` should become the next frontend-owned dense-ID helper
+  follow-on
+- Iteration target: confirm whether the inline expansion recursion guard wants
+  `OptionalDenseIdMap<FunctionId, int>` or should stay as a plain sparse map
 
 ## Completed Items
 
@@ -27,12 +27,19 @@ Source Plan: plan.md
 - Migrated `InlineCloneContext::{local_map,block_map,expr_map}` in
   `src/frontend/hir/inline_expand.*` from raw `unordered_map<uint32_t, *>` to
   `OptionalDenseIdMap`
+- Migrated `Lowerer::FunctionCtx::local_types` from
+  `unordered_map<uint32_t, TypeSpec>` to `DenseIdMap<LocalId, TypeSpec>` across
+  frontend lowering call sites
 - Added `frontend_hir_tests` and verified dense-ID helper behavior directly
+- Extended `frontend_hir_tests` with direct `TypeSpec`-backed `DenseIdMap`
+  coverage for `LocalId` storage
 - Full regression check is monotonic: `test_before.log` had `3360/3360`
-  passing tests and `test_after.log` had `3361/3361` passing tests
+  passing tests and the prior helper landing reached `3361/3361`; this
+  `local_types` migration preserved `3361/3361` passing tests before and after
 
 ## Next Intended Slice
 
-- Decide whether `InlineCloneContext::param_to_local` is worth migrating as a
-  local helper-family cleanup or whether the better next slice is a different
-  allocator-produced HIR table with typed IDs on both sides
+- Evaluate `run_inline_expansion`'s `callee_expand_count` as the next bounded
+  frontend HIR dense-ID helper candidate; keep string-keyed lowering maps and
+  `param_to_local` out of scope unless a later slice proves they benefit from
+  helper-backed checked access

@@ -147,7 +147,7 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
       tmp.init = init_val;
       const LocalId tmp_lid = tmp.id;
       ctx.locals[tmp.name] = tmp.id;
-      ctx.local_types[tmp.id.value] = val_ts;
+      ctx.local_types.insert(tmp.id, val_ts);
       append_stmt(ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(n)});
       // Take address of temporary
       DeclRef tmp_ref{};
@@ -181,7 +181,7 @@ void Lowerer::lower_local_decl_stmt(FunctionCtx& ctx, const Node* n) {
   const LocalId lid = d.id;
   const TypeSpec decl_ts = d.type.spec;
   ctx.locals[d.name] = d.id;
-  ctx.local_types[d.id.value] = d.type.spec;
+  ctx.local_types.insert(d.id, d.type.spec);
   // Track const/constexpr locals with foldable int initializers.
   if (n->name && n->name[0] && n->init &&
       (effective_decl_ts.is_const || n->is_constexpr) &&

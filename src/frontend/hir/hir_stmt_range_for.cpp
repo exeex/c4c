@@ -89,7 +89,7 @@ void Lowerer::lower_range_for_stmt(FunctionCtx& ctx, const Node* n) {
     ld.init = init_expr;
     LocalId lid = ld.id;
     ctx.locals[name] = lid;
-    ctx.local_types[lid.value] = iter_ts;
+    ctx.local_types.insert(lid, iter_ts);
     append_stmt(ctx, Stmt{StmtPayload{std::move(ld)}, make_span(n)});
     return lid;
   };
@@ -255,7 +255,7 @@ void Lowerer::lower_range_for_stmt(FunctionCtx& ctx, const Node* n) {
         ld.init = deref_expr;
       }
       ctx.locals[ld.name] = ld.id;
-      ctx.local_types[ld.id.value] = var_ts;
+      ctx.local_types.insert(ld.id, var_ts);
       append_stmt(ctx, Stmt{StmtPayload{std::move(ld)}, make_span(n)});
     }
   }

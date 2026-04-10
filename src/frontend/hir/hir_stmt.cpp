@@ -159,9 +159,8 @@ void Lowerer::emit_dtor_calls(FunctionCtx& ctx, size_t since, const Node* span_n
 
     DeclRef var_ref{};
     var_ref.local = dl.local_id;
-    auto lt = ctx.local_types.find(dl.local_id.value);
     TypeSpec var_ts{};
-    if (lt != ctx.local_types.end()) var_ts = lt->second;
+    if (ctx.local_types.contains(dl.local_id)) var_ts = ctx.local_types.at(dl.local_id);
     ExprId var_id = append_expr(span_node, var_ref, var_ts, ValueCategory::LValue);
     UnaryExpr addr{};
     addr.op = UnaryOp::AddrOf;

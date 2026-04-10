@@ -66,7 +66,7 @@ std::optional<ExprId> Lowerer::try_lower_direct_struct_constructor_call(
       tmp.storage = StorageClass::Auto;
       tmp.span = make_span(n);
       ctx->locals[tmp.name] = tmp.id;
-      ctx->local_types[tmp.id.value] = tmp_ts;
+      ctx->local_types.insert(tmp.id, tmp_ts);
       append_stmt(*ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(n)});
 
       DeclRef tmp_ref{};
@@ -160,7 +160,7 @@ std::optional<ExprId> Lowerer::try_lower_direct_struct_constructor_call(
   tmp.storage = StorageClass::Auto;
   tmp.span = make_span(n);
   ctx->locals[tmp.name] = tmp.id;
-  ctx->local_types[tmp.id.value] = tmp_ts;
+  ctx->local_types.insert(tmp.id, tmp_ts);
   append_stmt(*ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(n)});
 
   CallExpr ctor_call{};
@@ -292,7 +292,7 @@ ExprId Lowerer::materialize_initializer_list_arg(FunctionCtx* ctx,
   tmp.init = append_expr(list_node, IntLiteral{0, false}, int_ts);
   const LocalId tmp_lid = tmp.id;
   ctx->locals[tmp_name] = tmp.id;
-  ctx->local_types[tmp.id.value] = param_ts;
+  ctx->local_types.insert(tmp.id, param_ts);
   append_stmt(*ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(list_node)});
 
   DeclRef tmp_ref{};
@@ -364,7 +364,7 @@ ExprId Lowerer::lower_compound_literal_expr(FunctionCtx* ctx, const Node* n) {
   } else if (n->left && !init_list) {
     d.init = lower_expr(ctx, n->left);
   }
-  ctx->local_types[lid.value] = decl_ts;
+  ctx->local_types.insert(lid, decl_ts);
   append_stmt(*ctx, Stmt{StmtPayload{std::move(d)}, make_span(n)});
   DeclRef dr{};
   dr.name = "<clit>";

@@ -53,11 +53,33 @@ void test_optional_dense_id_map_supports_sparse_occupancy() {
               "OptionalDenseIdMap should size itself by dense typed-ID index");
 }
 
+void test_dense_id_map_supports_local_type_storage() {
+  c4c::hir::DenseIdMap<c4c::hir::LocalId, c4c::TypeSpec> local_types;
+
+  c4c::TypeSpec int_ts{};
+  int_ts.base = c4c::TB_INT;
+  c4c::TypeSpec float_ptr_ts{};
+  float_ptr_ts.base = c4c::TB_FLOAT;
+  float_ptr_ts.ptr_level = 1;
+
+  local_types.insert(c4c::hir::LocalId{0}, int_ts);
+  local_types.insert(c4c::hir::LocalId{2}, float_ptr_ts);
+
+  expect_true(local_types.contains(c4c::hir::LocalId{0}),
+              "DenseIdMap should report stored local type entries by LocalId");
+  expect_true(!local_types.contains(c4c::hir::LocalId{1}),
+              "DenseIdMap should keep unassigned local type slots absent");
+  expect_true(local_types.at(c4c::hir::LocalId{2}).base == c4c::TB_FLOAT &&
+                  local_types.at(c4c::hir::LocalId{2}).ptr_level == 1,
+              "DenseIdMap should preserve TypeSpec values at dense local slots");
+}
+
 }  // namespace
 
 int main() {
   test_dense_id_map_tracks_assigned_dense_ids();
   test_optional_dense_id_map_supports_sparse_occupancy();
+  test_dense_id_map_supports_local_type_storage();
 
   std::cout << "PASS: frontend_hir_tests\n";
   return 0;

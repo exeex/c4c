@@ -272,7 +272,7 @@ class Lowerer {
 
     Function* fn = nullptr;
     std::unordered_map<std::string, LocalId> locals;
-    std::unordered_map<uint32_t, TypeSpec> local_types;
+    DenseIdMap<LocalId, TypeSpec> local_types;
     std::unordered_map<std::string, FnPtrSig> local_fn_ptr_sigs;
     std::unordered_map<std::string, FnPtrSig> param_fn_ptr_sigs;
     std::unordered_map<std::string, GlobalId> static_globals;

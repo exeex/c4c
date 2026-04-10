@@ -66,7 +66,7 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
         tmp.span = make_span(n);
         if (ctx) {
           ctx->locals[tmp.name] = tmp.id;
-          ctx->local_types[tmp.id.value] = tmp_ts;
+          ctx->local_types.insert(tmp.id, tmp_ts);
           append_stmt(*ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(n)});
           DeclRef tmp_ref{};
           tmp_ref.name = tmp_name;
@@ -441,7 +441,7 @@ ExprId Lowerer::lower_ternary_expr(FunctionCtx* ctx, const Node* n) {
     tmp.init = append_expr(n, IntLiteral{0, false}, zero_ts);
     const LocalId tmp_lid = tmp.id;
     ctx->locals[tmp.name] = tmp.id;
-    ctx->local_types[tmp.id.value] = result_ts;
+    ctx->local_types.insert(tmp.id, result_ts);
     append_stmt(*ctx, Stmt{StmtPayload{std::move(tmp)}, make_span(n)});
     const Node* cond_n = n->cond ? n->cond : n->left;
     ExprId cond_expr = maybe_bool_convert(ctx, lower_expr(ctx, cond_n), cond_n);
