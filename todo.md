@@ -10,23 +10,56 @@ Source Plan: plan.md
   around the x86 entry/support helper surface after the legacy matcher body
   removal in `src/backend/x86/codegen/emit.cpp`
 - immediate target:
-  expose the translated x86 inline-asm register formatting and condition-code
-  helper family through `src/backend/x86/codegen/mod.cpp` and
-  `x86_codegen.hpp` without pulling the full inline-asm/prologue owner path
-  into the build yet
-  - keep focused shared-util coverage on the translated helper contract
+  expose the translated x86 prologue-side frame helpers through
+  `src/backend/x86/codegen/mod.cpp` and `x86_codegen.hpp` without pulling the
+  full translated prologue owner path into the build yet
+  - keep focused shared-util coverage on the translated frame-alignment and
+    variadic register-save-area contract
   - keep validation centered on backend-only targets while this remains a
-    support-surface slice, not a full translated inline-asm owner compile-in
+    support-surface slice, not a full translated prologue owner compile-in
 
 ## Next Slice
 
 - continue the translated dependency inventory with the next already-built
-  helper family from `ref/.../emit.rs`, likely the remaining prologue-side
-  helper mappings that can land without pulling `prologue.cpp` into the build
-  yet
+  helper family from `ref/.../emit.rs` after the prologue-side frame helper
+  extraction lands
+- likely keep moving through prologue-adjacent shared helpers that can be
+  exposed through `mod.cpp`/`x86_codegen.hpp` without compiling the full
+  translated prologue owner path yet
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration exposed the translated x86 prologue-side frame helpers
+  through `src/backend/x86/codegen/mod.cpp` and `x86_codegen.hpp`:
+  `x86_variadic_reg_save_area_size(...)` and
+  `x86_aligned_frame_size(...)`
+- `src/backend/x86/codegen/prologue.cpp` now reuses that shared helper surface
+  for variadic register-save-area sizing and 16-byte frame alignment instead
+  of keeping those ref-owned constants/rules local to the provisional
+  prologue owner file
+- added focused shared-util coverage that locks the translated prologue-side
+  frame-sizing contract, including the `176`/`48` variadic save-area split and
+  positive-only 16-byte frame rounding behavior
+- focused validation passed for this slice:
+  `cmake --build build -j8 --target backend_shared_util_tests`,
+  `./build/backend_shared_util_tests test_x86_translated_asm_emitter_helpers_match_shared_contract`, and
+  `ctest --test-dir build -R backend_shared_util_tests --output-on-failure`
+- broad validation note:
+  after `ctest --test-dir build -j8 --output-on-failure > test_after.log 2>&1`,
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_matched_before.log --after test_after.log --allow-non-decreasing-passed`
+  still reported `3190` passed / `186` failed versus the stored matched
+  baseline `3194` passed / `182` failed, with the same four x86 route/c-testsuite
+  regressions already tracked below:
+  `backend_codegen_route_x86_64_c_testsuite_00030_repeated_call_compare_zero_return_retries_after_direct_bir_rejection`,
+  `backend_codegen_route_x86_64_c_testsuite_00031_local_i32_inc_dec_compare_retries_after_direct_bir_rejection`,
+  `c_testsuite_x86_backend_src_00030_c`, and
+  `c_testsuite_x86_backend_src_00031_c`
+- blocker note:
+  the stored matched full-suite baseline still diverges from the current tree
+  by those four x86 route/c-testsuite failures, so the helper-extraction lane
+  remains focused on targeted backend validation until a later cutover or
+  dedicated regression-triage slice resolves that baseline mismatch
 
 - this iteration exposed translated x86 inline-asm register-width, register
   formatting, and GCC condition-code helpers through

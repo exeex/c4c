@@ -60,7 +60,7 @@ std::int64_t X86Codegen::calculate_stack_space_impl(const IrFunction& func) {
       false);
 
   if (func.is_variadic) {
-    space += this->no_sse ? 48 : 176;
+    space += x86_variadic_reg_save_area_size(this->no_sse);
     this->reg_save_area_offset = -space;
   }
 
@@ -69,7 +69,7 @@ std::int64_t X86Codegen::calculate_stack_space_impl(const IrFunction& func) {
 }
 
 std::int64_t X86Codegen::aligned_frame_size_impl(std::int64_t raw_space) const {
-  return raw_space > 0 ? (raw_space + 15) & ~15 : 0;
+  return x86_aligned_frame_size(raw_space);
 }
 
 void X86Codegen::emit_prologue_impl(const IrFunction& func, std::int64_t frame_size) {

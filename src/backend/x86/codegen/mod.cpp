@@ -256,6 +256,12 @@ std::optional<c4c::backend::PhysReg> x86_clobber_name_to_callee_saved(std::strin
   return std::nullopt;
 }
 
+std::int64_t x86_variadic_reg_save_area_size(bool no_sse) { return no_sse ? 48 : 176; }
+
+std::int64_t x86_aligned_frame_size(std::int64_t raw_space) {
+  return raw_space > 0 ? (raw_space + 15) & ~15 : 0;
+}
+
 std::string decode_llvm_byte_string(std::string_view text) {
   std::string bytes;
   bytes.reserve(text.size());

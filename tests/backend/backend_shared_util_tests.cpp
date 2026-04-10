@@ -183,8 +183,14 @@ void test_x86_translated_asm_emitter_helpers_match_shared_contract() {
                   !c4c::backend::x86::x86_constraint_to_callee_saved("{r10}").has_value() &&
                   c4c::backend::x86::x86_clobber_name_to_callee_saved("r15b").has_value() &&
                   c4c::backend::x86::x86_clobber_name_to_callee_saved("r15b")->index == 5 &&
-                  !c4c::backend::x86::x86_clobber_name_to_callee_saved("r11").has_value(),
-              "x86 translated inline-asm register helpers should keep the ref callee-saved constraint and clobber mapping contract for the future prologue save/restore inventory");
+                  !c4c::backend::x86::x86_clobber_name_to_callee_saved("r11").has_value() &&
+                  c4c::backend::x86::x86_variadic_reg_save_area_size(false) == 176 &&
+                  c4c::backend::x86::x86_variadic_reg_save_area_size(true) == 48 &&
+                  c4c::backend::x86::x86_aligned_frame_size(0) == 0 &&
+                  c4c::backend::x86::x86_aligned_frame_size(1) == 16 &&
+                  c4c::backend::x86::x86_aligned_frame_size(16) == 16 &&
+                  c4c::backend::x86::x86_aligned_frame_size(17) == 32,
+              "x86 translated prologue-side helpers should keep the ref callee-saved mapping, variadic register-save-area sizing, and 16-byte frame-alignment contract for the future translated prologue owner path");
 
   expect_true(std::string(c4c::backend::x86::phys_reg_name(c4c::backend::PhysReg{1})) == "rbx" &&
                   std::string(c4c::backend::x86::phys_reg_name(c4c::backend::PhysReg{12})) == "r8" &&
