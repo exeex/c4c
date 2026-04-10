@@ -1,54 +1,9 @@
 // Mechanical C++-shaped translation of ref/claudes-c-compiler/src/backend/x86/codegen/peephole/passes/helpers.rs
 // Shared helper functions used across peephole optimization passes.
 
-#include <cstdint>
-#include <optional>
-#include <string>
-#include <string_view>
-#include <utility>
-#include <vector>
+#include "../peephole.hpp"
 
 namespace c4c::backend::x86::codegen::peephole::passes {
-
-using RegId = std::uint8_t;
-constexpr RegId REG_NONE = 255;
-constexpr RegId REG_GP_MAX = 15;
-
-enum class LineKind {
-  Nop,
-  Empty,
-  StoreRbp,
-  LoadRbp,
-  SelfMove,
-  Label,
-  Jmp,
-  JmpIndirect,
-  CondJmp,
-  Call,
-  Ret,
-  Push,
-  Pop,
-  SetCC,
-  Cmp,
-  Directive,
-  Other,
-};
-
-struct LineInfo {
-  LineKind kind = LineKind::Nop;
-  RegId dest_reg = REG_NONE;
-  std::uint16_t reg_refs = 0;
-  std::uint16_t trim_start = 0;
-  bool has_indirect_mem = false;
-};
-
-struct LineStore {
-  std::vector<std::string> lines;
-
-  std::size_t len() const { return lines.size(); }
-  const std::string& get(std::size_t i) const { return lines[i]; }
-  std::string& get(std::size_t i) { return lines[i]; }
-};
 
 constexpr const char* REG_NAMES[4][16] = {
     {"rax","rcx","rdx","rbx","rsp","rbp","rsi","rdi","r8","r9","r10","r11","r12","r13","r14","r15"},
@@ -111,19 +66,24 @@ std::string replace_reg_family_in_source(std::string_view line, RegId old_id, Re
 }
 
 bool has_implicit_reg_usage(std::string_view trimmed) {
-  return trimmed.starts_with("div") || trimmed.starts_with("idiv") || trimmed.starts_with("mul") ||
-         trimmed.starts_with("cltq") || trimmed.starts_with("cbw") || trimmed.starts_with("cqto") ||
-         trimmed.starts_with("cdq") || trimmed.starts_with("cqo") || trimmed.starts_with("cwd") ||
-         trimmed.starts_with("rep ") || trimmed.starts_with("repne ") || trimmed.starts_with("cpuid") ||
-         trimmed.starts_with("syscall") || trimmed.starts_with("rdtsc") || trimmed.starts_with("rdmsr") ||
-         trimmed.starts_with("wrmsr") || trimmed.starts_with("xchg") || trimmed.starts_with("cmpxchg") ||
-         trimmed.starts_with("lock ") || trimmed.starts_with("fnstsw") || trimmed.starts_with("fnstcw") ||
-         trimmed.starts_with("fstcw") || trimmed.starts_with("fnstenv") || trimmed.starts_with("fldenv") ||
-         trimmed.starts_with("fldcw");
+  return starts_with(trimmed, "div") || starts_with(trimmed, "idiv") ||
+         starts_with(trimmed, "mul") || starts_with(trimmed, "cltq") ||
+         starts_with(trimmed, "cbw") || starts_with(trimmed, "cqto") ||
+         starts_with(trimmed, "cdq") || starts_with(trimmed, "cqo") ||
+         starts_with(trimmed, "cwd") || starts_with(trimmed, "rep ") ||
+         starts_with(trimmed, "repne ") || starts_with(trimmed, "cpuid") ||
+         starts_with(trimmed, "syscall") || starts_with(trimmed, "rdtsc") ||
+         starts_with(trimmed, "rdmsr") || starts_with(trimmed, "wrmsr") ||
+         starts_with(trimmed, "xchg") || starts_with(trimmed, "cmpxchg") ||
+         starts_with(trimmed, "lock ") || starts_with(trimmed, "fnstsw") ||
+         starts_with(trimmed, "fnstcw") || starts_with(trimmed, "fstcw") ||
+         starts_with(trimmed, "fnstenv") || starts_with(trimmed, "fldenv") ||
+         starts_with(trimmed, "fldcw");
 }
 
 bool is_shift_or_rotate(std::string_view trimmed) {
-  return trimmed.starts_with("sh") || trimmed.starts_with("sa") || trimmed.starts_with("ro") || trimmed.starts_with("rc");
+  return starts_with(trimmed, "sh") || starts_with(trimmed, "sa") ||
+         starts_with(trimmed, "ro") || starts_with(trimmed, "rc");
 }
 
 RegId register_family_fast(std::string_view reg) {
@@ -142,7 +102,7 @@ std::optional<std::pair<RegId, RegId>> parse_reg_to_reg_movq(const LineInfo& inf
   if (info.kind != LineKind::Other || info.dest_reg == REG_NONE || info.dest_reg > REG_GP_MAX) {
     return std::nullopt;
   }
-  if (!trimmed.starts_with("movq ")) {
+  if (!starts_with(trimmed, "movq ")) {
     return std::nullopt;
   }
   const auto rest = trimmed.substr(5);
@@ -164,7 +124,7 @@ std::optional<std::pair<RegId, RegId>> parse_reg_to_reg_movq(const LineInfo& inf
 RegId get_dest_reg(const LineInfo& info) { return info.dest_reg; }
 
 std::optional<std::uint32_t> parse_dotl_number(std::string_view s) {
-  if (!s.starts_with(".LBB")) {
+  if (!starts_with(s, ".LBB")) {
     return std::nullopt;
   }
   s.remove_prefix(4);
@@ -182,14 +142,14 @@ std::optional<std::uint32_t> parse_dotl_number(std::string_view s) {
 }
 
 std::optional<std::uint32_t> parse_label_number(std::string_view label_with_colon) {
-  if (!label_with_colon.ends_with(':')) {
+  if (!ends_with(label_with_colon, ":")) {
     return std::nullopt;
   }
   return parse_dotl_number(label_with_colon.substr(0, label_with_colon.size() - 1));
 }
 
 std::optional<std::string_view> extract_jump_target(std::string_view s) {
-  if (s.starts_with("jmp ")) {
+  if (starts_with(s, "jmp ")) {
     return std::string_view(s).substr(4);
   }
   if (!s.empty() && s.front() == 'j') {
@@ -228,10 +188,10 @@ bool is_read_modify_write(std::string_view trimmed) {
   if (trimmed.size() < 3) {
     return true;
   }
-  if (trimmed.starts_with("mov")) {
+  if (starts_with(trimmed, "mov")) {
     return false;
   }
-  if (trimmed.starts_with("lea")) {
+  if (starts_with(trimmed, "lea")) {
     const auto comma = trimmed.rfind(',');
     if (comma != std::string_view::npos) {
       const auto dst = trimmed.substr(comma + 1);
@@ -240,10 +200,10 @@ bool is_read_modify_write(std::string_view trimmed) {
     }
     return false;
   }
-  if (trimmed.starts_with("cmov")) {
+  if (starts_with(trimmed, "cmov")) {
     return true;
   }
-  if (trimmed.starts_with("set")) {
+  if (starts_with(trimmed, "set")) {
     return false;
   }
   return true;

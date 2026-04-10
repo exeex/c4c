@@ -1,111 +1,12 @@
 // Mechanical C++-shaped translation of ref/claudes-c-compiler/src/backend/x86/codegen/peephole/types.rs
 // Core line-classification types and helper constructors for the peephole pipeline.
 
+#include "peephole.hpp"
+
 #include <array>
 #include <cctype>
-#include <cstdint>
-#include <limits>
-#include <optional>
-#include <string>
-#include <string_view>
-#include <utility>
-#include <vector>
 
 namespace c4c::backend::x86::codegen::peephole {
-
-using RegId = std::uint8_t;
-constexpr RegId REG_NONE = 255;
-constexpr RegId REG_GP_MAX = 15;
-constexpr std::int32_t RBP_OFFSET_NONE = std::numeric_limits<std::int32_t>::min();
-
-struct LineInfo;
-
-enum class LineKind {
-  Nop,
-  Empty,
-  StoreRbp,
-  LoadRbp,
-  SelfMove,
-  Label,
-  Jmp,
-  JmpIndirect,
-  CondJmp,
-  Call,
-  Ret,
-  Push,
-  Pop,
-  SetCC,
-  Cmp,
-  Directive,
-  Other,
-};
-
-enum class ExtKind {
-  None,
-  MovzbqAlRax,
-  MovzwqAxRax,
-  MovsbqAlRax,
-  MovslqEaxRax,
-  MovlEaxEax,
-  Cltq,
-  ProducerMovzbqToRax,
-  ProducerMovzwqToRax,
-  ProducerMovsbqToRax,
-  ProducerMovslqToRax,
-  ProducerMovqConstRax,
-  ProducerArith32,
-  ProducerMovlToEax,
-  ProducerMovzbToEax,
-  ProducerMovzwToEax,
-  ProducerDiv32,
-  ProducerMovqRegToRax,
-};
-
-enum class MoveSize {
-  Q,
-  L,
-  W,
-  B,
-  SLQ,
-};
-
-struct StoreRbpParts {
-  std::string_view reg;
-  std::string_view offset;
-  MoveSize size;
-};
-
-struct LoadRbpParts {
-  std::string_view offset;
-  std::string_view reg;
-  MoveSize size;
-};
-
-struct LineInfo {
-  LineKind kind = LineKind::Nop;
-  ExtKind ext_kind = ExtKind::None;
-  std::uint16_t trim_start = 0;
-  RegId dest_reg = REG_NONE;
-  bool has_indirect_mem = false;
-  std::int32_t rbp_offset = RBP_OFFSET_NONE;
-  std::uint16_t reg_refs = 0;
-
-  bool is_nop() const { return kind == LineKind::Nop; }
-  bool is_barrier() const {
-    return kind == LineKind::Label || kind == LineKind::Call || kind == LineKind::Jmp ||
-           kind == LineKind::JmpIndirect || kind == LineKind::CondJmp || kind == LineKind::Ret ||
-           kind == LineKind::Directive;
-  }
-  bool is_push() const { return kind == LineKind::Push; }
-};
-
-struct LineStore {
-  std::vector<std::string> lines;
-
-  std::size_t len() const { return lines.size(); }
-  const std::string& get(std::size_t i) const { return lines[i]; }
-  std::string& get(std::size_t i) { return lines[i]; }
-};
 
 inline LineInfo line_info(LineKind kind, std::uint16_t ts) {
   LineInfo info;
@@ -162,10 +63,12 @@ static bool is_delim(char c) {
 }
 
 static bool is_conditional_jump(std::string_view s) {
-  return s.starts_with("je ") || s.starts_with("jne ") || s.starts_with("jg ") || s.starts_with("jge ") ||
-         s.starts_with("jl ") || s.starts_with("jle ") || s.starts_with("ja ") || s.starts_with("jae ") ||
-         s.starts_with("jb ") || s.starts_with("jbe ") || s.starts_with("js ") || s.starts_with("jns ") ||
-         s.starts_with("jo ") || s.starts_with("jno ") || s.starts_with("jp ") || s.starts_with("jnp ");
+  return starts_with(s, "je ") || starts_with(s, "jne ") || starts_with(s, "jg ") ||
+         starts_with(s, "jge ") || starts_with(s, "jl ") || starts_with(s, "jle ") ||
+         starts_with(s, "ja ") || starts_with(s, "jae ") || starts_with(s, "jb ") ||
+         starts_with(s, "jbe ") || starts_with(s, "js ") || starts_with(s, "jns ") ||
+         starts_with(s, "jo ") || starts_with(s, "jno ") || starts_with(s, "jp ") ||
+         starts_with(s, "jnp ");
 }
 
 std::uint16_t scan_register_refs(std::string_view s) {
@@ -185,7 +88,7 @@ std::uint16_t scan_register_refs(std::string_view s) {
 }
 
 std::uint8_t register_family_fast(std::string_view reg) {
-  if (reg.starts_with('%')) {
+  if (starts_with(reg, "%")) {
     reg.remove_prefix(1);
   }
   if (reg == "rax" || reg == "eax" || reg == "ax" || reg == "al" || reg == "ah") return 0;
@@ -196,14 +99,14 @@ std::uint8_t register_family_fast(std::string_view reg) {
   if (reg == "rbp" || reg == "ebp" || reg == "bp" || reg == "bpl") return 5;
   if (reg == "rsi" || reg == "esi" || reg == "si" || reg == "sil") return 6;
   if (reg == "rdi" || reg == "edi" || reg == "di" || reg == "dil") return 7;
-  if (reg.starts_with("r8")) return 8;
-  if (reg.starts_with("r9")) return 9;
-  if (reg.starts_with("r10")) return 10;
-  if (reg.starts_with("r11")) return 11;
-  if (reg.starts_with("r12")) return 12;
-  if (reg.starts_with("r13")) return 13;
-  if (reg.starts_with("r14")) return 14;
-  if (reg.starts_with("r15")) return 15;
+  if (starts_with(reg, "r8")) return 8;
+  if (starts_with(reg, "r9")) return 9;
+  if (starts_with(reg, "r10")) return 10;
+  if (starts_with(reg, "r11")) return 11;
+  if (starts_with(reg, "r12")) return 12;
+  if (starts_with(reg, "r13")) return 13;
+  if (starts_with(reg, "r14")) return 14;
+  if (starts_with(reg, "r15")) return 15;
   return REG_NONE;
 }
 
@@ -228,7 +131,7 @@ std::int32_t parse_rbp_offset(std::string_view s) {
 }
 
 std::optional<std::string_view> parse_setcc(std::string_view s) {
-  if (!s.starts_with("set") || s.size() < 5) {
+  if (!starts_with(s, "set") || s.size() < 5) {
     return std::nullopt;
   }
   const auto space = s.find(' ');
@@ -239,7 +142,7 @@ std::optional<std::string_view> parse_setcc(std::string_view s) {
 }
 
 std::optional<StoreRbpParts> parse_store_to_rbp_str(std::string_view s) {
-  if (!s.starts_with("mov")) {
+  if (!starts_with(s, "mov")) {
     return std::nullopt;
   }
   const auto comma = s.rfind(',');
@@ -249,10 +152,10 @@ std::optional<StoreRbpParts> parse_store_to_rbp_str(std::string_view s) {
   }
   std::string_view reg = s.substr(s.find(' ') + 1, comma - (s.find(' ') + 1));
   std::string_view offset = s.substr(s.find(' ') + 1, lb - (s.find(' ') + 1));
-  if (s.starts_with("movq ")) return StoreRbpParts{reg, offset, MoveSize::Q};
-  if (s.starts_with("movl ")) return StoreRbpParts{reg, offset, MoveSize::L};
-  if (s.starts_with("movw ")) return StoreRbpParts{reg, offset, MoveSize::W};
-  if (s.starts_with("movb ")) return StoreRbpParts{reg, offset, MoveSize::B};
+  if (starts_with(s, "movq ")) return StoreRbpParts{reg, offset, MoveSize::Q};
+  if (starts_with(s, "movl ")) return StoreRbpParts{reg, offset, MoveSize::L};
+  if (starts_with(s, "movw ")) return StoreRbpParts{reg, offset, MoveSize::W};
+  if (starts_with(s, "movb ")) return StoreRbpParts{reg, offset, MoveSize::B};
   return std::nullopt;
 }
 
@@ -264,11 +167,11 @@ std::optional<LoadRbpParts> parse_load_from_rbp_str(std::string_view s) {
   }
   std::string_view offset = s.substr(s.find(' ') + 1, lb - (s.find(' ') + 1));
   std::string_view reg = s.substr(comma + 1);
-  if (s.starts_with("movq ")) return LoadRbpParts{offset, reg, MoveSize::Q};
-  if (s.starts_with("movl ")) return LoadRbpParts{offset, reg, MoveSize::L};
-  if (s.starts_with("movw ")) return LoadRbpParts{offset, reg, MoveSize::W};
-  if (s.starts_with("movb ")) return LoadRbpParts{offset, reg, MoveSize::B};
-  if (s.starts_with("movslq ")) return LoadRbpParts{offset, reg, MoveSize::SLQ};
+  if (starts_with(s, "movq ")) return LoadRbpParts{offset, reg, MoveSize::Q};
+  if (starts_with(s, "movl ")) return LoadRbpParts{offset, reg, MoveSize::L};
+  if (starts_with(s, "movw ")) return LoadRbpParts{offset, reg, MoveSize::W};
+  if (starts_with(s, "movb ")) return LoadRbpParts{offset, reg, MoveSize::B};
+  if (starts_with(s, "movslq ")) return LoadRbpParts{offset, reg, MoveSize::SLQ};
   return std::nullopt;
 }
 
@@ -300,7 +203,7 @@ LineInfo classify_line(std::string_view raw) {
     info.reg_refs = scan_register_refs(raw);
     return info;
   }
-  if (raw.starts_with("movq ") && raw.find(',') != std::string_view::npos) {
+  if (starts_with(raw, "movq ") && raw.find(',') != std::string_view::npos) {
     const auto comma = raw.rfind(',');
     const auto src = raw.substr(5, comma - 5);
     const auto dst = raw.substr(comma + 1);
@@ -308,29 +211,29 @@ LineInfo classify_line(std::string_view raw) {
       return line_info(LineKind::SelfMove, static_cast<std::uint16_t>(trim_start));
     }
   }
-  if (raw.starts_with("ret")) {
+  if (starts_with(raw, "ret")) {
     return line_info(LineKind::Ret, static_cast<std::uint16_t>(trim_start));
   }
-  if (raw.starts_with("jmp ")) {
+  if (starts_with(raw, "jmp ")) {
     return line_info(LineKind::Jmp, static_cast<std::uint16_t>(trim_start));
   }
   if (is_conditional_jump(raw)) {
     return line_info(LineKind::CondJmp, static_cast<std::uint16_t>(trim_start));
   }
-  if (raw.starts_with("call ")) {
+  if (starts_with(raw, "call ")) {
     return line_info_with_regs(LineKind::Call, static_cast<std::uint16_t>(trim_start), scan_register_refs(raw));
   }
-  if (raw.starts_with("pushq ")) {
+  if (starts_with(raw, "pushq ")) {
     LineInfo info = line_info_with_regs(LineKind::Push, static_cast<std::uint16_t>(trim_start), scan_register_refs(raw));
     info.dest_reg = register_family_fast(raw.substr(6));
     return info;
   }
-  if (raw.starts_with("popq ")) {
+  if (starts_with(raw, "popq ")) {
     LineInfo info = line_info_with_regs(LineKind::Pop, static_cast<std::uint16_t>(trim_start), scan_register_refs(raw));
     info.dest_reg = register_family_fast(raw.substr(5));
     return info;
   }
-  if (raw.starts_with("set") && parse_setcc(raw).has_value()) {
+  if (starts_with(raw, "set") && parse_setcc(raw).has_value()) {
     LineInfo info = line_info_with_regs(LineKind::SetCC, static_cast<std::uint16_t>(trim_start), scan_register_refs(raw));
     info.dest_reg = register_family_fast(raw.substr(raw.rfind(' ') + 1));
     return info;

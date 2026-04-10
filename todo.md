@@ -6,20 +6,19 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 1 audit translated x86 codegen coverage
+- Step 3 continue expanding the translated x86 peephole subtree beyond the
+  first live optimization round
 - immediate target:
-  use the recorded idea-43 inventory as the canonical queue and choose the
-  first bounded integration slice from:
-  the 16 translated-but-not-built top-level codegen units;
-  or the peephole subtree that exists but is not yet on the real main path
+  extend the live pass set beyond redundant jump-to-next-label cleanup while
+  preserving compatibility with the current Intel-syntax x86 emitter output
 
 ## Next Slice
 
-- identify the first translated unit or cluster that can be added to the build
-  without widening scope too far
-- update `CMakeLists.txt` and the active x86 path for that slice
-- then complete `peephole/passes/mod.cpp` orchestration and route emitted asm
-  through `peephole_optimize(...)`
+- make additional translated local cleanup rules real only when they can be
+  expressed against the current emitted syntax or after the x86 emitter syntax
+  boundary is normalized
+- evaluate whether more of `peephole/passes/*.cpp` can be compiled in without
+  pulling in unrelated x86 top-level codegen ownership
 
 ## Current Iteration Notes
 
@@ -33,6 +32,15 @@ Source Plan: plan.md
   in the build, while `emit.cpp` remains the practical owner of x86 emission
 - the active inventory for this plan is now explicit inside idea 43:
   16 translated top-level codegen units plus the translated peephole subtree
+- the translated peephole subtree is the first bounded reachable slice because
+  it has a self-contained string-in/string-out seam even though the current
+  translated parser helpers still need a shared header and the emitted x86 asm
+  uses Intel syntax rather than the ref tree's AT&T-shaped patterns
+- the active x86 route now passes through the translated peephole entrypoint in
+  both the direct x86 wrapper and the shared backend assembly handoff path
+- the first live optimization is syntax-agnostic redundant jump-to-immediately-
+  following-label elimination; the rest of the translated local-pass inventory
+  remains parked until its assumptions are reconciled with the current emitter
 
 ## Recently Completed
 
@@ -41,3 +49,15 @@ Source Plan: plan.md
 - switched the active runbook and execution state to idea 43
 - reprioritized idea 43 so integrating already-translated x86 codegen units is
   now ahead of peephole-only work
+- added the first bounded translated x86 peephole compile-in cluster to the
+  build: `peephole/mod.cpp`, `peephole/types.cpp`,
+  `peephole/passes/helpers.cpp`, `peephole/passes/local_patterns.cpp`, and
+  `peephole/passes/mod.cpp`
+- added a shared peephole header so that cluster now compiles as a real unit
+  instead of parked source inventory
+- routed x86 emitted asm through `peephole_optimize(...)` on both the direct
+  x86 wrapper path and the shared backend assembly handoff path
+- added targeted backend tests that pin the live redundant-jump cleanup and
+  confirm emitted countdown-loop asm reaches the peephole stage
+- rebuilt and reran the full ctest suite with monotonic results:
+  `181` failures before, `181` failures after, no newly failing tests

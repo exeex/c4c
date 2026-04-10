@@ -5,6 +5,7 @@
 #include "lowering/lir_to_bir.hpp"
 #include "stack_layout/slot_assignment.hpp"
 #include "x86/assembler/mod.hpp"
+#include "x86/codegen/peephole/peephole.hpp"
 #include "x86/codegen/x86_codegen.hpp"
 
 #include "../codegen/lir/lir_printer.hpp"
@@ -22,6 +23,13 @@ struct NativePreparationConfig {
   RegAllocConfig regalloc;
   std::vector<PhysReg> callee_saved;
 };
+
+std::string finalize_x86_asm(std::string rendered, Target target) {
+  if (target != Target::X86_64 && target != Target::I686) {
+    return rendered;
+  }
+  return c4c::backend::x86::codegen::peephole::peephole_optimize(std::move(rendered));
+}
 
 NativePreparationConfig build_native_preparation_config(Target target) {
   NativePreparationConfig config;
@@ -61,7 +69,7 @@ std::string emit_native_prepared_lir_module(const c4c::codegen::lir::LirModule& 
     case Target::I686:
       if (auto rendered = c4c::backend::x86::try_emit_prepared_lir_module(module);
           rendered.has_value()) {
-        return *rendered;
+        return finalize_x86_asm(*rendered, target);
       }
       throw std::invalid_argument(
           "x86 backend emitter does not support this direct LIR module; only direct-LIR slices that lower natively or through direct BIR are currently supported");
@@ -87,6 +95,9 @@ std::optional<std::string> try_render_bir_module(const bir::Module& module, Targ
     case Target::X86_64:
     case Target::I686:
       rendered = c4c::backend::x86::try_emit_module(module);
+      if (rendered.has_value()) {
+        rendered = finalize_x86_asm(std::move(*rendered), target);
+      }
       break;
     case Target::Aarch64:
       rendered = c4c::backend::aarch64::try_emit_module(module);

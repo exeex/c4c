@@ -1,58 +1,77 @@
 // Mechanical C++-shaped translation of ref/claudes-c-compiler/src/backend/x86/codegen/peephole/passes/mod.rs
 // Pass orchestration for the x86 peephole pipeline.
 
-#include <string>
+#include "../peephole.hpp"
+
+#include <sstream>
 #include <utility>
 
 namespace c4c::backend::x86::codegen::peephole::passes {
 
-struct LineInfo;
-struct LineStore;
+namespace {
 
-bool combined_local_pass(LineStore* store, LineInfo* infos);
-bool fuse_movq_ext_truncation(LineStore* store, LineInfo* infos);
-bool global_store_forwarding(LineStore* store, LineInfo* infos);
-bool propagate_register_copies(LineStore* store, LineInfo* infos);
-bool eliminate_dead_reg_moves(const LineStore* store, LineInfo* infos);
-bool eliminate_dead_stores(const LineStore* store, LineInfo* infos);
-bool eliminate_never_read_stores(const LineStore* store, LineInfo* infos);
-bool fuse_compare_and_branch(LineStore* store, LineInfo* infos);
-bool fold_memory_operands(LineStore* store, LineInfo* infos);
-bool eliminate_loop_trampolines(LineStore* store, LineInfo* infos);
-bool optimize_tail_calls(LineStore* store, LineInfo* infos);
-bool eliminate_unused_callee_saves(const LineStore* store, LineInfo* infos);
-bool compact_frame(LineStore* store, LineInfo* infos);
+LineStore parse_line_store(std::string_view asm_text) {
+  LineStore store;
+  std::size_t start = 0;
+  while (start < asm_text.size()) {
+    const auto end = asm_text.find('\n', start);
+    if (end == std::string_view::npos) {
+      store.lines.emplace_back(asm_text.substr(start));
+      break;
+    }
+    store.lines.emplace_back(asm_text.substr(start, end - start));
+    start = end + 1;
+  }
+  if (!asm_text.empty() && asm_text.back() == '\n') {
+    store.lines.emplace_back();
+  }
+  return store;
+}
 
-struct PeepholeRun {
-  LineStore* store = nullptr;
-  LineInfo* infos = nullptr;
-};
+std::vector<LineInfo> classify_lines(const LineStore& store) {
+  std::vector<LineInfo> infos;
+  infos.reserve(store.len());
+  for (std::size_t i = 0; i < store.len(); ++i) {
+    infos.push_back(classify_line(store.get(i)));
+  }
+  return infos;
+}
+
+std::string render_line_store(const LineStore& store, const std::vector<LineInfo>& infos) {
+  std::ostringstream out;
+  bool first = true;
+  for (std::size_t i = 0; i < store.len(); ++i) {
+    if (infos[i].kind == LineKind::Nop) {
+      continue;
+    }
+    if (!first) {
+      out << '\n';
+    }
+    first = false;
+    out << store.get(i);
+  }
+  if (!first) {
+    out << '\n';
+  }
+  return out.str();
+}
+
+}  // namespace
 
 std::string peephole_optimize(std::string asm_text) {
-  // The Rust version parses to LineInfo/LineStore first, then runs:
-  // - combined local passes in rounds
-  // - global store/copy/dead-code cleanup
-  // - compare/branch fusion and memory folding
-  // - tail-call, trampoline, callee-save, and frame cleanup
-  //
-  // In this translation unit we preserve the orchestration shape without
-  // forcing a concrete line-store implementation into this file.
-  PeepholeRun run;
-  (void)run;
-  (void)combined_local_pass;
-  (void)fuse_movq_ext_truncation;
-  (void)global_store_forwarding;
-  (void)propagate_register_copies;
-  (void)eliminate_dead_reg_moves;
-  (void)eliminate_dead_stores;
-  (void)eliminate_never_read_stores;
-  (void)fuse_compare_and_branch;
-  (void)fold_memory_operands;
-  (void)eliminate_loop_trampolines;
-  (void)optimize_tail_calls;
-  (void)eliminate_unused_callee_saves;
-  (void)compact_frame;
-  return asm_text;
+  auto store = parse_line_store(asm_text);
+  auto infos = classify_lines(store);
+
+  for (int round = 0; round < 4; ++round) {
+    bool changed = false;
+    changed |= combined_local_pass(&store, infos.data());
+    changed |= fuse_movq_ext_truncation(&store, infos.data());
+    if (!changed) {
+      break;
+    }
+  }
+
+  return render_line_store(store, infos);
 }
 
 }  // namespace c4c::backend::x86::codegen::peephole::passes

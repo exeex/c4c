@@ -1,4 +1,5 @@
 #include "x86_codegen.hpp"
+#include "peephole/peephole.hpp"
 
 #include "../../backend.hpp"
 #include "../../bir.hpp"
@@ -2771,6 +2772,7 @@ std::string emit_minimal_countdown_loop_asm(std::string_view target_triple,
       << ".L" << slice.loop_label << ":\n"
       << "  cmp eax, 0\n"
       << "  je .L" << slice.exit_label << "\n"
+      << "  jmp .L" << slice.body_label << "\n"
       << ".L" << slice.body_label << ":\n"
       << "  sub eax, 1\n"
       << "  jmp .L" << slice.loop_label << "\n"
@@ -3844,7 +3846,7 @@ std::optional<std::string> try_emit_module(const c4c::backend::bir::Module& modu
 
 std::string emit_module(const c4c::backend::bir::Module& module) {
   if (const auto asm_text = try_emit_module(module); asm_text.has_value()) {
-    return *asm_text;
+    return c4c::backend::x86::codegen::peephole::peephole_optimize(*asm_text);
   }
   throw_unsupported_direct_bir_module();
 }
@@ -3937,7 +3939,7 @@ std::string emit_module(const c4c::codegen::lir::LirModule& module) {
     return emit_module(*lowered);
   }
   if (const auto asm_text = try_emit_prepared_lir_module(module); asm_text.has_value()) {
-    return *asm_text;
+    return c4c::backend::x86::codegen::peephole::peephole_optimize(*asm_text);
   }
   throw_x86_rewrite_in_progress();
 }
