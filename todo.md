@@ -6,9 +6,9 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 5: Start from the refreshed post-split ranking led by
-  `hir_templates.cpp` and choose the next smallest extraction from the
-  remaining template value-argument or static-member-const helper family.
+- Step 5: start from the refreshed hotspot edge between `hir_templates.cpp`
+  and `stmt_emitter_call.cpp`, then choose the lower-risk remaining extraction
+  seam for the next measured slice.
 
 ## Completed
 
@@ -204,20 +204,44 @@ Source Plan: plan.md
   optimized command took 4.283s, the post-split
   `src/frontend/hir/hir_templates.cpp` took 4.021s, and the new
   `src/frontend/hir/hir_templates_type_resolution.cpp` took 1.581s.
+- Added focused HIR coverage in
+  `tests/cpp/internal/hir_case/template_value_arg_static_member_trait_hir.cpp`
+  and wired the new `cpp_hir_template_value_arg_static_member_trait` test into
+  `tests/cpp/internal/InternalTests.cmake`.
+- Executed the eighth Step 4 slice by moving the template value-argument and
+  static-member-const helper family
+  (`assign_template_arg_refs_from_ast_args`,
+  `resolve_ast_template_value_arg`,
+  `try_eval_template_static_member_const`, and
+  `try_eval_instantiated_struct_static_member_const`) out of
+  `src/frontend/hir/hir_templates.cpp` into the new
+  `src/frontend/hir/hir_templates_value_args.cpp`.
+- Rebuilt after the split and re-ran focused coverage:
+  `cpp_hir_template_value_arg_static_member_trait`,
+  `cpp_hir_template_alias_deferred_nttp_static_member`,
+  `cpp_hir_template_deferred_nttp_static_member_expr`, and
+  `cpp_hir_template_inherited_member_typedef_trait`.
+- Re-ran the full suite into `test_fail_after.log`; the regression guard passed
+  with 3326/3326 tests passing after the new focused HIR test was added and no
+  new failures.
+- Recorded the eighth before/after extraction measurement: compiling the
+  pre-split `src/frontend/hir/hir_templates.cpp` from `HEAD` on the generated
+  optimized command took 4.468s, the post-split
+  `src/frontend/hir/hir_templates.cpp` took 3.681s, and the new
+  `src/frontend/hir/hir_templates_value_args.cpp` compiled in 1.229s.
+- Refreshed the optimized hotspot ranking after the value-arg split:
+  `hir_templates.cpp` measured 4.279s, `stmt_emitter_call.cpp` 4.086s,
+  `hir_stmt.cpp` 3.923s, `hir_expr.cpp` 3.615s, and
+  `stmt_emitter_expr.cpp` 3.270s.
 
 ## Next Slice
 
-- `hir_templates.cpp` still leads the refreshed ranking at 4.247s, so prefer
-  one more cohesive helper family there before returning to `hir_stmt.cpp`.
-- The next best seam is the template value-argument and static-member-const
-  path (`assign_template_arg_refs_from_ast_args`,
-  `resolve_ast_template_value_arg`,
-  `try_eval_template_static_member_const`, and
-  `try_eval_instantiated_struct_static_member_const`) because it stays near
-  the member-typedef logic already split but has its own focused validation
-  surface.
-- If that cluster proves too interleaved on inspection, fall back to
-  `stmt_emitter_call.cpp` before opening another `hir_stmt.cpp` slice.
+- `hir_templates.cpp` still edges `stmt_emitter_call.cpp` in the refreshed
+  snapshot, but the gap is now small enough that the next slice should prefer
+  the lower-risk remaining seam rather than forcing another HIR extraction.
+- If a cohesive remaining helper family in `hir_templates.cpp` is not clearly
+  smaller than the next `stmt_emitter_call.cpp` dispatcher/helper split,
+  switch to `stmt_emitter_call.cpp` for the next measured extraction.
 
 ## Blockers
 
@@ -271,4 +295,10 @@ Source Plan: plan.md
   so this type-resolution split counts as another measured hotspot reduction
   for that TU.
 - The latest full-suite rerun passes 3325/3325 tests, and the monotonic
+  regression guard remains green.
+- The eighth extraction slice reduced `src/frontend/hir/hir_templates.cpp`
+  from 4.468s to 3.681s on the generated optimized single-TU compile command,
+  so this value-argument/static-member split also counts as a measured hotspot
+  reduction for that TU.
+- The latest full-suite rerun passes 3326/3326 tests, and the monotonic
   regression guard remains green.
