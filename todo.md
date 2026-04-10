@@ -8,14 +8,13 @@ Source Plan: plan.md
 
 - Step 3 translated-owner cutover follow-on in the bounded prepared-LIR
   direct-calls sibling seam after landing the first-local rewrite
-  backend-entrypoint regression for the local/rewrite two-argument helper
-  family
+  backend-entrypoint regressions for the remaining local/rewrite two-argument
+  helper family representatives
 - immediate target:
   choose the next still-direct-emitter-only public backend entrypoint
-  representative from the remaining prepared-LIR helper families after
-  first-local rewrite so the shared x86 backend path keeps shrinking the
-  uncovered native matcher surface without reviving broader parked translated-
-  owner work
+  representative outside the now-complete two-argument local/rewrite helper
+  family so the shared x86 backend path keeps shrinking the uncovered native
+  matcher surface without reviving broader parked translated-owner work
 
 ## Next Slice
 
@@ -33,6 +32,24 @@ Source Plan: plan.md
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration adds the remaining shared backend entrypoint coverage for the
+  bounded second-local-arg and both-local-arg two-argument prepared-LIR helper
+  families: `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` now pins
+  both `add_pair(i32, i32)` shapes at `c4c::backend::emit_module(...)` so the
+  public x86 backend entry surface, not just the direct-emitter seam, owns
+  the cases where the second operand or both operands reload from local slots
+- focused validation passed:
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_second_local_arg_direct_call_on_native_x86_path`,
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_arg_direct_call_on_native_x86_path`,
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_two_arg_second_local_arg_call_slice`,
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_two_arg_both_local_arg_call_slice`,
+  and
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_local_arg_direct_call_on_native_x86_path`
+- broad validation note:
+  still deferred for this bounded prepared-LIR direct-call coverage slice per
+  the active plan note to wait for a larger owner-path cutover before rerunning
+  the monotonic full-suite guard
 
 - this iteration adds the missing shared backend entrypoint coverage for the
   bounded first-local rewrite two-argument prepared-LIR helper family:
