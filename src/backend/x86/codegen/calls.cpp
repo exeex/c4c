@@ -102,29 +102,29 @@ void X86Codegen::emit_call_store_result_impl(const Value& dest, IrType return_ty
       const auto c0 = this->call_ret_classes[0];
       const auto c1 = this->call_ret_classes[1];
       if (c0 == EightbyteClass::Integer && c1 == EightbyteClass::Sse) {
-        if (const auto slot = this->state.get_slot(dest.0)) {
-          this->state.out.emit_instr_rbp_reg("    movq", slot->0, "rax");
+        if (const auto slot = this->state.get_slot(dest.raw)) {
+          this->state.out.emit_instr_rbp_reg("    movq", slot->raw, "rax");
           this->state.emit("    movq %xmm0, %rdx");
-          this->state.out.emit_instr_rbp_reg("    movq", slot->0 + 8, "rdx");
+          this->state.out.emit_instr_rbp_reg("    movq", slot->raw + 8, "rdx");
         }
         this->state.reg_cache.invalidate_all();
         return;
       }
       if (c0 == EightbyteClass::Sse && c1 == EightbyteClass::Integer) {
-        if (const auto slot = this->state.get_slot(dest.0)) {
+        if (const auto slot = this->state.get_slot(dest.raw)) {
           this->state.emit("    movq %xmm0, %rdx");
-          this->state.out.emit_instr_rbp_reg("    movq", slot->0, "rdx");
-          this->state.out.emit_instr_rbp_reg("    movq", slot->0 + 8, "rax");
+          this->state.out.emit_instr_rbp_reg("    movq", slot->raw, "rdx");
+          this->state.out.emit_instr_rbp_reg("    movq", slot->raw + 8, "rax");
         }
         this->state.reg_cache.invalidate_all();
         return;
       }
       if (c0 == EightbyteClass::Sse && c1 == EightbyteClass::Sse) {
-        if (const auto slot = this->state.get_slot(dest.0)) {
+        if (const auto slot = this->state.get_slot(dest.raw)) {
           this->state.emit("    movq %xmm0, %rax");
-          this->state.out.emit_instr_rbp_reg("    movq", slot->0, "rax");
+          this->state.out.emit_instr_rbp_reg("    movq", slot->raw, "rax");
           this->state.emit("    movq %xmm1, %rax");
-          this->state.out.emit_instr_rbp_reg("    movq", slot->0 + 8, "rax");
+          this->state.out.emit_instr_rbp_reg("    movq", slot->raw + 8, "rax");
         }
         this->state.reg_cache.invalidate_all();
         return;
@@ -141,14 +141,14 @@ void X86Codegen::emit_call_store_result_impl(const Value& dest, IrType return_ty
     this->emit_call_move_f64_to_acc_impl();
     this->store_rax_to(dest);
   } else if (return_type == IrType::F128) {
-    if (const auto slot = this->state.get_slot(dest.0)) {
-      this->state.out.emit_instr_rbp("    fstpt", slot->0);
-      this->state.out.emit_instr_rbp("    fldt", slot->0);
+    if (const auto slot = this->state.get_slot(dest.raw)) {
+      this->state.out.emit_instr_rbp("    fstpt", slot->raw);
+      this->state.out.emit_instr_rbp("    fldt", slot->raw);
       this->state.emit("    subq $8, %rsp");
       this->state.emit("    fstpl (%rsp)");
       this->state.emit("    popq %rax");
-      this->state.reg_cache.set_acc(dest.0, false);
-      this->state.f128_direct_slots.insert(dest.0);
+      this->state.reg_cache.set_acc(dest.raw, false);
+      this->state.f128_direct_slots.insert(dest.raw);
     } else {
       this->state.emit("    subq $8, %rsp");
       this->state.emit("    fstpl (%rsp)");

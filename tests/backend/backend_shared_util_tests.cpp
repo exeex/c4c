@@ -202,6 +202,8 @@ void test_x86_codegen_header_exports_translated_returns_owner_symbols() {
 void test_x86_codegen_header_exports_translated_call_owner_surface() {
   using X86Codegen = c4c::backend::x86::X86Codegen;
   using X86CodegenState = c4c::backend::x86::X86CodegenState;
+  using Value = c4c::backend::x86::Value;
+  using StackSlot = c4c::backend::x86::StackSlot;
 
   auto operand_to_rax = &X86Codegen::operand_to_rax;
   auto operand_to_rcx = &X86Codegen::operand_to_rcx;
@@ -227,6 +229,8 @@ void test_x86_codegen_header_exports_translated_call_owner_surface() {
   stack_class.kind = c4c::backend::x86::CallArgClass::Kind::Stack;
   c4c::backend::x86::CallArgClass register_class;
   register_class.kind = c4c::backend::x86::CallArgClass::Kind::Register;
+  Value value{17};
+  StackSlot slot{-24};
   const c4c::backend::x86::CallAbiConfig abi_config{
       6, 8, false, false, false, false, false, true, false, false, false, false,
   };
@@ -243,12 +247,13 @@ void test_x86_codegen_header_exports_translated_call_owner_surface() {
                   emit_call_move_f32_to_acc != nullptr &&
                   emit_call_move_f64_to_acc != nullptr && state_emit != nullptr &&
                   state_get_slot != nullptr && state_resolve_slot_addr != nullptr &&
+                  value.raw == 17 && slot.raw == -24 &&
                   stack_class.is_stack() && !stack_class.is_register() &&
                   register_class.is_register() && !register_class.is_stack() &&
                   abi_config.max_int_regs == 6 && abi_config.max_float_regs == 8 &&
                   abi_config.use_sysv_struct_classification &&
                   !abi_config.allow_struct_split_reg_stack,
-              "x86 translated call-owner header surfacing should expose the shared ABI structs, state hooks, and owner helper declarations before calls.cpp enters the build");
+              "x86 translated call-owner header surfacing should expose the shared ABI structs, raw value/slot fields, state hooks, and owner helper declarations before calls.cpp enters the build");
 }
 
 void test_x86_codegen_header_exports_translated_asm_emitter_owner_symbols() {

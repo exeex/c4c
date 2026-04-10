@@ -7,24 +7,26 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 3 translated-owner build-wiring follow-on after landing the bounded
-  `returns.cpp` slice: land the smallest public `x86_codegen.hpp`
-  surfacing cluster that moves `calls.cpp` past the current incomplete
-  ABI/type/state blockers, then rerun the direct compile probe to record the
-  next blocker tier before choosing another owner file for build wiring
+  `returns.cpp` slice: normalize the next `calls.cpp` translated-body syntax
+  tier now that the public `x86_codegen.hpp` surfacing cluster moved the file
+  past the incomplete ABI/type/state blockers, then rerun the direct compile
+  probe to record whether another parser-level blocker remains before choosing
+  build wiring
 - immediate target:
-  expose the shared `CallAbiConfig` / `CallArgClass` / `IrType` / call-state
-  declarations plus the minimal `X86Codegen` helper signatures and focused
-  header-export coverage needed for `calls.cpp` to stop failing immediately on
-  incomplete public surface errors
+  replace the parked Rust-tuple field accesses in `src/backend/x86/codegen/calls.cpp`
+  with the current public `Value::raw` / `StackSlot::raw` contract, add a
+  narrow shared-header compile-surface check for those fields, and rerun the
+  direct `clang++ -fsyntax-only` probe to capture the next blocker boundary
 
 ## Next Slice
 
-- rerun the direct `calls.cpp` compile probe after the current header slice and
-  record the next parse-level blocker set now that incomplete ABI/state errors
-  are out of the way
-- use that refreshed probe output to decide whether the next bounded slice is
-  a syntax-normalization lane inside `calls.cpp` itself or a second shared
-  header surfacing patch that benefits multiple parked owner files
+- decide whether the next bounded Step 3 slice is real `CMakeLists.txt`
+  wire-in for `src/backend/x86/codegen/calls.cpp` or a narrower object-build
+  probe that checks for link-time/helper-definition gaps before touching the
+  active x86 source lists
+- if future wiring exposes missing translated helper bodies shared with other
+  parked owner files, treat that as a separate surfaced blocker tier rather
+  than reverting this now-clean parser normalization work
 - if a future x86 ABI policy change ever enables partial GP-register plus
   caller-stack aggregate splits, re-open `StructSplitRegStack` as a separate
   owner-path cutover item instead of silently folding it into the current
@@ -40,6 +42,26 @@ Source Plan: plan.md
 
 ## Current Iteration Notes
 
+- this iteration targets the first parked translated-body syntax blocker inside
+  `src/backend/x86/codegen/calls.cpp` after the earlier header-surfacing
+  slice: the file still uses Rust-tuple-style field access (`dest.0`,
+  `slot->0`) even though the public C++ owner contract now names those fields
+  `raw`
+- implementation note:
+  `src/backend/x86/codegen/calls.cpp` now uses `Value::raw` and
+  `StackSlot::raw` consistently for the translated call-result store paths,
+  and `tests/backend/backend_shared_util_tests.cpp` now pins that raw-field
+  contract through the shared translated call-owner header surface
+- direct compile-probe result after the syntax-normalization slice:
+  `clang++ -std=c++20 -fsyntax-only ... src/backend/x86/codegen/calls.cpp`
+  now passes, so the parked translated call owner is past both the earlier
+  incomplete header barrier and the first parser-level translated-body syntax
+  tier
+- focused validation passed:
+  `cmake --build --preset default --target backend_shared_util_tests -j8`,
+  `./build/backend_shared_util_tests translated_call_owner_surface`, and the
+  direct `clang++ -fsyntax-only` probe for
+  `src/backend/x86/codegen/calls.cpp`
 - this iteration lands the planned bounded public-surface slice in
   `src/backend/x86/codegen/x86_codegen.hpp` for the translated call-owner
   dependency cluster instead of wiring another top-level owner file blindly
