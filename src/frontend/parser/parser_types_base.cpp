@@ -527,9 +527,11 @@ TypeSpec Parser::parse_base_type() {
                 TypeSpec* out) -> bool {
                 if (tag.empty() || member.empty() || !out) return false;
                 auto resolve_struct_like = [&](TypeSpec ts) -> TypeSpec {
-                    ts = resolve_typedef_chain(ts, typedef_types_);
-                    if (ts.base == TB_TYPEDEF && ts.tag && typedef_types_.count(ts.tag) > 0) {
-                        ts = typedef_types_.at(ts.tag);
+                    ts = resolve_typedef_type_chain(ts);
+                    if (ts.base == TB_TYPEDEF && ts.tag) {
+                        if (const TypeSpec* nested = find_typedef_type(ts.tag)) {
+                            ts = *nested;
+                        }
                     }
                     return ts;
                 };
@@ -625,9 +627,9 @@ TypeSpec Parser::parse_base_type() {
                         std::vector<std::pair<std::string, long long>> nttp_bindings;
                         const auto* specializations =
                             find_template_struct_specializations(primary_tpl);
-                        const Node* selected = select_template_struct_pattern(
+                        const Node* selected = select_template_struct_pattern_for_args(
                             actual_args, primary_tpl, specializations,
-                            typedef_types_, &type_bindings, &nttp_bindings);
+                            &type_bindings, &nttp_bindings);
                         if (selected && selected->template_arg_types &&
                             selected->template_arg_is_value) {
                             for (int ai = 0;
@@ -1619,9 +1621,11 @@ TypeSpec Parser::parse_base_type() {
                                             if (it != template_struct_specializations_.end())
                                                 specializations = &it->second;
                                         }
-                                        const Node* selected = select_template_struct_pattern(
-                                            actual_args, primary_tpl, specializations,
-                                            typedef_types_, &type_bindings, &nttp_bindings);
+                                        const Node* selected =
+                                            select_template_struct_pattern_for_args(
+                                                actual_args, primary_tpl,
+                                                specializations, &type_bindings,
+                                                &nttp_bindings);
                                         if (!selected || selected->n_member_typedefs <= 0)
                                             return false;
                                         for (int mi = 0; mi < selected->n_member_typedefs; ++mi) {
@@ -2016,9 +2020,9 @@ TypeSpec Parser::parse_base_type() {
                     std::vector<std::pair<std::string, long long>> nttp_bindings;
                     const auto* specialization_patterns =
                         find_template_struct_specializations(primary_tpl);
-                    const Node* tpl_def = select_template_struct_pattern(
+                    const Node* tpl_def = select_template_struct_pattern_for_args(
                         actual_args, primary_tpl, specialization_patterns,
-                        typedef_types_, &type_bindings, &nttp_bindings);
+                        &type_bindings, &nttp_bindings);
                     if (!tpl_def) return ts;
                     std::vector<ParsedTemplateArg> concrete_args = actual_args;
                     while (primary_tpl && static_cast<int>(concrete_args.size()) < primary_tpl->n_template_params) {

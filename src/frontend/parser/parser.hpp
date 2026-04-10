@@ -539,6 +539,7 @@ class Parser {
   const TypeSpec* find_visible_typedef_type(const std::string& name) const;
   TypeSpec resolve_typedef_type_chain(TypeSpec ts) const;
   bool are_types_compatible(const TypeSpec& lhs, const TypeSpec& rhs) const;
+  bool resolves_to_record_ctor_type(TypeSpec ts) const;
   bool is_user_typedef_name(const std::string& name) const;
   bool has_conflicting_user_typedef_binding(const std::string& name,
                                             const TypeSpec& type) const;

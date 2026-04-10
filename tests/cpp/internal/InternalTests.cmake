@@ -91,6 +91,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     template_declaration_prelude_cleanup_parse
     template_alias_qualified_typedef_resolution_parse
     template_visible_typedef_type_arg_parse
+    template_specialization_member_typedef_trait_parse
     member_template_decltype_default_parse
     member_template_decltype_overload_parse
     member_template_sfinae_typename_prelude_parse

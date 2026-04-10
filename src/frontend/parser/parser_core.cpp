@@ -310,6 +310,17 @@ bool Parser::are_types_compatible(const TypeSpec& lhs,
     return types_compatible_p(lhs, rhs, symbol_tables_.typedef_types);
 }
 
+bool Parser::resolves_to_record_ctor_type(TypeSpec ts) const {
+    ts = resolve_typedef_chain(ts, symbol_tables_.typedef_types);
+    if (ts.base == TB_TYPEDEF && ts.tag) {
+        if (defined_struct_tags_.count(ts.tag) > 0 ||
+            template_struct_defs_.count(ts.tag) > 0) {
+            return true;
+        }
+    }
+    return ts.base == TB_STRUCT || ts.base == TB_UNION;
+}
+
 bool Parser::is_user_typedef_name(const std::string& name) const {
     return symbol_tables_.user_typedefs.count(name) > 0;
 }

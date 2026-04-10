@@ -10,10 +10,11 @@ Source Plan: plan.md
   grouped parser symbol-table accessors instead of direct top-level member
   storage assumptions, continuing into the next parser-local typedef/value
   helper surface after the declaration parser cleanup
-- Current slice: shift to the next remaining parser-local helper surface after
-  the template/type helper cleanup, starting with any leftover
-  `select_template_struct_pattern(...)` call sites and raw typedef-map
-  plumbing outside `types_helpers.hpp` / `parser_types_template.cpp`
+- Current slice: continue past the template/type helper cleanup into the next
+  parser-local typedef chain/read surface, starting with the remaining direct
+  `resolve_typedef_chain(..., typedef_types_)` use in
+  `parser_types_declarator.cpp` and any nearby parser-local typedef reads that
+  still bypass the accessor layer
 - Iteration target: keep reducing parser call sites that still need raw
   typedef-map parameters, without widening into namespace-state grouping or
   backend work
@@ -240,15 +241,38 @@ Source Plan: plan.md
   full `ctest --test-dir build -j8 --output-on-failure`, and regression
   guard:
   3356/3356 tests passed, no new failures
+- Added parser-owned record-constructor and typedef-compatibility helpers in
+  `src/frontend/parser/parser.hpp` and `src/frontend/parser/parser_core.cpp`
+  so parser expression and type-base call sites can stop threading raw
+  `typedef_types_` access for record-like functional casts and builtin
+  type-trait comparisons
+- Migrated the remaining direct `select_template_struct_pattern(...)` call
+  sites in `src/frontend/parser/parser_types_base.cpp` onto
+  `select_template_struct_pattern_for_args()`, and replaced nearby direct
+  typedef-chain reads with parser-local lookup helpers
+- Migrated `src/frontend/parser/parser_expressions.cpp` builtin type-trait
+  checks, typedef-owned functional-cast detection, and qualified owner-type
+  probes onto parser-local helpers instead of direct grouped typedef-map reads
+- Added positive C++ regression
+  `tests/cpp/internal/postive_case/template_specialization_member_typedef_trait_parse.cpp`
+  and registered it in `tests/cpp/internal/InternalTests.cmake` to cover a
+  specialization-selected member typedef used in both `__is_same(...)` and a
+  functional-cast expression
+- Revalidated this slice with
+  `ctest --test-dir build -R 'cpp_positive_sema_(builtin_trait_is_same_frontend|template_specialization_member_typedef_trait_parse|template_visible_typedef_type_arg_parse|typedef_owned_functional_cast_parse)_cpp' --output-on-failure`,
+  full `ctest --test-dir build -j8 --output-on-failure`, and regression
+  guard:
+  3357/3357 tests passed, no new failures
 
 ## Next Intended Slice
 
-- Continue Step 3 by removing the next raw typedef-map plumbing that still
-  leaks through helper signatures, starting with the remaining
-  `select_template_struct_pattern(...)` callers outside
+- Continue Step 3 by removing the remaining direct typedef-chain call in
+  `src/frontend/parser/parser_types_declarator.cpp` and checking whether the
+  nearby declarator/type-spelling paths still need one more parser-local
+  typedef wrapper
+- Recheck whether any parser-local helper signature still threads raw typedef
+  maps outside the centralized template-selection helper in
   `parser_types_template.cpp`
-- Recheck whether any parser expression or type-base paths still need a small
-  parser-owned wrapper for `types_compatible_p(...)` / typedef-map access
 - Keep namespace-state grouping deferred to a later slice unless it becomes
   necessary for one of those parser-local wrapper migrations
 
@@ -283,3 +307,7 @@ Source Plan: plan.md
   decoding through parser-local helpers; the remaining follow-on work is the
   smaller set of raw typedef-map parameters still passed through helper
   signatures elsewhere
+- `parser_types_base.cpp` and `parser_expressions.cpp` now use parser-owned
+  template-selection, typedef-compatibility, and record-constructor helpers;
+  the most obvious remaining direct parser-side typedef-chain use is in
+  `parser_types_declarator.cpp`
