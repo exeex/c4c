@@ -1158,6 +1158,123 @@ c4c::codegen::lir::LirModule make_bir_minimal_scalar_global_load_lir_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_bir_minimal_repeated_zero_arg_call_compare_zero_return_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction helper;
+  helper.name = "f";
+  helper.signature_text = "define i32 @f()\n";
+  helper.entry = LirBlockId{0};
+
+  LirBlock helper_entry;
+  helper_entry.id = LirBlockId{0};
+  helper_entry.label = "entry";
+  helper_entry.terminator = LirRet{std::string("100"), "i32"};
+  helper.blocks.push_back(std::move(helper_entry));
+
+  LirFunction main_function;
+  main_function.name = "main";
+  main_function.signature_text = "define i32 @main()\n";
+  main_function.entry = LirBlockId{0};
+
+  auto append_compare_block = [](LirFunction& function,
+                                 int block_id,
+                                 std::string label,
+                                 std::string call_result,
+                                 std::string cmp_result,
+                                 std::string zext_result,
+                                 std::string branch_result,
+                                 std::string predicate,
+                                 std::string lhs,
+                                 std::string rhs,
+                                 std::string true_label,
+                                 std::string false_label) {
+    LirBlock block;
+    block.id = LirBlockId{static_cast<unsigned>(block_id)};
+    block.label = std::move(label);
+    block.insts.push_back(LirCallOp{std::move(call_result), "i32", "@f", "", ""});
+    const auto& call = std::get<LirCallOp>(block.insts.back());
+    block.insts.push_back(
+        LirCmpOp{std::move(cmp_result), false, std::move(predicate), "i32", std::move(lhs), std::move(rhs)});
+    const auto& cmp = std::get<LirCmpOp>(block.insts.back());
+    block.insts.push_back(LirCastOp{std::move(zext_result), LirCastKind::ZExt, "i1", cmp.result.str(), "i32"});
+    const auto& zext = std::get<LirCastOp>(block.insts.back());
+    block.insts.push_back(LirCmpOp{std::move(branch_result), false, "ne", "i32", zext.result.str(), "0"});
+    const auto& branch_cmp = std::get<LirCmpOp>(block.insts.back());
+    block.terminator = LirCondBr{branch_cmp.result.str(), std::move(true_label), std::move(false_label)};
+    function.blocks.push_back(std::move(block));
+  };
+
+  append_compare_block(main_function, 0, "entry", "%t0", "%t1", "%t2", "%t3",
+                       "sgt", "%t0", "1000", "block_2", "block_3");
+
+  LirBlock block_2;
+  block_2.id = LirBlockId{1};
+  block_2.label = "block_2";
+  block_2.terminator = LirRet{std::string("1"), "i32"};
+  main_function.blocks.push_back(std::move(block_2));
+
+  append_compare_block(main_function, 2, "block_3", "%t4", "%t5", "%t6", "%t7",
+                       "sge", "%t4", "1000", "block_4", "block_5");
+
+  LirBlock block_4;
+  block_4.id = LirBlockId{3};
+  block_4.label = "block_4";
+  block_4.terminator = LirRet{std::string("1"), "i32"};
+  main_function.blocks.push_back(std::move(block_4));
+
+  append_compare_block(main_function, 4, "block_5", "%t8", "%t9", "%t10", "%t11",
+                       "slt", "1000", "%t8", "block_6", "block_7");
+
+  LirBlock block_6;
+  block_6.id = LirBlockId{5};
+  block_6.label = "block_6";
+  block_6.terminator = LirRet{std::string("1"), "i32"};
+  main_function.blocks.push_back(std::move(block_6));
+
+  append_compare_block(main_function, 6, "block_7", "%t12", "%t13", "%t14", "%t15",
+                       "sle", "1000", "%t12", "block_8", "block_9");
+
+  LirBlock block_8;
+  block_8.id = LirBlockId{7};
+  block_8.label = "block_8";
+  block_8.terminator = LirRet{std::string("1"), "i32"};
+  main_function.blocks.push_back(std::move(block_8));
+
+  append_compare_block(main_function, 8, "block_9", "%t16", "%t17", "%t18", "%t19",
+                       "eq", "1000", "%t16", "block_10", "block_11");
+
+  LirBlock block_10;
+  block_10.id = LirBlockId{9};
+  block_10.label = "block_10";
+  block_10.terminator = LirRet{std::string("1"), "i32"};
+  main_function.blocks.push_back(std::move(block_10));
+
+  append_compare_block(main_function, 10, "block_11", "%t20", "%t21", "%t22", "%t23",
+                       "ne", "100", "%t20", "block_12", "block_13");
+
+  LirBlock block_12;
+  block_12.id = LirBlockId{11};
+  block_12.label = "block_12";
+  block_12.terminator = LirRet{std::string("1"), "i32"};
+  main_function.blocks.push_back(std::move(block_12));
+
+  LirBlock block_13;
+  block_13.id = LirBlockId{12};
+  block_13.label = "block_13";
+  block_13.terminator = LirRet{std::string("0"), "i32"};
+  main_function.blocks.push_back(std::move(block_13));
+
+  module.functions.push_back(std::move(main_function));
+  module.functions.push_back(std::move(helper));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_bir_minimal_string_literal_compare_phi_return_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -3683,6 +3800,35 @@ void test_bir_lowering_accepts_minimal_scalar_global_load_lir_module() {
   const auto rendered = c4c::backend::bir::print(*lowered);
   expect_contains(rendered, "entry:\n  %t0 = bir.load_global i32 @g_counter\n  bir.ret i32 %t0\n",
                   "the lowered scalar global-load BIR module should print the bounded bir.load_global contract");
+}
+
+void test_bir_lowering_accepts_minimal_repeated_zero_arg_call_compare_zero_return_lir_module() {
+  const auto lowered = c4c::backend::try_lower_to_bir(
+      make_bir_minimal_repeated_zero_arg_call_compare_zero_return_lir_module());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the bounded repeated zero-arg call compare/return LIR slice");
+  if (!lowered.has_value()) {
+    return;
+  }
+
+  expect_true(lowered->functions.size() == 2 &&
+                  lowered->functions[0].name == "f" &&
+                  lowered->functions[1].name == "main" &&
+                  lowered->functions[0].blocks.size() == 1 &&
+                  lowered->functions[1].blocks.size() == 1 &&
+                  lowered->functions[0].blocks.front().insts.empty() &&
+                  lowered->functions[1].blocks.front().insts.empty() &&
+                  lowered->functions[0].blocks.front().terminator.value ==
+                      c4c::backend::bir::Value::immediate_i32(100) &&
+                  lowered->functions[1].blocks.front().terminator.value ==
+                      c4c::backend::bir::Value::immediate_i32(0),
+              "the lowered repeated zero-arg call compare slice should preserve the helper return and collapse main to the exact zero return");
+
+  const auto rendered = c4c::backend::bir::print(*lowered);
+  expect_contains(rendered, "bir.func @f() -> i32 {\nentry:\n  bir.ret i32 100\n}\n",
+                  "the lowered repeated zero-arg call compare slice should keep the helper definition in the shared BIR module");
+  expect_contains(rendered, "bir.func @main() -> i32 {\nentry:\n  bir.ret i32 0\n}\n",
+                  "the lowered repeated zero-arg call compare slice should print the folded main immediate return");
 }
 
 void test_bir_lowering_accepts_minimal_string_literal_compare_phi_return_lir_module() {
@@ -6319,6 +6465,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_uses_actual_fixed_vararg_call_types_for_declared_direct_calls);
   RUN_TEST(test_bir_lowering_uses_typed_zero_arg_vararg_declared_direct_call_metadata_when_text_is_stale);
   RUN_TEST(test_bir_lowering_accepts_minimal_scalar_global_load_lir_module);
+  RUN_TEST(test_bir_lowering_accepts_minimal_repeated_zero_arg_call_compare_zero_return_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_string_literal_compare_phi_return_lir_module);
   RUN_TEST(test_bir_lowering_accepts_typed_minimal_scalar_global_load_lir_slice_with_stale_text);
   RUN_TEST(test_bir_lowering_accepts_minimal_extern_scalar_global_load_lir_module);

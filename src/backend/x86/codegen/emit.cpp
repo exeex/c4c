@@ -74,6 +74,13 @@ struct MinimalAffineReturnSlice {
   std::int64_t constant = 0;
 };
 
+struct MinimalTwoFunctionImmediateReturnSlice {
+  std::string helper_name;
+  std::string entry_name;
+  std::int64_t helper_imm = 0;
+  std::int64_t entry_imm = 0;
+};
+
 struct MinimalVariadicSum2Slice {
   std::string helper_name;
   std::string entry_name;
@@ -428,6 +435,46 @@ std::optional<std::int64_t> parse_minimal_constant_return_imm(
     return std::nullopt;
   }
   return resolve_value(*block.terminator.value);
+}
+
+std::optional<MinimalTwoFunctionImmediateReturnSlice> parse_minimal_two_function_immediate_return_slice(
+    const c4c::backend::bir::Module& module) {
+  using namespace c4c::backend::bir;
+
+  if (module.functions.size() != 2 || !module.globals.empty() ||
+      !module.string_constants.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& helper = module.functions.front();
+  const auto& entry = module.functions.back();
+  if (helper.is_declaration || entry.is_declaration ||
+      helper.return_type != TypeKind::I32 || entry.return_type != TypeKind::I32 ||
+      !helper.params.empty() || !entry.params.empty() || helper.blocks.size() != 1 ||
+      entry.blocks.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& helper_block = helper.blocks.front();
+  const auto& entry_block = entry.blocks.front();
+  if (helper_block.label != "entry" || entry_block.label != "entry" ||
+      !helper_block.insts.empty() || !entry_block.insts.empty() ||
+      !helper_block.terminator.value.has_value() || !entry_block.terminator.value.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto helper_imm = parse_i64(*helper_block.terminator.value);
+  const auto entry_imm = parse_i64(*entry_block.terminator.value);
+  if (!helper_imm.has_value() || !entry_imm.has_value()) {
+    return std::nullopt;
+  }
+
+  return MinimalTwoFunctionImmediateReturnSlice{
+      .helper_name = helper.name,
+      .entry_name = entry.name,
+      .helper_imm = *helper_imm,
+      .entry_imm = *entry_imm,
+  };
 }
 
 std::optional<bool> evaluate_minimal_i32_cmp(std::string_view predicate,
@@ -2307,6 +2354,24 @@ std::string emit_minimal_return_imm_asm(const c4c::backend::bir::Module& module,
   return out.str();
 }
 
+std::string emit_minimal_two_function_immediate_return_asm(
+    std::string_view target_triple,
+    const MinimalTwoFunctionImmediateReturnSlice& slice) {
+  const auto helper_symbol = asm_symbol_name(target_triple, slice.helper_name);
+  const auto entry_symbol = asm_symbol_name(target_triple, slice.entry_name);
+
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n"
+      << ".text\n"
+      << emit_function_prelude(target_triple, helper_symbol)
+      << "  mov eax, " << slice.helper_imm << "\n"
+      << "  ret\n"
+      << emit_function_prelude(target_triple, entry_symbol)
+      << "  mov eax, " << slice.entry_imm << "\n"
+      << "  ret\n";
+  return out.str();
+}
+
 bool target_uses_x86_64_sysv_regs(std::string_view target_triple) {
   return target_triple.find("x86_64") != std::string::npos ||
          target_triple.find("amd64") != std::string::npos;
@@ -3221,6 +3286,10 @@ std::optional<std::string> try_emit_module(const c4c::backend::bir::Module& modu
   }
   if (const auto imm = parse_minimal_constant_return_imm(module); imm.has_value()) {
     return emit_minimal_return_imm_asm(module, *imm);
+  }
+  if (const auto slice = parse_minimal_two_function_immediate_return_slice(module);
+      slice.has_value()) {
+    return emit_minimal_two_function_immediate_return_asm(module.target_triple, *slice);
   }
   if (const auto slice = parse_minimal_affine_return_slice(module); slice.has_value()) {
     return emit_minimal_affine_return_asm(module.target_triple, *slice);

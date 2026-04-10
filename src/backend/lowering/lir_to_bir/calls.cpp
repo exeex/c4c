@@ -1498,6 +1498,201 @@ std::optional<bir::Module> try_lower_minimal_folded_two_arg_direct_call_module(
   return lowered;
 }
 
+std::optional<bir::Module> try_lower_minimal_repeated_zero_arg_call_compare_zero_return_module(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 2 || !module.globals.empty() || !module.string_pool.empty() ||
+      !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto try_match =
+      [&](const LirFunction& main_function,
+          const LirFunction& helper)
+      -> std::optional<std::tuple<std::string, std::string, std::int64_t>> {
+    if (main_function.is_declaration || helper.is_declaration ||
+        !lir_function_matches_minimal_no_param_integer_return(main_function, 32) ||
+        !backend_lir_function_matches_zero_arg_integer_return(helper, 32) ||
+        main_function.entry.value != 0 || helper.entry.value != 0 ||
+        main_function.blocks.empty() || helper.blocks.size() != 1 ||
+        !main_function.alloca_insts.empty() || !helper.alloca_insts.empty() ||
+        !main_function.stack_objects.empty() || !helper.stack_objects.empty()) {
+      return std::nullopt;
+    }
+
+    const auto helper_return_imm =
+        parse_backend_lir_zero_arg_return_imm_function(helper, std::nullopt);
+    if (!helper_return_imm.has_value()) {
+      return std::nullopt;
+    }
+
+    const auto evaluate_predicate = [](std::int64_t lhs,
+                                       std::int64_t rhs,
+                                       std::string_view predicate) -> std::optional<bool> {
+      if (predicate == "sgt") {
+        return lhs > rhs;
+      }
+      if (predicate == "sge") {
+        return lhs >= rhs;
+      }
+      if (predicate == "slt") {
+        return lhs < rhs;
+      }
+      if (predicate == "sle") {
+        return lhs <= rhs;
+      }
+      if (predicate == "eq") {
+        return lhs == rhs;
+      }
+      if (predicate == "ne") {
+        return lhs != rhs;
+      }
+      return std::nullopt;
+    };
+
+    const auto block_by_label = [&](std::string_view label) -> const LirBlock* {
+      for (const auto& block : main_function.blocks) {
+        if (block.label == label) {
+          return &block;
+        }
+      }
+      return nullptr;
+    };
+
+    std::size_t compare_count = 0;
+    std::string current_label = main_function.blocks.front().label;
+    while (true) {
+      const auto* block = block_by_label(current_label);
+      if (block == nullptr) {
+        return std::nullopt;
+      }
+
+      const auto* ret = std::get_if<LirRet>(&block->terminator);
+      if (ret != nullptr) {
+        const auto return_imm =
+            ret->value_str.has_value() ? parse_backend_i64_literal(*ret->value_str) : std::nullopt;
+        if (!return_imm.has_value() || ret->type_str != "i32" ||
+            lower_function_return_type(main_function, *ret) != bir::TypeKind::I32 ||
+            *return_imm != 0 || compare_count == 0) {
+          return std::nullopt;
+        }
+        break;
+      }
+
+      const auto* condbr = std::get_if<LirCondBr>(&block->terminator);
+      if (condbr == nullptr || block->insts.size() != 4) {
+        return std::nullopt;
+      }
+
+      const auto* call = std::get_if<LirCallOp>(&block->insts[0]);
+      const auto* compare = std::get_if<LirCmpOp>(&block->insts[1]);
+      const auto* cond_cast = std::get_if<LirCastOp>(&block->insts[2]);
+      const auto* branch_cmp = std::get_if<LirCmpOp>(&block->insts[3]);
+      const auto callee_name =
+          call == nullptr ? std::nullopt : parse_backend_zero_arg_direct_global_typed_call(*call);
+      if (call == nullptr || compare == nullptr || cond_cast == nullptr || branch_cmp == nullptr ||
+          !callee_name.has_value() || *callee_name != helper.name || call->result.empty() ||
+          compare->result.empty() || cond_cast->result.empty() || branch_cmp->result.empty() ||
+          compare->is_float || branch_cmp->is_float ||
+          !backend_lir_type_is_i32(compare->type_str) ||
+          cond_cast->kind != LirCastKind::ZExt || cond_cast->from_type != "i1" ||
+          cond_cast->to_type != "i32" || cond_cast->operand != compare->result ||
+          branch_cmp->predicate.str() != "ne" ||
+          !backend_lir_type_is_i32(branch_cmp->type_str) ||
+          branch_cmp->lhs != cond_cast->result || branch_cmp->rhs != "0" ||
+          condbr->cond_name != branch_cmp->result) {
+        return std::nullopt;
+      }
+
+      std::optional<std::int64_t> lhs_value;
+      std::optional<std::int64_t> rhs_value;
+      if (compare->lhs == call->result) {
+        lhs_value = *helper_return_imm;
+      } else {
+        lhs_value = parse_backend_i64_literal(compare->lhs);
+      }
+      if (compare->rhs == call->result) {
+        rhs_value = *helper_return_imm;
+      } else {
+        rhs_value = parse_backend_i64_literal(compare->rhs);
+      }
+      if (!lhs_value.has_value() || !rhs_value.has_value()) {
+        return std::nullopt;
+      }
+
+      const auto predicate_result =
+          evaluate_predicate(*lhs_value, *rhs_value, compare->predicate.str());
+      if (!predicate_result.has_value()) {
+        return std::nullopt;
+      }
+
+      const auto* true_block = block_by_label(condbr->true_label);
+      const auto* false_block = block_by_label(condbr->false_label);
+      const auto* true_ret =
+          true_block == nullptr ? nullptr : std::get_if<LirRet>(&true_block->terminator);
+      if (true_block == nullptr || false_block == nullptr || true_ret == nullptr ||
+          !true_ret->value_str.has_value() || true_ret->type_str != "i32" ||
+          lower_function_return_type(main_function, *true_ret) != bir::TypeKind::I32) {
+        return std::nullopt;
+      }
+      const auto true_return_imm = parse_backend_i64_literal(*true_ret->value_str);
+      if (!true_return_imm.has_value() || *true_return_imm != 1) {
+        return std::nullopt;
+      }
+      if (*predicate_result) {
+        return std::nullopt;
+      }
+
+      current_label = false_block->label;
+      ++compare_count;
+    }
+
+    return std::tuple<std::string, std::string, std::int64_t>{
+        helper.name,
+        main_function.name,
+        *helper_return_imm,
+    };
+  };
+
+  auto parsed = try_match(module.functions[0], module.functions[1]);
+  if (!parsed.has_value()) {
+    parsed = try_match(module.functions[1], module.functions[0]);
+  }
+  if (!parsed.has_value() || std::get<2>(*parsed) < std::numeric_limits<std::int32_t>::min() ||
+      std::get<2>(*parsed) > std::numeric_limits<std::int32_t>::max()) {
+    return std::nullopt;
+  }
+
+  const auto& [helper_name, main_name, helper_return_imm] = *parsed;
+
+  bir::Module lowered;
+  lowered.target_triple = module.target_triple;
+  lowered.data_layout = module.data_layout;
+
+  bir::Function helper_function;
+  helper_function.name = helper_name;
+  helper_function.return_type = bir::TypeKind::I32;
+
+  bir::Block helper_entry;
+  helper_entry.label = "entry";
+  helper_entry.terminator.value =
+      bir::Value::immediate_i32(static_cast<std::int32_t>(helper_return_imm));
+  helper_function.blocks.push_back(std::move(helper_entry));
+  lowered.functions.push_back(std::move(helper_function));
+
+  bir::Function main_function;
+  main_function.name = main_name;
+  main_function.return_type = bir::TypeKind::I32;
+
+  bir::Block main_entry;
+  main_entry.label = "entry";
+  main_entry.terminator.value = bir::Value::immediate_i32(0);
+  main_function.blocks.push_back(std::move(main_entry));
+  lowered.functions.push_back(std::move(main_function));
+  return lowered;
+}
+
 std::optional<bir::Module> try_lower_minimal_dual_identity_direct_call_sub_module(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;

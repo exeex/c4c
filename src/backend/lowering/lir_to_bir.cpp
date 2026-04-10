@@ -4195,6 +4195,11 @@ std::optional<bir::Module> try_lower_to_bir_legacy(const c4c::codegen::lir::LirM
       lowered.has_value()) {
     return lowered;
   }
+  if (const auto lowered =
+          try_lower_minimal_repeated_zero_arg_call_compare_zero_return_module(module);
+      lowered.has_value()) {
+    return lowered;
+  }
   if (const auto lowered = try_lower_minimal_dual_identity_direct_call_sub_module(module);
       lowered.has_value()) {
     return lowered;
