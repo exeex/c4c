@@ -7,24 +7,24 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 3 translated-owner cutover follow-on in the bounded prepared-LIR
-  direct-calls sibling seam after landing the bounded one-arg helper-call
+  direct-calls sibling seam after landing the bounded dual-helper subtraction
   ownership move out of `src/backend/x86/codegen/emit.cpp`
 - immediate target:
-  return to the next bounded direct-calls follow-on after the new one-arg
-  helper family: decide whether the next ownership move should be the dual-
-  helper subtraction/call-crossing family or another still-unowned prepared-LIR
-  direct-call slice
+  return to the next bounded direct-calls follow-on after the new dual-helper
+  subtraction family: move the remaining call-crossing prepared-LIR helper
+  family onto the native x86 direct-emitter path without reopening broader
+  translated prologue-owner work
   - keep the next slice limited to one direct-call family; do not bundle the
-    dual-helper and call-crossing routes together unless they prove to share
-    the same parser/emitter seam exactly
+    remaining call-crossing route with unrelated prepared-LIR direct-call or
+    parked translated-prologue work
   - keep the broader translated prologue-owner work parked; this iteration is
     only about shrinking the remaining prepared-LIR direct-call matcher surface
 
 ## Next Slice
 
-- decide whether the next aggregate follow-on should cover a second small
-  stack aggregate shape with a different field/load pattern or return to
-  broader translated-owner wiring around the parked prologue owner
+- land the bounded call-crossing prepared-LIR direct-call family next:
+  preserve one live source value across a helper call on the native x86 path
+  without routing through shared BIR lowering
 - if a future x86 ABI policy change ever enables partial GP-register plus
   caller-stack aggregate splits, re-open `StructSplitRegStack` as a separate
   owner-path cutover item instead of silently folding it into the current
@@ -36,6 +36,36 @@ Source Plan: plan.md
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration moved the bounded dual-helper subtraction family into
+  `src/backend/x86/codegen/direct_calls.cpp`: the native prepared-LIR path now
+  accepts the minimal `f(i32)` / `g(i32)` identity-helper pair followed by a
+  caller-side subtraction instead of forcing that three-function slice through
+  shared BIR lowering first
+- `src/backend/x86/codegen/direct_dispatch.cpp` and
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` now pin that ownership
+  change directly, including the prepared-LIR direct-emitter regression and
+  the shared entrypoint assertion updates that now expect the native x86
+  prepared-LIR path to own this slice
+- focused validation passed for this slice:
+  `cmake --build --preset default --target backend_bir_tests -j8`,
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_dual_identity_direct_call_sub_slice`,
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_lir_minimal_dual_identity_direct_call_sub_through_bir_end_to_end`,
+  and
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_two_arg_helper_call_slice`
+- nearby-validation note:
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_lir_minimal_call_crossing_direct_call_through_bir_end_to_end`
+  still fails with
+  `x86 backend emitter does not support this direct LIR module...`; treat that
+  as the next prepared-LIR ownership gap rather than a regression in the new
+  dual-helper subtraction slice
+- broad validation note:
+  `ctest --test-dir build -R backend_bir_tests --output-on-failure` is still
+  not an owned signal for this bounded direct-call slice because the monolithic
+  `backend_bir_tests` binary carries existing unrelated failures and a crash
+  outside the new dual-helper subtraction path; monotonic full-suite guard
+  remains deferred per the active plan note until a larger owner-path cutover
+  lands
 
 - this iteration moved the bounded one-arg helper-call family into
   `src/backend/x86/codegen/direct_calls.cpp`: the native prepared-LIR path now

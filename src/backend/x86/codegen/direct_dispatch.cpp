@@ -96,6 +96,10 @@ std::optional<std::string> try_emit_direct_prepared_lir_helper_module(
       asm_text.has_value()) {
     return asm_text;
   }
+  if (const auto asm_text = try_emit_minimal_dual_identity_direct_call_sub_module(module);
+      asm_text.has_value()) {
+    return asm_text;
+  }
   if (const auto asm_text = try_emit_minimal_two_arg_local_arg_call_module(module);
       asm_text.has_value()) {
     return asm_text;

@@ -4,6 +4,7 @@
 #include "../../lowering/call_decode.hpp"
 #include "../../../codegen/lir/ir.hpp"
 
+#include <algorithm>
 #include <charconv>
 #include <limits>
 #include <sstream>
@@ -71,6 +72,14 @@ struct MinimalSingleArgHelperCallSlice {
 
 struct MinimalTwoArgHelperCallSlice {
   std::string helper_name;
+  std::string entry_name;
+  std::int64_t lhs_call_arg_imm = 0;
+  std::int64_t rhs_call_arg_imm = 0;
+};
+
+struct MinimalDualIdentityDirectCallSubSlice {
+  std::string lhs_helper_name;
+  std::string rhs_helper_name;
   std::string entry_name;
   std::int64_t lhs_call_arg_imm = 0;
   std::int64_t rhs_call_arg_imm = 0;
@@ -455,6 +464,104 @@ std::optional<MinimalTwoArgHelperCallSlice> parse_minimal_two_arg_helper_call_sl
     return parsed;
   }
   return try_match(module.functions.back(), module.functions.front());
+}
+
+std::optional<MinimalDualIdentityDirectCallSubSlice>
+parse_minimal_dual_identity_direct_call_sub_slice(const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 3 || !module.globals.empty() || !module.extern_decls.empty() ||
+      !module.string_pool.empty()) {
+    return std::nullopt;
+  }
+
+  const LirFunction* entry = nullptr;
+  std::vector<const LirFunction*> helpers;
+  helpers.reserve(2);
+  for (const auto& function : module.functions) {
+    const bool is_entry_candidate =
+        !function.is_declaration && function.entry.value == 0 && function.blocks.size() == 1 &&
+        function.alloca_insts.empty() && function.stack_objects.empty() &&
+        c4c::backend::backend_lir_signature_matches(
+            function.signature_text, "define", "i32", function.name, {});
+    if (is_entry_candidate) {
+      const auto& block = function.blocks.front();
+      const auto* ret = std::get_if<LirRet>(&block.terminator);
+      if (block.label == "entry" && block.insts.size() == 3 && ret != nullptr &&
+          ret->type_str == "i32" && ret->value_str.has_value()) {
+        if (entry != nullptr) {
+          return std::nullopt;
+        }
+        entry = &function;
+        continue;
+      }
+    }
+    helpers.push_back(&function);
+  }
+
+  if (entry == nullptr || helpers.size() != 2) {
+    return std::nullopt;
+  }
+
+  const auto lhs_helper_name = helpers[0]->name;
+  const auto rhs_helper_name = helpers[1]->name;
+  for (const auto* helper : helpers) {
+    if (helper == nullptr ||
+        !c4c::backend::parse_backend_single_identity_function(*helper, std::nullopt).has_value()) {
+      return std::nullopt;
+    }
+  }
+
+  const auto& block = entry->blocks.front();
+  const auto* ret = std::get_if<LirRet>(&block.terminator);
+  const auto* lhs_call = std::get_if<LirCallOp>(&block.insts[0]);
+  const auto* rhs_call = std::get_if<LirCallOp>(&block.insts[1]);
+  const auto* sub = std::get_if<LirBinOp>(&block.insts[2]);
+  if (ret == nullptr || lhs_call == nullptr || rhs_call == nullptr || sub == nullptr ||
+      sub->opcode.typed() != LirBinaryOpcode::Sub || sub->type_str != "i32" ||
+      !ret->value_str.has_value() || *ret->value_str != sub->result || ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  const auto lhs_call_operand =
+      c4c::backend::parse_backend_direct_global_single_typed_call_operand(*lhs_call,
+                                                                          lhs_helper_name,
+                                                                          "i32");
+  const auto rhs_call_operand =
+      c4c::backend::parse_backend_direct_global_single_typed_call_operand(*rhs_call,
+                                                                          rhs_helper_name,
+                                                                          "i32");
+  if (!lhs_call_operand.has_value() || !rhs_call_operand.has_value() || sub->lhs != lhs_call->result ||
+      sub->rhs != rhs_call->result || lhs_call->callee != ("@" + lhs_helper_name) ||
+      rhs_call->callee != ("@" + rhs_helper_name) || lhs_call->callee == rhs_call->callee) {
+    return std::nullopt;
+  }
+
+  const auto lhs_call_arg_imm = parse_i64(*lhs_call_operand);
+  const auto rhs_call_arg_imm = parse_i64(*rhs_call_operand);
+  if (!lhs_call_arg_imm.has_value() || !rhs_call_arg_imm.has_value() ||
+      *lhs_call_arg_imm < std::numeric_limits<std::int32_t>::min() ||
+      *lhs_call_arg_imm > std::numeric_limits<std::int32_t>::max() ||
+      *rhs_call_arg_imm < std::numeric_limits<std::int32_t>::min() ||
+      *rhs_call_arg_imm > std::numeric_limits<std::int32_t>::max()) {
+    return std::nullopt;
+  }
+
+  const bool matched_lhs =
+      std::any_of(helpers.begin(), helpers.end(), [&](const auto* helper) { return helper->name == lhs_helper_name; });
+  const bool matched_rhs =
+      std::any_of(helpers.begin(), helpers.end(), [&](const auto* helper) { return helper->name == rhs_helper_name; });
+  if (!matched_lhs || !matched_rhs) {
+    return std::nullopt;
+  }
+
+  return MinimalDualIdentityDirectCallSubSlice{
+      .lhs_helper_name = std::string(lhs_helper_name),
+      .rhs_helper_name = std::string(rhs_helper_name),
+      .entry_name = entry->name,
+      .lhs_call_arg_imm = *lhs_call_arg_imm,
+      .rhs_call_arg_imm = *rhs_call_arg_imm,
+  };
 }
 
 std::optional<MinimalTwoArgHelperCallSlice> parse_minimal_two_arg_local_arg_call_slice(
@@ -2011,6 +2118,35 @@ std::string emit_minimal_two_arg_helper_call_asm(
   return out.str();
 }
 
+std::string emit_minimal_dual_identity_direct_call_sub_asm(
+    std::string_view target_triple,
+    const MinimalDualIdentityDirectCallSubSlice& slice) {
+  const auto lhs_helper_symbol = asm_symbol_name(target_triple, slice.lhs_helper_name);
+  const auto rhs_helper_symbol = asm_symbol_name(target_triple, slice.rhs_helper_name);
+  const auto entry_symbol = asm_symbol_name(target_triple, slice.entry_name);
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n"
+      << ".text\n"
+      << emit_function_prelude(target_triple, lhs_helper_symbol)
+      << "  mov eax, edi\n"
+      << "  ret\n"
+      << emit_function_prelude(target_triple, rhs_helper_symbol)
+      << "  mov eax, edi\n"
+      << "  ret\n"
+      << emit_function_prelude(target_triple, entry_symbol)
+      << "  push rbx\n"
+      << "  mov edi, " << slice.lhs_call_arg_imm << "\n"
+      << "  call " << lhs_helper_symbol << "\n"
+      << "  mov ebx, eax\n"
+      << "  mov edi, " << slice.rhs_call_arg_imm << "\n"
+      << "  call " << rhs_helper_symbol << "\n"
+      << "  sub ebx, eax\n"
+      << "  mov eax, ebx\n"
+      << "  pop rbx\n"
+      << "  ret\n";
+  return out.str();
+}
+
 }  // namespace
 
 std::optional<std::string> try_emit_minimal_param_slot_add_module(
@@ -2095,6 +2231,15 @@ std::optional<std::string> try_emit_minimal_two_arg_helper_call_module(
     const c4c::codegen::lir::LirModule& module) {
   if (const auto slice = parse_minimal_two_arg_helper_call_slice(module); slice.has_value()) {
     return emit_minimal_two_arg_helper_call_asm(module.target_triple, *slice);
+  }
+  return std::nullopt;
+}
+
+std::optional<std::string> try_emit_minimal_dual_identity_direct_call_sub_module(
+    const c4c::codegen::lir::LirModule& module) {
+  if (const auto slice = parse_minimal_dual_identity_direct_call_sub_slice(module);
+      slice.has_value()) {
+    return emit_minimal_dual_identity_direct_call_sub_asm(module.target_triple, *slice);
   }
   return std::nullopt;
 }

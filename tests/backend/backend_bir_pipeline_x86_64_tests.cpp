@@ -8025,14 +8025,14 @@ void test_backend_bir_pipeline_drives_x86_lir_minimal_dual_identity_direct_call_
       c4c::backend::BackendModuleInput{make_lir_minimal_dual_identity_direct_call_sub_module()},
       make_bir_pipeline_options(c4c::backend::Target::X86_64));
 
-  expect_contains(rendered, ".type f, %function\nf:\n",
-                  "x86 LIR dual-identity subtraction input should still emit the left helper definition after routing through the shared BIR path");
-  expect_contains(rendered, ".type g, %function\ng:\n",
-                  "x86 LIR dual-identity subtraction input should still emit the right helper definition after routing through the shared BIR path");
+  expect_contains(rendered, ".globl f\n.type f, @function\nf:\n",
+                  "x86 LIR dual-identity subtraction input should now emit the left helper definition on the native prepared-LIR path");
+  expect_contains(rendered, ".globl g\n.type g, @function\ng:\n",
+                  "x86 LIR dual-identity subtraction input should now emit the right helper definition on the native prepared-LIR path");
   expect_contains(rendered, "mov edi, 7",
-                  "x86 LIR dual-identity subtraction input should preserve the left caller immediate on the BIR-owned route");
+                  "x86 LIR dual-identity subtraction input should preserve the left caller immediate on the native prepared-LIR path");
   expect_contains(rendered, "mov edi, 3",
-                  "x86 LIR dual-identity subtraction input should preserve the right caller immediate on the BIR-owned route");
+                  "x86 LIR dual-identity subtraction input should preserve the right caller immediate on the native prepared-LIR path");
   expect_contains(rendered, "sub ebx, eax",
                   "x86 LIR dual-identity subtraction input should lower the subtraction on the native x86 path");
   expect_not_contains(rendered, "target triple =",
@@ -10503,6 +10503,29 @@ void test_x86_direct_emitter_lowers_minimal_two_arg_helper_call_slice() {
                       "x86 direct emitter should stay on native asm emission for the bounded two-arg helper slice");
 }
 
+void test_x86_direct_emitter_lowers_minimal_dual_identity_direct_call_sub_slice() {
+  auto module = make_lir_minimal_dual_identity_direct_call_sub_module();
+
+  const auto rendered = c4c::backend::x86::try_emit_prepared_lir_module(module);
+  expect_true(rendered.has_value(),
+              "x86 direct emitter should accept the bounded dual-identity subtraction helper family through the native prepared-LIR seam");
+  if (!rendered.has_value()) {
+    return;
+  }
+  expect_contains(*rendered, ".globl f",
+                  "x86 direct emitter should still emit the left identity helper definition for the bounded dual-helper subtraction slice");
+  expect_contains(*rendered, ".globl g",
+                  "x86 direct emitter should still emit the right identity helper definition for the bounded dual-helper subtraction slice");
+  expect_contains(*rendered, "f:\n  mov eax, edi\n  ret\n",
+                  "x86 direct emitter should keep the left helper identity body on the native direct-LIR path");
+  expect_contains(*rendered, "g:\n  mov eax, edi\n  ret\n",
+                  "x86 direct emitter should keep the right helper identity body on the native direct-LIR path");
+  expect_contains(*rendered, "main:\n  push rbx\n  mov edi, 7\n  call f\n  mov ebx, eax\n  mov edi, 3\n  call g\n  sub ebx, eax\n  mov eax, ebx\n  pop rbx\n  ret\n",
+                  "x86 direct emitter should preserve the first helper result across the second call and lower the final subtraction on the native x86 path");
+  expect_not_contains(*rendered, "target triple =",
+                      "x86 direct emitter should stay on native asm emission for the bounded dual-helper subtraction slice");
+}
+
 void test_x86_direct_emitter_lowers_minimal_two_arg_local_arg_call_slice() {
   auto module = make_lir_minimal_two_arg_local_arg_direct_call_module();
 
@@ -10863,6 +10886,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_single_arg_add_imm_helper_call_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_single_arg_identity_helper_call_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_helper_call_slice);
+  RUN_TEST(test_x86_direct_emitter_lowers_minimal_dual_identity_direct_call_sub_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_local_arg_call_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_second_local_arg_call_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_second_local_rewrite_call_slice);

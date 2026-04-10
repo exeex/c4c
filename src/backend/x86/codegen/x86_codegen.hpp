@@ -554,6 +554,8 @@ std::optional<std::string> try_emit_minimal_local_arg_call_module(
     const c4c::codegen::lir::LirModule& module);
 std::optional<std::string> try_emit_minimal_two_arg_helper_call_module(
     const c4c::codegen::lir::LirModule& module);
+std::optional<std::string> try_emit_minimal_dual_identity_direct_call_sub_module(
+    const c4c::codegen::lir::LirModule& module);
 std::optional<std::string> try_emit_minimal_two_arg_local_arg_call_module(
     const c4c::codegen::lir::LirModule& module);
 std::optional<std::string> try_emit_minimal_two_arg_second_local_arg_call_module(
