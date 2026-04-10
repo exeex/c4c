@@ -199,6 +199,82 @@ void test_x86_codegen_header_exports_translated_returns_owner_symbols() {
               "x86 translated returns owner methods should stay compile/link reachable through the public x86_codegen surface once returns.cpp enters the build");
 }
 
+void test_x86_translated_returns_owner_emits_bounded_helper_text() {
+  using EightbyteClass = c4c::backend::x86::EightbyteClass;
+  using Operand = c4c::backend::x86::Operand;
+  using StackSlot = c4c::backend::x86::StackSlot;
+  using Value = c4c::backend::x86::Value;
+
+  c4c::backend::x86::X86Codegen codegen;
+  codegen.state.slots.emplace(5, StackSlot{-24});
+  codegen.state.slots.emplace(7, StackSlot{-40});
+  codegen.call_ret_classes = {EightbyteClass::Sse, EightbyteClass::Integer};
+
+  codegen.emit_return_f32_to_reg_impl();
+  codegen.emit_return_f64_to_reg_impl();
+  codegen.emit_return_i128_to_regs_impl();
+  codegen.emit_return_f128_to_reg_impl();
+  codegen.emit_return_int_to_reg_impl();
+  codegen.emit_get_return_f64_second_impl(Value{5});
+  codegen.emit_set_return_f64_second_impl(Operand{7});
+  codegen.emit_get_return_f32_second_impl(Value{5});
+  codegen.emit_set_return_f32_second_impl(Operand{7});
+  codegen.emit_get_return_f128_second_impl(Value{5});
+  codegen.emit_set_return_f128_second_impl(Operand{7});
+
+  std::string asm_text;
+  for (const auto& line : codegen.state.asm_lines) {
+    asm_text += line;
+    asm_text.push_back('\n');
+  }
+
+  expect_contains(asm_text, "    movd %eax, %xmm0",
+                  "wired translated returns owner should move f32 return values into xmm0");
+  expect_contains(asm_text, "    movq %rax, %xmm0",
+                  "wired translated returns owner should move f64 return values into xmm0");
+  expect_contains(asm_text, "    movq %rdx, %rax",
+                  "wired translated returns owner should handle the mixed SSE plus INTEGER i128 return shuffle");
+  expect_contains(asm_text, "    pushq %rax",
+                  "wired translated returns owner should keep the bounded f128 return-to-x87 helper linked");
+  expect_contains(asm_text, "    movsd %xmm1, -24(%rbp)",
+                  "wired translated returns owner should spill the second f64 return lane through the shared slot surface");
+  expect_contains(asm_text, "    movsd -40(%rbp), %xmm1",
+                  "wired translated returns owner should reload the second f64 return lane through the shared slot surface");
+  expect_contains(asm_text, "    movss %xmm1, -24(%rbp)",
+                  "wired translated returns owner should spill the second f32 return lane through the shared slot surface");
+  expect_contains(asm_text, "    movss -40(%rbp), %xmm1",
+                  "wired translated returns owner should reload the second f32 return lane through the shared slot surface");
+  expect_contains(asm_text, "    fstpt -24(%rbp)",
+                  "wired translated returns owner should stage the second f128 return lane through the shared slot surface");
+  expect_contains(asm_text, "    fldt -40(%rbp)",
+                  "wired translated returns owner should reload the second f128 return lane through the shared slot surface");
+  expect_true(codegen.state.reg_cache.acc_valid &&
+                  codegen.state.reg_cache.acc_value_id == 5 &&
+                  !codegen.state.reg_cache.acc_known_zero_extended,
+              "wired translated returns owner should refresh the shared accumulator cache when materializing the second f128 return lane");
+  expect_true(codegen.state.f128_direct_slots.find(5) != codegen.state.f128_direct_slots.end(),
+              "wired translated returns owner should mark direct f128 slots when the second f128 lane is staged back into memory");
+}
+
+void test_x86_translated_returns_owner_handles_i128_lane_variants() {
+  using EightbyteClass = c4c::backend::x86::EightbyteClass;
+
+  c4c::backend::x86::X86Codegen int_sse;
+  int_sse.call_ret_classes = {EightbyteClass::Integer, EightbyteClass::Sse};
+  int_sse.emit_return_i128_to_regs_impl();
+  expect_true(int_sse.state.asm_lines.size() == 1 &&
+                  int_sse.state.asm_lines.front() == "    movq %rdx, %xmm0",
+              "wired translated returns owner should move the second INTEGER+SSE lane into xmm0");
+
+  c4c::backend::x86::X86Codegen sse_sse;
+  sse_sse.call_ret_classes = {EightbyteClass::Sse, EightbyteClass::Sse};
+  sse_sse.emit_return_i128_to_regs_impl();
+  expect_true(sse_sse.state.asm_lines.size() == 2 &&
+                  sse_sse.state.asm_lines[0] == "    movq %rax, %xmm0" &&
+                  sse_sse.state.asm_lines[1] == "    movq %rdx, %xmm1",
+              "wired translated returns owner should move both SSE-class i128 lanes into xmm0/xmm1");
+}
+
 void test_x86_codegen_header_exports_translated_call_owner_surface() {
   using X86Codegen = c4c::backend::x86::X86Codegen;
   using X86CodegenOutput = c4c::backend::x86::X86CodegenOutput;
@@ -4458,6 +4534,8 @@ int main(int argc, char* argv[]) {
   test_x86_codegen_header_exports_translated_globals_owner_symbols();
   test_x86_codegen_header_exports_translated_globals_owner_helper_symbols();
   test_x86_codegen_header_exports_translated_returns_owner_symbols();
+  test_x86_translated_returns_owner_emits_bounded_helper_text();
+  test_x86_translated_returns_owner_handles_i128_lane_variants();
   test_x86_codegen_header_exports_translated_call_owner_surface();
   test_x86_translated_shared_call_support_tracks_real_state_and_output();
   test_x86_codegen_header_exports_translated_memory_owner_surface();

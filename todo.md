@@ -6,28 +6,57 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 3 translated-owner follow-on after landing the bounded `memory.cpp`
-  slice: advance another already-linked translated owner body without widening
-  into the still-blocked prologue/runtime-owner or parked `f128.cpp` owner
-  surfaces
+- Step 3 translated-owner follow-on after landing the bounded `returns.cpp`
+  helper-backed slice: either expose the still-missing translated return-owner
+  state needed by `emit_return_impl` or keep tightening the shared helper
+  surface around the still-parked `f128.cpp` owner without widening into the
+  broader prologue/runtime-owner cutover
 - immediate target:
-  turn the helper-backed subset of
-  `src/backend/x86/codegen/globals.cpp` into real bounded owner behavior by
-  replacing the current unconditional throws for global-address, label-address,
-  RIP-relative load/store, and thin store/load delegation with shared emitted
-  assembly text plus focused direct tests
+  inspect whether the next bounded Step 3 move should be
+  `src/backend/x86/codegen/returns.cpp` `emit_return_impl` state exposure or a
+  separate shared-helper tightening slice around the parked translated
+  `src/backend/x86/codegen/f128.cpp` support layer
 
 ## Next Slice
 
-- if the bounded `globals.cpp` owner slice lands cleanly, inspect whether the
-  next Step 3 frontier should be another already-linked owner body
-  (`returns.cpp`) or a separate shared-helper tightening slice around the
-  still-parked `f128.cpp` support layer
-- keep `emit_tls_global_addr_impl` out of scope for this slice unless the new
-  direct tests show the shared state already exposes enough PIC/TLS contract to
-  implement it without pulling in broader runtime-owner state
+- if the next slice stays in `returns.cpp`, keep it bounded to the translated
+  return-owner state still missing from the active public/shared surface rather
+  than widening into unrelated prologue ownership
+- if the next slice moves to `f128.cpp`, keep it limited to the shared helper
+  functions already surfaced by `memory.cpp` and the new returns-helper path
+  instead of wiring the whole parked owner into the build
+- keep `emit_tls_global_addr_impl` and unrelated TLS/PIC work out of scope
+  unless a later translated-owner cutover proves that state is already exposed
 
 ## Current Iteration Notes
+
+- this iteration lands a bounded translated returns-helper slice inside
+  `src/backend/x86/codegen/returns.cpp` without reopening the still-blocked
+  prologue/runtime-owner state: the translated helper bodies for f32/f64/f128
+  return register moves, mixed i128 lane reshuffles, and the second-lane
+  f32/f64/f128 slot staging paths now emit real shared-owner-backed x86 text
+  instead of unconditional throws
+- implementation note:
+  `tests/backend/backend_shared_util_tests.cpp` now exercises the linked
+  translated returns-owner helper body directly, pinning the emitted text
+  contract for the bounded return-register moves, i128 lane reshuffles, second
+  return-lane slot staging, and the shared accumulator/f128-direct-slot state
+  updates
+- bounded-scope note:
+  `emit_return_impl` and `current_return_type_impl` remain parked behind the
+  existing logic-error guard because the exporter-backed translated return-owner
+  state they need is still not exposed through the active public/shared x86
+  surface; this slice only advances the already-linkable helper bodies
+- focused validation passed:
+  `cmake --build --preset default --target backend_shared_util_tests -j8`,
+  `./build/backend_shared_util_tests translated_returns_owner`, and
+  `./build/backend_shared_util_tests`
+- broad validation passed:
+  `cmake --build --preset default -j8`,
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log`, and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  with `3192` passed / `184` failed before and after, zero newly failing
+  tests, and one new `>30s` note on `backend_bir_tests`
 
 - this iteration lands a bounded translated globals-owner behavior slice inside
   `src/backend/x86/codegen/globals.cpp` without widening into the still-blocked
