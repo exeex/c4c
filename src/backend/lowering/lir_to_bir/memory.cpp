@@ -1837,6 +1837,160 @@ std::optional<bir::Module> try_lower_minimal_union_i32_alias_compare_three_zero_
 }
 
 std::optional<bir::Module>
+try_lower_minimal_local_char_helper_call_with_dead_array_compare_two_zero_return_module(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 2 || !module.globals.empty() || !module.string_pool.empty() ||
+      !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  if (std::find(module.type_decls.begin(), module.type_decls.end(),
+                "%struct.__va_list_tag_ = type { i32, i32, ptr, ptr }") ==
+      module.type_decls.end()) {
+    return std::nullopt;
+  }
+
+  const auto& helper = module.functions[0];
+  if (helper.is_declaration ||
+      !backend_lir_signature_matches(helper.signature_text, "define", "i32", "f1", {"ptr"}) ||
+      helper.entry.value != 0 || helper.blocks.size() != 1 || !helper.alloca_insts.empty() ||
+      !helper.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& helper_entry = helper.blocks.front();
+  const auto* helper_load =
+      helper_entry.insts.size() == 3 ? std::get_if<LirLoadOp>(&helper_entry.insts[0]) : nullptr;
+  const auto* helper_sext =
+      helper_entry.insts.size() == 3 ? std::get_if<LirCastOp>(&helper_entry.insts[1]) : nullptr;
+  const auto* helper_add =
+      helper_entry.insts.size() == 3 ? std::get_if<LirBinOp>(&helper_entry.insts[2]) : nullptr;
+  const auto* helper_ret = std::get_if<LirRet>(&helper_entry.terminator);
+  if (helper_entry.label != "entry" || helper_load == nullptr || helper_sext == nullptr ||
+      helper_add == nullptr || helper_ret == nullptr ||
+      !helper_ret->value_str.has_value() || *helper_ret->value_str != helper_add->result ||
+      lir_to_bir::legalize_function_return_type(helper, *helper_ret) != bir::TypeKind::I32 ||
+      helper_load->type_str != "i8" || helper_load->ptr != "%p.p" ||
+      helper_sext->kind != LirCastKind::SExt || helper_sext->from_type != "i8" ||
+      helper_sext->operand != helper_load->result || helper_sext->to_type != "i32" ||
+      helper_add->opcode.typed() != LirBinaryOpcode::Add || helper_add->type_str != "i32" ||
+      helper_add->lhs != helper_sext->result || helper_add->rhs != "1") {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions[1];
+  if (function.is_declaration ||
+      !lir_function_matches_minimal_no_param_integer_return(function, 32) ||
+      function.entry.value != 0 || function.blocks.size() != 3 ||
+      function.alloca_insts.size() != 2 || !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* char_slot = std::get_if<LirAllocaOp>(&function.alloca_insts[0]);
+  const auto* dead_array_slot = std::get_if<LirAllocaOp>(&function.alloca_insts[1]);
+  if (char_slot == nullptr || dead_array_slot == nullptr || char_slot->result != "%lv.s" ||
+      dead_array_slot->result != "%lv.v" || !char_slot->count.empty() ||
+      !dead_array_slot->count.empty() || char_slot->type_str != "i8" ||
+      dead_array_slot->type_str != "[1000 x i32]") {
+    return std::nullopt;
+  }
+
+  auto match_return_block = [&](const LirBlock& block,
+                                std::string_view expected_label,
+                                std::string_view expected_value) -> bool {
+    const auto* ret = std::get_if<LirRet>(&block.terminator);
+    return block.label == expected_label && block.insts.empty() && ret != nullptr &&
+           ret->type_str == "i32" && ret->value_str.has_value() &&
+           *ret->value_str == expected_value;
+  };
+
+  const auto& entry = function.blocks[0];
+  const auto* trunc =
+      entry.insts.size() == 6 ? std::get_if<LirCastOp>(&entry.insts[0]) : nullptr;
+  const auto* store =
+      entry.insts.size() == 6 ? std::get_if<LirStoreOp>(&entry.insts[1]) : nullptr;
+  const auto* call =
+      entry.insts.size() == 6 ? std::get_if<LirCallOp>(&entry.insts[2]) : nullptr;
+  const auto* compare =
+      entry.insts.size() == 6 ? std::get_if<LirCmpOp>(&entry.insts[3]) : nullptr;
+  const auto* zext =
+      entry.insts.size() == 6 ? std::get_if<LirCastOp>(&entry.insts[4]) : nullptr;
+  const auto* branch_compare =
+      entry.insts.size() == 6 ? std::get_if<LirCmpOp>(&entry.insts[5]) : nullptr;
+  const auto* condbr = std::get_if<LirCondBr>(&entry.terminator);
+  if (entry.label != "entry" || trunc == nullptr || store == nullptr || call == nullptr ||
+      compare == nullptr || zext == nullptr || branch_compare == nullptr || condbr == nullptr ||
+      trunc->kind != LirCastKind::Trunc || trunc->from_type != "i32" || trunc->operand != "1" ||
+      trunc->to_type != "i8" || store->type_str != "i8" || store->val != trunc->result ||
+      store->ptr != char_slot->result || call->result != "%t1" || call->return_type != "i32" ||
+      call->callee != "@f1" || call->callee_type_suffix != "(ptr)" ||
+      call->args_str != "ptr %lv.s" ||
+      compare->predicate.typed() != LirCmpPredicate::Ne || compare->type_str != "i32" ||
+      compare->lhs != call->result || compare->rhs != "2" || zext->kind != LirCastKind::ZExt ||
+      zext->from_type != "i1" || zext->operand != compare->result || zext->to_type != "i32" ||
+      branch_compare->predicate.typed() != LirCmpPredicate::Ne ||
+      branch_compare->type_str != "i32" || branch_compare->lhs != zext->result ||
+      branch_compare->rhs != "0" || condbr->cond_name != branch_compare->result ||
+      condbr->true_label != "block_2" || condbr->false_label != "block_3") {
+    return std::nullopt;
+  }
+
+  const auto rendered = c4c::codegen::lir::print_llvm(module);
+  constexpr std::string_view kExpectedModule =
+      "define i32 @f1(ptr %p.p)\n"
+      "{\n"
+      "entry:\n"
+      "  %t0 = load i8, ptr %p.p\n"
+      "  %t1 = sext i8 %t0 to i32\n"
+      "  %t2 = add i32 %t1, 1\n"
+      "  ret i32 %t2\n"
+      "}\n"
+      "\n"
+      "define i32 @main()\n"
+      "{\n"
+      "entry:\n"
+      "  %lv.s = alloca i8, align 1\n"
+      "  %lv.v = alloca [1000 x i32], align 4\n"
+      "  %t0 = trunc i32 1 to i8\n"
+      "  store i8 %t0, ptr %lv.s\n"
+      "  %t1 = call i32 (ptr) @f1(ptr %lv.s)\n"
+      "  %t2 = icmp ne i32 %t1, 2\n"
+      "  %t3 = zext i1 %t2 to i32\n"
+      "  %t4 = icmp ne i32 %t3, 0\n"
+      "  br i1 %t4, label %block_2, label %block_3\n"
+      "block_2:\n"
+      "  ret i32 1\n"
+      "block_3:\n"
+      "  ret i32 0\n"
+      "}\n";
+  if (rendered.find(kExpectedModule) == std::string::npos) {
+    return std::nullopt;
+  }
+
+  if (!match_return_block(function.blocks[1], "block_2", "1") ||
+      !match_return_block(function.blocks[2], "block_3", "0")) {
+    return std::nullopt;
+  }
+
+  bir::Module lowered;
+  lowered.target_triple = module.target_triple;
+  lowered.data_layout = module.data_layout;
+
+  bir::Function lowered_function;
+  lowered_function.name = function.name;
+  lowered_function.return_type = bir::TypeKind::I32;
+
+  bir::Block lowered_entry;
+  lowered_entry.label = "entry";
+  lowered_entry.terminator.value = bir::Value::immediate_i32(0);
+  lowered_function.blocks.push_back(std::move(lowered_entry));
+  lowered.functions.push_back(std::move(lowered_function));
+  return lowered;
+}
+
+std::optional<bir::Module>
 try_lower_minimal_nested_struct_i32_sum_compare_six_zero_return_module(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;

@@ -2416,6 +2416,66 @@ make_local_i32_array_pointer_inc_store_compare_123_zero_return_module() {
 }
 
 c4c::codegen::lir::LirModule
+make_local_char_helper_call_with_dead_array_compare_two_zero_return_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.type_decls.push_back("%struct.__va_list_tag_ = type { i32, i32, ptr, ptr }");
+
+  LirFunction helper;
+  helper.name = "f1";
+  helper.signature_text = "define i32 @f1(ptr %p.p)\n";
+  helper.entry = LirBlockId{0};
+
+  LirBlock helper_entry;
+  helper_entry.id = LirBlockId{0};
+  helper_entry.label = "entry";
+  helper_entry.insts.push_back(LirLoadOp{"%t0", "i8", "%p.p"});
+  helper_entry.insts.push_back(LirCastOp{"%t1", LirCastKind::SExt, "i8", "%t0", "i32"});
+  helper_entry.insts.push_back(LirBinOp{"%t2", "add", "i32", "%t1", "1"});
+  helper_entry.terminator = LirRet{std::string("%t2"), "i32"};
+  helper.blocks.push_back(std::move(helper_entry));
+  module.functions.push_back(std::move(helper));
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.s", "i8", "", 1});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.v", "[1000 x i32]", "", 4});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirCastOp{"%t0", LirCastKind::Trunc, "i32", "1", "i8"});
+  entry.insts.push_back(LirStoreOp{"i8", "%t0", "%lv.s"});
+  entry.insts.push_back(LirCallOp{"%t1", "i32", "@f1", "(ptr)", "ptr %lv.s"});
+  entry.insts.push_back(LirCmpOp{"%t2", false, "ne", "i32", "%t1", "2"});
+  entry.insts.push_back(LirCastOp{"%t3", LirCastKind::ZExt, "i1", "%t2", "i32"});
+  entry.insts.push_back(LirCmpOp{"%t4", false, "ne", "i32", "%t3", "0"});
+  entry.terminator = LirCondBr{"%t4", "block_2", "block_3"};
+
+  LirBlock block_2;
+  block_2.id = LirBlockId{2};
+  block_2.label = "block_2";
+  block_2.terminator = LirRet{std::string("1"), "i32"};
+
+  LirBlock block_3;
+  block_3.id = LirBlockId{3};
+  block_3.label = "block_3";
+  block_3.terminator = LirRet{std::string("0"), "i32"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(block_2));
+  function.blocks.push_back(std::move(block_3));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+c4c::codegen::lir::LirModule
 make_local_i32_array_pointer_dec_store_compare_123_zero_return_module() {
   using namespace c4c::codegen::lir;
 
@@ -6557,6 +6617,28 @@ void test_bir_lowering_accepts_local_array_pointer_alias_sizeof_helper_call_zero
                   "the lowered local-array pointer-alias sizeof helper-call module should normalize the bounded `00077.c` source route to a single immediate zero return");
 }
 
+void test_bir_lowering_accepts_local_char_helper_call_with_dead_array_compare_two_zero_return_module() {
+  const auto lowered =
+      c4c::backend::try_lower_to_bir(
+          make_local_char_helper_call_with_dead_array_compare_two_zero_return_module());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the bounded local-char helper-call plus dead-array compare slice through the shared constant-return contract");
+  if (!lowered.has_value()) {
+    return;
+  }
+
+  expect_true(lowered->functions.size() == 1 &&
+                  lowered->functions.front().blocks.size() == 1 &&
+                  lowered->functions.front().blocks.front().insts.empty() &&
+                  lowered->functions.front().blocks.front().terminator.kind ==
+                      c4c::backend::bir::TerminatorKind::Return,
+              "the lowered local-char helper-call plus dead-array compare module should collapse to one canonical constant-return block");
+
+  const auto rendered = c4c::backend::bir::print(*lowered);
+  expect_contains(rendered, "bir.func @main() -> i32 {\nentry:\n  bir.ret i32 0\n}\n",
+                  "the lowered local-char helper-call plus dead-array compare module should normalize the bounded `00078.c` source route to a single immediate zero return");
+}
+
 void test_bir_lowering_accepts_local_i32_array_pointer_add_deref_diff_zero_return_module() {
   const auto lowered =
       c4c::backend::try_lower_to_bir(
@@ -9607,6 +9689,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_local_i32_array_second_slot_pointer_store_zero_load_return_module);
   RUN_TEST(test_bir_lowering_accepts_local_i32_array_pointer_inc_dec_compare_zero_return_module);
   RUN_TEST(test_bir_lowering_accepts_local_array_pointer_alias_sizeof_helper_call_zero_return_module);
+  RUN_TEST(test_bir_lowering_accepts_local_char_helper_call_with_dead_array_compare_two_zero_return_module);
   RUN_TEST(test_bir_lowering_accepts_local_i32_array_pointer_add_deref_diff_zero_return_module);
   RUN_TEST(test_bir_lowering_accepts_local_i32_array_pointer_inc_store_compare_123_zero_return_module);
   RUN_TEST(test_bir_lowering_accepts_local_i32_array_pointer_dec_store_compare_123_zero_return_module);
