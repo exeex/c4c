@@ -1,6 +1,6 @@
 # Deferred Consteval Late-Information Fixpoint
 
-Status: Open
+Status: Closed
 Last Updated: 2026-04-10
 
 ## Goal
@@ -102,6 +102,37 @@ At minimum:
   `tests/cpp/internal/consteval_case/deferred_consteval_candidates.cpp`
 - HIR dumps or compile-time stats proving pending work was revisited
 - no newly failing internal `consteval` regressions
+
+## Completion
+
+Completed on 2026-04-10.
+
+Implemented a bounded late-information fixpoint for deferred `consteval`
+evaluation by preserving pending work until later translation-unit passes can
+revisit it with newly available HIR layout information. The shipped coverage
+adds the incomplete-type recovery case in
+`tests/cpp/internal/postive_case/deferred_consteval_incomplete_type.cpp`,
+while preserving the existing deferred chain and multi-case behavior.
+
+## Outcome
+
+- Deferred `consteval` queries that depend on late-known tagged-record layout
+  can now converge on a later pass instead of staying permanently unresolved.
+- The targeted deferred-consteval suite passed:
+  `deferred_consteval_chain`, `deferred_consteval_multi`, and
+  `deferred_consteval_incomplete_type` (`6/6` assertions).
+- HIR validation for
+  `tests/cpp/internal/postive_case/deferred_consteval_incomplete_type.cpp`
+  shows `consteval get_size<T=struct TensorDesc>() = 64` with
+  `1 consteval reduction (converged)`.
+
+## Leftover Issues
+
+- A clean full-suite rebuild after this slice reported one unrelated failure:
+  `cpp_positive_sema_c_style_cast_base_ref_qualified_method_cpp`, caused by a
+  backend/Clang IR type mismatch involving `%struct.Derived` and
+  `%struct.Base`. This was observed during regression validation but is not
+  part of the deferred-consteval late-information fixpoint work.
 
 ## Non-Goals
 
