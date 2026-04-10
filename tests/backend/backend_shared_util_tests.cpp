@@ -307,6 +307,17 @@ void test_x86_translated_asm_emitter_helpers_match_shared_contract() {
                   c4c::backend::x86::x86_param_aggregate_copy_src_offset(8, 1) == 32 &&
                   c4c::backend::x86::x86_param_aggregate_copy_dest_offset(-40, 0) == -40 &&
                   c4c::backend::x86::x86_param_aggregate_copy_dest_offset(-40, 2) == -24 &&
+                  std::string(c4c::backend::x86::x86_param_split_reg_stack_arg_reg(0)) == "rdi" &&
+                  std::string(c4c::backend::x86::x86_param_split_reg_stack_arg_reg(5)) == "r9" &&
+                  std::string(c4c::backend::x86::x86_param_split_reg_stack_arg_reg(6)).empty() &&
+                  c4c::backend::x86::x86_param_split_reg_stack_qword_count(8) == 0 &&
+                  c4c::backend::x86::x86_param_split_reg_stack_qword_count(9) == 1 &&
+                  c4c::backend::x86::x86_param_split_reg_stack_qword_count(16) == 1 &&
+                  c4c::backend::x86::x86_param_split_reg_stack_qword_count(17) == 2 &&
+                  c4c::backend::x86::x86_param_split_reg_stack_src_offset(0, 0) == 16 &&
+                  c4c::backend::x86::x86_param_split_reg_stack_src_offset(8, 1) == 32 &&
+                  c4c::backend::x86::x86_param_split_reg_stack_dest_offset(-40, 0) == -32 &&
+                  c4c::backend::x86::x86_param_split_reg_stack_dest_offset(-40, 1) == -24 &&
                   c4c::backend::x86::x86_variadic_gp_save_offset(-176, 0) == -176 &&
                   c4c::backend::x86::x86_variadic_gp_save_offset(-176, 5) == -136 &&
                   c4c::backend::x86::x86_variadic_sse_save_offset(-176, 0) == -128 &&

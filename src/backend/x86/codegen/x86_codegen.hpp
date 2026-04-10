@@ -436,6 +436,12 @@ std::int64_t x86_param_aggregate_copy_src_offset(std::int64_t class_stack_offset
                                                  std::size_t qword_index);
 std::int64_t x86_param_aggregate_copy_dest_offset(std::int64_t slot_offset,
                                                   std::size_t qword_index);
+const char* x86_param_split_reg_stack_arg_reg(std::size_t reg_index);
+std::size_t x86_param_split_reg_stack_qword_count(std::size_t size_bytes);
+std::int64_t x86_param_split_reg_stack_src_offset(std::int64_t stack_offset,
+                                                  std::size_t qword_index);
+std::int64_t x86_param_split_reg_stack_dest_offset(std::int64_t slot_offset,
+                                                   std::size_t qword_index);
 void x86_mark_param_prestored(std::unordered_set<std::size_t>& pre_stored_params,
                               std::size_t param_index);
 bool x86_param_is_prestored(const std::unordered_set<std::size_t>& pre_stored_params,

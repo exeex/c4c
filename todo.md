@@ -10,30 +10,46 @@ Source Plan: plan.md
   around the x86 entry/support helper surface after the legacy matcher body
   removal in `src/backend/x86/codegen/emit.cpp`
 - immediate target:
-  widen the parked translated prologue helper seam into the first aggregate
-  stack-copy storage contract without pulling the parked translated prologue
-  owner into the active build yet
-  - keep the slice helper-focused: shared helper contract plus parked
-    translated `prologue.cpp` usage only
-  - target the qword-wise caller-stack copy shape used by aggregate stack
-    parameter classes so the next owner widening point stays on aggregate or
-    split-register handling instead of reopening scalar work
+  widen the parked translated prologue helper seam beyond the landed split
+  register-plus-stack contract into the next aggregate storage shape without
+  pulling the parked translated prologue owner into the active build yet
+  - keep the slice helper-focused so the shared contract is test-locked before
+    any future parked-owner wiring
+  - target the next parked aggregate storage behavior that still needs a
+    shared helper surface after the landed stack-copy and split-register seams
 
 ## Next Slice
 
-- widen the helper-backed prologue seam beyond the landed integer-register and
-  `ParamClass::FloatReg` non-alloca-backed pre-store contracts, with aggregate
-  or split-register parameter classes as the leading candidate once the
-  pre-store bookkeeping contract is already shared and test-locked
+- widen the helper-backed prologue seam beyond the landed integer-register,
+  `ParamClass::FloatReg`, aggregate stack-copy, and split register-plus-stack
+  helper contracts with the next owner-path candidate staying on parked
+  aggregate storage behavior instead of reopening scalar work
 - keep the translated prologue owner parked out of build until the public
   x86 codegen header exposes enough complete backend surface for
   `src/backend/x86/codegen/prologue.cpp` to compile cleanly
 - continue using build-active direct-emitter slices to lock the intended x86
   parameter-stack behavior meanwhile, with the next widening point remaining on
-  aggregate pre-store helper extraction rather than a new ownership switch
+  parked aggregate storage helper extraction rather than a new ownership switch
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration added a shared split register-plus-stack aggregate helper seam
+  for the parked translated x86 prologue owner path: `src/backend/x86/codegen/mod.cpp`
+  and `x86_codegen.hpp` now expose the incoming GP register name plus the
+  qword-copy count and source/destination offset helpers for the caller-stack
+  tail used by `ParamClass::StructSplitRegStack`
+- `tests/backend/backend_shared_util_tests.cpp` now locks that contract,
+  including the first-register `rdi` / `r9` mapping, the ceil-to-qword count
+  for the caller-stack remainder beyond the leading register, and the offset
+  progression from caller stack to destination slot tail
+- focused validation passed for this slice:
+  `cmake --build build -j8 --target backend_shared_util_tests`,
+  `./build/backend_shared_util_tests`, and
+  `ctest --test-dir build -R backend_shared_util_tests --output-on-failure`
+- broad validation note:
+  defer the monotonic full-suite guard for this helper-only parked-owner slice
+  per the current plan note until a larger owner-path cutover lands
 
 - this iteration added a shared aggregate stack-copy helper seam for the
   parked translated x86 prologue owner path: `src/backend/x86/codegen/mod.cpp`

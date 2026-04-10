@@ -437,6 +437,27 @@ std::int64_t x86_param_aggregate_copy_dest_offset(std::int64_t slot_offset,
   return slot_offset + static_cast<std::int64_t>(qword_index) * 8;
 }
 
+const char* x86_param_split_reg_stack_arg_reg(std::size_t reg_index) {
+  return x86_arg_reg_name(reg_index);
+}
+
+std::size_t x86_param_split_reg_stack_qword_count(std::size_t size_bytes) {
+  if (size_bytes <= 8) {
+    return 0;
+  }
+  return (size_bytes - 8 + 7) / 8;
+}
+
+std::int64_t x86_param_split_reg_stack_src_offset(std::int64_t stack_offset,
+                                                  std::size_t qword_index) {
+  return x86_param_stack_offset(stack_offset) + static_cast<std::int64_t>(qword_index) * 8;
+}
+
+std::int64_t x86_param_split_reg_stack_dest_offset(std::int64_t slot_offset,
+                                                   std::size_t qword_index) {
+  return slot_offset + 8 + static_cast<std::int64_t>(qword_index) * 8;
+}
+
 void x86_mark_param_prestored(std::unordered_set<std::size_t>& pre_stored_params,
                               std::size_t param_index) {
   pre_stored_params.insert(param_index);
