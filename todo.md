@@ -10,11 +10,14 @@ Source Plan: plan.md
   around the x86 entry/support helper surface after the legacy matcher body
   removal in `src/backend/x86/codegen/emit.cpp`
 - immediate target:
-  widen the newly landed helper-backed aggregate param-slot seam from parked
-  prologue consumer logic into the next active slot-backed owner branches
-  without pulling the full translated prologue owner into build yet
+  resolve the remaining aggregate param-slot storage follow-on from the parked
+  translated prologue consumer wiring after landing the helper-backed by-value
+  and stack-copy branches
   - keep this slice on aggregate storage owner wiring rather than reopening
     scalar, peephole, or call-lowering work
+  - keep the translated prologue owner parked out of build until the public
+    x86 codegen header exposes enough complete backend surface for a broader
+    prologue-owner cutover
   - continue using focused shared-helper / backend-slice coverage until the
     current x86 frontend entry exposes a real end-to-end aggregate regression
     surface for these classes
@@ -22,18 +25,46 @@ Source Plan: plan.md
 ## Next Slice
 
 - widen the active slot-backed aggregate parameter storage owner beyond the
-  newly landed `StructSseReg`, `StructMixedIntSseReg`, and
-  `StructMixedSseIntReg` branches, likely on the remaining stack-backed or
-  split aggregate classes
-- keep the translated prologue owner parked out of build until the public
-  x86 codegen header exposes enough complete backend surface for a broader
-  prologue-owner cutover
+  newly landed `StructByValReg`, `StructStack`, and `LargeStructStack`
+  branches by deciding whether `StructSplitRegStack` belongs in the parked
+  translated owner path or should remain deferred with the broader prologue
+  cutover
+- keep the translated prologue owner parked out of build; a brief CMake
+  wiring experiment confirmed `src/backend/x86/codegen/prologue.cpp` still
+  depends on incomplete public x86 backend/type surface and is not ready for
+  direct target inclusion
 - look for the first x86 backend-facing lowering route that can expose a real
   end-to-end aggregate asm regression, so future active-branch iterations are
   not limited to compile coverage plus helper/backend-slice tests
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration widened the parked translated aggregate param-slot consumer
+  seam in `src/backend/x86/codegen/prologue.cpp` to cover the reference-backed
+  by-value and caller-stack copy branches:
+  `ParamClass::StructByValReg`, `ParamClass::StructStack`, and
+  `ParamClass::LargeStructStack` now route through the previously landed
+  shared helper contracts instead of staying outside the parked owner wiring
+- `tests/backend/backend_shared_util_tests.cpp` now tightens the helper
+  contract used by those branches, including the two-qword by-value size
+  boundary, the trailing `r9` register mapping for the second aggregate qword,
+  and the third-qword caller-stack copy source offset progression
+- focused validation passed for this slice:
+  `cmake --build build -j8 --target backend_shared_util_tests`,
+  `./build/backend_shared_util_tests test_x86_translated_asm_emitter_helpers_match_shared_contract`,
+  and
+  `ctest --test-dir build -R backend_shared_util_tests --output-on-failure`
+- validation note:
+  a brief attempt to add `src/backend/x86/codegen/prologue.cpp` to the active
+  CMake source lists confirmed the existing plan note: the translated prologue
+  owner still depends on incomplete public x86 backend/type surface, so the
+  file remains parked out of build for now and this slice is still validated
+  through helper-backed coverage rather than live end-to-end owner execution
+- broad validation note:
+  skipped for this still-bounded parked-owner aggregate slice per the current
+  plan note to defer the monotonic full-suite guard until a larger owner-path
+  cutover lands
 
 - this iteration consumed the landed x86 param-slot naming bridge in the live
   translated prologue entry path:

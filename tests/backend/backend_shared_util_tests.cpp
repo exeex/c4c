@@ -308,10 +308,12 @@ void test_x86_translated_asm_emitter_helpers_match_shared_contract() {
                   c4c::backend::x86::x86_param_struct_reg_qword_count(1) == 1 &&
                   c4c::backend::x86::x86_param_struct_reg_qword_count(8) == 1 &&
                   c4c::backend::x86::x86_param_struct_reg_qword_count(9) == 2 &&
+                  c4c::backend::x86::x86_param_struct_reg_qword_count(15) == 2 &&
                   c4c::backend::x86::x86_param_struct_reg_qword_count(16) == 2 &&
                   c4c::backend::x86::x86_param_struct_reg_qword_count(17) == 2 &&
                   std::string(c4c::backend::x86::x86_param_struct_reg_arg_reg(0, 0)) == "rdi" &&
                   std::string(c4c::backend::x86::x86_param_struct_reg_arg_reg(0, 1)) == "rsi" &&
+                  std::string(c4c::backend::x86::x86_param_struct_reg_arg_reg(4, 1)) == "r9" &&
                   std::string(c4c::backend::x86::x86_param_struct_reg_arg_reg(5, 0)) == "r9" &&
                   std::string(c4c::backend::x86::x86_param_struct_reg_arg_reg(5, 1)).empty() &&
                   c4c::backend::x86::x86_param_struct_reg_dest_offset(-40, 0) == -40 &&
@@ -352,6 +354,7 @@ void test_x86_translated_asm_emitter_helpers_match_shared_contract() {
                   c4c::backend::x86::x86_param_aggregate_copy_qword_count(17) == 3 &&
                   c4c::backend::x86::x86_param_aggregate_copy_src_offset(0, 0) == 16 &&
                   c4c::backend::x86::x86_param_aggregate_copy_src_offset(8, 1) == 32 &&
+                  c4c::backend::x86::x86_param_aggregate_copy_src_offset(16, 2) == 48 &&
                   c4c::backend::x86::x86_param_aggregate_copy_dest_offset(-40, 0) == -40 &&
                   c4c::backend::x86::x86_param_aggregate_copy_dest_offset(-40, 2) == -24 &&
                   std::string(c4c::backend::x86::x86_param_split_reg_stack_arg_reg(0)) == "rdi" &&

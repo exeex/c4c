@@ -84,6 +84,34 @@ std::optional<StackSlot> lookup_param_slot(X86Codegen& codegen, std::string_view
   }
 }
 
+[[maybe_unused]] void emit_struct_byval_reg_param_store(X86Codegen& codegen,
+                                                        std::int64_t slot_offset,
+                                                        std::size_t base_reg_idx,
+                                                        std::size_t size_bytes) {
+  const auto qword_count = x86_param_struct_reg_qword_count(size_bytes);
+  for (std::size_t qword_index = 0; qword_index < qword_count; ++qword_index) {
+    const auto* src_reg = x86_param_struct_reg_arg_reg(base_reg_idx, qword_index);
+    if (src_reg[0] == '\0') {
+      continue;
+    }
+    codegen.state.out.emit_instr_reg_rbp(
+        "    movq", src_reg, x86_param_struct_reg_dest_offset(slot_offset, qword_index));
+  }
+}
+
+[[maybe_unused]] void emit_struct_stack_param_store(X86Codegen& codegen,
+                                                    std::int64_t slot_offset,
+                                                    std::int64_t stack_offset,
+                                                    std::size_t size_bytes) {
+  const auto qword_count = x86_param_aggregate_copy_qword_count(size_bytes);
+  for (std::size_t qword_index = 0; qword_index < qword_count; ++qword_index) {
+    codegen.state.out.emit_instr_rbp_reg(
+        "    movq", x86_param_aggregate_copy_src_offset(stack_offset, qword_index), "rax");
+    codegen.state.out.emit_instr_reg_rbp(
+        "    movq", "rax", x86_param_aggregate_copy_dest_offset(slot_offset, qword_index));
+  }
+}
+
 }  // namespace
 
 std::int64_t X86Codegen::calculate_stack_space_impl(const IrFunction& func) {
@@ -238,6 +266,9 @@ void X86Codegen::emit_store_params_impl(const IrFunction& func) {
     if (assigned == this->reg_assignments.end()) {
       if (param_slot.has_value()) {
         if (const auto* reg =
+                std::get_if<ParamClass::StructByValReg>(&classification.classes[index].data)) {
+          emit_struct_byval_reg_param_store(*this, param_slot->0, reg->base_reg_idx, reg->size);
+        } else if (const auto* reg =
                 std::get_if<ParamClass::StructSseReg>(&classification.classes[index].data)) {
           emit_struct_sse_param_store(*this, param_slot->0, reg->lo_fp_idx, reg->hi_fp_idx);
         } else if (const auto* reg = std::get_if<ParamClass::StructMixedIntSseReg>(
@@ -248,6 +279,12 @@ void X86Codegen::emit_store_params_impl(const IrFunction& func) {
                        &classification.classes[index].data)) {
           emit_struct_mixed_sse_int_param_store(
               *this, param_slot->0, reg->fp_reg_idx, reg->int_reg_idx);
+        } else if (const auto* stack =
+                       std::get_if<ParamClass::StructStack>(&classification.classes[index].data)) {
+          emit_struct_stack_param_store(*this, param_slot->0, stack->offset, stack->size);
+        } else if (const auto* stack = std::get_if<ParamClass::LargeStructStack>(
+                       &classification.classes[index].data)) {
+          emit_struct_stack_param_store(*this, param_slot->0, stack->offset, stack->size);
         }
       }
       continue;
