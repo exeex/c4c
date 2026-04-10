@@ -7,30 +7,32 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 3 translated-owner cutover follow-on in the bounded prepared-LIR
-  direct-calls sibling seam after landing the mixed register-plus-stack
-  public backend-entrypoint regressions for the remaining scalar helper
-  family; the helper-only `00080.c` `voidfn` body slice, the bounded
-  seventh-parameter caller-stack helper slice, and the mixed
-  register-plus-stack scalar helper family are now covered at the shared
-  backend entry surface alongside the existing two-function and main-only
-  `00080.c` routes
+  direct-calls sibling seam after landing the register-backed aggregate
+  public backend-entrypoint regression for the next remaining SysV
+  argument-lowering helper family; the helper-only `00080.c` `voidfn` body
+  slice, the bounded seventh-parameter caller-stack helper slice, the mixed
+  register-plus-stack scalar helper family, and now the register-backed
+  aggregate param-slot helper family are covered at the shared backend entry
+  surface alongside the existing two-function and main-only `00080.c` routes
 - immediate target:
   choose the next still-direct-emitter-only public backend representative from
-  the remaining SysV argument-lowering helper families after the mixed
-  register-plus-stack scalar family confirmed the shared backend entry already
-  preserves the native x86 owner path for both i32 and i64 register-plus-stack
-  helper siblings; the next smallest candidates are the aggregate param-slot
-  families, starting with the register-backed aggregate path
+  the remaining SysV argument-lowering helper families after the
+  register-backed aggregate case confirmed the shared backend entry already
+  preserves the native x86 owner path for the first aggregate param-slot
+  sibling; the next smallest candidates are the caller-stack aggregate
+  siblings, starting with the large aggregate stack-copy path and then the
+  trailing-small-aggregate-after-six-scalars case
 
 ## Next Slice
 
-- after the mixed register-plus-stack helper-family slice, choose the next
+- after the register-backed aggregate helper-family slice, choose the next
   still-direct-emitter-only public backend representative from the remaining
   SysV argument-lowering helper families instead of adding more
   direct-emitter-only assertions; the next obvious candidates are the
-  aggregate param-slot families, starting with the register-backed aggregate
-  case and then the caller-stack aggregate siblings if Step 3 keeps
-  prioritizing public-entry coverage over matcher expansion
+  caller-stack aggregate siblings, starting with the large aggregate
+  param-slot copy path and then the trailing-small-aggregate-after-six-scalars
+  case if Step 3 keeps prioritizing public-entry coverage over matcher
+  expansion
 - if a future x86 ABI policy change ever enables partial GP-register plus
   caller-stack aggregate splits, re-open `StructSplitRegStack` as a separate
   owner-path cutover item instead of silently folding it into the current
@@ -42,6 +44,27 @@ Source Plan: plan.md
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration adds the missing shared backend entrypoint coverage for the
+  bounded register-backed aggregate param-slot helper family:
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` now pins
+  `make_x86_register_aggregate_param_slot_lir_module()` at
+  `c4c::backend::emit_module(...)` so the public x86 backend entry surface,
+  not just the direct-emitter seam, owns the by-value register aggregate path
+- public-path behavior note:
+  the shared BIR route preserves the same native x86 owner shape for this
+  bounded aggregate family, including the helper-side `mov QWORD PTR
+  [rbp - 8], rdi` param-slot store and the caller-side local-slot aggregate
+  staging plus `mov rdi, QWORD PTR [rbp - 8]` reload before the helper call
+- focused validation passed:
+  `cmake --build --preset default --target backend_bir_tests -j8`,
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_lir_register_aggregate_param_slot_on_native_x86_path`,
+  and
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_register_aggregate_param_slot_slice`
+- broad validation note:
+  still deferred for this bounded aggregate helper-family coverage slice per
+  the active plan note to wait for a larger owner-path cutover before
+  rerunning the monotonic full-suite guard
 
 - this iteration adds the missing shared backend entrypoint coverage for the
   bounded mixed register-plus-stack scalar helper family:

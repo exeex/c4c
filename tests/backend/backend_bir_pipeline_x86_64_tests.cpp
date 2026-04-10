@@ -7362,6 +7362,23 @@ void test_backend_bir_pipeline_drives_x86_lir_minimal_mixed_reg_stack_param_add_
                       "x86 LIR i64 mixed register-plus-stack parameter helper input should stay on native asm emission instead of falling back to LLVM text");
 }
 
+void test_backend_bir_pipeline_drives_x86_lir_register_aggregate_param_slot_on_native_x86_path() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_x86_register_aggregate_param_slot_lir_module()},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl get_second",
+                  "x86 LIR register-backed aggregate param-slot helper input should still emit the helper definition on the native x86 path");
+  expect_contains(rendered,
+                  "get_second:\n  push rbp\n  mov rbp, rsp\n  sub rsp, 16\n  mov QWORD PTR [rbp - 8], rdi\n  mov eax, DWORD PTR [rbp - 4]\n  pop rbp\n  ret\n",
+                  "x86 LIR register-backed aggregate param-slot helper input should still copy the incoming by-value aggregate from its integer argument register into the `%lv.param.*` slot before loading the second i32 field on the public x86 path");
+  expect_contains(rendered,
+                  "main:\n  push rbp\n  mov rbp, rsp\n  sub rsp, 16\n  mov DWORD PTR [rbp - 8], 4\n  mov DWORD PTR [rbp - 4], 6\n  mov rdi, QWORD PTR [rbp - 8]\n  call get_second\n  pop rbp\n  ret\n",
+                  "x86 LIR register-backed aggregate param-slot helper input should still stage the caller aggregate in a local slot, reload it as one integer register argument, and lower the helper call on the native x86 path");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR register-backed aggregate param-slot helper input should stay on native asm emission instead of falling back to LLVM text");
+}
+
 void test_backend_bir_pipeline_drives_x86_lir_minimal_local_arg_direct_call_on_native_x86_path() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_x86_local_arg_call_lir_module()},
@@ -11042,6 +11059,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_seventh_param_stack_add_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_mixed_reg_stack_param_add_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_mixed_reg_stack_param_add_i64_on_native_x86_path);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_register_aggregate_param_slot_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_local_arg_direct_call_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_folded_two_arg_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_local_arg_direct_call_on_native_x86_path);
