@@ -163,13 +163,15 @@ std::optional<StoreRbpParts> parse_store_to_rbp_str(std::string_view s) {
   if (!starts_with(s, "mov")) {
     return std::nullopt;
   }
+  const auto first_space = s.find(' ');
   const auto comma = s.rfind(',');
   const auto lb = s.find("(%rbp)");
-  if (comma == std::string_view::npos || lb == std::string_view::npos || comma > lb) {
+  if (first_space == std::string_view::npos || comma == std::string_view::npos ||
+      lb == std::string_view::npos || comma > lb) {
     return std::nullopt;
   }
-  std::string_view reg = s.substr(s.find(' ') + 1, comma - (s.find(' ') + 1));
-  std::string_view offset = s.substr(s.find(' ') + 1, lb - (s.find(' ') + 1));
+  std::string_view reg = trim_spaces(s.substr(first_space + 1, comma - (first_space + 1)));
+  std::string_view offset = trim_spaces(s.substr(comma + 1, lb - (comma + 1)));
   if (starts_with(s, "movq ")) return StoreRbpParts{reg, offset, MoveSize::Q};
   if (starts_with(s, "movl ")) return StoreRbpParts{reg, offset, MoveSize::L};
   if (starts_with(s, "movw ")) return StoreRbpParts{reg, offset, MoveSize::W};
@@ -178,13 +180,15 @@ std::optional<StoreRbpParts> parse_store_to_rbp_str(std::string_view s) {
 }
 
 std::optional<LoadRbpParts> parse_load_from_rbp_str(std::string_view s) {
+  const auto first_space = s.find(' ');
   const auto lb = s.find("(%rbp)");
   const auto comma = s.rfind(',');
-  if (lb == std::string_view::npos || comma == std::string_view::npos || lb > comma) {
+  if (first_space == std::string_view::npos || lb == std::string_view::npos ||
+      comma == std::string_view::npos || lb > comma) {
     return std::nullopt;
   }
-  std::string_view offset = s.substr(s.find(' ') + 1, lb - (s.find(' ') + 1));
-  std::string_view reg = s.substr(comma + 1);
+  std::string_view offset = trim_spaces(s.substr(first_space + 1, lb - (first_space + 1)));
+  std::string_view reg = trim_spaces(s.substr(comma + 1));
   if (starts_with(s, "movq ")) return LoadRbpParts{offset, reg, MoveSize::Q};
   if (starts_with(s, "movl ")) return LoadRbpParts{offset, reg, MoveSize::L};
   if (starts_with(s, "movw ")) return LoadRbpParts{offset, reg, MoveSize::W};

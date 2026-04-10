@@ -10,15 +10,15 @@ Source Plan: plan.md
   first live optimization round
 - immediate target:
   evaluate the next bounded translated peephole pass after the
-  copy-propagation slice
-  - prefer store-forwarding or another non-ABI-sensitive pass before
-    reopening tail-call, callee-save, or frame-compaction work
+  store-forwarding slice
+  - prefer another non-ABI-sensitive cleanup or tail-call orchestration before
+    reopening callee-save or frame-compaction work
 
 ## Next Slice
 
-- if the translated copy-propagation slice lands cleanly, evaluate whether the
-  next bounded candidate should be store-forwarding or tail-call
-  orchestration instead of widening loop-trampoline matching again
+- after the store-forwarding slice, evaluate whether the next bounded
+  candidate should be tail-call orchestration or another non-ABI-sensitive
+  cleanup instead of widening loop-trampoline matching again
 - keep the remaining stack-load family intentionally parked behind the current
   `%rax`/`%eax` predecessor-store and fallthrough rules unless a future slice
   proves one more explicit safe shape
@@ -146,6 +146,22 @@ Source Plan: plan.md
   crash path quickly enough to surface as `SEGFAULT` instead of the earlier
   `Timeout`, so the unstable aggregate runner remains a known blocker rather
   than a new peephole regression
+- this iteration activates the translated store-forwarding slice in the real
+  x86 peephole build and optimization round with a focused regression proving a
+  same-register `(%rbp)` reload is removed after a matching bounded stack
+  store
+- the store-forwarding regression initially exposed a shared classifier seam:
+  `types.cpp` left stack-store offsets contaminated by the source operand and
+  left stack-load destination registers with leading whitespace, so matching
+  `StoreRbp`/`LoadRbp` pairs never surfaced to the live pass until that parse
+  cleanup landed
+- this slice intentionally keeps dead-store semantics parked: the new
+  regression only claims bounded reload elimination, while the surviving stack
+  store remains acceptable because the current dead-store pass still treats
+  function exit as a barrier
+- the full-suite regression guard stayed monotonic for this slice:
+  `2723` passed / `181` failed before and after, with no newly failing tests
+  and no new `>30s` tests
 
 ## Recently Completed
 
@@ -258,6 +274,20 @@ Source Plan: plan.md
   results: `181` failures before, `181` failures after, no newly failing tests
 - compiled the translated `peephole/passes/copy_propagation.cpp` unit into the
   real x86 backend and test builds
+- compiled the translated `peephole/passes/store_forwarding.cpp` unit into the
+  real x86 backend and test builds
+- wired the translated store-forwarding pass into the live x86 peephole
+  optimization loop
+- fixed the shared x86 peephole stack-memory classifier so `StoreRbp` and
+  `LoadRbp` lines trim register/offset operands correctly before family and
+  slot matching
+- added a direct regression test that proves the live x86 peephole now drops a
+  bounded same-register `(%rbp)` reload after a matching stack store while
+  preserving the surrounding control flow
+- rebuilt, ran the focused `test_x86_peephole_` backend filter plus the direct
+  countdown-loop peephole route test, and reran the full ctest suite with
+  monotonic results: `181` failures before, `181` failures after, no newly
+  failing tests
 - wired the translated register copy-propagation pass into the live x86
   peephole optimization loop ahead of the existing dead-code cleanup
 - added a direct regression test that proves the live x86 peephole now

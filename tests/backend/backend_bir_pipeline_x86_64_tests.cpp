@@ -9306,6 +9306,23 @@ void test_x86_peephole_propagates_transitive_register_copies() {
                   "x86 peephole should preserve the later overwrite that makes the original rdx copy dead");
 }
 
+void test_x86_peephole_eliminates_redundant_same_register_stack_reload() {
+  const std::string input =
+      ".text\n"
+      "helper:\n"
+      "  movq %r8, -8(%rbp)\n"
+      "  movq -8(%rbp), %r8\n"
+      "  ret\n";
+
+  const auto optimized = c4c::backend::x86::codegen::peephole::peephole_optimize(input);
+  expect_not_contains(optimized, "  movq -8(%rbp), %r8\n",
+                      "x86 peephole should drop a same-register stack reload once the translated store-forwarding pass is live");
+  expect_contains(optimized, "  movq %r8, -8(%rbp)\n",
+                  "x86 peephole should keep the original bounded stack store in this slice because dead-store cleanup still treats function exit as a barrier");
+  expect_contains(optimized, "  ret\n",
+                  "x86 peephole should preserve the surrounding control flow after eliminating a bounded store/reload pair");
+}
+
 void test_x86_peephole_redirects_single_entry_loop_trampoline() {
   const std::string input =
       ".intel_syntax noprefix\n"
@@ -10045,6 +10062,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_x86_peephole_eliminates_dead_register_move);
   RUN_TEST(test_x86_peephole_eliminates_overwritten_stack_store);
   RUN_TEST(test_x86_peephole_propagates_transitive_register_copies);
+  RUN_TEST(test_x86_peephole_eliminates_redundant_same_register_stack_reload);
   RUN_TEST(test_x86_peephole_redirects_single_entry_loop_trampoline);
   RUN_TEST(test_x86_peephole_coalesces_single_register_loop_trampoline_copy);
   RUN_TEST(test_x86_peephole_coalesces_movslq_loop_trampoline_copy);
