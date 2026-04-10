@@ -427,6 +427,9 @@ bool x86_param_can_prestore_direct_to_reg(bool has_stack_slot,
 const char* x86_param_prestore_move_instr();
 const char* x86_param_prestore_arg_reg(std::size_t reg_index);
 const char* x86_param_prestore_dest_reg(c4c::backend::PhysReg reg);
+const char* x86_param_prestore_float_move_instr(std::string_view scalar_type);
+const char* x86_param_prestore_float_arg_reg(std::size_t reg_index, std::string_view scalar_type);
+const char* x86_param_prestore_dest_reg(c4c::backend::PhysReg reg, std::string_view scalar_type);
 std::int64_t x86_variadic_reg_save_area_size(bool no_sse);
 std::int64_t x86_aligned_frame_size(std::int64_t raw_space);
 std::int64_t x86_stack_probe_page_size();

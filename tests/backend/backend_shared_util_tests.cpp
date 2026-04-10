@@ -279,12 +279,24 @@ void test_x86_translated_asm_emitter_helpers_match_shared_contract() {
                   std::string(c4c::backend::x86::x86_param_prestore_move_instr()) == "movq" &&
                   std::string(c4c::backend::x86::x86_param_prestore_arg_reg(0)) == "rdi" &&
                   std::string(c4c::backend::x86::x86_param_prestore_arg_reg(5)) == "r9" &&
+                  std::string(c4c::backend::x86::x86_param_prestore_float_move_instr("f32")) ==
+                      "movd" &&
+                  std::string(c4c::backend::x86::x86_param_prestore_float_move_instr("f64")) ==
+                      "movq" &&
+                  std::string(c4c::backend::x86::x86_param_prestore_float_arg_reg(0, "f32")) ==
+                      "xmm0" &&
+                  std::string(c4c::backend::x86::x86_param_prestore_float_arg_reg(7, "f64")) ==
+                      "xmm7" &&
                   std::string(
                       c4c::backend::x86::x86_param_prestore_dest_reg(c4c::backend::PhysReg{1})) ==
                       "rbx" &&
                   std::string(
                       c4c::backend::x86::x86_param_prestore_dest_reg(c4c::backend::PhysReg{5})) ==
                       "r15" &&
+                  std::string(c4c::backend::x86::x86_param_prestore_dest_reg(
+                      c4c::backend::PhysReg{1}, "f32")) == "ebx" &&
+                  std::string(c4c::backend::x86::x86_param_prestore_dest_reg(
+                      c4c::backend::PhysReg{5}, "f64")) == "r15" &&
                   c4c::backend::x86::x86_variadic_gp_save_offset(-176, 0) == -176 &&
                   c4c::backend::x86::x86_variadic_gp_save_offset(-176, 5) == -136 &&
                   c4c::backend::x86::x86_variadic_sse_save_offset(-176, 0) == -128 &&

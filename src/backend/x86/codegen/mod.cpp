@@ -396,6 +396,33 @@ const char* x86_param_prestore_dest_reg(c4c::backend::PhysReg reg) {
   return phys_reg_name(reg);
 }
 
+const char* x86_param_prestore_float_move_instr(std::string_view scalar_type) {
+  if (scalar_type == "f32") {
+    return "movd";
+  }
+  if (scalar_type == "f64") {
+    return "movq";
+  }
+  return "";
+}
+
+const char* x86_param_prestore_float_arg_reg(std::size_t reg_index, std::string_view scalar_type) {
+  if (scalar_type != "f32" && scalar_type != "f64") {
+    return "";
+  }
+  return x86_float_arg_reg_name(reg_index);
+}
+
+const char* x86_param_prestore_dest_reg(c4c::backend::PhysReg reg, std::string_view scalar_type) {
+  if (scalar_type == "f32") {
+    return phys_reg_name_32(reg);
+  }
+  if (scalar_type == "f64") {
+    return phys_reg_name(reg);
+  }
+  return "";
+}
+
 std::int64_t x86_variadic_reg_save_area_size(bool no_sse) { return no_sse ? 48 : 176; }
 
 std::int64_t x86_aligned_frame_size(std::int64_t raw_space) {

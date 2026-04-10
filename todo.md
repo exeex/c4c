@@ -10,30 +10,51 @@ Source Plan: plan.md
   around the x86 entry/support helper surface after the legacy matcher body
   removal in `src/backend/x86/codegen/emit.cpp`
 - immediate target:
-  widen the parked translated prologue helper seam into the leading
-  non-alloca-backed integer pre-store owner slice without pulling the parked
-  translated prologue owner into the active build yet
+  widen the parked translated prologue helper seam beyond the landed
+  non-alloca-backed integer and float-register pre-store owner slices without
+  pulling the parked translated prologue owner into the active build yet
   - keep the slice helper-focused: shared helper contract plus parked
     translated `prologue.cpp` usage only
-  - keep the active build on the direct integer-register source slice before
-    widening into float-register or aggregate pre-store ownership
+  - keep the active build on direct-emitter-backed parameter slices while the
+    next widening point stays on aggregate or split-register pre-store support
 
 ## Next Slice
 
-- widen the helper-backed prologue seam beyond the landed integer-register
-  non-alloca-backed pre-store contract, with `ParamClass::FloatReg`
-  non-alloca-backed pre-store as the leading candidate before aggregate
-  parameter classes
+- widen the helper-backed prologue seam beyond the landed integer-register and
+  `ParamClass::FloatReg` non-alloca-backed pre-store contracts, with aggregate
+  or split-register parameter classes as the leading candidate
 - keep the translated prologue owner parked out of build until the public
   x86 codegen header exposes enough complete backend surface for
   `src/backend/x86/codegen/prologue.cpp` to compile cleanly
 - continue using build-active direct-emitter slices to lock the intended x86
   parameter-stack behavior meanwhile, with the next widening point remaining on
-  float-register or aggregate pre-store helper extraction rather than a new
-  ownership switch
+  aggregate pre-store helper extraction rather than a new ownership switch
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration widened the parked translated x86 prologue helper seam from
+  the earlier integer-only non-alloca-backed pre-store contract into the first
+  float-register owner slice: `src/backend/x86/codegen/mod.cpp` and
+  `x86_codegen.hpp` now expose typed float pre-store move/source/destination
+  helpers for `f32` and `f64`, including `movd %xmmN, %r32` and
+  `movq %xmmN, %r64`
+- `src/backend/x86/codegen/prologue.cpp` now routes parked translated
+  `ParamClass::FloatReg` non-alloca-backed pre-store emission through that
+  shared helper seam, keeping the owner-path logic aligned with the reference
+  typed XMM-to-callee-saved register move shape without pulling the full
+  translated prologue owner into build
+- `tests/backend/backend_shared_util_tests.cpp` now locks the float pre-store
+  helper contract alongside the earlier integer pre-store coverage, including
+  `xmm0` / `xmm7`, `movd` / `movq`, and typed callee-saved destinations
+  `ebx` / `r15`
+- focused validation passed for this slice:
+  `cmake --build build -j8 --target backend_shared_util_tests`,
+  `./build/backend_shared_util_tests`, and
+  `ctest --test-dir build -R backend_shared_util_tests --output-on-failure`
+- broad validation note:
+  skipped for this helper-only slice per the current plan note to defer the
+  monotonic full-suite guard until a larger owner-path cutover lands
 
 - this iteration widened the parked translated x86 prologue seam into the
   first non-alloca-backed integer pre-store owner slice: `mod.cpp` and

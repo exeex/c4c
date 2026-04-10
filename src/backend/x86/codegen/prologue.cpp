@@ -189,6 +189,15 @@ void X86Codegen::emit_store_params_impl(const IrFunction& func) {
       if (move_instr[0] != '\0' && src_reg[0] != '\0' && dest_reg[0] != '\0') {
         this->state.emit_fmt(format_args!("    {} %{}, %{}", move_instr, src_reg, dest_reg));
       }
+    } else if (const auto* reg =
+                   std::get_if<ParamClass::FloatReg>(&classification.classes[index].data)) {
+      const auto scalar_type = scalar_param_ref_type_name(func.params[index].type);
+      const auto* move_instr = x86_param_prestore_float_move_instr(scalar_type);
+      const auto* src_reg = x86_param_prestore_float_arg_reg(reg->reg_idx, scalar_type);
+      const auto* dest_reg = x86_param_prestore_dest_reg(assigned->second, scalar_type);
+      if (move_instr[0] != '\0' && src_reg[0] != '\0' && dest_reg[0] != '\0') {
+        this->state.emit_fmt(format_args!("    {} %{}, %{}", move_instr, src_reg, dest_reg));
+      }
     }
   }
 }
