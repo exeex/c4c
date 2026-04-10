@@ -470,6 +470,15 @@ set_tests_properties(cpp_parse_record_base_variable_template_value_arg_dump PROP
 )
 
 add_test(
+  NAME cpp_parse_template_alias_empty_pack_default_arg_dump
+  COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/parse_only_case/template_alias_empty_pack_default_arg_parse.cpp"
+)
+set_tests_properties(cpp_parse_template_alias_empty_pack_default_arg_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;parse"
+  PASS_REGULAR_EXPRESSION "StructDef\\(struct ns::has_equality\\)"
+)
+
+add_test(
   NAME cpp_parse_trailing_requires_following_member_decl_dump
   COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/postive_case/cpp20_trailing_requires_following_member_decl_parse.cpp"
 )

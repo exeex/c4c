@@ -844,21 +844,45 @@ TypeSpec Parser::parse_base_type() {
                 // Alias template application: e.g. bool_constant<expr> → integral_constant<bool, expr>
                 if (is_cpp_mode() && check(TokenKind::Less)) {
                     auto ati_it = alias_template_info_.find(tname);
-                    if (ati_it != alias_template_info_.end() &&
-                        ati_it->second.aliased_type.tpl_struct_origin) {
+                    if (ati_it != alias_template_info_.end()) {
                         const AliasTemplateInfo& ati = ati_it->second;
                         TentativeParseGuard alias_guard(*this);
                         std::vector<TemplateArgParseResult> alias_args;
+                        auto alias_args_match = [&](const std::vector<TemplateArgParseResult>& args)
+                            -> bool {
+                            size_t ai = 0;
+                            for (size_t pi = 0; pi < ati.param_names.size(); ++pi) {
+                                const bool is_pack =
+                                    pi < ati.param_is_pack.size() && ati.param_is_pack[pi];
+                                const bool expects_value =
+                                    pi < ati.param_is_nttp.size() && ati.param_is_nttp[pi];
+                                if (is_pack) {
+                                    while (ai < args.size()) {
+                                        if (args[ai].is_value != expects_value) return false;
+                                        ++ai;
+                                    }
+                                    return true;
+                                }
+                                if (ai >= args.size()) return false;
+                                if (args[ai].is_value != expects_value) return false;
+                                ++ai;
+                            }
+                            return ai == args.size();
+                        };
                         if (!parse_template_argument_list(
                                 &alias_args,
                                 nullptr,
                                 &ati.param_is_nttp) ||
-                            alias_args.size() != ati.param_names.size()) {
+                            !alias_args_match(alias_args)) {
                             // alias_guard restores pos_ on scope exit
                         } else {
                             std::unordered_map<std::string, std::string> subst;
                             bool alias_parse_ok = true;
                             for (size_t ai = 0; ai < alias_args.size(); ++ai) {
+                                if (ai >= ati.param_names.size()) {
+                                    alias_parse_ok = false;
+                                    break;
+                                }
                                 if (ati.param_is_nttp[ai] != alias_args[ai].is_value) {
                                     alias_parse_ok = false;
                                     break;

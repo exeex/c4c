@@ -20,12 +20,24 @@ Source Plan: plan.md
   returns `22` because `eastl::is_reference_v<eastl::add_lvalue_reference_t<T>>`
   still lowers as false, and nearby `is_same_v` variable-template instances
   backed by alias transforms remain `0` too.
+- Current blocker: empty alias-template parameter packs in default template
+  arguments now parse again (`void_t<>` no longer leaves the opening `<`
+  unconsumed), but partial-specialization member typedefs such as
+  `enable_if<true, T>::type` and `conditional<..., T, F>::type` still collapse
+  to the instantiated owner specialization instead of the selected bound type,
+  which keeps `eastl_type_traits_simple.cpp` stuck before the intended runtime
+  mismatch.
 
 ## Completed
 
 - Added focused runtime coverage in
   `tests/cpp/internal/postive_case/scoped_enum_bitwise_runtime.cpp` so scoped
   enums stay covered through parsing, canonicalization, and codegen.
+- Added focused parse-only coverage in
+  `tests/cpp/internal/parse_only_case/template_alias_empty_pack_default_arg_parse.cpp`
+  and taught alias-template metadata/application to accept empty type packs in
+  default template arguments, so `void_t<>` no longer regresses enclosing
+  template parameter lists with `expected GREATER but got 'struct'`.
 - Fixed parser enum handling so `enum class` / scoped enums are accepted as
   real enums instead of degrading into a fake `StructDef(struct ...)`, while
   also registering enum type names for later lookup.

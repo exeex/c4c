@@ -288,6 +288,7 @@ class Parser {
   struct AliasTemplateInfo {
     std::vector<const char*> param_names;
     std::vector<bool> param_is_nttp;
+    std::vector<bool> param_is_pack;
     TypeSpec aliased_type;  // TypeSpec from parse_type_name() (has tpl_struct_origin/arg_refs)
   };
   std::unordered_map<std::string, AliasTemplateInfo> alias_template_info_;
