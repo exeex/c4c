@@ -11,8 +11,8 @@ Source Plan: plan.md
   removal in `src/backend/x86/codegen/emit.cpp`
 - immediate target:
   continue the translated support dependency inventory in the already-built x86
-  support unit by exposing the next ref-owned prologue/regalloc helper family
-  through `src/backend/x86/codegen/mod.cpp` and `x86_codegen.hpp`
+  support unit by exposing the next ref-owned helper family through
+  `src/backend/x86/codegen/mod.cpp` and `x86_codegen.hpp`
   - keep focused shared-util coverage on the translated helper contract
   - keep validation centered on backend-only targets while this remains a
     support-surface slice, not a full translated prologue compile-in
@@ -20,12 +20,25 @@ Source Plan: plan.md
 ## Next Slice
 
 - continue the translated dependency inventory with the next already-built
-  helper family from `ref/.../emit.rs`, likely the ALU/shift mnemonic helpers
-  or the remaining inline-asm/prologue support mappings that can land without
-  pulling `prologue.cpp` into the build yet
+  helper family from `ref/.../emit.rs`, likely the remaining inline-asm /
+  prologue support mappings that can land without pulling `prologue.cpp` into
+  the build yet
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration exposed the ref-owned x86 ALU/shift mnemonic helpers through
+  `src/backend/x86/codegen/mod.cpp` and `x86_codegen.hpp`:
+  `x86_alu_mnemonic(...)` and `x86_shift_mnemonic(...)`
+- `src/backend/x86/codegen/alu.cpp` now consumes that shared helper surface
+  instead of keeping private local shift-mnemonic helpers, keeping the future
+  translated ALU owner contract anchored in the already-built support unit
+- added focused shared-util coverage that locks the translated add/sub/and/or/xor
+  plus 32-bit/64-bit shift mnemonic mapping contract to the ref emitter shape
+- focused validation passed for this slice:
+  `cmake --build build -j8 --target backend_shared_util_tests`,
+  `./build/backend_shared_util_tests test_x86_translated_asm_emitter_helpers_match_shared_contract`, and
+  `ctest --test-dir build -R backend_shared_util_tests --output-on-failure`
 
 - this iteration exposed the translated x86 register-pool and inline-asm
   callee-saved mapping helpers through `src/backend/x86/codegen/mod.cpp` and

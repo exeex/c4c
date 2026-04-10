@@ -17,6 +17,7 @@ struct LirModule;
 namespace c4c::backend {
 namespace bir {
 struct Module;
+enum class BinaryOpcode : unsigned char;
 }
 
 struct LivenessInput;
@@ -393,6 +394,8 @@ struct MinimalGlobalStoreReturnAndEntryReturnSlice {
 const char* reg_name_to_32(std::string_view name);
 const char* phys_reg_name(c4c::backend::PhysReg reg);
 const char* phys_reg_name_32(c4c::backend::PhysReg reg);
+const char* x86_alu_mnemonic(c4c::backend::bir::BinaryOpcode op);
+std::pair<const char*, const char*> x86_shift_mnemonic(c4c::backend::bir::BinaryOpcode op);
 std::vector<c4c::backend::PhysReg> x86_callee_saved_regs();
 std::vector<c4c::backend::PhysReg> x86_caller_saved_regs();
 std::optional<c4c::backend::PhysReg> x86_constraint_to_callee_saved(std::string_view constraint);

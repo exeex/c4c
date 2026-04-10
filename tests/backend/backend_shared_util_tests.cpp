@@ -191,6 +191,20 @@ void test_x86_translated_asm_emitter_helpers_match_shared_contract() {
                   std::string(c4c::backend::x86::phys_reg_name_32(c4c::backend::PhysReg{5})) == "r15d" &&
                   std::string(c4c::backend::x86::reg_name_to_32("r10")) == "r10d",
               "x86 translated register-name helpers should keep the ref physreg and sub-register mapping contract for the future translated prologue and ALU owners");
+  expect_true(std::string(c4c::backend::x86::x86_alu_mnemonic(c4c::backend::bir::BinaryOpcode::Add)) ==
+                      "add" &&
+                  std::string(c4c::backend::x86::x86_alu_mnemonic(c4c::backend::bir::BinaryOpcode::Xor)) ==
+                      "xor",
+              "x86 translated ALU mnemonic helpers should keep the ref add/sub/and/or/xor opcode mapping contract for the future translated ALU owner path");
+  const auto shift_left =
+      c4c::backend::x86::x86_shift_mnemonic(c4c::backend::bir::BinaryOpcode::Shl);
+  const auto shift_right =
+      c4c::backend::x86::x86_shift_mnemonic(c4c::backend::bir::BinaryOpcode::LShr);
+  expect_true(std::string(shift_left.first) == "shll" &&
+                  std::string(shift_left.second) == "shlq" &&
+                  std::string(shift_right.first) == "shrl" &&
+                  std::string(shift_right.second) == "shrq",
+              "x86 translated shift mnemonic helpers should keep the ref 32-bit and 64-bit opcode mapping contract for the future translated ALU owner path");
 
   const auto linux_symbol =
       c4c::backend::x86::asm_symbol_name("x86_64-unknown-linux-gnu", "main");

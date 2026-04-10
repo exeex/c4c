@@ -1,28 +1,8 @@
 #include "x86_codegen.hpp"
 
+#include "../../bir.hpp"
+
 namespace c4c::backend::x86 {
-
-namespace {
-
-const char* shift_mnemonic_32(IrBinOp op) {
-  switch (op) {
-    case IrBinOp::Shl: return "shll";
-    case IrBinOp::AShr: return "sarl";
-    case IrBinOp::LShr: return "shrl";
-    default: return "shll";
-  }
-}
-
-const char* shift_mnemonic_64(IrBinOp op) {
-  switch (op) {
-    case IrBinOp::Shl: return "shlq";
-    case IrBinOp::AShr: return "sarq";
-    case IrBinOp::LShr: return "shrq";
-    default: return "shlq";
-  }
-}
-
-}  // namespace
 
 void X86Codegen::emit_float_neg_impl(IrType ty) {
   if (ty == IrType::F32) {
@@ -102,17 +82,17 @@ void X86Codegen::emit_int_binop_impl(const Value& dest,
     case IrBinOp::Sub:
     case IrBinOp::Mul:
       if (use_32bit) {
-        const char* mnem = op == IrBinOp::Add ? "add"
-                            : op == IrBinOp::Sub ? "sub"
-                            : "imul";
+        const char* mnem = op == IrBinOp::Mul ? "imul"
+                                              : x86_alu_mnemonic(
+                                                    static_cast<c4c::backend::bir::BinaryOpcode>(op));
         this->state.emit(std::string("    ") + mnem + "l %ecx, %eax");
         if (!is_unsigned) {
           this->state.emit("    cltq");
         }
       } else {
-        const char* mnem = op == IrBinOp::Add ? "add"
-                            : op == IrBinOp::Sub ? "sub"
-                            : "imul";
+        const char* mnem = op == IrBinOp::Mul ? "imul"
+                                              : x86_alu_mnemonic(
+                                                    static_cast<c4c::backend::bir::BinaryOpcode>(op));
         this->state.emit(std::string("    ") + mnem + "q %rcx, %rax");
       }
       break;
@@ -155,24 +135,25 @@ void X86Codegen::emit_int_binop_impl(const Value& dest,
     case IrBinOp::And:
     case IrBinOp::Or:
     case IrBinOp::Xor:
-      this->state.emit(op == IrBinOp::And ? "    andq %rcx, %rax"
-                                          : op == IrBinOp::Or ? "    orq %rcx, %rax"
-                                                              : "    xorq %rcx, %rax");
+      this->state.emit(std::string("    ") +
+                       x86_alu_mnemonic(static_cast<c4c::backend::bir::BinaryOpcode>(op)) +
+                       "q %rcx, %rax");
       break;
     case IrBinOp::Shl:
     case IrBinOp::AShr:
-    case IrBinOp::LShr:
+    case IrBinOp::LShr: {
+      const auto [mnem32, mnem64] =
+          x86_shift_mnemonic(static_cast<c4c::backend::bir::BinaryOpcode>(op));
       if (use_32bit) {
-        const char* mnem32 = shift_mnemonic_32(op);
         this->state.emit(std::string("    ") + mnem32 + " %cl, %eax");
         if (!is_unsigned && op != IrBinOp::LShr) {
           this->state.emit("    cltq");
         }
       } else {
-        const char* mnem64 = shift_mnemonic_64(op);
         this->state.emit(std::string("    ") + mnem64 + " %cl, %rax");
       }
       break;
+    }
   }
 
   this->state.reg_cache.invalidate_acc();

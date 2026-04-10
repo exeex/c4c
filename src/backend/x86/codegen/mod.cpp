@@ -1,6 +1,7 @@
 #include "x86_codegen.hpp"
 
 #include "../../regalloc.hpp"
+#include "../../bir.hpp"
 
 #include <cctype>
 #include <sstream>
@@ -66,6 +67,26 @@ const char* phys_reg_name_32(c4c::backend::PhysReg reg) {
     case 14: return "edi";
     case 15: return "esi";
     default: return "";
+  }
+}
+
+const char* x86_alu_mnemonic(c4c::backend::bir::BinaryOpcode op) {
+  switch (op) {
+    case c4c::backend::bir::BinaryOpcode::Add: return "add";
+    case c4c::backend::bir::BinaryOpcode::Sub: return "sub";
+    case c4c::backend::bir::BinaryOpcode::And: return "and";
+    case c4c::backend::bir::BinaryOpcode::Or: return "or";
+    case c4c::backend::bir::BinaryOpcode::Xor: return "xor";
+    default: return "add";
+  }
+}
+
+std::pair<const char*, const char*> x86_shift_mnemonic(c4c::backend::bir::BinaryOpcode op) {
+  switch (op) {
+    case c4c::backend::bir::BinaryOpcode::Shl: return {"shll", "shlq"};
+    case c4c::backend::bir::BinaryOpcode::AShr: return {"sarl", "sarq"};
+    case c4c::backend::bir::BinaryOpcode::LShr: return {"shrl", "shrq"};
+    default: return {"shll", "shlq"};
   }
 }
 
