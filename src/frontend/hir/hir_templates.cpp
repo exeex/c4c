@@ -52,6 +52,11 @@ bool is_reference_trait_type(const TypeSpec& ts) {
   return ts.is_lvalue_ref || ts.is_rvalue_ref;
 }
 
+bool is_enum_trait_type(const TypeSpec& ts) {
+  if (ts.ptr_level > 0 || ts.is_fn_ptr || ts.array_rank > 0) return false;
+  return ts.base == TB_ENUM;
+}
+
 bool matches_trait_family(const std::string& name, const char* suffix) {
   if (name == suffix) return true;
   if (name.size() <= std::strlen(suffix) + 2) return false;
@@ -2201,6 +2206,9 @@ std::optional<long long> Lowerer::try_eval_template_static_member_const(
     }
     if (matches_trait_family(tpl_name, "is_const")) {
       return is_const_trait_type(actual_args[0].type) ? 1LL : 0LL;
+    }
+    if (matches_trait_family(tpl_name, "is_enum")) {
+      return is_enum_trait_type(actual_args[0].type) ? 1LL : 0LL;
     }
     if (matches_trait_family(tpl_name, "is_reference")) {
       if (is_reference_trait_type(actual_args[0].type)) {

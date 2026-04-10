@@ -69,6 +69,227 @@ bool Parser::eval_deferred_nttp_expr_tokens(
     std::function<bool(long long*)> eval_unary;
     std::function<bool(long long*)> eval_primary;
 
+    auto decode_type_tokens = [&](size_t start, size_t end, TypeSpec* out) -> bool {
+        if (!out || start >= end || end > toks.size()) return false;
+        if (end - start == 1) {
+            const Token& tok = toks[start];
+            if (tok.kind == TokenKind::Identifier) {
+                for (const auto& [pn, pts] : type_bindings) {
+                    if (tok.lexeme == pn) {
+                        *out = pts;
+                        return true;
+                    }
+                }
+                auto tit = typedef_types_.find(tok.lexeme);
+                if (tit != typedef_types_.end()) {
+                    *out = tit->second;
+                    return true;
+                }
+                if (parse_mangled_type_suffix(tok.lexeme, out)) return true;
+
+                auto init_tag_type = [&](TypeBase base, const std::string& prefix) {
+                    out->array_size = -1;
+                    out->inner_rank = -1;
+                    out->base = base;
+                    out->tag = arena_.strdup(tok.lexeme.substr(prefix.size()).c_str());
+                    out->ptr_level = 0;
+                    out->is_lvalue_ref = false;
+                    out->is_rvalue_ref = false;
+                    out->is_const = false;
+                    out->is_volatile = false;
+                    out->is_fn_ptr = false;
+                    out->array_rank = 0;
+                };
+
+                if (tok.lexeme.rfind("struct_", 0) == 0) {
+                    init_tag_type(TB_STRUCT, "struct_");
+                    return true;
+                }
+                if (tok.lexeme.rfind("union_", 0) == 0) {
+                    init_tag_type(TB_UNION, "union_");
+                    return true;
+                }
+                if (tok.lexeme.rfind("enum_", 0) == 0) {
+                    init_tag_type(TB_ENUM, "enum_");
+                    return true;
+                }
+            }
+        }
+
+        std::string text = capture_template_arg_expr_text(
+            toks, static_cast<int>(start), static_cast<int>(end));
+        return parse_builtin_typespec_text(text, out);
+    };
+
+    auto eval_builtin_type_trait = [&](long long* val) -> bool {
+        if (ti >= toks.size() || toks[ti].kind != TokenKind::Identifier) return false;
+        const std::string builtin_name = toks[ti].lexeme;
+        if (!is_builtin_type_trait_name(builtin_name) ||
+            builtin_name == "__builtin_types_compatible_p") {
+            return false;
+        }
+
+        auto find_builtin_type_arg_end = [&](size_t start) -> size_t {
+            int angle_depth = 0;
+            int paren_depth = 0;
+            int bracket_depth = 0;
+            int brace_depth = 0;
+            size_t pos = start;
+            while (pos < toks.size()) {
+                const TokenKind tk = toks[pos].kind;
+                if (tk == TokenKind::LParen) {
+                    ++paren_depth;
+                } else if (tk == TokenKind::RParen) {
+                    if (paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 &&
+                        angle_depth == 0) {
+                        break;
+                    }
+                    if (paren_depth > 0) --paren_depth;
+                } else if (tk == TokenKind::LBracket) {
+                    ++bracket_depth;
+                } else if (tk == TokenKind::RBracket) {
+                    if (bracket_depth > 0) --bracket_depth;
+                } else if (tk == TokenKind::LBrace) {
+                    ++brace_depth;
+                } else if (tk == TokenKind::RBrace) {
+                    if (brace_depth > 0) --brace_depth;
+                } else if (tk == TokenKind::Less) {
+                    ++angle_depth;
+                } else if (tk == TokenKind::Greater) {
+                    if (angle_depth > 0) --angle_depth;
+                } else if (tk == TokenKind::GreaterGreater) {
+                    angle_depth = std::max(0, angle_depth - 2);
+                } else if (tk == TokenKind::Comma && paren_depth == 0 &&
+                           bracket_depth == 0 && brace_depth == 0 &&
+                           angle_depth == 0) {
+                    break;
+                }
+                ++pos;
+            }
+            return pos;
+        };
+
+        const size_t saved_ti = ti;
+        ++ti;
+        if (ti >= toks.size() || toks[ti].kind != TokenKind::LParen) {
+            ti = saved_ti;
+            return false;
+        }
+        ++ti;
+
+        const size_t arg1_start = ti;
+        const size_t arg1_end = find_builtin_type_arg_end(arg1_start);
+        if (arg1_end <= arg1_start || arg1_end > toks.size()) {
+            ti = saved_ti;
+            return false;
+        }
+        TypeSpec lhs{};
+        if (!decode_type_tokens(arg1_start, arg1_end, &lhs)) {
+            ti = saved_ti;
+            return false;
+        }
+        ti = arg1_end;
+
+        auto is_integral_trait_type = [](const TypeSpec& ts) {
+            if (ts.ptr_level > 0 || ts.is_fn_ptr || ts.array_rank > 0) return false;
+            switch (ts.base) {
+                case TB_BOOL:
+                case TB_CHAR:
+                case TB_SCHAR:
+                case TB_UCHAR:
+                case TB_SHORT:
+                case TB_USHORT:
+                case TB_INT:
+                case TB_UINT:
+                case TB_LONG:
+                case TB_ULONG:
+                case TB_LONGLONG:
+                case TB_ULONGLONG:
+                case TB_INT128:
+                case TB_UINT128:
+                    return true;
+                default:
+                    return false;
+            }
+        };
+
+        auto is_floating_trait_type = [](const TypeSpec& ts) {
+            if (ts.ptr_level > 0 || ts.is_fn_ptr || ts.array_rank > 0) return false;
+            return ts.base == TB_FLOAT || ts.base == TB_DOUBLE ||
+                   ts.base == TB_LONGDOUBLE;
+        };
+
+        auto is_const_trait_type = [](const TypeSpec& ts) {
+            return ts.is_const && !ts.is_lvalue_ref && !ts.is_rvalue_ref;
+        };
+
+        auto is_reference_trait_type = [](const TypeSpec& ts) {
+            return ts.is_lvalue_ref || ts.is_rvalue_ref;
+        };
+
+        auto is_enum_trait_type = [](const TypeSpec& ts) {
+            if (ts.ptr_level > 0 || ts.is_fn_ptr || ts.array_rank > 0) return false;
+            return ts.base == TB_ENUM;
+        };
+
+        if (builtin_name == "__is_same") {
+            if (ti >= toks.size() || toks[ti].kind != TokenKind::Comma) {
+                ti = saved_ti;
+                return false;
+            }
+            ++ti;
+            const size_t arg2_start = ti;
+            const size_t arg2_end = find_builtin_type_arg_end(arg2_start);
+            if (arg2_end <= arg2_start || arg2_end > toks.size()) {
+                ti = saved_ti;
+                return false;
+            }
+            TypeSpec rhs{};
+            if (!decode_type_tokens(arg2_start, arg2_end, &rhs)) {
+                ti = saved_ti;
+                return false;
+            }
+            ti = arg2_end;
+            if (ti >= toks.size() || toks[ti].kind != TokenKind::RParen) {
+                ti = saved_ti;
+                return false;
+            }
+            ++ti;
+            *val = types_compatible_p(lhs, rhs, typedef_types_) ? 1 : 0;
+            return true;
+        }
+
+        if (ti >= toks.size() || toks[ti].kind != TokenKind::RParen) {
+            ti = saved_ti;
+            return false;
+        }
+        ++ti;
+
+        if (builtin_name == "__is_integral") {
+            *val = is_integral_trait_type(lhs) ? 1 : 0;
+            return true;
+        }
+        if (builtin_name == "__is_floating_point") {
+            *val = is_floating_trait_type(lhs) ? 1 : 0;
+            return true;
+        }
+        if (builtin_name == "__is_const") {
+            *val = is_const_trait_type(lhs) ? 1 : 0;
+            return true;
+        }
+        if (builtin_name == "__is_reference") {
+            *val = is_reference_trait_type(lhs) ? 1 : 0;
+            return true;
+        }
+        if (builtin_name == "__is_enum") {
+            *val = is_enum_trait_type(lhs) ? 1 : 0;
+            return true;
+        }
+
+        ti = saved_ti;
+        return false;
+    };
+
     // Helper: resolve a template arg token at position ti.
     auto resolve_template_arg = [&](std::vector<ParsedTemplateArg>& ref_args) -> bool {
         if (ti >= toks.size()) return false;
@@ -330,6 +551,7 @@ bool Parser::eval_deferred_nttp_expr_tokens(
     // Primary: literal, NTTP param name, parenthesized expr, or member lookup.
     eval_primary = [&](long long* val) -> bool {
         if (ti >= toks.size()) return false;
+        if (eval_builtin_type_trait(val)) return true;
         // Parenthesized expression
         if (toks[ti].kind == TokenKind::LParen) {
             ++ti;

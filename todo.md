@@ -7,29 +7,46 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 3: keep `eastl_type_traits_simple.cpp` as the active EASTL frontier, but
-  treat the next remaining workflow mismatch as the bounded `is_enum`
-  trait-classification follow-up rather than the already-fixed reference-trait
-  path.
-- Iteration focus: keep the focused runtime coverage for alias-backed member
-  typedef selection current, preserve the new inherited-owner reduction for
-  `add_lvalue_reference_t`, and resume the EASTL workflow from the later
-  `eastl::is_enum<Color>::value` runtime mismatch.
-- Iteration target: record that the old `exit 22` reference-transform failure
-  is gone, the standalone EASTL workflow now reaches `exit 3`, and the next
-  slice should reduce `is_enum<Color>` to a smallest generic trait repro before
-  touching unrelated EASTL cases.
-- Reduced repro: the focused internal runtime cases
-  `template_variable_alias_member_typedef_runtime.cpp` and
-  `template_variable_alias_inherited_member_typedef_runtime.cpp` now both pass,
-  proving the direct alias-member path and the inherited `decltype(...)->type`
-  owner path, while the standalone EASTL workflow now exits `3` in the later
-  `is_enum<Color>::value` check.
-- Current blocker: `eastl::is_enum<Color>::value` still folds false in the
-  standalone workflow after the reference-transform path was repaired. Treat
-  that as the next bounded generic trait-family slice.
+  treat the next remaining workflow mismatch as the bounded `remove_cv`
+  trait-follow-up rather than the now-fixed inherited `is_enum` path.
+- Iteration focus: keep the focused inherited `integral_constant<bool,
+  __is_enum(T)>` runtime coverage current, preserve the deferred-NTTP builtin
+  trait evaluation fix, and resume the EASTL workflow from the later
+  `remove_cv_t<const volatile unsigned int>` mismatch.
+- Iteration target: record that the old `exit 3` enum-trait failure is gone,
+  the standalone EASTL workflow now reaches `exit 7`, and the next slice should
+  reduce `remove_cv_t<const volatile unsigned int>` to a smallest generic repro
+  before touching unrelated EASTL cases.
+- Reduced repro: the focused internal runtime case
+  `template_builtin_is_enum_inherited_value_runtime.cpp` now passes, proving
+  that inherited `integral_constant<bool, __is_enum(T)>::value` bases preserve
+  enum classification during template instantiation, while the standalone EASTL
+  workflow now exits `7` at the later `remove_cv_t` check.
+- Current blocker: `eastl::remove_cv_t<const volatile unsigned int>` still
+  fails in the standalone workflow after the inherited `is_enum` path was
+  repaired. Treat that as the next bounded generic trait-family slice.
 
 ## Completed
 
+- Added focused runtime coverage in
+  `tests/cpp/internal/postive_case/template_builtin_is_enum_inherited_value_runtime.cpp`
+  so inherited `integral_constant<bool, __is_enum(T)>::value` lookups stay
+  covered as a standalone generic repro.
+- Taught deferred NTTP expression evaluation to fold builtin type traits such
+  as `__is_enum(T)` while instantiating template bases, which repairs the
+  reduced inherited enum-trait repro and the old `eastl_type_traits_simple`
+  `exit 3` mismatch.
+- Re-ran the focused inherited enum-trait runtime regression, the
+  `cpp_eastl_type_traits_parse_recipe` workflow coverage, and `cmake --build
+  build --target eastl_type_traits_simple_workflow -j8`; the standalone EASTL
+  workflow now advances from `exit 3` to `exit 7`, so the next blocker is
+  `remove_cv_t<const volatile unsigned int>`.
+- Re-ran the full `ctest --test-dir build -j8 --output-on-failure` suite and
+  compared `test_fail_before.log` vs `test_fail_after.log`; the regression
+  guard passed monotonically at 3297/3299 passing tests versus the earlier
+  3289/3297 baseline, with zero newly failing tests. The remaining failures are
+  still `cpp_eastl_utility_parse_recipe` and
+  `cpp_eastl_memory_uses_allocator_parse_recipe`.
 - Added focused runtime coverage in
   `tests/cpp/internal/postive_case/template_variable_alias_member_typedef_runtime.cpp`
   and confirmed the reduced alias-backed `enable_if_t` / `conditional_t`
