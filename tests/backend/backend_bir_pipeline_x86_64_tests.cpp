@@ -6341,6 +6341,23 @@ void test_backend_bir_pipeline_drives_x86_direct_bir_minimal_scalar_global_load_
                       "x86 direct BIR scalar global-load input should stay on native asm emission instead of falling back to LLVM text");
 }
 
+void test_backend_bir_pipeline_drives_x86_direct_bir_zero_initialized_scalar_global_load_end_to_end() {
+  auto module = make_bir_minimal_scalar_global_load_module();
+  module.globals.front().initializer = c4c::backend::bir::Value::immediate_i32(0);
+
+  const auto rendered = c4c::backend::emit_module(c4c::backend::BackendModuleInput{module},
+                                                  make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".bss\n",
+                  "x86 direct BIR zero-initialized scalar global-load input should route through the bounded zero-init global emission path");
+  expect_contains(rendered, "  .zero 4\n",
+                  "x86 direct BIR zero-initialized scalar global-load input should preserve the zero-filled global payload");
+  expect_contains(rendered, "mov eax, dword ptr [rax]",
+                  "x86 direct BIR zero-initialized scalar global-load input should still lower bir.load_global into a native scalar memory load");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 direct BIR zero-initialized scalar global-load input should stay on native asm emission instead of falling back to LLVM text");
+}
+
 void test_backend_bir_pipeline_drives_x86_direct_bir_minimal_extern_scalar_global_load_end_to_end() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_bir_minimal_extern_scalar_global_load_module()},
@@ -10004,6 +10021,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_call_crossing_direct_call_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_countdown_loop_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_scalar_global_load_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_zero_initialized_scalar_global_load_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_extern_scalar_global_load_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_direct_bir_minimal_scalar_global_store_reload_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_lowers_x86_direct_call_helper_families_to_shared_bir_views);

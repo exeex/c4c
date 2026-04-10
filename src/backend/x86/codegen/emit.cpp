@@ -2904,84 +2904,6 @@ std::string emit_global_symbol_prelude(std::string_view target_triple,
   return out.str();
 }
 
-std::string emit_minimal_scalar_global_load_asm(
-    std::string_view target_triple,
-    const MinimalScalarGlobalLoadSlice& slice) {
-  if (slice.init_imm < std::numeric_limits<std::int32_t>::min() ||
-      slice.init_imm > std::numeric_limits<std::int32_t>::max()) {
-    throw std::invalid_argument(
-        "x86 backend emitter does not support this direct BIR module; only the affine-return subset lowers natively");
-  }
-
-  const auto global_symbol = asm_symbol_name(target_triple, slice.global_name);
-  const auto function_symbol = asm_symbol_name(target_triple, slice.function_name);
-  std::ostringstream out;
-  out << ".intel_syntax noprefix\n"
-      << emit_global_symbol_prelude(target_triple, global_symbol, slice.align_bytes,
-                                    slice.zero_initializer);
-  if (slice.zero_initializer) {
-    out << "  .zero 4\n";
-  } else {
-    out << "  .long " << slice.init_imm << "\n";
-  }
-  if (target_triple.find("apple-darwin") == std::string::npos) {
-    out << ".size " << global_symbol << ", 4\n";
-  }
-  out << ".text\n"
-      << emit_function_prelude(target_triple, function_symbol)
-      << "  lea rax, " << global_symbol << "[rip]\n"
-      << "  mov eax, dword ptr [rax]\n"
-      << "  ret\n";
-  return out.str();
-}
-
-std::string emit_minimal_extern_scalar_global_load_asm(
-    std::string_view target_triple,
-    const MinimalExternScalarGlobalLoadSlice& slice) {
-  const auto global_symbol = asm_symbol_name(target_triple, slice.global_name);
-  const auto function_symbol = asm_symbol_name(target_triple, slice.function_name);
-  std::ostringstream out;
-  out << ".intel_syntax noprefix\n";
-  if (target_triple.find("apple-darwin") == std::string::npos) {
-    out << ".extern " << global_symbol << "\n";
-  }
-  out << ".text\n"
-      << emit_function_prelude(target_triple, function_symbol)
-      << "  lea rax, " << global_symbol << "[rip]\n"
-      << "  mov eax, dword ptr [rax]\n"
-      << "  ret\n";
-  return out.str();
-}
-
-std::string emit_minimal_scalar_global_store_reload_asm(
-    std::string_view target_triple,
-    const MinimalScalarGlobalStoreReloadSlice& slice) {
-  if (slice.init_imm < std::numeric_limits<std::int32_t>::min() ||
-      slice.init_imm > std::numeric_limits<std::int32_t>::max() ||
-      slice.store_imm < std::numeric_limits<std::int32_t>::min() ||
-      slice.store_imm > std::numeric_limits<std::int32_t>::max()) {
-    throw std::invalid_argument(
-        "x86 backend emitter does not support this direct BIR module; only the affine-return subset lowers natively");
-  }
-
-  const auto global_symbol = asm_symbol_name(target_triple, slice.global_name);
-  const auto function_symbol = asm_symbol_name(target_triple, slice.function_name);
-  std::ostringstream out;
-  out << ".intel_syntax noprefix\n"
-      << emit_global_symbol_prelude(target_triple, global_symbol, slice.align_bytes, false)
-      << "  .long " << slice.init_imm << "\n";
-  if (target_triple.find("apple-darwin") == std::string::npos) {
-    out << ".size " << global_symbol << ", 4\n";
-  }
-  out << ".text\n"
-      << emit_function_prelude(target_triple, function_symbol)
-      << "  lea rax, " << global_symbol << "[rip]\n"
-      << "  mov dword ptr [rax], " << slice.store_imm << "\n"
-      << "  mov eax, dword ptr [rax]\n"
-      << "  ret\n";
-  return out.str();
-}
-
 std::string emit_minimal_global_store_return_and_entry_return_asm(
     std::string_view target_triple,
     const MinimalGlobalStoreReturnAndEntryReturnSlice& slice) {
@@ -3819,15 +3741,27 @@ std::optional<std::string> try_emit_module(const c4c::backend::bir::Module& modu
     return emit_minimal_countdown_loop_asm(module.target_triple, *slice);
   }
   if (const auto slice = parse_minimal_scalar_global_load_slice(module); slice.has_value()) {
-    return emit_minimal_scalar_global_load_asm(module.target_triple, *slice);
+    return emit_minimal_scalar_global_load_slice_asm(module.target_triple,
+                                                     slice->function_name,
+                                                     slice->global_name,
+                                                     slice->init_imm,
+                                                     slice->align_bytes,
+                                                     slice->zero_initializer);
   }
   if (const auto slice = parse_minimal_extern_scalar_global_load_slice(module);
       slice.has_value()) {
-    return emit_minimal_extern_scalar_global_load_asm(module.target_triple, *slice);
+    return emit_minimal_extern_scalar_global_load_slice_asm(module.target_triple,
+                                                            slice->function_name,
+                                                            slice->global_name);
   }
   if (const auto slice = parse_minimal_scalar_global_store_reload_slice(module);
       slice.has_value()) {
-    return emit_minimal_scalar_global_store_reload_asm(module.target_triple, *slice);
+    return emit_minimal_scalar_global_store_reload_slice_asm(module.target_triple,
+                                                             slice->function_name,
+                                                             slice->global_name,
+                                                             slice->init_imm,
+                                                             slice->store_imm,
+                                                             slice->align_bytes);
   }
   if (const auto slice = parse_minimal_global_store_return_and_entry_return_slice(module);
       slice.has_value()) {

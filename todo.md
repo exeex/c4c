@@ -6,31 +6,28 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 3 continue expanding the translated x86 peephole subtree beyond the
-  newly live memory-fold and callee-save slices
+- Step 4 begin transferring one bounded x86 top-level ownership seam out of
+  `emit.cpp` now that the translated peephole subtree is effectively live
 - immediate target:
-  reassess the remaining parked Step 3 inventory after the newly activated
-  `callee_saves.cpp` slice
+  move the scalar global direct-emission cluster into a sibling x86 codegen
+  unit without trying to compile the still-placeholder full translated
+  `globals.cpp` surface
+  - keep `globals.cpp` itself parked until `X86Codegen` grows the state/method
+    surface it still references
   - keep `frame_compact.cpp` parked until a future iteration can prove a real
     shrink/rewrite shape instead of enabling the current placeholder pass
-  - keep any additional classifier/parser expansion explicit instead of
-    silently widening the new callee-save slice
 
 ## Next Slice
 
-- with `callee_saves.cpp` now live, decide whether Step 3 still has a bounded
-  remaining translated peephole slice or whether ownership transfer should
-  move back toward Step 4 top-level codegen integration
+- continue Step 4 by identifying the next bounded top-level x86 ownership
+  transfer that can compile cleanly against the current transitional headers
 - keep `frame_compact.cpp` parked until dead-store and callee-save cleanup
   expose a concrete safe shrink shape instead of enabling the placeholder pass
   by default
-- keep the remaining stack-load family intentionally parked behind the current
-  `%rax`/`%eax` predecessor-store and fallthrough rules unless a future slice
-  proves one more explicit safe shape
-- keep `frame_compact.cpp` parked until dead-store and callee-save translated
-  passes are live enough for frame shrinking to be meaningful
-- continue evaluating which remaining translated peephole units can be compiled
-  into the real path without widening into unrelated x86 top-level ownership
+- keep the full translated top-level units parked when they still depend on
+  missing `X86Codegen` state instead of forcing broad header/class expansion
+- prefer small sibling-file ownership moves like the direct global seam when a
+  full translated unit is not yet compile-ready
 
 ## Current Iteration Notes
 
@@ -40,6 +37,24 @@ Source Plan: plan.md
 - the current question is not "what more should be translated"
 - the current question is "which already-translated x86 codegen pieces can be
   made real and reachable first"
+- Step 3 is now effectively complete apart from the intentionally parked
+  `frame_compact.cpp` placeholder, so this iteration moves back to Step 4
+  ownership transfer instead of widening the peephole matcher surface again
+- this iteration moves the bounded scalar-global direct-emission seam out of
+  `emit.cpp` into `src/backend/x86/codegen/direct_globals.cpp`, covering the
+  native scalar global load, extern scalar global load, and scalar global
+  store-reload paths
+- the original translated `globals.cpp` unit still does not compile against the
+  current transitional `X86Codegen` header because it references state/method
+  members that are not live yet, so the new sibling file intentionally narrows
+  ownership transfer without widening class-surface work
+- added a new direct regression for the zero-initialized scalar global-load
+  path so the new sibling seam is pinned for both `.data` and `.bss` routes
+- targeted backend filters for the direct BIR scalar-global load/store paths
+  and the shared-BIR scalar-global store-reload routes passed on the new seam
+- the broad `ctest --test-dir build -j8 --output-on-failure` sweep still fails
+  in the same pre-existing aggregate areas, starting with the existing
+  `backend_bir_tests` segfault and the wider known x86/backend failure set
 - this iteration activates the parked translated callee-save cleanup slice in
   the real x86 peephole build and post-pass orchestration without enabling the
   still-placeholder frame-compaction pass
@@ -214,6 +229,14 @@ Source Plan: plan.md
 
 ## Recently Completed
 
+- started Step 4 ownership transfer after the translated peephole subtree
+  reached the real x86 path
+- moved the bounded scalar-global direct-emission cluster out of `emit.cpp`
+  into `src/backend/x86/codegen/direct_globals.cpp`
+- wired `direct_globals.cpp` into both the main x86 build and the backend test
+  build
+- added a direct regression that pins the zero-initialized scalar global-load
+  path on the native x86 route
 - created idea 43 to own x86 peephole pipeline completion
 - parked idea 44 as a separate shared-BIR cleanup lane
 - switched the active runbook and execution state to idea 43

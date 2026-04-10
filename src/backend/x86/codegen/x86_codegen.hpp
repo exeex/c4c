@@ -382,6 +382,21 @@ const char* phys_reg_name(c4c::backend::PhysReg reg);
 const char* phys_reg_name_32(c4c::backend::PhysReg reg);
 std::string asm_symbol_name(std::string_view target_triple, std::string_view logical_name);
 std::string asm_private_data_label(std::string_view target_triple, std::string_view pool_name);
+std::string emit_minimal_scalar_global_load_slice_asm(std::string_view target_triple,
+                                                      std::string_view function_name,
+                                                      std::string_view global_name,
+                                                      std::int64_t init_imm,
+                                                      std::size_t align_bytes,
+                                                      bool zero_initializer);
+std::string emit_minimal_extern_scalar_global_load_slice_asm(std::string_view target_triple,
+                                                             std::string_view function_name,
+                                                             std::string_view global_name);
+std::string emit_minimal_scalar_global_store_reload_slice_asm(std::string_view target_triple,
+                                                              std::string_view function_name,
+                                                              std::string_view global_name,
+                                                              std::int64_t init_imm,
+                                                              std::int64_t store_imm,
+                                                              std::size_t align_bytes);
 c4c::backend::RegAllocIntegrationResult run_shared_x86_regalloc(
     const c4c::backend::LivenessInput& liveness_input);
 
