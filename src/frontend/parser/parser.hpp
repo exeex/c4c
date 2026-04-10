@@ -494,6 +494,11 @@ class Parser {
       std::string* out_mangled,
       const char* debug_reason = nullptr,
       TypeSpec* out_resolved = nullptr);
+  std::string build_template_struct_mangled_name(
+      const std::string& template_name,
+      const Node* primary_tpl,
+      const Node* selected_tpl,
+      const std::vector<TemplateArgParseResult>& args) const;
   TypenameTemplateParamKind classify_typename_template_parameter() const;
   void push_template_scope(TemplateScopeKind kind,
                            const std::vector<TemplateScopeParam>& params);

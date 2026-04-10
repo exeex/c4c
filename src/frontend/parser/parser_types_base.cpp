@@ -2003,47 +2003,8 @@ TypeSpec Parser::parse_base_type() {
                     // Build mangled name from the concrete family arguments.
                     const std::string family_name =
                         tpl_def->template_origin_name ? tpl_def->template_origin_name : tpl_name;
-                    std::string mangled = family_name;
-                    int mangled_arg_index = 0;
-                    for (int pi = 0; primary_tpl && pi < primary_tpl->n_template_params; ++pi) {
-                        mangled += "_";
-                        mangled += primary_tpl->template_param_names[pi];
-                        const bool is_pack =
-                            primary_tpl->template_param_is_pack &&
-                            primary_tpl->template_param_is_pack[pi];
-                        if (is_pack) {
-                            while (mangled_arg_index < static_cast<int>(concrete_args.size())) {
-                                mangled += "_";
-                                if (concrete_args[mangled_arg_index].is_value) {
-                                    mangled += std::to_string(
-                                        concrete_args[mangled_arg_index].value);
-                                } else {
-                                    append_type_mangled_suffix(
-                                        mangled,
-                                        concrete_args[mangled_arg_index].type);
-                                }
-                                ++mangled_arg_index;
-                            }
-                            continue;
-                        }
-                        mangled += "_";
-                        if (mangled_arg_index < static_cast<int>(concrete_args.size()) &&
-                            concrete_args[mangled_arg_index].is_value) {
-                            mangled +=
-                                std::to_string(concrete_args[mangled_arg_index].value);
-                        } else {
-                            if (mangled_arg_index < static_cast<int>(concrete_args.size()) &&
-                                !concrete_args[mangled_arg_index].is_value) {
-                                append_type_mangled_suffix(
-                                    mangled,
-                                    concrete_args[mangled_arg_index].type);
-                            } else {
-                                mangled +=
-                                    primary_tpl->template_param_is_nttp[pi] ? "0" : "T";
-                            }
-                        }
-                        ++mangled_arg_index;
-                    }
+                    std::string mangled = build_template_struct_mangled_name(
+                        tpl_name, primary_tpl, tpl_def, concrete_args);
                     // Check if any type arg is an unresolved template param
                     // or a pending template struct (e.g. Pair<T> inside Box<Pair<T>>).
                     // If so, defer instantiation to HIR template function lowering.

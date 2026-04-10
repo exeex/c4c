@@ -64,26 +64,8 @@ bool Parser::ensure_template_struct_instantiated_from_args(
         &type_bindings, &nttp_bindings);
     if (!selected) return false;
 
-    if (selected != primary_tpl && selected->n_template_params == 0 &&
-        selected->name && selected->name[0]) {
-        *out_mangled = selected->name;
-    } else {
-        const std::string family =
-            (selected->template_origin_name && selected->template_origin_name[0])
-                ? selected->template_origin_name
-                : template_name;
-        *out_mangled = family;
-        for (int pi = 0; pi < primary_tpl->n_template_params; ++pi) {
-            *out_mangled += "_";
-            *out_mangled += primary_tpl->template_param_names[pi];
-            *out_mangled += "_";
-            if (pi < static_cast<int>(args.size()) && args[pi].is_value) {
-                *out_mangled += std::to_string(args[pi].value);
-            } else if (pi < static_cast<int>(args.size()) && !args[pi].is_value) {
-                append_type_mangled_suffix(*out_mangled, args[pi].type);
-            }
-        }
-    }
+    *out_mangled = build_template_struct_mangled_name(
+        template_name, primary_tpl, selected, args);
 
     const std::string instance_key =
         make_template_struct_instance_key(primary_tpl, args);
@@ -107,6 +89,58 @@ bool Parser::ensure_template_struct_instantiated_from_args(
         out_resolved->tag = arena_.strdup(out_mangled->c_str());
     }
     return struct_tag_def_map_.count(*out_mangled) > 0;
+}
+
+std::string Parser::build_template_struct_mangled_name(
+    const std::string& template_name,
+    const Node* primary_tpl,
+    const Node* selected_tpl,
+    const std::vector<TemplateArgParseResult>& args) const {
+    if (!primary_tpl) return {};
+    if (selected_tpl != primary_tpl && selected_tpl &&
+        selected_tpl->n_template_params == 0 &&
+        selected_tpl->name && selected_tpl->name[0]) {
+        return selected_tpl->name;
+    }
+
+    const std::string family =
+        (selected_tpl && selected_tpl->template_origin_name &&
+         selected_tpl->template_origin_name[0])
+            ? selected_tpl->template_origin_name
+            : template_name;
+    std::string mangled = family;
+    int arg_index = 0;
+    for (int pi = 0; pi < primary_tpl->n_template_params; ++pi) {
+        mangled += "_";
+        mangled += primary_tpl->template_param_names[pi];
+        const bool is_pack =
+            primary_tpl->template_param_is_pack &&
+            primary_tpl->template_param_is_pack[pi];
+        if (is_pack) {
+            while (arg_index < static_cast<int>(args.size())) {
+                mangled += "_";
+                if (args[arg_index].is_value) {
+                    mangled += std::to_string(args[arg_index].value);
+                } else {
+                    append_type_mangled_suffix(mangled, args[arg_index].type);
+                }
+                ++arg_index;
+            }
+            continue;
+        }
+        mangled += "_";
+        if (arg_index < static_cast<int>(args.size()) && args[arg_index].is_value) {
+            mangled += std::to_string(args[arg_index].value);
+        } else if (arg_index < static_cast<int>(args.size()) &&
+                   !args[arg_index].is_value) {
+            append_type_mangled_suffix(mangled, args[arg_index].type);
+        } else {
+            mangled +=
+                primary_tpl->template_param_is_nttp[pi] ? "0" : "T";
+        }
+        ++arg_index;
+    }
+    return mangled;
 }
 
 bool Parser::eval_deferred_nttp_expr_tokens(

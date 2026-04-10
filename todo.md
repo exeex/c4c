@@ -29,6 +29,9 @@ Source Plan: plan.md
   `Parser::ensure_template_struct_instantiated_from_args(...)` seam with a
   typed realization path so parser no longer has to rely on injected parse for
   common template instantiation cases.
+- Next intended slice: move more of the concrete struct realization logic
+  behind the new parser seam so the remaining injected-parse fallback becomes a
+  small internal detail rather than the default path.
 
 ## Completed
 
@@ -80,3 +83,7 @@ Source Plan: plan.md
   ensure-instantiated flow into `Parser::ensure_template_struct_instantiated_from_args(...)`,
   so both parser call sites now share one higher-level typed entry point before
   the remaining injected-parse fallback.
+- Promoted parser-side mangled-name construction into
+  `Parser::build_template_struct_mangled_name(...)`, so pack/default-aware
+  instantiation naming is now shared between the main parser instantiation path
+  and the new parser instantiation seam.
