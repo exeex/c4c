@@ -947,6 +947,10 @@ TypeSpec Parser::parse_base_type() {
     if (has_enum) {
         Node* ed = parse_enum();
         last_enum_def_ = ed;
+        if (ed && ed->name) {
+            auto it = typedef_types_.find(ed->name);
+            if (it != typedef_types_.end()) ts = it->second;
+        }
         ts.base = TB_ENUM;
         ts.tag  = ed ? ed->name : nullptr;
         return ts;

@@ -339,6 +339,12 @@ inline std::string llvm_base(TypeBase b) {
   }
 }
 
+inline TypeBase llvm_storage_base(const TypeSpec& ts) {
+  if (ts.base == TB_ENUM && ts.enum_underlying_base != TB_VOID)
+    return ts.enum_underlying_base;
+  return ts.base;
+}
+
 inline std::string llvm_vector_ty(const TypeSpec& ts) {
   TypeSpec elem_ts = ts;
   elem_ts.is_vector = false;
@@ -364,7 +370,7 @@ inline std::string llvm_ty(const TypeSpec& ts) {
   if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.tag && ts.tag[0]) {
     return llvm_struct_type_str(ts.tag);
   }
-  return llvm_base(ts.base);
+  return llvm_base(llvm_storage_base(ts));
 }
 
 // llvm_ty for types that may be references — returns ptr for T& types.
@@ -482,7 +488,7 @@ inline std::string llvm_alloca_ty(const TypeSpec& ts) {
     if (ts.tag && ts.tag[0]) return llvm_struct_type_str(ts.tag);
   }
   if (ts.base == TB_VOID) return "i8";
-  return llvm_base(ts.base);
+  return llvm_base(llvm_storage_base(ts));
 }
 
 inline int sizeof_base(TypeBase b) {

@@ -6,13 +6,13 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 3: Complete scoped-enum semantics
-- Current slice: identify the narrowest explicit-underlying-type behavior that
-  is still accepted syntactically but not preserved semantically
+- Step 4: Replace heuristic owner recovery
+- Current slice: inspect the existing out-of-class owner lookup fallback and
+  add the narrowest namespace-collision regression before changing resolution
 
 ## Pending Items
 
-- Step 4: Replace heuristic owner recovery
+- None
 
 ## Completed Items
 
@@ -52,6 +52,12 @@ Source Plan: plan.md
   deferred member-typedef template arguments during parser-side template
   instantiation so direct trait `::value` specialization selection sees the
   concrete member type instead of its owner wrapper.
+- Added runtime coverage for explicit scoped-enum underlying sizes and live
+  aggregate field offsets, preserved fixed underlying enum bases in parser
+  `TypeSpec` metadata, and routed size/alignment plus LLVM scalar storage
+  selection through that metadata so `enum class E : unsigned char` and
+  `enum class E : unsigned long long` keep their typed layout through HIR and
+  emitted aggregate storage.
 
 ## Notes
 

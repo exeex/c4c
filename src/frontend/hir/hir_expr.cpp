@@ -75,7 +75,7 @@ class LayoutQueries {
     if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0) {
       return struct_size_bytes(ts.tag);
     }
-    return sizeof_base(ts.base);
+    return sizeof_type_spec(ts);
   }
 
   int type_align_bytes(const TypeSpec& ts) const {
@@ -89,7 +89,7 @@ class LayoutQueries {
     } else if ((ts.base == TB_STRUCT || ts.base == TB_UNION) && ts.ptr_level == 0) {
       natural = struct_align_bytes(ts.tag);
     } else {
-      natural = std::max(1, static_cast<int>(align_base(ts.base, ts.ptr_level)));
+      natural = std::max(1, static_cast<int>(alignof_type_spec(ts)));
     }
     if (ts.align_bytes > 0) natural = std::max(natural, ts.align_bytes);
     return natural;

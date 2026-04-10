@@ -80,6 +80,7 @@ enum TypeBase {
 
 struct TypeSpec {
     TypeBase base;
+    TypeBase enum_underlying_base; // fixed underlying base for TB_ENUM, or TB_VOID when unknown/default
     const char* tag;         // struct/union/enum tag or typedef name (may be null)
     const char** qualifier_segments; // structured qualifier path for tagged/typedef names
     int n_qualifier_segments;        // qualifier segment count (excludes base name)

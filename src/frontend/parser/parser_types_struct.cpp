@@ -843,6 +843,9 @@ bool Parser::try_parse_record_enum_member(
             // Prefer enum type tag if available
             fts.base = TB_ENUM;
             fts.tag  = ed->name;
+            auto it = typedef_types_.find(ed->name);
+            if (it != typedef_types_.end())
+                fts.enum_underlying_base = it->second.enum_underlying_base;
         }
         while (true) {
             TypeSpec cur_fts = fts;
@@ -2207,11 +2210,12 @@ Node* Parser::parse_enum() {
     }
     skip_attributes();
 
+    TypeBase enum_underlying_base = TB_INT;
     if (match(TokenKind::Colon)) {
-        // Accept scoped-enum underlying type syntax (`enum class E : T`) even
-        // though lowering still models enums with the generic integer ABI path.
+        // Preserve fixed underlying-type metadata for layout-sensitive queries.
         TypeSpec underlying_ts = parse_base_type();
-        (void)underlying_ts;
+        underlying_ts = resolve_typedef_chain(underlying_ts, typedef_types_);
+        enum_underlying_base = effective_scalar_base(underlying_ts);
         skip_attributes();
     }
 
@@ -2224,6 +2228,7 @@ Node* Parser::parse_enum() {
         enum_ts.inner_rank = -1;
         for (int i = 0; i < 8; ++i) enum_ts.array_dims[i] = -1;
         enum_ts.base = TB_ENUM;
+        enum_ts.enum_underlying_base = enum_underlying_base;
         enum_ts.tag = canonical_tag;
         typedefs_.insert(source_tag);
         typedef_types_[source_tag] = enum_ts;
