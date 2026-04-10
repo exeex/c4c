@@ -19,6 +19,9 @@ Source Plan: plan.md
 - Next intended slice: target `parser_types_template.cpp` directly so deferred
   builtin-trait/member-evaluation consumes structured template args earlier,
   instead of reparsing token text in the remaining common path.
+- Next intended slice: continue on `parser_types_template.cpp`, especially the
+  `Trait<args>::member` token-injection path, so instantiated lookup no longer
+  has to re-spell complex type args back into ad hoc tokens in the common case.
 
 ## Completed
 
@@ -56,3 +59,7 @@ Source Plan: plan.md
 - Updated HIR deferred NTTP expression env to recognize nested `@origin:args`
   references and rebuild them as typed `TemplateArgRef` payloads instead of
   treating those refs as opaque debug text.
+- Updated parser deferred template-arg resolution so multi-token template args
+  now go through shared `decode_type_tokens(...)` instead of a builtin-only
+  text parser, letting qualified and other structured type spellings reach the
+  common path as typed args earlier.

@@ -402,7 +402,9 @@ bool Parser::eval_deferred_nttp_expr_tokens(
             ParsedTemplateArg a; a.is_value = true; a.value = 0;
             ref_args.push_back(a); ++ti; return true;
         } else {
-            // Multi-token arg (e.g. builtin type keywords)
+            // Multi-token arg: prefer the shared typed decoder so qualified
+            // names and other non-builtin type spellings do not fall back to
+            // debug-text-only handling.
             size_t arg_end = ti;
             int nested_angle_depth = 0;
             while (arg_end < toks.size()) {
@@ -415,11 +417,9 @@ bool Parser::eval_deferred_nttp_expr_tokens(
                 } else if (tk == TokenKind::Comma && nested_angle_depth == 0) break;
                 ++arg_end;
             }
-            std::string arg_text = capture_template_arg_expr_text(
-                toks, static_cast<int>(ti), static_cast<int>(arg_end));
-            TypeSpec builtin_ts{};
-            if (!arg_text.empty() && parse_builtin_typespec_text(arg_text, &builtin_ts)) {
-                ParsedTemplateArg a; a.is_value = false; a.type = builtin_ts;
+            TypeSpec decoded_ts{};
+            if (arg_end > ti && decode_type_tokens(ti, arg_end, &decoded_ts)) {
+                ParsedTemplateArg a; a.is_value = false; a.type = decoded_ts;
                 ref_args.push_back(a); ti = arg_end; return true;
             }
             return false;
