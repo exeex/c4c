@@ -1,7 +1,39 @@
 # Template Trait Normalization And Owner Resolution Follow-Up
 
-Status: Open
+Status: Complete
 Last Updated: 2026-04-10
+
+## Completion Summary
+
+Completed on 2026-04-10.
+
+This follow-up is now closed. The planned generic mechanism work landed across
+all four target families:
+
+- alias-template substitution now keeps pack/default argument mapping and
+  dependent member-typedef ownership aligned through substitution
+- trait and variable-template evaluation now normalizes direct member-typedef
+  operands consistently across `_v`, `::value`, and `typename ...::type` forms
+- scoped enums preserve explicit underlying types through semantic layout and
+  emitted storage decisions
+- out-of-class method owner recovery now resolves through namespace context and
+  canonical record tags instead of suffix or unqualified-name guessing
+
+At closure time:
+
+- the focused alias, trait, scoped-enum, and owner-resolution regressions pass
+- the new qualified namespaced out-of-class owner regression passes
+- the full repo suite passes at `3306/3306`
+
+## Leftover Notes
+
+- This plan intentionally stopped at generic owner recovery for out-of-class
+  methods. Any future work on richer namespace aliasing, inline-namespace
+  corner cases, or broader record-identity plumbing should start as a separate
+  `ideas/open/*.md` initiative if it becomes active priority.
+- The trait/alias work here fixed the targeted normalization gaps without
+  attempting a broader template-system rewrite. Additional generic template
+  expansion should be tracked separately if new pressure exposes it.
 
 ## Goal
 

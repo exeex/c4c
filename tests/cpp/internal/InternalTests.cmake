@@ -255,6 +255,7 @@ list(APPEND CPP_POSITIVE_FRONTEND_STEMS
     eastl_probe_call_result_lvalue_frontend
     namespaced_function_param_shadow_frontend
     namespaced_out_of_class_method_context_frontend
+    qualified_namespaced_out_of_class_method_context_frontend
     operator_new_delete_array_placement_overload_frontend
     template_inline_method_member_context_frontend
 )

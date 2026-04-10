@@ -712,41 +712,11 @@ class Validator {
         return contextual;
       }
       if (complete_structs_.count(*owner) || complete_unions_.count(*owner)) return owner;
-
-      std::optional<std::string> resolved;
-      const auto maybe_take_suffix_match =
-          [&](const std::unordered_set<std::string>& records) {
-            for (const std::string& record_tag : records) {
-              if (record_tag == *owner) {
-                resolved = record_tag;
-                return;
-              }
-              if (record_tag.size() <= owner->size() + 2) continue;
-              const size_t suffix_pos = record_tag.size() - owner->size();
-              if (record_tag.compare(suffix_pos, owner->size(), *owner) != 0) continue;
-              if (record_tag[suffix_pos - 1] != ':' || record_tag[suffix_pos - 2] != ':') {
-                continue;
-              }
-              if (resolved.has_value() && *resolved != record_tag) {
-                resolved.reset();
-                return;
-              }
-              resolved = record_tag;
-            }
-          };
-
-      maybe_take_suffix_match(complete_structs_);
-      if (!resolved.has_value()) maybe_take_suffix_match(complete_unions_);
-      if (resolved.has_value()) return resolved;
-
-      const size_t sep = owner->rfind("::");
-      if (sep != std::string::npos && sep + 2 < owner->size()) {
-        const std::string unqualified = owner->substr(sep + 2);
-        if (complete_structs_.count(unqualified) || complete_unions_.count(unqualified)) {
-          return unqualified;
-        }
-      }
-      return owner;
+      // Do not guess across namespaces once direct contextual and canonical-tag
+      // lookup has failed. Unqualified owners must resolve through the
+      // declaration namespace; qualified owners must already name the record.
+      if (owner->find("::") != std::string::npos) return owner;
+      return std::nullopt;
     }
     auto it = method_owner_records_.find(fn);
     if (it == method_owner_records_.end() || !it->second || !it->second->name ||
