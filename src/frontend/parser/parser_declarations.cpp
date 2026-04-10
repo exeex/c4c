@@ -704,8 +704,7 @@ Node* Parser::parse_local_decl() {
                         resolve_visible_type_name(arg_name);
                     const bool arg_is_type =
                         is_typedef_name(arg_name) ||
-                        typedef_types_.count(arg_name) > 0 ||
-                        typedef_types_.count(resolved_type_name) > 0 ||
+                        has_visible_typedef_type(arg_name) ||
                         struct_tag_def_map_.count(arg_name) > 0 ||
                         struct_tag_def_map_.count(resolved_type_name) > 0;
                     single_value_arg = !arg_is_type;
@@ -750,8 +749,7 @@ Node* Parser::parse_local_decl() {
                             const bool arg_is_type =
                                 is_template_scope_type_param(arg_name) ||
                                 is_typedef_name(arg_name) ||
-                                typedef_types_.count(arg_name) > 0 ||
-                                typedef_types_.count(resolved_type_name) > 0 ||
+                                has_visible_typedef_type(arg_name) ||
                                 struct_tag_def_map_.count(arg_name) > 0 ||
                                 struct_tag_def_map_.count(resolved_type_name) > 0;
                             if (arg_is_type) return false;
@@ -1659,8 +1657,8 @@ Node* Parser::parse_top_level() {
         // If parse_top_level() registered a using-alias, record alias template
         // info so that later Name<args> can rebuild the aliased template struct.
         if (!last_using_alias_name_.empty() && !template_params.empty()) {
-            auto td_it = typedef_types_.find(last_using_alias_name_);
-            if (td_it != typedef_types_.end()) {
+            if (const TypeSpec* aliased_type =
+                    find_typedef_type(last_using_alias_name_)) {
                 AliasTemplateInfo ati;
                 for (size_t i = 0; i < template_params.size(); ++i) {
                     ati.param_names.push_back(template_params[i]);
@@ -1670,7 +1668,7 @@ Node* Parser::parse_top_level() {
                     ati.param_default_types.push_back(template_param_default_types[i]);
                     ati.param_default_values.push_back(template_param_default_values[i]);
                 }
-                ati.aliased_type = td_it->second;
+                ati.aliased_type = *aliased_type;
                 alias_template_info_[last_using_alias_name_] = std::move(ati);
             }
             last_using_alias_name_.clear();
@@ -2291,11 +2289,9 @@ Node* Parser::parse_top_level() {
                     consume();
                     goto top_level_base_ready;
                 }
-                const std::string resolved = resolve_visible_type_name(spelled);
-                auto it = typedef_types_.find(resolved);
-                if (it == typedef_types_.end()) it = typedef_types_.find(spelled);
-                if (it != typedef_types_.end()) {
-                    base_ts = it->second;
+                if (const TypeSpec* typedef_type =
+                        find_visible_typedef_type(spelled)) {
+                    base_ts = *typedef_type;
                     consume();
                     goto top_level_base_ready;
                 }

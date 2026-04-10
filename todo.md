@@ -10,13 +10,14 @@ Source Plan: plan.md
   grouped parser symbol-table accessors instead of direct top-level member
   storage assumptions, continuing through the remaining declaration-parser
   typedef/value compatibility surfaces
-- Current slice: reassess whether the next bounded Step 3 cleanup should stay
-  in `src/frontend/parser/parser_declarations.cpp` for read-only typedef-map
-  probes or shift to the next type/expression helper surface
-- Iteration target: migrate the next coherent declaration-parser read paths
-  that still query raw `typedef_types_` state directly, starting with alias
-  template and qualified typedef resolution probes if that remains the
-  smallest slice
+- Current slice: prepare the next bounded declaration-parser cleanup by
+  targeting the remaining typedef redefinition compatibility checks that still
+  read raw `user_typedefs_` and pass `typedef_types_` directly to
+  `types_compatible_p()`
+- Iteration target: keep Step 3 in
+  `src/frontend/parser/parser_declarations.cpp` and introduce the smallest
+  parser-local helper surface needed for top-level/local typedef
+  redefinition-compatibility checks before touching `var_types_` writes
 
 ## Completed Items
 
@@ -173,16 +174,33 @@ Source Plan: plan.md
   --output-on-failure`, full `ctest --test-dir build -j8
   --output-on-failure`, and regression guard:
   3352/3352 tests passed, no new failures
+- Migrated the remaining declaration-parser read-only `typedef_types_` probes
+  in `src/frontend/parser/parser_declarations.cpp` onto parser-local typedef
+  helpers for constructor-init ambiguity checks, alias-template metadata
+  capture, and top-level qualified typedef resolution
+- Added parse-only regression
+  `tests/cpp/internal/postive_case/template_alias_qualified_typedef_resolution_parse.cpp`
+  and registered it in `tests/cpp/internal/InternalTests.cmake` to cover
+  alias-template reconstruction together with qualified typedef base
+  resolution during declaration parsing
+- Revalidated this slice with targeted declaration-parser tests,
+  `ctest --test-dir build -R template_alias_qualified_typedef_resolution_parse
+  --output-on-failure`,
+  `ctest --test-dir build -R 'template_declaration_prelude_cleanup_parse|eastl_slice7b_template_using_alias_parse|qualified_type_spelling_shared_parse|qualified_type_start_probe_parse' --output-on-failure`,
+  full `ctest --test-dir build -j8 --output-on-failure`, and regression
+  guard:
+  3353/3353 tests passed, no new failures
 
 ## Next Intended Slice
 
-- Move the next Step 3 compatibility-reference cleanup into either the
-  remaining declaration-parser raw typedef reads or the next smallest
-  type/expression helper surface, whichever stays more coherent after a quick
-  read-through
-- If declaration parsing remains the best target, start with the
-  `typedef_types_.count/find` probes around alias-template reconstruction and
-  qualified typedef resolution in `src/frontend/parser/parser_declarations.cpp`
+- Keep the next Step 3 slice in `src/frontend/parser/parser_declarations.cpp`
+  and remove the remaining direct typedef redefinition compatibility reads
+  around `user_typedefs_.count(...)` plus `types_compatible_p(...,
+  typedef_types_)`
+- After those compatibility checks move behind parser-local helpers, reassess
+  whether the following declaration-parser slice should cover the residual
+  `var_types_` writes for `typeof(var)` bookkeeping or switch to a different
+  parser helper surface
 - Leave namespace-state grouping for a separate slice unless it becomes
   necessary for the chosen accessor migration
 
@@ -206,7 +224,8 @@ Source Plan: plan.md
   now use parser-local typedef helpers, and `parser_types_struct.cpp` no
   longer carries raw compatibility-reference cleanup for the member-template
   prelude path
-- `parser_declarations.cpp` no longer manually seeds or erases grouped typedef
-  storage for template declaration preludes, but it still carries several
-  direct read-only `typedef_types_` queries that are the next likely Step 3
-  cleanup candidates
+- `parser_declarations.cpp` no longer carries direct read-only
+  `typedef_types_.count/find` probes for alias-template reconstruction,
+  constructor-init ambiguity checks, or qualified typedef resolution; the
+  remaining declaration-parser raw accesses are the typedef redefinition
+  compatibility checks and `typeof(var)` bookkeeping writes
