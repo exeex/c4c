@@ -73,15 +73,26 @@ void Lowerer::collect_enum_def(const Node* ed) {
 
 void Lowerer::collect_initial_type_definitions(const std::vector<const Node*>& items) {
   for (const Node* item : items) {
-    if (item->kind == NK_STRUCT_DEF) {
+      if (item->kind == NK_STRUCT_DEF) {
       lower_struct_def(item);
       if (item->name) struct_def_nodes_[item->name] = item;
       if (is_primary_template_struct_def(item) && item->name) {
         register_template_struct_primary(item->name, item);
       }
-      if (item->template_origin_name && item->n_template_args > 0) {
+      if (item->template_origin_name && item->template_origin_name[0]) {
         const Node* primary_tpl =
             find_template_struct_primary(item->template_origin_name);
+        if (!primary_tpl && item->name) {
+          std::string spelled_name = item->name;
+          const size_t scope_sep = spelled_name.rfind("::");
+          if (scope_sep != std::string::npos &&
+              std::string(item->template_origin_name).find("::") ==
+                  std::string::npos) {
+            std::string qualified_origin =
+                spelled_name.substr(0, scope_sep + 2) + item->template_origin_name;
+            primary_tpl = find_template_struct_primary(qualified_origin);
+          }
+        }
         if (primary_tpl) register_template_struct_specialization(primary_tpl, item);
       }
     }

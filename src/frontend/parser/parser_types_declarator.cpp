@@ -67,6 +67,27 @@ bool Parser::try_parse_template_type_arg(TemplateArgParseResult* out_arg) {
     ParseContextGuard trace(this, __func__);
     if (!out_arg) return false;
     const int start_pos = pos_;
+    const auto starts_template_id_type_head = [&]() -> bool {
+        int probe = pos_;
+        if (probe >= static_cast<int>(tokens_.size())) return false;
+        if (tokens_[probe].kind == TokenKind::KwTypename) ++probe;
+        if (probe < static_cast<int>(tokens_.size()) &&
+            tokens_[probe].kind == TokenKind::ColonColon) {
+            ++probe;
+        }
+        if (probe >= static_cast<int>(tokens_.size()) ||
+            tokens_[probe].kind != TokenKind::Identifier) {
+            return false;
+        }
+        ++probe;
+        while (probe + 1 < static_cast<int>(tokens_.size()) &&
+               tokens_[probe].kind == TokenKind::ColonColon &&
+               tokens_[probe + 1].kind == TokenKind::Identifier) {
+            probe += 2;
+        }
+        return probe < static_cast<int>(tokens_.size()) &&
+               tokens_[probe].kind == TokenKind::Less;
+    };
 
     const auto is_simple_known_template_type_head = [&]() -> bool {
         if (check(TokenKind::KwTypename)) return true;
@@ -86,7 +107,8 @@ bool Parser::try_parse_template_type_arg(TemplateArgParseResult* out_arg) {
                typedef_types_.count(resolved) > 0;
     };
 
-    if (is_simple_known_template_type_head()) {
+    if (is_simple_known_template_type_head() &&
+        !starts_template_id_type_head()) {
         TentativeParseGuard fast_guard(*this);
         try {
             TypeSpec ts = parse_base_type();

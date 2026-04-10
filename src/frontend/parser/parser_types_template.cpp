@@ -36,6 +36,14 @@ void Parser::register_template_struct_primary(const std::string& name, Node* nod
 void Parser::register_template_struct_specialization(const char* primary_name, Node* node) {
     if (!primary_name || !primary_name[0] || !node) return;
     template_struct_specializations_[primary_name].push_back(node);
+    if (!node->name) return;
+    if (std::strstr(primary_name, "::")) return;
+    std::string spelled_name = node->name;
+    const size_t scope_sep = spelled_name.rfind("::");
+    if (scope_sep == std::string::npos) return;
+    std::string qualified_primary =
+        spelled_name.substr(0, scope_sep + 2) + primary_name;
+    template_struct_specializations_[qualified_primary].push_back(node);
 }
 
 bool Parser::eval_deferred_nttp_expr_tokens(

@@ -2098,6 +2098,12 @@ std::optional<GlobalId> Lowerer::ensure_template_global_instance(
     }
   }
 
+  auto existing_global = module_->global_index.find(mangled);
+  if (existing_global != module_->global_index.end()) {
+    instantiated_template_globals_[instance_key] = existing_global->second;
+    return existing_global->second;
+  }
+
   const Node* chosen = selected.selected_pattern;
   const TypeBindings* tpl_ptr = selected.type_bindings.empty() ? nullptr : &selected.type_bindings;
   const NttpBindings* nttp_ptr =
@@ -2115,6 +2121,24 @@ std::optional<long long> Lowerer::try_eval_template_static_member_const(
     const Node* ref,
     const std::string& member) {
   const Node* primary = find_template_struct_primary(tpl_name);
+  if (!primary && tpl_name.find("::") == std::string::npos) {
+    const Node* unique_match = nullptr;
+    const std::string suffix = "::" + tpl_name;
+    for (const auto& [registered_name, registered_node] : template_struct_defs_) {
+      if (registered_name == tpl_name ||
+          (registered_name.size() > suffix.size() &&
+           registered_name.compare(
+               registered_name.size() - suffix.size(),
+               suffix.size(), suffix) == 0)) {
+        if (unique_match && unique_match != registered_node) {
+          unique_match = nullptr;
+          break;
+        }
+        unique_match = registered_node;
+      }
+    }
+    primary = unique_match;
+  }
   if (!primary || !ref) return std::nullopt;
 
   std::vector<HirTemplateArg> actual_args;
@@ -2494,6 +2518,42 @@ bool Lowerer::resolve_struct_member_typedef_type(const std::string& tag,
     }
   }
 
+  auto search_selected_pattern = [&](const Node* owner) -> bool {
+    if (!owner) return false;
+
+    const Node* primary_tpl = nullptr;
+    if (owner->template_origin_name && owner->template_origin_name[0]) {
+      primary_tpl = find_template_struct_primary(owner->template_origin_name);
+    } else if (is_primary_template_struct_def(owner)) {
+      primary_tpl = owner;
+    } else if (owner->name && owner->name[0]) {
+      primary_tpl = find_template_struct_primary(owner->name);
+    }
+    if (!primary_tpl || owner->n_template_args <= 0) return false;
+
+    std::vector<HirTemplateArg> actual_args;
+    actual_args.reserve(owner->n_template_args);
+    for (int i = 0; i < owner->n_template_args; ++i) {
+      HirTemplateArg arg{};
+      arg.is_value =
+          owner->template_arg_is_value && owner->template_arg_is_value[i];
+      if (arg.is_value) {
+        arg.value = owner->template_arg_values[i];
+      } else if (owner->template_arg_types) {
+        arg.type = owner->template_arg_types[i];
+      }
+      actual_args.push_back(arg);
+    }
+
+    SelectedTemplateStructPattern selected =
+        select_template_struct_pattern_hir(actual_args,
+                                           build_template_struct_env(primary_tpl));
+    if (!selected.selected_pattern) return false;
+    return search_node(selected.selected_pattern, selected.type_bindings,
+                       selected.nttp_bindings, out);
+  };
+
+  if (search_selected_pattern(sdef)) return true;
   if (search_node(sdef, type_bindings, nttp_bindings, out)) return true;
   if (sdef->template_origin_name) {
     auto origin_it = struct_def_nodes_.find(sdef->template_origin_name);
@@ -2509,6 +2569,108 @@ bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
   if (!ts || !ts->deferred_member_type_name || !ts->tag || !ts->tag[0]) {
     return false;
   }
+  auto apply_bindings = [&](TypeSpec resolved_member,
+                            const TypeBindings& type_bindings,
+                            const NttpBindings& nttp_bindings,
+                            bool* substituted_type = nullptr) -> TypeSpec {
+    if (substituted_type) *substituted_type = false;
+    if (resolved_member.base == TB_TYPEDEF && resolved_member.tag) {
+      const int outer_ptr_level = resolved_member.ptr_level;
+      const bool outer_lref = resolved_member.is_lvalue_ref;
+      const bool outer_rref = resolved_member.is_rvalue_ref;
+      const bool outer_const = resolved_member.is_const;
+      const bool outer_volatile = resolved_member.is_volatile;
+      auto it = type_bindings.find(resolved_member.tag);
+      if (it != type_bindings.end()) {
+        resolved_member = it->second;
+        resolved_member.ptr_level += outer_ptr_level;
+        resolved_member.is_lvalue_ref =
+            resolved_member.is_lvalue_ref || outer_lref;
+        resolved_member.is_rvalue_ref =
+            !resolved_member.is_lvalue_ref &&
+            (resolved_member.is_rvalue_ref || outer_rref);
+        resolved_member.is_const = resolved_member.is_const || outer_const;
+        resolved_member.is_volatile =
+            resolved_member.is_volatile || outer_volatile;
+        if (substituted_type) *substituted_type = true;
+      }
+    }
+    if (resolved_member.array_size_expr &&
+        resolved_member.array_size_expr->kind == NK_VAR &&
+        resolved_member.array_size_expr->name) {
+      auto nit = nttp_bindings.find(resolved_member.array_size_expr->name);
+      if (nit != nttp_bindings.end()) {
+        if (resolved_member.array_rank > 0) {
+          resolved_member.array_dims[0] = nit->second;
+          resolved_member.array_size = nit->second;
+        }
+        resolved_member.array_size_expr = nullptr;
+      }
+    }
+    return resolved_member;
+  };
+  auto try_resolve_from_origin = [&]() -> bool {
+    if (!ts->tpl_struct_origin || !ts->tpl_struct_origin[0]) return false;
+    const Node* primary_tpl = find_template_struct_primary(ts->tpl_struct_origin);
+    if (!primary_tpl) return false;
+
+    std::vector<std::string> arg_refs;
+    if (ts->tpl_struct_arg_refs) {
+      arg_refs = split_deferred_template_arg_refs(ts->tpl_struct_arg_refs);
+    }
+    TypeBindings empty_tb;
+    NttpBindings empty_nb;
+    ResolvedTemplateArgs resolved =
+        materialize_template_args(primary_tpl, arg_refs, empty_tb, empty_nb);
+
+    SelectedTemplateStructPattern selected;
+    if (template_struct_has_pack_params(primary_tpl)) {
+      selected.primary_def = primary_tpl;
+      selected.selected_pattern = primary_tpl;
+      for (const auto& [name, type] : resolved.type_bindings) {
+        selected.type_bindings[name] = type;
+      }
+      for (const auto& [name, value] : resolved.nttp_bindings) {
+        selected.nttp_bindings[name] = value;
+      }
+    } else {
+      selected = select_template_struct_pattern_hir(
+          resolved.concrete_args, build_template_struct_env(primary_tpl));
+    }
+
+    const Node* owner =
+        selected.selected_pattern ? selected.selected_pattern : primary_tpl;
+    if (!owner || owner->n_member_typedefs <= 0) return false;
+    for (int i = 0; i < owner->n_member_typedefs; ++i) {
+      const char* alias_name = owner->member_typedef_names[i];
+      if (!alias_name ||
+          std::string(alias_name) != ts->deferred_member_type_name) {
+        continue;
+      }
+      bool substituted_type = false;
+      TypeSpec resolved_member = apply_bindings(
+          owner->member_typedef_types[i],
+          selected.type_bindings,
+          selected.nttp_bindings,
+          &substituted_type);
+      if (!substituted_type &&
+          std::string(alias_name) == "type" &&
+          selected.type_bindings.size() == 1) {
+        resolved_member = selected.type_bindings.begin()->second;
+      }
+      if (resolved_member.deferred_member_type_name &&
+          ((resolved_member.tpl_struct_origin &&
+            resolved_member.tpl_struct_origin[0]) ||
+           (resolved_member.tag && resolved_member.tag[0]))) {
+        resolve_struct_member_typedef_if_ready(&resolved_member);
+      }
+      *ts = resolved_member;
+      return true;
+    }
+    return false;
+  };
+
+  if (try_resolve_from_origin()) return true;
   TypeSpec resolved_member{};
   if (!resolve_struct_member_typedef_type(
           ts->tag, ts->deferred_member_type_name, &resolved_member)) {
@@ -2570,9 +2732,11 @@ void Lowerer::realize_template_struct(
 
   ts.tag = module_->struct_defs.count(mangled) ?
       module_->struct_defs.at(mangled).tag.c_str() : nullptr;
-  ts.tpl_struct_origin = nullptr;
-  ts.tpl_struct_arg_refs = nullptr;
   resolve_struct_member_typedef_if_ready(&ts);
+  if (!ts.deferred_member_type_name) {
+    ts.tpl_struct_origin = nullptr;
+    ts.tpl_struct_arg_refs = nullptr;
+  }
 }
 
 }  // namespace c4c::hir

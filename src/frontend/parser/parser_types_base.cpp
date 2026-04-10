@@ -390,7 +390,145 @@ TypeSpec Parser::parse_base_type() {
                     }
                     return false;
                 };
-                if (try_lookup(tag + "::" + member)) return true;
+                auto apply_template_bindings =
+                    [&](TypeSpec member_ts,
+                        const std::vector<std::pair<std::string, TypeSpec>>& type_bindings,
+                        const std::vector<std::pair<std::string, long long>>& nttp_bindings,
+                        bool* substituted_type = nullptr) {
+                        if (substituted_type) *substituted_type = false;
+                        for (const auto& [pname, pts] : type_bindings) {
+                            if (member_ts.base == TB_TYPEDEF && member_ts.tag &&
+                                std::string(member_ts.tag) == pname) {
+                                const bool outer_lref = member_ts.is_lvalue_ref;
+                                const bool outer_rref = member_ts.is_rvalue_ref;
+                                const bool outer_const = member_ts.is_const;
+                                const bool outer_volatile = member_ts.is_volatile;
+                                member_ts = pts;
+                                member_ts.is_lvalue_ref =
+                                    member_ts.is_lvalue_ref || outer_lref;
+                                member_ts.is_rvalue_ref =
+                                    !member_ts.is_lvalue_ref &&
+                                    (member_ts.is_rvalue_ref || outer_rref);
+                                member_ts.is_const = member_ts.is_const || outer_const;
+                                member_ts.is_volatile =
+                                    member_ts.is_volatile || outer_volatile;
+                                if (substituted_type) *substituted_type = true;
+                                break;
+                            }
+                        }
+                        if (member_ts.array_size_expr &&
+                            member_ts.array_size_expr->kind == NK_VAR &&
+                            member_ts.array_size_expr->name) {
+                            for (const auto& [pname, value] : nttp_bindings) {
+                                if (std::string(member_ts.array_size_expr->name) == pname) {
+                                    if (member_ts.array_rank > 0) {
+                                        member_ts.array_dims[0] = value;
+                                        member_ts.array_size = value;
+                                    }
+                                    member_ts.array_size_expr = nullptr;
+                                    break;
+                                }
+                            }
+                        }
+                        return member_ts;
+                    };
+                auto try_selected_specialization_member_typedefs =
+                    [&](const Node* owner) -> bool {
+                        if (!owner || owner->n_template_args <= 0) return false;
+                        const Node* primary_tpl = nullptr;
+                        if (owner->template_origin_name && owner->template_origin_name[0]) {
+                            primary_tpl = find_template_struct_primary(
+                                owner->template_origin_name);
+                        } else if (is_primary_template_struct_def(owner)) {
+                            primary_tpl = owner;
+                        } else if (owner->name && owner->name[0]) {
+                            primary_tpl = find_template_struct_primary(owner->name);
+                        }
+                        if (!primary_tpl) return false;
+
+                        std::vector<ParsedTemplateArg> actual_args;
+                        actual_args.reserve(owner->n_template_args);
+                        for (int i = 0; i < owner->n_template_args; ++i) {
+                            ParsedTemplateArg arg;
+                            arg.is_value =
+                                owner->template_arg_is_value &&
+                                owner->template_arg_is_value[i];
+                            if (arg.is_value) {
+                                arg.value = owner->template_arg_values[i];
+                            } else if (owner->template_arg_types) {
+                                arg.type = owner->template_arg_types[i];
+                            }
+                            actual_args.push_back(arg);
+                        }
+
+                        std::vector<std::pair<std::string, TypeSpec>> type_bindings;
+                        std::vector<std::pair<std::string, long long>> nttp_bindings;
+                        const auto* specializations =
+                            find_template_struct_specializations(primary_tpl);
+                        const Node* selected = select_template_struct_pattern(
+                            actual_args, primary_tpl, specializations,
+                            typedef_types_, &type_bindings, &nttp_bindings);
+                        if (selected && selected->template_arg_types &&
+                            selected->template_arg_is_value) {
+                            for (int ai = 0;
+                                 ai < selected->n_template_args &&
+                                 ai < static_cast<int>(actual_args.size());
+                                 ++ai) {
+                                if (selected->template_arg_is_value[ai] ||
+                                    actual_args[ai].is_value) {
+                                    continue;
+                                }
+                                const TypeSpec pattern_arg =
+                                    selected->template_arg_types[ai];
+                                if (!(pattern_arg.base == TB_TYPEDEF &&
+                                      pattern_arg.tag &&
+                                      pattern_arg.tag[0])) {
+                                    continue;
+                                }
+                                bool is_selected_param = false;
+                                for (int pi = 0; pi < selected->n_template_params; ++pi) {
+                                    const char* param_name =
+                                        selected->template_param_names
+                                            ? selected->template_param_names[pi]
+                                            : nullptr;
+                                    if (param_name &&
+                                        std::string(pattern_arg.tag) == param_name) {
+                                        is_selected_param = true;
+                                        break;
+                                    }
+                                }
+                                if (!is_selected_param) continue;
+                                bool already_bound = false;
+                                for (const auto& [bound_name, _] : type_bindings) {
+                                    if (bound_name == pattern_arg.tag) {
+                                        already_bound = true;
+                                        break;
+                                    }
+                                }
+                                if (!already_bound) {
+                                    type_bindings.push_back(
+                                        {pattern_arg.tag, actual_args[ai].type});
+                                }
+                            }
+                        }
+                        if (!selected || selected->n_member_typedefs <= 0) return false;
+                        for (int i = 0; i < selected->n_member_typedefs; ++i) {
+                            const char* name = selected->member_typedef_names[i];
+                            if (!name || member != name) continue;
+                            TypeSpec selected_member_ts =
+                                selected->member_typedef_types[i];
+                            bool substituted_type = false;
+                            *out = apply_template_bindings(
+                                selected_member_ts,
+                                type_bindings, nttp_bindings, &substituted_type);
+                            if (!substituted_type && member == "type" &&
+                                type_bindings.size() == 1) {
+                                *out = type_bindings.front().second;
+                            }
+                            return true;
+                        }
+                        return false;
+                    };
                 std::string resolved_tag = tag;
                 auto typedef_it = typedef_types_.find(tag);
                 if (typedef_it != typedef_types_.end()) {
@@ -401,8 +539,11 @@ TypeSpec Parser::parse_base_type() {
                 auto def_it = struct_tag_def_map_.find(resolved_tag);
                 if (def_it == struct_tag_def_map_.end() || !def_it->second) return false;
                 const Node* sdef = def_it->second;
+                if (try_selected_specialization_member_typedefs(sdef))
+                    return true;
                 if (try_node_member_typedefs(sdef))
                     return true;
+                if (try_lookup(resolved_tag + "::" + member)) return true;
                 for (int bi = 0; bi < sdef->n_bases; ++bi) {
                     TypeSpec base_ts = resolve_struct_like(sdef->base_types[bi]);
                     if (!base_ts.tag || !base_ts.tag[0]) continue;
@@ -844,8 +985,15 @@ TypeSpec Parser::parse_base_type() {
                 // Alias template application: e.g. bool_constant<expr> → integral_constant<bool, expr>
                 if (is_cpp_mode() && check(TokenKind::Less)) {
                     auto ati_it = alias_template_info_.find(tname);
+                    if (ati_it == alias_template_info_.end()) {
+                        const std::string resolved_alias_name =
+                            resolve_visible_type_name(tname);
+                        if (!resolved_alias_name.empty())
+                            ati_it = alias_template_info_.find(resolved_alias_name);
+                    }
                     if (ati_it != alias_template_info_.end()) {
                         const AliasTemplateInfo& ati = ati_it->second;
+                        const std::string alias_template_name = ati_it->first;
                         TentativeParseGuard alias_guard(*this);
                         std::vector<TemplateArgParseResult> alias_args;
                         auto alias_args_match = [&](const std::vector<TemplateArgParseResult>& args)
@@ -863,7 +1011,13 @@ TypeSpec Parser::parse_base_type() {
                                     }
                                     return true;
                                 }
-                                if (ai >= args.size()) return false;
+                                if (ai >= args.size()) {
+                                    const bool has_default =
+                                        pi < ati.param_has_default.size() &&
+                                        ati.param_has_default[pi];
+                                    if (!has_default) return false;
+                                    continue;
+                                }
                                 if (args[ai].is_value != expects_value) return false;
                                 ++ai;
                             }
@@ -876,35 +1030,261 @@ TypeSpec Parser::parse_base_type() {
                             !alias_args_match(alias_args)) {
                             // alias_guard restores pos_ on scope exit
                         } else {
-                            std::unordered_map<std::string, std::string> subst;
                             bool alias_parse_ok = true;
-                            for (size_t ai = 0; ai < alias_args.size(); ++ai) {
+                            std::vector<TemplateArgParseResult> resolved_alias_args =
+                                alias_args;
+                            for (size_t pi = resolved_alias_args.size();
+                                 pi < ati.param_names.size(); ++pi) {
+                                const bool is_pack =
+                                    pi < ati.param_is_pack.size() && ati.param_is_pack[pi];
+                                if (is_pack) break;
+                                const bool has_default =
+                                    pi < ati.param_has_default.size() &&
+                                    ati.param_has_default[pi];
+                                if (!has_default) {
+                                    alias_parse_ok = false;
+                                    break;
+                                }
+                                TemplateArgParseResult default_arg;
+                                default_arg.is_value =
+                                    pi < ati.param_is_nttp.size() &&
+                                    ati.param_is_nttp[pi];
+                                if (default_arg.is_value) {
+                                    if (pi >= ati.param_default_values.size() ||
+                                        ati.param_default_values[pi] == LLONG_MIN) {
+                                        alias_parse_ok = false;
+                                        break;
+                                    }
+                                    default_arg.value = ati.param_default_values[pi];
+                                } else {
+                                    if (pi >= ati.param_default_types.size()) {
+                                        alias_parse_ok = false;
+                                        break;
+                                    }
+                                    default_arg.type = ati.param_default_types[pi];
+                                }
+                                resolved_alias_args.push_back(default_arg);
+                            }
+                            std::unordered_map<std::string, std::string> subst;
+                            for (size_t ai = 0; ai < resolved_alias_args.size(); ++ai) {
                                 if (ai >= ati.param_names.size()) {
                                     alias_parse_ok = false;
                                     break;
                                 }
-                                if (ati.param_is_nttp[ai] != alias_args[ai].is_value) {
+                                if (ati.param_is_nttp[ai] !=
+                                    resolved_alias_args[ai].is_value) {
                                     alias_parse_ok = false;
                                     break;
                                 }
-                                if (alias_args[ai].is_value) {
-                                    if (alias_args[ai].nttp_name && alias_args[ai].nttp_name[0]) {
-                                        subst[ati.param_names[ai]] = alias_args[ai].nttp_name;
+                                if (resolved_alias_args[ai].is_value) {
+                                    if (resolved_alias_args[ai].nttp_name &&
+                                        resolved_alias_args[ai].nttp_name[0]) {
+                                        subst[ati.param_names[ai]] =
+                                            resolved_alias_args[ai].nttp_name;
                                     } else {
-                                        subst[ati.param_names[ai]] = std::to_string(alias_args[ai].value);
+                                        subst[ati.param_names[ai]] =
+                                            std::to_string(
+                                                resolved_alias_args[ai].value);
                                     }
                                 } else {
                                     std::string mangled;
-                                    if (alias_args[ai].type.tag) mangled = alias_args[ai].type.tag;
-                                    else append_type_mangled_suffix(mangled, alias_args[ai].type);
+                                    if (resolved_alias_args[ai].type.tag)
+                                        mangled = resolved_alias_args[ai].type.tag;
+                                    else
+                                        append_type_mangled_suffix(
+                                            mangled,
+                                            resolved_alias_args[ai].type);
                                     subst[ati.param_names[ai]] = mangled;
                                 }
                             }
                             if (!alias_parse_ok) {
                                 // alias_guard restores pos_ on scope exit
                             } else {
-                            // Substitute alias params in the aliased type's arg_refs.
+                            // Substitute alias params in the aliased type.
                                 ts = ati.aliased_type;
+                                auto resolve_alias_member_type =
+                                    [&](const std::string& owner_name,
+                                        const std::string& member_name) -> bool {
+                                        if (owner_name.empty() || member_name.empty())
+                                            return false;
+                                        const Node* primary_tpl =
+                                            find_template_struct_primary(owner_name);
+                                        if (!primary_tpl) {
+                                            const std::string resolved_owner =
+                                                resolve_visible_type_name(owner_name);
+                                            if (!resolved_owner.empty())
+                                                primary_tpl =
+                                                    find_template_struct_primary(
+                                                        resolved_owner);
+                                        }
+                                        if (!primary_tpl) {
+                                            const std::string canonical_owner =
+                                                canonical_name_in_context(
+                                                    current_namespace_context_id(),
+                                                    owner_name);
+                                            primary_tpl =
+                                                find_template_struct_primary(
+                                                    canonical_owner);
+                                        }
+                                        if (!primary_tpl) return false;
+
+                                        std::vector<ParsedTemplateArg> actual_args;
+                                        actual_args.reserve(
+                                            resolved_alias_args.size());
+                                        for (const auto& arg :
+                                             resolved_alias_args) {
+                                            ParsedTemplateArg actual = arg;
+                                            actual_args.push_back(actual);
+                                        }
+
+                                        std::vector<std::pair<std::string, TypeSpec>> type_bindings;
+                                        std::vector<std::pair<std::string, long long>> nttp_bindings;
+                                        const std::vector<Node*>* specializations =
+                                            find_template_struct_specializations(primary_tpl);
+                                        if (!specializations) {
+                                            auto it =
+                                                template_struct_specializations_.find(owner_name);
+                                            if (it != template_struct_specializations_.end())
+                                                specializations = &it->second;
+                                        }
+                                        const Node* selected = select_template_struct_pattern(
+                                            actual_args, primary_tpl, specializations,
+                                            typedef_types_, &type_bindings, &nttp_bindings);
+                                        if (!selected || selected->n_member_typedefs <= 0)
+                                            return false;
+                                        for (int mi = 0; mi < selected->n_member_typedefs; ++mi) {
+                                            const char* member = selected->member_typedef_names[mi];
+                                            if (!member || member_name != member) continue;
+                                            ts = selected->member_typedef_types[mi];
+                                            bool substituted = false;
+                                            for (const auto& [pname, pts] : type_bindings) {
+                                                if (ts.base == TB_TYPEDEF && ts.tag &&
+                                                    std::string(ts.tag) == pname) {
+                                                    ts = pts;
+                                                    substituted = true;
+                                                    break;
+                                                }
+                                            }
+                                            if (!substituted && ts.base == TB_TYPEDEF &&
+                                                ts.tag && member_name == "type" &&
+                                                type_bindings.size() == 1) {
+                                                ts = type_bindings.front().second;
+                                            }
+                                            return true;
+                                        }
+                                        return false;
+                                    };
+
+                                bool resolved_alias_member = false;
+                                {
+                                    std::string owner_name;
+                                    std::string member_name;
+                                    auto build_template_arg_refs =
+                                        [&](const std::vector<TemplateArgParseResult>& args)
+                                        -> std::string {
+                                            std::string arg_refs;
+                                            for (const auto& arg : args) {
+                                                if (!arg_refs.empty()) arg_refs += ",";
+                                                if (arg.is_value) {
+                                                    if (arg.nttp_name && arg.nttp_name[0])
+                                                        arg_refs += arg.nttp_name;
+                                                    else
+                                                        arg_refs += std::to_string(arg.value);
+                                                } else if (arg.type.tpl_struct_origin) {
+                                                    arg_refs += "@";
+                                                    arg_refs += arg.type.tpl_struct_origin;
+                                                    arg_refs += ":";
+                                                    arg_refs += arg.type.tpl_struct_arg_refs
+                                                        ? arg.type.tpl_struct_arg_refs
+                                                        : "";
+                                                } else if (arg.type.tag) {
+                                                    arg_refs += arg.type.tag;
+                                                } else {
+                                                    std::string type_name;
+                                                    append_type_mangled_suffix(type_name, arg.type);
+                                                    arg_refs += type_name.empty() ? "?" : type_name;
+                                                }
+                                            }
+                                            return arg_refs;
+                                        };
+                                    auto derive_alias_owner_and_member =
+                                        [&](const std::string& alias_name)
+                                        -> std::pair<std::string, std::string> {
+                                            const size_t alias_sep =
+                                                alias_name.rfind("::");
+                                            std::string alias_base =
+                                                alias_sep == std::string::npos
+                                                    ? alias_name
+                                                    : alias_name.substr(alias_sep + 2);
+                                            if (alias_base.size() > 2 &&
+                                                alias_base.substr(alias_base.size() - 2) == "_t") {
+                                                return {
+                                                    alias_sep == std::string::npos
+                                                        ? alias_base.substr(0, alias_base.size() - 2)
+                                                        : alias_name.substr(0, alias_sep + 2) +
+                                                              alias_base.substr(
+                                                                  0, alias_base.size() - 2),
+                                                    "type"};
+                                            }
+                                            return {"", ""};
+                                        };
+                                    if (ts.base == TB_TYPEDEF && ts.tag) {
+                                        std::string tag_text = ts.tag;
+                                        const size_t member_pos = tag_text.rfind("::");
+                                        if (member_pos != std::string::npos) {
+                                            owner_name = tag_text.substr(0, member_pos);
+                                            member_name = tag_text.substr(member_pos + 2);
+                                        }
+                                    }
+                                    if (!owner_name.empty() && !member_name.empty())
+                                        resolved_alias_member =
+                                            resolve_alias_member_type(owner_name, member_name);
+                                    if (!resolved_alias_member) {
+                                        auto [derived_owner, derived_member] =
+                                            derive_alias_owner_and_member(alias_template_name);
+                                        if (!derived_owner.empty() && !derived_member.empty())
+                                            resolved_alias_member =
+                                                resolve_alias_member_type(
+                                                    derived_owner, derived_member);
+                                        if (!resolved_alias_member &&
+                                            !derived_owner.empty() &&
+                                            !derived_member.empty()) {
+                                            ts.base = TB_STRUCT;
+                                            ts.tag =
+                                                arena_.strdup(derived_owner.c_str());
+                                            ts.tpl_struct_origin = ts.tag;
+                                            const std::string arg_refs =
+                                                build_template_arg_refs(
+                                                    resolved_alias_args);
+                                            ts.tpl_struct_arg_refs =
+                                                arena_.strdup(arg_refs.c_str());
+                                            ts.deferred_member_type_name =
+                                                arena_.strdup(derived_member.c_str());
+                                            resolved_alias_member = true;
+                                        }
+                                    }
+                                }
+                                if (!resolved_alias_member) {
+                                    for (size_t ai = 0;
+                                         ai < resolved_alias_args.size(); ++ai) {
+                                        if (ati.param_is_nttp[ai]) continue;
+                                        if (ts.base == TB_TYPEDEF && ts.tag &&
+                                            std::string(ts.tag) == ati.param_names[ai]) {
+                                            const bool outer_lref = ts.is_lvalue_ref;
+                                            const bool outer_rref = ts.is_rvalue_ref;
+                                            const bool outer_const = ts.is_const;
+                                            const bool outer_volatile = ts.is_volatile;
+                                            ts = resolved_alias_args[ai].type;
+                                            ts.is_lvalue_ref = ts.is_lvalue_ref || outer_lref;
+                                            ts.is_rvalue_ref =
+                                                !ts.is_lvalue_ref &&
+                                                (ts.is_rvalue_ref || outer_rref);
+                                            ts.is_const = ts.is_const || outer_const;
+                                            ts.is_volatile = ts.is_volatile || outer_volatile;
+                                            break;
+                                        }
+                                    }
+                                }
                                 if (ts.tpl_struct_arg_refs) {
                                     std::string old_refs = ts.tpl_struct_arg_refs;
                                     std::string new_refs;
@@ -927,8 +1307,8 @@ TypeSpec Parser::parse_base_type() {
                                         std::istringstream ss2(new_refs);
                                         std::string p2;
                                         while (std::getline(ss2, p2, ',')) {
-                                            new_tag += "_";
-                                            new_tag += p2;
+                                        new_tag += "_";
+                                        new_tag += p2;
                                         }
                                         ts.tag = arena_.strdup(new_tag.c_str());
                                     }
@@ -1646,6 +2026,30 @@ TypeSpec Parser::parse_base_type() {
                                 inst->member_typedef_names[ti] =
                                     tpl_def->member_typedef_names[ti];
                                 TypeSpec member_ts = tpl_def->member_typedef_types[ti];
+                                if (tpl_def->template_arg_types &&
+                                    tpl_def->template_arg_is_value) {
+                                    for (int ai = 0;
+                                         ai < tpl_def->n_template_args &&
+                                         ai < static_cast<int>(actual_args.size());
+                                         ++ai) {
+                                        if (tpl_def->template_arg_is_value[ai] ||
+                                            actual_args[ai].is_value) {
+                                            continue;
+                                        }
+                                        const TypeSpec pattern_arg =
+                                            tpl_def->template_arg_types[ai];
+                                        if (!(member_ts.base == TB_TYPEDEF &&
+                                              member_ts.tag &&
+                                              pattern_arg.base == TB_TYPEDEF &&
+                                              pattern_arg.tag &&
+                                              std::string(member_ts.tag) ==
+                                                  pattern_arg.tag)) {
+                                            continue;
+                                        }
+                                        member_ts = actual_args[ai].type;
+                                        break;
+                                    }
+                                }
                                 for (const auto& [pname, pts] : type_bindings) {
                                     if (member_ts.base == TB_TYPEDEF && member_ts.tag &&
                                         std::string(member_ts.tag) == pname) {

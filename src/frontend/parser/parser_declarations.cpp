@@ -1399,6 +1399,9 @@ Node* Parser::parse_top_level() {
                     ati.param_names.push_back(template_params[i]);
                     ati.param_is_nttp.push_back(template_param_nttp[i]);
                     ati.param_is_pack.push_back(template_param_is_pack[i]);
+                    ati.param_has_default.push_back(template_param_has_default[i]);
+                    ati.param_default_types.push_back(template_param_default_types[i]);
+                    ati.param_default_values.push_back(template_param_default_values[i]);
                 }
                 ati.aliased_type = td_it->second;
                 alias_template_info_[last_using_alias_name_] = std::move(ati);

@@ -1481,7 +1481,9 @@ ExprId Lowerer::lower_expr(FunctionCtx* ctx, const Node* n) {
         if (scope_pos != std::string::npos) {
           std::string struct_tag = qname.substr(0, scope_pos);
           std::string member = qname.substr(scope_pos + 2);
-          if (n->has_template_args) {
+          const bool has_template_args =
+              n->has_template_args || n->n_template_args > 0;
+          if (has_template_args) {
             if (auto v = try_eval_template_static_member_const(
                     ctx, struct_tag, n, member)) {
               TypeSpec ts{};
@@ -1492,7 +1494,7 @@ ExprId Lowerer::lower_expr(FunctionCtx* ctx, const Node* n) {
             }
           }
           if (!find_struct_static_member_decl(struct_tag, member) &&
-              n->has_template_args && find_template_struct_primary(struct_tag)) {
+              has_template_args && find_template_struct_primary(struct_tag)) {
             std::string arg_refs;
             for (int i = 0; i < n->n_template_args; ++i) {
               if (!arg_refs.empty()) arg_refs += ",";

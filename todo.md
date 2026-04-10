@@ -9,6 +9,12 @@ Source Plan: plan.md
 - Step 3: keep `eastl_type_traits_simple.cpp` as the active EASTL frontier, but
   treat the remaining workflow mismatch as a variable-template trait
   normalization gap for alias-transformed types.
+- Iteration focus: validate and, if needed, finish the in-progress
+  parser/HIR support for alias-backed member typedef selection in
+  `enable_if_t`, `conditional_t`, `remove_reference_t`, `remove_cv_t`, and
+  `add_lvalue_reference_t`, starting from the focused internal runtime repro
+  `template_variable_alias_member_typedef_runtime.cpp` before rerunning the
+  EASTL workflow.
 - Iteration target: reduce why alias-backed trait operands such as
   `eastl::add_lvalue_reference_t<T>`, `eastl::remove_reference_t<T&>`,
   `eastl::remove_cv_t<const volatile T>`, `eastl::conditional_t<...>`, and
@@ -16,20 +22,36 @@ Source Plan: plan.md
   unresolved member-typedef spellings after the signedness slice moved the
   workflow from exit `10` to exit `22`.
 - Reduced repro: `eastl_type_traits_simple_workflow` now gets past
-  `check_signed_traits<int>()`, but `check_reference_transforms<int>()`
-  returns `22` because `eastl::is_reference_v<eastl::add_lvalue_reference_t<T>>`
-  still lowers as false, and nearby `is_same_v` variable-template instances
-  backed by alias transforms remain `0` too.
-- Current blocker: empty alias-template parameter packs in default template
-  arguments now parse again (`void_t<>` no longer leaves the opening `<`
-  unconsumed), but partial-specialization member typedefs such as
-  `enable_if<true, T>::type` and `conditional<..., T, F>::type` still collapse
-  to the instantiated owner specialization instead of the selected bound type,
-  which keeps `eastl_type_traits_simple.cpp` stuck before the intended runtime
-  mismatch.
+  `check_signed_traits<int>()`, and the remaining failure stays narrowed to
+  `check_reference_transforms<int>()` returning `22` because
+  `eastl::is_reference_v<eastl::add_lvalue_reference_t<T>>` still lowers as
+  false even after the alias-backed `is_same_v` cases were repaired.
+- Current blocker: alias-template default arguments and namespaced partial
+  specializations now resolve cleanly enough to make `--parse-only` succeed and
+  to fold the focused `enable_if_t` / `conditional_t` variable-template repro,
+  but `add_lvalue_reference_t<int>` still materializes as the owner struct
+  `eastl::add_lvalue_reference<T>` instead of `int&`, so the final runtime
+  mismatch has moved from exits `20`/`21` down to only exit `22`.
 
 ## Completed
 
+- Added focused runtime coverage in
+  `tests/cpp/internal/postive_case/template_variable_alias_member_typedef_runtime.cpp`
+  and confirmed the reduced alias-backed `enable_if_t` / `conditional_t`
+  variable-template repro now passes.
+- Fixed parser alias-template application to accept omitted trailing default
+  template arguments, which repairs partial-specialization heads such as
+  `trait<T, enable_if_t<true>>` and unblocks `eastl_type_traits_simple.cpp`
+  from failing during parse with `object has incomplete type`.
+- Fixed parser and HIR template-specialization registration so namespace-scoped
+  partial specializations keyed by unqualified `template_origin_name` still
+  resolve against their fully qualified primaries during alias-member lookup.
+- Fixed HIR template static-member evaluation for namespace-scoped
+  unqualified-owner lookups and stopped re-lowering duplicate mangled
+  variable-template globals from overwriting earlier correct instances.
+- Confirmed `tests/cpp/eastl/eastl_type_traits_simple.cpp --parse-only` now
+  succeeds again and the standalone workflow advances from the old frontend
+  failure into the final runtime-only mismatch at exit `22`.
 - Added focused runtime coverage in
   `tests/cpp/internal/postive_case/scoped_enum_bitwise_runtime.cpp` so scoped
   enums stay covered through parsing, canonicalization, and codegen.
