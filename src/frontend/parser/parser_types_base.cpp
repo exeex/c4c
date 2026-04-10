@@ -438,7 +438,25 @@ TypeSpec Parser::parse_base_type() {
             std::string ref = "@";
             ref += arg.type.tpl_struct_origin;
             ref += ":";
-            ref += encode_template_arg_debug_list(arg.type);
+            if (arg.type.tpl_struct_args.data && arg.type.tpl_struct_args.size > 0) {
+                for (int i = 0; i < arg.type.tpl_struct_args.size; ++i) {
+                    if (i > 0) ref += ",";
+                    const TemplateArgRef& nested = arg.type.tpl_struct_args.data[i];
+                    if (nested.debug_text && nested.debug_text[0]) {
+                        ref += nested.debug_text;
+                    } else if (nested.kind == TemplateArgKind::Value) {
+                        ref += std::to_string(nested.value);
+                    } else if (nested.kind == TemplateArgKind::Type) {
+                        std::string nested_mangled;
+                        append_type_mangled_suffix(nested_mangled, nested.type);
+                        if (nested_mangled.empty() && nested.type.tag) {
+                            ref += nested.type.tag;
+                        } else {
+                            ref += nested_mangled;
+                        }
+                    }
+                }
+            }
             if (arg.type.deferred_member_type_name &&
                 arg.type.deferred_member_type_name[0]) {
                 ref += "$";
@@ -484,7 +502,23 @@ TypeSpec Parser::parse_base_type() {
                                         split_template_arg_ref_text(refs_text));
         };
     auto template_arg_refs_text = [&](const TypeSpec& spec) -> std::string {
-        return encode_template_arg_debug_list(spec);
+        std::string refs;
+        if (!spec.tpl_struct_args.data || spec.tpl_struct_args.size <= 0) return refs;
+        for (int i = 0; i < spec.tpl_struct_args.size; ++i) {
+            if (i > 0) refs += ",";
+            const TemplateArgRef& arg = spec.tpl_struct_args.data[i];
+            if (arg.debug_text && arg.debug_text[0]) {
+                refs += arg.debug_text;
+            } else if (arg.kind == TemplateArgKind::Value) {
+                refs += std::to_string(arg.value);
+            } else if (arg.kind == TemplateArgKind::Type) {
+                std::string mangled;
+                append_type_mangled_suffix(mangled, arg.type);
+                if (mangled.empty() && arg.type.tag) refs += arg.type.tag;
+                else refs += mangled;
+            }
+        }
+        return refs;
     };
 
     std::function<bool(const std::string&, const std::string&, TypeSpec*)>
@@ -1467,13 +1501,33 @@ TypeSpec Parser::parse_base_type() {
                                                 }
                                                 return false;
                                             };
-                                        const std::string arg_refs_text =
-                                            encode_template_arg_debug_list(type);
-                                        return text_mentions_template_scope_param(type.tag) ||
-                                               text_mentions_template_scope_param(
-                                                   arg_refs_text.c_str()) ||
-                                               text_mentions_template_scope_param(
-                                                   type.deferred_member_type_name);
+                                        std::function<bool(const TypeSpec&)> type_mentions_dep_params =
+                                            [&](const TypeSpec& inner) -> bool {
+                                                if (text_mentions_template_scope_param(inner.tag) ||
+                                                    text_mentions_template_scope_param(
+                                                        inner.deferred_member_type_name)) {
+                                                    return true;
+                                                }
+                                                if (!inner.tpl_struct_args.data ||
+                                                    inner.tpl_struct_args.size <= 0) {
+                                                    return false;
+                                                }
+                                                for (int ai = 0;
+                                                     ai < inner.tpl_struct_args.size; ++ai) {
+                                                    const TemplateArgRef& arg =
+                                                        inner.tpl_struct_args.data[ai];
+                                                    if (arg.kind == TemplateArgKind::Type &&
+                                                        type_mentions_dep_params(arg.type)) {
+                                                        return true;
+                                                    }
+                                                    if (text_mentions_template_scope_param(
+                                                            arg.debug_text)) {
+                                                        return true;
+                                                    }
+                                                }
+                                                return false;
+                                            };
+                                        return type_mentions_dep_params(type);
                                     };
                                 auto has_dependent_owner_args =
                                     [&](const std::string& owner_name) -> bool {

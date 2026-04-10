@@ -91,6 +91,11 @@ Source Plan: plan.md
   rewrites through `template_arg_debug_text_at(...)`; those paths now read
   `TemplateArgRef` directly and only synthesize per-arg text locally when they
   genuinely need a compatibility string.
+- Parser debug-helper cleanup has started too: `parser_types_base.cpp` no
+  longer rebuilds transformed owner/template-arg text via the generic
+  `encode_template_arg_debug_list(...)` helper in its common rebuild paths,
+  and dependent-owner scanning now walks structured `TemplateArgRef` payloads
+  recursively instead of first flattening them back to one debug string.
 
 ## Completed
 
@@ -235,3 +240,9 @@ Source Plan: plan.md
   member-typedef binding rewrites now stringify directly from each
   `TemplateArgRef`, shrinking one more class of debug-text semantic fallback in
   the HIR layer.
+- Reworked the main parser transport helpers in
+  [parser_types_base.cpp](/workspaces/c4c/src/frontend/parser/parser_types_base.cpp)
+  so nested template-arg rebuild and dependency probing read structured
+  `TemplateArgRef` payloads directly instead of routing through the generic
+  `encode_template_arg_debug_list(...)` flattening helper in those common
+  paths.
