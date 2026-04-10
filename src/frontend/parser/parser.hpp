@@ -501,8 +501,14 @@ class Parser {
   const TypeSpec* find_typedef_type(const std::string& name) const;
   bool has_visible_typedef_type(const std::string& name) const;
   const TypeSpec* find_visible_typedef_type(const std::string& name) const;
+  void register_typedef_name(const std::string& name, bool is_user_typedef);
   void register_typedef_binding(const std::string& name, const TypeSpec& type,
                                 bool is_user_typedef);
+  void unregister_typedef_binding(const std::string& name);
+  void register_synthesized_typedef_binding(const std::string& name);
+  void register_tag_type_binding(const std::string& name, TypeBase base,
+                                 const char* tag,
+                                 TypeBase enum_underlying_base = TB_VOID);
   void cache_typedef_type(const std::string& name, const TypeSpec& type);
   void register_struct_member_typedef_binding(const std::string& scoped_name,
                                               const TypeSpec& type);

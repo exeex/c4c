@@ -11,9 +11,9 @@ Source Plan: plan.md
   storage assumptions, starting with typedef/value registration and
   namespace-aware lookup helpers
 - Current slice: continue `parser_types_struct.cpp` migration by moving the
-  remaining direct typedef registration points that are adjacent to record/type
-  parsing, starting with template-parameter prelude seeding and record
-  finalization self-tag injection
+  remaining direct typedef-related plumbing after migrating template-member
+  prelude typedef seeding plus record/enum self-tag injection and finalization
+  registration onto parser-local helpers
 
 ## Completed Items
 
@@ -106,13 +106,28 @@ Source Plan: plan.md
 - Revalidated this slice with targeted record-member parser tests plus full
   `ctest --test-dir build -j8 --output-on-failure` and regression guard:
   3347/3347 tests passed, no new failures
+- Added parser-local typedef/tag helper operations in
+  `src/frontend/parser/parser.hpp` and `src/frontend/parser/parser_core.cpp`
+  for plain typedef-name visibility, synthesized template-parameter typedef
+  seeding, injected record/enum tag registration, and teardown cleanup
+- Migrated `src/frontend/parser/parser_types_struct.cpp` template-member
+  prelude seeding, template-scope cleanup, record-body self-type exposure,
+  forward-declaration tag injection, record finalization registration, and
+  enum tag registration onto those parser-local helpers
+- Added parse-only regression
+  `tests/cpp/internal/postive_case/record_template_prelude_and_tag_registration_parse.cpp`
+  to cover templated record-member prelude seeding together with record and
+  enum tag registration paths
+- Revalidated this slice with targeted record/type parser tests plus full
+  `ctest --test-dir build -j8 --output-on-failure` and regression guard:
+  3348/3348 tests passed, no new failures
 
 ## Next Intended Slice
 
-- Continue migrating direct typedef mutation paths in
-  `src/frontend/parser/parser_types_struct.cpp`, especially template-parameter
-  prelude typedef seeding and record-definition self-tag/enum registration that
-  still updates `typedefs_`/`typedef_types_` directly
+- Continue shrinking direct grouped typedef-map reads in
+  `src/frontend/parser/parser_types_struct.cpp`, especially the remaining
+  `typedef_types_` plumbing around template-origin setup, enum underlying-type
+  resolution, and local enum/record type handoff reads
 - Leave namespace-state grouping for a separate slice unless it becomes
   necessary for the chosen accessor migration
 
@@ -134,5 +149,5 @@ Source Plan: plan.md
   mutation and cache-population paths for later Step 3 slices
 - Read-only type-parser probes and the targeted dependent-member cache writes
   now use parser-local typedef helpers; the remaining raw accesses are mostly
-  typedef-map plumbing helpers plus template-parameter and record-finalization
-  typedef registration in `parser_types_struct.cpp`
+  typedef-map plumbing helpers and a few localized read-only
+  `typedef_types_` lookups in `parser_types_struct.cpp`

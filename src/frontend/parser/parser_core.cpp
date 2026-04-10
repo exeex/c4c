@@ -301,12 +301,51 @@ const TypeSpec* Parser::find_visible_typedef_type(const std::string& name) const
     return find_typedef_type(resolved);
 }
 
+void Parser::register_typedef_name(const std::string& name,
+                                   bool is_user_typedef) {
+    symbol_tables_.typedefs.insert(name);
+    if (is_user_typedef) symbol_tables_.user_typedefs.insert(name);
+}
+
 void Parser::register_typedef_binding(const std::string& name,
                                       const TypeSpec& type,
                                       bool is_user_typedef) {
-    symbol_tables_.typedefs.insert(name);
-    if (is_user_typedef) symbol_tables_.user_typedefs.insert(name);
+    register_typedef_name(name, is_user_typedef);
     symbol_tables_.typedef_types[name] = type;
+}
+
+void Parser::unregister_typedef_binding(const std::string& name) {
+    symbol_tables_.typedefs.erase(name);
+    symbol_tables_.user_typedefs.erase(name);
+    symbol_tables_.typedef_types.erase(name);
+}
+
+void Parser::register_synthesized_typedef_binding(const std::string& name) {
+    TypeSpec synthesized_ts{};
+    synthesized_ts.array_size = -1;
+    synthesized_ts.inner_rank = -1;
+    synthesized_ts.base = TB_TYPEDEF;
+    synthesized_ts.tag = arena_.strdup(name.c_str());
+    register_typedef_binding(name, synthesized_ts, false);
+}
+
+void Parser::register_tag_type_binding(const std::string& name,
+                                       TypeBase base,
+                                       const char* tag,
+                                       TypeBase enum_underlying_base) {
+    if (name.empty() || !tag || !tag[0]) return;
+
+    TypeSpec tagged_ts{};
+    tagged_ts.array_size = -1;
+    tagged_ts.array_rank = 0;
+    tagged_ts.base = base;
+    tagged_ts.tag = tag;
+    if (base == TB_ENUM) {
+        tagged_ts.inner_rank = -1;
+        for (int i = 0; i < 8; ++i) tagged_ts.array_dims[i] = -1;
+        tagged_ts.enum_underlying_base = enum_underlying_base;
+    }
+    register_typedef_binding(name, tagged_ts, false);
 }
 
 void Parser::cache_typedef_type(const std::string& name, const TypeSpec& type) {

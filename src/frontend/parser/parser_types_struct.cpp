@@ -195,13 +195,7 @@ void Parser::parse_record_template_member_prelude(
             if (check(TokenKind::Identifier)) {
                 std::string pname = cur().lexeme;
                 consume();
-                typedefs_.insert(pname);
-                TypeSpec param_ts{};
-                param_ts.array_size = -1;
-                param_ts.inner_rank = -1;
-                param_ts.base = TB_TYPEDEF;
-                param_ts.tag = arena_.strdup(pname.c_str());
-                typedef_types_[pname] = param_ts;
+                register_synthesized_typedef_binding(pname);
                 injected_type_params->push_back(std::move(pname));
             }
             if (check(TokenKind::Assign)) {
@@ -253,13 +247,7 @@ void Parser::parse_record_template_member_prelude(
             if (check(TokenKind::Identifier)) {
                 std::string pname = cur().lexeme;
                 consume();
-                typedefs_.insert(pname);
-                TypeSpec param_ts{};
-                param_ts.array_size = -1;
-                param_ts.inner_rank = -1;
-                param_ts.base = TB_TYPEDEF;
-                param_ts.tag = arena_.strdup(pname.c_str());
-                typedef_types_[pname] = param_ts;
+                register_synthesized_typedef_binding(pname);
                 injected_type_params->push_back(std::move(pname));
             }
             if (check(TokenKind::Assign)) {
@@ -305,13 +293,7 @@ void Parser::parse_record_template_member_prelude(
                     if (check(TokenKind::Identifier)) {
                         std::string pname = cur().lexeme;
                         consume();
-                        typedefs_.insert(pname);
-                        TypeSpec param_ts{};
-                        param_ts.array_size = -1;
-                        param_ts.inner_rank = -1;
-                        param_ts.base = TB_TYPEDEF;
-                        param_ts.tag = arena_.strdup(pname.c_str());
-                        typedef_types_[pname] = param_ts;
+                        register_synthesized_typedef_binding(pname);
                         injected_type_params->push_back(std::move(pname));
                     }
                     if (check(TokenKind::Assign)) {
@@ -467,13 +449,7 @@ void Parser::parse_record_template_member_prelude(
                         if (check(TokenKind::Identifier)) {
                             std::string pname = cur().lexeme;
                             consume();
-                            typedefs_.insert(pname);
-                            TypeSpec param_ts{};
-                            param_ts.array_size = -1;
-                            param_ts.inner_rank = -1;
-                            param_ts.base = TB_TYPEDEF;
-                            param_ts.tag = arena_.strdup(pname.c_str());
-                            typedef_types_[pname] = param_ts;
+                            register_synthesized_typedef_binding(pname);
                             injected_type_params->push_back(std::move(pname));
                         }
                         if (check(TokenKind::Assign)) {
@@ -1647,19 +1623,17 @@ bool Parser::try_parse_record_member_with_template_prelude(
     std::vector<TypeSpec>* member_typedef_types,
     const std::function<void(const char*)>& check_dup_field) {
     struct TemplateParamGuard {
+        Parser* parser;
         std::set<std::string>& typedefs;
-        std::unordered_map<std::string, TypeSpec>& typedef_types;
         std::vector<TemplateScopeFrame>& scope_stack;
         std::vector<std::string> names;
         bool pushed_scope = false;
         ~TemplateParamGuard() {
             if (pushed_scope) scope_stack.pop_back();
-            for (auto& n : names) {
-                typedefs.erase(n);
-                typedef_types.erase(n);
-            }
+            if (!parser) return;
+            for (auto& n : names) parser->unregister_typedef_binding(n);
         }
-    } tmpl_guard{typedefs_, typedef_types_, template_scope_stack_, {}};
+    } tmpl_guard{this, typedefs_, template_scope_stack_, {}};
 
     parse_record_template_member_prelude(&tmpl_guard.names,
                                          &tmpl_guard.pushed_scope);
@@ -1728,7 +1702,7 @@ void Parser::begin_record_body_context(const char* tag,
     // Make the current record name available for self-type parsing within the
     // body before member dispatch starts.
     if (is_cpp_mode() && tag && tag[0])
-        typedefs_.insert(tag);
+        register_typedef_name(tag, false);
 
     if (saved_struct_tag)
         *saved_struct_tag = current_struct_tag_;
@@ -1744,14 +1718,9 @@ void Parser::begin_record_body_context(const char* tag,
     if (!is_cpp_mode())
         return;
 
-    typedefs_.insert(template_origin_name);
+    register_typedef_name(template_origin_name, false);
     if (typedef_types_.count(template_origin_name) == 0) {
-        TypeSpec src_ts{};
-        src_ts.array_size = -1;
-        src_ts.inner_rank = -1;
-        src_ts.base = TB_STRUCT;
-        src_ts.tag = tag;
-    typedef_types_[template_origin_name] = src_ts;
+        register_tag_type_binding(template_origin_name, TB_STRUCT, tag);
     }
 }
 
@@ -1946,13 +1915,9 @@ Node* Parser::parse_record_tag_setup(int line,
             ref->n_fields = -1;  // -1 = forward reference (no body)
         }
         if (is_cpp_mode() && resolved_tag && resolved_tag[0]) {
-            typedefs_.insert(resolved_tag);
-            TypeSpec injected_ts{};
-            injected_ts.array_size = -1;
-            injected_ts.array_rank = 0;
-            injected_ts.base = is_union ? TB_UNION : TB_STRUCT;
-            injected_ts.tag = resolved_tag;
-            typedef_types_[resolved_tag] = injected_ts;
+            register_tag_type_binding(resolved_tag,
+                                      is_union ? TB_UNION : TB_STRUCT,
+                                      resolved_tag);
         }
         if (is_cpp_mode() && parsing_top_level_context_)
             struct_defs_.push_back(ref);
@@ -2119,16 +2084,11 @@ void Parser::register_record_definition(Node* sd,
     if (!is_cpp_mode() || !(sd->name && sd->name[0]))
         return;
 
-    typedefs_.insert(sd->name);
-    TypeSpec injected_ts{};
-    injected_ts.array_size = -1;
-    injected_ts.array_rank = 0;
-    injected_ts.base = is_union ? TB_UNION : TB_STRUCT;
-    injected_ts.tag = sd->name;
-    typedef_types_[sd->name] = injected_ts;
+    register_tag_type_binding(sd->name, is_union ? TB_UNION : TB_STRUCT,
+                              sd->name);
     if (source_tag && source_tag[0] && std::strcmp(source_tag, sd->name) != 0) {
-        typedefs_.insert(source_tag);
-        typedef_types_[source_tag] = injected_ts;
+        register_tag_type_binding(source_tag, is_union ? TB_UNION : TB_STRUCT,
+                                  sd->name);
     }
 }
 
@@ -2207,20 +2167,11 @@ Node* Parser::parse_enum() {
     auto register_enum_type = [&](const char* source_tag, const char* canonical_tag) {
         if (!source_tag || !source_tag[0] || !canonical_tag || !canonical_tag[0])
             return;
-        TypeSpec enum_ts{};
-        enum_ts.array_size = -1;
-        enum_ts.array_rank = 0;
-        enum_ts.inner_rank = -1;
-        for (int i = 0; i < 8; ++i) enum_ts.array_dims[i] = -1;
-        enum_ts.base = TB_ENUM;
-        enum_ts.enum_underlying_base = enum_underlying_base;
-        enum_ts.tag = canonical_tag;
-        typedefs_.insert(source_tag);
-        typedef_types_[source_tag] = enum_ts;
-        if (strcmp(source_tag, canonical_tag) != 0) {
-            typedefs_.insert(canonical_tag);
-            typedef_types_[canonical_tag] = enum_ts;
-        }
+        register_tag_type_binding(source_tag, TB_ENUM, canonical_tag,
+                                  enum_underlying_base);
+        if (strcmp(source_tag, canonical_tag) != 0)
+            register_tag_type_binding(canonical_tag, TB_ENUM, canonical_tag,
+                                      enum_underlying_base);
     };
 
     if (!check(TokenKind::LBrace)) {
