@@ -16,10 +16,9 @@ Source Plan: plan.md
 - Hard acceptance rule remains: this plan is only fully done when the old field
   is gone and the new architecture no longer relies on string-prefix semantic
   recovery.
-- Next intended slice: migrate HIR-side nested arg rebuild and
-  `parser_types_template.cpp` deferred trait evaluation to consume
-  `TemplateArgRef.kind/type/value` directly in the common path, reducing the
-  remaining debug-text-first fallbacks.
+- Next intended slice: target `parser_types_template.cpp` directly so deferred
+  builtin-trait/member-evaluation consumes structured template args earlier,
+  instead of reparsing token text in the remaining common path.
 
 ## Completed
 
@@ -54,3 +53,6 @@ Source Plan: plan.md
 - Updated HIR nested `@origin:args` materialization to rebuild recursive typed
   `TemplateArgRef` payloads from `HirTemplateArg`, so HIR no longer needs to
   reattach nested pending args as debug-text-only lists in that common path.
+- Updated HIR deferred NTTP expression env to recognize nested `@origin:args`
+  references and rebuild them as typed `TemplateArgRef` payloads instead of
+  treating those refs as opaque debug text.

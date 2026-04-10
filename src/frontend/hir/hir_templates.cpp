@@ -823,6 +823,79 @@ struct DeferredNttpExprEnv {
 
   bool resolve_arg_text(const std::string& text, HirTemplateArg* out_arg) const {
     if (!out_arg || text.empty()) return false;
+    if (text.size() > 1 && text[0] == '@') {
+      const size_t colon = text.find(':', 1);
+      if (colon == std::string::npos) return false;
+      const std::string inner_origin = text.substr(1, colon - 1);
+      const size_t member_sep = text.find('$', colon + 1);
+      const std::string inner_args =
+          member_sep == std::string::npos
+              ? text.substr(colon + 1)
+              : text.substr(colon + 1, member_sep - (colon + 1));
+      std::function<bool(const std::string&, HirTemplateArg*)> parse_nested_arg;
+      parse_nested_arg = [&](const std::string& ref,
+                             HirTemplateArg* nested_out) -> bool {
+        if (!nested_out || ref.empty()) return false;
+        auto tit_inner = type_lookup.find(ref);
+        if (tit_inner != type_lookup.end()) {
+          nested_out->is_value = false;
+          nested_out->type = tit_inner->second;
+          return true;
+        }
+        auto nit_inner = nttp_lookup.find(ref);
+        if (nit_inner != nttp_lookup.end()) {
+          nested_out->is_value = true;
+          nested_out->value = nit_inner->second;
+          return true;
+        }
+        if (ref == "true" || ref == "false") {
+          nested_out->is_value = true;
+          nested_out->value = (ref == "true") ? 1 : 0;
+          return true;
+        }
+        char* nested_end = nullptr;
+        const long long parsed_val = std::strtoll(ref.c_str(), &nested_end, 10);
+        if (nested_end && *nested_end == '\0') {
+          nested_out->is_value = true;
+          nested_out->value = parsed_val;
+          return true;
+        }
+        if (ref.size() > 1 && ref[0] == '@') {
+          return resolve_arg_text(ref, nested_out);
+        }
+        TypeSpec nested_builtin{};
+        if (parse_builtin_typespec_text(ref, &nested_builtin)) {
+          nested_out->is_value = false;
+          nested_out->type = nested_builtin;
+          return true;
+        }
+        return false;
+      };
+
+      TypeSpec nested_ts{};
+      nested_ts.base = TB_STRUCT;
+      nested_ts.array_size = -1;
+      nested_ts.inner_rank = -1;
+      nested_ts.tpl_struct_origin = ::strdup(inner_origin.c_str());
+      if (!inner_args.empty()) {
+        std::vector<HirTemplateArg> nested_args;
+        const auto parts = split_deferred_template_arg_refs(inner_args);
+        nested_args.reserve(parts.size());
+        for (const auto& part : parts) {
+          HirTemplateArg nested_arg{};
+          if (!parse_nested_arg(part, &nested_arg)) return false;
+          nested_args.push_back(nested_arg);
+        }
+        assign_template_arg_refs_from_hir_args(&nested_ts, nested_args);
+      }
+      if (member_sep != std::string::npos && member_sep + 1 < text.size()) {
+        nested_ts.deferred_member_type_name =
+            ::strdup(text.substr(member_sep + 1).c_str());
+      }
+      out_arg->is_value = false;
+      out_arg->type = nested_ts;
+      return true;
+    }
     auto tit = type_lookup.find(text);
     if (tit != type_lookup.end()) {
       out_arg->is_value = false;
