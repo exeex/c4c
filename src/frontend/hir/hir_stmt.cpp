@@ -1939,12 +1939,36 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
 
   if (method_node->is_constructor && method_node->n_ctor_inits > 0) {
     auto sit = module_->struct_defs.find(struct_tag);
+    auto is_delegating_ctor_target = [&](const char* mem_name) -> bool {
+      if (!mem_name || !mem_name[0]) return false;
+      if (struct_tag == mem_name) return true;
+
+      auto matches_unqualified = [&](const char* candidate) -> bool {
+        if (!candidate || !candidate[0]) return false;
+        return std::strcmp(candidate, mem_name) == 0;
+      };
+
+      if (method_node) {
+        if (matches_unqualified(method_node->unqualified_name)) return true;
+        if (matches_unqualified(method_node->template_origin_name)) return true;
+      }
+      if (sit != module_->struct_defs.end()) {
+        if (matches_unqualified(sit->second.tag.c_str())) return true;
+      }
+      auto sdit = struct_def_nodes_.find(struct_tag);
+      if (sdit != struct_def_nodes_.end() && sdit->second) {
+        if (matches_unqualified(sdit->second->unqualified_name)) return true;
+        if (matches_unqualified(sdit->second->template_origin_name)) return true;
+      }
+      return false;
+    };
+
     for (int i = 0; i < method_node->n_ctor_inits; ++i) {
       const char* mem_name = method_node->ctor_init_names[i];
       int nargs = method_node->ctor_init_nargs[i];
       Node** args = method_node->ctor_init_args[i];
 
-      if (mem_name == struct_tag || (mem_name && struct_tag == mem_name)) {
+      if (is_delegating_ctor_target(mem_name)) {
         auto cit = struct_constructors_.find(struct_tag);
         if (cit == struct_constructors_.end() || cit->second.empty()) {
           throw std::runtime_error(
@@ -1966,6 +1990,17 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
               TypeSpec param_ts = ov.method_node->params[pi]->type;
               resolve_typedef_to_struct(param_ts);
               TypeSpec arg_ts = infer_generic_ctrl_type(&ctx, args[pi]);
+              resolve_typedef_to_struct(arg_ts);
+              if (arg_ts.base != TB_STRUCT && args[pi] &&
+                  args[pi]->kind == NK_CALL && args[pi]->left) {
+                TypeSpec constructed_ts =
+                    infer_generic_ctrl_type(&ctx, args[pi]->left);
+                resolve_typedef_to_struct(constructed_ts);
+                if (constructed_ts.base == TB_STRUCT &&
+                    constructed_ts.ptr_level == 0) {
+                  arg_ts = constructed_ts;
+                }
+              }
               bool arg_is_lvalue = is_ast_lvalue(args[pi], &ctx);
               TypeSpec param_base = param_ts;
               param_base.is_lvalue_ref = false;
@@ -2111,6 +2146,17 @@ void Lowerer::lower_struct_method(const std::string& mangled_name,
                 TypeSpec param_ts = ov.method_node->params[pi]->type;
                 resolve_typedef_to_struct(param_ts);
                 TypeSpec arg_ts = infer_generic_ctrl_type(&ctx, args[pi]);
+                resolve_typedef_to_struct(arg_ts);
+                if (arg_ts.base != TB_STRUCT && args[pi] &&
+                    args[pi]->kind == NK_CALL && args[pi]->left) {
+                  TypeSpec constructed_ts =
+                      infer_generic_ctrl_type(&ctx, args[pi]->left);
+                  resolve_typedef_to_struct(constructed_ts);
+                  if (constructed_ts.base == TB_STRUCT &&
+                      constructed_ts.ptr_level == 0) {
+                    arg_ts = constructed_ts;
+                  }
+                }
                 bool arg_is_lvalue = is_ast_lvalue(args[pi], &ctx);
                 TypeSpec param_base = param_ts;
                 param_base.is_lvalue_ref = false;

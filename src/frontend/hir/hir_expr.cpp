@@ -260,6 +260,17 @@ ExprId Lowerer::lower_call_expr(FunctionCtx* ctx, const Node* n) {
             TypeSpec param_ts = ov.method_node->params[pi]->type;
             resolve_typedef_to_struct(param_ts);
             TypeSpec arg_ts = infer_generic_ctrl_type(ctx, n->children[pi]);
+            resolve_typedef_to_struct(arg_ts);
+            if (arg_ts.base != TB_STRUCT && n->children[pi] &&
+                n->children[pi]->kind == NK_CALL && n->children[pi]->left) {
+              TypeSpec constructed_ts =
+                  infer_generic_ctrl_type(ctx, n->children[pi]->left);
+              resolve_typedef_to_struct(constructed_ts);
+              if (constructed_ts.base == TB_STRUCT &&
+                  constructed_ts.ptr_level == 0) {
+                arg_ts = constructed_ts;
+              }
+            }
             const bool arg_is_lvalue = is_ast_lvalue(n->children[pi], ctx);
             TypeSpec param_base = param_ts;
             param_base.is_lvalue_ref = false;

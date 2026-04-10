@@ -6,16 +6,15 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 2: resume the smallest active EASTL parser frontier from
-  `tests/cpp/eastl/eastl_tuple_simple.cpp`, not `eastl_vector_simple.cpp`.
-- Iteration target: continue reducing the remaining
-  `tests/cpp/eastl/eastl_tuple_simple.cpp` post-member-init canonical timeout
-  path now that the earlier `initializer for scalar member 'first' must have
-  exactly one argument` failure is fixed.
-- This slice is specifically targeting the next bounded reproducer after the
-  old member-init semantic blocker, with the goal of turning the deeper tuple /
-  libstdc++ timeout into either a smaller internal regression or a sharper
-  checkpoint before any `eastl_vector_simple.cpp` work.
+- Step 2: switch to the smaller active canonical frontier in
+  `tests/cpp/eastl/eastl_utility_simple.cpp` before returning to
+  `eastl_tuple_simple.cpp`.
+- Iteration target: finish reducing the remaining `eastl::pair` piecewise /
+  delegating-constructor helper failure behind
+  `error: initializer for scalar member 'pair' must have exactly one argument`.
+- This slice is specifically targeting the next bounded reproducer after
+  confirming that `eastl_tuple_simple.cpp` still times out later in canonical
+  but is no longer the smallest active case.
 
 ## Completed
 
@@ -125,13 +124,35 @@ Source Plan: plan.md
   `initializer for scalar member 'first' must have exactly one argument`;
   `--parse-only` succeeds and `--dump-canonical` now times out later in the
   deeper tuple/libstdc++ stack.
+- Re-baselined the smaller EASTL canonical cases and confirmed
+  `eastl_piecewise_construct_simple.cpp`,
+  `eastl_tuple_fwd_decls_simple.cpp`, and
+  `eastl_integer_sequence_simple.cpp` all now complete under
+  `--dump-canonical`, so the README inventory had gone stale.
+- Measured the parser side of the current tuple/utility frontier:
+  `eastl_utility_simple.cpp --parse-only` completes in about `10.476s`,
+  `eastl_tuple_simple.cpp --parse-only` in about `26.810s`, and
+  `EASTL/utility.h` alone rises from about `4.957s` to `10.348s` when the
+  structured-binding bridge is enabled.
+- Reduced the next smaller canonical blocker from `eastl_utility_simple.cpp`
+  to `eastl::pair<int, int> p(4, 9);`, which now fails quickly with
+  `initializer for scalar member 'pair' must have exactly one argument`.
+- Added focused runtime coverage in
+  `tests/cpp/internal/postive_case/ctor_init_delegating_unqualified_template_runtime.cpp`
+  and fixed HIR ctor-init lowering so templated delegating constructors still
+  recognize unqualified self-delegation after instantiation.
+- Reduced the remaining `eastl::pair` follow-up further to a piecewise-style
+  templated delegating constructor helper that still fails with
+  `error: no matching constructor for delegating constructor call to
+  'pair_T1_int_T2_int'`, so the current blocker is now narrower than the full
+  EASTL case but not fully repaired yet.
 
 ## Next Slice
 
 - reduce the new `eastl_tuple_simple.cpp` deeper canonical timeout path to the
   next smallest internal reproducer or bounded libstdc++ / tuple checkpoint
-- compare that reduced post-member-init timeout follow-up against
-  `eastl_tuple_simple.cpp` before touching `eastl_vector_simple.cpp`
+- continue from the smaller `eastl_utility_simple.cpp` `pair` piecewise helper
+  reproducer before returning to the deeper `eastl_tuple_simple.cpp` timeout
 - keep `eastl_memory_simple.cpp` parked for now: after this tuple fix it still
   times out under both `--parse-only` and `--dump-canonical`, so it has not
   become the smaller frontier
@@ -141,6 +162,9 @@ Source Plan: plan.md
 - `eastl_tuple_simple.cpp` no longer stops on the old member-init semantic
   failure, but the next canonical frontier is now a deeper timeout with no new
   terminal diagnostic inside 30s, so it still needs a fresh reduction
+- `eastl_utility_simple.cpp` is now the smaller active canonical frontier:
+  direct templated self-delegation is fixed, but the remaining piecewise helper
+  path still misses the internal delegating constructor overload
 - `eastl_memory_simple.cpp` still times out under both parse-only and
   canonical/sema pressure, though the trace reaches much later tuple/ranges
   work than before
@@ -154,6 +178,8 @@ Source Plan: plan.md
 - Step 1 foundation cases already parse and mostly fail later in sema
 - `eastl_utility_simple.cpp` parse-only now succeeds and is ready for
   canonical/sema follow-up if it becomes the smaller frontier
+- `eastl_utility_simple.cpp` has now become that smaller frontier; the active
+  bounded failure is the `eastl::pair` piecewise delegating-helper path
 - focused parser coverage now exists for shadowed-name assignment dispatch
   under `tests/cpp/internal/postive_case/local_value_shadows_*`
 - focused parser coverage now also exists for out-of-class constructor-template
@@ -178,6 +204,8 @@ Source Plan: plan.md
   `tests/cpp/internal/postive_case/ctor_init_member_typedef_ctor_runtime.cpp`
   and
   `tests/cpp/internal/postive_case/ctor_init_member_default_value_init_runtime.cpp`
+- focused delegating-ctor runtime coverage now also exists under
+  `tests/cpp/internal/postive_case/ctor_init_delegating_unqualified_template_runtime.cpp`
 - the older constrained concept-shorthand scratch repro now parses and lowers,
   the member-init `first` diagnostic is gone, `eastl_tuple_simple.cpp`
   `--parse-only` succeeds again, and the remaining tuple frontier is now a
