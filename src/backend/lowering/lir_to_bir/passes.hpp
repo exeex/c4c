@@ -144,6 +144,9 @@ std::optional<bir::Module>
 try_lower_minimal_global_anonymous_struct_field_compare_zero_return_module(
     const c4c::codegen::lir::LirModule& module);
 std::optional<bir::Module>
+try_lower_minimal_global_named_two_field_struct_designated_init_compare_zero_return_module(
+    const c4c::codegen::lir::LirModule& module);
+std::optional<bir::Module>
 try_lower_minimal_nested_anonymous_aggregate_alias_compare_zero_return_module(
     const c4c::codegen::lir::LirModule& module);
 std::optional<bir::Module>
