@@ -249,6 +249,109 @@ void test_x86_translated_globals_owner_handles_minimal_extern_scalar_global_load
               "x86 translated globals owner helper should keep the extern global unresolved while still emitting the rip-relative load sequence");
 }
 
+void test_x86_translated_globals_owner_handles_minimal_scalar_global_store_reload_slice() {
+  c4c::backend::bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.globals.push_back(c4c::backend::bir::Global{
+      .name = "g_counter",
+      .type = c4c::backend::bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .initializer = c4c::backend::bir::Value::immediate_i32(11),
+  });
+  module.functions.push_back(c4c::backend::bir::Function{
+      .name = "main",
+      .return_type = c4c::backend::bir::TypeKind::I32,
+      .params = {},
+      .local_slots = {},
+      .blocks = {c4c::backend::bir::Block{
+          .label = "entry",
+          .insts = {
+              c4c::backend::bir::StoreGlobalInst{
+                  .global_name = "g_counter",
+                  .value = c4c::backend::bir::Value::immediate_i32(7),
+                  .byte_offset = 0,
+                  .align_bytes = 4,
+              },
+              c4c::backend::bir::LoadGlobalInst{
+                  .result = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32,
+                                                            "%t0"),
+                  .global_name = "g_counter",
+                  .byte_offset = 0,
+                  .align_bytes = 4,
+              },
+          },
+          .terminator = c4c::backend::bir::ReturnTerminator{
+              .value = c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::I32, "%t0"),
+          },
+      }},
+      .is_declaration = false,
+  });
+
+  const auto rendered =
+      c4c::backend::x86::try_emit_minimal_scalar_global_store_reload_module(module);
+  expect_true(rendered.has_value(),
+              "x86 translated globals owner helper should accept the bounded scalar global store-reload slice once direct_globals.cpp owns that matcher");
+  expect_true(rendered->find(".globl g_counter") != std::string::npos &&
+                  rendered->find("mov dword ptr [rax], 7") != std::string::npos &&
+                  rendered->find("mov eax, dword ptr [rax]") != std::string::npos,
+              "x86 translated globals owner helper should emit the native global definition plus the store-then-reload sequence for the bounded scalar global slice");
+}
+
+void test_x86_translated_globals_owner_handles_minimal_global_store_return_and_entry_return_slice() {
+  c4c::backend::bir::Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.globals.push_back(c4c::backend::bir::Global{
+      .name = "g_counter",
+      .type = c4c::backend::bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .initializer = c4c::backend::bir::Value::immediate_i32(11),
+  });
+  module.functions.push_back(c4c::backend::bir::Function{
+      .name = "set_counter",
+      .return_type = c4c::backend::bir::TypeKind::I32,
+      .params = {},
+      .local_slots = {},
+      .blocks = {c4c::backend::bir::Block{
+          .label = "entry",
+          .insts = {c4c::backend::bir::StoreGlobalInst{
+              .global_name = "g_counter",
+              .value = c4c::backend::bir::Value::immediate_i32(7),
+              .byte_offset = 0,
+              .align_bytes = 4,
+          }},
+          .terminator = c4c::backend::bir::ReturnTerminator{
+              .value = c4c::backend::bir::Value::immediate_i32(9),
+          },
+      }},
+      .is_declaration = false,
+  });
+  module.functions.push_back(c4c::backend::bir::Function{
+      .name = "main",
+      .return_type = c4c::backend::bir::TypeKind::I32,
+      .params = {},
+      .local_slots = {},
+      .blocks = {c4c::backend::bir::Block{
+          .label = "entry",
+          .insts = {},
+          .terminator = c4c::backend::bir::ReturnTerminator{
+              .value = c4c::backend::bir::Value::immediate_i32(5),
+          },
+      }},
+      .is_declaration = false,
+  });
+
+  const auto rendered =
+      c4c::backend::x86::try_emit_minimal_global_store_return_and_entry_return_module(module);
+  expect_true(rendered.has_value(),
+              "x86 translated globals owner helper should accept the bounded helper-store plus independent entry-return slice once direct_globals.cpp owns that matcher");
+  expect_true(rendered->find(".globl g_counter") != std::string::npos &&
+                  rendered->find("set_counter:\n  lea rax, g_counter[rip]\n  mov dword ptr [rax], 7\n  mov eax, 9\n  ret\n") != std::string::npos &&
+                  rendered->find("main:\n  mov eax, 5\n  ret\n") != std::string::npos,
+              "x86 translated globals owner helper should emit both the helper store-return body and the independent entry immediate return on the bounded global slice");
+}
+
 void test_backend_shared_call_decode_parses_bir_minimal_declared_direct_call_module() {
   c4c::backend::bir::Module module;
   module.string_constants.push_back(c4c::backend::bir::StringConstant{
@@ -3534,6 +3637,8 @@ int main(int argc, char* argv[]) {
   test_x86_codegen_header_exports_translated_globals_owner_helper_symbols();
   test_x86_translated_globals_owner_handles_minimal_scalar_global_load_slice();
   test_x86_translated_globals_owner_handles_minimal_extern_scalar_global_load_slice();
+  test_x86_translated_globals_owner_handles_minimal_scalar_global_store_reload_slice();
+  test_x86_translated_globals_owner_handles_minimal_global_store_return_and_entry_return_slice();
   test_backend_shared_call_decode_parses_bir_minimal_declared_direct_call_module();
   test_backend_shared_call_decode_parses_bir_minimal_void_direct_call_imm_return_module();
   test_backend_shared_call_decode_parses_bir_minimal_two_arg_direct_call_module();

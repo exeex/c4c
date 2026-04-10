@@ -6,33 +6,49 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 3 next ownership-removal slice after the landed repeated-`printf`
-  local-i32 BIR route: move the next remaining self-contained legacy matcher
-  cluster out of `src/backend/x86/codegen/emit.cpp`
+- Step 3 ownership-removal follow-up after landing the direct-globals helper
+  migration for the remaining bounded scalar-global BIR routes
 - immediate target:
-  extract the next bounded direct-BIR scalar-global route still owned by
-  `emit.cpp` into a sibling helper/owner file while keeping the surrounding
-  BIR/native path observable through focused backend regressions
-  - preferred candidates remain the extern scalar global-load or scalar global
-    store-reload seam
-  - do not re-open the parked translated top-level owner-unit export work just
-    to move this bounded legacy matcher
-  - keep the slice centered on one dispatcher-owned route so the ownership
-    delta remains explicit in `emit.cpp`
+  reassess the remaining direct-BIR dispatcher-owned routes in
+  `src/backend/x86/codegen/emit.cpp` now that `direct_globals.cpp` owns the
+  scalar global store-reload and helper-store-plus-entry-return slices too
+  - prefer the next bounded helper/owner extraction or a translated top-level
+    owner-unit cutover that reduces real `emit.cpp` ownership instead of
+    re-opening already-finished scalar-global seams
+  - keep validation centered on focused backend regressions plus a matched
+    broad rerun when the stored baseline is stale
 
 ## Next Slice
 
-- move the next remaining direct-BIR scalar-global seam still owned by
-  `emit.cpp`, likely the extern scalar global-load or scalar global
-  store-reload route
-- once the practical legacy matcher surface is smaller, reassess whether the
-  next best progress move is another bounded seam extraction or a translated
-  top-level owner-unit cutover such as `comparison.cpp` or `returns.cpp`
-- keep validation centered on focused backend regressions plus a matched
-  full-suite rerun when the stored `test_fail_before.log` baseline is stale
+- choose the next real ownership reduction in `emit.cpp` from the current live
+  tree rather than from the older scalar-global notes above
+- likely candidates:
+  another bounded direct-BIR helper route still dispatched only from
+  `emit.cpp`, or a translated top-level owner-unit cutover such as
+  `comparison.cpp` or `returns.cpp`
+- keep using focused backend regressions and compare against a matched current
+  full-suite baseline when broad validation is rerun
 
 ## Current Iteration Notes
 
+- this iteration moved the remaining bounded scalar-global BIR owner routes
+  out of `src/backend/x86/codegen/emit.cpp` into
+  `src/backend/x86/codegen/direct_globals.cpp` through the new
+  `try_emit_minimal_scalar_global_store_reload_module(...)` and
+  `try_emit_minimal_global_store_return_and_entry_return_module(...)` helpers
+- added focused shared-util coverage that calls those new direct-globals
+  helpers explicitly so the ownership move stays observable outside the
+  end-to-end backend pipeline tests
+- focused validation passed:
+  `cmake --build build -j8 --target backend_shared_util_tests backend_bir_tests`,
+  `./build/backend_shared_util_tests`,
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_direct_bir_minimal_scalar_global_store_reload_end_to_end`,
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_direct_bir_global_store_return_and_entry_return_end_to_end`, and
+  `ctest --test-dir build -R backend_shared_util_tests --output-on-failure`
+- broad validation rerun stayed matched against the current-tree baseline:
+  `test_fail_matched_before.log` versus `test_fail_after_rerun.log` both report
+  `95% tests passed, 182 tests failed out of 3376`, with no newly failing
+  tests and no fixed failures in the failure-set diff
 - this plan was activated by explicit user priority override
 - idea 44 remains open as the parked shared-BIR cleanup and legacy-matcher
   consolidation lane

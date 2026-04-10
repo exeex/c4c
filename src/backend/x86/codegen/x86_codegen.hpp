@@ -413,9 +413,13 @@ std::string emit_minimal_scalar_global_store_reload_slice_asm(std::string_view t
                                                               std::int64_t init_imm,
                                                               std::int64_t store_imm,
                                                               std::size_t align_bytes);
+std::optional<std::string> try_emit_minimal_scalar_global_store_reload_module(
+    const c4c::backend::bir::Module& module);
 std::string emit_minimal_global_store_return_and_entry_return_asm(
     std::string_view target_triple,
     const MinimalGlobalStoreReturnAndEntryReturnSlice& slice);
+std::optional<std::string> try_emit_minimal_global_store_return_and_entry_return_module(
+    const c4c::backend::bir::Module& module);
 std::optional<std::string> try_emit_minimal_global_two_field_struct_store_sub_sub_module(
     const c4c::backend::bir::Module& module);
 std::optional<std::string> try_emit_minimal_variadic_sum2_module(
