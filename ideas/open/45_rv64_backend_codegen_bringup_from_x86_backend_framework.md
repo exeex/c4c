@@ -61,6 +61,16 @@ This means the highest-leverage work is not "translate more Rust," but:
 The active inventory for this idea starts from the translated RV64 surface that
 already exists in-tree.
 
+### Compact Summary
+
+- translated top-level RV64 codegen units already present: `19`
+- translated assembler subtree already present
+- translated linker subtree already present
+- current observed build integration: no explicit `src/backend/riscv/*.cpp`
+  sources appear to be wired into `CMakeLists.txt`
+- immediate conclusion: RV64 is blocked by integration, not by missing
+  translation work
+
 ### Translated top-level RV64 codegen units
 
 - `src/backend/riscv/codegen/alu.cpp`
@@ -92,6 +102,28 @@ already exists in-tree.
 This list is the starting execution queue for RV64 integration. Future RV64
 work should consume items from this inventory rather than treating the tree as
 missing translation work.
+
+## First Activation Slice
+
+If this idea becomes active, the first slice should stay narrow:
+
+1. confirm the exact `CMakeLists.txt` delta needed to compile the first RV64
+   codegen cluster
+2. choose the minimum ownership cluster beneath `riscv/codegen/emit.cpp`
+   instead of the whole tree
+3. prefer this order for the first cluster:
+   - `mod.cpp`
+   - `emit.cpp`
+   - `returns.cpp`
+   - `prologue.cpp`
+   - `asm_emitter.cpp`
+
+Rationale:
+
+- these files are the shortest path to a real RV64 codegen entry boundary
+- they avoid widening immediately into memory, calls, atomics, and floating
+  point
+- they match the same integration-first logic now used by idea 43
 
 ## Goal
 
