@@ -1,6 +1,6 @@
 # Parser Symbol Tables And Speculative State Compaction
 
-Status: Open
+Status: Closed
 Last Updated: 2026-04-10
 
 ## Goal
@@ -79,3 +79,30 @@ At minimum:
 - no backend container migration
 - no repo-wide custom `string` / `vector` rollout
 - no parser grammar behavior change unless required to preserve correctness
+
+## Completion Notes
+
+Completed on 2026-04-10.
+
+This runbook completed the planned typedef/value symbol-table compaction slice:
+
+- grouped the parser-owned typedef/value tables under `Parser::ParserSymbolTables`
+- migrated the targeted speculative and parser-type/declaration call sites onto
+  parser-owned helpers and guards
+- removed the flattened compatibility bridge members from `Parser`
+- validated the refactor with targeted parser/frontend/HIR regressions plus
+  repeated monotonic full-suite `ctest` runs through 3360/3360 passing
+
+## Deferred Follow-On Surface
+
+The broader parser-state compaction theme remains open only as future work
+outside this runbook. The main deferred surfaces observed during execution are:
+
+- namespace / using-directive visibility state such as `current_namespace_`,
+  `namespace_contexts_`, `named_namespace_contexts_`,
+  `using_value_aliases_`, and `using_namespace_contexts_`
+- template-scope bookkeeping centered on `template_scope_stack_`
+- record-member typedef caching in `struct_typedefs_`
+
+Those areas were not required to finish the typedef/value symbol-table slice
+and should be handled in a separate idea if they are still worth pursuing.
