@@ -135,6 +135,26 @@ void test_backend_shared_call_decode_parses_bir_minimal_direct_call_module() {
               "shared call-decode surface should recover the helper return immediate for minimal BIR direct-call modules");
 }
 
+void test_x86_codegen_header_exports_translated_globals_owner_symbols() {
+  using X86Codegen = c4c::backend::x86::X86Codegen;
+
+  auto emit_global_addr = &X86Codegen::emit_global_addr_impl;
+  auto emit_tls_global_addr = &X86Codegen::emit_tls_global_addr_impl;
+  auto emit_global_addr_absolute = &X86Codegen::emit_global_addr_absolute_impl;
+  auto emit_global_load_rip_rel = &X86Codegen::emit_global_load_rip_rel_impl;
+  auto emit_global_store_rip_rel = &X86Codegen::emit_global_store_rip_rel_impl;
+  auto emit_label_addr = &X86Codegen::emit_label_addr_impl;
+  auto emit_store_result = &X86Codegen::emit_store_result_impl;
+  auto emit_load_operand = &X86Codegen::emit_load_operand_impl;
+
+  expect_true(emit_global_addr != nullptr && emit_tls_global_addr != nullptr &&
+                  emit_global_addr_absolute != nullptr &&
+                  emit_global_load_rip_rel != nullptr &&
+                  emit_global_store_rip_rel != nullptr && emit_label_addr != nullptr &&
+                  emit_store_result != nullptr && emit_load_operand != nullptr,
+              "x86 translated globals owner methods should stay link-reachable through the public x86_codegen surface once globals.cpp enters the build");
+}
+
 void test_backend_shared_call_decode_parses_bir_minimal_declared_direct_call_module() {
   c4c::backend::bir::Module module;
   module.string_constants.push_back(c4c::backend::bir::StringConstant{
@@ -3416,6 +3436,7 @@ void test_shared_linker_parses_single_member_archive_fixture() {
 int main(int argc, char* argv[]) {
   if (argc >= 2) test_filter() = argv[1];
   test_backend_shared_call_decode_parses_bir_minimal_direct_call_module();
+  test_x86_codegen_header_exports_translated_globals_owner_symbols();
   test_backend_shared_call_decode_parses_bir_minimal_declared_direct_call_module();
   test_backend_shared_call_decode_parses_bir_minimal_void_direct_call_imm_return_module();
   test_backend_shared_call_decode_parses_bir_minimal_two_arg_direct_call_module();

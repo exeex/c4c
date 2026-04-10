@@ -6,33 +6,30 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 1 reset: audit the dependency surface required to replace x86
-  `emit.cpp` with a direct port of
-  `ref/claudes-c-compiler/src/backend/x86/codegen/emit.rs`
+- Step 2 first compile-oriented migration cluster: wire the translated x86
+  `globals.cpp` owner unit into the active build without widening the real
+  emitter-owner switch yet
 - immediate target:
-  inventory the translated support units, `X86Codegen` state/method gaps, and
-  entry-path wiring required for a one-shot emitter-owner switch
-  - stop planning further testcase-shaped seam moves out of `emit.cpp`
-  - use focused backend regressions during the cutover, not the full
-    regression-guard rule
-  - keep idea 44 as the separate shared-BIR cleanup lane unless the emitter
-    switch directly deletes x86-local legacy ownership
+  add a narrow symbol/link smoke test for the translated globals-owner
+  methods, compile `src/backend/x86/codegen/globals.cpp` in the real build, and
+  keep the unit explicitly parked behind transitional stubs until the
+  exporter-backed `X86Codegen` state is promoted out of `emit.cpp`
+  - do not claim the owner switch is done just because the unit now builds
+  - keep the runtime path on the existing direct-global/native seams
+  - use the compile cluster to expose exactly which `X86Codegen` internals are
+    still hidden from translated top-level units
 
 ## Next Slice
 
-- produce a concrete dependency checklist from `emit.rs`:
-  which translated units must enter the build, which `X86Codegen` members must
-  be exposed or ported, and which current helper seams become obsolete
-- choose the first migration cluster that enables emitter-owner replacement
-  fastest, likely `emit.cpp` plus the directly referenced support units rather
-  than more `direct_*` sibling seams
-- once the checklist is explicit, start deleting legacy `emit.cpp` ownership in
-  cluster-sized ports instead of continuing bounded legacy matcher moves
+- promote the smallest real shared support surface out of `emit.cpp` so
+  `globals.cpp` can stop throwing transitional "unwired owner" failures and
+  start carrying behavior instead of symbol-only coverage
+- after that, repeat the same compile-cluster pattern for the next least-coupled
+  translated top-level owner unit, still expected to be `comparison.cpp` or
+  `returns.cpp`
 - keep validation centered on focused backend regressions during the cutover;
-  rerun the backend full-suite regression guard only after the legacy `emit.cpp`
-  owner path is removed
-- do not use frontend LLVM IR checks as a routine gate for backend-only
-  emitter work
+  rerun the backend full-suite regression guard after each compile-cluster
+  landing to ensure the added symbols do not perturb the existing failure set
 
 ## Current Iteration Notes
 
@@ -258,6 +255,27 @@ Source Plan: plan.md
 - added a focused backend regression that calls the new direct variadic helper
   seam explicitly so the Step 4 ownership move stays observable apart from the
   broader dispatcher path
+- 2026-04-10 Step 2 compile-cluster slice:
+  a direct standalone compile probe on `src/backend/x86/codegen/globals.cpp`
+  confirmed the first blocker is still exported-surface drift, not CMake wiring
+  - the translated unit could not compile because `X86Codegen` still hides
+    `state`, `store_rax_to`, and `operand_to_rax` behind the legacy
+    `emit.cpp` owner surface
+  - added a narrow backend shared-util smoke check that takes the addresses of
+    the translated globals-owner methods so link coverage fails if
+    `globals.cpp` drops out of either backend test target again
+  - wired `src/backend/x86/codegen/globals.cpp` into both backend source lists
+    and kept the methods as explicit transitional throws so accidental runtime
+    use fails loudly instead of silently faking behavior before the owner state
+    is exported
+- focused checks passed:
+  `./build/backend_shared_util_tests`
+  plus `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_direct_bir_minimal_scalar_global_load_end_to_end`
+  and `test_backend_bir_pipeline_drives_x86_direct_bir_minimal_scalar_global_store_reload_end_to_end`
+- the broad `ctest --test-dir build -j8 --output-on-failure` rerun remained
+  monotonic against `test_fail_before.log`; the regression guard reported
+  `1217` passed / `181` failed before versus `2723` passed / `181` failed
+  after, with no newly failing tests and no new `>30s` cases
 - focused checks passed:
   `./build/backend_bir_tests test_x86_direct_variadic_helper_accepts_variadic_sum2_runtime_slice`
   plus the existing prepared variadic sum2/double-byte filters
