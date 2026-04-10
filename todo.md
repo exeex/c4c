@@ -6,10 +6,9 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 4: inspect `src/codegen/lir/stmt_emitter_expr.cpp` as the refreshed
-  hotspot leader, with `src/codegen/lir/stmt_emitter_call.cpp` as the fallback
-  if the remaining `stmt_emitter_expr.cpp` helper families do not expose a
-  cleaner extraction seam than the residual call-lowering cluster.
+- Step 4: inspect `src/codegen/lir/stmt_emitter_call.cpp` as the immediate
+  fallback hotspot now that the remaining non-binary expression payload family
+  has been extracted from `src/codegen/lir/stmt_emitter_expr.cpp`.
 
 ## Completed
 
@@ -434,13 +433,10 @@ Source Plan: plan.md
 
 ## Next Slice
 
-- Inspect the remaining helper families inside
-  `src/codegen/lir/stmt_emitter_expr.cpp` first, because the refreshed hotspot
-  sweep now puts it back in the lead over both `stmt_emitter_call.cpp` and the
-  reduced `hir_templates.cpp`.
-- Keep `src/codegen/lir/stmt_emitter_call.cpp` as the immediate fallback if
-  `stmt_emitter_expr.cpp` no longer exposes a lower-risk seam than the
-  remaining call-lowering helpers.
+- Measure the refreshed optimized hotspot order now that
+  `src/codegen/lir/stmt_emitter_expr.cpp` has been reduced again.
+- Inspect `src/codegen/lir/stmt_emitter_call.cpp` next unless the refreshed
+  ranking unexpectedly leaves another frontend TU ahead of it.
 
 ## Blockers
 
@@ -457,7 +453,7 @@ Source Plan: plan.md
 - Step 2 is complete: the top-five hotspot tier is optimizer heavy rather than
   parse-heavy, though all five keep a meaningful `-fsyntax-only` floor.
 - The latest `ctest --test-dir build -j --output-on-failure` rerun passes
-  3328/3328 tests, and the monotonic regression guard remains green.
+  3334/3334 tests, and the monotonic regression guard remains green.
 - The first executed extraction slice reduced the hottest TU,
   `src/codegen/lir/stmt_emitter_expr.cpp`, by 1.219s on the optimized
   single-TU compile command.
@@ -566,3 +562,23 @@ Source Plan: plan.md
   `src/frontend/hir/hir_templates.cpp` at 2.953s, so the next
   highest-value slice should shift back to LIR helper extraction before
   returning to the remaining frontend seams.
+- Added `tests/c/internal/positive_case/ok_expr_access_misc_runtime.c` as
+  focused runtime coverage for member/index/ternary/sizeof lowering in the
+  remaining `stmt_emitter_expr.cpp` helper family.
+- Executed the sixteenth Step 4 slice by moving the remaining non-binary
+  expression payload helpers (`UnaryExpr`, `AssignExpr`, `CastExpr`,
+  `TernaryExpr`, `SizeofExpr`, `SizeofTypeExpr`, `LabelAddrExpr`,
+  `PendingConstevalExpr`, `IndexExpr`, and `MemberExpr`) out of
+  `src/codegen/lir/stmt_emitter_expr.cpp` into the new
+  `src/codegen/lir/stmt_emitter_expr_misc.cpp`.
+- Rebuilt after the split and re-ran focused coverage:
+  `positive_sema_ok_expr_access_misc_runtime_c` and
+  `positive_sema_ok_expr_unary_binary_runtime_c`.
+- Re-ran the full suite into `test_fail_after.log`; the regression guard
+  passed with 3330/3330 tests passing before and 3334/3334 after, with no new
+  failures.
+- Recorded the sixteenth before/after extraction measurement: compiling the
+  pre-split `src/codegen/lir/stmt_emitter_expr.cpp` from `HEAD` on the direct
+  optimized command took 3.471s, the post-split
+  `src/codegen/lir/stmt_emitter_expr.cpp` took 2.332s, and the new
+  `src/codegen/lir/stmt_emitter_expr_misc.cpp` compiled in 2.839s.
