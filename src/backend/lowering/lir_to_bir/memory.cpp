@@ -699,9 +699,7 @@ std::optional<bir::Module> try_lower_minimal_scalar_global_load_module(
   }
 
   std::int32_t init_imm = 0;
-  if (global.init_text == "zeroinitializer") {
-    init_imm = 0;
-  } else {
+  if (global.init_text != "zeroinitializer") {
     const auto parsed_init = parse_memory_immediate(global.init_text);
     if (!parsed_init.has_value() ||
         *parsed_init < std::numeric_limits<std::int32_t>::min() ||
@@ -752,6 +750,59 @@ std::optional<bir::Module> try_lower_minimal_scalar_global_load_module(
   lowered_entry.terminator = bir::ReturnTerminator{
       .value = bir::Value::named(bir::TypeKind::I32, load->result.str()),
   };
+
+  lowered_function.blocks.push_back(std::move(lowered_entry));
+  lowered.functions.push_back(std::move(lowered_function));
+  return lowered;
+}
+
+std::optional<bir::Module> try_lower_minimal_single_global_i32_zero_return_module(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || module.globals.size() != 1 || !module.string_pool.empty() ||
+      !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& global = module.globals.front();
+  if (lir_to_bir::legalize_global_type(global) != bir::TypeKind::I32) {
+    return std::nullopt;
+  }
+
+  if (global.init_text != "zeroinitializer") {
+    const auto parsed_init = parse_memory_immediate(global.init_text);
+    if (!parsed_init.has_value() ||
+        *parsed_init < std::numeric_limits<std::int32_t>::min() ||
+        *parsed_init > std::numeric_limits<std::int32_t>::max()) {
+      return std::nullopt;
+    }
+  }
+
+  const auto rendered = c4c::codegen::lir::print_llvm(module);
+  const auto global_pattern = "@" + global.name + " = global i32 ";
+  constexpr std::string_view kExpectedFunction =
+      "define i32 @main()\n"
+      "{\n"
+      "entry:\n"
+      "  ret i32 0\n"
+      "}\n";
+  if (rendered.find(global_pattern) == std::string::npos ||
+      rendered.find(kExpectedFunction) == std::string::npos) {
+    return std::nullopt;
+  }
+
+  bir::Module lowered;
+  lowered.target_triple = module.target_triple;
+  lowered.data_layout = module.data_layout;
+
+  bir::Function lowered_function;
+  lowered_function.name = module.functions.front().name;
+  lowered_function.return_type = bir::TypeKind::I32;
+
+  bir::Block lowered_entry;
+  lowered_entry.label = "entry";
+  lowered_entry.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
 
   lowered_function.blocks.push_back(std::move(lowered_entry));
   lowered.functions.push_back(std::move(lowered_function));

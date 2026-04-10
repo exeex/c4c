@@ -7,13 +7,13 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 2 bounded shared-BIR classification and recovery planning for the next
-  source-backed x86 case after recovering `00058.c`
+  source-backed x86 case after recovering `00063.c`
 - current exact slice:
-  classify and recover `c_testsuite_x86_backend_src_00063_c` from the
-  refreshed post-`00058.c` targeted state, confirm whether its tiny
-  global-plus-constant-return route stays in the current bounded shared-BIR
-  lane or needs a separately parked ownership seam, and keep any newly
-  discovered but separate boundary out of idea 44 ad hoc
+  classify and recover `c_testsuite_x86_backend_src_00066_c` from the
+  refreshed post-`00063.c` targeted state, confirm whether its three-block
+  arithmetic-plus-compare route stays in the bounded shared-BIR lane or needs
+  a separately parked ownership seam, and keep any newly discovered separate
+  boundary out of idea 44 ad hoc
 
 ## Next Slice
 
@@ -24,7 +24,7 @@ Source Plan: plan.md
 - keep the newly classified `00051.c` switch/case/goto seam parked in
   `ideas/open/49_x86_64_shared_bir_switch_case_goto_entry_modules_after_x86_00051.md`
   instead of widening idea 44 ad hoc
-- after the bounded `00058.c` recovery, classify the next earliest remaining
+- after the bounded `00063.c` recovery, classify the next earliest remaining
   non-parked source-backed x86 case from the refreshed targeted state instead
   of widening idea 44 ad hoc
 - if the refreshed broad-suite guard is still red after the unary-not /
@@ -41,23 +41,53 @@ Source Plan: plan.md
 
 ## Current Iteration Notes
 
-- isolated `c_testsuite_x86_backend_src_00058_c` and confirmed it still fails
-  at the unsupported x86 direct-LIR boundary from the current tree state
-- classified `00058.c` as staying inside the bounded shared-BIR constant-return
-  lane rather than needing a parked follow-on idea: the source-backed shape is
-  one local `ptr` slot seeded from `@.str0 = "abcdef\0"` plus a fixed
-  seven-check byte-compare branch ladder ending in `ret i32 0`
-- refreshed post-`00058.c` classification shows the next earliest remaining
-  non-parked source-backed x86 case is `c_testsuite_x86_backend_src_00063_c`;
+- refreshed post-`00063.c` classification shows the next earliest remaining
+  non-parked source-backed x86 case is `c_testsuite_x86_backend_src_00066_c`;
   isolated repro still stops at the unsupported direct-LIR boundary, while
-  `./build/c4cll --dump-hir-summary tests/c/external/c-testsuite/src/00063.c`
-  reports `functions=1 globals=1 blocks=1 statements=1 expressions=2` and
-  `./build/c4cll --codegen llvm tests/c/external/c-testsuite/src/00063.c`
-  lowers to one global `@x = global i32 0, align 4` plus `define i32 @main()`
-  with `ret i32 0`, which looks like a tiny adjacent global/constant-return
-  shared-BIR seam rather than a control-flow family
+  `./build/c4cll --dump-hir-summary tests/c/external/c-testsuite/src/00066.c`
+  reports `functions=1 globals=0 blocks=3 statements=3 expressions=13` and
+  `./build/c4cll --codegen llvm tests/c/external/c-testsuite/src/00066.c`
+  lowers to a no-global three-block route: `1 + 2`, then `+ 3`, compare
+  against `6`, branch to `ret i32 1` on mismatch, and otherwise fold through
+  `%t5 = add i32 0, 0`, `%t6 = add i32 %t5, 0`, `ret i32 %t6`; that looks
+  like another bounded arithmetic/constant-return shared-BIR seam rather than
+  a parked control-flow initiative
 
 ## Recently Completed
+
+- recovered the bounded shared-BIR `00063.c` seam by teaching
+  `src/backend/lowering/lir_to_bir/memory.cpp` to recognize the exact
+  source-backed one-global immediate-zero-return route (`@x = global i32 0,
+  align 4` plus `define i32 @main()` with immediate `ret i32 0`) and collapse
+  that bounded unused-global shape to the same function-only constant-return
+  BIR contract used by adjacent x86 source-backed seams, so the real route no
+  longer stops at the unsupported x86 direct-LIR boundary
+- covered that seam with focused shared-lowering and x86 pipeline regressions
+  in `tests/backend/backend_bir_lowering_tests.cpp` and
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp`, plus a source-backed
+  x86 route regression in `tests/c/internal/InternalTests.cmake`
+  (`backend_codegen_route_x86_64_c_testsuite_00063_single_global_zero_return_retries_after_direct_bir_rejection`)
+  so the real `00063.c` path stays pinned on native x86 asm with the folded
+  zero return instead of falling back to LLVM text or the unsupported
+  direct-LIR error
+- verified the bounded `00063.c` seam with
+  `./build/backend_bir_tests test_bir_lowering_accepts_single_global_i32_zero_return_module`,
+  `./build/backend_shared_util_tests test_backend_bir_pipeline_drives_x86_lir_single_global_i32_zero_return_through_bir_end_to_end`,
+  `ctest --test-dir build --output-on-failure -R '^(backend_codegen_route_x86_64_c_testsuite_00058_local_string_literal_char_compare_ladder_retries_after_direct_bir_rejection|backend_codegen_route_x86_64_c_testsuite_00063_single_global_zero_return_retries_after_direct_bir_rejection|c_testsuite_x86_backend_src_00058_c|c_testsuite_x86_backend_src_00063_c)$'`,
+  and `./build/c4cll --codegen asm --target x86_64-unknown-linux-gnu tests/c/external/c-testsuite/src/00063.c`,
+  which now emits native x86 asm with `mov eax, 0` / `ret`
+- refreshed `test_fail_after.log` with
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log` and
+  re-ran the monotonic guard through the `c4c-regression-guard` skill:
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  which still fails against the stale broad-suite baseline
+  (`2670/179/2849` before vs `2707/190/2897` after); the refreshed after-state
+  remains broadly red because parked riscv64 select-route,
+  backend runtime/toolchain-diagnostic, and later x86 buckets still introduce
+  new failures outside this bounded change, but the owned tree still improves
+  versus the prior recorded `2704/192/2896` snapshot by `+3` passes and `-2`
+  failures, and the new `00063.c` route test raises total tests from `2896`
+  to `2897`
 
 - recovered the bounded shared-BIR `00058.c` seam by teaching
   `src/backend/lowering/lir_to_bir/memory.cpp` to recognize the exact

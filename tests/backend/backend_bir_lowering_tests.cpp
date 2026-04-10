@@ -1315,6 +1315,32 @@ c4c::codegen::lir::LirModule make_global_x_y_pointer_compare_zero_return_module(
   return module;
 }
 
+c4c::codegen::lir::LirModule make_single_global_i32_zero_return_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.type_decls.push_back("%struct.__va_list_tag_ = type { i32, i32, ptr, ptr }");
+  module.globals.push_back(
+      LirGlobal{LirGlobalId{0}, "x", {}, false, false, "", "global ", "i32", "0", 4, false});
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.terminator = LirRet{std::string("0"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_global_anonymous_struct_field_compare_zero_return_module() {
   using namespace c4c::codegen::lir;
 
@@ -6016,6 +6042,27 @@ void test_bir_lowering_accepts_global_x_y_pointer_compare_zero_return_module() {
                   "the lowered three-global load-and-pointer-compare module should normalize the bounded `00045.c` source route to a single immediate zero return");
 }
 
+void test_bir_lowering_accepts_single_global_i32_zero_return_module() {
+  const auto lowered =
+      c4c::backend::try_lower_to_bir(make_single_global_i32_zero_return_module());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the bounded one-global immediate-zero-return slice through the shared constant-return contract");
+  if (!lowered.has_value()) {
+    return;
+  }
+
+  expect_true(lowered->globals.empty() && lowered->functions.size() == 1 &&
+                  lowered->functions.front().blocks.size() == 1 &&
+                  lowered->functions.front().blocks.front().insts.empty() &&
+                  lowered->functions.front().blocks.front().terminator.kind ==
+                      c4c::backend::bir::TerminatorKind::Return,
+              "the lowered one-global immediate-zero-return module should collapse the bounded unused-global slice to one canonical constant-return block");
+
+  const auto rendered = c4c::backend::bir::print(*lowered);
+  expect_contains(rendered, "bir.func @main() -> i32 {\nentry:\n  bir.ret i32 0\n}\n",
+                  "the lowered one-global immediate-zero-return module should normalize the bounded `00063.c` source route to a single immediate zero return");
+}
+
 void test_bir_lowering_accepts_global_anonymous_struct_field_compare_zero_return_module() {
   const auto lowered = c4c::backend::try_lower_to_bir(
       make_global_anonymous_struct_field_compare_zero_return_module());
@@ -9093,6 +9140,7 @@ void run_backend_bir_lowering_tests() {
       test_bir_lowering_accepts_local_shifted_enum_constant_compare_store_load_zero_return_module);
   RUN_TEST(test_bir_lowering_accepts_local_string_literal_char_compare_ladder_zero_return_module);
   RUN_TEST(test_bir_lowering_accepts_global_x_y_pointer_compare_zero_return_module);
+  RUN_TEST(test_bir_lowering_accepts_single_global_i32_zero_return_module);
   RUN_TEST(test_bir_lowering_accepts_global_anonymous_struct_field_compare_zero_return_module);
   RUN_TEST(test_bir_lowering_accepts_global_named_two_field_struct_designated_init_compare_zero_return_module);
   RUN_TEST(test_bir_lowering_accepts_global_named_int_pointer_struct_designated_init_compare_zero_return_module);
