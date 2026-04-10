@@ -642,6 +642,8 @@ std::string StmtEmitter::coerce(FnCtx& ctx, const std::string& val, const TypeSp
                                 const TypeSpec& to_ts) {
   const std::string ft = llvm_ty(from_ts);
   const std::string tt = llvm_ty(to_ts);
+  const TypeBase from_scalar_base = llvm_storage_base(from_ts);
+  const TypeBase to_scalar_base = llvm_storage_base(to_ts);
   if (tt == "ptr" && val == "0") return "null";
   if (ft == tt) return val;
   if (ft == "ptr" && tt == "ptr") return val;
@@ -695,13 +697,14 @@ std::string StmtEmitter::coerce(FnCtx& ctx, const std::string& val, const TypeSp
 
   if (from_ts.ptr_level == 0 && from_ts.array_rank == 0 && to_ts.ptr_level == 0 &&
       to_ts.array_rank == 0 && is_any_int(from_ts.base) && is_any_int(to_ts.base)) {
-    const int fb = int_bits(from_ts.base);
-    const int tb = int_bits(to_ts.base);
+    const int fb = int_bits(from_scalar_base);
+    const int tb = int_bits(to_scalar_base);
     if (fb == tb) return val;
     const std::string tmp = fresh_tmp(ctx);
     if (tb > fb) {
       const auto kind =
-          is_signed_int(from_ts.base) ? lir::LirCastKind::SExt : lir::LirCastKind::ZExt;
+          is_signed_int(from_scalar_base) ? lir::LirCastKind::SExt
+                                          : lir::LirCastKind::ZExt;
       emit_lir_op(ctx, lir::LirCastOp{tmp, kind, ft, val, tt});
     } else {
       emit_lir_op(ctx, lir::LirCastOp{tmp, lir::LirCastKind::Trunc, ft, val, tt});
@@ -723,7 +726,8 @@ std::string StmtEmitter::coerce(FnCtx& ctx, const std::string& val, const TypeSp
       to_ts.ptr_level == 0 && to_ts.array_rank == 0) {
     const std::string tmp = fresh_tmp(ctx);
     const auto kind =
-        is_signed_int(from_ts.base) ? lir::LirCastKind::SIToFP : lir::LirCastKind::UIToFP;
+        is_signed_int(from_scalar_base) ? lir::LirCastKind::SIToFP
+                                        : lir::LirCastKind::UIToFP;
     emit_lir_op(ctx, lir::LirCastOp{tmp, kind, ft, val, tt});
     return tmp;
   }
@@ -732,7 +736,8 @@ std::string StmtEmitter::coerce(FnCtx& ctx, const std::string& val, const TypeSp
       is_any_int(to_ts.base) && to_ts.ptr_level == 0) {
     const std::string tmp = fresh_tmp(ctx);
     const auto kind =
-        is_signed_int(to_ts.base) ? lir::LirCastKind::FPToSI : lir::LirCastKind::FPToUI;
+        is_signed_int(to_scalar_base) ? lir::LirCastKind::FPToSI
+                                      : lir::LirCastKind::FPToUI;
     emit_lir_op(ctx, lir::LirCastOp{tmp, kind, ft, val, tt});
     return tmp;
   }

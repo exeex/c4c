@@ -33,6 +33,58 @@ void ensure_function_slot(Module* module, FunctionId id) {
   }
 }
 
+bool normalize_zero_sized_struct_return_from_body(Module* module, Function* fn) {
+  if (!module || !fn) return false;
+  const TypeSpec ret_ts = fn->return_type.spec;
+  if (ret_ts.base != TB_STRUCT || !ret_ts.tag || !ret_ts.tag[0] ||
+      ret_ts.ptr_level != 0 || ret_ts.array_rank != 0 ||
+      ret_ts.is_lvalue_ref || ret_ts.is_rvalue_ref) {
+    return false;
+  }
+
+  auto sit = module->struct_defs.find(ret_ts.tag);
+  if (sit == module->struct_defs.end() || sit->second.size_bytes != 0) {
+    return false;
+  }
+
+  std::optional<TypeSpec> inferred;
+  for (const auto& block : fn->blocks) {
+    for (const auto& stmt : block.stmts) {
+      const auto* ret = std::get_if<ReturnStmt>(&stmt.payload);
+      if (!ret || !ret->expr) continue;
+      ExprId expr_id = *ret->expr;
+      auto eit = std::find_if(
+          module->expr_pool.begin(),
+          module->expr_pool.end(),
+          [&](const Expr& expr) { return expr.id.value == expr_id.value; });
+      if (eit == module->expr_pool.end()) continue;
+
+      const TypeSpec expr_ts = eit->type.spec;
+      if (expr_ts.base == TB_VOID || expr_ts.ptr_level > 0 ||
+          expr_ts.array_rank > 0 || expr_ts.is_lvalue_ref ||
+          expr_ts.is_rvalue_ref || expr_ts.base == TB_STRUCT ||
+          expr_ts.base == TB_UNION) {
+        return false;
+      }
+
+      if (!inferred) {
+        inferred = expr_ts;
+        continue;
+      }
+
+      std::unordered_map<std::string, TypeSpec> empty_typedefs;
+      if (!types_compatible_p(*inferred, expr_ts, empty_typedefs)) {
+        return false;
+      }
+    }
+  }
+
+  if (!inferred) return false;
+  fn->return_type.spec = *inferred;
+  fn->return_type.category = ValueCategory::RValue;
+  return true;
+}
+
 }  // namespace
 
 void Lowerer::register_bodyless_callable(Function&& fn) {
@@ -200,6 +252,7 @@ void Lowerer::lower_function(const Node* fn_node,
   }
 
   lower_stmt_node(ctx, fn_node->body);
+  normalize_zero_sized_struct_return_from_body(module_, &fn);
   finish_lowered_callable(&fn, entry);
 }
 
@@ -270,6 +323,34 @@ TypeSpec Lowerer::prepare_callable_return_type(
   ret_ts = substitute_signature_template_type(ret_ts, tpl_bindings);
   resolve_signature_template_type_if_needed(
       ret_ts, tpl_bindings, nttp_bindings, span_node, context_name);
+  while (resolve_struct_member_typedef_if_ready(&ret_ts)) {
+  }
+  if (ret_ts.deferred_member_type_name &&
+      ((ret_ts.tpl_struct_origin && ret_ts.tpl_struct_origin[0]) ||
+       (ret_ts.tag && ret_ts.tag[0]))) {
+    seed_pending_template_type(
+        ret_ts,
+        tpl_bindings ? *tpl_bindings : TypeBindings{},
+        nttp_bindings ? *nttp_bindings : NttpBindings{},
+        span_node,
+        PendingTemplateTypeKind::MemberTypedef,
+        context_name);
+    while (resolve_struct_member_typedef_if_ready(&ret_ts)) {
+    }
+  }
+  if (!ret_ts.deferred_member_type_name && ret_ts.ptr_level == 0 &&
+      ret_ts.array_rank == 0 && !ret_ts.is_lvalue_ref &&
+      !ret_ts.is_rvalue_ref && ret_ts.base == TB_STRUCT && ret_ts.tag &&
+      ret_ts.tag[0]) {
+    TypeSpec resolved_member{};
+    if (resolve_struct_member_typedef_type(ret_ts.tag, "type",
+                                           &resolved_member)) {
+      while (resolve_struct_member_typedef_if_ready(&resolved_member)) {
+      }
+      resolve_typedef_to_struct(resolved_member);
+      ret_ts = resolved_member;
+    }
+  }
   if (resolve_typedef_struct) resolve_typedef_to_struct(ret_ts);
   return ret_ts;
 }
@@ -287,6 +368,34 @@ void Lowerer::append_explicit_callable_param(
   param_ts = substitute_signature_template_type(param_ts, tpl_bindings);
   resolve_signature_template_type_if_needed(
       param_ts, tpl_bindings, nttp_bindings, param_node, context_name);
+  while (resolve_struct_member_typedef_if_ready(&param_ts)) {
+  }
+  if (param_ts.deferred_member_type_name &&
+      ((param_ts.tpl_struct_origin && param_ts.tpl_struct_origin[0]) ||
+       (param_ts.tag && param_ts.tag[0]))) {
+    seed_pending_template_type(
+        param_ts,
+        tpl_bindings ? *tpl_bindings : TypeBindings{},
+        nttp_bindings ? *nttp_bindings : NttpBindings{},
+        param_node,
+        PendingTemplateTypeKind::MemberTypedef,
+        context_name);
+    while (resolve_struct_member_typedef_if_ready(&param_ts)) {
+    }
+  }
+  if (!param_ts.deferred_member_type_name && param_ts.ptr_level == 0 &&
+      param_ts.array_rank == 0 && !param_ts.is_lvalue_ref &&
+      !param_ts.is_rvalue_ref && param_ts.base == TB_STRUCT && param_ts.tag &&
+      param_ts.tag[0]) {
+    TypeSpec resolved_member{};
+    if (resolve_struct_member_typedef_type(param_ts.tag, "type",
+                                           &resolved_member)) {
+      while (resolve_struct_member_typedef_if_ready(&resolved_member)) {
+      }
+      resolve_typedef_to_struct(resolved_member);
+      param_ts = resolved_member;
+    }
+  }
   if (resolve_typedef_struct) resolve_typedef_to_struct(param_ts);
 
   Param param{};
