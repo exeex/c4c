@@ -208,17 +208,30 @@ Source Plan: plan.md
   `tests/cpp/eastl/run_eastl_timeout_baseline.cmake`, then wired
   `cpp_eastl_memory_uses_allocator_timeout_baseline` into CTest so the current
   parser-debug timeout frontier is reproducible without the full memory driver.
+- Re-checked `eastl_vector_simple.cpp` directly and confirmed the old
+  parse-timeout recipe had gone stale: `--parse-only` now succeeds within the
+  workflow timeout, while `--dump-canonical` reaches the next real sema
+  cluster at `EASTL/vector.h:2066:2` (`operator_eq` / `operator_neq`) plus the
+  existing `allocator.h` incompatible-return and `memory.h` `eastl::size`
+  diagnostics shared with `eastl_memory_simple.cpp`.
+- Rebased `cpp_eastl_vector_parse_recipe` onto the shared positive
+  `run_eastl_parse_recipe.cmake` coverage, removed the obsolete
+  `run_eastl_vector_parse_recipe.cmake` helper, and updated
+  `tests/cpp/eastl/README.md` so the ladder records vector as a canonical/sema
+  frontier instead of a parse frontier.
 
 ## Next Slice
 
 - keep the new structured-binding feature gate in place and work from the
-  moved `eastl_memory_simple.cpp` canonical-timeout stage or the still-timing
-  out `eastl_vector_simple.cpp`, whichever produces the smaller next generic
-  mechanism
+  moved `eastl_memory_simple.cpp` / `eastl_vector_simple.cpp`
+  canonical-sema frontier, whichever yields the smaller next generic
+  mechanism from the shared `allocator.h` / `memory.h` / `vector.h`
+  diagnostic cluster
 - keep the new HIR re-entrant method-lowering regression green while working
-  back outward from the remaining EASTL timeout cases
-- use `eastl_vector_simple.cpp` as the primary remaining parse-timeout
-  comparison case now that the reduced memory frontier itself parses
+  back outward from the remaining EASTL canonical/sema cases
+- reduce the leading `eastl_vector_simple.cpp` semantic errors
+  (`operator_eq` / `operator_neq`, allocator return typing, or `eastl::size`)
+  to the smallest generic reproducer before touching broader container follow-up
 
 ## Blockers
 
@@ -227,9 +240,10 @@ Source Plan: plan.md
   a dedicated structured-binding implementation lands
 - `eastl_memory_simple.cpp` still times out under `--dump-canonical`, though
   the old parse timeout is gone
-- `eastl_vector_simple.cpp` also times out deeper in the stack, so it is not
-  yet clear whether vector or the later memory canonical path is the smaller
-  next mechanism
+- `eastl_vector_simple.cpp` now reaches a later sema failure cluster under
+  `--dump-canonical`, but it is still not clear whether the `vector.h`
+  comparison-operator errors or the shared `allocator.h` / `memory.h`
+  diagnostics are the smallest next generic mechanism
 
 ## Resume Notes
 
@@ -239,7 +253,8 @@ Source Plan: plan.md
 - `eastl_utility_simple.cpp` now passes both `--parse-only` and
   `--dump-canonical`
 - `eastl_tuple_simple.cpp` now also passes `--dump-canonical`, so the next
-  active EASTL frontier is back to the heavier parse timeout cases
+  active EASTL frontier is no longer parse-only; `eastl_vector_simple.cpp`
+  parses and now fails later in canonical/sema alongside `eastl_memory_simple.cpp`
 - focused parser coverage now exists for shadowed-name assignment dispatch
   under `tests/cpp/internal/postive_case/local_value_shadows_*`
 - focused parser coverage now also exists for out-of-class constructor-template

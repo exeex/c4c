@@ -1608,13 +1608,13 @@ add_test(
           -DROOT=${PROJECT_SOURCE_DIR}
           -DSRC=${PROJECT_SOURCE_DIR}/tests/cpp/eastl/eastl_vector_simple.cpp
           -DCASE_TIMEOUT_SEC=25
-          "-DEXPECT_FAIL_LOC:STRING=ref/EASTL/include/EASTL/internal/function.h:66:26"
-          "-DEXPECT_ERROR_SUBSTRING:STRING=object has incomplete type: eastl::internal::function_detail"
-          -P "${PROJECT_SOURCE_DIR}/tests/cpp/eastl/run_eastl_vector_parse_recipe.cmake"
+          -DEXPECT_SUCCESS=ON
+          -P "${PROJECT_SOURCE_DIR}/tests/cpp/eastl/run_eastl_parse_recipe.cmake"
 )
 set_tests_properties(cpp_eastl_vector_parse_recipe PROPERTIES
-  LABELS "internal;negative_case;cpp;workflow"
+  LABELS "internal;positive_case;cpp;workflow"
   TIMEOUT 45
+  RUN_SERIAL TRUE
 )
 
 add_test(

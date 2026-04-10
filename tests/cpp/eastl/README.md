@@ -27,15 +27,15 @@ Observed with `build/c4cll` on 2026-04-10:
 | `eastl_memory_simple.cpp` | `SEMA` | `build/c4cll --dump-canonical -I ref/EASTL/include -I ref/EABase/include/Common tests/cpp/eastl/eastl_memory_simple.cpp` | `--parse-only` now succeeds again. The active blocker has moved past the old parse timeout into a later canonical/sema timeout under the heavier libstdc++ / EASTL stack, so this case is no longer blocked on the structured-binding bridge. |
 | `eastl_memory_uses_allocator_frontier.cpp` | `PASS` | `build/c4cll --dump-canonical -I ref/EASTL/include -I ref/EABase/include/Common tests/cpp/eastl/eastl_memory_uses_allocator_frontier.cpp` | Reduced header-only memory frontier now completes through both `--parse-only` and `--dump-canonical`. The old timeout was caused by the unsupported structured-binding bridge in `EASTL/utility.h` / `EASTL/tuple.h`, which is now disabled by predefined `EA_COMPILER_NO_STRUCTURED_BINDING` for C++ source profiles. |
 | `eastl_tuple_simple.cpp` | `PASS` | `build/c4cll --dump-canonical -I ref/EASTL/include -I ref/EABase/include/Common tests/cpp/eastl/eastl_tuple_simple.cpp` | `--parse-only` still succeeds, and `--dump-canonical` now completes within the old timeout window after the re-entrant template-method HIR fix that also unblocked `eastl_utility_simple.cpp`. This case is no longer the smallest active frontier. |
-| `eastl_vector_simple.cpp` | `PARSE` | `build/c4cll --parse-only -I ref/EASTL/include -I ref/EABase/include/Common tests/cpp/eastl/eastl_vector_simple.cpp` | The old `ref/EASTL/include/EASTL/internal/function_detail.h:237:16` dot-token parser blocker and the later `ref/EASTL/include/EASTL/internal/function.h:66:26` incomplete-type cluster are both gone. The current `--parse-only` and `--dump-canonical` workflows now time out under the deeper libstdc++ / EASTL stack with no replacement terminal diagnostic yet, so the next frontier needs a fresh reduction from the heavier timeout path. |
+| `eastl_vector_simple.cpp` | `SEMA` | `build/c4cll --dump-canonical -I ref/EASTL/include -I ref/EABase/include/Common tests/cpp/eastl/eastl_vector_simple.cpp` | `--parse-only` now succeeds again within the workflow timeout, so the old parser timeout and incomplete-type frontier are gone. `--dump-canonical` now reaches a real semantic cluster instead, starting with `ref/EASTL/include/EASTL/vector.h:2066:2: error: conflicting types for function 'operator_eq'`, then the same `allocator.h:210:16` incompatible-return and `memory.h` `eastl::size` failures already visible from `eastl_memory_simple.cpp`. |
 
 Current explicit workflow coverage:
 
 - `run_eastl_parse_recipe.cmake`: reusable parse-only recipe for expected success
   or expected parser failure.
-- `run_eastl_vector_parse_recipe.cmake`: negative workflow recipe for the
-  current `eastl_vector_simple.cpp` timeout-based parse frontier while the next
-  reduced blocker is still being isolated.
+- `cpp_eastl_vector_parse_recipe`: positive parse-only workflow coverage for
+  `eastl_vector_simple.cpp` now that the old parser timeout frontier is gone
+  and the case reaches a later canonical/sema failure.
 - `run_eastl_type_traits_simple_workflow.cmake`: older end-to-end workflow kept
   for future reactivation once the current `is_complete_type__spec_167` /
   `function_detail.h` frontiers move.
