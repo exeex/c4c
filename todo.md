@@ -6,27 +6,28 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 2 first compile-oriented migration cluster: wire the translated x86
-  `globals.cpp` owner unit into the active build without widening the real
-  emitter-owner switch yet
+- Step 2 next shared-support promotion after the landed translated
+  `globals.cpp` compile cluster: move the smallest real globals-owner helper
+  surface out of `emit.cpp` so `src/backend/x86/codegen/globals.cpp` can start
+  carrying behavior instead of transitional unwired-owner stubs
 - immediate target:
-  add a narrow symbol/link smoke test for the translated globals-owner
-  methods, compile `src/backend/x86/codegen/globals.cpp` in the real build, and
-  keep the unit explicitly parked behind transitional stubs until the
-  exporter-backed `X86Codegen` state is promoted out of `emit.cpp`
-  - do not claim the owner switch is done just because the unit now builds
-  - keep the runtime path on the existing direct-global/native seams
-  - use the compile cluster to expose exactly which `X86Codegen` internals are
-    still hidden from translated top-level units
+  port the narrowest helper/state dependency needed for one real translated
+  globals-owner behavior slice while keeping the runtime path bounded and
+  observable
+  - do not claim the owner switch is done just because one globals helper
+    starts carrying real behavior
+  - keep the surrounding runtime path on the existing direct-global/native seams
+    except for the exact helper promotion covered by the slice
+  - use the promotion to expose which `X86Codegen` internals still need to move
+    out of `emit.cpp` before the full translated emitter owner can take over
 
 ## Next Slice
 
-- promote the smallest real shared support surface out of `emit.cpp` so
-  `globals.cpp` can stop throwing transitional "unwired owner" failures and
-  start carrying behavior instead of symbol-only coverage
-- after that, repeat the same compile-cluster pattern for the next least-coupled
-  translated top-level owner unit, still expected to be `comparison.cpp` or
-  `returns.cpp`
+- land one real translated globals-owner behavior slice behind focused backend
+  coverage so the compile cluster stops being symbol-only
+- after that, repeat the same bounded migration pattern for the next
+  least-coupled translated top-level owner unit, still expected to be
+  `comparison.cpp` or `returns.cpp`
 - keep validation centered on focused backend regressions during the cutover;
   rerun the backend full-suite regression guard after each compile-cluster
   landing to ensure the added symbols do not perturb the existing failure set
@@ -700,3 +701,16 @@ Source Plan: plan.md
   monotonic against `test_fail_before.log`; the regression guard reported
   `2723` passed / `181` failed after with no newly failing tests, and the
   existing `backend_bir_tests` `>30s` warning remained the only timeout note
+- 2026-04-10 verification refresh:
+  the current tree already matches the first `globals.cpp` compile-cluster goal
+  that had still been listed as active work above
+  - `src/backend/x86/codegen/globals.cpp` is already in the real build and
+    remains parked behind transitional unwired-owner stubs
+  - `tests/backend/backend_shared_util_tests.cpp` already carries the narrow
+    translated-globals symbol/link smoke coverage
+  - focused validation passed:
+    `./build/backend_shared_util_tests x86_codegen_header_exports_translated_globals_owner`
+    and `ctest --test-dir build -R backend_shared_util_tests --output-on-failure`
+  - broad validation remained monotonic against `test_fail_before.log`; the
+    matched rerun in `test_fail_after.log` kept the same `181` failing tests
+    with no newly failing cases
