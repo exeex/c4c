@@ -7,20 +7,23 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 3 continue expanding the translated x86 peephole subtree beyond the
-  newly live memory-fold slice
+  newly live memory-fold and callee-save slices
 - immediate target:
-  choose the next bounded translated peephole pass after the newly activated
-  `memory_fold.cpp` slice
-  - keep callee-save and frame-compaction work parked until a future iteration
-    explicitly opts into ABI-sensitive peephole cleanup
-  - keep any required classifier/parser expansion explicit instead of silently
-    widening the current memory-fold slice
+  reassess the remaining parked Step 3 inventory after the newly activated
+  `callee_saves.cpp` slice
+  - keep `frame_compact.cpp` parked until a future iteration can prove a real
+    shrink/rewrite shape instead of enabling the current placeholder pass
+  - keep any additional classifier/parser expansion explicit instead of
+    silently widening the new callee-save slice
 
 ## Next Slice
 
-- after the memory-fold slice, evaluate whether the next bounded candidate
-  should stay in the non-ABI-sensitive lane or whether Step 3 now needs an
-  explicit opt-in for `callee_saves.cpp`
+- with `callee_saves.cpp` now live, decide whether Step 3 still has a bounded
+  remaining translated peephole slice or whether ownership transfer should
+  move back toward Step 4 top-level codegen integration
+- keep `frame_compact.cpp` parked until dead-store and callee-save cleanup
+  expose a concrete safe shrink shape instead of enabling the placeholder pass
+  by default
 - keep the remaining stack-load family intentionally parked behind the current
   `%rax`/`%eax` predecessor-store and fallthrough rules unless a future slice
   proves one more explicit safe shape
@@ -37,6 +40,20 @@ Source Plan: plan.md
 - the current question is not "what more should be translated"
 - the current question is "which already-translated x86 codegen pieces can be
   made real and reachable first"
+- this iteration activates the parked translated callee-save cleanup slice in
+  the real x86 peephole build and post-pass orchestration without enabling the
+  still-placeholder frame-compaction pass
+- `peephole/passes/callee_saves.cpp` now compiles as part of the real build,
+  runs after the existing optimization rounds, and removes an unused callee-
+  saved register save even when an earlier live pass already deleted the
+  matching restore
+- the new direct regression keeps the current frame-size boundary explicit: the
+  callee-save save/restore pair is removed, but `subq $N, %rsp` remains parked
+  until a future frame-compaction slice owns stack-slot rewriting
+- the full-suite regression guard stayed monotonic for this slice:
+  `2723` passed / `181` failed before and after, with no newly failing tests;
+  the guard again reported one `>30s` test (`backend_bir_tests`), matching the
+  existing harness instability rather than a new regression
 - current evidence shows most of `src/backend/x86/codegen/*.cpp` is still not
   in the build, while `emit.cpp` remains the practical owner of x86 emission
 - the active inventory for this plan is now explicit inside idea 43:

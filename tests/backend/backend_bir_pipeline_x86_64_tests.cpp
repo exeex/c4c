@@ -9650,6 +9650,32 @@ void test_x86_peephole_keeps_stack_load_when_alu_destination_matches_loaded_regi
                       "x86 peephole should not fold a load into an ALU instruction whose destination is the loaded register");
 }
 
+void test_x86_peephole_eliminates_unused_callee_save_restore_pair() {
+  const std::string input =
+      ".text\n"
+      "helper:\n"
+      "  pushq %rbp\n"
+      "  movq %rsp, %rbp\n"
+      "  subq $16, %rsp\n"
+      "  movq %rbx, -8(%rbp)\n"
+      "  movl $1, %eax\n"
+      "  movq -8(%rbp), %rbx\n"
+      "  movq %rbp, %rsp\n"
+      "  popq %rbp\n"
+      "  ret\n"
+      ".size helper, .-helper\n";
+
+  const auto optimized = c4c::backend::x86::codegen::peephole::peephole_optimize(input);
+  expect_not_contains(optimized, "  movq %rbx, -8(%rbp)\n",
+                      "x86 peephole should drop an unused callee-saved register spill once the translated callee-save pass is live");
+  expect_not_contains(optimized, "  movq -8(%rbp), %rbx\n",
+                      "x86 peephole should drop the matching epilogue restore when the saved callee-saved register is never referenced in the body");
+  expect_contains(optimized, "  subq $16, %rsp\n",
+                  "x86 peephole should keep the original frame allocation parked while frame compaction remains out of scope");
+  expect_contains(optimized, "  movl $1, %eax\n",
+                  "x86 peephole should preserve the function body while removing only the dead callee-save save/restore pair");
+}
+
 void test_x86_direct_emitter_routes_minimal_countdown_loop_through_peephole() {
   const auto rendered = c4c::backend::x86::emit_module(make_minimal_countdown_loop_bir_module());
 
@@ -10127,6 +10153,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_x86_peephole_converts_simple_epilogue_call_into_tail_jump);
   RUN_TEST(test_x86_peephole_folds_bounded_stack_load_into_alu_source_operand);
   RUN_TEST(test_x86_peephole_keeps_stack_load_when_alu_destination_matches_loaded_register);
+  RUN_TEST(test_x86_peephole_eliminates_unused_callee_save_restore_pair);
   RUN_TEST(test_x86_direct_emitter_routes_minimal_countdown_loop_through_peephole);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_param_slot_add_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_extern_zero_arg_call_slice);
