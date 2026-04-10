@@ -59,6 +59,8 @@ std::optional<bir::Module> try_lower_minimal_call_crossing_direct_call_module(
     const c4c::codegen::lir::LirModule& module);
 std::optional<bir::Module> try_lower_minimal_string_literal_strlen_sub_module(
     const c4c::codegen::lir::LirModule& module);
+std::optional<bir::Module> try_lower_minimal_string_literal_char_sub_module(
+    const c4c::codegen::lir::LirModule& module);
 bir::CallInst make_direct_call_inst(std::string callee,
                                     bir::CallingConv calling_convention,
                                     bool is_variadic,

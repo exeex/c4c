@@ -1911,6 +1911,116 @@ std::optional<bir::Module> try_lower_minimal_string_literal_strlen_sub_module(
   return lowered;
 }
 
+std::optional<bir::Module> try_lower_minimal_string_literal_char_sub_module(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (!module.globals.empty() || module.string_pool.size() != 1 || !module.extern_decls.empty() ||
+      module.functions.size() != 1) {
+    return std::nullopt;
+  }
+
+  const auto& string_constant = module.string_pool.front();
+  if (string_constant.pool_name.empty() || string_constant.byte_length <= 0) {
+    return std::nullopt;
+  }
+
+  const std::string string_array_type =
+      "[" + std::to_string(string_constant.byte_length) + " x i8]";
+  const std::string decoded_bytes = decode_call_llvm_byte_string(string_constant.raw_bytes);
+
+  const auto& main_function = module.functions.front();
+  if (main_function.is_declaration ||
+      !lir_function_matches_minimal_no_param_integer_return(main_function, 32) ||
+      main_function.entry.value != 0 || main_function.blocks.size() != 1 ||
+      main_function.alloca_insts.size() > 1 || !main_function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* slot =
+      main_function.alloca_insts.empty() ? nullptr
+                                         : std::get_if<LirAllocaOp>(&main_function.alloca_insts.front());
+  if (slot != nullptr &&
+      (slot->result.empty() || slot->type_str != "ptr" || !slot->count.empty())) {
+    return std::nullopt;
+  }
+
+  const auto& entry = main_function.blocks.front();
+  const auto* ret = std::get_if<LirRet>(&entry.terminator);
+  const bool has_slot_roundtrip = entry.insts.size() == 8;
+  const bool has_direct_base = entry.insts.size() == 6;
+  const auto* base_gep =
+      (has_slot_roundtrip || has_direct_base) ? std::get_if<LirGepOp>(&entry.insts[0]) : nullptr;
+  const auto* store = has_slot_roundtrip ? std::get_if<LirStoreOp>(&entry.insts[1]) : nullptr;
+  const auto* reload = has_slot_roundtrip ? std::get_if<LirLoadOp>(&entry.insts[2]) : nullptr;
+  const auto* index_cast = std::get_if<LirCastOp>(&entry.insts[has_slot_roundtrip ? 3 : 1]);
+  const auto* byte_gep = std::get_if<LirGepOp>(&entry.insts[has_slot_roundtrip ? 4 : 2]);
+  const auto* load = std::get_if<LirLoadOp>(&entry.insts[has_slot_roundtrip ? 5 : 3]);
+  const auto* extend = std::get_if<LirCastOp>(&entry.insts[has_slot_roundtrip ? 6 : 4]);
+  const auto* sub = std::get_if<LirBinOp>(&entry.insts[has_slot_roundtrip ? 7 : 5]);
+  if (entry.label != "entry" || ret == nullptr || base_gep == nullptr || index_cast == nullptr ||
+      byte_gep == nullptr || load == nullptr || extend == nullptr || sub == nullptr ||
+      base_gep->result.empty() || index_cast->result.empty() || byte_gep->result.empty() ||
+      load->result.empty() ||
+      extend->result.empty() || sub->result.empty() || !ret->value_str.has_value() ||
+      *ret->value_str != sub->result || ret->type_str != "i32" ||
+      lower_function_return_type(main_function, *ret) != bir::TypeKind::I32 ||
+      !match_memory_string_base_gep_zero(*base_gep, string_constant.pool_name, string_array_type) ||
+      !match_memory_sext_i32_to_i64_immediate(*index_cast).has_value() ||
+      !match_memory_indexed_gep_from_result(*byte_gep,
+                                            has_slot_roundtrip ? reload->result.str()
+                                                               : base_gep->result.str(),
+                                            "i8",
+                                            index_cast->result.str()) ||
+      load->type_str != "i8" || load->ptr != byte_gep->result ||
+      (extend->kind != LirCastKind::SExt && extend->kind != LirCastKind::ZExt) ||
+      extend->from_type != "i8" || extend->operand != load->result || extend->to_type != "i32" ||
+      sub->opcode.typed() != LirBinaryOpcode::Sub || sub->lhs != extend->result ||
+      !backend_lir_type_is_i32(sub->type_str)) {
+    return std::nullopt;
+  }
+  if (has_slot_roundtrip &&
+      (slot == nullptr || store == nullptr || reload == nullptr || reload->result.empty() ||
+       store->type_str != "ptr" || store->val != base_gep->result || store->ptr != slot->result ||
+       reload->type_str != "ptr" || reload->ptr != slot->result)) {
+    return std::nullopt;
+  }
+
+  const auto byte_index = parse_backend_i64_literal(index_cast->operand);
+  const auto sub_imm = parse_backend_i64_literal(sub->rhs);
+  if (!byte_index.has_value() || !sub_imm.has_value() || *byte_index < 0 ||
+      static_cast<std::size_t>(*byte_index) >= decoded_bytes.size()) {
+    return std::nullopt;
+  }
+
+  const unsigned char raw_char = static_cast<unsigned char>(decoded_bytes[static_cast<std::size_t>(*byte_index)]);
+  std::int64_t char_value = static_cast<std::int64_t>(raw_char);
+  if (extend->kind == LirCastKind::SExt && (raw_char & 0x80u) != 0) {
+    char_value -= 0x100;
+  }
+  const auto return_imm = char_value - *sub_imm;
+  if (return_imm < std::numeric_limits<std::int32_t>::min() ||
+      return_imm > std::numeric_limits<std::int32_t>::max()) {
+    return std::nullopt;
+  }
+
+  bir::Module lowered;
+  lowered.target_triple = module.target_triple;
+  lowered.data_layout = module.data_layout;
+
+  bir::Function lowered_function;
+  lowered_function.name = main_function.name;
+  lowered_function.return_type = bir::TypeKind::I32;
+
+  bir::Block lowered_entry;
+  lowered_entry.label = "entry";
+  lowered_entry.terminator.value =
+      bir::Value::immediate_i32(static_cast<std::int32_t>(return_imm));
+  lowered_function.blocks.push_back(std::move(lowered_entry));
+  lowered.functions.push_back(std::move(lowered_function));
+  return lowered;
+}
+
 void record_call_lowering_scaffold_notes(const c4c::codegen::lir::LirModule& module,
                                          std::vector<BirLoweringNote>* notes) {
   (void)module;

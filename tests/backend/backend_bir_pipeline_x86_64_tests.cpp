@@ -2118,6 +2118,39 @@ c4c::codegen::lir::LirModule make_lir_string_literal_strlen_sub_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_lir_string_literal_char_sub_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.string_pool.push_back(LirStringConst{"@.str0", "hello", 6});
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.p", "ptr", "", 8});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{"%t0", "[6 x i8]", "@.str0", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirStoreOp{"ptr", "%t0", "%lv.p"});
+  entry.insts.push_back(LirLoadOp{"%t1", "ptr", "%lv.p"});
+  entry.insts.push_back(LirCastOp{"%t2", LirCastKind::SExt, "i32", "0", "i64"});
+  entry.insts.push_back(LirGepOp{"%t3", "i8", "%t1", false, {"i64 %t2"}});
+  entry.insts.push_back(LirLoadOp{"%t4", "i8", "%t3"});
+  entry.insts.push_back(LirCastOp{"%t5", LirCastKind::SExt, "i8", "%t4", "i32"});
+  entry.insts.push_back(LirBinOp{"%t6", "sub", "i32", "%t5", "104"});
+  entry.terminator = LirRet{std::string("%t6"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_lir_minimal_void_direct_call_imm_return_module() {
   using namespace c4c::codegen::lir;
 
@@ -3110,6 +3143,36 @@ void test_backend_bir_pipeline_drives_x86_lir_string_literal_strlen_sub_through_
                       "x86 LIR string-literal strlen/sub input should no longer depend on the unsupported direct-LIR call shape after shared lowering");
   expect_not_contains(rendered, "target triple =",
                       "x86 LIR string-literal strlen/sub input should stay on native asm emission instead of falling back to LLVM text");
+}
+
+void test_backend_bir_pipeline_drives_x86_lir_string_literal_char_sub_through_bir_end_to_end() {
+  const auto lowered_bir =
+      c4c::backend::try_lower_to_bir(make_lir_string_literal_char_sub_module());
+  expect_true(lowered_bir.has_value(),
+              "x86 LIR string-literal char/sub input should now lower into the bounded shared constant-return route");
+  if (!lowered_bir.has_value()) {
+    return;
+  }
+
+  expect_true(lowered_bir->functions.size() == 1 &&
+                  lowered_bir->functions.front().blocks.size() == 1 &&
+                  lowered_bir->functions.front().blocks.front().insts.empty() &&
+                  lowered_bir->functions.front().blocks.front().terminator.kind ==
+                      c4c::backend::bir::TerminatorKind::Return &&
+                  lowered_bir->functions.front().blocks.front().terminator.value ==
+                      c4c::backend::bir::Value::immediate_i32(0),
+              "x86 LIR string-literal char/sub lowering should collapse the exact private-string indexed-load route to the shared zero return");
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_lir_string_literal_char_sub_module()},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, "mov eax, 0",
+                  "x86 LIR string-literal char/sub input should materialize the folded zero result on the native backend path");
+  expect_not_contains(rendered, "movsx eax, byte ptr",
+                      "x86 LIR string-literal char/sub input should no longer depend on the unsupported direct-LIR indexed-load shape after shared lowering");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR string-literal char/sub input should stay on native asm emission instead of falling back to LLVM text");
 }
 
 void test_backend_bir_pipeline_drives_x86_direct_bir_minimal_countdown_loop_end_to_end() {
@@ -5338,6 +5401,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_void_direct_call_imm_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_declared_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_string_literal_strlen_sub_through_bir_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_string_literal_char_sub_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_add_imm_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_identity_arg_through_bir_end_to_end);
