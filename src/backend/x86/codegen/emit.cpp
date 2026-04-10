@@ -52,18 +52,6 @@ struct MinimalScalarGlobalStoreReloadSlice {
   std::size_t align_bytes = 4;
 };
 
-struct MinimalGlobalStoreReturnAndEntryReturnSlice {
-  std::string global_name;
-  std::string helper_name;
-  std::string entry_name;
-  std::int64_t init_imm = 0;
-  std::int64_t store_imm = 0;
-  std::int64_t helper_imm = 0;
-  std::int64_t entry_imm = 0;
-  std::size_t align_bytes = 4;
-  bool zero_initializer = false;
-};
-
 struct MinimalGlobalTwoFieldStructStoreSubSubSlice {
   std::string function_name;
   std::string global_name;
@@ -2901,48 +2889,6 @@ std::string emit_global_symbol_prelude(std::string_view target_triple,
     out << ".p2align " << (align_bytes == 2 ? 1 : 2) << "\n";
   }
   out << symbol_name << ":\n";
-  return out.str();
-}
-
-std::string emit_minimal_global_store_return_and_entry_return_asm(
-    std::string_view target_triple,
-    const MinimalGlobalStoreReturnAndEntryReturnSlice& slice) {
-  if (slice.init_imm < std::numeric_limits<std::int32_t>::min() ||
-      slice.init_imm > std::numeric_limits<std::int32_t>::max() ||
-      slice.store_imm < std::numeric_limits<std::int32_t>::min() ||
-      slice.store_imm > std::numeric_limits<std::int32_t>::max() ||
-      slice.helper_imm < std::numeric_limits<std::int32_t>::min() ||
-      slice.helper_imm > std::numeric_limits<std::int32_t>::max() ||
-      slice.entry_imm < std::numeric_limits<std::int32_t>::min() ||
-      slice.entry_imm > std::numeric_limits<std::int32_t>::max()) {
-    throw std::invalid_argument(
-        "x86 backend emitter does not support this direct BIR module; only the affine-return subset lowers natively");
-  }
-
-  const auto global_symbol = asm_symbol_name(target_triple, slice.global_name);
-  const auto helper_symbol = asm_symbol_name(target_triple, slice.helper_name);
-  const auto entry_symbol = asm_symbol_name(target_triple, slice.entry_name);
-  std::ostringstream out;
-  out << ".intel_syntax noprefix\n"
-      << emit_global_symbol_prelude(target_triple, global_symbol, slice.align_bytes,
-                                    slice.zero_initializer);
-  if (slice.zero_initializer) {
-    out << "  .zero 4\n";
-  } else {
-    out << "  .long " << slice.init_imm << "\n";
-  }
-  if (target_triple.find("apple-darwin") == std::string::npos) {
-    out << ".size " << global_symbol << ", 4\n";
-  }
-  out << ".text\n"
-      << emit_function_prelude(target_triple, helper_symbol)
-      << "  lea rax, " << global_symbol << "[rip]\n"
-      << "  mov dword ptr [rax], " << slice.store_imm << "\n"
-      << "  mov eax, " << slice.helper_imm << "\n"
-      << "  ret\n"
-      << emit_function_prelude(target_triple, entry_symbol)
-      << "  mov eax, " << slice.entry_imm << "\n"
-      << "  ret\n";
   return out.str();
 }
 

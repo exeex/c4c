@@ -6,12 +6,12 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 4 begin transferring one bounded x86 top-level ownership seam out of
-  `emit.cpp` now that the translated peephole subtree is effectively live
+- Step 4 continue transferring one bounded x86 top-level ownership seam out of
+  `emit.cpp` now that the direct-global sibling file owns one more reachable
+  route
 - immediate target:
-  move the scalar global direct-emission cluster into a sibling x86 codegen
-  unit without trying to compile the still-placeholder full translated
-  `globals.cpp` surface
+  identify the next bounded top-level x86 ownership transfer that can move out
+  of `emit.cpp` and compile cleanly against the current transitional headers
   - keep `globals.cpp` itself parked until `X86Codegen` grows the state/method
     surface it still references
   - keep `frame_compact.cpp` parked until a future iteration can prove a real
@@ -21,6 +21,8 @@ Source Plan: plan.md
 
 - continue Step 4 by identifying the next bounded top-level x86 ownership
   transfer that can compile cleanly against the current transitional headers
+  after the new direct-global helper/entry-return seam lands in
+  `direct_globals.cpp`
 - keep `frame_compact.cpp` parked until dead-store and callee-save cleanup
   expose a concrete safe shrink shape instead of enabling the placeholder pass
   by default
@@ -40,6 +42,18 @@ Source Plan: plan.md
 - Step 3 is now effectively complete apart from the intentionally parked
   `frame_compact.cpp` placeholder, so this iteration moves back to Step 4
   ownership transfer instead of widening the peephole matcher surface again
+- this iteration extends the direct-global sibling seam one bounded step
+  further: the two-function `store global in helper; return immediate in both
+  helper and entry` route now lives in `src/backend/x86/codegen/direct_globals.cpp`
+  instead of `emit.cpp`
+- added a new direct x86 BIR regression that pins the helper store plus the
+  independent entry return so this Step 4 ownership move stays observable on
+  the native path
+- the focused `./build/backend_bir_tests global_store_return_and_entry_return`
+  regression passed after the ownership move
+- the broad `ctest --test-dir build -j8 --output-on-failure` rerun remained
+  monotonic against `test_fail_before.log`; the regression guard reported
+  `2723` passed / `181` failed before and after with no newly failing tests
 - this iteration moves the bounded scalar-global direct-emission seam out of
   `emit.cpp` into `src/backend/x86/codegen/direct_globals.cpp`, covering the
   native scalar global load, extern scalar global load, and scalar global
@@ -229,6 +243,13 @@ Source Plan: plan.md
 
 ## Recently Completed
 
+- extended `src/backend/x86/codegen/direct_globals.cpp` to own the bounded
+  two-function global store plus independent entry-return direct-BIR route
+- moved `MinimalGlobalStoreReturnAndEntryReturnSlice` ownership out of
+  `emit.cpp` into `x86_codegen.hpp` so the sibling direct-global unit can own
+  that emitter seam cleanly
+- added a direct x86 BIR regression for the helper-global-store plus entry-
+  return route and wired it into `backend_bir_tests`
 - started Step 4 ownership transfer after the translated peephole subtree
   reached the real x86 path
 - moved the bounded scalar-global direct-emission cluster out of `emit.cpp`

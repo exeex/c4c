@@ -378,6 +378,18 @@ struct X86Codegen {
                            const std::vector<Operand>& args);
 };
 
+struct MinimalGlobalStoreReturnAndEntryReturnSlice {
+  std::string global_name;
+  std::string helper_name;
+  std::string entry_name;
+  std::int64_t init_imm = 0;
+  std::int64_t store_imm = 0;
+  std::int64_t helper_imm = 0;
+  std::int64_t entry_imm = 0;
+  std::size_t align_bytes = 4;
+  bool zero_initializer = false;
+};
+
 const char* phys_reg_name(c4c::backend::PhysReg reg);
 const char* phys_reg_name_32(c4c::backend::PhysReg reg);
 std::string asm_symbol_name(std::string_view target_triple, std::string_view logical_name);
@@ -397,6 +409,9 @@ std::string emit_minimal_scalar_global_store_reload_slice_asm(std::string_view t
                                                               std::int64_t init_imm,
                                                               std::int64_t store_imm,
                                                               std::size_t align_bytes);
+std::string emit_minimal_global_store_return_and_entry_return_asm(
+    std::string_view target_triple,
+    const MinimalGlobalStoreReturnAndEntryReturnSlice& slice);
 c4c::backend::RegAllocIntegrationResult run_shared_x86_regalloc(
     const c4c::backend::LivenessInput& liveness_input);
 
