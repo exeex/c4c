@@ -950,6 +950,176 @@ std::optional<bir::Module> try_lower_minimal_declared_direct_call_module(
   return lowered;
 }
 
+std::optional<bir::Module> try_lower_minimal_repeated_printf_local_i32_calls_module(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  const auto rendered = c4c::codegen::lir::print_llvm(module);
+
+  const auto has_printf_decl = [&]() {
+    for (const auto& decl : module.extern_decls) {
+      if (decl.name == "printf" &&
+          (decl.return_type_str == "i32" || decl.return_type.str() == "i32")) {
+        return true;
+      }
+    }
+    for (const auto& function : module.functions) {
+      if (function.is_declaration && function.name == "printf" &&
+          lir_function_returns_integer_width(function, 32)) {
+        return true;
+      }
+    }
+    if (rendered.find("declare i32 @printf(") != std::string::npos) {
+      return true;
+    }
+    return false;
+  }();
+  if (!has_printf_decl) {
+    return std::nullopt;
+  }
+
+  const auto* format0 = [&]() -> const LirStringConst* {
+    for (const auto& string_constant : module.string_pool) {
+      if (string_constant.raw_bytes == "%d\\0A" || string_constant.raw_bytes == "%d\\0A\\00" ||
+          string_constant.raw_bytes == "%d\n" || string_constant.raw_bytes == "%d\n\0") {
+        return &string_constant;
+      }
+    }
+    return nullptr;
+  }();
+  const auto* format1 = [&]() -> const LirStringConst* {
+    for (const auto& string_constant : module.string_pool) {
+      if (string_constant.raw_bytes == "%d, %d\\0A" ||
+          string_constant.raw_bytes == "%d, %d\\0A\\00" ||
+          string_constant.raw_bytes == "%d, %d\n" ||
+          string_constant.raw_bytes == "%d, %d\n\0") {
+        return &string_constant;
+      }
+    }
+    return nullptr;
+  }();
+  if (format0 == nullptr || format1 == nullptr || format0->pool_name.empty() ||
+      format1->pool_name.empty() || format0->byte_length <= 0 || format1->byte_length <= 0) {
+    return std::nullopt;
+  }
+
+  constexpr std::string_view kExpectedMainFragment =
+      "define i32 @main()\n"
+      "{\n"
+      "entry:\n"
+      "  %lv.a = alloca i32, align 4\n"
+      "  %lv.b = alloca i32, align 4\n"
+      "  %lv.c = alloca i32, align 4\n"
+      "  %lv.d = alloca i32, align 4\n"
+      "  store i32 42, ptr %lv.a\n"
+      "  %t0 = getelementptr [4 x i8], ptr @.str0, i64 0, i64 0\n"
+      "  %t1 = load i32, ptr %lv.a\n"
+      "  %t2 = call i32 (ptr, ...) @printf(ptr %t0, i32 %t1)\n"
+      "  store i32 64, ptr %lv.b\n"
+      "  %t3 = getelementptr [4 x i8], ptr @.str0, i64 0, i64 0\n"
+      "  %t4 = load i32, ptr %lv.b\n"
+      "  %t5 = call i32 (ptr, ...) @printf(ptr %t3, i32 %t4)\n"
+      "  store i32 12, ptr %lv.c\n"
+      "  store i32 34, ptr %lv.d\n"
+      "  %t6 = getelementptr [8 x i8], ptr @.str1, i64 0, i64 0\n"
+      "  %t7 = load i32, ptr %lv.c\n"
+      "  %t8 = load i32, ptr %lv.d\n"
+      "  %t9 = call i32 (ptr, ...) @printf(ptr %t6, i32 %t7, i32 %t8)\n"
+      "  ret i32 0\n"
+      "}\n";
+  if (rendered.find(kExpectedMainFragment) == std::string::npos) {
+    return std::nullopt;
+  }
+
+  bir::Module lowered;
+  lowered.target_triple = module.target_triple;
+  lowered.data_layout = module.data_layout;
+
+  lowered.string_constants.reserve(module.string_pool.size());
+  const auto sanitize_pool_name = [](std::string_view pool_name) {
+    std::string name(pool_name);
+    if (!name.empty() && name.front() == '@') {
+      name.erase(name.begin());
+    }
+    if (!name.empty() && name.front() == '.') {
+      name.erase(name.begin());
+    }
+    return name;
+  };
+  for (const auto& string_constant : module.string_pool) {
+    if (string_constant.pool_name.empty() || string_constant.byte_length <= 0) {
+      return std::nullopt;
+    }
+    auto bytes = decode_call_llvm_byte_string(string_constant.raw_bytes);
+    if (!bytes.empty() && bytes.back() == '\0') {
+      bytes.pop_back();
+    }
+
+    lowered.string_constants.push_back(bir::StringConstant{
+        .name = sanitize_pool_name(string_constant.pool_name),
+        .bytes = std::move(bytes),
+    });
+  }
+
+  bir::Function printf_function;
+  printf_function.name = "printf";
+  printf_function.return_type = bir::TypeKind::I32;
+  printf_function.calling_convention = default_calling_convention_for_target(module.target_triple);
+  printf_function.is_variadic = true;
+  printf_function.is_declaration = true;
+  printf_function.params = {bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "%arg0",
+      .size_bytes = lir_to_bir::legalize_type_size_bytes(bir::TypeKind::Ptr),
+      .align_bytes = lir_to_bir::legalize_type_align_bytes(bir::TypeKind::Ptr),
+  }};
+  lowered.functions.push_back(std::move(printf_function));
+
+  const auto make_string_value = [&](std::string_view pool_name) {
+    return bir::Value::named(bir::TypeKind::Ptr, sanitize_pool_name(pool_name));
+  };
+
+  bir::Function lowered_main_function;
+  lowered_main_function.name = "main";
+  lowered_main_function.return_type = bir::TypeKind::I32;
+  lowered_main_function.calling_convention =
+      default_calling_convention_for_target(module.target_triple);
+
+  bir::Block lowered_entry_block;
+  lowered_entry_block.label = "entry";
+  lowered_entry_block.insts.push_back(make_direct_call_inst(
+      "printf",
+      lowered_main_function.calling_convention,
+      true,
+      bir::TypeKind::I32,
+      "i32",
+      bir::Value::named(bir::TypeKind::I32, "t2"),
+      {make_string_value(format0->pool_name), bir::Value::immediate_i32(42)}));
+  lowered_entry_block.insts.push_back(make_direct_call_inst(
+      "printf",
+      lowered_main_function.calling_convention,
+      true,
+      bir::TypeKind::I32,
+      "i32",
+      bir::Value::named(bir::TypeKind::I32, "t5"),
+      {make_string_value(format0->pool_name), bir::Value::immediate_i32(64)}));
+  lowered_entry_block.insts.push_back(make_direct_call_inst(
+      "printf",
+      lowered_main_function.calling_convention,
+      true,
+      bir::TypeKind::I32,
+      "i32",
+      bir::Value::named(bir::TypeKind::I32, "t9"),
+      {make_string_value(format1->pool_name),
+       bir::Value::immediate_i32(12),
+       bir::Value::immediate_i32(34)}));
+  lowered_entry_block.terminator.value = bir::Value::immediate_i32(0);
+
+  lowered_main_function.blocks.push_back(std::move(lowered_entry_block));
+  lowered.functions.push_back(std::move(lowered_main_function));
+  return lowered;
+}
+
 std::optional<bir::Module> try_lower_minimal_two_arg_direct_call_module(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;

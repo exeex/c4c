@@ -7,12 +7,12 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 2 bounded shared-BIR classification and recovery planning for the next
-  source-backed `00056.c` x86 case after recovering `00055.c`
+  source-backed x86 case after recovering `00056.c`
 - current exact slice:
-  classify and recover `c_testsuite_x86_backend_src_00056_c` through the
-  smallest owned seam exposed by the refreshed targeted state after the bounded
-  `00055.c` recovery, while keeping any newly discovered but separate
-  ownership seam parked instead of widening idea 44 ad hoc
+  classify `c_testsuite_x86_backend_src_00058_c` from the refreshed
+  post-`00056.c` targeted state, confirm whether it stays in the current
+  bounded x86/native lane or needs a separately parked ownership seam, and
+  keep any newly discovered but separate boundary out of idea 44 ad hoc
 
 ## Next Slice
 
@@ -24,9 +24,9 @@ Source Plan: plan.md
   `ideas/open/49_x86_64_shared_bir_switch_case_goto_entry_modules_after_x86_00051.md`
   instead of widening idea 44 ad hoc
 - keep the next earliest remaining non-parked source-backed x86 case as
-  `00056.c` from the refreshed targeted state after the bounded `00055.c`
+  `00058.c` from the refreshed targeted state after the bounded `00056.c`
   recovery
-- if `00056.c` turns out to need a different ownership seam than its initial
+- if `00058.c` turns out to need a different ownership seam than its initial
   classification, record that boundary explicitly before widening
 - if the refreshed broad-suite guard is still red after the unary-not /
   unary-minus, early source-backed recoveries, and the bounded `00041.c`
@@ -41,6 +41,51 @@ Source Plan: plan.md
   before choosing the next bounded seam
 
 ## Recently Completed
+
+- recovered the bounded shared-BIR `00056.c` seam by teaching
+  `src/backend/lowering/lir_to_bir/calls.cpp` to recognize the exact
+  source-backed repeated-`printf` local-slot route: four local `i32` allocas,
+  fixed `42/64/12/34` stores, two `%d\n` string-base GEPs, one `%d, %d\n`
+  string-base GEP, three direct variadic `printf` calls fed by matching
+  `load i32` values, and `ret i32 0`; the route now lowers into three shared
+  BIR variadic calls plus a constant zero return instead of stopping at the
+  unsupported x86 direct-LIR boundary, while normalizing source-generated
+  declaration noise plus trailing-NUL string-pool payloads to the same bounded
+  matcher shape as the focused regression fixture
+- taught `src/backend/x86/codegen/emit.cpp` the smallest direct-BIR emitter
+  slice for that exact lowered `printf` trio so successful shared-BIR lowering
+  no longer falls back to the unsupported x86 direct-LIR boundary during
+  native asm emission
+- covered that seam with focused shared-lowering and x86 pipeline regressions
+  in `tests/backend/backend_bir_lowering_tests.cpp` and
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp`, plus a source-backed
+  x86 route regression in `tests/c/internal/InternalTests.cmake`
+  (`backend_codegen_route_x86_64_c_testsuite_00056_repeated_printf_local_i32_calls_retries_after_direct_bir_rejection`)
+  so the real `00056.c` path stays pinned on native x86 asm with preserved
+  rodata format strings and the expected integer-register `printf` payloads
+- verified the bounded `00056.c` seam with
+  `./build/backend_bir_tests test_bir_lowering_accepts_repeated_printf_local_i32_calls_lir_module`,
+  `./build/backend_shared_util_tests test_backend_bir_pipeline_drives_x86_lir_repeated_printf_local_i32_calls_through_bir_end_to_end`,
+  `ctest --test-dir build --output-on-failure -R '^(backend_codegen_route_x86_64_c_testsuite_00053_local_paired_single_field_struct_compare_retries_after_direct_bir_rejection|c_testsuite_x86_backend_src_00053_c|backend_codegen_route_x86_64_c_testsuite_00056_repeated_printf_local_i32_calls_retries_after_direct_bir_rejection|c_testsuite_x86_backend_src_00056_c)$'`,
+  and `./build/c4cll --codegen asm tests/c/external/c-testsuite/src/00056.c`,
+  which now emits native x86 asm with the preserved `printf` calls and
+  `mov eax, 0` / `ret`
+- refreshed `test_fail_after.log` with
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log` and
+  re-ran the monotonic guard through the `c4c-regression-guard` skill:
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  which still fails against the stale broad-suite baseline
+  (`2670/179/2849` before vs `2702/193/2895` after); the refreshed after-state
+  remains broadly red because parked riscv64 select-route, backend
+  runtime/toolchain-diagnostic, and later x86 buckets still introduce new
+  failures outside this bounded change, but the owned tree still improves
+  versus the prior recorded `2700/194/2894` snapshot by `+2` passes and `-1`
+  failure, and the new `00056.c` route test raises total tests from `2894` to
+  `2895`
+- classified the next bounded seam from the refreshed targeted state as
+  `c_testsuite_x86_backend_src_00058_c`, now the earliest remaining non-parked
+  failing source-backed x86 case after the bounded `00056.c` recovery, while
+  `00040.c` and `00051.c` stay parked in their separate open ideas
 
 - recovered the bounded shared-BIR `00055.c` seam by teaching
   `src/backend/lowering/lir_to_bir/memory.cpp` to accept the adjacent shifted

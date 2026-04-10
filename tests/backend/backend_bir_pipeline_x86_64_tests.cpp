@@ -3698,6 +3698,91 @@ c4c::codegen::lir::LirModule make_lir_source_like_repeated_printf_immediates_mod
   return module;
 }
 
+c4c::codegen::lir::LirModule make_lir_source_like_repeated_printf_local_i32_calls_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.string_pool.push_back(LirStringConst{"@.str0", "%d\\0A", 4});
+  module.string_pool.push_back(LirStringConst{"@.str1", "%d, %d\\0A", 8});
+  module.globals.push_back(LirGlobal{
+      LirGlobalId{0},
+      "stdin",
+      {},
+      false,
+      false,
+      "external ",
+      "global ",
+      "ptr",
+      "",
+      8,
+      true,
+  });
+  module.globals.push_back(LirGlobal{
+      LirGlobalId{1},
+      "stdout",
+      {},
+      false,
+      false,
+      "external ",
+      "global ",
+      "ptr",
+      "",
+      8,
+      true,
+  });
+  module.globals.push_back(LirGlobal{
+      LirGlobalId{2},
+      "stderr",
+      {},
+      false,
+      false,
+      "external ",
+      "global ",
+      "ptr",
+      "",
+      8,
+      true,
+  });
+  module.extern_decls.push_back(LirExternDecl{"printf", "i32", "i32"});
+  module.extern_decls.push_back(LirExternDecl{"fprintf", "i32", "i32"});
+  module.extern_decls.push_back(LirExternDecl{"puts", "i32", "i32"});
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.a", "i32", "", 4});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.b", "i32", "", 4});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.c", "i32", "", 4});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.d", "i32", "", 4});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{"i32", "42", "%lv.a"});
+  entry.insts.push_back(LirGepOp{"%t0", "[4 x i8]", "@.str0", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirLoadOp{"%t1", "i32", "%lv.a"});
+  entry.insts.push_back(LirCallOp{"%t2", "i32", "@printf", "(ptr, ...)", "ptr %t0, i32 %t1"});
+  entry.insts.push_back(LirStoreOp{"i32", "64", "%lv.b"});
+  entry.insts.push_back(LirGepOp{"%t3", "[4 x i8]", "@.str0", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirLoadOp{"%t4", "i32", "%lv.b"});
+  entry.insts.push_back(LirCallOp{"%t5", "i32", "@printf", "(ptr, ...)", "ptr %t3, i32 %t4"});
+  entry.insts.push_back(LirStoreOp{"i32", "12", "%lv.c"});
+  entry.insts.push_back(LirStoreOp{"i32", "34", "%lv.d"});
+  entry.insts.push_back(LirGepOp{"%t6", "[8 x i8]", "@.str1", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirLoadOp{"%t7", "i32", "%lv.c"});
+  entry.insts.push_back(LirLoadOp{"%t8", "i32", "%lv.d"});
+  entry.insts.push_back(LirCallOp{"%t9", "i32", "@printf", "(ptr, ...)", "ptr %t6, i32 %t7, i32 %t8"});
+  entry.terminator = LirRet{std::string("0"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_lir_minimal_extern_scalar_global_load_module() {
   using namespace c4c::codegen::lir;
 
@@ -6264,6 +6349,48 @@ void test_backend_bir_pipeline_drives_x86_source_like_repeated_printf_immediates
                       "source-like x86 LIR repeated printf-immediates input should stay on native asm emission instead of falling back to LLVM text");
 }
 
+void test_backend_bir_pipeline_drives_x86_lir_repeated_printf_local_i32_calls_through_bir_end_to_end() {
+  const auto lowered_bir =
+      c4c::backend::try_lower_to_bir(make_lir_source_like_repeated_printf_local_i32_calls_module());
+  expect_true(lowered_bir.has_value(),
+              "source-like x86 LIR repeated printf local-i32 input should now lower into the bounded shared BIR variadic-call route");
+  if (!lowered_bir.has_value()) {
+    return;
+  }
+
+  expect_true(lowered_bir->functions.size() == 2 &&
+                  lowered_bir->functions.front().is_declaration &&
+                  lowered_bir->functions.front().name == "printf" &&
+                  lowered_bir->functions.back().blocks.size() == 1 &&
+                  lowered_bir->functions.back().blocks.front().insts.size() == 3,
+              "x86 LIR repeated printf local-i32 lowering should produce one variadic printf declaration plus three BIR call instructions");
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_lir_source_like_repeated_printf_local_i32_calls_module()},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".section .rodata",
+                  "x86 LIR repeated printf local-i32 input should preserve both format strings through the BIR-owned route");
+  expect_contains(rendered, ".asciz \"%d\\n\"",
+                  "x86 LIR repeated printf local-i32 input should preserve the first format bytes on the native x86 path");
+  expect_contains(rendered, ".asciz \"%d, %d\\n\"",
+                  "x86 LIR repeated printf local-i32 input should preserve the second format bytes on the native x86 path");
+  expect_contains(rendered, "mov esi, 42",
+                  "x86 LIR repeated printf local-i32 input should lower the first printf payload through integer argument registers on the BIR-owned route");
+  expect_contains(rendered, "mov esi, 64",
+                  "x86 LIR repeated printf local-i32 input should lower the second printf payload through integer argument registers on the BIR-owned route");
+  expect_contains(rendered, "mov esi, 12",
+                  "x86 LIR repeated printf local-i32 input should lower the first argument of the final printf through integer argument registers on the BIR-owned route");
+  expect_contains(rendered, "mov edx, 34",
+                  "x86 LIR repeated printf local-i32 input should lower the second argument of the final printf through integer argument registers on the BIR-owned route");
+  expect_contains(rendered, "call printf",
+                  "x86 LIR repeated printf local-i32 input should lower all three variadic calls on the native x86 path");
+  expect_contains(rendered, "mov eax, 0",
+                  "x86 LIR repeated printf local-i32 input should preserve the constant zero return on the BIR-owned route");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR repeated printf local-i32 input should stay on native asm emission instead of falling back to LLVM text");
+}
+
 void test_backend_bir_pipeline_drives_x86_lir_minimal_extern_scalar_global_load_through_bir_end_to_end() {
   const auto lowered_bir =
       c4c::backend::try_lower_to_bir(make_lir_minimal_extern_scalar_global_load_module());
@@ -8365,6 +8492,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_counted_printf_ternary_loop_on_native_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_source_like_local_buffer_string_copy_printf_on_native_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_source_like_repeated_printf_immediates_on_native_path);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_repeated_printf_local_i32_calls_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_extern_scalar_global_load_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_global_char_pointer_diff_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_global_int_pointer_diff_through_bir_end_to_end);

@@ -3992,6 +3992,92 @@ make_bir_declared_direct_call_zero_arg_vararg_typed_decl_metadata_lir_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_bir_repeated_printf_local_i32_calls_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.string_pool.push_back(LirStringConst{"@.str0", "%d\\0A", 4});
+  module.string_pool.push_back(LirStringConst{"@.str1", "%d, %d\\0A", 8});
+  module.globals.push_back(LirGlobal{
+      LirGlobalId{0},
+      "stdin",
+      {},
+      false,
+      false,
+      "external ",
+      "global ",
+      "ptr",
+      "",
+      8,
+      true,
+  });
+  module.globals.push_back(LirGlobal{
+      LirGlobalId{1},
+      "stdout",
+      {},
+      false,
+      false,
+      "external ",
+      "global ",
+      "ptr",
+      "",
+      8,
+      true,
+  });
+  module.globals.push_back(LirGlobal{
+      LirGlobalId{2},
+      "stderr",
+      {},
+      false,
+      false,
+      "external ",
+      "global ",
+      "ptr",
+      "",
+      8,
+      true,
+  });
+  module.extern_decls.push_back(LirExternDecl{"printf", "i32", "i32"});
+  module.extern_decls.push_back(LirExternDecl{"fprintf", "i32", "i32"});
+  module.extern_decls.push_back(LirExternDecl{"puts", "i32", "i32"});
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.return_type.base = c4c::TB_INT;
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.a", "i32", "", 4});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.b", "i32", "", 4});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.c", "i32", "", 4});
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.d", "i32", "", 4});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{"i32", "42", "%lv.a"});
+  entry.insts.push_back(LirGepOp{"%t0", "[4 x i8]", "@.str0", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirLoadOp{"%t1", "i32", "%lv.a"});
+  entry.insts.push_back(LirCallOp{"%t2", "i32", "@printf", "(ptr, ...)", "ptr %t0, i32 %t1"});
+  entry.insts.push_back(LirStoreOp{"i32", "64", "%lv.b"});
+  entry.insts.push_back(LirGepOp{"%t3", "[4 x i8]", "@.str0", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirLoadOp{"%t4", "i32", "%lv.b"});
+  entry.insts.push_back(LirCallOp{"%t5", "i32", "@printf", "(ptr, ...)", "ptr %t3, i32 %t4"});
+  entry.insts.push_back(LirStoreOp{"i32", "12", "%lv.c"});
+  entry.insts.push_back(LirStoreOp{"i32", "34", "%lv.d"});
+  entry.insts.push_back(LirGepOp{"%t6", "[8 x i8]", "@.str1", false, {"i64 0", "i64 0"}});
+  entry.insts.push_back(LirLoadOp{"%t7", "i32", "%lv.c"});
+  entry.insts.push_back(LirLoadOp{"%t8", "i32", "%lv.d"});
+  entry.insts.push_back(LirCallOp{"%t9", "i32", "@printf", "(ptr, ...)", "ptr %t6, i32 %t7, i32 %t8"});
+  entry.terminator = LirRet{std::string("0"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_bir_minimal_void_direct_call_imm_return_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -4988,6 +5074,46 @@ void test_bir_lowering_uses_typed_zero_arg_vararg_declared_direct_call_metadata_
                   parsed->args.empty() &&
                   parsed->return_call_result,
               "the lowered BIR module should preserve the zero-arg declared vararg direct-call structure from typed metadata");
+}
+
+void test_bir_lowering_accepts_repeated_printf_local_i32_calls_lir_module() {
+  const auto lowered =
+      c4c::backend::try_lower_to_bir(make_bir_repeated_printf_local_i32_calls_lir_module());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the bounded repeated printf local-i32 source-like LIR slice");
+  if (!lowered.has_value()) {
+    return;
+  }
+
+  expect_true(lowered->string_constants.size() == 2 &&
+                  lowered->functions.size() == 2 &&
+                  lowered->functions.front().is_declaration &&
+                  lowered->functions.front().name == "printf" &&
+                  lowered->functions.back().blocks.size() == 1 &&
+                  lowered->functions.back().blocks.front().insts.size() == 3,
+              "the lowered repeated printf local-i32 BIR module should preserve two decoded format strings, one variadic printf declaration, and three call instructions in main");
+
+  const auto& main_block = lowered->functions.back().blocks.front();
+  const auto* first_call = std::get_if<c4c::backend::bir::CallInst>(&main_block.insts[0]);
+  const auto* second_call = std::get_if<c4c::backend::bir::CallInst>(&main_block.insts[1]);
+  const auto* third_call = std::get_if<c4c::backend::bir::CallInst>(&main_block.insts[2]);
+  expect_true(first_call != nullptr && second_call != nullptr && third_call != nullptr &&
+                  first_call->is_variadic && second_call->is_variadic && third_call->is_variadic &&
+                  first_call->args.size() == 2 &&
+                  first_call->args[0] ==
+                      c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::Ptr, "str0") &&
+                  first_call->args[1] == c4c::backend::bir::Value::immediate_i32(42) &&
+                  second_call->args.size() == 2 &&
+                  second_call->args[0] ==
+                      c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::Ptr, "str0") &&
+                  second_call->args[1] == c4c::backend::bir::Value::immediate_i32(64) &&
+                  third_call->args.size() == 3 &&
+                  third_call->args[0] ==
+                      c4c::backend::bir::Value::named(c4c::backend::bir::TypeKind::Ptr, "str1") &&
+                  third_call->args[1] == c4c::backend::bir::Value::immediate_i32(12) &&
+                  third_call->args[2] == c4c::backend::bir::Value::immediate_i32(34) &&
+                  main_block.terminator.value == c4c::backend::bir::Value::immediate_i32(0),
+              "the lowered repeated printf local-i32 BIR module should preserve the three fixed integer call payloads and the constant zero return");
 }
 
 void test_bir_lowering_accepts_minimal_void_direct_call_imm_return_lir_module() {
@@ -9024,6 +9150,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_uses_typed_extern_declared_direct_call_metadata_when_text_is_stale);
   RUN_TEST(test_bir_lowering_uses_actual_fixed_vararg_call_types_for_declared_direct_calls);
   RUN_TEST(test_bir_lowering_uses_typed_zero_arg_vararg_declared_direct_call_metadata_when_text_is_stale);
+  RUN_TEST(test_bir_lowering_accepts_repeated_printf_local_i32_calls_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_scalar_global_load_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_repeated_zero_arg_call_compare_zero_return_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_string_literal_compare_phi_return_lir_module);

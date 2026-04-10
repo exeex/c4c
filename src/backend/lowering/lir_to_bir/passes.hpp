@@ -45,6 +45,8 @@ bool lir_function_returns_integer_width(
     unsigned bit_width);
 std::optional<bir::Module> try_lower_minimal_declared_direct_call_module(
     const c4c::codegen::lir::LirModule& module);
+std::optional<bir::Module> try_lower_minimal_repeated_printf_local_i32_calls_module(
+    const c4c::codegen::lir::LirModule& module);
 std::optional<bir::Module> try_lower_minimal_two_arg_direct_call_module(
     const c4c::codegen::lir::LirModule& module);
 std::optional<bir::Module> try_lower_minimal_direct_call_add_imm_module(
