@@ -11,7 +11,7 @@ Source Plan: plan.md
 - immediate target:
   move one bounded direct-BIR parse/asm family out of
   `src/backend/x86/codegen/emit.cpp`, with the immediate preference on the
-  minimal immediate-return cluster or the countdown-loop slice
+  minimal immediate-return cluster
   - add focused direct-helper tests for the moved BIR owner path and keep one
     dispatcher-visible regression so the extraction remains observable outside
     end-to-end x86 emission tests
@@ -21,13 +21,30 @@ Source Plan: plan.md
 ## Next Slice
 
 - prune the next remaining `emit.cpp`-local ownership cluster after this local
-  helper extraction, likely one bounded direct-BIR parse/asm family such as
-  the minimal immediate-return cluster or the countdown-loop slice
+  helper extraction, likely the bounded direct-BIR minimal immediate-return
+  family
 - keep using focused backend regressions and only rerun the broad monotonic
   guard once the bigger x86 owner switch settles
 
 ## Current Iteration Notes
 
+- this iteration moved the bounded direct-BIR countdown-loop parse/asm owner
+  out of `src/backend/x86/codegen/emit.cpp` into the new sibling owner file
+  `src/backend/x86/codegen/direct_loops.cpp` through
+  `try_emit_minimal_countdown_loop_module(...)`
+- the direct-BIR helper dispatcher in
+  `src/backend/x86/codegen/direct_dispatch.cpp` now routes the countdown-loop
+  slice through that sibling owner file, and `emit.cpp` no longer keeps the
+  local countdown-loop matcher or asm emitter
+- added focused backend coverage that calls the moved countdown-loop helper
+  explicitly so the Step 3 BIR ownership move stays observable outside the
+  end-to-end x86 pipeline tests
+- focused validation passed:
+  `cmake --build build -j8 --target backend_shared_util_tests backend_bir_tests`,
+  `./build/backend_shared_util_tests`,
+  `./build/backend_bir_tests test_x86_direct_bir_helper_accepts_minimal_countdown_loop_slice`,
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_direct_bir_minimal_countdown_loop_end_to_end`, and
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_lir_minimal_countdown_loop_through_bir_end_to_end`
 - this iteration moved the prepared-LIR `constant_branch` and `local_temp`
   parse/asm helpers out of `src/backend/x86/codegen/emit.cpp` into the new
   sibling owner file `src/backend/x86/codegen/direct_locals.cpp` through

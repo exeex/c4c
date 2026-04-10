@@ -4,6 +4,9 @@ namespace c4c::backend::x86 {
 
 std::optional<std::string> try_emit_direct_bir_helper_module(
     const c4c::backend::bir::Module& module) {
+  if (const auto asm_text = try_emit_minimal_countdown_loop_module(module); asm_text.has_value()) {
+    return asm_text;
+  }
   if (const auto asm_text = try_emit_minimal_scalar_global_load_module(module);
       asm_text.has_value()) {
     return asm_text;

@@ -231,6 +231,89 @@ c4c::codegen::lir::LirModule make_supported_x86_local_arg_call_lir_module() {
   return module;
 }
 
+c4c::backend::bir::Module make_supported_x86_minimal_countdown_loop_bir_module() {
+  using namespace c4c::backend::bir;
+
+  Module module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  Function function;
+  function.name = "main";
+  function.return_type = TypeKind::I32;
+  function.local_slots.push_back(LocalSlot{
+      .name = "slot",
+      .type = TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(StoreLocalInst{
+      .slot_name = "slot",
+      .value = Value::immediate_i32(3),
+      .align_bytes = 4,
+  });
+  entry.terminator = BranchTerminator{.target_label = "loop"};
+
+  Block loop;
+  loop.label = "loop";
+  loop.insts.push_back(LoadLocalInst{
+      .result = Value::named(TypeKind::I32, "%count"),
+      .slot_name = "slot",
+      .align_bytes = 4,
+  });
+  loop.insts.push_back(BinaryInst{
+      .opcode = BinaryOpcode::Ne,
+      .result = Value::named(TypeKind::I32, "%cond"),
+      .lhs = Value::named(TypeKind::I32, "%count"),
+      .rhs = Value::immediate_i32(0),
+  });
+  loop.terminator = CondBranchTerminator{
+      .condition = Value::named(TypeKind::I32, "%cond"),
+      .true_label = "body",
+      .false_label = "exit",
+  };
+
+  Block body;
+  body.label = "body";
+  body.insts.push_back(LoadLocalInst{
+      .result = Value::named(TypeKind::I32, "%body_count"),
+      .slot_name = "slot",
+      .align_bytes = 4,
+  });
+  body.insts.push_back(BinaryInst{
+      .opcode = BinaryOpcode::Sub,
+      .result = Value::named(TypeKind::I32, "%next"),
+      .lhs = Value::named(TypeKind::I32, "%body_count"),
+      .rhs = Value::immediate_i32(1),
+  });
+  body.insts.push_back(StoreLocalInst{
+      .slot_name = "slot",
+      .value = Value::named(TypeKind::I32, "%next"),
+      .align_bytes = 4,
+  });
+  body.terminator = BranchTerminator{.target_label = "loop"};
+
+  Block exit;
+  exit.label = "exit";
+  exit.insts.push_back(LoadLocalInst{
+      .result = Value::named(TypeKind::I32, "%ret"),
+      .slot_name = "slot",
+      .align_bytes = 4,
+  });
+  exit.terminator = ReturnTerminator{.value = Value::named(TypeKind::I32, "%ret")};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(loop));
+  function.blocks.push_back(std::move(body));
+  function.blocks.push_back(std::move(exit));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_supported_x86_two_arg_helper_call_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -1642,6 +1725,20 @@ void test_x86_direct_local_helper_accepts_constant_branch_return_slice() {
               "the direct x86 local helper seam should accept the bounded constant-branch return slice after ownership moves out of emit.cpp");
   expect_contains(*rendered, "main:\n  mov eax, 11\n  ret\n",
                   "the direct x86 local helper seam should still collapse the bounded constant branch into the selected immediate return");
+}
+
+void test_x86_direct_bir_helper_accepts_minimal_countdown_loop_slice() {
+  const auto rendered = c4c::backend::x86::try_emit_minimal_countdown_loop_module(
+      make_supported_x86_minimal_countdown_loop_bir_module());
+
+  expect_true(rendered.has_value(),
+              "the direct x86 BIR helper seam should accept the bounded countdown-loop slice after ownership moves out of emit.cpp");
+  expect_contains(*rendered, "main:\n  mov eax, 3\n",
+                  "the direct x86 BIR helper seam should still materialize the initial loop counter on the native x86 path");
+  expect_contains(*rendered, ".Lloop:\n  cmp eax, 0\n  je .Lexit\n",
+                  "the direct x86 BIR helper seam should still preserve the loop exit test after the ownership move");
+  expect_contains(*rendered, ".Lbody:\n  sub eax, 1\n  jmp .Lloop\n",
+                  "the direct x86 BIR helper seam should still preserve the decrement-and-backedge sequence after the ownership move");
 }
 
 void test_x86_direct_call_helper_accepts_local_arg_call_slice() {
@@ -3179,6 +3276,7 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_x86_direct_call_helper_accepts_param_slot_add_slice);
   RUN_TEST(test_x86_direct_local_helper_accepts_local_temp_slice);
   RUN_TEST(test_x86_direct_local_helper_accepts_constant_branch_return_slice);
+  RUN_TEST(test_x86_direct_bir_helper_accepts_minimal_countdown_loop_slice);
   RUN_TEST(test_x86_direct_call_helper_accepts_local_arg_call_slice);
   RUN_TEST(test_x86_direct_call_helper_accepts_two_arg_call_slice);
   RUN_TEST(test_x86_direct_call_helper_accepts_two_arg_local_arg_call_slice);
