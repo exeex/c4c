@@ -16,9 +16,9 @@ Source Plan: plan.md
   the shared x86 backend path keeps shrinking the remaining uncovered native
   matcher surface
   - add focused backend-entrypoint regression coverage for the bounded
-    both-local first-rewrite shape where the first operand round-trips through
-    the trivial rewrite/store/reload path and the second operand reloads from
-    a sibling local slot
+    both-local second-rewrite shape where the first operand reloads from one
+    local slot and the second operand round-trips through the trivial
+    rewrite/store/reload path before the helper call
   - keep the broader translated prologue owner parked; this iteration is only
     about shrinking the remaining prepared-LIR direct-call matcher surface
 
@@ -38,6 +38,24 @@ Source Plan: plan.md
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration adds the missing shared backend entrypoint coverage for the
+  bounded both-local first-rewrite two-argument prepared-LIR helper family:
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` now pins that
+  `add_pair(i32, i32)` shape at `c4c::backend::emit_module(...)` so the
+  public x86 backend entry surface, not just the direct-emitter seam, now
+  owns the case where the first operand round-trips through the trivial
+  rewrite/store/reload path and the second operand reloads from a sibling
+  local slot
+- focused validation passed:
+  `cmake --build --preset default --target backend_bir_tests -j8`,
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_both_local_first_rewrite_direct_call_on_native_x86_path`,
+  and
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_two_arg_both_local_first_rewrite_call_slice`
+- broad validation note:
+  still deferred for this bounded prepared-LIR direct-call coverage slice per
+  the active plan note to wait for a larger owner-path cutover before rerunning
+  the monotonic full-suite guard
 
 - this iteration adds shared backend entrypoint coverage for the bounded
   second-local rewrite two-argument prepared-LIR helper family:
