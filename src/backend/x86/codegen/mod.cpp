@@ -1,5 +1,7 @@
 #include "x86_codegen.hpp"
 
+#include "../../regalloc.hpp"
+
 #include <cctype>
 #include <sstream>
 #include <string_view>
@@ -12,6 +14,60 @@ namespace {
     "Mechanical translation of ref/claudes-c-compiler/src/backend/x86/codegen";
 
 }  // namespace
+
+const char* reg_name_to_32(std::string_view name) {
+  if (name == "rax") return "eax";
+  if (name == "rbx") return "ebx";
+  if (name == "rcx") return "ecx";
+  if (name == "rdx") return "edx";
+  if (name == "rsi") return "esi";
+  if (name == "rdi") return "edi";
+  if (name == "rsp") return "esp";
+  if (name == "rbp") return "ebp";
+  if (name == "r8") return "r8d";
+  if (name == "r9") return "r9d";
+  if (name == "r10") return "r10d";
+  if (name == "r11") return "r11d";
+  if (name == "r12") return "r12d";
+  if (name == "r13") return "r13d";
+  if (name == "r14") return "r14d";
+  if (name == "r15") return "r15d";
+  return "";
+}
+
+const char* phys_reg_name(c4c::backend::PhysReg reg) {
+  switch (reg.index) {
+    case 1: return "rbx";
+    case 2: return "r12";
+    case 3: return "r13";
+    case 4: return "r14";
+    case 5: return "r15";
+    case 10: return "r11";
+    case 11: return "r10";
+    case 12: return "r8";
+    case 13: return "r9";
+    case 14: return "rdi";
+    case 15: return "rsi";
+    default: return "";
+  }
+}
+
+const char* phys_reg_name_32(c4c::backend::PhysReg reg) {
+  switch (reg.index) {
+    case 1: return "ebx";
+    case 2: return "r12d";
+    case 3: return "r13d";
+    case 4: return "r14d";
+    case 5: return "r15d";
+    case 10: return "r11d";
+    case 11: return "r10d";
+    case 12: return "r8d";
+    case 13: return "r9d";
+    case 14: return "edi";
+    case 15: return "esi";
+    default: return "";
+  }
+}
 
 std::string decode_llvm_byte_string(std::string_view text) {
   std::string bytes;

@@ -10,23 +10,33 @@ Source Plan: plan.md
   around the x86 entry/support helper surface after the legacy matcher body
   removal in `src/backend/x86/codegen/emit.cpp`
 - immediate target:
-  consolidate the shared x86 asm string/symbol/prelude helpers into a
-  non-`emit.cpp` support unit so the direct helper owners stop duplicating
-  those entry-surface utilities locally
-  - add focused shared-util coverage for the shared helper contract across
-    Linux and Darwin triples
-  - keep validation centered on backend-only targets plus the current-tree
-    full-suite monotonic guard
+  land the next translated support dependency cluster in the already-built x86
+  support unit by exposing the ref-owned physreg/register-name helpers through
+  `src/backend/x86/codegen/mod.cpp` and `x86_codegen.hpp`
+  - add focused shared-util coverage for the ref physreg/sub-register naming
+    contract
+  - keep validation centered on backend-only targets while this remains a
+    support-surface slice, not a full translated prologue compile-in
 
 ## Next Slice
 
-- prune the next remaining x86 owner surface that still depends on legacy
-  entry routing semantics after the shared asm helper consolidation, likely a
-  bounded direct-dispatch family or stale unsupported-path contract
-- keep using focused backend regressions and only rerun the broad monotonic
-  guard once the bigger x86 owner switch settles
+- continue the translated dependency inventory by deciding whether the next
+  compileable cluster should be x86 prologue/regalloc support or another
+  header-surface helper family from `ref/.../emit.rs`
+- only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration exposed the ref-owned x86 physreg/register-name helpers
+  through `src/backend/x86/codegen/mod.cpp` and `x86_codegen.hpp`:
+  `reg_name_to_32(...)`, `phys_reg_name(...)`, and
+  `phys_reg_name_32(...)`
+- added focused shared-util coverage that locks the translated physreg and
+  sub-register naming contract to the ref emitter shape without widening the
+  public x86 header dependency surface
+- focused validation passed for this slice:
+  `cmake --build build -j8 --target backend_shared_util_tests backend_bir_tests`,
+  `./build/backend_shared_util_tests test_x86_translated_asm_emitter_helpers_match_shared_contract`
 
 - this iteration moved the shared x86 asm string/symbol/prelude helpers out of
   `src/backend/x86/codegen/emit.cpp` into the already-built support unit

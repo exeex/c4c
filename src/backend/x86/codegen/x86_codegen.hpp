@@ -390,6 +390,7 @@ struct MinimalGlobalStoreReturnAndEntryReturnSlice {
   bool zero_initializer = false;
 };
 
+const char* reg_name_to_32(std::string_view name);
 const char* phys_reg_name(c4c::backend::PhysReg reg);
 const char* phys_reg_name_32(c4c::backend::PhysReg reg);
 std::string decode_llvm_byte_string(std::string_view text);

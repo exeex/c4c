@@ -170,6 +170,12 @@ void test_x86_codegen_header_exports_translated_globals_owner_helper_symbols() {
 }
 
 void test_x86_translated_asm_emitter_helpers_match_shared_contract() {
+  expect_true(std::string(c4c::backend::x86::phys_reg_name(c4c::backend::PhysReg{1})) == "rbx" &&
+                  std::string(c4c::backend::x86::phys_reg_name(c4c::backend::PhysReg{12})) == "r8" &&
+                  std::string(c4c::backend::x86::phys_reg_name_32(c4c::backend::PhysReg{5})) == "r15d" &&
+                  std::string(c4c::backend::x86::reg_name_to_32("r10")) == "r10d",
+              "x86 translated register-name helpers should keep the ref physreg and sub-register mapping contract for the future translated prologue and ALU owners");
+
   const auto linux_symbol =
       c4c::backend::x86::asm_symbol_name("x86_64-unknown-linux-gnu", "main");
   const auto darwin_symbol =
