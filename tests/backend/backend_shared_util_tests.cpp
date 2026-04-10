@@ -265,6 +265,29 @@ void test_x86_translated_asm_emitter_helpers_match_shared_contract() {
               "x86 translated asm-emitter global preludes should keep the section, alignment, and object-directive contract across ELF and Darwin targets");
 }
 
+void test_x86_translated_regalloc_pruning_helpers_match_shared_contract() {
+  const auto base = c4c::backend::x86::x86_prune_caller_saved_regs(false, false, false);
+  const auto indirect = c4c::backend::x86::x86_prune_caller_saved_regs(true, false, false);
+  const auto i128 = c4c::backend::x86::x86_prune_caller_saved_regs(false, true, false);
+  const auto atomic = c4c::backend::x86::x86_prune_caller_saved_regs(false, false, true);
+  const auto combined = c4c::backend::x86::x86_prune_caller_saved_regs(true, true, true);
+  const auto indexes = [](const std::vector<c4c::backend::PhysReg>& regs) {
+    std::vector<std::uint32_t> values;
+    values.reserve(regs.size());
+    for (const auto& reg : regs) {
+      values.push_back(reg.index);
+    }
+    return values;
+  };
+
+  expect_true(indexes(base) == std::vector<std::uint32_t>{10, 11, 12, 13, 14, 15} &&
+                  indexes(indirect) == std::vector<std::uint32_t>{10, 12, 13, 14, 15} &&
+                  indexes(i128) == std::vector<std::uint32_t>{10, 11} &&
+                  indexes(atomic) == std::vector<std::uint32_t>{10, 11, 13, 14, 15} &&
+                  indexes(combined) == std::vector<std::uint32_t>{10},
+              "x86 translated caller-saved pruning helpers should match the ref indirect-call, i128, and atomic register-pool contract");
+}
+
 void test_x86_translated_globals_owner_handles_minimal_scalar_global_load_slice() {
   c4c::backend::bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -3914,6 +3937,7 @@ int main(int argc, char* argv[]) {
   test_x86_codegen_header_exports_translated_globals_owner_symbols();
   test_x86_codegen_header_exports_translated_globals_owner_helper_symbols();
   test_x86_translated_asm_emitter_helpers_match_shared_contract();
+  test_x86_translated_regalloc_pruning_helpers_match_shared_contract();
   test_x86_translated_globals_owner_handles_minimal_scalar_global_load_slice();
   test_x86_translated_globals_owner_handles_minimal_extern_scalar_global_load_slice();
   test_x86_translated_globals_owner_handles_minimal_scalar_global_store_reload_slice();

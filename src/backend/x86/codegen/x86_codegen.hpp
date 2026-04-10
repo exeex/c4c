@@ -404,6 +404,9 @@ const char* x86_alu_mnemonic(c4c::backend::bir::BinaryOpcode op);
 std::pair<const char*, const char*> x86_shift_mnemonic(c4c::backend::bir::BinaryOpcode op);
 std::vector<c4c::backend::PhysReg> x86_callee_saved_regs();
 std::vector<c4c::backend::PhysReg> x86_caller_saved_regs();
+std::vector<c4c::backend::PhysReg> x86_prune_caller_saved_regs(bool has_indirect_call,
+                                                               bool has_i128_ops,
+                                                               bool has_atomic_rmw);
 std::optional<c4c::backend::PhysReg> x86_constraint_to_callee_saved(std::string_view constraint);
 std::optional<c4c::backend::PhysReg> x86_clobber_name_to_callee_saved(std::string_view name);
 std::int64_t x86_variadic_reg_save_area_size(bool no_sse);

@@ -13,22 +13,52 @@ Source Plan: plan.md
   expose the next prologue/regalloc-side translated helper seam through
   `src/backend/x86/codegen/mod.cpp` and `x86_codegen.hpp` without pulling the
   full translated prologue owner path into the build yet
-  - implement the already-declared `run_shared_x86_regalloc(...)` helper using
-    the translated x86 callee-saved and caller-saved pool helpers
-  - add focused shared-util coverage that locks the x86 regalloc handoff to the
-    translated register-pool contract while keeping validation backend-only
+  - continue with the next prologue-side helper family after the
+    caller-saved-pruning seam, likely around stack-probe / callee-save spill
+    offset ownership that can still route through `mod.cpp`/`x86_codegen.hpp`
+  - keep the slice helper-only and backend-focused until the translated
+    prologue owner can replace more of the provisional `prologue.cpp` body
 
 ## Next Slice
 
 - continue the translated dependency inventory with the next already-built
-  prologue/inline-asm-adjacent helper family after the shared x86 regalloc
+  prologue/inline-asm-adjacent helper family after the caller-saved pruning
   seam lands
+- likely next helper candidates are the translated prologue emission helpers
+  that compute or emit stack-probe and callee-saved spill-slot behavior without
+  pulling the full parameter-storage owner into the build yet
 - likely keep moving through helper-only support surfaces that can be exposed
   through `mod.cpp`/`x86_codegen.hpp` without compiling the full translated
   prologue owner path yet
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration exposed the translated x86 caller-saved pruning helper
+  through `src/backend/x86/codegen/mod.cpp` and `x86_codegen.hpp`:
+  `x86_prune_caller_saved_regs(...)`
+- `src/backend/x86/codegen/prologue.cpp` now routes its current
+  indirect-call-sensitive caller-saved register-pool selection through that
+  shared helper instead of clearing the entire caller-saved pool ad hoc
+- added focused shared-util coverage that locks the translated caller-saved
+  pruning contract for the prologue/regalloc path, including the combined
+  indirect-call + i128 + atomic narrowing case
+- focused validation passed for this slice:
+  `cmake --build build -j8 --target backend_shared_util_tests`,
+  `./build/backend_shared_util_tests test_x86_translated_regalloc_pruning_helpers_match_shared_contract`, and
+  `ctest --test-dir build -R backend_shared_util_tests --output-on-failure`
+- broad validation note:
+  `ctest --test-dir build -j8 --output-on-failure > test_after.log 2>&1`,
+  `ctest --test-dir build -j8 --output-on-failure > test_after_rerun.log 2>&1`,
+  and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_matched_before.log --after test_after_rerun.log --allow-non-decreasing-passed`
+  still reported the same `3190` passed / `186` failed current-tree result
+  against the stored matched baseline `3194` passed / `182` failed, with the
+  same four x86 route/c-testsuite regressions already tracked below:
+  `backend_codegen_route_x86_64_c_testsuite_00030_repeated_call_compare_zero_return_retries_after_direct_bir_rejection`,
+  `backend_codegen_route_x86_64_c_testsuite_00031_local_i32_inc_dec_compare_retries_after_direct_bir_rejection`,
+  `c_testsuite_x86_backend_src_00030_c`, and
+  `c_testsuite_x86_backend_src_00031_c`
 
 - this iteration implemented the already-declared shared x86 regalloc seam in
   `src/backend/x86/codegen/mod.cpp`:

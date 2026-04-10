@@ -4,6 +4,7 @@
 #include "../../regalloc.hpp"
 #include "../../bir.hpp"
 
+#include <algorithm>
 #include <cctype>
 #include <sstream>
 #include <string_view>
@@ -207,6 +208,34 @@ std::vector<c4c::backend::PhysReg> x86_callee_saved_regs() {
 
 std::vector<c4c::backend::PhysReg> x86_caller_saved_regs() {
   return {{10}, {11}, {12}, {13}, {14}, {15}};
+}
+
+std::vector<c4c::backend::PhysReg> x86_prune_caller_saved_regs(bool has_indirect_call,
+                                                               bool has_i128_ops,
+                                                               bool has_atomic_rmw) {
+  auto caller_saved = x86_caller_saved_regs();
+  const auto drop_reg = [&](std::uint32_t index) {
+    caller_saved.erase(
+        std::remove_if(caller_saved.begin(),
+                       caller_saved.end(),
+                       [&](const c4c::backend::PhysReg& reg) { return reg.index == index; }),
+        caller_saved.end());
+  };
+
+  if (has_indirect_call) {
+    drop_reg(11);  // r10
+  }
+  if (has_i128_ops) {
+    drop_reg(12);  // r8
+    drop_reg(13);  // r9
+    drop_reg(14);  // rdi
+    drop_reg(15);  // rsi
+  }
+  if (has_atomic_rmw) {
+    drop_reg(12);  // r8
+  }
+
+  return caller_saved;
 }
 
 std::optional<c4c::backend::PhysReg> x86_constraint_to_callee_saved(std::string_view constraint) {

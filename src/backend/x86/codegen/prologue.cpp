@@ -22,17 +22,19 @@ std::int64_t X86Codegen::calculate_stack_space_impl(const IrFunction& func) {
   collect_inline_asm_callee_saved_x86(func, asm_clobbered_regs);
   auto available_regs = filter_available_regs(X86_CALLEE_SAVED, asm_clobbered_regs);
 
-  std::vector<PhysReg> caller_saved_regs = X86_CALLER_SAVED;
-  // The x86 ref backend tightens caller-saved usage when it sees indirect calls,
-  // i128 work, or atomics.
+  bool has_indirect_call = false;
+  // This slice wires the translated caller-saved pruning helper into the live
+  // prologue/regalloc path for the indirect-call case without pulling the full
+  // translated prologue owner into the build yet.
   for (const auto& block : func.blocks) {
     for (const auto& inst : block.instructions) {
       if (inst.is_call_indirect()) {
-        // The ref backend prunes some caller-saved registers here.
-        caller_saved_regs.clear();
+        has_indirect_call = true;
       }
     }
   }
+  const std::vector<PhysReg> caller_saved_regs =
+      x86_prune_caller_saved_regs(has_indirect_call, false, false);
 
   auto [reg_assigned, cached_liveness] =
       run_regalloc_and_merge_clobbers(func,
@@ -64,7 +66,7 @@ std::int64_t X86Codegen::calculate_stack_space_impl(const IrFunction& func) {
     this->reg_save_area_offset = -space;
   }
 
-    space += static_cast<std::int64_t>(this->used_callee_saved.size()) * 8;
+  space += static_cast<std::int64_t>(this->used_callee_saved.size()) * 8;
   return space;
 }
 
