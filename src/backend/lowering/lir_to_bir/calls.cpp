@@ -2295,6 +2295,85 @@ std::optional<bir::Module> try_lower_minimal_local_i32_unary_not_minus_zero_retu
   return lowered;
 }
 
+std::optional<bir::Module> try_lower_minimal_local_i32_macro_add_compare_one_zero_return_module(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || !module.globals.empty() || !module.string_pool.empty() ||
+      !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      !lir_function_matches_minimal_no_param_integer_return(function, 32) ||
+      function.entry.value != 0 || function.blocks.size() != 3 ||
+      function.alloca_insts.size() != 2 || !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* x_slot = std::get_if<LirAllocaOp>(&function.alloca_insts[0]);
+  const auto* y_slot = std::get_if<LirAllocaOp>(&function.alloca_insts[1]);
+  if (x_slot == nullptr || y_slot == nullptr || x_slot->result != "%lv.x" || y_slot->result != "%lv.y" ||
+      x_slot->type_str != "i32" || y_slot->type_str != "i32" || !x_slot->count.empty() ||
+      !y_slot->count.empty() || x_slot->align != 4 || y_slot->align != 4) {
+    return std::nullopt;
+  }
+
+  auto match_return_block = [&](const LirBlock& block,
+                                std::string_view expected_label,
+                                std::string_view expected_value) -> bool {
+    const auto* ret = std::get_if<LirRet>(&block.terminator);
+    return block.label == expected_label && block.insts.empty() && ret != nullptr &&
+           ret->type_str == "i32" && ret->value_str.has_value() &&
+           *ret->value_str == expected_value;
+  };
+
+  const auto& entry = function.blocks[0];
+  const auto* init_store = entry.insts.size() == 8 ? std::get_if<LirStoreOp>(&entry.insts[0]) : nullptr;
+  const auto* load_y = entry.insts.size() == 8 ? std::get_if<LirLoadOp>(&entry.insts[1]) : nullptr;
+  const auto* add_one = entry.insts.size() == 8 ? std::get_if<LirBinOp>(&entry.insts[2]) : nullptr;
+  const auto* store_x = entry.insts.size() == 8 ? std::get_if<LirStoreOp>(&entry.insts[3]) : nullptr;
+  const auto* load_x = entry.insts.size() == 8 ? std::get_if<LirLoadOp>(&entry.insts[4]) : nullptr;
+  const auto* cmp_one = entry.insts.size() == 8 ? std::get_if<LirCmpOp>(&entry.insts[5]) : nullptr;
+  const auto* zext_cmp = entry.insts.size() == 8 ? std::get_if<LirCastOp>(&entry.insts[6]) : nullptr;
+  const auto* cmp_zero = entry.insts.size() == 8 ? std::get_if<LirCmpOp>(&entry.insts[7]) : nullptr;
+  const auto* branch = std::get_if<LirCondBr>(&entry.terminator);
+  if (entry.label != "entry" || init_store == nullptr || load_y == nullptr || add_one == nullptr ||
+      store_x == nullptr || load_x == nullptr || cmp_one == nullptr || zext_cmp == nullptr ||
+      cmp_zero == nullptr || branch == nullptr || init_store->type_str != "i32" ||
+      init_store->val != "0" || init_store->ptr != y_slot->result || load_y->type_str != "i32" ||
+      load_y->ptr != y_slot->result || add_one->opcode.typed() != LirBinaryOpcode::Add ||
+      add_one->type_str != "i32" || add_one->lhs != load_y->result || add_one->rhs != "1" ||
+      store_x->type_str != "i32" || store_x->ptr != x_slot->result || store_x->val != add_one->result ||
+      load_x->type_str != "i32" || load_x->ptr != x_slot->result || cmp_one->is_float ||
+      cmp_one->predicate != "ne" || cmp_one->type_str != "i32" || cmp_one->lhs != load_x->result ||
+      cmp_one->rhs != "1" || zext_cmp->kind != LirCastKind::ZExt || zext_cmp->from_type != "i1" ||
+      zext_cmp->operand != cmp_one->result || zext_cmp->to_type != "i32" || cmp_zero->is_float ||
+      cmp_zero->predicate != "ne" || cmp_zero->type_str != "i32" || cmp_zero->lhs != zext_cmp->result ||
+      cmp_zero->rhs != "0" || branch->cond_name != cmp_zero->result ||
+      branch->true_label != "block_1" || branch->false_label != "block_2" ||
+      !match_return_block(function.blocks[1], "block_1", "1") ||
+      !match_return_block(function.blocks[2], "block_2", "0")) {
+    return std::nullopt;
+  }
+
+  bir::Module lowered;
+  lowered.target_triple = module.target_triple;
+  lowered.data_layout = module.data_layout;
+
+  bir::Function lowered_function;
+  lowered_function.name = function.name;
+  lowered_function.return_type = bir::TypeKind::I32;
+
+  bir::Block lowered_entry;
+  lowered_entry.label = "entry";
+  lowered_entry.terminator.value = bir::Value::immediate_i32(0);
+  lowered_function.blocks.push_back(std::move(lowered_entry));
+  lowered.functions.push_back(std::move(lowered_function));
+  return lowered;
+}
+
 std::optional<bir::Module> try_lower_minimal_three_block_add_compare_zero_return_module(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;

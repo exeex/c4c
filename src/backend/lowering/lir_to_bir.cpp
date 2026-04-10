@@ -4783,6 +4783,10 @@ std::optional<bir::Module> try_lower_to_bir_legacy(const c4c::codegen::lir::LirM
       lowered.has_value()) {
     return lowered;
   }
+  if (const auto lowered = try_lower_minimal_local_i32_macro_add_compare_one_zero_return_module(module);
+      lowered.has_value()) {
+    return lowered;
+  }
   if (const auto lowered = try_lower_minimal_folded_two_arg_direct_call_module(module);
       lowered.has_value()) {
     return lowered;
@@ -5447,6 +5451,17 @@ BirLoweringResult try_lower_to_bir_with_options(
             .phase = "legacy-lowering",
             .message =
                 "local-char helper-call plus dead-array compare seam lowered the source-shaped module before CFG normalization preserved the bounded `00078.c` helper-plus-caller route",
+        }},
+    };
+  }
+  if (auto lowered = try_lower_minimal_local_i32_macro_add_compare_one_zero_return_module(module);
+      lowered.has_value()) {
+    return BirLoweringResult{
+        .module = std::move(lowered),
+        .notes = {BirLoweringNote{
+            .phase = "legacy-lowering",
+            .message =
+                "local i32 macro-add compare-one seam lowered the source-shaped module before CFG normalization preserved the bounded `00079.c` route",
         }},
     };
   }

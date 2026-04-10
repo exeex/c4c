@@ -59,6 +59,9 @@ try_lower_minimal_local_array_pointer_alias_sizeof_helper_call_zero_return_modul
 std::optional<bir::Module>
 try_lower_minimal_local_char_helper_call_with_dead_array_compare_two_zero_return_module(
     const c4c::codegen::lir::LirModule& module);
+std::optional<bir::Module>
+try_lower_minimal_local_i32_macro_add_compare_one_zero_return_module(
+    const c4c::codegen::lir::LirModule& module);
 std::optional<bir::Module> try_lower_minimal_folded_two_arg_direct_call_module(
     const c4c::codegen::lir::LirModule& module);
 std::optional<bir::Module> try_lower_minimal_repeated_zero_arg_call_compare_zero_return_module(
