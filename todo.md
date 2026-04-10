@@ -7,20 +7,20 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 3 translated-owner cutover follow-on in the bounded prepared-LIR
-  direct-calls sibling seam after landing the first-local rewrite
-  backend-entrypoint regressions for the remaining local/rewrite two-argument
-  helper family representatives
+  direct-calls sibling seam after landing the single-local-arg public
+  backend-entrypoint regression for a still-direct-emitter-only helper family
 - immediate target:
   choose the next still-direct-emitter-only public backend entrypoint
-  representative outside the now-complete two-argument local/rewrite helper
-  family so the shared x86 backend path keeps shrinking the uncovered native
-  matcher surface without reviving broader parked translated-owner work
+  representative from the remaining native prepared-LIR helper families,
+  starting with the zero-arg extern/declared call route, so the shared x86
+  backend path keeps shrinking the uncovered native matcher surface without
+  reviving broader parked translated-owner work
 
 ## Next Slice
 
-- after the first-local rewrite entrypoint slice, choose the next public-
-  backend coverage representative from the remaining native prepared-LIR
-  helper families instead of adding more direct-emitter-only assertions
+- after the single-local-arg entrypoint slice, add public-backend coverage for
+  the bounded zero-arg extern/declared helper-call family instead of adding
+  more direct-emitter-only assertions
 - if a future x86 ABI policy change ever enables partial GP-register plus
   caller-stack aggregate splits, re-open `StructSplitRegStack` as a separate
   owner-path cutover item instead of silently folding it into the current
@@ -32,6 +32,22 @@ Source Plan: plan.md
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration adds shared backend entrypoint coverage for the bounded
+  single-local-arg prepared-LIR helper-call family:
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` now pins
+  `make_x86_local_arg_call_lir_module()` at `c4c::backend::emit_module(...)`
+  so the public x86 backend entry surface, not just the direct-emitter seam,
+  owns the local-slot reload before the native helper call
+- focused validation passed:
+  `cmake --build --preset default --target backend_bir_tests -j8`,
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_lir_minimal_local_arg_direct_call_on_native_x86_path`,
+  and
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_local_arg_call_slice`
+- broad validation note:
+  still deferred for this bounded prepared-LIR direct-call coverage slice per
+  the active plan note to wait for a larger owner-path cutover before
+  rerunning the monotonic full-suite guard
 
 - this iteration adds the remaining shared backend entrypoint coverage for the
   bounded second-local-arg and both-local-arg two-argument prepared-LIR helper
