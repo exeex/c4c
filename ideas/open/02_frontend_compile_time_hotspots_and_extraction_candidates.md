@@ -126,6 +126,42 @@ At minimum:
 - ensure extracted helpers preserve parser, HIR, and LIR behavior on existing
   regression coverage
 
+## 2026-04-10 Initial Inventory Notes
+
+First pass measurements were captured from `build/compile_commands.json` using
+the generated optimized single-TU compile commands, along with matching `-E`
+and `-fsyntax-only -H` variants for preprocess size and include-tree counts.
+
+Initial ranking:
+
+1. `src/codegen/lir/stmt_emitter_expr.cpp` - 6.578s, 85882 preprocessed lines,
+   382 include entries
+2. `src/frontend/hir/hir_expr.cpp` - 5.226s, 84245 preprocessed lines,
+   362 include entries
+3. `src/frontend/hir/hir_stmt.cpp` - 4.998s, 83946 preprocessed lines,
+   345 include entries
+4. `src/frontend/hir/hir_templates.cpp` - 4.886s, 85265 preprocessed lines,
+   360 include entries
+5. `src/codegen/lir/stmt_emitter_call.cpp` - 3.939s, 85628 preprocessed lines,
+   384 include entries
+6. `src/frontend/parser/parser_declarations.cpp` - 2.957s, 65266
+   preprocessed lines, 310 include entries
+7. `src/frontend/parser/parser_types_base.cpp` - 2.696s, 67811 preprocessed
+   lines, 317 include entries
+8. `src/frontend/parser/parser_expressions.cpp` - 1.205s, 55439 preprocessed
+   lines, 252 include entries
+9. `src/frontend/parser/parser_statements.cpp` - 0.872s, 54420 preprocessed
+   lines, 249 include entries
+
+Current interpretation:
+
+- the first-pass hotspot tier is concentrated in HIR and frontend-adjacent LIR
+  rather than the parser
+- the hottest five units all preprocess to roughly 84k to 86k lines, which is
+  consistent with substantial include amplification
+- Step 2 should classify the top HIR/LIR units first, then come back to parser
+  files once the parse-versus-optimizer split is clearer
+
 ## Non-Goals
 
 - no backend architecture work
