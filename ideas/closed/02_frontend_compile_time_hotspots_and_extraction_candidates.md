@@ -1,6 +1,6 @@
 # Frontend Compile-Time Hotspots And Extraction Candidates
 
-Status: Open
+Status: Complete
 Last Updated: 2026-04-10
 
 ## Goal
@@ -1165,3 +1165,33 @@ Follow-on note:
   `src/frontend/hir/hir_templates.cpp` at `2.002s`, and the reduced
   `src/frontend/hir/hir_expr.cpp` at `1.123s`, so the next iteration should
   move to `hir_stmt.cpp`
+
+## Completion Notes
+
+- Step 1 through Step 3 completed as planned: the work produced a measured
+  hotspot inventory, separated parse/include cost from optimizer-heavy cost,
+  and identified concrete extraction seams in the hottest frontend and
+  frontend-adjacent translation units.
+- Step 4 completed through a long series of behavior-preserving extraction
+  slices, with repeated before/after timing capture and monotonic regression
+  validation on the full suite.
+- The final retained slice was the `hir_expr.cpp` scalar/control helper split,
+  which reduced the main hotspot TU from `2.556s` to `1.470s` on the direct
+  optimized comparison, a `1.086s` improvement (`42.5%`).
+- At that point the remaining hotspot tier had compressed into a much narrower
+  band, and the campaign had already produced enough durable structure and
+  measurement data to satisfy the runbook goal of a measured, prioritized, and
+  incrementally validated extraction plan.
+- This idea is therefore closed intentionally at the current high-value
+  stopping point rather than extended into smaller follow-on helper moves with
+  weaker payoff.
+
+## Leftover Issues
+
+- Remaining frontend compile-time hotspots still exist in
+  `hir_stmt.cpp`, `stmt_emitter_call_vaarg_amd64.cpp`, and
+  `hir_templates.cpp`, but further splitting should be treated as optional
+  follow-on work rather than automatic continuation of this campaign.
+- Any future restart should begin with a fresh hotspot sweep and an explicit
+  stop rule for diminishing returns instead of assuming that every remaining
+  seam is still worth extracting.
