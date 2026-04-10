@@ -2,7 +2,6 @@
 
 #include <cassert>
 #include <cstdio>
-#include <unordered_map>
 
 namespace c4c::hir {
 
@@ -28,42 +27,30 @@ const char* inline_reject_reason_str(InlineRejectReason reason) {
 // ── Phase 2: InlineCloneContext ──────────────────────────────────────────────
 
 LocalId InlineCloneContext::remap_local(LocalId old_id) {
-  auto [it, inserted] = local_map.try_emplace(old_id.value, LocalId::invalid());
-  if (inserted) {
-    it->second = module->alloc_local_id();
-  }
-  return it->second;
+  return local_map.get_or_create(old_id, [&] { return module->alloc_local_id(); });
 }
 
 BlockId InlineCloneContext::remap_block(BlockId old_id) {
-  auto [it, inserted] = block_map.try_emplace(old_id.value, BlockId::invalid());
-  if (inserted) {
-    it->second = module->alloc_block_id();
-  }
-  return it->second;
+  return block_map.get_or_create(old_id, [&] { return module->alloc_block_id(); });
 }
 
 ExprId InlineCloneContext::remap_expr(ExprId old_id) {
-  auto [it, inserted] = expr_map.try_emplace(old_id.value, ExprId::invalid());
-  if (inserted) {
-    it->second = module->alloc_expr_id();
-  }
-  return it->second;
+  return expr_map.get_or_create(old_id, [&] { return module->alloc_expr_id(); });
 }
 
 LocalId InlineCloneContext::lookup_local(LocalId old_id) const {
-  auto it = local_map.find(old_id.value);
-  return it != local_map.end() ? it->second : LocalId::invalid();
+  if (const auto* mapped = local_map.find(old_id)) return *mapped;
+  return LocalId::invalid();
 }
 
 BlockId InlineCloneContext::lookup_block(BlockId old_id) const {
-  auto it = block_map.find(old_id.value);
-  return it != block_map.end() ? it->second : BlockId::invalid();
+  if (const auto* mapped = block_map.find(old_id)) return *mapped;
+  return BlockId::invalid();
 }
 
 ExprId InlineCloneContext::lookup_expr(ExprId old_id) const {
-  auto it = expr_map.find(old_id.value);
-  return it != expr_map.end() ? it->second : ExprId::invalid();
+  if (const auto* mapped = expr_map.find(old_id)) return *mapped;
+  return ExprId::invalid();
 }
 
 // ── clone_expr ───────────────────────────────────────────────────────────────

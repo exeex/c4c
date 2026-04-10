@@ -182,6 +182,13 @@ set_tests_properties(frontend_cxx_preprocessor_tests PROPERTIES
     LABELS "internal;preprocessor")
 
 add_test(
+    NAME frontend_hir_tests
+    COMMAND frontend_hir_tests
+)
+set_tests_properties(frontend_hir_tests PROPERTIES
+    LABELS "internal;hir")
+
+add_test(
     NAME positive_split_llvm_pragma_exec
     COMMAND "${CMAKE_COMMAND}"
             -DCOMPILER=$<TARGET_FILE:c4cll>

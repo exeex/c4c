@@ -242,6 +242,17 @@ set_target_properties(frontend_cxx_preprocessor_tests PROPERTIES
     CXX_STANDARD_REQUIRED ON
 )
 
+add_executable(frontend_hir_tests
+    "${PROJECT_SOURCE_DIR}/tests/frontend/frontend_hir_tests.cpp"
+)
+target_include_directories(frontend_hir_tests PRIVATE
+    ${FRONTEND_CXX_INCLUDE_DIRS}
+)
+set_target_properties(frontend_hir_tests PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+
 set(BACKEND_TEST_COMMON_SRCS
     "${PROJECT_SOURCE_DIR}/src/backend/aarch64/mod.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/aarch64/assembler/mod.cpp"
