@@ -314,17 +314,26 @@ void test_x86_translated_asm_emitter_helpers_match_shared_contract() {
                   std::string(c4c::backend::x86::x86_param_struct_sse_arg_reg(8)).empty() &&
                   c4c::backend::x86::x86_param_struct_sse_dest_offset(-40, 0) == -40 &&
                   c4c::backend::x86::x86_param_struct_sse_dest_offset(-40, 1) == -32 &&
+                  c4c::backend::x86::x86_param_struct_sse_dest_offset(-40, 2) == -24 &&
                   std::string(c4c::backend::x86::x86_param_struct_mixed_int_sse_int_arg_reg(0)) ==
                       "rdi" &&
+                  std::string(c4c::backend::x86::x86_param_struct_mixed_int_sse_int_arg_reg(6))
+                      .empty() &&
                   std::string(c4c::backend::x86::x86_param_struct_mixed_int_sse_fp_arg_reg(7)) ==
                       "xmm7" &&
+                  std::string(c4c::backend::x86::x86_param_struct_mixed_int_sse_fp_arg_reg(8))
+                      .empty() &&
                   c4c::backend::x86::x86_param_struct_mixed_int_sse_int_dest_offset(-40) ==
                       -40 &&
                   c4c::backend::x86::x86_param_struct_mixed_int_sse_fp_dest_offset(-40) == -32 &&
                   std::string(c4c::backend::x86::x86_param_struct_mixed_sse_int_fp_arg_reg(0)) ==
                       "xmm0" &&
+                  std::string(c4c::backend::x86::x86_param_struct_mixed_sse_int_fp_arg_reg(8))
+                      .empty() &&
                   std::string(c4c::backend::x86::x86_param_struct_mixed_sse_int_int_arg_reg(5)) ==
                       "r9" &&
+                  std::string(c4c::backend::x86::x86_param_struct_mixed_sse_int_int_arg_reg(6))
+                      .empty() &&
                   c4c::backend::x86::x86_param_struct_mixed_sse_int_fp_dest_offset(-40) ==
                       -40 &&
                   c4c::backend::x86::x86_param_struct_mixed_sse_int_int_dest_offset(-40) == -32 &&

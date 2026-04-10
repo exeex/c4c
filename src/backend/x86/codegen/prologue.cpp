@@ -25,6 +25,57 @@ std::string_view scalar_param_ref_type_name(IrType ty) {
   }
 }
 
+[[maybe_unused]] void emit_struct_sse_param_store(X86Codegen& codegen,
+                                                  std::int64_t slot_offset,
+                                                  std::size_t lo_fp_idx,
+                                                  std::optional<std::size_t> hi_fp_idx) {
+  const auto* lo_src_reg = x86_param_struct_sse_arg_reg(lo_fp_idx);
+  if (lo_src_reg[0] != '\0') {
+    codegen.state.out.emit_instr_reg_rbp(
+        "    movq", lo_src_reg, x86_param_struct_sse_dest_offset(slot_offset, 0));
+  }
+  if (!hi_fp_idx.has_value()) {
+    return;
+  }
+  const auto* hi_src_reg = x86_param_struct_sse_arg_reg(*hi_fp_idx);
+  if (hi_src_reg[0] != '\0') {
+    codegen.state.out.emit_instr_reg_rbp(
+        "    movq", hi_src_reg, x86_param_struct_sse_dest_offset(slot_offset, 1));
+  }
+}
+
+[[maybe_unused]] void emit_struct_mixed_int_sse_param_store(X86Codegen& codegen,
+                                                            std::int64_t slot_offset,
+                                                            std::size_t int_reg_idx,
+                                                            std::size_t fp_reg_idx) {
+  const auto* int_src_reg = x86_param_struct_mixed_int_sse_int_arg_reg(int_reg_idx);
+  if (int_src_reg[0] != '\0') {
+    codegen.state.out.emit_instr_reg_rbp(
+        "    movq", int_src_reg, x86_param_struct_mixed_int_sse_int_dest_offset(slot_offset));
+  }
+  const auto* fp_src_reg = x86_param_struct_mixed_int_sse_fp_arg_reg(fp_reg_idx);
+  if (fp_src_reg[0] != '\0') {
+    codegen.state.out.emit_instr_reg_rbp(
+        "    movq", fp_src_reg, x86_param_struct_mixed_int_sse_fp_dest_offset(slot_offset));
+  }
+}
+
+[[maybe_unused]] void emit_struct_mixed_sse_int_param_store(X86Codegen& codegen,
+                                                            std::int64_t slot_offset,
+                                                            std::size_t fp_reg_idx,
+                                                            std::size_t int_reg_idx) {
+  const auto* fp_src_reg = x86_param_struct_mixed_sse_int_fp_arg_reg(fp_reg_idx);
+  if (fp_src_reg[0] != '\0') {
+    codegen.state.out.emit_instr_reg_rbp(
+        "    movq", fp_src_reg, x86_param_struct_mixed_sse_int_fp_dest_offset(slot_offset));
+  }
+  const auto* int_src_reg = x86_param_struct_mixed_sse_int_int_arg_reg(int_reg_idx);
+  if (int_src_reg[0] != '\0') {
+    codegen.state.out.emit_instr_reg_rbp(
+        "    movq", int_src_reg, x86_param_struct_mixed_sse_int_int_dest_offset(slot_offset));
+  }
+}
+
 }  // namespace
 
 std::int64_t X86Codegen::calculate_stack_space_impl(const IrFunction& func) {
