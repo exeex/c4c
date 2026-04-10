@@ -1401,6 +1401,16 @@ class Validator {
           }
         }
         auto sym = lookup_symbol(n->name);
+        if (!sym.has_value() && !n->is_global_qualified &&
+            n->n_qualifier_segments == 0 && n->unqualified_name &&
+            n->unqualified_name[0] &&
+            std::string(n->unqualified_name) != n->name) {
+          // The parser may canonicalize unqualified identifiers to a visible
+          // namespace value spelling (for example `eastl::size`) before sema
+          // has bound function parameters and locals. Fall back to the source
+          // spelling for truly unqualified ids so local scope wins.
+          sym = lookup_symbol(n->unqualified_name);
+        }
         if (!sym.has_value()) {
           // In an out-of-class method body, unqualified names may refer to
           // struct fields (implicit this->field).  Accept them here; the HIR

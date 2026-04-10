@@ -8,12 +8,15 @@ Source Plan: plan.md
 
 - Step 3: fix the next smallest shared semantic blocker after the
   namespaced out-of-class owner-context repair.
-- Iteration target: reduce the remaining `eastl::size` undeclared-identifier
-  cluster in `EASTL/memory.h`, which is now the earliest failure for
-  `tests/cpp/eastl/eastl_memory_simple.cpp`.
-- Reduced repro: `tests/cpp/eastl/eastl_memory_simple.cpp --dump-canonical`
-  now fails only at `EASTL/memory.h:1033` and follow-on `eastl::size` sites;
-  `#include <EASTL/allocator.h>` now canonicalizes successfully.
+- Iteration target: reduce the remaining vector-only canonical/sema cluster in
+  `tests/cpp/eastl/eastl_vector_simple.cpp`, starting from the
+  `operator_eq` / `operator_neq` conflict path before revisiting the
+  allocator-return follow-up.
+- Reduced repro: `tests/cpp/eastl/eastl_vector_simple.cpp --dump-canonical`
+  now fails at `EASTL/vector.h:2066` / `2079`, `EASTL/allocator.h:210:16`, and
+  the follow-on `EASTL/vector.h:438:61` unknown `base_type::allocator_type`
+  cast. `tests/cpp/eastl/eastl_memory_simple.cpp --dump-canonical` now
+  completes.
 
 ## Completed
 
@@ -229,18 +232,26 @@ Source Plan: plan.md
   `run_eastl_vector_parse_recipe.cmake` helper, and updated
   `tests/cpp/eastl/README.md` so the ladder records vector as a canonical/sema
   frontier instead of a parse frontier.
+- Added focused frontend coverage in
+  `tests/cpp/internal/postive_case/namespaced_function_param_shadow_frontend.cpp`
+  and fixed sema value lookup so truly unqualified identifiers can fall back to
+  their preserved source spelling before namespace-canonicalized lookup.
+- Confirmed the change clears the shared `EASTL/memory.h` `eastl::size` failure
+  cluster: `tests/cpp/eastl/eastl_memory_simple.cpp --dump-canonical` now
+  succeeds, and `tests/cpp/eastl/eastl_vector_simple.cpp --dump-canonical`
+  narrows to vector/allocator-only diagnostics.
 
 ## Next Slice
 
 - keep the new structured-binding feature gate in place and work from the
-  moved `eastl_memory_simple.cpp` / `eastl_vector_simple.cpp`
-  canonical-sema frontier, starting from the now-smaller shared
-  `memory.h` `eastl::size` cluster before revisiting the vector-only
-  `operator_eq` / `operator_neq` follow-ups
+  moved `eastl_vector_simple.cpp` canonical-sema frontier, starting from the
+  vector-only `operator_eq` / `operator_neq` conflict path before revisiting
+  the allocator-return and `base_type::allocator_type` follow-ups
 - keep the new HIR re-entrant method-lowering regression green while working
   back outward from the remaining EASTL canonical/sema cases
 - reduce the leading `eastl_vector_simple.cpp` semantic errors
-  (`operator_eq` / `operator_neq` or `eastl::size`)
+  (`operator_eq` / `operator_neq`, allocator return, or
+  `base_type::allocator_type`)
   to the smallest generic reproducer before touching broader container follow-up
 
 ## Blockers
@@ -248,12 +259,11 @@ Source Plan: plan.md
 - structured bindings themselves are still unsupported in the frontend, so the
   compiler must continue advertising `EA_COMPILER_NO_STRUCTURED_BINDING` until
   a dedicated structured-binding implementation lands
-- `eastl_memory_simple.cpp` now reaches a bounded semantic failure cluster
-  around `eastl::size` in `EASTL/memory.h`
 - `eastl_vector_simple.cpp` still reaches a mixed later cluster under
-  `--dump-canonical`: `vector.h` comparison operators, the shared
-  `memory.h` `eastl::size` failures, and a remaining allocator-return
-  diagnostic that does not reproduce from `#include <EASTL/allocator.h>`
+  `--dump-canonical`: `vector.h` comparison operators, the remaining
+  allocator-return diagnostic that does not reproduce from
+  `#include <EASTL/allocator.h>`, and a follow-on `base_type::allocator_type`
+  cast failure
 
 ## Resume Notes
 
