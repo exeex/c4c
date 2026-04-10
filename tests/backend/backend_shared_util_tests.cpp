@@ -198,6 +198,9 @@ void test_x86_translated_asm_emitter_helpers_match_shared_contract() {
                   std::string(c4c::backend::x86::x86_arg_reg_name(0)) == "rdi" &&
                   std::string(c4c::backend::x86::x86_arg_reg_name(5)) == "r9" &&
                   std::string(c4c::backend::x86::x86_arg_reg_name(6)).empty() &&
+                  std::string(c4c::backend::x86::x86_float_arg_reg_name(0)) == "xmm0" &&
+                  std::string(c4c::backend::x86::x86_float_arg_reg_name(7)) == "xmm7" &&
+                  std::string(c4c::backend::x86::x86_float_arg_reg_name(8)).empty() &&
                   c4c::backend::x86::x86_param_stack_base_offset() == 16 &&
                   c4c::backend::x86::x86_param_stack_offset(0) == 16 &&
                   c4c::backend::x86::x86_param_stack_offset(8) == 24 &&
@@ -209,15 +212,27 @@ void test_x86_translated_asm_emitter_helpers_match_shared_contract() {
                       "movq" &&
                   std::string(c4c::backend::x86::x86_param_ref_scalar_load_instr("u64")) ==
                       "movq" &&
+                  std::string(c4c::backend::x86::x86_param_ref_scalar_load_instr("f32")) ==
+                      "movl" &&
+                  std::string(c4c::backend::x86::x86_param_ref_float_reg_move_instr("f32")) ==
+                      "movd" &&
+                  std::string(c4c::backend::x86::x86_param_ref_scalar_load_instr("f64")) ==
+                      "movq" &&
+                  std::string(c4c::backend::x86::x86_param_ref_float_reg_move_instr("f64")) ==
+                      "movq" &&
                   std::string(c4c::backend::x86::x86_param_ref_scalar_load_instr("ptr")) ==
                       "movq" &&
                   std::string(c4c::backend::x86::x86_param_ref_scalar_dest_reg("i32")) ==
                       "%rax" &&
                   std::string(c4c::backend::x86::x86_param_ref_scalar_dest_reg("u32")) ==
                       "%eax" &&
+                  std::string(c4c::backend::x86::x86_param_ref_scalar_dest_reg("f32")) ==
+                      "%eax" &&
                   std::string(c4c::backend::x86::x86_param_ref_scalar_dest_reg("i64")) ==
                       "%rax" &&
                   std::string(c4c::backend::x86::x86_param_ref_scalar_dest_reg("u64")) ==
+                      "%rax" &&
+                  std::string(c4c::backend::x86::x86_param_ref_scalar_dest_reg("f64")) ==
                       "%rax" &&
                   std::string(c4c::backend::x86::x86_param_ref_scalar_dest_reg("ptr")) ==
                       "%rax" &&
@@ -229,15 +244,23 @@ void test_x86_translated_asm_emitter_helpers_match_shared_contract() {
                       "rdi" &&
                   std::string(c4c::backend::x86::x86_param_ref_scalar_arg_reg(0, "u64")) ==
                       "rdi" &&
+                  std::string(c4c::backend::x86::x86_param_ref_float_arg_reg(0, "f32")) ==
+                      "xmm0" &&
+                  std::string(c4c::backend::x86::x86_param_ref_float_arg_reg(0, "f64")) ==
+                      "xmm0" &&
                   std::string(c4c::backend::x86::x86_param_ref_scalar_arg_reg(0, "ptr")) ==
                       "rdi" &&
                   c4c::backend::x86::x86_param_ref_scalar_stack_operand(0, "i32") ==
                       "DWORD PTR [rbp + 16]" &&
                   c4c::backend::x86::x86_param_ref_scalar_stack_operand(0, "u32") ==
                       "DWORD PTR [rbp + 16]" &&
+                  c4c::backend::x86::x86_param_ref_scalar_stack_operand(0, "f32") ==
+                      "DWORD PTR [rbp + 16]" &&
                   c4c::backend::x86::x86_param_ref_scalar_stack_operand(8, "i64") ==
                       "QWORD PTR [rbp + 24]" &&
                   c4c::backend::x86::x86_param_ref_scalar_stack_operand(8, "u64") ==
+                      "QWORD PTR [rbp + 24]" &&
+                  c4c::backend::x86::x86_param_ref_scalar_stack_operand(8, "f64") ==
                       "QWORD PTR [rbp + 24]" &&
                   c4c::backend::x86::x86_param_ref_scalar_stack_operand(8, "ptr") ==
                       "QWORD PTR [rbp + 24]" &&

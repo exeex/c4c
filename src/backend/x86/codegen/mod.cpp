@@ -18,6 +18,8 @@ namespace {
 constexpr std::int64_t kX86StackProbePageSize = 4096;
 constexpr std::int64_t kX86ParamStackBase = 16;
 constexpr const char* kX86ArgRegs[] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
+constexpr const char* kX86FloatArgRegs[] = {
+    "xmm0", "xmm1", "xmm2", "xmm3", "xmm4", "xmm5", "xmm6", "xmm7"};
 
 }  // namespace
 
@@ -293,6 +295,10 @@ const char* x86_arg_reg_name(std::size_t reg_index) {
   return reg_index < std::size(kX86ArgRegs) ? kX86ArgRegs[reg_index] : "";
 }
 
+const char* x86_float_arg_reg_name(std::size_t reg_index) {
+  return reg_index < std::size(kX86FloatArgRegs) ? kX86FloatArgRegs[reg_index] : "";
+}
+
 std::int64_t x86_param_stack_base_offset() { return kX86ParamStackBase; }
 
 std::int64_t x86_param_stack_offset(std::int64_t class_stack_offset) {
@@ -337,6 +343,23 @@ const char* x86_param_ref_scalar_arg_reg(std::size_t reg_index, std::string_view
     return base_reg;
   }
   return "";
+}
+
+const char* x86_param_ref_float_reg_move_instr(std::string_view scalar_type) {
+  if (scalar_type == "f32") {
+    return "movd";
+  }
+  if (scalar_type == "f64") {
+    return "movq";
+  }
+  return "";
+}
+
+const char* x86_param_ref_float_arg_reg(std::size_t reg_index, std::string_view scalar_type) {
+  if (scalar_type != "f32" && scalar_type != "f64") {
+    return "";
+  }
+  return x86_float_arg_reg_name(reg_index);
 }
 
 std::string x86_param_ref_scalar_stack_operand(std::int64_t class_stack_offset,

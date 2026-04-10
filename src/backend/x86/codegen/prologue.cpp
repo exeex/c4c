@@ -188,6 +188,16 @@ void X86Codegen::emit_param_ref_impl(const Value& dest, std::size_t param_idx, I
       return;
     }
   }
+  if (const auto* reg = std::get_if<ParamClass::FloatReg>(&param_class.data)) {
+    const auto* move_instr = x86_param_ref_float_reg_move_instr(scalar_type);
+    const auto* src_reg = x86_param_ref_float_arg_reg(reg->reg_idx, scalar_type);
+    const auto* dest_reg = x86_param_ref_scalar_dest_reg(scalar_type);
+    if (move_instr[0] != '\0' && src_reg[0] != '\0' && dest_reg[0] != '\0') {
+      this->state.emit_fmt(format_args!("    {} %{}, {}", move_instr, src_reg, dest_reg));
+      this->store_rax_to(dest);
+      return;
+    }
+  }
   if (const auto* stack = std::get_if<ParamClass::StackScalar>(&param_class.data)) {
     const auto* load_instr = x86_param_ref_scalar_load_instr(scalar_type);
     const auto stack_operand = x86_param_ref_scalar_stack_operand(stack->offset, scalar_type);

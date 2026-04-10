@@ -410,11 +410,14 @@ std::vector<c4c::backend::PhysReg> x86_prune_caller_saved_regs(bool has_indirect
 std::optional<c4c::backend::PhysReg> x86_constraint_to_callee_saved(std::string_view constraint);
 std::optional<c4c::backend::PhysReg> x86_clobber_name_to_callee_saved(std::string_view name);
 const char* x86_arg_reg_name(std::size_t reg_index);
+const char* x86_float_arg_reg_name(std::size_t reg_index);
 std::int64_t x86_param_stack_base_offset();
 std::int64_t x86_param_stack_offset(std::int64_t class_stack_offset);
 const char* x86_param_ref_scalar_load_instr(std::string_view scalar_type);
 const char* x86_param_ref_scalar_dest_reg(std::string_view scalar_type);
 const char* x86_param_ref_scalar_arg_reg(std::size_t reg_index, std::string_view scalar_type);
+const char* x86_param_ref_float_reg_move_instr(std::string_view scalar_type);
+const char* x86_param_ref_float_arg_reg(std::size_t reg_index, std::string_view scalar_type);
 std::string x86_param_ref_scalar_stack_operand(std::int64_t class_stack_offset,
                                                std::string_view scalar_type);
 bool x86_phys_reg_is_callee_saved(c4c::backend::PhysReg reg);

@@ -16,15 +16,15 @@ Source Plan: plan.md
   build yet
   - keep the slice helper-focused: shared helper contract plus parked
     translated `prologue.cpp` usage only
-  - use the widened integer-like helper seam (`i32`/`u32`/`i64`/`u64`/`ptr`)
-    as the ABI reference before attempting any float-register or broader
-    non-alloca-backed pre-store owner slice
+  - land the leading `ParamClass::FloatReg` owner slice for `f32` / `f64`
+    scalar parameter references before revisiting broader non-alloca-backed
+    pre-store owner work
 
 ## Next Slice
 
 - widen the helper-backed `ParamRef` seam into the next owner-path slice after
-  `u32`/`u64`/`ptr`, with float-register scalar handling or non-alloca-backed
-  pre-store as the leading candidate before aggregate parameter classes
+  the landed `f32` / `f64` float-register scalar handling, with non-alloca-
+  backed pre-store as the leading candidate before aggregate parameter classes
 - keep the translated prologue owner parked out of build until the public
   x86 codegen header exposes enough complete backend surface for
   `src/backend/x86/codegen/prologue.cpp` to compile cleanly
@@ -35,6 +35,32 @@ Source Plan: plan.md
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration widened the shared translated `emit_param_ref_impl(...)`
+  helper seam from integer-like scalar cases into the first float-register
+  owner slice: `src/backend/x86/codegen/mod.cpp` and
+  `src/backend/x86/codegen/x86_codegen.hpp` now expose the XMM argument-
+  register map plus the typed `movd` / `movq` helper contract for `f32` /
+  `f64` `ParamClass::FloatReg` loads
+- `src/backend/x86/codegen/prologue.cpp` now routes parked translated
+  `emit_param_ref_impl(...)` float-register scalar handling through that
+  shared helper seam, keeping the owner-path logic aligned with the reference
+  `movd %xmmN, %eax` / `movq %xmmN, %rax` behavior without pulling the full
+  translated prologue owner into the active build
+- `tests/backend/backend_shared_util_tests.cpp` now locks the float-register
+  helper contract alongside the existing integer-like and stack-scalar
+  `ParamRef` helper coverage, including `xmm0`..`xmm7`, `movd` for `f32`, and
+  `movq` for `f64`
+- focused validation passed for this slice:
+  `cmake --build build -j8 --target backend_shared_util_tests`,
+  `./build/backend_shared_util_tests`, and
+  `ctest --test-dir build -R backend_shared_util_tests --output-on-failure`
+- broad validation passed for monotonicity on this slice:
+  `ctest --test-dir build -j8 --output-on-failure > test_before.log 2>&1`,
+  `ctest --test-dir build -j8 --output-on-failure > test_after.log 2>&1`, and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+  reported `3190` passed / `186` failed before and after, with no newly
+  failing tests and no new `>30s` tests
 
 - this iteration widened the shared translated `emit_param_ref_impl(...)`
   helper contract coverage from the earlier signed integer-only slice into the
