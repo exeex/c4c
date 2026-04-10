@@ -277,43 +277,77 @@ Node* Parser::parse_stmt() {
                 return typedef_types_.count(resolve_visible_type_name(cur().lexeme)) > 0;
             };
 
+            auto can_use_lite_if_condition_decl = [&]() -> bool {
+                if (!can_start_if_condition_decl()) return false;
+
+                TokenKind k = cur().kind;
+                switch (k) {
+                    case TokenKind::KwStruct:
+                    case TokenKind::KwClass:
+                    case TokenKind::KwUnion:
+                    case TokenKind::KwEnum:
+                    case TokenKind::KwTypename:
+                    case TokenKind::ColonColon:
+                        return false;
+                    case TokenKind::Identifier:
+                        if (pos_ + 1 < static_cast<int>(tokens_.size()) &&
+                            (tokens_[pos_ + 1].kind == TokenKind::ColonColon ||
+                             tokens_[pos_ + 1].kind == TokenKind::Less)) {
+                            return false;
+                        }
+                        return true;
+                    default:
+                        return true;
+                }
+            };
+
             auto parse_if_condition_decl = [&]() -> Node* {
                 if (!can_start_if_condition_decl()) return nullptr;
 
-                TentativeParseGuard guard(*this);
+                auto try_parse_if_condition_decl =
+                    [&](auto& guard) -> Node* {
+                        TypeSpec base_ts = parse_base_type();
+                        parse_attributes(&base_ts);
+
+                        TypeSpec ts = base_ts;
+                        ts.array_size_expr = nullptr;
+                        const char* vname = nullptr;
+                        parse_declarator(ts, &vname);
+                        skip_attributes();
+                        skip_asm();
+                        skip_attributes();
+
+                        if (!vname) {
+                            return nullptr;
+                        }
+
+                        Node* init_node = nullptr;
+                        if (match(TokenKind::Assign) ||
+                            (is_cpp_mode() && check(TokenKind::LBrace))) {
+                            init_node = parse_initializer();
+                        }
+
+                        if (!check(TokenKind::RParen)) {
+                            return nullptr;
+                        }
+
+                        Node* decl = make_node(NK_DECL, ln);
+                        decl->type = ts;
+                        decl->name = vname;
+                        decl->init = init_node;
+                        var_types_[vname] = ts;
+                        guard.commit();
+                        return decl;
+                    };
+
                 try {
-                    TypeSpec base_ts = parse_base_type();
-                    parse_attributes(&base_ts);
-
-                    TypeSpec ts = base_ts;
-                    ts.array_size_expr = nullptr;
-                    const char* vname = nullptr;
-                    parse_declarator(ts, &vname);
-                    skip_attributes();
-                    skip_asm();
-                    skip_attributes();
-
-                    if (!vname) {
-                        return nullptr;
+                    if (can_use_lite_if_condition_decl()) {
+                        TentativeParseGuardLite guard(*this);
+                        return try_parse_if_condition_decl(guard);
                     }
 
-                    Node* init_node = nullptr;
-                    if (match(TokenKind::Assign) ||
-                        (is_cpp_mode() && check(TokenKind::LBrace))) {
-                        init_node = parse_initializer();
-                    }
-
-                    if (!check(TokenKind::RParen)) {
-                        return nullptr;
-                    }
-
-                    Node* decl = make_node(NK_DECL, ln);
-                    decl->type = ts;
-                    decl->name = vname;
-                    decl->init = init_node;
-                    var_types_[vname] = ts;
-                    guard.commit();
-                    return decl;
+                    TentativeParseGuard guard(*this);
+                    return try_parse_if_condition_decl(guard);
                 } catch (const std::exception&) {
                     return nullptr;
                 }
