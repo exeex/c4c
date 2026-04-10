@@ -104,6 +104,10 @@ Source Plan: plan.md
   no longer routes nested arg emission through the generic debug-list helper
   and instead builds its compatibility string from structured `TemplateArgRef`
   entries directly.
+- Added an explicit performance-experiment seam for tentative parsing:
+  `ENABLE_HEAVY_TENTATIVE_SNAPSHOT` is now a CMake option, defaulting to `ON`,
+  so we can A/B test whether full parser-state snapshots are the dominant
+  parser cost without changing the default semantics in normal builds.
 - HIR object-call fallback now covers `integral_constant`-style trait objects:
   zero-arg `operator()` calls on struct objects with a known static `value`
   fold directly through the existing static-member const path, which keeps
@@ -269,6 +273,11 @@ Source Plan: plan.md
   so `encode_template_type_arg_ref_hir(...)` now emits nested compatibility
   refs from structured `TemplateArgRef` payloads directly instead of routing
   them through `encode_template_arg_debug_list(...)`.
+- Added `ENABLE_HEAVY_TENTATIVE_SNAPSHOT` to [CMakeLists.txt](/workspaces/c4c/CMakeLists.txt)
+  and wired [parser_support.cpp](/workspaces/c4c/src/frontend/parser/parser_support.cpp)
+  so default builds keep the current full tentative snapshot behavior, while
+  dedicated experimental builds can disable the heavy typedef/type-env copies
+  for performance A/B testing.
 - Reworked [hir_expr.cpp](/workspaces/c4c/src/frontend/hir/hir_expr.cpp) so
   zero-arg `operator()` calls on struct objects can fold straight to a known
   static `value`, fixing the EASTL signed-helper base-expression regression

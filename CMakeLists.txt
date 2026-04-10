@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
 project(tiny_c2ll LANGUAGES CXX)
 
+option(ENABLE_HEAVY_TENTATIVE_SNAPSHOT
+       "Use full parser-state snapshots in TentativeParseGuard speculative parses"
+       ON)
+
 find_program(CLANG_EXECUTABLE NAMES clang)
 if(NOT CLANG_EXECUTABLE)
   message(WARNING "clang not found: clang execution tests will be skipped")
@@ -181,6 +185,9 @@ add_executable(c4cll
 )
 target_include_directories(c4cll PRIVATE
     ${FRONTEND_CXX_INCLUDE_DIRS}
+)
+target_compile_definitions(c4cll PRIVATE
+    ENABLE_HEAVY_TENTATIVE_SNAPSHOT=$<IF:$<BOOL:${ENABLE_HEAVY_TENTATIVE_SNAPSHOT}>,1,0>
 )
 set_target_properties(c4cll PROPERTIES
     CXX_STANDARD 17

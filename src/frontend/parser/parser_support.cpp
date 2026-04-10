@@ -10,24 +10,28 @@ namespace c4c {
 Parser::ParserSnapshot Parser::save_state() const {
     ParserSnapshot snap;
     snap.pos                  = pos_;
+    snap.last_resolved_typedef = last_resolved_typedef_;
+    snap.template_arg_expr_depth = template_arg_expr_depth_;
+    snap.token_mutation_count = token_mutations_.size();
+#if ENABLE_HEAVY_TENTATIVE_SNAPSHOT
     snap.typedefs             = typedefs_;
     snap.user_typedefs        = user_typedefs_;
     snap.typedef_types        = typedef_types_;
     snap.var_types            = var_types_;
-    snap.last_resolved_typedef = last_resolved_typedef_;
-    snap.template_arg_expr_depth = template_arg_expr_depth_;
-    snap.token_mutation_count = token_mutations_.size();
+#endif
     return snap;
 }
 
 void Parser::restore_state(const ParserSnapshot& snap) {
     pos_                   = snap.pos;
+    last_resolved_typedef_ = snap.last_resolved_typedef;
+    template_arg_expr_depth_ = snap.template_arg_expr_depth;
+#if ENABLE_HEAVY_TENTATIVE_SNAPSHOT
     typedefs_              = snap.typedefs;
     user_typedefs_         = snap.user_typedefs;
     typedef_types_         = snap.typedef_types;
     var_types_             = snap.var_types;
-    last_resolved_typedef_ = snap.last_resolved_typedef;
-    template_arg_expr_depth_ = snap.template_arg_expr_depth;
+#endif
     while (token_mutations_.size() > snap.token_mutation_count) {
         const TokenMutation& mutation = token_mutations_.back();
         tokens_[mutation.pos] = mutation.token;
