@@ -6505,7 +6505,7 @@ void test_backend_bir_pipeline_drives_x86_direct_bir_minimal_void_direct_call_im
       c4c::backend::emit_module(c4c::backend::BackendModuleInput{module},
                                 make_bir_pipeline_options(c4c::backend::Target::X86_64));
 
-  expect_contains(rendered, ".type voidfn, %function\nvoidfn:\n",
+  expect_contains(rendered, ".type voidfn, @function\nvoidfn:\n",
                   "direct BIR void direct-call input should emit the void helper body on the native x86 path");
   expect_contains(rendered, "call voidfn",
                   "direct BIR void direct-call input should preserve the helper call on the native x86 path");
@@ -6573,7 +6573,7 @@ void test_backend_bir_pipeline_drives_x86_lir_minimal_void_direct_call_imm_retur
       c4c::backend::BackendModuleInput{make_lir_minimal_void_direct_call_imm_return_module()},
       make_bir_pipeline_options(c4c::backend::Target::X86_64));
 
-  expect_contains(rendered, ".type voidfn, %function\nvoidfn:\n",
+  expect_contains(rendered, ".type voidfn, @function\nvoidfn:\n",
                   "x86 LIR void direct-call input should still emit the helper definition after routing through the shared BIR path");
   expect_contains(rendered, "call voidfn",
                   "x86 LIR void direct-call input should lower the helper call on the native x86 path");
@@ -6588,7 +6588,7 @@ void test_backend_bir_pipeline_drives_x86_lir_source_00080_void_direct_call_zero
       c4c::backend::BackendModuleInput{make_lir_source_00080_void_direct_call_zero_return_module()},
       make_bir_pipeline_options(c4c::backend::Target::X86_64));
 
-  expect_contains(rendered, ".type voidfn, %function\nvoidfn:\n",
+  expect_contains(rendered, ".type voidfn, @function\nvoidfn:\n",
                   "the `00080.c` x86 LIR route should still emit the helper definition after routing through the shared BIR path");
   expect_contains(rendered, "call voidfn",
                   "the `00080.c` x86 LIR route should lower the helper call on the native x86 path");
@@ -6596,6 +6596,19 @@ void test_backend_bir_pipeline_drives_x86_lir_source_00080_void_direct_call_zero
                   "the `00080.c` x86 LIR route should preserve the fixed zero return on the BIR-owned path");
   expect_not_contains(rendered, "target triple =",
                       "the `00080.c` x86 LIR route should stay on native asm emission instead of falling back to LLVM text");
+}
+
+void test_backend_bir_pipeline_drives_x86_lir_source_00080_void_helper_only_on_native_x86_path() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_lir_source_00080_void_helper_only_module()},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".type voidfn, @function\nvoidfn:\n",
+                  "the helper-only `00080.c` x86 LIR route should emit the standalone helper definition through the public x86 backend entry surface");
+  expect_contains(rendered, "voidfn:\n  ret\n",
+                  "the helper-only `00080.c` x86 LIR route should lower the bounded `voidfn` body through the public x86 backend entry surface");
+  expect_not_contains(rendered, "target triple =",
+                      "the helper-only `00080.c` x86 LIR route should stay on native asm emission instead of falling back to LLVM text");
 }
 
 void test_backend_bir_pipeline_drives_x86_lir_source_00080_main_only_void_call_zero_return_on_native_x86_path() {
@@ -10944,6 +10957,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_with_dead_entry_alloca_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_void_direct_call_imm_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_source_00080_void_direct_call_zero_return_through_bir_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_source_00080_void_helper_only_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_source_00080_main_only_void_call_zero_return_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_declared_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_string_literal_strlen_sub_through_bir_end_to_end);

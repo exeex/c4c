@@ -8,13 +8,14 @@ Source Plan: plan.md
 
 - Step 3 translated-owner cutover follow-on in the bounded prepared-LIR
   direct-calls sibling seam after landing the next public backend-entrypoint
-  regression for a still-direct-emitter-only helper family; the main-only
-  `00080.c` `voidfn(); return 0;` route is now covered at the shared backend
-  entry surface
+  regression for a still-direct-emitter-only helper family; the helper-only
+  `00080.c` `voidfn` body slice is now covered at the shared backend entry
+  surface alongside the existing two-function and main-only `00080.c` routes
 - immediate target:
   choose the next still-direct-emitter-only public backend representative from
-  the remaining native prepared-LIR helper families after the main-only
-  `00080.c` slice
+  the remaining native prepared-LIR helper families after the helper-only
+  `00080.c` slice confirmed the existing owner path only needed assertion
+  alignment, not new matcher work
 
 ## Next Slice
 
@@ -35,6 +36,38 @@ Source Plan: plan.md
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration adds the missing shared backend entrypoint coverage for the
+  helper-only `00080.c` `voidfn` body slice:
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` now pins
+  `make_lir_source_00080_void_helper_only_module()` at
+  `c4c::backend::emit_module(...)` so the public x86 backend entry surface,
+  not just the direct-emitter seam, owns the standalone helper definition
+- this iteration also aligns the nearby x86 public-entry `voidfn` assertions
+  with the actual native assembler contract:
+  the direct-BIR void-call, minimal void direct-call, and two-function
+  `00080.c` backend-entry tests now expect `.type ... @function`, matching the
+  already-emitted x86 asm and removing the stale `%function` expectation debt
+- focused validation passed:
+  `cmake --build --preset default --target backend_bir_tests -j8`,
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_lir_source_00080_void_helper_only_on_native_x86_path`,
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_lir_source_00080_void_direct_call_zero_return_through_bir_end_to_end`,
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_lir_minimal_void_direct_call_imm_return_through_bir_end_to_end`,
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_direct_bir_void_direct_call_imm_return_on_native_x86_path`,
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_lir_source_00080_main_only_void_call_zero_return_on_native_x86_path`,
+  and
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_source_00080_void_helper_only_slice`
+- nearby validation note:
+  `ctest --test-dir build -R backend_bir_tests --output-on-failure` still
+  crashes in the pre-existing typed-LIR/BIR-lowering failure cluster and does
+  not provide a clean owned signal for this bounded `voidfn` assertion slice
+- broad validation note:
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log`
+  still exits non-zero on the existing suite failures, but
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  passed with `3192` passed / `184` failed before and after, zero newly
+  failing tests, and only the recurring `backend_bir_tests` `>30s` timeout
+  note remaining as pre-existing broad-validation noise
 
 - this iteration adds the missing shared backend entrypoint coverage for the
   bounded zero-arg extern/declared helper-call family:
