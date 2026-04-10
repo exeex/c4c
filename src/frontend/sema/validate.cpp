@@ -249,6 +249,10 @@ bool is_ref_overload(const FunctionSig& a, const FunctionSig& b) {
 
 bool supports_cpp_overload_set(const char* name) {
   if (!name || !name[0]) return false;
+  // C++ permits overloading ordinary operator functions, not just allocation
+  // forms. Treat our parser's normalized operator_* spellings as overloadable
+  // so sema doesn't reject later declarations as C-style redeclarations.
+  if (std::strncmp(name, "operator_", 9) == 0) return true;
   return std::strcmp(name, "operator_new") == 0 ||
          std::strcmp(name, "operator_new_array") == 0 ||
          std::strcmp(name, "operator_delete") == 0 ||

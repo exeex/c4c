@@ -6,17 +6,17 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 3: fix the next smallest shared semantic blocker after the
-  namespaced out-of-class owner-context repair.
-- Iteration target: reduce the remaining vector-only canonical/sema cluster in
-  `tests/cpp/eastl/eastl_vector_simple.cpp`, starting from the
-  `operator_eq` / `operator_neq` conflict path before revisiting the
-  allocator-return follow-up.
+- Step 3: continue through the remaining vector-only canonical/sema cluster
+  after clearing the free-operator overload conflict path.
+- Iteration target: reduce the remaining allocator-facing follow-up in
+  `tests/cpp/eastl/eastl_vector_simple.cpp`, starting from
+  `EASTL/allocator.h:210:16` incompatible return type before revisiting the
+  dependent `base_type::allocator_type` cast fallout at `EASTL/vector.h:438:61`.
 - Reduced repro: `tests/cpp/eastl/eastl_vector_simple.cpp --dump-canonical`
-  now fails at `EASTL/vector.h:2066` / `2079`, `EASTL/allocator.h:210:16`, and
-  the follow-on `EASTL/vector.h:438:61` unknown `base_type::allocator_type`
-  cast. `tests/cpp/eastl/eastl_memory_simple.cpp --dump-canonical` now
-  completes.
+  now fails only at `EASTL/allocator.h:210:16` and
+  `EASTL/vector.h:438:61`. The earlier `vector.h` `operator_eq` /
+  `operator_neq` conflicts are gone after treating free operator functions as
+  ordinary C++ overload-set members in sema.
 
 ## Completed
 
@@ -46,6 +46,23 @@ Source Plan: plan.md
 - Re-ran nearby member-context regressions plus the full suite; the regression
   guard remains monotonic at 3289/3289 passing tests versus the earlier
   3288/3288 baseline, with zero new failing tests.
+- Reduced the next vector-only canonical blocker to a generic free
+  `operator==` / `operator!=` overload-set failure and added focused frontend
+  coverage in
+  `tests/cpp/internal/postive_case/free_operator_eq_overload_frontend.cpp`.
+- Fixed sema's top-level C++ overload-set admission so normalized
+  `operator_*` function names are treated as overloadable rather than rejected
+  as conflicting C-style redeclarations.
+- Confirmed the new focused frontend regression passes, the reduced global
+  free-operator repro canonicalizes, and
+  `tests/cpp/eastl/eastl_vector_simple.cpp --dump-canonical` now moves past
+  the old `operator_eq` / `operator_neq` errors into the allocator-only
+  follow-up at `EASTL/allocator.h:210:16` and
+  `EASTL/vector.h:438:61`.
+- Re-ran `tests/cpp/eastl/eastl_memory_simple.cpp --dump-canonical` plus the
+  full `ctest --test-dir build -j8 --output-on-failure` suite; the regression
+  guard remains monotonic at 3291/3291 passing tests versus the earlier
+  3278/3278 baseline, with zero new failing tests.
 - Converted
   `cpp_eastl_memory_uses_allocator_timeout_baseline` into the positive workflow
   test `cpp_eastl_memory_uses_allocator_parse_recipe`, and confirmed

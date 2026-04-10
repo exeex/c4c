@@ -25,6 +25,7 @@ set(CPP_POSITIVE_FRONTEND_STEMS
     cpp20_out_of_class_trailing_requires_runtime
     cpp20_record_member_trailing_requires_frontend
     cpp20_if_constexpr_concept_id_frontend
+    free_operator_eq_overload_frontend
     ctor_init_piecewise_delegating_template_runtime
 )
 
