@@ -7,6 +7,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -111,7 +112,15 @@ struct CallArgClass {
   bool is_register() const { return kind == Kind::Register; }
 };
 
+struct X86CodegenState;
+
 struct X86CodegenOutput {
+  X86CodegenState* owner = nullptr;
+
+  X86CodegenOutput() = default;
+  explicit X86CodegenOutput(X86CodegenState* owner_state) : owner(owner_state) {}
+
+  void bind(X86CodegenState* owner_state) { owner = owner_state; }
   void emit_instr_imm_reg(const char* mnemonic, std::int64_t imm, const char* reg);
   void emit_instr_rbp_reg(const char* mnemonic, std::int64_t offset, const char* reg);
   void emit_instr_rbp(const char* mnemonic, std::int64_t offset);
@@ -122,6 +131,10 @@ struct X86CodegenOutput {
 };
 
 struct X86CodegenRegCache {
+  std::optional<std::uint32_t> acc_value_id;
+  bool acc_known_zero_extended = false;
+  bool acc_valid = false;
+
   void invalidate_all();
   void invalidate_acc();
   void set_acc(std::uint32_t value_id, bool known_zero_extended);
@@ -131,6 +144,18 @@ struct X86CodegenState {
   X86CodegenOutput out;
   X86CodegenRegCache reg_cache;
   std::unordered_set<std::uint32_t> f128_direct_slots;
+  std::vector<std::string> asm_lines;
+  std::unordered_map<std::uint32_t, StackSlot> slots;
+  std::unordered_set<std::uint32_t> allocas;
+  std::unordered_map<std::uint32_t, std::size_t> over_aligned_allocas;
+  std::unordered_map<std::uint32_t, std::uint32_t> f128_load_sources;
+
+  X86CodegenState();
+  X86CodegenState(const X86CodegenState& other);
+  X86CodegenState& operator=(const X86CodegenState& other);
+  X86CodegenState(X86CodegenState&& other) noexcept;
+  X86CodegenState& operator=(X86CodegenState&& other) noexcept;
+  void rebind_output();
 
   void emit(const std::string& asm_line);
   std::optional<StackSlot> get_slot(std::uint32_t value_id) const;

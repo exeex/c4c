@@ -266,6 +266,68 @@ void test_x86_codegen_header_exports_translated_call_owner_surface() {
               "x86 translated call-owner build wiring should keep the shared ABI structs, output hooks, reg-cache hooks, raw value/slot fields, and owner helper surface linkable once calls.cpp enters the build");
 }
 
+void test_x86_translated_shared_call_support_tracks_real_state_and_output() {
+  c4c::backend::x86::X86Codegen codegen;
+  codegen.state.slots.emplace(7, c4c::backend::x86::StackSlot{-24});
+  codegen.state.slots.emplace(9, c4c::backend::x86::StackSlot{-40});
+  codegen.state.allocas.insert(9);
+  codegen.state.over_aligned_allocas.emplace(9, 32);
+
+  codegen.state.emit("    pushq %rbp");
+  codegen.state.out.emit_instr_imm_reg("    addq", 16, "rsp");
+  codegen.state.out.emit_instr_rbp_reg("    movq", -24, "rax");
+  codegen.state.out.emit_instr_rbp("    fstpt", -32);
+  codegen.state.out.emit_instr_mem_reg("    leaq", 8, "rax", "rcx");
+  codegen.operand_to_rax(c4c::backend::x86::Operand{7});
+  codegen.store_rax_to(c4c::backend::x86::Value{7});
+
+  expect_true(codegen.state.reg_cache.acc_valid &&
+                  codegen.state.reg_cache.acc_value_id == 7 &&
+                  !codegen.state.reg_cache.acc_known_zero_extended,
+              "shared x86 call-support reg-cache hook should remember the accumulator value after a store_rax_to slice");
+
+  codegen.store_rax_rdx_to(c4c::backend::x86::Value{7});
+  codegen.state.track_f128_load(11, 9, 0);
+
+  const auto direct_slot = codegen.state.get_slot(7);
+  const auto over_aligned_addr = codegen.state.resolve_slot_addr(9);
+  const auto f128_source = codegen.state.get_f128_source(11);
+  const auto over_align = codegen.state.alloca_over_align(9);
+
+  std::string asm_text;
+  for (const auto& line : codegen.state.asm_lines) {
+    asm_text += line;
+    asm_text.push_back('\n');
+  }
+
+  expect_true(direct_slot.has_value() && direct_slot->raw == -24,
+              "shared x86 call-support state should return stored slot offsets for translated helper lookups");
+  expect_true(over_aligned_addr.has_value() &&
+                  over_aligned_addr->kind == c4c::backend::x86::SlotAddr::Kind::OverAligned &&
+                  over_aligned_addr->slot.raw == -40 && over_aligned_addr->value_id == 9,
+              "shared x86 call-support state should preserve over-aligned alloca slot metadata for translated helper lookups");
+  expect_true(f128_source.has_value() && *f128_source == 9,
+              "shared x86 call-support state should remember the bounded f128 load source id");
+  expect_true(over_align.has_value() && *over_align == 32,
+              "shared x86 call-support state should remember the bounded alloca over-alignment");
+  expect_true(!codegen.state.reg_cache.acc_valid,
+              "shared x86 call-support invalidate_all hook should clear accumulator cache state after a paired store slice");
+  expect_contains(asm_text, "    pushq %rbp",
+                  "shared x86 call-support state emit helper should append raw assembly lines");
+  expect_contains(asm_text, "    addq $16, %rsp",
+                  "shared x86 call-support output helper should render immediate/register instructions");
+  expect_contains(asm_text, "    movq -24(%rbp), %rax",
+                  "shared x86 call-support output helper should render rbp/register loads");
+  expect_contains(asm_text, "    fstpt -32(%rbp)",
+                  "shared x86 call-support output helper should render rbp memory-only instructions");
+  expect_contains(asm_text, "    leaq 8(%rax), %rcx",
+                  "shared x86 call-support output helper should render generic memory/register instructions");
+  expect_contains(asm_text, "    movq %rax, -24(%rbp)",
+                  "shared x86 call-support store helper should emit the translated rbp store text");
+  expect_contains(asm_text, "    movq %rdx, -16(%rbp)",
+                  "shared x86 call-support paired store helper should emit the high-half rbp store text");
+}
+
 void test_x86_codegen_header_exports_translated_asm_emitter_owner_symbols() {
   using X86Codegen = c4c::backend::x86::X86Codegen;
 
@@ -4247,6 +4309,7 @@ int main(int argc, char* argv[]) {
   test_x86_codegen_header_exports_translated_globals_owner_helper_symbols();
   test_x86_codegen_header_exports_translated_returns_owner_symbols();
   test_x86_codegen_header_exports_translated_call_owner_surface();
+  test_x86_translated_shared_call_support_tracks_real_state_and_output();
   test_x86_codegen_header_exports_translated_asm_emitter_owner_symbols();
   test_x86_translated_asm_emitter_helpers_match_shared_contract();
   test_x86_translated_regalloc_pruning_helpers_match_shared_contract();

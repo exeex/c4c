@@ -8,22 +8,24 @@ Source Plan: plan.md
 
 - Step 3 translated-owner build-wiring follow-on after landing the bounded
   `calls.cpp` slice: keep the newly linked translated call owner shippable
-  while surfacing the next semantic shared x86 state/output ownership tier
-  required before the translated call helpers can matter on the real runtime
-  x86 path
+  after replacing the placeholder shared x86 state/output hooks with real
+  bounded semantics, then use that upgraded helper layer to expose the next
+  parked translated owner frontier without widening into the still-blocked
+  prologue/runtime-owner cutover
 - immediate target:
-  record that `src/backend/x86/codegen/calls.cpp` now enters the active build
-  through bounded transitional shared helper definitions, then choose the
-  smallest follow-on slice that replaces those placeholder state/output hooks
-  with real shared x86 semantics instead of widening into unrelated owner
-  files
+  probe the next parked translated x86 owner that can now consume the shared
+  helper layer's real slot/address/assembly/cache semantics, preferring
+  `src/backend/x86/codegen/memory.cpp` or the next similarly bounded owner
+  over any fresh shared-surface expansion
 
 ## Next Slice
 
-- decide whether the next bounded Step 3 slice should teach the new shared
-  helper layer real x86 state/output semantics needed by translated call-owner
-  execution, or instead surface the next parked translated owner whose blocker
-  frontier is now smaller than the call-owner semantic gap
+- compile-probe the next parked translated owner against the upgraded shared
+  helper contract and land the smallest owner-path slice whose remaining
+  blocker frontier is now below the old call-helper semantic gap
+- prefer an owner that directly consumes `X86CodegenState::resolve_slot_addr`,
+  `alloca_over_align`, or the newly real `X86CodegenOutput` formatting hooks
+  so this helper-semantic upgrade pays off on a concrete translated body
 - if future wiring exposes missing translated helper bodies shared with other
   parked owner files, treat that as a separate surfaced blocker tier rather
   than reverting this now-clean parser normalization work
@@ -43,6 +45,30 @@ Source Plan: plan.md
   shared-helper upgrade lands
 
 ## Current Iteration Notes
+
+- this iteration upgrades the bounded shared x86 call-support layer from
+  link-only placeholders into real transitional semantics: the shared state
+  now records emitted assembly lines, slot metadata, alloca/over-alignment
+  facts, bounded f128 load provenance, and accumulator-cache state while the
+  shared output helpers now render actual x86 text forms
+- implementation note:
+  `src/backend/x86/codegen/x86_codegen.hpp` now carries concrete shared
+  storage for the translated helper state/output/cache surface, and
+  `src/backend/x86/codegen/shared_call_support.cpp` now binds that state to
+  actual `emit`, `get_slot`, `resolve_slot_addr`, output-formatting, and
+  reg-cache behavior instead of empty stubs
+- focused validation passed:
+  `cmake --build --preset default --target backend_shared_util_tests -j8`,
+  `./build/backend_shared_util_tests translated_shared_call_support`, and
+  `./build/backend_shared_util_tests translated_call_owner_surface`
+- broad validation passed:
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_before.log`,
+  `cmake --build --preset default -j8`,
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log`
+  (still exits non-zero on the existing suite failure set), and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  with `3192` passed / `184` failed before and after, zero newly failing
+  tests, and zero new `>30s` tests
 
 - this iteration lands the bounded shared-helper support slice that turns the
   previously declaration-only call-owner dependency cluster into real active
