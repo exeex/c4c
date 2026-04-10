@@ -2290,11 +2290,21 @@ void Lowerer::append_instantiated_template_struct_bases(
     TypeSpec base_ts = tpl_def->base_types[bi];
     apply_template_typedef_bindings(base_ts, method_tpl_bindings);
     if (base_ts.tpl_struct_origin) {
-      seed_template_type_dependency_if_needed(
-          base_ts, method_tpl_bindings, method_nttp_bindings,
-          PendingTemplateTypeKind::BaseType, "instantiation-base");
+      const Node* base_primary = find_template_struct_primary(base_ts.tpl_struct_origin);
+      seed_and_resolve_pending_template_type_if_needed(
+          base_ts, method_tpl_bindings, method_nttp_bindings, tpl_def,
+          PendingTemplateTypeKind::BaseType, "instantiation-base",
+          base_primary);
     }
-    resolve_struct_member_typedef_if_ready(&base_ts);
+    while (resolve_struct_member_typedef_if_ready(&base_ts)) {
+    }
+    if (base_ts.deferred_member_type_name && base_ts.tag && base_ts.tag[0]) {
+      TypeSpec resolved_member{};
+      if (resolve_struct_member_typedef_type(
+              base_ts.tag, base_ts.deferred_member_type_name, &resolved_member)) {
+        base_ts = resolved_member;
+      }
+    }
     if (base_ts.tag && base_ts.tag[0]) def.base_tags.push_back(base_ts.tag);
   }
 }
@@ -2478,13 +2488,7 @@ std::optional<GlobalId> Lowerer::ensure_template_global_instance(
     HirTemplateArg arg{};
     arg.is_value = ref->template_arg_is_value && ref->template_arg_is_value[i];
     if (arg.is_value) {
-      if (ctx && ref->template_arg_nttp_names && ref->template_arg_nttp_names[i] &&
-          ref->template_arg_nttp_names[i][0]) {
-        auto it = ctx->nttp_bindings.find(ref->template_arg_nttp_names[i]);
-        arg.value = (it != ctx->nttp_bindings.end()) ? it->second : 0;
-      } else {
-        arg.value = ref->template_arg_values ? ref->template_arg_values[i] : 0;
-      }
+      resolve_ast_template_value_arg(primary, ref, i, ctx, &arg.value);
     } else if (ref->template_arg_types) {
       TypeSpec ts = ref->template_arg_types[i];
       if (ctx && ts.base == TB_TYPEDEF && ts.tag) {
@@ -2579,6 +2583,7 @@ std::optional<GlobalId> Lowerer::ensure_template_global_instance(
 void Lowerer::assign_template_arg_refs_from_ast_args(
     TypeSpec* ts,
     const Node* ref,
+    const Node* owner_tpl,
     const FunctionCtx* ctx,
     const Node* span_node,
     PendingTemplateTypeKind kind,
@@ -2594,11 +2599,7 @@ void Lowerer::assign_template_arg_refs_from_ast_args(
     HirTemplateArg arg{};
     arg.is_value = ref->template_arg_is_value && ref->template_arg_is_value[i];
     if (arg.is_value) {
-      if (ctx && ref->template_arg_nttp_names && ref->template_arg_nttp_names[i] &&
-          ref->template_arg_nttp_names[i][0]) {
-        auto it = ctx->nttp_bindings.find(ref->template_arg_nttp_names[i]);
-        arg.value = (it != ctx->nttp_bindings.end()) ? it->second : 0;
-      } else {
+      if (!resolve_ast_template_value_arg(owner_tpl, ref, i, ctx, &arg.value)) {
         arg.value = ref->template_arg_values ? ref->template_arg_values[i] : 0;
       }
     } else if (ref->template_arg_types) {
@@ -2643,6 +2644,46 @@ void Lowerer::assign_template_arg_refs_from_ast_args(
   assign_template_arg_refs_from_hir_args(ts, actual_args);
 }
 
+bool Lowerer::resolve_ast_template_value_arg(
+    const Node* owner_tpl,
+    const Node* ref,
+    int index,
+    const FunctionCtx* ctx,
+    long long* out_value,
+    const char** out_debug_ref) {
+  if (!ref || index < 0 || index >= ref->n_template_args || !out_value) return false;
+  const char* nttp_name =
+      (ref->template_arg_nttp_names && ref->template_arg_nttp_names[index])
+          ? ref->template_arg_nttp_names[index]
+          : nullptr;
+  if (out_debug_ref) *out_debug_ref = nttp_name;
+  if (ctx && nttp_name && nttp_name[0]) {
+    auto it = ctx->nttp_bindings.find(nttp_name);
+    if (it != ctx->nttp_bindings.end()) {
+      *out_value = it->second;
+      return true;
+    }
+    if (owner_tpl && owner_tpl->n_template_params > 0 &&
+        is_deferred_nttp_expr_ref(nttp_name)) {
+      std::vector<std::pair<std::string, TypeSpec>> type_env;
+      std::vector<std::pair<std::string, long long>> nttp_env;
+      if (ctx) {
+        type_env.reserve(ctx->tpl_bindings.size());
+        for (const auto& [name, ts] : ctx->tpl_bindings) type_env.push_back({name, ts});
+        nttp_env.reserve(ctx->nttp_bindings.size());
+        for (const auto& [name, val] : ctx->nttp_bindings) nttp_env.push_back({name, val});
+      }
+      std::string expr = deferred_nttp_expr_text(nttp_name);
+      if (eval_deferred_nttp_expr_hir(
+              owner_tpl, 0, type_env, nttp_env, &expr, out_value)) {
+        return true;
+      }
+    }
+  }
+  *out_value = ref->template_arg_values ? ref->template_arg_values[index] : 0;
+  return ref->template_arg_values != nullptr;
+}
+
 std::optional<long long> Lowerer::try_eval_template_static_member_const(
     FunctionCtx* ctx,
     const std::string& tpl_name,
@@ -2675,13 +2716,7 @@ std::optional<long long> Lowerer::try_eval_template_static_member_const(
     HirTemplateArg arg{};
     arg.is_value = ref->template_arg_is_value && ref->template_arg_is_value[i];
     if (arg.is_value) {
-      if (ctx && ref->template_arg_nttp_names && ref->template_arg_nttp_names[i] &&
-          ref->template_arg_nttp_names[i][0]) {
-        auto it = ctx->nttp_bindings.find(ref->template_arg_nttp_names[i]);
-        arg.value = (it != ctx->nttp_bindings.end()) ? it->second : 0;
-      } else {
-        arg.value = ref->template_arg_values ? ref->template_arg_values[i] : 0;
-      }
+      resolve_ast_template_value_arg(primary, ref, i, ctx, &arg.value);
     } else if (ref->template_arg_types) {
       TypeSpec ts = ref->template_arg_types[i];
       if (ctx && ts.base == TB_TYPEDEF && ts.tag) {
@@ -2774,6 +2809,61 @@ std::optional<long long> Lowerer::try_eval_template_static_member_const(
                  ? 1LL
                  : 0LL;
     }
+  }
+  return std::nullopt;
+}
+
+std::optional<long long> Lowerer::try_eval_instantiated_struct_static_member_const(
+    const std::string& tag,
+    const std::string& member) const {
+  auto it = struct_def_nodes_.find(tag);
+  if (it == struct_def_nodes_.end() || !it->second) return std::nullopt;
+  const Node* owner = it->second;
+  const char* origin =
+      (owner->template_origin_name && owner->template_origin_name[0])
+          ? owner->template_origin_name
+          : nullptr;
+  if (!origin || owner->n_template_args <= 0) return std::nullopt;
+
+  std::vector<HirTemplateArg> actual_args;
+  actual_args.reserve(owner->n_template_args);
+  for (int i = 0; i < owner->n_template_args; ++i) {
+    HirTemplateArg arg{};
+    arg.is_value =
+        owner->template_arg_is_value && owner->template_arg_is_value[i];
+    if (arg.is_value) {
+      arg.value = owner->template_arg_values ? owner->template_arg_values[i] : 0;
+    } else if (owner->template_arg_types) {
+      arg.type = owner->template_arg_types[i];
+    }
+    actual_args.push_back(arg);
+  }
+
+  const std::string tpl_name = origin;
+  if (member == "value" && actual_args.size() == 1 && !actual_args[0].is_value) {
+    if (matches_trait_family(tpl_name, "is_signed")) {
+      return is_signed_trait_type(actual_args[0].type) ? 1LL : 0LL;
+    }
+    if (matches_trait_family(tpl_name, "is_unsigned")) {
+      return is_unsigned_trait_type(actual_args[0].type) ? 1LL : 0LL;
+    }
+    if (matches_trait_family(tpl_name, "is_const")) {
+      return is_const_trait_type(actual_args[0].type) ? 1LL : 0LL;
+    }
+    if (matches_trait_family(tpl_name, "is_enum")) {
+      return is_enum_trait_type(actual_args[0].type) ? 1LL : 0LL;
+    }
+    if (matches_trait_family(tpl_name, "is_reference")) {
+      return is_reference_trait_type(actual_args[0].type) ? 1LL : 0LL;
+    }
+  }
+  if (member == "value" && actual_args.size() == 2 &&
+      !actual_args[0].is_value && !actual_args[1].is_value &&
+      matches_trait_family(tpl_name, "is_same")) {
+    return canonical_type_str(actual_args[0].type) ==
+                   canonical_type_str(actual_args[1].type)
+               ? 1LL
+               : 0LL;
   }
   return std::nullopt;
 }
@@ -3039,13 +3129,18 @@ bool Lowerer::resolve_struct_member_typedef_type(const std::string& tag,
           dst_arg.debug_text =
               debug_text.empty() ? nullptr : ::strdup(debug_text.c_str());
         } else {
+          bool rebound_value = false;
           if (src_arg.debug_text && src_arg.debug_text[0]) {
             auto nit = nttp_bindings.find(src_arg.debug_text);
             if (nit != nttp_bindings.end()) {
               dst_arg.value = nit->second;
+              rebound_value = true;
             }
           }
-          const std::string debug_text = std::to_string(dst_arg.value);
+          const std::string debug_text =
+              (!rebound_value && src_arg.debug_text && src_arg.debug_text[0])
+                  ? std::string(src_arg.debug_text)
+                  : std::to_string(dst_arg.value);
           dst_arg.debug_text =
               debug_text.empty() ? nullptr : ::strdup(debug_text.c_str());
         }
@@ -3290,6 +3385,8 @@ bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
     if (!ts->tpl_struct_origin || !ts->tpl_struct_origin[0]) return false;
     const Node* primary_tpl = find_template_struct_primary(ts->tpl_struct_origin);
     if (!primary_tpl) return false;
+    const std::string deferred_member_name =
+        ts->deferred_member_type_name ? ts->deferred_member_type_name : "";
 
     TypeBindings empty_tb;
     NttpBindings empty_nb;
@@ -3315,39 +3412,55 @@ bool Lowerer::resolve_struct_member_typedef_if_ready(TypeSpec* ts) {
         selected.selected_pattern ? selected.selected_pattern : primary_tpl;
     if (auto trait_result = try_resolve_unary_type_transform_trait(
             primary_tpl->name ? primary_tpl->name : std::string{},
-            ts->deferred_member_type_name ? ts->deferred_member_type_name
-                                          : std::string{},
+            deferred_member_name,
             resolved.concrete_args)) {
       *ts = *trait_result;
       return true;
     }
-    if (!owner || owner->n_member_typedefs <= 0) return false;
-    for (int i = 0; i < owner->n_member_typedefs; ++i) {
-      const char* alias_name = owner->member_typedef_names[i];
-      if (!alias_name ||
-          std::string(alias_name) != ts->deferred_member_type_name) {
-        continue;
-      }
-      bool substituted_type = false;
-      TypeSpec resolved_member = apply_bindings(
-          owner->member_typedef_types[i],
-          selected.type_bindings,
-          selected.nttp_bindings,
-          &substituted_type);
-      if (!substituted_type &&
-          std::string(alias_name) == "type" &&
-          selected.type_bindings.size() == 1) {
-        resolved_member = selected.type_bindings.begin()->second;
-      }
-      if (resolved_member.deferred_member_type_name &&
-          ((resolved_member.tpl_struct_origin &&
-            resolved_member.tpl_struct_origin[0]) ||
-           (resolved_member.tag && resolved_member.tag[0]))) {
-        while (resolve_struct_member_typedef_if_ready(&resolved_member)) {
+
+    if (owner && owner->n_member_typedefs > 0) {
+      for (int i = 0; i < owner->n_member_typedefs; ++i) {
+        const char* alias_name = owner->member_typedef_names[i];
+        if (!alias_name || std::string(alias_name) != deferred_member_name) {
+          continue;
         }
+        bool substituted_type = false;
+        TypeSpec resolved_member = apply_bindings(
+            owner->member_typedef_types[i],
+            selected.type_bindings,
+            selected.nttp_bindings,
+            &substituted_type);
+        if (!substituted_type &&
+            std::string(alias_name) == "type" &&
+            selected.type_bindings.size() == 1) {
+          resolved_member = selected.type_bindings.begin()->second;
+        }
+        if (resolved_member.deferred_member_type_name &&
+            ((resolved_member.tpl_struct_origin &&
+              resolved_member.tpl_struct_origin[0]) ||
+             (resolved_member.tag && resolved_member.tag[0]))) {
+          while (resolve_struct_member_typedef_if_ready(&resolved_member)) {
+          }
+        }
+        *ts = resolved_member;
+        return true;
       }
-      *ts = resolved_member;
-      return true;
+    }
+
+    // Some aliases, especially `::type` on trait helpers, are inherited from
+    // realized base structs rather than declared on the selected pattern
+    // itself. Materialize the owner and then resolve through its concrete
+    // base-tag chain instead of giving up while we still only have origin args.
+    TypeSpec owner_ts = *ts;
+    owner_ts.deferred_member_type_name = nullptr;
+    realize_template_struct_if_needed(owner_ts, empty_tb, empty_nb, primary_tpl);
+    if (owner_ts.tag && owner_ts.tag[0]) {
+      TypeSpec resolved_member{};
+      if (resolve_struct_member_typedef_type(
+              owner_ts.tag, deferred_member_name, &resolved_member)) {
+        *ts = resolved_member;
+        return true;
+      }
     }
     return false;
   };

@@ -1434,10 +1434,10 @@ ExprId Lowerer::lower_expr(FunctionCtx* ctx, const Node* n) {
           tmp_ts.array_size = -1;
           tmp_ts.inner_rank = -1;
           tmp_ts.tpl_struct_origin = n->name;
-          assign_template_arg_refs_from_ast_args(
-              &tmp_ts, n, ctx, n, PendingTemplateTypeKind::OwnerStruct,
-              "nameref-tpl-ctor-arg");
           const Node* primary_tpl = find_template_struct_primary(n->name);
+          assign_template_arg_refs_from_ast_args(
+              &tmp_ts, n, primary_tpl, ctx, n, PendingTemplateTypeKind::OwnerStruct,
+              "nameref-tpl-ctor-arg");
           TypeBindings tpl_empty;
           NttpBindings nttp_empty;
           seed_and_resolve_pending_template_type_if_needed(
@@ -1489,10 +1489,11 @@ ExprId Lowerer::lower_expr(FunctionCtx* ctx, const Node* n) {
             pending_ts.array_size = -1;
             pending_ts.inner_rank = -1;
             pending_ts.tpl_struct_origin = ::strdup(struct_tag.c_str());
-            assign_template_arg_refs_from_ast_args(
-                &pending_ts, n, ctx, n, PendingTemplateTypeKind::OwnerStruct,
-                "nameref-scope-tpl-arg");
             const Node* primary_tpl = find_template_struct_primary(struct_tag);
+            assign_template_arg_refs_from_ast_args(
+                &pending_ts, n, primary_tpl, ctx, n,
+                PendingTemplateTypeKind::OwnerStruct,
+                "nameref-scope-tpl-arg");
             TypeBindings tpl_empty;
             NttpBindings nttp_empty;
             seed_and_resolve_pending_template_type_if_needed(

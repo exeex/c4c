@@ -357,6 +357,8 @@ class Lowerer {
 
   std::optional<long long> find_struct_static_member_const_value(
       const std::string& tag, const std::string& member) const;
+  std::optional<long long> try_eval_instantiated_struct_static_member_const(
+      const std::string& tag, const std::string& member) const;
 
   long long eval_const_int_with_nttp_bindings(
       const Node* n, const NttpBindings& nttp_bindings) const;
@@ -457,10 +459,19 @@ class Lowerer {
   void assign_template_arg_refs_from_ast_args(
       TypeSpec* ts,
       const Node* ref,
+      const Node* owner_tpl,
       const FunctionCtx* ctx,
       const Node* span_node,
       PendingTemplateTypeKind kind,
       const std::string& context_name);
+
+  bool resolve_ast_template_value_arg(
+      const Node* owner_tpl,
+      const Node* ref,
+      int index,
+      const FunctionCtx* ctx,
+      long long* out_value,
+      const char** out_debug_ref = nullptr);
 
   void realize_template_struct(TypeSpec& ts,
                                const Node* primary_tpl,

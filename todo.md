@@ -76,6 +76,16 @@ Source Plan: plan.md
 - HIR type-ref decode cleanup has started: `decode_type_ref(...)` no longer
   runs separate top-level builtin/struct probes before suffix stripping; it now
   routes plain and suffixed type refs through one base-resolution path.
+- HIR AST NTTP preservation: AST template value args now resolve deferred
+  `$expr:...` references through `resolve_ast_template_value_arg(...)` instead
+  of silently collapsing missing NTTP bindings to `0`, fixing
+  `sizeof...(Ts)`-style inherited trait/value transport in common HIR paths.
+- HIR inherited static-member stability: template-instantiated base tags are
+  now realized more eagerly during struct instantiation, inherited `::type`
+  lookups can realize owner structs before walking concrete bases, and concrete
+  instantiated trait structs have a direct `::value` fallback so inherited
+  static member lookup no longer depends entirely on base-chain metadata being
+  perfect.
 
 ## Completed
 
@@ -196,3 +206,22 @@ Source Plan: plan.md
   [hir_templates.cpp](/workspaces/c4c/src/frontend/hir/hir_templates.cpp) so
   it no longer duplicates the plain builtin/struct decode before the suffix
   handling pass; plain and suffixed refs now share one base-resolution path.
+- Fixed HIR handling for deferred AST NTTP value args by adding
+  `resolve_ast_template_value_arg(...)` and using it in template global
+  instantiation, pending owner arg assignment, and template static-member const
+  evaluation. This preserves `$expr:...` AST payloads such as `sizeof...(Ts)`
+  instead of collapsing unresolved bindings to zero.
+- Fixed inherited static-member lookup for instantiated trait structs by:
+  realizing template bases more eagerly in `append_instantiated_template_struct_bases(...)`,
+  allowing `resolve_struct_member_typedef_if_ready(...)` to realize owner
+  structs before resolving inherited `::type`, preserving deferred value-arg
+  debug text during HIR binding rewrites, and adding a concrete
+  `try_eval_instantiated_struct_static_member_const(...)` fallback for
+  instantiated trait-family `::value` lookups.
+- Verified the focused regression set still passes:
+  `cpp_positive_sema_inherited_static_member_lookup_runtime_cpp`
+  `cpp_positive_sema_variadic_template_arg_sizeof_pack_parse_cpp`
+  `cpp_positive_sema_template_builtin_is_enum_inherited_value_runtime_cpp`
+  `cpp_positive_sema_template_builtin_is_enum_qualified_inherited_value_runtime_cpp`
+  `cpp_positive_sema_eastl_inherited_trait_value_template_arg_parse_cpp`
+  `cpp_eastl_type_traits_parse_recipe`

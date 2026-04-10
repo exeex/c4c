@@ -902,6 +902,9 @@ std::optional<long long> Lowerer::find_struct_static_member_const_value(
     auto mit = sit->second.find(member);
     if (mit != sit->second.end()) return mit->second;
   }
+  if (auto trait_value = try_eval_instantiated_struct_static_member_const(tag, member)) {
+    return trait_value;
+  }
   auto dit = module_->struct_defs.find(tag);
   if (dit != module_->struct_defs.end()) {
     for (const auto& base_tag : dit->second.base_tags) {
@@ -1608,10 +1611,11 @@ TypeSpec Lowerer::infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
         tmp_ts.array_size = -1;
         tmp_ts.inner_rank = -1;
         tmp_ts.tpl_struct_origin = n->name;
-        assign_template_arg_refs_from_ast_args(
-            &tmp_ts, n, ctx, n, PendingTemplateTypeKind::OwnerStruct,
-            "generic-ctrl-type-var-arg");
         const Node* primary_tpl = find_template_struct_primary(n->name);
+        assign_template_arg_refs_from_ast_args(
+            &tmp_ts, n, primary_tpl, ctx, n,
+            PendingTemplateTypeKind::OwnerStruct,
+            "generic-ctrl-type-var-arg");
         TypeBindings tpl_empty;
         NttpBindings nttp_empty;
         seed_and_resolve_pending_template_type_if_needed(
