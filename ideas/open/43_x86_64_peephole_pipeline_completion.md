@@ -1,28 +1,28 @@
-# x86_64 Peephole Pipeline Completion
+# x86_64 Translated Codegen Integration
 
 Status: Open
 Last Updated: 2026-04-10
 
 ## Why This Idea
 
-The x86 backend already contains a translated peephole optimizer under
-`src/backend/x86/codegen/peephole/`, and the reference implementation under
-`ref/claudes-c-compiler/src/backend/x86/codegen/peephole/passes/` has largely
-been mirrored file-for-file.
+The x86 backend already contains a large translated implementation surface under
+`src/backend/x86/codegen/`, including both top-level codegen units and the
+peephole optimizer. A substantial portion of that surface appears to be a
+mechanical translation from the Rust reference, but the current build and entry
+path still rely almost entirely on:
 
-But the pipeline is not actually complete on the current tree:
+- `src/backend/x86/codegen/mod.cpp`
+- `src/backend/x86/codegen/emit.cpp`
 
-- the pass orchestration entry point in
-  `src/backend/x86/codegen/peephole/passes/mod.cpp` is still a stub that
-  returns the original assembly text
-- the x86 codegen path does not currently appear to route emitted assembly
-  through the peephole optimizer
-- the existence of translated pass files therefore overstates actual backend
-  capability
+At the moment, many translated `.cpp` files exist but are not actually wired
+into the build or the active x86 emission path. That means the repo is paying
+the maintenance cost of translated code without receiving the ownership and
+coverage benefits.
 
 This is not the same problem as shared-BIR legacy matcher cleanup. That work
-belongs to idea 44. This idea is specifically about finishing the x86 assembly
-peephole pipeline so the translated pass set becomes a real backend stage.
+belongs to idea 44. This idea is specifically about integrating already
+translated x86 codegen and peephole pieces so they become real backend stages
+instead of parked source inventory.
 
 ## Source Context
 
@@ -33,35 +33,37 @@ peephole pipeline so the translated pass set becomes a real backend stage.
 
 ## Current State
 
-The reference Rust pipeline runs several phases:
+The current tree contains many translated x86 codegen units, including:
 
-1. iterative cheap local passes
-2. one-shot global cleanup passes
-3. post-global local cleanup
-4. loop trampoline cleanup
-5. tail-call optimization
-6. dead never-read store cleanup
-7. unused callee-save elimination
-8. frame compaction
+- ALU / memory / calls / returns / prologue / globals / variadic and related
+  top-level codegen units
+- a full `peephole/` subtree with translated pass files
+- helper/type scaffolding for the peephole pipeline
 
 On the current C++ tree:
 
-- many individual pass files exist
-- helper and type infrastructure also exists
-- the top-level orchestration function is still stubbed
-- integration into the x86 emission path is not wired up
+- CMake still compiles only `codegen/mod.cpp` and `codegen/emit.cpp`
+- `mod.cpp` is effectively an anchor, not a dispatcher
+- `emit.cpp` still owns the practical emission route
+- the peephole orchestration entry point is still stubbed
+- the x86 emission path does not currently flow through the translated peephole
+  optimizer
+- many translated top-level codegen units are therefore not yet real
+  participants in the backend
 
-So the immediate gap is orchestration plus integration, not raw file presence.
+So the immediate gap is integration, build wiring, and ownership transfer, not
+raw file presence.
 
 ## Goal
 
-Make the translated x86 peephole pipeline real and reachable:
+Make the translated x86 codegen surface real and reachable:
 
-- implement pass orchestration in `peephole/passes/mod.cpp`
-- verify the translated pass interfaces and line-store assumptions are usable
-- integrate `peephole_optimize(...)` into the x86 assembly emission path
-- add focused regressions that prove the pass pipeline actually transforms
-  assembly in owned cases
+- audit which translated units are present versus actually connected
+- bring already-translated x86 codegen units into the build in a controlled way
+- wire reachable translated functionality into the active x86 emission path
+- complete peephole orchestration and integration as one sub-part of that work
+- add focused regressions that prove the connected translated code is actually
+  running
 
 ## Non-Goals
 
@@ -73,48 +75,52 @@ Make the translated x86 peephole pipeline real and reachable:
 
 ## Working Model
 
-- treat the Rust reference as the intended pipeline order
-- prefer enabling existing translated passes over inventing new ones
-- validate the narrowest pass orchestration slice first
-- prove integration with targeted asm-shape tests before broad-suite claims
+- prefer integrating existing translated units over inventing new local
+  `emit.cpp` ownership
+- use the Rust/reference layout as the intended ownership map
+- move one bounded integration seam at a time
+- prove each newly connected slice with targeted asm-shape or backend tests
+- keep this plan focused on translated code already in the tree
 
 ## Proposed Plan
 
-### Step 1: Audit the translated peephole surface
+### Step 1: Audit translated x86 codegen coverage
 
-Goal: determine which translated pass files are ready, which depend on missing
-infrastructure, and what the minimum viable orchestration path is.
-
-Completion check:
-
-- the pass inventory is explicit
-- the first activatable pass subset is identified
-
-### Step 2: Implement orchestration in `passes/mod.cpp`
-
-Goal: replace the current stub with a real pass pipeline matching the reference
-order as closely as the current C++ infrastructure allows.
+Goal: determine which translated codegen and peephole units already exist, which
+are compiled, and which are still disconnected.
 
 Completion check:
 
-- `passes::peephole_optimize(...)` no longer returns input unchanged by default
-- targeted pass-level tests prove at least local and global pass rounds run
+- the translated-unit inventory is explicit
+- the first integration slice is identified
 
-### Step 3: Wire peephole optimization into x86 emission
+### Step 2: Bring translated units into the build and reachable path
 
-Goal: make the optimizer part of the actual x86 output path.
+Goal: start connecting already-translated code instead of leaving ownership in
+`emit.cpp`-local seams.
 
 Completion check:
 
+- at least one translated unit or cluster is compiled and reachable
+- targeted tests prove the active path uses that code
+
+### Step 3: Complete peephole orchestration and emission integration
+
+Goal: make the translated peephole pipeline a real backend stage once the
+surrounding integration boundary is clear.
+
+Completion check:
+
+- `passes::peephole_optimize(...)` no longer returns input unchanged
 - emitted x86 assembly flows through `peephole_optimize(...)`
 - targeted backend tests demonstrate observable optimized output
 
-### Step 4: Expand enabled pass coverage carefully
+### Step 4: Continue transferring ownership out of `emit.cpp`
 
-Goal: turn on additional translated passes only when their assumptions hold on
-the current emitter output.
+Goal: keep reducing the gap between translated x86 codegen inventory and the
+actual build/runtime path.
 
 Completion check:
 
-- the enabled pass set is documented
-- any still-disabled or partial pass has an explicit reason
+- the remaining disconnected translated units are explicit
+- the next ownership-transfer slice is clear

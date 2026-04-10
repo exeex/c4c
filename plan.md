@@ -1,4 +1,4 @@
-# x86_64 Peephole Pipeline Completion
+# x86_64 Translated Codegen Integration
 
 Status: Active
 Source Idea: ideas/open/43_x86_64_peephole_pipeline_completion.md
@@ -6,32 +6,34 @@ Activated from: user-prioritized switch on 2026-04-10
 
 ## Purpose
 
-Finish the translated x86 peephole pipeline so it becomes a real backend stage
-instead of a stubbed reference mirror.
+Finish the already-translated x86 codegen surface so it becomes part of the
+real backend path instead of parked source inventory.
 
 ## Goal
 
-Turn the existing `src/backend/x86/codegen/peephole/` tree into an active part
-of x86 code generation:
+Turn the existing translated x86 codegen tree into an active part of the build
+and emission path:
 
-- audit the translated pass surface
-- implement real orchestration in `passes/mod.cpp`
-- wire `peephole_optimize(...)` into the x86 emission path
-- prove the pipeline changes emitted assembly in targeted tests
+- audit which translated units exist versus which are actually compiled
+- bring reachable translated codegen units into the build in bounded slices
+- reduce `emit.cpp`-local ownership where translated siblings already exist
+- complete peephole orchestration and integration as one sub-slice
+- prove each connected slice with targeted tests
 
 ## Core Rules
 
-- Prefer enabling existing translated passes over inventing new optimization
+- Prefer enabling existing translated units over inventing new `emit.cpp`-local
   logic.
-- Keep this plan scoped to x86 peephole orchestration and integration.
+- Keep this plan scoped to x86 translated-code integration.
 - Do not silently absorb shared-BIR cleanup from idea 44 into this runbook.
-- Add targeted regression coverage before claiming pass enablement.
+- Add targeted regression coverage before claiming integration.
 
 ## Current Scope
 
 - `src/backend/x86/codegen/peephole/mod.cpp`
 - `src/backend/x86/codegen/peephole/passes/*.cpp`
 - `src/backend/x86/codegen/emit.cpp`
+- `CMakeLists.txt`
 - matching reference files under
   `ref/claudes-c-compiler/src/backend/x86/codegen/peephole/passes/`
 
@@ -44,40 +46,43 @@ of x86 code generation:
 
 ## Execution Phases
 
-### Step 1: Audit the translated pass surface
+### Step 1: Audit translated x86 codegen coverage
 
-Goal: identify the minimum viable pass subset and any missing infrastructure.
+Goal: identify which translated x86 codegen and peephole units are present,
+compiled, and reachable.
 
 Completion check:
 
-- the pass inventory is explicit
+- the translated-unit inventory is explicit
 - the first implementation slice is chosen
 
-### Step 2: Implement orchestration in `passes/mod.cpp`
+### Step 2: Bring translated units into the build and reachable path
 
-Goal: replace the stub orchestration path with a real pass pipeline.
+Goal: connect already-translated code instead of leaving ownership parked in
+`emit.cpp`.
 
 Completion check:
 
-- `passes::peephole_optimize(...)` performs pass rounds instead of returning
-  input unchanged
-- targeted tests cover at least one local pass round and one global pass round
+- at least one translated unit or cluster is compiled and reachable
+- targeted tests prove the active path uses that code
 
-### Step 3: Integrate peephole optimization into x86 emission
+### Step 3: Complete peephole orchestration and emission integration
 
 Goal: ensure emitted x86 assembly actually flows through the peephole stage.
 
 Completion check:
 
+- `passes::peephole_optimize(...)` performs pass rounds instead of returning
+  input unchanged
 - x86 emission invokes `peephole_optimize(...)`
 - targeted backend tests observe optimized output
 
-### Step 4: Expand enabled pass coverage carefully
+### Step 4: Continue transferring ownership out of `emit.cpp`
 
-Goal: enable additional translated passes as their assumptions are verified on
-current emitter output.
+Goal: continue shrinking the gap between translated x86 codegen inventory and
+the real active path.
 
 Completion check:
 
-- enabled versus deferred passes are explicit
-- any deferred pass has a concrete reason
+- remaining disconnected translated units are explicit
+- the next ownership-transfer slice is clear
