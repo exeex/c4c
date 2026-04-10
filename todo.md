@@ -16,9 +16,10 @@ Source Plan: plan.md
 - Hard acceptance rule remains: this plan is only fully done when the old field
   is gone and the new architecture no longer relies on string-prefix semantic
   recovery.
-- Next intended slice: migrate parser/HIR rebuild helpers to populate and
-  consume `TemplateArgRef.kind/type/value` directly, then switch
-  `parser_types_template.cpp` off debug-text-first decoding in the common path.
+- Next intended slice: migrate HIR-side nested arg rebuild and
+  `parser_types_template.cpp` deferred trait evaluation to consume
+  `TemplateArgRef.kind/type/value` directly in the common path, reducing the
+  remaining debug-text-first fallbacks.
 
 ## Completed
 
@@ -44,3 +45,9 @@ Source Plan: plan.md
 - Replaced the interim parallel-array storage on `TypeSpec` with a single
   `TemplateArgRefList`, so the transport shape now matches the refactor target
   more closely and new code can move toward reading per-arg `kind/type/value`.
+- Updated parser alias/member preservation so nested `@origin:args` rebuild now
+  reconstructs typed nested template args recursively and writes
+  `TemplateArgRef.kind/type/value` instead of only storing rebuilt debug text.
+- Updated deferred alias-member preservation paths to attach structured template
+  args directly from `ParsedTemplateArg` vectors before handing off to later
+  stages.

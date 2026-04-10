@@ -428,6 +428,51 @@ TypeSpec Parser::parse_base_type() {
                     arena_.strdup(refs[i].c_str());
             }
         };
+    auto render_template_arg_ref = [&](const ParsedTemplateArg& arg)
+        -> std::string {
+        if (arg.is_value) {
+            if (arg.nttp_name && arg.nttp_name[0]) return arg.nttp_name;
+            return std::to_string(arg.value);
+        }
+        if (arg.type.tpl_struct_origin) {
+            std::string ref = "@";
+            ref += arg.type.tpl_struct_origin;
+            ref += ":";
+            ref += encode_template_arg_debug_list(arg.type);
+            if (arg.type.deferred_member_type_name &&
+                arg.type.deferred_member_type_name[0]) {
+                ref += "$";
+                ref += arg.type.deferred_member_type_name;
+            }
+            return ref;
+        }
+        std::string mangled;
+        append_type_mangled_suffix(mangled, arg.type);
+        if (mangled.empty() && arg.type.tag) return arg.type.tag;
+        return mangled;
+    };
+    auto set_template_arg_refs_from_parsed_args =
+        [&](TypeSpec* target, const std::vector<ParsedTemplateArg>& args) {
+            if (!target) return;
+            target->tpl_struct_args.data = nullptr;
+            target->tpl_struct_args.size = 0;
+            if (args.empty()) return;
+            target->tpl_struct_args.data =
+                arena_.alloc_array<TemplateArgRef>(args.size());
+            target->tpl_struct_args.size = static_cast<int>(args.size());
+            for (int i = 0; i < target->tpl_struct_args.size; ++i) {
+                const ParsedTemplateArg& arg = args[i];
+                TemplateArgRef& out = target->tpl_struct_args.data[i];
+                out.kind = arg.is_value ? TemplateArgKind::Value
+                                        : TemplateArgKind::Type;
+                out.type = arg.is_value ? TypeSpec{} : arg.type;
+                out.value = arg.is_value ? arg.value : 0;
+                const std::string debug_ref = render_template_arg_ref(arg);
+                out.debug_text = debug_ref.empty()
+                    ? nullptr
+                    : arena_.strdup(debug_ref.c_str());
+            }
+        };
     auto set_template_arg_debug_refs_text =
         [&](TypeSpec* target, const std::string& refs_text) {
             if (!target) return;
@@ -1150,38 +1195,13 @@ TypeSpec Parser::parse_base_type() {
                                 }
                                 resolved_alias_args.push_back(default_arg);
                             }
-                            auto render_alias_arg_ref =
-                                [&](const TemplateArgParseResult& arg) -> std::string {
-                                    if (arg.is_value) {
-                                        if (arg.nttp_name && arg.nttp_name[0])
-                                            return arg.nttp_name;
-                                        return std::to_string(arg.value);
-                                    }
-                                    if (arg.type.tpl_struct_origin) {
-                                        std::string ref = "@";
-                                        ref += arg.type.tpl_struct_origin;
-                                        ref += ":";
-                                        ref += template_arg_refs_text(arg.type);
-                                        if (arg.type.deferred_member_type_name &&
-                                            arg.type.deferred_member_type_name[0]) {
-                                            ref += "$";
-                                            ref += arg.type.deferred_member_type_name;
-                                        }
-                                        return ref;
-                                    }
-                                    std::string mangled;
-                                    append_type_mangled_suffix(mangled, arg.type);
-                                    if (mangled.empty() && arg.type.tag)
-                                        return arg.type.tag;
-                                    return mangled;
-                                };
                             auto build_template_arg_refs =
                                 [&](const std::vector<TemplateArgParseResult>& args)
                                 -> std::string {
                                     std::string arg_refs;
                                     for (const auto& arg : args) {
                                         if (!arg_refs.empty()) arg_refs += ",";
-                                        arg_refs += render_alias_arg_ref(arg);
+                                        arg_refs += render_template_arg_ref(arg);
                                     }
                                     return arg_refs;
                                 };
@@ -1203,7 +1223,7 @@ TypeSpec Parser::parse_base_type() {
                                         }
                                         if (!packed_refs.empty()) packed_refs += ",";
                                         packed_refs +=
-                                            render_alias_arg_ref(
+                                            render_template_arg_ref(
                                                 resolved_alias_args[bound_arg_index]);
                                         ++bound_arg_index;
                                     }
@@ -1221,7 +1241,7 @@ TypeSpec Parser::parse_base_type() {
                                     break;
                                 }
                                 subst[ati.param_names[pi]] =
-                                    render_alias_arg_ref(
+                                    render_template_arg_ref(
                                         resolved_alias_args[bound_arg_index]);
                                 ++bound_arg_index;
                             }
@@ -1305,7 +1325,9 @@ TypeSpec Parser::parse_base_type() {
                                         }
                                         return updated_refs;
                                     };
-                                auto parse_template_arg_ref =
+                                std::function<bool(const std::string&,
+                                                   ParsedTemplateArg*)>
+                                    parse_template_arg_ref =
                                     [&](const std::string& ref,
                                         ParsedTemplateArg* out) -> bool {
                                         if (!out || ref.empty()) return false;
@@ -1340,8 +1362,28 @@ TypeSpec Parser::parse_base_type() {
                                                 arena_.strdup(origin.c_str());
                                             parsed.type.tpl_struct_origin =
                                                 parsed.type.tag;
-                                            set_template_arg_debug_refs_text(
-                                                &parsed.type, nested_refs);
+                                            if (!nested_refs.empty()) {
+                                                std::vector<ParsedTemplateArg>
+                                                    nested_args;
+                                                const auto nested_parts =
+                                                    split_template_arg_refs(
+                                                        nested_refs);
+                                                nested_args.reserve(
+                                                    nested_parts.size());
+                                                for (const auto& nested_part :
+                                                     nested_parts) {
+                                                    ParsedTemplateArg nested_arg{};
+                                                    if (!parse_template_arg_ref(
+                                                            nested_part,
+                                                            &nested_arg)) {
+                                                        return false;
+                                                    }
+                                                    nested_args.push_back(
+                                                        nested_arg);
+                                                }
+                                                set_template_arg_refs_from_parsed_args(
+                                                    &parsed.type, nested_args);
+                                            }
                                             if (member_sep != std::string::npos &&
                                                 member_sep + 1 < ref.size()) {
                                                 parsed.type.deferred_member_type_name =
@@ -1463,9 +1505,8 @@ TypeSpec Parser::parse_base_type() {
                                         ts.base = TB_STRUCT;
                                         ts.tag = arena_.strdup(owner_name.c_str());
                                         ts.tpl_struct_origin = ts.tag;
-                                        const std::string arg_refs =
-                                            build_template_arg_refs(actual_args);
-                                        set_template_arg_debug_refs_text(&ts, arg_refs);
+                                        set_template_arg_refs_from_parsed_args(
+                                            &ts, actual_args);
                                         ts.deferred_member_type_name =
                                             arena_.strdup(member_name.c_str());
                                         return true;
@@ -1696,11 +1737,8 @@ TypeSpec Parser::parse_base_type() {
                                             ts.tag =
                                                 arena_.strdup(derived_owner.c_str());
                                             ts.tpl_struct_origin = ts.tag;
-                                            const std::string arg_refs =
-                                                build_template_arg_refs(
-                                                    resolved_alias_args);
-                                            set_template_arg_debug_refs_text(
-                                                &ts, arg_refs);
+                                            set_template_arg_refs_from_parsed_args(
+                                                &ts, resolved_alias_args);
                                             ts.deferred_member_type_name =
                                                 arena_.strdup(derived_member.c_str());
                                             resolved_alias_member = true;
