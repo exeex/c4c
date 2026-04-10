@@ -525,6 +525,46 @@ Validation result:
 - full-suite regression guard passed with `3321/3321` tests passing before and
   `3324/3324` after, with no new failures
 
+## 2026-04-10 Step 4 Tenth Extraction Slice
+
+Executed the `hir_stmt.cpp` switch-family split:
+
+- moved the `NK_SWITCH`, `NK_CASE`, `NK_CASE_RANGE`, and `NK_DEFAULT`
+  lowering family into the new `src/frontend/hir/hir_stmt_switch.cpp`
+- kept the logic as existing `Lowerer` methods so the slice remains a
+  translation-unit ownership split rather than a semantic rewrite
+- added `tests/cpp/internal/hir_case/hir_stmt_switch_helper_hir.cpp` as
+  focused HIR coverage for the emitted switch body block, constexpr-backed
+  case labels, and default block shape
+
+Measured result:
+
+- compiling the pre-split `src/frontend/hir/hir_stmt.cpp` from `HEAD` on the
+  generated optimized command took `4.914s`
+- the direct post-split `src/frontend/hir/hir_stmt.cpp` rerun took `3.952s`
+- the new `src/frontend/hir/hir_stmt_switch.cpp` compiles in `1.074s`
+- this means the slice did demonstrate a single-TU compile-time win for the
+  main hotspot TU, reducing `hir_stmt.cpp` by `0.962s` (about `19.6%`)
+
+Validation result:
+
+- focused coverage passed:
+  `cpp_hir_stmt_switch_helper`,
+  `cpp_hir_stmt_range_for_helper`,
+  `cpp_positive_sema_constexpr_local_switch_cpp`,
+  `positive_sema_ok_enum_scope_no_leak_after_block_c`, and
+  `negative_tests_bad_flow_continue_in_switch`
+- full-suite regression guard passed with `3325/3325` tests passing before and
+  `3328/3328` after, with no new failures
+
+Follow-on note:
+
+- a refreshed hotspot rerun still leaves `src/frontend/hir/hir_stmt.cpp`
+  narrowly ahead at `4.764s`, with `src/frontend/hir/hir_templates.cpp`
+  next at `3.945s`, so the next iteration should confirm whether another
+  cohesive `hir_stmt.cpp` control-flow seam remains before returning to
+  template-heavy work
+
 ## Non-Goals
 
 - no backend architecture work

@@ -1380,6 +1380,15 @@ set_tests_properties(cpp_hir_stmt_range_for_helper PROPERTIES
 )
 
 add_test(
+  NAME cpp_hir_stmt_switch_helper
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/hir_stmt_switch_helper_hir.cpp"
+)
+set_tests_properties(cpp_hir_stmt_switch_helper PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "decl first: const int = 1.*decl second: const int = \\(first#L0 \\+ 1\\).*switch \\(x#P0\\) body=block#.*return result#L2.*case 1:.*\\(result#L2 = 10\\).*break.*case 2:.*\\(result#L2 = 20\\).*break.*default:.*\\(result#L2 = 30\\).*break"
+)
+
+add_test(
   NAME cpp_hir_template_function_signature_binding
   COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/template_fn_struct.cpp"
 )

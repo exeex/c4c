@@ -660,6 +660,18 @@ class Lowerer {
 
   void lower_range_for_stmt(FunctionCtx& ctx, const Node* n);
 
+  void lower_switch_stmt(FunctionCtx& ctx, const Node* n);
+
+  void lower_case_stmt(FunctionCtx& ctx, const Node* n);
+
+  void lower_case_range_stmt(FunctionCtx& ctx, const Node* n);
+
+  void lower_default_stmt(FunctionCtx& ctx, const Node* n);
+
+  void attach_switch_cases(FunctionCtx& ctx, BlockId parent_b);
+
+  void branch_to_block_if_needed(FunctionCtx& ctx, BlockId target, const Node* n);
+
   void lower_stmt_node(FunctionCtx& ctx, const Node* n);
 
   ExprId lower_stmt_expr_block(FunctionCtx& ctx, const Node* block, const TypeSpec& result_ts);

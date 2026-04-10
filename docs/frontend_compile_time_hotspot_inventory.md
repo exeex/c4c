@@ -406,3 +406,54 @@ Interpretation:
 - With `stmt_emitter_call.cpp` now lower than its pre-split measurement, the
   next extraction choice should refresh the current HIR/LIR tier before picking
   the next seam between `hir_templates.cpp` and `hir_stmt.cpp`.
+
+## Step 4: Tenth Executed Slice
+
+- Extracted the switch-family lowering cluster (`NK_SWITCH`, `NK_CASE`,
+  `NK_CASE_RANGE`, and `NK_DEFAULT`) from
+  `src/frontend/hir/hir_stmt.cpp` into the new
+  `src/frontend/hir/hir_stmt_switch.cpp`.
+- Kept the extracted logic as existing `Lowerer` methods, so this remains a
+  translation-unit ownership split around control-flow statement lowering
+  rather than a semantic rewrite.
+- Added focused HIR coverage in
+  `tests/cpp/internal/hir_case/hir_stmt_switch_helper_hir.cpp` to pin the
+  emitted switch body block, constexpr-backed case labels, and default block
+  shape exercised by the extracted helper family.
+
+## Step 4: Tenth Slice Measurements
+
+Optimized single-TU compile timings for the switch-family split:
+
+| Translation unit | Before `-O2 -c` (s) | After `-O2 -c` (s) | Notes |
+| --- | ---: | ---: | --- |
+| `src/frontend/hir/hir_stmt.cpp` | 4.914 | 3.952 | before compiled from `HEAD`, after from the working tree |
+| `src/frontend/hir/hir_stmt_switch.cpp` | n/a | 1.074 | new extracted TU |
+
+Interpretation:
+
+- Unlike the earlier range-for split, this `hir_stmt.cpp` slice did produce a
+  measured hotspot reduction on the main TU.
+- The main `hir_stmt.cpp` rebuild surface dropped by `0.962s`, about `19.6%`,
+  while preserving switch/case/default lowering behavior.
+
+## Step 4: Refreshed Ranking After The `hir_stmt.cpp` Switch Split
+
+The targeted optimized single-TU rerun after the switch-family extraction
+produced this updated hotspot order:
+
+| Rank | Translation unit | Optimized compile (s) |
+| --- | --- | ---: |
+| 1 | `src/frontend/hir/hir_stmt.cpp` | 4.764 |
+| 2 | `src/frontend/hir/hir_templates.cpp` | 3.945 |
+| 3 | `src/frontend/hir/hir_expr.cpp` | 3.712 |
+| 4 | `src/codegen/lir/stmt_emitter_expr.cpp` | 3.707 |
+| 5 | `src/codegen/lir/stmt_emitter_call.cpp` | 3.180 |
+
+Interpretation:
+
+- `hir_stmt.cpp` still leads the refreshed tier, though by a narrower margin
+  than before the split.
+- The next extraction choice should inspect whether another cohesive
+  control-flow seam remains in `hir_stmt.cpp` before returning to
+  `hir_templates.cpp`.

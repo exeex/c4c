@@ -17,6 +17,7 @@
 // - hir_expr.cpp: expression lowering core
 // - hir_expr_call.cpp: call/member/consteval expression lowering
 // - hir_stmt.cpp: statement lowering
+// - hir_stmt_switch.cpp: switch/case/default statement lowering
 // - hir_types.cpp: type/layout/init lowering
 // - hir_templates.cpp: template instantiation support
 // - hir_functions.cpp: function/callable lowering helpers
