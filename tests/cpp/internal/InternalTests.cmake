@@ -88,6 +88,7 @@ set(CPP_POSITIVE_PARSE_STEMS
     namespaced_inherited_type_alias_base_member_lookup_parse
     template_argument_loop_staging_parse
     template_argument_expr_close_staging_parse
+    template_declaration_prelude_cleanup_parse
     member_template_decltype_default_parse
     member_template_decltype_overload_parse
     member_template_sfinae_typename_prelude_parse

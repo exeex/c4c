@@ -287,6 +287,24 @@ class Parser {
     }
   };
 
+  struct TemplateDeclarationPreludeGuard {
+    Parser* parser = nullptr;
+    std::vector<std::string> injected_type_params;
+    bool pushed_template_scope = false;
+
+    explicit TemplateDeclarationPreludeGuard(Parser* p) : parser(p) {}
+
+    ~TemplateDeclarationPreludeGuard() {
+      if (!parser) return;
+      if (pushed_template_scope && !parser->template_scope_stack_.empty()) {
+        parser->template_scope_stack_.pop_back();
+      }
+      for (const std::string& name : injected_type_params) {
+        parser->unregister_typedef_binding(name);
+      }
+    }
+  };
+
   ParserLiteSnapshot save_lite_state() const;
   void restore_lite_state(const ParserLiteSnapshot& snap);
   ParserSnapshot save_state() const;

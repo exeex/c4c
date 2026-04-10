@@ -8,15 +8,15 @@ Source Plan: plan.md
 
 - Step 3: migrate the next narrow speculative/state-management call sites onto
   grouped parser symbol-table accessors instead of direct top-level member
-  storage assumptions, starting with typedef/value registration and
-  namespace-aware lookup helpers
-- Current slice: move the next bounded compatibility-reference cleanup into
-  `src/frontend/parser/parser_declarations.cpp`, starting with localized
-  template-parameter typedef seeding and teardown paths that still write raw
-  `typedefs_` and `typedef_types_` state
-- Iteration target: replace the declaration parser's remaining direct
-  template-parameter typedef registration and cleanup writes with parser-local
-  helper operations, without widening into expression or sema work
+  storage assumptions, continuing through the remaining declaration-parser
+  typedef/value compatibility surfaces
+- Current slice: reassess whether the next bounded Step 3 cleanup should stay
+  in `src/frontend/parser/parser_declarations.cpp` for read-only typedef-map
+  probes or shift to the next type/expression helper surface
+- Iteration target: migrate the next coherent declaration-parser read paths
+  that still query raw `typedef_types_` state directly, starting with alias
+  template and qualified typedef resolution probes if that remains the
+  smallest slice
 
 ## Completed Items
 
@@ -155,14 +155,34 @@ Source Plan: plan.md
 - Revalidated this slice with targeted record-member parser tests plus full
   `ctest --test-dir build -j8 --output-on-failure` and regression guard:
   3351/3351 tests passed, no new failures
+- Added parser-owned `TemplateDeclarationPreludeGuard` in
+  `src/frontend/parser/parser.hpp` so template declaration prelude cleanup can
+  stay local to the declaration parser instead of manually erasing grouped
+  typedef storage at the call site
+- Migrated `src/frontend/parser/parser_declarations.cpp` template type-parameter
+  seeding/teardown onto `register_synthesized_typedef_binding()` plus the new
+  declaration prelude guard, and routed template primary struct name/type
+  registration through `register_tag_type_binding()`
+- Added parse-only regression
+  `tests/cpp/internal/postive_case/template_declaration_prelude_cleanup_parse.cpp`
+  and registered it in `tests/cpp/internal/InternalTests.cmake` to cover
+  template-parameter default visibility together with cleanup before a
+  following ordinary `struct T` declaration
+- Revalidated this slice with
+  `ctest --test-dir build -R template_declaration_prelude_cleanup_parse
+  --output-on-failure`, full `ctest --test-dir build -j8
+  --output-on-failure`, and regression guard:
+  3352/3352 tests passed, no new failures
 
 ## Next Intended Slice
 
-- Move the next Step 3 compatibility-reference cleanup into
-  `src/frontend/parser/parser_declarations.cpp`, focusing on template-parameter
-  typedef seeding, cleanup, and nearby declaration-parser registration paths
-- Reassess after that slice whether the next raw symbol-table consumers should
-  stay in declaration parsing or shift to type/expression helpers
+- Move the next Step 3 compatibility-reference cleanup into either the
+  remaining declaration-parser raw typedef reads or the next smallest
+  type/expression helper surface, whichever stays more coherent after a quick
+  read-through
+- If declaration parsing remains the best target, start with the
+  `typedef_types_.count/find` probes around alias-template reconstruction and
+  qualified typedef resolution in `src/frontend/parser/parser_declarations.cpp`
 - Leave namespace-state grouping for a separate slice unless it becomes
   necessary for the chosen accessor migration
 
@@ -186,6 +206,7 @@ Source Plan: plan.md
   now use parser-local typedef helpers, and `parser_types_struct.cpp` no
   longer carries raw compatibility-reference cleanup for the member-template
   prelude path
-- The broader repo still carries non-Step-3 direct typedef-map consumers and
-  declaration-parser compatibility writes, with `parser_declarations.cpp` now
-  the next bounded cleanup candidate
+- `parser_declarations.cpp` no longer manually seeds or erases grouped typedef
+  storage for template declaration preludes, but it still carries several
+  direct read-only `typedef_types_` queries that are the next likely Step 3
+  cleanup candidates

@@ -1396,6 +1396,7 @@ Node* Parser::parse_top_level() {
             return spec;
         }
 
+        TemplateDeclarationPreludeGuard template_prelude_guard(this);
         std::vector<const char*> template_params;
         std::vector<bool> template_param_nttp;  // true if non-type template param
         std::vector<bool> template_param_is_pack;
@@ -1412,13 +1413,8 @@ Node* Parser::parse_top_level() {
                     pname = make_anon_template_param_name(arena_, false, template_params.size());
                 }
                 if (pname && pname[0]) {
-                    typedefs_.insert(pname);
-                    TypeSpec param_ts{};
-                    param_ts.array_size = -1;
-                    param_ts.array_rank = 0;
-                    param_ts.base = TB_TYPEDEF;
-                    param_ts.tag = pname;
-                    typedef_types_[pname] = param_ts;
+                    register_synthesized_typedef_binding(pname);
+                    template_prelude_guard.injected_type_params.emplace_back(pname);
                 }
                 template_params.push_back(pname);
                 template_param_nttp.push_back(false);
@@ -1644,21 +1640,6 @@ Node* Parser::parse_top_level() {
         expect_template_close();
         parse_optional_cpp20_requires_clause(*this);
 
-        std::vector<std::string> injected_names;
-        for (size_t i = 0; i < template_params.size(); ++i) {
-            const char* pname = template_params[i];
-            if (!pname || !pname[0]) continue;
-            if (template_param_nttp[i]) continue;  // NTTP: don't inject as typedef
-            injected_names.emplace_back(pname);
-            typedefs_.insert(pname);
-            TypeSpec param_ts{};
-            param_ts.array_size = -1;
-            param_ts.array_rank = 0;
-            param_ts.base = TB_TYPEDEF;
-            param_ts.tag = pname;
-            typedef_types_[pname] = param_ts;
-        }
-
         // Push template scope so struct body / member parsing can consult it.
         {
             std::vector<TemplateScopeParam> scope_params;
@@ -1669,6 +1650,7 @@ Node* Parser::parse_top_level() {
                 scope_params.push_back(p);
             }
             push_template_scope(TemplateScopeKind::FreeFunctionTemplate, scope_params);
+            template_prelude_guard.pushed_template_scope = true;
         }
 
         size_t struct_defs_before = struct_defs_.size();
@@ -1693,13 +1675,6 @@ Node* Parser::parse_top_level() {
             }
             last_using_alias_name_.clear();
         }
-        pop_template_scope();
-
-        for (const std::string& pname : injected_names) {
-            typedefs_.erase(pname);
-            typedef_types_.erase(pname);
-        }
-
         auto attach_template_params = [&](Node* n) {
             if (!n || template_params.empty()) return;
             n->n_template_params = (int)template_params.size();
@@ -1755,19 +1730,13 @@ Node* Parser::parse_top_level() {
                 register_template_struct_primary(last_sd->name, last_sd);
                 // In C++ mode, register the template struct name as a typedef
                 // so it's recognized as a type start for Pair<int> syntax.
-                typedefs_.insert(last_sd->name);
-                TypeSpec struct_ts{};
-                struct_ts.array_size = -1;
-                struct_ts.inner_rank = -1;
-                struct_ts.base = TB_STRUCT;
-                struct_ts.tag = last_sd->name;
-                typedef_types_[last_sd->name] = struct_ts;
+                register_tag_type_binding(last_sd->name, TB_STRUCT,
+                                          last_sd->name);
                 // If inside a namespace, also register ns::Name so
                 // qualified references like std::vector<int> work.
                 const std::string qn =
                     canonical_name_in_context(current_namespace_context_id(), last_sd->name);
-                typedefs_.insert(qn);
-                typedef_types_[qn] = struct_ts;
+                register_tag_type_binding(qn, TB_STRUCT, last_sd->name);
                 register_template_struct_primary(qn, last_sd);
             }
         }
