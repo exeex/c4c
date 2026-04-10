@@ -12,9 +12,9 @@ Source Plan: plan.md
   `src/backend/x86/codegen/direct_printf.cpp`
 - immediate target:
   continue Step 4 in `src/backend/x86/codegen/direct_calls.cpp` after the
-  bounded first-local two-argument helper-call route by moving the neighboring
-  local-slot-fed two-argument helper-call variants in bounded sub-slices,
-  starting with the second-local route
+  bounded second-local two-argument helper-call route by moving the remaining
+  local-slot-fed rewrite variants in bounded sub-slices, starting with the
+  second-local rewrite route
   - keep translated `variadic.cpp` itself parked until `X86Codegen` grows the
     state/method surface it still references
   - keep `frame_compact.cpp` parked until a future iteration can prove a real
@@ -49,6 +49,9 @@ Source Plan: plan.md
 - after the bounded first-local two-argument helper-call route now lives in
   `src/backend/x86/codegen/direct_calls.cpp`, continue Step 4 there with the
   second-local two-argument helper-call route before the rewrite variants
+- after the bounded second-local two-argument helper-call route now lives in
+  `src/backend/x86/codegen/direct_calls.cpp`, continue Step 4 there with the
+  second-local rewrite helper-call route before the remaining rewrite variants
 - keep translated `variadic.cpp` parked until a future iteration can expose
   the missing `X86Codegen` state/method surface intentionally instead of
   compiling placeholder member bodies by accident
@@ -83,6 +86,22 @@ Source Plan: plan.md
   bounded ownership move: the x86 prepared-LIR first-local two-argument
   helper-call route now lives in `src/backend/x86/codegen/direct_calls.cpp`
   instead of staying in `emit.cpp`
+- this iteration continues that direct-calls sibling seam with the next
+  bounded ownership move: the x86 prepared-LIR second-local two-argument
+  helper-call route now lives in `src/backend/x86/codegen/direct_calls.cpp`
+  instead of staying in `emit.cpp`
+- added a focused backend regression that calls the moved second-local two-arg
+  helper seam explicitly so the Step 4 ownership move stays observable apart
+  from the broader prepared-LIR dispatcher coverage
+- focused checks passed:
+  `./build/backend_bir_tests test_x86_direct_call_helper_accepts_two_arg_second_local_arg_call_slice`
+  plus `test_x86_direct_call_helper_accepts_two_arg_local_arg_call_slice`,
+  `test_x86_direct_emitter_lowers_minimal_two_arg_local_arg_call_slice`, and
+  `test_x86_direct_emitter_lowers_minimal_two_arg_second_local_arg_call_slice`
+- the broad `ctest --test-dir build -j8 --output-on-failure` rerun remained
+  monotonic against `test_fail_before.log`; the regression guard reported
+  `1217` passed / `181` failed before versus `2723` passed / `181` failed
+  after, with no newly failing tests and no new `>30s` cases
 - added a focused backend regression that calls the moved first-local two-arg
   helper seam explicitly so the Step 4 ownership move stays observable apart
   from the broader prepared-LIR dispatcher coverage
