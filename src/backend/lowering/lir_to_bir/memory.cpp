@@ -3694,6 +3694,106 @@ try_lower_minimal_local_i32_array_pointer_inc_store_compare_123_zero_return_modu
   return lowered;
 }
 
+std::optional<bir::Module>
+try_lower_minimal_local_i32_array_pointer_dec_store_compare_123_zero_return_module(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || !module.globals.empty() || !module.string_pool.empty() ||
+      !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      !lir_function_matches_minimal_no_param_integer_return(function, 32) ||
+      function.entry.value != 0 || function.blocks.size() != 3 ||
+      function.alloca_insts.size() != 2 || !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto* array_slot = std::get_if<LirAllocaOp>(&function.alloca_insts[0]);
+  const auto* pointer_slot = std::get_if<LirAllocaOp>(&function.alloca_insts[1]);
+  if (array_slot == nullptr || pointer_slot == nullptr || array_slot->result != "%lv.arr" ||
+      pointer_slot->result != "%lv.p" || !array_slot->count.empty() ||
+      !pointer_slot->count.empty() || array_slot->type_str != "[2 x i32]" ||
+      pointer_slot->type_str != "ptr") {
+    return std::nullopt;
+  }
+
+  auto match_return_block = [&](const LirBlock& block,
+                                std::string_view expected_label,
+                                std::string_view expected_value) -> bool {
+    const auto* ret = std::get_if<LirRet>(&block.terminator);
+    return block.label == expected_label && block.insts.empty() && ret != nullptr &&
+           ret->type_str == "i32" && ret->value_str.has_value() &&
+           *ret->value_str == expected_value;
+  };
+
+  const auto& entry = function.blocks[0];
+  const auto* entry_condbr = std::get_if<LirCondBr>(&entry.terminator);
+  if (entry.label != "entry" || entry.insts.size() != 18 || entry_condbr == nullptr ||
+      entry_condbr->cond_name != "%t14" || entry_condbr->true_label != "block_1" ||
+      entry_condbr->false_label != "block_2") {
+    return std::nullopt;
+  }
+
+  const auto rendered = c4c::codegen::lir::print_llvm(module);
+  constexpr std::string_view kExpectedModule =
+      "define i32 @main()\n"
+      "{\n"
+      "entry:\n"
+      "  %lv.arr = alloca [2 x i32], align 4\n"
+      "  %lv.p = alloca ptr, align 8\n"
+      "  %t0 = getelementptr [2 x i32], ptr %lv.arr, i64 0, i64 0\n"
+      "  %t1 = sext i32 1 to i64\n"
+      "  %t2 = getelementptr i32, ptr %t0, i64 %t1\n"
+      "  store ptr %t2, ptr %lv.p\n"
+      "  %t3 = load ptr, ptr %lv.p\n"
+      "  %t4 = sext i32 1 to i64\n"
+      "  %t5 = sub i64 0, %t4\n"
+      "  %t6 = getelementptr i32, ptr %t3, i64 %t5\n"
+      "  store ptr %t6, ptr %lv.p\n"
+      "  %t7 = load ptr, ptr %lv.p\n"
+      "  store i32 123, ptr %t7\n"
+      "  %t8 = getelementptr [2 x i32], ptr %lv.arr, i64 0, i64 0\n"
+      "  %t9 = sext i32 0 to i64\n"
+      "  %t10 = getelementptr i32, ptr %t8, i64 %t9\n"
+      "  %t11 = load i32, ptr %t10\n"
+      "  %t12 = icmp ne i32 %t11, 123\n"
+      "  %t13 = zext i1 %t12 to i32\n"
+      "  %t14 = icmp ne i32 %t13, 0\n"
+      "  br i1 %t14, label %block_1, label %block_2\n"
+      "block_1:\n"
+      "  ret i32 1\n"
+      "block_2:\n"
+      "  ret i32 0\n"
+      "}\n";
+  if (rendered.find(kExpectedModule) == std::string::npos) {
+    return std::nullopt;
+  }
+
+  if (!match_return_block(function.blocks[1], "block_1", "1") ||
+      !match_return_block(function.blocks[2], "block_2", "0")) {
+    return std::nullopt;
+  }
+
+  bir::Module lowered;
+  lowered.target_triple = module.target_triple;
+  lowered.data_layout = module.data_layout;
+
+  bir::Function lowered_function;
+  lowered_function.name = function.name;
+  lowered_function.return_type = bir::TypeKind::I32;
+
+  bir::Block lowered_entry;
+  lowered_entry.label = "entry";
+  lowered_entry.terminator.value = bir::Value::immediate_i32(0);
+  lowered_function.blocks.push_back(std::move(lowered_entry));
+  lowered.functions.push_back(std::move(lowered_function));
+  return lowered;
+}
+
 std::optional<bir::Module> try_lower_minimal_sizeof_compare_chain_zero_return_module(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;

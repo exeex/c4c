@@ -4987,6 +4987,12 @@ std::optional<bir::Module> try_lower_to_bir_legacy(const c4c::codegen::lir::LirM
       lowered.has_value()) {
     return lowered;
   }
+  if (const auto lowered =
+          try_lower_minimal_local_i32_array_pointer_dec_store_compare_123_zero_return_module(
+              module);
+      lowered.has_value()) {
+    return lowered;
+  }
   if (const auto lowered = try_lower_minimal_sizeof_compare_chain_zero_return_module(module);
       lowered.has_value()) {
     return lowered;
@@ -5416,6 +5422,19 @@ BirLoweringResult try_lower_to_bir_with_options(
             .phase = "legacy-lowering",
             .message =
                 "local array pointer increment/store/compare seam lowered the source-shaped module before CFG normalization preserved the bounded `00072.c` pointer-write route",
+        }},
+    };
+  }
+  if (auto lowered =
+          try_lower_minimal_local_i32_array_pointer_dec_store_compare_123_zero_return_module(
+              module);
+      lowered.has_value()) {
+    return BirLoweringResult{
+        .module = std::move(lowered),
+        .notes = {BirLoweringNote{
+            .phase = "legacy-lowering",
+            .message =
+                "local array pointer decrement/store/compare seam lowered the source-shaped module before CFG normalization preserved the bounded `00073.c` pointer-write route",
         }},
     };
   }

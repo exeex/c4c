@@ -183,6 +183,9 @@ try_lower_minimal_local_i32_array_pointer_add_deref_diff_zero_return_module(
 std::optional<bir::Module>
 try_lower_minimal_local_i32_array_pointer_inc_store_compare_123_zero_return_module(
     const c4c::codegen::lir::LirModule& module);
+std::optional<bir::Module>
+try_lower_minimal_local_i32_array_pointer_dec_store_compare_123_zero_return_module(
+    const c4c::codegen::lir::LirModule& module);
 std::optional<bir::Module> try_lower_minimal_sizeof_compare_chain_zero_return_module(
     const c4c::codegen::lir::LirModule& module);
 bir::LoadLocalInst make_memory_load_local(bir::Value result,
