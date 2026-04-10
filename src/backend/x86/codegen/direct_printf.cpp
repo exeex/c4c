@@ -1,7 +1,9 @@
 #include "x86_codegen.hpp"
 
+#include "../../lowering/call_decode.hpp"
 #include "../../../codegen/lir/ir.hpp"
 
+#include <charconv>
 #include <cctype>
 #include <sstream>
 
@@ -28,6 +30,25 @@ struct MinimalCountedPrintfTernaryLoopSlice {
   std::string pool_name;
   std::string raw_bytes;
 };
+
+struct MinimalStringLiteralCharSlice {
+  std::string function_name;
+  std::string pool_name;
+  std::string raw_bytes;
+  std::int64_t byte_index = 0;
+  c4c::codegen::lir::LirCastKind extend_kind = c4c::codegen::lir::LirCastKind::SExt;
+};
+
+std::optional<std::int64_t> parse_i64(std::string_view text) {
+  std::int64_t value = 0;
+  const char* begin = text.data();
+  const char* end = begin + text.size();
+  const auto result = std::from_chars(begin, end, value);
+  if (result.ec != std::errc() || result.ptr != end) {
+    return std::nullopt;
+  }
+  return value;
+}
 
 std::string decode_llvm_byte_string(std::string_view text) {
   std::string bytes;
@@ -525,6 +546,81 @@ std::optional<MinimalCountedPrintfTernaryLoopSlice> parse_minimal_counted_printf
   };
 }
 
+std::optional<MinimalStringLiteralCharSlice> parse_minimal_string_literal_char_slice(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || module.string_pool.size() != 1 ||
+      !module.globals.empty() || !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& string_const = module.string_pool.front();
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      !c4c::backend::backend_lir_is_zero_arg_i32_definition(function.signature_text) ||
+      function.entry.value != 0 || function.blocks.size() != 1 ||
+      !function.alloca_insts.empty() || !function.stack_objects.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks.front();
+  if (entry.label != "entry" || entry.insts.size() != 5) {
+    return std::nullopt;
+  }
+
+  const auto* base_gep = std::get_if<LirGepOp>(&entry.insts[0]);
+  const auto* index_cast = std::get_if<LirCastOp>(&entry.insts[1]);
+  const auto* byte_gep = std::get_if<LirGepOp>(&entry.insts[2]);
+  const auto* load = std::get_if<LirLoadOp>(&entry.insts[3]);
+  const auto* extend = std::get_if<LirCastOp>(&entry.insts[4]);
+  const auto* ret = std::get_if<LirRet>(&entry.terminator);
+  if (base_gep == nullptr || index_cast == nullptr || byte_gep == nullptr ||
+      load == nullptr || extend == nullptr || ret == nullptr ||
+      base_gep->result.empty() || index_cast->result.empty() || load->result.empty()) {
+    return std::nullopt;
+  }
+
+  const auto string_array_type =
+      "[" + std::to_string(string_const.byte_length) + " x i8]";
+  if (base_gep->element_type != string_array_type || base_gep->ptr != string_const.pool_name ||
+      base_gep->indices.size() != 2 || base_gep->indices[0] != "i64 0" ||
+      base_gep->indices[1] != "i64 0") {
+    return std::nullopt;
+  }
+
+  if (index_cast->kind != LirCastKind::SExt || index_cast->from_type != "i32" ||
+      index_cast->to_type != "i64") {
+    return std::nullopt;
+  }
+  const auto byte_index = parse_i64(index_cast->operand);
+  if (!byte_index.has_value() || *byte_index < 0 || *byte_index > 4095) {
+    return std::nullopt;
+  }
+
+  if (byte_gep->element_type != "i8" || byte_gep->ptr != base_gep->result ||
+      byte_gep->indices.size() != 1 || byte_gep->indices[0] != ("i64 " + index_cast->result)) {
+    return std::nullopt;
+  }
+  if (load->type_str != "i8" || load->ptr != byte_gep->result) {
+    return std::nullopt;
+  }
+  if ((extend->kind != LirCastKind::SExt && extend->kind != LirCastKind::ZExt) ||
+      extend->from_type != "i8" || extend->operand != load->result ||
+      extend->to_type != "i32" || !ret->value_str.has_value() ||
+      *ret->value_str != extend->result || ret->type_str != "i32") {
+    return std::nullopt;
+  }
+
+  return MinimalStringLiteralCharSlice{
+      .function_name = function.name,
+      .pool_name = string_const.pool_name,
+      .raw_bytes = string_const.raw_bytes,
+      .byte_index = *byte_index,
+      .extend_kind = extend->kind,
+  };
+}
+
 std::string emit_minimal_repeated_printf_immediates_asm(
     std::string_view target_triple,
     const MinimalRepeatedPrintfImmediatesSlice& slice) {
@@ -636,6 +732,29 @@ std::string emit_minimal_counted_printf_ternary_loop_asm(
   return out.str();
 }
 
+std::string emit_minimal_string_literal_char_asm(
+    std::string_view target_triple,
+    const MinimalStringLiteralCharSlice& slice) {
+  const auto string_label = direct_private_data_label(target_triple, slice.pool_name);
+  const auto symbol = direct_symbol_name(target_triple, slice.function_name);
+
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n"
+      << ".section .rodata\n"
+      << string_label << ":\n"
+      << "  .asciz \"" << escape_asm_string(slice.raw_bytes) << "\"\n"
+      << ".text\n"
+      << emit_function_prelude(target_triple, symbol)
+      << "  lea rax, " << string_label << "[rip]\n";
+  if (slice.extend_kind == c4c::codegen::lir::LirCastKind::SExt) {
+    out << "  movsx eax, byte ptr [rax + " << slice.byte_index << "]\n";
+  } else {
+    out << "  movzx eax, byte ptr [rax + " << slice.byte_index << "]\n";
+  }
+  out << "  ret\n";
+  return out.str();
+}
+
 }  // namespace
 
 std::optional<std::string> try_emit_minimal_repeated_printf_immediates_module(
@@ -661,6 +780,15 @@ std::optional<std::string> try_emit_minimal_counted_printf_ternary_loop_module(
   if (const auto slice = parse_minimal_counted_printf_ternary_loop_slice(module);
       slice.has_value()) {
     return emit_minimal_counted_printf_ternary_loop_asm(module.target_triple, *slice);
+  }
+  return std::nullopt;
+}
+
+std::optional<std::string> try_emit_minimal_string_literal_char_module(
+    const c4c::codegen::lir::LirModule& module) {
+  if (const auto slice = parse_minimal_string_literal_char_slice(module);
+      slice.has_value()) {
+    return emit_minimal_string_literal_char_asm(module.target_triple, *slice);
   }
   return std::nullopt;
 }

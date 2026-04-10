@@ -893,6 +893,22 @@ void test_x86_direct_printf_helper_accepts_counted_printf_ternary_loop_slice() {
                   "the direct x86 printf helper seam should still lower the times-three arm through the native integer register path");
 }
 
+void test_x86_direct_printf_helper_accepts_string_literal_char_slice() {
+  const auto prepared = c4c::backend::prepare_lir_module_for_target(
+      make_supported_x86_string_literal_char_lir_module(), c4c::backend::Target::X86_64);
+  const auto rendered =
+      c4c::backend::x86::try_emit_minimal_string_literal_char_module(prepared);
+
+  expect_true(rendered.has_value(),
+              "the direct x86 printf helper seam should accept the bounded string-literal indexed-char slice after ownership moves out of emit.cpp");
+  expect_contains(*rendered, ".asciz \"hi\"",
+                  "the direct x86 printf helper seam should still materialize the string bytes after the Step 4 ownership move");
+  expect_contains(*rendered, "lea rax, .L.str0[rip]",
+                  "the direct x86 printf helper seam should still address the private string pool label on the native x86 path");
+  expect_contains(*rendered, "movsx eax, byte ptr [rax + 1]",
+                  "the direct x86 printf helper seam should still lower the indexed char load through the native byte-load path");
+}
+
 void test_aarch64_try_emit_prepared_lir_module_reports_direct_lir_support_explicitly() {
   const auto prepared_supported = c4c::backend::prepare_lir_module_for_target(
       make_supported_aarch64_string_literal_char_lir_module(),
@@ -2257,6 +2273,7 @@ void run_backend_bir_pipeline_tests() {
   RUN_TEST(test_x86_direct_printf_helper_accepts_repeated_printf_immediates_slice);
   RUN_TEST(test_x86_direct_printf_helper_accepts_local_buffer_string_copy_printf_slice);
   RUN_TEST(test_x86_direct_printf_helper_accepts_counted_printf_ternary_loop_slice);
+  RUN_TEST(test_x86_direct_printf_helper_accepts_string_literal_char_slice);
   RUN_TEST(test_aarch64_try_emit_prepared_lir_module_reports_direct_lir_support_explicitly);
   RUN_TEST(test_aarch64_try_emit_prepared_lir_module_accepts_pointer_phi_join_modules);
   RUN_TEST(test_x86_public_bir_emitter_delegates_direct_bir_route_to_shared_backend);
