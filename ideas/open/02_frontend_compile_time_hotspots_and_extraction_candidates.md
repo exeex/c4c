@@ -389,6 +389,36 @@ Validation result:
 - full-suite regression guard passed with `3321/3321` tests passing before and
   `3322/3322` after, with no new failures
 
+## 2026-04-10 Step 4 Fifth Extraction Slice
+
+Executed the `hir_stmt.cpp` range-for split:
+
+- moved the `NK_RANGE_FOR` lowering branch into the new
+  `src/frontend/hir/hir_stmt_range_for.cpp`
+- kept the logic as existing `Lowerer` methods so the slice remains a
+  translation-unit ownership split rather than a semantic rewrite
+- added `tests/cpp/internal/hir_case/hir_stmt_range_for_helper_hir.cpp` as
+  focused HIR coverage for the synthesized iterator locals, iterator method
+  calls, and loop-carried element binding shape
+
+Measured result:
+
+- compiling the pre-split `src/frontend/hir/hir_stmt.cpp` from `HEAD` on the
+  generated optimized command took `5.231s`
+- the post-split `src/frontend/hir/hir_stmt.cpp` took `10.111s`
+- the new `src/frontend/hir/hir_stmt_range_for.cpp` compiles in `1.958s`
+- this means the slice did not demonstrate a compile-time win, so it should be
+  treated as structure preparation rather than as a measured performance
+  improvement
+
+Validation result:
+
+- focused coverage passed:
+  `cpp_hir_stmt_range_for_helper` and
+  `cpp_positive_sema_range_for_const_cpp`
+- full-suite regression guard passed with `3321/3321` tests passing before and
+  `3323/3323` after, with no new failures
+
 ## Non-Goals
 
 - no backend architecture work

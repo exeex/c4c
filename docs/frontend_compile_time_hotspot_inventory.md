@@ -261,3 +261,29 @@ Interpretation:
 - The refreshed tier now shifts leadership to `hir_stmt.cpp` and
   `hir_templates.cpp`, so a subsequent Step 4 slice should likely move there
   rather than returning immediately to `hir_expr.cpp`.
+
+## Step 4: Fifth Executed Slice
+
+- Extracted the `NK_RANGE_FOR` lowering branch from
+  `src/frontend/hir/hir_stmt.cpp` into the new
+  `src/frontend/hir/hir_stmt_range_for.cpp`.
+- Added focused HIR coverage in
+  `tests/cpp/internal/hir_case/hir_stmt_range_for_helper_hir.cpp` so the
+  helper split keeps the synthetic iterator locals and iterator-call lowering
+  shape stable.
+
+## Step 4: Fifth Slice Measurements
+
+Optimized single-TU compile timings for the range-for split:
+
+| Translation unit | Before `-O2 -c` (s) | After `-O2 -c` (s) | Notes |
+| --- | ---: | ---: | --- |
+| `src/frontend/hir/hir_stmt.cpp` | 5.231 | 10.111 | before compiled from `HEAD`, after from the working tree |
+| `src/frontend/hir/hir_stmt_range_for.cpp` | n/a | 1.958 | new extracted TU |
+
+Interpretation:
+
+- This slice preserved behavior and improved file structure, but the measured
+  hotspot timing for `hir_stmt.cpp` moved in the wrong direction.
+- It should therefore be treated as structure-only groundwork and not as a
+  compile-time win.

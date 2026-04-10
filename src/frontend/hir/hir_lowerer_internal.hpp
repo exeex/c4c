@@ -657,6 +657,8 @@ class Lowerer {
 
   void emit_dtor_calls(FunctionCtx& ctx, size_t since, const Node* span_node);
 
+  void lower_range_for_stmt(FunctionCtx& ctx, const Node* n);
+
   void lower_stmt_node(FunctionCtx& ctx, const Node* n);
 
   ExprId lower_stmt_expr_block(FunctionCtx& ctx, const Node* block, const TypeSpec& result_ts);

@@ -6,9 +6,9 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 4: Choose the next hottest HIR seam after the `hir_expr.cpp`
-  call-lowering split, with `hir_stmt.cpp` and `hir_templates.cpp` now leading
-  the refreshed tier.
+- Step 4: Choose the next post-range-for HIR seam, keeping `hir_stmt.cpp` in
+  focus only if the candidate looks more promising than the range-for helper
+  split; otherwise move to the next cohesive `hir_templates.cpp` slice.
 
 ## Completed
 
@@ -125,15 +125,33 @@ Source Plan: plan.md
   single-TU compile for `src/frontend/hir/hir_expr.cpp` improved from 9.281s
   to 3.549s after the split, and the new `src/frontend/hir/hir_expr_call.cpp`
   compiles in 2.884s.
+- Added focused HIR coverage in
+  `tests/cpp/internal/hir_case/hir_stmt_range_for_helper_hir.cpp` and wired
+  the new `cpp_hir_stmt_range_for_helper` test into
+  `tests/cpp/internal/InternalTests.cmake`.
+- Executed the fifth Step 4 slice by moving the `NK_RANGE_FOR` lowering branch
+  out of `src/frontend/hir/hir_stmt.cpp` into the new
+  `src/frontend/hir/hir_stmt_range_for.cpp`.
+- Rebuilt after the split and re-ran focused coverage:
+  `cpp_hir_stmt_range_for_helper` and
+  `cpp_positive_sema_range_for_const_cpp`.
+- Re-ran the full suite into `test_fail_after.log`; the regression guard passed
+  with 3323/3323 tests passing after the new focused HIR test was added and no
+  new failures.
+- Recorded the fifth before/after extraction measurement: compiling the
+  pre-split `src/frontend/hir/hir_stmt.cpp` from `HEAD` on the generated
+  optimized command took 5.231s, the post-split
+  `src/frontend/hir/hir_stmt.cpp` took 10.111s, and the new
+  `src/frontend/hir/hir_stmt_range_for.cpp` took 1.958s.
 
 ## Next Slice
 
-- Start from the refreshed post-split tier, which now has
-  `hir_stmt.cpp` at 4.710s and `hir_templates.cpp` at 4.634s ahead of the
-  remaining HIR/LIR candidates.
-- Prefer a low-risk `hir_stmt.cpp` helper extraction if it has a focused test
-  surface comparable to the `hir_expr.cpp` call-lowering split; otherwise
-  revisit the next cohesive `hir_templates.cpp` seam.
+- Treat the range-for extraction as structure-only groundwork rather than a
+  compile-time improvement and avoid claiming a hotspot win from it.
+- If `hir_stmt.cpp` remains the next target, prefer a different cluster with a
+  better chance of shrinking the main TU than the range-for branch did.
+- Otherwise revisit the next cohesive `hir_templates.cpp` seam with a focused
+  HIR regression surface.
 
 ## Blockers
 
@@ -168,3 +186,7 @@ Source Plan: plan.md
   `src/frontend/hir/hir_templates.cpp` at 4.634s, while
   `src/frontend/hir/hir_expr.cpp` has dropped to 3.549s after the call helper
   extraction.
+- The fifth extraction slice preserved behavior and added focused range-for HIR
+  coverage, but the compile-time measurement moved in the wrong direction, so
+  no compile-time win should be claimed from the `hir_stmt.cpp` range-for
+  split.

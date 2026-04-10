@@ -1371,6 +1371,15 @@ set_tests_properties(cpp_hir_expr_call_member_helper PROPERTIES
 )
 
 add_test(
+  NAME cpp_hir_stmt_range_for_helper
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/hir_stmt_range_for_helper_hir.cpp"
+)
+set_tests_properties(cpp_hir_stmt_range_for_helper PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "decl __range_begin: struct Iter = Bag__begin_const\\(\\(&bag#P0\\)\\).*decl __range_end: struct Iter = Bag__end_const\\(\\(&bag#P0\\)\\).*for \\(; Iter__operator_neq\\(\\(&__range_begin#L1\\), __range_end#L2\\); Iter__operator_preinc\\(\\(&__range_begin#L1\\)\\)\\) body=block#.*decl value: int = Iter__operator_deref_const\\(\\(&__range_begin#L1\\)\\).*return total#L0"
+)
+
+add_test(
   NAME cpp_hir_template_function_signature_binding
   COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/template_fn_struct.cpp"
 )
