@@ -6598,6 +6598,19 @@ void test_backend_bir_pipeline_drives_x86_lir_source_00080_void_direct_call_zero
                       "the `00080.c` x86 LIR route should stay on native asm emission instead of falling back to LLVM text");
 }
 
+void test_backend_bir_pipeline_drives_x86_lir_source_00080_main_only_void_call_zero_return_on_native_x86_path() {
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{make_lir_source_00080_main_only_module()},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".extern voidfn\n",
+                  "the main-only `00080.c` x86 LIR route should preserve the extern helper reference on the native x86 path");
+  expect_contains(rendered, "main:\n  call voidfn\n  mov eax, 0\n  ret\n",
+                  "the main-only `00080.c` x86 LIR route should lower the bounded `voidfn(); return 0;` body through the public x86 backend entry surface");
+  expect_not_contains(rendered, "target triple =",
+                      "the main-only `00080.c` x86 LIR route should stay on native asm emission instead of falling back to LLVM text");
+}
+
 void test_backend_bir_pipeline_drives_x86_lir_declared_direct_call_through_bir_end_to_end() {
   const auto rendered = c4c::backend::emit_module(
       c4c::backend::BackendModuleInput{make_lir_declared_direct_call_module()},
@@ -10931,6 +10944,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_with_dead_entry_alloca_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_void_direct_call_imm_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_source_00080_void_direct_call_zero_return_through_bir_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_source_00080_main_only_void_call_zero_return_on_native_x86_path);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_declared_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_string_literal_strlen_sub_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_string_literal_char_sub_through_bir_end_to_end);

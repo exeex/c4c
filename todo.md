@@ -8,18 +8,22 @@ Source Plan: plan.md
 
 - Step 3 translated-owner cutover follow-on in the bounded prepared-LIR
   direct-calls sibling seam after landing the next public backend-entrypoint
-  regression for a still-direct-emitter-only helper family
+  regression for a still-direct-emitter-only helper family; the main-only
+  `00080.c` `voidfn(); return 0;` route is now covered at the shared backend
+  entry surface
 - immediate target:
-  choose the next still-direct-emitter-only public backend representative
-  from the remaining native prepared-LIR helper families after landing the
-  zero-arg extern/declared route
+  choose the next still-direct-emitter-only public backend representative from
+  the remaining native prepared-LIR helper families after the main-only
+  `00080.c` slice
 
 ## Next Slice
 
 - after the zero-arg extern/declared entrypoint slice, choose the next
   still-direct-emitter-only public backend representative from the remaining
   native prepared-LIR helper families instead of adding more
-  direct-emitter-only assertions
+  direct-emitter-only assertions; the next obvious candidate is the helper-only
+  `00080.c` `voidfn` body slice if Step 3 keeps prioritizing public-entry
+  coverage over matcher expansion
 - if a future x86 ABI policy change ever enables partial GP-register plus
   caller-stack aggregate splits, re-open `StructSplitRegStack` as a separate
   owner-path cutover item instead of silently folding it into the current
@@ -48,6 +52,23 @@ Source Plan: plan.md
   still deferred for this bounded prepared-LIR direct-call coverage slice per
   the active plan note to wait for a larger owner-path cutover before
   rerunning the monotonic full-suite guard
+
+- this iteration adds the missing shared backend entrypoint coverage for the
+  direct-emitter-only main-only `00080.c` prepared-LIR helper-call family:
+  `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` now pins
+  `make_lir_source_00080_main_only_module()` at
+  `c4c::backend::emit_module(...)` so the public x86 backend entry surface,
+  not just the direct-emitter seam, owns the bounded
+  `voidfn(); return 0;` native prepared-LIR route
+- focused validation passed:
+  `cmake --build --preset default --target backend_bir_tests -j8`,
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_lir_source_00080_main_only_void_call_zero_return_on_native_x86_path`,
+  and
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_source_00080_main_only_void_call_zero_return_slice`
+- nearby validation note:
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_lir_source_00080_void_direct_call_zero_return_through_bir_end_to_end`
+  still fails on the pre-existing `.type ... %function` versus
+  `.type ... @function` expectation mismatch and was not changed in this slice
 
 - this iteration adds shared backend entrypoint coverage for the bounded
   single-local-arg prepared-LIR helper-call family:
