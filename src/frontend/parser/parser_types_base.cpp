@@ -1399,8 +1399,7 @@ TypeSpec Parser::parse_base_type() {
                                             *out = parsed;
                                             return true;
                                         }
-                                        if (parse_mangled_type_suffix(ref, &parsed.type) ||
-                                            parse_builtin_typespec_text(ref, &parsed.type)) {
+                                        if (decode_type_ref_text(ref, &parsed.type)) {
                                             *out = parsed;
                                             return true;
                                         }

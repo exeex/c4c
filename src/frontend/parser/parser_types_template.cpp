@@ -275,34 +275,7 @@ bool Parser::eval_deferred_nttp_expr_tokens(
                     *out = tit->second;
                     return true;
                 }
-                if (parse_mangled_type_suffix(tok.lexeme, out)) return true;
-
-                auto init_tag_type = [&](TypeBase base, const std::string& prefix) {
-                    out->array_size = -1;
-                    out->inner_rank = -1;
-                    out->base = base;
-                    out->tag = arena_.strdup(tok.lexeme.substr(prefix.size()).c_str());
-                    out->ptr_level = 0;
-                    out->is_lvalue_ref = false;
-                    out->is_rvalue_ref = false;
-                    out->is_const = false;
-                    out->is_volatile = false;
-                    out->is_fn_ptr = false;
-                    out->array_rank = 0;
-                };
-
-                if (tok.lexeme.rfind("struct_", 0) == 0) {
-                    init_tag_type(TB_STRUCT, "struct_");
-                    return true;
-                }
-                if (tok.lexeme.rfind("union_", 0) == 0) {
-                    init_tag_type(TB_UNION, "union_");
-                    return true;
-                }
-                if (tok.lexeme.rfind("enum_", 0) == 0) {
-                    init_tag_type(TB_ENUM, "enum_");
-                    return true;
-                }
+                return decode_type_ref_text(tok.lexeme, out);
             }
         }
 

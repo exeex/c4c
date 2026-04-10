@@ -36,6 +36,9 @@ Source Plan: plan.md
   fallback by routing more `text -> TypeSpec` recovery through the new shared
   decode seam, then convert another common instantiation case to a true typed
   fast path.
+- Next intended slice: push one more common parser instantiation case onto a
+  true typed fast path, now that most obvious parser-side `text -> TypeSpec`
+  recovery sites have been centralized.
 
 ## Completed
 
@@ -98,3 +101,6 @@ Source Plan: plan.md
 - Added `Parser::decode_type_ref_text(...)` and routed both deferred parser
   type-trait decoding and one major template-base rebuild path through that
   shared seam instead of open-coded `struct_/enum_/mangled` string recovery.
+- Routed two additional parser common-path decode sites through
+  `Parser::decode_type_ref_text(...)`, reducing direct open-coded
+  `mangled/prefix/builtin` recovery inside deferred template arg parsing.
