@@ -66,6 +66,7 @@ std::string peephole_optimize(std::string asm_text) {
     bool changed = false;
     changed |= eliminate_loop_trampolines(&store, infos.data());
     changed |= combined_local_pass(&store, infos.data());
+    changed |= fold_memory_operands(&store, infos.data());
     changed |= propagate_register_copies(&store, infos.data());
     changed |= global_store_forwarding(&store, infos.data());
     changed |= optimize_tail_calls(&store, infos.data());

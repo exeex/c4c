@@ -7,19 +7,20 @@ Source Plan: plan.md
 ## Current Active Item
 
 - Step 3 continue expanding the translated x86 peephole subtree beyond the
-  first live optimization round
+  newly live memory-fold slice
 - immediate target:
-  choose the next bounded translated peephole pass after the tail-call slice
-  - prefer a non-ABI-sensitive activation such as `memory_fold.cpp` before
-    reopening callee-save or frame-compaction work
+  choose the next bounded translated peephole pass after the newly activated
+  `memory_fold.cpp` slice
+  - keep callee-save and frame-compaction work parked until a future iteration
+    explicitly opts into ABI-sensitive peephole cleanup
   - keep any required classifier/parser expansion explicit instead of silently
-    widening the current tail-call slice
+    widening the current memory-fold slice
 
 ## Next Slice
 
-- after the tail-call slice, evaluate whether the next bounded candidate
-  should be `memory_fold.cpp` or another non-ABI-sensitive cleanup before
-  turning to callee-save elimination
+- after the memory-fold slice, evaluate whether the next bounded candidate
+  should stay in the non-ABI-sensitive lane or whether Step 3 now needs an
+  explicit opt-in for `callee_saves.cpp`
 - keep the remaining stack-load family intentionally parked behind the current
   `%rax`/`%eax` predecessor-store and fallthrough rules unless a future slice
   proves one more explicit safe shape
@@ -178,6 +179,21 @@ Source Plan: plan.md
 - this slice intentionally keeps the shared classifier boundary parked:
   focused coverage uses the currently classified `call ...` spelling rather
   than widening `types.cpp` to classify `callq ...` in the same iteration
+- this iteration activates the translated memory-fold slice in the real x86
+  peephole build and optimization round with focused regressions around a
+  bounded stack-load plus ALU-use pattern
+- `peephole/passes/memory_fold.cpp` now compiles as part of the real build,
+  runs inside the live optimization loop, and folds a safe `movq`/`movl`
+  reload from `(%rbp)` into the following ALU source operand when the loaded
+  register is a scratch register and is not also the ALU destination
+- the direct regression keeps one safety boundary explicit: the load remains
+  parked when folding would turn the loaded register into the ALU destination,
+  which would change the instruction into an invalid memory-destination shape
+- the aggregate `backend_bir_tests` entry remains an unstable broad harness:
+  this iteration's focused filters passed, the full-suite fail set stayed at
+  `2723` passed / `181` failed, and the monotonic guard passed only in
+  non-decreasing mode because the existing aggregate backend runner surfaced as
+  `Timeout` instead of the baseline run's `SEGFAULT`
 
 ## Recently Completed
 

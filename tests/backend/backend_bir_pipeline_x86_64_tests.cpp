@@ -9618,6 +9618,38 @@ void test_x86_peephole_converts_simple_epilogue_call_into_tail_jump() {
                   "x86 peephole should rewrite call plus pure epilogue plus ret into the same epilogue followed by a jump to the callee");
 }
 
+void test_x86_peephole_folds_bounded_stack_load_into_alu_source_operand() {
+  const std::string input =
+      ".text\n"
+      "helper:\n"
+      "  movq -8(%rbp), %rcx\n"
+      "  addq %rcx, %rax\n"
+      "  ret\n";
+
+  const auto optimized = c4c::backend::x86::codegen::peephole::peephole_optimize(input);
+  expect_not_contains(optimized, "  movq -8(%rbp), %rcx\n",
+                      "x86 peephole should drop a bounded stack reload once the translated memory-fold pass can fuse it into the following ALU source operand");
+  expect_contains(optimized, "  addq -8(%rbp), %rax\n",
+                  "x86 peephole should rewrite the bounded ALU use to read directly from the stack slot");
+}
+
+void test_x86_peephole_keeps_stack_load_when_alu_destination_matches_loaded_register() {
+  const std::string input =
+      ".text\n"
+      "helper:\n"
+      "  movq -8(%rbp), %rax\n"
+      "  addq %rax, %rax\n"
+      "  ret\n";
+
+  const auto optimized = c4c::backend::x86::codegen::peephole::peephole_optimize(input);
+  expect_contains(optimized, "  movq -8(%rbp), %rax\n",
+                  "x86 peephole should keep the bounded stack reload parked when the following ALU instruction writes the loaded register");
+  expect_contains(optimized, "  addq %rax, %rax\n",
+                  "x86 peephole should preserve the original ALU instruction when folding would create an invalid memory-destination update");
+  expect_not_contains(optimized, "  addq -8(%rbp), %rax\n",
+                      "x86 peephole should not fold a load into an ALU instruction whose destination is the loaded register");
+}
+
 void test_x86_direct_emitter_routes_minimal_countdown_loop_through_peephole() {
   const auto rendered = c4c::backend::x86::emit_module(make_minimal_countdown_loop_bir_module());
 
@@ -10093,6 +10125,8 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_x86_peephole_coalesces_single_stack_spill_direct_movslq_reload);
   RUN_TEST(test_x86_peephole_keeps_stack_spill_trampoline_when_fallthrough_uses_rax);
   RUN_TEST(test_x86_peephole_converts_simple_epilogue_call_into_tail_jump);
+  RUN_TEST(test_x86_peephole_folds_bounded_stack_load_into_alu_source_operand);
+  RUN_TEST(test_x86_peephole_keeps_stack_load_when_alu_destination_matches_loaded_register);
   RUN_TEST(test_x86_direct_emitter_routes_minimal_countdown_loop_through_peephole);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_param_slot_add_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_extern_zero_arg_call_slice);
