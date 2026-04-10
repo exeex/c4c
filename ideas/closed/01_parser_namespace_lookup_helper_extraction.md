@@ -1,6 +1,6 @@
 # Frontend Helper Extraction For Parser And HIR
 
-Status: Open
+Status: Closed
 Last Updated: 2026-04-10
 
 ## Goal
@@ -149,3 +149,25 @@ At minimum:
 - no STL-container replacement by itself unless needed for the helper boundary
 - no attempt to solve all compile-time issues in one pass; this idea is about
   helper extraction and clearer frontend seams first
+
+## Completion Notes
+
+- Completed 2026-04-10.
+- Parser lookup flow now routes namespace-stack traversal, canonical-name
+  synthesis, and visible lookup mechanics through named helpers in
+  `src/frontend/parser/parser_core.cpp`.
+- HIR expression lowering now routes direct struct-constructor calls,
+  template-struct `operator()` lowering, ref-argument materialization,
+  pack-expansion call arguments, member-call lowering, and member expressions
+  through named helpers in `src/frontend/hir/hir_expr.cpp`.
+- Added regression coverage for nested `using namespace` parser visibility and
+  HIR call/member helper extraction paths.
+- Validation completed with targeted parser/HIR checks plus a full-suite
+  regression-guard pass (`before passed=1348 failed=15`, `after passed=3319
+  failed=0`).
+
+## Leftover Issues
+
+- Function-return temporary member-call lowering is a separate follow-on issue
+  and is tracked in
+  `ideas/open/05_hir_function_return_temporary_member_call_lowering.md`.

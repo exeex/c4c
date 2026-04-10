@@ -574,7 +574,27 @@ class Lowerer {
                                           const Node* list_node,
                                           const TypeSpec& param_ts);
 
+  std::optional<ExprId> try_lower_direct_struct_constructor_call(FunctionCtx* ctx,
+                                                                 const Node* n);
+
+  std::optional<ExprId> try_lower_template_struct_call(FunctionCtx* ctx,
+                                                       const Node* n);
+
+  ExprId lower_call_arg(FunctionCtx* ctx,
+                        const Node* arg_node,
+                        const TypeSpec* param_ts);
+
+  bool try_expand_pack_call_arg(FunctionCtx* ctx,
+                                CallExpr& call,
+                                const Node* arg_node,
+                                const TypeSpec* construct_param_ts);
+
+  std::optional<ExprId> try_lower_member_call_expr(FunctionCtx* ctx,
+                                                   const Node* n);
+
   ExprId lower_call_expr(FunctionCtx* ctx, const Node* n);
+
+  ExprId lower_member_expr(FunctionCtx* ctx, const Node* n);
 
   // ── initializer and aggregate lowering helpers ───────────────────────────
   // Reconstruct the full TypeSpec for a struct field from its HirStructField.
