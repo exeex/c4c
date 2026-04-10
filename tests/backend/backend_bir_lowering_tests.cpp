@@ -975,6 +975,86 @@ c4c::codegen::lir::LirModule make_local_i32_array_two_slot_sum_sub_three_module(
   return module;
 }
 
+c4c::codegen::lir::LirModule make_global_x_y_pointer_compare_zero_return_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.type_decls.push_back("%struct.__va_list_tag_ = type { i32, i32, ptr, ptr }");
+  module.globals.push_back(
+      LirGlobal{LirGlobalId{0}, "x", {}, false, false, "", "global ", "i32", "5", 4, false});
+  module.globals.push_back(
+      LirGlobal{LirGlobalId{1}, "y", {}, false, false, "", "global ", "i64", "6", 8, false});
+  module.globals.push_back(
+      LirGlobal{LirGlobalId{2}, "p", {}, false, false, "", "global ", "ptr", "@x", 8, false});
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirLoadOp{"%t0", "i32", "@x"});
+  entry.insts.push_back(LirCmpOp{"%t1", false, "ne", "i32", "%t0", "5"});
+  entry.insts.push_back(LirCastOp{"%t2", LirCastKind::ZExt, "i1", "%t1", "i32"});
+  entry.insts.push_back(LirCmpOp{"%t3", false, "ne", "i32", "%t2", "0"});
+  entry.terminator = LirCondBr{"%t3", "block_1", "block_2"};
+  function.blocks.push_back(std::move(entry));
+
+  LirBlock block1;
+  block1.id = LirBlockId{1};
+  block1.label = "block_1";
+  block1.terminator = LirRet{std::string("1"), "i32"};
+  function.blocks.push_back(std::move(block1));
+
+  LirBlock block2;
+  block2.id = LirBlockId{2};
+  block2.label = "block_2";
+  block2.insts.push_back(LirLoadOp{"%t4", "i64", "@y"});
+  block2.insts.push_back(LirCastOp{"%t5", LirCastKind::SExt, "i32", "6", "i64"});
+  block2.insts.push_back(LirCmpOp{"%t6", false, "ne", "i64", "%t4", "%t5"});
+  block2.insts.push_back(LirCastOp{"%t7", LirCastKind::ZExt, "i1", "%t6", "i32"});
+  block2.insts.push_back(LirCmpOp{"%t8", false, "ne", "i32", "%t7", "0"});
+  block2.terminator = LirCondBr{"%t8", "block_3", "block_4"};
+  function.blocks.push_back(std::move(block2));
+
+  LirBlock block3;
+  block3.id = LirBlockId{3};
+  block3.label = "block_3";
+  block3.terminator = LirRet{std::string("2"), "i32"};
+  function.blocks.push_back(std::move(block3));
+
+  LirBlock block4;
+  block4.id = LirBlockId{4};
+  block4.label = "block_4";
+  block4.insts.push_back(LirLoadOp{"%t9", "ptr", "@p"});
+  block4.insts.push_back(LirLoadOp{"%t10", "i32", "%t9"});
+  block4.insts.push_back(LirCmpOp{"%t11", false, "ne", "i32", "%t10", "5"});
+  block4.insts.push_back(LirCastOp{"%t12", LirCastKind::ZExt, "i1", "%t11", "i32"});
+  block4.insts.push_back(LirCmpOp{"%t13", false, "ne", "i32", "%t12", "0"});
+  block4.terminator = LirCondBr{"%t13", "block_5", "block_6"};
+  function.blocks.push_back(std::move(block4));
+
+  LirBlock block5;
+  block5.id = LirBlockId{5};
+  block5.label = "block_5";
+  block5.terminator = LirRet{std::string("3"), "i32"};
+  function.blocks.push_back(std::move(block5));
+
+  LirBlock block6;
+  block6.id = LirBlockId{6};
+  block6.label = "block_6";
+  block6.terminator = LirRet{std::string("0"), "i32"};
+  function.blocks.push_back(std::move(block6));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule
 make_local_i32_array_second_slot_pointer_store_zero_load_return_module() {
   using namespace c4c::codegen::lir;
@@ -4876,6 +4956,27 @@ void test_bir_lowering_accepts_local_struct_shadow_store_compare_two_zero_return
                   "the lowered local-struct shadow store-and-compare module should normalize the bounded `00044.c` source route to a single immediate zero return");
 }
 
+void test_bir_lowering_accepts_global_x_y_pointer_compare_zero_return_module() {
+  const auto lowered =
+      c4c::backend::try_lower_to_bir(make_global_x_y_pointer_compare_zero_return_module());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the bounded three-global load-and-pointer-compare slice through the shared constant-return contract");
+  if (!lowered.has_value()) {
+    return;
+  }
+
+  expect_true(lowered->functions.size() == 1 &&
+                  lowered->functions.front().blocks.size() == 1 &&
+                  lowered->functions.front().blocks.front().insts.empty() &&
+                  lowered->functions.front().blocks.front().terminator.kind ==
+                      c4c::backend::bir::TerminatorKind::Return,
+              "the lowered three-global load-and-pointer-compare module should collapse to one canonical constant-return block");
+
+  const auto rendered = c4c::backend::bir::print(*lowered);
+  expect_contains(rendered, "bir.func @main() -> i32 {\nentry:\n  bir.ret i32 0\n}\n",
+                  "the lowered three-global load-and-pointer-compare module should normalize the bounded `00045.c` source route to a single immediate zero return");
+}
+
 void test_bir_lowering_accepts_local_i32_array_pointer_inc_dec_compare_zero_return_module() {
   const auto lowered =
       c4c::backend::try_lower_to_bir(
@@ -7841,6 +7942,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_union_i32_alias_compare_three_zero_return_module);
   RUN_TEST(test_bir_lowering_accepts_nested_struct_i32_sum_compare_six_zero_return_module);
   RUN_TEST(test_bir_lowering_accepts_local_struct_shadow_store_compare_two_zero_return_module);
+  RUN_TEST(test_bir_lowering_accepts_global_x_y_pointer_compare_zero_return_module);
   RUN_TEST(test_bir_lowering_accepts_local_i32_array_two_slot_sum_sub_three_module);
   RUN_TEST(test_bir_lowering_accepts_local_i32_array_second_slot_pointer_store_zero_load_return_module);
   RUN_TEST(test_bir_lowering_accepts_local_i32_array_pointer_inc_dec_compare_zero_return_module);

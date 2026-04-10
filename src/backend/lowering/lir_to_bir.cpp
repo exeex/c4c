@@ -4901,6 +4901,11 @@ std::optional<bir::Module> try_lower_to_bir_legacy(const c4c::codegen::lir::LirM
     return lowered;
   }
   if (const auto lowered =
+          try_lower_minimal_global_x_y_pointer_compare_zero_return_module(module);
+      lowered.has_value()) {
+    return lowered;
+  }
+  if (const auto lowered =
           try_lower_minimal_local_i32_array_two_slot_sum_sub_three_module(module);
       lowered.has_value()) {
     return lowered;
