@@ -774,6 +774,15 @@ set_tests_properties(cpp_parse_namespace_trailing_return_nested_variadic_alias_d
 )
 
 add_test(
+  NAME cpp_parse_namespace_using_nested_visibility_dump
+  COMMAND c4cll --parse-only "${INTERNAL_CPP_TEST_ROOT}/parse_only_case/namespace_using_nested_visibility_parse.cpp"
+)
+set_tests_properties(cpp_parse_namespace_using_nested_visibility_dump PROPERTIES
+  LABELS "internal;positive_case;cpp;parse"
+  PASS_REGULAR_EXPRESSION "GlobalVar\\(outer::inner::value\\).*Function\\(bridge::read\\)"
+)
+
+add_test(
   NAME cpp_lex_keyword_bitand_tokens
   COMMAND c4cll --lex-only "${INTERNAL_CPP_TEST_ROOT}/postive_case/keyword_bitand_parse.cpp"
 )

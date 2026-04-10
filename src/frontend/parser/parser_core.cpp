@@ -236,6 +236,42 @@ const std::string* select_best_parse_summary_leaf(
     return nullptr;
 }
 
+std::string make_namespace_context_key(int parent_id, const std::string& name) {
+    return std::to_string(parent_id) + "::" + name;
+}
+
+std::string build_canonical_namespace_name(const char* parent_name,
+                                           const std::string& name) {
+    std::string canonical = parent_name ? parent_name : "";
+    if (!canonical.empty()) canonical += "::";
+    canonical += name;
+    return canonical;
+}
+
+template <typename LookupFn>
+std::string resolve_visible_name_from_namespace_stack(
+    const std::vector<int>& namespace_stack,
+    const std::string& name,
+    LookupFn&& lookup) {
+    std::string resolved;
+    for (int i = static_cast<int>(namespace_stack.size()) - 1; i >= 0; --i) {
+        if (lookup(namespace_stack[i], &resolved)) return resolved;
+    }
+    return name;
+}
+
+template <typename FollowFn>
+int resolve_namespace_id_from_stack(const std::vector<int>& namespace_stack,
+                                    bool is_global_qualified,
+                                    FollowFn&& follow) {
+    if (is_global_qualified) return follow(0);
+    for (int i = static_cast<int>(namespace_stack.size()) - 1; i >= 0; --i) {
+        int resolved = follow(namespace_stack[i]);
+        if (resolved >= 0) return resolved;
+    }
+    return follow(0);
+}
+
 }  // namespace
 
 Parser::ParseContextGuard::ParseContextGuard(
@@ -945,42 +981,41 @@ const char* Parser::qualify_name_arena(const char* name) {
 }
 
 std::string Parser::resolve_visible_value_name(const std::string& name) const {
-    std::string resolved;
-    for (int i = static_cast<int>(namespace_stack_.size()) - 1; i >= 0; --i) {
-        const int context_id = namespace_stack_[i];
-        auto alias_it = using_value_aliases_.find(context_id);
-        if (alias_it != using_value_aliases_.end()) {
-            auto value_it = alias_it->second.find(name);
-            if (value_it != alias_it->second.end()) return value_it->second;
-        }
-        if (lookup_value_in_context(context_id, name, &resolved)) return resolved;
-    }
-    return name;
+    return resolve_visible_name_from_namespace_stack(
+        namespace_stack_, name, [&](int context_id, std::string* resolved) {
+            auto alias_it = using_value_aliases_.find(context_id);
+            if (alias_it != using_value_aliases_.end()) {
+                auto value_it = alias_it->second.find(name);
+                if (value_it != alias_it->second.end()) {
+                    *resolved = value_it->second;
+                    return true;
+                }
+            }
+            return lookup_value_in_context(context_id, name, resolved);
+        });
 }
 
 std::string Parser::resolve_visible_type_name(const std::string& name) const {
-    std::string resolved;
-    for (int i = static_cast<int>(namespace_stack_.size()) - 1; i >= 0; --i) {
-        const int context_id = namespace_stack_[i];
-        auto alias_it = using_value_aliases_.find(context_id);
-        if (alias_it != using_value_aliases_.end()) {
-            auto value_it = alias_it->second.find(name);
-            if (value_it != alias_it->second.end() && typedef_types_.count(value_it->second)) {
-                return value_it->second;
+    return resolve_visible_name_from_namespace_stack(
+        namespace_stack_, name, [&](int context_id, std::string* resolved) {
+            auto alias_it = using_value_aliases_.find(context_id);
+            if (alias_it != using_value_aliases_.end()) {
+                auto value_it = alias_it->second.find(name);
+                if (value_it != alias_it->second.end() &&
+                    typedef_types_.count(value_it->second)) {
+                    *resolved = value_it->second;
+                    return true;
+                }
             }
-        }
-        if (lookup_type_in_context(context_id, name, &resolved)) return resolved;
-    }
-    return name;
+            return lookup_type_in_context(context_id, name, resolved);
+        });
 }
 
 std::string Parser::resolve_visible_concept_name(const std::string& name) const {
-    std::string resolved;
-    for (int i = static_cast<int>(namespace_stack_.size()) - 1; i >= 0; --i) {
-        const int context_id = namespace_stack_[i];
-        if (lookup_concept_in_context(context_id, name, &resolved)) return resolved;
-    }
-    return name;
+    return resolve_visible_name_from_namespace_stack(
+        namespace_stack_, name, [&](int context_id, std::string* resolved) {
+            return lookup_concept_in_context(context_id, name, resolved);
+        });
 }
 
 bool Parser::is_concept_name(const std::string& name) const {
@@ -1004,14 +1039,13 @@ int Parser::current_namespace_context_id() const {
 }
 
 int Parser::ensure_named_namespace_context(int parent_id, const std::string& name) {
-    const std::string key = std::to_string(parent_id) + "::" + name;
+    const std::string key = make_namespace_context_key(parent_id, name);
     auto it = named_namespace_contexts_.find(key);
     if (it != named_namespace_contexts_.end()) return it->second;
 
     const NamespaceContext& parent = namespace_contexts_[parent_id];
-    std::string canonical = parent.canonical_name ? parent.canonical_name : "";
-    if (!canonical.empty()) canonical += "::";
-    canonical += name;
+    std::string canonical =
+        build_canonical_namespace_name(parent.canonical_name, name);
 
     const int id = static_cast<int>(namespace_contexts_.size());
     namespace_contexts_.push_back(
@@ -1023,10 +1057,8 @@ int Parser::ensure_named_namespace_context(int parent_id, const std::string& nam
 
 int Parser::create_anonymous_namespace_context(int parent_id) {
     const NamespaceContext& parent = namespace_contexts_[parent_id];
-    std::string canonical = parent.canonical_name ? parent.canonical_name : "";
-    if (!canonical.empty()) canonical += "::";
-    canonical += "__anon_ns_";
-    canonical += std::to_string(anon_counter_++);
+    std::string canonical = build_canonical_namespace_name(
+        parent.canonical_name, "__anon_ns_" + std::to_string(anon_counter_++));
 
     const int id = static_cast<int>(namespace_contexts_.size());
     namespace_contexts_.push_back(
@@ -1058,7 +1090,7 @@ int Parser::resolve_namespace_context(const QualifiedNameRef& name) const {
     auto follow_path = [&](int start_id) -> int {
         int context_id = start_id;
         for (const std::string& segment : name.qualifier_segments) {
-            const std::string key = std::to_string(context_id) + "::" + segment;
+            const std::string key = make_namespace_context_key(context_id, segment);
             auto it = named_namespace_contexts_.find(key);
             if (it == named_namespace_contexts_.end()) return -1;
             context_id = it->second;
@@ -1066,37 +1098,30 @@ int Parser::resolve_namespace_context(const QualifiedNameRef& name) const {
         return context_id;
     };
 
-    if (name.is_global_qualified) return follow_path(0);
-
-    for (int i = static_cast<int>(namespace_stack_.size()) - 1; i >= 0; --i) {
-        int resolved = follow_path(namespace_stack_[i]);
-        if (resolved >= 0) return resolved;
-    }
-    return follow_path(0);
+    return resolve_namespace_id_from_stack(namespace_stack_,
+                                           name.is_global_qualified,
+                                           follow_path);
 }
 
 int Parser::resolve_namespace_name(const QualifiedNameRef& name) const {
     auto follow_name = [&](int start_id) -> int {
         int context_id = start_id;
         for (const std::string& segment : name.qualifier_segments) {
-            const std::string key = std::to_string(context_id) + "::" + segment;
+            const std::string key = make_namespace_context_key(context_id, segment);
             auto it = named_namespace_contexts_.find(key);
             if (it == named_namespace_contexts_.end()) return -1;
             context_id = it->second;
         }
-        const std::string final_key = std::to_string(context_id) + "::" + name.base_name;
+        const std::string final_key =
+            make_namespace_context_key(context_id, name.base_name);
         auto it = named_namespace_contexts_.find(final_key);
         if (it == named_namespace_contexts_.end()) return -1;
         return it->second;
     };
 
-    if (name.is_global_qualified) return follow_name(0);
-
-    for (int i = static_cast<int>(namespace_stack_.size()) - 1; i >= 0; --i) {
-        int resolved = follow_name(namespace_stack_[i]);
-        if (resolved >= 0) return resolved;
-    }
-    return follow_name(0);
+    return resolve_namespace_id_from_stack(namespace_stack_,
+                                           name.is_global_qualified,
+                                           follow_name);
 }
 
 bool Parser::lookup_value_in_context(int context_id, const std::string& name,
