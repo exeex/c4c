@@ -31,6 +31,16 @@ std::vector<std::string> encode_template_arg_ref_list_hir(const TypeSpec& ts) {
   return refs;
 }
 
+std::string encode_template_arg_debug_compat_hir(const TypeSpec& ts) {
+  std::string out;
+  if (!ts.tpl_struct_args.data || ts.tpl_struct_args.size <= 0) return out;
+  for (int i = 0; i < ts.tpl_struct_args.size; ++i) {
+    if (i > 0) out += ",";
+    out += encode_template_arg_ref_hir(ts.tpl_struct_args.data[i]);
+  }
+  return out;
+}
+
 bool matches_trait_family(const std::string& name, const char* suffix);
 
 bool is_signed_trait_type(const TypeSpec& ts) {
@@ -150,7 +160,7 @@ std::string encode_template_type_arg_ref_hir(const TypeSpec& ts) {
     std::string ref = "@";
     ref += ts.tpl_struct_origin;
     ref += ":";
-    ref += encode_template_arg_debug_list(ts);
+    ref += encode_template_arg_debug_compat_hir(ts);
     if (ts.deferred_member_type_name && ts.deferred_member_type_name[0]) {
       ref += "$";
       ref += ts.deferred_member_type_name;

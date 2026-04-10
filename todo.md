@@ -100,6 +100,10 @@ Source Plan: plan.md
   parser canonical template-type key path no longer call the generic
   debug-list flattener directly; both now build their identity strings from
   structured `TemplateArgRef` payloads with key-specific local encoders.
+- HIR nested-type ref emission is now on the same path: `encode_template_type_arg_ref_hir(...)`
+  no longer routes nested arg emission through the generic debug-list helper
+  and instead builds its compatibility string from structured `TemplateArgRef`
+  entries directly.
 
 ## Completed
 
@@ -256,3 +260,7 @@ Source Plan: plan.md
   so pending-type and canonical-template identity strings are now encoded from
   structured `TemplateArgRef` payloads via key-specific local logic rather
   than by reusing the generic debug-list helper.
+- Reworked [hir_templates.cpp](/workspaces/c4c/src/frontend/hir/hir_templates.cpp)
+  so `encode_template_type_arg_ref_hir(...)` now emits nested compatibility
+  refs from structured `TemplateArgRef` payloads directly instead of routing
+  them through `encode_template_arg_debug_list(...)`.
