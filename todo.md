@@ -7,9 +7,9 @@ Source Plan: plan.md
 ## Active Item
 
 - Step 2: Generalize trait and variable-template normalization
-- Current slice: inspect the remaining normalized-type gaps behind
-  `eastl_type_traits_simple.cpp`, starting with alias-transformed/member-typedef
-  operands that still bypass the generic `*_v` / `::value` / `::type` flow
+- Current slice: tighten the remaining direct trait `::value` normalization gap
+  for member-typedef operands after the `_v` and direct `typename ...::type`
+  path stopped collapsing template-owner args
 
 ## Pending Items
 
@@ -39,6 +39,15 @@ Source Plan: plan.md
   rebuild deferred `typename Owner<...>::type` payloads from the consumed token
   range when `parse_type_name()` flattens the owner template arguments before
   alias-template bookkeeping sees them.
+- Added focused runtime coverage proving `is_signed_v<typename holder<int>::type>`
+  and `is_same_v<typename holder<int>::type, int>` normalize a direct
+  member-typedef operand instead of preserving the primary template's placeholder
+  type.
+- Preserved `typename Owner<Args>::type` payloads through parser typename
+  handling, alias-template arg-ref serialization, and HIR template-arg
+  materialization so variable-template and direct `typename ...::type`
+  normalization can reuse the instantiated owner args instead of collapsing back
+  to `Owner<T>`.
 
 ## Notes
 
@@ -64,6 +73,10 @@ Source Plan: plan.md
 - The narrower alias registration gap is now covered for `using` aliases whose
   RHS is a dependent `typename Owner<...>::type`; the next planned work item is
   Step 2 trait/value normalization rather than more Step 1 expansion.
+- This Step 2 slice intentionally stopped at the `_v` and direct
+  `typename ...::type` paths. A narrower follow-up still remains for direct
+  `Trait<typename Owner<...>::type>::value` specialization selection, which is a
+  separate path from the variable-template normalization fixed here.
 - A separate pack-specialization issue still exists for direct variadic class
   template specialization selection; keep that out of this Step 1 alias slice
   unless it becomes required for the next targeted alias regression.

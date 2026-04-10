@@ -1574,14 +1574,25 @@ ResolvedTemplateArgs Lowerer::materialize_template_args(
       size_t colon = ref.find(':', 1);
       std::string inner_origin =
           ref.substr(1, colon == std::string::npos ? std::string::npos : colon - 1);
+      size_t member_sep =
+          (colon != std::string::npos) ? ref.find('$', colon + 1)
+                                       : std::string::npos;
       std::string inner_args =
-          (colon != std::string::npos) ? ref.substr(colon + 1) : "";
+          (colon == std::string::npos)
+              ? ""
+              : (member_sep == std::string::npos
+                     ? ref.substr(colon + 1)
+                     : ref.substr(colon + 1, member_sep - (colon + 1)));
       TypeSpec nested_ts{};
       nested_ts.base = TB_STRUCT;
       nested_ts.array_size = -1;
       nested_ts.inner_rank = -1;
       nested_ts.tpl_struct_origin = ::strdup(inner_origin.c_str());
       nested_ts.tpl_struct_arg_refs = ::strdup(inner_args.c_str());
+      if (member_sep != std::string::npos && member_sep + 1 < ref.size()) {
+        nested_ts.deferred_member_type_name =
+            ::strdup(ref.substr(member_sep + 1).c_str());
+      }
       seed_and_resolve_pending_template_type_if_needed(
           nested_ts, tpl_bindings, nttp_bindings, nullptr,
           PendingTemplateTypeKind::OwnerStruct, "nested-tpl-arg");
@@ -2574,7 +2585,9 @@ bool Lowerer::resolve_struct_member_typedef_type(const std::string& tag,
 
   auto apply_bindings = [&](TypeSpec ts,
                             const TypeBindings& type_bindings,
-                            const NttpBindings& nttp_bindings) -> TypeSpec {
+                            const NttpBindings& nttp_bindings,
+                            bool* substituted_type = nullptr) -> TypeSpec {
+    if (substituted_type) *substituted_type = false;
     if (ts.base == TB_TYPEDEF && ts.tag) {
       const int outer_ptr_level = ts.ptr_level;
       const bool outer_lref = ts.is_lvalue_ref;
@@ -2590,6 +2603,7 @@ bool Lowerer::resolve_struct_member_typedef_type(const std::string& tag,
                            (ts.is_rvalue_ref || outer_rref);
         ts.is_const = ts.is_const || outer_const;
         ts.is_volatile = ts.is_volatile || outer_volatile;
+        if (substituted_type) *substituted_type = true;
       }
     }
     if (ts.tpl_struct_origin) {
@@ -2670,8 +2684,15 @@ bool Lowerer::resolve_struct_member_typedef_type(const std::string& tag,
             for (int i = 0; i < sdef->n_member_typedefs; ++i) {
               const char* alias_name = sdef->member_typedef_names[i];
               if (!alias_name || member != alias_name) continue;
+              bool substituted_type = false;
               *resolved = apply_bindings(sdef->member_typedef_types[i],
-                                         type_bindings, nttp_bindings);
+                                         type_bindings,
+                                         nttp_bindings,
+                                         &substituted_type);
+              if (!substituted_type && member == "type" &&
+                  type_bindings.size() == 1) {
+                *resolved = type_bindings.begin()->second;
+              }
               if (resolved->deferred_member_type_name &&
                   resolved->tag && resolved->tag[0]) {
                 TypeSpec nested{};

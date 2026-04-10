@@ -1079,6 +1079,11 @@ TypeSpec Parser::parse_base_type() {
                                         ref += arg.type.tpl_struct_arg_refs
                                             ? arg.type.tpl_struct_arg_refs
                                             : "";
+                                        if (arg.type.deferred_member_type_name &&
+                                            arg.type.deferred_member_type_name[0]) {
+                                            ref += "$";
+                                            ref += arg.type.deferred_member_type_name;
+                                        }
                                         return ref;
                                     }
                                     std::string mangled;
@@ -1240,14 +1245,26 @@ TypeSpec Parser::parse_base_type() {
                                             parsed.type.base = TB_STRUCT;
                                             const std::string origin =
                                                 ref.substr(1, sep - 1);
+                                            const size_t member_sep =
+                                                ref.find('$', sep + 1);
                                             const std::string nested_refs =
-                                                ref.substr(sep + 1);
+                                                member_sep == std::string::npos
+                                                    ? ref.substr(sep + 1)
+                                                    : ref.substr(
+                                                          sep + 1,
+                                                          member_sep - (sep + 1));
                                             parsed.type.tag =
                                                 arena_.strdup(origin.c_str());
                                             parsed.type.tpl_struct_origin =
                                                 parsed.type.tag;
                                             parsed.type.tpl_struct_arg_refs =
                                                 arena_.strdup(nested_refs.c_str());
+                                            if (member_sep != std::string::npos &&
+                                                member_sep + 1 < ref.size()) {
+                                                parsed.type.deferred_member_type_name =
+                                                    arena_.strdup(
+                                                        ref.substr(member_sep + 1).c_str());
+                                            }
                                             *out = parsed;
                                             return true;
                                         }
@@ -2595,29 +2612,10 @@ TypeSpec Parser::parse_base_type() {
                     pos_ + 1 < static_cast<int>(tokens_.size()) &&
                     tokens_[pos_ + 1].kind == TokenKind::Identifier) {
                     std::string member = tokens_[pos_ + 1].lexeme;
-                    bool has_dependent_template_args = false;
-                    if (ts.tpl_struct_origin && ts.tpl_struct_arg_refs &&
-                        ts.tpl_struct_arg_refs[0]) {
-                        std::string refs = ts.tpl_struct_arg_refs;
-                        size_t start = 0;
-                        while (start <= refs.size()) {
-                            size_t comma = refs.find(',', start);
-                            std::string part = refs.substr(
-                                start,
-                                comma == std::string::npos
-                                    ? std::string::npos
-                                    : comma - start);
-                            if (!part.empty() &&
-                                (is_template_scope_type_param(part) ||
-                                 typedef_types_.count(part) > 0)) {
-                                has_dependent_template_args = true;
-                                break;
-                            }
-                            if (comma == std::string::npos) break;
-                            start = comma + 1;
-                        }
-                    }
-                    if (has_dependent_template_args) {
+                    const bool should_preserve_deferred_template_member =
+                        ts.tpl_struct_origin && ts.tpl_struct_arg_refs &&
+                        ts.tpl_struct_arg_refs[0] && member == "type";
+                    if (should_preserve_deferred_template_member) {
                         consume(); // ::
                         consume(); // member
                         ts.deferred_member_type_name = arena_.strdup(member.c_str());

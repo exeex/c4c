@@ -532,6 +532,7 @@ void Parser::apply_declarator_pointer_token(TypeSpec& ts, TokenKind pointer_tok,
 
 bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
     ParseContextGuard trace(this, __func__);
+    const int start_pos = pos_;
     std::string dep_name;
     QualifiedNameRef qn;
     if (!consume_qualified_type_spelling_with_typename(
@@ -543,8 +544,68 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
     }
 
     if (out_name) {
+        auto join_token_lexemes = [&](int start, int end) -> std::string {
+            std::string out;
+            for (int i = start; i < end; ++i) out += tokens_[i].lexeme;
+            return out;
+        };
+        const int owner_start =
+            (start_pos < pos_ && tokens_[start_pos].kind == TokenKind::KwTypename)
+                ? (start_pos + 1)
+                : start_pos;
+        const std::string spelled_name = join_token_lexemes(owner_start, pos_);
         std::string resolved = resolve_visible_type_name(dep_name);
         if (typedef_types_.count(resolved) == 0) {
+            bool preserved_template_owner_member = false;
+            if (spelled_name.find('<') != std::string::npos &&
+                qn.base_name == "type") {
+                int final_scope_pos = -1;
+                for (int i = owner_start; i + 1 < pos_; ++i) {
+                    if (tokens_[i].kind == TokenKind::ColonColon &&
+                        tokens_[i + 1].kind == TokenKind::Identifier) {
+                        final_scope_pos = i;
+                    }
+                }
+                if (final_scope_pos > owner_start) {
+                    TypeSpec owner_ts{};
+                    owner_ts.array_size = -1;
+                    owner_ts.inner_rank = -1;
+                    std::vector<Token> inject_toks;
+                    inject_toks.reserve(static_cast<size_t>(final_scope_pos - owner_start + 1));
+                    for (int i = owner_start; i < final_scope_pos; ++i) {
+                        inject_toks.push_back(tokens_[i]);
+                    }
+                    Token sentinel{};
+                    sentinel.kind = TokenKind::Semi;
+                    sentinel.lexeme = ";";
+                    inject_toks.push_back(sentinel);
+
+                    int saved_pos = pos_;
+                    auto saved_toks = std::move(tokens_);
+                    tokens_ = std::move(inject_toks);
+                    pos_ = 0;
+                    try {
+                        owner_ts = parse_base_type();
+                    } catch (...) {
+                    }
+                    tokens_ = std::move(saved_toks);
+                    pos_ = saved_pos;
+
+                    if ((owner_ts.tpl_struct_origin &&
+                         owner_ts.tpl_struct_origin[0]) ||
+                        (owner_ts.tag && owner_ts.tag[0])) {
+                        owner_ts.deferred_member_type_name =
+                            arena_.strdup(tokens_[final_scope_pos + 1].lexeme.c_str());
+                        typedef_types_[spelled_name] = owner_ts;
+                        resolved = spelled_name;
+                        preserved_template_owner_member = true;
+                    }
+                }
+            }
+            if (preserved_template_owner_member) {
+                *out_name = resolved;
+                return true;
+            }
             resolved = dep_name;
             if (typedef_types_.count(resolved) == 0 &&
                 !qn.qualifier_segments.empty()) {
@@ -663,13 +724,25 @@ bool Parser::parse_dependent_typename_specifier(std::string* out_name) {
                 if (const Node* owner =
                         follow_nested_owner(qn.qualifier_segments,
                                             qn.is_global_qualified)) {
-                    for (int i = 0; i < owner->n_member_typedefs; ++i) {
+                    bool found_member = false;
+                    if (owner->name && owner->name[0]) {
+                        const std::string scoped_name =
+                            std::string(owner->name) + "::" + qn.base_name;
+                        auto scoped_it = typedef_types_.find(scoped_name);
+                        if (scoped_it != typedef_types_.end()) {
+                            resolved_member = scoped_it->second;
+                            found_member = true;
+                        }
+                    }
+                    for (int i = 0; !found_member && i < owner->n_member_typedefs; ++i) {
                         const char* name = owner->member_typedef_names[i];
                         if (!name || qn.base_name != name) continue;
                         resolved_member = owner->member_typedef_types[i];
+                        found_member = true;
+                    }
+                    if (found_member) {
                         typedef_types_[dep_name] = resolved_member;
                         resolved = dep_name;
-                        break;
                     }
                 }
             }
