@@ -199,6 +199,27 @@ void test_x86_codegen_header_exports_translated_returns_owner_symbols() {
               "x86 translated returns owner methods should stay compile/link reachable through the public x86_codegen surface once returns.cpp enters the build");
 }
 
+void test_x86_codegen_header_exports_translated_asm_emitter_owner_symbols() {
+  using X86Codegen = c4c::backend::x86::X86Codegen;
+
+  auto classify_constraint = &X86Codegen::classify_constraint;
+  auto setup_operand_metadata = &X86Codegen::setup_operand_metadata;
+  auto resolve_memory_operand = &X86Codegen::resolve_memory_operand;
+  auto assign_scratch_reg = &X86Codegen::assign_scratch_reg;
+  auto load_input_to_reg = &X86Codegen::load_input_to_reg;
+  auto preload_readwrite_output = &X86Codegen::preload_readwrite_output;
+  auto substitute_template_line = &X86Codegen::substitute_template_line;
+  auto store_output_from_reg = &X86Codegen::store_output_from_reg;
+  auto reset_scratch_state = &X86Codegen::reset_scratch_state;
+
+  expect_true(classify_constraint != nullptr && setup_operand_metadata != nullptr &&
+                  resolve_memory_operand != nullptr && assign_scratch_reg != nullptr &&
+                  load_input_to_reg != nullptr && preload_readwrite_output != nullptr &&
+                  substitute_template_line != nullptr && store_output_from_reg != nullptr &&
+                  reset_scratch_state != nullptr,
+              "x86 translated asm_emitter owner methods should stay compile/link reachable through the public x86_codegen surface once asm_emitter.cpp enters the build");
+}
+
 void test_x86_translated_asm_emitter_helpers_match_shared_contract() {
   const auto callee_saved = c4c::backend::x86::x86_callee_saved_regs();
   const auto caller_saved = c4c::backend::x86::x86_caller_saved_regs();
@@ -4158,6 +4179,7 @@ int main(int argc, char* argv[]) {
   test_x86_codegen_header_exports_translated_globals_owner_symbols();
   test_x86_codegen_header_exports_translated_globals_owner_helper_symbols();
   test_x86_codegen_header_exports_translated_returns_owner_symbols();
+  test_x86_codegen_header_exports_translated_asm_emitter_owner_symbols();
   test_x86_translated_asm_emitter_helpers_match_shared_contract();
   test_x86_translated_regalloc_pruning_helpers_match_shared_contract();
   test_x86_translated_globals_owner_handles_minimal_scalar_global_load_slice();

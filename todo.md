@@ -8,12 +8,13 @@ Source Plan: plan.md
 
 - Step 3 translated-owner build-wiring follow-on after landing the bounded
   `returns.cpp` slice: both x86 source lists now compile
-  `src/backend/x86/codegen/returns.cpp`, and the public translated returns
-  owner methods are link-reachable through `x86_codegen.hpp`
+  `src/backend/x86/codegen/asm_emitter.cpp`, and the public translated
+  asm-emitter owner methods are link-reachable through `x86_codegen.hpp`
 - immediate target:
-  use the updated inventory to choose the next still-unwired translated
-  top-level unit, while treating the missing exporter-backed `X86Codegen`
-  state surface as the current blocker for non-stub owner bodies
+  wire `src/backend/x86/codegen/asm_emitter.cpp` into both x86 source lists
+  and add focused `backend_shared_util_tests.cpp` coverage that pins the
+  translated asm-emitter owner symbols through the public
+  `x86_codegen.hpp` surface
 
 ## Next Slice
 
@@ -21,6 +22,9 @@ Source Plan: plan.md
   smallest leaf-like owner candidate whose public surface can enter the build
   without widening into prologue/call-frame repair or hidden private-state
   exposure
+- current leading candidate after `asm_emitter.cpp`:
+  `src/backend/x86/codegen/calls.cpp`, unless focused validation shows a
+  cheaper compileable owner surface elsewhere
 - if a future x86 ABI policy change ever enables partial GP-register plus
   caller-stack aggregate splits, re-open `StructSplitRegStack` as a separate
   owner-path cutover item instead of silently folding it into the current
@@ -35,6 +39,28 @@ Source Plan: plan.md
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration wires `src/backend/x86/codegen/asm_emitter.cpp` into both x86
+  source lists in `CMakeLists.txt` and adds focused
+  `backend_shared_util_tests.cpp` coverage that pins the translated
+  asm-emitter owner symbols through the public `x86_codegen.hpp` surface
+- implementation note:
+  `asm_emitter.cpp` is a bounded compile/link reachability slice only; its
+  exported owner methods now carry explicit logic-error stubs so the unit can
+  enter the build without widening the blocked exporter-backed `X86Codegen`
+  inline-asm state surface yet
+- focused validation target:
+  passed `cmake --preset default`,
+  `cmake --build --preset default --target backend_shared_util_tests -j8`, and
+  `./build/backend_shared_util_tests translated_asm_emitter_owner_symbols`
+- broader build validation passed:
+  `cmake --build --preset default -j8` now compiles
+  `src/backend/x86/codegen/asm_emitter.cpp` through both the `backend_bir_tests`
+  and `c4cll` x86 source lists
+- broad full-suite validation note:
+  still deferred for this bounded symbol/link-coverage wiring slice per the
+  active plan note to wait for a larger owner-path cutover before rerunning the
+  monotonic full-suite guard
 
 - this iteration corrects the stale execution note that still treated
   `globals.cpp` as the first untranslated top-level owner candidate even though
