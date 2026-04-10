@@ -43,10 +43,11 @@ Source Plan: plan.md
   fallback inside `ensure_template_struct_instantiated_from_args(...)`, but the
   next highest-value work now likely sits in the still-stringy HIR helper
   paths.
-- Next intended slice: refactor `hir_templates.cpp` `apply_bindings(...)`
-  paths so pending owner/member-typedef resolution rewrites structured
-  `TemplateArgRef` payloads directly instead of first round-tripping through
-  collected debug-text refs.
+- Next intended slice: continue through the remaining HIR helper seams that
+  still collect debug refs first, especially the other
+  `resolve_struct_member_typedef_if_ready(...)` / deferred owner paths, until
+  `TemplateArgRef` rewrites become the common path and debug-text collection is
+  only fallback glue.
 
 ## Completed
 
@@ -122,3 +123,8 @@ Source Plan: plan.md
   now materialize typed `TemplateArgRefList` entries directly from AST template
   args instead of packing all args into a single `debug_text` blob before
   pending owner resolution.
+- Refactored the `resolve_struct_member_typedef_type(...)` binding path in
+  [hir_templates.cpp](/workspaces/c4c/src/frontend/hir/hir_templates.cpp) so
+  template-owner/member-typedef substitution now rewrites structured
+  `TemplateArgRef` entries directly in the common path and only falls back to
+  debug-text reconstruction when typed payload is unavailable.
