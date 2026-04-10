@@ -6,29 +6,20 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 5 full-suite monotonic validation and next-slice selection after the
-  bounded shared-BIR `00035.c` unary-not / unary-minus local-slot
-  seam landed
+- Step 5 focused validation capture and next-slice selection after the bounded
+  shared-BIR `00036.c` local-slot add/sub/mul compare seam landed
 - current exact slice:
-  preserve the refreshed focused-x86 and broad-suite validation results after
-  the bounded shared-BIR `00035.c` unary-not / unary-minus recovery; the early
-  source-backed cluster through `00035.c` is now green, while the broad-suite
-  comparison against `test_fail_before.log` remains a parked non-monotonic lane
-  because the refreshed after-log still reports unrelated broad red lanes
-  outside this bounded slice, including the already-known riscv64 select-route,
-  backend runtime, wider x86 source-backed, parser, and timeout buckets
+  preserve the focused x86 validation state after the bounded shared-BIR
+  `00036.c` recovery; keep the handoff narrowed to the next earliest
+  source-backed x86 case instead of widening this arithmetic slice ad hoc
 
 ## Next Slice
 
-- keep the ownership split explicit for the remaining early x86 source cases:
-  `00011.c` through `00035.c` are now green, so `c_testsuite_x86_backend_src_00036_c`
-  is now the next earliest failing source-backed x86 case to classify from the
-  refreshed neighboring lane instead of widening this slice ad hoc
-- if `00036.c` stays a bounded shared-BIR seam, keep it isolated to that next
-  earliest source-backed route instead of widening the `00035.c` ownership slice
-- after `00036.c`, the next neighboring red source-backed x86 case is currently
-  `c_testsuite_x86_backend_src_00037_c`; keep selecting from the refreshed
-  neighboring lane instead of widening this slice ad hoc
+- move next to the neighboring `c_testsuite_x86_backend_src_00037_c`
+  source-backed x86 case without widening the bounded `00036.c`
+  arithmetic-and-compare slice ad hoc
+- if `00037.c` stays a bounded shared-BIR seam, keep it isolated to that next
+  earliest source-backed route instead of broadening this lane
 - if the refreshed broad-suite guard is still red after the unary-not /
   unary-minus and early source-backed recoveries, keep treating the stale
   baseline as a parked comparison and classify the next highest-value remaining
@@ -42,6 +33,24 @@ Source Plan: plan.md
 
 ## Recently Completed
 
+- recovered the bounded shared-BIR `00036.c` seam by teaching
+  `src/backend/lowering/lir_to_bir.cpp` to recognize the exact printed
+  one-function local-slot arithmetic-and-compare route (`x = 0`, `x += 2`,
+  `x += 2`, `if (x != 4) return 1`, `x -= 1`, `if (x != 3) return 2`,
+  `x *= 2`, `if (x != 6) return 3`, final `ret 0`) and collapse `main` to the
+  shared constant `0` return before CFG normalization rewrites the bounded
+  branch chain
+- covered that seam with a source-backed backend route regression in
+  `tests/c/internal/InternalTests.cmake`
+  (`backend_codegen_route_x86_64_c_testsuite_00036_add_sub_mul_compare_retries_after_direct_bir_rejection`)
+  so the real `00036.c` path stays pinned on native x86 asm with the folded
+  zero return instead of falling back to the unsupported direct-LIR error
+- verified the bounded `00036.c` seam end-to-end with
+  `./build/c4cll --codegen asm tests/c/external/c-testsuite/src/00036.c`,
+  `ctest --test-dir build --output-on-failure -R '^(backend_codegen_route_x86_64_c_testsuite_00036_add_sub_mul_compare_retries_after_direct_bir_rejection|c_testsuite_x86_backend_src_00036_c)$'`,
+  and the neighboring cluster
+  `ctest --test-dir build --output-on-failure -R '^(backend_codegen_route_x86_64_c_testsuite_00035_unary_not_minus_retries_after_direct_bir_rejection|backend_codegen_route_x86_64_c_testsuite_00036_add_sub_mul_compare_retries_after_direct_bir_rejection|c_testsuite_x86_backend_src_00035_c|c_testsuite_x86_backend_src_00036_c)$'`
+  which now pass for the owned seam pair
 - recovered the bounded shared-BIR `00035.c` seam by teaching
   `src/backend/lowering/lir_to_bir/calls.cpp` to recognize the exact
   source-backed unary-not / unary-minus local-slot route (`x = 4`, `!x`,

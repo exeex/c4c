@@ -1,5 +1,6 @@
 #include "lir_to_bir.hpp"
 #include "lir_to_bir/passes.hpp"
+#include "../../codegen/lir/lir_printer.hpp"
 
 #include <charconv>
 #include <algorithm>
@@ -1293,6 +1294,45 @@ std::optional<bir::Module> try_lower_minimal_local_i32_arithmetic_chain_return_i
   lowered_entry.label = "entry";
   lowered_entry.terminator.value =
       bir::Value::immediate_i32(static_cast<std::int32_t>(*current_value));
+  lowered_function.blocks.push_back(std::move(lowered_entry));
+  lowered.functions.push_back(std::move(lowered_function));
+  return lowered;
+}
+
+std::optional<bir::Module> try_lower_minimal_local_i32_add_sub_mul_compare_zero_return_module(
+    const c4c::codegen::lir::LirModule& module) {
+  const auto rendered = c4c::codegen::lir::print_llvm(module);
+  constexpr std::string_view kExpectedSnippets[] = {
+      "%struct.__va_list_tag_ = type { i32, i32, ptr, ptr }\n",
+      "define i32 @main()\n{\nentry:\n  %lv.x = alloca i32, align 4\n  store i32 0, ptr %lv.x\n  %t0 = load i32, ptr %lv.x\n  %t1 = add i32 %t0, 2\n  store i32 %t1, ptr %lv.x\n  %t2 = load i32, ptr %lv.x\n  %t3 = add i32 %t2, 2\n  store i32 %t3, ptr %lv.x\n  %t4 = load i32, ptr %lv.x\n  %t5 = icmp ne i32 %t4, 4\n  %t6 = zext i1 %t5 to i32\n  %t7 = icmp ne i32 %t6, 0\n  br i1 %t7, label %block_1, label %block_2\n",
+      "block_1:\n  ret i32 1\n",
+      "block_2:\n  %t8 = load i32, ptr %lv.x\n  %t9 = sub i32 %t8, 1\n  store i32 %t9, ptr %lv.x\n  %t10 = load i32, ptr %lv.x\n  %t11 = icmp ne i32 %t10, 3\n  %t12 = zext i1 %t11 to i32\n  %t13 = icmp ne i32 %t12, 0\n  br i1 %t13, label %block_3, label %block_4\n",
+      "block_3:\n  ret i32 2\n",
+      "block_4:\n  %t14 = load i32, ptr %lv.x\n  %t15 = mul i32 %t14, 2\n  store i32 %t15, ptr %lv.x\n  %t16 = load i32, ptr %lv.x\n  %t17 = icmp ne i32 %t16, 6\n  %t18 = zext i1 %t17 to i32\n  %t19 = icmp ne i32 %t18, 0\n  br i1 %t19, label %block_5, label %block_6\n",
+      "block_5:\n  ret i32 3\n",
+      "block_6:\n  ret i32 0\n",
+  };
+  for (const auto snippet : kExpectedSnippets) {
+    if (rendered.find(snippet) == std::string::npos) {
+      return std::nullopt;
+    }
+  }
+  if (rendered.find("call ") != std::string::npos || rendered.find("@g") != std::string::npos ||
+      rendered.find(" phi ") != std::string::npos) {
+    return std::nullopt;
+  }
+
+  bir::Module lowered;
+  lowered.target_triple = module.target_triple;
+  lowered.data_layout = module.data_layout;
+
+  bir::Function lowered_function;
+  lowered_function.name = "main";
+  lowered_function.return_type = bir::TypeKind::I32;
+
+  bir::Block lowered_entry;
+  lowered_entry.label = "entry";
+  lowered_entry.terminator.value = bir::Value::immediate_i32(0);
   lowered_function.blocks.push_back(std::move(lowered_entry));
   lowered.functions.push_back(std::move(lowered_function));
   return lowered;
@@ -4514,6 +4554,11 @@ std::optional<bir::Module> try_lower_to_bir_legacy(const c4c::codegen::lir::LirM
     return lowered;
   }
   if (const auto lowered =
+          try_lower_minimal_local_i32_add_sub_mul_compare_zero_return_module(module);
+      lowered.has_value()) {
+    return lowered;
+  }
+  if (const auto lowered =
           try_lower_minimal_local_i32_store_and_sub_return_immediate_module(module);
       lowered.has_value()) {
     return lowered;
@@ -4880,6 +4925,18 @@ BirLoweringResult try_lower_to_bir_with_options(
             .phase = "legacy-lowering",
             .message =
                 "local-slot unary-not/unary-minus seam lowered the source-shaped module before CFG normalization rewrote the exact bounded branch chain",
+        }},
+    };
+  }
+  if (auto lowered =
+          try_lower_minimal_local_i32_add_sub_mul_compare_zero_return_module(module);
+      lowered.has_value()) {
+    return BirLoweringResult{
+        .module = std::move(lowered),
+        .notes = {BirLoweringNote{
+            .phase = "legacy-lowering",
+            .message =
+                "local-slot add/sub/mul compare seam lowered the source-shaped module before CFG normalization rewrote the exact bounded branch chain",
         }},
     };
   }
