@@ -4242,6 +4242,11 @@ std::optional<bir::Module> try_lower_to_bir_legacy(const c4c::codegen::lir::LirM
       lowered.has_value()) {
     return lowered;
   }
+  if (const auto lowered =
+          try_lower_minimal_local_i32_store_and_sub_return_immediate_module(module);
+      lowered.has_value()) {
+    return lowered;
+  }
   if (const auto lowered = try_lower_minimal_local_i32_store_or_sub_return_immediate_module(module);
       lowered.has_value()) {
     return lowered;

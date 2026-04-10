@@ -1552,6 +1552,36 @@ c4c::codegen::lir::LirModule make_bir_local_i32_store_or_sub_lir_module() {
   return module;
 }
 
+c4c::codegen::lir::LirModule make_bir_local_i32_store_and_sub_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.x", "i32", "", 4});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{"i32", "1", "%lv.x"});
+  entry.insts.push_back(LirLoadOp{"%t0", "i32", "%lv.x"});
+  entry.insts.push_back(LirBinOp{"%t1", "and", "i32", "%t0", "3"});
+  entry.insts.push_back(LirStoreOp{"i32", "%t1", "%lv.x"});
+  entry.insts.push_back(LirLoadOp{"%t2", "i32", "%lv.x"});
+  entry.insts.push_back(LirBinOp{"%t3", "sub", "i32", "%t2", "1"});
+  entry.terminator = LirRet{std::string("%t3"), "i32"};
+  function.blocks.push_back(std::move(entry));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_bir_declared_direct_call_inferred_params_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -2593,6 +2623,24 @@ void test_bir_lowering_accepts_local_i32_store_or_sub_lir_module() {
                   lowered->functions.front().blocks.front().terminator.value ==
                       c4c::backend::bir::Value::immediate_i32(0),
               "the lowered local i32 store/or/sub BIR module should collapse to the exact constant return implied by the slot update");
+}
+
+void test_bir_lowering_accepts_local_i32_store_and_sub_lir_module() {
+  const auto lowered = c4c::backend::try_lower_to_bir(make_bir_local_i32_store_and_sub_lir_module());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the bounded local i32 store/and/sub source-like LIR slice");
+  if (!lowered.has_value()) {
+    return;
+  }
+
+  expect_true(lowered->functions.size() == 1 &&
+                  lowered->functions.front().blocks.size() == 1 &&
+                  lowered->functions.front().blocks.front().insts.empty() &&
+                  lowered->functions.front().blocks.front().terminator.kind ==
+                      c4c::backend::bir::TerminatorKind::Return &&
+                  lowered->functions.front().blocks.front().terminator.value ==
+                      c4c::backend::bir::Value::immediate_i32(0),
+              "the lowered local i32 store/and/sub BIR module should collapse to the exact constant return implied by the slot update");
 }
 
 void test_bir_lowering_infers_extern_decl_params_from_typed_call_lir_module() {
@@ -6215,6 +6263,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_string_literal_strlen_sub_lir_module);
   RUN_TEST(test_bir_lowering_accepts_string_literal_char_sub_lir_module);
   RUN_TEST(test_bir_lowering_accepts_local_i32_store_or_sub_lir_module);
+  RUN_TEST(test_bir_lowering_accepts_local_i32_store_and_sub_lir_module);
   RUN_TEST(test_bir_lowering_infers_extern_decl_params_from_typed_call_lir_module);
   RUN_TEST(test_bir_lowering_uses_typed_declared_direct_call_metadata_when_text_is_stale);
   RUN_TEST(test_bir_lowering_uses_typed_extern_declared_direct_call_metadata_when_text_is_stale);
