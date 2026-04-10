@@ -10,6 +10,179 @@
 
 namespace {
 
+c4c::codegen::lir::LirModule make_loop_break_ladder_zero_return_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.type_decls.push_back("%struct.__va_list_tag_ = type { i32, i32, ptr, ptr }");
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+  function.alloca_insts.push_back(LirAllocaOp{"%lv.x", "i32", "", 4});
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirStoreOp{"i32", "0", "%lv.x"});
+  entry.terminator = LirBr{"block_1"};
+
+  LirBlock block_1;
+  block_1.id = LirBlockId{1};
+  block_1.label = "block_1";
+  block_1.insts.push_back(LirCmpOp{"%t0", false, "ne", "i32", "1", "0"});
+  block_1.terminator = LirCondBr{"%t0", "block_2", "block_3"};
+
+  LirBlock block_2;
+  block_2.id = LirBlockId{2};
+  block_2.label = "block_2";
+  block_2.terminator = LirBr{"block_3"};
+
+  LirBlock block_3;
+  block_3.id = LirBlockId{3};
+  block_3.label = "block_3";
+  block_3.terminator = LirBr{"block_4"};
+
+  LirBlock block_4;
+  block_4.id = LirBlockId{4};
+  block_4.label = "block_4";
+  block_4.insts.push_back(LirCmpOp{"%t1", false, "ne", "i32", "1", "0"});
+  block_4.terminator = LirCondBr{"%t1", "block_5", "block_6"};
+
+  LirBlock block_5;
+  block_5.id = LirBlockId{5};
+  block_5.label = "block_5";
+  block_5.insts.push_back(LirLoadOp{"%t2", "i32", "%lv.x"});
+  block_5.insts.push_back(LirCmpOp{"%t3", false, "eq", "i32", "%t2", "5"});
+  block_5.insts.push_back(LirCastOp{"%t4", LirCastKind::ZExt, "i1", "%t3", "i32"});
+  block_5.insts.push_back(LirCmpOp{"%t5", false, "ne", "i32", "%t4", "0"});
+  block_5.terminator = LirCondBr{"%t5", "block_7", "block_8"};
+
+  LirBlock block_6;
+  block_6.id = LirBlockId{6};
+  block_6.label = "block_6";
+  block_6.terminator = LirBr{"for.cond.9"};
+
+  LirBlock for_cond_9;
+  for_cond_9.id = LirBlockId{7};
+  for_cond_9.label = "for.cond.9";
+  for_cond_9.terminator = LirBr{"block_9"};
+
+  LirBlock for_latch_9;
+  for_latch_9.id = LirBlockId{8};
+  for_latch_9.label = "for.latch.9";
+  for_latch_9.terminator = LirBr{"for.cond.9"};
+
+  LirBlock block_7;
+  block_7.id = LirBlockId{9};
+  block_7.label = "block_7";
+  block_7.terminator = LirBr{"block_6"};
+
+  LirBlock block_8;
+  block_8.id = LirBlockId{10};
+  block_8.label = "block_8";
+  block_8.insts.push_back(LirLoadOp{"%t6", "i32", "%lv.x"});
+  block_8.insts.push_back(LirBinOp{"%t7", "add", "i32", "%t6", "1"});
+  block_8.insts.push_back(LirStoreOp{"i32", "%t7", "%lv.x"});
+  block_8.terminator = LirBr{"block_4"};
+
+  LirBlock block_9;
+  block_9.id = LirBlockId{11};
+  block_9.label = "block_9";
+  block_9.insts.push_back(LirLoadOp{"%t8", "i32", "%lv.x"});
+  block_9.insts.push_back(LirCmpOp{"%t9", false, "eq", "i32", "%t8", "10"});
+  block_9.insts.push_back(LirCastOp{"%t10", LirCastKind::ZExt, "i1", "%t9", "i32"});
+  block_9.insts.push_back(LirCmpOp{"%t11", false, "ne", "i32", "%t10", "0"});
+  block_9.terminator = LirCondBr{"%t11", "block_11", "block_12"};
+
+  LirBlock block_10;
+  block_10.id = LirBlockId{12};
+  block_10.label = "block_10";
+  block_10.terminator = LirBr{"block_13"};
+
+  LirBlock block_11;
+  block_11.id = LirBlockId{13};
+  block_11.label = "block_11";
+  block_11.terminator = LirBr{"block_10"};
+
+  LirBlock block_12;
+  block_12.id = LirBlockId{14};
+  block_12.label = "block_12";
+  block_12.insts.push_back(LirLoadOp{"%t12", "i32", "%lv.x"});
+  block_12.insts.push_back(LirBinOp{"%t13", "add", "i32", "%t12", "1"});
+  block_12.insts.push_back(LirStoreOp{"i32", "%t13", "%lv.x"});
+  block_12.terminator = LirBr{"for.latch.9"};
+
+  LirBlock block_13;
+  block_13.id = LirBlockId{15};
+  block_13.label = "block_13";
+  block_13.insts.push_back(LirLoadOp{"%t14", "i32", "%lv.x"});
+  block_13.insts.push_back(LirCmpOp{"%t15", false, "eq", "i32", "%t14", "15"});
+  block_13.insts.push_back(LirCastOp{"%t16", LirCastKind::ZExt, "i1", "%t15", "i32"});
+  block_13.insts.push_back(LirCmpOp{"%t17", false, "ne", "i32", "%t16", "0"});
+  block_13.terminator = LirCondBr{"%t17", "block_16", "block_17"};
+
+  LirBlock block_14;
+  block_14.id = LirBlockId{16};
+  block_14.label = "block_14";
+  block_14.terminator = LirBr{"dowhile.cond.13"};
+
+  LirBlock dowhile_cond_13;
+  dowhile_cond_13.id = LirBlockId{17};
+  dowhile_cond_13.label = "dowhile.cond.13";
+  dowhile_cond_13.insts.push_back(LirCmpOp{"%t18", false, "ne", "i32", "1", "0"});
+  dowhile_cond_13.terminator = LirCondBr{"%t18", "block_13", "block_15"};
+
+  LirBlock block_15;
+  block_15.id = LirBlockId{18};
+  block_15.label = "block_15";
+  block_15.insts.push_back(LirLoadOp{"%t19", "i32", "%lv.x"});
+  block_15.insts.push_back(LirBinOp{"%t20", "sub", "i32", "%t19", "15"});
+  block_15.terminator = LirRet{std::string("%t20"), "i32"};
+
+  LirBlock block_16;
+  block_16.id = LirBlockId{19};
+  block_16.label = "block_16";
+  block_16.terminator = LirBr{"block_15"};
+
+  LirBlock block_17;
+  block_17.id = LirBlockId{20};
+  block_17.label = "block_17";
+  block_17.insts.push_back(LirLoadOp{"%t21", "i32", "%lv.x"});
+  block_17.insts.push_back(LirBinOp{"%t22", "add", "i32", "%t21", "1"});
+  block_17.insts.push_back(LirStoreOp{"i32", "%t22", "%lv.x"});
+  block_17.terminator = LirBr{"block_14"};
+
+  function.blocks.push_back(std::move(entry));
+  function.blocks.push_back(std::move(block_1));
+  function.blocks.push_back(std::move(block_2));
+  function.blocks.push_back(std::move(block_3));
+  function.blocks.push_back(std::move(block_4));
+  function.blocks.push_back(std::move(block_5));
+  function.blocks.push_back(std::move(block_6));
+  function.blocks.push_back(std::move(for_cond_9));
+  function.blocks.push_back(std::move(for_latch_9));
+  function.blocks.push_back(std::move(block_7));
+  function.blocks.push_back(std::move(block_8));
+  function.blocks.push_back(std::move(block_9));
+  function.blocks.push_back(std::move(block_10));
+  function.blocks.push_back(std::move(block_11));
+  function.blocks.push_back(std::move(block_12));
+  function.blocks.push_back(std::move(block_13));
+  function.blocks.push_back(std::move(block_14));
+  function.blocks.push_back(std::move(dowhile_cond_13));
+  function.blocks.push_back(std::move(block_15));
+  function.blocks.push_back(std::move(block_16));
+  function.blocks.push_back(std::move(block_17));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_double_countdown_guarded_zero_return_module() {
   using namespace c4c::codegen::lir;
 
@@ -4397,6 +4570,24 @@ void test_bir_lowering_accepts_double_countdown_guarded_zero_return_lir_module()
                   "the lowered double-countdown guarded-return BIR module should normalize the two countdown loops and dead guard to the constant zero result");
 }
 
+void test_bir_lowering_accepts_loop_break_ladder_zero_return_lir_module() {
+  const auto lowered = c4c::backend::try_lower_to_bir(make_loop_break_ladder_zero_return_module());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the bounded loop-break ladder LIR slice through the shared constant-return contract");
+
+  expect_true(lowered->functions.size() == 1 &&
+                  lowered->functions.front().blocks.size() == 1 &&
+                  lowered->functions.front().blocks.front().label == "entry" &&
+                  lowered->functions.front().blocks.front().insts.empty() &&
+                  lowered->functions.front().blocks.front().terminator.kind ==
+                      c4c::backend::bir::TerminatorKind::Return,
+              "the lowered loop-break ladder BIR module should collapse to one canonical constant-return block");
+
+  const auto rendered = c4c::backend::bir::print(*lowered);
+  expect_contains(rendered, "bir.func @main() -> i32 {\nentry:\n  bir.ret i32 0\n}\n",
+                  "the lowered loop-break ladder BIR module should normalize the three counted loops and trailing subtract to the constant zero result");
+}
+
 void test_bir_lowering_accepts_minimal_scalar_global_load_lir_module() {
   const auto lowered =
       c4c::backend::try_lower_to_bir(make_bir_minimal_scalar_global_load_lir_module());
@@ -6986,6 +7177,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_minimal_countdown_do_while_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_countdown_do_while_lir_module_with_stale_typed_i32_text);
   RUN_TEST(test_bir_lowering_accepts_double_countdown_guarded_zero_return_lir_module);
+  RUN_TEST(test_bir_lowering_accepts_loop_break_ladder_zero_return_lir_module);
   RUN_TEST(test_bir_printer_renders_minimal_add_scaffold);
   RUN_TEST(test_bir_printer_renders_minimal_sub_scaffold);
   RUN_TEST(test_bir_printer_renders_minimal_mul_scaffold);
