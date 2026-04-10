@@ -6,29 +6,25 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 3 translated-owner cutover follow-on in the bounded prepared-LIR
-  direct-calls sibling seam after landing the register-backed aggregate
-  public backend-entrypoint regression for the next remaining SysV
-  argument-lowering helper family; the helper-only `00080.c` `voidfn` body
-  slice, the bounded seventh-parameter caller-stack helper slice, the mixed
-  register-plus-stack scalar helper family, and now the register-backed
-  aggregate param-slot helper family and the large caller-stack aggregate
-  param-slot helper family are covered at the shared backend entry surface
-  alongside the existing two-function and main-only `00080.c` routes
+- Step 3 translated-owner cutover follow-on after reassessing the bounded
+  prepared-LIR direct-calls sibling seam: the tracked SysV argument-lowering
+  helper families called out at the top of this runbook now all have shared
+  backend-entry coverage, including the bounded scalar stack/load families,
+  the register-backed aggregate family, the large caller-stack aggregate
+  family, and the trailing small-aggregate `StructStack` family alongside the
+  existing `00080.c` shared-path routes
 - immediate target:
-  after landing the trailing-small-aggregate-after-six-scalars `StructStack`
-  sibling at `c4c::backend::emit_module`, reassess whether any remaining SysV
-  aggregate helper family still lacks shared backend-entry coverage before
-  spending more time on direct-emitter-only assertions
+  stop spending more Step 3 time on helper-family public-entrypoint parity and
+  instead pick the next smallest translated-owner build-wiring slice that
+  reduces `emit.cpp` ownership directly, starting from the still-unwired
+  translated top-level units called out in the source idea and plan
 
 ## Next Slice
 
-- after the large caller-stack aggregate helper-family slice, choose the next
-  still-direct-emitter-only public backend representative from the remaining
-  SysV argument-lowering helper families instead of adding more
-  direct-emitter-only assertions; after the trailing small-aggregate
-  `StructStack` sibling lands, reassess whether any other aggregate helper
-  family still lacks shared backend-entry coverage
+- choose the first still-unwired translated top-level owner candidate that can
+  enter the build without widening into prologue/call-frame repair; prefer a
+  leaf-like unit from the idea inventory instead of adding more direct-emitter
+  or public-entrypoint helper coverage
 - if a future x86 ABI policy change ever enables partial GP-register plus
   caller-stack aggregate splits, re-open `StructSplitRegStack` as a separate
   owner-path cutover item instead of silently folding it into the current
@@ -37,9 +33,18 @@ Source Plan: plan.md
   wiring experiment confirmed `src/backend/x86/codegen/prologue.cpp` still
   depends on incomplete public x86 backend/type surface and is not ready for
   direct target inclusion
+- treat the current shared backend-entry coverage for the bounded SysV helper
+  families as complete enough for this lane unless a new owner-path regression
+  shows a real gap
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration repairs the stale top-level execution state after the
+  trailing small-aggregate `StructStack` reassessment: the bounded SysV
+  argument-lowering helper families already tracked in this runbook all have
+  shared backend-entry coverage now, so the next real Step 3 frontier is
+  translated owner/build wiring rather than more helper-family parity work
 
 - this iteration adds the missing shared backend entrypoint coverage for the
   bounded trailing small-aggregate-after-six-scalars `StructStack` helper
