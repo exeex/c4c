@@ -10503,6 +10503,25 @@ void test_x86_direct_emitter_lowers_minimal_two_arg_helper_call_slice() {
                       "x86 direct emitter should stay on native asm emission for the bounded two-arg helper slice");
 }
 
+void test_x86_direct_emitter_lowers_minimal_folded_two_arg_direct_call_slice() {
+  auto module = make_lir_minimal_folded_two_arg_direct_call_module();
+
+  const auto rendered = c4c::backend::x86::try_emit_prepared_lir_module(module);
+  expect_true(rendered.has_value(),
+              "x86 direct emitter should accept the bounded folded two-arg helper call through the native prepared-LIR seam");
+  if (!rendered.has_value()) {
+    return;
+  }
+  expect_contains(*rendered, ".globl fold_pair",
+                  "x86 direct emitter should still emit the helper definition for the bounded folded two-arg direct-LIR slice");
+  expect_contains(*rendered, "fold_pair:\n  mov eax, 10\n  add eax, edi\n  sub eax, esi\n  ret\n",
+                  "x86 direct emitter should keep the bounded folded helper body on the native direct-LIR path");
+  expect_contains(*rendered, "main:\n  mov edi, 5\n  mov esi, 7\n  call fold_pair\n  ret\n",
+                  "x86 direct emitter should materialize both immediate call operands before invoking the folded two-arg helper on the native x86 path");
+  expect_not_contains(*rendered, "target triple =",
+                      "x86 direct emitter should stay on native asm emission for the bounded folded two-arg helper slice");
+}
+
 void test_x86_direct_emitter_lowers_minimal_dual_identity_direct_call_sub_slice() {
   auto module = make_lir_minimal_dual_identity_direct_call_sub_module();
 
@@ -10905,6 +10924,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_single_arg_add_imm_helper_call_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_single_arg_identity_helper_call_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_helper_call_slice);
+  RUN_TEST(test_x86_direct_emitter_lowers_minimal_folded_two_arg_direct_call_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_dual_identity_direct_call_sub_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_call_crossing_direct_call_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_two_arg_local_arg_call_slice);

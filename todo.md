@@ -11,19 +11,19 @@ Source Plan: plan.md
   family ownership move out of `src/backend/x86/codegen/emit.cpp`
 - immediate target:
   return to the next bounded direct-calls follow-on after the new call-
-  crossing helper family: pick the next remaining prepared-LIR direct-call
-  matcher family that still falls back or throws, without reopening broader
+  crossing helper family: move the folded two-arg `fold_pair` helper family
+  onto the native prepared-LIR x86 emitter path without reopening broader
   translated prologue-owner work
-  - keep the next slice limited to one direct-call family; do not bundle the
-    next prepared-LIR route with unrelated parked translated-prologue work
-  - keep the broader translated prologue-owner work parked; this iteration is
-    only about shrinking the remaining prepared-LIR direct-call matcher surface
+  - add focused native prepared-LIR regression coverage for the bounded
+    `fold_pair(i32, i32)` helper shape and keep the slice limited to that one
+    helper family
+  - keep the broader translated prologue owner parked; this iteration is only
+    about shrinking the remaining prepared-LIR direct-call matcher surface
 
 ## Next Slice
 
 - choose the next bounded prepared-LIR direct-call family that still lacks a
-  native x86 direct-emitter owner after the dual-helper subtraction and
-  call-crossing slices
+  native x86 direct-emitter owner after the folded two-arg `fold_pair` slice
 - if a future x86 ABI policy change ever enables partial GP-register plus
   caller-stack aggregate splits, re-open `StructSplitRegStack` as a separate
   owner-path cutover item instead of silently folding it into the current
@@ -35,6 +35,28 @@ Source Plan: plan.md
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration moved the bounded folded two-arg `fold_pair(i32, i32)`
+  helper family onto the native prepared-LIR x86 emitter path:
+  `src/backend/x86/codegen/direct_calls.cpp`,
+  `src/backend/x86/codegen/direct_dispatch.cpp`, and
+  `src/backend/x86/codegen/x86_codegen.hpp` now recognize the helper body
+  `10 + %lhs - %rhs` and emit the helper plus main call path natively instead
+  of leaving that prepared-LIR family outside the direct x86 owner matrix
+- `tests/backend/backend_bir_pipeline_x86_64_tests.cpp` now pins the native
+  prepared-LIR folded-helper slice directly while keeping the existing BIR-
+  owned end-to-end folded-call regression in place
+- focused validation passed for this slice:
+  `cmake --build build -j8 --target backend_bir_tests`,
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_folded_two_arg_direct_call_slice`,
+  `./build/backend_bir_tests test_backend_bir_pipeline_drives_x86_lir_minimal_folded_two_arg_direct_call_through_bir_end_to_end`,
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_two_arg_helper_call_slice`,
+  and
+  `./build/backend_bir_tests test_x86_direct_emitter_lowers_minimal_call_crossing_direct_call_slice`
+- broad validation note:
+  skipped for this still-bounded direct-call owner slice per the active plan
+  note to defer the monotonic full-suite guard until a larger owner-path
+  cutover lands
 
 - this iteration moved the bounded call-crossing prepared-LIR helper family
   into `src/backend/x86/codegen/direct_calls.cpp`: the native x86 path now

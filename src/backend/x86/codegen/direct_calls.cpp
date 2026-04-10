@@ -77,6 +77,14 @@ struct MinimalTwoArgHelperCallSlice {
   std::int64_t rhs_call_arg_imm = 0;
 };
 
+struct MinimalFoldedTwoArgDirectCallSlice {
+  std::string helper_name;
+  std::string entry_name;
+  std::int64_t helper_add_imm = 0;
+  std::int64_t lhs_call_arg_imm = 0;
+  std::int64_t rhs_call_arg_imm = 0;
+};
+
 struct MinimalDualIdentityDirectCallSubSlice {
   std::string lhs_helper_name;
   std::string rhs_helper_name;
@@ -461,6 +469,101 @@ std::optional<MinimalTwoArgHelperCallSlice> parse_minimal_two_arg_helper_call_sl
     return MinimalTwoArgHelperCallSlice{
         .helper_name = helper.name,
         .entry_name = entry.name,
+        .lhs_call_arg_imm = *lhs_call_arg_imm,
+        .rhs_call_arg_imm = *rhs_call_arg_imm,
+    };
+  };
+
+  if (const auto parsed = try_match(module.functions.front(), module.functions.back());
+      parsed.has_value()) {
+    return parsed;
+  }
+  return try_match(module.functions.back(), module.functions.front());
+}
+
+std::optional<MinimalFoldedTwoArgDirectCallSlice> parse_minimal_folded_two_arg_direct_call_slice(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 2 || !module.globals.empty() || !module.extern_decls.empty() ||
+      !module.string_pool.empty()) {
+    return std::nullopt;
+  }
+
+  const auto try_match =
+      [](const LirFunction& helper,
+         const LirFunction& entry) -> std::optional<MinimalFoldedTwoArgDirectCallSlice> {
+    if (helper.is_declaration || helper.entry.value != 0 || helper.blocks.size() != 1 ||
+        !helper.alloca_insts.empty() || !helper.stack_objects.empty() ||
+        entry.is_declaration || entry.entry.value != 0 || entry.blocks.size() != 1 ||
+        !entry.alloca_insts.empty() || !entry.stack_objects.empty() ||
+        !c4c::backend::backend_lir_signature_matches(entry.signature_text,
+                                                     "define",
+                                                     "i32",
+                                                     entry.name,
+                                                     {})) {
+      return std::nullopt;
+    }
+
+    const auto params = c4c::backend::parse_backend_function_signature_params(helper.signature_text);
+    if (!params.has_value() || params->size() != 2 || (*params)[0].is_varargs ||
+        (*params)[1].is_varargs || (*params)[0].type != "i32" || (*params)[1].type != "i32" ||
+        (*params)[0].operand.empty() || (*params)[1].operand.empty()) {
+      return std::nullopt;
+    }
+
+    const auto& helper_block = helper.blocks.front();
+    const auto* add =
+        helper_block.insts.size() == 2 ? std::get_if<LirBinOp>(&helper_block.insts[0]) : nullptr;
+    const auto* sub =
+        helper_block.insts.size() == 2 ? std::get_if<LirBinOp>(&helper_block.insts[1]) : nullptr;
+    const auto* helper_ret = std::get_if<LirRet>(&helper_block.terminator);
+    if (helper_block.label != "entry" || add == nullptr || sub == nullptr || helper_ret == nullptr ||
+        add->opcode.typed() != LirBinaryOpcode::Add || add->type_str != "i32" ||
+        add->lhs != "10" || add->rhs != (*params)[0].operand ||
+        sub->opcode.typed() != LirBinaryOpcode::Sub || sub->type_str != "i32" ||
+        sub->lhs != add->result || sub->rhs != (*params)[1].operand ||
+        !helper_ret->value_str.has_value() || *helper_ret->value_str != sub->result ||
+        helper_ret->type_str != "i32") {
+      return std::nullopt;
+    }
+
+    const auto helper_add_imm = parse_i64(add->lhs);
+    if (!helper_add_imm.has_value() ||
+        *helper_add_imm < std::numeric_limits<std::int32_t>::min() ||
+        *helper_add_imm > std::numeric_limits<std::int32_t>::max()) {
+      return std::nullopt;
+    }
+
+    const auto& block = entry.blocks.front();
+    const auto* ret = std::get_if<LirRet>(&block.terminator);
+    const auto* call = block.insts.size() == 1 ? std::get_if<LirCallOp>(&block.insts.front()) : nullptr;
+    const auto call_operands =
+        call == nullptr
+            ? std::nullopt
+            : c4c::backend::parse_backend_direct_global_two_typed_call_operands(
+                  *call, helper.name, "i32", "i32");
+    if (block.label != "entry" || call == nullptr || ret == nullptr || !call_operands.has_value() ||
+        !ret->value_str.has_value() || *ret->value_str != call->result ||
+        c4c::backend::backend_lir_lower_function_return_type(entry, *ret) !=
+            c4c::backend::bir::TypeKind::I32) {
+      return std::nullopt;
+    }
+
+    const auto lhs_call_arg_imm = parse_i64(call_operands->first);
+    const auto rhs_call_arg_imm = parse_i64(call_operands->second);
+    if (!lhs_call_arg_imm.has_value() || !rhs_call_arg_imm.has_value() ||
+        *lhs_call_arg_imm < std::numeric_limits<std::int32_t>::min() ||
+        *lhs_call_arg_imm > std::numeric_limits<std::int32_t>::max() ||
+        *rhs_call_arg_imm < std::numeric_limits<std::int32_t>::min() ||
+        *rhs_call_arg_imm > std::numeric_limits<std::int32_t>::max()) {
+      return std::nullopt;
+    }
+
+    return MinimalFoldedTwoArgDirectCallSlice{
+        .helper_name = helper.name,
+        .entry_name = entry.name,
+        .helper_add_imm = *helper_add_imm,
         .lhs_call_arg_imm = *lhs_call_arg_imm,
         .rhs_call_arg_imm = *rhs_call_arg_imm,
     };
@@ -2212,6 +2315,27 @@ std::string emit_minimal_two_arg_helper_call_asm(
   return out.str();
 }
 
+std::string emit_minimal_folded_two_arg_direct_call_asm(
+    std::string_view target_triple,
+    const MinimalFoldedTwoArgDirectCallSlice& slice) {
+  const auto helper_symbol = asm_symbol_name(target_triple, slice.helper_name);
+  const auto entry_symbol = asm_symbol_name(target_triple, slice.entry_name);
+  std::ostringstream out;
+  out << ".intel_syntax noprefix\n"
+      << ".text\n"
+      << emit_function_prelude(target_triple, helper_symbol)
+      << "  mov eax, " << slice.helper_add_imm << "\n"
+      << "  add eax, edi\n"
+      << "  sub eax, esi\n"
+      << "  ret\n"
+      << emit_function_prelude(target_triple, entry_symbol)
+      << "  mov edi, " << slice.lhs_call_arg_imm << "\n"
+      << "  mov esi, " << slice.rhs_call_arg_imm << "\n"
+      << "  call " << helper_symbol << "\n"
+      << "  ret\n";
+  return out.str();
+}
+
 std::string emit_minimal_dual_identity_direct_call_sub_asm(
     std::string_view target_triple,
     const MinimalDualIdentityDirectCallSubSlice& slice) {
@@ -2352,6 +2476,14 @@ std::optional<std::string> try_emit_minimal_two_arg_helper_call_module(
     const c4c::codegen::lir::LirModule& module) {
   if (const auto slice = parse_minimal_two_arg_helper_call_slice(module); slice.has_value()) {
     return emit_minimal_two_arg_helper_call_asm(module.target_triple, *slice);
+  }
+  return std::nullopt;
+}
+
+std::optional<std::string> try_emit_minimal_folded_two_arg_direct_call_module(
+    const c4c::codegen::lir::LirModule& module) {
+  if (const auto slice = parse_minimal_folded_two_arg_direct_call_slice(module); slice.has_value()) {
+    return emit_minimal_folded_two_arg_direct_call_asm(module.target_triple, *slice);
   }
   return std::nullopt;
 }
