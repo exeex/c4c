@@ -1865,15 +1865,6 @@ bool HirTemplateArgMaterializer::resolve_explicit_typed_arg(
     out_arg->type = substitute_bound_type(ref.type);
     return true;
   }
-  if (ref.kind == TemplateArgKind::Type &&
-      ref.debug_text && ref.debug_text[0]) {
-    HirTemplateArg resolved{};
-    if (!resolve_any_arg_ref(ref.debug_text, &resolved) || resolved.is_value) {
-      return false;
-    }
-    out_arg->type = resolved.type;
-    return true;
-  }
   return false;
 }
 

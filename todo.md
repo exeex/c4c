@@ -70,6 +70,9 @@ Source Plan: plan.md
 - HIR interface cleanup: the external string-backed
   `materialize_template_args(...)` overload is now gone; string ref handling
   only survives as an internal fallback inside the HIR materializer helper.
+- HIR typed-path cleanup: `resolve_explicit_typed_arg(...)` no longer falls back
+  to parsing type-arg `debug_text`; typed type args now require structured
+  payload and only value args still consult textual fallback.
 
 ## Completed
 
@@ -181,3 +184,8 @@ Source Plan: plan.md
   [hir_lowerer_internal.hpp](/workspaces/c4c/src/frontend/hir/hir_lowerer_internal.hpp)
   and [hir_templates.cpp](/workspaces/c4c/src/frontend/hir/hir_templates.cpp),
   so the string path is no longer a first-class Lowerer API.
+- Removed the type-arg `debug_text` fallback from
+  `resolve_explicit_typed_arg(...)` in
+  [hir_templates.cpp](/workspaces/c4c/src/frontend/hir/hir_templates.cpp), so
+  typed HIR template-arg materialization now relies on structured type payload
+  for type args instead of reparsing their text form.
