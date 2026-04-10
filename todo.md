@@ -6,32 +6,30 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 2 next shared-support promotion after the landed translated
-  `globals.cpp` compile cluster: move the smallest real globals-owner helper
-  surface out of `emit.cpp` so `src/backend/x86/codegen/globals.cpp` can start
-  carrying behavior instead of transitional unwired-owner stubs
+- Step 3 next ownership-removal slice after the landed direct-calls expansion:
+  move the next remaining self-contained legacy matcher cluster out of
+  `src/backend/x86/codegen/emit.cpp`
 - immediate target:
-  move the minimal scalar global-load direct-BIR matcher/dispatch into
-  `src/backend/x86/codegen/globals.cpp` behind a focused direct helper entry
-  point while keeping the runtime path bounded and observable
-  - do not claim the owner switch is done just because one globals helper
-    starts carrying real behavior
-  - keep the surrounding runtime path on the existing direct-global/native seams
-    except for the exact helper promotion covered by the slice
-  - use the promotion to expose which `X86Codegen` internals still need to move
-    out of `emit.cpp` before the full translated emitter owner can take over
+  extract the bounded direct-BIR repeated-`printf` local-i32 route still owned
+  by `emit.cpp` into a sibling helper/owner file while keeping the surrounding
+  BIR/native path observable through focused backend regressions
+  - do not re-open the parked translated top-level owner-unit export work just
+    to move this bounded legacy matcher
+  - keep the slice centered on one dispatcher-owned route so the ownership
+    delta remains explicit in `emit.cpp`
+  - reuse the existing repeated-`printf` end-to-end regression coverage instead
+    of widening unrelated shared-BIR behavior
 
 ## Next Slice
 
-- repeat the same bounded globals-owner migration for the next least-coupled
-  direct-BIR global route still living in `emit.cpp`, likely the extern scalar
-  global-load or scalar global store-reload slice
-- after that, repeat the same bounded migration pattern for the next
-  least-coupled translated top-level owner unit, still expected to be
-  `comparison.cpp` or `returns.cpp`
-- keep validation centered on focused backend regressions during the cutover;
-  rerun the backend full-suite regression guard after each compile-cluster
-  landing to ensure the added symbols do not perturb the existing failure set
+- after the repeated-`printf` local-i32 BIR route, move the next remaining
+  direct-BIR scalar-global seam still owned by `emit.cpp`, likely the extern
+  scalar global-load or scalar global store-reload route
+- once the practical legacy matcher surface is smaller, reassess whether the
+  next best progress move is another bounded seam extraction or a translated
+  top-level owner-unit cutover such as `comparison.cpp` or `returns.cpp`
+- keep validation centered on focused backend regressions plus a matched
+  full-suite rerun when the stored `test_fail_before.log` baseline is stale
 
 ## Current Iteration Notes
 
@@ -731,3 +729,26 @@ Source Plan: plan.md
   - broad validation remained monotonic against `test_fail_before.log`; the
     matched rerun in `test_fail_after.log` kept the same `181` failing tests
     with no newly failing cases
+- this iteration extends the direct-calls sibling seam with the remaining
+  bounded two-arg prepared-LIR local/local variants: the both-local, both-local
+  first-rewrite, both-local second-rewrite, and both-local double-rewrite
+  helper-call routes now live in `src/backend/x86/codegen/direct_calls.cpp`
+  instead of `emit.cpp`
+- added focused backend regressions that call each new direct call-helper seam
+  explicitly so the Step 3 ownership move stays observable apart from the
+  broader prepared-LIR dispatcher coverage
+- focused checks passed:
+  `./build/backend_bir_tests
+  test_x86_direct_call_helper_accepts_two_arg_both_local_arg_call_slice`,
+  `test_x86_direct_call_helper_accepts_two_arg_both_local_first_rewrite_call_slice`,
+  `test_x86_direct_call_helper_accepts_two_arg_both_local_second_rewrite_call_slice`,
+  `test_x86_direct_call_helper_accepts_two_arg_both_local_double_rewrite_call_slice`,
+  plus the matching direct-emitter regressions
+- the stored `test_fail_before.log` baseline is stale relative to the current
+  3376-test inventory, so the direct regression guard falsely reported one new
+  unrelated failure (`cpp_eastl_memory_uses_allocator_parse_recipe`) while the
+  workspace was also missing `ref/EASTL`
+- a matched rerun against the current tree stayed stable: comparing
+  `test_fail_matched_before.log` to `test_fail_after_rerun.log` with
+  `--allow-non-decreasing-passed` reported `3194` passed / `182` failed before
+  and after, with no newly failing tests and no new `>30s` cases

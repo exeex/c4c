@@ -440,6 +440,14 @@ std::optional<std::string> try_emit_minimal_two_arg_local_arg_call_module(
     const c4c::codegen::lir::LirModule& module);
 std::optional<std::string> try_emit_minimal_two_arg_second_local_arg_call_module(
     const c4c::codegen::lir::LirModule& module);
+std::optional<std::string> try_emit_minimal_two_arg_both_local_arg_call_module(
+    const c4c::codegen::lir::LirModule& module);
+std::optional<std::string> try_emit_minimal_two_arg_both_local_first_rewrite_call_module(
+    const c4c::codegen::lir::LirModule& module);
+std::optional<std::string> try_emit_minimal_two_arg_both_local_second_rewrite_call_module(
+    const c4c::codegen::lir::LirModule& module);
+std::optional<std::string> try_emit_minimal_two_arg_both_local_double_rewrite_call_module(
+    const c4c::codegen::lir::LirModule& module);
 std::optional<std::string> try_emit_minimal_two_arg_second_local_rewrite_call_module(
     const c4c::codegen::lir::LirModule& module);
 std::optional<std::string> try_emit_minimal_two_arg_first_local_rewrite_call_module(
