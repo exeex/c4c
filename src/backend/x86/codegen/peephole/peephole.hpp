@@ -139,6 +139,7 @@ std::string replace_reg_family(std::string_view line, RegId old_id, RegId new_id
 std::string replace_reg_family_in_source(std::string_view line, RegId old_id, RegId new_id);
 
 bool combined_local_pass(LineStore* store, LineInfo* infos);
+bool fuse_compare_and_branch(LineStore* store, LineInfo* infos);
 bool fuse_movq_ext_truncation(LineStore* store, LineInfo* infos);
 bool eliminate_push_pop_pairs(const LineStore* store, LineInfo* infos);
 std::string peephole_optimize(std::string asm_text);

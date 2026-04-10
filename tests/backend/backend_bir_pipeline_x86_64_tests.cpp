@@ -9228,6 +9228,30 @@ void test_x86_peephole_eliminates_redundant_push_pop_pair() {
                   "x86 peephole should preserve the surrounding label and return after removing the redundant pair");
 }
 
+void test_x86_peephole_fuses_compare_setcc_test_branch_sequence() {
+  const std::string input =
+      ".text\n"
+      "helper:\n"
+      "  cmpq %rsi, %rdi\n"
+      "  setl %al\n"
+      "  movzbq %al, %rax\n"
+      "  testq %rax, %rax\n"
+      "  jne .Llt\n"
+      "  mov eax, 0\n"
+      ".Llt:\n"
+      "  ret\n";
+
+  const auto optimized = c4c::backend::x86::codegen::peephole::peephole_optimize(input);
+  expect_not_contains(optimized, "  setl %al\n",
+                      "x86 peephole should remove the boolean materialization once the translated compare_branch pass is live");
+  expect_not_contains(optimized, "  movzbq %al, %rax\n",
+                      "x86 peephole should remove the zero-extend that only exists to feed the branch test");
+  expect_not_contains(optimized, "  testq %rax, %rax\n",
+                      "x86 peephole should remove the redundant test after compare-and-branch fusion");
+  expect_contains(optimized, "  jl .Llt\n",
+                  "x86 peephole should fuse cmp/setcc/test/jne into the direct conditional jump");
+}
+
 void test_x86_direct_emitter_routes_minimal_countdown_loop_through_peephole() {
   const auto rendered = c4c::backend::x86::emit_module(make_minimal_countdown_loop_bir_module());
 
@@ -9688,6 +9712,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_x86_direct_emitter_lowers_constant_branch_if_uge_return_slice);
   RUN_TEST(test_x86_peephole_eliminates_jump_to_immediately_following_label);
   RUN_TEST(test_x86_peephole_eliminates_redundant_push_pop_pair);
+  RUN_TEST(test_x86_peephole_fuses_compare_setcc_test_branch_sequence);
   RUN_TEST(test_x86_direct_emitter_routes_minimal_countdown_loop_through_peephole);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_param_slot_add_slice);
   RUN_TEST(test_x86_direct_emitter_lowers_minimal_extern_zero_arg_call_slice);

@@ -9,9 +9,9 @@ Source Plan: plan.md
 - Step 3 continue expanding the translated x86 peephole subtree beyond the
   first live optimization round
 - immediate target:
-  identify the next translated pass that can be made live without depending on
-  a broader x86 emitter syntax rewrite, likely by either broadening the shared
-  classifier/helpers or by choosing another pass with a syntax-agnostic seam
+  evaluate the next translated pass that can be made live after
+  compare-and-branch fusion, without depending on a broader x86 emitter syntax
+  rewrite
 
 ## Next Slice
 
@@ -20,9 +20,9 @@ Source Plan: plan.md
   boundary is normalized
 - evaluate whether more of `peephole/passes/*.cpp` can be compiled in without
   pulling in unrelated x86 top-level codegen ownership
-- investigate whether `compare_branch.cpp` can be safely compiled in next after
-  consolidating the duplicated `mark_nop` and `replace_line` helpers it needs,
-  while keeping Intel-syntax countdown-loop output unchanged
+- investigate whether another translated pass such as `loop_trampoline.cpp` or
+  `frame_compact.cpp` has a similarly syntax-agnostic seam that can be made
+  live next while keeping the current Intel-syntax emitter output unchanged
 
 ## Current Iteration Notes
 
@@ -45,6 +45,10 @@ Source Plan: plan.md
 - the first live optimization is syntax-agnostic redundant jump-to-immediately-
   following-label elimination; the rest of the translated local-pass inventory
   remains parked until its assumptions are reconciled with the current emitter
+- the translated compare-and-branch pass needed one shared classifier seam
+  before it became reachable: `types.cpp` now classifies `cmp*` lines as
+  `LineKind::Cmp`, which lets the pass fuse cmp/setcc/test/jcc sequences on the
+  real x86 peephole path
 
 ## Recently Completed
 
@@ -69,5 +73,12 @@ Source Plan: plan.md
   peephole optimization loop
 - added a direct regression test that proves the translated push/pop pass now
   removes a redundant pair while preserving the surrounding label and return
+- compiled the translated `peephole/passes/compare_branch.cpp` unit into the
+  real x86 backend and test builds
+- wired the translated compare-and-branch fusion pass into the live x86
+  peephole optimization loop
+- added a direct regression test that proves the live x86 peephole now fuses a
+  cmp/setcc/test/jne boolean-materialization sequence into a direct conditional
+  jump
 - rebuilt and reran the full ctest suite with monotonic results:
   `181` failures before, `181` failures after, no newly failing tests

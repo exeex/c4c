@@ -65,6 +65,7 @@ std::string peephole_optimize(std::string asm_text) {
   for (int round = 0; round < 4; ++round) {
     bool changed = false;
     changed |= combined_local_pass(&store, infos.data());
+    changed |= fuse_compare_and_branch(&store, infos.data());
     changed |= fuse_movq_ext_truncation(&store, infos.data());
     changed |= eliminate_push_pop_pairs(&store, infos.data());
     if (!changed) {

@@ -223,6 +223,9 @@ LineInfo classify_line(std::string_view raw) {
   if (starts_with(raw, "call ")) {
     return line_info_with_regs(LineKind::Call, static_cast<std::uint16_t>(trim_start), scan_register_refs(raw));
   }
+  if (starts_with(raw, "cmp")) {
+    return line_info_with_regs(LineKind::Cmp, static_cast<std::uint16_t>(trim_start), scan_register_refs(raw));
+  }
   if (starts_with(raw, "pushq ")) {
     LineInfo info = line_info_with_regs(LineKind::Push, static_cast<std::uint16_t>(trim_start), scan_register_refs(raw));
     info.dest_reg = register_family_fast(raw.substr(6));
