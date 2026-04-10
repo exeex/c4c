@@ -205,3 +205,59 @@ Interpretation:
 - Because the before/after delta is roughly flat to slightly worse on the main
   hotspot TU, this change should be treated as structure preparation for later
   HIR work rather than as a measured compile-time win.
+
+## Step 4: Refreshed Ranking Before The `hir_expr.cpp` Split
+
+Recreated `build/compile_commands.json`, rebuilt the tree, and re-ran the
+optimized single-TU timings that drive the active Step 4 choice:
+
+| Rank | Translation unit | Optimized compile (s) |
+| --- | --- | ---: |
+| 1 | `src/frontend/hir/hir_expr.cpp` | 9.281 |
+| 2 | `src/frontend/hir/hir_stmt.cpp` | 8.841 |
+| 3 | `src/frontend/hir/hir_templates.cpp` | 8.780 |
+| 4 | `src/codegen/lir/stmt_emitter_call.cpp` | 6.327 |
+| 5 | `src/codegen/lir/stmt_emitter_expr.cpp` | 3.770 |
+
+Interpretation:
+
+- `hir_expr.cpp` retook the lead hotspot position, with `hir_stmt.cpp` and
+  `hir_templates.cpp` close behind in the same HIR-heavy tier.
+- The next extraction should therefore move from the earlier
+  `hir_templates.cpp` follow-up to a `hir_expr.cpp` seam with a focused HIR
+  and runtime validation surface.
+
+## Step 4: Fourth Executed Slice
+
+- Extracted the call-lowering helper cluster
+  (`try_lower_template_struct_call`, `lower_call_arg`,
+  `try_expand_pack_call_arg`, `try_lower_member_call_expr`,
+  `lower_call_expr`, and `try_lower_consteval_call_expr`) out of
+  `src/frontend/hir/hir_expr.cpp` into the new
+  `src/frontend/hir/hir_expr_call.cpp`.
+- Kept the logic as existing `Lowerer` methods, so this remains a
+  translation-unit ownership split rather than a semantic rewrite.
+- Added focused HIR coverage in
+  `tests/cpp/internal/hir_case/hir_expr_call_member_helper_hir.cpp` to pin the
+  constructor, member-call, and ref-qualified operator-call lowering shape
+  exercised by the extracted helper family.
+
+## Step 4: Fourth Slice Measurements
+
+Optimized single-TU compile timings after the split, using regenerated
+`build/compile_commands.json` commands:
+
+| Translation unit | Before `-O2 -c` (s) | After `-O2 -c` (s) | Notes |
+| --- | ---: | ---: | --- |
+| `src/frontend/hir/hir_expr.cpp` | 9.281 | 3.549 | direct post-split rerun |
+| `src/frontend/hir/hir_expr_call.cpp` | n/a | 2.884 | new extracted helper TU |
+| `src/frontend/hir/hir_stmt.cpp` | 8.841 | 4.710 | refreshed comparison tier |
+| `src/frontend/hir/hir_templates.cpp` | 8.780 | 4.634 | refreshed comparison tier |
+
+Interpretation:
+
+- The targeted `hir_expr.cpp` hotspot dropped by `5.732s`, about `61.8%`,
+  after moving the call-lowering cluster behind its own `.cpp` boundary.
+- The refreshed tier now shifts leadership to `hir_stmt.cpp` and
+  `hir_templates.cpp`, so a subsequent Step 4 slice should likely move there
+  rather than returning immediately to `hir_expr.cpp`.

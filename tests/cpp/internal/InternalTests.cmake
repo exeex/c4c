@@ -1362,6 +1362,15 @@ set_tests_properties(cpp_hir_template_member_owner_signature_local PROPERTIES
 )
 
 add_test(
+  NAME cpp_hir_expr_call_member_helper
+  COMMAND c4cll --dump-hir "${PROJECT_SOURCE_DIR}/tests/cpp/internal/hir_case/hir_expr_call_member_helper_hir.cpp"
+)
+set_tests_properties(cpp_hir_expr_call_member_helper PROPERTIES
+  LABELS "internal;positive_case;cpp;hir"
+  PASS_REGULAR_EXPRESSION "Box__Box\\(\\(&local#L0\\), \\(&3\\)\\).*Box__read\\(\\(&local#L0\\)\\).*decl __ctor_tmp_1: struct Box.*Box__operator_call\\(\\(&__ctor_tmp_1#L1\\), \\(&__rref_arg_tmp#L2\\)\\)"
+)
+
+add_test(
   NAME cpp_hir_template_function_signature_binding
   COMMAND c4cll --dump-hir "${INTERNAL_CPP_TEST_ROOT}/postive_case/template_fn_struct.cpp"
 )

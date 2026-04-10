@@ -340,6 +340,55 @@ Validation result:
 - full-suite regression guard passed with `3319/3319` tests passing before and
   `3321/3321` after, with no new failures
 
+## 2026-04-10 Refreshed Hotspot Ranking Before The `hir_expr.cpp` Split
+
+After recreating `build/compile_commands.json` and rebuilding the tree, the
+optimized single-TU rerun ranked the active hotspot tier as:
+
+1. `src/frontend/hir/hir_expr.cpp` - 9.281s
+2. `src/frontend/hir/hir_stmt.cpp` - 8.841s
+3. `src/frontend/hir/hir_templates.cpp` - 8.780s
+4. `src/codegen/lir/stmt_emitter_call.cpp` - 6.327s
+5. `src/codegen/lir/stmt_emitter_expr.cpp` - 3.770s
+
+This moved the next extraction target to `hir_expr.cpp`, with the call-lowering
+cluster chosen as the lowest-risk seam that still had focused HIR/runtime
+coverage.
+
+## 2026-04-10 Step 4 Fourth Extraction Slice
+
+Executed the `hir_expr.cpp` call-lowering split:
+
+- moved the call-lowering helper cluster
+  (`try_lower_template_struct_call`, `lower_call_arg`,
+  `try_expand_pack_call_arg`, `try_lower_member_call_expr`,
+  `lower_call_expr`, and `try_lower_consteval_call_expr`) into the new
+  `src/frontend/hir/hir_expr_call.cpp`
+- kept the logic as existing `Lowerer` methods so the slice remains a
+  translation-unit ownership split rather than a semantic rewrite
+- added `tests/cpp/internal/hir_case/hir_expr_call_member_helper_hir.cpp` as
+  focused HIR coverage for constructor, member-call, and ref-qualified
+  operator-call lowering
+
+Measured result:
+
+- `src/frontend/hir/hir_expr.cpp` improved from `9.281s` to `3.549s` on the
+  optimized single-TU compile command (`-5.732s`, about `61.8%`)
+- the new `src/frontend/hir/hir_expr_call.cpp` compiles in `2.884s`
+- the refreshed comparison tier now reads `hir_stmt.cpp` at `4.710s` and
+  `hir_templates.cpp` at `4.634s`, so the next hotspot focus should likely
+  move to one of those files
+
+Validation result:
+
+- focused coverage passed:
+  `cpp_positive_sema_hir_expr_call_member_helper_runtime_cpp`,
+  `cpp_positive_sema_operator_call_rvalue_ref_runtime_cpp`,
+  `cpp_positive_sema_template_operator_call_rvalue_ref_runtime_cpp`, and
+  `cpp_hir_expr_call_member_helper`
+- full-suite regression guard passed with `3321/3321` tests passing before and
+  `3322/3322` after, with no new failures
+
 ## Non-Goals
 
 - no backend architecture work
