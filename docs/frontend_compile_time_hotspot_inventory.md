@@ -49,3 +49,52 @@ Build: `build` (`RelWithDebInfo`, optimized single-TU compile commands from
 
 These are the best next candidates for `-fsyntax-only` versus `-O0 -c` versus
 optimized `-c` classification.
+
+## Step 2: Parse Versus Optimization Split
+
+Method:
+
+- Reused each TU's generated optimized compile command from
+  `build/compile_commands.json`.
+- Timed three variants per TU: `-fsyntax-only`, `-O0 -c`, and the existing
+  optimized `-O2 -c` command.
+- Sampled GCC `-ftime-report` on `stmt_emitter_expr.cpp` and
+  `hir_templates.cpp` to confirm whether the optimized delta comes from
+  optimization/code generation or from frontend work alone.
+
+| Translation unit | `-fsyntax-only` (s) | `-O0 -c` (s) | `-O2 -c` (s) | Classification |
+| --- | ---: | ---: | ---: | --- |
+| `src/codegen/lir/stmt_emitter_expr.cpp` | 1.170 | 2.250 | 6.712 | Optimizer heavy |
+| `src/frontend/hir/hir_expr.cpp` | 0.685 | 1.793 | 4.899 | Optimizer heavy |
+| `src/frontend/hir/hir_stmt.cpp` | 0.799 | 1.959 | 5.098 | Optimizer heavy |
+| `src/frontend/hir/hir_templates.cpp` | 0.790 | 1.676 | 5.031 | Optimizer heavy |
+| `src/codegen/lir/stmt_emitter_call.cpp` | 0.744 | 1.781 | 4.246 | Optimizer heavy |
+
+## Step 2 Interpretation
+
+- None of the current top-five hotspot units are parse/include heavy in the
+  narrow Step 2 sense. All five spend most of their optimized compile wall time
+  beyond the `-O0 -c` baseline.
+- The parse/include floor is still material. Even `-fsyntax-only` remains
+  roughly `0.7s` to `1.2s` across the top tier, which matches the earlier
+  84k to 86k preprocessed-line counts and keeps header pressure relevant for
+  later extraction choices.
+- `stmt_emitter_expr.cpp` is the clearest optimizer-dominated outlier. Its
+  optimized compile is about `3.0x` the `-O0` compile and about `5.7x` the
+  syntax-only pass.
+- The HIR units show the same shape with a slightly smaller spread. Their
+  optimized compiles are about `2.5x` to `3.0x` the `-O0` baseline, so they are
+  also better treated as optimizer-heavy than as parse-only hotspots.
+- The `-ftime-report` sample supports that classification. For
+  `stmt_emitter_expr.cpp`, GCC reports `phase opt and generate` at `5.79s` of
+  `7.54s` total wall time, with `callgraph functions expansion` alone taking
+  `4.37s`. For `hir_templates.cpp`, `phase opt and generate` is `3.90s` of
+  `5.40s`, with `callgraph functions expansion` at `3.07s`.
+
+## Step 3 Direction
+
+- The first extraction seam should favor large optimizer-stressing dispatcher
+  or helper bodies inside `stmt_emitter_expr.cpp`, `hir_templates.cpp`, or the
+  other hot HIR units rather than prioritizing header-only cleanup first.
+- Header extractions still matter, but the current data says they are unlikely
+  to erase the largest hotspot costs on their own.

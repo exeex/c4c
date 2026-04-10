@@ -162,6 +162,43 @@ Current interpretation:
 - Step 2 should classify the top HIR/LIR units first, then come back to parser
   files once the parse-versus-optimizer split is clearer
 
+## 2026-04-10 Step 2 Parse Versus Optimization Split
+
+The current top-five hotspot tier was re-measured with three compile modes per
+TU using the generated commands from `build/compile_commands.json`:
+`-fsyntax-only`, `-O0 -c`, and the existing optimized `-O2 -c` command.
+
+Results:
+
+| Translation unit | `-fsyntax-only` (s) | `-O0 -c` (s) | `-O2 -c` (s) | Classification |
+| --- | ---: | ---: | ---: | --- |
+| `src/codegen/lir/stmt_emitter_expr.cpp` | 1.170 | 2.250 | 6.712 | Optimizer heavy |
+| `src/frontend/hir/hir_expr.cpp` | 0.685 | 1.793 | 4.899 | Optimizer heavy |
+| `src/frontend/hir/hir_stmt.cpp` | 0.799 | 1.959 | 5.098 | Optimizer heavy |
+| `src/frontend/hir/hir_templates.cpp` | 0.790 | 1.676 | 5.031 | Optimizer heavy |
+| `src/codegen/lir/stmt_emitter_call.cpp` | 0.744 | 1.781 | 4.246 | Optimizer heavy |
+
+Interpretation:
+
+- none of the current top-five units are parse/include heavy in the narrow
+  Step 2 sense; all five are dominated by the optimized delta above `-O0`
+- the parse/include floor is still meaningful at roughly `0.7s` to `1.2s`,
+  which keeps header amplification relevant but secondary for the first
+  extraction choice
+- sampled `-ftime-report` output shows optimizer/codegen dominating the worst
+  units: `stmt_emitter_expr.cpp` spends `5.79s` of `7.54s` in `phase opt and
+  generate`, and `hir_templates.cpp` spends `3.90s` of `5.40s` there
+- `callgraph functions expansion` is a major contributor in both sampled cases,
+  which suggests large dispatcher/helper bodies are likely better first seams
+  than purely include-focused cleanup
+
+Current Step 3 direction:
+
+- prioritize extraction candidates inside the optimizer-heavy HIR/LIR units,
+  especially `stmt_emitter_expr.cpp` and `hir_templates.cpp`
+- treat header cleanup as a supporting follow-up unless a concrete seam clearly
+  reduces both frontend and optimizer cost
+
 ## Non-Goals
 
 - no backend architecture work
