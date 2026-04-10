@@ -3,6 +3,7 @@
 
 #include "../peephole.hpp"
 
+#include <algorithm>
 #include <cstddef>
 #include <optional>
 #include <string>
@@ -292,6 +293,9 @@ bool find_copy_and_modifications(const LineStore* store, const LineInfo* infos,
       if (is_movslq_reg_reg(trimmed, std::string("%") + kReg32Names[dst_fam], src_reg)) {
         return false;
       }
+      if (line_references_reg_fast(infos[scan], dst_fam)) {
+        return false;
+      }
       modifications->push_back(scan);
       continue;
     }
@@ -374,43 +378,48 @@ bool eliminate_loop_trampolines(LineStore* store, LineInfo* infos) {
     std::vector<std::size_t> copy_indices;
     std::vector<std::size_t> trampoline_move_indices;
     std::vector<std::pair<std::size_t, std::string>> rewrites;
-    bool can_coalesce = true;
+    std::vector<bool> move_coalesced;
 
     std::size_t move_scan = next_real_line(infos, *label_index + 1, len);
     for (const auto& [src_fam, dst_fam] : *trampoline_moves) {
-      if (!verify_fallthrough_safety(store, infos, i, len, src_fam, dst_fam)) {
-        can_coalesce = false;
-        break;
-      }
-
+      bool can_coalesce = verify_fallthrough_safety(store, infos, i, len, src_fam, dst_fam);
       std::size_t copy_index = len;
       std::vector<std::size_t> modifications;
-      if (!find_copy_and_modifications(store, infos, i, src_fam, dst_fam, &copy_index,
+      if (can_coalesce &&
+          !find_copy_and_modifications(store, infos, i, src_fam, dst_fam, &copy_index,
                                        &modifications)) {
         can_coalesce = false;
-        break;
       }
 
-      copy_indices.push_back(copy_index);
-      trampoline_move_indices.push_back(move_scan);
-      for (const auto mod_index : modifications) {
-        const auto rewritten =
-            replace_reg_family(trimmed_line(store, infos[mod_index], mod_index), src_fam, dst_fam);
-        if (rewritten == trimmed_line(store, infos[mod_index], mod_index)) {
-          can_coalesce = false;
-          break;
+      std::vector<std::pair<std::size_t, std::string>> move_rewrites;
+      if (can_coalesce) {
+        for (const auto mod_index : modifications) {
+          const auto rewritten = replace_reg_family(
+              trimmed_line(store, infos[mod_index], mod_index), src_fam, dst_fam);
+          if (rewritten == trimmed_line(store, infos[mod_index], mod_index)) {
+            can_coalesce = false;
+            break;
+          }
+          move_rewrites.emplace_back(mod_index, "  " + rewritten);
         }
-        rewrites.emplace_back(mod_index, "  " + rewritten);
       }
-      if (!can_coalesce) {
-        break;
+
+      move_coalesced.push_back(can_coalesce);
+      if (can_coalesce) {
+        copy_indices.push_back(copy_index);
+        trampoline_move_indices.push_back(move_scan);
+        rewrites.insert(rewrites.end(), move_rewrites.begin(), move_rewrites.end());
       }
       move_scan = next_real_line(infos, move_scan + 1, len);
     }
 
-    if (!can_coalesce) {
+    const bool any_coalesced =
+        std::any_of(move_coalesced.begin(), move_coalesced.end(), [](bool value) { return value; });
+    if (!any_coalesced) {
       continue;
     }
+    const bool all_coalesced =
+        std::all_of(move_coalesced.begin(), move_coalesced.end(), [](bool value) { return value; });
 
     for (const auto& [mod_index, rewritten] : rewrites) {
       replace_line(store, infos[mod_index], mod_index, rewritten);
@@ -418,12 +427,19 @@ bool eliminate_loop_trampolines(LineStore* store, LineInfo* infos) {
     for (const auto copy_index : copy_indices) {
       mark_nop(infos[copy_index]);
     }
-    for (const auto move_index : trampoline_move_indices) {
-      mark_nop(infos[move_index]);
+
+    if (all_coalesced) {
+      for (const auto move_index : trampoline_move_indices) {
+        mark_nop(infos[move_index]);
+      }
+      replace_jump_target(store, infos[i], i, *redirected_target);
+      mark_nop(infos[jump_index]);
+    } else {
+      for (const auto move_index : trampoline_move_indices) {
+        mark_nop(infos[move_index]);
+      }
     }
 
-    replace_jump_target(store, infos[i], i, *redirected_target);
-    mark_nop(infos[jump_index]);
     changed = true;
   }
 

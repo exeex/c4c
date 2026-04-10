@@ -9,15 +9,17 @@ Source Plan: plan.md
 - Step 3 continue expanding the translated x86 peephole subtree beyond the
   first live optimization round
 - immediate target:
-  evaluate the next bounded trampoline-coalescing slice beyond the newly live
-  `movslq` copy-back case, with stack-load trampoline forms still parked until
-  their own safety and rewrite rules are explicit
+  land partial loop-trampoline coalescing for mixed safe/unsafe register
+  shuffle blocks so the live translated pass can rewrite a proven-safe pair
+  without waiting for every sibling trampoline move to become coalescible;
+  keep stack-load trampoline forms parked until their own safety and rewrite
+  rules are explicit
 
 ## Next Slice
 
-- if the `movslq` trampoline slice lands cleanly, evaluate whether the
-  remaining stack-load trampoline cases should reuse the new shared destination
-  parsing path or stay parked until a separate bounded slice
+- evaluate whether the remaining stack-load trampoline cases should reuse the
+  new shared destination parsing path or stay parked until a separate bounded
+  slice with explicit safety rules
 - keep `frame_compact.cpp` parked until dead-store and callee-save translated
   passes are live enough for frame shrinking to be meaningful
 - continue evaluating which remaining translated peephole units can be compiled
@@ -60,6 +62,10 @@ Source Plan: plan.md
   LIR validation coverage before it can serve as a narrow peephole harness, so
   this iteration verified the new trampoline form with a focused standalone
   peephole harness while the full-suite regression guard remained monotonic
+- the next bounded gap against the translated loop-trampoline behavior is
+  mixed safe/unsafe shuffle handling: the current C++ pass still bails out of
+  the whole trampoline when one sibling move cannot be coalesced, while the
+  reference keeps the unsafe sibling parked and still applies the safe rewrite
 
 ## Recently Completed
 
@@ -114,5 +120,14 @@ Source Plan: plan.md
 - added a direct regression test that proves the live x86 peephole now rewrites
   a 32-bit update feeding a `movslq` trampoline copy-back into a direct update
   of the loop-carried register
+- widened the live translated loop-trampoline pass to coalesce a proven-safe
+  register shuffle inside a mixed trampoline block even when a sibling move
+  still has to stay parked
+- taught the loop-trampoline predecessor scan to reject rewrites that would
+  read the loop-carried destination while also writing the temporary, avoiding
+  bogus self-referential rewrites such as `addq %r10, %r10`
+- added a direct regression test that proves the live x86 peephole now removes
+  only the safe `%r9/%r14` shuffle from a mixed trampoline while leaving the
+  unsafe `%r10/%r15` pair and trampoline branch in place
 - rebuilt and reran the full ctest suite with monotonic results:
   `181` failures before, `181` failures after, no newly failing tests
