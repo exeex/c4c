@@ -3275,6 +3275,49 @@ c4c::codegen::lir::LirModule make_lir_minimal_local_i32_unary_not_minus_zero_ret
   return module;
 }
 
+c4c::codegen::lir::LirModule make_lir_minimal_three_block_add_compare_zero_return_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.type_decls.push_back("%struct.__va_list_tag_ = type { i32, i32, ptr, ptr }");
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirBinOp{"%t0", "add", "i32", "1", "2"});
+  entry.insts.push_back(LirBinOp{"%t1", "add", "i32", "%t0", "3"});
+  entry.insts.push_back(LirCmpOp{"%t2", false, "ne", "i32", "%t1", "6"});
+  entry.insts.push_back(LirCastOp{"%t3", LirCastKind::ZExt, "i1", "%t2", "i32"});
+  entry.insts.push_back(LirCmpOp{"%t4", false, "ne", "i32", "%t3", "0"});
+  entry.terminator = LirCondBr{"%t4", "block_1", "block_2"};
+  function.blocks.push_back(std::move(entry));
+
+  LirBlock block_1;
+  block_1.id = LirBlockId{1};
+  block_1.label = "block_1";
+  block_1.terminator = LirRet{std::string("1"), "i32"};
+  function.blocks.push_back(std::move(block_1));
+
+  LirBlock block_2;
+  block_2.id = LirBlockId{2};
+  block_2.label = "block_2";
+  block_2.insts.push_back(LirBinOp{"%t5", "add", "i32", "0", "0"});
+  block_2.insts.push_back(LirBinOp{"%t6", "add", "i32", "%t5", "0"});
+  block_2.terminator = LirRet{std::string("%t6"), "i32"};
+  function.blocks.push_back(std::move(block_2));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_lir_minimal_countdown_loop_module() {
   using namespace c4c::codegen::lir;
 
@@ -6298,6 +6341,36 @@ void test_backend_bir_pipeline_drives_x86_lir_minimal_short_circuit_effect_zero_
                       "x86 LIR short-circuit effect input should stay on native asm emission instead of falling back to LLVM text");
 }
 
+void test_backend_bir_pipeline_drives_x86_lir_minimal_three_block_add_compare_zero_return_through_bir_end_to_end() {
+  const auto lowered_bir = c4c::backend::try_lower_to_bir(
+      make_lir_minimal_three_block_add_compare_zero_return_module());
+  expect_true(lowered_bir.has_value(),
+              "x86 LIR three-block add/compare input should now lower into the bounded shared immediate-return shape");
+  if (!lowered_bir.has_value()) {
+    return;
+  }
+
+  expect_true(lowered_bir->functions.size() == 1 &&
+                  lowered_bir->functions.front().name == "main" &&
+                  lowered_bir->functions.front().blocks.front().terminator.value ==
+                      c4c::backend::bir::Value::immediate_i32(0),
+              "x86 LIR three-block add/compare lowering should fold main to the shared zero return");
+
+  const auto rendered = c4c::backend::emit_module(
+      c4c::backend::BackendModuleInput{
+          make_lir_minimal_three_block_add_compare_zero_return_module()},
+      make_bir_pipeline_options(c4c::backend::Target::X86_64));
+
+  expect_contains(rendered, ".globl main",
+                  "x86 LIR three-block add/compare input should still emit the entry definition on the native x86 path");
+  expect_contains(rendered, "mov eax, 0",
+                  "x86 LIR three-block add/compare input should materialize the folded zero return in main on the native x86 path");
+  expect_not_contains(rendered, "cmp eax, 6",
+                      "x86 LIR three-block add/compare input should stop depending on the unsupported direct-LIR compare chain once the shared fold owns the seam");
+  expect_not_contains(rendered, "target triple =",
+                      "x86 LIR three-block add/compare input should stay on native asm emission instead of falling back to LLVM text");
+}
+
 void test_backend_bir_pipeline_drives_x86_lir_minimal_countdown_loop_through_bir_end_to_end() {
   const auto lowered_bir = c4c::backend::try_lower_to_bir(make_lir_minimal_countdown_loop_module());
   expect_true(lowered_bir.has_value(),
@@ -8649,6 +8722,7 @@ void run_backend_bir_pipeline_x86_64_tests() {
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_local_i32_inc_dec_compare_return_zero_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_local_i32_unary_not_minus_zero_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_short_circuit_effect_zero_return_through_bir_end_to_end);
+  RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_three_block_add_compare_zero_return_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_two_arg_direct_call_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_add_imm_through_bir_end_to_end);
   RUN_TEST(test_backend_bir_pipeline_drives_x86_lir_minimal_direct_call_identity_arg_through_bir_end_to_end);

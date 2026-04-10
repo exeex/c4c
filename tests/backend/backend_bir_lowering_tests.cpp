@@ -3183,6 +3183,49 @@ c4c::codegen::lir::LirModule make_bir_minimal_local_i32_unary_not_minus_zero_ret
   return module;
 }
 
+c4c::codegen::lir::LirModule make_bir_minimal_three_block_add_compare_zero_return_lir_module() {
+  using namespace c4c::codegen::lir;
+
+  LirModule module;
+  module.target_triple = "x86_64-unknown-linux-gnu";
+  module.data_layout =
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128";
+  module.type_decls.push_back("%struct.__va_list_tag_ = type { i32, i32, ptr, ptr }");
+
+  LirFunction function;
+  function.name = "main";
+  function.signature_text = "define i32 @main()\n";
+  function.entry = LirBlockId{0};
+
+  LirBlock entry;
+  entry.id = LirBlockId{0};
+  entry.label = "entry";
+  entry.insts.push_back(LirBinOp{"%t0", "add", "i32", "1", "2"});
+  entry.insts.push_back(LirBinOp{"%t1", "add", "i32", "%t0", "3"});
+  entry.insts.push_back(LirCmpOp{"%t2", false, "ne", "i32", "%t1", "6"});
+  entry.insts.push_back(LirCastOp{"%t3", LirCastKind::ZExt, "i1", "%t2", "i32"});
+  entry.insts.push_back(LirCmpOp{"%t4", false, "ne", "i32", "%t3", "0"});
+  entry.terminator = LirCondBr{"%t4", "block_1", "block_2"};
+  function.blocks.push_back(std::move(entry));
+
+  LirBlock block_1;
+  block_1.id = LirBlockId{1};
+  block_1.label = "block_1";
+  block_1.terminator = LirRet{std::string("1"), "i32"};
+  function.blocks.push_back(std::move(block_1));
+
+  LirBlock block_2;
+  block_2.id = LirBlockId{2};
+  block_2.label = "block_2";
+  block_2.insts.push_back(LirBinOp{"%t5", "add", "i32", "0", "0"});
+  block_2.insts.push_back(LirBinOp{"%t6", "add", "i32", "%t5", "0"});
+  block_2.terminator = LirRet{std::string("%t6"), "i32"};
+  function.blocks.push_back(std::move(block_2));
+
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 c4c::codegen::lir::LirModule make_bir_minimal_string_literal_compare_phi_return_lir_module() {
   using namespace c4c::codegen::lir;
 
@@ -6655,6 +6698,27 @@ void test_bir_lowering_accepts_minimal_short_circuit_effect_zero_return_lir_modu
                   "the lowered short-circuit effect slice should print the folded main immediate return");
 }
 
+void test_bir_lowering_accepts_minimal_three_block_add_compare_zero_return_lir_module() {
+  const auto lowered = c4c::backend::try_lower_to_bir(
+      make_bir_minimal_three_block_add_compare_zero_return_lir_module());
+  expect_true(lowered.has_value(),
+              "BIR lowering should accept the bounded three-block add/compare zero-return LIR slice");
+  if (!lowered.has_value()) {
+    return;
+  }
+
+  expect_true(lowered->functions.size() == 1 &&
+                  lowered->functions.front().name == "main" &&
+                  lowered->functions.front().blocks.size() == 1 &&
+                  lowered->functions.front().blocks.front().terminator.value ==
+                      c4c::backend::bir::Value::immediate_i32(0),
+              "the lowered three-block add/compare slice should collapse main to the exact zero return");
+
+  const auto rendered = c4c::backend::bir::print(*lowered);
+  expect_contains(rendered, "bir.func @main() -> i32 {\nentry:\n  bir.ret i32 0\n}\n",
+                  "the lowered three-block add/compare slice should print the folded main immediate return");
+}
+
 void test_bir_lowering_accepts_minimal_string_literal_compare_phi_return_lir_module() {
   const auto lowered = c4c::backend::try_lower_to_bir(
       make_bir_minimal_string_literal_compare_phi_return_lir_module());
@@ -9307,6 +9371,7 @@ void run_backend_bir_lowering_tests() {
   RUN_TEST(test_bir_lowering_accepts_minimal_local_i32_inc_dec_compare_return_zero_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_local_i32_unary_not_minus_zero_return_lir_module);
   RUN_TEST(test_bir_lowering_accepts_minimal_short_circuit_effect_zero_return_lir_module);
+  RUN_TEST(test_bir_lowering_accepts_minimal_three_block_add_compare_zero_return_lir_module);
   RUN_TEST(test_bir_lowering_infers_extern_decl_params_from_typed_call_lir_module);
   RUN_TEST(test_bir_lowering_uses_typed_declared_direct_call_metadata_when_text_is_stale);
   RUN_TEST(test_bir_lowering_uses_typed_extern_declared_direct_call_metadata_when_text_is_stale);

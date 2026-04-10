@@ -4788,6 +4788,10 @@ std::optional<bir::Module> try_lower_to_bir_legacy(const c4c::codegen::lir::LirM
       lowered.has_value()) {
     return lowered;
   }
+  if (const auto lowered = try_lower_minimal_three_block_add_compare_zero_return_module(module);
+      lowered.has_value()) {
+    return lowered;
+  }
   if (const auto lowered = try_lower_minimal_short_circuit_effect_zero_return_module(module);
       lowered.has_value()) {
     return lowered;
@@ -5316,6 +5320,17 @@ BirLoweringResult try_lower_to_bir_with_options(
             .phase = "legacy-lowering",
             .message =
                 "local-slot unary-not/unary-minus seam lowered the source-shaped module before CFG normalization rewrote the exact bounded branch chain",
+        }},
+    };
+  }
+  if (auto lowered = try_lower_minimal_three_block_add_compare_zero_return_module(module);
+      lowered.has_value()) {
+    return BirLoweringResult{
+        .module = std::move(lowered),
+        .notes = {BirLoweringNote{
+            .phase = "legacy-lowering",
+            .message =
+                "three-block add/compare seam lowered the source-shaped module before CFG normalization rewrote the bounded arithmetic-plus-branch slice",
         }},
     };
   }

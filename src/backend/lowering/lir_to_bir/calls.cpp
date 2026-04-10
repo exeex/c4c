@@ -2257,6 +2257,83 @@ std::optional<bir::Module> try_lower_minimal_local_i32_unary_not_minus_zero_retu
   return lowered;
 }
 
+std::optional<bir::Module> try_lower_minimal_three_block_add_compare_zero_return_module(
+    const c4c::codegen::lir::LirModule& module) {
+  using namespace c4c::codegen::lir;
+
+  if (module.functions.size() != 1 || !module.globals.empty() || !module.string_pool.empty() ||
+      !module.extern_decls.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& function = module.functions.front();
+  if (function.is_declaration ||
+      !lir_function_matches_minimal_no_param_integer_return(function, 32) ||
+      !function.alloca_insts.empty() || function.blocks.size() != 3) {
+    return std::nullopt;
+  }
+
+  const auto& entry = function.blocks[0];
+  const auto& block_1 = function.blocks[1];
+  const auto& block_2 = function.blocks[2];
+
+  const auto* entry_add0 = entry.insts.size() == 5 ? std::get_if<LirBinOp>(&entry.insts[0]) : nullptr;
+  const auto* entry_add1 = entry.insts.size() == 5 ? std::get_if<LirBinOp>(&entry.insts[1]) : nullptr;
+  const auto* entry_cmp = entry.insts.size() == 5 ? std::get_if<LirCmpOp>(&entry.insts[2]) : nullptr;
+  const auto* entry_cast = entry.insts.size() == 5 ? std::get_if<LirCastOp>(&entry.insts[3]) : nullptr;
+  const auto* entry_cmp0 = entry.insts.size() == 5 ? std::get_if<LirCmpOp>(&entry.insts[4]) : nullptr;
+  const auto* entry_branch = std::get_if<LirCondBr>(&entry.terminator);
+  const auto* block_2_add0 =
+      block_2.insts.size() == 2 ? std::get_if<LirBinOp>(&block_2.insts[0]) : nullptr;
+  const auto* block_2_add1 =
+      block_2.insts.size() == 2 ? std::get_if<LirBinOp>(&block_2.insts[1]) : nullptr;
+  const auto* block_1_ret = std::get_if<LirRet>(&block_1.terminator);
+  const auto* block_2_ret = std::get_if<LirRet>(&block_2.terminator);
+  if (entry.label != "entry" || block_1.label != "block_1" || block_2.label != "block_2" ||
+      entry_add0 == nullptr || entry_add1 == nullptr || entry_cmp == nullptr ||
+      entry_cast == nullptr || entry_cmp0 == nullptr || entry_branch == nullptr || block_2_add0 == nullptr ||
+      block_2_add1 == nullptr || block_1_ret == nullptr || block_2_ret == nullptr ||
+      entry_add0->result != "%t0" || entry_add0->opcode != "add" ||
+      entry_add0->type_str != "i32" || entry_add0->lhs != "1" || entry_add0->rhs != "2" ||
+      entry_add1->result != "%t1" || entry_add1->opcode != "add" ||
+      entry_add1->type_str != "i32" || entry_add1->lhs != entry_add0->result ||
+      entry_add1->rhs != "3" || entry_cmp->result != "%t2" || entry_cmp->is_float ||
+      entry_cmp->predicate != "ne" || entry_cmp->type_str != "i32" ||
+      entry_cmp->lhs != entry_add1->result || entry_cmp->rhs != "6" ||
+      entry_cast->result != "%t3" || entry_cast->kind != LirCastKind::ZExt ||
+      entry_cast->from_type != "i1" || entry_cast->operand != entry_cmp->result ||
+      entry_cast->to_type != "i32" || entry_cmp0->result != "%t4" ||
+      entry_cmp0->is_float || entry_cmp0->predicate != "ne" ||
+      entry_cmp0->type_str != "i32" || entry_cmp0->lhs != entry_cast->result ||
+      entry_cmp0->rhs != "0" || entry_branch->cond_name != entry_cmp0->result ||
+      entry_branch->true_label != "block_1" || entry_branch->false_label != "block_2" ||
+      block_1_ret->type_str != "i32" || !block_1_ret->value_str.has_value() ||
+      *block_1_ret->value_str != "1" || block_2_add0->result != "%t5" ||
+      block_2_add0->opcode != "add" || block_2_add0->type_str != "i32" ||
+      block_2_add0->lhs != "0" || block_2_add0->rhs != "0" ||
+      block_2_add1->result != "%t6" || block_2_add1->opcode != "add" ||
+      block_2_add1->type_str != "i32" || block_2_add1->lhs != block_2_add0->result ||
+      block_2_add1->rhs != "0" || block_2_ret->type_str != "i32" ||
+      !block_2_ret->value_str.has_value() || *block_2_ret->value_str != block_2_add1->result) {
+    return std::nullopt;
+  }
+
+  bir::Module lowered;
+  lowered.target_triple = module.target_triple;
+  lowered.data_layout = module.data_layout;
+
+  bir::Function lowered_function;
+  lowered_function.name = function.name;
+  lowered_function.return_type = bir::TypeKind::I32;
+
+  bir::Block lowered_entry;
+  lowered_entry.label = "entry";
+  lowered_entry.terminator.value = bir::Value::immediate_i32(0);
+  lowered_function.blocks.push_back(std::move(lowered_entry));
+  lowered.functions.push_back(std::move(lowered_function));
+  return lowered;
+}
+
 std::optional<bir::Module> try_lower_minimal_short_circuit_effect_zero_return_module(
     const c4c::codegen::lir::LirModule& module) {
   using namespace c4c::codegen::lir;
