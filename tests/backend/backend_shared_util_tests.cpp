@@ -169,6 +169,36 @@ void test_x86_codegen_header_exports_translated_globals_owner_helper_symbols() {
               "x86 translated globals owner helper methods should remain compile/link reachable while globals.cpp starts carrying real behavior");
 }
 
+void test_x86_codegen_header_exports_translated_returns_owner_symbols() {
+  using X86Codegen = c4c::backend::x86::X86Codegen;
+
+  auto emit_return = &X86Codegen::emit_return_impl;
+  auto current_return_type = &X86Codegen::current_return_type_impl;
+  auto emit_return_f32_to_reg = &X86Codegen::emit_return_f32_to_reg_impl;
+  auto emit_return_f64_to_reg = &X86Codegen::emit_return_f64_to_reg_impl;
+  auto emit_return_i128_to_regs = &X86Codegen::emit_return_i128_to_regs_impl;
+  auto emit_return_f128_to_reg = &X86Codegen::emit_return_f128_to_reg_impl;
+  auto emit_return_int_to_reg = &X86Codegen::emit_return_int_to_reg_impl;
+  auto emit_get_return_f64_second = &X86Codegen::emit_get_return_f64_second_impl;
+  auto emit_set_return_f64_second = &X86Codegen::emit_set_return_f64_second_impl;
+  auto emit_get_return_f32_second = &X86Codegen::emit_get_return_f32_second_impl;
+  auto emit_set_return_f32_second = &X86Codegen::emit_set_return_f32_second_impl;
+  auto emit_get_return_f128_second = &X86Codegen::emit_get_return_f128_second_impl;
+  auto emit_set_return_f128_second = &X86Codegen::emit_set_return_f128_second_impl;
+
+  expect_true(emit_return != nullptr && current_return_type != nullptr &&
+                  emit_return_f32_to_reg != nullptr && emit_return_f64_to_reg != nullptr &&
+                  emit_return_i128_to_regs != nullptr && emit_return_f128_to_reg != nullptr &&
+                  emit_return_int_to_reg != nullptr &&
+                  emit_get_return_f64_second != nullptr &&
+                  emit_set_return_f64_second != nullptr &&
+                  emit_get_return_f32_second != nullptr &&
+                  emit_set_return_f32_second != nullptr &&
+                  emit_get_return_f128_second != nullptr &&
+                  emit_set_return_f128_second != nullptr,
+              "x86 translated returns owner methods should stay compile/link reachable through the public x86_codegen surface once returns.cpp enters the build");
+}
+
 void test_x86_translated_asm_emitter_helpers_match_shared_contract() {
   const auto callee_saved = c4c::backend::x86::x86_callee_saved_regs();
   const auto caller_saved = c4c::backend::x86::x86_caller_saved_regs();
@@ -4127,6 +4157,7 @@ int main(int argc, char* argv[]) {
   test_backend_shared_call_decode_parses_bir_minimal_direct_call_module();
   test_x86_codegen_header_exports_translated_globals_owner_symbols();
   test_x86_codegen_header_exports_translated_globals_owner_helper_symbols();
+  test_x86_codegen_header_exports_translated_returns_owner_symbols();
   test_x86_translated_asm_emitter_helpers_match_shared_contract();
   test_x86_translated_regalloc_pruning_helpers_match_shared_contract();
   test_x86_translated_globals_owner_handles_minimal_scalar_global_load_slice();

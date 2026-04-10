@@ -44,11 +44,17 @@ On the current C++ tree as of 2026-04-10:
 
 - CMake compiles `codegen/mod.cpp`, `codegen/emit.cpp`, the local
   `direct_*.cpp` seam files, and the full translated `peephole/` subtree
+- CMake already compiles `globals.cpp`, which carries bounded translated-owner
+  behavior for the minimal scalar global-load slices
+- CMake now also compiles `returns.cpp`, but only as explicit symbol/link
+  coverage because the current public `x86_codegen.hpp` surface does not yet
+  expose the exporter-backed `X86Codegen` return state its real translated
+  bodies require
 - CMake still does not compile the translated top-level owner units such as
   `alu.cpp`, `asm_emitter.cpp`, `atomics.cpp`, `calls.cpp`, `cast_ops.cpp`,
-  `comparison.cpp`, `f128.cpp`, `float_ops.cpp`, `globals.cpp`,
-  `i128_ops.cpp`, `inline_asm.cpp`, `intrinsics.cpp`, `memory.cpp`,
-  `prologue.cpp`, `returns.cpp`, and `variadic.cpp`
+  `comparison.cpp`, `f128.cpp`, `float_ops.cpp`, `i128_ops.cpp`,
+  `inline_asm.cpp`, `intrinsics.cpp`, `memory.cpp`, `prologue.cpp`, and
+  `variadic.cpp`
 - `mod.cpp` is still only an anchor, not the active dispatcher
 - `emit.cpp` still owns the practical direct-BIR and prepared-LIR emission
   route through a large matcher/dispatcher surface
@@ -140,10 +146,14 @@ The first compile-oriented migration cluster should stay narrow:
 - add the translated leaf-like top-level units that depend on the existing
   accumulator/helper surface but do not require immediate prologue/call-frame
   ownership
-- start with `globals.cpp` as the first candidate, because it is self-contained
-  relative to `prologue.cpp`, `calls.cpp`, `variadic.cpp`, and inline-asm work
-- treat `comparison.cpp` and `returns.cpp` as near-neighbors, but expect
-  signature drift and helper-surface fixes before they can join the same build
+- `globals.cpp` was the first successful candidate because it is relatively
+  self-contained against `prologue.cpp`, `calls.cpp`, `variadic.cpp`, and
+  inline-asm work
+- `returns.cpp` can now join the build only as symbol/link coverage; its real
+  bodies remain blocked on the hidden exporter-backed `X86Codegen` return-state
+  surface
+- treat `comparison.cpp` as the next near-neighbor candidate, but expect
+  signature drift and helper-surface fixes before it can join the same build
   cluster cleanly
 
 This keeps the next execution slice focused on compiling translated owner units

@@ -6,25 +6,21 @@ Source Plan: plan.md
 
 ## Current Active Item
 
-- Step 3 translated-owner cutover follow-on after reassessing the bounded
-  prepared-LIR direct-calls sibling seam: the tracked SysV argument-lowering
-  helper families called out at the top of this runbook now all have shared
-  backend-entry coverage, including the bounded scalar stack/load families,
-  the register-backed aggregate family, the large caller-stack aggregate
-  family, and the trailing small-aggregate `StructStack` family alongside the
-  existing `00080.c` shared-path routes
+- Step 3 translated-owner build-wiring follow-on after landing the bounded
+  `returns.cpp` slice: both x86 source lists now compile
+  `src/backend/x86/codegen/returns.cpp`, and the public translated returns
+  owner methods are link-reachable through `x86_codegen.hpp`
 - immediate target:
-  stop spending more Step 3 time on helper-family public-entrypoint parity and
-  instead pick the next smallest translated-owner build-wiring slice that
-  reduces `emit.cpp` ownership directly, starting from the still-unwired
-  translated top-level units called out in the source idea and plan
+  use the updated inventory to choose the next still-unwired translated
+  top-level unit, while treating the missing exporter-backed `X86Codegen`
+  state surface as the current blocker for non-stub owner bodies
 
 ## Next Slice
 
-- choose the first still-unwired translated top-level owner candidate that can
-  enter the build without widening into prologue/call-frame repair; prefer a
-  leaf-like unit from the idea inventory instead of adding more direct-emitter
-  or public-entrypoint helper coverage
+- reassess the remaining top-level translated units and choose the next
+  smallest leaf-like owner candidate whose public surface can enter the build
+  without widening into prologue/call-frame repair or hidden private-state
+  exposure
 - if a future x86 ABI policy change ever enables partial GP-register plus
   caller-stack aggregate splits, re-open `StructSplitRegStack` as a separate
   owner-path cutover item instead of silently folding it into the current
@@ -39,6 +35,35 @@ Source Plan: plan.md
 - only rerun the broad monotonic guard after a larger owner-path cutover lands
 
 ## Current Iteration Notes
+
+- this iteration corrects the stale execution note that still treated
+  `globals.cpp` as the first untranslated top-level owner candidate even though
+  both main x86 target lists in `CMakeLists.txt` already compile it; the next
+  bounded build-wiring slice is `returns.cpp`
+- this iteration wires `src/backend/x86/codegen/returns.cpp` into both x86
+  source lists in `CMakeLists.txt` and adds focused
+  `backend_shared_util_tests.cpp` coverage that pins the translated returns
+  owner symbols through the public `x86_codegen.hpp` surface
+- implementation note:
+  `returns.cpp` cannot yet compile its real translated bodies against the
+  current transitional header because the exporter-backed `X86Codegen` return
+  state is still private; for now the file carries explicit
+  symbol/link-coverage stubs with a targeted logic-error message instead of
+  silently depending on hidden state
+- focused validation passed:
+  `cmake --preset default`,
+  `cmake --build --preset default --target backend_shared_util_tests -j8`,
+  `./build/backend_shared_util_tests translated_returns_owner_symbols`,
+  `./build/backend_shared_util_tests translated_globals_owner`,
+  and
+  `./build/backend_shared_util_tests regalloc_pruning_helpers`
+- broad validation passed:
+  `cmake --build --preset default -j8`,
+  `ctest --test-dir build -j8 --output-on-failure > test_fail_after.log`
+  (still exits non-zero on the existing suite failure set), and
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_fail_before.log --after test_fail_after.log --allow-non-decreasing-passed`
+  with `3192` passed / `184` failed before and after, zero newly failing tests,
+  and the existing `backend_bir_tests` `>30s` timeout note still present
 
 - this iteration repairs the stale top-level execution state after the
   trailing small-aggregate `StructStack` reassessment: the bounded SysV
