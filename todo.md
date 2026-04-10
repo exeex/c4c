@@ -6,14 +6,15 @@ Source Plan: plan.md
 
 ## Active Item
 
-- Step 4: record the landed `local_types` migration and queue the next bounded
-  dense-ID helper candidate
-- Current slice: leave `InlineCloneContext::param_to_local` as a separate
-  parameter-index table and evaluate whether `run_inline_expansion`'s
-  `callee_expand_count` should become the next frontend-owned dense-ID helper
-  follow-on
-- Iteration target: confirm whether the inline expansion recursion guard wants
-  `OptionalDenseIdMap<FunctionId, int>` or should stay as a plain sparse map
+- Step 4: evaluate and, if justified, land the inline expansion recursion-guard
+  migration
+- Current slice: keep `InlineCloneContext::param_to_local` as a parameter-index
+  table, add focused `FunctionId` helper coverage, and decide whether
+  `run_inline_expansion`'s `callee_expand_count` should become
+  `OptionalDenseIdMap<FunctionId, int>`
+- Iteration target: prove the recursion guard behaves like dense typed-ID
+  storage, then migrate that one call site without widening into unrelated
+  frontend maps
 
 ## Completed Items
 
